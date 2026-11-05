@@ -41,13 +41,13 @@ def execute(view=None):
         if fixture.count(marker) != 1:
             raise AssertionError('Unique production member marker required')
         fixture = fixture.replace(marker, value, 1)
-    files = [SOURCE / 'GeckoWebView.java', SOURCE / 'BrowserBridgeRequests.java', HERE / 'PageBridgeLifecycleHost.java.in', Path(__file__), ROOT / 'tests/page-recovery-host/run.py']
+    files = [SOURCE / 'GeckoWebView.java', SOURCE / 'BrowserBridgeRequests.java', SOURCE / 'GeckoNavigationPolicy.java', SOURCE / 'BrowserAddressPolicy.java', HERE / 'PageBridgeLifecycleHost.java.in', Path(__file__), ROOT / 'tests/page-recovery-host/run.py']
     hashes = {str(p.relative_to(ROOT)): hashlib.sha256(p.read_bytes()).hexdigest() for p in files}
     with tempfile.TemporaryDirectory(prefix='page-bridge-lifecycle-') as temp:
         out = Path(temp)
         host = out / 'PageBridgeLifecycleHost.java'
         host.write_text(fixture)
-        compiled = subprocess.run([java, '-m', 'jdk.compiler/com.sun.tools.javac.Main', '-encoding', 'UTF-8', '-cp', str(jar), '-d', str(out), str(host), str(SOURCE / 'BrowserBridgeRequests.java')], capture_output=True, text=True, timeout=40)
+        compiled = subprocess.run([java, '-m', 'jdk.compiler/com.sun.tools.javac.Main', '-encoding', 'UTF-8', '-cp', str(jar), '-d', str(out), str(host), str(SOURCE / 'BrowserBridgeRequests.java'), str(SOURCE / 'GeckoNavigationPolicy.java'), str(SOURCE / 'BrowserAddressPolicy.java')], capture_output=True, text=True, timeout=40)
         if compiled.returncode:
             raise AssertionError(compiled.stdout + compiled.stderr)
         ran = subprocess.run([java, '-cp', str(out) + os.pathsep + str(jar), 'local.pocketchat.PageBridgeLifecycleHost'], capture_output=True, text=True, timeout=30)

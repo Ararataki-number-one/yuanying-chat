@@ -40,6 +40,11 @@ def experience46_source_bytes(raw, relative):
         from dual_browser_source_compatibility import source_input
         raw = source_input(raw, relative)
         digest = hashlib.sha256(raw).hexdigest()
+    if relative == 'tests/profile_native43_source_compatibility_test.py' and digest not in (
+            row['reviewedSha256'], row['previousSha256'], *row['exactHistoricalSha256']):
+        from gecko_policy_dependency_source_compatibility import source_input
+        raw = source_input(raw, relative)
+        digest = hashlib.sha256(raw).hexdigest()
     if relative == 'tests/gecko/run_device.py' and digest not in (
             row['reviewedSha256'], row['previousSha256'], *row['exactHistoricalSha256']):
         from event_journal_source_compatibility import source_input

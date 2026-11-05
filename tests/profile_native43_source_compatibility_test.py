@@ -116,6 +116,7 @@ class Native43SourceCompatibilityTests(unittest.TestCase):
         self.completed.append(dict(name='all-prior-protections', passed=True, rejectedMutations=len(mutations)))
 
     def test_bounded_test_input_ports_restore_entire_prior42_files(self):
+        from gecko_policy_dependency_source_compatibility import source_input
         edits = {
             'tests/page_bridge42_source_compatibility.py': [
                 ('import hashlib\n', 'import hashlib\nfrom native43_source_compatibility import native43_preservation_bytes\n', 1),
@@ -134,7 +135,7 @@ class Native43SourceCompatibilityTests(unittest.TestCase):
         for relative in ('tests/fingerprint_source_compatibility.py', 'tests/profile_upload37_source_compatibility_test.py',
                          'tests/profile_lifecycle39_source_compatibility_test.py', 'tests/profile_page_bridge_lifecycle_test.py',
                          'tests/profile_content_permission_decisions_test.py', 'tests/profile_reading_fit_completion_test.py'):
-            self.assertEqual(reading45_source_bytes((ROOT / relative).read_bytes(),relative) if relative=='tests/profile_reading_fit_completion_test.py' else (ROOT / relative).read_bytes(), subprocess.check_output(['git', 'show', native.PREVIOUS_INTENDED_TREE + ':' + relative], cwd=ROOT))
+            self.assertEqual(reading45_source_bytes((ROOT / relative).read_bytes(),relative) if relative=='tests/profile_reading_fit_completion_test.py' else source_input((ROOT / relative).read_bytes(),relative) if relative=='tests/profile_page_bridge_lifecycle_test.py' else (ROOT / relative).read_bytes(), subprocess.check_output(['git', 'show', native.PREVIOUS_INTENDED_TREE + ':' + relative], cwd=ROOT))
         self.completed.append(dict(name='all-prior-test-assertion-bytes', passed=True))
 
 

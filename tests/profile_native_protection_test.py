@@ -11,6 +11,8 @@ import unittest
 ROOT=Path(__file__).resolve().parents[1]
 VIEW=ROOT/'app/src/main/java/local/pocketchat/GeckoWebView.java'
 POLICY=ROOT/'app/src/main/java/local/pocketchat/NativeProtectionState.java'
+NAVIGATION=ROOT/'app/src/main/java/local/pocketchat/GeckoNavigationPolicy.java'
+ADDRESS=ROOT/'app/src/main/java/local/pocketchat/BrowserAddressPolicy.java'
 TEMPLATE=ROOT/'tests/native-protection-host/NativeProtectionControllerHost.java.in'
 BACKGROUND=ROOT/'app/src/main/assets/gecko/background.js'
 SCRIPT=ROOT/'tests/browser-runtime/native-protection-handshake.test.cjs'
@@ -76,7 +78,7 @@ def execute():
     if not java:raise RuntimeError('JDK required for production native-setting controls')
     with tempfile.TemporaryDirectory(prefix='native-protection-host-') as temp:
         host=Path(temp)/'NativeProtectionControllerHost.java';host.write_text(generated)
-        command=[java,'-m','jdk.compiler/com.sun.tools.javac.Main','--release','8','-encoding','UTF-8','-d',temp,str(POLICY),str(host)]
+        command=[java,'-m','jdk.compiler/com.sun.tools.javac.Main','--release','8','-encoding','UTF-8','-d',temp,str(POLICY),str(NAVIGATION),str(ADDRESS),str(host)]
         result=subprocess.run(command,capture_output=True,text=True,timeout=30)
         if result.returncode:raise AssertionError(result.stdout+result.stderr)
         result=subprocess.run([java,'-cp',temp,'local.pocketchat.NativeProtectionControllerHost'],capture_output=True,text=True,timeout=15)
@@ -85,7 +87,7 @@ def execute():
     report.update(scope='Actual production pure-Java state plus byte-extracted native controller, route, navigation, load, checkpoint restore, port-message and diagnostic URL policy methods. Handler, Gecko/Android, environment lifecycle, network guard and JSON boundaries are synthetic; no actual network or SDK execution.',
                   auxiliaryPageBoundary='Default absent; close returns false only while absent, and any auxiliary freshness/close behavior fails explicitly. Real auxiliary lifecycle is not exercised.',
                   newNetworkRequestsActuallySent=False,fullFingerprintProtectionAccepted=False,
-                  sourceSha256={str(p.relative_to(ROOT)):hashlib.sha256(p.read_bytes()).hexdigest() for p in [VIEW,POLICY,IDENTITY,TEMPLATE,Path(__file__)]},
+                  sourceSha256={str(p.relative_to(ROOT)):hashlib.sha256(p.read_bytes()).hexdigest() for p in [VIEW,POLICY,NAVIGATION,ADDRESS,IDENTITY,TEMPLATE,Path(__file__)]},
                   extractedProductionSha256={name:hashlib.sha256(value.encode()).hexdigest() for name,value in parts.items()})
     return report
 

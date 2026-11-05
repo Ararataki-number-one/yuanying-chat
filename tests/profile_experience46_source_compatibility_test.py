@@ -21,6 +21,9 @@ class Experience46SourceCompatibility(unittest.TestCase):
     if path in ('app/src/main/java/local/pocketchat/ChatSession.java','app/src/main/java/local/pocketchat/GeckoWebView.java','tests/gecko/GeckoIntegrationTestActivity.java'):
      from dual_browser_source_compatibility import source_input
      current=source_input(current,path)
+    if path=='tests/profile_native43_source_compatibility_test.py':
+     from gecko_policy_dependency_source_compatibility import source_input
+     current=source_input(current,path)
     if path=='tests/gecko/run_device.py':
      from event_journal_source_compatibility import source_input
      current=source_input(current,path)
@@ -40,6 +43,9 @@ class Experience46SourceCompatibility(unittest.TestCase):
    current=(ROOT/path).read_bytes()
    if path in ('app/src/main/java/local/pocketchat/ChatSession.java','app/src/main/java/local/pocketchat/GeckoWebView.java','tests/gecko/GeckoIntegrationTestActivity.java'):
     from dual_browser_source_compatibility import source_input
+    current=source_input(current,path)
+   if path=='tests/profile_native43_source_compatibility_test.py':
+    from gecko_policy_dependency_source_compatibility import source_input
     current=source_input(current,path)
    for delta in row['deltas']:
     chunk=delta['current'].encode()

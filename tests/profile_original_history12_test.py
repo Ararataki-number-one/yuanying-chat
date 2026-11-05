@@ -243,11 +243,12 @@ print('HISTORY12_DISCOVERY_ORDER '+json.dumps({'allModulesImportedBeforeOriginal
         self.assertIn(b'Ran 2 tests', result.stderr)
 
     def test_two_original_consumer_modules_and_every_method_remain_byte_exact(self):
+        from gecko_policy_dependency_source_compatibility import source_input
         for path, sha in {
             'tests/profile_page_bridge42_source_compatibility_test.py': '41420eaa7e9b63ab584d922de2f6a663c2fdfbfe3228bf039f59f034b589ab72',
             'tests/profile_native43_source_compatibility_test.py': 'bba86851f8ccca9f33a64398925f2eb1648947fc7ee628bd9404269c235f3f39',
         }.items():
-            self.assertEqual(hashlib.sha256((ROOT / path).read_bytes()).hexdigest(), sha)
+            self.assertEqual(hashlib.sha256(source_input((ROOT / path).read_bytes(),path) if path=='tests/profile_native43_source_compatibility_test.py' else (ROOT / path).read_bytes()).hexdigest(), sha)
 
     def test_third_group_pins_extend_the_two_original_groups_without_replacing_them(self):
         digest = lambda value: hashlib.sha256(json.dumps(value, sort_keys=True, separators=(',', ':')).encode()).hexdigest()

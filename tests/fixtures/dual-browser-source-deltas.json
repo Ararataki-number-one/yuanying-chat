@@ -208,39 +208,39 @@
     "tests/experience46_source_compatibility.py": {
       "previousSha256": "98396e4103ab39cf3cf2fd4064e1d0fe06c3e466ef49ea6f0c3723437cc262a5",
       "previousBytes": 2731,
-      "reviewedSha256": "f6b85738a329eb0a1874fa443d5fc996a2adf3b70a408a435570e73c561e9cda",
-      "reviewedBytes": 3219,
+      "reviewedSha256": "ff126b966f81cd3615d41e0fa6dfb1dc59e1d029797953207f3192717d969039",
+      "reviewedBytes": 3571,
       "contextLines": 3,
       "deltas": [
         {
           "id": "context-00",
           "previous": "    if row is None:\n        raise ValueError('Experience46 inverse does not cover this exact path')\n    digest = hashlib.sha256(raw).hexdigest()\n    if relative == 'tests/gecko/run_device.py' and digest not in (\n            row['reviewedSha256'], row['previousSha256'], *row['exactHistoricalSha256']):\n        from event_journal_source_compatibility import source_input\n",
-          "current": "    if row is None:\n        raise ValueError('Experience46 inverse does not cover this exact path')\n    digest = hashlib.sha256(raw).hexdigest()\n    if relative in ('app/src/main/java/local/pocketchat/ChatSession.java',\n                    'app/src/main/java/local/pocketchat/GeckoWebView.java',\n                    'tests/gecko/GeckoIntegrationTestActivity.java') and digest not in (\n            row['reviewedSha256'], row['previousSha256'], *row['exactHistoricalSha256']):\n        from dual_browser_source_compatibility import source_input\n        raw = source_input(raw, relative)\n        digest = hashlib.sha256(raw).hexdigest()\n    if relative == 'tests/gecko/run_device.py' and digest not in (\n            row['reviewedSha256'], row['previousSha256'], *row['exactHistoricalSha256']):\n        from event_journal_source_compatibility import source_input\n",
+          "current": "    if row is None:\n        raise ValueError('Experience46 inverse does not cover this exact path')\n    digest = hashlib.sha256(raw).hexdigest()\n    if relative in ('app/src/main/java/local/pocketchat/ChatSession.java',\n                    'app/src/main/java/local/pocketchat/GeckoWebView.java',\n                    'tests/gecko/GeckoIntegrationTestActivity.java') and digest not in (\n            row['reviewedSha256'], row['previousSha256'], *row['exactHistoricalSha256']):\n        from dual_browser_source_compatibility import source_input\n        raw = source_input(raw, relative)\n        digest = hashlib.sha256(raw).hexdigest()\n    if relative == 'tests/profile_native43_source_compatibility_test.py' and digest not in (\n            row['reviewedSha256'], row['previousSha256'], *row['exactHistoricalSha256']):\n        from gecko_policy_dependency_source_compatibility import source_input\n        raw = source_input(raw, relative)\n        digest = hashlib.sha256(raw).hexdigest()\n    if relative == 'tests/gecko/run_device.py' and digest not in (\n            row['reviewedSha256'], row['previousSha256'], *row['exactHistoricalSha256']):\n        from event_journal_source_compatibility import source_input\n",
           "previousSha256": "b4ae08bb88b6675525e2588c53f761a22951a64f92d8ed8915f20387b01ab877",
-          "currentSha256": "ef603b60563d7db1d01c85f15e0a56f5a974eb357c5e4e985ef68f4173ed36b1"
+          "currentSha256": "21dc9e47d2139745ce36d0ec62bc0f2641defe109f29d194a66cb8cc6213ff97"
         }
       ]
     },
     "tests/profile_experience46_source_compatibility_test.py": {
       "previousSha256": "e4db3632734a8fb4deb900e0d7a7c19398a356fdfd1731e31a064e6d5291b20e",
       "previousBytes": 6059,
-      "reviewedSha256": "340a5e550088b2aedd1faac92f50bc28d8920f2e6a3761c50166f923c729e06e",
-      "reviewedBytes": 6614,
+      "reviewedSha256": "c2df81ecd752e24738eaf173b0fde85937cac3ff48204e28293dbc38e6450e1c",
+      "reviewedBytes": 6977,
       "contextLines": 3,
       "deltas": [
         {
           "id": "context-00",
           "previous": "  for path,row in manifest['files'].items():\n   with self.subTest(path=path):\n    previous=subprocess.check_output(['git','show',compat.BASE_COMMIT+':'+path],cwd=ROOT);current=(ROOT/path).read_bytes()\n    if path=='tests/gecko/run_device.py':\n     from event_journal_source_compatibility import source_input\n     current=source_input(current,path)\n",
-          "current": "  for path,row in manifest['files'].items():\n   with self.subTest(path=path):\n    previous=subprocess.check_output(['git','show',compat.BASE_COMMIT+':'+path],cwd=ROOT);current=(ROOT/path).read_bytes()\n    if path in ('app/src/main/java/local/pocketchat/ChatSession.java','app/src/main/java/local/pocketchat/GeckoWebView.java','tests/gecko/GeckoIntegrationTestActivity.java'):\n     from dual_browser_source_compatibility import source_input\n     current=source_input(current,path)\n    if path=='tests/gecko/run_device.py':\n     from event_journal_source_compatibility import source_input\n     current=source_input(current,path)\n",
+          "current": "  for path,row in manifest['files'].items():\n   with self.subTest(path=path):\n    previous=subprocess.check_output(['git','show',compat.BASE_COMMIT+':'+path],cwd=ROOT);current=(ROOT/path).read_bytes()\n    if path in ('app/src/main/java/local/pocketchat/ChatSession.java','app/src/main/java/local/pocketchat/GeckoWebView.java','tests/gecko/GeckoIntegrationTestActivity.java'):\n     from dual_browser_source_compatibility import source_input\n     current=source_input(current,path)\n    if path=='tests/profile_native43_source_compatibility_test.py':\n     from gecko_policy_dependency_source_compatibility import source_input\n     current=source_input(current,path)\n    if path=='tests/gecko/run_device.py':\n     from event_journal_source_compatibility import source_input\n     current=source_input(current,path)\n",
           "previousSha256": "baec642e45ffb7dc1c5bc573f55b318e7220eb518f31dfda6cd516dc0e94ce63",
-          "currentSha256": "b92924ed7e9033c59ce50b2adb4cb6980de3fa71f6c50e97c245644364b912c5"
+          "currentSha256": "383f0aa0a1809f55f6a7f1fde7d1fb00b235020427abc00f5de94dc1486b4ace"
         },
         {
           "id": "context-01",
           "previous": "  rejected=0\n  for path,row in compat.manifest46()['files'].items():\n   current=(ROOT/path).read_bytes()\n   for delta in row['deltas']:\n    chunk=delta['current'].encode()\n    remaining=current.replace(chunk,b'',1);relocated=remaining+chunk\n",
-          "current": "  rejected=0\n  for path,row in compat.manifest46()['files'].items():\n   current=(ROOT/path).read_bytes()\n   if path in ('app/src/main/java/local/pocketchat/ChatSession.java','app/src/main/java/local/pocketchat/GeckoWebView.java','tests/gecko/GeckoIntegrationTestActivity.java'):\n    from dual_browser_source_compatibility import source_input\n    current=source_input(current,path)\n   for delta in row['deltas']:\n    chunk=delta['current'].encode()\n    remaining=current.replace(chunk,b'',1);relocated=remaining+chunk\n",
+          "current": "  rejected=0\n  for path,row in compat.manifest46()['files'].items():\n   current=(ROOT/path).read_bytes()\n   if path in ('app/src/main/java/local/pocketchat/ChatSession.java','app/src/main/java/local/pocketchat/GeckoWebView.java','tests/gecko/GeckoIntegrationTestActivity.java'):\n    from dual_browser_source_compatibility import source_input\n    current=source_input(current,path)\n   if path=='tests/profile_native43_source_compatibility_test.py':\n    from gecko_policy_dependency_source_compatibility import source_input\n    current=source_input(current,path)\n   for delta in row['deltas']:\n    chunk=delta['current'].encode()\n    remaining=current.replace(chunk,b'',1);relocated=remaining+chunk\n",
           "previousSha256": "800811041d1ddb7f006f0a6a4843113100133ebf1a35642259c778b92e3c83d8",
-          "currentSha256": "84d719a4de62c976891e1bfcb237c7cfe984cc5c62917687e1f8037c69017410"
+          "currentSha256": "68d53a20a4f756237484f3787693d021b8cf11c4d470f20f2fd7d21c837b3b3e"
         }
       ]
     },
