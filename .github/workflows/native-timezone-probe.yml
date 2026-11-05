@@ -1,0 +1,333 @@
+name: Diagnostic native Gecko timezone and worker observations
+'on':
+  push:
+    branches:
+    - diagnostics/native-timezone-*
+    paths:
+    - tests/gecko/NativeTimezoneProbe*.java
+    - tests/gecko/AndroidManifest.xml
+    - tests/gecko/assets/native-timezone-*
+    - tests/gecko/assets/native-timezone-extension/**
+    - tools/gecko/run_native_timezone_probe.py
+    - tests/native_timezone_probe_test.py
+    - .github/workflows/native-timezone-probe.yml
+    - tests/gecko/native_timezone_api_contract.py
+permissions:
+  contents: read
+concurrency:
+  group: native-timezone-probe-${{ github.ref }}
+  cancel-in-progress: false
+env:
+  ANDROID_CAPACITY_PREFLIGHT: "import json,os,pathlib,re,subprocess,sys,time\nfrom fractions import Fraction\ndef require(value,message):\n    if not value:raise ValueError(message)\nmode,scope=sys.argv[1:]\nrequire(mode in ('host','guest') and re.fullmatch('[a-z0-9-]+',scope),'Invalid preflight scope')\njob=os.environ['GITHUB_JOB'];require(re.fullmatch('[a-z0-9_-]+',job),'Invalid actual job')\ntarget=pathlib.Path('work/gecko-integration')/('android-capacity-'+job+'-'+scope+'.json')\nrecord={'schema':1,'status':'failed','requestedGuestCpus':4,'scope':scope,'job':job,'mode':mode}\npassed=False\ntry:\n    identity={'sourceCommit':subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip(),\n              'sourceTree':subprocess.check_output(['git','rev-parse','HEAD^{tree}'],text=True).strip(),\n              'runId':os.environ['GITHUB_RUN_ID'],'runAttempt':os.environ['GITHUB_RUN_ATTEMPT']}\n    record.update(identity)\n    require(identity['sourceCommit']==os.environ['GITHUB_SHA']\
+    \ and re.fullmatch('[0-9a-f]{40}',identity['sourceTree']),'Actual source identity differs')\n    require(identity['runId'].isdigit() and identity['runAttempt'].isdigit(),'Actual CI run identity required')\n    if mode=='host':\n        require(not target.exists() and not target.is_symlink(),'Repeated capacity preflight')\n        affinity=sorted(os.sched_getaffinity(0))\n        nproc=int(subprocess.check_output(['nproc'],text=True,timeout=5).strip())\n        require(affinity and nproc>0,'Actual host CPU counts unavailable')\n        record['host']={'affinityCpus':affinity,'nproc':nproc,'observedAtMonotonicNs':time.monotonic_ns()}\n        unified=[line.split(':',2)[2] for line in pathlib.Path('/proc/self/cgroup').read_text().splitlines() if line.startswith('0::')]\n        mounts=[line for line in pathlib.Path('/proc/self/mountinfo').read_text().splitlines() if ' - cgroup2 ' in line]\n        record['host'].update(unifiedCgroups=unified,cgroup2Mounts=mounts)\n        require(len(unified)==1\
+    \ and len(mounts)==1,'Unambiguous cgroup v2 observation required')\n        fields=mounts[0].split(' - ',1)[0].split();mount=pathlib.Path(fields[4]).resolve()\n        current=pathlib.PurePosixPath(unified[0]);root=pathlib.PurePosixPath(fields[3])\n        require(current.is_absolute() and '..' not in current.parts,'Unsupported actual cgroup path')\n        relative=[current.relative_to('/')]\n        if current.is_relative_to(root):relative.append(current.relative_to(root))\n        candidates={(mount/path).resolve() for path in relative}\n        candidates={path for path in candidates if path.is_relative_to(mount) and (path/'cgroup.procs').is_file()}\n        require(len(candidates)==1,'Current cgroup cannot be resolved unambiguously')\n        node=candidates.pop();limits=[];capacity=Fraction(min(len(affinity),nproc));observed=0\n        record['host']['cpuMax']=limits\n        while True:\n            path=node/'cpu.max'\n            try:\n                raw=path.read_text().strip();limits.append({'path':str(path),'raw':raw});quota,period=raw.split()\n\
+    \                require(period.isdigit() and int(period)>0 and (quota=='max' or (quota.isdigit() and int(quota)>0)),'Invalid actual cpu.max')\n                if quota!='max':capacity=min(capacity,Fraction(int(quota),int(period)))\n                observed+=1\n            except FileNotFoundError:limits.append({'path':str(path),'raw':None,'interfacePresent':False})\n            if node==mount:break\n            node=node.parent\n        record['host'].update(unifiedCgroup=unified[0],cgroup2Mount=mounts[0],cpuMax=limits,\n                              visibleCapacityCeilingNumerator=capacity.numerator,visibleCapacityCeilingDenominator=capacity.denominator,\n                              capacityScope='Visible affinity/nproc/cgroup limits only; not idle CPUs or invisible outer quotas')\n        require(observed>0,'Actual cgroup CPU quota observation unavailable')\n        require(capacity>=4,'Host effective CPU capacity is below four; no fallback')\n    else:\n        previous=json.loads(target.read_text())\n\
+    \        require(previous['status']=='passed' and previous['scope']==scope and previous['job']==job,'Passed host observation missing')\n        require(all(previous.get(key)==value for key,value in identity.items()),'Capacity source/run differs')\n        record=previous;record['mode']='guest'\n        raw=subprocess.check_output(['adb','-s','emulator-5554','shell','getconf','_NPROCESSORS_ONLN'],text=True,timeout=8).strip()\n        record['guest']={'serial':'emulator-5554','getconf':'_NPROCESSORS_ONLN','raw':raw,\n                         'observedAtMonotonicNs':time.monotonic_ns()}\n        require(raw=='4','Actual native-ADB guest online CPU count is not four')\n        record['guest']['onlineCpus']=4\n    record['status']='passed';passed=True\nexcept BaseException as error:\n    record.update(status='failed',errorType=type(error).__name__,error=str(error))\nif mode=='host' and (target.exists() or target.is_symlink()):\n    print('ANDROID_CAPACITY_PREFLIGHT '+json.dumps(record,sort_keys=True),flush=True);sys.exit(1)\n\
+    target.parent.mkdir(parents=True,exist_ok=True)\ntemporary=target.with_suffix('.partial');temporary.write_text(json.dumps(record,sort_keys=True)+'\\n');temporary.replace(target)\nprint('ANDROID_CAPACITY_PREFLIGHT '+json.dumps(record,sort_keys=True),flush=True)\nsys.exit(0 if passed else 1)\n"
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+    - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      with:
+        fetch-depth: 16
+    - name: Restore exact historical source baselines without checkout
+      run: python3 tools/browser/prepare_baselines.py
+    - name: Verify pinned network core and source patch
+      run: 'python3 tests/gecko_prepare_image_test.py
+
+        python3 tests/gecko_platform_tools_test.py
+
+        python3 tests/gecko_native_adb_setup_test.py
+
+        python3 tests/gecko_annotation_download_test.py
+
+        python3 tests/gecko_ci_publish_test.py
+
+        python3 tests/gecko_source_route_logcat_test.py
+
+        python3 -m unittest discover -s tests -p ''gecko_experience*_test.py''
+
+        python3 tools/build-mihomo.py --verify
+
+        '
+    - name: Prepare locked toolchain
+      shell: bash
+      run: 'set -euo pipefail
+
+        echo "JAVA_HOME=$JAVA_HOME_17_X64" >> "$GITHUB_ENV"
+
+        echo "$JAVA_HOME_17_X64/bin" >> "$GITHUB_PATH"
+
+        echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
+
+        mkdir -p work/gecko-integration
+
+        "$JAVA_HOME_17_X64/bin/keytool" -genkeypair -keystore work/gecko-integration/integration-test.jks -alias androiddebugkey -storepass android -keypass android -dname CN=SyntheticIntegration -keyalg RSA -validity 2
+
+        curl -fsSL --retry 3 https://services.gradle.org/distributions/gradle-9.8.0-bin.zip -o work/gecko-integration/gradle.zip
+
+        echo ''bafd5ce9cfaea0fbccfdc8439a1ac42fbd4cd9c89dc9a988228d8a2639a58e6c  work/gecko-integration/gradle.zip'' | sha256sum -c -
+
+        unzip -q work/gecko-integration/gradle.zip -d work/gecko-integration/gradle
+
+        curl -fsSL --retry 3 https://maven.mozilla.org/maven2/org/mozilla/geckoview/geckoview/157.0.20261005135250/geckoview-157.0.20261005135250.aar -o work/gecko-integration/geckoview.aar
+
+        echo ''15f1edf3c58abcdaf2783f299b8c19c3a36272d348969106a9009671fef8d268  work/gecko-integration/geckoview.aar'' | sha256sum -c -
+
+        curl -fsSL --retry 3 https://maven.mozilla.org/maven2/org/mozilla/geckoview/geckoview/157.0.20261005135250/geckoview-157.0.20261005135250.pom -o work/gecko-integration/geckoview.pom
+
+        curl -fsSL --retry 3 https://maven.mozilla.org/maven2/org/mozilla/geckoview/geckoview/157.0.20261005135250/geckoview-157.0.20261005135250-sources.jar -o work/gecko-integration/geckoview-sources.jar
+
+        python3 tools/gecko/verify_official_sdk.py --aar work/gecko-integration/geckoview.aar --pom work/gecko-integration/geckoview.pom --sources work/gecko-integration/geckoview-sources.jar --upstream-only
+
+        yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
+
+        "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" ''platforms;android-37.1'' ''build-tools;37.0.0''
+
+        export JAVA_HOME="$JAVA_HOME_17_X64"
+
+        python3 tools/gecko/run_key_order_host.py | tee work/gecko-integration/key-order-host-results.json
+
+        python3 tools/gecko/run_reply_handoff_host.py --upstream-sources work/gecko-integration/geckoview-sources.jar | tee work/gecko-integration/reply-handoff-host-results.json
+
+        python3 tools/gecko/caret_workflow.py prepare --work work/gecko-integration
+
+        '
+    - name: Compile release and native regression package
+      run: 'set -euo pipefail
+
+        python3 tools/gecko/generate_appearance_fixture.py
+
+        work/gecko-integration/gradle/gradle-9.8.0/bin/gradle :app:assembleRelease :app:assembleIntegration :app:writeCaretResolvedArtifacts -PtestSigningKey="$PWD/work/gecko-integration/integration-test.jks" --console=plain 2>&1 | tee work/gecko-integration/build.log
+
+        python3 tools/gecko/verify_official_sdk.py --aar work/gecko-integration/geckoview.aar --pom work/gecko-integration/geckoview.pom --sources work/gecko-integration/geckoview-sources.jar --upstream-only | tee work/gecko-integration/official-sdk-verification.json
+
+        python3 tools/gecko/caret_workflow.py record --work work/gecko-integration
+
+        python3 tools/gecko/check_safe_idle_trust.py --integration-apk app/build/outputs/apk/integration/app-x86_64-integration.apk | tee work/gecko-integration/network-safe-idle-trust-host-results.json
+
+        python3 - <<''PYCODE''
+
+        import json,pathlib,subprocess
+
+        path=pathlib.Path(''work/gecko-integration/network-safe-idle-trust-host-results.json'')
+
+        report=json.loads(path.read_text()); report[''sourceCommit'']=subprocess.check_output([''git'',''rev-parse'',''HEAD''],text=True).strip()
+
+        path.write_text(json.dumps(report,indent=2)+''\n'')
+
+        PYCODE
+
+        '
+    - name: Preserve exact public derived SDK classpath for independent actual API compilation
+      shell: bash
+      run: "set -euo pipefail\nmkdir -p work/native-timezone-probe-host\npython3 - <<'PYCODE'\nimport hashlib,json,os,pathlib,subprocess,zipfile\nroot=pathlib.Path('work/native-timezone-probe-host')\nreceipt=pathlib.Path('work/native-caret-sdk/sdk-build-receipt.json')\nr=json.loads(receipt.read_bytes())\nassert r['sourceCommit']==os.environ['GITHUB_SHA']\nassert r['sourceTree']==subprocess.check_output(['git','rev-parse','HEAD^{tree}'],text=True).strip()\nassert r['runId']==os.environ['GITHUB_RUN_ID'] and r['runAttempt']==os.environ['GITHUB_RUN_ATTEMPT']\na=pathlib.Path('work/native-caret-sdk/geckoview-caret.aar')\nwith zipfile.ZipFile(a) as archive:\n    assert archive.namelist().count('classes.jar')==1\n    item=archive.getinfo('classes.jar')\n    assert 0<item.file_size<24*1024*1024\n    raw=archive.read(item)\nassert len(raw)==item.file_size and hashlib.sha256(raw).hexdigest()==r['sdkClassesJarSha256']\nassert len(raw)+receipt.stat().st_size<31*1024*1024\n(root/'sdk-classes.jar').write_bytes(raw)\n\
+        (root/'sdk-classpath.json').write_text(json.dumps(dict(schema=1,status='passed',sourceCommit=r['sourceCommit'],sourceTree=r['sourceTree'],runId=r['runId'],runAttempt=r['runAttempt'],sdkClassesJarSha256=r['sdkClassesJarSha256'],sdkClassesJarBytes=len(raw),sdkBuildReceiptSha256=hashlib.sha256(receipt.read_bytes()).hexdigest(),actualAndroidExecution=False,keyRead=False,scope='Exact classes.jar extracted from the actual full Gradle resolved derived SDK; native runtime tests are separate.'),indent=2)+chr(10))\nPYCODE\n"
+    - name: Preserve public exact SDK classpath independently of emulator startup
+      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+      with:
+        name: native-timezone-sdk-classpath-${{ github.run_id }}-${{ github.run_attempt }}
+        path: 'work/native-timezone-probe-host/sdk-classes.jar
+
+          work/native-timezone-probe-host/sdk-classpath.json
+
+          work/native-caret-sdk/sdk-build-receipt.json
+
+          '
+        if-no-files-found: error
+        retention-days: 7
+    - name: Require probe-only sources, worker measurement and production exclusion controls
+      run: 'set -euo pipefail
+
+        python3 tests/native_timezone_probe_test.py
+
+        python3 tests/gecko/native_timezone_api_contract.py
+
+        node --check tests/gecko/assets/native-timezone-extension/parent.js
+
+        node --check tests/gecko/assets/native-timezone-extension/background.js
+
+        node --check tests/gecko/assets/native-timezone-extension/content.js
+
+        node --check tests/gecko/assets/native-timezone-probe.js
+
+        python3 tests/native_timezone_probe_test.py --check-packages --integration-apk app/build/outputs/apk/integration/app-x86_64-integration.apk --release-apk app/build/outputs/apk/release/app-arm64-v8a-release-unsigned.apk --aapt2 "$ANDROID_HOME/build-tools/37.0.0/aapt2" --output work/native-timezone-probe-host/package-separation.json
+
+        '
+    - name: Bind exact diagnostic build payload bytes
+      shell: bash
+      run: "set -euo pipefail\npython3 - <<'TZ_BUILD'\nimport hashlib,json,os,pathlib,subprocess\nfiles=['app/build/outputs/apk/integration/app-x86_64-integration.apk', 'app/build/outputs/apk/release/app-arm64-v8a-release-unsigned.apk', 'work/native-caret-sdk/sdk-build-receipt.json', 'work/gecko-integration/caret-apk-build-receipt.json', 'work/gecko-integration/official-sdk-verification.json', 'work/native-timezone-probe-host/sdk-classes.jar', 'work/native-timezone-probe-host/sdk-classpath.json', 'work/native-timezone-probe-host/package-separation.json']\nsource=subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip()\ntree=subprocess.check_output(['git','rev-parse','HEAD^{tree}'],text=True).strip()\nassert source==os.environ['GITHUB_SHA'] and os.environ['GITHUB_REPOSITORY']=='Ararataki-number-one/yuanying-chat'\nassert os.environ['GITHUB_REPOSITORY_ID']=='1401080063'\nassert not subprocess.check_output(['git','status','--porcelain'],text=True).strip()\nrows=[]\nfor name in\
+        \ files:\n    p=pathlib.Path(name)\n    assert p.is_file() and not p.is_symlink()\n    size=p.stat().st_size\n    assert 0<size<=150_000_000\n    h=hashlib.sha256()\n    with p.open('rb') as stream:\n        for data in iter(lambda:stream.read(1048576),b''):h.update(data)\n    rows.append(dict(path=name,bytes=size,sha256=h.hexdigest()))\nassert sum(row['bytes'] for row in rows)<320_000_000\nvalue=dict(schema=1,kind='native-timezone-build',sourceCommit=source,sourceTree=tree,\n           runId=os.environ['GITHUB_RUN_ID'],runAttempt=os.environ['GITHUB_RUN_ATTEMPT'],\n           files=rows,diagnosticOnly=True,releaseAcceptance=False,actualAndroidExecution=False)\ndestination=pathlib.Path('work/native-timezone-build/manifest.json')\ndestination.parent.mkdir(parents=True,exist_ok=True)\ndestination.write_text(json.dumps(value,indent=2)+chr(10))\nprint(json.dumps({key:value[key] for key in ('kind','sourceCommit','sourceTree','runId','runAttempt','diagnosticOnly','releaseAcceptance')}))\n\
+        TZ_BUILD\n"
+    - name: Transfer exact same-run diagnostic APKs and SDK classpath
+      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+      with:
+        name: native-timezone-build-${{ github.run_id }}-${{ github.run_attempt }}
+        path: 'app/build/outputs/apk/integration/app-x86_64-integration.apk
+
+          app/build/outputs/apk/release/app-arm64-v8a-release-unsigned.apk
+
+          work/native-caret-sdk/sdk-build-receipt.json
+
+          work/gecko-integration/caret-apk-build-receipt.json
+
+          work/gecko-integration/official-sdk-verification.json
+
+          work/native-timezone-probe-host/sdk-classes.jar
+
+          work/native-timezone-probe-host/sdk-classpath.json
+
+          work/native-timezone-probe-host/package-separation.json
+
+          work/native-timezone-build/manifest.json
+
+          '
+        if-no-files-found: error
+        retention-days: 3
+  native_timezone_probe:
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+    - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      with:
+        fetch-depth: 16
+    - name: Download only this run and attempt diagnostic build
+      uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0
+      with:
+        name: native-timezone-build-${{ github.run_id }}-${{ github.run_attempt }}
+        path: work/native-timezone-build-download
+    - name: Verify and restore exact selected-source SDK and APK bytes
+      shell: bash
+      run: "set -euo pipefail\npython3 - <<'TZ_RESTORE'\nimport hashlib,json,os,pathlib,shutil,subprocess\nallowed=['app/build/outputs/apk/integration/app-x86_64-integration.apk', 'app/build/outputs/apk/release/app-arm64-v8a-release-unsigned.apk', 'work/native-caret-sdk/sdk-build-receipt.json', 'work/gecko-integration/caret-apk-build-receipt.json', 'work/gecko-integration/official-sdk-verification.json', 'work/native-timezone-probe-host/sdk-classes.jar', 'work/native-timezone-probe-host/sdk-classpath.json', 'work/native-timezone-probe-host/package-separation.json']\nroot=pathlib.Path('work/native-timezone-build-download')\nmanifest_path=root/'work/native-timezone-build/manifest.json'\nassert manifest_path.is_file() and not manifest_path.is_symlink() and manifest_path.stat().st_size<=65536\nraw=manifest_path.read_bytes()\nvalue=json.loads(raw)\nsource=subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip()\ntree=subprocess.check_output(['git','rev-parse','HEAD^{tree}'],text=True).strip()\n\
+        assert value['schema']==1 and type(value['schema']) is int and value['kind']=='native-timezone-build'\nassert value['diagnosticOnly'] is True and value['releaseAcceptance'] is False\nassert value['sourceCommit']==source==os.environ['GITHUB_SHA'] and value['sourceTree']==tree\nassert value['runId']==os.environ['GITHUB_RUN_ID'] and value['runAttempt']==os.environ['GITHUB_RUN_ATTEMPT']\nassert os.environ['GITHUB_REPOSITORY']=='Ararataki-number-one/yuanying-chat' and os.environ['GITHUB_REPOSITORY_ID']=='1401080063'\nassert not subprocess.check_output(['git','status','--porcelain'],text=True).strip()\nrows=value['files']\nassert type(rows) is list and len(rows)==len(allowed) and {row['path'] for row in rows}==set(allowed)\ndiscovered=set()\nfor p in root.rglob('*'):\n    assert not p.is_symlink()\n    if p.is_file():discovered.add(p.relative_to(root).as_posix())\nassert discovered==set(allowed)|{'work/native-timezone-build/manifest.json'}\nfor row in rows:\n    assert set(row)=={'path','bytes','sha256'}\
+        \ and row['path'] in allowed\n    assert type(row['bytes']) is int and 0<row['bytes']<=150_000_000\n    p=root/row['path']\n    assert p.is_file() and p.stat().st_size==row['bytes']\n    h=hashlib.sha256()\n    with p.open('rb') as stream:\n        for data in iter(lambda:stream.read(1048576),b''):h.update(data)\n    assert h.hexdigest()==row['sha256']\nassert sum(row['bytes'] for row in rows)<320_000_000\nfor row in rows:\n    target=pathlib.Path(row['path'])\n    assert not target.exists() and not target.is_symlink()\n    target.parent.mkdir(parents=True,exist_ok=True)\n    assert all(not p.is_symlink() for p in target.parents)\n    shutil.copyfile(root/row['path'],target)\nassert not subprocess.check_output(['git','status','--porcelain'],text=True).strip()\nproof=dict(schema=1,status='restored-exact-build-bytes',sourceCommit=source,sourceTree=tree,\n           runId=value['runId'],runAttempt=value['runAttempt'],manifestSha256=hashlib.sha256(raw).hexdigest(),\n           files=rows,diagnosticOnly=True,releaseAcceptance=False,actualAndroidExecution=False)\n\
+        pathlib.Path('work/native-timezone-probe-host/build-restore.json').write_text(json.dumps(proof,indent=2)+chr(10))\nprint(json.dumps({key:proof[key] for key in ('status','sourceCommit','runId','runAttempt','diagnosticOnly','releaseAcceptance')}))\nTZ_RESTORE\n"
+    - name: Prepare Android runtime only
+      shell: bash
+      run: 'set -euo pipefail
+
+        echo "JAVA_HOME=$JAVA_HOME_17_X64" >> "$GITHUB_ENV"
+
+        echo "$JAVA_HOME_17_X64/bin" >> "$GITHUB_PATH"
+
+        echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
+
+        yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
+
+        "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" ''platforms;android-37.1'' ''build-tools;37.0.0''
+
+        python3 tools/gecko/prepare_android_image.py --component emulator --sdk-root "$ANDROID_HOME" --cache work/android-image --report work/gecko-integration/android-emulator-package-results.json
+
+        python3 tools/gecko/prepare_android_image.py --sdk-root "$ANDROID_HOME" --cache work/android-image --report work/gecko-integration/android-system-image-results.json
+
+        '
+    - name: Boot real API35 for diagnostic native timezone observations
+      id: boot
+      shell: bash
+      run: 'set -euo pipefail
+
+        exec > >(tee work/gecko-integration/native-test.log) 2>&1
+
+        export ANDROID_AVD_HOME="$PWD/work/gecko-integration/avd"
+
+        export ANDROID_USER_HOME="$PWD/work/gecko-integration/android-user"
+
+        export ANDROID_EMULATOR_HOME="$PWD/work/gecko-integration/emulator-home"
+
+        mkdir -p "$ANDROID_AVD_HOME" "$ANDROID_USER_HOME" "$ANDROID_EMULATOR_HOME"
+
+        sudo chmod a+rw /dev/kvm
+
+        echo no | "$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager" create avd --force -n geckoproduction -p "$ANDROID_AVD_HOME/geckoproduction.avd" -k ''system-images;android-35;google_apis;x86_64''
+
+        python3 tools/gecko/prepare_platform_tools.py --sdk-root "$ANDROID_HOME" --cache work/android-image --report work/gecko-integration/android-platform-tools-results.json
+
+        adb start-server
+
+        python3 -c "$ANDROID_CAPACITY_PREFLIGHT" host ''native-timezone''
+
+        "$ANDROID_HOME/emulator/emulator" -avd geckoproduction -no-window -no-audio -no-snapshot -no-boot-anim -no-metrics -accel on -port 5556 -gpu swiftshader -memory 3072 -cores 4 -qemu -monitor "unix:$PWD/work/gecko-integration/qemu-monitor.sock,server=on,wait=off" > work/gecko-integration/emulator.log 2>&1 &
+
+        probe_emulator_pid=$!
+
+        printf ''%s\n'' "$probe_emulator_pid" > work/gecko-integration/native-timezone-emulator.pid
+
+        trap ''probe_boot_exit=$?; printf "%s\n" "$probe_boot_exit" > work/gecko-integration/native-timezone-boot.exit; if ! kill -0 "$probe_emulator_pid" 2>/dev/null; then set +e; wait "$probe_emulator_pid"; printf "%s\n" "$?" > work/gecko-integration/native-timezone-emulator.exit; fi; exit "$probe_boot_exit"'' EXIT
+
+        timeout 180 adb -s emulator-5556 wait-for-device
+
+        timeout 300 bash -c ''until [ "$(adb -s emulator-5556 shell getprop sys.boot_completed | tr -d "\r")" = "1" ]; do sleep 2; done''
+
+        adb -s emulator-5556 shell input keyevent 82
+
+        adb -s emulator-5556 install app/build/outputs/apk/integration/app-x86_64-integration.apk
+
+        python3 tools/gecko/prepare_native_adb.py --adb "$(command -v adb)" --apk app/build/outputs/apk/integration/app-x86_64-integration.apk --monitor "$PWD/work/gecko-integration/qemu-monitor.sock"
+
+        echo "ANDROID_SERIAL=emulator-5554" >> "$GITHUB_ENV"
+
+        python3 tools/gecko/prepare_emulator.py --adb "$(command -v adb)" --serial emulator-5554 --apk app/build/outputs/apk/integration/app-x86_64-integration.apk
+
+        python3 tools/gecko/isolate_emulator_background.py --adb "$(command -v adb)" --serial emulator-5554 --apk app/build/outputs/apk/integration/app-x86_64-integration.apk
+
+        python3 -c "$ANDROID_CAPACITY_PREFLIGHT" guest ''native-timezone''
+
+        '
+    - name: Capture bounded read-only emulator startup health
+      if: always()
+      shell: bash
+      env:
+        BOOT_STEP_OUTCOME: ${{ steps.boot.outcome }}
+      run: "python3 - <<'TZ_HEALTH'\nimport hashlib,json,os,pathlib,re,subprocess,time\nbase=pathlib.Path('work/gecko-integration')\nresult=dict(schema=1,diagnosticOnly=True,releaseAcceptance=False,actualAndroidExecution=False,\n            sourceCommit=os.environ.get('GITHUB_SHA'),runId=os.environ.get('GITHUB_RUN_ID'),\n            runAttempt=os.environ.get('GITHUB_RUN_ATTEMPT'),bootOutcome=os.environ.get('BOOT_STEP_OUTCOME'),\n            observedAtMonotonicNs=time.monotonic_ns(),rootCauseEstablished=False,\n            scope='Read-only startup snapshot and fixed emulator.log tail. Cumulative memory counters and co-location are not causal attribution.')\ndef small(path,limit=8192):\n    p=pathlib.Path(path)\n    if not p.is_file() or p.is_symlink() or p.stat().st_size>limit:return None\n    return p.read_text(errors='replace')\ndef code(name):\n    value=small(base/name,32)\n    return int(value.strip()) if value is not None and re.fullmatch(r'[0-9]{1,3}\\s*',value) and int(value.strip())<=255\
+        \ else None\nresult['bootExitCode']=code('native-timezone-boot.exit')\nresult['emulatorExitCode']=code('native-timezone-emulator.exit')\npid=small(base/'native-timezone-emulator.pid',32)\nif pid is not None and re.fullmatch(r'[1-9][0-9]*\\s*',pid):\n    pid=pid.strip();state=small('/proc/'+pid+'/status')\n    result['emulatorProcess']=dict(pid=int(pid),present=state is not None)\n    if state is not None:\n        allowed=('Name','State','VmRSS','VmSize','Threads')\n        result['emulatorProcess']['status']={key:value.strip() for line in state.splitlines()\n            if ':' in line for key,value in [line.split(':',1)] if key in allowed}\nelse:result['emulatorProcess']=dict(present=None,error='invalid-or-missing-owned-pid')\nmemory=small('/proc/meminfo',16384)\nresult['memory']={key:value.strip() for line in (memory or '').splitlines()\n    if ':' in line for key,value in [line.split(':',1)] if key in ('MemTotal','MemAvailable','SwapTotal','SwapFree')}\nkvm=pathlib.Path('/dev/kvm')\n\
+        result['kvm']=dict(present=kvm.exists(),readable=os.access(kvm,os.R_OK),writable=os.access(kvm,os.W_OK))\nresult['cgroupMemoryEvents']=[]\nfor path in ['/sys/fs/cgroup/memory.events','/sys/fs/cgroup/system.slice/hosted-compute-agent.service/memory.events']:\n    data=small(path,2048)\n    if data is not None:\n        counters={parts[0]:int(parts[1]) for line in data.splitlines() for parts in [line.split()]\n            if len(parts)==2 and parts[0] in ('low','high','max','oom','oom_kill','oom_group_kill') and parts[1].isdigit()}\n        result['cgroupMemoryEvents'].append(dict(path=path,counters=counters,scope='cumulative-snapshot-not-process-attribution'))\ntry:\n    adb=str(pathlib.Path(os.environ.get('ANDROID_HOME','/nonexistent'))/'platform-tools/adb')\n    probe=subprocess.run([adb,'devices'],capture_output=True,timeout=3)\n    result['adb']=dict(exitCode=probe.returncode,devices=[])\n    if len(probe.stdout)<=16384:\n        for line in probe.stdout.decode('ascii','replace').splitlines():\n\
+        \            parts=line.split()\n            if len(parts)>=2 and re.fullmatch(r'emulator-[0-9]{4,5}',parts[0]):\n                result['adb']['devices'].append(dict(serial=parts[0],state=parts[1] if parts[1] in ('device','offline','unauthorized') else 'other'))\nexcept Exception as error:result['adb']=dict(errorType=type(error).__name__)\n# Only this fixed emulator startup log may contribute raw output. Never read\n# arbitrary paths, app logs, process command lines, environ or signing inputs.\nlog=base/'emulator.log'\nif log.is_file() and not log.is_symlink():\n    size=log.stat().st_size\n    with log.open('rb') as stream:\n        stream.seek(max(0,size-8192));tail=stream.read(8192)\n    result['emulatorLog']=dict(file='work/gecko-integration/emulator.log',sourceBytes=size,\n        tailBytes=len(tail),tailSha256=hashlib.sha256(tail).hexdigest(),tailOnly=True,\n        tailUtf8=tail.decode('utf-8','replace'))\nelse:result['emulatorLog']=dict(file='work/gecko-integration/emulator.log',error='missing-or-nonregular')\n\
+        raw=(json.dumps(result,ensure_ascii=False,indent=2)+chr(10)).encode()\nif len(raw)>32768:\n    result['emulatorLog'].pop('tailUtf8',None);result['tailOmittedForByteBound']=True\n    raw=(json.dumps(result,ensure_ascii=False,indent=2)+chr(10)).encode()\nassert len(raw)<=32768\noutput=pathlib.Path('work/native-timezone-probe-host/emulator-health.json')\noutput.parent.mkdir(parents=True,exist_ok=True);output.write_bytes(raw)\nprint(json.dumps(dict(diagnosticOnly=True,releaseAcceptance=False,healthBytes=len(raw),\n                     bootExitCode=result['bootExitCode'],emulatorExitCode=result['emulatorExitCode'],\n                     rootCauseEstablished=False)))\nTZ_HEALTH\n"
+    - name: Observe native page and worker timezones without modifying system time or Date APIs
+      run: python3 tools/gecko/run_native_timezone_probe.py --adb "$(command -v adb)" --serial emulator-5554 --output work/native-timezone-probe
+    - name: Bound allowlisted public diagnostic artifact bytes
+      if: always()
+      shell: bash
+      run: 'python3 - <<''PYCODE''
+
+        import pathlib
+
+        patterns=[''work/native-timezone-probe/*.json'',''work/native-timezone-probe-host/*.json'',''work/native-timezone-probe-host/sdk-classes.jar'',''work/gecko-integration/caret-apk-build-receipt.json'',''work/gecko-integration/official-sdk-verification.json'',''work/native-caret-sdk/sdk-build-receipt.json'',''work/gecko-integration/android-*-results.json'',''work/gecko-integration/android-capacity-*.json'']
+
+        files={p for pattern in patterns for p in pathlib.Path(''.'').glob(pattern) if p.is_file()}
+
+        assert all(not p.is_symlink() and p.suffix in (''.json'',''.jar'') for p in files)
+
+        assert len(files)<=128 and sum(p.stat().st_size for p in files)<31*1024*1024
+
+        PYCODE
+
+        '
+      id: artifact_bound
+    - name: Preserve only source-bound diagnostic JSON and SDK input receipts
+      if: always() && steps.artifact_bound.outcome == 'success'
+      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+      with:
+        name: native-timezone-probe-${{ github.run_id }}-${{ github.run_attempt }}
+        path: 'work/native-timezone-probe/*.json
+
+          work/native-timezone-probe-host/*.json
+
+          work/gecko-integration/caret-apk-build-receipt.json
+
+          work/gecko-integration/official-sdk-verification.json
+
+          work/native-caret-sdk/sdk-build-receipt.json
+
+          work/gecko-integration/android-*-results.json
+
+          work/gecko-integration/android-capacity-*.json
+
+          work/native-timezone-probe-host/sdk-classes.jar
+
+          '
+        if-no-files-found: warn
+        retention-days: 7
