@@ -27,7 +27,7 @@ class GeckoWebView extends FrameLayout {
   Object nativeRuntimeIdentity(){return destroyed||!enabled||owner.deleted?null:runtime;}
   JSONObject nativeRuntimeCapabilities(){
     JSONObject value=GeckoPolicyAdapter.runtimeCapabilityStatus((GeckoRuntime)nativeRuntimeIdentity(),Build.VERSION.SDK_INT);
-    try{value.put("environmentId",owner.environmentId);value.put("environmentGeneration",owner.environmentGeneration);value.put("configurationRevision",owner.identityAuditAppliedRevision());value.put("identityPolicyRevision",identityPolicyRevision);}catch(JSONException ignored){}
+    try{value.put("environmentId",owner.environmentId);value.put("environmentGeneration",owner.environmentGeneration);value.put("configurationRevision",owner.identityAuditAppliedRevision());value.put("identityPolicyRevision",identityPolicyRevision);value.put("requestHeaderPolicy",J.parse(metadata.requestHeaderPolicy.toString()));value.put("timeZonePolicy",timeZoneStatus());}catch(JSONException ignored){}
     return value;
   }
   void setHost(android.app.Activity activity){if(activity==null)closeExitIpPage();displayContext.setBaseContext(activity==null?owner.context:activity);}
@@ -42,7 +42,7 @@ class GeckoWebView extends FrameLayout {
     if(chrome!=null){if(readingOwnerVisible())chrome.webTouch(event);else chrome.cancelWebGesture();}return handled;
   }
   void destroy(){
-    if(destroyed)return;destroyed=true;generalRestore=null;ChromiumRouteLease.removeListener(routeLeaseChanged);releaseGeneralRoutes();generalSessions.clear();deferredGeneralLoads.clear();closeExitIpPage();if(contentPermissions!=null)contentPermissions.close();
+    if(destroyed)return;destroyed=true;retireTimeZones();requestHeadersInstalled=false;retireRequestHeaderPolicy();generalRestore=null;ChromiumRouteLease.removeListener(routeLeaseChanged);releaseGeneralRoutes();generalSessions.clear();deferredGeneralLoads.clear();closeExitIpPage();if(contentPermissions!=null)contentPermissions.close();
     cancelZoom();cancelProtectionTasks();nativeProtection.closed();protectionRestore=null;owner.handler.removeCallbacks(recovery);owner.handler.removeCallbacks(checkpoint);saveCheckpoint();
     callbacks.clear();cookieCallbacks.clear();appearanceSync.clear();
     appearanceLoads.clear();appearanceConnections.clear();appearanceDocuments.clear();staleAppearanceConnections.clear();
@@ -69,11 +69,12 @@ class GeckoWebView extends FrameLayout {
       if(!page.fresh()){closeExitIpPage();return "当前环境已变化，请重新查询。";}
       if(surface.getSession()!=null)surface.releaseSession();surface.setScaleX(1);surface.setScaleY(1);surface.setSession(page.aux);
       current.setActive(true);page.aux.setActive(true);originKnown=false;requestLayout();
-      page.aux.loadUri(ExitIpPageSession.URL);owner.handler.post(page.watch);return "";
+      prepareTimeZone(page.aux,ok->{if(exitIpPage!=page||!page.fresh())return;if(ok){page.aux.loadUri(ExitIpPageSession.URL);owner.handler.post(page.watch);}else closeExitIpPage();});return "";
     }catch(RuntimeException unavailablePage){closeExitIpPage();return "IP 查询页暂时无法打开，原聊天已保留。";}
   }
   boolean closeExitIpPage(){
     ExitIpPageSession page=exitIpPage;if(page==null)return false;exitIpPage=null;page.closed=true;owner.handler.removeCallbacks(page.watch);
+    retireTimeZone(page.aux);
     if(surface!=null&&surface.getSession()==page.aux)surface.releaseSession();
     try{if(page.aux.isOpen()){page.aux.stop();page.aux.setActive(false);page.aux.close();}}catch(RuntimeException alreadyClosed){}
     exitIpTopInset=0;
@@ -93,6 +94,20 @@ class GeckoWebView extends FrameLayout {
   final Map<GeckoSession,String> deferredGeneralLoads=new IdentityHashMap<>();
   final Runnable routeLeaseChanged=this::queueGeneralRouteRetry;
   boolean generalRouteRetryQueued;ProtectionRestore generalRestore;
+  boolean requestHeadersInstalled;
+  HeaderPolicyRead headerPolicyRead;
+  final Map<GeckoSession,TimeZoneGate> timeZoneGates=new IdentityHashMap<>();
+  final Map<GeckoSession,String> timeZoneLoads=new IdentityHashMap<>();
+  final Map<GeckoSession,Object> timeZoneIntents=new IdentityHashMap<>();
+  static final class TimeZoneGate {
+    final String epoch=UUID.randomUUID().toString();boolean preparing,ready;
+    final ArrayList<java.util.function.Consumer<Boolean>> waiting=new ArrayList<>();
+  }
+  static final class HeaderPolicyRead {
+    final GeckoSession session;final WebExtension.Port port;final long revision,epoch,protection;
+    final GeckoResult<String> userAgent;boolean observed;
+    HeaderPolicyRead(GeckoSession session,WebExtension.Port port,long revision,long epoch,long protection,GeckoResult<String> userAgent){this.session=session;this.port=port;this.revision=revision;this.epoch=epoch;this.protection=protection;this.userAgent=userAgent;}
+  }
   final Map<GeckoSession,WebExtension.Port> ports=new IdentityHashMap<>();
   final Map<GeckoSession,String> locations=new IdentityHashMap<>();
   final Map<GeckoSession,Boolean> backStates=new IdentityHashMap<>();
@@ -176,9 +191,73 @@ class GeckoWebView extends FrameLayout {
     if(restore!=null&&restore.navigation==owner.navigationEpoch&&restore.session==current&&current.isOpen())restoreCheckpoint(current,restore.state,restore.url,restore.draftRevision);
     for(Map.Entry<GeckoSession,String> entry:new ArrayList<>(deferredGeneralLoads.entrySet())){
       GeckoSession session=entry.getKey();String target=entry.getValue();if(!target.equals(deferredGeneralLoads.remove(session)))continue;
-      if(locations.containsKey(session)&&session.isOpen()&&!crashed.contains(session))session.loadUri(target);
+      if(locations.containsKey(session)&&session.isOpen()&&!crashed.contains(session))loadSessionUri(session,target);
     }
     if(!queued.isEmpty()&&ready)loadUrl(queued);
+  }
+  boolean timeZoneSessionAlive(GeckoSession session){return !destroyed&&!owner.deleted&&session!=null&&session.isOpen()&&(locations.containsKey(session)||exitIpPage!=null&&exitIpPage.aux==session);}
+  boolean timeZoneAllows(GeckoSession session){
+    if(!timeZoneSessionAlive(session))return false;
+    if(popups.contains(session))return owner.timeZone.popupAllowed();
+    TimeZoneGate gate=timeZoneGates.get(session);return gate!=null&&gate.ready&&owner.timeZone.allowed(session,gate.epoch);
+  }
+  JSONObject timeZoneStatus(){
+    TimeZoneGate gate=timeZoneGates.get(current);JSONObject value=J.parse((gate==null?owner.timeZone.status():owner.timeZone.status(current,gate.epoch)).toString());boolean prepared=timeZoneAllows(current);
+    try{value.put("currentSessionPrepared",prepared);value.put("popupScope","custom-zone-popups-blocked");if(!prepared||popups.contains(current))value.put("nativeSettingReadback",false);}catch(JSONException ignored){}
+    return value;
+  }
+  void retireTimeZone(GeckoSession session){
+    timeZoneLoads.remove(session);timeZoneIntents.remove(session);TimeZoneGate gate=timeZoneGates.remove(session);if(gate==null)return;owner.timeZone.retire(session,gate.epoch);metadata.timeZonePolicy=timeZoneStatus();
+    ArrayList<java.util.function.Consumer<Boolean>> waiting=new ArrayList<>(gate.waiting);gate.waiting.clear();for(java.util.function.Consumer<Boolean> callback:waiting)callback.accept(false);
+  }
+  void retireTimeZones(){for(GeckoSession session:new ArrayList<>(timeZoneGates.keySet()))retireTimeZone(session);}
+  void finishTimeZone(GeckoSession session,TimeZoneGate gate,boolean success){
+    if(timeZoneGates.get(session)!=gate)return;gate.preparing=false;gate.ready=success&&timeZoneSessionAlive(session)&&owner.timeZone.allowed(session,gate.epoch);
+    metadata.timeZonePolicy=timeZoneStatus();if(!gate.ready){String issue=metadata.timeZonePolicy.optString("issue");owner.setStatus(issue.isEmpty()?"当前原生时区尚未确认，网页请求已暂停；请检查独立时区设置":issue);}ArrayList<java.util.function.Consumer<Boolean>> waiting=new ArrayList<>(gate.waiting);gate.waiting.clear();
+    for(java.util.function.Consumer<Boolean> callback:waiting)callback.accept(gate.ready);owner.changed();
+  }
+  void sendTimeZone(WebExtension.Port port,GeckoSession session,TimeZoneGate gate,String kind,String zone,String token,java.util.function.Consumer<String> ok,java.util.function.Consumer<Throwable> fail){
+    if(!timeZoneSessionAlive(session)||timeZoneGates.get(session)!=gate||routePort!=port){fail.accept(new IOException("时区浏览器上下文已变化"));return;}
+    int id=cookieCallbacks.add(port,value->{if(!timeZoneSessionAlive(session)||timeZoneGates.get(session)!=gate||routePort!=port||value==null||"null".equals(value)){fail.accept(new IOException("原生时区通道未确认"));return;}ok.accept(value);},6000);
+    try{JSONObject message=J.obj("kind",kind,"id",id,"sessionId",PocketSessionIdentity.id(session),"requestToken",token);if("timezoneApply".equals(kind))message.put("zoneId",zone);port.postMessage(message);}catch(Exception unavailable){cookieCallbacks.complete(port,id,null);}
+  }
+  void prepareTimeZone(GeckoSession session,java.util.function.Consumer<Boolean> done){
+    if(!timeZoneSessionAlive(session)){done.accept(false);return;}if(timeZoneAllows(session)){done.accept(true);return;}
+    if(popups.contains(session)){done.accept(owner.timeZone.popupAllowed());return;}
+    TimeZoneGate existing=timeZoneGates.get(session);if(existing==null){existing=new TimeZoneGate();timeZoneGates.put(session,existing);}final TimeZoneGate gate=existing;
+    gate.waiting.add(done);if(gate.preparing)return;gate.preparing=true;gate.ready=false;final WebExtension.Port port=routePort;
+    java.util.concurrent.atomic.AtomicBoolean once=new java.util.concurrent.atomic.AtomicBoolean();
+    final Runnable[] deadline={null};
+    java.util.function.Consumer<Boolean> windowReady=ready->{
+      if(!once.compareAndSet(false,true))return;if(deadline[0]!=null)owner.handler.removeCallbacks(deadline[0]);
+      if(!timeZoneSessionAlive(session)||timeZoneGates.get(session)!=gate||port==null||routePort!=port){finishTimeZone(session,gate,false);return;}
+      GeckoTimeZoneController.NativeAccess access=new GeckoTimeZoneController.NativeAccess(){
+        public boolean current(){return timeZoneSessionAlive(session)&&timeZoneGates.get(session)==gate&&routePort==port;}
+        public void read(String token,java.util.function.Consumer<String> ok,java.util.function.Consumer<Throwable> fail){if(!ready){fail.accept(new IOException("浏览器窗口尚未就绪"));return;}sendTimeZone(port,session,gate,"timezoneRead","",token,ok,fail);}
+        public void apply(String zone,String token,java.util.function.Consumer<String> ok,java.util.function.Consumer<Throwable> fail){if(!ready){fail.accept(new IOException("浏览器窗口尚未就绪"));return;}sendTimeZone(port,session,gate,"timezoneApply",zone,token,ok,fail);}
+      };
+      try{owner.timeZone.prepare(session,PocketSessionIdentity.id(session),gate.epoch,access,ok->finishTimeZone(session,gate,ok));}catch(RuntimeException unavailable){finishTimeZone(session,gate,false);}
+    };
+    deadline[0]=()->windowReady.accept(false);owner.handler.postDelayed(deadline[0],5000);
+    try{session.getUserAgent().accept(value->windowReady.accept(true),error->windowReady.accept(false));}catch(RuntimeException unavailable){windowReady.accept(false);}
+  }
+  void loadSessionUri(GeckoSession session,String target){
+    boolean blob=target!=null&&target.startsWith("blob:")&&allowedUrl(target.substring(5));
+    if(!timeZoneSessionAlive(session)||!identityRequestAllowed(target)||!(allowedUrl(target)||blob)||!owner.guard.allowed()||!protectionAllowsNetwork())return;
+    if(timeZoneAllows(session)){timeZoneLoads.remove(session);session.loadUri(target);return;}
+    timeZoneLoads.put(session,target);final long navigation=owner.navigationEpoch;prepareTimeZone(session,ok->{if(!target.equals(timeZoneLoads.get(session)))return;if(!ok){timeZoneLoads.remove(session);return;}if(navigation==owner.navigationEpoch&&timeZoneSessionAlive(session)&&owner.guard.allowed()&&protectionAllowsNetwork()&&identityRequestAllowed(target)&&timeZoneAllows(session)){timeZoneLoads.remove(session);session.loadUri(target);}});
+  }
+  Object claimTimeZoneIntent(GeckoSession session,boolean restore){
+    Object intent=new Object();timeZoneIntents.put(session,intent);timeZoneLoads.remove(session);if(restore&&session==current)queued="";return intent;
+  }
+  boolean hasTimeZoneIntent(GeckoSession session){return timeZoneIntents.containsKey(session)||session==current&&!queued.isEmpty();}
+  void clearTimeZoneIntent(GeckoSession session,Object intent){if(timeZoneIntents.get(session)==intent)timeZoneIntents.remove(session);}
+  void timezoneConfigurationChanged(){
+    if(destroyed||current==null)return;String target=getUrl();if(!allowedUrl(target))target=allowedUrl(queued)?queued:owner.resumeUrl();GeckoSession.SessionState saved=states.get(current);long revision=stateDraftRevisions.getOrDefault(current,-1L);
+    closeExitIpPage();retireTimeZones();for(GeckoSession popup:new ArrayList<>(popups))closePopup(popup);
+    if(current==null||!allowedUrl(target))return;owner.beginNavigation(target,"正在应用当前环境时区…");queued=target;
+    if(!reopenCurrent())return;
+    if(saved!=null&&saved.size()>0&&target.equals(stateUrl(saved))){startupState=saved;startupDraftRevision=revision;}loadUrl(target);
   }
   static boolean active(Object web){return web instanceof GeckoWebView&&((GeckoWebView)web).enabled;}
   private void initialize(){
@@ -219,22 +298,24 @@ class GeckoWebView extends FrameLayout {
     @Override public void onConnect(WebExtension.Port port){
       if(destroyed||port.sender.environmentType!=WebExtension.MessageSender.ENV_TYPE_EXTENSION)return;
       WebExtension.Port previous=routePort;
-      routePort=port;port.setDelegate(new WebExtension.PortDelegate(){
+      routePort=port;retireTimeZones();requestHeadersInstalled=false;retireRequestHeaderPolicy();port.setDelegate(new WebExtension.PortDelegate(){
         @Override public void onPortMessage(Object message,WebExtension.Port incoming){
           if(!(message instanceof JSONObject)||incoming!=routePort)return;JSONObject data=(JSONObject)message;
+          if("requestHeadersPrepared".equals(data.optString("kind"))){requestHeadersInstalled=Boolean.TRUE.equals(data.opt("installed"));retireRequestHeaderPolicy();if(requestHeadersInstalled){maybeOpen();resumeProtectedLoads();}else owner.setStatus("浏览器请求身份保护未能安装，已暂停新的网页请求");owner.changed();return;}
           if("protectionReady".equals(data.optString("kind"))){
             boolean typed=data.opt("acknowledged") instanceof Boolean&&data.opt("fingerprinting") instanceof Boolean;
             if(requestedProtection==owner.privacy.level()&&nativeProtection.receive(protectionCounter(data,"token"),protectionCounter(data,"generation"),protectionReceiptLevel(data),typed&&Boolean.TRUE.equals(data.opt("acknowledged")),Boolean.TRUE.equals(data.opt("fingerprinting")),typed?data.optString("reason"):"invalid-setting-receipt")){cancelProtectionTasks();protectionAttemptFinished(incoming);}return;
           }
           if("protectionChanged".equals(data.optString("kind"))){
-            if(requestedProtection==owner.privacy.level()&&nativeProtection.changed(protectionCounter(data,"token"),protectionCounter(data,"generation"),protectionReceiptLevel(data))){cancelProtectionTasks();protectionAttemptFinished(incoming);}return;
+            if(requestedProtection==owner.privacy.level()&&nativeProtection.changed(protectionCounter(data,"token"),protectionCounter(data,"generation"),protectionReceiptLevel(data))){cancelProtectionTasks();retireRequestHeaderPolicy();protectionAttemptFinished(incoming);}return;
           }
           if("ready".equals(data.optString("kind"))||"cookiePrepared".equals(data.optString("kind"))){routePrepared=true;maybeOpen();return;}
           if("cookieRecoveryError".equals(data.optString("kind"))){failure("登录状态暂未恢复，请重新打开当前环境");return;}
           if("cookies".equals(data.optString("kind")))cookieCallbacks.complete(incoming,data.optInt("id"),data.optBoolean("error")?null:data.optString("value"));
           if("requestIdentityScopeResult".equals(data.optString("kind")))cookieCallbacks.complete(incoming,data.optInt("id"),data.optString("result","null"));
+          if("timezoneReady".equals(data.optString("kind")))cookieCallbacks.complete(incoming,data.optInt("id"),data.optString("result","null"));
         }
-        @Override public void onDisconnect(WebExtension.Port incoming){if(routePort==incoming){closeExitIpPage();routePort=null;routePrepared=false;cancelProtectionTasks();nativeProtection.disconnected();protectionRequest=nativeProtection.token();privacyReady=false;fingerprintingProtected=false;metadata.policyAcknowledged=false;metadata.rfpAcknowledged=false;if(owner.privacy.level()>=2)owner.setStatus(protectionSummary());owner.changed();}cookieCallbacks.cancel(incoming);}
+        @Override public void onDisconnect(WebExtension.Port incoming){if(routePort==incoming){closeExitIpPage();routePort=null;retireTimeZones();requestHeadersInstalled=false;retireRequestHeaderPolicy();routePrepared=false;cancelProtectionTasks();nativeProtection.disconnected();protectionRequest=nativeProtection.token();privacyReady=false;fingerprintingProtected=false;metadata.policyAcknowledged=false;metadata.rfpAcknowledged=false;if(owner.privacy.level()>=2)owner.setStatus(protectionSummary());owner.changed();}cookieCallbacks.cancel(incoming);}
       });
       if(previous!=null&&previous!=port)cookieCallbacks.cancel(previous);
       prepareProtectionBridge(port);
@@ -242,6 +323,7 @@ class GeckoWebView extends FrameLayout {
     @Override public GeckoResult<Object> onMessage(String app,Object message,WebExtension.MessageSender sender){
       if(!"pocketroute".equals(app)||!(message instanceof JSONObject)||sender.environmentType!=WebExtension.MessageSender.ENV_TYPE_EXTENSION)return GeckoResult.fromValue(blocked().toString());
       JSONObject request=(JSONObject)message;
+      if("requestHeaderPolicy".equals(request.optString("kind")))return requestHeaderPolicy(request.optString("url"));
       if("ready".equals(request.optString("kind"))){routePrepared=true;maybeOpen();return GeckoResult.fromValue(null);}
       if("cookieRecoveryError".equals(request.optString("kind"))){failure("登录状态暂未恢复，请重新打开当前环境");return GeckoResult.fromValue(null);}
       if(!"route".equals(request.optString("kind")))return GeckoResult.fromValue(blocked().toString());
@@ -249,10 +331,53 @@ class GeckoWebView extends FrameLayout {
       return GeckoResult.fromValue(route(request.optString("url")).toString());
     }
   };
+  static boolean validRequestUserAgent(String value){
+    if(value==null||value.isEmpty()||value.length()>1024)return false;
+    for(int i=0;i<value.length();i++)if(value.charAt(i)<32||value.charAt(i)>126)return false;
+    return true;
+  }
+  void retireRequestHeaderPolicy(){
+    headerPolicyRead=null;
+    metadata.requestHeaderPolicy=J.obj("installed",requestHeadersInstalled,"nativeReadback",false,"revision",identityPolicyRevision,"scope","public-http-request-ua-only","privateAdmission","unchanged-original-headers","sharedWorkerWireVerified",false,"serviceWorkerWireVerified",false);
+    if(routePort!=null&&identityPolicyRevision>0)try{routePort.postMessage(J.obj("kind","requestHeaderPolicyChanged","revision",identityPolicyRevision));}catch(RuntimeException disconnected){requestHeadersInstalled=false;metadata.requestHeaderPolicy=J.obj("installed",false,"nativeReadback",false,"scope","public-http-request-ua-only","privateAdmission","unchanged-original-headers","sharedWorkerWireVerified",false,"serviceWorkerWireVerified",false);}
+  }
+  boolean requestHeaderContextCurrent(HeaderPolicyRead read,String target){
+    if(read==null||destroyed||failed||!enabled||owner.deleted||!requestHeadersInstalled||current!=read.session||!current.isOpen()||routePort!=read.port||read.port==null||identityPolicyRevision!=read.revision||owner.navigationEpoch!=read.epoch||nativeProtection.token()!=read.protection||!protectionAllowsNetwork()||!identityRequestAllowed(target)||!allowedUrl(target))return false;
+    if(GeckoNavigationPolicy.publicWeb(target)&&(!privacyReady||!metadata.localesRequestAcknowledged||!metadata.rfpAcknowledged||!nativeProtection.confirmed()))return false;
+    JSONObject selected=route(target);
+    return !("socks".equals(selected.optString("type"))&&"127.0.0.1".equals(selected.optString("host"))&&selected.optInt("port")==9);
+  }
+  GeckoResult<Object> requestHeaderPolicy(String target){
+    final GeckoResult<Object> result=new GeckoResult<>();
+    try{
+      HeaderPolicyRead read=headerPolicyRead;
+      if(!requestHeaderContextCurrent(read,target)){
+        if(current==null||!current.isOpen()||routePort==null){result.complete(J.obj("allowed",false).toString());return result;}
+        // One actual SDK read is shared by requests in this exact native
+        // context. Every caller still rechecks its own target and guard below.
+        read=new HeaderPolicyRead(current,routePort,identityPolicyRevision,owner.navigationEpoch,nativeProtection.token(),null);
+        if(!requestHeaderContextCurrent(read,target)){result.complete(J.obj("allowed",false).toString());return result;}
+      }
+      // Internal admissions may extend the URL set; they are not public website
+      // identity policies. Their existing SDK headers and guard remain intact.
+      if(!GeckoNavigationPolicy.publicWeb(target)){result.complete(J.obj("allowed",true,"scope","private-admission-unchanged","revision",read.revision).toString());return result;}
+      if(read.userAgent==null){read=new HeaderPolicyRead(current,routePort,identityPolicyRevision,owner.navigationEpoch,nativeProtection.token(),current.getUserAgent());headerPolicyRead=read;}
+      final HeaderPolicyRead selected=read;
+      read.userAgent.accept(value->{
+        try{
+          if(headerPolicyRead!=selected||!requestHeaderContextCurrent(selected,target)||!validRequestUserAgent(value)){if(headerPolicyRead==selected)headerPolicyRead=null;result.complete(J.obj("allowed",false).toString());return;}
+          if(!selected.observed){selected.observed=true;metadata.requestHeaderPolicy=J.obj("installed",true,"nativeReadback",true,"revision",selected.revision,"userAgent",value,"scope","public-http-request-ua-only","privateAdmission","unchanged-original-headers","sharedWorkerWireVerified",false,"serviceWorkerWireVerified",false);}
+          result.complete(J.obj("allowed",true,"userAgent",value,"revision",selected.revision).toString());
+        }catch(RuntimeException unavailable){if(headerPolicyRead==selected)headerPolicyRead=null;result.complete(J.obj("allowed",false).toString());}
+      },error->{if(headerPolicyRead==selected)headerPolicyRead=null;result.complete(J.obj("allowed",false).toString());});
+    }catch(RuntimeException unavailable){result.complete(J.obj("allowed",false).toString());}
+    return result;
+  }
   JSONObject blocked(){return J.obj("type","socks","host","127.0.0.1","port",9,"proxyDNS",true,"failoverTimeout",1);}
   JSONObject route(String target){
     if(exitIpPage!=null&&!exitIpPage.fresh())closeExitIpPage();
-    if(destroyed||!enabled||!protectionAllowsNetwork()||!identityRequestAllowed(target)||owner.guard==null||!owner.guard.allowed()||!generalRouteReady()||!allowedUrl(target.startsWith("wss://")?"https"+target.substring(3):target.startsWith("ws://")?"http"+target.substring(2):target))return blocked();
+    if(current!=null&&!timeZoneAllows(current))return blocked();
+    if(destroyed||!enabled||!requestHeadersInstalled||!protectionAllowsNetwork()||!identityRequestAllowed(target)||owner.guard==null||!owner.guard.allowed()||!generalRouteReady()||!allowedUrl(target.startsWith("wss://")?"https"+target.substring(3):target.startsWith("ws://")?"http"+target.substring(2):target))return blocked();
     if(owner.internalNetwork()){
       NativeNetwork n=NativeNetwork.get(owner.context);NativeNetwork.ExitRouteReceipt receipt=n.verifiedRoute;String pool=internalPoolKey(n);
       if(pool==null||receipt==null||receipt!=n.verifiedRoute||!n.ready||n.starting||n.recoveryBlocked||n.transport==null||!receipt.matches(n,n.transport.state))return blocked();
@@ -286,7 +411,7 @@ class GeckoWebView extends FrameLayout {
     if(!queued.isEmpty()){String target=queued;queued="";loadUrl(target);}
   }
   void identityConfigurationReady(){identityPrepared=true;maybeOpen();}
-  private void maybeOpen(){if(!destroyed&&!failed&&!ready&&extension!=null&&checkpointReady&&identityPrepared&&routePrepared&&privacyReady&&protectionAllowsNetwork())open();}
+  private void maybeOpen(){if(!destroyed&&!failed&&!ready&&extension!=null&&checkpointReady&&identityPrepared&&routePrepared&&requestHeadersInstalled&&privacyReady&&protectionAllowsNetwork())open();}
   GeckoSession newSession(){
     // Isolation comes from existing Android processes and distinct profile directories.
     // Default cookie storage remains usable by the official cookie API in this runtime.
@@ -309,9 +434,10 @@ class GeckoWebView extends FrameLayout {
       @Override public GeckoResult<AllowOrDeny> onLoadRequest(GeckoSession s,LoadRequest request){
         boolean blob=request.uri!=null&&request.uri.startsWith("blob:")&&allowedUrl(request.uri.substring(5));
         boolean allowed=!destroyed&&("about:blank".equals(request.uri)||protectionAllowsNetwork()&&identityRequestAllowed(request.uri)&&owner.guard.allowed()&&(allowedUrl(request.uri)||blob));
+        if(allowed&&!"about:blank".equals(request.uri)&&!timeZoneAllows(s)){if(!hasTimeZoneIntent(s))loadSessionUri(s,request.uri);allowed=false;owner.setStatus("正在确认当前环境时区…");}
         if(allowed&&!"about:blank".equals(request.uri)&&!retainGeneralRoute(s,blob?request.uri.substring(5):request.uri)){deferredGeneralLoads.put(s,request.uri);allowed=false;owner.setStatus("线路正在更新，完成后继续打开网页");}
         else if(allowed)deferredGeneralLoads.remove(s);
-        if(!allowed&&s==current)owner.setStatus(deferredGeneralLoads.containsKey(s)?"线路正在更新，完成后继续打开网页":!protectionAllowsNetwork()?protectionSummary():!identityRequestAllowed(request.uri)?"检测地址已失效，请重新开始身份检查":"连接尚未受保护，或地址不是公共网页");
+        if(!allowed&&s==current)owner.setStatus(timeZoneLoads.containsKey(s)?"正在确认当前环境时区…":deferredGeneralLoads.containsKey(s)?"线路正在更新，完成后继续打开网页":!protectionAllowsNetwork()?protectionSummary():!identityRequestAllowed(request.uri)?"检测地址已失效，请重新开始身份检查":"连接尚未受保护，或地址不是公共网页");
         return GeckoResult.fromValue(allowed?AllowOrDeny.ALLOW:AllowOrDeny.DENY);
       }
       @Override public void onLocationChange(GeckoSession s,String target,List<GeckoSession.PermissionDelegate.ContentPermission> permissions,Boolean gesture){
@@ -325,6 +451,7 @@ class GeckoWebView extends FrameLayout {
       @Override public void onCanGoBack(GeckoSession s,boolean value){if(destroyed||!locations.containsKey(s))return;backStates.put(s,value);if(s==current)canBack=value;}
       @Override public GeckoResult<GeckoSession> onNewSession(GeckoSession s,String target){
         if(destroyed||failed||crashed.contains(s)||s!=current||popups.size()>=8||!protectionAllowsNetwork()||!identityRequestAllowed(target)||!owner.guard.allowed()||!(target==null||target.isEmpty()||"about:blank".equals(target)||allowedUrl(target)))return GeckoResult.fromValue(null);
+        if(!owner.timeZone.popupAllowed()){owner.setStatus("独立时区暂不支持新窗口；请在当前页手动打开目标网址");return GeckoResult.fromValue(null);}
         ChromiumRouteLease.Handle lease=null;if(GeckoNavigationPolicy.publicWeb(target)&&!MainActivity.chatUrl(target)){lease=ChromiumRouteLease.acquireSurface();if(lease==null){owner.setStatus("线路正在更新，请稍后重试打开链接");return GeckoResult.fromValue(null);}}
         GeckoSession popup;try{popup=newSession();}catch(RuntimeException unavailable){if(lease!=null)lease.close();owner.setStatus("新网页暂时无法打开，请稍后重试");return GeckoResult.fromValue(null);}popups.add(popup);if(lease!=null){generalSessions.add(popup);generalRoutes.put(popup,lease);}
         locations.put(popup,target==null?"":target);
@@ -509,6 +636,7 @@ class GeckoWebView extends FrameLayout {
   private void contentStopped(GeckoSession session,String message){
     if(session==current)closeExitIpPage();
     if(destroyed||!locations.containsKey(session))return;
+    retireTimeZone(session);
     crashed.add(session);pendingLoads.remove(session);painted.remove(session);usable.remove(session);WebExtension.Port port=ports.remove(session);if(port!=null){callbacks.cancel(port);retireAppearance(port);}
     forgetGeneralRoute(session);
     if(session==current){cancelZoom();failed=true;owner.webObserver.suspendUnconfirmed("网页进程已关闭，原发送结果需要核对");
@@ -529,10 +657,11 @@ class GeckoWebView extends FrameLayout {
     if(!reopenCurrent())return false;
     owner.pageMemory.restorePending=true;
     owner.pageError="";owner.manualAttention=false;owner.beginNavigation(target,"正在恢复当前网页…");
-    if(state!=null&&state.size()>0)restoreCheckpoint(current,state,target,stateDraftRevisions.getOrDefault(current,-1L));else current.loadUri(target);
+    if(state!=null&&state.size()>0)restoreCheckpoint(current,state,target,stateDraftRevisions.getOrDefault(current,-1L));else loadSessionUri(current,target);
     return true;
   }
   private boolean reopenCurrent(){try{
+    retireTimeZone(current);
     measuredCompositors.remove(current);pageScales.remove(current);
     if(surface.getSession()!=null)surface.releaseSession();if(current.isOpen())current.close();current.open(runtime);surface.setSession(current);
     current.setActive(!owner.browserPaused);crashed.remove(current);failed=false;configure(desktop,owner.privacy.level());return true;
@@ -543,7 +672,7 @@ class GeckoWebView extends FrameLayout {
     GeckoSession previous=current;
     if(surface.getSession()!=null)surface.releaseSession();
     if(previous!=null){if(previous.isOpen())previous.setActive(false);WebExtension.Port port=ports.get(previous);if(port!=null)callbacks.cancel(port);}
-    current=session;owner.resourceObserverConnected(ports.get(session));url=locations.getOrDefault(session,"");canBack=backStates.getOrDefault(session,false);scale=pageScales.getOrDefault(session,1f)*readingLayout;
+    current=session;metadata.timeZonePolicy=timeZoneStatus();owner.resourceObserverConnected(ports.get(session));url=locations.getOrDefault(session,"");canBack=backStates.getOrDefault(session,false);scale=pageScales.getOrDefault(session,1f)*readingLayout;
     failed=crashed.contains(session);
     if(!failed){surface.setSession(session);session.setActive(!owner.browserPaused);}
     configure(desktop,owner.privacy.level());
@@ -553,7 +682,8 @@ class GeckoWebView extends FrameLayout {
   }
   void configure(boolean desktop,int protection){
     closeExitIpPage();
-    this.desktop=desktop;configuredProtection=protection;long revision=++identityPolicyRevision;
+    if(configuredProtection!=protection)retireTimeZones();this.desktop=desktop;configuredProtection=protection;long revision=++identityPolicyRevision;
+    retireRequestHeaderPolicy();
     metadata.desktop=desktop;metadata.policyAcknowledged=false;metadata.userAgent="";metadata.acceptedBrowserIdentity=new JSONObject();
     GeckoPolicyAdapter.applyRuntime(runtime,protection);
     applyIdentityLocales();
@@ -577,6 +707,7 @@ class GeckoWebView extends FrameLayout {
     if(destroyed||port!=routePort||requestedProtection!=owner.privacy.level())return;
     privacyReady=false;fingerprintingProtected=false;metadata.rfpAcknowledged=false;metadata.policyAcknowledged=false;
     long token=nativeProtection.request(),generation=nativeProtection.generation();int level=requestedProtection;protectionRequest=token;
+    retireRequestHeaderPolicy();
     protectionTimeout=()->{if(!destroyed&&port==routePort&&level==owner.privacy.level()&&nativeProtection.timeout(token,generation,level)){protectionTimeout=null;protectionAttemptFinished(port);}};
     owner.handler.postDelayed(protectionTimeout,NativeProtectionState.WAIT_MS);
     try{port.postMessage(J.obj("kind",kind,"level",level,"token",token,"generation",generation,"timeoutMs",NativeProtectionState.WAIT_MS));}
@@ -603,6 +734,7 @@ class GeckoWebView extends FrameLayout {
   }
   private void resumeProtectedLoads(){
     if(!ready||!protectionAllowsNetwork())return;
+    if(current!=null&&!timeZoneAllows(current)){prepareTimeZone(current,ok->{if(ok)resumeProtectedLoads();});return;}
     ProtectionRestore restore=protectionRestore;protectionRestore=null;
     if(restore!=null&&restore.session==current&&restore.navigation==owner.navigationEpoch&&(queued.isEmpty()||queued.equals(restore.url))){queued="";restoreCheckpoint(restore.session,restore.state,restore.url,restore.draftRevision);return;}
     if(!queued.isEmpty()){String target=queued;queued="";loadUrl(target);}
@@ -650,6 +782,7 @@ class GeckoWebView extends FrameLayout {
   }
   private boolean closePopup(GeckoSession old){
     if(destroyed||!popups.remove(old))return false;
+    retireTimeZone(old);
     if(old==current){activate(popups.isEmpty()?primary:popups.get(popups.size()-1));owner.pageError="";if(crashed.contains(current))contentStopped(current,"上一页被系统关闭，点按重新加载可恢复");else{owner.beginNavigation(url,"正在返回上一页…");owner.resourceObserverConnected(ports.get(current));if(client!=null&&painted.contains(current)){client.onPageCommitVisible(null,url);client.onPageFinished(null,url);}}}
     forgetGeneralRoute(old);WebExtension.Port port=ports.remove(old);if(port!=null){callbacks.cancel(port);retireAppearance(port);}appearanceLoads.remove(old);
     locations.remove(old);backStates.remove(old);pageScales.remove(old);measuredCompositors.remove(old);viewportWidths.remove(old);loadingTargets.remove(old);pendingLoads.remove(old);painted.remove(old);usable.remove(old);crashed.remove(old);states.remove(old);stateDraftRevisions.remove(old);
@@ -669,20 +802,24 @@ class GeckoWebView extends FrameLayout {
   public void loadUrl(String target){
     closeExitIpPage();
     if(destroyed)return;if(!allowedUrl(target)){owner.setStatus("仅支持公共 HTTP 或 HTTPS 网页");return;}if(!identityRequestAllowed(target)){owner.setStatus("检测地址已失效，请重新开始身份检查");return;}queued=target;
-    if(!ready||!privacyReady||current==null||!protectionAllowsNetwork()||!owner.guard.allowed())return;
+    if(!ready||!privacyReady||!requestHeadersInstalled||current==null||!protectionAllowsNetwork()||!owner.guard.allowed())return;
     if(crashed.contains(current)){
       if(!reopenCurrent())return;
     }
+    final GeckoSession source=current;final Object intent=claimTimeZoneIntent(source,false);
+    if(!timeZoneAllows(current)){prepareTimeZone(current,ok->{if(timeZoneIntents.get(source)!=intent||current!=source)return;if(!ok){clearTimeZoneIntent(source,intent);return;}if(!queued.isEmpty())loadUrl(queued);});return;}
     if(!retainGeneralRoute(current,target)||!generalRouteReady()){owner.setStatus("线路正在更新，完成后继续打开网页");return;}
     GeckoSession.SessionState saved=startupState;startupState=null;
     if(current==primary&&saved!=null&&target.equals(stateUrl(saved))){queued="";states.put(primary,saved);stateDraftRevisions.put(primary,startupDraftRevision);restoreCheckpoint(current,saved,target,startupDraftRevision);return;}
-    queued="";current.loadUri(target);
+    queued="";clearTimeZoneIntent(source,intent);current.loadUri(target);
   }
   void restoreCheckpoint(GeckoSession target,GeckoSession.SessionState state,String url,long savedRevision){
     if(!identityRequestAllowed(url))return;
+    final Object intent=claimTimeZoneIntent(target,true);
+    if(!timeZoneAllows(target)){final long navigation=owner.navigationEpoch;prepareTimeZone(target,ok->{if(ok&&timeZoneIntents.get(target)==intent&&current==target&&navigation==owner.navigationEpoch)restoreCheckpoint(target,state,url,savedRevision);});return;}
     if(!retainGeneralRoute(target,url)||!generalRouteReady()){generalRestore=new ProtectionRestore(target,state,url,savedRevision,owner.navigationEpoch);return;}
     if(!protectionAllowsNetwork()){protectionRestore=new ProtectionRestore(target,state,url,savedRevision,owner.navigationEpoch);return;}
-    if(LocalDraftPolicy.enabled(owner.context)&&savedRevision==LocalDraftPolicy.revision(owner.context)){target.restoreState(state);return;}
+    if(LocalDraftPolicy.enabled(owner.context)&&savedRevision==LocalDraftPolicy.revision(owner.context)){clearTimeZoneIntent(target,intent);target.restoreState(state);return;}
     final long epoch=owner.navigationEpoch;
     // SDK serialization stays on the existing worker. Only form data is removed;
     // navigation history and scroll are still restored through the SDK itself.
@@ -690,11 +827,12 @@ class GeckoWebView extends FrameLayout {
       String value;try{value=LocalDraftPolicy.checkpoint(state.toString(),false);}catch(RuntimeException invalid){value=null;}
       final String filtered=value;
       owner.handler.post(()->{
-        if(destroyed||owner.deleted||current!=target||owner.navigationEpoch!=epoch||!target.isOpen()||!owner.guard.allowed())return;
+        if(destroyed||owner.deleted||timeZoneIntents.get(target)!=intent||current!=target||owner.navigationEpoch!=epoch||!target.isOpen()||!owner.guard.allowed())return;
         if(!identityRequestAllowed(url))return;
+        if(!timeZoneAllows(target)){prepareTimeZone(target,ok->{if(ok&&timeZoneIntents.get(target)==intent&&current==target&&epoch==owner.navigationEpoch)restoreCheckpoint(target,state,url,savedRevision);});return;}
         if(!protectionAllowsNetwork()){protectionRestore=new ProtectionRestore(target,state,url,savedRevision,epoch);return;}
         GeckoSession.SessionState safe=filtered==null?null:GeckoSession.SessionState.fromString(filtered);
-        if(safe!=null&&safe.size()>0)target.restoreState(safe);else target.loadUri(url);
+        clearTimeZoneIntent(target,intent);if(safe!=null&&safe.size()>0)target.restoreState(safe);else target.loadUri(url);
       });
     });
   }

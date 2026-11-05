@@ -37,10 +37,24 @@
     return {valid:!!valid};
   }
   const beforeRequest=details=>{const match=classify(details);return match&&!match.valid?{cancel:true}:{};};
-  const beforeHeaders=details=>{
+  const headerDecision=details=>{
     const match=classify(details);if(!match)return {};
     if(!match.valid)return {cancel:true};
     return {requestHeaders:(details.requestHeaders||[]).filter(header=>!sensitive.has(String(header.name).toLowerCase()))};
+  };
+  // Both listeners return the same composed result. A global UA correction
+  // must never restore credentials removed by the diagnostic scope filter.
+  const beforeHeaders=details=>{
+    const decision=headerDecision(details);
+    return globalThis.PocketGeckoRequestHeaders?.filter(details,decision)??decision;
+  };
+  const controlRequest=details=>{
+    const match=classify(details);if(!match?.valid)return false;
+    let url;try{url=new URL(details.url);}catch{return false;}
+    const registration=active.get(url.searchParams.get('nonce'));
+    if(!registration?.inFlight||registration.until<=Date.now())return false;
+    const operation=url.pathname.slice(protocolPath.length);
+    return operation==='result'&&registration.purpose==='identity'||operation==='capabilities'&&registration.purpose==='capabilities';
   };
   const received=details=>{
     const match=classify(details);if(!match)return {};
@@ -128,6 +142,7 @@
     for(const [key,value] of linkedFrames)if(value.until<=Date.now()||active.get(key)!==value.parent)linkedFrames.delete(key);
   }
   globalThis.PocketRequestIdentityBackground=Object.freeze({
+    headerDecision,controlRequest,
     handle(configuration) {
       const nonce=configuration?.nonce;
       if(typeof nonce!=='string'||!/^[0-9a-f]{32}$/.test(nonce))return {ok:false,error:'invalid-nonce'};

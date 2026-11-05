@@ -69,6 +69,7 @@ template_release=tuple(map(int,version.split('.'))) >= (1,7,0)
 resource_release=tuple(map(int,version.split('.'))) >= (2,0,0)
 browser_release=tuple(map(int,version.split('.'))) >= (2,1,0)
 fingerprint_release=tuple(map(int,version.split('.'))) >= (2,1,1)
+worker_timezone_release=tuple(map(int,version.split('.'))) >= (2,1,2)
 p=argparse.ArgumentParser()
 p.add_argument('--source',required=True)
 p.add_argument('--apk',type=pathlib.Path,default=root/f'dist/PocketChat-{version}-gecko-arm64.apk')
@@ -98,6 +99,7 @@ assert not subprocess.check_output(['git','status','--porcelain'],cwd=root,text=
 release_tool_files={'.github/workflows/publish-gecko-release.yml','tools/publish-gecko-release.py','tools/gecko/release_channel_contract.py','tools/gecko/release_channel_contract_test.py'}
 if browser_release:release_tool_files.add('tools/browser/check_evidence.py')
 if fingerprint_release:release_tool_files.update({'tools/browser/check_fingerprint_evidence.py'})
+if worker_timezone_release:release_tool_files.update({'tools/browser/check_worker_policy_evidence.py','tools/browser/check_gecko_environment_policy_evidence.py'})
 if release_tools_commit!=args.source:
     subprocess.run(['git','merge-base','--is-ancestor',args.source,release_tools_commit],cwd=root,check=True)
     changed=set(subprocess.check_output(['git','diff','--name-only',args.source,release_tools_commit],cwd=root,text=True).splitlines())
@@ -245,6 +247,7 @@ if template_release:performance_files.extend(['gecko-template-results.json','gec
 if resource_release:performance_files.extend(['resource-observer-host-results.json','resource-pressure-host-results.json','resource-pressure-results.json','resource-pressure-runner-log.json'])
 if browser_release:performance_files.append('browser-results.json')
 if fingerprint_release:performance_files.append('browser-fingerprint-results.json')
+if worker_timezone_release:performance_files.extend(['worker-policy-results.json','gecko-environment-policy-results.json'])
 if version_code>=46:performance_files.extend(chain_files+['browser-runtime-policy-host-results.json','original-website-policy-host-results.json','update-route-results.json','official-sdk-verification.json','official-sdk-input.json'])
 if version_code>=59:performance_files.extend(['appearance-results.json','appearance-light.png','appearance-dark.png','network-source-sharing-results.json'])
 if version_code>=70:
@@ -287,6 +290,9 @@ if browser_release:
 if fingerprint_release:
     (stage/'tools/browser').mkdir(parents=True,exist_ok=True)
     shutil.copy2(root/'tools/browser/check_fingerprint_evidence.py',stage/'tools/browser/check_fingerprint_evidence.py')
+if worker_timezone_release:
+    for name in ('check_worker_policy_evidence.py','check_gecko_environment_policy_evidence.py'):
+        shutil.copy2(root/'tools/browser'/name,stage/'tools/browser'/name)
 branch='apk/gecko-release-20261003'
 if version_code>=70:
     for mode in ('retry','application','internal'):

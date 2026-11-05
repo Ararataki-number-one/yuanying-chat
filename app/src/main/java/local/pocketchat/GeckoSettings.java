@@ -8,6 +8,8 @@ final class GeckoSettings {
   // The SDK getter confirms the requested descriptor, not content adoption.
   boolean localesRequestAcknowledged;String[] requestedLocales=new String[0],expectedSdkLocales=new String[0];
   org.json.JSONObject acceptedBrowserIdentity=new org.json.JSONObject();
+  org.json.JSONObject requestHeaderPolicy=J.obj("installed",false,"nativeReadback",false,"scope","public-http-request-ua-only","privateAdmission","unchanged-original-headers","sharedWorkerWireVerified",false,"serviceWorkerWireVerified",false);
+  org.json.JSONObject timeZonePolicy=J.obj("nativeSettingReadback",false,"workerCoverageVerified",false,"serviceWorkerCoverageVerified",false,"popupScope","custom-zone-popups-blocked");
   String getUserAgentString(){return userAgent;}
   boolean getBlockNetworkLoads(){return networkBlocked;}
   void setBlockNetworkLoads(boolean value){networkBlocked=value;}

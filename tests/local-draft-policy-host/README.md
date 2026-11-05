@@ -19,6 +19,15 @@ controlled Android, SQLite, and Gecko adapters, actual JVM workers, and temporar
 files. It does not establish Android SQLite/AtomicFile durability, native Gecko
 restoration, a real webpage result, or preservation of a real logged-in account.
 
+The current restore consumer also executes its verbatim time-zone intent
+claim/clear helpers and actual identity-map fields. Its time-zone collaborator
+is explicitly modeled as an already-ready system default, with readiness,
+preparation and URI-dispatch counters. Custom zones or an unready default throw;
+six separate adapter controls verify that boundary. These are synthetic adapter
+observations, not execution of GeckoTimeZoneController, native SDK settings,
+Date, Intl or engine time zones. Original draft and route assertions are
+unchanged. Per-member and field hashes bind the extracted current closure.
+
 The original draft assertions remain intact. Additional generic website cases
 exercise successful SDK checkpoint dispatch while holding the actual process
 route lease, disabled-draft filtering, refusal during a real change barrier,

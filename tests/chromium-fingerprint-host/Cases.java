@@ -12,6 +12,9 @@ final class Cases {
     String seed="a".repeat(64),asset=Files.readString(Path.of(args[0]));ChromiumFingerprintSpec defaults=ChromiumFingerprintSpec.from(new JSONObject("{\"schema\":1,\"engine\":\"chromium\"}"));
     check(defaults.protectedMode()&&!defaults.desktop()&&defaults.canvas&&defaults.webgl&&defaults.audio&&defaults.webrtc);
     ChromiumFingerprintSpec compatible=ChromiumFingerprintSpec.from(new JSONObject("{\"protection\":\"compatibility\"}"));check(!compatible.scriptsRequired()&&!compatible.canvas);
+    check(!defaults.restrictWorkers()&&defaults.workers.equals("allow"));
+    ChromiumFingerprintSpec restricted=ChromiumFingerprintSpec.from(J.obj("protection","compatibility","workers","restrict"));check(restricted.restrictWorkers()&&restricted.scriptsRequired());check(ChromiumFingerprintSpec.from(restricted.json()).workers.equals("restrict"));
+    for(Object value:new Object[]{true,1,JSONObject.NULL,"blocked","ALLOW"})reject(()->ChromiumFingerprintSpec.from(J.obj("workers",value)));
     check(ChromiumFingerprintSpec.from(defaults.json()).json().toString().equals(defaults.json().toString()));
     for(String unknown:new String[]{"timezone","hardware","fonts","language","locales","userAgent","ua","screen","deviceMemory"})reject(()->ChromiumFingerprintSpec.from(J.obj(unknown,"fake")));
     for(Object value:new Object[]{1,"true",JSONObject.NULL,new JSONObject()})reject(()->ChromiumFingerprintSpec.from(J.obj("canvas",value)));
@@ -34,6 +37,8 @@ final class Cases {
     final WebView mismatch=new WebView();WebSettingsCompat.mismatch=true;int before=WebViewCompat.added;reject(()->ChromiumFingerprintRuntime.prepare(mismatch,desktop,seed,asset));check(mismatch.settings.block&&WebViewCompat.added==before);reset();
     final WebView registration=new WebView();WebViewCompat.fail=true;reject(()->ChromiumFingerprintRuntime.prepare(registration,defaults,seed,asset));check(registration.settings.block);reset();
     WebViewFeature.metadata=false;WebViewFeature.document=false;before=WebViewCompat.added;view=new WebView();p=ChromiumFingerprintRuntime.prepare(view,compatible,seed,null);check(view.settings.block&&WebViewCompat.added==before);check(!p.receipt().getBoolean("documentStartRegistered"));p.close();reset();
+    WebViewFeature.metadata=false;WebViewFeature.document=false;final WebView workerMissing=new WebView();before=WebViewCompat.added;reject(()->ChromiumFingerprintRuntime.prepare(workerMissing,restricted,seed,asset));check(workerMissing.settings.block&&WebViewCompat.added==before&&workerMissing.settings.sets==0);reset();
+    WebViewFeature.metadata=false;view=new WebView();p=ChromiumFingerprintRuntime.prepare(view,restricted,seed,asset);check(p.receipt().getBoolean("documentStartRegistered")&&WebViewCompat.script.contains("\"workers\":\"restrict\""));JSONObject workerReceipt=p.receipt().getJSONObject("workerCreationPolicy");check(workerReceipt.getString("mode").equals("restrict")&&workerReceipt.getString("state").equals("requested")&&!workerReceipt.getBoolean("existingWorkerExecutionControlled"));check(!p.receipt().getBoolean("workerCoverageVerified")&&!p.receipt().getBoolean("pageObserved"));p.close();reset();
     System.out.println(J.obj("status","passed","passed",checks,"total",checks).toString());
   }
 }

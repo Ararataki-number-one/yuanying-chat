@@ -13,6 +13,26 @@ final class AuditReport {
   static boolean v4(String ip){if(!ip.matches("[0-9]{1,3}(?:\\.[0-9]{1,3}){3}"))return false;for(String s:ip.split("\\."))if(Integer.parseInt(s)>255)return false;return !BrowserNetworkGuard.localHost(ip);}
   static boolean v6(String ip){return ip.contains(":")&&ip.matches("[0-9a-fA-F:.]+")&&!BrowserNetworkGuard.localHost(ip);}
   static String ip(JSONObject result){return result==null?"":result.optString("ip");}
+  /** Native ACK admits a comparison; only this document's independently
+   * observed exact zone and timestamped offset can verify the page item. */
+  static JSONObject independentTimeZoneCoverage(JSONObject parent,JSONObject expected,boolean mainObserved,boolean fresh,long receivedAt){
+    String state=UNCOVERED,detail="尚无当前原生上下文确认、完整主页面采样或可比时区；没有用手机时区替代独立时区";
+    if(fresh&&mainObserved&&Boolean.TRUE.equals(expected.opt("timezoneNativeReadback"))&&parent!=null){
+      Object zone=parent.opt("zone"),wanted=expected.opt("timezoneRequestedZone"),sampled=parent.opt("observedAt"),started=expected.opt("timezoneObservationStartedAt");
+      boolean time=sampled instanceof Number&&started instanceof Number&&Double.isFinite(((Number)sampled).doubleValue())&&Double.isFinite(((Number)started).doubleValue())
+          &&((Number)sampled).doubleValue()==((Number)sampled).longValue()&&((Number)started).doubleValue()==((Number)started).longValue();
+      if(time){long at=((Number)sampled).longValue(),begin=((Number)started).longValue();time=begin>0&&receivedAt>=begin&&receivedAt-begin<=60000&&at>=begin-1000&&at<=receivedAt+1000;}
+      if(time&&zone instanceof String&&wanted instanceof String&&zone.equals(wanted)&&observedField(parent,"offset"))try{
+        java.time.ZoneId named=java.time.ZoneId.of((String)wanted);
+        if(java.time.ZoneId.getAvailableZoneIds().contains(wanted)){
+          double offset=-named.getRules().getOffset(java.time.Instant.ofEpochMilli(((Number)sampled).longValue())).getTotalSeconds()/60.0;
+          state=((Number)parent.opt("offset")).doubleValue()==offset?VERIFIED:ISSUE;
+          detail=VERIFIED.equals(state)?"当前主页面实际时区名称与独立设置一致，偏移符合采样时刻的 IANA 夏令时规则；只验证本次页面观测，不代表 Worker 或全部指纹已覆盖":"当前主页面名称相同，但采样时刻的偏移与独立时区规则不同；已保留实际差异";
+        }
+      }catch(RuntimeException invalid){}
+    }
+    return J.obj("state",state,"detail",detail);
+  }
   static boolean hintsMatch(JSONObject hints,int wanted){if(hints==null)return true;JSONArray brands=hints.optJSONArray("brands");if(brands==null)return true;for(int i=0;i<brands.length();i++){JSONObject b=brands.optJSONObject(i);if(b!=null&&b.optString("brand").matches("(?i).*(?:Chromium|Chrome|WebView).*"))try{if(Integer.parseInt(b.optString("version").split("\\.")[0])!=wanted)return false;}catch(Exception e){return false;}}return true;}
   static final List<String> CONTEXT_FIELDS=Collections.unmodifiableList(Arrays.asList("ua","cpu","memory","language","languages","offset","zone"));
   static final List<String> NAVIGATOR_IDENTITY_FIELDS=Collections.unmodifiableList(Arrays.asList("platform","appVersion"));
@@ -143,6 +163,8 @@ final class AuditReport {
     boolean early=parent.optBoolean("early")&&frame.optBoolean("early");row(rows,"early","加载前保护覆盖",gecko||expected.optInt("level")==0?UNCOVERED:early?VERIFIED:ISSUE,gecko?"Firefox 使用内核保护；此项脚本保护检测不适用":expected.optInt("level")==0?"兼容模式未启用此保护":early?"检查页面与子页面的首个脚本前已有保护":"未在检查页面和子页面全部观察到加载前保护");
     String rtc=parent.optString("rtc");row(rows,"rtc","WebRTC 本机接口限制",rtc.equals("restricted")||rtc.equals("absent")?VERIFIED:expected.optInt("level")>0&&rtc.equals("available")?ISSUE:UNCOVERED,rtc.equals("restricted")||rtc.equals("absent")?"本地检查未能创建 RTC 连接；没有进行 STUN 公网候选或全部协议抓包测试":"RTC 接口可用或结果不明确，不能证明公网地址不会泄漏");
     boolean standardized="native-standardized".equals(expected.optString("timezoneStrategy"));
+    if("native-independent".equals(expected.optString("timezoneStrategy"))){JSONObject zone=independentTimeZoneCoverage(parent,expected,mainObserved,fresh,System.currentTimeMillis());row(rows,"zone","网页与独立时区偏移",zone.optString("state"),zone.optString("detail"));}
+    else
     row(rows,"zone",standardized?"原生标准化时区观测":"网页与手机时区偏移",standardized?UNCOVERED:observedField(parent,"offset")&&observedField(expected,"offset")?parent.optInt("offset")==expected.optInt("offset")?VERIFIED:ISSUE:UNCOVERED,standardized?"强化模式采用 Firefox 原生标准化策略；没有承诺独立时区值，不与手机时区差异作错误比较。页面与 Worker 的一致性另行检查":"只核对当前手机与页面偏移；不把时区与 IP 地区差异当作账号危险");
     String language=parent.optString("language"),wantedLanguage=expected.optString("language");
     row(rows,"language","网页语言与原生设置",!observedField(parent,"language")||!observedField(expected,"language")?UNCOVERED:language.equalsIgnoreCase(wantedLanguage)?VERIFIED:ISSUE,language.isEmpty()||wantedLanguage.isEmpty()?"未取得可核对的语言值":"核对本次 navigator.language 与官方 SDK 的 language-region 规范化预测；SDK 回读仅表示请求，强化策略可能继续标准化，实际差异会保留");

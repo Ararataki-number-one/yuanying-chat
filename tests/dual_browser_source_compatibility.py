@@ -68,6 +68,12 @@ def source_input(raw, relative):
         raise ValueError('Dual-browser inverse requires exact complete bytes and an owned relative path')
     row = manifest()['files'][relative]
     digest = _sha(raw)
+    if (digest, len(raw)) not in ((row['previousSha256'], row['previousBytes']),
+                                  (row['reviewedSha256'], row['reviewedBytes'])):
+        from worker_timezone_source_compatibility import PATHS as worker_paths, source_input as worker_source_input
+        if relative in worker_paths:
+            raw = worker_source_input(raw, relative)
+            digest = _sha(raw)
     if digest == row['previousSha256'] and len(raw) == row['previousBytes']:
         return raw
     if digest != row['reviewedSha256'] or len(raw) != row['reviewedBytes']:

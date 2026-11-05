@@ -119,6 +119,7 @@ public class BrowserActivity extends ThemedActivity {
   void loadFingerprintState(){
     if(destroyed||fingerprintLoading||fingerprintSaving)return;
     fingerprintLoading=true;fingerprintStateReady=false;long generation=++fingerprintLoadGeneration;
+    final long workerPolicy=runtime==null?0:runtime.beginWorkerPolicy();
     invalidateFingerprintObservation();if(selected!=null)retireFingerprintBinding(selected);syncFingerprintTraffic();
     String cached=fingerprintScript;Context context=getApplicationContext();
     try{fingerprintWorker.execute(()->{
@@ -130,14 +131,22 @@ public class BrowserActivity extends ThemedActivity {
           if(destroyed||generation!=fingerprintLoadGeneration)return;
           String provider=fingerprintProviderKey();boolean changed=!sameFingerprintPolicy(fingerprintState,state)||!provider.equals(fingerprintProvider),rebuild=changed&&fingerprintState!=null;
           if(changed){if(files!=null)files.cancelActiveDownload();for(Tab tab:new ArrayList<>(tabs)){retire(tab);tab.saved=null;tab.fingerprintError="";tab.desktop=spec.desktop();}fingerprintState=state;}
-          fingerprintSpec=spec;fingerprintScript=selectedScript;fingerprintProvider=provider;fingerprintError="";fingerprintLoading=false;fingerprintStateReady=true;
+          fingerprintSpec=spec;fingerprintScript=selectedScript;fingerprintProvider=provider;fingerprintError="";fingerprintLoading=false;
+          if(runtime==null||!runtime.confirmWorkerPolicy(workerPolicy,state.identity,state.revision,spec.restrictWorkers())){
+            fingerprintStateReady=false;fingerprintError="Chromium 后台 Worker 策略未获内核确认，网页联网已暂停";syncFingerprintTraffic();message(fingerprintError);return;
+          }
+          fingerprintStateReady=true;
           if(rebuild)for(Tab tab:new ArrayList<>(tabs))createSurface(tab);syncFingerprintTraffic();showSelected();drainFingerprintFileResult();updateChrome();if(fingerprintOpenAfterLoad){fingerprintOpenAfterLoad=false;showFingerprintSettings();}
         });
       }catch(Exception failure){fingerprintMain.post(()->{if(destroyed||generation!=fingerprintLoadGeneration)return;fingerprintLoading=false;fingerprintStateReady=false;fingerprintError="Chromium 指纹配置未确认："+fingerprintProblem(failure);syncFingerprintTraffic();cancelFingerprintFileResult("指纹配置未确认，未向网页交付所选文件");message(fingerprintError);});}
     });}catch(RejectedExecutionException closed){fingerprintLoading=false;fingerprintStateReady=false;}
   }
-  JSONObject fingerprintNativeFields(JSONObject receipt){return J.obj("nativeSetup",J.obj("state","native-readback","value",receipt),
+  JSONObject fingerprintNativeFields(JSONObject receipt){
+    JSONObject workerNetwork=runtime==null?new JSONObject():runtime.workerPolicyReceipt();
+    boolean workerReadback=workerNetwork.optBoolean("confirmed")&&workerNetwork.optBoolean("nativeReadbackObserved")&&workerNetwork.optBoolean("nativeSettingMatches");
+    return J.obj("nativeSetup",J.obj("state","native-readback","value",receipt),
       "documentStart",J.obj("state",receipt.optBoolean("documentStartRegistered")?"requested":"saved","registered",receipt.optBoolean("documentStartRegistered"),"scope","document-start-frames"),
+      "workerNetwork",J.obj("state",workerReadback?"native-readback":"requested","value",workerNetwork,"workerCoverageVerified",false),
       "workers",J.obj("state","unsupported","detail","Worker、Service Worker、OffscreenCanvas、AudioWorklet、字体与 TLS 等未获完整覆盖确认"));}
   ChromiumFingerprintStore.Binding fingerprintBinding(Tab tab){return new ChromiumFingerprintStore.Binding(tab.fingerprintProviderPackage,tab.fingerprintProviderVersion,fingerprintRuntimeEpoch,tab.surfaceGeneration,tab.generation);}
   void retireFingerprintBinding(Tab tab){
@@ -224,11 +233,15 @@ public class BrowserActivity extends ThemedActivity {
   void saveFingerprint(ChromiumFingerprintStore.State expected,JSONObject desired,boolean rotateSeed){
     if(destroyed||expected!=fingerprintState||!fingerprintStateReady||fingerprintLoading||fingerprintSaving){message("指纹配置已改变或正在读取，请重新打开设置");return;}
     final JSONObject selectedSpec;try{selectedSpec=ChromiumFingerprintSpec.from(desired).json();if(rotateSeed&&!selectedSpec.toString().equals(ChromiumFingerprintSpec.from(expected.spec()).json().toString()))throw new IllegalArgumentException("请先保存配置，再单独更换稳定种子");}catch(Exception failure){message("指纹配置未保存："+fingerprintProblem(failure));return;}
-    fingerprintSaving=true;invalidateFingerprintObservation();if(files!=null)files.cancelActiveDownload();if(selected!=null)retireFingerprintBinding(selected);syncFingerprintTraffic();Context context=getApplicationContext();
+    fingerprintSaving=true;final long workerPolicy=runtime==null?0:runtime.beginWorkerPolicy();invalidateFingerprintObservation();if(files!=null)files.cancelActiveDownload();if(selected!=null)retireFingerprintBinding(selected);syncFingerprintTraffic();Context context=getApplicationContext();
     try{fingerprintWorker.execute(()->{try{
       ChromiumFingerprintStore.State actual=rotateSeed?ChromiumFingerprintStore.rotate(context,expected.identity,expected.revision):ChromiumFingerprintStore.save(context,expected.identity,expected.revision,selectedSpec);
       ChromiumFingerprintSpec spec=ChromiumFingerprintSpec.from(actual.spec());
-      fingerprintMain.post(()->{if(destroyed)return;fingerprintSaving=false;fingerprintStateReady=false;for(Tab tab:new ArrayList<>(tabs)){retire(tab);tab.saved=null;tab.fingerprintError="";tab.desktop=spec.desktop();}fingerprintState=actual;fingerprintSpec=spec;fingerprintError="";fingerprintStateReady=true;for(Tab tab:new ArrayList<>(tabs))createSurface(tab);showSelected();updateChrome();message("此环境的 Chromium 指纹配置已保存，正在按新配置重新加载全部标签页");});
+      fingerprintMain.post(()->{if(destroyed)return;fingerprintSaving=false;fingerprintStateReady=false;for(Tab tab:new ArrayList<>(tabs)){retire(tab);tab.saved=null;tab.fingerprintError="";tab.desktop=spec.desktop();}fingerprintState=actual;fingerprintSpec=spec;fingerprintError="";
+        if(runtime==null||!runtime.confirmWorkerPolicy(workerPolicy,actual.identity,actual.revision,spec.restrictWorkers())){
+          fingerprintError="Chromium 后台 Worker 策略未获内核确认，网页联网已暂停";syncFingerprintTraffic();message(fingerprintError);return;
+        }
+        fingerprintStateReady=true;for(Tab tab:new ArrayList<>(tabs))createSurface(tab);showSelected();updateChrome();message("此环境的 Chromium 指纹配置已保存，正在按新配置重新加载全部标签页");});
     }catch(Exception failure){fingerprintMain.post(()->{if(destroyed)return;fingerprintSaving=false;fingerprintStateReady=false;fingerprintError="指纹配置保存未确认："+fingerprintProblem(failure);syncFingerprintTraffic();AppAppearance.dialog(this).setTitle("指纹配置未确认").setMessage(fingerprintError+"\n将重新读取实际保存结果；不会回退为未配置的浏览器。").setPositiveButton("知道了",null).show();loadFingerprintState();});}});}catch(RejectedExecutionException closed){fingerprintSaving=false;fingerprintStateReady=false;}
   }
   void requestFingerprintDesktop(boolean desktop){
@@ -250,14 +263,41 @@ public class BrowserActivity extends ThemedActivity {
     JSONTokener inner=new JSONTokener((String)decoded);Object parsed=inner.nextValue();if(!(parsed instanceof JSONObject)||inner.nextClean()!=0)throw new JSONException("Self-test JSON differs");JSONObject value=(JSONObject)parsed;
     if(!Integer.valueOf(1).equals(value.opt("schema"))||!"document-start-frames".equals(value.optString("scope"))||!Boolean.FALSE.equals(value.opt("fingerprintProtectionVerified")))throw new JSONException("Self-test scope differs");
     JSONObject fields=value.getJSONObject("fields"),safe=new JSONObject();for(String name:new String[]{"canvas","webgl","audio","webrtc"}){JSONObject field=fields.getJSONObject(name);String status=field.getString("state");if(!Arrays.asList("page-observed","unsupported","failed","not-requested").contains(status))throw new JSONException("Self-test field state differs");safe.put(name,J.obj("state",status));}
-    return J.obj("schema",1,"scope","document-start-frames","fingerprintProtectionVerified",false,"fields",safe);
+    JSONObject observed=J.obj("schema",1,"scope","document-start-frames","fingerprintProtectionVerified",false,"fields",safe);
+    if(value.has("workerCreation")){
+      JSONObject worker=value.getJSONObject("workerCreation");
+      String mode=worker.getString("mode"),status=worker.getString("state");
+      if(!"page-frame-new-workers-only".equals(worker.optString("scope"))||!Arrays.asList("allow","restrict").contains(mode)
+          ||!Arrays.asList("page-observed","requested","unsupported","failed","not-requested").contains(status)
+          ||!Boolean.FALSE.equals(worker.opt("existingExecutionControlled")))throw new JSONException("Worker observation scope differs");
+      JSONObject current=J.obj("scope","page-frame-new-workers-only","mode",mode,"state",status,"existingExecutionControlled",false,"workerCoverageVerified",false);
+      for(String name:new String[]{"dedicatedAvailable","sharedAvailable","dedicatedCreationDenied","sharedCreationDenied","serviceRegistrationAvailable","serviceRegistrationGuardInstalled","serviceRegistrationDenied"}){
+        Object flag=worker.get(name);if(!(flag instanceof Boolean))throw new JSONException("Worker observation flag differs");current.put(name,flag);
+      }
+      boolean dedicated=worker.getBoolean("dedicatedAvailable"),shared=worker.getBoolean("sharedAvailable"),service=worker.getBoolean("serviceRegistrationAvailable");
+      boolean dedicatedDenied=worker.getBoolean("dedicatedCreationDenied"),sharedDenied=worker.getBoolean("sharedCreationDenied"),guard=worker.getBoolean("serviceRegistrationGuardInstalled"),serviceDenied=worker.getBoolean("serviceRegistrationDenied");
+      if(dedicatedDenied&&!dedicated||sharedDenied&&!shared||guard&&!service||serviceDenied&&(!service||!guard))throw new JSONException("Worker observation availability differs");
+      if("allow".equals(mode)){
+        if(!"not-requested".equals(status)||dedicatedDenied||sharedDenied||guard||serviceDenied)throw new JSONException("Unrestricted Worker observation differs");
+      }else{
+        if("not-requested".equals(status)||"unsupported".equals(status)&&(dedicated||shared||service))throw new JSONException("Restricted Worker observation differs");
+        if("page-observed".equals(status)&&(!(dedicated||shared||service)||dedicated&&!dedicatedDenied||shared&&!sharedDenied||service&&(!guard||!serviceDenied)))throw new JSONException("Worker restriction has not been observed");
+        if("requested".equals(status)&&(!service||!guard||serviceDenied||dedicated&&!dedicatedDenied||shared&&!sharedDenied))throw new JSONException("Worker observation is not waiting on a registration promise");
+      }
+      observed.put("workerCreation",current);
+    }
+    return observed;
   }
   void finishFingerprintObservation(Tab tab,WebView view,ChromiumFingerprintStore.State state,ChromiumFingerprintStore.Binding binding,String url,long operation,JSONObject result,String error){
     if(operation!=fingerprintObservationGeneration||!fingerprintCurrent(tab,view,state,binding)||tab.loading||!Objects.equals(url,view.getUrl()))return;
     invalidateFingerprintObservation();long completedGeneration=fingerprintObservationGeneration;boolean failed=error!=null;
-    if(result!=null){JSONObject observed=result.optJSONObject("fields");for(String name:new String[]{"canvas","webgl","audio","webrtc"})if(observed.optJSONObject(name).optString("state").equals("failed"))failed=true;}
-    JSONObject fields=fingerprintNativeFields(tab.fingerprint.receipt());try{fields.put("pageSelfTest",J.obj("state",failed?"failed":"page-observed","value",result==null?J.obj("error",error):result));}catch(JSONException impossible){return;}
-    final String encoded=fields.toString();final boolean pause=failed&&fingerprintSpec.protectedMode();final String failureReason=error;
+    if(result!=null){JSONObject observed=result.optJSONObject("fields");for(String name:new String[]{"canvas","webgl","audio","webrtc"})if(observed.optJSONObject(name).optString("state").equals("failed"))failed=true;
+      JSONObject worker=result.optJSONObject("workerCreation");if(fingerprintSpec.restrictWorkers()&&(worker==null||!"restrict".equals(worker.optString("mode"))||"failed".equals(worker.optString("state"))))failed=true;
+    }
+    JSONObject fields=fingerprintNativeFields(tab.fingerprint.receipt());try{fields.put("pageSelfTest",J.obj("state",failed?"failed":"page-observed","value",result==null?J.obj("error",error):result));
+      JSONObject worker=result==null?null:result.optJSONObject("workerCreation");if(worker!=null)fields.put("workerCreation",J.obj("state","not-requested".equals(worker.optString("state"))?"saved":worker.optString("state"),"value",worker));
+    }catch(JSONException impossible){return;}
+    final String encoded=fields.toString();final boolean pause=failed&&(fingerprintSpec.protectedMode()||fingerprintSpec.restrictWorkers());final String failureReason=error;
     Context context=getApplicationContext();try{fingerprintWorker.execute(()->{try{JSONObject receipt=ChromiumFingerprintStore.record(context,state.identity,state.revision,binding,new JSONObject(encoded));fingerprintMain.post(()->{if(completedGeneration!=fingerprintObservationGeneration||!fingerprintCurrent(tab,view,state,binding)||!Objects.equals(url,view.getUrl()))return;fingerprintReceipt=receipt;if(pause){tab.fingerprintReady=false;tab.fingerprintError="当前网页的指纹自测失败，已暂停此页联网。刷新可重新应用配置。";view.stopLoading();files.cancelFor(view);files.cancelActiveDownload();syncFingerprintTraffic();}message(pause?tab.fingerprintError:failureReason==null?"当前网页自测已记录；原生确认与页内观测分开显示，不代表完整指纹保护":"网页自测失败："+failureReason);});}catch(Exception failure){fingerprintMain.post(()->{if(completedGeneration==fingerprintObservationGeneration&&fingerprintCurrent(tab,view,state,binding))message("自测结果未保存："+fingerprintProblem(failure));});}});}catch(RejectedExecutionException ignored){}
   }
   void routeChanged(boolean ready,String reason){

@@ -31,7 +31,7 @@ def main():
     source=ROOT/'app/src/main/java/local/pocketchat'
     whole=['LocalDraftPolicy.java','PageMemory.java','DraftArchive.java','BrowserSessionStore.java','ChromiumRouteLease.java','BrowserRuntimePolicy.java','BrowserAddressPolicy.java','GeckoNavigationPolicy.java']
     before=subprocess.check_output(['git','rev-parse',args.before_ref+'^{commit}'],cwd=ROOT,text=True).strip() if args.before_ref else None
-    partial={'AppPrefs.java':['static boolean enabled(','static void apply('], 'GeckoWebView.java':['void restoreCheckpoint(','static final class ProtectionRestore','boolean generalRouteReady(','boolean retainGeneralRoute(','void forgetGeneralRoute(','void releaseGeneralRoutes(','void routeAdmissionChanged(','void queueGeneralRouteRetry(','void retryGeneralRoutes(']}
+    partial={'AppPrefs.java':['static boolean enabled(','static void apply('], 'GeckoWebView.java':['void restoreCheckpoint(','static final class ProtectionRestore','boolean generalRouteReady(','boolean retainGeneralRoute(','void forgetGeneralRoute(','void releaseGeneralRoutes(','void routeAdmissionChanged(','void queueGeneralRouteRetry(','void retryGeneralRoutes(','Object claimTimeZoneIntent(','void clearTimeZoneIntent(']}
     if not before:partial['WebReplyObserver.java']=['static boolean webJob(','boolean archiveNavigation(']
     inputs=[source/name for name in whole+list(partial)]+sorted(HERE.rglob('*.java'))+[pathlib.Path(__file__).resolve()]
     hashes={str(p.relative_to(ROOT)):hashlib.sha256(p.read_bytes()).hexdigest() for p in inputs}
@@ -44,13 +44,17 @@ def main():
         prefs=(source/'AppPrefs.java').read_text();keys=prefs[prefs.index('static final String[] KEYS='):prefs.index(';',prefs.index('static final String[] KEYS='))+1]
         template=template.replace('/* APPPREFS */',keys+'\n'+'\n'.join(member(prefs,n) for n in partial['AppPrefs.java']))
         gecko=(source/'GeckoWebView.java').read_text()
+        closure={}
+        for needle in partial['GeckoWebView.java']:
+            if gecko.count(needle)!=1:raise ValueError('Review one current Gecko member: '+needle)
+            closure[needle]=hashlib.sha256(member(gecko,needle).encode()).hexdigest()
         template=template.replace('/* RESTORE */','\n'.join(member(gecko,n) for n in partial['GeckoWebView.java']))
-        route_fields=['final Set<GeckoSession> generalSessions=','final Map<GeckoSession,ChromiumRouteLease.Handle> generalRoutes=','final Map<GeckoSession,String> deferredGeneralLoads=','final Runnable routeLeaseChanged=','final Map<GeckoSession,String> locations=','final Set<GeckoSession> crashed=']
+        route_fields=['final Set<GeckoSession> generalSessions=','final Map<GeckoSession,ChromiumRouteLease.Handle> generalRoutes=','final Map<GeckoSession,String> deferredGeneralLoads=','final Runnable routeLeaseChanged=','final Map<GeckoSession,String> locations=','final Set<GeckoSession> crashed=','final Map<GeckoSession,String> timeZoneLoads=','final Map<GeckoSession,Object> timeZoneIntents=']
         field_lines=[]
         for needle in route_fields:
             lines=[line.strip() for line in gecko.splitlines() if line.strip().startswith(needle)]
             if len(lines)!=1:raise ValueError('Review current Gecko route field: '+needle)
-            field_lines.append(lines[0])
+            field_lines.append(lines[0]);closure[needle]=hashlib.sha256(lines[0].encode()).hexdigest()
         template=template.replace('/* ROUTE_FIELDS */','\n'.join(field_lines))
         if before:
             # Keep the original four-assertion historical workload independent
@@ -66,6 +70,12 @@ def main():
         result=subprocess.run([binary('java'),'-Ddraft.before='+str(bool(before)).lower(),'-cp',str(temp)+os.pathsep+str(args.json_jar.resolve()),'local.pocketchat.LocalDraftPolicyHost'],capture_output=True,text=True)
         if not result.stdout.strip():raise RuntimeError(result.stderr)
         report=json.loads(result.stdout)
+        boundary_result=subprocess.run([binary('java'),'-cp',str(temp)+os.pathsep+str(args.json_jar.resolve()),'local.pocketchat.SystemReadyTimeZoneBoundary'],capture_output=True,text=True)
+        if boundary_result.returncode:raise RuntimeError('Time-zone adapter scope control failed: '+boundary_result.stderr)
+        report['timeZoneFacadeControls']=json.loads(boundary_result.stdout)
+        if not before:
+            calls=report['syntheticTimeZoneBoundary']
+            if calls['readinessCalls']<=0 or calls['preparationCalls']!=0 or calls['actualNativeTimeZoneExecution'] is not False:raise AssertionError('Legacy restore must use only counted default-system-ready facade')
         controls=[]
         if not before and result.returncode==0 and report.get('status')=='passed':
             mutations=[
@@ -86,7 +96,7 @@ def main():
                 controls.append(dict(case=name,expectedAssertion=expected,mutantRejected=True,failedAssertions=failed,generatedSourceSha256=hashlib.sha256(template.replace(old,new,1).encode()).hexdigest()))
             (package/'LocalDraftPolicyHost.java').write_text(template)
         unchanged=all(hashlib.sha256((ROOT/p).read_bytes()).hexdigest()==h for p,h in hashes.items())
-        report.update(sourceCommit=commit,beforeRef=before,selectedProductionClasses={name:{'sourceCommit':before if before and name in ('PageMemory.java','DraftArchive.java') else commit,'sha256':hashlib.sha256(raw).hexdigest(),'workingTree':not (before and name in ('PageMemory.java','DraftArchive.java'))} for name,raw in selected.items()},sourceFiles=hashes,jsonJarSha256=hashlib.sha256(args.json_jar.read_bytes()).hexdigest(),executionInputsUnchanged=unchanged,actualAndroidExecution=False,productionClasses=whole,productionMethods=partial,productionRouteFields=route_fields,negativeControls=controls,generatedSourceSha256=hashlib.sha256(template.encode()).hexdigest(),scope='Complete current production policy/PageMemory/archive/session-store, process route lease and navigation-policy classes plus verbatim AppPrefs, Gecko restore and route retention/retry helper methods and fields. Controlled Android/SQLite/SDK, protection/identity/owner/handler boundaries and real JVM workers/files. Constructor listener registration and teardown are explicit lifecycle adapters; only SDK restoreState/loadUri counters model native dispatch. Four compiled route counterfeits must fail their exact behavior. No actual Android SQLite, AtomicFile durability, Gecko native restore, network or live webpage claim.')
+        report.update(sourceCommit=commit,beforeRef=before,selectedProductionClasses={name:{'sourceCommit':before if before and name in ('PageMemory.java','DraftArchive.java') else commit,'sha256':hashlib.sha256(raw).hexdigest(),'workingTree':not (before and name in ('PageMemory.java','DraftArchive.java'))} for name,raw in selected.items()},sourceFiles=hashes,jsonJarSha256=hashlib.sha256(args.json_jar.read_bytes()).hexdigest(),executionInputsUnchanged=unchanged,actualAndroidExecution=False,actualNativeTimeZoneExecution=False,actualDateOrEngineExecution=False,syntheticTimeZoneFacade='default-system-ready; custom or unready scope throws',productionClasses=whole,productionMethods=partial,productionRouteFields=route_fields,selectedGeckoClosureSha256=closure,negativeControls=controls,generatedSourceSha256=hashlib.sha256(template.encode()).hexdigest(),scope='Complete current production policy/PageMemory/archive/session-store, process route lease and navigation-policy classes plus verbatim AppPrefs, Gecko restore/intent ownership and route retention/retry helper methods/fields. Controlled Android/SQLite/SDK, protection/identity/owner/handler boundaries and real JVM workers/files. The time-zone collaborator is a counted synthetic default-system-ready boundary; custom or unready scope throws. It does not execute GeckoTimeZoneController, SDK time-zone APIs, Date or engine behavior. Constructor listener registration and teardown are explicit lifecycle adapters; only SDK restoreState/loadUri counters model native dispatch. Four compiled route counterfeits must fail their exact behavior. No actual Android SQLite, AtomicFile durability, Gecko native restore, network or live webpage claim.')
         if not unchanged:report['status']='invalid-source-changed'
         if result.stderr:report['stderr']=result.stderr
         raw=json.dumps(report,ensure_ascii=False,indent=2)+'\n'

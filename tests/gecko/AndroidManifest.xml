@@ -1,5 +1,11 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
   <application>
+    <activity android:name="local.pocketchat.WorkerPolicyIntegrationActivity" android:exported="true" android:launchMode="singleTask" android:taskAffinity="local.pocketchat.test.worker_policy_probe" android:configChanges="orientation|screenSize|keyboardHidden|uiMode" />
+    <provider android:name="local.pocketchat.WorkerPolicyEvidenceProvider" android:authorities="local.pocketchat.test.worker-policy-evidence" android:exported="true" />
+    <activity android:name="local.pocketchat.GeckoEnvironmentPolicyIntegrationActivity" android:exported="true" android:launchMode="singleTask" android:taskAffinity="local.pocketchat.test.gecko_environment_policy" android:configChanges="orientation|screenSize|keyboardHidden|uiMode" />
+    <provider android:name="local.pocketchat.GeckoEnvironmentPolicyProvider" android:authorities="local.pocketchat.test.gecko-environment-policy-evidence" android:exported="true" />
+    <activity android:name="local.pocketchat.NativeTimezoneProbeActivity" android:exported="true" android:process=":native_timezone_probe" />
+    <provider android:name="local.pocketchat.NativeTimezoneProbeProvider" android:authorities="local.pocketchat.test.native-timezone-evidence" android:exported="true" />
     <activity android:name="local.pocketchat.BrowserFingerprintIntegrationActivity" android:exported="true" android:launchMode="singleTask" android:taskAffinity="local.pocketchat.test.fingerprint_probe" android:configChanges="orientation|screenSize|keyboardHidden|uiMode" />
     <activity android:name="local.pocketchat.BrowserFingerprintIntegrationActivity$Gecko" android:exported="true" android:launchMode="singleTask" android:taskAffinity="local.pocketchat.test.gecko_navigation_probe" />
     <provider android:name="local.pocketchat.BrowserFingerprintEvidenceProvider" android:authorities="local.pocketchat.test.browser-fingerprint-evidence" android:exported="true" />

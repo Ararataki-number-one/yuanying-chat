@@ -2,6 +2,13 @@ This host executes the selected current production recovery, capture, reload and
 status methods with controlled Android, UI, network and SDK-session boundaries.
 It does not execute Android, Gecko, real network recovery or a full app.
 
+The current content-exit consumer calls a counted, synthetic default-system
+`retireTimeZone` collaborator boundary. Custom-zone execution throws. The
+counter proves that the actual selected consumer reaches that boundary; it does
+not execute GeckoTimeZoneController, native time-zone settings, Date, Intl or
+engine behavior. Original recovery assertions and compiled counterfeits remain
+unchanged.
+
 The URL dependency runs the actual `ChatSession.chatAutomationAllowed` and
 `MainActivity.chatUrl` methods with a `java.net.URI` implementation of the
 existing Android Uri boundary. Complete production `GeckoNavigationPolicy` and
@@ -15,7 +22,7 @@ Checks require that a stopped session loses its own desired/deferred state and
 real lease, while another page and native download retain their independent
 leases. This is cleanup coverage, not Gecko route-admission or provider proof.
 
-All original 105 checks and 15 content-lifecycle checks remain. The 19 additional
+All original 105 checks, including 15 content-lifecycle checks, remain. The 19 additional
 URL/cleanup checks must also reject three compiled counterfeits: generic-site
 ChatGPT synchronization, omitted desired-session retirement and omitted real
 lease close. The existing independent reload-request host still runs afterward.

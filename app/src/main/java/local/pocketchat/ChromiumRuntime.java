@@ -13,6 +13,7 @@ import java.io.*;
 import java.net.*;
 import java.net.Proxy;
 import java.util.concurrent.*;
+import org.json.*;
 
 /** One HTTP(S) request route for system WebViews in an environment process.
  * ProxyController is not a WebRTC/ICE/STUN/UDP control or a device VPN; public
@@ -39,6 +40,12 @@ final class ChromiumRuntime implements AutoCloseable {
   final ContentObserver catalogListener=new ContentObserver(main){public void onChange(boolean self){checkIdentity();}};
   volatile Route route;volatile boolean closed,observing;volatile String message="浏览器网络尚未就绪";
   boolean refreshQueued,protectionReady,surfaceDeferred;int leaseChanges;String observedNetworkKey="";volatile EnvironmentSpec.Identity identity;
+  volatile WorkerPolicy workerPolicy;volatile long workerPolicyGeneration;
+  volatile Boolean workerNativeBlocked;volatile boolean workerNativeObserved,workerNativeMatches;volatile String workerNativeProblem="";
+  static final class WorkerPolicy {
+    final long token,revision;final EnvironmentSpec.Identity identity;final boolean restrict;
+    WorkerPolicy(long token,EnvironmentSpec.Identity identity,long revision,boolean restrict){this.token=token;this.identity=identity;this.revision=revision;this.restrict=restrict;}
+  }
   ChromiumRuntime(Activity activity,Listener listener){
     this.activity=activity;this.listener=listener;context=Profiles.context(activity,Profiles.processSlot());
     prefs=context.getSharedPreferences("chat",0);connectivity=(ConnectivityManager)context.getSystemService(Context.CONNECTIVITY_SERVICE);network=NativeNetwork.get(context);
@@ -49,8 +56,9 @@ final class ChromiumRuntime implements AutoCloseable {
       try{if(connectivity==null)throw new IllegalStateException();observedNetworkKey=defaultNetworkKey();connectivity.registerDefaultNetworkCallback(networkListener);}catch(RuntimeException unavailable){block("无法监测当前网络，浏览器已暂停");return;}
       context.getContentResolver().registerContentObserver(DownloadLibraryChanges.uri(context),false,catalogListener);
     }
-    try{ServiceWorkerController workers=ServiceWorkerController.getInstance();workers.getServiceWorkerWebSettings().setBlockNetworkLoads(true);workers.getServiceWorkerWebSettings().setAllowContentAccess(false);workers.getServiceWorkerWebSettings().setAllowFileAccess(false);
-      workers.setServiceWorkerClient(new ServiceWorkerClient(){@Override public WebResourceResponse shouldInterceptRequest(WebResourceRequest request){ChromiumRuntime active=owner;return active!=null&&active.allowed()&&publicWeb(request.getUrl())?null:BrowserNetworkGuard.denied();}});
+    try{ServiceWorkerController workers=ServiceWorkerController.getInstance();workers.getServiceWorkerWebSettings().setAllowContentAccess(false);workers.getServiceWorkerWebSettings().setAllowFileAccess(false);
+      if(workers.getServiceWorkerWebSettings().getAllowContentAccess()||workers.getServiceWorkerWebSettings().getAllowFileAccess()||!updateWorkerNetwork())throw new IllegalStateException("后台请求设置未回读确认");
+      workers.setServiceWorkerClient(new ServiceWorkerClient(){@Override public WebResourceResponse shouldInterceptRequest(WebResourceRequest request){ChromiumRuntime active=owner;return active!=null&&active.workerRequestsAllowed()&&publicWeb(request.getUrl())?null:BrowserNetworkGuard.denied();}});
     }catch(RuntimeException unavailable){block("当前 Chromium 无法建立后台请求保护，请更新系统 WebView");return;}
     protectionReady=true;refresh();
   });}
@@ -65,6 +73,7 @@ final class ChromiumRuntime implements AutoCloseable {
   void prepare(ChromiumRoutePolicy.Ticket ticket){
     try{
       EnvironmentSpec.Identity expected=ProfileCatalog.get(context).identity(Profiles.slot(context));
+      WorkerPolicy requested=workerPolicy;if(requested!=null&&!requested.identity.equals(expected))throw new IOException("Worker 设置的环境身份已变化，请重新打开浏览器");
       if(identity!=null&&!identity.equals(expected))throw new IOException("环境身份已变化，请重新打开浏览器");identity=expected;
       if(!policy.pending(ticket))return;
       String mode=prefs.getString("networkMode","external"),proxy=prefs.getString("proxy","").trim();
@@ -104,7 +113,8 @@ final class ChromiumRuntime implements AutoCloseable {
         try{
           if(!selected.evidenceCurrent()||!policy.admit(selected.ticket,true)){block("线路已变化，请重新连接");return;}
           identity=selected.identity;route=selected;
-          ServiceWorkerController.getInstance().getServiceWorkerWebSettings().setBlockNetworkLoads(false);
+          WorkerPolicy workers=workerPolicy;if(workers!=null&&!workers.identity.equals(selected.identity))throw new IllegalStateException("Worker 设置的环境身份已变化");
+          if(!updateWorkerNetwork())throw new IllegalStateException("后台请求设置未回读确认");
           message=selected.receipt!=null?"Chromium · 已核验应用内线路":selected.proxyAddress.isEmpty()?selected.vpn!=null?"Chromium · 已确认 VPN 路由":"Chromium · 系统网络":"Chromium · 显式代理";
           listener.changed(true,message);
         }catch(RuntimeException unavailable){block("浏览器后台请求保护暂时不可用，联网已暂停");}
@@ -141,7 +151,31 @@ final class ChromiumRuntime implements AutoCloseable {
   void leaseChanged(){int changes=ChromiumRouteLease.snapshot().changes;onMain(()->{boolean finished=changes==0&&(leaseChanges>0||surfaceDeferred);leaseChanges=changes;if(finished&&!closed&&owner==this){surfaceDeferred=false;if(allowed())listener.changed(true,message);else refresh();}});}
   void checkIdentity(){try{reader.execute(()->{try{EnvironmentSpec.Identity expected=identity;if(expected!=null&&!expected.equals(ProfileCatalog.get(context).identity(Profiles.slot(context))))onMain(()->close());}catch(Exception removed){onMain(()->close());}});}catch(RejectedExecutionException ignored){}}
   void fail(ChromiumRoutePolicy.Ticket ticket,Exception error){main.post(()->{if(policy.pending(ticket))block(error.getMessage()==null?"浏览器线路尚未就绪":error.getMessage());});}
-  void block(String reason){policy.block();route=null;message=reason==null?"浏览器线路尚未就绪":reason;try{ServiceWorkerController.getInstance().getServiceWorkerWebSettings().setBlockNetworkLoads(true);}catch(RuntimeException ignored){}if(!closed)listener.changed(false,message);}
+  void block(String reason){policy.block();route=null;message=reason==null?"浏览器线路尚未就绪":reason;updateWorkerNetwork();if(!closed)listener.changed(false,message);}
+  /** Native policy is blocked before background storage/confirmation is scheduled. */
+  long beginWorkerPolicy(){
+    if(Looper.myLooper()!=Looper.getMainLooper())throw new IllegalStateException("Worker 设置必须在界面线程确认");
+    if(closed)return -1;workerPolicy=null;
+    if(workerPolicyGeneration==Long.MAX_VALUE){block("Worker 设置版本已达到上限，请重新打开浏览器");return -1;}
+    long token=++workerPolicyGeneration;
+    if(owner==this&&!updateWorkerNetwork())block("后台 Worker 联网设置无法确认，浏览器已暂停");return token;
+  }
+  /** A catalog-owned state may finish before route preparation; it stays blocked until both match. */
+  boolean confirmWorkerPolicy(long token,EnvironmentSpec.Identity expected,long revision,boolean restrict){
+    if(Looper.myLooper()!=Looper.getMainLooper())throw new IllegalStateException("Worker 设置必须在界面线程确认");
+    if(closed||owner!=this||token<1||token!=workerPolicyGeneration||expected==null||revision<1||expected.slot!=Profiles.slot(context)||(identity!=null&&!identity.equals(expected)))return false;
+    WorkerPolicy before=workerPolicy;if(before!=null&&(before.token!=token||before.revision!=revision||!before.identity.equals(expected)||before.restrict!=restrict))return false;
+    workerPolicy=new WorkerPolicy(token,expected,revision,restrict);
+    if(updateWorkerNetwork())return true;workerPolicy=null;block("后台 Worker 联网设置无法确认，浏览器已暂停");return false;
+  }
+  boolean workerRequestsAllowed(){WorkerPolicy requested=workerPolicy;return requested!=null&&requested.token==workerPolicyGeneration&&!requested.restrict&&identity!=null&&requested.identity.equals(identity)&&allowed();}
+  boolean updateWorkerNetwork(){
+    if(owner!=this||closed)return false;
+    boolean blocked=!workerRequestsAllowed();workerNativeMatches=false;workerNativeObserved=false;workerNativeBlocked=null;
+    try{ServiceWorkerWebSettings settings=ServiceWorkerController.getInstance().getServiceWorkerWebSettings();settings.setBlockNetworkLoads(blocked);boolean actual=settings.getBlockNetworkLoads();workerNativeBlocked=actual;workerNativeObserved=true;workerNativeMatches=actual==blocked;workerNativeProblem=workerNativeMatches?"":"原生后台联网开关回读不一致";return workerNativeMatches;}
+    catch(RuntimeException unavailable){workerNativeProblem="原生后台联网设置不可用";return false;}
+  }
+  JSONObject workerPolicyReceipt(){boolean admitted=allowed(),current=!closed&&owner==this;WorkerPolicy requested=workerPolicy;Boolean actual=current?workerNativeBlocked:null;boolean observed=current&&workerNativeObserved,matches=current&&workerNativeMatches;return J.obj("scope","service-worker-network-only","mode",requested==null?"unconfirmed":requested.restrict?"restrict":"allow","desiredRevision",requested==null?0:requested.revision,"confirmed",current&&requested!=null&&requested.token==workerPolicyGeneration,"identityBound",current&&requested!=null&&identity!=null&&requested.identity.equals(identity),"nativeReadbackObserved",observed,"nativeBlockNetworkLoads",actual==null?JSONObject.NULL:actual,"nativeSettingMatches",matches,"routeAdmitted",admitted,"problem",workerNativeProblem,"existingOrCachedExecutionControlled",false,"workerCoverageVerified",false);}
   static void stopProcess(){ChromiumRuntime active=owner;if(active!=null)active.close();}
   @Override public void close(){onMain(()->{
     if(closed)return;block("浏览器已停止联网");closed=true;policy.close();if(owner==this)owner=null;

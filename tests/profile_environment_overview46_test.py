@@ -41,6 +41,63 @@ class Overview46Test(unittest.TestCase):
   report.update(sourceSha256=before,scope='Actual production overview state and auxiliary controller plus extracted real display open/close methods on synthetic Android/Gecko boundaries; no device/network acceptance.')
   output=os.environ.get('OVERVIEW46_REPORT')
   if output:Path(output).write_text(json.dumps(report,indent=2)+'\n')
+ def test_declared_default_system_boundary_defers_rejects_and_retires_exact_auxiliary(self):
+  java=Path(os.environ.get('PROFILE_JAVA') or shutil.which('java') or '');javac=java.with_name('javac')
+  self.assertTrue(java.is_file() and javac.is_file(),'JDK compiler required')
+  browser=(PRODUCTION/'GeckoWebView.java').read_text()
+  actual='\n'.join(member(browser,signature) for signature in ['  boolean hasExitIpPage()', '  boolean readingOwnerVisible()', '  String openExitIpPage(', '  boolean closeExitIpPage()'])
+  cases=[('current',actual),('bypass unavailable result',actual.replace('if(ok){page.aux.loadUri','if(true){page.aux.loadUri',1)),
+         ('omit exact auxiliary retirement',actual.replace('    retireTimeZone(page.aux);','',1)),
+         ('accept stale late preparation',actual.replace('if(exitIpPage!=page||!page.fresh())return;','if(false)return;',1))]
+  results=[]
+  for label,methods in cases:
+   with self.subTest(label=label),tempfile.TemporaryDirectory(prefix='overview46-timezone-boundary-') as directory:
+    if label!='current':self.assertNotEqual(methods,actual,'Required source mutation did not apply')
+    base=Path(directory)
+    for relative,text in SDK.items():
+     p=base/relative;p.parent.mkdir(parents=True,exist_ok=True);p.write_text(text)
+    for name in ['EnvironmentOverviewState.java','EnvironmentOverviewInfo.java','ExitIpPageSession.java']:(base/name).write_bytes((PRODUCTION/name).read_bytes())
+    for name in ['Overview46Host.java','Stubs.java']:(base/name).write_bytes((HOST/name).read_bytes())
+    (base/'GeckoWebView.java').write_text(WEB.replace('/*ACTUAL*/',methods))
+    (base/'Overview46TimeZoneBoundaryHost.java').write_text(TIMEZONE_BOUNDARY_HOST)
+    result=subprocess.run([str(javac),'-encoding','UTF-8','-d',str(base),*map(str,base.rglob('*.java'))],capture_output=True,text=True,timeout=45)
+    self.assertEqual(result.returncode,0,result.stdout+result.stderr)
+    result=subprocess.run([str(java),'-cp',str(base),'local.pocketchat.Overview46TimeZoneBoundaryHost'],capture_output=True,text=True,timeout=20)
+    if label=='current':
+     self.assertEqual(result.returncode,0,result.stdout+result.stderr);report=json.loads(result.stdout)
+     self.assertGreaterEqual(report['passed'],20);self.assertFalse(report['actualGeckoExecution'])
+     results.append(report)
+    else:self.assertNotEqual(result.returncode,0,'Unsafe source mutant must fail: '+label)
+  self.assertEqual(actual,'\n'.join(member((PRODUCTION/'GeckoWebView.java').read_text(),signature) for signature in ['  boolean hasExitIpPage()', '  boolean readingOwnerVisible()', '  String openExitIpPage(', '  boolean closeExitIpPage()']))
+  output=os.environ.get('OVERVIEW46_TIMEZONE_BOUNDARY_REPORT')
+  if output:Path(output).write_text(json.dumps(dict(status='passed',current=results[0],rejectedSourceMutants=3,actualAndroidExecution=False,actualGeckoExecution=False,scope='Declared system/unavailable/pending JVM boundary only; actual extracted open/close members, not the native timezone controller or SDK.'),indent=2)+'\n')
+TIMEZONE_BOUNDARY_HOST='''package local.pocketchat;
+import org.mozilla.geckoview.*;
+final class Overview46TimeZoneBoundaryHost {
+ static int passed;static void check(boolean value,String message){passed++;if(!value)throw new AssertionError(message);}
+ public static void main(String[] args){
+  GeckoWebView web=Overview46Host.fresh();GeckoSession original=web.current;Overview46Host.Listener listener=new Overview46Host.Listener();
+  check(web.openExitIpPage(listener).isEmpty(),"default system opens");GeckoSession aux=web.exitIpPage.aux;
+  check(web.testTimeZonePrepared==aux&&aux.loads==1,"only prepared auxiliary loads");check(original.loads==0,"original never loads");
+  web.closeExitIpPage();check(web.testTimeZoneRetired==aux,"exact auxiliary retired");check(web.surface.session==original,"original surface restored");
+  web=Overview46Host.fresh();original=web.current;web.testTimeZoneMode="unavailable";listener=new Overview46Host.Listener();
+  web.openExitIpPage(listener);aux=web.testTimeZonePrepared;
+  check(aux!=null&&aux.loads==0,"unavailable native boundary never loads");check(!web.hasExitIpPage()&&!aux.isOpen(),"unavailable closes auxiliary");
+  check(web.testTimeZoneRetired==aux&&listener.closes==1,"unavailable retires same owner");check(web.current==original&&web.surface.session==original&&original.loads==0,"unavailable preserves original");
+  web=Overview46Host.fresh();web.testTimeZoneDeferred=true;web.openExitIpPage(new Overview46Host.Listener());aux=web.exitIpPage.aux;
+  check(aux.loads==0&&web.testTimeZonePending!=null,"pending does not load early");web.completeTestTimeZone(true);
+  check(aux.loads==1,"admitted pending owner loads exactly once");web.closeExitIpPage();check(web.testTimeZoneRetired==aux,"pending owner retired");
+  web=Overview46Host.fresh();web.testTimeZoneDeferred=true;original=web.current;web.openExitIpPage(new Overview46Host.Listener());aux=web.exitIpPage.aux;
+  web.completeTestTimeZone(false);check(aux.loads==0&&!web.hasExitIpPage(),"pending denial closes without load");check(web.testTimeZoneRetired==aux&&web.surface.session==original,"pending denial retires and restores");
+  web=Overview46Host.fresh();web.testTimeZoneDeferred=true;original=web.current;web.openExitIpPage(new Overview46Host.Listener());aux=web.exitIpPage.aux;
+  web.closeExitIpPage();check(web.testTimeZoneRetired==aux,"close retires exact pending owner");web.completeTestTimeZone(true);
+  check(aux.loads==0&&!aux.isOpen(),"late callback cannot load retired auxiliary");check(web.current==original&&web.surface.session==original&&original.loads==0,"late callback preserves original");
+  web=Overview46Host.fresh();web.testTimeZoneDeferred=true;web.openExitIpPage(new Overview46Host.Listener());aux=web.exitIpPage.aux;
+  ProfileCatalog.row.put("generation",4);web.completeTestTimeZone(true);check(aux.loads==0,"stale environment cannot load");
+  web.closeExitIpPage();check(web.testTimeZoneRetired==aux,"stale owner cleanup remains exact");check(web.testTimeZonePending==null,"controlled completion consumed once");
+  System.out.println("{\\"passed\\":"+passed+",\\"actualGeckoExecution\\":false,\\"actualAndroidExecution\\":false,\\"nativeTimeZoneReadbackModeled\\":false}");
+ }
+}'''
 WEB='''package local.pocketchat;
 import java.util.*;import org.mozilla.geckoview.*;
 class GeckoWebView {
@@ -48,6 +105,11 @@ class GeckoWebView {
  interface ExitIpPageListener{void changed(String m);void closed();}
  GeckoWebView(ChatSession s){owner=s;s.web=this;current=new GeckoSession(new GeckoSessionSettings.Builder().build());current.open(runtime);current.setActive(true);surface.setSession(current);ports.put(current,new Object());}
  boolean hasVisibleDocument(){return true;}String getUrl(){return "https://chatgpt.com/c/original";}GeckoSettings getSettings(){return metadata;}boolean protectionAllowsNetwork(){return nativeProtection.confirmed;}void cancelZoom(){}void requestLayout(){}int getWidth(){return 1080;}int getHeight(){return 1920;}static class MeasureSpec{static int EXACTLY=1;static int makeMeasureSpec(int size,int mode){return size;}}
+ // Declared JVM boundary only: no native timezone apply/readback is modeled.
+ String testTimeZoneMode="system";boolean testTimeZoneDeferred;GeckoSession testTimeZonePrepared,testTimeZoneRetired;java.util.function.Consumer<Boolean> testTimeZonePending;
+ void prepareTimeZone(GeckoSession session,java.util.function.Consumer<Boolean> done){testTimeZonePrepared=session;if(testTimeZoneDeferred)testTimeZonePending=done;else done.accept("system".equals(testTimeZoneMode));}
+ void retireTimeZone(GeckoSession session){testTimeZoneRetired=session;}
+ void completeTestTimeZone(boolean ready){java.util.function.Consumer<Boolean> done=testTimeZonePending;testTimeZonePending=null;if(done==null)throw new AssertionError("No pending test boundary");done.accept(ready);}
  /*ACTUAL*/
  static class Surface{GeckoSession session;float scaleX=1,scaleY=1;GeckoSession getSession(){return session;}void setSession(GeckoSession s){session=s;}void releaseSession(){session=null;}void setScaleX(float f){scaleX=f;}void setScaleY(float f){scaleY=f;}void setPivotX(float f){}void setPivotY(float f){}int measuredWidth,measuredHeight;void measure(int w,int h){measuredWidth=w;measuredHeight=h;}void layout(int l,int t,int r,int b){}int getMeasuredWidth(){return measuredWidth;}int getMeasuredHeight(){return measuredHeight;}}
 }'''

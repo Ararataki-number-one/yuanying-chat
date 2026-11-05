@@ -30,6 +30,9 @@ class DualBrowserSourceCompatibility(unittest.TestCase):
             with self.subTest(path=relative):
                 previous = subprocess.check_output(['git', 'show', dual.BASE_COMMIT + ':' + relative], cwd=ROOT)
                 current = (ROOT / relative).read_bytes()
+                from worker_timezone_source_compatibility import PATHS as worker_paths, source_input as worker_source_input
+                if relative in worker_paths:
+                    current = worker_source_input(current, relative)
                 self.assertEqual((SHA(previous), len(previous)), (row['previousSha256'], row['previousBytes']))
                 self.assertEqual((SHA(current), len(current)), (row['reviewedSha256'], row['reviewedBytes']))
                 self.assertEqual(dual.source_input(previous, relative), previous)
@@ -47,6 +50,9 @@ class DualBrowserSourceCompatibility(unittest.TestCase):
         rejected = 0
         for relative, row in dual.manifest()['files'].items():
             current = (ROOT / relative).read_bytes()
+            from worker_timezone_source_compatibility import PATHS as worker_paths, source_input as worker_source_input
+            if relative in worker_paths:
+                current = worker_source_input(current, relative)
             for delta in row['deltas']:
                 chunk = delta['current'].encode()
                 self.assertEqual(current.count(chunk), 1)
@@ -250,6 +256,7 @@ class DualBrowserSourceCompatibility(unittest.TestCase):
             self.assertNotIn('experience46_source_bytes', source, relative)
             self.assertNotIn('event_journal_source_compatibility', source, relative)
         allowed = {path for path in dual.PATHS if path.endswith('.py')} | {
+            'tests/profile_worker_timezone_source_compatibility_test.py',
             'tests/profile_dual_browser_source_compatibility_test.py',
             'tests/profile_fingerprint_local_supplement_test.py',
             'tests/profile_manual_snapshot_diagnostic_test.py'}

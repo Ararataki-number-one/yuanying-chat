@@ -22,6 +22,7 @@ final class ChromiumFingerprintUi {
     LinearLayout form=dialog.body;
     dialog.note(Profiles.display(activity,current.identity.slot)+" · 配置版本 "+current.revision);
     dialog.note(summary(receipt));
+    dialog.note(workerSummary(receipt));
     DesignUi.note(form,"网页显示");
     Spinner display=new Spinner(activity);display.setContentDescription("Chromium 网页显示模式");
     display.setMinimumHeight(DesignUi.dp(activity,48));
@@ -36,8 +37,11 @@ final class ChromiumFingerprintUi {
     CheckBox webgl=option(activity,form,"限制 WebGL 调试显卡标识",selected.webgl);
     CheckBox audio=option(activity,form,"音频复制读出保护",selected.audio);
     CheckBox webrtc=option(activity,form,"限制页面创建 WebRTC 连接",selected.webrtc);
+    DesignUi.note(form,"Worker 与网站后台联网");
+    Spinner workers=new Spinner(activity);workers.setContentDescription("Chromium Worker 新建与后台联网策略");workers.setMinimumHeight(DesignUi.dp(activity,48));workers.setAdapter(DesignUi.spinnerAdapter(activity,new String[]{"允许 · 保持网站兼容","限制新建 Worker 与后台联网"}));workers.setSelection(selected.restrictWorkers()?1:0);form.addView(workers);
     dialog.note("同一环境、同一网站使用稳定的保护种子；不同环境分别保存。网页显示会同时调整原生 UA 与 UA-CH，不修改设备实际系统。");
-    dialog.note("保护在新文档开始时注入，覆盖支持的页面与框架。Worker、Service Worker、OffscreenCanvas、独立时区、字体与硬件伪装未覆盖；音频实时缓冲和 WebGL 像素读出保持原样。兼容模式的未覆盖项请查看确认结果。");
+    dialog.note("限制 Worker 时，新页面与框架会拒绝新建 Dedicated/Shared Worker 及注册 Service Worker；原生设置同时阻止 Service Worker 后续联网。已有或缓存 Worker 仍可能执行，已经开始的请求不保证取消；这不是 Worker 指纹伪装。部分网站会失去离线、推送或后台功能，可选择允许后重新加载恢复。");
+    dialog.note("独立时区、Worker 指纹、OffscreenCanvas、字体与硬件伪装未覆盖；音频实时缓冲和 WebGL 像素读出保持原样。兼容模式下限制 Worker 也需要文档开始脚本支持。");
     android.view.View observe=DesignUi.button(activity,observing?"当前页面正在自检…":"自检当前页面",false,()->{
       if(observing)return;
       dialog.dismiss();callback.observe();
@@ -48,7 +52,7 @@ final class ChromiumFingerprintUi {
     dialog.buttons("关闭",dialog::dismiss,"保存并重新加载",()->{
       JSONObject specification=J.obj("schema",1,"engine","chromium","display",display.getSelectedItemPosition()==1?"desktop":"mobile",
           "protection",protection.getSelectedItemPosition()==0?"protected":"compatibility",
-          "canvas",canvas.isChecked(),"webgl",webgl.isChecked(),"audio",audio.isChecked(),"webrtc",webrtc.isChecked());
+          "canvas",canvas.isChecked(),"webgl",webgl.isChecked(),"audio",audio.isChecked(),"webrtc",webrtc.isChecked(),"workers",workers.getSelectedItemPosition()==1?"restrict":"allow");
       try{ChromiumFingerprintSpec.from(specification);}
       catch(Exception invalid){DesignUi.message(activity,"配置无法保存","请选择有效的 Chromium 指纹配置。");return;}
       confirm(activity,dialog,"应用指纹设置？","此环境所有 Chromium 标签页将重新加载，未提交的网页内容可能丢失。",()->callback.save(specification,false));
@@ -75,13 +79,28 @@ final class ChromiumFingerprintUi {
     if(fields.length()==0)return "配置已保存；尚无当前页面的确认记录。";
     return "原生设置回读 "+nativeCount+" 项 · 页面观测 "+pageCount+" 项"+(requested>0?" · 待观测 "+requested+" 项":"")+(failed>0?" · 失败 "+failed+" 项":"")+"。确认结果只对应当前页面及本次运行。";
   }
+  static String workerSummary(JSONObject receipt){
+    JSONObject rows=fields(receipt),network=rows.optJSONObject("workerNetwork"),page=rows.optJSONObject("workerCreation");
+    JSONObject actual=network==null?null:network.optJSONObject("value");
+    String nativeState="Service Worker 后续联网：尚无本次原生确认";
+    if(actual!=null&&"native-readback".equals(network.optString("state"))&&actual.optBoolean("confirmed")&&actual.optBoolean("nativeReadbackObserved")&&actual.optBoolean("nativeSettingMatches")&&actual.opt("nativeBlockNetworkLoads") instanceof Boolean)
+      nativeState="Service Worker 后续联网："+(actual.optBoolean("nativeBlockNetworkLoads")?"已阻止":"已允许")+"（原生回读）";
+    String pageState="新建 Worker：尚无当前页面观测";
+    if(page!=null){JSONObject value=page.optJSONObject("value");String state=page.optString("state");
+      if(value!=null&&"restrict".equals(value.optString("mode"))&&"page-observed".equals(state))pageState="新建 Worker：当前页面守卫已观测，不包含已有 Worker 执行";
+      else if("failed".equals(state))pageState="新建 Worker：当前页面守卫自检失败";
+      else if(value!=null&&"allow".equals(value.optString("mode")))pageState="新建 Worker：允许；未请求页面创建限制";
+    }
+    return nativeState+"\n"+pageState;
+  }
   private static JSONObject fields(JSONObject receipt){
     if(receipt==null)return new JSONObject();JSONObject fields=receipt.optJSONObject("fields");return fields==null?receipt:fields;
   }
   private static String details(JSONObject receipt){
     return summary(receipt)+"\n\n原生 UA 与 UA-CH：由当前 WebView 提供者设置并回读，是否支持以运行时结果为准。"+
         "\nCanvas：页面中的二维图像读出和导出保护。WebGL：限制调试显卡标识，不保护 readPixels。音频：保护 copyFromChannel 复制读出，不改变实时缓冲和播放。WebRTC：限制页面连接构造器，不覆盖 Worker。"+
-        "\n\nWorker、Service Worker、OffscreenCanvas、AudioWorklet、字体、硬件、独立时区、系统语言、TLS 与 HTTP/2 指纹未覆盖。电脑版不会把 Android 内核变成桌面操作系统。"+
+        "\n\nWorker 限制分为页面新建守卫和原生 Service Worker 后续联网开关，原生回读、页面实际拒绝分别确认。它不终止已有/缓存 Worker，不保证取消在途请求，也不伪装 Worker 指纹。选择允许并重新加载可恢复新建和已核验线路上的后台联网。"+
+        "\n\nWorker 指纹、OffscreenCanvas、AudioWorklet、字体、硬件、独立时区、系统语言、TLS 与 HTTP/2 指纹未覆盖。电脑版不会把 Android 内核变成桌面操作系统。"+
         "\n\n页面自检只观察当前页面能读到的结果，不能证明服务端请求、所有框架或完整指纹均受到保护。其他网站的脚本也可能修改页面环境。Gecko 原生模板及其自检独立管理。";
   }
 }

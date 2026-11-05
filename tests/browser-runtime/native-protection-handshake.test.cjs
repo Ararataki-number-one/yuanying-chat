@@ -1,4 +1,7 @@
-/* Full production background module; setting/Cookie/native-port boundaries are synthetic. */
+/* Full current production background module; setting/Cookie/native-port boundaries
+ * are synthetic. Independent headers are explicitly installed at this boundary;
+ * timezone calls remain unsupported. Neither facade executes its production
+ * helper, changes native settings, sends HTTP, or establishes native coverage. */
 'use strict';
 const fs=require('node:fs'),path=require('node:path'),vm=require('node:vm'),assert=require('node:assert/strict'),crypto=require('node:crypto');
 const root=path.resolve(__dirname,'../..'),asset=path.join(root,'app/src/main/assets/gecko/background.js'),code=fs.readFileSync(asset,'utf8');
@@ -11,6 +14,11 @@ const check=(name,value)=>{assert.ok(value,name);checks.push({name,pass:true});}
 function runtime(options={}){
   const state={value:false,now:0,active:0,maxActive:0,connects:0,clearCount:0};
   const ports=[],timers=[],trace=[],sets=[],reads=[];let changed,failConnect=false;
+  const independent={headerActivations:[],headerInvalidations:[],headerClears:[],timeZoneCalls:[],messages:[],
+    actualRequestHeaderPolicyExecution:false,actualTimeZonePolicyExecution:false,nativeSettingReadback:false};
+  const headers={activate(port){independent.headerActivations.push(port);return {installed:options.headersInstalled!==false};},
+    invalidate(port,revision){independent.headerInvalidations.push({port,revision});},clear(port){independent.headerClears.push(port);}};
+  const systemTimeZone={async handle(message){independent.timeZoneCalls.push(copy(message));return {schema:1,status:'unsupported',nativeSettingReadback:false,reason:'declared-system-timezone-host-boundary'};}};
   const control={
     async set({value}){sets.push(value);trace.push('set-start:'+value);state.maxActive=Math.max(state.maxActive,++state.active);
       try{if(options.set)await options.set(value,state);state.value=value;trace.push('set-end:'+value);}finally{state.active--;}
@@ -21,7 +29,11 @@ function runtime(options={}){
   };
   const browser={proxy:{onRequest:{addListener(){}}},runtime:{sendNativeMessage:async()=>'{"type":"socks","host":"127.0.0.1","port":9}',
     connectNative(){state.connects++;if(failConnect)throw new Error('synthetic connect failure');
-      const port={sent:[],closed:false,onMessage:{addListener(fn){port.message=fn;}},onDisconnect:{addListener(fn){port.disconnected=fn;}},postMessage(value){if(port.closed)throw new Error('closed');trace.push('message:'+value.kind+':'+value.token+':'+value.acknowledged);port.sent.push(copy(value));}};
+      const port={sent:[],boundarySent:[],closed:false,onMessage:{addListener(fn){port.message=fn;}},onDisconnect:{addListener(fn){port.disconnected=fn;}},postMessage(value){if(port.closed)throw new Error('closed');
+        // Only these two new independent protocol kinds leave the original
+        // Cookie/RFP observation channel. No protection/ready/error is hidden.
+        if(value.kind==='requestHeadersPrepared'||value.kind==='timezoneReady'){const observed=copy(value);port.boundarySent.push(observed);independent.messages.push(observed);return;}
+        trace.push('message:'+value.kind+':'+value.token+':'+value.acknowledged);port.sent.push(copy(value));}};
       ports.push(port);return port;
     }},
     cookies:{onChanged:{addListener(){}},getAll:async()=>{if(options.cookies)await options.cookies();return [];},set:async()=>{}},
@@ -31,9 +43,10 @@ function runtime(options={}){
   const scope=options.scope??{handle:cfg=>({ok:true,nonce:cfg.nonce}),clear(){state.clearCount++;}};
   const context=vm.createContext({browser,console,Date:class extends Date{static now(){return state.now;}},
     PocketRequestIdentityBackground:options.noScope?undefined:scope,
+    PocketGeckoRequestHeaders:headers,PocketNativeTimezoneBridge:systemTimeZone,
     setTimeout(fn,delay){const timer={fn,at:state.now+delay};timers.push(timer);return timer;},clearTimeout(timer){const index=timers.indexOf(timer);if(index>=0)timers.splice(index,1);}});
   vm.runInContext(code,context,{filename:'production-background.js'});
-  return {state,ports,timers,trace,sets,reads,ready:()=>vm.runInContext('cookieReady',context),
+  return {state,ports,timers,trace,sets,reads,independent,ready:()=>vm.runInContext('cookieReady',context),
     current:()=>ports.at(-1),send(message,port=ports.at(-1)){return port.message(message);},
     protect(level,token,generation,kind='protection',port=ports.at(-1)){return this.send({kind,level,token,generation,timeoutMs:8000},port);},
     change(value){changed?.(value);},disconnect(port=ports.at(-1)){port.closed=true;port.disconnected();},
@@ -184,4 +197,5 @@ async function main(){
   if(process.argv[2]==='--receipt'){assert.equal(process.argv.length,4);fs.mkdirSync(path.dirname(process.argv[3]),{recursive:true});fs.writeFileSync(process.argv[3],JSON.stringify(report,null,2)+'\n');}
   console.log(JSON.stringify({status:report.status,passed:report.passed,actualAndroidExecution:false}));completed=true;
 }
-main().catch(error=>{console.error(error);process.exitCode=1;});
+if(require.main===module)main().catch(error=>{console.error(error);process.exitCode=1;});
+else{completed=true;module.exports={runtime,flush,deferred};}

@@ -64,7 +64,11 @@ set remains outside the actual public-website classifier for primary pages, popu
 and the current-page query. Public HTTP(S) and ChatGPT cases retain their original
 behavior. Blocking through the actual request-gate setter releases held surfaces
 synchronously before a real change barrier can be acquired; unblocking queues
-reacquisition. Thirteen focused negative controls replace one
+reacquisition. The popup callback now also executes its real custom/unknown-timezone
+rejection using an explicitly controlled controller-permission input; the default
+system case preserves its original path. Actual timezone navigation is exercised
+by the separate timezone-routing host; this host's deferred-load boundary represents
+an already prepared session. Fourteen focused negative controls replace one
 readiness, barrier, release, unavailable-page, popup-cleanup or public-classification guard in temporary
 source copies and must fail their precise original assertion. Actual Gecko
 construction, page-closing UI, native protection and session-state restoration

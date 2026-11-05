@@ -79,12 +79,12 @@ class EnvironmentAudit {
   }
   String routeStamp(){String route=session.internalNetwork()?NativeNetwork.get(session.context).token:session.prefs.getString("proxy","");return hash(session.prefs.getString("networkMode","external")+"|"+route+"|"+session.prefs.getBoolean("requireExternalVpn",true));}
   boolean current(long id){return running&&id==serial;}
-  String policyStamp(){GeckoSettings settings=session.web.getSettings();return hash(GeckoWebView.VERSION+"|"+session.privacy.level()+"|"+settings.desktop+"|"+settings.getUserAgentString()+"|"+Arrays.toString(settings.requestedLocales)+"|"+settings.policyAcknowledged+"|"+session.web.identityPolicyRevision+"|"+TimeZone.getDefault().getID()+"|"+Locale.getDefault().toLanguageTag());}
+  String policyStamp(){GeckoSettings settings=session.web.getSettings();return hash(GeckoWebView.VERSION+"|"+session.privacy.level()+"|"+settings.desktop+"|"+settings.getUserAgentString()+"|"+Arrays.toString(settings.requestedLocales)+"|"+settings.policyAcknowledged+"|"+session.web.identityPolicyRevision+"|"+TimeZone.getDefault().getID()+"|"+Locale.getDefault().toLanguageTag()+"|"+session.timeZone.auditStamp());}
   boolean fresh(){return running&&(!geckoRun||(nativeRuntimeIdentity==session.web.nativeRuntimeIdentity()&&identityAppliedRevision==session.identityAuditAppliedRevision()&&auditNavigation==session.navigationEpoch&&auditUrl.equals(session.web.getUrl())))&&epoch==session.connectionEpoch&&stamp.equals(routeStamp())&&policy.equals(policyStamp())&&(!networkRun||session.networkReady&&session.guard.allowed()&&session.web.protectionAllowsNetwork());}
   JSONObject expected(){
     NativeNetwork n=NativeNetwork.get(session.context);GeckoSettings settings=session.web.getSettings();
     int major;try{major=Integer.parseInt(packageVersion().split("\\.")[0]);}catch(Exception e){major=-1;}
-    return J.obj("engine","gecko","display",settings.desktop?"desktop":"mobile",
+    return session.timeZone.auditExpected(J.obj("engine","gecko","display",settings.desktop?"desktop":"mobile",
         "ua",settings.getUserAgentString(),"major",major,"level",session.privacy.level(),
         "offset",-TimeZone.getDefault().getOffset(System.currentTimeMillis())/60000,
         "timezoneStrategy",session.privacy.level()>=2?"native-standardized":"system",
@@ -93,7 +93,7 @@ class EnvironmentAudit {
         "expectedSdkLocales",new JSONArray(Arrays.asList(settings.expectedSdkLocales)),
         "languages",new JSONArray(Arrays.asList(settings.expectedSdkLocales)),
         "languageSource","sdk157-language-region-prediction-not-content-ack",
-        "rfpAcknowledged",settings.rfpAcknowledged,"exitIp",session.internalNetwork()&&n.lastVerified>0?n.exitIp:"");
+        "rfpAcknowledged",settings.rfpAcknowledged,"exitIp",session.internalNetwork()&&n.lastVerified>0?n.exitIp:""));
   }
   JSONObject localExpected(){
     JSONObject value=expected();try{value.put("nativeRuntimeCapabilities",session.web.nativeRuntimeCapabilities());}catch(JSONException ignored){}return value;
@@ -239,7 +239,7 @@ class EnvironmentAudit {
   boolean canReturnRequestIdentity(){return requestIdentity.canReturn();}
   boolean returnRequestIdentity(){return requestIdentity.back();}
   String requestIdentitySummary(boolean redact){return requestIdentity.summary(redact);}
-  boolean observationCurrent(JSONObject value){Object epoch=value==null?null:value.opt("connectionEpoch");return epoch instanceof Number&&((Number)epoch).doubleValue()==session.connectionEpoch&&((Number)epoch).longValue()==session.connectionEpoch&&OBSERVATION_EXECUTION_ID.equals(value.optString("executionId"));}
+  boolean observationCurrent(JSONObject value){Object epoch=value==null?null:value.opt("connectionEpoch");return epoch instanceof Number&&((Number)epoch).doubleValue()==session.connectionEpoch&&((Number)epoch).longValue()==session.connectionEpoch&&OBSERVATION_EXECUTION_ID.equals(value.optString("executionId"))&&value.optString("policy").equals(policyStamp());}
   String summary(){return summary(false);}
   String summary(boolean redact){refresh(false);StringBuilder text=new StringBuilder("当前环境：").append(Profiles.display(session.context,Profiles.slot(session.context))).append("\n环境变化：").append(hasChanges()?"需要核对 "+changes.length()+" 项":"暂无已记录的变化");for(int i=0;i<changes.length();i++)text.append("\n· ").append(changes.optJSONObject(i).optString("name")).append("与基线不同");text.append("\n正常系统更新也可能产生变化，提醒不等于账号危险。");if(!storageIssue.isEmpty())text.append("\n").append(storageIssue);if(!lastError.isEmpty())text.append("\n").append(lastError);if(serviceProbe.active)return text.append("\n\n正在检查所选检测服务；当前聊天页面不会离开…").toString();if(running)return text.append(requestIdentity.active?"\n\n正在核对请求身份；确认空闲后会打开检测页，结束不会自动跳回聊天…":"\n\n正在检查，当前聊天页面不会重新加载…").toString();if(report.length()==0)return text.append("\n\n尚无自检结果。浏览器检查在本机运行；网络检查由你点按后进行。").toString();if(!observationCurrent(report)||!report.optString("policy").equals(policyStamp())||((report.optBoolean("network")||report.optBoolean("requestIdentityNetwork"))&&!report.optString("route").equals(routeStamp())))text.append("\n\n当前环境已变化，下面是历史结果，请重新检查。");text.append("\n\n最近检查：").append(new SimpleDateFormat("MM-dd HH:mm:ss",Locale.getDefault()).format(new Date(report.optLong("at"))));JSONArray rows=report.optJSONArray("rows");if(rows!=null)for(int i=0;i<rows.length();i++){JSONObject r=rows.optJSONObject(i);text.append("\n\n").append(AuditReport.stateLabel(r.optString("state"))).append(" · ").append(r.optString("name")).append("\n").append(r.optString("detail"));}if(report.optBoolean("network")){JSONObject signals=report.optJSONObject("signals"),net=signals==null?null:signals.optJSONObject("network"),nativeIp=report.optJSONObject("native"),workerSignal=signals==null?null:signals.optJSONObject("worker");String pageIp=AuditReport.ip(net==null?null:net.optJSONObject("ipv4")),workerIp=AuditReport.ip(workerSignal==null?null:workerSignal.optJSONObject("ip")),appIp=AuditReport.ip(nativeIp),ipv6=AuditReport.ip(net==null?null:net.optJSONObject("ipv6"));text.append("\n\n本次观察到的出口（仅本机保存）\n网页 IPv4：").append(address(pageIp,redact)).append("\n后台 IPv4：").append(address(workerIp,redact)).append("\n原生 IPv4：").append(address(appIp,redact)).append("\n网页 IPv6：").append(address(ipv6,redact));}return text.append("\n\n结果只对应检查当时的指定路径，不能保证 VPN 不被识别或账号不被封。").toString();}
   static String address(String ip,boolean redact){return AuditReport.v4(ip)||AuditReport.v6(ip)?redact?"[地址已隐藏]":ip:"未取得";}

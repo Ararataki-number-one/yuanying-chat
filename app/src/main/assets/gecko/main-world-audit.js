@@ -11,7 +11,8 @@
   const bounded=value=>typeof value==='string'?value.slice(0,2048):value;
   async function signal(){
     const n=navigator;
-    const value={ua:bounded(n.userAgent),appVersion:bounded(n.appVersion),platform:bounded(n.platform),language:bounded(n.language),languages:Array.from(n.languages||[]).slice(0,8).map(bounded),cpu:n.hardwareConcurrency??null,memory:n.deviceMemory??null,offset:new Date().getTimezoneOffset(),zone:bounded(Intl.DateTimeFormat().resolvedOptions().timeZone||'')};
+    const sampled=new Date();
+    const value={ua:bounded(n.userAgent),appVersion:bounded(n.appVersion),platform:bounded(n.platform),language:bounded(n.language),languages:Array.from(n.languages||[]).slice(0,8).map(bounded),cpu:n.hardwareConcurrency??null,memory:n.deviceMemory??null,observedAt:sampled.getTime(),offset:sampled.getTimezoneOffset(),zone:bounded(Intl.DateTimeFormat().resolvedOptions().timeZone||'')};
     if(typeof screen!=='undefined')value.screen={width:screen.width,height:screen.height,availWidth:screen.availWidth,availHeight:screen.availHeight,depth:screen.colorDepth};
     if(typeof window!=='undefined')value.viewport={width:innerWidth,height:innerHeight,pixelRatio:devicePixelRatio,touch:n.maxTouchPoints??0};
     let gl;try{const canvas=typeof document!=='undefined'?document.createElement('canvas'):new OffscreenCanvas(16,16);canvas.width=canvas.height=16;gl=canvas.getContext('webgl');const ext=gl?.getExtension('WEBGL_debug_renderer_info');value.renderer=gl?ext?String(gl.getParameter(ext.UNMASKED_RENDERER_WEBGL)).slice(0,2048):'restricted':'unavailable';}catch{value.renderer='unavailable';}finally{try{gl?.getExtension('WEBGL_lose_context')?.loseContext();}catch{}}

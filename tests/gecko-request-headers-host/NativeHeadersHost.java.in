@@ -1,0 +1,99 @@
+package local.pocketchat;
+
+import java.util.*;
+import java.util.function.Consumer;
+import org.json.*;
+
+/** Actual native header-policy methods with explicit SDK/session/route boundaries. */
+public final class NativeHeadersHost {
+  static final String SITE="https://example.com/worker-fetch",UA="Mozilla/5.0 (Android) Gecko/157.0 Firefox/157.0";
+  static final JSONArray checks=new JSONArray();
+  static void check(String name,boolean value){checks.put(J.obj("name",name,"pass",value));if(!value)throw new AssertionError(name);}
+  static JSONObject proof(ResultBoundary<Object> result){check("Native response has completed",result.complete);return J.parse((String)result.value);}
+  static void denied(ResultBoundary<Object> result,String name){JSONObject value=proof(result);check(name,value.length()==1&&value.has("allowed")&&!value.optBoolean("allowed"));}
+  static void positive(){
+    WebBoundary web=new WebBoundary();ResultBoundary<Object> first=web.requestHeaderPolicy(SITE),second=web.requestHeaderPolicy(SITE+"?two");
+    check("Parallel header requests coalesce one actual session UA read",web.current.reads==1&&!first.complete&&!second.complete);
+    web.current.pending.get(0).complete(UA);JSONObject a=proof(first),b=proof(second);
+    check("Exact proof contains only allowed native UA and policy revision",a.length()==3&&Boolean.TRUE.equals(a.opt("allowed"))&&UA.equals(a.opt("userAgent"))&&a.optLong("revision")==web.identityPolicyRevision);
+    check("Each coalesced request gets the same current native policy",a.toString().equals(b.toString()));
+    check("Native report separates readback from unverified worker wire coverage",web.metadata.requestHeaderPolicy.optBoolean("installed")&&web.metadata.requestHeaderPolicy.optBoolean("nativeReadback")&&!web.metadata.requestHeaderPolicy.optBoolean("sharedWorkerWireVerified",true)&&!web.metadata.requestHeaderPolicy.optBoolean("serviceWorkerWireVerified",true));
+    check("Current native UA is reused without another SDK read",proof(web.requestHeaderPolicy(SITE)).optBoolean("allowed")&&web.current.reads==1);
+    web.identityPolicyRevision++;web.retireRequestHeaderPolicy();
+    check("Configuration invalidation clears observed policy and publishes exact revision",web.headerPolicyRead==null&&!web.metadata.requestHeaderPolicy.optBoolean("nativeReadback")&&web.routePort.messages.size()==1&&web.routePort.messages.get(0).optLong("revision")==web.identityPolicyRevision);
+    ResultBoundary<Object> fresh=web.requestHeaderPolicy(SITE);check("New native context requires a fresh actual read",!fresh.complete&&web.current.reads==2);
+    web.current.pending.get(1).complete(UA+" new");check("Fresh native read cannot reuse the prior UA",proof(fresh).optString("userAgent").equals(UA+" new"));
+  }
+  static void changed(String kind){
+    WebBoundary web=new WebBoundary();SessionBoundary before=web.current;ResultBoundary<Object> pending=web.requestHeaderPolicy(SITE);
+    switch(kind){case "revision":web.identityPolicyRevision++;break;case "navigation":web.owner.navigationEpoch++;break;case "token":web.nativeProtection.token++;break;case "port":web.routePort=new PortBoundary();break;case "session":web.current=new SessionBoundary();break;case "destroyed":web.destroyed=true;break;case "failed":web.failed=true;break;case "deleted":web.owner.deleted=true;break;case "installed":web.requestHeadersInstalled=false;break;case "closed":before.open=false;break;case "privacy":web.privacyReady=false;break;case "locales":web.metadata.localesRequestAcknowledged=false;break;case "rfp":web.metadata.rfpAcknowledged=false;break;case "confirmed":web.nativeProtection.confirmed=false;break;case "retired":web.retireRequestHeaderPolicy();break;case "protection":web.protectedSetting=false;break;case "identity":web.identityAllowed=false;break;case "admission":web.admission=false;break;case "route":web.routeAllowed=false;break;default:throw new AssertionError(kind);}
+    before.pending.get(0).complete(UA);denied(pending,"Late native UA cannot authorize changed "+kind);
+    check("Late native value never publishes accepted readback "+kind,!web.metadata.requestHeaderPolicy.optBoolean("nativeReadback"));
+  }
+  static void early(String kind){
+    WebBoundary web=new WebBoundary();SessionBoundary source=web.current;
+    switch(kind){case "installed":web.requestHeadersInstalled=false;break;case "null-session":web.current=null;break;case "closed":source.open=false;break;case "null-port":web.routePort=null;break;case "privacy":web.privacyReady=false;break;case "locales":web.metadata.localesRequestAcknowledged=false;break;case "route":web.routeAllowed=false;break;case "admission":web.admission=false;break;default:throw new AssertionError(kind);}
+    denied(web.requestHeaderPolicy(SITE),"Unavailable context denies without UA fallback "+kind);check("Unavailable context does not query the native session "+kind,source.reads==0);
+  }
+  static void invalidUa(){
+    for(String value:new String[]{null,"","bad\r\nCookie: secret","x".repeat(1025),"Firefox/é","bad\u0000value"}){
+      WebBoundary web=new WebBoundary();ResultBoundary<Object> pending=web.requestHeaderPolicy(SITE);web.current.pending.get(0).complete(value);denied(pending,"Invalid native UA cannot enter request headers");
+      check("Invalid UA cannot become cached readback",web.headerPolicyRead==null&&!web.metadata.requestHeaderPolicy.optBoolean("nativeReadback"));
+    }
+  }
+  static void failureAndRetry(){
+    WebBoundary web=new WebBoundary();ResultBoundary<Object> failed=web.requestHeaderPolicy(SITE);web.current.pending.get(0).fail(new IllegalStateException("Controlled SDK read failure"));denied(failed,"SDK rejection denies the pending header request");
+    ResultBoundary<Object> retry=web.requestHeaderPolicy(SITE);check("An explicit later request can retry a failed SDK read",web.current.reads==2&&!retry.complete);web.current.pending.get(1).complete(UA);check("Retry accepts only its actual readback",proof(retry).optBoolean("allowed"));
+    web.routePort.fail=true;web.retireRequestHeaderPolicy();check("Bridge post failure revokes installed state",!web.requestHeadersInstalled&&!web.metadata.requestHeaderPolicy.optBoolean("installed"));
+  }
+  static void targetFence(){
+    WebBoundary web=new WebBoundary();ResultBoundary<Object> first=web.requestHeaderPolicy(SITE),second=web.requestHeaderPolicy(SITE+"?denied");web.deniedTargets.add(SITE+"?denied");web.current.pending.get(0).complete(UA);
+    check("Coalesced first target is still admitted",proof(first).optBoolean("allowed"));denied(second,"Every coalesced request rechecks its own target after readback");
+  }
+  static void replacement(){
+    WebBoundary web=new WebBoundary();ResultBoundary<Object> old=web.requestHeaderPolicy(SITE);ResultBoundary<String> oldRead=web.current.pending.get(0);
+    web.identityPolicyRevision++;web.retireRequestHeaderPolicy();ResultBoundary<Object> next=web.requestHeaderPolicy(SITE);WebBoundary.HeaderPolicyRead selected=web.headerPolicyRead;
+    oldRead.complete(UA+" old");denied(old,"Superseded SDK read is rejected");check("Old callback cannot erase a newer shared SDK read",web.headerPolicyRead==selected);
+    web.current.pending.get(1).complete(UA+" current");check("New context completes independently of old callback",proof(next).optString("userAgent").equals(UA+" current"));
+  }
+  static void privateScope(){
+    for(String target:new String[]{"https://127.0.0.1:9877/pool","http://192.168.1.20/page","https://[::1]/page"}){
+      WebBoundary web=new WebBoundary();web.extendedAdmission.add(target);web.privacyReady=false;web.metadata.localesRequestAcknowledged=false;web.metadata.rfpAcknowledged=false;web.nativeProtection.confirmed=false;
+      ResultBoundary<Object> pending=web.requestHeaderPolicy(target);if(!pending.complete&&web.current.reads>0)web.current.pending.get(web.current.pending.size()-1).complete(UA);
+      JSONObject value=proof(pending);check("Explicit internal admission preserves its actual original SDK headers",value.length()==3&&value.optBoolean("allowed")&&value.optString("scope").equals("private-admission-unchanged")&&value.optLong("revision")==web.identityPolicyRevision&&web.current.reads==0);
+      check("Private admission does not claim a public native UA readback",!web.metadata.requestHeaderPolicy.optBoolean("nativeReadback"));
+      web.identityAllowed=false;denied(web.requestHeaderPolicy(target),"Private scope never bypasses the original target authorization");
+      web.identityAllowed=true;web.routeAllowed=false;denied(web.requestHeaderPolicy(target),"Private scope never bypasses the original route guard");
+      web.routeAllowed=true;web.admission=false;denied(web.requestHeaderPolicy(target),"Private scope never grants its own URL admission");
+      check("Denied private admissions never query a UA or change headers",web.current.reads==0);
+    }
+    WebBoundary web=new WebBoundary();denied(web.requestHeaderPolicy("https://127.0.0.1:9877/pool"),"An unextended private URL remains rejected");check("Rejected private URL has no SDK work",web.current.reads==0);
+  }
+  public static void main(String[] args){
+    if(args.length>0){if(args[0].equals("target"))targetFence();else if(args[0].equals("invalid"))invalidUa();else if(args[0].equals("private"))privateScope();else changed(args[0]);}
+    else{positive();for(String k:new String[]{"revision","navigation","token","port","session","destroyed","failed","deleted","installed","closed","privacy","locales","rfp","confirmed","retired","protection","identity","admission","route"})changed(k);for(String k:new String[]{"installed","null-session","closed","null-port","privacy","locales","route","admission"})early(k);invalidUa();failureAndRetry();targetFence();replacement();privateScope();}
+    System.out.println(J.obj("status","passed","passed",checks.length(),"total",checks.length(),"checks",checks,"actualAndroidExecution",false,"actualGeckoExecution",false,"actualNetworkExecution",false).toString());
+  }
+}
+class WebBoundary {
+  @METHODS@
+  final OwnerBoundary owner=new OwnerBoundary();final SettingsBoundary metadata=new SettingsBoundary();final ProtectionBoundary nativeProtection=new ProtectionBoundary();
+  SessionBoundary current=new SessionBoundary();PortBoundary routePort=new PortBoundary();HeaderPolicyRead headerPolicyRead;
+  long identityPolicyRevision=1;boolean destroyed,failed,enabled=true,requestHeadersInstalled=true,privacyReady=true,protectedSetting=true,identityAllowed=true,admission=true,routeAllowed=true;
+  final Set<String> deniedTargets=new HashSet<>(),extendedAdmission=new HashSet<>();
+  boolean protectionAllowsNetwork(){return protectedSetting;}
+  boolean identityRequestAllowed(String target){return identityAllowed&&!deniedTargets.contains(target);}
+  boolean allowedUrl(String target){return admission&&(GeckoNavigationPolicy.publicWeb(target)||extendedAdmission.contains(target));}
+  JSONObject route(String target){return routeAllowed?J.obj("type","direct"):J.obj("type","socks","host","127.0.0.1","port",9);}
+}
+class OwnerBoundary {boolean deleted;long navigationEpoch=1;}
+class SettingsBoundary {boolean localesRequestAcknowledged=true,rfpAcknowledged=true;JSONObject requestHeaderPolicy=J.obj("installed",true,"nativeReadback",false);}
+class ProtectionBoundary {long token=1;boolean confirmed=true;long token(){return token;}boolean confirmed(){return confirmed;}}
+class PortBoundary {boolean fail;final List<JSONObject> messages=new ArrayList<>();void postMessage(JSONObject value){if(fail)throw new IllegalStateException("Controlled port failure");messages.add(value);}}
+class SessionBoundary {boolean open=true;int reads;final List<ResultBoundary<String>> pending=new ArrayList<>();boolean isOpen(){return open;}ResultBoundary<String> getUserAgent(){reads++;ResultBoundary<String> result=new ResultBoundary<>();pending.add(result);return result;}}
+class ResultBoundary<T> {
+  boolean complete;T value;Throwable error;final List<Consumer<T>> success=new ArrayList<>();final List<Consumer<Throwable>> failures=new ArrayList<>();
+  void accept(Consumer<T> ok,Consumer<Throwable> bad){if(complete){if(error==null)ok.accept(value);else bad.accept(error);}else{success.add(ok);failures.add(bad);}}
+  void complete(T value){if(complete)throw new IllegalStateException("Double completion");this.complete=true;this.value=value;for(Consumer<T> callback:new ArrayList<>(success))callback.accept(value);}
+  void fail(Throwable value){if(complete)throw new IllegalStateException("Double failure");this.complete=true;error=value;for(Consumer<Throwable> callback:new ArrayList<>(failures))callback.accept(value);}
+}

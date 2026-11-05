@@ -1,0 +1,19 @@
+{
+  "manifest_version": 2,
+  "name": "PocketChat native timezone capability probe",
+  "version": "1.0.0",
+  "browser_specific_settings": {"gecko": {"id": "timezone-probe@pocketchat.local"}},
+  "permissions": ["tabs", "<all_urls>", "nativeMessaging", "geckoViewAddons"],
+  "background": {"scripts": ["background.js"]},
+  "experiment_apis": {
+    "pocketNativeTimezone": {
+      "schema": "schema.json",
+      "parent": {
+        "scopes": ["addon_parent"],
+        "paths": [["pocketNativeTimezone"]],
+        "script": "parent.js"
+      }
+    }
+  },
+  "content_scripts": [{"matches": ["http://*/*", "https://*/*"], "js": ["content.js"], "run_at": "document_start"}]
+}

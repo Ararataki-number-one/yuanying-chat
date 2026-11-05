@@ -71,7 +71,9 @@ def main():
         result=execute(text,'current')
         if result.returncode:
             print(result.stderr,file=sys.stderr);result.check_returncode()
-        report=json.loads(result.stdout);report.update(actualAndroidExecution=False,actualGeckoExecution=False,actualGeneralRouteRegistryExecution=True,productionMembers=methods,generatedHostSha256=hashlib.sha256(text.encode()).hexdigest(),scope='Exact current production Java members, complete public URL policies and actual ChromiumRouteLease registry with controlled Android/session/widget adapters. Android Uri is backed by java.net.URI; no device, Gecko SDK, live-network or complete application execution.')
+        report=json.loads(result.stdout)
+        if report['syntheticTimeZoneRetirements']<=0 or report['actualNativeTimeZoneExecution'] is not False:raise AssertionError('Owned content exit must reach the counted synthetic system time-zone retirement boundary')
+        report.update(actualAndroidExecution=False,actualGeckoExecution=False,actualNativeTimeZoneExecution=False,actualDateOrEngineExecution=False,syntheticTimeZoneFacade='default-system retirement counter only; custom scope throws',actualGeneralRouteRegistryExecution=True,productionMembers=methods,generatedHostSha256=hashlib.sha256(text.encode()).hexdigest(),scope='Exact current production Java members, complete public URL policies and actual ChromiumRouteLease registry with controlled Android/session/widget adapters. retireTimeZone is an explicit counted default-system collaborator boundary; custom scope throws. Android Uri is backed by java.net.URI; no GeckoTimeZoneController, Date/engine, device, Gecko SDK, live-network or complete application execution.')
         controls=[]
         for label,before,after,expected in (
             ('generic-automation','return !deleted&&MainActivity.chatUrl(web.getUrl());','return !deleted;','Generic website cannot dispatch ChatGPT synchronization:'),

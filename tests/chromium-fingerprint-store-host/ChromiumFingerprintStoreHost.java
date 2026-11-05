@@ -72,6 +72,23 @@ public final class ChromiumFingerprintStoreHost {
       byte[] changed=value.toString().getBytes(StandardCharsets.UTF_8);writeRaw(context,changed);rejects("Malformed receipt fails closed "+mutation,()->ChromiumFingerprintStore.load(context));unchanged("Malformed receipt bytes retained "+mutation,context,changed);
     }
   }
+  static void workerPolicy()throws Exception{
+    TestContext context=context("worker-policy");ChromiumFingerprintStore.State initial=ChromiumFingerprintStore.load(context);
+    byte[] legacy=raw(context);ChromiumFingerprintStore.State legacyAgain=ChromiumFingerprintStore.load(context);
+    check("Legacy missing Worker option is retained without seed or revision migration",!legacyAgain.spec().has("workers")&&legacyAgain.seed.equals(initial.seed)&&legacyAgain.revision==initial.revision);unchanged("Reading legacy Worker option never rewrites old desired bytes",context,legacy);
+    ChromiumFingerprintStore.Binding binding=binding();ChromiumFingerprintStore.activate(context,initial.identity,initial.revision,binding);ChromiumFingerprintStore.record(context,initial.identity,initial.revision,binding,fields());
+    JSONObject restricted=initial.spec();restricted.put("workers","restrict");ChromiumFingerprintStore.State saved=ChromiumFingerprintStore.save(context,initial.identity,initial.revision,restricted);
+    check("Restrict Worker policy advances revision and keeps stable seed",saved.revision==initial.revision+1&&saved.seed.equals(initial.seed)&&saved.spec().getString("workers").equals("restrict"));
+    check("Changed Worker policy invalidates previous page/native receipt",rawObject(context).getJSONObject("receipt").length()==0&&ChromiumFingerprintStore.lastReceipt(context,saved.identity,saved.revision,binding).length()==0);
+    byte[] savedBytes=raw(context);rejects("Stale allow cannot overwrite current restrict policy",()->ChromiumFingerprintStore.save(context,initial.identity,initial.revision,initial.spec()));unchanged("Stale Worker policy CAS retains exact restricted bytes",context,savedBytes);
+    rejects("Prior Worker policy page cannot acknowledge the new revision",()->ChromiumFingerprintStore.record(context,initial.identity,initial.revision,binding,fields()));
+    ChromiumFingerprintStore.State reloaded=ChromiumFingerprintStore.load(context);check("Restricted Worker policy persists through actual repository reload",reloaded.revision==saved.revision&&reloaded.seed.equals(saved.seed)&&reloaded.spec().getString("workers").equals("restrict"));
+    ChromiumFingerprintStore.activate(context,saved.identity,saved.revision,binding);ChromiumFingerprintStore.record(context,saved.identity,saved.revision,binding,fields());
+    JSONObject allowed=saved.spec();allowed.put("workers","allow");ChromiumFingerprintStore.State restored=ChromiumFingerprintStore.save(context,saved.identity,saved.revision,allowed);
+    check("Restoring allow is explicit next revision without rotating identity",restored.revision==saved.revision+1&&restored.seed.equals(saved.seed)&&restored.spec().getString("workers").equals("allow"));
+    check("Restoring allow requires new exact page activation",ChromiumFingerprintStore.lastReceipt(context,restored.identity,restored.revision,binding).length()==0&&rawObject(context).getJSONObject("receipt").length()==0);
+    rejects("Restricted page cannot publish after allow revision",()->ChromiumFingerprintStore.record(context,saved.identity,saved.revision,binding,fields()));
+  }
   static void run()throws Exception{
     TestContext context=context("basic");ChromiumFingerprintStore.State initial=ChromiumFingerprintStore.load(context);
     check("Fresh state has exact environment identity and revision1",initial.identity.equals(context.catalog.current)&&initial.revision==1);
@@ -138,7 +155,7 @@ public final class ChromiumFingerprintStoreHost {
     for(String[] parts:new String[][]{{"","1","runtime"},{"pkg","","runtime"},{"pkg","1",""}})rejects("Binding requires provider and runtime identity "+Arrays.toString(parts),()->new ChromiumFingerprintStore.Binding(parts[0],parts[1],parts[2],1,1));
     rejects("Binding rejects negative surface generation",()->new ChromiumFingerprintStore.Binding("pkg","1","runtime",-1,1));rejects("Binding rejects negative navigation generation",()->new ChromiumFingerprintStore.Binding("pkg","1","runtime",1,-1));
     StringBuilder longProvider=new StringBuilder();for(int i=0;i<257;i++)longProvider.append('p');rejects("Binding provider descriptor is bounded",()->new ChromiumFingerprintStore.Binding(longProvider.toString(),"1","runtime",1,1));
-    generationAndOwner();malformed();
+    generationAndOwner();malformed();workerPolicy();
   }
   static void restart(String phase)throws Exception{
     TestContext context=context("restart");ChromiumFingerprintStore.Binding binding=binding();

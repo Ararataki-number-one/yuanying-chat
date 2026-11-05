@@ -6,6 +6,8 @@ name: Dual browser and complete original Gecko acceptance
     - release/browser-2.1.0-*
     - release/browser-2.1.1
     - release/browser-2.1.1-*
+    - release/browser-2.1.2
+    - release/browser-2.1.2-*
     paths:
     - app/**
     - tests/**
@@ -195,6 +197,7 @@ jobs:
         node -e "if(typeof WebSocket!=='function')throw Error('Actual Chromium controller requires Node 22 or newer with WebSocket');console.log('Native API controller Node '+process.versions.node)"
         browser_fingerprint_binary="$(command -v google-chrome || command -v chromium)"
         python3 tests/chromium-fingerprint-browser/run.py --chromium "$browser_fingerprint_binary" --output work/browser-native-semantics
+        python3 tests/chromium-worker-browser/run.py --chromium "$browser_fingerprint_binary" --output work/browser-worker-native-semantics
     - name: Preserve source-bound host and historical-baseline receipts
       if: always()
       uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
@@ -1035,6 +1038,8 @@ jobs:
         test "$BROWSER_RESULT" = success
         cp work/browser-acceptance/results.json work/gecko-integration/public/browser-results.json
         cp work/browser-acceptance/browser-fingerprint-results.json work/gecko-integration/public/browser-fingerprint-results.json
+        cp work/browser-acceptance/worker-policy-results.json work/gecko-integration/public/worker-policy-results.json
+        cp work/browser-acceptance/gecko-environment-policy-results.json work/gecko-integration/public/gecko-environment-policy-results.json
         python3 tools/browser/check_evidence.py --directory work/gecko-integration/public --source "$GITHUB_SHA" --output work/gecko-integration/public/browser-regression.json
     - name: Publish complete source-bound evidence including the browser gate
       run: python3 tools/gecko/publish_ci.py
@@ -1045,6 +1050,8 @@ jobs:
         path: |
           work/gecko-integration/public/browser-results.json
           work/gecko-integration/public/browser-fingerprint-results.json
+          work/gecko-integration/public/worker-policy-results.json
+          work/gecko-integration/public/gecko-environment-policy-results.json
           work/gecko-integration/public/browser-regression.json
           work/gecko-integration/public/manifest.json
         if-no-files-found: error
@@ -1107,6 +1114,12 @@ jobs:
       # The original browser step and the complete job must still succeed for publication.
       if: ${{ !cancelled() }}
       run: python3 tools/browser/run_fingerprint_integration.py --adb "$(command -v adb)" --serial emulator-5554 --output work/browser-acceptance
+    - name: Execute production Worker restrictions and native Service Worker network controls
+      if: ${{ !cancelled() }}
+      run: python3 tools/browser/run_worker_policy_integration.py --adb "$(command -v adb)" --serial emulator-5554 --output work/browser-acceptance
+    - name: Execute production Gecko timezone and public Worker identity controls
+      if: ${{ !cancelled() }}
+      run: python3 tools/browser/run_gecko_environment_policy_integration.py --adb "$(command -v adb)" --serial emulator-5554 --output work/browser-acceptance
     - name: Preserve bounded source-bound browser evidence
       if: always()
       uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02

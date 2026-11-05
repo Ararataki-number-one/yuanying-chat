@@ -29,9 +29,8 @@ receipt=exact_block(native_source,'  static final class ExitRouteReceipt {')
 boundary.write_text('''package local.pocketchat;
 import android.app.*;import android.content.*;import android.os.*;import android.webkit.*;import org.json.*;
 class Profiles {static final int MAX=8;static int slot(Context context){return 0;}static int processSlot(){return 0;}static Context context(Context context,int slot){return context;}static Context global(Context context){return context;}}
-class EnvironmentSpec {static class Identity{}}
 class EnvironmentSpecRuntime {static void requireIdentity(Context context,EnvironmentSpec.Identity identity)throws Exception{}}
-class ProfileCatalog {static ProfileCatalog get(Context context){return new ProfileCatalog();}EnvironmentSpec.Identity identity(int slot)throws java.io.IOException{return new EnvironmentSpec.Identity();}}
+class ProfileCatalog {static ProfileCatalog get(Context context){return new ProfileCatalog();}EnvironmentSpec.Identity identity(int slot)throws java.io.IOException{return new EnvironmentSpec.Identity(slot,0,"00000000-0000-0000-0000-000000000000");}}
 class NetworkTransportClient {JSONObject state;}
 class NativeNetwork {boolean ready,starting,recoveryBlocked;String fingerprint="",token="",currentEntry="";long routeSerial;int controllerPort,proxyPort;java.lang.Process process;JSONObject settings;NetworkHealthPolicy.Admission admission=NetworkHealthPolicy.Admission.BLOCKED;NetworkTransportClient transport;ExitRouteReceipt verifiedRoute;static NativeNetwork get(Context context){return new NativeNetwork();}void addRouteListener(Runnable listener){}void removeRouteListener(Runnable listener){}interface Callback{void done(boolean ok,String text);}void start(Callback callback){}static String transportFingerprint(JSONObject settings){return "config";}NetworkHealthPolicy.Admission connectionAdmission(){ExitRouteReceipt receipt=verifiedRoute;return ready&&!recoveryBlocked&&receipt!=null&&receipt.matches(this,transport==null?null:transport.state)?admission:NetworkHealthPolicy.Admission.BLOCKED;}
 __EXIT_ROUTE_RECEIPT__
@@ -43,7 +42,7 @@ class AppAppearance {static void install(Application application){}static void r
 class AppVisibility {static void install(Application application){}}
 class BackgroundReplyPolicy {static void bootstrap(Application application){}static void install(Application application){}}
 '''.replace('__EXIT_ROUTE_RECEIPT__',receipt))
-names=['ChromiumRuntime.java','ChromiumRouteLease.java','ChromiumRoutePolicy.java','BrowserNetworkGuard.java','BrowserAddressPolicy.java','GeckoNavigationPolicy.java','NetworkHealthPolicy.java','VpnDefaultRouteCoverage.java','PocketApplication.java','ProfileContext.java','EnvironmentProcessPolicy.java','EnvironmentBrowserData.java','DownloadLibraryChanges.java']
+names=['ChromiumRuntime.java','ChromiumRouteLease.java','ChromiumRoutePolicy.java','BrowserNetworkGuard.java','BrowserAddressPolicy.java','GeckoNavigationPolicy.java','NetworkHealthPolicy.java','VpnDefaultRouteCoverage.java','PocketApplication.java','ProfileContext.java','EnvironmentProcessPolicy.java','EnvironmentBrowserData.java','DownloadLibraryChanges.java','EnvironmentSpec.java','J.java']
 sources=[root/'app/src/main/java/local/pocketchat'/name for name in names]
 result=subprocess.run([str(java),'-encoding','UTF-8','-cp',str(android)+':'+str(webkit),'-d',str(work/'classes'),str(boundary),*map(str,sources)],capture_output=True,text=True,timeout=60)
 (work/'javac.log').write_text(result.stdout+result.stderr)

@@ -188,9 +188,26 @@ public final class RouteHoldHost {
       check("Late unavailable opener cannot construct or acquire a popup: "+kind,result.value==null&&web.constructCalls==0&&web.popups.isEmpty()&&ChromiumRouteLease.snapshot().surfaces==1&&ChromiumRouteLease.snapshot().downloads==1&&web.generalRoutes.containsKey(opener));
     }finally{if(download!=null)download.close();dispose(web);}
   }
+  static void popupTimeZone(){
+    for(String state:new String[]{"custom","unknown"}){
+      WebBoundary web=fresh();try{
+        web.current=site(web,"https://chatgpt.com/c/opener");web.owner.timeZone.mayOpen=false;
+        ResultBoundary<SessionBoundary> denied=web.onNewSession(web.current,FIRST);
+        check("Unconfirmed or custom timezone rejects the unopened popup before construction",denied.value==null&&web.constructCalls==0&&web.popups.isEmpty()&&!ChromiumRouteLease.held());
+        check("Timezone popup denial has an explicit user explanation: "+state,web.owner.message.contains("独立时区"));
+      }finally{dispose(web);}
+    }
+    WebBoundary web=fresh();ChromiumRouteLease.Handle download=null;try{
+      web.current=site(web,FIRST);web.retainGeneralRoute(web.current,FIRST);download=ChromiumRouteLease.acquireDownload();web.owner.timeZone.mayOpen=false;
+      ResultBoundary<SessionBoundary> denied=web.onNewSession(web.current,SECOND);
+      check("Timezone denial preserves the opener and native download leases",denied.value==null&&web.constructCalls==0&&ChromiumRouteLease.snapshot().surfaces==1&&ChromiumRouteLease.snapshot().downloads==1);
+      web.owner.timeZone.mayOpen=true;ResultBoundary<SessionBoundary> allowed=web.onNewSession(web.current,SECOND);
+      check("Explicit system-mode permission retains the original popup path",allowed.value!=null&&web.constructCalls==1&&ChromiumRouteLease.snapshot().surfaces==2&&ChromiumRouteLease.snapshot().downloads==1);
+    }finally{if(download!=null)download.close();dispose(web);}
+  }
   public static void main(String[] args){
-    if(args.length==1){if(args[0].equals("identity"))identityReadiness();else if(args[0].equals("barrier"))barrier();else if(args[0].equals("release")||args[0].equals("guard-release"))blockedRelease();else if(args[0].equals("destroyed"))deniedExisting("destroyed");else if(args[0].equals("popup-failure"))popupFailure();else if(args[0].equals("popup-failed"))popupLate("failed");else if(args[0].equals("popup-crashed"))popupLate("crashed");else if(args[0].equals("private-retention"))privateRetention();else if(args[0].equals("private-popup"))privatePopup();else if(args[0].equals("private-pages"))privatePages();else denial(args[0]);}
-    else{readiness();identityReadiness();privateRetention();privatePopup();privatePages();for(String kind:new String[]{"destroyed","failed","crashed","blocked","unprotected","native-protection"})denial(kind);deniedExisting();blockedRelease();barrier();releaseAndDownload();offMainRetry();popupCreation();popupFailure();popupBarrier();popupDenial();popupLate("failed");popupLate("crashed");}
+    if(args.length==1){if(args[0].equals("identity"))identityReadiness();else if(args[0].equals("barrier"))barrier();else if(args[0].equals("release")||args[0].equals("guard-release"))blockedRelease();else if(args[0].equals("destroyed"))deniedExisting("destroyed");else if(args[0].equals("popup-failure"))popupFailure();else if(args[0].equals("popup-failed"))popupLate("failed");else if(args[0].equals("popup-crashed"))popupLate("crashed");else if(args[0].equals("popup-timezone"))popupTimeZone();else if(args[0].equals("private-retention"))privateRetention();else if(args[0].equals("private-popup"))privatePopup();else if(args[0].equals("private-pages"))privatePages();else denial(args[0]);}
+    else{readiness();identityReadiness();privateRetention();privatePopup();privatePages();for(String kind:new String[]{"destroyed","failed","crashed","blocked","unprotected","native-protection"})denial(kind);deniedExisting();blockedRelease();barrier();releaseAndDownload();offMainRetry();popupCreation();popupFailure();popupBarrier();popupDenial();popupLate("failed");popupLate("crashed");popupTimeZone();}
     check("Fixture ends with no actual process registry hold or barrier",!ChromiumRouteLease.held()&&ChromiumRouteLease.snapshot().changes==0);
     System.out.println(J.obj("status","passed","passed",checks.length(),"total",checks.length(),"checks",checks,"syntheticControlledHost",true,"actualAndroidExecution",false,"actualGeckoExecution",false,"actualNetworkExecution",false).toString());
   }
@@ -211,6 +228,7 @@ class WebBoundary {
   void activate(SessionBoundary session){activations++;current=session;}
   void restoreCheckpoint(SessionBoundary session,SessionBoundary.SessionState state,String url,long revision){throw new AssertionError("Unexpected SDK state restore boundary");}
   void loadUrl(String url){throw new AssertionError("Unexpected native URL dispatch boundary");}
+  void loadSessionUri(SessionBoundary session,String url){session.loadUri(url);}
 }
 class SessionBoundary {
   static class SessionState {}
@@ -219,7 +237,8 @@ class SessionBoundary {
   void loadUri(String uri){loads.add(uri);}
 }
 class ResultBoundary<T> {final T value;ResultBoundary(T value){this.value=value;}static <T>ResultBoundary<T> fromValue(T value){return new ResultBoundary<>(value);}}
-class OwnerBoundary {final WebBoundary web;final GuardBoundary guard;final HandlerBoundary handler=new HandlerBoundary();long navigationEpoch=1;String message="";OwnerBoundary(WebBoundary web){this.web=web;guard=new GuardBoundary(this);}void setStatus(String value){message=value;}}
+class OwnerBoundary {final WebBoundary web;final GuardBoundary guard;final TimeZoneBoundary timeZone=new TimeZoneBoundary();final HandlerBoundary handler=new HandlerBoundary();long navigationEpoch=1;String message="";OwnerBoundary(WebBoundary web){this.web=web;guard=new GuardBoundary(this);}void setStatus(String value){message=value;}}
+class TimeZoneBoundary {boolean mayOpen=true;boolean popupAllowed(){return mayOpen;}}
 class GuardBoundary {final OwnerBoundary session;boolean blocked,protectedRoute=true;GuardBoundary(OwnerBoundary session){this.session=session;}@GUARD_MEMBERS@ boolean allowed(){return !blocked&&protectedRoute;}boolean routeProtected(){return protectedRoute;}}
 class SettingsBoundary {boolean blocked;int changes;void setBlockNetworkLoads(boolean value){blocked=value;changes++;}}
 class MainActivity {static boolean chatUrl(String url){try{return BrowserRuntimePolicy.official(URI.create(url));}catch(Exception invalid){return false;}}}

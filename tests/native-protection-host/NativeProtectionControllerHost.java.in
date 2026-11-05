@@ -34,9 +34,18 @@ final class NativeProtectionControllerHost {
   }
   static final class Privacy {int value=2;int level(){return value;}}
   static final class Guard {boolean usable=true;boolean allowed(){return usable;}}
+  // These original RFP/controller cases select the independent default system
+  // timezone. Real timezone/session admission and header-wire behavior belong
+  // to their dedicated current-policy hosts; no native acknowledgement is
+  // manufactured by this explicitly ready, counted application boundary.
+  static final class SystemTimeZoneBoundary {
+    final boolean system=true;int checks,popupChecks,preparations,retirements,deferredLoads;
+    boolean allows(GeckoSession session){checks++;return system&&session!=null;}
+    boolean popupAllowed(){popupChecks++;return system;}
+  }
   static final class Prefs {String proxy="";String getString(String key,String fallback){return proxy;}}
   static final class Owner {
-    final Handler handler=new Handler();final Privacy privacy=new Privacy();final Guard guard=new Guard();final Prefs prefs=new Prefs();final Object context=new Object();
+    final Handler handler=new Handler();final Privacy privacy=new Privacy();final Guard guard=new Guard();final Prefs prefs=new Prefs();final Object context=new Object();final SystemTimeZoneBoundary timeZone=new SystemTimeZoneBoundary();
     long navigationEpoch,connectionEpoch;int changes;String status="";boolean internal,deleted;Audit audit=new Audit();
     boolean internalNetwork(){return internal;}void changed(){changes++;}void setStatus(String value){status=value;}
   }
@@ -98,6 +107,14 @@ final class NativeProtectionControllerHost {
     final Set<GeckoSession> generalSessions=Collections.newSetFromMap(new IdentityHashMap<>());
     final Map<GeckoSession,ChromiumRouteLease.Handle> generalRoutes=new IdentityHashMap<>();
     final Map<GeckoSession,String> deferredGeneralLoads=new IdentityHashMap<>();
+    boolean requestHeadersInstalled=true;int requestHeaderRetirements;
+    __TIMEZONE_INTENT_FIELDS__
+    void retireRequestHeaderPolicy(){requestHeaderRetirements++;}
+    boolean timeZoneAllows(GeckoSession session){return owner.timeZone.allows(session);}
+    void prepareTimeZone(GeckoSession session,java.util.function.Consumer<Boolean> done){owner.timeZone.preparations++;if(!timeZoneAllows(session))throw new AssertionError("Custom timezone preparation is outside this default-system protection fixture");done.accept(true);}
+    void retireTimeZones(){owner.timeZone.retirements++;timeZoneLoads.clear();timeZoneIntents.clear();}
+    void loadSessionUri(GeckoSession session,String target){owner.timeZone.deferredLoads++;throw new AssertionError("Deferred timezone navigation is outside this default-system protection fixture");}
+    __TIMEZONE_INTENT_METHODS__
     boolean generalRouteAdmission=true;int generalRouteChecks,generalRouteRetains;
     boolean generalRouteReady(){generalRouteChecks++;return generalRouteAdmission;}
     boolean retainGeneralRoute(GeckoSession session,String target){generalRouteRetains++;return generalRouteAdmission;}

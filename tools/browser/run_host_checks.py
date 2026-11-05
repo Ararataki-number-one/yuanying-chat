@@ -56,15 +56,31 @@ def main():
         for name,script in [('gecko-session-navigation','tests/gecko-navigation-host/session_navigation.py'),('gecko-client-ready','tests/gecko-navigation-host/client_ready.py')]:
             target=out/(name+'-'+label+'.json');add(name+'-'+label,script,java+['--json-jar',jar,'--output',target],target)
         target=out/('chromium-fingerprint-activity-'+label+'.json');add('chromium-fingerprint-activity-'+label,'tests/chromium-fingerprint-activity-host/run.py',java+['--json-jar',jar,'--output',target],target)
+        for name,script in [('chromium-worker-policy','tests/chromium-worker-policy-host/run.py'),('gecko-request-headers','tests/gecko-request-headers-host/run.py'),('gecko-timezone','tests/gecko-timezone-host/run.py'),('gecko-timezone-report','tests/gecko-timezone-host/report.py'),('gecko-timezone-flow','tests/gecko-timezone-flow-host/run.py'),('gecko-timezone-routing','tests/gecko-timezone-routing-host/run.py')]:
+            target=out/(name+'-'+label+'.json');add(name+'-'+label,script,java+['--json-jar',jar,'--output',target],target)
         target=out/('runtime-origin-adapter-'+label+'.json');add('runtime-origin-adapter-'+label,'tests/runtime-origin-adapter-host/run.py',java+['--json-jar',jar,'--android-jar',a.android_jar.resolve(),'--jsdom-module',a.jsdom_module.resolve(),'--output',target],target)
     cases.append(('gecko-site-boundary',['node','--test','tests/browser-runtime/gecko-site-boundary.test.cjs'],None))
     cases.append(('chromium-fingerprint-script',['node','--test','tests/chromium-fingerprint-script.test.cjs'],None))
+    cases.append(('gecko-worker-request-headers',['node','--test','tests/request-identity/worker_request_headers_test.cjs'],None))
+    cases.append(('gecko-native-timezone-bridge',['node','--test','tests/request-identity/native_timezone_bridge_test.cjs'],None))
+    cases.append(('gecko-timezone-native-signal',['node','--test','tests/gecko-timezone-host/signal.test.cjs'],None))
+    target=out/'native-protection-independent-boundaries.json';cases.append(('native-protection-independent-boundaries',['node','tests/browser-runtime/native-protection-independent-boundaries.test.cjs','--receipt',str(target)],target))
+    add('gecko-native-timezone-api','tests/gecko/native_timezone_api_contract.py')
+    add('gecko-native-timezone-session-api','tests/gecko/native_timezone_session_api_contract.py')
     add('fingerprint-publisher-gate','tests/browser_fingerprint_publish_gate_test.py')
     add('fingerprint-evidence-gate','tests/browser_fingerprint_evidence_test.py')
     add('fingerprint-fixture-controls','tests/browser_fingerprint_fixture_test.py')
     add('fingerprint-server-controls','tests/browser_fingerprint_server_test.py')
+    add('worker-policy-evidence-gate','tests/browser_worker_policy_evidence_test.py')
+    add('worker-policy-server-controls','tests/browser_worker_policy_server_test.py')
+    add('worker-policy-runner-controls','tests/browser_worker_policy_runner_test.py')
+    add('environment-policy-publication-gate','tests/browser_environment_publish_gate_test.py')
+    add('gecko-environment-policy-evidence-gate','tests/gecko_environment_policy_evidence_test.py')
+    add('gecko-environment-policy-runner-controls','tests/gecko_environment_policy_runner_test.py')
+    cases.append(('gecko-environment-policy-page-controls',['node','tests/gecko_environment_policy_page_test.cjs'],None))
     add('dual-browser-source-history','tests/profile_dual_browser_source_compatibility_test.py')
-    names=subprocess.check_output(['git','ls-files','--cached','--others','--exclude-standard','app/src/main/java','tests','tools/browser','tools/gecko','.github/workflows/browser-2_1-acceptance.yml'],cwd=ROOT,text=True).splitlines()
+    add('worker-timezone-source-history','tests/profile_worker_timezone_source_compatibility_test.py')
+    names=subprocess.check_output(['git','ls-files','--cached','--others','--exclude-standard','app/src/main/java','app/src/main/assets','tests','tools/browser','tools/gecko','.github/workflows/browser-2_1-acceptance.yml'],cwd=ROOT,text=True).splitlines()
     files=[ROOT/name for name in sorted(set(names)) if (ROOT/name).is_file()]
     hashes={str(path.relative_to(ROOT)):hashlib.sha256(path.read_bytes()).hexdigest() for path in files}
     environment=dict(os.environ,JSDOM_MODULE=str(a.jsdom_module.resolve()),JAVA_HOME=str(a.java_home.resolve()),PROFILE_JSON_JAR=str(a.json_jar.resolve()));environment['PATH']=str(a.java_home.resolve()/'bin')+os.pathsep+environment['PATH']

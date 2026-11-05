@@ -1,9 +1,13 @@
 const test=require('node:test'),assert=require('node:assert/strict'),vm=require('node:vm'),fs=require('node:fs'),path=require('node:path');
 const asset=fs.readFileSync(path.join(__dirname,'../app/src/main/assets/chromium-fingerprint.js'),'utf8');
-function realm(seed='1'.repeat(64),origin='https://first.example',options={}){
+function realm(seed='1'.repeat(64),origin='https://first.example',options={},before=''){
  const context=vm.createContext({DOMException,Uint8ClampedArray,Float32Array,queueMicrotask,Buffer});
  vm.runInContext(`
- const stats={exports:0,reads:0};
+ const stats={exports:0,reads:0,workers:0,shared:0,registrations:0};
+ globalThis.Worker=class Worker {constructor(url){stats.workers++;this.url=url;}ping(){return 'existing-worker-alive';}};
+ globalThis.SharedWorker=class SharedWorker {constructor(url){stats.shared++;this.url=url;}};
+ class ServiceWorkerContainer {register(){stats.registrations++;return Promise.resolve({native:true});}}
+ globalThis.navigator={serviceWorker:new ServiceWorkerContainer()};globalThis.nativeWorker=Worker;globalThis.nativeSharedWorker=SharedWorker;globalThis.nativeRegister=ServiceWorkerContainer.prototype.register;globalThis.existingWorker=new Worker('/prior.js');
  class Canvas {
   constructor(){this.w=32;this.h=32;this.pixels=new Uint8ClampedArray(this.w*this.h*4);this.context=null;this.kind=null;this.tainted=false;}
   get width(){if(!(this instanceof Canvas))throw new TypeError('canvas receiver');return this.w;}
@@ -28,6 +32,7 @@ function realm(seed='1'.repeat(64),origin='https://first.example',options={}){
  globalThis.nativeRead=Context.prototype.getImageData;globalThis.nativeCopy=AudioBuffer.prototype.copyFromChannel;globalThis.stats=stats;
  `,context);
  context.location={origin};
+ if(before)vm.runInContext(before,context);
  const config=Object.assign({schema:1,seed,canvas:true,webgl:true,audio:true,webrtc:true},options);
  const compiled=asset.replace('__POCKETCHAT_CHROMIUM_FINGERPRINT_CONFIG__',JSON.stringify(config));vm.runInContext(compiled,context);
  return {context,run(code){return vm.runInContext(code,context);},inject(){vm.runInContext(compiled,context);}};
@@ -86,4 +91,41 @@ test('all disabled controls keep native readout/RTC semantics and report not-req
 test('missing real WebGL contexts and replaced RTC constructors cannot be reported page-observed',()=>{
  const r=realm();r.run(`var savedContext=HTMLCanvasElement.prototype.getContext;HTMLCanvasElement.prototype.getContext=function(kind){return kind==='webgl'||kind==='webgl2'?null:savedContext.apply(this,arguments)};RTCPeerConnection=function ForeignPeer(){};`);
  assert.equal(r.run('__pocketchatChromiumFingerprintObserve().fields.webgl.state'),'unsupported');assert.equal(r.run('__pocketchatChromiumFingerprintObserve().fields.webrtc.state'),'failed');
+});
+test('legacy and explicit allow keep Worker constructors and native registration unchanged',async()=>{
+ for(const options of [{},{workers:'allow'}]){
+  const r=realm('4'.repeat(64),'https://workers.example',options);
+  assert.equal(r.run('Worker===nativeWorker&&SharedWorker===nativeSharedWorker&&Object.getPrototypeOf(navigator.serviceWorker).register===nativeRegister'),true);
+  r.run('new Worker("/allowed.js");new SharedWorker("/shared.js")');assert.equal((await r.run('navigator.serviceWorker.register("/sw.js")')).native,true);
+  assert.equal(r.run('stats.workers'),2);assert.equal(r.run('stats.shared'),1);assert.equal(r.run('stats.registrations'),1);
+  const observed=r.run('__pocketchatChromiumFingerprintObserve()');assert.equal(observed.workerCreation.mode,'allow');assert.equal(observed.workerCreation.state,'not-requested');assert.equal(observed.workerCreation.existingExecutionControlled,false);
+  for(const field of ['dedicatedAvailable','sharedAvailable','serviceRegistrationAvailable'])assert.equal(observed.workerCreation[field],true,field);
+  for(const field of ['dedicatedCreationDenied','sharedCreationDenied','serviceRegistrationGuardInstalled','serviceRegistrationDenied'])assert.equal(observed.workerCreation[field],false,field);
+ }
+});
+test('allow reports actually absent Worker APIs without mutating or invoking them',()=>{
+ const r=realm('4'.repeat(64),'https://workers.example',{workers:'allow'},'delete globalThis.Worker;delete globalThis.SharedWorker;delete navigator.serviceWorker;');
+ const observed=r.run('__pocketchatChromiumFingerprintObserve().workerCreation');assert.equal(observed.mode,'allow');assert.equal(observed.state,'not-requested');
+ for(const field of ['dedicatedAvailable','sharedAvailable','serviceRegistrationAvailable','dedicatedCreationDenied','sharedCreationDenied','serviceRegistrationGuardInstalled','serviceRegistrationDenied'])assert.equal(observed[field],false,field);
+ assert.equal(r.run('stats.workers'),1);assert.equal(r.run('stats.shared'),0);assert.equal(r.run('stats.registrations'),0);
+});
+test('restrict blocks actual creation entrypoints without invoking native constructors or registration',async()=>{
+ const r=realm('5'.repeat(64),'https://workers.example',{workers:'restrict'});
+ for(const call of ['new Worker("/denied.js")','new SharedWorker("/denied-shared.js")','new Worker.prototype.constructor("/escape.js")','new SharedWorker.prototype.constructor("/escape.js")'])assert.throws(()=>r.run(call),{name:'SecurityError'});
+ assert.throws(()=>r.run('Worker("/missing-new.js")'),{name:'TypeError'});
+ await assert.rejects(r.run('navigator.serviceWorker.register("/denied-sw.js")'),{name:'SecurityError'});
+ assert.throws(()=>r.run('Object.defineProperty(globalThis,"Worker",{value:nativeWorker})'),{name:'TypeError'});
+ assert.throws(()=>r.run('Object.defineProperty(Worker.prototype,"constructor",{value:nativeWorker})'),{name:'TypeError'});
+ assert.throws(()=>r.run('Object.defineProperty(Object.getPrototypeOf(navigator.serviceWorker),"register",{value:nativeRegister})'),{name:'TypeError'});
+ assert.equal(r.run('stats.workers'),1);assert.equal(r.run('stats.shared'),0);assert.equal(r.run('stats.registrations'),0);assert.equal(r.run('existingWorker.ping()'),'existing-worker-alive');
+ const observed=r.run('__pocketchatChromiumFingerprintObserve()');assert.equal(observed.workerCreation.state,'page-observed');
+ for(const field of ['dedicatedAvailable','sharedAvailable','dedicatedCreationDenied','sharedCreationDenied','serviceRegistrationAvailable','serviceRegistrationGuardInstalled','serviceRegistrationDenied'])assert.equal(observed.workerCreation[field],true,field);
+ assert.equal(observed.workerCreation.existingExecutionControlled,false);assert.equal(observed.fingerprintProtectionVerified,false);assert.ok(observed.unsupported.includes('worker'));
+ r.inject();assert.equal(r.run('__pocketchatChromiumFingerprintObserve().workerCreation.state'),'page-observed');
+});
+test('restrict never reports unavailable or failed native entrypoints as denied',async()=>{
+ const absent=realm('6'.repeat(64),'https://workers.example',{workers:'restrict'},'delete globalThis.Worker;delete globalThis.SharedWorker;delete navigator.serviceWorker;');
+ const unavailable=absent.run('__pocketchatChromiumFingerprintObserve().workerCreation');assert.equal(unavailable.state,'unsupported');assert.equal(unavailable.dedicatedCreationDenied,false);assert.equal(unavailable.serviceRegistrationDenied,false);
+ const refusing=realm('7'.repeat(64),'https://workers.example',{workers:'restrict'},'Object.defineProperty(globalThis,"Worker",{value:nativeWorker,writable:false,configurable:false});');
+ await Promise.resolve();assert.equal(refusing.run('__pocketchatChromiumFingerprintObserve().workerCreation.state'),'failed');assert.equal(refusing.run('__pocketchatChromiumFingerprintObserve().workerCreation.dedicatedCreationDenied'),false);
 });

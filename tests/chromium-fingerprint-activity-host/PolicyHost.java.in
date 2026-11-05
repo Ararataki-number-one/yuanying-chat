@@ -31,7 +31,7 @@ public final class PolicyHost {
     boolean fingerprintReady=true,loading;long surfaceGeneration=11,generation=19;
     String fingerprintProviderPackage="controlled.provider",fingerprintProviderVersion="1.0";
   }
-  static final class RuntimeBoundary {boolean allowed=true;boolean allowed(){return allowed;}}
+  static final class RuntimeBoundary {boolean allowed=true;JSONObject workerReceipt=new JSONObject();boolean allowed(){return allowed;}JSONObject workerPolicyReceipt(){return workerReceipt;}}
   interface Checked {void run()throws Exception;}
   static void check(String name,boolean pass){checks.put(J.obj("name",name,"pass",pass));if(!pass)throw new AssertionError(name);}
   static void rejects(String name,Checked run)throws Exception{boolean rejected=false;try{run.run();}catch(JSONException expected){rejected=true;}check(name,rejected);}
@@ -166,8 +166,48 @@ public final class PolicyHost {
     JSONObject unregistered=host.fingerprintNativeFields(J.obj("documentStartRegistered",false));check("Absent document-start registration remains saved-only",unregistered.getJSONObject("documentStart").getString("state").equals("saved")&&!unregistered.getJSONObject("documentStart").getBoolean("registered"));
     JSONObject observed=fingerprintObservation(encoded(observation()));check("Page-level result cannot upgrade native or Worker acknowledgements",!observed.has("nativeSetup")&&!observed.has("workers")&&Boolean.FALSE.equals(observed.get("fingerprintProtectionVerified")));
   }
+  static JSONObject workerObservation(){return J.obj("scope","page-frame-new-workers-only","mode","restrict","state","page-observed",
+      "dedicatedAvailable",true,"sharedAvailable",true,"dedicatedCreationDenied",true,"sharedCreationDenied",true,
+      "serviceRegistrationAvailable",true,"serviceRegistrationGuardInstalled",true,"serviceRegistrationDenied",true,"existingExecutionControlled",false);}
+  static void workerParsing()throws Exception{
+    JSONObject input=observation().put("workerCreation",workerObservation());JSONObject accepted=fingerprintObservation(encoded(input));
+    check("Worker observation is separate from original four fingerprint fields",keys(accepted.getJSONObject("fields")).equals(new HashSet<>(Arrays.asList("canvas","webgl","audio","webrtc")))&&accepted.getJSONObject("workerCreation").getBoolean("dedicatedCreationDenied"));
+    for(String state:new String[]{"page-observed","requested","unsupported","failed","not-requested"}){
+      JSONObject worker=workerObservation().put("state",state);
+      if(state.equals("requested"))worker.put("serviceRegistrationDenied",false);
+      if(state.equals("unsupported"))for(String flag:new String[]{"dedicatedAvailable","sharedAvailable","serviceRegistrationAvailable","dedicatedCreationDenied","sharedCreationDenied","serviceRegistrationGuardInstalled","serviceRegistrationDenied"})worker.put(flag,false);
+      if(state.equals("not-requested")){worker.put("mode","allow");for(String flag:new String[]{"dedicatedCreationDenied","sharedCreationDenied","serviceRegistrationGuardInstalled","serviceRegistrationDenied"})worker.put(flag,false);}
+      JSONObject current=observation().put("workerCreation",worker);check("Worker promise observation preserves consistent state: "+state,fingerprintObservation(encoded(current)).getJSONObject("workerCreation").getString("state").equals(state));
+    }
+    JSONObject untrusted=workerObservation().put("seed","DO_NOT_EXPORT").put("cookie","DO_NOT_EXPORT").put("nativeSettingReadback",true).put("workerCoverageVerified",true);
+    JSONObject safe=fingerprintObservation(encoded(observation().put("workerCreation",untrusted))).getJSONObject("workerCreation");
+    check("Worker page cannot publish identifiers or native acknowledgement",!safe.toString().contains("DO_NOT_EXPORT")&&!safe.has("nativeSettingReadback")&&Boolean.FALSE.equals(safe.get("workerCoverageVerified")));
+    for(String key:new String[]{"scope","mode","state","existingExecutionControlled"}){JSONObject missing=workerObservation();missing.remove(key);rejects("Missing Worker observation contract is rejected: "+key,()->fingerprintObservation(encoded(observation().put("workerCreation",missing))));}
+    for(String scope:new String[]{"all-workers","engine-native","service-worker-network-only"})rejects("Page Worker observation cannot claim wider scope: "+scope,()->fingerprintObservation(encoded(observation().put("workerCreation",workerObservation().put("scope",scope)))));
+    for(String mode:new String[]{"native-block","","unconfirmed"})rejects("Unknown Worker mode is rejected: "+mode,()->fingerprintObservation(encoded(observation().put("workerCreation",workerObservation().put("mode",mode)))));
+    for(String state:new String[]{"native-readback","verified","protected"})rejects("Worker page cannot declare native protection: "+state,()->fingerprintObservation(encoded(observation().put("workerCreation",workerObservation().put("state",state)))));
+    rejects("Page cannot claim pre-existing Worker execution control",()->fingerprintObservation(encoded(observation().put("workerCreation",workerObservation().put("existingExecutionControlled",true)))));
+    for(String flag:new String[]{"dedicatedCreationDenied","sharedCreationDenied","serviceRegistrationGuardInstalled","serviceRegistrationDenied"})rejects("Available but unblocked Worker cannot claim observed restriction: "+flag,()->fingerprintObservation(encoded(observation().put("workerCreation",workerObservation().put(flag,false)))));
+    rejects("Selected restrictions cannot be reported as not requested",()->fingerprintObservation(encoded(observation().put("workerCreation",workerObservation().put("state","not-requested")))));
+    rejects("Available Worker cannot be reported as unsupported",()->fingerprintObservation(encoded(observation().put("workerCreation",workerObservation().put("state","unsupported")))));
+    rejects("Unrestricted policy cannot claim observed restriction",()->fingerprintObservation(encoded(observation().put("workerCreation",workerObservation().put("mode","allow")))));
+    rejects("Completed registration denial cannot claim pending promise",()->fingerprintObservation(encoded(observation().put("workerCreation",workerObservation().put("state","requested")))));
+    rejects("Unavailable Dedicated Worker cannot be declared denied",()->fingerprintObservation(encoded(observation().put("workerCreation",workerObservation().put("dedicatedAvailable",false)))));
+    for(String key:new String[]{"dedicatedAvailable","sharedAvailable","dedicatedCreationDenied","sharedCreationDenied","serviceRegistrationAvailable","serviceRegistrationGuardInstalled","serviceRegistrationDenied"}){
+      for(Object flag:new Object[]{"true",1,JSONObject.NULL})rejects("Worker flags require actual booleans: "+key+"/"+flag,()->fingerprintObservation(encoded(observation().put("workerCreation",workerObservation().put(key,flag)))));
+    }
+  }
+  static void workerAcknowledgements()throws Exception{
+    PolicyHost host=fresh();JSONObject source=J.obj("documentStartRegistered",true);
+    check("Missing native Worker receipt remains requested",host.fingerprintNativeFields(source).getJSONObject("workerNetwork").getString("state").equals("requested"));
+    for(String missing:new String[]{"confirmed","nativeReadbackObserved","nativeSettingMatches"}){host.runtime.workerReceipt=J.obj("confirmed",true,"nativeReadbackObserved",true,"nativeSettingMatches",true);host.runtime.workerReceipt.put(missing,false);check("Native Worker readback requires independent acknowledgement: "+missing,host.fingerprintNativeFields(source).getJSONObject("workerNetwork").getString("state").equals("requested"));}
+    host.runtime.workerReceipt=J.obj("confirmed",true,"nativeReadbackObserved",true,"nativeSettingMatches",true,"scope","service-worker-network-only");JSONObject current=host.fingerprintNativeFields(source);
+    check("Confirmed native network receipt retains bounded scope",current.getJSONObject("workerNetwork").getString("state").equals("native-readback")&&current.getJSONObject("workerNetwork").getJSONObject("value").getString("scope").equals("service-worker-network-only"));
+    check("Native Worker network receipt cannot claim full Worker coverage",Boolean.FALSE.equals(current.getJSONObject("workerNetwork").get("workerCoverageVerified"))&&current.getJSONObject("workers").getString("state").equals("unsupported"));
+    host.runtime=null;check("Retired runtime cannot retain native Worker acknowledgement",host.fingerprintNativeFields(source).getJSONObject("workerNetwork").getString("state").equals("requested"));
+  }
   public static void main(String[] args)throws Exception{
-    root=Paths.get(args[0]);Files.createDirectories(root);policies();providers();trafficGates();ownership();parsing();acknowledgementLevels();
+    root=Paths.get(args[0]);Files.createDirectories(root);policies();providers();trafficGates();ownership();parsing();acknowledgementLevels();workerParsing();workerAcknowledgements();
     System.out.println(J.obj("status","passed","passed",checks.length(),"total",checks.length(),"checks",checks,"actualAndroidExecution",false,"actualChromiumExecution",false,"scope","Actual BrowserActivity policy/traffic/current-provider/parser/native-field methods with real Store/Spec/EnvironmentSpec/J and declared Context/vault/catalog, provider, view, route and Prepared boundaries. No WebView setting, JavaScript page, fingerprint API, Android or route execution."));
   }
 }

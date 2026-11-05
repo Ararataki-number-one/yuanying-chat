@@ -3,6 +3,7 @@ import java.util.*;import java.net.URI;import org.json.*;import android.net.Uri;
 /** The runner substitutes exact source members, not rewritten policy copies. */
 public class PageRecoveryHost {
  static int checks;
+ static int syntheticTimeZoneRetirements;
  static void check(String name,boolean pass){if(!pass)throw new AssertionError(name);checks++;}
  static JSONObject j(Object... parts){return J.obj(parts);}
  static ChatSession route(){LocalDraftPolicy.allowed=true;NativeNetwork.network=new NativeNetwork();ProfileCatalog.generation=4;ProfileCatalog.available=true;ProfileCatalog.deleting=false;ProfileCatalog.resetting=false;SystemClock.now=1000;return new ChatSession();}
@@ -145,7 +146,7 @@ public class PageRecoveryHost {
    s.runRecovery(oldRetry);check("Independent network retry remains runnable after the pure foreground notice",s.opened==1&&s.recoveryAttempt==1&&s.recoveryToken==oldRetry&&!s.recoveryScheduled&&s.pending==retainedTask&&stopped.recoveryDispatches==0);
    int lifecycleChecks=checks-lifecycleStart;
    int originalChecks=checks,currentPolicyChecks=currentPolicyAndCleanup();
-   System.out.println(j("status","passed","checks",checks,"contentLifecycleChecks",lifecycleChecks,"originalChecks",originalChecks,"currentPolicyAndCleanupChecks",currentPolicyChecks));
+   System.out.println(j("status","passed","checks",checks,"contentLifecycleChecks",lifecycleChecks,"originalChecks",originalChecks,"currentPolicyAndCleanupChecks",currentPolicyChecks,"syntheticTimeZoneRetirements",syntheticTimeZoneRetirements,"actualNativeTimeZoneExecution",false));
  }
 }
 class ChatSession {
@@ -193,6 +194,8 @@ class Store{final java.util.concurrent.Executor worker=Runnable::run;void offer(
 class Cache{JSONArray withEarlier(String u,JSONArray a){return a;}void saveMessages(String u,JSONArray e){}}
 
 class Audit{void retirePageCheck(){}boolean requestIdentitySelected;boolean requestIdentityPageSelected(){return requestIdentitySelected;}void refresh(boolean force){}}class ChatService{static boolean running;static void networkLost(Object c){}}class GeckoWebView{
+ // Default-system collaborator boundary only; no native Date/engine behavior.
+ boolean customTimeZoneScope;void retireTimeZone(GeckoSession session){if(customTimeZoneScope||session==null)throw new AssertionError("Custom native time-zone retirement is outside this legacy host");PageRecoveryHost.syntheticTimeZoneRetirements++;}
  // This recovery workload has no auxiliary page. Never simulate its lifecycle.
  boolean auxiliaryPageSelected;
  boolean closeExitIpPage(){if(auxiliaryPageSelected)throw new AssertionError("Auxiliary page lifecycle is outside this host");return false;}

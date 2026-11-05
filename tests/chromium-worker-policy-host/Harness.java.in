@@ -1,0 +1,83 @@
+package local.pocketchat;
+import java.util.*;
+import org.json.*;
+
+public final class WorkerPolicyHost {
+  static final List<String> checks=new ArrayList<>();
+  static final String ID="00000000-0000-0000-0000-000000000002",OTHER="00000000-0000-0000-0000-000000000003";
+  static void check(String name,boolean condition){if(!condition)throw new AssertionError(name);checks.add(name);}
+  static EnvironmentSpec.Identity id(int generation,String uuid){return new EnvironmentSpec.Identity(2,generation,uuid);}
+  static ChromiumRuntime fresh(){ServiceWorkerController.settings=new ServiceWorkerWebSettings();Looper.main=true;ChromiumRuntime.owner=null;return new ChromiumRuntime();}
+  static void route(ChromiumRuntime value,EnvironmentSpec.Identity identity){value.identity=identity;ChromiumRoutePolicy.Ticket ticket=value.policy.begin();value.route=new ChromiumRuntime.Route(ticket);if(!value.policy.admit(ticket,true))throw new AssertionError("route fixture");}
+  static void checkBlocked(ChromiumRuntime value,String name){check(name,ServiceWorkerController.settings.blocked&&!value.workerRequestsAllowed());}
+  public static void main(String[] args)throws Exception{
+    ChromiumRuntime value=fresh(),previous=new ChromiumRuntime();ChromiumRuntime.owner=previous;
+    long token=value.beginWorkerPolicy();check("Begin before start invalidates own state without touching other active runtime",token==1&&value.workerPolicy==null&&ServiceWorkerController.settings.writes==0);
+    ChromiumRuntime.owner=value;check("Unconfirmed runtime installs fail-closed native policy",value.updateWorkerNetwork());checkBlocked(value,"Unconfirmed route cannot request or unblock native network");
+    JSONObject receipt=value.workerPolicyReceipt();check("Native receipt reports actual getter readback",receipt.getBoolean("nativeReadbackObserved")&&receipt.getBoolean("nativeBlockNetworkLoads")&&receipt.getBoolean("nativeSettingMatches")&&ServiceWorkerController.settings.reads>0);
+    check("No fabricated Worker coverage in native receipt",!receipt.getBoolean("workerCoverageVerified")&&!receipt.getBoolean("existingOrCachedExecutionControlled")&&receipt.getString("scope").equals("service-worker-network-only"));
+    check("Catalog state can confirm before route identity arrives",value.confirmWorkerPolicy(token,id(4,ID),1,false));checkBlocked(value,"Early allow confirmation stays blocked until route is admitted");
+    check("Early confirmation is not falsely identity bound",!value.workerPolicyReceipt().getBoolean("identityBound"));
+    route(value,id(4,ID));check("Admitted same-identity allow updates native gate",value.updateWorkerNetwork());check("Allow reopens only admitted same-identity Worker network",!ServiceWorkerController.settings.blocked&&value.workerRequestsAllowed());
+    receipt=value.workerPolicyReceipt();check("Allow receipt matches actual native readback and policy revision",receipt.getBoolean("confirmed")&&receipt.getBoolean("identityBound")&&!receipt.getBoolean("nativeBlockNetworkLoads")&&receipt.getBoolean("routeAdmitted")&&receipt.getLong("desiredRevision")==1);
+    long restricted=value.beginWorkerPolicy();checkBlocked(value,"Begin blocks old allow before asynchronous work completes");check("Previous async token cannot restore old allow",!value.confirmWorkerPolicy(token,id(4,ID),1,false));
+    check("Restrict confirms exact current catalog identity",value.confirmWorkerPolicy(restricted,id(4,ID),2,true));checkBlocked(value,"Restrict blocks native SW network and callback admission");
+    check("Restrict receipt reports actual native block",value.workerPolicyReceipt().getString("mode").equals("restrict")&&value.workerPolicyReceipt().getBoolean("nativeBlockNetworkLoads"));
+    check("Duplicate exact confirmation is idempotent",value.confirmWorkerPolicy(restricted,id(4,ID),2,true));
+    check("Already confirmed token cannot be reused to change desired revision",!value.confirmWorkerPolicy(restricted,id(4,ID),1,true));
+    check("Already confirmed token cannot be reused to undo restrict",!value.confirmWorkerPolicy(restricted,id(4,ID),2,false));checkBlocked(value,"Rejected duplicate callback leaves restrict effective");
+    long pending=value.beginWorkerPolicy();int writes=ServiceWorkerController.settings.writes;
+    check("Foreign slot cannot confirm",!value.confirmWorkerPolicy(pending,new EnvironmentSpec.Identity(1,4,ID),3,false));
+    check("Changed generation cannot reuse pending token",!value.confirmWorkerPolicy(pending,id(5,ID),3,false));
+    check("Changed environment UUID cannot reuse pending token",!value.confirmWorkerPolicy(pending,id(4,OTHER),3,false));
+    check("Invalid confirmations never mutate process native settings",ServiceWorkerController.settings.writes==writes);checkBlocked(value,"Foreign state cannot reopen native Worker network");
+    check("Nonpositive revision and invalid token fail closed",!value.confirmWorkerPolicy(pending,id(4,ID),0,false)&&!value.confirmWorkerPolicy(-1,id(4,ID),3,false));
+    check("Newest valid allow can restore compatibility",value.confirmWorkerPolicy(pending,id(4,ID),3,false)&&!ServiceWorkerController.settings.blocked);
+    value.route.evidence=false;check("Actual production route loss invalidates callback admission",!value.workerRequestsAllowed());checkBlocked(value,"Route loss immediately restores native block");check("Route-loss listener observes paused route",value.notifications>0&&value.route==null);
+    route(value,id(4,ID));check("Same confirmed allow can resume after fresh route proof",value.updateWorkerNetwork()&&value.workerRequestsAllowed()&&!ServiceWorkerController.settings.blocked);
+    value.identity=id(5,ID);check("Identity change denies callback before asynchronous UI work",!value.workerRequestsAllowed());check("Identity change blocks native network",value.updateWorkerNetwork()&&ServiceWorkerController.settings.blocked);
+    value.identity=id(4,ID);long fault=value.beginWorkerPolicy();ServiceWorkerController.settings.refuse=true;
+    check("Opposite getter readback rejects confirmation",!value.confirmWorkerPolicy(fault,id(4,ID),4,false));receipt=value.workerPolicyReceipt();check("Readback mismatch cannot leave an admitted policy or route",value.workerPolicy==null&&value.route==null&&!value.workerRequestsAllowed());
+    ServiceWorkerController.settings.refuse=false;route(value,id(4,ID));fault=value.beginWorkerPolicy();ServiceWorkerController.settings.throwRead=true;
+    check("Native getter failure rejects confirmation",!value.confirmWorkerPolicy(fault,id(4,ID),5,false));receipt=value.workerPolicyReceipt();check("Unavailable getter is never reported as native readback",!receipt.getBoolean("nativeReadbackObserved")&&receipt.isNull("nativeBlockNetworkLoads")&&!receipt.getBoolean("nativeSettingMatches"));
+    ServiceWorkerController.settings.throwRead=false;route(value,id(4,ID));fault=value.beginWorkerPolicy();ServiceWorkerController.settings.throwSet=true;
+    check("Native setter failure rejects confirmation",!value.confirmWorkerPolicy(fault,id(4,ID),6,false));check("Native setter failure leaves no callback permission",value.workerPolicy==null&&!value.workerRequestsAllowed());
+    ServiceWorkerController.settings.throwSet=false;ChromiumRuntime.owner=previous;writes=ServiceWorkerController.settings.writes;
+    check("Retired runtime cannot confirm over replacement owner",!value.confirmWorkerPolicy(value.workerPolicyGeneration,id(4,ID),6,false));check("Retired update does not mutate replacement settings",!value.updateWorkerNetwork()&&ServiceWorkerController.settings.writes==writes);
+    value=fresh();ChromiumRuntime.owner=value;route(value,id(4,ID));long live=value.beginWorkerPolicy();check("Current runtime has a fresh confirmed receipt",value.confirmWorkerPolicy(live,id(4,ID),7,false)&&value.workerPolicyReceipt().getBoolean("confirmed"));
+    ChromiumRuntime.owner=previous;receipt=value.workerPolicyReceipt();check("Replacement owner invalidates original native readback receipt",!receipt.getBoolean("confirmed")&&!receipt.getBoolean("identityBound")&&!receipt.getBoolean("nativeReadbackObserved")&&!receipt.getBoolean("nativeSettingMatches")&&receipt.isNull("nativeBlockNetworkLoads"));
+    ChromiumRuntime.owner=value;value.closed=true;check("Closed runtime begin and confirm are rejected",value.beginWorkerPolicy()==-1&&!value.confirmWorkerPolicy(value.workerPolicyGeneration,id(4,ID),7,false));
+    receipt=value.workerPolicyReceipt();check("Closed runtime never exposes a current native readback receipt",!receipt.getBoolean("confirmed")&&!receipt.getBoolean("nativeReadbackObserved")&&receipt.isNull("nativeBlockNetworkLoads"));
+    value=fresh();ChromiumRuntime.owner=value;value.workerPolicyGeneration=Long.MAX_VALUE;check("Generation exhaustion never wraps into stale token",value.beginWorkerPolicy()==-1&&value.workerPolicyGeneration==Long.MAX_VALUE);checkBlocked(value,"Exhausted generation remains blocked");
+    Looper.main=false;boolean rejected=false;try{value.beginWorkerPolicy();}catch(IllegalStateException expected){rejected=true;}check("Off-main begin is rejected",rejected);rejected=false;try{value.confirmWorkerPolicy(1,id(4,ID),1,false);}catch(IllegalStateException expected){rejected=true;}check("Off-main confirmation is rejected",rejected);Looper.main=true;
+    JSONObject fields=J.obj("workerNetwork",J.obj("state","native-readback","value",J.obj("confirmed",true,"nativeReadbackObserved",true,"nativeSettingMatches",true,"nativeBlockNetworkLoads",true)),"workerCreation",J.obj("state","page-observed","value",J.obj("mode","restrict")));
+    check("UI reports actual native block and scope-limited page guard separately",ChromiumFingerprintUi.workerSummary(J.obj("fields",fields)).contains("已阻止（原生回读）")&&ChromiumFingerprintUi.workerSummary(fields).contains("不包含已有 Worker 执行"));
+    fields.getJSONObject("workerNetwork").getJSONObject("value").put("nativeBlockNetworkLoads",false);check("UI reads actual allow value rather than inferring restrict means block",ChromiumFingerprintUi.workerSummary(fields).contains("已允许（原生回读）"));
+    fields.getJSONObject("workerNetwork").getJSONObject("value").put("nativeReadbackObserved",false);check("UI never upgrades a requested or stale setting to native confirmation",ChromiumFingerprintUi.workerSummary(fields).contains("尚无本次原生确认"));
+    fields.getJSONObject("workerCreation").put("state","failed");check("UI exposes page guard failure",ChromiumFingerprintUi.workerSummary(fields).contains("当前页面守卫自检失败"));
+    check("Missing receipt does not fabricate Worker protection",ChromiumFingerprintUi.workerSummary(null).contains("尚无当前页面观测"));
+    System.out.println(J.obj("status","passed","passed",checks.size(),"total",checks.size(),"checks",new JSONArray(checks)));
+  }
+}
+final class ChromiumFingerprintUi {__ACTUAL_UI_MEMBERS__}
+final class ChromiumRuntime {
+  static ChromiumRuntime owner;
+  final TestContext context=new TestContext();final ChromiumRoutePolicy policy=new ChromiumRoutePolicy();
+  int notifications;final Handler main=new Handler();final Listener listener=(ready,message)->notifications++;
+  volatile Route route;volatile boolean closed;volatile EnvironmentSpec.Identity identity;String message="";
+  volatile WorkerPolicy workerPolicy;volatile long workerPolicyGeneration;
+  volatile Boolean workerNativeBlocked;volatile boolean workerNativeObserved,workerNativeMatches;volatile String workerNativeProblem="";
+  interface Listener {void changed(boolean ready,String reason);}
+  static final class Route {final ChromiumRoutePolicy.Ticket ticket;boolean evidence=true;Route(ChromiumRoutePolicy.Ticket ticket){this.ticket=ticket;}boolean evidenceCurrent(){return evidence;}}
+  __ACTUAL_PRODUCTION_MEMBERS__
+}
+final class TestContext {}
+final class Profiles {static int slot(TestContext ignored){return 2;}}
+final class Looper {static final Looper MAIN=new Looper();static boolean main=true;static Looper getMainLooper(){return MAIN;}static Looper myLooper(){return main?MAIN:null;}}
+final class Handler {void post(Runnable task){task.run();}}
+final class ServiceWorkerController {static ServiceWorkerWebSettings settings=new ServiceWorkerWebSettings();static final ServiceWorkerController INSTANCE=new ServiceWorkerController();static ServiceWorkerController getInstance(){return INSTANCE;}ServiceWorkerWebSettings getServiceWorkerWebSettings(){return settings;}}
+final class ServiceWorkerWebSettings {
+  boolean blocked=true,refuse,throwRead,throwSet;int writes,reads;
+  void setBlockNetworkLoads(boolean block){writes++;if(throwSet)throw new IllegalStateException("Injected native setter unavailable");if(!refuse)blocked=block;}
+  boolean getBlockNetworkLoads(){reads++;if(throwRead)throw new IllegalStateException("Injected native getter unavailable");return blocked;}
+}

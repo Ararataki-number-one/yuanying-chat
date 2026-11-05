@@ -37,6 +37,8 @@ jobs:
               release_files.add('tools/browser/check_evidence.py')
           if tuple(map(int,m['version'].split('.'))) >= (2,1,1):
               release_files.update({'tools/browser/check_fingerprint_evidence.py'})
+          if tuple(map(int,m['version'].split('.'))) >= (2,1,2):
+              release_files.update({'tools/browser/check_worker_policy_evidence.py','tools/browser/check_gecko_environment_policy_evidence.py'})
           if tools_commit!=m['sourceCommit']:
               subprocess.run(['git','merge-base','--is-ancestor',m['sourceCommit'],tools_commit],check=True)
               changed=set(subprocess.check_output(['git','diff','--name-only',m['sourceCommit'],tools_commit],text=True).splitlines())

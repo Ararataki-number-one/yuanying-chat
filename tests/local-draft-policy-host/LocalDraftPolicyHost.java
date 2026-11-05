@@ -121,7 +121,8 @@ public final class LocalDraftPolicyHost {
    check("Draft policy never drops the independent archived send observation "+mode,c.getSharedPreferences("chat",0).getString("archivedWebObservation","").contains("owned-navigation-job"));
   }
  }
- public static void main(String[] args)throws Exception{try{if(args.length==1&&args[0].equals("generic-route"))genericRestore();else if(Boolean.getBoolean("draft.before"))baseline();else{policy();archive();memory();sessionStore();diskPolicy();restore();navigationArchive();genericRestore();}}finally{for(GeckoWebView view:views)closeRoutes(view);for(BrowserSessionStore s:stores)s.io.shutdownNow();}int passed=0;for(int i=0;i<checks.length();i++)if(checks.optJSONObject(i).optBoolean("pass"))passed++;System.out.println(J.obj("status",passed==checks.length()?"passed":"failed","passed",passed,"total",checks.length(),"checks",checks));if(passed!=checks.length())System.exit(1);}
+ static JSONObject timeZoneFacadeCounts(){int ready=0,prepare=0,dispatch=0;for(GeckoWebView view:views){ready+=view.timeZoneBoundary.readinessCalls;prepare+=view.timeZoneBoundary.preparationCalls;dispatch+=view.timeZoneBoundary.uriDispatches;}return J.obj("readinessCalls",ready,"preparationCalls",prepare,"uriDispatches",dispatch,"defaultSystemReady",true,"actualNativeTimeZoneExecution",false);}
+ public static void main(String[] args)throws Exception{try{if(args.length==1&&args[0].equals("generic-route"))genericRestore();else if(Boolean.getBoolean("draft.before"))baseline();else{policy();archive();memory();sessionStore();diskPolicy();restore();navigationArchive();genericRestore();}}finally{for(GeckoWebView view:views)closeRoutes(view);for(BrowserSessionStore s:stores)s.io.shutdownNow();}int passed=0;for(int i=0;i<checks.length();i++)if(checks.optJSONObject(i).optBoolean("pass"))passed++;System.out.println(J.obj("status",passed==checks.length()?"passed":"failed","passed",passed,"total",checks.length(),"checks",checks,"syntheticTimeZoneBoundary",timeZoneFacadeCounts()));if(passed!=checks.length())System.exit(1);}
 }
 class J{static JSONObject obj(Object... pairs){JSONObject out=new JSONObject();try{for(int i=0;i<pairs.length;i+=2)out.put((String)pairs[i],pairs[i+1]);}catch(JSONException e){throw new RuntimeException(e);}return out;}static JSONObject parse(String value){try{return new JSONObject(value);}catch(Exception e){return new JSONObject();}}}
 class AppPrefs{/* APPPREFS */}
@@ -132,8 +133,20 @@ class ChatService{static void end(Context context){}}
 class GeckoWebView{
  final ChatSession owner;final BrowserSessionStore sessionStore;GeckoSession current=new GeckoSession();boolean destroyed,failed,ready=true,generalRouteRetryQueued,protectionAllowed=true,identityAllowed=true;ProtectionRestore protectionRestore,generalRestore;String queued="";
  /* ROUTE_FIELDS */
+ final SystemReadyTimeZoneBoundary timeZoneBoundary=new SystemReadyTimeZoneBoundary();
+ boolean timeZoneAllows(GeckoSession session){return timeZoneBoundary.allows(session);}
+ void prepareTimeZone(GeckoSession session,Consumer<Boolean> done){timeZoneBoundary.prepare(session,done);}
+ void loadSessionUri(GeckoSession session,String target){timeZoneBoundary.uriDispatches++;if(!timeZoneAllows(session))throw new AssertionError("System-ready time-zone boundary rejected dispatch");session.loadUri(target);}
  boolean protectionAllowsNetwork(){return protectionAllowed;}boolean identityRequestAllowed(String url){return identityAllowed;}
  boolean allowedUrl(String url){return GeckoNavigationPolicy.publicWeb(url);}
  void loadUrl(String url){if(!owner.guard.allowed()||!protectionAllowsNetwork()||!identityRequestAllowed(url)||!allowedUrl(url))throw new AssertionError("Rejected modeled native URL dispatch");current.loadUri(url);}
  GeckoWebView(Context c){owner=new ChatSession(c);sessionStore=LocalDraftPolicyHost.store(c);locations.put(current,LocalDraftPolicyHost.url);ChromiumRouteLease.addListener(routeLeaseChanged);LocalDraftPolicyHost.views.add(this);}/* RESTORE */
+}
+/** Explicit ready-system boundary only; never simulates Date, native settings or custom zones. */
+class SystemReadyTimeZoneBoundary {
+ boolean defaultSystemReady=true,customZoneRequested;int readinessCalls,preparationCalls,uriDispatches;
+ void requireSystemScope(){if(customZoneRequested||!defaultSystemReady)throw new AssertionError("Custom or unready native time-zone execution is outside this legacy host");}
+ boolean allows(GeckoSession session){readinessCalls++;requireSystemScope();if(session==null)throw new AssertionError("Missing modeled session");return true;}
+ void prepare(GeckoSession session,Consumer<Boolean> done){preparationCalls++;requireSystemScope();if(session==null||done==null)throw new AssertionError("Missing modeled preparation boundary");done.accept(true);}
+ public static void main(String[] args){SystemReadyTimeZoneBoundary boundary=new SystemReadyTimeZoneBoundary();GeckoSession session=new GeckoSession();int checks=0;if(!boundary.allows(session)||boundary.readinessCalls!=1)throw new AssertionError("Default-system readiness count");checks++;boolean[] callback={false};boundary.prepare(session,ready->callback[0]=ready);if(!callback[0]||boundary.preparationCalls!=1)throw new AssertionError("Default-system prepare count");checks++;for(String kind:new String[]{"custom-read","custom-prepare","unready-read","unready-prepare"}){boundary.customZoneRequested=kind.startsWith("custom");boundary.defaultSystemReady=!kind.startsWith("unready");boolean refused=false;try{if(kind.endsWith("read"))boundary.allows(session);else boundary.prepare(session,value->{throw new AssertionError("Out-of-scope callback must not execute");});}catch(AssertionError expected){if(!expected.getMessage().startsWith("Custom or unready"))throw expected;refused=true;}if(!refused)throw new AssertionError("Out-of-scope time zone accepted");checks++;}System.out.println(J.obj("status","passed","checks",checks,"actualNativeTimeZoneExecution",false,"actualDateOrEngineExecution",false));}
 }

@@ -66,6 +66,15 @@ def execute():
         '__IDENTITY_POLICY__':identity_policy,
         '__LOAD_URL__':member(source,'public void loadUrl(String target)'),
         '__RESTORE_CHECKPOINT__':member(source,'void restoreCheckpoint(GeckoSession target,GeckoSession.SessionState state,String url,long savedRevision)'),
+        '__TIMEZONE_INTENT_FIELDS__':'\n'.join(source[source.index(signature):source.index(';',source.index(signature))+1] for signature in (
+            'final Map<GeckoSession,String> timeZoneLoads=',
+            'final Map<GeckoSession,Object> timeZoneIntents=',
+        )),
+        '__TIMEZONE_INTENT_METHODS__':'\n'.join(member(source,signature) for signature in (
+            'Object claimTimeZoneIntent(GeckoSession session,boolean restore)',
+            'boolean hasTimeZoneIntent(GeckoSession session)',
+            'void clearTimeZoneIntent(GeckoSession session,Object intent)',
+        )),
         '__NAVIGATION_BODY__':body(source,source.index('@Override public GeckoResult<AllowOrDeny> onLoadRequest(GeckoSession s,LoadRequest request)')),
         '__POPUP_BODY__':body(source,source.index('@Override public GeckoResult<GeckoSession> onNewSession(GeckoSession s,String target)')),
     }
@@ -86,6 +95,9 @@ def execute():
     report=json.loads(result.stdout)
     report.update(scope='Actual production pure-Java state plus byte-extracted native controller, route, navigation, load, checkpoint restore, port-message and diagnostic URL policy methods. Handler, Gecko/Android, environment lifecycle, network guard and JSON boundaries are synthetic; no actual network or SDK execution.',
                   auxiliaryPageBoundary='Default absent; close returns false only while absent, and any auxiliary freshness/close behavior fails explicitly. Real auxiliary lifecycle is not exercised.',
+                  actualRequestHeaderPolicyExecution=False,actualTimeZonePolicyExecution=False,
+                  requestHeaderBoundary='Independent header filter is explicitly installed at fixture creation; retirement is counted only. Real header installation, policy replies and HTTP wire behavior are not executed here.',
+                  timeZoneBoundary='Independent system timezone is explicitly ready, with counted checks, popup admission, preparation and retirement. Custom-timezone deferral fails explicitly; real timezone/session policy executes in separate current-policy hosts. The intent maps and claim/clear/has helpers are byte-extracted current production, not readiness facades.',
                   newNetworkRequestsActuallySent=False,fullFingerprintProtectionAccepted=False,
                   sourceSha256={str(p.relative_to(ROOT)):hashlib.sha256(p.read_bytes()).hexdigest() for p in [VIEW,POLICY,NAVIGATION,ADDRESS,IDENTITY,TEMPLATE,Path(__file__)]},
                   extractedProductionSha256={name:hashlib.sha256(value.encode()).hexdigest() for name,value in parts.items()})

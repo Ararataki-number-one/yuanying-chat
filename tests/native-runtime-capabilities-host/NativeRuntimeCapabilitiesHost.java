@@ -61,13 +61,22 @@ public class NativeRuntimeCapabilitiesHost {
   System.out.println(J.obj("status","passed","checks",checks.length(),"results",checks,"actualAndroidExecution",false,"actualGeckoExecution",false,"actualSdkApiCompile",false,"physicalPhoneAcceptance",false,"sandboxAcceptance",false));
  }
 }
-class ChatSession {Object context=new Object();String environmentId="environment-a";int environmentGeneration=4;long applied=11,navigationEpoch=3,connectionEpoch=9;boolean deleted,networkReady=true,offline;GeckoWebView web;Guard guard=new Guard();Privacy privacy=new Privacy();long identityAuditAppliedRevision(){return applied;}boolean internalNetwork(){return false;}void updateBrowserActivity(){}}
+class ChatSession {Object context=new Object();String environmentId="environment-a";int environmentGeneration=4;long applied=11,navigationEpoch=3,connectionEpoch=9;boolean deleted,networkReady=true,offline;GeckoWebView web;Guard guard=new Guard();Privacy privacy=new Privacy();final SystemTimeZoneBoundary timeZone=new SystemTimeZoneBoundary();long identityAuditAppliedRevision(){return applied;}boolean internalNetwork(){return false;}void updateBrowserActivity(){}}
+/** Independent default-system policy boundary only; native timezone writes,
+ * readback, custom-zone page observations and lifecycle stamps are tested by
+ * their separate current-policy hosts, not by this SDK capability reader. */
+class SystemTimeZoneBoundary {
+ final boolean followsSystem=true;int expectedCalls,statusCalls;
+ JSONObject auditExpected(JSONObject expected){expectedCalls++;if(!followsSystem)throw new AssertionError("Custom timezone audit is outside this system-policy capability fixture");return expected;}
+ JSONObject status(){statusCalls++;return J.obj("mode","system","scope","synthetic-system-timezone-boundary","nativeSettingReadback",false,"currentSessionPrepared",false,"workerCoverageVerified",false,"serviceWorkerCoverageVerified",false);}
+}
 class Privacy{int level(){return 1;}}
 class Guard{boolean allowed=true;boolean allowed(){return allowed;}}
 class NativeNetwork{long lastVerified=0;String exitIp="";static NativeNetwork get(Object context){return new NativeNetwork();}}
-class GeckoSettings{boolean desktop,rfpAcknowledged;String[] requestedLocales={"zh-CN"},expectedSdkLocales={"zh-CN"};String getUserAgentString(){return "Firefox/157";}}
+class GeckoSettings{boolean desktop,rfpAcknowledged;final JSONObject requestHeaderPolicy=J.obj("installed",false,"nativeReadback",false,"scope","public-http-request-ua-only","privateAdmission","unchanged-original-headers","sharedWorkerWireVerified",false,"serviceWorkerWireVerified",false);String[] requestedLocales={"zh-CN"},expectedSdkLocales={"zh-CN"};String getUserAgentString(){return "Firefox/157";}}
 class GeckoWebView{
  static final String VERSION="GeckoView 157.0.1 · 输入同步修正";final ChatSession owner;boolean destroyed,enabled=true,protection=true;GeckoRuntime runtime;long identityPolicyRevision=7;String url="https://chatgpt.com/c/current";GeckoSettings metadata=new GeckoSettings();GeckoWebView(ChatSession s){owner=s;}GeckoSettings getSettings(){return metadata;}String getUrl(){return url;}String identityLanguage(){return "zh-CN";}void cancelEnvironmentAudit(){}boolean protectionAllowsNetwork(){return protection;}
+ JSONObject timeZoneStatus(){return owner.timeZone.status();}
  /* NATIVE_OWNER */
 }
 class Audit{

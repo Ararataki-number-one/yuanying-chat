@@ -44,7 +44,7 @@ final class ChromiumFingerprintRuntime {
       JSONObject receipt=J.obj("engine","chromium","providerPackage",provider.packageName,"providerVersion",provider.versionName,"chromiumVersion",version,
           "features",J.obj("documentStart",document,"userAgentMetadata",metadata),"requested",spec.json(),"nativeUserAgent",settings.getUserAgentString(),
           "nativeRequested",wanted==null?new JSONObject():metadata(wanted),"nativeReadback",accepted==null?new JSONObject():metadata(accepted),
-          "documentStartRegistered",handler!=null,"scope","document-start-frames","unsupported",limits,"fingerprintProtectionVerified",false,
+          "documentStartRegistered",handler!=null,"workerCreationPolicy",J.obj("mode",spec.workers,"scope","page-frame-new-workers-only","state",spec.restrictWorkers()?"requested":"not-requested","existingWorkerExecutionControlled",false),"scope","document-start-frames","unsupported",limits,"fingerprintProtectionVerified",false,
           "workerCoverageVerified",false,"pageObserved",false,"desktopIdentityScope",spec.desktop()?"desktop-request; JavaScript platform and physical hardware unchanged":"actual-provider-mobile");
       return new Prepared(handler,receipt);
     }catch(Exception failure){if(handler!=null)try{handler.remove();}catch(RuntimeException ignored){}throw new IllegalStateException("Chromium 指纹设置失败，网页继续保持断网",failure);}
@@ -53,7 +53,7 @@ final class ChromiumFingerprintRuntime {
   static String userAgent(String actual,boolean desktop){version(actual);return desktop?actual.replaceAll("\\(Linux; Android[^)]*\\)","(X11; Linux x86_64)").replace(" Mobile",""):actual;}
   static String script(String asset,ChromiumFingerprintSpec spec,String seed){
     if(asset==null||asset.length()>131072||asset.indexOf(TOKEN)<0||asset.indexOf(TOKEN)!=asset.lastIndexOf(TOKEN))throw new IllegalArgumentException("Chromium 文档开始脚本缺失或无效");
-    return asset.replace(TOKEN,J.obj("schema",1,"seed",seed,"canvas",spec.canvas,"webgl",spec.webgl,"audio",spec.audio,"webrtc",spec.webrtc).toString());
+    return asset.replace(TOKEN,J.obj("schema",1,"seed",seed,"canvas",spec.canvas,"webgl",spec.webgl,"audio",spec.audio,"webrtc",spec.webrtc,"workers",spec.workers).toString());
   }
   static JSONObject metadata(UserAgentMetadata value){JSONArray brands=new JSONArray();for(UserAgentMetadata.BrandVersion brand:value.getBrandVersionList())brands.put(J.obj("brand",brand.getBrand(),"majorVersion",brand.getMajorVersion(),"fullVersion",brand.getFullVersion()));return J.obj("brands",brands,"fullVersion",value.getFullVersion(),"platform",value.getPlatform(),"platformVersion",value.getPlatformVersion(),"architecture",value.getArchitecture(),"model",value.getModel(),"mobile",value.isMobile(),"bitness",value.getBitness(),"wow64",value.isWow64());}
   static final class Prepared implements AutoCloseable {

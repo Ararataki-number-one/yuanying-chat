@@ -15,6 +15,74 @@
     return target[name] === fn;
   }
   function failure(message) { return new DOMException(message, 'SecurityError'); }
+  const workerMode = policy.workers === 'restrict' ? 'restrict' : 'allow';
+  const workerGuards = {}, workerAvailable = {}, workerOriginal = {};
+  let workerFailed = false, registrationGuard = null, registrationProto = null;
+  let registrationAvailable = false, registrationDenied = false;
+  const rejectPromise = Promise.reject.bind(Promise), promiseThen = Promise.prototype.then;
+  function lock(target, name, value) {
+    const previous = descriptor(target, name);
+    define(target, name, {value, enumerable: previous ? previous.enumerable : false,
+      configurable: false, writable: false});
+    return target[name] === value;
+  }
+  // Availability is observational even when creation restrictions were not requested.
+  for (const name of ['Worker', 'SharedWorker']) {
+    workerOriginal[name] = g[name];workerAvailable[name] = typeof workerOriginal[name] === 'function';
+  }
+  let container = null;
+  try { container = g.navigator && g.navigator.serviceWorker; } catch (_) { /* Opaque/insecure contexts cannot register. */ }
+  registrationProto = container && Object.getPrototypeOf(container);
+  registrationAvailable = !!registrationProto && typeof registrationProto.register === 'function';
+  if (workerMode === 'restrict') {
+    for (const name of ['Worker', 'SharedWorker']) {
+      const Native = workerOriginal[name];
+      if (!workerAvailable[name]) continue;
+      try {
+        function blockedWorker() {
+          if (!new.target) throw new TypeError(name + ' requires the new operator');
+          throw failure('New ' + name + ' creation is restricted by this browser environment');
+        }
+        define(blockedWorker, 'name', {value: Native.name, configurable: true});
+        define(blockedWorker, 'length', {value: Native.length, configurable: true});
+        define(blockedWorker, 'prototype', {value: Native.prototype, writable: false});
+        if (!lock(Native.prototype, 'constructor', blockedWorker) || !lock(g, name, blockedWorker)) throw failure('Worker creation guard unavailable');
+        workerGuards[name] = blockedWorker;
+      } catch (_) { workerFailed = true; }
+    }
+    try {
+      if (registrationAvailable) {
+        function blockedRegistration() { return rejectPromise(failure('New Service Worker registration is restricted by this browser environment')); }
+        if (!lock(registrationProto, 'register', blockedRegistration)) throw failure('Service Worker registration guard unavailable');
+        registrationGuard = blockedRegistration;
+        // Exercise our installed guard only. No registration reaches the native API or network.
+        apply(promiseThen, apply(blockedRegistration, container, ['__restricted_worker_probe__']),
+          [() => { workerFailed = true; }, error => { registrationDenied = !!error && error.name === 'SecurityError'; }]);
+      }
+    } catch (_) { workerFailed = true; }
+  }
+  function workerObservation() {
+    const result = {mode: workerMode, scope: 'page-frame-new-workers-only', state: 'not-requested',
+      dedicatedAvailable: !!workerAvailable.Worker, sharedAvailable: !!workerAvailable.SharedWorker,
+      dedicatedCreationDenied: false, sharedCreationDenied: false,
+      serviceRegistrationAvailable: registrationAvailable, serviceRegistrationGuardInstalled: false,
+      serviceRegistrationDenied: false, existingExecutionControlled: false};
+    if (workerMode !== 'restrict') return result;
+    let failed = workerFailed;
+    for (const [name, field] of [['Worker', 'dedicatedCreationDenied'], ['SharedWorker', 'sharedCreationDenied']]) {
+      if (!workerAvailable[name]) { if (g[name] !== workerOriginal[name]) failed = true;continue; }
+      const guard = workerGuards[name];
+      if (!guard || g[name] !== guard || guard.prototype.constructor !== guard) { failed = true;continue; }
+      try { new guard('__restricted_worker_probe__');failed = true; }
+      catch (error) { result[field] = !!error && error.name === 'SecurityError';if (!result[field]) failed = true; }
+    }
+    result.serviceRegistrationGuardInstalled = registrationAvailable && registrationProto.register === registrationGuard;
+    result.serviceRegistrationDenied = result.serviceRegistrationGuardInstalled && registrationDenied;
+    if (registrationAvailable && !result.serviceRegistrationGuardInstalled) failed = true;
+    result.state = failed ? 'failed' : registrationAvailable && !registrationDenied ? 'requested' :
+      (workerAvailable.Worker || workerAvailable.SharedWorker || registrationAvailable) ? 'page-observed' : 'unsupported';
+    return result;
+  }
   function domString(value) { if (typeof value === 'symbol') throw new TypeError('A Symbol cannot be converted to DOMString'); return String(value); }
   function different(a, b) { if (a.length !== b.length) return true; for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return true; return false; }
   const Canvas = g.HTMLCanvasElement, Context = g.CanvasRenderingContext2D;
@@ -173,7 +241,7 @@
       for (const [name] of installed.webrtc) { try { new g[name](); blocked = false; } catch (error) { if (!error || error.name !== 'NotAllowedError') blocked = false; } }
       if (blocked) fields.webrtc.state = 'page-observed';
     }
-    return {schema: 1, scope: 'document-start-frames', fingerprintProtectionVerified: false, fields,
+    return {schema: 1, scope: 'document-start-frames', fingerprintProtectionVerified: false, fields, workerCreation: workerObservation(),
       unsupported: ['worker','serviceWorker','offscreenCanvas','timezone','hardware','fonts','language','tls','http2','webRtcNative','audioGetChannelData','audioWorklet','webglReadPixels']};
   }
   define(g, '__pocketchatChromiumFingerprintObserve', {value: observation, configurable: false, enumerable: false});

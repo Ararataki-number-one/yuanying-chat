@@ -155,6 +155,15 @@ const protect=reference=>{
 };
 const handleHostMessage=async(message,port)=>{
   if(port!==host||!message||typeof message!=='object')return;
+  if(message.kind==='requestHeaderPolicyChanged'){
+    globalThis.PocketGeckoRequestHeaders?.invalidate(port,message.revision);return;
+  }
+  if((message.kind==='timezoneApply'||message.kind==='timezoneRead')&&Number.isInteger(message.id)&&message.id>0){
+    let result;
+    try{result=await globalThis.PocketNativeTimezoneBridge?.handle(message)??{schema:1,status:'unsupported',nativeSettingReadback:false,reason:'native-api-unavailable'};}
+    catch(_){result={schema:1,status:'failed',nativeSettingReadback:false,reason:'native-operation-failed'};}
+    postHost(port,{kind:'timezoneReady',id:message.id,result:JSON.stringify(result)});return;
+  }
   if(message.kind==='prepare'){
     const claim=claimProtection(message,port);
     try{
@@ -200,13 +209,16 @@ const connectHost=()=>{
   let port;
   try{port=browser.runtime.connectNative('pocketroute');}catch(_){reconnectHost();return;}
   host=port;
+  const headers=globalThis.PocketGeckoRequestHeaders?.activate(port);
   port.onMessage.addListener(message=>handleHostMessage(message,port));
   port.onDisconnect?.addListener(()=>{
     if(port!==host)return;
     host=null;latestProtection=currentProtectionRequest=confirmedProtection=null;
+    globalThis.PocketGeckoRequestHeaders?.clear(port);
     try{globalThis.PocketRequestIdentityBackground?.clear();}catch(_){}
     if(protectionPending?.port===port){finishProtection(protectionPending,false,false,'bridge-disconnected');protectionPending=null;}
     reconnectHost();
   });
+  postHost(port,{kind:'requestHeadersPrepared',installed:headers?.installed===true});
 };
 connectHost();

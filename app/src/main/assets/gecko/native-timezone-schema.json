@@ -1,0 +1,48 @@
+[
+  {
+    "namespace": "pocketNativeTimezone",
+    "description": "Application-bundled access to the existing Gecko native BrowsingContext timezone setting. A setting receipt does not verify page or worker observations.",
+    "types": [
+      {
+        "id": "Receipt",
+        "type": "object",
+        "properties": {
+          "schema": {"type": "integer", "minimum": 1, "maximum": 1},
+          "status": {"type": "string", "enum": ["applied", "read"]},
+          "requestToken": {"type": "string"},
+          "sessionId": {"type": "string"},
+          "requestedZoneId": {"type": "string"},
+          "nativeZoneId": {"type": "string"},
+          "contextId": {"type": "string"},
+          "nativeSettingReadback": {"type": "boolean"},
+          "scope": {"type": "string", "enum": ["top-browsing-context"]},
+          "workerCoverageVerified": {"type": "boolean"},
+          "serviceWorkerCoverageVerified": {"type": "boolean"}
+        }
+      }
+    ],
+    "functions": [
+      {
+        "name": "applySession",
+        "type": "function",
+        "async": true,
+        "parameters": [
+          {"name": "sessionId", "type": "string", "minLength": 1, "maxLength": 160},
+          {"name": "zoneId", "type": "string", "maxLength": 80},
+          {"name": "requestToken", "type": "string", "minLength": 1, "maxLength": 160}
+        ],
+        "returns": {"$ref": "Receipt"}
+      },
+      {
+        "name": "readSession",
+        "type": "function",
+        "async": true,
+        "parameters": [
+          {"name": "sessionId", "type": "string", "minLength": 1, "maxLength": 160},
+          {"name": "requestToken", "type": "string", "minLength": 1, "maxLength": 160}
+        ],
+        "returns": {"$ref": "Receipt"}
+      }
+    ]
+  }
+]
