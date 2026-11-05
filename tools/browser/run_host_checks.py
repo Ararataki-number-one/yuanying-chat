@@ -56,7 +56,7 @@ def main():
         for name,script in [('gecko-session-navigation','tests/gecko-navigation-host/session_navigation.py'),('gecko-client-ready','tests/gecko-navigation-host/client_ready.py')]:
             target=out/(name+'-'+label+'.json');add(name+'-'+label,script,java+['--json-jar',jar,'--output',target],target)
         target=out/('chromium-fingerprint-activity-'+label+'.json');add('chromium-fingerprint-activity-'+label,'tests/chromium-fingerprint-activity-host/run.py',java+['--json-jar',jar,'--output',target],target)
-        for name,script in [('chromium-worker-policy','tests/chromium-worker-policy-host/run.py'),('gecko-request-headers','tests/gecko-request-headers-host/run.py'),('gecko-timezone','tests/gecko-timezone-host/run.py'),('gecko-timezone-report','tests/gecko-timezone-host/report.py'),('gecko-timezone-flow','tests/gecko-timezone-flow-host/run.py'),('gecko-timezone-routing','tests/gecko-timezone-routing-host/run.py')]:
+        for name,script in [('chromium-worker-policy','tests/chromium-worker-policy-host/run.py'),('gecko-request-headers','tests/gecko-request-headers-host/run.py'),('gecko-timezone','tests/gecko-timezone-host/run.py'),('gecko-timezone-report','tests/gecko-timezone-host/report.py'),('gecko-timezone-flow','tests/gecko-timezone-flow-host/run.py'),('gecko-timezone-routing','tests/gecko-timezone-routing-host/run.py'),('gecko-timezone-delete','tests/gecko-timezone-delete-host/run.py')]:
             target=out/(name+'-'+label+'.json');add(name+'-'+label,script,java+['--json-jar',jar,'--output',target],target)
         target=out/('runtime-origin-adapter-'+label+'.json');add('runtime-origin-adapter-'+label,'tests/runtime-origin-adapter-host/run.py',java+['--json-jar',jar,'--android-jar',a.android_jar.resolve(),'--jsdom-module',a.jsdom_module.resolve(),'--output',target],target)
     cases.append(('gecko-site-boundary',['node','--test','tests/browser-runtime/gecko-site-boundary.test.cjs'],None))
@@ -65,6 +65,8 @@ def main():
     cases.append(('gecko-native-timezone-bridge',['node','--test','tests/request-identity/native_timezone_bridge_test.cjs'],None))
     cases.append(('gecko-timezone-native-signal',['node','--test','tests/gecko-timezone-host/signal.test.cjs'],None))
     target=out/'native-protection-independent-boundaries.json';cases.append(('native-protection-independent-boundaries',['node','tests/browser-runtime/native-protection-independent-boundaries.test.cjs','--receipt',str(target)],target))
+    cases.append(('session-cookies-coalescing',['node','tests/browser-runtime/session-cookies-coalescing.test.cjs'],None))
+    target=out/'session-cookies-independent-boundaries.json';cases.append(('session-cookies-independent-boundaries',['node','tests/browser-runtime/session-cookies-independent-boundaries.test.cjs','--receipt',str(target)],target))
     add('gecko-native-timezone-api','tests/gecko/native_timezone_api_contract.py')
     add('gecko-native-timezone-session-api','tests/gecko/native_timezone_session_api_contract.py')
     add('fingerprint-publisher-gate','tests/browser_fingerprint_publish_gate_test.py')

@@ -14,15 +14,24 @@ const cookie=(name,extra={})=>({name,value:'synthetic',domain:'example.test',pat
   secure:true,httpOnly:true,hostOnly:true,sameSite:'lax',storeId:'firefox-default',...extra});
 const deferred=()=>{let resolve,reject;const promise=new Promise((yes,no)=>{resolve=yes;reject=no;});return {promise,resolve,reject};};
 const microtasks=async(n=12)=>{for(let i=0;i<n;i++)await Promise.resolve();};
-function runtime(saved={},initial=[],failName=''){
-  let cookies=copy(initial);const storage=copy(saved),sets=[],sent=[],warnings=[],trace=[],gates={read:[],write:[]};let changed,message;
+function runtime(saved={},initial=[],failName='',policyBoundary={}){
+  let cookies=copy(initial);const storage=copy(saved),sets=[],sent=[],boundarySent=[],warnings=[],trace=[],gates={read:[],write:[]};let changed,message,port;
+  // Explicit independent protocol facades only: no real header, native timezone,
+  // browser API or native coverage is established by this Cookie work fixture.
+  const independent={headerActivations:0,headerInvalidations:0,headerClears:0,timeZoneCalls:[],actualRequestHeaderPolicyExecution:false,actualTimeZonePolicyExecution:false,nativeSettingReadback:false};
+  const headers={activate(){independent.headerActivations++;return {installed:policyBoundary.headersInstalled!==false};},invalidate(){independent.headerInvalidations++;},clear(){independent.headerClears++;}};
+  const systemTimeZone={async handle(value){independent.timeZoneCalls.push(copy(value));return {schema:1,status:'unsupported',nativeSettingReadback:false,reason:'declared-system-timezone-host-boundary'};}};
   const counts={reads:0,urlReads:0,writes:0,enumerated:0,serialized:0,active:0,maxActive:0},failures={read:0,write:0};
   const enter=kind=>{counts.active++;counts.maxActive=Math.max(counts.maxActive,counts.active);trace.push(kind+':start');};
   const leave=kind=>{counts.active--;trace.push(kind+':end');};
   const waitGate=async(kind,payload)=>{const gate=gates[kind].shift();if(gate){gate.started.resolve(payload);await gate.resume.promise;}};
   let afterWrite=null;
   const browser={proxy:{onRequest:{addListener(){}}},runtime:{sendNativeMessage:async()=>' {"type":"direct"}',
-    connectNative:()=>({onMessage:{addListener(fn){message=fn;}},postMessage(value){sent.push(value);}})},
+    connectNative:()=>(port={onMessage:{addListener(fn){message=fn;}},postMessage(value){
+      // Only the two independent new kinds leave the original Cookie channel.
+      // Cookie/RFP/ready/error/checkpoint and unknown kinds remain observable.
+      if(value.kind==='requestHeadersPrepared'||value.kind==='timezoneReady'){boundarySent.push(copy(value));return;}
+      sent.push(value);}})},
     storage:{local:{get:async key=>({[key]:copy(storage[key]??null)}),set:async value=>{
       const snapshot=copy(value);counts.writes++;counts.serialized+=snapshot.sessionCookiesV1.length;enter('write');
       try{await waitGate('write',snapshot);if(failures.write>0){failures.write--;throw new Error('synthetic journal failure');}
@@ -41,8 +50,9 @@ function runtime(saved={},initial=[],failName=''){
       const c=cookie(details.name,{...details,domain:details.domain??new URL(details.url).hostname,hostOnly:!details.domain});
       cookies.push(c);changed({cookie:c,removed:false});return c;
     }}};
-  const context=vm.createContext({browser,console:{warn(...args){warnings.push(args.map(String).join(' '));}}});vm.runInContext(code,context);
-  return {storage,sets,sent,warnings,trace,counts,ready:()=>vm.runInContext('cookieReady',context),
+  const context=vm.createContext({browser,PocketGeckoRequestHeaders:headers,PocketNativeTimezoneBridge:systemTimeZone,console:{warn(...args){warnings.push(args.map(String).join(' '));}}});vm.runInContext(code,context);
+  return {storage,sets,sent,boundarySent,independent,warnings,trace,counts,ready:()=>vm.runInContext('cookieReady',context),
+    send:value=>message(value),postNative:value=>port.postMessage(value),
     prepare:()=>message({kind:'prepare'}),read:()=>message({kind:'cookies',id:1,url:'https://example.test/'}),
     checkpoint:()=>vm.runInContext('checkpoint()',context),flush:()=>vm.runInContext('cookieCommit',context),
     clearNative(){cookies=[];},
@@ -64,6 +74,8 @@ async function measureBurst(){
     lastJournalGeneration:Number(burst.storage.sessionCookiesV1[0].value.split('-')[1]),maxConcurrentSnapshotWork:burst.counts.maxActive};
   measurements.push(result);return result;
 }
+if(require.main!==module){completed=true;module.exports={runtime,microtasks,deferred,cookie};}
+else
 (async()=>{
   const burst=await measureBurst();
   if(!process.argv.includes('--measure-only')){
