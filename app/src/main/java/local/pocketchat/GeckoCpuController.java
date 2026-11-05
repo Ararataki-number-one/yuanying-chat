@@ -24,6 +24,7 @@ final class GeckoCpuController {
   }
   private static final String PROCESS_NONCE=nonce();
   private static final Set<String> STARTUP_REASONS=new HashSet<>(Arrays.asList("CPU environment process mismatch","CPU environment changed","CPU cold snapshot changed",
+    "CPU storage anchor","CPU profile root path",
     "CPU profile root link","CPU profile path","CPU profile directory","CPU profile link","CPU profile temporary exists","CPU profile changed",
     "CPU profile preference link","CPU profile preference bound","CPU profile preference ambiguous","CPU user.js override unsupported","CPU config link","CPU config temporary exists"));
   private static volatile boolean runtimeEverCreated;
@@ -48,11 +49,12 @@ final class GeckoCpuController {
     session.environmentIo.execute(()->{
       Boot prepared=null;String preparationFailure="";try{
         if(Profiles.processSlot()!=Profiles.slot(session.context))throw new IllegalStateException("CPU environment process mismatch");
+        File root=GeckoCpuProfile.storage(session.context).root;
         GeckoCpuStore.State state=GeckoCpuStore.load(session.context);
         if(!identity(state))throw new IllegalStateException("CPU environment changed");
-        File root=session.context.getNoBackupFilesDir();
         prepared=GeckoCpuStore.withCurrent(session.context,state.identity,state.revision,()->{
           if(runtimeEverCreated)throw new IllegalStateException("CPU cold snapshot changed");
+          if(!root.equals(GeckoCpuProfile.storage(session.context).root))throw new IllegalStateException("CPU cold snapshot changed");
           GeckoCpuProfile.prepare(root,new File(root,"gecko-browser"),state.spec);return new Boot(state,root);
         });
       }catch(Exception unavailable){String message=unavailable.getMessage();preparationFailure=STARTUP_REASONS.contains(message)?message.substring(4).replace(' ','-').toLowerCase(Locale.ROOT):"desired-or-profile-prepare-failed";}

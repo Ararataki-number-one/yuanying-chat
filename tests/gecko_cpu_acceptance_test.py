@@ -42,7 +42,7 @@ def report(mode='2',rfp=False,retain=False,stale=False):
         pageObservationVerified=False,workerCoverageVerified=False,serviceWorkerCoverageVerified=False,persistentWorkerColdStartVerified=False)
     return dict(schema=1,fixtureType='gecko-production-cpu-v1',status='passed',stage='complete',failure='',diagnosticOnly=True,releaseAcceptance=False,
         sourceCommit=SOURCE,sourceTree=TREE,runNonce=NONCE,caseNonce=CASE,slot=1,mode=mode,rfpRequested=rfp,retainedProfile=retain,staleUserPrefSeeded=stale,
-        identityApplyInvoked=False,identityApplyCompleted=False,identityPolicyBefore=0,identityPolicyRevision=2,buildIdentity=copy.deepcopy(IDENTITY),tls=dict(isSecure=True,isException=False,enterpriseRootsReadback=True,leafSha256='a'*64),process=dict(pid=1234,uid=10234,name='local.pocketchat.test:profile1'),cpuPolicy=cpu,runtimeCpuPolicy=copy.deepcopy(cpu),
+        identityApplyInvoked=False,identityApplyCompleted=False,identityPolicyBefore=0,identityPolicyRevision=2,buildIdentity=copy.deepcopy(IDENTITY),tls=dict(isSecure=True,isException=False,enterpriseRootsReadback=True,leafSha256='a'*64),process=dict(pid=1234,uid=10234,name='local.pocketchat.test:profile1'),cpuPolicy=cpu,runtimeCpuPolicy=copy.deepcopy(cpu),storagePathEvidence=dict(schema=1,status='verified',slot=1,frameworkDataAncestorAlias=False,globalNoBackupAncestorAlias=True,environmentRootAncestorAlias=True,noBackupWithinDataAnchor=True,rootMatchesSlot=True,privateComponentsNoSymlinks=True,validatedPrivateComponents=3,runtimePathsCanonical=True),
         navigation=dict(targetStarted=True,targetLocation=True,targetStopSuccessful=True,loadError=False,targetPath='/cpu/slot1/page'),
         nativeEvents=[dict(event=name,targetOwned=True,success=True if name=='stop' else None,errorCategory=None,errorCode=None,nativeUrlAvailable=name!='stop') for name in ('start','location','stop')],
         observations=[packet(role,mode,rfp,retain) for role in ROLES],actualAndroidExecution=True,actualGeckoExecution=True,productionChatSession=True,
@@ -68,6 +68,14 @@ class ProductionCpuControls(unittest.TestCase):
     def test_missing_stale_boolean_native_ack_and_getter_substitutions_are_rejected(self):
         mutations={
           'unknown top field':lambda v:v.update(private='never'),
+          'missing storage relation':lambda v:v.pop('storagePathEvidence'),
+          'outside data anchor':lambda v:v['storagePathEvidence'].update(noBackupWithinDataAnchor=False),
+          'foreign storage slot':lambda v:v['storagePathEvidence'].update(slot=2),
+          'owned symlink accepted':lambda v:v['storagePathEvidence'].update(privateComponentsNoSymlinks=False),
+          'noncanonical runtime path':lambda v:v['storagePathEvidence'].update(runtimePathsCanonical=False),
+          'alias string':lambda v:v['storagePathEvidence'].update(frameworkDataAncestorAlias='true'),
+          'boolean component count':lambda v:v['storagePathEvidence'].update(validatedPrivateComponents=True),
+          'extra private path':lambda v:v['storagePathEvidence'].update(path='/private/never'),
           'runtime Boolean count':lambda v:v['runtimeCpuPolicy'].update(configuredCap=True),
           'source':lambda v:v.update(sourceCommit='f'*40),'nonce':lambda v:v.update(caseNonce='f'*32),
           'boolean schema':lambda v:v.update(schema=True),'unbound slot':lambda v:v.update(slot=True),
@@ -124,7 +132,7 @@ class ProductionCpuControls(unittest.TestCase):
         summary.update({key:False for key in ('releaseAcceptance','debuggingEndpointUsed','navigatorGetterOverrideUsed','workerCoverageVerified','fingerprintProtectionVerified')})
         for index,(label,slot,mode,rfp,retain,stale,template) in enumerate(checker.CASE_SPECS):
             value=report(mode,rfp,retain,stale);nonce=format(index+30,'032x');owner=index+1 if index<8 else 7
-            value.update(caseNonce=nonce,slot=slot,buildIdentity=expected,identityApplyInvoked=template,identityApplyCompleted=template)
+            value.update(caseNonce=nonce,slot=slot,buildIdentity=expected,identityApplyInvoked=template,identityApplyCompleted=template);value['storagePathEvidence']['slot']=slot
             if template:value.update(identityPolicyBefore=2,identityPolicyRevision=3)
             value['process'].update(pid=2000+owner,name='local.pocketchat.test:profile'+str(slot))
             for key in ('cpuPolicy','runtimeCpuPolicy'):
@@ -308,7 +316,7 @@ process.stdout.write(JSON.stringify({hostAsset:true,actualAndroidExecution:false
                     if slot not in active:
                         self.assertFalse(resample or template);serial+=1;active[slot]={'pid':2000+serial,'nonce':format(serial,'032x')}
                     else:self.assertTrue(resample or template)
-                    owner=active[slot];value=report(mode,rfp,retain,stale);value['runNonce']=extras['runNonce'];value['caseNonce']=extras['caseNonce'];value['slot']=slot
+                    owner=active[slot];value=report(mode,rfp,retain,stale);value['runNonce']=extras['runNonce'];value['caseNonce']=extras['caseNonce'];value['slot']=slot;value['storagePathEvidence']['slot']=slot
                     value['identityApplyInvoked']=template;value['identityApplyCompleted']=template
                     if template:value['identityPolicyBefore']=2;value['identityPolicyRevision']=3
                     value['process'].update(pid=owner['pid'],name='local.pocketchat.test:profile'+str(slot))

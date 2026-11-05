@@ -28,7 +28,7 @@ SOURCE_INPUTS={'tools/browser/check_gecko_cpu_evidence.py','tools/browser/run_ge
     'tests/gecko/res/xml/network_security.xml','app/src/main/java/local/pocketchat/ChatSession.java','app/src/main/java/local/pocketchat/GeckoWebView.java',
     'app/src/main/java/local/pocketchat/GeckoCpuController.java','app/src/main/java/local/pocketchat/GeckoCpuNative.java',
     'app/src/main/java/local/pocketchat/GeckoCpuProfile.java','app/src/main/java/local/pocketchat/GeckoCpuStore.java',
-    'app/src/main/java/local/pocketchat/GeckoCpuSpec.java','app/src/main/java/local/pocketchat/IdentityTemplateController.java',
+    'app/src/main/java/local/pocketchat/Profiles.java','app/src/main/java/local/pocketchat/ProfileContext.java','app/src/main/java/local/pocketchat/GeckoCpuSpec.java','app/src/main/java/local/pocketchat/IdentityTemplateController.java',
     'app/src/main/java/local/pocketchat/NormalCaretSdkReceipt.java','.github/workflows/gecko-cpu-acceptance.yml',
     '.github/workflows/browser-2_1-acceptance.yml','.github/workflows/publish-gecko-release.yml'}
 

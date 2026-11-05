@@ -1,10 +1,12 @@
 package local.pocketchat;
 
+import android.content.Context;
 import java.io.*;
 import java.nio.charset.*;
 import java.nio.file.*;
 import java.util.regex.*;
 import org.json.JSONTokener;
+import org.json.JSONObject;
 
 /** Offline, CPU-only reconciliation. Never call after GeckoRuntime.create.
  * YAML sets DEFAULT prefs, so an older persisted USER value must be removed
@@ -14,6 +16,48 @@ final class GeckoCpuProfile {
   static final int MAX_BYTES=4*1024*1024;
   private static final Pattern OWNED=Pattern.compile("^\\s*user_pref\\(\"dom\\.maxHardwareConcurrency\",\\s*[0-9]{1,9}\\);\\s*$");
   private GeckoCpuProfile(){}
+  static final class Storage {
+    final File root;final JSONObject evidence;
+    Storage(File root,JSONObject evidence){this.root=root;this.evidence=evidence;}
+  }
+  /** Framework paths may use different system ancestor aliases. Every component
+   * at and below the app data anchor must still be a real owned directory. */
+  static Storage storage(Context context)throws IOException{
+    Context global=Profiles.global(context);String path=global.getApplicationInfo().dataDir;
+    if(path==null||path.isEmpty())throw new IOException("CPU storage anchor");
+    File data=absolute(new File(path)),anchor=data.getCanonicalFile();
+    if(!Files.isDirectory(data.toPath(),LinkOption.NOFOLLOW_LINKS)||Files.isSymbolicLink(data.toPath()))throw new IOException("CPU storage anchor");
+    File noBackup=absolute(global.getNoBackupFilesDir()),canonicalNoBackup=new File(anchor,noBackup.getName());
+    if(noBackup.getParentFile()==null||Files.isSymbolicLink(noBackup.getParentFile().toPath())||!noBackup.getParentFile().getCanonicalFile().equals(anchor))throw new IOException("CPU storage anchor");
+    ownedDirectory(noBackup,canonicalNoBackup);
+    int slot=Profiles.slot(context);if(slot<0||slot>=Profiles.MAX)throw new IOException("CPU profile root path");
+    // ProfileContext's accessor may mkdirs. Validate/create the known private
+    // chain one component at a time before asking it for the selected root.
+    if(slot>0){File profiles=new File(noBackup,"profiles"),canonicalProfiles=new File(canonicalNoBackup,"profiles");ensureOwnedDirectory(profiles,canonicalProfiles);ensureOwnedDirectory(new File(profiles,"env"+slot),new File(canonicalProfiles,"env"+slot));}
+    File root=absolute(context.getNoBackupFilesDir()),base=root;int components=1;
+    if(slot>0){
+      if(!root.getName().equals("env"+slot)||root.getParentFile()==null||!root.getParentFile().getName().equals("profiles"))throw new IOException("CPU profile root path");
+      base=root.getParentFile().getParentFile();components=3;
+    }
+    if(base==null||base.getParentFile()==null||Files.isSymbolicLink(base.getParentFile().toPath())||!base.getParentFile().getCanonicalFile().equals(anchor))throw new IOException("CPU profile root path");
+    ownedDirectory(base,canonicalNoBackup);
+    File expected=canonicalNoBackup;
+    if(slot>0){expected=new File(canonicalNoBackup,"profiles");ownedDirectory(root.getParentFile(),expected);expected=new File(expected,"env"+slot);ownedDirectory(root,expected);}
+    File canonicalRoot=root.getCanonicalFile();if(!canonicalRoot.equals(expected))throw new IOException("CPU profile root path");
+    return new Storage(canonicalRoot,J.obj("schema",1,"status","verified","slot",slot,
+      "frameworkDataAncestorAlias",!data.equals(anchor),"globalNoBackupAncestorAlias",!noBackup.equals(canonicalNoBackup),"environmentRootAncestorAlias",!root.equals(canonicalRoot),
+      "noBackupWithinDataAnchor",noBackup.getParentFile().getCanonicalFile().equals(anchor),"rootMatchesSlot",canonicalRoot.equals(expected),
+      "privateComponentsNoSymlinks",true,"validatedPrivateComponents",components,"runtimePathsCanonical",canonicalRoot.equals(canonicalRoot.getCanonicalFile())));
+  }
+  private static File absolute(File file)throws IOException{
+    if(file==null||!file.isAbsolute()||!file.toPath().normalize().equals(file.toPath()))throw new IOException("CPU profile root path");return file.getAbsoluteFile();
+  }
+  private static void ownedDirectory(File file,File expected)throws IOException{
+    if(file==null||Files.isSymbolicLink(file.toPath())||!Files.isDirectory(file.toPath(),LinkOption.NOFOLLOW_LINKS)||!file.getCanonicalFile().equals(expected))throw new IOException("CPU profile root link");
+  }
+  private static void ensureOwnedDirectory(File file,File expected)throws IOException{
+    if(!Files.exists(file.toPath(),LinkOption.NOFOLLOW_LINKS)&&!file.mkdir())throw new IOException("CPU profile directory");ownedDirectory(file,expected);
+  }
   static void prepare(File root,File profile,GeckoCpuSpec spec)throws Exception{
     reconcile(root,profile);
     File config=new File(root,"gecko-browser.yaml");if(Files.isSymbolicLink(config.toPath()))throw new IOException("CPU config link");

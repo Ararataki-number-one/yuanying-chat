@@ -38,7 +38,7 @@ def typed_equal(actual,expected):
 
 
 def validate_report(value,*,run,case,source,tree,identity,slot,mode,rfp,retain,stale_user,leaf=None,template_apply=False):
-    fields={'schema','fixtureType','status','stage','failure','diagnosticOnly','releaseAcceptance','sourceCommit','sourceTree','runNonce','caseNonce','slot','mode','rfpRequested','retainedProfile','staleUserPrefSeeded','identityApplyInvoked','identityApplyCompleted','identityPolicyRevision','identityPolicyBefore','buildIdentity','process','tls','cpuPolicy','runtimeCpuPolicy','navigation','nativeEvents','observations','actualAndroidExecution','actualGeckoExecution','productionChatSession','productionCpuBootstrap','navigatorGetterOverrideUsed','debuggingEndpointUsed','workerCoverageVerified','fingerprintProtectionVerified'}
+    fields={'schema','fixtureType','status','stage','failure','diagnosticOnly','releaseAcceptance','sourceCommit','sourceTree','runNonce','caseNonce','slot','mode','rfpRequested','retainedProfile','staleUserPrefSeeded','identityApplyInvoked','identityApplyCompleted','identityPolicyRevision','identityPolicyBefore','buildIdentity','process','tls','cpuPolicy','runtimeCpuPolicy','storagePathEvidence','navigation','nativeEvents','observations','actualAndroidExecution','actualGeckoExecution','productionChatSession','productionCpuBootstrap','navigatorGetterOverrideUsed','debuggingEndpointUsed','workerCoverageVerified','fingerprintProtectionVerified'}
     require(type(value) is dict and set(value)==fields,'Exact bounded CPU report schema required')
     require(type(value) is dict and type(value.get('schema')) is int and value['schema']==1
         and value.get('fixtureType')=='gecko-production-cpu-v1' and value.get('status')=='passed'
@@ -59,6 +59,17 @@ def validate_report(value,*,run,case,source,tree,identity,slot,mode,rfp,retain,s
         and tls['isSecure'] is True and tls['isException'] is False and tls['enterpriseRootsReadback'] is True
         and type(tls['leafSha256']) is str and re.fullmatch('[0-9a-f]{64}',tls['leafSha256'])
         and (leaf is None or tls['leafSha256']==leaf),'Actual controlled native TLS leaf without exception required')
+    storage=value.get('storagePathEvidence')
+    storage_fields={'schema','status','slot','frameworkDataAncestorAlias','globalNoBackupAncestorAlias','environmentRootAncestorAlias','noBackupWithinDataAnchor','rootMatchesSlot','privateComponentsNoSymlinks','validatedPrivateComponents','runtimePathsCanonical'}
+    require(type(storage) is dict and set(storage)==storage_fields and type(storage.get('schema')) is int and storage['schema']==1
+        and storage.get('status')=='verified' and type(storage.get('slot')) is int and storage['slot']==slot,
+        'Actual bounded framework storage relationship required')
+    for flag in ('frameworkDataAncestorAlias','globalNoBackupAncestorAlias','environmentRootAncestorAlias'):
+        require(type(storage.get(flag)) is bool,'Actual storage alias observation must be Boolean')
+    for flag in ('noBackupWithinDataAnchor','rootMatchesSlot','privateComponentsNoSymlinks','runtimePathsCanonical'):
+        require(storage.get(flag) is True,'Owned canonical app storage requirement failed: '+flag)
+    require(type(storage.get('validatedPrivateComponents')) is int and storage['validatedPrivateComponents']==(1 if slot==0 else 3),
+        'Actual private storage component checks required')
     process=value.get('process');require(type(process) is dict and set(process)=={'pid','uid','name'}
         and type(process['pid']) is int and process['pid']>0 and type(process['uid']) is int and 10000<=process['uid']<100000
         and process['name']==PACKAGE+':profile'+str(slot),'Actual production environment process required')
