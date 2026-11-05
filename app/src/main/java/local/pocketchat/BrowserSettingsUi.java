@@ -21,13 +21,13 @@ final class BrowserSettingsUi {
     LinearLayout form=DesignUi.column(activity);dialog.body.addView(form);
     DesignUi.note(form,"启动界面");
     Spinner start=new Spinner(activity);start.setContentDescription("此环境的默认启动界面");start.setMinimumHeight(DesignUi.dp(activity,48));
-    start.setAdapter(DesignUi.spinnerAdapter(activity,new String[]{"ChatGPT 增强 · Gecko","通用浏览器 · Chromium"}));start.setSelection(BrowserPreferences.startBrowser(activity)?1:0);form.addView(start,new LinearLayout.LayoutParams(-1,-2));
-    EditText home=DesignUi.input(form,"通用浏览器的默认网站",BrowserPreferences.home(activity),BrowserPreferences.DEFAULT_URL);
+    start.setAdapter(DesignUi.spinnerAdapter(activity,new String[]{"Gecko 指纹浏览器 · ChatGPT 增强","Chromium 指纹浏览器"}));start.setSelection(BrowserPreferences.startBrowser(activity)?1:0);form.addView(start,new LinearLayout.LayoutParams(-1,-2));
+    EditText home=DesignUi.input(form,"两个内核的默认网站",BrowserPreferences.home(activity),BrowserPreferences.DEFAULT_URL);
     home.setInputType(InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_URI);home.setSingleLine(true);home.setImeOptions(EditorInfo.IME_ACTION_DONE);home.setFilters(new InputFilter[]{new InputFilter.LengthFilter(8192)});
     DesignUi.action(form,"恢复默认网站为 ChatGPT",false,()->home.setText(BrowserPreferences.DEFAULT_URL));
-    dialog.note("默认仍为 ChatGPT 增强界面。选择通用浏览器后，下次打开此环境进入 Chromium；当前网页继续保留。默认网站仅用于通用浏览器。");
-    dialog.note("Chromium 使用 Android System WebView，可访问其他网站。Chromium 与 Gecko 的登录和 Cookie 分开保存；ChatGPT 增强界面的草稿救援、回复检测和环境模板不会随之迁移。");
-    dialog.note("Chromium 不继承 Gecko 的 WebRTC 限制，HTTP 代理不能覆盖 WebRTC 连接。如需保护这类连接，请自行启用设备 VPN；应用不会自动开启 VPN。");
+    dialog.note("默认仍为 Gecko，网站仍为 ChatGPT。两个内核都能在地址栏切换网站，也都使用这里设置的首页；已打开的网页保持原位置。");
+    dialog.note("两个内核分别保存登录、Cookie 和指纹配置。Gecko 保留原生隐私模板；Chromium 的 UA、UA-CH 与文档指纹保护在其指纹设置中单独管理。ChatGPT 的草稿救援和回复检测仅在 ChatGPT 网页启用。");
+    dialog.note("两核保护范围不同，请分别查看设置和自检。Chromium 的页面 WebRTC 限制不覆盖 Worker；HTTP 代理也不能代替设备 VPN。");
     TextView problem=DesignUi.text(activity,"",13,DesignUi.RED);problem.setVisibility(View.GONE);problem.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);form.addView(problem);
     dialog.buttons("取消",dialog::dismiss,"保存",()->{
       if(activity.isFinishing()||activity.isDestroyed())return;

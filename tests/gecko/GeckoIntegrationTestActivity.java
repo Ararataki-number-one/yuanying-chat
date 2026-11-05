@@ -341,7 +341,7 @@ public class GeckoIntegrationTestActivity extends Activity {
     // Only this test copy accepts the strictly bounded loopback fixture. The
     // production driver continues to require the real HTTPS ChatGPT origin.
     String code=session.driver
-      .replace("location.protocol !== 'https:' || location.hostname !== 'chatgpt.com'", "location.protocol !== 'http:' || location.hostname !== '127.0.0.1' || location.port !== '8765'")
+      .replace("window !== window.top || location.origin !== 'https://chatgpt.com'", "window !== window.top || location.origin !== 'http://127.0.0.1:8765'")
       .replace("__ACTION__",JSONObject.quote("poll"))
       .replace("__ARG__",J.obj("userKey","id:synthetic-user","prompt","guest prompt","export",true).toString());
     session.web.evaluateJavascript("document.body.innerHTML="+JSONObject.quote(html),unused->{

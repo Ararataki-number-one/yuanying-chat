@@ -2,11 +2,11 @@ package local.pocketchat;
 
 import java.util.*;
 
-/** Process-local route retention for real Chromium surfaces and native work.
+/** Process-local route retention for browser surfaces and native work.
  * No website content or reply state is inferred. Change handles fence new
  * work; existing network workers/coordinators still serialize route mutations. */
 final class ChromiumRouteLease {
-  static final String REASON="通用浏览器有网页或下载，已保留线路，请关闭浏览器后应用";
+  static final String REASON="浏览器有网页或下载，已保留线路；请关闭 Chromium 网页或在 Gecko 菜单中关闭网站，再应用线路";
   static final Registry PROCESS=new Registry();
   static boolean held(){return PROCESS.held();}
   static Snapshot snapshot(){return PROCESS.snapshot();}

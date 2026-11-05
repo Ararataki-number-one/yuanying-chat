@@ -28,7 +28,7 @@ class BrowserWorkflowTests(unittest.TestCase):
                     if key=='steps':continue
                     self.assertEqual(current[key],value+['browser'] if name=='verify' and key=='needs' else value)
     def test_single_pipeline_shares_actual_apk_and_gates_browser(self):
-        self.assertEqual(self.new['on']['push']['branches'],['release/browser-2.1.0','release/browser-2.1.0-*'])
+        self.assertEqual(self.new['on']['push']['branches'],['release/browser-2.1.0','release/browser-2.1.0-*','release/browser-2.1.1','release/browser-2.1.1-*'])
         self.assertIn('browser',self.new['jobs']['verify']['needs'])
         self.assertEqual(self.new['jobs']['browser']['needs'],'build')
         browser=self.new['jobs']['browser'];self.assertNotIn('continue-on-error',browser)

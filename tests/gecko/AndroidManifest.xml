@@ -1,5 +1,8 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
   <application>
+    <activity android:name="local.pocketchat.BrowserFingerprintIntegrationActivity" android:exported="true" android:launchMode="singleTask" android:taskAffinity="local.pocketchat.test.fingerprint_probe" android:configChanges="orientation|screenSize|keyboardHidden|uiMode" />
+    <activity android:name="local.pocketchat.BrowserFingerprintIntegrationActivity$Gecko" android:exported="true" android:launchMode="singleTask" android:taskAffinity="local.pocketchat.test.gecko_navigation_probe" />
+    <provider android:name="local.pocketchat.BrowserFingerprintEvidenceProvider" android:authorities="local.pocketchat.test.browser-fingerprint-evidence" android:exported="true" />
     <activity android:name="local.pocketchat.BrowserIntegrationActivity" android:exported="true" android:launchMode="singleTask" android:taskAffinity="local.pocketchat.test.browser_probe" android:configChanges="orientation|screenSize|keyboardHidden|uiMode" />
     <provider android:name="local.pocketchat.BrowserEvidenceProvider" android:authorities="local.pocketchat.test.browser-evidence" android:exported="true" />
     <activity android:name="local.pocketchat.ChatDownloadProgressIntegrationActivity" android:exported="false" android:process=":profile7" />

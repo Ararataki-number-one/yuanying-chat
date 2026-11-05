@@ -1,9 +1,11 @@
-name: Browser 2.1.0 and complete original Gecko acceptance
+name: Dual browser and complete original Gecko acceptance
 'on':
   push:
     branches:
     - release/browser-2.1.0
     - release/browser-2.1.0-*
+    - release/browser-2.1.1
+    - release/browser-2.1.1-*
     paths:
     - app/**
     - tests/**
@@ -186,6 +188,13 @@ jobs:
         PYCODE
         npm install --prefix work/browser-perf-host --ignore-scripts --no-audit --no-fund jsdom@26.1.0
         python3 tools/browser/run_host_checks.py --java-home "$JAVA_HOME" --json-jar work/browser-host-deps/json.jar --android-json-jar work/browser-host-deps/android-json.jar --android-jar "$ANDROID_HOME/platforms/android-37.1/android.jar" --webkit-jar work/browser-host-deps/webkit.jar --jsdom-module "$PWD/work/browser-perf-host/node_modules/jsdom" --output work/browser-host-controls
+    - name: Verify document script semantics against actual desktop Chromium
+      shell: bash
+      run: |
+        set -euo pipefail
+        node -e "if(typeof WebSocket!=='function')throw Error('Actual Chromium controller requires Node 22 or newer with WebSocket');console.log('Native API controller Node '+process.versions.node)"
+        browser_fingerprint_binary="$(command -v google-chrome || command -v chromium)"
+        python3 tests/chromium-fingerprint-browser/run.py --chromium "$browser_fingerprint_binary" --output work/browser-native-semantics
     - name: Preserve source-bound host and historical-baseline receipts
       if: always()
       uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
@@ -194,6 +203,9 @@ jobs:
         path: |
           work/browser-host-controls/*.json
           work/browser-host-controls/*.log
+          work/browser-native-semantics/results.json
+          work/browser-native-semantics/chromium.stderr.log
+          work/browser-native-semantics/controller.stderr.log
           work/browser-baselines/results.json
         if-no-files-found: warn
         retention-days: 7
@@ -1022,6 +1034,7 @@ jobs:
         set -euo pipefail
         test "$BROWSER_RESULT" = success
         cp work/browser-acceptance/results.json work/gecko-integration/public/browser-results.json
+        cp work/browser-acceptance/browser-fingerprint-results.json work/gecko-integration/public/browser-fingerprint-results.json
         python3 tools/browser/check_evidence.py --directory work/gecko-integration/public --source "$GITHUB_SHA" --output work/gecko-integration/public/browser-regression.json
     - name: Publish complete source-bound evidence including the browser gate
       run: python3 tools/gecko/publish_ci.py
@@ -1031,6 +1044,7 @@ jobs:
         name: browser-${{ github.run_id }}-${{ github.run_attempt }}-qualification
         path: |
           work/gecko-integration/public/browser-results.json
+          work/gecko-integration/public/browser-fingerprint-results.json
           work/gecko-integration/public/browser-regression.json
           work/gecko-integration/public/manifest.json
         if-no-files-found: error
@@ -1088,6 +1102,8 @@ jobs:
         python3 tools/gecko/isolate_emulator_background.py --adb "$(command -v adb)" --serial emulator-5554 --apk app/build/outputs/apk/integration/app-x86_64-integration.apk
     - name: Execute real WebView, file picker, native download and engine-task roundtrip checks
       run: python3 tools/browser/run_integration.py --adb "$(command -v adb)" --serial emulator-5554 --output work/browser-acceptance
+    - name: Execute first-document fingerprint and Gecko website isolation checks
+      run: python3 tools/browser/run_fingerprint_integration.py --adb "$(command -v adb)" --serial emulator-5554 --output work/browser-acceptance
     - name: Preserve bounded source-bound browser evidence
       if: always()
       uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02

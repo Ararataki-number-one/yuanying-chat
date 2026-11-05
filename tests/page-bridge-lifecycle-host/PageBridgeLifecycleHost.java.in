@@ -35,6 +35,7 @@ public final class PageBridgeLifecycleHost {
   static final class LoginPagePolicy {static boolean login(String s){return false;}}
   static final class Owner {
     final Reading reading=new Reading();final Observer webObserver=new Observer();final Prefs prefs=new Prefs();
+    final List<String> browserLocations=new ArrayList<>();void rememberBrowserLocation(String url){browserLocations.add(url);}
     int changes,connected,disconnected;void changed(){changes++;}
     void resourceObserverConnected(Object p){connected++;}void resourceObserverDisconnected(Object p){disconnected++;}
   }
@@ -67,6 +68,13 @@ public final class PageBridgeLifecycleHost {
     GeckoSession current=new GeckoSession();
     Bridge(){locations.put(current,url);}
     String getUrl(){return url;}void getScale(){}void pageVisible(GeckoSession s){visible++;}void cancelZoom(){}
+    // These original bridge cases commit only ChatGPT URLs. Record the new app
+    // routing hook without claiming registry execution; generic-site retention
+    // belongs to the separate actual-method route_hold workload.
+    int generalRouteForgets,generalRouteRetains;
+    void forgetGeneralRoute(GeckoSession session){generalRouteForgets++;}
+    boolean allowedUrl(String target){return MainActivity.chatUrl(target);}
+    boolean retainGeneralRoute(GeckoSession session,String target){generalRouteRetains++;throw new AssertionError("Generic route retention is outside this bridge lifecycle fixture");}
     void appearance(WebExtension.Port p){appearanceRequests++;}boolean appearancePage(String target){return MainActivity.chatUrl(target);}
     void retireAppearance(WebExtension.Port p){appearanceSync.disconnect(p);appearanceConnections.remove(p);appearanceDocuments.remove(p);staleAppearanceConnections.remove(p);}
     /* PAGE_MESSAGES */;
@@ -166,7 +174,7 @@ public final class PageBridgeLifecycleHost {
     WebExtension.Port route=new WebExtension.Port(b.current,URL);route.name="pocketroute";b.pageMessages.onConnect(route);
     check("Route/native messaging ports are not admitted as page ports",route.delegate==null&&b.ports.get(b.current)==primary);
   }
-  public static void main(String[] args){staleWindow();replacement();earlyConnection();nonCommit();existingBoundaries();int pass=0;for(JSONObject v:checks)if(v.optBoolean("passed"))pass++;System.out.println(J.obj("status",pass==checks.size()?"passed":"failed","passed",pass,"total",checks.size(),"checks",checks));}
+  public static void main(String[] args){staleWindow();replacement();earlyConnection();nonCommit();existingBoundaries();int pass=0;for(JSONObject v:checks)if(v.optBoolean("passed"))pass++;System.out.println(J.obj("status",pass==checks.size()?"passed":"failed","passed",pass,"total",checks.size(),"checks",checks,"actualGeneralRouteExecution",false,"generalRouteBoundary","Counted app-route release and browser-location delivery on the original ChatGPT-only bridge cases; generic retain fails explicitly as out of scope"));}
 }
 final class J {
   // Match production J's checked Android-JSON boundary as well as desktop JSON.

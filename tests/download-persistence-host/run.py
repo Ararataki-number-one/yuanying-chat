@@ -25,7 +25,7 @@ def main():
     text = source('FileDownloads.java')
     old_needles = ['void taskActions(', 'boolean requestAvailable(', 'String continuationAction(', 'void requestRedownload(', 'void discardForRedownload(', 'boolean loadTask(', 'void newTask(', 'void updateTask(', 'void mark(', 'boolean valid(', 'void acceptResponse(', 'void retry(', 'void fail(', 'void pause(', 'void destroy(', 'void download(', 'void readChunk(']
     extra = ['void transferProgress(', 'void cancel(']
-    optional = ['boolean saveTask(', 'void persistenceFailed(', 'boolean claimTask(']
+    optional = ['String downloadSource(', 'boolean saveTask(', 'void persistenceFailed(', 'boolean claimTask(']
     needles = old_needles + extra + [n for n in optional if n in text]
     parts = [adapter.member(text, n) for n in needles]
     inputs = [ADAPTER / 'DownloadResumeHost.java', ADAPTER / 'run.py', HERE / 'FailureCases.java.in', pathlib.Path(__file__).resolve(), RECOVERY / 'local/pocketchat/Support.java', ROOT / 'tests/sealed-file-host/android/util/AtomicFile.java'] + list((RECOVERY / 'android').rglob('*.java')) + list((ADAPTER / 'stubs').rglob('*.java'))
@@ -42,6 +42,9 @@ def main():
         for n in names:
             (package / n).write_text(source(n))
         fixture = (ADAPTER / 'DownloadResumeHost.java').read_text()
+        for old_boundary,new_boundary in [('class Remote{','class Remote{String getUrl(){return "https://chatgpt.com/c/one";}'),('class MainActivity extends Context{','class MainActivity extends Context{static boolean chatUrl(String url){return "https://chatgpt.com/c/one".equals(url);}')]:
+            if fixture.count(old_boundary)!=1:raise ValueError('Review fixed-page download-source boundary: '+old_boundary)
+            fixture=fixture.replace(old_boundary,new_boundary,1)
         fixture = fixture.replace(adapter.member(fixture, 'public static void main('), (HERE / 'FailureCases.java.in').read_text())
         fixture = fixture.replace('void transferProgress(){}', '')
         fixture = fixture.replace('boolean awaitingPicker,', 'boolean persistenceBlocked,awaitingPicker,')
@@ -77,6 +80,7 @@ def main():
         if not before:
             unchanged = unchanged and all(hashlib.sha256((ROOT / n).read_bytes()).hexdigest() == digest for n, digest in selected.items())
         report.update(newMetadataProviderBoundaryAdapters=boundary_hashes,sourceCommit=subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip(), beforeRef=before, selectedProductionSourceFiles=selected, adapterSourceFiles=hashes, selectedProductionMethods=needles, jsonJarSha256=hashlib.sha256(a.json_jar.read_bytes()).hexdigest(), executionInputsUnchanged=unchanged, actualAndroidExecution=False, actualExternalProviderExecution=False, scope='Exact production FileDownloads callback methods and full production task/publication/recovery classes; JVM UI queue, controlled storage faults, host files and provider double. No phone or real provider claim.')
+        report['downloadSourceFixtureBoundaries']=['Remote.getUrl returns only the prior fixed fixture page https://chatgpt.com/c/one','MainActivity.chatUrl accepts only equality with that prior fixed fixture page; generic/origin policy is covered separately']
         a.output.write_text(json.dumps(report, ensure_ascii=False, indent=2) + '\n')
         print(json.dumps({k: report[k] for k in ['status', 'passed', 'total', 'executionInputsUnchanged']}))
         if run.returncode or report['status'] != 'passed' or not unchanged:

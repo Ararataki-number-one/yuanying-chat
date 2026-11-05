@@ -13,7 +13,7 @@ final class BrowserNetworkGuard {
   volatile boolean blocked=true;
   final boolean workerProtection=true;
   BrowserNetworkGuard(ChatSession s){session=s;}
-  void setBlocked(boolean value){blocked=value;session.web.getSettings().setBlockNetworkLoads(value);}
+  void setBlocked(boolean value){blocked=value;session.web.getSettings().setBlockNetworkLoads(value);session.web.routeAdmissionChanged();}
   static boolean needsVpn(boolean internal,String proxy,boolean required){return !internal&&proxy.trim().isEmpty()&&required;}
   boolean requiresVpn(){return needsVpn(session.internalNetwork(),session.prefs.getString("proxy",""),session.prefs.getBoolean("requireExternalVpn",true));}
   boolean vpnActive(){try{ConnectivityManager cm=(ConnectivityManager)session.context.getSystemService(Context.CONNECTIVITY_SERVICE);Network n=cm.getActiveNetwork();NetworkCapabilities caps=n==null?null:cm.getNetworkCapabilities(n);return caps!=null&&caps.hasTransport(NetworkCapabilities.TRANSPORT_VPN)&&caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET);}catch(Exception e){return false;}}
@@ -59,6 +59,7 @@ final class BrowserNetworkGuard {
   boolean allowed(){return !blocked&&routeProtected();}
   WebResourceResponse intercept(Uri uri){return !allowed()||!publicHttps(uri)?denied():null;}
   static WebResourceResponse denied(){return new WebResourceResponse("text/plain","UTF-8",403,"Network protection",Collections.singletonMap("Cache-Control","no-store"),new ByteArrayInputStream(new byte[0]));}
+  static boolean publicWeb(Uri uri){return uri!=null&&GeckoNavigationPolicy.publicWeb(uri.toString());}
   static boolean publicHttps(Uri uri){return uri!=null&&"https".equalsIgnoreCase(uri.getScheme())&&uri.getUserInfo()==null&&!localHost(uri.getHost());}
   static boolean localHost(String value){
     if(value==null||value.isEmpty())return true;String h=value.toLowerCase(Locale.ROOT);while(h.endsWith("."))h=h.substring(0,h.length()-1);

@@ -1,0 +1,156 @@
+package local.pocketchat;
+
+import java.net.URI;
+import java.util.*;
+import java.util.function.Consumer;
+import org.json.*;
+
+/** Production driver methods with declared, deterministic JVM browser boundaries. */
+public final class DriverHost {
+  static final JSONArray checks=new JSONArray();
+  static void check(String name,boolean passed){checks.put(J.obj("name",name,"pass",passed));if(!passed)throw new AssertionError(name);}
+  static ChatSession fresh(){Clock.wall=2000000;Clock.mono=1000;WebPerfStats.reset();return new ChatSession();}
+  static List<JSONObject> answers(){return new ArrayList<>();}
+  static void cancelled(String name,List<JSONObject> values){check(name,values.size()==1&&values.get(0).optBoolean("cancelled")&&!values.get(0).optBoolean("ok"));}
+  static final String[] CHANGES={"cross-origin","same-URL-new-epoch","same-origin-new-path","same-path-new-query","surface-replaced","port-replaced","deleted"};
+  static void replace(ChatSession s,String change){
+    if(change.equals("cross-origin"))s.web.url="https://www.wikipedia.org/wiki/Main_Page";
+    else if(change.equals("same-URL-new-epoch"))s.navigationEpoch++;
+    else if(change.equals("same-origin-new-path"))s.web.url="https://chatgpt.com/c/replacement";
+    else if(change.equals("same-path-new-query"))s.web.url+="?replacement=1";
+    else if(change.equals("surface-replaced")){Object priorPort=s.web.ports.get(s.web.current);s.web.current=new Object();s.web.ports.put(s.web.current,priorPort);}
+    else if(change.equals("port-replaced"))s.web.ports.put(s.web.current,new Object());
+    else if(change.equals("deleted"))s.deleted=true;
+    else throw new AssertionError("Unknown controlled mutation");
+  }
+  static void admission(){
+    for(String url:new String[]{"https://www.wikipedia.org/wiki/Main_Page","http://chatgpt.com/","https://chatgpt.com.evil.example/","https://user@chatgpt.com/"}){
+      ChatSession s=fresh();s.web.url=url;List<JSONObject> values=answers();s.runDriver("web-inspect",new JSONObject(),values::add);
+      check("Non-ChatGPT entry runs zero read scripts: "+url,s.web.scripts.isEmpty()&&values.size()==1&&!values.get(0).optBoolean("ok"));
+      values.clear();s.evaluateDriver("web-inspect","MUST_NOT_DISPATCH",values::add);cancelled("Non-ChatGPT evaluate wrapper cancels: "+url,values);
+      check("Non-ChatGPT evaluate wrapper sends zero scripts: "+url,s.web.scripts.isEmpty());
+      values.clear();s.asyncDriver("attachment-state",new JSONObject(),1000,values::add);
+      check("Non-ChatGPT async entry starts no script or timer: "+url,s.web.scripts.isEmpty()&&s.handler.queue.isEmpty()&&values.size()==1&&!values.get(0).optBoolean("ok"));
+      values.clear();s.waitResult("__owned",Clock.wall+1000,values::add);cancelled("Non-ChatGPT wait wrapper cancels: "+url,values);
+      check("Non-ChatGPT wait wrapper never polls: "+url,s.web.scripts.isEmpty()&&s.handler.queue.isEmpty());
+    }
+    for(String action:new String[]{"send","submit","set-draft"}){
+      ChatSession s=fresh();List<JSONObject> values=answers();s.runDriver(action,new JSONObject(),values::add);s.asyncDriver(action,new JSONObject(),1000,values::add);
+      check("Existing website-only action policy still refuses "+action,s.web.scripts.isEmpty()&&s.handler.queue.isEmpty()&&values.size()==2&&values.stream().noneMatch(v->v.optBoolean("ok")));
+    }
+    ChatSession s=fresh();s.web.ports.clear();List<JSONObject> values=answers();s.runDriver("web-inspect",new JSONObject(),values::add);
+    check("Missing document port admits no driver",s.web.scripts.isEmpty()&&values.size()==1&&!values.get(0).optBoolean("ok"));
+    s=fresh();s.observe=false;values=answers();s.evaluateDriver("web-inspect","MUST_NOT_CAPTURE",values::add);cancelled("Disabled optional observation still cancels before dispatch",values);
+    check("Disabled optional observation runs zero scripts",s.web.scripts.isEmpty());
+  }
+  static void targetBinding(){
+    ChatSession s=fresh();ChatSession.DriverTarget target=s.driverTarget();
+    check("Target factory captures the current epoch URL surface and port",target!=null&&target.epoch==s.navigationEpoch&&target.url.equals(s.web.url)&&target.surface==s.web.current&&target.port==s.web.ports.get(s.web.current)&&s.driverTargetCurrent(target));
+    s.web.current=null;check("Missing surface cannot create a driver target",s.driverTarget()==null);
+    s=fresh();s.web.ports.clear();check("Missing port cannot create a driver target",s.driverTarget()==null);
+    for(String change:CHANGES){
+      s=fresh();target=s.driverTarget();replace(s,change);List<JSONObject> values=answers();
+      check("Captured target rejects changed evidence before dispatch: "+change,!s.driverTargetCurrent(target));
+      s.evaluateDriver("page-content","MUST_NOT_DISPATCH",target,values::add);cancelled("Bound evaluate rejects an already expired target once: "+change,values);
+      check("Bound evaluate dispatches no expired script: "+change,s.web.scripts.isEmpty());
+      values.clear();s.waitResult("__owned",Clock.wall+1000,target,values::add);cancelled("Bound wait rejects an already expired target once: "+change,values);
+      check("Bound wait queues no expired poll: "+change,s.web.scripts.isEmpty()&&s.handler.queue.isEmpty());
+    }
+  }
+  static void immediate(){
+    ChatSession s=fresh();s.compact=false;List<JSONObject> values=answers();s.runDriver("inspect",J.obj("read",true),values::add);
+    check("Current ChatGPT read dispatches the actual full-driver branch",s.web.scripts.size()==1&&s.web.scripts.get(0).contains("FULL_DRIVER_MARKER")&&values.isEmpty());
+    s.web.deliver(0,"{\"ok\":true,\"value\":\"current-page\"}");
+    check("Current ChatGPT immediate callback preserves parsed result",values.size()==1&&values.get(0).optBoolean("ok")&&values.get(0).optString("value").equals("current-page"));
+    s=fresh();values=answers();s.runDriver("web-inspect",new JSONObject(),values::add);s.web.deliver(0,"{\"readRuntimeMissing\":true}");
+    check("Current document permits its compact-runtime fallback",s.web.scripts.size()==2&&s.web.scripts.get(1).contains("OBSERVER_INSTALL_MARKER")&&values.isEmpty());
+    s.web.deliver(1,"{\"ok\":true,\"value\":\"fallback-current\"}");
+    check("Current compact fallback delivers exactly one real parsed result",values.size()==1&&values.get(0).optString("value").equals("fallback-current"));
+    for(String change:CHANGES){
+      s=fresh();values=answers();s.runDriver("web-inspect",new JSONObject(),values::add);replace(s,change);s.web.deliver(0,"{\"readRuntimeMissing\":true}");
+      check("Expired compact callback injects no observer fallback: "+change,s.web.scripts.size()==1);
+      cancelled("Expired compact callback cancels once: "+change,values);
+      s=fresh();values=answers();s.evaluateDriver("page-content","CONTROLLED_READ",values::add);replace(s,change);s.web.deliver(0,"{\"ok\":true,\"privateOldValue\":\"not-delivered\"}");
+      cancelled("Expired non-capture callback does not deliver old data: "+change,values);
+      check("Expired non-capture callback dispatches no further scripts: "+change,s.web.scripts.size()==1);
+    }
+  }
+  static void asyncInitial(){
+    for(String change:CHANGES){
+      ChatSession s=fresh();List<JSONObject> values=answers();s.asyncDriver("attachment-state",new JSONObject(),1000,values::add);
+      check("Async initial action dispatches once before controlled change: "+change,s.web.scripts.size()==1&&s.web.scripts.get(0).startsWith("void(Promise.resolve("));
+      replace(s,change);s.web.deliver(0,"null");
+      check("Expired async initial callback starts no poll or cleanup: "+change,s.handler.queue.isEmpty()&&s.web.scripts.size()==1);
+      cancelled("Expired async initial callback cancels once: "+change,values);
+    }
+  }
+  static void asyncDelayed(){
+    for(String change:CHANGES){
+      ChatSession s=fresh();List<JSONObject> values=answers();s.asyncDriver("attachment-state",new JSONObject(),1000,values::add);s.web.deliver(0,"null");
+      check("Current async start schedules one finite poll: "+change,s.handler.queue.size()==1&&s.web.scripts.size()==1);
+      replace(s,change);s.handler.advance(120);
+      check("Expired queued poll executes no script or cleanup: "+change,s.web.scripts.size()==1&&s.handler.queue.isEmpty());
+      cancelled("Expired queued poll cancels once: "+change,values);
+      s=fresh();values=answers();s.asyncDriver("attachment-state",new JSONObject(),1000,values::add);s.web.deliver(0,"null");s.handler.advance(120);
+      check("Current delayed poll reads only its owned result key: "+change,s.web.scripts.size()==2&&s.web.scripts.get(1).startsWith("window['__pocket_")&&s.web.scripts.get(1).endsWith("']||null"));
+      replace(s,change);s.web.deliver(1,"{\"ok\":true,\"oldResult\":true}");
+      check("Expired poll response deletes no replacement-document property: "+change,s.web.scripts.size()==2&&s.handler.queue.isEmpty());
+      cancelled("Expired poll response cannot deliver old result: "+change,values);
+      s=fresh();values=answers();s.asyncDriver("attachment-state",new JSONObject(),1000,values::add);s.web.deliver(0,"null");s.handler.advance(120);s.web.deliver(1,"null");
+      check("Null result schedules the actual retry branch: "+change,s.handler.queue.size()==1&&values.isEmpty());
+      replace(s,change);s.handler.advance(120);
+      check("Expired retry never polls or deletes: "+change,s.web.scripts.size()==2&&s.handler.queue.isEmpty());
+      cancelled("Expired retry cancels once: "+change,values);
+    }
+  }
+  static void asyncPositive(){
+    ChatSession s=fresh();List<JSONObject> values=answers();s.asyncDriver("attachment-state",J.obj("names",J.arr("fixture.txt")),1000,values::add);s.web.deliver(0,"null");s.handler.advance(119);
+    check("Async poll waits the declared delay without wall-clock sleeping",s.web.scripts.size()==1&&values.isEmpty());
+    s.handler.advance(1);s.web.deliver(1,"{\"ok\":true,\"value\":\"current-async\"}");
+    check("Current async result performs one owned property cleanup",s.web.scripts.size()==3&&s.web.scripts.get(2).equals("delete "+s.web.scripts.get(1).replace("||null","")));
+    check("Current async result remains deliverable after all guards",values.size()==1&&values.get(0).optBoolean("ok")&&values.get(0).optString("value").equals("current-async")&&s.handler.queue.isEmpty());
+    s=fresh();values=answers();s.asyncDriver("attachment-state",new JSONObject(),0,values::add);s.web.deliver(0,"null");s.handler.advance(120);s.web.deliver(1,"null");
+    check("Current missing async result retains the original finite timeout",values.size()==1&&!values.get(0).optBoolean("ok")&&!values.get(0).optBoolean("cancelled")&&values.get(0).optString("reason").contains("超时")&&s.handler.queue.isEmpty()&&s.web.scripts.size()==2);
+  }
+  static void focused(String change){
+    ChatSession s=fresh();List<JSONObject> values=answers();
+    if(change.equals("port-replaced")){
+      s.asyncDriver("attachment-state",new JSONObject(),1000,values::add);s.web.deliver(0,"null");s.handler.advance(120);replace(s,change);s.web.deliver(1,"{\"ok\":true,\"oldResult\":true}");
+      check("Focused expired poll performs no deletion: "+change,s.web.scripts.size()==2&&s.handler.queue.isEmpty());
+    }else{
+      s.runDriver("web-inspect",new JSONObject(),values::add);replace(s,change);s.web.deliver(0,"{\"readRuntimeMissing\":true}");
+      check("Focused expired compact response performs no fallback: "+change,s.web.scripts.size()==1);
+    }
+    cancelled("Focused expired target cancels once: "+change,values);
+  }
+  public static void main(String[] args){if(args.length==1)focused(args[0]);else{admission();targetBinding();immediate();asyncInitial();asyncDelayed();asyncPositive();}System.out.println(J.obj("status","passed","passed",checks.length(),"total",checks.length(),"checks",checks,"syntheticControlledHost",true,"actualAndroidExecution",false,"actualGeckoExecution",false).toString());}
+}
+
+class ChatSession {
+  interface Result {void accept(JSONObject value);}
+  @PRODUCTION_MEMBERS@
+  final Web web=new Web();final Handler handler=new Handler();final Observer webObserver=new Observer();
+  boolean deleted,compact=true,observe=true;long navigationEpoch=4;
+  String driver="({marker:'FULL_DRIVER_MARKER',action:__ACTION__,args:__ARG__})",attachmentDriver="({marker:'ATTACHMENT_DRIVER_MARKER',action:__ACTION__,args:__ARG__})";
+  boolean webPerformance(){return compact;}
+  boolean replyObservationAllowed(){return observe;}
+}
+class Web {
+  Object current=new Object();final Map<Object,Object> ports=new HashMap<>();String url="https://chatgpt.com/c/original";
+  final List<String> scripts=new ArrayList<>();final List<Consumer<String>> callbacks=new ArrayList<>();
+  Web(){ports.put(current,new Object());}
+  String getUrl(){return url;}
+  void evaluateJavascript(String code,Consumer<String> callback){scripts.add(code);callbacks.add(callback);}
+  void deliver(int index,String raw){Consumer<String> callback=callbacks.get(index);if(callback==null)throw new AssertionError("No callback owned by this evaluation");callback.accept(raw);}
+}
+class Observer {String script="OBSERVER_INSTALL_MARKER;";}
+class MainActivity {static boolean chatUrl(String url){try{return BrowserRuntimePolicy.official(URI.create(url));}catch(Exception invalid){return false;}}}
+class Clock {static long wall,mono;static long wallMillis(){return wall;}}
+class SystemClock {static long elapsedRealtime(){return Clock.mono;}}
+class Handler {
+  static final class Pending {final Runnable callback;final long at;Pending(Runnable callback,long at){this.callback=callback;this.at=at;}}
+  final List<Pending> queue=new ArrayList<>();
+  void postDelayed(Runnable callback,long delay){queue.add(new Pending(callback,Clock.mono+delay));}
+  void advance(long milliseconds){Clock.mono+=milliseconds;Clock.wall+=milliseconds;for(;;){Pending next=null;for(Pending row:queue)if(row.at<=Clock.mono){next=row;break;}if(next==null)return;queue.remove(next);next.callback.run();}}
+}
+class WebPerfStats {static int dispatches,responses;static void reset(){dispatches=responses=0;}static void driver(String action,int bytes){dispatches++;}static void response(String action,int bytes,long duration,JSONObject value){responses++;}}

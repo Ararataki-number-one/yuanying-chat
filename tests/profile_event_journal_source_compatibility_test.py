@@ -21,6 +21,9 @@ class ReceiptJournalSourceCompatibility(unittest.TestCase):
             with self.subTest(path=relative):
                 previous = subprocess.check_output(['git', 'show', journal.BASE_COMMIT + ':' + relative], cwd=ROOT)
                 current = (ROOT / relative).read_bytes()
+                if relative in ('tests/experience46_source_compatibility.py', 'tests/profile_experience46_source_compatibility_test.py'):
+                    from dual_browser_source_compatibility import source_input
+                    current = source_input(current, relative)
                 self.assertEqual((SHA(previous), len(previous)), (row['previousSha256'], row['previousBytes']))
                 self.assertEqual((SHA(current), len(current)), (row['reviewedSha256'], row['reviewedBytes']))
                 self.assertEqual(journal.source_input(current, relative), previous)
@@ -37,6 +40,9 @@ class ReceiptJournalSourceCompatibility(unittest.TestCase):
         rejected = 0
         for relative, row in journal.manifest()['files'].items():
             current = (ROOT / relative).read_bytes()
+            if relative in ('tests/experience46_source_compatibility.py', 'tests/profile_experience46_source_compatibility_test.py'):
+                from dual_browser_source_compatibility import source_input
+                current = source_input(current, relative)
             for delta in row['deltas']:
                 chunk = delta['current'].encode()
                 remaining = current.replace(chunk, b'', 1)

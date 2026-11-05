@@ -82,7 +82,8 @@ def synthetic_native():
 
 class FingerprintLocalSupplementTest(unittest.TestCase):
     def test_original_native_activity_and_two_receivers_are_preserved(self):
-        original = inverse_activity(JAVA.read_text())
+        from dual_browser_source_compatibility import source_input
+        original = inverse_activity(source_input(JAVA.read_bytes(), 'tests/gecko/FingerprintFollowupIntegrationActivity.java').decode('utf-8'))
         self.assertEqual(hashlib.sha256(original.encode()).hexdigest(),
                          '40eb7acd2ff1f1ed4eb528077c0005fd14a917c5d5f28074c093182e74403906')
         source = RUNNER.read_text()

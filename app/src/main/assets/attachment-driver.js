@@ -1,7 +1,7 @@
 (async function(action,arg){
  'use strict';
  if(action!=='attachment-state')return {ok:false,reason:'请在 ChatGPT 原网页中操作'};
- if(location.protocol!=='https:'||location.hostname!=='chatgpt.com')return {ok:false,reason:'请先完成 ChatGPT 登录'};
+ if(window!==window.top||location.origin!=='https://chatgpt.com')return {ok:false,reason:'请先完成 ChatGPT 登录'};
  if(arg.url&&new URL(arg.url).pathname!==location.pathname)return {ok:false,reason:'对话已经改变，未继续操作'};
  const norm=s=>String(s||'').replace(/\s+/g,' ').trim();
  const editor=document.querySelector('#prompt-textarea,[data-composer-markdown],[contenteditable="true"].ProseMirror');

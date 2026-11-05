@@ -1,0 +1,152 @@
+package local.pocketchat;
+
+import java.net.URI;
+import java.util.*;
+import org.json.*;
+
+/** Actual session navigation/persistence methods with explicit JVM boundaries. */
+public final class SessionNavigationHost {
+  static final String GPT="https://chatgpt.com/c/cached",HTTP="http://example.com/article?q=1",HTTPS="https://www.wikipedia.org/wiki/Browser",DIAGNOSTIC="https://detector.example.com/pocketchat-identity/v1/document?nonce=0123456789abcdef0123456789abcdef";
+  static final JSONArray checks=new JSONArray();
+  static void check(String name,boolean pass){checks.put(J.obj("name",name,"pass",pass));if(!pass)throw new AssertionError(name);}
+  static ChatSession fresh(){ChatSession s=new ChatSession();s.conversation=GPT;s.web.url="https://source.example.com/start";s.prefs.values.put("conversation",GPT);s.prefs.values.put("url",GPT);s.entries=J.arr(J.obj("fixture","cached GPT text"));s.state=J.obj("fixture","cached GPT state");s.stateEpoch=4;s.pageMemory.restorePending=true;return s;}
+  static void generic(){
+    for(String url:new String[]{HTTP,HTTPS}){
+      ChatSession s=fresh();s.browse(url,"Open generic page");
+      check("Generic browse reaches the actual loadNavigation dispatch: "+url,s.web.loads.equals(Arrays.asList(url))&&s.navigationTarget.equals(url)&&s.navigationEpoch==5&&s.navigationDispatched);
+      check("Generic browse preserves GPT conversation and saved conversation: "+url,s.conversation.equals(GPT)&&s.prefs.getString("conversation","").equals(GPT)&&s.prefs.getString("url","").equals(GPT));
+      check("Generic browse has no GPT transcript store binding: "+url,s.webStore.current.equals("")&&s.webStore.flushes==1&&s.webMirror.resets==1);
+      check("Generic browse clears old GPT entries state and restore request: "+url,s.entries.length()==0&&s.state.length()==0&&s.stateEpoch==-1&&!s.showingCache&&!s.pageMemory.restorePending&&s.cache.reads==0);
+      check("Generic page is remembered in its own browser URL preference: "+url,s.browsingUrl.equals(url)&&s.prefs.getString("geckoBrowserUrl","").equals(url));
+      check("Generic source navigation injects no GPT navigation-token script: "+url,s.web.scripts.isEmpty()&&s.pageMemory.captures==1);
+    }
+    ChatSession s=fresh();s.offline=true;s.navigate(HTTP,"Offline browse",false);
+    check("Offline generic navigation keeps intent without dispatching network",s.web.loads.isEmpty()&&s.finishes==1&&s.lastFinish.contains("离线")&&s.navigationTarget.equals(HTTP)&&!s.pageMemory.restorePending&&s.conversation.equals(GPT));
+    s=fresh();s.navigate(HTTPS,"Without capture",false);
+    check("Explicit no-capture overload still loads a generic website",s.web.loads.equals(Arrays.asList(HTTPS))&&s.pageMemory.captures==0&&s.web.scripts.isEmpty());
+  }
+  static void gpt(){
+    ChatSession s=fresh();String next="https://chatgpt.com/c/next";s.compact=false;s.browse(next,"Open GPT");
+    check("GPT positive navigation retains its conversation and transcript binding",s.conversation.equals(next)&&s.webStore.current.equals(next)&&s.pageMemory.restorePending&&s.web.loads.equals(Arrays.asList(next)));
+    check("GPT positive navigation uses its existing cache path",s.cache.reads==1&&s.entries==s.cache.messages&&s.entries.length()==1&&s.showingCache);
+    s=fresh();s.compact=true;s.browse(next,"Compact GPT");
+    check("Compact GPT positive navigation avoids the legacy cached transcript",s.cache.reads==0&&s.entries.length()==0&&s.webStore.current.equals(next)&&s.pageMemory.restorePending);
+    s=fresh();s.web.url=GPT;s.browse(HTTP,"Leave GPT");
+    check("Leaving GPT retains only the existing explicit navigation token",s.web.scripts.size()==1&&s.web.scripts.get(0).equals("window.__pocketNavigationToken="+s.navigationEpoch)&&s.conversation.equals(GPT)&&!s.pageMemory.restorePending);
+  }
+  static void persistence(){
+    ChatSession s=fresh();s.rememberBrowserLocation(HTTPS);int writes=s.prefs.applies;s.rememberBrowserLocation(HTTPS);
+    check("Remembering an unchanged generic location avoids duplicate writes",s.prefs.applies==writes&&s.browsingUrl.equals(HTTPS)&&s.prefs.getString("conversation","").equals(GPT));
+    for(String url:new String[]{DIAGNOSTIC,"https://detector.example.com/x/../pocketchat-identity/v1/result?nonce=0123456789abcdef0123456789abcdef","https://detector.example.com/%70ocketchat-identity/v1/document?nonce=0123456789abcdef0123456789abcdef","http://127.0.0.1/","http://192.168.1.1/","javascript:controlled","https://chatgpt.com/auth/login"}){
+      s=fresh();s.rememberBrowserLocation(HTTPS);s.rememberBrowserLocation(url);
+      check("Private diagnostic or login location never replaces saved browser URL: "+url,s.browsingUrl.equals(HTTPS)&&s.prefs.getString("geckoBrowserUrl","").equals(HTTPS)&&s.prefs.getString("conversation","").equals(GPT));
+      check("Private diagnostic or login location is not resumable: "+url,!ChatSession.resumable(url));
+    }
+    for(String url:new String[]{DIAGNOSTIC,"https://detector.example.com/%70ocketchat-identity/v1/document?nonce=0123456789abcdef0123456789abcdef","http://127.0.0.1/","file:///private","javascript:controlled"}){
+      s=fresh();s.browse(url,"Must refuse");
+      check("Private or diagnostic browse never navigates or mutates persistence: "+url,s.web.loads.isEmpty()&&s.navigationEpoch==4&&s.webStore.flushes==0&&s.prefs.applies==0&&s.conversation.equals(GPT)&&s.web.scripts.isEmpty()&&!s.status.isEmpty());
+    }
+    for(String login:new String[]{"https://accounts.google.com/o/oauth2/v2/auth","https://appleid.apple.com/auth/authorize","https://login.microsoftonline.com/common/oauth2/authorize","https://auth.openai.com/authorize"}){
+      s=fresh();s.browse(login,"Explicit public login");
+      check("Ordinary public login saves its browser location independently of GPT: "+login,s.web.loads.equals(Arrays.asList(login))&&s.browsingUrl.equals(login)&&s.prefs.getString("geckoBrowserUrl","").equals(login)&&s.conversation.equals(GPT)&&s.prefs.getString("conversation","").equals(GPT)&&!s.pageMemory.restorePending);
+      // Loading is an explicit boundary, so separately supply its committed URL.
+      s.web.url=login;
+      check("Ordinary public login remains a resumable live generic website: "+login,ChatSession.resumable(login)&&s.resumeUrl().equals(login));
+    }
+  }
+  static void resume(){
+    ChatSession s=fresh();s.web.url=HTTP;s.browsingUrl=HTTPS;s.prefs.values.put("geckoBrowserUrl","https://saved.example.com/start");
+    check("Live generic current page wins over old GPT and saved browser URLs",s.resumeUrl().equals(HTTP));
+    s.web.url="";check("In-memory generic browser location precedes old GPT",s.resumeUrl().equals(HTTPS));
+    s.browsingUrl="";check("Saved generic browser location precedes old GPT conversation",s.resumeUrl().equals("https://saved.example.com/start"));
+    s.prefs.values.put("geckoBrowserUrl",DIAGNOSTIC);check("Diagnostic saved browser URL is skipped for known GPT",s.resumeUrl().equals(GPT));
+    s.prefs.values.put("geckoBrowserUrl",HTTPS);s.requestedConversation="https://chatgpt.com/c/explicit";check("Explicit requested GPT conversation retains its priority",s.resumeUrl().equals(s.requestedConversation));
+    for(String bad:new String[]{DIAGNOSTIC,"http://127.0.0.1/","https://chatgpt.com/auth/login"}){
+      s=fresh();s.web.url=bad;s.browsingUrl=bad;s.prefs.values.put("geckoBrowserUrl",bad);check("Unsafe current browser state is never resumed: "+bad,s.resumeUrl().equals(GPT));
+    }
+  }
+  static void pending(){
+    ChatSession s=fresh();s.web.url=HTTP;s.browsingUrl=HTTPS;s.prefs.values.put("geckoBrowserUrl",HTTPS);s.requestedConversation="https://chatgpt.com/c/requested";String confirmed="https://chatgpt.com/c/confirmed",expected="https://chatgpt.com/c/expected";
+    s.pending=J.obj("confirmedUrl",confirmed,"expectedUrl",expected);
+    check("Bound pending confirmed GPT URL wins over all browser restoration",s.resumeUrl().equals(confirmed));
+    s.pending=J.obj("confirmedUrl",DIAGNOSTIC,"expectedUrl",expected);check("Pending expected GPT conversation remains the next recovery target",s.resumeUrl().equals(expected));
+    s.pending=J.obj("confirmedUrl","https://chatgpt.com/auth/login","expectedUrl","https://chatgpt.com/");check("Unbound pending home and GPT login do not replace the explicit conversation",s.resumeUrl().equals(s.requestedConversation));
+  }
+  static void homepage(){
+    ChatSession s=fresh();s.conversation="";s.web.url="";s.prefs.values.clear();s.context.preferences=s.prefs;s.prefs.values.put("browserHomeUrl","https://docs.example.com/start");
+    check("Fresh session honors configured BrowserPreferences home",s.resumeUrl().equals("https://docs.example.com/start"));
+    s.prefs.values.put("browserHomeUrl","EXAMPLE.COM/Welcome");check("Fresh session home uses the actual saved-home normalizer",s.resumeUrl().equals("https://example.com/Welcome"));
+    s.prefs.values.put("browserHomeUrl","http://127.0.0.1/");check("Invalid configured home retains the established safe default",s.resumeUrl().equals("https://chatgpt.com/"));
+    s.prefs.values.put("browserHomeUrl","https://docs.example.com/start");s.prefs.values.put("url","http://localhost/private");check("Invalid old URL falls back to the configured generic home",s.resumeUrl().equals("https://docs.example.com/start"));
+  }
+  static void matching(){
+    ChatSession s=fresh();s.navigationTarget="https://example.com/path?old=1";
+    check("Actual session target matching ignores only query and fragment",s.targetMatches("https://example.com/path?new=2#part"));
+    check("Same path on another host is never the current navigation target",!s.targetMatches("https://other.example.com/path"));
+    check("Different scheme or port is never the current navigation target",!s.targetMatches("http://example.com/path")&&!s.targetMatches("https://example.com:8443/path"));
+  }
+  static void busy(){
+    for(String kind:new String[]{"pending","submitting","operation","chooser","preparation","transfer"}){
+      ChatSession s=fresh();if(kind.equals("pending"))s.pending=J.obj("id","confirmed-task");else if(kind.equals("submitting"))s.submitting=true;else if(kind.equals("operation"))s.operation=true;else if(kind.equals("chooser"))s.resourceChoosers=1;else if(kind.equals("preparation"))s.resourceFilePreparations=1;else s.transferActive=true;
+      s.browse(HTTPS,"Must wait");check("Explicit native task still blocks generic URL switch: "+kind,s.web.loads.isEmpty()&&s.webStore.flushes==0&&s.navigationEpoch==4&&s.conversation.equals(GPT)&&!s.status.isEmpty());
+    }
+    ChatSession s=fresh();s.resourceUploads.add(Arrays.asList("controlled.txt"),"",s.navigationEpoch,1000);
+    check("Generic upload fixture uses actual unknown active ResourceUploadState",s.resourceUploads.unknown(s.navigationEpoch)&&s.resourceUploads.active(s.navigationEpoch));
+    s.browse(HTTPS,"Intentional generic navigation");
+    check("Unknown generic website upload does not invent a GPT navigation block",s.web.loads.equals(Arrays.asList(HTTPS))&&s.conversation.equals(GPT));
+    s=fresh();s.web.url=GPT;s.resourceUploads.add(Arrays.asList("controlled.txt"),"",s.navigationEpoch,1000);s.browse(HTTPS,"Must protect GPT upload");
+    check("The same unknown active upload still blocks leaving GPT",s.web.loads.isEmpty()&&s.webStore.flushes==0&&s.navigationEpoch==4);
+    s=fresh();s.web.url=GPT;s.attachments=J.arr(J.obj("state","uploading"));s.browse(HTTPS,"GPT file upload");check("Existing GPT attachment upload protection is retained",s.web.loads.isEmpty()&&s.navigationEpoch==4);
+  }
+  static void lateCapture(){
+    ChatSession s=fresh();s.pageMemory.defer=true;s.browse(HTTP,"Deferred capture");check("Actual navigation waits for the declared capture completion boundary",s.web.loads.isEmpty()&&s.pageMemory.pending.size()==1);
+    s.browse(HTTPS,"Replacement navigation");check("A newer navigation captures a distinct epoch",s.navigationEpoch==6&&s.pageMemory.pending.size()==2);
+    s.pageMemory.complete(0);check("Late old capture cannot load the replaced target",s.web.loads.isEmpty());s.pageMemory.complete(0);check("Current capture still loads the newest target",s.web.loads.equals(Arrays.asList(HTTPS)));
+  }
+  public static void main(String[] args){
+    if(args.length==1){switch(args[0]){case "generic":generic();break;case "persistence":persistence();break;case "resume":resume();break;case "pending":pending();break;case "home":homepage();break;case "busy":busy();break;case "matching":matching();break;default:throw new AssertionError("Unknown focus");}}
+    else{generic();gpt();persistence();resume();pending();homepage();matching();busy();lateCapture();}
+    System.out.println(J.obj("status","passed","passed",checks.length(),"total",checks.length(),"checks",checks,"syntheticControlledHost",true,"actualAndroidExecution",false,"actualGeckoExecution",false,"actualNetworkExecution",false).toString());
+  }
+}
+
+class ChatSession {
+  @PRODUCTION_MEMBERS@
+  final ContextBoundary context=new ContextBoundary();final PrefsBoundary prefs=new PrefsBoundary();final WebBoundary web=new WebBoundary();final StoreBoundary webStore=new StoreBoundary();final MirrorBoundary webMirror=new MirrorBoundary();final CacheBoundary cache=new CacheBoundary();final MemoryBoundary pageMemory=new MemoryBoundary();final PrivacyBoundary privacy=new PrivacyBoundary();final TraceBoundary trace=new TraceBoundary();final HandlerBoundary handler=new HandlerBoundary();final AuditBoundary audit=new AuditBoundary();
+  final ResourceUploadState resourceUploads=new ResourceUploadState();JSONObject pending,state=new JSONObject();JSONArray entries=new JSONArray(),attachments=new JSONArray();
+  String conversation="",browsingUrl="",requestedConversation="",navigationTarget="",navigationLabel="",priorDocumentId="",lastDocumentId="",spaSignature="",lastWebUrl="",status="",lastFinish="";
+  boolean submitting,operation,transferActive,offline,showingCache,compact,navigating,navigationFailed,spaTransition,documentNavigationSeen,navigationDispatched=true,awaitNewDocument,replyStalled,websiteConnectionIssue,resourceWebsiteUploading;
+  long navigationEpoch=4,stateEpoch=-1,lastWebSnapshot,resourceObserverEpoch=-1,navigationStarted,navigationMono,firstPageVisible,pageUsableAt,resourceWebsiteEpoch=-1;int resourceChoosers,resourceFilePreparations,spaStable,wakes,finishes;
+  ChatSession(){context.preferences=prefs;}
+  boolean webPerformance(){return compact;}
+  void setStatus(String value){status=value;}
+  void resetReplyStability(){}
+  void wakePolling(){wakes++;}
+  void finishNavigation(String value){finishes++;lastFinish=value;}
+  void finishNavigation(String value,boolean retry){finishNavigation(value);}
+  void navigationTimeout(long epoch){throw new AssertionError("Unexpected navigation timeout execution boundary");}
+}
+class BrowserPreferences {
+  @PREFERENCE_FIELDS@
+  @PREFERENCE_MEMBERS@
+}
+class WebReplyObserver {
+  @SAME_MEMBER@
+}
+class MainActivity {static boolean chatUrl(String value){try{return BrowserRuntimePolicy.official(URI.create(value));}catch(Exception invalid){return false;}}}
+class ContextBoundary {static final int MODE_PRIVATE=0;PrefsBoundary preferences;PrefsBoundary getSharedPreferences(String name,int mode){if(!name.equals("chat"))throw new AssertionError("Unexpected preferences scope");return preferences;}}
+class PrefsBoundary {
+  final Map<String,String> values=new LinkedHashMap<>();int applies;
+  String getString(String key,String fallback){return values.getOrDefault(key,fallback);}PrefsBoundary edit(){return this;}PrefsBoundary putString(String key,String value){values.put(key,value);return this;}void apply(){applies++;}
+}
+class WebBoundary {String url="";final List<String> loads=new ArrayList<>(),scripts=new ArrayList<>();int stops;String getUrl(){return url;}void loadUrl(String target){loads.add(target);}void stopLoading(){stops++;}void evaluateJavascript(String code,Object callback){scripts.add(code);}}
+class StoreBoundary {String current="initial GPT binding";int flushes;void flush(){flushes++;}void current(String url){current=url;}}
+class MirrorBoundary {int resets;void reset(){resets++;}}
+class CacheBoundary {final JSONArray messages=J.arr(J.obj("fixture","cached next GPT transcript"));int reads;JSONArray messages(String url){reads++;return messages;}}
+class MemoryBoundary {boolean restorePending,defer;int captures;final List<Runnable> pending=new ArrayList<>();void capture(Runnable task){captures++;if(defer)pending.add(task);else task.run();}String document(String url){return "";}void complete(int at){pending.remove(at).run();}}
+class PrivacyBoundary {boolean desktop,requestedDesktop;boolean wantsDesktop(){return requestedDesktop;}void apply(){desktop=requestedDesktop;}boolean canNavigate(){return true;}}
+class TraceBoundary {String mode="";int pages;void page(String value){pages++;}}
+class AuditBoundary {int retired;void retirePageCheck(){retired++;}}
+class HandlerBoundary {final List<Runnable> pending=new ArrayList<>();void postDelayed(Runnable task,long delay){if(delay!=45000)throw new AssertionError("Unexpected scheduling boundary");pending.add(task);}}
+class SystemClock {static long elapsedRealtime(){return 1000;}}
+class Clock {static long wallMillis(){return 2000000;}}

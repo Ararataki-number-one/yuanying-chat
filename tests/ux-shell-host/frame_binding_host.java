@@ -18,7 +18,7 @@ final class FrameBindingHost {
     session.submitting=event%3==0;session.conversation="conversation-"+event;session.status="status-"+event;
   }
   static MainActivity fresh(Frames frames){
-    MainActivity owner=new MainActivity();owner.session=new Session();owner.loading=new Loading();owner.designChrome=new Chrome();owner.chatDownloadProgress=new ChatDownloadProgressUi(owner);
+    MainActivity owner=new MainActivity();owner.session=new Session();owner.loading=new Loading();owner.designChrome=new Chrome();owner.geckoAddress=new Address();owner.chatDownloadProgress=new ChatDownloadProgressUi(owner);
     owner.sessionUi=new UiFrameScheduler(frames,owner::applySession);return owner;
   }
   public static void main(String[] args){
@@ -28,17 +28,20 @@ final class FrameBindingHost {
     check(immediateSnapshots==1000,"Every one of1000 observer events synchronously exposes current download/conversation model aliases");
     check(frames.queue.size()==1&&frames.posts==1,"1000 observer notifications retain one pending presentation frame");
     check(owner.paints==0&&owner.loading.updates==0&&owner.designChrome.updates==0&&owner.metrics==0,"Coalesced notifications perform no premature native rendering");
+    check(owner.geckoAddress.updates==0,"Queued notifications do not refresh the address before their frame");
     frames.runOne();
     check(owner.paints==1&&owner.last.conversation.equals("conversation-1000")&&owner.last.pending==owner.session.pending&&owner.last.entries==owner.session.entries,"One frame observes final conversation and object identities");
     check(owner.last.networkReady==owner.session.networkReady&&owner.last.submitting==owner.session.submitting&&owner.last.status.equals("status-1000"),"One frame observes final flags and status");
     check(owner.loading.updates==1&&owner.designChrome.updates==1&&owner.metrics==1,"Actual applySession invokes each presentation consumer once");
     check(owner.chatDownloadProgress.updates==1,"Session, download and periodic notifications share the same presentation frame");
+    check(owner.geckoAddress.updates==1,"One coalesced frame refreshes the current address once");
     check(owner.handler.delayed==1,"Periodic timer retains its one-second continuation");
     check(frames.queue.isEmpty()&&owner.sessionUi.pending==null,"Completed frame leaves no recurring presentation work");
     int statusPaints=owner.paints,progressPaints=owner.chatDownloadProgress.updates;
     for(int tick=0;tick<1000;tick++)owner.chatDownloadProgress.observer.onChange(false);owner.ticker.run();
     check(frames.queue.size()==1,"Download-only notifications and the timer share one pending frame");frames.runOne();
     check(owner.paints==statusPaints&&owner.chatDownloadProgress.updates==progressPaints+1,"Download and timer presentation updates do not redisplay unchanged session status");
+    check(owner.geckoAddress.updates==2,"The next presentation frame refreshes the address once without replaying the burst");
 
     update(owner.session,1001);owner.requestSessionUi();Runnable paused=frames.peek();
     int paints=owner.paints,cancellations=frames.cancels;
@@ -74,7 +77,7 @@ final class FrameBindingHost {
 final class MainActivity {
   boolean active=true;final HostHandler handler=new HostHandler();
   Session session;UiFrameScheduler sessionUi;boolean destroyed,networkReady,submitting,sessionStatusDirty=true;
-  Object pending,entries;String conversation="";Loading loading;Chrome designChrome;ChatDownloadProgressUi chatDownloadProgress;
+  Object pending,entries;String conversation="";Loading loading;Chrome designChrome;Address geckoAddress;ChatDownloadProgressUi chatDownloadProgress;
   int paints,metrics;Paint last;
   void status(String value){paints++;last=new Paint(pending,entries,conversation,networkReady,submitting,value);}
   /* PRODUCTION_METHODS */
@@ -89,6 +92,7 @@ final class Paint {
 }
 final class Loading {int updates;void update(){updates++;}}
 final class Chrome {int updates;void update(){updates++;}}
+final class Address {int updates;void refresh(){updates++;}}
 final class NetworkMetricsUi {static void update(MainActivity owner){owner.metrics++;if(owner.designChrome!=null)owner.designChrome.update();}}
 final class HostHandler {int delayed;void postDelayed(Runnable next,long interval){if(interval!=1000)throw new AssertionError("Unexpected periodic cadence");delayed++;}}
 abstract class ContentObserver {ContentObserver(HostHandler handler){}public abstract void onChange(boolean self);}

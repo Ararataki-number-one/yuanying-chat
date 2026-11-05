@@ -18,6 +18,9 @@ class Experience46SourceCompatibility(unittest.TestCase):
   for path,row in manifest['files'].items():
    with self.subTest(path=path):
     previous=subprocess.check_output(['git','show',compat.BASE_COMMIT+':'+path],cwd=ROOT);current=(ROOT/path).read_bytes()
+    if path in ('app/src/main/java/local/pocketchat/ChatSession.java','app/src/main/java/local/pocketchat/GeckoWebView.java','tests/gecko/GeckoIntegrationTestActivity.java'):
+     from dual_browser_source_compatibility import source_input
+     current=source_input(current,path)
     if path=='tests/gecko/run_device.py':
      from event_journal_source_compatibility import source_input
      current=source_input(current,path)
@@ -35,6 +38,9 @@ class Experience46SourceCompatibility(unittest.TestCase):
   rejected=0
   for path,row in compat.manifest46()['files'].items():
    current=(ROOT/path).read_bytes()
+   if path in ('app/src/main/java/local/pocketchat/ChatSession.java','app/src/main/java/local/pocketchat/GeckoWebView.java','tests/gecko/GeckoIntegrationTestActivity.java'):
+    from dual_browser_source_compatibility import source_input
+    current=source_input(current,path)
    for delta in row['deltas']:
     chunk=delta['current'].encode()
     remaining=current.replace(chunk,b'',1);relocated=remaining+chunk

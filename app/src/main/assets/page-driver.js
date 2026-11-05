@@ -185,7 +185,7 @@
       error: siteError(), sendEnabled: !!sendButton() && !sendButton().disabled };
   }
   function pageAllowed() {
-    if (location.protocol !== 'https:' || location.hostname !== 'chatgpt.com') return false;
+    if (window !== window.top || location.origin !== 'https://chatgpt.com') return false;
     if (arg && arg.expectedUrl) {
       const expected = new URL(arg.expectedUrl);
       if (expected.origin !== location.origin) return false;

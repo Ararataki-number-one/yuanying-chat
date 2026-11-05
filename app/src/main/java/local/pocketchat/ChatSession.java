@@ -18,7 +18,7 @@ final class ChatSession {
   static ChatSession get(Context c){if(!ProfileCatalog.get(c).available(Profiles.slot(c)))throw new IllegalStateException("此环境正在维护或已删除");if(instance==null)instance=new ChatSession(c);return instance;}
   static ChatSession peek(){return instance;}
   final Context context;final SharedPreferences prefs;final Handler handler=new Handler(Looper.getMainLooper());final GeckoWebView web;final BrowserReading reading;final BrowserPrivacy privacy;final BrowserNetworkGuard guard;EnvironmentAudit audit;final WebReplyObserver webObserver;long webConfirmationVersion=0,webWorkGeneration=0;
-  final List<WeakReference<Observer>> observers=new ArrayList<>();String driver="",attachmentDriver="",attachmentOwner="",conversation="",status="准备连接",pageError="",confirmedPrompt="";long confirmationVersion=0;
+  final List<WeakReference<Observer>> observers=new ArrayList<>();String driver="",attachmentDriver="",attachmentOwner="",conversation="",browsingUrl="",status="准备连接",pageError="",confirmedPrompt="";long confirmationVersion=0;
   JSONObject draftConflict,approvedDraft;JSONObject sentAttachments=new JSONObject();JSONObject state=new JSONObject();long stateEpoch=-1;boolean googleLoginBlocked;volatile JSONObject pending;JSONArray entries=new JSONArray(),attachments=new JSONArray();boolean networkReady=false,uiVisible=false,submitting=false,operation=false,inFlight=false;
   boolean showingCache=false,offline=false,connecting=false,recoveryScheduled=false,manualAttention=false;int recoveryAttempt=0;long recoveryToken=0;volatile long connectionEpoch=0;String networkIdentity="",networkIssue="",connectionStage="未连接";final ConversationStore cache;final WebTranscriptMirror webMirror=new WebTranscriptMirror();final WebTranscriptStore webStore;long lastWebSnapshot=0,syncRun=0;String lastWebUrl="",lastDeliverySignature="";final DeliveryStore deliveries;String activeDeliveryId="";volatile boolean transferActive=false;
   boolean deleted=false,configurationCapture=false;long lastDeferredBrowserAttempt=0;final int environmentGeneration;final String environmentId;boolean navigating=false,navigationFailed=false;String navigationTarget="",navigationLabel="";long navigationEpoch=0,navigationStarted=0;long connectionStarted=0,proxyReadyAt=0,navigationMono=0,firstPageVisible=0,pageUsableAt=0;
@@ -39,19 +39,19 @@ final class ChatSession {
       if(!previous.equals("completed")&&!previous.equals("stopped"))deliveries.update(pending.optString("id"),"uncertain","旧版发送结果需要在原网页核对；输入已保留，不会自动重发",pending.optBoolean("attempted"),pending.optString("userKey"),"");
       pending=null;
     }
-    if(pending!=null)activeDeliveryId=pending.optString("id");try{entries=new JSONArray();try(InputStream in=context.getAssets().open("page-driver.js")){driver=J.text(in,512*1024);}}catch(Exception ignored){}conversation=prefs.getString("conversation","");
+    if(pending!=null)activeDeliveryId=pending.optString("id");try{entries=new JSONArray();try(InputStream in=context.getAssets().open("page-driver.js")){driver=J.text(in,512*1024);}}catch(Exception ignored){}conversation=prefs.getString("conversation","");browsingUrl=prefs.getString("geckoBrowserUrl","");
     try(InputStream in=context.getAssets().open("attachment-driver.js")){attachmentDriver=J.text(in,512*1024);}catch(Exception ignored){}
     resources=new ResourcePressureController(context);guard=new BrowserNetworkGuard(this);web=browserFactory.create(context,this);reading=new BrowserReading(this);privacy=new BrowserPrivacy(this);webObserver=new WebReplyObserver(this);webObserver.install();webObserver.restorePending();web.setWebViewClient(client());web.setWebChromeClient(new WebChromeClient());int width=Math.max(400,context.getResources().getDisplayMetrics().widthPixels),height=Math.max(800,context.getResources().getDisplayMetrics().heightPixels);web.measure(View.MeasureSpec.makeMeasureSpec(width,View.MeasureSpec.EXACTLY),View.MeasureSpec.makeMeasureSpec(height,View.MeasureSpec.EXACTLY));web.layout(0,0,width,height);audit=new EnvironmentAudit(this);identity=new IdentityTemplateController(this);identity.load();handler.post(tick);watchNetwork();handler.post(NetworkUiProvider::sessionAvailable);
   }
   WebViewClient client(){return new WebViewClient(){
     @Override public void onScaleChanged(WebView v,float oldScale,float newScale){reading.scaled(newScale);}
-    @Override public WebResourceResponse shouldInterceptRequest(WebView v,WebResourceRequest r){return guard.intercept(r.getUrl());}
-    @Override public boolean shouldOverrideUrlLoading(WebView v,WebResourceRequest r){if(!guard.allowed()||!BrowserNetworkGuard.publicHttps(r.getUrl())){setStatus("连接尚未受保护，或地址属于不安全的网络");return true;}return false;}
-    @Override public void onPageStarted(WebView v,String url,android.graphics.Bitmap icon){reading.started(url);if(audit!=null&&audit.identityPageStarted(url))return;webObserver.suspendUnconfirmed("网页发生重新加载，原发送结果需要核对");pageError="";googleLoginBlocked=false;if(navigating&&targetMatches(url)){documentNavigationSeen=true;spaTransition=false;awaitNewDocument=!priorDocumentId.isEmpty();trace.mode="网页加载";}if(!navigating)beginNavigation(url,"正在加载对话…");}
+    @Override public WebResourceResponse shouldInterceptRequest(WebView v,WebResourceRequest r){return !guard.allowed()||!BrowserNetworkGuard.publicWeb(r.getUrl())?BrowserNetworkGuard.denied():null;}
+    @Override public boolean shouldOverrideUrlLoading(WebView v,WebResourceRequest r){if(!guard.allowed()||!BrowserNetworkGuard.publicWeb(r.getUrl())){setStatus("连接尚未受保护，或地址不是公共网页");return true;}return false;}
+    @Override public void onPageStarted(WebView v,String url,android.graphics.Bitmap icon){reading.started(url);if(audit!=null&&audit.identityPageStarted(url))return;webObserver.suspendUnconfirmed("网页发生重新加载，原发送结果需要核对");pageError="";googleLoginBlocked=false;if(navigating&&targetMatches(url)){documentNavigationSeen=true;spaTransition=false;awaitNewDocument=!priorDocumentId.isEmpty();trace.mode="网页加载";}if(!navigating||!targetMatches(url))beginNavigation(url,MainActivity.chatUrl(url)?"正在加载对话…":"正在加载网页…");}
     @Override public void onPageCommitVisible(WebView v,String url){reading.visible(url);if(audit!=null&&audit.requestIdentityPageSelected())return;if(navigating&&targetMatches(url)){if(firstPageVisible==0)firstPageVisible=SystemClock.elapsedRealtime();trace.visible=SystemClock.elapsedRealtime();webObserver.pageReady();wakePolling();}}
-    @Override public void onPageFinished(WebView v,String url){if(!url.equals(web.getUrl()))return;reading.visible(url);if(audit!=null&&(audit.identityPageFinished(url)||audit.requestIdentityPageSelected()))return;webObserver.pageReady();if(LoginPagePolicy.login(url)){if(pageError.isEmpty()){awaitLogin("请在网页中完成登录");if(LoginPagePolicy.google(url))checkGoogleLogin(url);}return;}if(!MainActivity.chatUrl(url))finishNavigation("请在原网页中完成登录",false);if(MainActivity.chatUrl(url)){prefs.edit().putString("url",url).apply();if(targetMatches(url))wakePolling();}}
+    @Override public void onPageFinished(WebView v,String url){if(!url.equals(web.getUrl()))return;reading.visible(url);if(audit!=null&&(audit.identityPageFinished(url)||audit.requestIdentityPageSelected()))return;webObserver.pageReady();if(!MainActivity.chatUrl(url)){if(GeckoNavigationPolicy.publicWeb(url)){rememberBrowserLocation(url);pageUsableAt=System.currentTimeMillis();trace.usable=SystemClock.elapsedRealtime();connectionStage="网页已打开";finishNavigation("",false);setStatus("网页已打开"+(url.startsWith("http:")?" · HTTP 连接未加密":""));}return;}if(LoginPagePolicy.login(url)){if(pageError.isEmpty())awaitLogin("请在网页中完成登录");return;}prefs.edit().putString("url",url).apply();rememberBrowserLocation(url);if(targetMatches(url))wakePolling();}
     @Override public void onReceivedError(WebView v,WebResourceRequest r,WebResourceError e){if(r.isForMainFrame()){if(audit!=null&&audit.identityPageFailed(r.getUrl().toString(),"检测服务连接未完成；没有取得可核对的身份结果"))return;pageError="连接失败，请检查应用专用网络";finishNavigation(pageError);}}
-    @Override public void onReceivedHttpError(WebView v,WebResourceRequest r,WebResourceResponse r2){if(r.isForMainFrame()&&r2.getStatusCode()>=400){if(audit!=null&&audit.identityPageFailed(r.getUrl().toString(),"检测服务返回 HTTP "+r2.getStatusCode()+"；未作为线路故障或身份一致"))return;if(LoginPagePolicy.login(r.getUrl().toString())&&r2.getStatusCode()<500){awaitLogin("登录未完成，请查看网页登录提示");return;}pageError="网站返回 HTTP "+r2.getStatusCode()+"，请检查网络或登录状态";finishNavigation(pageError,r2.getStatusCode()>=500);}}
+    @Override public void onReceivedHttpError(WebView v,WebResourceRequest r,WebResourceResponse r2){if(r.isForMainFrame()&&r2.getStatusCode()>=400){if(audit!=null&&audit.identityPageFailed(r.getUrl().toString(),"检测服务返回 HTTP "+r2.getStatusCode()+"；未作为线路故障或身份一致"))return;if(MainActivity.chatUrl(r.getUrl().toString())&&LoginPagePolicy.login(r.getUrl().toString())&&r2.getStatusCode()<500){awaitLogin("登录未完成，请查看网页登录提示");return;}pageError="网站返回 HTTP "+r2.getStatusCode()+"，请检查网络或登录状态";finishNavigation(pageError,r2.getStatusCode()>=500);}}
   };}
   void awaitLogin(String message){navigating=false;navigationFailed=false;pageError="";if(pageMayReportConnected()){connectionStage="等待登录";setStatus(message);}else changed();}
   void checkGoogleLogin(String url){final long epoch=navigationEpoch;web.evaluateJavascript(LoginPagePolicy.blockedScript(),raw->{
@@ -81,12 +81,22 @@ final class ChatSession {
     finishNavigation("网页还未显示，请重试或检查网络",false);
   }
   void navigate(String url,String label){navigate(url,label,true);}
+  void browse(String url,String label){
+    if(pending!=null||submitting||operation||resourceChoosers>0||resourceFilePreparations>0||MainActivity.chatUrl(web.getUrl())&&fileWorkActive()||transferActive){setStatus("当前有回复或文件操作，请完成后再切换网址");return;}
+    navigate(url,label);
+  }
+  void rememberBrowserLocation(String url){
+    if(!GeckoNavigationPolicy.restorable(url)||RequestIdentityAudit.diagnosticUrl(url)||MainActivity.chatUrl(url)&&LoginPagePolicy.login(url))return;
+    browsingUrl=url;if(!url.equals(prefs.getString("geckoBrowserUrl","")))prefs.edit().putString("geckoBrowserUrl",url).apply();
+  }
   void navigate(String url,String label,boolean capture){
-    if(!MainActivity.chatUrl(url)){setStatus("对话地址无效");return;}
+    if(!GeckoNavigationPolicy.publicWeb(url)||RequestIdentityAudit.diagnosticUrl(url)){setStatus("请输入有效的公共网页地址");return;}
+    boolean chat=MainActivity.chatUrl(url);
     requestedConversation="";String source=web.getUrl();
-    webStore.flush();webStore.current(url);webMirror.reset();lastWebSnapshot=0;lastWebUrl="";
-    if(offline||!WebReplyObserver.same(conversation,url)||!WebReplyObserver.same(source,url))entries=webPerformance()?new JSONArray():cache.messages(url);conversation=url;showingCache=entries.length()>0;
-    beginNavigation(url,label);navigationDispatched=false;pageMemory.restorePending=true;long epoch=navigationEpoch;if(capture&&MainActivity.chatUrl(source))web.evaluateJavascript("window.__pocketNavigationToken="+epoch,null);
+    webStore.flush();webStore.current(chat?url:"");webMirror.reset();lastWebSnapshot=0;lastWebUrl="";
+    if(chat){if(offline||!WebReplyObserver.same(conversation,url)||!WebReplyObserver.same(source,url))entries=webPerformance()?new JSONArray():cache.messages(url);conversation=url;}else{entries=new JSONArray();state=new JSONObject();stateEpoch=-1;}
+    showingCache=chat&&entries.length()>0;rememberBrowserLocation(url);
+    beginNavigation(url,label);navigationDispatched=false;pageMemory.restorePending=chat;long epoch=navigationEpoch;if(capture&&MainActivity.chatUrl(source))web.evaluateJavascript("window.__pocketNavigationToken="+epoch,null);
     if(offline){finishNavigation("当前离线 · 联网后可继续");return;}
     if(!capture){loadNavigation(url,epoch);return;}
     pageMemory.capture(()->{if(epoch!=navigationEpoch)return;String savedDocument=pageMemory.document(source);if(!savedDocument.isEmpty())priorDocumentId=savedDocument;loadNavigation(url,epoch);});wakePolling();
@@ -110,8 +120,8 @@ final class ChatSession {
   void networkChanged(){invalidateConnection();manualAttention=false;recoveryAttempt=0;networkIssue="手机网络已切换，正在重新核对连接";scheduleRecovery();}
   static long retryDelay(int attempt){long[] delays={1000,2000,5000,10000,20000};return delays[Math.min(Math.max(attempt,0),delays.length-1)];}
   boolean internalNetwork(){return "internal".equals(prefs.getString("networkMode","external"));}
-  String resumeUrl(){if(pending!=null){String confirmed=pending.optString("confirmedUrl");if(resumable(confirmed))return confirmed;String expected=pending.optString("expectedUrl");if(resumable(expected)&&android.net.Uri.parse(expected).getPath().contains("/c/"))return expected;}if(resumable(requestedConversation))return requestedConversation;if(resumable(conversation))return conversation;String saved=prefs.getString("conversation","");if(resumable(saved))return saved;saved=prefs.getString("url",MainActivity.ORIGIN);return resumable(saved)?saved:MainActivity.ORIGIN;}
-  static boolean resumable(String url){return MainActivity.chatUrl(url)&&!LoginPagePolicy.login(url);}
+  String resumeUrl(){if(pending!=null){String confirmed=pending.optString("confirmedUrl");if(resumable(confirmed))return confirmed;String expected=pending.optString("expectedUrl");if(resumable(expected)&&android.net.Uri.parse(expected).getPath().contains("/c/"))return expected;}if(resumable(requestedConversation))return requestedConversation;String current=web.getUrl();if(resumable(current))return current;if(resumable(browsingUrl))return browsingUrl;String saved=prefs.getString("geckoBrowserUrl","");if(resumable(saved))return saved;if(resumable(conversation))return conversation;saved=prefs.getString("conversation","");if(resumable(saved))return saved;saved=prefs.getString("url",BrowserPreferences.home(context));return resumable(saved)?saved:BrowserPreferences.home(context);}
+  static boolean resumable(String url){return GeckoNavigationPolicy.restorable(url)&&!(MainActivity.chatUrl(url)&&LoginPagePolicy.login(url))&&!RequestIdentityAudit.diagnosticUrl(url);}
   void scheduleRecovery(){if(offline||recoveryScheduled||connecting||manualAttention||!prefs.getBoolean("networkConfigured",false))return;if(internalNetwork()&&NativeNetwork.get(context).recoveryBlocked){manualAttention=true;connectionStage="固定出口需要检查";setStatus(NativeNetwork.get(context).message);return;}if(recoveryAttempt>=5){connectionStage="需要手动重连";networkIssue="自动重连暂未成功 · 点按查看连接状态";setStatus(networkIssue);return;}recoveryScheduled=true;long token=++recoveryToken,delay=retryDelay(recoveryAttempt);connectionStage="等待重连";setStatus("连接中断 · "+(delay/1000)+" 秒后重试（"+(recoveryAttempt+1)+"/5）");handler.postDelayed(()->runRecovery(token),delay);}
   void runRecovery(long token){if(token!=recoveryToken||offline||manualAttention)return;if(submitting||operation){handler.postDelayed(()->runRecovery(token),500);return;}recoveryScheduled=false;recoveryAttempt++;openConnection(true,false);}
   void finishNavigation(String error){finishNavigation(error,true);}
@@ -122,7 +132,7 @@ final class ChatSession {
     // In particular, it cannot cancel an independently scheduled service retry.
     changed();
   }
-  boolean targetMatches(String url){try{return android.net.Uri.parse(url).getPath().equals(android.net.Uri.parse(navigationTarget).getPath());}catch(Exception e){return false;}}
+  boolean targetMatches(String url){return GeckoNavigationPolicy.sameTarget(url,navigationTarget);}
   void add(Observer o){remove(o);observers.add(new WeakReference<>(o));o.changed();}
   void remove(Observer o){observers.removeIf(w->w.get()==null||w.get()==o);}
   void changed(){if(internalNetwork()){NativeNetwork n=NativeNetwork.get(context);n.pauseBackgroundWhenBusy();}try{ProfileCatalog.get(context).heartbeat(this,false);NetworkJournal.record(this);}catch(Exception ignored){}for(WeakReference<Observer> w:new ArrayList<>(observers)){Observer o=w.get();if(o!=null)o.changed();}if(ChatService.running)ChatService.update(context,status);}
@@ -153,7 +163,7 @@ final class ChatSession {
   boolean replyObservationAllowed(){return uiVisible||BackgroundReplyPolicy.enabledCached();}
   static void backgroundReplyPolicyChanged(BackgroundReplyPolicy.Snapshot policy){ChatSession session=peek();if(session==null)return;session.handler.post(()->session.replyObservationPolicyChanged());}
   void replyObservationPolicyChanged(){
-    boolean allowed=replyObservationAllowed();web.evaluateJavascript("window.__pocketReplyObservationAllowed="+allowed+";window.__pocketWebReplyObserver?.setObservationAllowed?.("+allowed+");",null);
+    boolean allowed=replyObservationAllowed();if(chatAutomationAllowed())web.evaluateJavascript("window.__pocketReplyObservationAllowed="+allowed+";window.__pocketWebReplyObserver?.setObservationAllowed?.("+allowed+");",null);
     if(!replyObservationAllowed()){syncRun++;inFlight=false;resourceInspectionGeneration++;webObserver.resetCompletion();handler.removeCallbacks(tick);}
     updateBrowserActivity();
   }
@@ -340,9 +350,9 @@ final class ChatSession {
         navigating=false;connectionStage="线路已恢复";trace.page("保留现有网页");trace.visible=SystemClock.elapsedRealtime();trace.usable=pageUsableAt>0?trace.visible:0;setStatus(websiteConnectionIssue||!pageError.isEmpty()?"线路已恢复 · 网页仍需恢复，点按查看":"已连接 · 网页已保留");wakePolling();
         // HEAD/DOM readiness can fail while ChatGPT generates or uploads. It
         // is diagnostic only; it cannot authorize a new document or resend.
-        asyncDriver("page-recover",J.obj("expectedUrl",retained),3200,result->{if(epoch!=connectionEpoch||documentEpoch!=navigationEpoch||offline||!BrowserRuntimePolicy.sameDocument(retained,web.getUrl()))return;observeWebsiteProbe(epoch,documentEpoch,retained,result);});return;
+        if(MainActivity.chatUrl(retained))asyncDriver("page-recover",J.obj("expectedUrl",retained),3200,result->{if(epoch!=connectionEpoch||documentEpoch!=navigationEpoch||offline||!BrowserRuntimePolicy.sameDocument(retained,web.getUrl()))return;observeWebsiteProbe(epoch,documentEpoch,retained,result);});return;
       }
-      navigate(resumeUrl(),"正在恢复 ChatGPT 对话…");
+      navigate(resumeUrl(),"正在恢复当前网页…");
     };
     if(!proxy.isEmpty()&&!MainActivity.validProxy(proxy)){connectionFailed(epoch,"代理地址无效，已停止网络加载",false);return;}
     done.run();
@@ -372,17 +382,53 @@ final class ChatSession {
     deferredBrowserWakeQueued=true;
     handler.postDelayed(deferredBrowserWake,Math.max(0,10000-(SystemClock.elapsedRealtime()-lastDeferredBrowserAttempt)));
   }
-  void wakePolling(){handler.removeCallbacks(tick);if(replyObservationAllowed()||fileWorkActive())handler.post(tick);}
+  void wakePolling(){handler.removeCallbacks(tick);if(replyObservationAllowed()&&MainActivity.chatUrl(web.getUrl())||fileWorkActive())handler.post(tick);}
+  static final class DriverTarget {
+    final long epoch;final String url;final Object surface,port;
+    DriverTarget(long epoch,String url,Object surface,Object port){this.epoch=epoch;this.url=url;this.surface=surface;this.port=port;}
+  }
+  boolean chatAutomationAllowed(){return !deleted&&MainActivity.chatUrl(web.getUrl());}
+  DriverTarget driverTarget(){
+    if(!chatAutomationAllowed()||web.current==null)return null;
+    Object port=web.ports.get(web.current);return port==null?null:new DriverTarget(navigationEpoch,web.getUrl(),web.current,port);
+  }
+  boolean driverTargetCurrent(DriverTarget target){return target!=null&&chatAutomationAllowed()&&target.epoch==navigationEpoch&&target.url.equals(web.getUrl())&&target.surface==web.current&&target.port==web.ports.get(web.current);}
   void runDriver(String action,JSONObject args,Result cb){
     if(!BrowserRuntimePolicy.allows(action)){cb.accept(J.obj("ok",false,"reason",BrowserRuntimePolicy.websiteActionMessage()));return;}
-    if(!MainActivity.chatUrl(web.getUrl())){cb.accept(J.obj("ok",false,"reason","请先登录 ChatGPT","error","页面尚未就绪"));return;}
+    DriverTarget target=driverTarget();if(target==null){cb.accept(J.obj("ok",false,"cancelled",true,"reason","ChatGPT 页面尚未就绪","error","页面尚未就绪"));return;}
     boolean compact=webPerformance()&&(action.equals("web-inspect")||action.equals("web-transcript")||action.equals("poll"));
     String code=compact?"typeof window.__pocketReadDriver==='function'?window.__pocketReadDriver("+JSONObject.quote(action)+","+args+"):({readRuntimeMissing:true})":driver.replace("__ACTION__",JSONObject.quote(action)).replace("__ARG__",args.toString());
-    evaluateDriver(action,code,r->{if(compact&&r.optBoolean("readRuntimeMissing")&&!webObserver.script.isEmpty())evaluateDriver(action,webObserver.script+"\nwindow.__pocketReadDriver("+JSONObject.quote(action)+","+args+");",cb);else cb.accept(r);});
+    evaluateDriver(action,code,target,r->{if(compact&&r.optBoolean("readRuntimeMissing")&&!webObserver.script.isEmpty())evaluateDriver(action,webObserver.script+"\nwindow.__pocketReadDriver("+JSONObject.quote(action)+","+args+");",target,cb);else cb.accept(r);});
   }
-  void evaluateDriver(String action,String code,Result cb){boolean capture=action.equals("inspect")||action.equals("web-inspect")||action.equals("transcript")||action.equals("web-transcript")||action.equals("poll");if(capture&&!replyObservationAllowed()){cb.accept(J.obj("cancelled",true));return;}long start=SystemClock.elapsedRealtime();WebPerfStats.driver(action,code.length());web.evaluateJavascript(code,raw->{if(capture&&!replyObservationAllowed()){cb.accept(J.obj("cancelled",true));return;}JSONObject result=J.parse(raw);WebPerfStats.response(action,raw.length(),SystemClock.elapsedRealtime()-start,result);cb.accept(result);});}
-  void asyncDriver(String action,JSONObject args,long timeout,Result cb){if(!BrowserRuntimePolicy.allows(action)){cb.accept(J.obj("ok",false,"reason",BrowserRuntimePolicy.websiteActionMessage()));return;}if(!MainActivity.chatUrl(web.getUrl())){cb.accept(J.obj("ok",false,"reason","请先登录 ChatGPT"));return;}String key="__pocket_"+UUID.randomUUID().toString().replace("-","");String code=(action.startsWith("attachment-")?attachmentDriver:driver).replace("__ACTION__",JSONObject.quote(action)).replace("__ARG__",args.toString());web.evaluateJavascript("void(Promise.resolve("+code+").then(v=>window['"+key+"']=v).catch(()=>window['"+key+"']={ok:false,reason:'网页操作未完成'}))",unused->waitResult(key,System.currentTimeMillis()+timeout,cb));}
-  void waitResult(String key,long deadline,Result cb){handler.postDelayed(()->web.evaluateJavascript("window['"+key+"']||null",r->{if("null".equals(r)){if(System.currentTimeMillis()<deadline)waitResult(key,deadline,cb);else cb.accept(J.obj("ok",false,"reason","网页操作超时，请检查原网页"));}else{web.evaluateJavascript("delete window['"+key+"']",null);cb.accept(J.parse(r));}}),120);}
+  void evaluateDriver(String action,String code,Result cb){evaluateDriver(action,code,driverTarget(),cb);}
+  void evaluateDriver(String action,String code,DriverTarget target,Result cb){
+    boolean capture=action.equals("inspect")||action.equals("web-inspect")||action.equals("transcript")||action.equals("web-transcript")||action.equals("poll");
+    if(!driverTargetCurrent(target)||capture&&!replyObservationAllowed()){cb.accept(J.obj("cancelled",true));return;}
+    long start=SystemClock.elapsedRealtime();WebPerfStats.driver(action,code.length());web.evaluateJavascript(code,raw->{
+      if(!driverTargetCurrent(target)||capture&&!replyObservationAllowed()){cb.accept(J.obj("cancelled",true));return;}
+      JSONObject result=J.parse(raw);WebPerfStats.response(action,raw.length(),SystemClock.elapsedRealtime()-start,result);cb.accept(result);
+    });
+  }
+  void asyncDriver(String action,JSONObject args,long timeout,Result cb){
+    if(!BrowserRuntimePolicy.allows(action)){cb.accept(J.obj("ok",false,"reason",BrowserRuntimePolicy.websiteActionMessage()));return;}
+    DriverTarget target=driverTarget();if(target==null){cb.accept(J.obj("ok",false,"cancelled",true,"reason","ChatGPT 页面尚未就绪"));return;}
+    String key="__pocket_"+UUID.randomUUID().toString().replace("-","");String code=(action.startsWith("attachment-")?attachmentDriver:driver).replace("__ACTION__",JSONObject.quote(action)).replace("__ARG__",args.toString());
+    web.evaluateJavascript("void(Promise.resolve("+code+").then(v=>window['"+key+"']=v).catch(()=>window['"+key+"']={ok:false,reason:'网页操作未完成'}))",unused->{
+      if(!driverTargetCurrent(target)){cb.accept(J.obj("cancelled",true));return;}waitResult(key,System.currentTimeMillis()+timeout,target,cb);
+    });
+  }
+  void waitResult(String key,long deadline,Result cb){waitResult(key,deadline,driverTarget(),cb);}
+  void waitResult(String key,long deadline,DriverTarget target,Result cb){
+    if(!driverTargetCurrent(target)){cb.accept(J.obj("cancelled",true));return;}
+    handler.postDelayed(()->{
+      if(!driverTargetCurrent(target)){cb.accept(J.obj("cancelled",true));return;}
+      web.evaluateJavascript("window['"+key+"']||null",raw->{
+        if(!driverTargetCurrent(target)){cb.accept(J.obj("cancelled",true));return;}
+        if("null".equals(raw)){if(System.currentTimeMillis()<deadline)waitResult(key,deadline,target,cb);else cb.accept(J.obj("ok",false,"reason","网页操作超时，请检查原网页"));}
+        else{web.evaluateJavascript("delete window['"+key+"']",null);cb.accept(J.parse(raw));}
+      });
+    },120);
+  }
   void resolveDraftConflict(JSONObject conflict){draftConflict=null;setStatus(BrowserRuntimePolicy.websiteActionMessage());}
   void rememberOwnedDraft(String url,String text){if(text.equals(prefs.getString("ownedWebDraft:"+url,null)))return;prefs.edit().putString("ownedWebDraft:"+url,text).apply();}
   // Compatibility methods for old native controls. None can replace a draft or
@@ -407,7 +453,7 @@ final class ChatSession {
     else status="请打开登录页面完成登录";
   }
   void sync(){
-    if(!replyObservationAllowed())return;
+    if(!replyObservationAllowed()||!chatAutomationAllowed())return;
     // A user-selected diagnostic document has its own readiness and result lifecycle.
     if(audit!=null&&audit.requestIdentityPageSelected())return;
     if(GeckoWebView.active(web)&&web.failed)return;

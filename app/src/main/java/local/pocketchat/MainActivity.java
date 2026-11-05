@@ -24,7 +24,7 @@ public class MainActivity extends ThemedActivity {
   // These references remain null; recovery reads data without creating editors.
   WebView reader; EditText input; Button send; LinearLayout composer;
   TextView nativeTab,webTab;
-  DesignChrome designChrome; AppHub hub; ChatSession session;EnvironmentOverviewUi environmentOverview;BrowserStartupGate browserStartup;
+  DesignChrome designChrome;GeckoAddressUi geckoAddress; AppHub hub; ChatSession session;EnvironmentOverviewUi environmentOverview;BrowserStartupGate browserStartup;
   UiFrameScheduler sessionUi;boolean sessionStatusDirty=true;
   final ChatSession.Observer sessionObserver=()->requestSessionUi();
   SharedPreferences prefs; JSONObject pending; JSONArray entries=new JSONArray();
@@ -171,6 +171,7 @@ public class MainActivity extends ThemedActivity {
   final Runnable ticker=new Runnable(){public void run(){if(!active||destroyed)return;requestPresentationUi();handler.postDelayed(this,1000);}};
   void applySession(){
     if(session==null||destroyed)return;syncSessionReferences();
+    if(geckoAddress!=null)geckoAddress.refresh();
     if(sessionStatusDirty){sessionStatusDirty=false;status(session.status);}NetworkMetricsUi.update(this);if(loading!=null)loading.update();if(chatDownloadProgress!=null)chatDownloadProgress.update();
   }
   void syncSessionReferences(){if(session==null)return;pending=session.pending;networkReady=session.networkReady;submitting=session.submitting;entries=session.entries;conversation=session.conversation;}
@@ -179,9 +180,11 @@ public class MainActivity extends ThemedActivity {
   TextView label(String text,int size,int color){TextView v=new TextView(this);v.setText(text);v.setTextSize(size);v.setTextColor(AppAppearance.text(color));return v;}
   void moreSheet(){
     ReferenceUi.Modal d=new ReferenceUi.Modal(this,"会话选项").asSheet();
+    option(d,"打开网址或搜索 · Gecko",()->GeckoAddressUi.show(this));
+    if(remote.hasWebsitePages())option(d,"关闭网站并返回 ChatGPT",()->GeckoAddressUi.closeSites(this));
     option(d,"搜索操作",()->ActionSearchUi.show(this));
     option(d,"快速切换环境",()->EnvironmentSwitcherUi.show(this));
-    option(d,"通用浏览器 · Chromium",()->BrowserActivity.open(this,BrowserPreferences.home(this)));
+    option(d,"Chromium 指纹浏览器",()->BrowserActivity.open(this,BrowserPreferences.home(this)));
     option(d,"浏览器与启动偏好",()->BrowserSettingsUi.show(this));
     option(d,focusReading?"退出专注阅读":"进入专注阅读",()->setFocusReading(!focusReading));
     if(session.privacy.desktop&&BrowserReadingPolicy.chat(remote.getUrl()))option(d,"网页缩放",()->BrowserReadingUi.show(this));
@@ -317,7 +320,7 @@ public class MainActivity extends ThemedActivity {
   @Override protected void onResume(){super.onResume();if(!ProfileCatalog.get(this).available(Profiles.slot(this))){finish();return;}active=true;if(sessionUi!=null)sessionUi.visible(true);if(environmentOverview!=null)environmentOverview.resume();if(session==null){if(browserStartup!=null){browserStartup.foreground(true);startBrowserAfterOverview();}return;}resumeChatUi();}
   void resumeChatUi(){AppUpdates.schedule(this);if(hub!=null)hub.downloadsVisible(true);AppPrefs.maintainCache(this);session.add(sessionObserver);session.audit.refresh(true);session.foreground(true);session.connect();if(hub!=null&&hub.page!=AppHub.CHAT){hub.refresh();handler.removeCallbacks(hub.tick);handler.postDelayed(hub.tick,2500);}handler.removeCallbacks(ticker);handler.post(ticker);}
   @Override protected void onPause(){super.onPause();active=false;if(sessionUi!=null)sessionUi.visible(false);if(chatDownloadProgress!=null)chatDownloadProgress.visible(false);if(browserStartup!=null)browserStartup.foreground(false);if(environmentOverview!=null)environmentOverview.pause();ExitIpPageUi.close(this);if(hub!=null)hub.downloadsVisible(false);if(designChrome!=null){designChrome.cancelWebGesture();designChrome.cancelUpdates();}handler.removeCallbacks(ticker);if(session==null||session.deleted)return;NativeNetwork.get(this).traffic.watch(false);session.remove(sessionObserver);session.audit.cancel();session.reading.keyboard(false);session.foreground(false);}
-  @Override protected void onDestroy(){destroyed=true;if(sessionUi!=null)sessionUi.close();if(designChrome!=null)designChrome.cancelUpdates();if(chatDownloadProgress!=null)chatDownloadProgress.close();if(browserStartup!=null)browserStartup.close();if(environmentOverview!=null)environmentOverview.close();ExitIpPageUi.close(this);if(hub!=null)hub.downloadsVisible(false);if(reloadDialog!=null)reloadDialog.dismiss();if(networkDialog!=null)networkDialog.dismiss();if(downloads!=null)downloads.destroy();if(attachments!=null)attachments.destroy();if(loading!=null)loading.dismissTask();if(hub!=null)hub.networkWorkspace.close();handler.removeCallbacksAndMessages(null);if(session!=null)session.remove(sessionObserver);if(remote!=null&&remote.getParent() instanceof ViewGroup)((ViewGroup)remote.getParent()).removeView(remote);if(remote!=null)remote.setHost(null);super.onDestroy();}
+  @Override protected void onDestroy(){destroyed=true;if(sessionUi!=null)sessionUi.close();if(designChrome!=null)designChrome.cancelUpdates();if(chatDownloadProgress!=null)chatDownloadProgress.close();if(geckoAddress!=null)geckoAddress.close();if(browserStartup!=null)browserStartup.close();if(environmentOverview!=null)environmentOverview.close();ExitIpPageUi.close(this);if(hub!=null)hub.downloadsVisible(false);if(reloadDialog!=null)reloadDialog.dismiss();if(networkDialog!=null)networkDialog.dismiss();if(downloads!=null)downloads.destroy();if(attachments!=null)attachments.destroy();if(loading!=null)loading.dismissTask();if(hub!=null)hub.networkWorkspace.close();handler.removeCallbacksAndMessages(null);if(session!=null)session.remove(sessionObserver);if(remote!=null&&remote.getParent() instanceof ViewGroup)((ViewGroup)remote.getParent()).removeView(remote);if(remote!=null)remote.setHost(null);super.onDestroy();}
   @Override protected void onSaveInstanceState(Bundle state){super.onSaveInstanceState(state);state.putBoolean("focusReading",focusReading);Bundle downloadsState=new Bundle();if(hub!=null&&hub.downloadController!=null)hub.downloadController.saveState(downloadsState);else if(downloadUiState!=null)downloadsState.putAll(downloadUiState);state.putBundle("uxDownloads",downloadsState);}
   @Override public boolean dispatchKeyEvent(KeyEvent event){
     if(event.getAction()==KeyEvent.ACTION_DOWN&&event.getRepeatCount()==0){

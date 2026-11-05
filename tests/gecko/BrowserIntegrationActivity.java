@@ -55,7 +55,7 @@ public final class BrowserIntegrationActivity extends BrowserActivity {
   interface Step{void run()throws Exception;}
   void check(String name,boolean pass)throws Exception{checks.put(new JSONObject().put("name",name).put("pass",pass));if(!pass)throw new AssertionError(name);}
   boolean page(String path){return web()!=null&&(ORIGIN+path).equals(web().getUrl())&&("Fixture "+path).equals(web().getTitle())&&!selected.loading;}
-  boolean startReady(){return runtime!=null&&runtime.allowed()&&page("/start")&&fixture.successes.get()>0&&web().getProgress()==100;}
+  boolean startReady(){return runtime!=null&&runtime.allowed()&&fingerprintTraffic(selected,web())&&page("/start")&&fixture.successes.get()>0&&web().getProgress()==100;}
   void await(String name,Ready ready,Step next){
     probe.post(new Runnable(){public void run(){if(finished||destroyed)return;try{if(ready.get()){next.run();return;}if(SystemClock.elapsedRealtime()>deadline)throw new AssertionError("Timed out: "+name+" / "+(runtime==null?"no runtime":runtime.status()));probe.postDelayed(this,75);}catch(Throwable error){fail(error);}}});
   }
@@ -119,7 +119,7 @@ public final class BrowserIntegrationActivity extends BrowserActivity {
       scrollTarget(view,id,generation,()->targetFrame(view,id,generation,next,null,null));
     }catch(Throwable error){fail(error);}
   }
-  boolean targetCurrent(WebView view,long generation){return !finished&&!destroyed&&targetGeneration==generation&&view!=null&&view==web()&&foreground&&runtime.allowed();}
+  boolean targetCurrent(WebView view,long generation){return !finished&&!destroyed&&targetGeneration==generation&&view!=null&&view==web()&&foreground&&runtime.allowed()&&fingerprintTraffic(selected,view);}
   void scrollTarget(WebView view,String id,long generation,Step next){
     if(!targetCurrent(view,generation)){fail(new AssertionError("Trusted target document is no longer current"));return;}
     js("("+TARGET_SCROLL_SCRIPT+")("+JSONObject.quote(id)+")",value->{try{if(!targetCurrent(view,generation))throw new AssertionError("Target changed during scroll");next.run();}catch(Throwable error){fail(error);}});

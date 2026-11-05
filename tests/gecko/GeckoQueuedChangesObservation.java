@@ -24,8 +24,8 @@ final class GeckoQueuedChangesObservation {
     if(nonce==null||!nonce.matches("[0-9a-f]{32}"))throw new IOException("Queued fixture nonce missing");
     if(url==null||!url.matches("http://127\\.0\\.0\\.1:8765/fixture\\?context=[1-8]&action=(read|seed)&command=[1-9][0-9]{0,18}"))throw new IOException("Exact owned queued fixture URL required");
     String guard="(location.href !== "+JSONObject.quote(url)+" || window.__pocketQueued46?.nonce !== "+JSONObject.quote(nonce)+")";
-    String result=ResourcePressureIntegrationActivity.replaceResourceFixtureGuard(original,"location.origin !== 'https://chatgpt.com'",guard);
-    return ResourcePressureIntegrationActivity.replaceResourceFixtureGuard(result,"location.protocol !== 'https:' || location.hostname !== 'chatgpt.com'",guard);
+    String result=ResourcePressureIntegrationActivity.replaceResourceFixtureGuard(original,"window !== window.top || location.origin !== 'https://chatgpt.com' ||","window !== window.top || "+guard+" ||");
+    return ResourcePressureIntegrationActivity.replaceResourceFixtureGuard(result,"window !== window.top || location.origin !== 'https://chatgpt.com') return false;","window !== window.top || "+guard+") return false;");
   }
   boolean ownsUrl(String value){return !failed&&!retired&&activity.run==command&&activity.session==session&&session.environmentGeneration==generation&&environment.equals(session.environmentId)&&session.navigationEpoch==epoch&&view.current==sdk&&view.ports.get(view.current)==port&&SystemClock.elapsedRealtime()<=expires&&url.equals(view.getUrl())&&url.equals(value);}
   static boolean accepts(JSONObject packet,String nonce,String url,String binding,String document,long sequence,long now){

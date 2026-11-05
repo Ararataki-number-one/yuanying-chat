@@ -132,7 +132,7 @@ class ResourceAttachmentPromiseTest(unittest.TestCase):
         if not driver.startswith("(async function"):
             raise AssertionError("Exercise the unchanged async production attachment driver")
         driver = driver.replace(
-            "location.protocol!=='https:'||location.hostname!=='chatgpt.com'",
+            "location.origin!=='https://chatgpt.com'",
             "location.origin!==" + json.dumps("http://127.0.0.1:33037"))
         driver = driver.replace("__ACTION__", json.dumps("attachment-state"))
         driver = driver.replace("__ARG__", json.dumps(

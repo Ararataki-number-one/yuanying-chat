@@ -18,7 +18,7 @@ function invoke(driver,args,action='page-recover',escaped=false){let json=JSON.s
   const dom=new JSDOM('<h1>Controlled page continuity</h1><textarea id="prompt-textarea">keep unsent draft</textarea><button id="stop" data-testid="stop-button">Stop</button>',{url:target,runScripts:'outside-only',pretendToBeVisual:true});win=dom.window;
   win.HTMLElement.prototype.getClientRects=function(){return this.closest('[hidden]')?[]:[{x:0,y:0,width:120,height:30}];};
   win.AbortController=AbortController;win.fetch=(url,options)=>fetch(url,options);
-  const siteOnly=original.replace("location.protocol !== 'https:' || location.hostname !== 'chatgpt.com'","location.protocol !== 'http:' || location.hostname !== '127.0.0.1' || location.port !== '8765'");
+  const siteOnly=original.replace("window !== window.top || location.origin !== 'https://chatgpt.com'","window !== window.top || location.origin !== 'http://127.0.0.1:8765'");
   let result=await invoke(siteOnly,{expectedUrl:'https://chatgpt.com/'});
   check('Site-only adapter reproduces the rejected original CI probe',result.ok===false&&/目标页面已改变/.test(result.error)&&requests.length===0);
   result=await invoke(original,{expectedUrl:'https://chatgpt.com/'});

@@ -42,7 +42,7 @@ class GeckoWebView extends FrameLayout {
     if(chrome!=null){if(readingOwnerVisible())chrome.webTouch(event);else chrome.cancelWebGesture();}return handled;
   }
   void destroy(){
-    if(destroyed)return;destroyed=true;closeExitIpPage();if(contentPermissions!=null)contentPermissions.close();
+    if(destroyed)return;destroyed=true;generalRestore=null;ChromiumRouteLease.removeListener(routeLeaseChanged);releaseGeneralRoutes();generalSessions.clear();deferredGeneralLoads.clear();closeExitIpPage();if(contentPermissions!=null)contentPermissions.close();
     cancelZoom();cancelProtectionTasks();nativeProtection.closed();protectionRestore=null;owner.handler.removeCallbacks(recovery);owner.handler.removeCallbacks(checkpoint);saveCheckpoint();
     callbacks.clear();cookieCallbacks.clear();appearanceSync.clear();
     appearanceLoads.clear();appearanceConnections.clear();appearanceDocuments.clear();staleAppearanceConnections.clear();
@@ -88,6 +88,11 @@ class GeckoWebView extends FrameLayout {
   }
   GeckoContentPermissions contentPermissions;
   final ArrayList<GeckoSession> popups=new ArrayList<>();
+  final Set<GeckoSession> generalSessions=Collections.newSetFromMap(new IdentityHashMap<>());
+  final Map<GeckoSession,ChromiumRouteLease.Handle> generalRoutes=new IdentityHashMap<>();
+  final Map<GeckoSession,String> deferredGeneralLoads=new IdentityHashMap<>();
+  final Runnable routeLeaseChanged=this::queueGeneralRouteRetry;
+  boolean generalRouteRetryQueued;ProtectionRestore generalRestore;
   final Map<GeckoSession,WebExtension.Port> ports=new IdentityHashMap<>();
   final Map<GeckoSession,String> locations=new IdentityHashMap<>();
   final Map<GeckoSession,Boolean> backStates=new IdentityHashMap<>();
@@ -147,7 +152,33 @@ class GeckoWebView extends FrameLayout {
     };
     callbacks=new BrowserBridgeRequests(timer,"null");cookieCallbacks=new BrowserBridgeRequests(timer,null);
     appearanceSync=new WebAppearanceSync(timer,(port,message)->((WebExtension.Port)port).postMessage(message));
+    ChromiumRouteLease.addListener(routeLeaseChanged);
     owner.handler.post(this::initialize);
+  }
+  boolean generalRouteReady(){return generalRoutes.keySet().containsAll(generalSessions);}
+  boolean retainGeneralRoute(GeckoSession session,String target){
+    if(session==null||destroyed||failed||crashed.contains(session))return false;
+    if(allowedUrl(target)&&!MainActivity.chatUrl(target))generalSessions.add(session);
+    if(!generalSessions.contains(session)||generalRoutes.containsKey(session))return true;
+    if(destroyed||!owner.guard.allowed()||!protectionAllowsNetwork())return false;
+    ChromiumRouteLease.Handle lease=ChromiumRouteLease.acquireSurface();if(lease==null)return false;
+    generalRoutes.put(session,lease);return true;
+  }
+  void forgetGeneralRoute(GeckoSession session){generalSessions.remove(session);deferredGeneralLoads.remove(session);ChromiumRouteLease.Handle lease=generalRoutes.remove(session);if(lease!=null)lease.close();}
+  void releaseGeneralRoutes(){ArrayList<ChromiumRouteLease.Handle> leases=new ArrayList<>(generalRoutes.values());generalRoutes.clear();for(ChromiumRouteLease.Handle lease:leases)lease.close();}
+  void routeAdmissionChanged(){if(destroyed)return;if(owner.guard.blocked||!owner.guard.routeProtected())releaseGeneralRoutes();else queueGeneralRouteRetry();}
+  void queueGeneralRouteRetry(){if(Looper.myLooper()!=owner.handler.getLooper()){owner.handler.post(this::queueGeneralRouteRetry);return;}if(destroyed||generalRouteRetryQueued)return;generalRouteRetryQueued=true;owner.handler.post(()->{generalRouteRetryQueued=false;retryGeneralRoutes();});}
+  void retryGeneralRoutes(){
+    if(destroyed||!owner.guard.allowed()||!protectionAllowsNetwork())return;
+    for(GeckoSession session:new ArrayList<>(generalSessions))if(locations.containsKey(session)&&!crashed.contains(session)&&!retainGeneralRoute(session,locations.getOrDefault(session,"")))return;
+    if(!generalRouteReady())return;
+    ProtectionRestore restore=generalRestore;generalRestore=null;
+    if(restore!=null&&restore.navigation==owner.navigationEpoch&&restore.session==current&&current.isOpen())restoreCheckpoint(current,restore.state,restore.url,restore.draftRevision);
+    for(Map.Entry<GeckoSession,String> entry:new ArrayList<>(deferredGeneralLoads.entrySet())){
+      GeckoSession session=entry.getKey();String target=entry.getValue();if(!target.equals(deferredGeneralLoads.remove(session)))continue;
+      if(locations.containsKey(session)&&session.isOpen()&&!crashed.contains(session))session.loadUri(target);
+    }
+    if(!queued.isEmpty()&&ready)loadUrl(queued);
   }
   static boolean active(Object web){return web instanceof GeckoWebView&&((GeckoWebView)web).enabled;}
   private void initialize(){
@@ -221,7 +252,7 @@ class GeckoWebView extends FrameLayout {
   JSONObject blocked(){return J.obj("type","socks","host","127.0.0.1","port",9,"proxyDNS",true,"failoverTimeout",1);}
   JSONObject route(String target){
     if(exitIpPage!=null&&!exitIpPage.fresh())closeExitIpPage();
-    if(destroyed||!enabled||!protectionAllowsNetwork()||!identityRequestAllowed(target)||owner.guard==null||!owner.guard.allowed()||!allowedUrl(target.startsWith("wss://")?"https"+target.substring(3):target.startsWith("ws://")?"http"+target.substring(2):target))return blocked();
+    if(destroyed||!enabled||!protectionAllowsNetwork()||!identityRequestAllowed(target)||owner.guard==null||!owner.guard.allowed()||!generalRouteReady()||!allowedUrl(target.startsWith("wss://")?"https"+target.substring(3):target.startsWith("ws://")?"http"+target.substring(2):target))return blocked();
     if(owner.internalNetwork()){
       NativeNetwork n=NativeNetwork.get(owner.context);NativeNetwork.ExitRouteReceipt receipt=n.verifiedRoute;String pool=internalPoolKey(n);
       if(pool==null||receipt==null||receipt!=n.verifiedRoute||!n.ready||n.starting||n.recoveryBlocked||n.transport==null||!receipt.matches(n,n.transport.state))return blocked();
@@ -278,20 +309,24 @@ class GeckoWebView extends FrameLayout {
       @Override public GeckoResult<AllowOrDeny> onLoadRequest(GeckoSession s,LoadRequest request){
         boolean blob=request.uri!=null&&request.uri.startsWith("blob:")&&allowedUrl(request.uri.substring(5));
         boolean allowed=!destroyed&&("about:blank".equals(request.uri)||protectionAllowsNetwork()&&identityRequestAllowed(request.uri)&&owner.guard.allowed()&&(allowedUrl(request.uri)||blob));
-        if(!allowed&&s==current)owner.setStatus(!protectionAllowsNetwork()?protectionSummary():!identityRequestAllowed(request.uri)?"检测地址已失效，请重新开始身份检查":"连接尚未受保护，网页已暂停加载");
+        if(allowed&&!"about:blank".equals(request.uri)&&!retainGeneralRoute(s,blob?request.uri.substring(5):request.uri)){deferredGeneralLoads.put(s,request.uri);allowed=false;owner.setStatus("线路正在更新，完成后继续打开网页");}
+        else if(allowed)deferredGeneralLoads.remove(s);
+        if(!allowed&&s==current)owner.setStatus(deferredGeneralLoads.containsKey(s)?"线路正在更新，完成后继续打开网页":!protectionAllowsNetwork()?protectionSummary():!identityRequestAllowed(request.uri)?"检测地址已失效，请重新开始身份检查":"连接尚未受保护，或地址不是公共网页");
         return GeckoResult.fromValue(allowed?AllowOrDeny.ALLOW:AllowOrDeny.DENY);
       }
       @Override public void onLocationChange(GeckoSession s,String target,List<GeckoSession.PermissionDelegate.ContentPermission> permissions,Boolean gesture){
         if(destroyed||!locations.containsKey(s))return;boolean committed=pendingLoads.remove(s);locations.put(s,target);
         if(committed){painted.remove(s);usable.remove(s);pageScales.remove(s);viewportWidths.remove(s);loadingTargets.put(s,target);appearanceCommitted(s);}
         else{WebExtension.Port page=ports.get(s);if(page!=null)appearance(page);}
-        if(s!=current)return;url=target;
+        if(MainActivity.chatUrl(target))forgetGeneralRoute(s);else if(allowedUrl(target))retainGeneralRoute(s,target);
+        if(s!=current)return;url=target;owner.rememberBrowserLocation(target);
         if(committed&&!"about:blank".equals(target)){cancelZoom();if(client!=null)client.onPageStarted(null,target,null);}if(MainActivity.chatUrl(target)&&!LoginPagePolicy.login(target))owner.prefs.edit().putString("url",target).apply();
       }
       @Override public void onCanGoBack(GeckoSession s,boolean value){if(destroyed||!locations.containsKey(s))return;backStates.put(s,value);if(s==current)canBack=value;}
       @Override public GeckoResult<GeckoSession> onNewSession(GeckoSession s,String target){
-        if(destroyed||s!=current||popups.size()>=8||!protectionAllowsNetwork()||!identityRequestAllowed(target)||!owner.guard.allowed()||!(target==null||target.isEmpty()||"about:blank".equals(target)||allowedUrl(target)))return GeckoResult.fromValue(null);
-        GeckoSession popup=newSession();popups.add(popup);
+        if(destroyed||failed||crashed.contains(s)||s!=current||popups.size()>=8||!protectionAllowsNetwork()||!identityRequestAllowed(target)||!owner.guard.allowed()||!(target==null||target.isEmpty()||"about:blank".equals(target)||allowedUrl(target)))return GeckoResult.fromValue(null);
+        ChromiumRouteLease.Handle lease=null;if(allowedUrl(target)&&!MainActivity.chatUrl(target)){lease=ChromiumRouteLease.acquireSurface();if(lease==null){owner.setStatus("线路正在更新，请稍后重试打开链接");return GeckoResult.fromValue(null);}}
+        GeckoSession popup;try{popup=newSession();}catch(RuntimeException unavailable){if(lease!=null)lease.close();owner.setStatus("新网页暂时无法打开，请稍后重试");return GeckoResult.fromValue(null);}popups.add(popup);if(lease!=null){generalSessions.add(popup);generalRoutes.put(popup,lease);}
         locations.put(popup,target==null?"":target);
         owner.handler.post(()->{if(destroyed||!popups.contains(popup))return;activate(popup);});
         return GeckoResult.fromValue(popup);
@@ -447,7 +482,7 @@ class GeckoWebView extends FrameLayout {
   private void retireAppearance(WebExtension.Port port){if(port==null)return;appearanceSync.disconnect(port);appearanceConnections.remove(port);appearanceDocuments.remove(port);staleAppearanceConnections.remove(port);}
   JSONObject appearanceReport(){return appearanceSync.snapshot(current==null?null:ports.get(current));}
   protected boolean appearancePage(String target){return MainActivity.chatUrl(target);}
-  protected boolean allowedUrl(String target){return target!=null&&BrowserNetworkGuard.publicHttps(Uri.parse(target));}
+  protected boolean allowedUrl(String target){return target!=null&&BrowserNetworkGuard.publicWeb(Uri.parse(target));}
   boolean readingPage(String target){return BrowserReadingPolicy.chat(target)&&!LoginPagePolicy.login(target);}
   static String header(WebResponse response,String name){for(Map.Entry<String,String> entry:response.headers.entrySet())if(name.equalsIgnoreCase(entry.getKey()))return entry.getValue();return "";}
   void readCookies(String target,ValueCallback<String> callback){
@@ -475,6 +510,7 @@ class GeckoWebView extends FrameLayout {
     if(session==current)closeExitIpPage();
     if(destroyed||!locations.containsKey(session))return;
     crashed.add(session);pendingLoads.remove(session);painted.remove(session);usable.remove(session);WebExtension.Port port=ports.remove(session);if(port!=null){callbacks.cancel(port);retireAppearance(port);}
+    forgetGeneralRoute(session);
     if(session==current){cancelZoom();failed=true;owner.webObserver.suspendUnconfirmed("网页进程已关闭，原发送结果需要核对");
       if(owner.uiVisible&&owner.guard.allowed()&&canRecoverAutomatically()){owner.manualAttention=false;owner.beginNavigation(url,"正在恢复当前网页…");owner.handler.removeCallbacks(recovery);owner.handler.postDelayed(recovery,250);}
       else if(owner.uiVisible)failure(message);
@@ -615,23 +651,36 @@ class GeckoWebView extends FrameLayout {
   private boolean closePopup(GeckoSession old){
     if(destroyed||!popups.remove(old))return false;
     if(old==current){activate(popups.isEmpty()?primary:popups.get(popups.size()-1));owner.pageError="";if(crashed.contains(current))contentStopped(current,"上一页被系统关闭，点按重新加载可恢复");else{owner.beginNavigation(url,"正在返回上一页…");owner.resourceObserverConnected(ports.get(current));if(client!=null&&painted.contains(current)){client.onPageCommitVisible(null,url);client.onPageFinished(null,url);}}}
-    WebExtension.Port port=ports.remove(old);if(port!=null){callbacks.cancel(port);retireAppearance(port);}appearanceLoads.remove(old);
+    forgetGeneralRoute(old);WebExtension.Port port=ports.remove(old);if(port!=null){callbacks.cancel(port);retireAppearance(port);}appearanceLoads.remove(old);
     locations.remove(old);backStates.remove(old);pageScales.remove(old);measuredCompositors.remove(old);viewportWidths.remove(old);loadingTargets.remove(old);pendingLoads.remove(old);painted.remove(old);usable.remove(old);crashed.remove(old);states.remove(old);stateDraftRevisions.remove(old);
     if(old.isOpen())old.close();return true;
   }
+  boolean hasWebsitePages(){return !generalSessions.isEmpty()||allowedUrl(getUrl())&&!MainActivity.chatUrl(getUrl());}
+  void closeWebsitePages(){
+    closeExitIpPage();
+    generalRestore=null;queued="";deferredGeneralLoads.clear();
+    for(GeckoSession popup:new ArrayList<>(popups))closePopup(popup);
+    if(current==null)return;
+    WebExtension.Port port=ports.remove(current);if(port!=null){callbacks.cancel(port);retireAppearance(port);}
+    current.stop();states.remove(current);stateDraftRevisions.remove(current);painted.remove(current);usable.remove(current);loadingTargets.remove(current);pendingLoads.remove(current);startupState=null;
+    locations.put(current,"");url="";canBack=false;forgetGeneralRoute(current);
+    if(current.isOpen())reopenCurrent();
+  }
   public void loadUrl(String target){
     closeExitIpPage();
-    if(destroyed)return;if(!identityRequestAllowed(target)){owner.setStatus("检测地址已失效，请重新开始身份检查");return;}queued=target;
+    if(destroyed)return;if(!allowedUrl(target)){owner.setStatus("仅支持公共 HTTP 或 HTTPS 网页");return;}if(!identityRequestAllowed(target)){owner.setStatus("检测地址已失效，请重新开始身份检查");return;}queued=target;
     if(!ready||!privacyReady||current==null||!protectionAllowsNetwork()||!owner.guard.allowed())return;
     if(crashed.contains(current)){
       if(!reopenCurrent())return;
     }
+    if(!retainGeneralRoute(current,target)||!generalRouteReady()){owner.setStatus("线路正在更新，完成后继续打开网页");return;}
     GeckoSession.SessionState saved=startupState;startupState=null;
     if(current==primary&&saved!=null&&target.equals(stateUrl(saved))){queued="";states.put(primary,saved);stateDraftRevisions.put(primary,startupDraftRevision);restoreCheckpoint(current,saved,target,startupDraftRevision);return;}
     queued="";current.loadUri(target);
   }
   void restoreCheckpoint(GeckoSession target,GeckoSession.SessionState state,String url,long savedRevision){
     if(!identityRequestAllowed(url))return;
+    if(!retainGeneralRoute(target,url)||!generalRouteReady()){generalRestore=new ProtectionRestore(target,state,url,savedRevision,owner.navigationEpoch);return;}
     if(!protectionAllowsNetwork()){protectionRestore=new ProtectionRestore(target,state,url,savedRevision,owner.navigationEpoch);return;}
     if(LocalDraftPolicy.enabled(owner.context)&&savedRevision==LocalDraftPolicy.revision(owner.context)){target.restoreState(state);return;}
     final long epoch=owner.navigationEpoch;
@@ -672,7 +721,7 @@ class GeckoWebView extends FrameLayout {
     catch(RuntimeException error){cookieCallbacks.complete(port,request,"null");}
   }
   void cancelEnvironmentAudit(){WebExtension.Port port=ports.get(current);if(port!=null)try{port.postMessage(J.obj("kind","auditCancel"));}catch(Exception ignored){}}
-  public void stopLoading(){queued="";protectionRestore=null;if(current!=null){loadingTargets.remove(current);pendingLoads.remove(current);current.stop();}}
+  public void stopLoading(){queued="";protectionRestore=null;generalRestore=null;if(current!=null){deferredGeneralLoads.remove(current);loadingTargets.remove(current);pendingLoads.remove(current);current.stop();if(MainActivity.chatUrl(locations.get(current)))forgetGeneralRoute(current);}}
   public void setWebViewClient(WebViewClient value){client=value;}
   public void setWebChromeClient(WebChromeClient value){chrome=value;}
   public void setDownloadListener(DownloadListener value){download=value;}

@@ -94,7 +94,13 @@ def verify_browser_evidence(directory,source,reader=source_bytes):
     expected=device['eventTransport']['buildIdentity'];require(expected.get('sourceCommit')==source,'reference build source differs')
     verify_installed(report['expectedBuildIdentity'],expected);verify_installed(result['buildIdentity'],expected)
     sdk=expected.get('sdkBuildIdentity',{})
-    return dict(sourceCommit=source,sourceTree=expected['sourceTree'],integrationApkSha256=expected['apkSha256'],runId=sdk['runId'],runAttempt=sdk['runAttempt'],reportSha256=hashlib.sha256(raw).hexdigest(),checkCount=len(result['checks']),actualAndroidExecution=True,actualAndroidWebViewExecution=True,provider=result['provider'],physicalPhoneAcceptance=False,scope='Same source, run-bound SDK and exact integration APK as original Gecko acceptance; controlled Android WebView browser workload, no public website or device-speed claim')
+    checked=dict(sourceCommit=source,sourceTree=expected['sourceTree'],integrationApkSha256=expected['apkSha256'],runId=sdk['runId'],runAttempt=sdk['runAttempt'],reportSha256=hashlib.sha256(raw).hexdigest(),checkCount=len(result['checks']),actualAndroidExecution=True,actualAndroidWebViewExecution=True,provider=result['provider'],physicalPhoneAcceptance=False,scope='Same source, run-bound SDK and exact integration APK as original Gecko acceptance; controlled Android WebView browser workload, no public website or device-speed claim')
+    version=expected.get('version','')
+    require(isinstance(version,str) and re.fullmatch(r'[0-9]+\.[0-9]+\.[0-9]+',version),'reference build version required')
+    if tuple(map(int,version.split('.'))) >= (2,1,1):
+        from browser.check_fingerprint_evidence import verify_fingerprint_evidence
+        checked['fingerprintRegression']=verify_fingerprint_evidence(directory,source,expected,reader=reader)
+    return checked
 
 
 def main():

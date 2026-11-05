@@ -410,6 +410,10 @@ public final class ActualResponseHost {
                            if line.strip().startswith('boolean page(String path)'))
         actual_ready = next(line.strip() for line in source.splitlines()
                             if line.strip().startswith('boolean startReady()'))
+        actual_target = next(line.strip() for line in source.splitlines()
+                             if line.strip().startswith('boolean targetCurrent(WebView view,long generation)'))
+        # Only the explicit UI type boundary changes; both predicate bodies are current source.
+        actual_target = actual_target.replace('targetCurrent(WebView view,','targetCurrent(WebBoundary view,',1)
         original_check = re.search(r'check\("The actual Android WebView rendered the proxy response",(.*?)\);', previous).group(1)
         self.assertIn('check("The actual Android WebView rendered the proxy response",' + original_check + ');', source)
         self.assertEqual(source.count('await("start",'), 1)
@@ -432,7 +436,9 @@ public final class ActualStartupReadyHost {
   static final class ProxyBoundary {final AtomicInteger successes=new AtomicInteger(1);}
   RuntimeBoundary runtime=new RuntimeBoundary();WebBoundary surface=new WebBoundary();
   final TabBoundary selected=new TabBoundary();final ProxyBoundary fixture=new ProxyBoundary();
+  boolean policyReady=true,finished,destroyed,foreground=true;long targetGeneration=1;
   WebBoundary web(){return surface;}
+  boolean fingerprintTraffic(TabBoundary tab,WebBoundary view){return policyReady&&tab==selected&&view!=null&&view==surface;}
   public static void main(String[] args){
     ActualStartupReadyHost f=new ActualStartupReadyHost();
     // Explicit callback boundary: page-finished cleared the native loading bit
@@ -448,12 +454,13 @@ public final class ActualStartupReadyHost {
     f.selected.loading=true;check(!f.startReady());f.selected.loading=false;
     f.runtime.valid=false;check(!f.startReady());f.runtime=null;check(!f.startReady());
     f.runtime=new RuntimeBoundary();f.surface=null;check(!f.startReady());f.surface=new WebBoundary();f.surface.progress=100;check(f.startReady());
+    check(f.targetCurrent(f.surface,1));f.policyReady=false;check(!f.startReady());check(!f.targetCurrent(f.surface,1));f.policyReady=true;check(f.startReady());check(f.targetCurrent(f.surface,1));
     System.out.println("{\"checks\":"+checks+",\"oldPredicateAdvancesBeforeProgress\":true,\"newPredicateWaits\":true,\"continuationsAfterProgress100\":"+continuations+",\"originalRenderCheckAfterWait\":true}");
   }
 }
 '''
         at = program.index('  static int checks;')
-        program = (program[:at] + origin + '\n' + actual_page + '\n' + actual_ready
+        program = (program[:at] + origin + '\n' + actual_page + '\n' + actual_ready + '\n' + actual_target
             + '\nboolean oldStartReady(){return ' + old + ';}\n'
             + 'boolean originalRenderCheck(){return ' + original_check + ';}\n' + program[at:])
         home = Path(os.environ.get('JAVA_HOME', str(ROOT / 'work/browser-ci-jdk/jdk-17.0.21+9')))
@@ -470,7 +477,7 @@ public final class ActualStartupReadyHost {
                 capture_output=True, text=True, timeout=20)
             self.assertEqual(ran.returncode, 0, ran.stdout + ran.stderr)
             observed = json.loads(ran.stdout)
-            self.assertEqual(observed['checks'], 21)
+            self.assertEqual(observed['checks'], 26)
             self.assertTrue(observed['oldPredicateAdvancesBeforeProgress'])
             self.assertTrue(observed['newPredicateWaits'])
             self.assertEqual(observed['continuationsAfterProgress100'], 1)

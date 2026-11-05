@@ -47,6 +47,23 @@ def main():
     add('publisher-gate','tests/browser_publish_gate_test.py')
     add('baseline-bundle','tests/browser_baseline_bundle_test.py')
     add('workflow-gate','tests/browser_acceptance_workflow_test.py')
+    for label,jar in [('desktop',desktop),('android-json',android_json)]:
+        for name,script in [('chromium-fingerprint-store','tests/chromium-fingerprint-store-host/run.py'),('gecko-navigation','tests/gecko-navigation-host/run.py')]:
+            target=out/(name+'-'+label+'.json');add(name+'-'+label,script,java+['--json-jar',jar,'--output',target],target)
+        target=out/('gecko-route-hold-'+label+'.json');add('gecko-route-hold-'+label,'tests/gecko-navigation-host/route_hold.py',java+['--json-jar',jar,'--output',target],target)
+        target=out/('chromium-fingerprint-'+label+'.json');add('chromium-fingerprint-'+label,'tests/chromium-fingerprint-host/run.py',java+['--json-jar',jar,'--webkit-jar',a.webkit_jar.resolve(),'--output',target],target)
+        target=out/('generic-download-source-'+label+'.json');add('generic-download-source-'+label,'tests/generic-download-source-host/run.py',java+['--json-jar',jar,'--output',target],target)
+        for name,script in [('gecko-session-navigation','tests/gecko-navigation-host/session_navigation.py'),('gecko-client-ready','tests/gecko-navigation-host/client_ready.py')]:
+            target=out/(name+'-'+label+'.json');add(name+'-'+label,script,java+['--json-jar',jar,'--output',target],target)
+        target=out/('chromium-fingerprint-activity-'+label+'.json');add('chromium-fingerprint-activity-'+label,'tests/chromium-fingerprint-activity-host/run.py',java+['--json-jar',jar,'--output',target],target)
+        target=out/('runtime-origin-adapter-'+label+'.json');add('runtime-origin-adapter-'+label,'tests/runtime-origin-adapter-host/run.py',java+['--json-jar',jar,'--android-jar',a.android_jar.resolve(),'--jsdom-module',a.jsdom_module.resolve(),'--output',target],target)
+    cases.append(('gecko-site-boundary',['node','--test','tests/browser-runtime/gecko-site-boundary.test.cjs'],None))
+    cases.append(('chromium-fingerprint-script',['node','--test','tests/chromium-fingerprint-script.test.cjs'],None))
+    add('fingerprint-publisher-gate','tests/browser_fingerprint_publish_gate_test.py')
+    add('fingerprint-evidence-gate','tests/browser_fingerprint_evidence_test.py')
+    add('fingerprint-fixture-controls','tests/browser_fingerprint_fixture_test.py')
+    add('fingerprint-server-controls','tests/browser_fingerprint_server_test.py')
+    add('dual-browser-source-history','tests/profile_dual_browser_source_compatibility_test.py')
     names=subprocess.check_output(['git','ls-files','--cached','--others','--exclude-standard','app/src/main/java','tests','tools/browser','tools/gecko','.github/workflows/browser-2_1-acceptance.yml'],cwd=ROOT,text=True).splitlines()
     files=[ROOT/name for name in sorted(set(names)) if (ROOT/name).is_file()]
     hashes={str(path.relative_to(ROOT)):hashlib.sha256(path.read_bytes()).hexdigest() for path in files}
@@ -72,7 +89,7 @@ def main():
             break
     stable=all(path.is_file() and hashlib.sha256(path.read_bytes()).hexdigest()==hashes[str(path.relative_to(ROOT))] for path in files)
     passed=stable and len(results)==len(cases) and all(r['status']=='passed' for r in results)
-    report=dict(status='passed' if passed else 'failed',sourceCommit=subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip(),executionInputsUnchanged=stable,sourceFiles=hashes,suites=results,requiredSuites=len(cases),completedSuites=len(results),dependencies={str(path.resolve()):hashlib.sha256(path.read_bytes()).hexdigest() for path in [desktop,android_json,a.android_jar,a.webkit_jar]},actualAndroidExecution=False,actualAndroidWebViewExecution=False,scope='Production Java/JavaScript host behavior and actual-API compilation with declared adapters. New browser policies/files/route/permissions and prior shell/loading/progress/chrome/control-cache/transcript regressions; no device or frame-rate claim.')
+    report=dict(status='passed' if passed else 'failed',sourceCommit=subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip(),executionInputsUnchanged=stable,sourceFiles=hashes,suites=results,requiredSuites=len(cases),completedSuites=len(results),dependencies={str(path.resolve()):hashlib.sha256(path.read_bytes()).hexdigest() for path in [desktop,android_json,a.android_jar,a.webkit_jar]},actualAndroidExecution=False,actualAndroidWebViewExecution=False,scope='Production Java/JavaScript host behavior and actual-API compilation with declared adapters. Includes Chromium policy storage/setting adapters/script controls, Gecko website/ChatGPT boundaries and route leases, browser files/permissions and carried shell/loading/progress/chrome/control-cache/transcript regressions. No device execution, full fingerprint protection, site compatibility or frame-rate claim.')
     (out/'results.json').write_text(json.dumps(report,ensure_ascii=False,indent=2)+'\n');print(json.dumps(dict(status=report['status'],completed=len(results),required=len(cases),executionInputsUnchanged=stable)))
     if not passed:raise SystemExit(1)
 

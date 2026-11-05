@@ -71,7 +71,8 @@ class PageMemory{__COMPLETE__}
 
 class ManualSnapshotDiagnosticTests(unittest.TestCase):
  def test_added_observations_reverse_to_the_entire_original_fixture(self):
-  source=FIXTURE.read_text()
+  from dual_browser_source_compatibility import source_input
+  source=source_input(FIXTURE.read_bytes(),'tests/gecko/GeckoPerformanceIntegrationActivity.java').decode('utf-8')
   additions=[
    '    // Scalar observations exist only while the two manual-recovery races run.\n    boolean manualSnapshotDiagnostics;JSONObject manualSnapshotLast=new JSONObject();\n',
    '      JSONObject observedManualIssue=null;\n      if(manualSnapshotDiagnostics&&semanticRoute&&code.contains("window.__pocketReadDriver(\\"page-state\\","))try{observedManualIssue=manualSnapshotState(owner);}catch(RuntimeException ignored){}\n      final JSONObject manualIssue=observedManualIssue;\n',

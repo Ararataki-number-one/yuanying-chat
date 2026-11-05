@@ -89,6 +89,7 @@ final class DesignChrome {
     top.addView(title,new LinearLayout.LayoutParams(0,topHeight,1));
     top.addView(more,new LinearLayout.LayoutParams(a.dp(42),topHeight));
     a.toolbar.addView(top,new LinearLayout.LayoutParams(-1,topHeight));
+    a.geckoAddress=new GeckoAddressUi(a);a.toolbar.addView(a.geckoAddress.row,new LinearLayout.LayoutParams(-1,-2));
 
     networkRow=DesignUi.row(a);
     networkRow.setPadding(a.dp(4),0,a.dp(4),0);

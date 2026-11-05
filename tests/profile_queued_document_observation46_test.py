@@ -31,7 +31,7 @@ public class QueuedObservationHost {
   yes(activity.session.web.lastScript.contains("__pocketReadDriver('observe-install'"));yes(!activity.session.web.lastScript.contains("location.origin !== 'https://chatgpt.com'"));
   for(String invalid:new String[]{"http://127.0.0.1:8765/fixture?context=1&action=read&command=4",URL+"&extra=1",URL+"#x",URL.replace("127.0.0.1","localhost"),URL.replace("http:","https:"),URL.replace("8765","8766"),URL.replace("action=read","action=foreign"),URL.replace("command=4","command=0")})reject(()->GeckoQueuedChangesObservation.validateOwner(invalid,1));
   for(String invalid:new String[]{"",null,"a".repeat(31),"A".repeat(32)})reject(()->GeckoQueuedChangesObservation.adaptedScript(original,URL,invalid));
-  for(String guard:new String[]{"location.origin !== 'https://chatgpt.com'","location.protocol !== 'https:' || location.hostname !== 'chatgpt.com'"}){
+  for(String guard:new String[]{"window !== window.top || location.origin !== 'https://chatgpt.com' ||","window !== window.top || location.origin !== 'https://chatgpt.com') return false;"}){
    reject(()->GeckoQueuedChangesObservation.adaptedScript(original.replace(guard,"false"),URL,"a".repeat(32)));reject(()->GeckoQueuedChangesObservation.adaptedScript(original+guard,URL,"a".repeat(32)));
   }
   yes(accepts(packet()));

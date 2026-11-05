@@ -22,15 +22,17 @@ class EnvironmentConfigBackupTest(unittest.TestCase):
         android = '{http://schemas.android.com/apk/res/android}'
         application = root.find('application')
         self.assertEqual(application.get(android + 'allowBackup'), 'false')
-        # Public HTTP browsing is explicitly provided by the separate Chromium
-        # activity in 2.1. Gecko retains its own HTTPS-only navigation boundary.
+        # Both general browsing surfaces admit public HTTP(S). The independent
+        # audit/resource interception boundary still requires public HTTPS.
         self.assertEqual(application.get(android + 'usesCleartextTraffic'), 'true')
         self.assertEqual(application.get(android + 'networkSecurityConfig'), '@xml/network_security')
         guard=(PRODUCTION/'BrowserNetworkGuard.java').read_text()
         self.assertIn('return !allowed()||!publicHttps(uri)?denied():null;',guard)
         self.assertIn('"https".equalsIgnoreCase(uri.getScheme())',guard)
         gecko=(PRODUCTION/'GeckoWebView.java').read_text()
-        self.assertIn('protected boolean allowedUrl(String target){return target!=null&&BrowserNetworkGuard.publicHttps(Uri.parse(target));}',gecko)
+        self.assertIn('protected boolean allowedUrl(String target){return target!=null&&BrowserNetworkGuard.publicWeb(Uri.parse(target));}',gecko)
+        self.assertIn('static boolean publicWeb(Uri uri){return uri!=null&&GeckoNavigationPolicy.publicWeb(uri.toString());}',guard)
+        self.assertIn('static boolean publicWeb(String url){return BrowserAddressPolicy.allowed(url);}',(PRODUCTION/'GeckoNavigationPolicy.java').read_text())
         browser=[a for a in application.findall('activity') if a.get(android+'name')=='local.pocketchat.BrowserActivity']
         self.assertEqual(len(browser),1)
         self.assertEqual(browser[0].get(android+'exported'),'true')

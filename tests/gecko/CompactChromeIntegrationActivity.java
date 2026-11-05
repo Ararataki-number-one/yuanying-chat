@@ -146,7 +146,7 @@ public final class CompactChromeIntegrationActivity extends MainActivity {
     @Override public void loadUrl(String target){if(tracking){loads++;requested=target;}super.loadUrl(target.startsWith(MainActivity.ORIGIN)?LOCAL+target.substring(MainActivity.ORIGIN.length()):target);}
     @Override public void stopLoading(){if(tracking)stops++;super.stopLoading();}
     // Android JSONObject escapes URL slashes; translate both forms to keep real same-origin guards.
-    @Override public void evaluateJavascript(String code,android.webkit.ValueCallback<String> callback){super.evaluateJavascript(code.replace(MainActivity.ORIGIN,LOCAL).replace(MainActivity.ORIGIN.replace("/","\\/"),LOCAL.replace("/","\\/")).replace("location.protocol !== 'https:' || location.hostname !== 'chatgpt.com'","location.protocol !== 'http:' || location.hostname !== '127.0.0.1' || location.port !== '8765'"),raw->{
+    @Override public void evaluateJavascript(String code,android.webkit.ValueCallback<String> callback){super.evaluateJavascript(code.replace(MainActivity.ORIGIN,LOCAL).replace(MainActivity.ORIGIN.replace("/","\\/"),LOCAL.replace("/","\\/")).replace("window !== window.top || location.origin !== 'https://chatgpt.com'","window !== window.top || location.origin !== 'http://127.0.0.1:8765'"),raw->{
       String output=raw;try{JSONObject value=new JSONObject(raw);String url=value.optString("url");if(url.startsWith(LOCAL)){value.put("url",MainActivity.ORIGIN+url.substring(LOCAL.length()));output=value.toString();}}catch(Exception ignored){}if(callback!=null)callback.onReceiveValue(output);
     });}
   }

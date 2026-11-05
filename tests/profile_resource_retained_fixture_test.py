@@ -19,8 +19,8 @@ ASSETS = ROOT / 'app/src/main/assets'
 PINNED_JAVA = Path('/workspace/yuanying-chat/work/cloud-setup/jdk/usr/lib/jvm/java-17-openjdk-amd64/bin/java')
 ORIGIN = 'http://127.0.0.1:44157'
 NONCE = 'a' * 32
-OBSERVER_GUARD = "location.origin !== 'https://chatgpt.com'"
-DRIVER_GUARD = "location.protocol !== 'https:' || location.hostname !== 'chatgpt.com'"
+OBSERVER_GUARD = "window !== window.top || location.origin !== 'https://chatgpt.com' ||"
+DRIVER_GUARD = "window !== window.top || location.origin !== 'https://chatgpt.com') return false;"
 
 
 def java_method(source, name):
@@ -81,8 +81,8 @@ JAVA_MAIN = r'''
           rejected(()->resourceFixtureObserverScript(script,origin,invalid));
         break;
       case "source-guards": {
-        String observer="location.origin !== 'https://chatgpt.com'";
-        String driver="location.protocol !== 'https:' || location.hostname !== 'chatgpt.com'";
+        String observer="window !== window.top || location.origin !== 'https://chatgpt.com' ||";
+        String driver="window !== window.top || location.origin !== 'https://chatgpt.com') return false;";
         for(String invalid:new String[]{null,"","not a guarded observer",script.replace(observer,"false"),
             script.replace(driver,"false"),script+observer,script+driver})
           rejected(()->resourceFixtureObserverScript(invalid,origin,nonce));
@@ -109,8 +109,8 @@ const assert=require('node:assert/strict'),fs=require('node:fs');
 const {JSDOM}=require(process.env.JSDOM_MODULE||'jsdom');
 const [mode,originalPath,adaptedPath,origin,nonce]=process.argv.slice(2);
 const original=fs.readFileSync(originalPath,'utf8'),adapted=fs.readFileSync(adaptedPath,'utf8');
-const observerGuard="location.origin !== 'https://chatgpt.com'";
-const legacy=original.replace(observerGuard,'location.origin !== '+JSON.stringify(origin))+
+const observerGuard="window !== window.top || location.origin !== 'https://chatgpt.com' ||";
+const legacy=original.replace(observerGuard,'window !== window.top || location.origin !== '+JSON.stringify(origin)+' ||')+
   '\nwindow.__pocketFixtureResourceEvents=[];window.PocketWebReply={postMessage:text=>{const value=JSON.parse(text);if(value.type===\'resource-work\')window.__pocketFixtureResourceEvents.push(value);}};';
 const html='<!doctype html><body data-sent="0"><form><textarea id="prompt-textarea">retained-resource-draft</textarea><button id="stop" data-testid="stop-button">Stop</button><div id="first" data-upload-state="uploading"></div></form><textarea id="other-draft">independent draft</textarea></body>';
 const windows=[];

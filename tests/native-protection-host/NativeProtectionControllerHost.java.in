@@ -60,7 +60,19 @@ final class NativeProtectionControllerHost {
     JSONObject last(){return sent.get(sent.size()-1);}
   }}
   static final class CookieCallbacks {int cancelled;void cancel(Object port){cancelled++;}void complete(Object port,int id,String value){}}
-  static final class MainActivity {static boolean validProxy(String value){return false;}}
+  static final class MainActivity {
+    static boolean validProxy(String value){return false;}
+    static boolean chatUrl(String value){try{URI uri=new URI(value);return "https".equals(uri.getScheme())&&"chatgpt.com".equals(uri.getHost())&&uri.getUserInfo()==null&&(uri.getPort()<0||uri.getPort()==443);}catch(Exception invalid){return false;}}
+  }
+  // The legacy setting-controller oracle assumes an available independent app
+  // route. Its retention registry is a counting boundary, not a fake Gecko SDK
+  // or execution of ChromiumRouteLease. The current real registry/helpers have
+  // their own gecko-navigation-host/route_hold.py behavior and fault controls.
+  static final class ChromiumRouteLease {
+    static int acquired,closed;
+    static Handle acquireSurface(){acquired++;return new Handle();}
+    static final class Handle {boolean released;void close(){if(!released){released=true;closed++;}}}
+  }
   static final class Profiles {static int slot(Object context){return 1;}}
   static final class Uri {static Uri parse(String value){return new Uri();}String getScheme(){return "http";}String getHost(){return "synthetic.invalid";}int getPort(){return 8080;}}
   static final class NativeNetwork {
@@ -82,7 +94,13 @@ final class NativeProtectionControllerHost {
     int protectionLevel=-1,configuredProtection=2,requestedProtection=-1,opens;
     long protectionRequest;String queued="";Object surface,extension=new Object();
     GeckoSession current,primary;WebExtension.Port routePort=new WebExtension.Port();Runnable protectionTimeout,protectionRetry;
-    ProtectionRestore protectionRestore;
+    ProtectionRestore protectionRestore,generalRestore;
+    final Set<GeckoSession> generalSessions=Collections.newSetFromMap(new IdentityHashMap<>());
+    final Map<GeckoSession,ChromiumRouteLease.Handle> generalRoutes=new IdentityHashMap<>();
+    final Map<GeckoSession,String> deferredGeneralLoads=new IdentityHashMap<>();
+    boolean generalRouteAdmission=true;int generalRouteChecks,generalRouteRetains;
+    boolean generalRouteReady(){generalRouteChecks++;return generalRouteAdmission;}
+    boolean retainGeneralRoute(GeckoSession session,String target){generalRouteRetains++;return generalRouteAdmission;}
     AuxiliaryPageBoundary exitIpPage;
     boolean closeExitIpPage(){if(exitIpPage!=null)throw new AssertionError("Auxiliary IP page is outside this protection fixture");return false;}
     __PROTECTION_RESTORE__
@@ -242,6 +260,6 @@ final class NativeProtectionControllerHost {
     basicPolicy();controller();bootstrap();identityAdmission();
     StringBuilder out=new StringBuilder("{\"status\":\"passed\",\"passed\":").append(checks.size()).append(",\"checks\":[");
     for(int i=0;i<checks.size();i++){if(i>0)out.append(',');out.append("{\"name\":").append(quote(checks.get(i))).append(",\"pass\":true}");}
-    System.out.println(out.append("],\"actualAndroidExecution\":false,\"actualGeckoExecution\":false}"));
+    System.out.println(out.append("],\"actualAndroidExecution\":false,\"actualGeckoExecution\":false,\"actualGeneralRouteExecution\":false,\"generalRouteBoundary\":\"Available independent app route with counted readiness/retain and lease facades; actual current production protection/controller methods remain extracted unchanged\"}"));
   }
 }

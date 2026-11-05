@@ -35,6 +35,8 @@ jobs:
           release_files={'.github/workflows/publish-gecko-release.yml','tools/publish-gecko-release.py','tools/gecko/release_channel_contract.py','tools/gecko/release_channel_contract_test.py'}
           if tuple(map(int,m['version'].split('.'))) >= (2,1,0):
               release_files.add('tools/browser/check_evidence.py')
+          if tuple(map(int,m['version'].split('.'))) >= (2,1,1):
+              release_files.update({'tools/browser/check_fingerprint_evidence.py'})
           if tools_commit!=m['sourceCommit']:
               subprocess.run(['git','merge-base','--is-ancestor',m['sourceCommit'],tools_commit],check=True)
               changed=set(subprocess.check_output(['git','diff','--name-only',m['sourceCommit'],tools_commit],text=True).splitlines())

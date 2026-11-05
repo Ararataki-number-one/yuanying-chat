@@ -56,7 +56,7 @@ public final class FingerprintFollowupIntegrationActivity extends Activity {
     "local.pair.invalid-slot-refused","local.pair.no-snapshot-manual-refused","local.pair.no-verdict","local.document-preserved",
     "cross.admission","cross.pin-origin","cross.changed-endpoint-refused","cross.restored-endpoint","cross.clear-only-own-context","cross.document-preserved"
   };
-  static final String SOURCE_DRIVER_GUARD="if (location.protocol !== 'https:' || location.hostname !== 'chatgpt.com') return false;";
+  static final String SOURCE_DRIVER_GUARD="if (window !== window.top || location.origin !== 'https://chatgpt.com') return false;";
   final Handler handler=new Handler(Looper.getMainLooper());
   final ExecutorService worker=Executors.newSingleThreadExecutor();
   final AtomicBoolean concluded=new AtomicBoolean();
@@ -112,7 +112,7 @@ public final class FingerprintFollowupIntegrationActivity extends Activity {
   String mapped(String value){return chat!=null&&chat.equals(value)?semanticChat:value;}
   String actual(String value){return semanticChat!=null&&semanticChat.equals(value)?chat:value;}
   String controlledOrigin(String value){if(value!=null)for(String candidate:Arrays.asList(origin,redirectOrigin,frameOrigin,faultOrigin))if(candidate!=null&&value.startsWith(candidate+"/"))return candidate;return "";}
-  static String sourceDriverGuard(String sourceUrl){return "if (location.protocol !== 'https:' || location.href !== "+JSONObject.quote(sourceUrl)+") return false;";}
+  static String sourceDriverGuard(String sourceUrl){return "if (window !== window.top || location.protocol !== 'https:' || location.href !== "+JSONObject.quote(sourceUrl)+") return false;";}
   static String adaptSourceDriver(String code,String sourceUrl){
     int first=code.indexOf(SOURCE_DRIVER_GUARD);if(first<0)return code;
     if(code.indexOf(SOURCE_DRIVER_GUARD,first+SOURCE_DRIVER_GUARD.length())>=0)throw new IllegalStateException("Ambiguous production page driver guard");

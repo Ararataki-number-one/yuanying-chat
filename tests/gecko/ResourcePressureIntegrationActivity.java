@@ -171,7 +171,7 @@ public final class ResourcePressureIntegrationActivity extends GeckoIdentityProt
     }catch(Throwable failure){finish(failure);}
   }
   void inspectAttachments(int step){
-    String script=owner.attachmentDriver.replace("location.protocol!=='https:'||location.hostname!=='chatgpt.com'","location.origin!=="+JSONObject.quote(origin)).replace("__ACTION__",JSONObject.quote("attachment-state")).replace("__ARG__",J.obj("names",owner.resourceUploadNames,"url",target,"documentId",owner.resourceObserverDocument,"batches",owner.resourceUploads.snapshot()).toString());
+    String script=owner.attachmentDriver.replace("location.origin!=='https://chatgpt.com'","location.origin!=="+JSONObject.quote(origin)).replace("__ACTION__",JSONObject.quote("attachment-state")).replace("__ARG__",J.obj("names",owner.resourceUploadNames,"url",target,"documentId",owner.resourceObserverDocument,"batches",owner.resourceUploads.snapshot()).toString());
     new AttachmentResult(actual->{
       try{
         JSONArray names=owner.resourceUploadNames;owner.resourceUploadObservation(actual,owner.navigationEpoch,names,target);owner.handler.removeCallbacks(owner.tick);
@@ -188,7 +188,7 @@ public final class ResourcePressureIntegrationActivity extends GeckoIdentityProt
     });
   }
   void inspectRemovedAttachment(int step){
-    String script=owner.attachmentDriver.replace("location.protocol!=='https:'||location.hostname!=='chatgpt.com'","location.origin!=="+JSONObject.quote(origin)).replace("__ACTION__",JSONObject.quote("attachment-state")).replace("__ARG__",J.obj("names",owner.resourceUploadNames,"url",target,"documentId",owner.resourceObserverDocument,"batches",owner.resourceUploads.snapshot()).toString());
+    String script=owner.attachmentDriver.replace("location.origin!=='https://chatgpt.com'","location.origin!=="+JSONObject.quote(origin)).replace("__ACTION__",JSONObject.quote("attachment-state")).replace("__ARG__",J.obj("names",owner.resourceUploadNames,"url",target,"documentId",owner.resourceObserverDocument,"batches",owner.resourceUploads.snapshot()).toString());
     new AttachmentResult(actual->{try{
       owner.resourceUploadObservation(actual,owner.navigationEpoch,owner.resourceUploadNames,target);owner.handler.removeCallbacks(owner.tick);
       if(step==0){resourceCheck("Actual selected uploading card keeps unified file work active",owner.resourceUploads.uploading(owner.navigationEpoch)&&owner.fileWorkActive()&&NetworkRegion.backgroundBusy(owner));evaluate("(()=>{document.getElementById('removed-attachment').remove();return {removed:true}})()",removed->inspectRemovedAttachment(1));}
@@ -222,8 +222,8 @@ public final class ResourcePressureIntegrationActivity extends GeckoIdentityProt
   static String resourceFixtureObserverScript(String script,String origin,String nonce)throws IOException{
     if(origin==null||!origin.matches("http://127\\.0\\.0\\.1:[1-9][0-9]{0,4}")||Integer.parseInt(origin.substring(origin.lastIndexOf(':')+1))>65535||nonce==null||!nonce.matches("[0-9a-f]{32}"))throw new IOException("Owned local resource origin and nonce required");
     String guard="(location.origin !== \""+origin+"\" || location.pathname !== '/resource' || new URL(location.href).searchParams.getAll('run').length !== 1 || new URL(location.href).searchParams.get('run') !== '"+nonce+"' || new URL(location.href).searchParams.getAll('phase').length !== 1 || !['parent','popup'].includes(new URL(location.href).searchParams.get('phase')))";
-    String adapted=replaceResourceFixtureGuard(script,"location.origin !== 'https://chatgpt.com'",guard);
-    adapted=replaceResourceFixtureGuard(adapted,"location.protocol !== 'https:' || location.hostname !== 'chatgpt.com'",guard);
+    String adapted=replaceResourceFixtureGuard(script,"window !== window.top || location.origin !== 'https://chatgpt.com' ||","window !== window.top || "+guard+" ||");
+    adapted=replaceResourceFixtureGuard(adapted,"window !== window.top || location.origin !== 'https://chatgpt.com') return false;","window !== window.top || "+guard+") return false;");
     return adapted+"\nwindow.__pocketFixtureResourceEvents=window.__pocketFixtureResourceEvents||[];window.PocketWebReply={postMessage:text=>{const value=JSON.parse(text);if(value.type==='resource-work'){const values=window.__pocketFixtureResourceEvents;values.push(value);if(values.length>32)values.shift();}}};";
   }
   void awaitResourceSnapshot(boolean busy,boolean uploading,int attempt,java.util.function.Consumer<JSONObject> done){

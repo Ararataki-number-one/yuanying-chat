@@ -159,10 +159,11 @@ public final class GeckoPerformanceIntegrationActivity extends Activity {
   void load(String mode)throws Exception{
     variant=mode;String prefix="baseline".equals(mode)?"performance-baseline/":"";
     driver=asset(prefix+"page-driver.js");performanceSource=asset(prefix+"web-performance.js");
-    String guard="location.protocol !== 'https:' || location.hostname !== 'chatgpt.com'";
-    if(!driver.contains(guard))throw new IllegalStateException("Unexpected production origin guard");
-    // Adapt only the HTTPS origin in this test copy. The shipped driver retains its original guard.
-    driver=driver.replace(guard,"location.protocol !== 'http:' || location.hostname !== '127.0.0.1' || location.port !== '8767'");
+    boolean baseline="baseline".equals(mode);
+    String guard=baseline?"location.protocol !== 'https:' || location.hostname !== 'chatgpt.com'":"window !== window.top || location.origin !== 'https://chatgpt.com'";
+    int first=driver.indexOf(guard);if(first<0||driver.indexOf(guard,first+guard.length())>=0)throw new IllegalStateException("Unexpected production origin guard");
+    // Each original asset has its own exact guard. Preserve current top-frame admission.
+    driver=driver.replace(guard,baseline?"location.protocol !== 'http:' || location.hostname !== '127.0.0.1' || location.port !== '8767'":"window !== window.top || location.origin !== 'http://127.0.0.1:8767'");
     ((FixtureView)session.web).navigationError="";
     event("load",J.obj("variant",variant,"guardAllowed",session.guard.allowed(),"offline",session.offline,"networkReady",session.networkReady,"proxy",session.prefs.getString("proxy","")));
     session.web.loadUrl(ORIGIN+PATH+"?variant="+mode);deadline=SystemClock.elapsedRealtime()+30000;later(this::waitDocument,100);

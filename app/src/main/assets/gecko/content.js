@@ -129,9 +129,11 @@
     const result={id:cfg.id,parent:available?main.parent:isolated,frame:available?main.frame:{error:'No page-main-world observation'},worker:available?main.worker:{error:'No page-main-world observation'},...(cfg.apiChecks===true?{apiChecks:available?main.apiChecks:missingApiChecks('page-main-world-unavailable'),apiContexts:available?main.apiContexts:missingApiContexts('page-main-world-unavailable')}:{}),...(cfg.requestIdentity?{requestIdentity:identity}:{}),isolated,provenance:available?'page-main-world':'extension-isolated-world-fallback',mainWorld:{observed:available,error:text(main.error),authenticity:'Page-provided public signals may be forged by the page; not independent attestation'},coverage:available?main.coverage:{crossOriginFrame:false,sharedWorker:false,serviceWorker:false},network:cfg.network===true?{ipv4:cleanIp(network[0]),ipv6:cleanIp(network[1]),headers:cleanHeaders(network[2]),provenance:'gecko-content-fetch'}:{}};
     const encoded=JSON.stringify(result);if(encoded.length<=64000)port.postMessage({kind:'auditResult',id:message.id,result:encoded});stops.length=0;auditCancel=()=>{};
   };
-  window.PocketWebReply = {postMessage: text => {
-    if(location.origin === 'https://chatgpt.com')port.postMessage({kind:'reply', text:String(text)});
-  }};
+  if (window === window.top && location.origin === 'https://chatgpt.com') {
+    window.PocketWebReply = {postMessage: text => {
+      if(window === window.top && location.origin === 'https://chatgpt.com')port.postMessage({kind:'reply', text:String(text)});
+    }};
+  }
   port.onMessage.addListener(message => {
     if(message.kind==='auditCancel'){auditCancel();return;}
     if(message.kind==='audit'&&Number.isInteger(message.id)){audit(message).catch(()=>port.postMessage({kind:'auditResult',id:message.id,result:'null'}));return;}
@@ -174,7 +176,7 @@
   const documentReady = () => {
     if(observedReady)return;
     if(document.readyState==='loading'||!document.body)return;
-    if(document.body.innerText.trim()||document.querySelector('input,button,textarea,canvas')){
+    if(window !== window.top || location.origin !== 'https://chatgpt.com' || document.body.innerText.trim()||document.querySelector('input,button,textarea,canvas')){
       observedReady=true;observer.disconnect();
       port.postMessage({kind:'documentReady',url:location.href,...appearanceIdentity});
     }

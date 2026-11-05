@@ -40,6 +40,12 @@ def source_input(raw, relative):
         raise ValueError('Receipt journal inverse requires exact bytes and owned relative path')
     row = manifest()['files'][relative]
     digest = hashlib.sha256(raw).hexdigest()
+    if relative in ('tests/experience46_source_compatibility.py',
+                    'tests/profile_experience46_source_compatibility_test.py') and digest not in (
+            row['previousSha256'], row['reviewedSha256']):
+        from dual_browser_source_compatibility import source_input as dual_browser_input
+        raw = dual_browser_input(raw, relative)
+        digest = hashlib.sha256(raw).hexdigest()
     if digest == row['previousSha256'] and len(raw) == row['previousBytes']:
         return raw
     if digest != row['reviewedSha256'] or len(raw) != row['reviewedBytes']:

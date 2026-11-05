@@ -170,6 +170,17 @@ class DirectReleaseTests(unittest.TestCase):
                 self.assertEqual(result['userRequest'], request)
                 self.assertEqual(record, before)
 
+    def test_continue_until_publication_preserves_the_exact_user_command(self):
+        request='继续做，直到发布新版本才可以停止'
+        identity=dict(self.identity,version='2.1.1',versionCode=103)
+        record=dict(self.record,version='2.1.1',versionCode=103,userRequest=request)
+        self.assertEqual(verify_direct_release(record,identity)['userRequest'],request)
+        for invalid in ('不要继续做，直到发布新版本才可以停止',request+'？','他说“'+request+'”',request.replace('发布新版本','不要发布新版本')):
+            with self.subTest(request=invalid),self.assertRaises(ReleaseChannelError):
+                verify_direct_release(dict(record,userRequest=invalid),identity)
+        with self.assertRaises(ReleaseChannelError):
+            verify_direct_release(dict(record,versionCode=102),identity)
+
     def test_named_release_version_must_match_identity_exactly(self):
         identity = dict(self.identity, version='2.1.0')
         for request in ('然后发布2.0.47', '发布2.1.1', '发布2.01.0', '发布02.1.0',

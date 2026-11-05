@@ -36,13 +36,14 @@ class NetworkTransportClient {JSONObject state;}
 class NativeNetwork {boolean ready,starting,recoveryBlocked;String fingerprint="",token="",currentEntry="";long routeSerial;int controllerPort,proxyPort;java.lang.Process process;JSONObject settings;NetworkHealthPolicy.Admission admission=NetworkHealthPolicy.Admission.BLOCKED;NetworkTransportClient transport;ExitRouteReceipt verifiedRoute;static NativeNetwork get(Context context){return new NativeNetwork();}void addRouteListener(Runnable listener){}void removeRouteListener(Runnable listener){}interface Callback{void done(boolean ok,String text);}void start(Callback callback){}static String transportFingerprint(JSONObject settings){return "config";}NetworkHealthPolicy.Admission connectionAdmission(){ExitRouteReceipt receipt=verifiedRoute;return ready&&!recoveryBlocked&&receipt!=null&&receipt.matches(this,transport==null?null:transport.state)?admission:NetworkHealthPolicy.Admission.BLOCKED;}
 __EXIT_ROUTE_RECEIPT__
 }
-class ChatSession {Context context;SharedPreferences prefs;WebView web;boolean deleted;Handler handler;ResourcesBoundary resources;static ChatSession peek(){return null;}boolean internalNetwork(){return false;}void updateBrowserActivity(){}}
+class GuardWebView extends WebView {int routeAdmissionChanges;GuardWebView(Context context){super(context);}void routeAdmissionChanged(){routeAdmissionChanges++;}}
+class ChatSession {Context context;SharedPreferences prefs;GuardWebView web;boolean deleted;Handler handler;ResourcesBoundary resources;static ChatSession peek(){return null;}boolean internalNetwork(){return false;}void updateBrowserActivity(){}}
 class ResourcesBoundary {void sample(){}}
 class AppAppearance {static void install(Application application){}static void refresh(Application application){}}
 class AppVisibility {static void install(Application application){}}
 class BackgroundReplyPolicy {static void bootstrap(Application application){}static void install(Application application){}}
 '''.replace('__EXIT_ROUTE_RECEIPT__',receipt))
-names=['ChromiumRuntime.java','ChromiumRouteLease.java','ChromiumRoutePolicy.java','BrowserNetworkGuard.java','BrowserAddressPolicy.java','NetworkHealthPolicy.java','VpnDefaultRouteCoverage.java','PocketApplication.java','ProfileContext.java','EnvironmentProcessPolicy.java','EnvironmentBrowserData.java','DownloadLibraryChanges.java']
+names=['ChromiumRuntime.java','ChromiumRouteLease.java','ChromiumRoutePolicy.java','BrowserNetworkGuard.java','BrowserAddressPolicy.java','GeckoNavigationPolicy.java','NetworkHealthPolicy.java','VpnDefaultRouteCoverage.java','PocketApplication.java','ProfileContext.java','EnvironmentProcessPolicy.java','EnvironmentBrowserData.java','DownloadLibraryChanges.java']
 sources=[root/'app/src/main/java/local/pocketchat'/name for name in names]
 result=subprocess.run([str(java),'-encoding','UTF-8','-cp',str(android)+':'+str(webkit),'-d',str(work/'classes'),str(boundary),*map(str,sources)],capture_output=True,text=True,timeout=60)
 (work/'javac.log').write_text(result.stdout+result.stderr)
