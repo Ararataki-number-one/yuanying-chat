@@ -1,0 +1,157 @@
+name: Prepare exact qualified 2.1.1 standard signed parts
+'on':
+  push:
+    branches: [diagnostics/signed-parts-2.1.1-8a0a48700299-41967123195-2]
+    paths: [.github/workflows/standard-signed-parts-2_1_1.yml]
+permissions:
+  actions: read
+  contents: write
+jobs:
+  upload_exact_standard_parts:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+    - name: Recheck actual final gates and stage only exact standard signed parts
+      shell: bash
+      run: |
+        set -euo pipefail
+        python3 - <<'PYCODE'
+        """Reconstruct the already-original-signed bytes; upload only two standard Git blobs."""
+        import base64,hashlib,json,os,pathlib,re,subprocess,urllib.request
+        REPO='Ararataki-number-one/yuanying-chat';REPO_ID=1401080063
+        SOURCE='8a0a487002993f5dacc02ed313fab00648ccb79a';TREE='4bcc73a10bcba0d9bf97c44d02045af525361fad'
+        ARTIFACT='ab9ee55445f7234b5ae0961c3803de42474a05bb';ARTIFACT_TREE='fa39e76441f85e7ae5b45408ee5db60c5b2d4d79'
+        RUN=41967123195;ATTEMPT=2
+        RECIPE_BLOB='f22d2f431440214030916143a61af70b6d37aafe';RECIPE_BYTES=80126;RECIPE_SHA='26a6255e927d429c752d8e7a4cdcc13525e3883c018a79f378d34b6362a798e9'
+        UNSIGNED_BYTES=119635313;UNSIGNED_SHA='3a4b61c1bd6a9b3cd95b20de9b606b603b9143a157a1a8e9d30428a1d7132bf8'
+        SIGNED_BYTES=119656262;SIGNED_SHA='b8d717470963e03e225c1278dc5dead761c5c2ea77e219770e6743a4ef7aacf6'
+        SIGNER='f0afa2ef2b9ac68020b374276318b12d2bb4de65d2a3b788194de551356b9434'
+        PARTS=[{'file': 'PocketChat-2.1.1-gecko-arm64.apk.part00', 'bytes': 60000000, 'sha256': '7999ed7645cf67be4cf6af2379f7c403b6e75af5d07e40264de4ab3668818721', 'gitBlobSha': '9ffaeb3722b54d732ffbf50fb664c2e981ccade6'}, {'file': 'PocketChat-2.1.1-gecko-arm64.apk.part01', 'bytes': 59656262, 'sha256': '21f73cdff5b9c5989185f763f361ef00ab659a9826b3bed65a5b11e49dd03770', 'gitBlobSha': '3fbaa5b06de0157ec271a2bf4e9eba20197b4d21'}]
+        JOBS={'build': 127063320391, 'Chrome diagnostic (after-reload)': 127068212585, 'android (editing)': 127068212614, 'android (ui)': 127068212623, 'android (files)': 127068212643, 'editing-samples (1)': 127068212653, 'android (connections)': 127068212662, 'editing-samples (2)': 127068212674, 'Chrome diagnostic (cold)': 127068212685, 'Real Android Chromium browser acceptance': 127068212729, 'android (profiles)': 127068213186, 'verify': 127077998796}
+        OUT=pathlib.Path('standard-signed-parts');OUT.mkdir(exist_ok=False)
+        def require(value,message):
+            if not value:raise ValueError(message)
+        def digest(raw):return hashlib.sha256(raw).hexdigest()
+        def blob(raw):return hashlib.sha1(b'blob '+str(len(raw)).encode()+b'\0'+raw).hexdigest()
+        def strict(raw):
+            def pairs(rows):
+                result={}
+                for key,value in rows:
+                    require(key not in result,'Duplicate JSON key');result[key]=value
+                return result
+            return json.loads(raw,object_pairs_hook=pairs,parse_constant=lambda _:(_ for _ in ()).throw(ValueError('Nonfinite JSON')))
+        def api(path):
+            return strict(subprocess.check_output(['gh','api','repos/'+REPO+'/'+path],timeout=45))
+        def public_file(name,maximum):
+            require(re.fullmatch(r'[A-Za-z0-9_.-]+',name)is not None,'Unsafe public file name')
+            url='https://raw.githubusercontent.com/'+REPO+'/'+ARTIFACT+'/'+name
+            with urllib.request.urlopen(urllib.request.Request(url,headers={'User-Agent':'PocketChat-standard-signed-parts/1'}),timeout=90)as response:
+                require(response.status==200,'Immutable public download failed');data=response.read(maximum+1)
+            require(len(data)<=maximum,'Immutable file exceeds bound');return data
+        run=api('actions/runs/'+str(RUN)+'/attempts/'+str(ATTEMPT))
+        require(run['id']==RUN and run['run_attempt']==ATTEMPT and run['head_sha']==SOURCE and run['status']=='completed' and run['conclusion']=='success','Complete passed original run required')
+        require(run['repository']['id']==REPO_ID and run['repository']['full_name']==REPO and run['head_branch']=='release/browser-2.1.1' and run['event']=='push' and run['path']=='.github/workflows/browser-2_1-acceptance.yml','Original repository/workflow differs')
+        commit=api('git/commits/'+SOURCE);artifact=api('git/commits/'+ARTIFACT)
+        require(commit['sha']==SOURCE and commit['tree']['sha']==TREE,'Frozen source tree differs')
+        require(artifact['sha']==ARTIFACT and artifact['tree']['sha']==ARTIFACT_TREE and artifact['parents'][0]['sha']==SOURCE,'Final unsigned artifact provenance differs')
+        jobs=api('actions/runs/'+str(RUN)+'/attempts/'+str(ATTEMPT)+'/jobs?per_page=100');seen=set()
+        require(jobs['total_count']==12 and len(jobs['jobs'])==12,'All twelve original jobs required')
+        for job in jobs['jobs']:
+            require(job['name']not in seen and JOBS.get(job['name'])==job['id'],'Unexpected original job');seen.add(job['name'])
+            require(job['run_id']==RUN and job['run_attempt']==ATTEMPT and job['head_sha']==SOURCE and job['status']=='completed' and job['conclusion']=='success','Every original job must pass in selected source/run/attempt')
+            if job['name']=='verify':
+                steps=[x for x in job['steps']if x['name']=='Publish complete source-bound evidence including the browser gate']
+                require(len(steps)==1 and steps[0]['status']=='completed' and steps[0]['conclusion']=='success','Final browser publication gate required')
+        require(seen==set(JOBS),'Original job set differs')
+        recipe_blob=api('git/blobs/'+RECIPE_BLOB)
+        require(recipe_blob['sha']==RECIPE_BLOB and recipe_blob['encoding']=='base64' and recipe_blob['size']==RECIPE_BYTES,'Fixed recipe blob metadata differs')
+        recipe_raw=base64.b64decode(''.join(recipe_blob['content'].split()),validate=True)
+        require(len(recipe_raw)==RECIPE_BYTES and digest(recipe_raw)==RECIPE_SHA and blob(recipe_raw)==RECIPE_BLOB,'Fixed recipe bytes differ')
+        recipe=strict(recipe_raw)
+        expected={'schema':1,'kind':'local-signed-apk-copy-literal-to-standard-parts','repository':REPO,'sourceCommit':SOURCE,'sourceTree':TREE,'unsignedArtifactCommit':ARTIFACT,'runId':str(RUN),'runAttempt':str(ATTEMPT),'version':'2.1.1','versionCode':103,'package':'local.pocketchat','signerSha256':SIGNER,'unsignedBytes':UNSIGNED_BYTES,'unsignedSha256':UNSIGNED_SHA,'signedBytes':SIGNED_BYTES,'signedSha256':SIGNED_SHA,'parts':PARTS}
+        require(all(recipe.get(k)==v for k,v in expected.items()),'Recipe identity differs')
+        manifest=strict(public_file('manifest.json',262144))
+        require((manifest.get('sourceCommit'),manifest.get('runId'),manifest.get('runAttempt'),manifest.get('version'),manifest.get('versionCode'))==(SOURCE,str(RUN),str(ATTEMPT),'2.1.1',103),'Unsigned manifest identity differs')
+        entries=[x for x in manifest['artifacts']if x['abi']=='arm64-v8a'];require(len(entries)==1,'One ARM64 source required');entry=entries[0]
+        require(entry['signing']=='unsigned' and entry['bytes']==UNSIGNED_BYTES and entry['sha256']==UNSIGNED_SHA and len(entry['chunks'])==2,'Unsigned APK identity differs')
+        unsigned=bytearray()
+        for i,part in enumerate(entry['chunks']):
+            require(part['file']=='PocketChat-2.1.1-arm64-v8a.apk.part'+str(i).zfill(2) and type(part['bytes'])is int and 0<part['bytes']<=60000000,'Unsigned part identity/bound')
+            raw=public_file(part['file'],part['bytes']);require(len(raw)==part['bytes'] and digest(raw)==part['sha256'],'Actual immutable unsigned part differs');unsigned.extend(raw)
+        require(len(unsigned)==UNSIGNED_BYTES and digest(unsigned)==UNSIGNED_SHA,'Actual immutable unsigned APK differs')
+        operations=recipe['operations'];require(isinstance(operations,list) and 0<len(operations)<=10000,'Bounded operations required')
+        signed=bytearray();literal_bytes=0;copied_bytes=0
+        for op in operations:
+            require(isinstance(op,dict) and len(op)==1,'One raw-byte operation required')
+            if set(op)=={'copy'}:
+                c=op['copy'];require(isinstance(c,dict) and set(c)=={'offset','bytes','sha256'} and type(c['offset'])is int and type(c['bytes'])is int and c['offset']>=0 and c['bytes']>0 and c['offset']+c['bytes']<=len(unsigned),'Copy range invalid')
+                raw=unsigned[c['offset']:c['offset']+c['bytes']];require(digest(raw)==c['sha256'],'Copy bytes differ');copied_bytes+=len(raw)
+            elif set(op)=={'literal'}:
+                require(isinstance(op['literal'],str) and len(op['literal'])<=1400000,'Literal bound/type')
+                raw=base64.b64decode(op['literal'],validate=True);literal_bytes+=len(raw);require(literal_bytes<=1048576,'Literal total exceeds bound')
+            else:raise ValueError('Unknown raw-byte operation')
+            signed.extend(raw);require(len(signed)<=SIGNED_BYTES,'Reconstructed APK exceeds fixed size')
+        require(len(signed)==SIGNED_BYTES and digest(signed)==SIGNED_SHA and copied_bytes==recipe['copiedBytes'] and literal_bytes==recipe['literalBytes'],'Exact original-signed APK reconstruction differs')
+        print('STANDARD_SIGNED_PARTS_PREPARED '+json.dumps({'sourceCommit':SOURCE,'unsignedArtifactCommit':ARTIFACT,'runId':str(RUN),'runAttempt':str(ATTEMPT),'apkBytes':len(signed),'apkSha256':digest(signed),'exactByteReconstruction':True,'literalBytes':literal_bytes,'keyRead':False,'signingPerformed':False,'releasePublished':False}),flush=True)
+        # Preserve the original standard two-part protocol. Use the same native Git
+        # transport already used by unsigned CI publications; no REST blob retry.
+        repo_dir=(OUT/'git-repository').resolve();repo_dir.mkdir()
+        askpass=(OUT/'git-askpass.sh').resolve()
+        askpass.write_text('#!/bin/sh\ncase "$1" in *github.com*) ;; *) exit 1;; esac\ncase "$1" in *Username*) printf "%s\\n" "x-access-token" ;; *Password*) printf "%s\\n" "$GH_TOKEN" ;; *) exit 1;; esac\n')
+        askpass.chmod(0o700)
+        git_env=dict(os.environ,GIT_ASKPASS=str(askpass),GIT_TERMINAL_PROMPT='0',GIT_AUTHOR_NAME='PocketChat CI',GIT_AUTHOR_EMAIL='ci@pocketchat.invalid',GIT_COMMITTER_NAME='PocketChat CI',GIT_COMMITTER_EMAIL='ci@pocketchat.invalid')
+        def git(*args,data=None,check=True,timeout=240):
+            result=subprocess.run(['git','-c','credential.helper=','-c','http.postBuffer=524288000',*args],cwd=repo_dir,env=git_env,input=data,stdout=subprocess.PIPE,stderr=subprocess.PIPE,timeout=timeout)
+            if check and result.returncode:
+                message=result.stderr.decode('utf-8','replace')[-4000:]
+                token=os.environ.get('GH_TOKEN','')
+                if token:message=message.replace(token,'<redacted>')
+                print('STANDARD_SIGNED_GIT_ERROR '+json.dumps({'command':args[:2],'exitCode':result.returncode,'stderrTail':message,'releasePublished':False}),flush=True)
+                raise ValueError('Native signed-part Git preparation failed')
+            return result
+        git('init','--quiet')
+        git('remote','add','origin','https://github.com/'+REPO+'.git')
+        git('fetch','--no-tags','--depth=1','--filter=blob:none','origin',SOURCE)
+        require(git('rev-parse',SOURCE).stdout.decode().strip()==SOURCE,'Native Git source object differs')
+        REF='refs/heads/transport/source211-8a0a48700299-41967123195-2-original-signed-parts'
+        require(git('ls-remote','--heads','origin',REF).stdout.strip()==b'','Transport ref already exists; inspect instead of overwriting')
+        git('read-tree','--empty')
+        actual_parts=[];offset=0
+        for expected_part in PARTS:
+            raw=bytes(signed[offset:offset+expected_part['bytes']]);offset+=len(raw)
+            require(len(raw)==expected_part['bytes'] and digest(raw)==expected_part['sha256'] and blob(raw)==expected_part['gitBlobSha'],'Exact standard signed part differs before Git transport')
+            actual_blob=git('hash-object','-w','--stdin',data=raw).stdout.decode().strip()
+            require(actual_blob==expected_part['gitBlobSha'],'Actual native Git part object differs')
+            git('update-index','--add','--cacheinfo','100644',actual_blob,expected_part['file'])
+            actual_parts.append(dict(expected_part))
+        require(offset==SIGNED_BYTES and len(actual_parts)==2,'Original two signed parts required')
+        record={'schema':1,'repository':REPO,'sourceCommit':SOURCE,'sourceTree':TREE,'unsignedArtifactCommit':ARTIFACT,'runId':str(RUN),'runAttempt':str(ATTEMPT),'apkSha256':SIGNED_SHA,'apkBytes':SIGNED_BYTES,'parts':actual_parts}
+        record_raw=(json.dumps(record,indent=2)+'\n').encode()
+        record_blob=git('hash-object','-w','--stdin',data=record_raw).stdout.decode().strip()
+        git('update-index','--add','--cacheinfo','100644',record_blob,'standard-parts.json')
+        new_tree=git('write-tree').stdout.decode().strip()
+        new_commit=git('commit-tree',new_tree,'-p',SOURCE,data=b'Stage exact original-signed 2.1.1 standard APK parts\n').stdout.decode().strip()
+        require(re.fullmatch('[0-9a-f]{40}',new_commit)is not None,'Native transport commit invalid')
+        print('STANDARD_SIGNED_GIT_PREPARED '+json.dumps({'sourceCommit':SOURCE,'transportRef':REF,'commit':new_commit,'tree':new_tree,'standardParts':2,'singleAbsentRefPush':True,'keyRead':False,'signingPerformed':False,'releasePublished':False}),flush=True)
+        # Atomic absent-ref lease: exactly one push, never overwrite or retry.
+        push=git('push','--porcelain','--force-with-lease='+REF+':','origin',new_commit+':'+REF,check=False,timeout=300)
+        if push.returncode:
+            message=push.stderr.decode('utf-8','replace')[-4000:];token=os.environ.get('GH_TOKEN','')
+            if token:message=message.replace(token,'<redacted>')
+            print('STANDARD_SIGNED_GIT_ERROR '+json.dumps({'command':['push',REF],'exitCode':push.returncode,'stderrTail':message,'expectedCommit':new_commit,'releasePublished':False}),flush=True)
+            raise ValueError('Native signed-part push failed or reply ambiguous; inspect exact remote ref before any further mutation')
+        ref=api('git/ref/heads/transport/source211-8a0a48700299-41967123195-2-original-signed-parts');remote_commit=api('git/commits/'+new_commit);remote_tree=api('git/trees/'+new_tree)
+        require(ref['ref']==REF and ref['object']['sha']==new_commit,'Actual remote transport ref differs')
+        require(remote_commit['sha']==new_commit and remote_commit['tree']['sha']==new_tree and remote_commit['parents'][0]['sha']==SOURCE,'Actual remote transport provenance differs')
+        require(remote_tree['sha']==new_tree and remote_tree.get('truncated')is False,'Complete actual remote tree required')
+        rows={row['path']:row for row in remote_tree['tree']};require(len(rows)==3 and set(rows)=={x['file']for x in PARTS}|{'standard-parts.json'},'Actual remote standard-part tree differs')
+        for part in PARTS:
+            row=rows[part['file']];require(row['type']=='blob' and row['mode']=='100644' and row['sha']==part['gitBlobSha'] and row['size']==part['bytes'],'Actual remote signed-part blob identity differs')
+        require(rows['standard-parts.json']['sha']==record_blob,'Actual remote receipt blob differs')
+        for part in PARTS:print('STANDARD_SIGNED_PART_UPLOADED '+json.dumps(part,sort_keys=True),flush=True)
+        (OUT/'preuploaded-parts.json').write_bytes(record_raw)
+        print('STANDARD_SIGNED_GIT_PUBLISHED '+json.dumps({'transportRef':REF,'commit':new_commit,'tree':new_tree,'parent':SOURCE,'allRemotePartBlobIdentitiesVerified':True,'releasePublished':False,'keyRead':False}),flush=True)
+        print('STANDARD_SIGNED_PARTS_UPLOADED '+json.dumps(record,sort_keys=True),flush=True)
+        PYCODE
