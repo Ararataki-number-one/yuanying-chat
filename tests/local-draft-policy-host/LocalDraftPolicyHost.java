@@ -122,7 +122,13 @@ public final class LocalDraftPolicyHost {
   }
  }
  static JSONObject timeZoneFacadeCounts(){int ready=0,prepare=0,dispatch=0;for(GeckoWebView view:views){ready+=view.timeZoneBoundary.readinessCalls;prepare+=view.timeZoneBoundary.preparationCalls;dispatch+=view.timeZoneBoundary.uriDispatches;}return J.obj("readinessCalls",ready,"preparationCalls",prepare,"uriDispatches",dispatch,"defaultSystemReady",true,"actualNativeTimeZoneExecution",false);}
- public static void main(String[] args)throws Exception{try{if(args.length==1&&args[0].equals("generic-route"))genericRestore();else if(Boolean.getBoolean("draft.before"))baseline();else{policy();archive();memory();sessionStore();diskPolicy();restore();navigationArchive();genericRestore();}}finally{for(GeckoWebView view:views)closeRoutes(view);for(BrowserSessionStore s:stores)s.io.shutdownNow();}int passed=0;for(int i=0;i<checks.length();i++)if(checks.optJSONObject(i).optBoolean("pass"))passed++;System.out.println(J.obj("status",passed==checks.length()?"passed":"failed","passed",passed,"total",checks.length(),"checks",checks,"syntheticTimeZoneBoundary",timeZoneFacadeCounts()));if(passed!=checks.length())System.exit(1);}
+ static void addonBoundary()throws Exception{
+  Context c=context();GeckoWebView denied=new GeckoWebView(c);denied.addonAdmission.enabled=false;denied.restoreCheckpoint(denied.current,GeckoSession.SessionState.fromString(sdk()),url,LocalDraftPolicy.revision(c));flush(denied.sessionStore);denied.owner.handler.runAll();
+  check("Explicit denied addon collaborator prevents SDK restoration or URI dispatch",denied.addonAdmission.calls==1&&denied.current.restores==0&&denied.current.loads==0&&denied.timeZoneBoundary.readinessCalls==0&&denied.timeZoneIntents.isEmpty());
+  GeckoWebView enabled=new GeckoWebView(context());enabled.restoreCheckpoint(enabled.current,GeckoSession.SessionState.fromString(sdk()),url,LocalDraftPolicy.revision(enabled.owner.context));
+  check("Declared default addon collaborator preserves the original enabled restore",enabled.addonAdmission.calls==1&&enabled.current.restores==1&&enabled.current.loads==0);
+ }
+ public static void main(String[] args)throws Exception{try{if(args.length==1&&args[0].equals("addon-boundary"))addonBoundary();else if(args.length==1&&args[0].equals("generic-route"))genericRestore();else if(Boolean.getBoolean("draft.before"))baseline();else{policy();archive();memory();sessionStore();diskPolicy();restore();navigationArchive();genericRestore();}}finally{for(GeckoWebView view:views)closeRoutes(view);for(BrowserSessionStore s:stores)s.io.shutdownNow();}int passed=0;for(int i=0;i<checks.length();i++)if(checks.optJSONObject(i).optBoolean("pass"))passed++;System.out.println(J.obj("status",passed==checks.length()?"passed":"failed","passed",passed,"total",checks.length(),"checks",checks,"syntheticTimeZoneBoundary",timeZoneFacadeCounts()));if(passed!=checks.length())System.exit(1);}
 }
 class J{static JSONObject obj(Object... pairs){JSONObject out=new JSONObject();try{for(int i=0;i<pairs.length;i+=2)out.put((String)pairs[i],pairs[i+1]);}catch(JSONException e){throw new RuntimeException(e);}return out;}static JSONObject parse(String value){try{return new JSONObject(value);}catch(Exception e){return new JSONObject();}}}
 class AppPrefs{/* APPPREFS */}
@@ -134,6 +140,9 @@ class GeckoWebView{
  final ChatSession owner;final BrowserSessionStore sessionStore;GeckoSession current=new GeckoSession();boolean destroyed,failed,ready=true,generalRouteRetryQueued,protectionAllowed=true,identityAllowed=true;ProtectionRestore protectionRestore,generalRestore;String queued="";
  /* ROUTE_FIELDS */
  final SystemReadyTimeZoneBoundary timeZoneBoundary=new SystemReadyTimeZoneBoundary();
+ // Explicit unrelated default-enabled addon collaborator; no native addon event is simulated.
+ final AddonAdmissionBoundary addonAdmission=new AddonAdmissionBoundary();
+ boolean rejectDisabledNavigation(GeckoSession session,String target){return addonAdmission.reject(session,target);}
  boolean timeZoneAllows(GeckoSession session){return timeZoneBoundary.allows(session);}
  void prepareTimeZone(GeckoSession session,Consumer<Boolean> done){timeZoneBoundary.prepare(session,done);}
  void loadSessionUri(GeckoSession session,String target){timeZoneBoundary.uriDispatches++;if(!timeZoneAllows(session))throw new AssertionError("System-ready time-zone boundary rejected dispatch");session.loadUri(target);}
@@ -150,3 +159,6 @@ class SystemReadyTimeZoneBoundary {
  void prepare(GeckoSession session,Consumer<Boolean> done){preparationCalls++;requireSystemScope();if(session==null||done==null)throw new AssertionError("Missing modeled preparation boundary");done.accept(true);}
  public static void main(String[] args){SystemReadyTimeZoneBoundary boundary=new SystemReadyTimeZoneBoundary();GeckoSession session=new GeckoSession();int checks=0;if(!boundary.allows(session)||boundary.readinessCalls!=1)throw new AssertionError("Default-system readiness count");checks++;boolean[] callback={false};boundary.prepare(session,ready->callback[0]=ready);if(!callback[0]||boundary.preparationCalls!=1)throw new AssertionError("Default-system prepare count");checks++;for(String kind:new String[]{"custom-read","custom-prepare","unready-read","unready-prepare"}){boundary.customZoneRequested=kind.startsWith("custom");boundary.defaultSystemReady=!kind.startsWith("unready");boolean refused=false;try{if(kind.endsWith("read"))boundary.allows(session);else boundary.prepare(session,value->{throw new AssertionError("Out-of-scope callback must not execute");});}catch(AssertionError expected){if(!expected.getMessage().startsWith("Custom or unready"))throw expected;refused=true;}if(!refused)throw new AssertionError("Out-of-scope time zone accepted");checks++;}System.out.println(J.obj("status","passed","checks",checks,"actualNativeTimeZoneExecution",false,"actualDateOrEngineExecution",false));}
 }
+
+/** Admission collaborator only. Real authoritative addon lifecycle runs in its dedicated current-method host. */
+class AddonAdmissionBoundary {boolean enabled=true;int calls;boolean reject(GeckoSession session,String target){calls++;if(session==null||target==null)throw new AssertionError("Missing addon admission boundary");return !enabled;}}

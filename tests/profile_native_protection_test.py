@@ -43,8 +43,8 @@ def member(text,signature):
     start=text.index(signature)
     return signature+body(text,start)
 
-def execute():
-    source=VIEW.read_text()
+def execute(source_override=None):
+    source=VIEW.read_text() if source_override is None else source_override
     identity=IDENTITY.read_text();constant_start=identity.index('static final String PATH=')
     identity_policy=identity[constant_start:identity.index(';',constant_start)+1]+'\n'+'\n'.join(member(identity,signature) for signature in [
         'static String endpoint(String value)',
@@ -66,9 +66,11 @@ def execute():
         '__IDENTITY_POLICY__':identity_policy,
         '__LOAD_URL__':member(source,'public void loadUrl(String target)'),
         '__RESTORE_CHECKPOINT__':member(source,'void restoreCheckpoint(GeckoSession target,GeckoSession.SessionState state,String url,long savedRevision)'),
+        '__DISABLED_NAVIGATION__':member(source,'boolean rejectDisabledNavigation(GeckoSession session,String target)'),
         '__TIMEZONE_INTENT_FIELDS__':'\n'.join(source[source.index(signature):source.index(';',source.index(signature))+1] for signature in (
             'final Map<GeckoSession,String> timeZoneLoads=',
             'final Map<GeckoSession,Object> timeZoneIntents=',
+            'final Map<GeckoSession,Object> nativeTimeZoneIntents=',
         )),
         '__TIMEZONE_INTENT_METHODS__':'\n'.join(member(source,signature) for signature in (
             'Object claimTimeZoneIntent(GeckoSession session,boolean restore)',
@@ -96,6 +98,7 @@ def execute():
     report.update(scope='Actual production pure-Java state plus byte-extracted native controller, route, navigation, load, checkpoint restore, port-message and diagnostic URL policy methods. Handler, Gecko/Android, environment lifecycle, network guard and JSON boundaries are synthetic; no actual network or SDK execution.',
                   auxiliaryPageBoundary='Default absent; close returns false only while absent, and any auxiliary freshness/close behavior fails explicitly. Real auxiliary lifecycle is not exercised.',
                   actualRequestHeaderPolicyExecution=False,actualTimeZonePolicyExecution=False,
+                  actualAddonLifecycleExecution=False,addonBoundary='The original 98 protection cases explicitly assume an enabled independent add-on. Separate checks execute the current byte-extracted disabled-navigation guard and its original call sites against counted application/SDK boundaries; no real add-on lifecycle or native navigation is exercised.',
                   requestHeaderBoundary='Independent header filter is explicitly installed at fixture creation; retirement is counted only. Real header installation, policy replies and HTTP wire behavior are not executed here.',
                   timeZoneBoundary='Independent system timezone is explicitly ready, with counted checks, popup admission, preparation and retirement. Custom-timezone deferral fails explicitly; real timezone/session policy executes in separate current-policy hosts. The intent maps and claim/clear/has helpers are byte-extracted current production, not readiness facades.',
                   newNetworkRequestsActuallySent=False,fullFingerprintProtectionAccepted=False,
@@ -126,5 +129,16 @@ class NativeProtectionTest(unittest.TestCase):
         self.assertTrue(all(x['pass'] for x in report['checks']))
         self.assertEqual(report['sourceSha256'],hashlib.sha256(BACKGROUND.read_bytes()).hexdigest())
         self.assertFalse(report['actualAndroidExecution'])
+    def test_current_disabled_addon_guard_and_its_navigation_call_sites(self):
+        report=execute()
+        self.assertEqual(report['passed'],98)
+        self.assertEqual(report['addonBoundaryPassed'],8)
+        self.assertTrue(all(item['pass'] is True for item in report['addonBoundaryChecks']))
+        source=VIEW.read_text()
+        actual=member(source,'boolean rejectDisabledNavigation(GeckoSession session,String target)')
+        mutant=source.replace(actual,'boolean rejectDisabledNavigation(GeckoSession session,String target){return false;}',1)
+        self.assertNotEqual(source,mutant)
+        with self.assertRaisesRegex(AssertionError,'Disabled addon rejects the actual current navigation'):
+            execute(mutant)
 
 if __name__=='__main__':unittest.main()

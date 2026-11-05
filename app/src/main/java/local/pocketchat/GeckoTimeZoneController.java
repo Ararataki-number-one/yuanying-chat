@@ -17,7 +17,7 @@ final class GeckoTimeZoneController {
   private final Map<Object,Operation> operations=new IdentityHashMap<>();
   private final Set<Runnable> listeners=new HashSet<>();
   private String loadIssue="";private long editSerial;
-  private final String auditInstance=token();private volatile long auditSerial;
+  private final String auditInstance=token();private volatile long auditSerial,configurationSerial;
   private static final class Operation {
     final Object nativeSession;final String sessionId,epoch;final NativeAccess access;
     final List<Consumer<Boolean>> waiters=new ArrayList<>();
@@ -34,24 +34,28 @@ final class GeckoTimeZoneController {
     GeckoTimeZoneStore.State loaded=state;String failure=error;
     session.handler.post(()->{
       if(session.deleted)return;
-      if(!failure.isEmpty()){if(!failure.equals(loadIssue))boundaryChanged();loadIssue=failure;invalidate();}
+      if(!failure.isEmpty()){configurationChanged();loadIssue=failure;invalidate();}
       else if(identity(loaded)){
-        GeckoTimeZoneStore.State previous=cached;if(previous==null||!previous.identity.equals(loaded.identity)||previous.revision!=loaded.revision||!loadIssue.isEmpty())boundaryChanged();cached=loaded;loadIssue="";
-        if(previous!=null&&(!previous.identity.equals(loaded.identity)||previous.revision!=loaded.revision))invalidate();
+        GeckoTimeZoneStore.State previous=cached;if(previous==null||!previous.identity.equals(loaded.identity)||previous.revision!=loaded.revision||!previous.spec.equals(loaded.spec)||!loadIssue.isEmpty())configurationChanged();cached=loaded;loadIssue="";
+        if(previous!=null&&(!previous.identity.equals(loaded.identity)||previous.revision!=loaded.revision||!previous.spec.equals(loaded.spec)))invalidate();
         for(Operation op:new ArrayList<>(operations.values()))if(!op.started)begin(op);
       }
       changed();if(done!=null)done.accept(failure.isEmpty()?loaded:null);
     });
   });}
   private boolean identity(GeckoTimeZoneStore.State state){return state!=null&&!session.deleted&&state.identity.slot==Profiles.slot(session.context)&&state.identity.generation==session.environmentGeneration&&state.identity.environmentId.equals(session.environmentId);}
-  private boolean desiredCurrent(GeckoTimeZoneStore.State state){GeckoTimeZoneStore.State desired=cached;return identity(desired)&&loadIssue.isEmpty()&&desired.revision==state.revision&&desired.identity.equals(state.identity);}
+  private boolean desiredCurrent(GeckoTimeZoneStore.State state){GeckoTimeZoneStore.State desired=cached;return identity(desired)&&loadIssue.isEmpty()&&desired.revision==state.revision&&desired.identity.equals(state.identity)&&desired.spec.equals(state.spec);}
   void addListener(Runnable listener){listeners.add(listener);}
   void removeListener(Runnable listener){listeners.remove(listener);}
   private void changed(){for(Runnable listener:new ArrayList<>(listeners))listener.run();}
   /** Memory-only stamp: changing back to the same desired zone or native ID
    * cannot resurrect an earlier page/Worker observation. */
-  String auditStamp(){GeckoTimeZoneStore.State desired=cached;return auditInstance+"|"+auditSerial+"|"+(desired==null?"unloaded":desired.identity.environmentId+":"+desired.identity.generation+":"+desired.revision);}
+  String auditStamp(){return auditSerial+"|"+auditConfigurationStamp();}
+  /** Configuration identity for one explicitly owned navigation. It never
+   * admits page observations or replaces the full native/document stamp. */
+  String auditConfigurationStamp(){GeckoTimeZoneStore.State desired=cached;return auditInstance+"|"+configurationSerial+"|"+(desired==null?"unloaded":desired.identity.environmentId+":"+desired.identity.generation+":"+desired.revision+":"+desired.spec.zoneId)+"|"+loadIssue.isEmpty();}
   private void boundaryChanged(){auditSerial++;if(session.audit!=null)session.audit.retirePageCheck();}
+  private void configurationChanged(){configurationSerial++;boundaryChanged();}
   JSONObject auditExpected(JSONObject expected){
     GeckoTimeZoneStore.State desired=cached;
     if(desired!=null&&!desired.spec.followsSystem()&&session.privacy.level()<2)try{
@@ -62,12 +66,23 @@ final class GeckoTimeZoneController {
   boolean popupAllowed(){return identity(cached)&&loadIssue.isEmpty()&&cached.spec.followsSystem();}
   boolean allowed(Object nativeSession,String epoch){Operation op=operations.get(nativeSession);return alive(op)&&op.epoch.equals(epoch)&&op.finished&&op.ready&&accessCurrent(op)&&!GeckoTimeZonePolicy.protectionConflict(session.privacy.level(),cached.spec);}
   private boolean accessCurrent(Operation op){try{return op.access.current();}catch(RuntimeException unavailable){return false;}}
-  private boolean alive(Operation op){return op!=null&&!op.retired&&!session.deleted&&operations.get(op.nativeSession)==op&&identity(cached)&&loadIssue.isEmpty()&&(op.desired==null||op.desired.revision==cached.revision&&op.desired.identity.equals(cached.identity));}
+  private boolean alive(Operation op){return op!=null&&!op.retired&&!session.deleted&&operations.get(op.nativeSession)==op&&identity(cached)&&loadIssue.isEmpty()&&(op.desired==null||op.desired.revision==cached.revision&&op.desired.identity.equals(cached.identity)&&op.desired.spec.equals(cached.spec));}
   private boolean pending(Operation op){if(!alive(op)||op.finished||!accessCurrent(op))return false;if(GeckoTimeZonePolicy.protectionConflict(session.privacy.level(),op.desired.spec)){fail(op,false,"强化保护优先使用自己的时区策略，独立时区尚未应用");return false;}return true;}
   void prepare(Object nativeSession,String sessionId,String epoch,NativeAccess access,Consumer<Boolean> gate){
+    prepare(nativeSession,sessionId,epoch,access,gate,false);
+  }
+  /** A new native document can replace its top BC without reopening the SDK
+   * session. Drop the old confirmation before any asynchronous native read.
+   * The caller's access also fences this exact document-validation generation. */
+  void revalidate(Object nativeSession,String sessionId,String epoch,NativeAccess access,Consumer<Boolean> gate){
+    Operation old=operations.get(nativeSession);boolean current=false;try{current=access!=null&&access.current();}catch(RuntimeException unavailable){}
+    if(old==null||old.retired||!old.sessionId.equals(sessionId)||!old.epoch.equals(epoch)||!current){gate.accept(false);return;}
+    prepare(nativeSession,sessionId,epoch,access,gate,true);
+  }
+  private void prepare(Object nativeSession,String sessionId,String epoch,NativeAccess access,Consumer<Boolean> gate,boolean revalidate){
     if(session.deleted||nativeSession==null||access==null||!GeckoTimeZonePolicy.validSession(sessionId)||!GeckoTimeZonePolicy.validSession(epoch)){gate.accept(false);return;}
     Operation old=operations.get(nativeSession);
-    if(old!=null&&!old.retired&&(alive(old)||old.desired==null&&cached==null&&loadIssue.isEmpty())&&old.sessionId.equals(sessionId)&&old.epoch.equals(epoch)&&accessCurrent(old)){
+    if(!revalidate&&old!=null&&!old.retired&&(alive(old)||old.desired==null&&cached==null&&loadIssue.isEmpty())&&old.sessionId.equals(sessionId)&&old.epoch.equals(epoch)&&accessCurrent(old)){
       if(old.finished)gate.accept(allowed(nativeSession,epoch));else old.waiters.add(gate);return;
     }
     if(old!=null)retire(nativeSession,old.epoch);
@@ -125,7 +140,7 @@ final class GeckoTimeZoneController {
       GeckoTimeZoneStore.State saved=state;session.handler.post(()->{
         if(edit!=editSerial||session.deleted){done.accept("本次时区修改已失效");return;}
         if(saved==null||!identity(saved)){done.accept("时区未保存，原配置保留；请重新打开设置");return;}
-        boundaryChanged();cached=saved;loadIssue="";invalidate();changed();
+        configurationChanged();cached=saved;loadIssue="";invalidate();changed();
         if(!desiredCurrent(saved)||!stillSafe.getAsBoolean()||GeckoTimeZonePolicy.protectionConflict(session.privacy.level(),selected)){done.accept("时区已保存；网页或保护模板已变化，尚未重载或应用");return;}
         java.util.concurrent.atomic.AtomicBoolean once=new java.util.concurrent.atomic.AtomicBoolean();
         try{finalDraftCheck.accept(unchanged->{

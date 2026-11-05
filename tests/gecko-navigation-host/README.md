@@ -73,3 +73,6 @@ readiness, barrier, release, unavailable-page, popup-cleanup or public-classific
 source copies and must fail their precise original assertion. Actual Gecko
 construction, page-closing UI, native protection and session-state restoration
 still require the separate real Android integration workload.
+
+The add-on lifecycle input is explicitly enabled in this route-only fixture.
+The separate add-on lifecycle host executes the actual disabled-state handlers.

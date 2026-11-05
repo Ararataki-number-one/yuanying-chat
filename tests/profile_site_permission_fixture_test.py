@@ -11,6 +11,7 @@ import subprocess
 import tempfile
 import unittest
 from profile_gecko_pool_capture_privacy_test import original_pool_runner
+from connection_timezone_fixture_contract import legacy_pool_activity_input
 
 ROOT = Path(__file__).resolve().parents[1]
 PINS = {'tests/gecko/GeckoConnectionPoolIntegrationActivity.java': '53e80066191b479247b5db8e2031c5a884f8ccd31e91542796af1216fb95e331',
@@ -26,6 +27,7 @@ def once(text, added, previous=''):
 
 
 def original_activity(text):
+    text = legacy_pool_activity_input(text)
     text = once(text, '  final GeckoSitePermissionFixture sitePermissions=new GeckoSitePermissionFixture(this);\n')
     text = once(text, '});sdk.setPermissionDelegate(test.sitePermissions.observe(sdk,sdk.getPermissionDelegate()));return sdk;', '});return sdk;')
     return once(text, '      NetworkCatalog.put(report,"sitePermissions",sitePermissions.evidence);sitePermissions.run();\n')

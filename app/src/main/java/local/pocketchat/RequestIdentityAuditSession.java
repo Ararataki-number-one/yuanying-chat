@@ -7,9 +7,10 @@ import java.util.*;
 /** One explicit, bounded navigation on the existing session. It never returns automatically. */
 final class RequestIdentityAuditSession {
   final EnvironmentAudit audit;final ChatSession session;
-  boolean active,opening,navigated,collecting,scopeRegistered,scopeRequested,webDone,controlDone,frameEnabled,frameScopeRequested,frameScopeRegistered;
-  long id,connectionEpoch,originalEpoch,pageEpoch,deadline,fileGeneration;
-  String originalUrl="",documentUrl="",endpoint="",nonce="",route="",policy="",originalDocument="",frameEndpoint="";
+  boolean active,opening,navigated,collecting,scopeRegistered,scopeRequested,webDone,controlDone,frameEnabled,frameScopeRequested,frameScopeRegistered,documentProofPending,documentProofBound,documentFinished;
+  long id,connectionEpoch,originalEpoch,pageEpoch,deadline,fileGeneration,configurationRevision;
+  String originalUrl="",documentUrl="",endpoint="",nonce="",route="",policy="",configurationPolicy="",originalDocument="",frameEndpoint="";
+  Object nativeSession,nativeRuntime,nativeOpen;
   String returnUrl="",returnPage="";long returnEpoch=-1;
   JSONObject expected=new JSONObject(),browser=new JSONObject(),server=new JSONObject();
   RequestIdentityAuditSession(EnvironmentAudit audit){this.audit=audit;session=audit.session;}
@@ -44,14 +45,14 @@ final class RequestIdentityAuditSession {
     if(requestedFrame&&(selectedFrame.isEmpty()||serviceOrigin(selectedFrame).equals(serviceOrigin(endpoint))||!audit.serviceProbe.supportsCrossOriginFrame(selectedFrame)))return refused("请先检查服务能力，并确认已配置的第二 HTTPS 来源与服务声明一致");
     frameEnabled=requestedFrame;frameEndpoint=selectedFrame;
     originalUrl=session.web.getUrl();originalEpoch=session.navigationEpoch;connectionEpoch=session.connectionEpoch;fileGeneration=session.fileWorkGeneration;
-    route=audit.routeStamp();policy=audit.policyStamp();expected=audit.expected();
-    try{expected.put("environmentId",session.environmentId).put("environmentGeneration",session.environmentGeneration).put("configurationRevision",session.identityAuditAppliedRevision()).put("templateId",session.web.getSettings().acceptedBrowserIdentity.optString("templateId"));if(frameEnabled)expected.put("crossOriginFrame",true).put("frameEndpoint",frameEndpoint);}catch(JSONException ignored){}
+    route=audit.routeStamp();policy=audit.policyStamp();configurationPolicy=audit.requestIdentityPolicyStamp();configurationRevision=session.identityAuditAppliedRevision();nativeSession=session.web.current;nativeRuntime=session.web.nativeRuntimeIdentity();nativeOpen=session.web.identityAuditNativeOpen();expected=captureExpected();
     nonce=UUID.randomUUID().toString().replace("-","");documentUrl=RequestIdentityAudit.documentUrl(endpoint,nonce,frameEnabled);
     active=true;opening=navigated=collecting=scopeRegistered=scopeRequested=webDone=controlDone=frameScopeRequested=frameScopeRegistered=false;browser=server=new JSONObject();originalDocument="";
+    documentProofPending=documentProofBound=documentFinished=false;
     audit.running=true;audit.networkRun=true;audit.geckoRun=true;audit.completed=completed;id=++audit.serial;deadline=SystemClock.elapsedRealtime()+20000;
     audit.identityAppliedRevision=session.identityAuditAppliedRevision();session.updateBrowserActivity();
     long request=id;
-    session.handler.postDelayed(()->{if(current(request)){if(!navigated){abort("检测准备超时，原聊天没有离开");return;}audit.lastError="请求身份检测超时；检测页不会自动返回原聊天";finish();}},20500);
+    session.handler.postDelayed(()->{if(current(request)){if(!navigated){abort("检测准备超时，原聊天没有离开");return;}if(!documentProofBound){abort("检测文档的原生确认未完成，结果没有更新；检测页不会自动返回原聊天");return;}audit.lastError="请求身份检测超时；检测页不会自动返回原聊天";finish();}},20500);
     session.asyncDriver("web-inspect",new JSONObject(),2000,inspection->{
       if(!preflightFresh(request))return;
       if(!(inspection.opt("busy")instanceof Boolean)||inspection.optBoolean("busy")||!originalUrl.equals(inspection.optString("url"))){abort("当前网页状态尚未可靠确认，检测页没有打开");return;}
@@ -60,7 +61,9 @@ final class RequestIdentityAuditSession {
   }
   boolean refused(String message){audit.lastError=message;return false;}
   boolean current(long request){return active&&audit.current(request)&&request==id;}
-  boolean routeFresh(){return !session.deleted&&endpoint.equals(RequestIdentityAudit.endpoint(configuredEndpoint()))&&(!frameEnabled||frameEndpoint.equals(RequestIdentityAudit.endpoint(configuredFrameEndpoint())))&&connectionEpoch==session.connectionEpoch&&route.equals(audit.routeStamp())&&policy.equals(audit.policyStamp())&&session.networkReady&&session.guard.allowed()&&session.privacy.canNavigate()&&session.web.protectionAllowsNetwork()&&fileGeneration==session.fileWorkGeneration&&session.identityAuditAppliedRevision()==expected.optLong("configurationRevision");}
+  JSONObject captureExpected(){JSONObject value=audit.expected();try{value.put("environmentId",session.environmentId).put("environmentGeneration",session.environmentGeneration).put("configurationRevision",configurationRevision).put("templateId",session.web.getSettings().acceptedBrowserIdentity.optString("templateId"));if(frameEnabled)value.put("crossOriginFrame",true).put("frameEndpoint",frameEndpoint);}catch(JSONException ignored){}return value;}
+  boolean configurationFresh(){return !session.deleted&&session.environmentId.equals(expected.optString("environmentId"))&&session.environmentGeneration==expected.optInt("environmentGeneration",-1)&&nativeSession!=null&&nativeRuntime!=null&&nativeOpen!=null&&nativeOpen==session.web.identityAuditNativeOpen()&&nativeSession==session.web.current&&nativeRuntime==session.web.nativeRuntimeIdentity()&&endpoint.equals(RequestIdentityAudit.endpoint(configuredEndpoint()))&&(!frameEnabled||frameEndpoint.equals(RequestIdentityAudit.endpoint(configuredFrameEndpoint())))&&connectionEpoch==session.connectionEpoch&&route.equals(audit.routeStamp())&&configurationPolicy.equals(audit.requestIdentityPolicyStamp())&&session.networkReady&&session.guard.allowed()&&session.privacy.canNavigate()&&session.web.protectionAllowsNetwork()&&fileGeneration==session.fileWorkGeneration&&session.identityAuditAppliedRevision()==configurationRevision;}
+  boolean routeFresh(){return configurationFresh()&&policy.equals(audit.policyStamp())&&session.identityAuditAppliedRevision()==expected.optLong("configurationRevision");}
   boolean preflightFresh(long request){
     if(!current(request))return false;
     if(!routeFresh()||originalEpoch!=session.navigationEpoch||!originalUrl.equals(session.web.getUrl())||ProfileUi.working(session)||session.currentReplyActive()||session.resourceFilesUncertain()){
@@ -117,14 +120,21 @@ final class RequestIdentityAuditSession {
   /** Called before ChatSession's ordinary chat navigation handlers. */
   boolean pageStarted(String target){
     if(!active){if(!returnPage.isEmpty()&&!returnPage.equals(target))clearReturn();return false;}
-    if(!opening||!documentUrl.equals(target)||!routeFresh()||originalEpoch!=session.navigationEpoch){abort("检测页面已变化，本次检查已取消");return false;}
+    if(!opening||navigated||!documentUrl.equals(target)||!configurationFresh()||originalEpoch!=session.navigationEpoch||SystemClock.elapsedRealtime()>deadline){abort("检测页面已变化，本次检查已取消");return false;}
     opening=false;navigated=true;returnUrl=originalUrl;returnPage=documentUrl;
     session.beginNavigation(documentUrl,"正在打开请求身份检测页…");pageEpoch=session.navigationEpoch;returnEpoch=pageEpoch;
-    audit.auditUrl=documentUrl;audit.auditNavigation=pageEpoch;return true;
+    audit.auditUrl=documentUrl;audit.auditNavigation=pageEpoch;documentProofPending=true;
+    final long request=id,navigation=pageEpoch;final String requestNonce=nonce,requestDocument=documentUrl;
+    session.web.awaitIdentityAuditDocumentProof(requestDocument,navigation,nativeSession,nativeRuntime,nativeOpen,ready->{
+      if(!current(request)||!documentProofPending)return;documentProofPending=false;
+      if(!ready||!requestNonce.equals(nonce)||!requestDocument.equals(documentUrl)||navigation!=pageEpoch||!pageOwned()||!configurationFresh()||SystemClock.elapsedRealtime()>deadline){abort("检测文档或原生保护已变化，本次结果没有更新");return;}
+      policy=audit.policyStamp();expected=captureExpected();documentProofBound=true;
+      if(documentFinished)waitDocument(request,Math.min(deadline,SystemClock.elapsedRealtime()+3000));
+    });return true;
   }
   boolean pageFinished(String target){
     if(!navigated||!documentUrl.equals(target)||!pageOwned())return false;
-    if(active&&!collecting){session.finishNavigation("",false);waitDocument(id,SystemClock.elapsedRealtime()+3000);}
+    if(active&&!collecting){documentFinished=true;session.finishNavigation("",false);if(documentProofBound)waitDocument(id,Math.min(deadline,SystemClock.elapsedRealtime()+3000));}
     return true;
   }
   boolean pageFailed(String target,String reason){
@@ -136,7 +146,7 @@ final class RequestIdentityAuditSession {
   boolean pageOwned(){return navigated&&pageEpoch==session.navigationEpoch&&documentUrl.equals(session.web.getUrl());}
   boolean pageSelected(){return !session.deleted&&!returnPage.isEmpty()&&returnPage.equals(session.web.getUrl());}
   boolean pageActive(){return pageSelected()&&returnEpoch==session.navigationEpoch;}
-  boolean fresh(){return active&&routeFresh()&&pageOwned()&&SystemClock.elapsedRealtime()<=deadline;}
+  boolean fresh(){return active&&documentProofBound&&routeFresh()&&pageOwned()&&SystemClock.elapsedRealtime()<=deadline;}
   void waitDocument(long request,long until){
     if(!current(request)||collecting)return;
     if(!fresh()){abort("检测期间页面或连接已变化，结果没有更新");return;}
@@ -190,7 +200,7 @@ final class RequestIdentityAuditSession {
   void abort(String message){if(!active)return;audit.lastError=message;cleanup();complete();}
   void cancel(){abort("请求身份检查已取消，没有更新报告；检测页不会自动跳回聊天");}
   void cleanup(){
-    active=opening=false;
+    active=opening=documentProofPending=false;
     if(scopeRequested||scopeRegistered){scopeRequested=scopeRegistered=false;session.web.requestIdentityScope(J.obj("action","cancel","endpoint",endpoint,"nonce",nonce),ignored->{});}
     if(frameScopeRequested||frameScopeRegistered){frameScopeRequested=frameScopeRegistered=false;session.web.requestIdentityScope(J.obj("action","cancel","endpoint",frameEndpoint,"nonce",nonce),ignored->{});}
     audit.cleanup();

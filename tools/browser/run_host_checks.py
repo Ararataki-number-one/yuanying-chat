@@ -14,7 +14,10 @@ ROOT=Path(__file__).resolve().parents[2]
 def main():
     p=argparse.ArgumentParser(description=__doc__)
     for name in ['java-home','json-jar','android-json-jar','android-jar','webkit-jar','jsdom-module']:p.add_argument('--'+name,required=True,type=Path)
+    p.add_argument('--gecko-sdk-jar',type=Path,help='Optional exact real derived SDK classes for local API verification')
+    p.add_argument('--gecko-sdk-receipt',type=Path,help='Actual build receipt for the supplied real SDK input')
     p.add_argument('--output',type=Path,default=ROOT/'work/browser-host-controls');a=p.parse_args();out=a.output.resolve();out.mkdir(parents=True,exist_ok=True)
+    if a.gecko_sdk_jar and not a.gecko_sdk_receipt:p.error('--gecko-sdk-jar requires its actual --gecko-sdk-receipt')
     java=['--java-home',str(a.java_home.resolve())];desktop=a.json_jar.resolve();android_json=a.android_json_jar.resolve();cases=[]
     def add(name,script,arguments=(),report=None):cases.append((name,[sys.executable,script,*map(str,arguments)],report))
     add('address','tests/browser-address-host/run.py',java+['--output',out/'address.json'],out/'address.json')
@@ -56,7 +59,7 @@ def main():
         for name,script in [('gecko-session-navigation','tests/gecko-navigation-host/session_navigation.py'),('gecko-client-ready','tests/gecko-navigation-host/client_ready.py')]:
             target=out/(name+'-'+label+'.json');add(name+'-'+label,script,java+['--json-jar',jar,'--output',target],target)
         target=out/('chromium-fingerprint-activity-'+label+'.json');add('chromium-fingerprint-activity-'+label,'tests/chromium-fingerprint-activity-host/run.py',java+['--json-jar',jar,'--output',target],target)
-        for name,script in [('chromium-worker-policy','tests/chromium-worker-policy-host/run.py'),('gecko-request-headers','tests/gecko-request-headers-host/run.py'),('gecko-timezone','tests/gecko-timezone-host/run.py'),('gecko-timezone-report','tests/gecko-timezone-host/report.py'),('gecko-timezone-flow','tests/gecko-timezone-flow-host/run.py'),('gecko-timezone-routing','tests/gecko-timezone-routing-host/run.py'),('gecko-timezone-delete','tests/gecko-timezone-delete-host/run.py')]:
+        for name,script in [('chromium-worker-policy','tests/chromium-worker-policy-host/run.py'),('gecko-request-headers','tests/gecko-request-headers-host/run.py'),('gecko-timezone','tests/gecko-timezone-host/run.py'),('gecko-timezone-report','tests/gecko-timezone-host/report.py'),('gecko-timezone-flow','tests/gecko-timezone-flow-host/run.py'),('gecko-timezone-routing','tests/gecko-timezone-routing-host/run.py'),('gecko-timezone-delete','tests/gecko-timezone-delete-host/run.py'),('gecko-timezone-http-wait','tests/gecko-timezone-http-host/run.py'),('gecko-addon-lifecycle','tests/gecko-addon-lifecycle-host/run.py'),('request-identity-timezone','tests/request-identity-timezone-host/run.py')]:
             target=out/(name+'-'+label+'.json');add(name+'-'+label,script,java+['--json-jar',jar,'--output',target],target)
         target=out/('runtime-origin-adapter-'+label+'.json');add('runtime-origin-adapter-'+label,'tests/runtime-origin-adapter-host/run.py',java+['--json-jar',jar,'--android-jar',a.android_jar.resolve(),'--jsdom-module',a.jsdom_module.resolve(),'--output',target],target)
     cases.append(('gecko-site-boundary',['node','--test','tests/browser-runtime/gecko-site-boundary.test.cjs'],None))
@@ -69,6 +72,8 @@ def main():
     target=out/'session-cookies-independent-boundaries.json';cases.append(('session-cookies-independent-boundaries',['node','tests/browser-runtime/session-cookies-independent-boundaries.test.cjs','--receipt',str(target)],target))
     add('gecko-native-timezone-api','tests/gecko/native_timezone_api_contract.py')
     add('gecko-native-timezone-session-api','tests/gecko/native_timezone_session_api_contract.py')
+    target=out/'gecko-app-session-api.json';sdk_arguments=(['--sdk-jar',a.gecko_sdk_jar.resolve()] if a.gecko_sdk_jar else [])+(['--sdk-receipt',a.gecko_sdk_receipt.resolve()] if a.gecko_sdk_receipt else []);add('gecko-app-session-api','tests/gecko/app_session_identity_api_contract.py',java+['--android-jar',a.android_jar.resolve(),'--output',target]+sdk_arguments,target)
+    add('connection-timezone-prerequisite','tests/profile_connection_timezone_prerequisite_test.py')
     add('fingerprint-publisher-gate','tests/browser_fingerprint_publish_gate_test.py')
     add('fingerprint-evidence-gate','tests/browser_fingerprint_evidence_test.py')
     add('fingerprint-fixture-controls','tests/browser_fingerprint_fixture_test.py')
@@ -82,10 +87,11 @@ def main():
     cases.append(('gecko-environment-policy-page-controls',['node','tests/gecko_environment_policy_page_test.cjs'],None))
     add('dual-browser-source-history','tests/profile_dual_browser_source_compatibility_test.py')
     add('worker-timezone-source-history','tests/profile_worker_timezone_source_compatibility_test.py')
+    add('worker-timezone-host-source-history','tests/profile_worker_timezone_host_source_compatibility_test.py')
     names=subprocess.check_output(['git','ls-files','--cached','--others','--exclude-standard','app/src/main/java','app/src/main/assets','tests','tools/browser','tools/gecko','.github/workflows/browser-2_1-acceptance.yml'],cwd=ROOT,text=True).splitlines()
     files=[ROOT/name for name in sorted(set(names)) if (ROOT/name).is_file()]
     hashes={str(path.relative_to(ROOT)):hashlib.sha256(path.read_bytes()).hexdigest() for path in files}
-    environment=dict(os.environ,JSDOM_MODULE=str(a.jsdom_module.resolve()),JAVA_HOME=str(a.java_home.resolve()),PROFILE_JSON_JAR=str(a.json_jar.resolve()));environment['PATH']=str(a.java_home.resolve()/'bin')+os.pathsep+environment['PATH']
+    environment=dict(os.environ,JSDOM_MODULE=str(a.jsdom_module.resolve()),JAVA_HOME=str(a.java_home.resolve()),PROFILE_JAVA=str(a.java_home.resolve()/'bin/java'),PROFILE_JSON_JAR=str(a.json_jar.resolve()),PROFILE_ANDROID_JSON_JAR=str(a.android_json_jar.resolve()));environment['PATH']=str(a.java_home.resolve()/'bin')+os.pathsep+environment['PATH']
     results=[]
     for name,command,report in cases:
         print(json.dumps(dict(suite=name,status='running')),flush=True)

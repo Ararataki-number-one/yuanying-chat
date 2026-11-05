@@ -80,6 +80,9 @@ class EnvironmentAudit {
   String routeStamp(){String route=session.internalNetwork()?NativeNetwork.get(session.context).token:session.prefs.getString("proxy","");return hash(session.prefs.getString("networkMode","external")+"|"+route+"|"+session.prefs.getBoolean("requireExternalVpn",true));}
   boolean current(long id){return running&&id==serial;}
   String policyStamp(){GeckoSettings settings=session.web.getSettings();return hash(GeckoWebView.VERSION+"|"+session.privacy.level()+"|"+settings.desktop+"|"+settings.getUserAgentString()+"|"+Arrays.toString(settings.requestedLocales)+"|"+settings.policyAcknowledged+"|"+session.web.identityPolicyRevision+"|"+TimeZone.getDefault().getID()+"|"+Locale.getDefault().toLanguageTag()+"|"+session.timeZone.auditStamp());}
+  /** Only the explicitly authorized request-identity navigation may span a
+   * document proof transition. Ordinary observations keep the full stamp. */
+  String requestIdentityPolicyStamp(){GeckoSettings settings=session.web.getSettings();return hash(GeckoWebView.VERSION+"|"+session.privacy.level()+"|"+settings.desktop+"|"+settings.getUserAgentString()+"|"+Arrays.toString(settings.requestedLocales)+"|"+settings.policyAcknowledged+"|"+session.web.identityPolicyRevision+"|"+TimeZone.getDefault().getID()+"|"+Locale.getDefault().toLanguageTag()+"|"+session.timeZone.auditConfigurationStamp());}
   boolean fresh(){return running&&(!geckoRun||(nativeRuntimeIdentity==session.web.nativeRuntimeIdentity()&&identityAppliedRevision==session.identityAuditAppliedRevision()&&auditNavigation==session.navigationEpoch&&auditUrl.equals(session.web.getUrl())))&&epoch==session.connectionEpoch&&stamp.equals(routeStamp())&&policy.equals(policyStamp())&&(!networkRun||session.networkReady&&session.guard.allowed()&&session.web.protectionAllowsNetwork());}
   JSONObject expected(){
     NativeNetwork n=NativeNetwork.get(session.context);GeckoSettings settings=session.web.getSettings();

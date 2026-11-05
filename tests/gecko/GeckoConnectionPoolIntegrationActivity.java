@@ -28,6 +28,7 @@ public final class GeckoConnectionPoolIntegrationActivity extends Activity {
   NetworkOptimizationIntegrationActivity.HttpFixture site,plain;
   NetworkOptimizationIntegrationActivity.Socks fixed,entryA,entryB;
   FixtureIdentity fixtureIdentity;
+  final NativeTimeZonePrerequisite nativeTimeZonePrerequisite=new NativeTimeZonePrerequisite();
   final ExecutorService runner=Executors.newSingleThreadExecutor();
   final GeckoSitePermissionFixture sitePermissions=new GeckoSitePermissionFixture(this);
   interface Work<T>{T run()throws Exception;}
@@ -61,6 +62,46 @@ public final class GeckoConnectionPoolIntegrationActivity extends Activity {
       "cachedDesiredRevision",cached==null?0:cached.desiredRevision,"epoch",session.connectionEpoch,"queued",view.queued,"url",view.getUrl(),"environmentSpecIssue",session.environmentSpecIssue);
   }
   static boolean startupSettled(JSONObject state){return state.optBoolean("ready")&&state.optBoolean("privacyReady")&&state.optBoolean("identityPrepared")&&state.optBoolean("routePrepared")&&state.optBoolean("bridgeReady")&&state.optBoolean("guardAllowed")&&state.optBoolean("networkReady")&&!state.optBoolean("connecting")&&!state.optBoolean("navigating")&&!state.optBoolean("pendingBrowserSettings")&&!state.optBoolean("identityApplicationPending")&&!state.optBoolean("queueUnavailable")&&state.optInt("privacyLevel",-1)==0&&state.optInt("protectionLevel",-1)==0&&state.optInt("requestedProtection",-1)==0&&state.optBoolean("identityMatches")&&state.optBoolean("desiredMatches")&&state.optLong("epoch",-1)==0&&state.optString("queued").isEmpty()&&state.optString("environmentSpecIssue").isEmpty();}
+  /** Fixture prerequisite only: native admission finishes before the unchanged
+   * controlled-load and network timing assertions. Polling never starts a second
+   * prepare, and a legacy system fallback without actual native readback fails. */
+  static final class NativeTimeZonePrerequisite {
+    GeckoSession expected;Object runtime,gate;String environment;int generation;long revision,policy;
+    boolean requested,completed,acknowledged,retired;
+    boolean readyFor(GeckoWebView view){
+      ChatSession owner=view.owner;
+      if(retired)return false;
+      if(expected!=null&&!current(view)){retired=true;return false;}
+      if(!view.ready||!view.privacyReady||!view.identityPrepared||!view.routePrepared||!view.requestHeadersInstalled||view.routePort==null
+          ||!view.protectionAllowsNetwork()||!owner.guard.allowed()||!owner.networkReady||owner.connecting||view.current==null||!view.current.isOpen())return false;
+      JSONObject status=view.timeZoneStatus();
+      if(expected==null){
+        Object value=status.opt("desiredRevision");if(!(value instanceof Integer||value instanceof Long)||((Number)value).longValue()<1)return false;
+        expected=view.current;runtime=view.nativeRuntimeIdentity();if(runtime==null){retired=true;return false;}
+        environment=owner.environmentId;generation=owner.environmentGeneration;revision=((Number)value).longValue();policy=view.identityPolicyRevision;gate=view.timeZoneGates.get(expected);
+      }
+      if(completed)return acknowledged&&confirmed(view);
+      if(!requested&&view.timeZoneAllows(expected)){completed=true;acknowledged=confirmed(view);return acknowledged;}
+      if(!requested){
+        requested=true;view.prepareTimeZone(expected,accepted->{
+          if(completed||retired)return;
+          Object actual=view.timeZoneGates.get(expected);if(gate==null)gate=actual;
+          completed=true;acknowledged=Boolean.TRUE.equals(accepted)&&current(view)&&confirmed(view);
+        });
+        if(gate==null)gate=view.timeZoneGates.get(expected);
+      }
+      return completed&&acknowledged&&confirmed(view);
+    }
+    private boolean current(GeckoWebView view){return expected!=null&&view.current==expected&&expected.isOpen()&&view.nativeRuntimeIdentity()==runtime
+      &&!view.owner.deleted&&environment.equals(view.owner.environmentId)&&generation==view.owner.environmentGeneration&&policy==view.identityPolicyRevision
+      &&(gate==null||view.timeZoneGates.get(expected)==gate);}
+    private boolean confirmed(GeckoWebView view){
+      if(!current(view)||gate==null||!view.timeZoneAllows(expected))return false;
+      JSONObject status=view.timeZoneStatus();Object actual=status.opt("desiredRevision");
+      return Boolean.TRUE.equals(status.opt("nativeSettingReadback"))&&Boolean.TRUE.equals(status.opt("currentSessionPrepared"))
+        &&"top-browsing-context".equals(status.opt("scope"))&&(actual instanceof Integer||actual instanceof Long)&&((Number)actual).longValue()==revision;
+    }
+  }
   <T>T ui(Work<T> work)throws Exception{
     CompletableFuture<T> done=new CompletableFuture<>();runOnUiThread(()->{try{done.complete(work.run());}catch(Throwable error){done.completeExceptionally(error);}});
     return done.get(20,TimeUnit.SECONDS);
@@ -192,7 +233,7 @@ public final class GeckoConnectionPoolIntegrationActivity extends Activity {
         view.setWebViewClient(new WebViewClient(){@Override public void onPageStarted(WebView ignored,String url,android.graphics.Bitmap icon){session.handler.removeCallbacks(session.tick);}@Override public void onPageFinished(WebView ignored,String url){session.navigating=false;session.handler.removeCallbacks(session.tick);}});
         LinearLayout root=new LinearLayout(this);root.setOrientation(LinearLayout.VERTICAL);root.setFitsSystemWindows(true);TextView label=new TextView(this);label.setText("真实 Gecko HTTP/2 连接复用回归 · 仅受控流量");root.addView(label);view.setHost(this);root.addView(view,new LinearLayout.LayoutParams(-1,0,1));setContentView(root);return null;
       });
-      await("Gecko initialization",()->ui(()->view.ready&&view.privacyReady&&session.browserDefaultNetwork.snapshot().usable()),60000);
+      await("Gecko initialization",()->ui(()->view.ready&&view.privacyReady&&session.browserDefaultNetwork.snapshot().usable()&&nativeTimeZonePrerequisite.readyFor(view)),60000);
       check("A fresh runtime obtains the real Android default-network snapshot",ui(()->session.browserDefaultNetwork.snapshot().usable()));
       ui(()->{JSONObject before=startupState(session,view,fixtureIdentity);event("beforeControlledLoad",before);NetworkCatalog.put(report,"beforeControlledLoad",before);check("Controlled document starts only with the exact durable template and an idle admitted route",startupSettled(before));view.loadUrl(ORIGIN+"/pool");JSONObject after=startupState(session,view,fixtureIdentity);event("afterControlledLoad",after);NetworkCatalog.put(report,"afterControlledLoad",after);check("One controlled document load is dispatched without protection or connection queueing",after.optString("queued").isEmpty()&&after.optLong("epoch",-1)==before.optLong("epoch"));return null;});
       await("Actual controlled TLS document",()->eval("({ready:location.href==="+JSONObject.quote(ORIGIN+"/pool")+"&&!!document.getElementById('pool-ready')})").optBoolean("ready"),35000);

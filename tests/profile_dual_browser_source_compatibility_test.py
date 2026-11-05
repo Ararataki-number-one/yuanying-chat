@@ -143,10 +143,11 @@ class DualBrowserSourceCompatibility(unittest.TestCase):
 
     def test_java_policy_dependency_history_is_exact_and_keeps_behavior_tests_current(self):
         import gecko_policy_dependency_source_compatibility as dependency
+        from worker_timezone_host_source_compatibility import PATHS as host_adapter_paths, source_input as host_adapter_source_input
         for relative, row in dependency.manifest()['files'].items():
             with self.subTest(path=relative):
                 previous = subprocess.check_output(['git', 'show', dependency.BASE_COMMIT + ':' + relative], cwd=ROOT)
-                current = (ROOT / relative).read_bytes()
+                current = host_adapter_source_input((ROOT / relative).read_bytes(), relative) if relative in host_adapter_paths else (ROOT / relative).read_bytes()
                 self.assertEqual((SHA(previous), len(previous)), (row['previousSha256'], row['previousBytes']))
                 self.assertEqual((SHA(current), len(current)), (row['reviewedSha256'], row['reviewedBytes']))
                 self.assertEqual(dependency.source_input(current, relative), previous)
@@ -158,7 +159,7 @@ class DualBrowserSourceCompatibility(unittest.TestCase):
                     forward = forward.replace(before, after, 1)
                 self.assertEqual(forward, current)
         for relative in ('tests/profile_native_protection_test.py', 'tests/profile_page_bridge_lifecycle_test.py'):
-            current = (ROOT / relative).read_bytes()
+            current = host_adapter_source_input((ROOT / relative).read_bytes(), relative) if relative in host_adapter_paths else (ROOT / relative).read_bytes()
             previous = subprocess.check_output(['git', 'show', dependency.BASE_COMMIT + ':' + relative], cwd=ROOT)
             self.assertEqual(assertions(current), assertions(previous))
             tree = ast.parse(current)

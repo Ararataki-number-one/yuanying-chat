@@ -28,6 +28,18 @@ flow must reach explicit manual confirmation without invoking the ChatGPT
 observer. Cancel, busy/unknown tasks, draft archival/rechecks and explicit
 approval all use the actual application methods.
 
+New-document revalidation also covers a COOP-style context 6→7 replacement
+inside the same SDK session and open epoch. It immediately retires the old
+confirmation, reads the actual native context, mints a new ticket/token and
+requires a strict `applied` acknowledgement plus durable publication. Same-BC
+documents still use a fresh acknowledgement without an app reload; whether the
+native API skips an equal-value setter is checked by its independent real API
+suite. Interleaved document generations, stale open epochs, failed vault writes,
+changed owner/configuration and late callbacks cannot revive the old ticket.
+Two mutations of the current production controller must compile and then fail
+the actual context-cache and stale-epoch assertions; compile errors do not count
+as successful negative controls.
+
 This is a **host control-flow and storage-lifecycle** test, not Android or native
 Gecko execution. Context/catalog/vault adapters are reused explicitly from the
 core timezone host. Temporary files, atomic replacement and Java file locks are

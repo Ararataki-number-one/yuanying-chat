@@ -49,11 +49,17 @@ public final class PageBridgeLifecycleHost {
   }
   static final class Client {void onPageStarted(Object unused,String target,Object icon){}}
   static final class Bridge {
-    boolean destroyed;String url=URL;float readingLayout=1;int appearanceRequests,visible;
+    // This legacy bridge workload assumes the builtin addon remains enabled.
+    // Authoritative SDK addon lifecycle and late disabled events run separately.
+    boolean destroyed,addonDisabled;String url=URL;float readingLayout=1;int appearanceRequests,visible;
     // Existing bridge cases display their primary surface, with no auxiliary
     // IP document. Actual surface ownership belongs to the separate overview host.
     boolean auxiliaryPageVisible;
     boolean readingOwnerVisible(){if(auxiliaryPageVisible)throw new AssertionError("Auxiliary IP page is outside this bridge fixture");return true;}
+    // Count the new collaborator call on these original default-system cases;
+    // this is not an SDK timezone readback or a custom-context simulation.
+    boolean defaultTimeZoneReady=true,customTimeZoneScope;int systemTimeZoneRevalidations;
+    void revalidateTimeZone(GeckoSession session){if(!defaultTimeZoneReady||customTimeZoneScope||session==null||!locations.containsKey(session))throw new AssertionError("Unready custom or foreign timezone context is outside this legacy bridge host");systemTimeZoneRevalidations++;}
     final Owner owner=new Owner();final Clock clock=new Clock();
     final BrowserBridgeRequests callbacks=new BrowserBridgeRequests(clock,"null");
     final Map<GeckoSession,String> locations=new IdentityHashMap<>(),loadingTargets=new IdentityHashMap<>();
@@ -175,6 +181,17 @@ public final class PageBridgeLifecycleHost {
     check("Route/native messaging ports are not admitted as page ports",route.delegate==null&&b.ports.get(b.current)==primary);
   }
   public static void main(String[] args){staleWindow();replacement();earlyConnection();nonCommit();existingBoundaries();int pass=0;for(JSONObject v:checks)if(v.optBoolean("passed"))pass++;System.out.println(J.obj("status",pass==checks.size()?"passed":"failed","passed",pass,"total",checks.size(),"checks",checks,"actualGeneralRouteExecution",false,"generalRouteBoundary","Counted app-route release and browser-location delivery on the original ChatGPT-only bridge cases; generic retain fails explicitly as out of scope"));}
+}
+final class DefaultTimeZoneBoundaryHost {
+  public static void main(String[] args){
+    PageBridgeLifecycleHost.Bridge bridge=new PageBridgeLifecycleHost.Bridge();bridge.revalidateTimeZone(bridge.current);if(bridge.systemTimeZoneRevalidations!=1)throw new AssertionError("Missing counted default-system prerequisite");int controls=1;
+    for(String kind:new String[]{"custom","unready","foreign","null"}){
+      bridge.customTimeZoneScope=kind.equals("custom");bridge.defaultTimeZoneReady=!kind.equals("unready");PageBridgeLifecycleHost.GeckoSession target=kind.equals("null")?null:kind.equals("foreign")?new PageBridgeLifecycleHost.GeckoSession():bridge.current;boolean rejected=false;
+      try{bridge.revalidateTimeZone(target);}catch(AssertionError expected){if(!expected.getMessage().startsWith("Unready custom or foreign"))throw expected;rejected=true;}
+      if(!rejected||bridge.systemTimeZoneRevalidations!=1)throw new AssertionError("Out-of-scope timezone was simulated: "+kind);controls++;
+    }
+    System.out.println(J.obj("status","passed","controls",controls,"actualNativeTimezoneExecution",false,"nativeReadbackVerified",false,"scope","Only counted default-system prerequisite; custom/unready/foreign contexts reject before any native behavior"));
+  }
 }
 final class J {
   // Match production J's checked Android-JSON boundary as well as desktop JSON.

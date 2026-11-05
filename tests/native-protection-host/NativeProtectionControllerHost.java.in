@@ -8,6 +8,8 @@ import java.net.URLDecoder;
 final class NativeProtectionControllerHost {
   static final List<String> checks=new ArrayList<>();
   static void check(String name,boolean value){if(!value)throw new AssertionError(name);checks.add(name);}
+  static final List<String> addonChecks=new ArrayList<>();
+  static void addonCheck(String name,boolean value){if(!value)throw new AssertionError(name);addonChecks.add(name);}
   static String quote(String value){return "\""+value.replace("\\","\\\\").replace("\"","\\\"")+"\"";}
   static final class JSONObject extends HashMap<String,Object> {
     Object opt(String key){return get(key);}
@@ -100,6 +102,10 @@ final class NativeProtectionControllerHost {
     final Map<GeckoSession,GeckoSession.SessionState> states=new IdentityHashMap<>();final Map<GeckoSession,Long> stateDraftRevisions=new IdentityHashMap<>();final Set<GeckoSession> crashed=new HashSet<>();
     final SessionStore sessionStore=new SessionStore();GeckoSession.SessionState startupState;long startupDraftRevision;
     boolean destroyed,failed,ready,privacyReady,fingerprintingProtected,routePrepared,enabled=true,checkpointReady=true,identityPrepared=true;
+    // The original protection oracle assumes the independent add-on is enabled.
+    // Its actual lifecycle is outside this host; disabled admission below runs
+    // the current production guard with a counted navigation-failure boundary.
+    boolean addonDisabled=false;int nativeNavigationFailures;
     int protectionLevel=-1,configuredProtection=2,requestedProtection=-1,opens;
     long protectionRequest;String queued="";Object surface,extension=new Object();
     GeckoSession current,primary;WebExtension.Port routePort=new WebExtension.Port();Runnable protectionTimeout,protectionRetry;
@@ -112,7 +118,7 @@ final class NativeProtectionControllerHost {
     void retireRequestHeaderPolicy(){requestHeaderRetirements++;}
     boolean timeZoneAllows(GeckoSession session){return owner.timeZone.allows(session);}
     void prepareTimeZone(GeckoSession session,java.util.function.Consumer<Boolean> done){owner.timeZone.preparations++;if(!timeZoneAllows(session))throw new AssertionError("Custom timezone preparation is outside this default-system protection fixture");done.accept(true);}
-    void retireTimeZones(){owner.timeZone.retirements++;timeZoneLoads.clear();timeZoneIntents.clear();}
+    void retireTimeZones(){owner.timeZone.retirements++;timeZoneLoads.clear();timeZoneIntents.clear();nativeTimeZoneIntents.clear();}
     void loadSessionUri(GeckoSession session,String target){owner.timeZone.deferredLoads++;throw new AssertionError("Deferred timezone navigation is outside this default-system protection fixture");}
     __TIMEZONE_INTENT_METHODS__
     boolean generalRouteAdmission=true;int generalRouteChecks,generalRouteRetains;
@@ -135,6 +141,8 @@ final class NativeProtectionControllerHost {
     __ROUTE__
     __LOAD_URL__
     __RESTORE_CHECKPOINT__
+    __DISABLED_NAVIGATION__
+    GeckoResult<String> nativeNavigationFailure(GeckoSession session,String target,String message){nativeNavigationFailures++;return null;}
     GeckoResult<AllowOrDeny> navigation(GeckoSession s,LoadRequest request)__NAVIGATION_BODY__
     GeckoResult<GeckoSession> popup(GeckoSession s,String target)__POPUP_BODY__
     void receive(Object message,WebExtension.Port incoming)__PORT_MESSAGE_BODY__
@@ -273,10 +281,24 @@ final class NativeProtectionControllerHost {
     View staleRestore=browsing();staleRestore.owner.audit.active=true;staleRestore.start(2);staleRestore.protectionRestore=new View.ProtectionRestore(staleRestore.current,checkpoint,document,4,0);staleRestore.owner.audit.active=false;staleRestore.reply(true,true);
     check("A cancelled diagnostic checkpoint cannot resume after RFP confirmation",staleRestore.restoreCount()==0&&staleRestore.loadCount()==0);
   }
+  static void disabledAddonAdmission(){
+    String target="https://target.invalid/selected";View current=browsing();GeckoSession session=current.current;
+    current.addonDisabled=true;current.queued=target;current.timeZoneLoads.put(session,target);current.timeZoneIntents.put(session,new Object());current.nativeTimeZoneIntents.put(session,new Object());current.deferredGeneralLoads.put(session,target);
+    addonCheck("Disabled addon rejects the actual current navigation",current.rejectDisabledNavigation(session,target));
+    addonCheck("Disabled current navigation clears every deferred ownership map and reports failure",current.queued.isEmpty()&&current.timeZoneLoads.isEmpty()&&current.timeZoneIntents.isEmpty()&&current.nativeTimeZoneIntents.isEmpty()&&current.deferredGeneralLoads.isEmpty()&&current.nativeNavigationFailures==1);
+    GeckoSession other=new GeckoSession();current.queued=target;current.timeZoneLoads.put(other,target);current.timeZoneIntents.put(other,new Object());current.nativeTimeZoneIntents.put(other,new Object());current.deferredGeneralLoads.put(other,target);
+    addonCheck("Disabled noncurrent navigation retires only its ownership without reporting a current failure",current.rejectDisabledNavigation(other,target)&&current.queued.equals(target)&&current.nativeNavigationFailures==1&&!current.timeZoneLoads.containsKey(other)&&!current.timeZoneIntents.containsKey(other)&&!current.nativeTimeZoneIntents.containsKey(other)&&!current.deferredGeneralLoads.containsKey(other));
+    View enabled=browsing();enabled.queued=target;addonCheck("Enabled independent addon preserves the existing admission boundary",!enabled.rejectDisabledNavigation(enabled.current,target)&&enabled.queued.equals(target)&&enabled.nativeNavigationFailures==0);
+    View load=browsing();load.addonDisabled=true;load.loadUrl(target);addonCheck("Actual loadUrl does not enqueue or emit disabled navigation",load.queued.isEmpty()&&load.loadCount()==0&&load.nativeNavigationFailures==1);
+    View restore=browsing();restore.addonDisabled=true;restore.restoreCheckpoint(restore.current,new GeckoSession.SessionState(target),target,4);addonCheck("Actual checkpoint restore rejects a disabled addon",restore.restoreCount()==0&&restore.protectionRestore==null&&restore.nativeNavigationFailures==1);
+    View navigation=browsing();navigation.addonDisabled=true;addonCheck("Actual native navigation delegate denies a disabled addon",navigation.navigation(navigation.current,new LoadRequest(target)).value==AllowOrDeny.DENY&&navigation.nativeNavigationFailures==1);
+    View unopened=new View();unopened.addonDisabled=true;unopened.start(1);unopened.reply(true,false);View popup=browsing();popup.addonDisabled=true;addonCheck("Actual bootstrap and popup gates stay closed while addon disabled",unopened.opens==0&&popup.popup(popup.current,target).value==null&&popup.popups.isEmpty());
+  }
   public static void main(String[] args){
-    basicPolicy();controller();bootstrap();identityAdmission();
+    basicPolicy();controller();bootstrap();identityAdmission();disabledAddonAdmission();
     StringBuilder out=new StringBuilder("{\"status\":\"passed\",\"passed\":").append(checks.size()).append(",\"checks\":[");
     for(int i=0;i<checks.size();i++){if(i>0)out.append(',');out.append("{\"name\":").append(quote(checks.get(i))).append(",\"pass\":true}");}
-    System.out.println(out.append("],\"actualAndroidExecution\":false,\"actualGeckoExecution\":false,\"actualGeneralRouteExecution\":false,\"generalRouteBoundary\":\"Available independent app route with counted readiness/retain and lease facades; actual current production protection/controller methods remain extracted unchanged\"}"));
+    out.append("],\"addonBoundaryPassed\":").append(addonChecks.size()).append(",\"addonBoundaryChecks\":[");for(int i=0;i<addonChecks.size();i++){if(i>0)out.append(',');out.append("{\"name\":").append(quote(addonChecks.get(i))).append(",\"pass\":true}");}
+    System.out.println(out.append("],\"actualAndroidExecution\":false,\"actualGeckoExecution\":false,\"actualAddonLifecycleExecution\":false,\"actualGeneralRouteExecution\":false,\"generalRouteBoundary\":\"Available independent app route with counted readiness/retain and lease facades; actual current production protection/controller methods remain extracted unchanged\"}"));
   }
 }

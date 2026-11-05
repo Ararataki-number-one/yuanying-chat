@@ -6,10 +6,12 @@ Run from the repository root, once for each real org.json implementation:
 The runner extracts complete current production GeckoWebView methods for timezone
 session admission, gate retirement/completion, native read/apply dispatch, SDK
 window preparation, queued URI loading, loadUrl, restoreCheckpoint and the actual
-onLoadRequest delegate. It also extracts PocketSessionIdentity.id and compiles
+onLoadRequest delegate. It also extracts AppSessionIdentity.id and compiles
 the unchanged BrowserBridgeRequests, JSON helpers and public URL policies.
 Explicit intent claim/has/clear and the actual resumeProtectedLoads retry method
 are also extracted. No older gate tests or assertions have been removed.
+The current private startTimeZone helper, document revalidation, native resource
+wait/release helpers and guarded route/header wrappers are extracted as well.
 Extraction hashes and generated sources/commands/logs accompany each report.
 Inputs must remain unchanged throughout the run. No existing test is edited.
 
@@ -50,6 +52,28 @@ executed after restore to expose a stale main URL that would otherwise revive.
 Four additional precise mutants delete native-reload suppression while an
 explicit intent is pending, native-deferred URL supersession, restore clearing
 the old main URL, or the writer's exact-intent ownership check.
+
+New cases retain the original 108 assertions and 18 compiled controls. A second
+native session waiting asynchronously must still replay only its latest target
+when the foreground session advances its navigation epoch. Same-URL requests
+use exact-object intents, and a superseded callback cannot consume a newer one.
+Document commits keep the SDK open epoch but advance a separate validation
+generation; old native callbacks cannot finish a newer generation or reload the
+already committed page. A direct dispatch case supplements the original
+send-port assertion now that an outer NativeAccess guard independently checks
+that port; the original case is still executed.
+
+Native route/header requests wait only for committed-document revalidation,
+with the production queue bound and four-second deadline. Success replays each
+exact target through its current inner policy; failure, ownership changes,
+newer documents, closed/retired sessions and expiry fail closed. Overflow cannot
+replace existing requests, and late readiness cannot revive expired requests.
+Document-proof callbacks must complete before held HTTP policies are retried.
+The wrapper control-flow tests use explicit inner route/header policy boundaries
+with counted target calls; actual pure policy checks remain in their separate
+original suites. No packet, HTTP header or native callback receipt is fabricated.
+Additional compiled semantic mutations cover these new properties while all
+original 18 controls remain mandatory.
 
 This executes app Java control flow on a host JVM. It does not execute Android,
 GeckoView, native BrowsingContext timezone setters, the real controller/store,

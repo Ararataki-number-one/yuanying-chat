@@ -80,7 +80,10 @@ this.pocketNativeTimezone = class extends ExtensionCommon.ExtensionAPI {
       async applySession(sessionId, zoneId, requestToken) {
         boundedIdentity(requestToken, 'request-token'); zone(zoneId);
         const match = nativeContext(sessionId);
-        match.top.timezoneOverride = zoneId;
+        // A context may already inherit this override after a COOP transition.
+        // Reconfirm its actual value without an unnecessary native setter,
+        // which can reload the current document even for an unchanged zone.
+        if (match.top.timezoneOverride !== zoneId) match.top.timezoneOverride = zoneId;
         return receipt(match, sessionId, requestToken, zoneId, 'applied');
       },
       async readSession(sessionId, requestToken) {

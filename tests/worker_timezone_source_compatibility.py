@@ -13,7 +13,7 @@ ROOT = Path(__file__).resolve().parents[1]
 BASE_COMMIT = '8a0a487002993f5dacc02ed313fab00648ccb79a'
 BASE_TREE = '4bcc73a10bcba0d9bf97c44d02045af525361fad'
 DELTA_PATH = ROOT / 'tests/fixtures/worker-timezone-source-deltas.json'
-DELTA_SHA256 = '46d4182d1ab77356d722aee7a00805948f27a6044dc60f54edbaa35b734725e4'
+DELTA_SHA256 = '4eafec08cbeb3beb9098ebf5df7b976423616bb213e47e802a1d39315a27602b'
 MAX_FIXTURE_BYTES = 256 * 1024
 PATHS = frozenset((
     'app/src/main/java/local/pocketchat/ChatSession.java',

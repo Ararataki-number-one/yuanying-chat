@@ -116,7 +116,85 @@ public final class TimezoneFlowHost {
     String summary=GeckoTimeZoneUi.summary(J.obj("loaded",true,"desiredZone","UTC","nativeSettingReadback",true));check("Actual status summary distinguishes native readback from page/worker verification",summary.contains("原生设置已回读")&&summary.contains("页面与 Worker 尚未验证"));
     check("Native readback summary never hides Service Worker limitation",summary.contains("Service Worker 仍可读取系统时区，不能提供完整时区隔离"));
   }
-  public static void main(String[] args)throws Exception{root=Paths.get(args[0]);Files.createDirectories(root);successfulPublication();identityFailures();staleAndTimeout();parallelSessions();observationBinding();pendingLoadAndFailure();defaultsAndProtection();finalDraftAndSafety();uiEntry();System.out.println(J.obj("status","passed","passed",checks.size(),"total",checks.size(),"checks",new JSONArray(checks)));}
+  static List<Boolean> revalidate(ChatSession s,Native n){List<Boolean> out=new ArrayList<>();s.timeZone.revalidate(n.session,n.sid,n.epoch,n,out::add);return out;}
+  static JSONObject durable(ChatSession s)throws Exception{return GeckoTimeZoneHost.rawObject(s.context).getJSONObject("receipt");}
+  static void readCurrent(ChatSession s,Native n,String zone)throws Exception{JSONObject read=new JSONObject(n.ack(n.readToken,zone,n.context));read.put("status","read");n.readSuccess.accept(read.toString());s.pump();}
+  static void committedContexts()throws Exception{
+    ChatSession s=session("America/New_York");Native before=nativeFor(s);before.context="6";prepare(s,before);accept(s,before);
+    JSONObject receipt=durable(s);String oldToken=receipt.getString("requestToken"),oldStamp=s.timeZone.auditStamp();long revision=s.timeZone.cached.revision;
+    check("Initial real controller receipt is bound to native context six",receipt.getJSONObject("binding").getString("contextId").equals("6")&&verified(s,before));
+    JSONObject oldObservation=J.obj("connectionEpoch",s.connectionEpoch,"executionId",EnvironmentAudit.OBSERVATION_EXECUTION_ID,"policy",s.audit.policyStamp());
+    Native committed=new Native(before.session,before.sid,before.epoch);committed.context="7";List<Boolean> done=revalidate(s,committed);
+    check("New document synchronously revokes old confirmation despite identical SDK session and open epoch",done.isEmpty()&&!verified(s,committed)&&!s.timeZone.allowed(committed.session,committed.epoch));
+    check("New document performs a fresh private read rather than reusing the completed operation",committed.readCalls==1&&committed.applyCalls==0&&!committed.readToken.equals(oldToken));
+    check("COOP context change immediately retires old audit evidence",!oldStamp.equals(s.timeZone.auditStamp())&&!s.audit.observationCurrent(oldObservation)&&!s.timeZone.auditExpected(J.obj()).optBoolean("timezoneNativeReadback"));
+    check("Historical durable context does not imply current native readiness",durable(s).getJSONObject("binding").getString("contextId").equals("6")&&!verified(s,committed));
+    readCurrent(s,committed,"America/New_York");
+    check("Fresh context seven gets a new ticket and exact desired native apply request",committed.applyCalls==1&&committed.zone.equals("America/New_York")&&!committed.applyToken.equals(oldToken)&&done.isEmpty());
+    committed.applySuccess.accept(committed.ack(committed.applyToken,committed.zone,"7"));s.handler.drain();
+    check("New context ACK remains unconfirmed until the writer publishes it",done.isEmpty()&&!verified(s,committed));
+    s.environmentIo.drain();check("Durable context publication alone does not skip UI ownership recheck",done.isEmpty());s.handler.drain();
+    receipt=durable(s);check("COOP renews durable binding to actual context seven with strict applied receipt",done.equals(Arrays.asList(true))&&verified(s,committed)&&receipt.getJSONObject("binding").getString("contextId").equals("7")&&receipt.getJSONObject("nativeReceipt").getString("status").equals("applied")&&receipt.getString("requestToken").equals(committed.applyToken));
+    check("Context renewal does not change desired revision or reload the document",s.timeZone.cached.revision==revision&&s.web.reloads==0);
+    before.readSuccess.accept(before.ack(before.readToken,"America/New_York","6"));before.applySuccess.accept(before.ack(before.applyToken,"America/New_York","6"));s.pump();
+    check("Late previous-context read and apply callbacks cannot overwrite the new receipt",durable(s).getJSONObject("binding").getString("contextId").equals("7")&&durable(s).getString("requestToken").equals(committed.applyToken)&&verified(s,committed));
+    Native same=new Native(committed.session,committed.sid,committed.epoch);same.context="7";done=revalidate(s,same);readCurrent(s,same,"America/New_York");
+    check("Same-context document still requires fresh exact native acknowledgement",same.applyCalls==1&&!same.applyToken.equals(committed.applyToken)&&done.isEmpty()&&!verified(s,same));
+    same.applySuccess.accept(same.ack(same.applyToken,same.zone,"7"));s.pump();s.handler.expire();s.pump();
+    check("Same-context renewal completes without reload or recurring native requests",done.equals(Arrays.asList(true))&&verified(s,same)&&same.readCalls==1&&same.applyCalls==1&&s.web.reloads==0);
+    check("Old observation cannot revive after same-value context renewal",!s.audit.observationCurrent(oldObservation));
+    Native aux=new Native(new Object(),"aux_commit_session","aux_commit_epoch");aux.context="55";prepare(s,aux);accept(s,aux);
+    Native latest=new Native(same.session,same.sid,same.epoch);latest.context="8";revalidate(s,latest);
+    check("Revalidating one native session does not borrow or retire auxiliary confirmation",verified(s,aux)&&!verified(s,latest));
+    Native stale=new Native(latest.session,latest.sid,latest.epoch);stale.context="9";List<Boolean> superseded=revalidate(s,stale);Consumer<String> staleRead=stale.readSuccess;String staleReadToken=stale.readToken;
+    Native newest=new Native(stale.session,stale.sid,stale.epoch);newest.context="10";List<Boolean> current=revalidate(s,newest);
+    check("A later document validation retires the previous pending validation",superseded.equals(Arrays.asList(false))&&current.isEmpty());
+    staleRead.accept(stale.ack(staleReadToken,"America/New_York","9"));s.pump();check("Superseded document read cannot mint a native apply",stale.applyCalls==0&&!verified(s,newest));
+    readCurrent(s,newest,"America/New_York");newest.applySuccess.accept(newest.ack(newest.applyToken,newest.zone,"10"));s.pump();
+    check("Only latest document generation can publish its exact native context",current.equals(Arrays.asList(true))&&durable(s).getJSONObject("binding").getString("contextId").equals("10")&&verified(s,newest));
+    for(String invalid:new String[]{"foreign-session","old-open-epoch","unknown-native","retired-access"}){
+      Native attempt=new Native(invalid.equals("unknown-native")?new Object():newest.session,invalid.equals("foreign-session")?"foreign_sid":newest.sid,invalid.equals("old-open-epoch")?newest.epoch+"_old":newest.epoch);if(invalid.equals("retired-access"))attempt.live=false;
+      List<Boolean> denied=revalidate(s,attempt);check("Stale document-validation authority cannot revoke current confirmation: "+invalid,denied.equals(Arrays.asList(false))&&attempt.readCalls==0&&verified(s,newest));
+    }
+  }
+  static void committedContextFailures()throws Exception{
+    for(String failure:new String[]{"read","apply-context","vault","document-retired","desired-revision","owner-generation"}){
+      ChatSession s=session("America/New_York");Native before=nativeFor(s);before.context="6";prepare(s,before);accept(s,before);Native changed=new Native(before.session,before.sid,before.epoch);changed.context="7";List<Boolean> done=revalidate(s,changed);
+      if(failure.equals("read")){changed.readFailure.accept(new IllegalStateException("native unavailable"));s.pump();check("Failed fresh native read cannot inherit historical readiness",done.equals(Arrays.asList(false))&&!verified(s,changed));continue;}
+      readCurrent(s,changed,"America/New_York");Consumer<String> callback=changed.applySuccess;String applyToken=changed.applyToken;
+      if(failure.equals("vault"))s.context.vault.failPut=true;
+      if(failure.equals("document-retired"))changed.live=false;
+      if(failure.equals("desired-revision")){GeckoTimeZoneStore.save(s.context,s.timeZone.cached.identity,s.timeZone.cached.revision,GeckoTimeZoneSpec.of("UTC"));s.timeZone.refresh(null);s.pump();}
+      if(failure.equals("owner-generation"))s.context.catalog.current=new EnvironmentSpec.Identity(2,5,GeckoTimeZoneHost.ID);
+      callback.accept(changed.ack(applyToken,changed.zone,failure.equals("apply-context")?"8":"7"));s.pump();
+      check("Context renewal cannot confirm stale or unpublished native state: "+failure,!verified(s,changed)&&!s.timeZone.auditExpected(J.obj()).optBoolean("timezoneNativeReadback"));
+      if(failure.equals("document-retired")){s.handler.expire();s.pump();check("Retired document callback remains bounded by the original preparation deadline",done.equals(Arrays.asList(false))&&!verified(s,changed));}
+      if(!failure.equals("document-retired"))check("Rejected context renewal never opens its custom-zone gate: "+failure,done.equals(Arrays.asList(false)));
+      if(failure.equals("apply-context"))check("A context change between fresh read and apply remains a strict mismatch",durable(s).getJSONObject("binding").getString("contextId").equals("6"));
+    }
+  }
+  static void configurationStamp()throws Exception{
+    ChatSession s=session("America/New_York");String configuration=s.timeZone.auditConfigurationStamp(),full=s.timeZone.auditStamp();Native nativePage=nativeFor(s);nativePage.context="6";prepare(s,nativePage);accept(s,nativePage);
+    check("Native preparation changes full proof but preserves exact configuration identity",configuration.equals(s.timeZone.auditConfigurationStamp())&&!full.equals(s.timeZone.auditStamp()));
+    Native next=new Native(nativePage.session,nativePage.sid,nativePage.epoch);next.context="7";List<Boolean> done=revalidate(s,next);readCurrent(s,next,"America/New_York");next.applySuccess.accept(next.ack(next.applyToken,next.zone,"7"));s.pump();
+    check("COOP native context renewal does not change desired configuration stamp",done.equals(Arrays.asList(true))&&configuration.equals(s.timeZone.auditConfigurationStamp()));
+    s.timeZone.retire(next.session,next.epoch);s.pump();check("Native retirement alone does not masquerade as a desired configuration edit",configuration.equals(s.timeZone.auditConfigurationStamp()));
+    s.timeZone.refresh(null);s.pump();check("Unchanged durable refresh preserves configuration stamp",configuration.equals(s.timeZone.auditConfigurationStamp()));
+    s.context.vault.failRead=true;s.timeZone.refresh(null);s.pump();String failed=s.timeZone.auditConfigurationStamp();check("Unreadable configuration permanently invalidates an authorized configuration stamp",!configuration.equals(failed));
+    s.timeZone.refresh(null);s.pump();check("Another failed configuration load cannot reuse the earlier failed epoch",!failed.equals(s.timeZone.auditConfigurationStamp()));
+    s.context.vault.failRead=false;s.timeZone.refresh(null);s.pump();check("Same-revision recovery cannot revive the pre-failure configuration stamp",!configuration.equals(s.timeZone.auditConfigurationStamp())&&s.timeZone.cached.spec.zoneId.equals("America/New_York"));
+    String beforeSave=s.timeZone.auditConfigurationStamp();long revision=s.timeZone.cached.revision;List<String> saved=new ArrayList<>();s.timeZone.saveConfirmed(s.timeZone.cached,s.timeZone.cached.spec,()->true,saved::add);s.pump();
+    check("Successful same-value save is a new configuration intent without inventing a new revision",saved.equals(Arrays.asList(""))&&s.timeZone.cached.revision==revision&&!beforeSave.equals(s.timeZone.auditConfigurationStamp()));
+    String ny=s.timeZone.auditConfigurationStamp();GeckoTimeZoneStore.State utc=GeckoTimeZoneStore.save(s.context,s.timeZone.cached.identity,revision,GeckoTimeZoneSpec.of("UTC"));s.timeZone.refresh(null);s.pump();String utcStamp=s.timeZone.auditConfigurationStamp();
+    check("Externally loaded desired revision changes configuration identity",!ny.equals(utcStamp)&&s.timeZone.cached.spec.equals(utc.spec));
+    GeckoTimeZoneStore.save(s.context,utc.identity,utc.revision,GeckoTimeZoneSpec.of("America/New_York"));s.timeZone.refresh(null);s.pump();check("Configuration A to B to A cannot resurrect the original authorization stamp",!ny.equals(s.timeZone.auditConfigurationStamp())&&!utcStamp.equals(s.timeZone.auditConfigurationStamp()));
+    String beforeCounterfeit=s.timeZone.auditConfigurationStamp();JSONObject raw=GeckoTimeZoneHost.rawObject(s.context);raw.getJSONObject("spec").put("zoneId","UTC");raw.put("receipt",new JSONObject());GeckoTimeZoneHost.rawWrite(s.context,raw.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8));s.timeZone.refresh(null);s.pump();String changed=s.timeZone.auditConfigurationStamp();
+    check("Counterfeit same-revision spec replacement cannot reuse configuration authorization",!beforeCounterfeit.equals(changed)&&s.timeZone.cached.spec.zoneId.equals("UTC"));
+    raw.getJSONObject("spec").put("zoneId","America/New_York");GeckoTimeZoneHost.rawWrite(s.context,raw.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8));s.timeZone.refresh(null);s.pump();
+    check("Same-revision spec A to B to A still advances a non-revivable configuration epoch",!beforeCounterfeit.equals(s.timeZone.auditConfigurationStamp())&&!changed.equals(s.timeZone.auditConfigurationStamp()));
+    ChatSession another=session("America/New_York");check("Independent controller instances cannot lend configuration authorization",!another.timeZone.auditConfigurationStamp().equals(s.timeZone.auditConfigurationStamp()));
+  }
+  public static void main(String[] args)throws Exception{root=Paths.get(args[0]);Files.createDirectories(root);successfulPublication();identityFailures();staleAndTimeout();parallelSessions();observationBinding();pendingLoadAndFailure();defaultsAndProtection();finalDraftAndSafety();uiEntry();committedContexts();committedContextFailures();configurationStamp();System.out.println(J.obj("status","passed","passed",checks.size(),"total",checks.size(),"checks",new JSONArray(checks)));}
 }
 
 final class Native implements GeckoTimeZoneController.NativeAccess {

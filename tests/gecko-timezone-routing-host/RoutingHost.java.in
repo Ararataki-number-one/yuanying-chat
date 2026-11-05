@@ -195,15 +195,107 @@ public final class RoutingHost {
       nativeAfterLoad(first,last);loadAfterNative(first,last);nativeAfterRestore(first,last);restoreAfterNative(first,last);restoreAfterLoad(first,last);loadAfterRestore(first,last);newestRestore(first,last);writerAfterLoad(first,last);
     }
   }
+  static WebBoundary prepared(){WebBoundary web=new WebBoundary();web.loadUrl(SITE);sdk(web);allow(web);return web;}
+  static void sdk(SessionBoundary session){session.pending.get(session.pending.size()-1).complete("SDK document window boundary");}
+  static boolean accepted(ResultBoundary<Object> result){return result.completed&&J.parse((String)result.value).optBoolean("allowed");}
+  static void directSendPort(){
+    WebBoundary web=new WebBoundary();web.prepareTimeZone(web.current,ignored->{});sdk(web);PortBoundary old=web.routePort;web.routePort=new PortBoundary();List<String> good=new ArrayList<>();List<Throwable> bad=new ArrayList<>();
+    web.sendTimeZone(old,web.current,web.timeZoneGates.get(web.current),"timezoneRead","","direct-port-token",good::add,bad::add);
+    check("A changed port is rejected before posting a native timezone request",old.messages.isEmpty()&&good.isEmpty()&&bad.size()==1);
+  }
+  static void secondaryNavigation(){
+    WebBoundary web=prepared();SessionBoundary secondary=new SessionBoundary();web.locations.put(secondary,"");web.loadSessionUri(secondary,SITE);web.loadSessionUri(secondary,OTHER);web.owner.navigationEpoch++;
+    sdk(secondary);allow(web);
+    check("A secondary session replays its newest target despite the primary navigation epoch advancing",secondary.events.equals(List.of("load "+OTHER))&&web.current.events.equals(List.of("load "+SITE))&&web.timeZoneLoads.isEmpty()&&web.nativeTimeZoneIntents.isEmpty());
+  }
+  static void sameNativeIntent(){
+    WebBoundary web=new WebBoundary();web.loadSessionUri(web.current,SITE);web.loadSessionUri(web.current,SITE);sdk(web);
+    WebBoundary.TimeZoneGate gate=web.timeZoneGates.get(web.current);List<Consumer<Boolean>> callbacks=new ArrayList<>(gate.waiting);Object newest=web.nativeTimeZoneIntents.get(web.current);
+    check("Same-URL native requests keep distinct exact-object intents",callbacks.size()==2&&newest!=null);
+    // This is the real gate-completion state immediately before the actual
+    // waiting callbacks run. Isolate which produced closure may consume it.
+    web.owner.timeZone.calls.get(0).ready=true;gate.ready=true;callbacks.get(0).accept(true);
+    check("Old same-URL native completion cannot consume the newer exact intent",web.current.loads.isEmpty()&&web.nativeTimeZoneIntents.get(web.current)==newest&&web.timeZoneLoads.get(web.current).equals(SITE));
+    callbacks.get(1).accept(true);check("Latest same-URL native intent alone loads once",web.current.events.equals(List.of("load "+SITE))&&web.nativeTimeZoneIntents.isEmpty()&&web.timeZoneLoads.isEmpty());
+  }
+  static void documentRevalidation(){
+    WebBoundary web=prepared();SessionBoundary session=web.current;WebBoundary.TimeZoneGate gate=web.timeZoneGates.get(session);String epoch=gate.epoch;ControllerBoundary.Call original=web.owner.timeZone.calls.get(0);
+    web.revalidateTimeZone(session);ControllerBoundary.Call changed=web.owner.timeZone.calls.get(1);
+    check("Document commit immediately retires ready state within the same SDK open epoch",web.timeZoneGates.get(session)==gate&&gate.epoch.equals(epoch)&&gate.documentSerial==1&&gate.preparing&&gate.revalidating&&!gate.ready&&!web.timeZoneAllows(session)&&changed.revalidation);
+    check("Document commit revalidation invalidates the previous native-access generation",!original.access.current()&&changed.access.current()&&session.reads==2);
+    List<String> good=new ArrayList<>();List<Throwable> bad=new ArrayList<>();changed.access.read("committed-context-token",good::add,bad::add);
+    check("Committed native read waits on its actual SDK window boundary",web.routePort.messages.isEmpty()&&good.isEmpty()&&bad.isEmpty());
+    sdk(web);JSONObject request=web.routePort.messages.get(0);web.cookieCallbacks.complete(web.routePort,request.optInt("id"),"native boundary response");
+    check("Committed context read uses a fresh exact private request correlation",request.optString("requestToken").equals("committed-context-token")&&good.equals(List.of("native boundary response")));
+    allow(web);check("Revalidated document resumes readiness without app navigation or reload",web.timeZoneAllows(session)&&!gate.revalidating&&!gate.preparing&&session.events.equals(List.of("load "+SITE)));
+    web.revalidateTimeZone(session);ControllerBoundary.Call prior=web.owner.timeZone.calls.get(2);long oldSerial=gate.documentSerial;
+    web.revalidateTimeZone(session);ControllerBoundary.Call latest=web.owner.timeZone.calls.get(3);web.owner.timeZone.complete(prior,true);
+    check("Old document callback cannot finish its newer gate",gate.documentSerial>oldSerial&&gate.preparing&&gate.revalidating&&!gate.ready&&!prior.access.current()&&latest.access.current());
+    sdk(web);web.owner.timeZone.complete(latest,true);check("Only the newest committed document completes readiness",web.timeZoneAllows(session)&&session.events.equals(List.of("load "+SITE)));
+  }
+  static void heldRequests(){
+    WebBoundary web=prepared();web.revalidateTimeZone(web.current);ResultBoundary<Object> route=web.guardedRoute(SITE+"/script.js"),header=web.guardedRequestHeaderPolicy(OTHER+"/frame");
+    check("Committed-document route waits without invoking the inner policy",!route.completed&&web.routeCalls==0);
+    check("Committed-document header request waits without invoking the inner policy",!header.completed&&web.headerCalls==0);
+    check("Both native resource requests join the exact revalidation gate",web.timeZoneGates.get(web.current).networkWaiting.size()==2);
+    sdk(web);allow(web);
+    check("Fresh document confirmation resumes each exact target through current policies",accepted(route)&&accepted(header)&&web.routeCalls==1&&web.headerCalls==1&&J.parse((String)route.value).optString("routeTarget").equals(SITE+"/script.js")&&J.parse((String)header.value).optString("headerTarget").equals(OTHER+"/frame"));
+    check("Successful resource admission releases its queue and deadlines",web.timeZoneGates.get(web.current).networkWaiting.isEmpty()&&web.owner.handler.tasks.isEmpty());
+    WebBoundary revoked=prepared();revoked.revalidateTimeZone(revoked.current);ResultBoundary<Object> noRoute=revoked.guardedRoute(SITE),noHeader=revoked.guardedRequestHeaderPolicy(OTHER);revoked.routeDecision=false;revoked.headerDecision=false;sdk(revoked);allow(revoked);
+    check("Held resources re-evaluate changed inner authorization for their own targets",noRoute.completed&&noHeader.completed&&!accepted(noRoute)&&!accepted(noHeader)&&revoked.routeCalls==1&&revoked.headerCalls==1);
+    WebBoundary denied=prepared();denied.revalidateTimeZone(denied.current);ResultBoundary<Object> failedRoute=denied.guardedRoute(SITE),failedHeader=denied.guardedRequestHeaderPolicy(OTHER);sdk(denied);denied.owner.timeZone.complete(denied.owner.timeZone.calls.get(1),false);
+    check("Failed context confirmation blocks resources without calling inner policies",failedRoute.completed&&failedHeader.completed&&!accepted(failedRoute)&&!accepted(failedHeader)&&denied.routeCalls==0&&denied.headerCalls==0);
+    WebBoundary ordinary=new WebBoundary();ordinary.prepareTimeZone(ordinary.current,ignored->{});ResultBoundary<Object> immediate=ordinary.guardedRoute(SITE);
+    check("Ordinary bootstrap uses its existing inner policy rather than the document-only hold",immediate.completed&&ordinary.routeCalls==1&&ordinary.timeZoneGates.get(ordinary.current).networkWaiting.isEmpty());
+  }
+  static void heldOwnership(String kind){
+    WebBoundary web=prepared();SessionBoundary original=web.current;web.revalidateTimeZone(original);ResultBoundary<Object> route=web.guardedRoute(SITE),header=web.guardedRequestHeaderPolicy(OTHER);
+    switch(kind){case "navigation":web.owner.navigationEpoch++;break;case "connection":web.owner.connectionEpoch++;break;case "identity":web.identityPolicyRevision++;break;case "protection":web.nativeProtection.value++;break;case "desired":web.owner.timeZone.desiredRevision++;break;case "port":web.routePort=new PortBoundary();break;case "closed":original.open=false;break;case "destroyed":web.destroyed=true;break;case "deleted":web.owner.deleted=true;break;case "current":web.current=new SessionBoundary();break;default:throw new AssertionError(kind);}
+    sdk(original);allow(web);
+    check("Held requests reject changed "+kind+" ownership",route.completed&&header.completed&&!accepted(route)&&!accepted(header)&&web.routeCalls==0&&web.headerCalls==0);
+  }
+  static void heldQueueBound(){
+    WebBoundary web=prepared();web.revalidateTimeZone(web.current);sdk(web);List<ResultBoundary<Object>> waiting=new ArrayList<>();for(int i=0;i<128;i++)waiting.add(web.guardedRoute(SITE+"/"+i));ResultBoundary<Object> overflow=web.guardedRoute(OTHER);
+    check("Document resource queue rejects its overflow without replacing existing requests",overflow.completed&&!accepted(overflow)&&waiting.stream().noneMatch(value->value.completed)&&web.timeZoneGates.get(web.current).networkWaiting.size()==128&&web.routeCalls==0);
+    web.owner.handler.advance(3999);check("Resource admission stays pending before the original four-second deadline",waiting.stream().noneMatch(value->value.completed));
+    web.owner.handler.advance(1);check("Resource deadline fails closed and releases all queued requests",waiting.stream().allMatch(value->value.completed&&!accepted(value))&&web.timeZoneGates.get(web.current).networkWaiting.isEmpty()&&web.routeCalls==0);
+    allow(web);check("Late successful context confirmation cannot revive expired resources",waiting.stream().allMatch(value->value.completed&&!accepted(value))&&web.routeCalls==0&&web.owner.handler.tasks.isEmpty());
+  }
+  static void heldNewDocument(){
+    WebBoundary web=prepared();web.revalidateTimeZone(web.current);ControllerBoundary.Call prior=web.owner.timeZone.calls.get(1);ResultBoundary<Object> old=web.guardedRoute(SITE);
+    web.revalidateTimeZone(web.current);ResultBoundary<Object> latest=web.guardedRoute(OTHER);
+    check("A newer committed document retires already held resource requests",old.completed&&!accepted(old)&&!latest.completed);
+    web.owner.timeZone.complete(prior,true);check("Stale document acknowledgement cannot release a newer document resource",!latest.completed&&web.routeCalls==0);
+    sdk(web);allow(web);check("Newest document alone can release its current resource target",accepted(latest)&&J.parse((String)latest.value).optString("routeTarget").equals(OTHER)&&!accepted(old));
+    WebBoundary closed=prepared();closed.revalidateTimeZone(closed.current);ControllerBoundary.Call late=closed.owner.timeZone.calls.get(1);ResultBoundary<Object> held=closed.guardedRoute(SITE);closed.retireTimeZone(closed.current);closed.owner.timeZone.complete(late,true);
+    check("Gate retirement fails held resources and ignores later confirmation",held.completed&&!accepted(held)&&closed.timeZoneGates.isEmpty()&&closed.routeCalls==0);
+  }
+  static void proofBeforeRequests(){
+    WebBoundary web=prepared();web.revalidateTimeZone(web.current);web.routeDecision=false;List<Boolean> proofs=new ArrayList<>();
+    web.timeZoneGates.get(web.current).proofWaiting.add(ready->{proofs.add(ready);if(ready)web.routeDecision=true;});ResultBoundary<Object> held=web.guardedRoute(SITE);
+    sdk(web);allow(web);
+    check("Native document proofs complete before held HTTP policies are retried",proofs.equals(List.of(true))&&accepted(held)&&web.routeCalls==1&&web.timeZoneGates.get(web.current).proofWaiting.isEmpty());
+  }
+  static void addonEntryBoundary(){
+    for(String path:new String[]{"load","native","restore","delegate"}){
+      WebBoundary web=new WebBoundary();web.addonRejected=true;
+      if(path.equals("load"))web.loadUrl(SITE);else if(path.equals("native"))web.loadSessionUri(web.current,SITE);else if(path.equals("restore"))web.restoreCheckpoint(web.current,new StateBoundary(SITE),SITE,7);else check("Disabled addon declaration denies the actual navigation delegate",web.onLoadRequest(web.current,new LoadRequest(SITE)).value==AllowOrDeny.DENY);
+      check("Independent addon refusal precedes SDK timezone work: "+path,web.addonChecks>0&&web.current.reads==0&&web.current.events.isEmpty()&&web.owner.timeZone.calls.isEmpty());
+    }
+  }
   public static void main(String[] args){
     if(args.length>0){switch(args[0]){
       case "load-first-gate":firstLoad();break;case "restore-first-gate":checkpoint();break;case "navigation-first-gate":navigation();break;
       case "ready-gate":case "controller-gate":gate(args[0]);break;case "retired-gate":retired();break;
       case "window-port":case "window-session":windowChanged(args[0]);break;case "navigation-epoch":changedEpoch();break;
-      case "restore-epoch":case "restore-current":changedRestore(args[0]);break;case "after-worker-gate":filteredRecheck();break;case "send-port":case "reply-port":send(args[0]);break;
+      case "restore-epoch":case "restore-current":changedRestore(args[0]);break;case "after-worker-gate":filteredRecheck();break;case "send-port":send(args[0]);directSendPort();break;case "reply-port":send(args[0]);break;
       case "explicit-native-queue":nativeAfterLoad(SITE,OTHER);break;case "claim-clears-native-queue":loadAfterNative(SITE,OTHER);break;case "restore-clears-main-queue":restoreAfterLoad(SITE,OTHER);break;case "worker-intent-owner":writerAfterLoad(SITE,OTHER);break;
+      case "secondary-epoch":secondaryNavigation();break;case "native-same-url-intent":sameNativeIntent();break;case "document-serial":documentRevalidation();break;
+      case "held-route":case "held-header":heldRequests();break;case "held-queue-cap":heldQueueBound();break;
+      case "held-identity":heldOwnership("identity");break;case "held-desired":heldOwnership("desired");break;
+      case "proof-before-requests":proofBeforeRequests();break;
       default:throw new AssertionError(args[0]);
-    }}else{firstLoad();checkpoint();navigation();gate("");retired();windowChanged("window-port");windowChanged("window-session");changedEpoch();changedRestore("restore-epoch");changedRestore("restore-current");timeout();disconnected();send("all");popups();filteredRestore();filteredRecheck();guards();intentOwnership();}
+    }}else{firstLoad();checkpoint();navigation();gate("");retired();windowChanged("window-port");windowChanged("window-session");changedEpoch();changedRestore("restore-epoch");changedRestore("restore-current");timeout();disconnected();send("all");popups();filteredRestore();filteredRecheck();guards();intentOwnership();directSendPort();secondaryNavigation();sameNativeIntent();documentRevalidation();heldRequests();for(String kind:new String[]{"navigation","connection","identity","protection","desired","port","closed","destroyed","deleted","current"})heldOwnership(kind);heldQueueBound();heldNewDocument();proofBeforeRequests();addonEntryBoundary();}
     System.out.println(J.obj("status","passed","passed",checks.length(),"total",checks.length(),"checks",checks,"actualAndroidExecution",false,"actualGeckoExecution",false,"nativeTimezoneReadback",false,"dateIntlEffectVerified",false,"workerEffectVerified",false).toString());
   }
 }
@@ -212,11 +304,17 @@ class WebBoundary {
   @METHODS@
   final OwnerBoundary owner=new OwnerBoundary();final MetadataBoundary metadata=new MetadataBoundary();final StoreBoundary sessionStore=new StoreBoundary();
   final Map<SessionBoundary,TimeZoneGate> timeZoneGates=new IdentityHashMap<>();final Map<SessionBoundary,String> timeZoneLoads=new IdentityHashMap<>(),locations=new IdentityHashMap<>(),deferredGeneralLoads=new IdentityHashMap<>();
-  final Map<SessionBoundary,Object> timeZoneIntents=new IdentityHashMap<>();
+  final Map<SessionBoundary,Object> timeZoneIntents=new IdentityHashMap<>(),nativeTimeZoneIntents=new IdentityHashMap<>();
   final List<SessionBoundary> popups=new ArrayList<>();final Set<SessionBoundary> crashed=Collections.newSetFromMap(new IdentityHashMap<>());
   final Map<SessionBoundary,StateBoundary> states=new IdentityHashMap<>();final Map<SessionBoundary,Long> stateDraftRevisions=new IdentityHashMap<>();
   SessionBoundary current=new SessionBoundary(),primary=current;PortBoundary routePort=new PortBoundary();ExitBoundary exitIpPage;
   boolean destroyed,ready=true,privacyReady=true,requestHeadersInstalled=true,protectedNetwork=true,identityAllowed=true,routeReady=true;String queued="";StateBoundary startupState;long startupDraftRevision=7;
+  long identityPolicyRevision=1;final ProtectionBoundary nativeProtection=new ProtectionBoundary();
+  int routeCalls,headerCalls;boolean routeDecision=true,headerDecision=true;
+  // Addon terminal lifecycle is exercised in its independent actual-method
+  // suite. Original timezone cases explicitly declare that dependency enabled.
+  boolean addonRejected;int addonChecks;
+  boolean rejectDisabledNavigation(SessionBoundary session,String target){addonChecks++;return addonRejected;}
   ProtectionRestore generalRestore,protectionRestore;
   final BrowserBridgeRequests cookieCallbacks=new BrowserBridgeRequests(new BrowserBridgeRequests.Timer(){public void schedule(Runnable task,long delay){owner.handler.postDelayed(task,delay);}public void cancel(Runnable task){owner.handler.removeCallbacks(task);}},null);
   WebBoundary(){locations.put(current,"");}
@@ -224,6 +322,9 @@ class WebBoundary {
   boolean allowedUrl(String target){return GeckoNavigationPolicy.publicWeb(target);}
   boolean identityRequestAllowed(String target){return identityAllowed;}
   boolean protectionAllowsNetwork(){return protectedNetwork;}
+  JSONObject route(String target){routeCalls++;return J.obj("allowed",routeDecision,"routeTarget",target);}
+  JSONObject blocked(){return J.obj("allowed",false);}
+  ResultBoundary<Object> requestHeaderPolicy(String target){headerCalls++;return ResultBoundary.fromValue(J.obj("allowed",headerDecision,"headerTarget",target).toString());}
   String protectionSummary(){return "Protection boundary";}
   boolean retainGeneralRoute(SessionBoundary session,String target){return routeReady;}
   boolean generalRouteReady(){return routeReady;}
@@ -232,14 +333,16 @@ class WebBoundary {
   void resumeForBoundary(){resumeProtectedLoads();}
 }
 class OwnerBoundary {
-  boolean deleted;long navigationEpoch=1;int changed;String status="";final ContextBoundary context=new ContextBoundary();final HandlerBoundary handler=new HandlerBoundary();final ControllerBoundary timeZone=new ControllerBoundary();final GuardBoundary guard=new GuardBoundary();
+  boolean deleted;long navigationEpoch=1,connectionEpoch=1;int changed;String status="";final ContextBoundary context=new ContextBoundary();final HandlerBoundary handler=new HandlerBoundary();final ControllerBoundary timeZone=new ControllerBoundary();final GuardBoundary guard=new GuardBoundary();
   void changed(){changed++;}void setStatus(String value){status=value;}
 }
 class ControllerBoundary {
   interface NativeAccess {boolean current();void read(String token,Consumer<String> ok,Consumer<Throwable> fail);void apply(String zone,String token,Consumer<String> ok,Consumer<Throwable> fail);}
-  static final class Call {final Object session;final String sessionId;String epoch;final NativeAccess access;final Consumer<Boolean> done;boolean ready;Call(Object s,String id,String e,NativeAccess a,Consumer<Boolean> d){session=s;sessionId=id;epoch=e;access=a;done=d;}}
+  static final class Call {final Object session;final String sessionId;String epoch;final NativeAccess access;final Consumer<Boolean> done;boolean ready,revalidation;Call(Object s,String id,String e,NativeAccess a,Consumer<Boolean> d){session=s;sessionId=id;epoch=e;access=a;done=d;}}
   final List<Call> calls=new ArrayList<>();final Map<Object,Call> callsBySession=new IdentityHashMap<>();final List<String> retired=new ArrayList<>();boolean systemPopups=true;
   void prepare(Object session,String id,String epoch,NativeAccess access,Consumer<Boolean> done){Call call=new Call(session,id,epoch,access,done);calls.add(call);callsBySession.put(session,call);}
+  void revalidate(Object session,String id,String epoch,NativeAccess access,Consumer<Boolean> done){Call old=callsBySession.get(session);if(old!=null)old.ready=false;prepare(session,id,epoch,access,done);calls.get(calls.size()-1).revalidation=true;}
+  long desiredRevision=1;JSONObject status(){return J.obj("desiredRevision",desiredRevision);}
   boolean allowed(Object session,String epoch){Call call=callsBySession.get(session);return call!=null&&call.ready&&call.epoch.equals(epoch)&&call.access.current();}
   boolean popupAllowed(){return systemPopups;}
   void retire(Object session,String epoch){retired.add(epoch);Call call=callsBySession.get(session);if(call!=null&&call.epoch.equals(epoch))callsBySession.remove(session);}
@@ -275,6 +378,7 @@ class DraftPolicyBoundary {static boolean enabled(ContextBoundary context){retur
 class StoreBoundary {final ExecutorBoundary io=new ExecutorBoundary();}
 class ExecutorBoundary {final List<Runnable> tasks=new ArrayList<>();void execute(Runnable task){tasks.add(task);}void drain(){while(!tasks.isEmpty())tasks.remove(0).run();}}
 class MetadataBoundary {JSONObject timeZonePolicy;}
+class ProtectionBoundary {long value=1;long token(){return value;}}
 class GuardBoundary {boolean permitted=true;boolean allowed(){return permitted;}}
 class ExitBoundary {SessionBoundary aux;}
 class LoadRequest {final String uri;LoadRequest(String uri){this.uri=uri;}}

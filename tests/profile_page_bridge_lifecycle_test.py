@@ -54,6 +54,12 @@ def execute(view=None):
         if ran.returncode:
             raise AssertionError(ran.stdout + ran.stderr)
         report = json.loads(ran.stdout)
+        boundary = subprocess.run([java, '-cp', str(out) + os.pathsep + str(jar), 'local.pocketchat.DefaultTimeZoneBoundaryHost'], capture_output=True, text=True, timeout=30)
+        if boundary.returncode:
+            raise AssertionError('Declared default-system prerequisite boundary failed: ' + boundary.stderr)
+        report['defaultSystemTimeZoneBoundary'] = json.loads(boundary.stdout)
+        report['actualNativeTimeZoneExecution'] = False
+        report['actualAddonLifecycleExecution'] = False
         report.update(sourceCommit=subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip(), sourceFiles=hashes, executedViewSha256=hashlib.sha256(raw.encode()).hexdigest(), injectedCounterexample=view is not None, selectedMembersSha256={k: hashlib.sha256(v.encode()).hexdigest() for k, v in members.items()}, executionInputsUnchanged=all(hashlib.sha256((ROOT / k).read_bytes()).hexdigest() == v for k, v in hashes.items()), actualAndroidExecution=False, actualGeckoExecution=False, actualPhoneExecution=False, scope='Exact production bridge, authoritative location callback and request lifecycle with controlled SDK port/session and Android owner boundaries; not actual Gecko event ordering or malicious-page reachability proof.')
         return report
 

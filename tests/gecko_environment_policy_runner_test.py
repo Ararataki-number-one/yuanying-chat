@@ -106,7 +106,7 @@ class GeckoEnvironmentRunnerTests(unittest.TestCase):
         self.assertEqual(len(paths), len(set(paths)))
         self.assertTrue(all(path.is_file() and path.is_relative_to(ROOT) for path in paths))
         self.assertTrue({ROOT / name for name in runner.SOURCE_INPUTS} <= set(paths))
-        self.assertIn(ROOT / 'app/src/main/java/org/mozilla/geckoview/PocketSessionIdentity.java', paths)
+        self.assertIn(ROOT / 'app/src/main/java/org/mozilla/geckoview/AppSessionIdentity.java', paths)
         self.assertIn(ROOT / 'app/src/main/assets/gecko/native-timezone-api.js', paths)
 
 

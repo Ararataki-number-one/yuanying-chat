@@ -4,8 +4,8 @@ package org.mozilla.geckoview;
  * Gecko's chrome window name is this identifier; an extension tab number is not.
  * No SDK archive, native library, provider reflection or Android setting changes.
  */
-public final class PocketSessionIdentity {
-  private PocketSessionIdentity() {}
+public final class AppSessionIdentity {
+  private AppSessionIdentity() {}
 
   public static String id(GeckoSession session) {
     if (session == null) throw new IllegalArgumentException("Gecko session required");

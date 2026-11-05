@@ -49,7 +49,7 @@ def main():
             if gecko.count(needle)!=1:raise ValueError('Review one current Gecko member: '+needle)
             closure[needle]=hashlib.sha256(member(gecko,needle).encode()).hexdigest()
         template=template.replace('/* RESTORE */','\n'.join(member(gecko,n) for n in partial['GeckoWebView.java']))
-        route_fields=['final Set<GeckoSession> generalSessions=','final Map<GeckoSession,ChromiumRouteLease.Handle> generalRoutes=','final Map<GeckoSession,String> deferredGeneralLoads=','final Runnable routeLeaseChanged=','final Map<GeckoSession,String> locations=','final Set<GeckoSession> crashed=','final Map<GeckoSession,String> timeZoneLoads=','final Map<GeckoSession,Object> timeZoneIntents=']
+        route_fields=['final Set<GeckoSession> generalSessions=','final Map<GeckoSession,ChromiumRouteLease.Handle> generalRoutes=','final Map<GeckoSession,String> deferredGeneralLoads=','final Runnable routeLeaseChanged=','final Map<GeckoSession,String> locations=','final Set<GeckoSession> crashed=','final Map<GeckoSession,String> timeZoneLoads=','final Map<GeckoSession,Object> timeZoneIntents=','final Map<GeckoSession,Object> nativeTimeZoneIntents=']
         field_lines=[]
         for needle in route_fields:
             lines=[line.strip() for line in gecko.splitlines() if line.strip().startswith(needle)]
@@ -76,6 +76,15 @@ def main():
         if not before:
             calls=report['syntheticTimeZoneBoundary']
             if calls['readinessCalls']<=0 or calls['preparationCalls']!=0 or calls['actualNativeTimeZoneExecution'] is not False:raise AssertionError('Legacy restore must use only counted default-system-ready facade')
+        addon_controls=None
+        if not before:
+            addon_result=subprocess.run([binary('java'),'-cp',str(temp)+os.pathsep+str(args.json_jar.resolve()),'local.pocketchat.LocalDraftPolicyHost','addon-boundary'],capture_output=True,text=True)
+            if addon_result.returncode:raise RuntimeError('Declared addon admission boundary failed: '+addon_result.stderr+'\n'+addon_result.stdout)
+            addon_controls=json.loads(addon_result.stdout)
+            if addon_controls['passed']!=2 or addon_controls['status']!='passed':raise AssertionError('Complete addon collaborator controls required')
+        report['addonAdmissionBoundaryControls']=addon_controls
+        report['actualAddonLifecycleExecution']=False
+        report['addonBoundaryScope']='Explicit default-enabled/denied admission collaborator only. Actual extracted restore stays current; real SDK addon authority, error signaling and lifecycle are outside this legacy host.'
         controls=[]
         if not before and result.returncode==0 and report.get('status')=='passed':
             mutations=[

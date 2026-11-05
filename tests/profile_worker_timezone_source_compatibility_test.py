@@ -41,12 +41,13 @@ class WorkerTimezoneSourceCompatibility(unittest.TestCase):
     rejected_sources = 0
     rejected_guard_mutants = 0
     rejected_fixture_shapes = 0
+    rejected_transition_guard_mutants = 0
 
     def test_whole_before_and_after_forward_inverse_equal_real_8a_bytes(self):
         self.assertEqual(subprocess.check_output(['git', 'rev-parse', overlay.BASE_COMMIT + '^{tree}'], cwd=ROOT).decode().strip(), overlay.BASE_TREE)
         manifest = overlay.manifest()
         self.assertEqual(len(manifest['files']), 2)
-        self.assertEqual(sum(len(row['deltas']) for row in manifest['files'].values()), 22)
+        self.assertEqual(sum(len(row['deltas']) for row in manifest['files'].values()), 23)
         for relative, row in manifest['files'].items():
             with self.subTest(path=relative):
                 before = subprocess.check_output(['git', 'show', overlay.BASE_COMMIT + ':' + relative], cwd=ROOT)
@@ -91,7 +92,7 @@ class WorkerTimezoneSourceCompatibility(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     dual.source_input(mutant, relative)
                 rejected += 1
-        self.assertEqual(rejected, 94)
+        self.assertEqual(rejected, 98)
         type(self).rejected_sources = rejected
 
     def test_native_and_latest_explicit_intent_guards_cannot_be_rewritten(self):
@@ -117,6 +118,50 @@ class WorkerTimezoneSourceCompatibility(unittest.TestCase):
             with self.assertRaises(ValueError):
                 dual.source_input(mutant, relative)
         type(self).rejected_guard_mutants = len(variants)
+
+    def test_coop_document_http_session_and_addon_guards_cannot_be_normalized_away(self):
+        relative = 'app/src/main/java/local/pocketchat/GeckoWebView.java'
+        variants = (
+            ('gate.documentSerial++;gate.preparing=false;gate.ready=false;gate.revalidating=true;',
+             'gate.preparing=false;gate.ready=false;gate.revalidating=true;'),
+            ('owner.timeZone.revalidate(session,AppSessionIdentity.id(session),gate.epoch,access,finished);',
+             'owner.timeZone.prepare(session,AppSessionIdentity.id(session),gate.epoch,access,finished);'),
+            ('public boolean current(){return timeZoneSessionAlive(session)&&timeZoneGates.get(session)==gate&&gate.documentSerial==document&&port!=null&&routePort==port;}',
+             'public boolean current(){return timeZoneSessionAlive(session)&&timeZoneGates.get(session)==gate&&port!=null&&routePort==port;}'),
+            ('"sessionId",AppSessionIdentity.id(session),"requestToken",token',
+             '"sessionId","foreign-session","requestToken",token'),
+            ('expectedOpen!=gate||', ''),
+            ('&&owner.timeZone.status(session,gate.epoch).optBoolean("nativeSettingReadback"));', ');'),
+            ('completeTimeZoneProofs(gate,gate.ready);completeTimeZoneRequests(gate,gate.ready);',
+             'completeTimeZoneRequests(gate,gate.ready);completeTimeZoneProofs(gate,gate.ready);'),
+            ('if(gate==null||!gate.preparing||!gate.revalidating)return false;',
+             'if(gate==null||!gate.preparing)return false;'),
+            ('!destroyed&&!failed&&!addonDisabled&&!ready&&extension!=null',
+             '!destroyed&&!failed&&!ready&&extension!=null'),
+            ('if(rejectDisabledNavigation(current,target))return;queued=target;', 'queued=target;'),
+            ('if(destroyed||addonDisabled||!locations.containsKey(s))return;boolean committed=',
+             'if(destroyed||!locations.containsKey(s))return;boolean committed='),
+            ('if(destroyed||addonDisabled||!locations.containsKey(s))return;appearanceLoads.put',
+             'if(destroyed||!locations.containsKey(s))return;appearanceLoads.put'),
+            ('if(destroyed||addonDisabled||s!=current||target==null', 'if(destroyed||s!=current||target==null'),
+            ('if(destroyed||addonDisabled||session!=current||target==null', 'if(destroyed||session!=current||target==null'),
+            ('if(!addonDisabled)return false;', 'return false;'),
+            ('if(addonDisabled||!"pocketroute".equals(app)', 'if(!"pocketroute".equals(app)'),
+            ('if(read==null||destroyed||failed||!enabled||owner.deleted||!requestHeadersInstalled||current!=read.session||!current.isOpen()',
+             'if(read==null||destroyed||failed||!enabled||owner.deleted||!requestHeadersInstalled||current!=read.session'),
+            ('if(rejectDisabledNavigation(s,request.uri))return GeckoResult.fromValue(AllowOrDeny.DENY);', ''),
+        )
+        current = (ROOT / relative).read_bytes()
+        for before, after in variants:
+            with self.subTest(guard=before):
+                self.assertEqual(current.count(before.encode()), 1)
+                mutant = current.replace(before.encode(), after.encode(), 1)
+                with self.assertRaises(ValueError):
+                    overlay.source_input(mutant, relative)
+                with self.assertRaises(ValueError):
+                    dual.source_input(mutant, relative)
+        self.assertEqual(len(variants), 18)
+        type(self).rejected_transition_guard_mutants = len(variants)
 
     def test_source_identity_is_checked_before_any_context_inverse(self):
         relative = 'app/src/main/java/local/pocketchat/GeckoWebView.java'
@@ -189,6 +234,14 @@ class WorkerTimezoneSourceCompatibility(unittest.TestCase):
         relative = 'tests/profile_dual_browser_source_compatibility_test.py'
         before = subprocess.check_output(['git', 'show', overlay.BASE_COMMIT + ':' + relative], cwd=ROOT)
         after = (ROOT / relative).read_bytes()
+        # Remove only the reviewed host-adapter historical read ports before
+        # the original complete-file oracle below; no actual host sees a view.
+        host_import = b'        from worker_timezone_host_source_compatibility import PATHS as host_adapter_paths, source_input as host_adapter_source_input\n'
+        self.assertEqual(after.count(host_import), 1)
+        after = after.replace(host_import, b'', 1)
+        host_read = b'current = host_adapter_source_input((ROOT / relative).read_bytes(), relative) if relative in host_adapter_paths else (ROOT / relative).read_bytes()'
+        self.assertEqual(after.count(host_read), 2)
+        after = after.replace(host_read, b'current = (ROOT / relative).read_bytes()')
         self.assertEqual(assertions(after), assertions(before))
         for indent in (16, 12):
             hook = read_hook(indent).encode()
@@ -219,7 +272,8 @@ class WorkerTimezoneSourceCompatibility(unittest.TestCase):
         for relative in ('tests/profile_native_protection_test.py', 'tests/profile_native_runtime_capabilities_test.py',
                          'tests/gecko-timezone-routing-host/run.py', 'tests/gecko-timezone-host/run.py',
                          'tests/gecko-timezone-flow-host/run.py', 'tests/gecko-request-headers-host/run.py',
-                         'tests/chromium-worker-policy-host/run.py', 'tests/chromium-fingerprint-activity-host/run.py'):
+                         'tests/chromium-worker-policy-host/run.py', 'tests/chromium-fingerprint-activity-host/run.py',
+                         'tests/request-identity-timezone-host/run.py', 'tests/gecko-timezone-http-host/run.py'):
             raw = (ROOT / relative).read_text()
             self.assertNotIn('worker_timezone_source_compatibility', raw, relative)
             self.assertNotIn('dual_browser_source_compatibility', raw, relative)
@@ -232,10 +286,11 @@ if __name__ == '__main__':
     result = unittest.TextTestRunner(verbosity=2).run(suite)
     report = dict(status='passed' if result.wasSuccessful() else 'failed', tests=result.testsRun,
                   baseCommit=overlay.BASE_COMMIT, baseTree=overlay.BASE_TREE,
-                  manifestSha256=overlay.DELTA_SHA256, rows=2, contexts=22,
-                  rejectedSourceMutants=WorkerTimezoneSourceCompatibility.rejected_sources + WorkerTimezoneSourceCompatibility.rejected_guard_mutants,
+                  manifestSha256=overlay.DELTA_SHA256, rows=2, contexts=23,
+                  rejectedSourceMutants=WorkerTimezoneSourceCompatibility.rejected_sources + WorkerTimezoneSourceCompatibility.rejected_guard_mutants + WorkerTimezoneSourceCompatibility.rejected_transition_guard_mutants,
                   rejectedContextSourceMutants=WorkerTimezoneSourceCompatibility.rejected_sources,
                   rejectedProtectedGuardMutants=WorkerTimezoneSourceCompatibility.rejected_guard_mutants,
+                  rejectedTransitionGuardMutants=WorkerTimezoneSourceCompatibility.rejected_transition_guard_mutants,
                   rejectedFixtureCounterfeits=WorkerTimezoneSourceCompatibility.rejected_fixture_shapes,
                   runtimeAcceptance=False, actualAndroidExecution=False,
                   scope='Exact whole-source historical-input overlay only. Old fixtures, goldens, assertions and mutants remain unchanged; runtime hosts read current sources.')

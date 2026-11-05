@@ -1,0 +1,37 @@
+package local.pocketchat;
+import java.util.*;import java.util.function.Consumer;import org.json.*;
+public final class PrerequisiteHost {
+@@HELPER@@
+  static final List<String> checks=new ArrayList<>();
+  static void check(String name,boolean pass){if(!pass)throw new AssertionError(name);checks.add(name);}
+  static GeckoWebView view(){return new GeckoWebView();}
+  static NativeTimeZonePrerequisite pending(GeckoWebView v){NativeTimeZonePrerequisite p=new NativeTimeZonePrerequisite();check("One actual prepare call starts while native admission is blocked",!p.readyFor(v)&&v.prepares==1);return p;}
+  static void complete(GeckoWebView v,boolean accepted,Object nativeAck){v.allows=true;v.nativeAck=nativeAck;v.callback.accept(accepted);}
+  public static void main(String[] args){
+    GeckoWebView v=view();v.ready=false;NativeTimeZonePrerequisite p=new NativeTimeZonePrerequisite();check("SDK not ready cannot start native preparation",!p.readyFor(v)&&v.prepares==0);v.ready=true;v.privacyReady=false;check("Existing privacy gate is preserved",!p.readyFor(v)&&v.prepares==0);v.privacyReady=true;v.routePrepared=false;check("Existing route gate is preserved",!p.readyFor(v)&&v.prepares==0);v.routePrepared=true;v.requestHeadersInstalled=false;check("Existing request header gate is preserved",!p.readyFor(v)&&v.prepares==0);v.requestHeadersInstalled=true;v.owner.networkReady=false;check("Existing connection gate is preserved",!p.readyFor(v)&&v.prepares==0);v.owner.networkReady=true;
+    check("Blocked native admission begins asynchronously",!p.readyFor(v)&&v.prepares==1);boolean unchanged=true;for(int i=0;i<100;i++)unchanged&=!p.readyFor(v)&&v.prepares==1;check("One hundred polls do not reissue native preparation",unchanged);
+    v.allows=true;v.nativeAck=Boolean.TRUE;check("A requested operation still requires its own callback",!p.readyFor(v));v.callback.accept(true);check("Actual callback and strict current native readback admit later original assertions",p.readyFor(v)&&v.prepares==1);v.callback.accept(false);check("Duplicate callback cannot overwrite completed admission",p.readyFor(v));v.owner.guard.allowed=false;check("Live route guard is checked again after native completion",!p.readyFor(v));
+    GeckoWebView fallback=view();NativeTimeZonePrerequisite missing=pending(fallback);complete(fallback,true,Boolean.FALSE);check("Legacy readiness without actual native ACK is rejected",!missing.readyFor(fallback));fallback.nativeAck=Boolean.TRUE;check("Missing ACK cannot be retroactively upgraded by status mutation",!missing.readyFor(fallback)&&fallback.prepares==1);
+    GeckoWebView typed=view();NativeTimeZonePrerequisite t=pending(typed);complete(typed,true,"true");check("String true cannot impersonate typed native readback",!t.readyFor(typed));
+    GeckoWebView failed=view();NativeTimeZonePrerequisite f=pending(failed);complete(failed,false,Boolean.TRUE);check("A rejected native callback cannot borrow another proof",!f.readyFor(failed));boolean rejectedStable=true;for(int i=0;i<5;i++)rejectedStable&=!f.readyFor(failed)&&failed.prepares==1;check("Rejected operation never starts a repeated probe loop",rejectedStable);
+    GeckoWebView existing=view();existing.allows=true;existing.nativeAck=Boolean.TRUE;existing.timeZoneGates.put(existing.current,new Object());NativeTimeZonePrerequisite e=new NativeTimeZonePrerequisite();check("Already current native receipt needs no extra preparation",e.readyFor(existing)&&existing.prepares==0);
+    GeckoWebView unverified=view();unverified.allows=true;unverified.timeZoneGates.put(unverified.current,new Object());NativeTimeZonePrerequisite u=new NativeTimeZonePrerequisite();check("Already ready fallback remains unsupported without native ACK",!u.readyFor(unverified)&&unverified.prepares==0);
+    for(String boundary:new String[]{"session","runtime","gate","revision","uuid","generation","policy"}){
+      GeckoWebView stale=view();NativeTimeZonePrerequisite s=pending(stale);GeckoSession original=stale.current;
+      if(boundary.equals("session"))stale.current=new GeckoSession();if(boundary.equals("runtime"))stale.runtime=new Object();if(boundary.equals("gate"))stale.timeZoneGates.put(original,new Object());if(boundary.equals("revision"))stale.revision=2;if(boundary.equals("uuid"))stale.owner.environmentId="replacement";if(boundary.equals("generation"))stale.owner.environmentGeneration=2;if(boundary.equals("policy"))stale.identityPolicyRevision=2;
+      complete(stale,true,Boolean.TRUE);check("Stale callback cannot admit a changed "+boundary,!s.readyFor(stale)&&stale.prepares==1);check("Changed boundary cannot create a repeated probe "+boundary,!s.readyFor(stale)&&stale.prepares==1);
+    }
+    GeckoWebView prepared=view();NativeTimeZonePrerequisite q=pending(prepared);prepared.prepared="true";complete(prepared,true,Boolean.TRUE);check("String currentSessionPrepared is not a native context receipt",!q.readyFor(prepared));
+    System.out.println(J.obj("status","passed","passed",checks.size(),"total",checks.size(),"checks",new JSONArray(checks),"actualAndroidExecution",false,"actualGeckoExecution",false,"nativeReadbackVerified",false));
+  }
+}
+final class GeckoSession {boolean open=true;boolean isOpen(){return open;}}
+final class Guard {boolean allowed=true;boolean allowed(){return allowed;}}
+final class ChatSession {String environmentId="original";int environmentGeneration=1;boolean deleted,connecting,networkReady=true;final Guard guard=new Guard();}
+final class GeckoWebView {
+  final ChatSession owner=new ChatSession();GeckoSession current=new GeckoSession();Object runtime=new Object(),routePort=new Object();boolean ready=true,privacyReady=true,identityPrepared=true,routePrepared=true,requestHeadersInstalled=true,allows;
+  Object nativeAck=Boolean.FALSE,prepared=Boolean.TRUE;long identityPolicyRevision=1,revision=1;final Map<GeckoSession,Object> timeZoneGates=new IdentityHashMap<>();int prepares;Consumer<Boolean> callback;
+  boolean protectionAllowsNetwork(){return true;}Object nativeRuntimeIdentity(){return runtime;}boolean timeZoneAllows(GeckoSession session){return session==current&&allows;}
+  JSONObject timeZoneStatus(){return J.obj("desiredRevision",revision,"nativeSettingReadback",nativeAck,"currentSessionPrepared",prepared,"scope","top-browsing-context");}
+  void prepareTimeZone(GeckoSession session,Consumer<Boolean> done){if(session!=current)throw new AssertionError("wrong session prepare");prepares++;timeZoneGates.putIfAbsent(session,new Object());callback=done;}
+}

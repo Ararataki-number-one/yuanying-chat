@@ -20,7 +20,10 @@ MEMBERS = (
     'static final class TimeZoneGate', 'static final class ProtectionRestore',
     'boolean timeZoneSessionAlive(', 'boolean timeZoneAllows(',
     'void retireTimeZone(', 'void retireTimeZones(', 'void finishTimeZone(',
-    'void sendTimeZone(', 'void prepareTimeZone(', 'void loadSessionUri(',
+    'void sendTimeZone(', 'void prepareTimeZone(', 'private void startTimeZone(',
+    'void revalidateTimeZone(', 'void completeTimeZoneRequests(', 'void completeTimeZoneProofs(',
+    'boolean waitForDocumentTimeZone(', 'GeckoResult<Object> guardedRoute(',
+    'GeckoResult<Object> guardedRequestHeaderPolicy(', 'void loadSessionUri(',
     'Object claimTimeZoneIntent(', 'boolean hasTimeZoneIntent(', 'void clearTimeZoneIntent(',
     'public void loadUrl(', 'void restoreCheckpoint(', 'static String stateUrl(',
     'public GeckoResult<AllowOrDeny> onLoadRequest(',
@@ -35,9 +38,9 @@ MUTATIONS = (
     ('ready-gate', 'boolean timeZoneAllows(', 'gate.ready&&', '', 'A controller permission alone cannot bypass the unfinished UI gate'),
     ('controller-gate', 'boolean timeZoneAllows(', '&&owner.timeZone.allowed(session,gate.epoch)', '', 'Ready UI gate still requires exact controller session and epoch permission'),
     ('retired-gate', 'void finishTimeZone(', 'if(timeZoneGates.get(session)!=gate)return;', '', 'A retired gate callback cannot finish or notify its replacement'),
-    ('window-port', 'void prepareTimeZone(', '||routePort!=port', '', 'Changed native port cannot enter controller preparation'),
-    ('window-session', 'void prepareTimeZone(', '!timeZoneSessionAlive(session)||', '', 'Closed native session cannot enter controller preparation'),
-    ('navigation-epoch', 'void loadSessionUri(', 'navigation==owner.navigationEpoch&&', '', 'A queued URI cannot load after its navigation epoch changes'),
+    ('window-port', 'private void startTimeZone(', '&&routePort==port;', ';', 'Changed native port cannot enter controller preparation'),
+    ('window-session', 'private void startTimeZone(', 'return timeZoneSessionAlive(session)&&', 'return ', 'Closed native session cannot enter controller preparation'),
+    ('navigation-epoch', 'void loadSessionUri(', '(!foreground||session!=current||navigation==owner.navigationEpoch)', 'true', 'A queued URI cannot load after its navigation epoch changes'),
     ('restore-epoch', 'void restoreCheckpoint(', '&&navigation==owner.navigationEpoch', '', 'A checkpoint cannot restore after its navigation epoch changes'),
     ('restore-current', 'void restoreCheckpoint(', '&&current==target', '', 'A checkpoint cannot restore into a replaced current surface'),
     ('after-worker-gate', 'void restoreCheckpoint(', 'if(!timeZoneAllows(target)){prepareTimeZone(target,', 'if(false){prepareTimeZone(target,', 'Writer completion rechecks timezone permission before restoring SDK state'),
@@ -47,6 +50,15 @@ MUTATIONS = (
     ('claim-clears-native-queue', 'Object claimTimeZoneIntent(', 'timeZoneLoads.remove(session);', '', 'An explicit target supersedes an already deferred native reload'),
     ('restore-clears-main-queue', 'Object claimTimeZoneIntent(', 'if(restore&&session==current)queued="";', '', 'A restored checkpoint cannot revive the earlier main URL on protection retry'),
     ('worker-intent-owner', 'void restoreCheckpoint(', 'timeZoneIntents.get(target)!=intent||', '', 'A superseded writer cannot restore its checkpoint after a newer explicit load'),
+    ('secondary-epoch', 'void loadSessionUri(', '(!foreground||session!=current||navigation==owner.navigationEpoch)', '(navigation==owner.navigationEpoch)', 'A secondary session replays its newest target despite the primary navigation epoch advancing'),
+    ('native-same-url-intent', 'void loadSessionUri(', 'nativeTimeZoneIntents.get(session)!=intent||', '', 'Old same-URL native completion cannot consume the newer exact intent'),
+    ('document-serial', 'private void startTimeZone(', '&&gate.documentSerial==document)finishTimeZone', ')finishTimeZone', 'Old document callback cannot finish its newer gate'),
+    ('held-route', 'GeckoResult<Object> guardedRoute(', 'if(waitForDocumentTimeZone(', 'if(false&&waitForDocumentTimeZone(', 'Committed-document route waits without invoking the inner policy'),
+    ('held-header', 'GeckoResult<Object> guardedRequestHeaderPolicy(', 'if(waitForDocumentTimeZone(', 'if(false&&waitForDocumentTimeZone(', 'Committed-document header request waits without invoking the inner policy'),
+    ('held-queue-cap', 'boolean waitForDocumentTimeZone(', 'if(gate.networkWaiting.size()>=128)', 'if(false)', 'Document resource queue rejects its overflow without replacing existing requests'),
+    ('held-identity', 'boolean waitForDocumentTimeZone(', '&&identityPolicyRevision==identity', '', 'Held requests reject changed identity ownership'),
+    ('held-desired', 'boolean waitForDocumentTimeZone(', '&&owner.timeZone.status().optLong("desiredRevision",-1)==desired', '', 'Held requests reject changed desired ownership'),
+    ('proof-before-requests', 'void finishTimeZone(', 'completeTimeZoneProofs(gate,gate.ready);completeTimeZoneRequests(gate,gate.ready);', 'completeTimeZoneRequests(gate,gate.ready);completeTimeZoneProofs(gate,gate.ready);', 'Native document proofs complete before held HTTP policies are retried'),
 )
 
 
@@ -74,7 +86,7 @@ def main():
         return selected
 
     source = PROD / 'GeckoWebView.java'
-    identity = ROOT / 'app/src/main/java/org/mozilla/geckoview/PocketSessionIdentity.java'
+    identity = ROOT / 'app/src/main/java/org/mozilla/geckoview/AppSessionIdentity.java'
     complete = [PROD / name for name in ('J.java', 'BrowserBridgeRequests.java', 'BrowserRuntimePolicy.java', 'BrowserAddressPolicy.java', 'GeckoNavigationPolicy.java')]
     files = [source, identity, HERE / 'RoutingHost.java.in', Path(__file__).resolve(), ROOT / 'tests/gecko-navigation-host/run.py'] + complete
     hashes = {str(path.relative_to(ROOT)): digest(path) for path in files}
@@ -89,7 +101,7 @@ def main():
         ('GeckoSession', 'SessionBoundary'),
         ('GeckoResult', 'ResultBoundary'),
         ('GeckoTimeZoneController', 'ControllerBoundary'),
-        ('PocketSessionIdentity', 'IdentityBoundary'),
+        ('AppSessionIdentity', 'IdentityBoundary'),
         ('LocalDraftPolicy', 'DraftPolicyBoundary'),
     )
 
@@ -152,7 +164,9 @@ def main():
                       'ControllerBoundary scripts prepare and allowed decisions for exact session/epoch; production controller and persistent store are separate test scopes',
                       'HandlerBoundary virtual clock and ExecutorBoundary queue expose SDK-window timeout and restoration interleavings',
                       'Guard, route lease, protection, app owner, draft policy, metadata status and serialized SDK state are explicit app/SDK boundaries',
-                      'Actual BrowserBridgeRequests, PocketSessionIdentity.id method, JSON and public URL policies execute unchanged except SDK type names',
+                      'Actual BrowserBridgeRequests, AppSessionIdentity.id method, JSON and public URL policies execute unchanged except SDK type names',
+                      'Addon navigation readiness is an explicit default-enabled counted dependency; refusal cases execute current entry guards, not the independent addon terminal implementation',
+                      'Guarded HTTP route/header coordination executes current methods with counted inner policy boundaries; native document-proof queue ordering is checked without claiming native proof execution',
                   ], scope='Actual GeckoWebView first-load, restore, navigation-delegate and timezone-route adapter control flow. No Android/Gecko execution, native setting readback, Date/Intl effect, worker effect or wire claim.')
     args.output.write_text(json.dumps(report, ensure_ascii=False, indent=2) + '\n')
     print(json.dumps(dict(status=report['status'] if unchanged else 'source-changed', passed=report['passed'], negativeControls=len(controls), executionInputsUnchanged=unchanged, output=str(args.output))))

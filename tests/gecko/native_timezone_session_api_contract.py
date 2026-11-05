@@ -81,6 +81,16 @@ assert.equal(read.sessionId, sid);
 assert.equal(read.nativeZoneId, 'Asia/Shanghai');
 assert.equal(state.writes, 1);
 let cases = 2;
+state.afterSet = () => {throw new Error('same-value setter would reload the document');};
+const repeat = await control.applySession(sid, 'Asia/Shanghai', 'apply.same-value');
+assert.equal(repeat.status, 'applied'); assert.equal(repeat.requestToken, 'apply.same-value');
+assert.equal(repeat.contextId, '1024'); assert.equal(repeat.nativeZoneId, 'Asia/Shanghai');
+assert.equal(state.writes, 1, 'same native value must be confirmed without a setter'); cases++;
+const systemAlreadyCurrent = await control.applySession(other, '', 'apply.same-system');
+assert.equal(systemAlreadyCurrent.status, 'applied'); assert.equal(systemAlreadyCurrent.contextId, '2048');
+assert.equal(systemAlreadyCurrent.nativeZoneId, '');
+assert.equal(state.writes, 1, 'already-system context must not invoke a setter'); cases++;
+state.afterSet = null;
 async function noMutation(action, pattern) {
   const writes = state.writes;
   await assert.rejects(action, pattern);
@@ -122,6 +132,9 @@ assert.equal(state.lookups, lookupsBeforeInvalidZone);
 state.afterSet = () => {target.closed = true;};
 await assert.rejects(control.applySession(sid, 'Asia/Tokyo', 'race.1'), /session-replaced/); cases++;
 state.afterSet = null; target.closed = false;
+// This replacement fault is caused by a real setter. Restore a differing
+// native value first; an idempotent same-zone confirmation must not call it.
+target.browser.browsingContext.top.timezoneOverride = 'Asia/Shanghai';
 state.afterSet = () => {target.browser = {browsingContext: {top: {id: 8192, timezoneOverride: ''}}};};
 await assert.rejects(control.applySession(sid, 'Asia/Tokyo', 'race.2'), /session-replaced/); cases++;
 state.afterSet = null; target.browser = savedBrowser;

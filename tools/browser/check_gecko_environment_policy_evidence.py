@@ -63,7 +63,7 @@ SOURCE_INPUTS = {
     'app/src/main/java/local/pocketchat/GeckoTimeZoneSpec.java',
     'app/src/main/java/local/pocketchat/GeckoTimeZoneUi.java',
     'app/src/main/java/local/pocketchat/BrowserBridgeRequests.java',
-    'app/src/main/java/org/mozilla/geckoview/PocketSessionIdentity.java',
+    'app/src/main/java/org/mozilla/geckoview/AppSessionIdentity.java',
     'app/src/main/assets/gecko/manifest.json',
     'app/src/main/assets/gecko/background.js',
     'app/src/main/assets/gecko/request-headers.js',

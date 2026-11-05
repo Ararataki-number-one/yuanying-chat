@@ -216,7 +216,7 @@ public final class RouteHoldHost {
 class WebBoundary {
   @PRODUCTION_FIELDS@
   @PRODUCTION_MEMBERS@
-  final OwnerBoundary owner=new OwnerBoundary(this);final SettingsBoundary settings=new SettingsBoundary();final Set<String> extendedAdmission=new HashSet<>();boolean destroyed,failed,ready=true,networkAllowed=true,generalRouteRetryQueued,failConstruction,identityAllowed=true;int constructCalls,activations;
+  final OwnerBoundary owner=new OwnerBoundary(this);final SettingsBoundary settings=new SettingsBoundary();final Set<String> extendedAdmission=new HashSet<>();boolean destroyed,failed,addonDisabled,ready=true,networkAllowed=true,generalRouteRetryQueued,failConstruction,identityAllowed=true;int constructCalls,activations;
   SessionBoundary current;ProtectionRestore generalRestore;String queued="",url="";
   WebBoundary(){ChromiumRouteLease.addListener(routeLeaseChanged);}
   boolean protectionAllowsNetwork(){return networkAllowed;}
