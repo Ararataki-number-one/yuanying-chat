@@ -48,11 +48,12 @@ public final class EnvironmentDeleteActivity extends ThemedActivity {
     if(slot>0){File files=new File(data,"files/profiles/env"+slot);File[] personal=files.listFiles();if(personal!=null)for(File f:personal)if(!f.getName().equals("saved-downloads"))erase(f);erase(new File(data,"cache/profiles/env"+slot));erase(new File(data,"no_backup/profiles/env"+slot));}
     else{
       EnvironmentBrowserData.clear(profile.getNoBackupFilesDir(),profile.getCacheDir());
-      for(String name:new String[]{"gecko-browser.yaml","network-runtime"})erase(new File(profile.getNoBackupFilesDir(),name));
-      SecretStore privateStore=new SecretStore(profile);for(String name:new String[]{"network","network-ui","exit-baseline","exit-region","subscription","subscription-meta","subscription-ui","exit-subscription","exit-subscription-meta","exit-subscription-ui","pending-network","environment-spec","browser-reset","environment-audit","gecko-timezone","gecko-cpu"})privateStore.remove(name);
+      for(String name:new String[]{"gecko-browser.yaml","network-runtime","pocket-tls-config.tmp"})erase(new File(profile.getNoBackupFilesDir(),name));
+      SecretStore privateStore=new SecretStore(profile);for(String name:new String[]{"network","network-ui","exit-baseline","exit-region","subscription","subscription-meta","subscription-ui","exit-subscription","exit-subscription-meta","exit-subscription-ui","pending-network","environment-spec","browser-reset","environment-audit","gecko-timezone","gecko-cpu","gecko-tls"})privateStore.remove(name);
       erase(new File(profile.getNoBackupFilesDir(),"environment-spec.lock"));
       erase(new File(profile.getNoBackupFilesDir(),"gecko-timezone.lock"));
       erase(new File(profile.getNoBackupFilesDir(),"gecko-cpu.lock"));
+      erase(new File(profile.getNoBackupFilesDir(),"gecko-tls.lock"));
       erase(new File(profile.getFilesDir(),"network-import.json"));erase(new File(profile.getCacheDir(),"gecko-uploads"));
       File[] previews=profile.getNoBackupFilesDir().listFiles();if(previews!=null)for(File f:previews)if((f.getName().startsWith("subscription-preview-")||f.getName().startsWith("pending-entry-subscription-")||f.getName().startsWith("pending-exit-subscription-")))erase(f);
       File[] temporary=profile.getCacheDir().listFiles();if(temporary!=null)for(File f:temporary)if(f.getName().matches("download-.*[.]part")||f.getName().startsWith("subscription-preview-"))erase(f);

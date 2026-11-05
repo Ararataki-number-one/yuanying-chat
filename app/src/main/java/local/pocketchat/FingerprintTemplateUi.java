@@ -30,6 +30,7 @@ final class FingerprintTemplateUi {
     TextView note=a.label("现有 SDK 的 Worker HTTP UA 默认仍是手机版。应用额外的公共 HTTP 请求头策略仅调整获准公共 HTTP(S) 请求的 UA，状态和实际服务端观测请分别查看，不代表完整桌面指纹。强化模板为实验模式，网页兼容性尚待真机验证。",13,Ui.MUTED);note.setPadding(0,a.dp(6),0,0);box.addView(note);
     DesignUi.action(box,"此环境的独立时区",false,()->{if(!a.isDestroyed()&&!a.isFinishing()&&!edited.deleted&&a.session==edited)GeckoTimeZoneUi.show(a);});
     DesignUi.action(box,"Gecko CPU 可见数上限",false,()->{if(!a.isDestroyed()&&!a.isFinishing()&&!edited.deleted&&a.session==edited)GeckoCpuUi.show(a);});
+    DesignUi.action(box,"Gecko TLS 协议",false,()->{if(!a.isDestroyed()&&!a.isFinishing()&&!edited.deleted&&a.session==edited)GeckoTlsUi.show(a);});
     DesignUi.action(box,"模板说明与状态详情",false,()->showDetails(a,edited));
     DesignUi.action(box,"当前环境身份与配置版本",false,()->{if(!a.isDestroyed()&&!a.isFinishing()&&!edited.deleted&&a.session==edited)EnvironmentIdentityUi.show(a,edited);});
     DesignUi.action(box,"原生保护能力与兼容记录",false,()->{if(!a.isDestroyed()&&!a.isFinishing()&&!edited.deleted&&a.session==edited)ProtectionTemplateUi.show(a,edited);});
