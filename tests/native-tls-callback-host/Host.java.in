@@ -1,0 +1,56 @@
+package local.pocketchat;
+import org.json.*;
+
+/** Verbatim native fixture callback-state helper and dispatch; no SDK/Android simulation claim. */
+public final class Host {
+  static int passed;static final JSONArray checks=new JSONArray();
+  static final String LEAF="f".repeat(64),NONCE="a".repeat(32);
+  static void check(String name,boolean ok){if(!ok)throw new AssertionError(name);passed++;checks.put(J.obj("name",name,"pass",true));}
+  @@NAVIGATION@@
+  static final class Fixture {
+    TrialNavigation navigation;boolean done,closed,restoring;int trial,completed,published;String failure="";
+    Fixture(TrialNavigation state){navigation=state;trial=state.index;}
+    void publish(){published++;}void fail(String reason){failure=reason;done=true;}void completeTrial(int index){completed++;trial=-1;}
+    @@DISPATCH@@
+    void call(int action){callback(navigation,navigation.index,action);}
+  }
+  static TrialNavigation state(int index)throws Exception{return new TrialNavigation(new Object(),index,"trial"+index,"https://fp-a.pocketchat.test:"+(41441+index)+"/tls-probe?run="+NONCE,LEAF,NONCE,2,34);}
+  static void owner()throws Exception{
+    TrialNavigation n=state(0);Object own=n.owner,foreign=new Object();check("exact session/trial/live owner admitted",n.owns(own,0,own,0,true,false,false,false));
+    check("foreign callback session rejected",!n.owns(foreign,0,own,0,true,false,false,false));check("foreign active session rejected",!n.owns(own,0,foreign,0,true,false,false,false));
+    check("old callback trial rejected",!n.owns(own,1,own,0,true,false,false,false));check("retired active trial rejected",!n.owns(own,0,own,1,true,false,false,false));
+    check("null session rejected",!n.owns(null,0,own,0,true,false,false,false));check("closed SDK session rejected",!n.owns(own,0,own,0,false,false,false,false));
+    check("done fixture rejects late callback",!n.owns(own,0,own,0,true,true,false,false));check("destroyed fixture rejects late callback",!n.owns(own,0,own,0,true,false,true,false));check("restoring fixture rejects late callback",!n.owns(own,0,own,0,true,false,false,true));
+  }
+  static void blankAndStops()throws Exception{
+    for(int index:new int[]{0,1,2,3}){
+      TrialNavigation n=state(index);Fixture f=new Fixture(n);f.call(n.start("about:blank"));f.call(n.location("about:blank"));f.call(n.stop(true));
+      check("blank success stop is never target completion trial"+index,f.completed==0&&f.failure.isEmpty()&&!n.row.optBoolean("nativeTargetTlsReady"));
+      check("stop has explicitly unverified URL ownership trial"+index,!n.row.getBoolean("nativeStopOwnershipVerified")&&n.row.getInt("successfulStopCallbacks")==1);
+      f.call(n.start(n.target));f.call(n.stop(true));f.call(n.stop(false));
+      check("late unowned stop after target start cannot complete trial"+index,f.completed==0&&f.failure.isEmpty()&&!n.row.optBoolean("titleMatched"));
+      f.call(n.location(n.target));f.call(n.security("fp-a.pocketchat.test",true,false,LEAF));f.call(n.stop(true));
+      check("URL plus TLS plus borrowed stop cannot replace target title trial"+index,f.completed==0&&f.failure.isEmpty()&&!n.row.getBoolean("nativeTargetTlsReady"));
+      f.call(n.title(""));f.call(n.title("Native TLS trial"+(index+1)+":"+NONCE));f.call(n.title("Native TLS trial"+index+":"+"b".repeat(32)));
+      check("blank foreign-trial and stale nonce titles do not admit trial"+index,f.completed==0&&f.failure.isEmpty());
+      f.call(n.title("Native TLS trial"+index+":"+NONCE));
+      check("only real bound target TLS title finishes or rejects strict trial"+index,index==1?f.failure.equals("StrictTls12UnexpectedSuccess")&&f.completed==0:f.completed==1&&f.failure.isEmpty());
+      int completed=f.completed;String issue=f.failure;f.call(n.stop(true));check("late stop after terminal cannot alter result trial"+index,f.completed==completed&&f.failure.equals(issue));
+    }
+    TrialNavigation n=state(2);Fixture f=new Fixture(n);f.call(n.start(n.target));f.call(n.security("fp-a.pocketchat.test",true,false,LEAF));f.call(n.title("Native TLS trial2:"+NONCE));check("security/title without exact location remains pending",f.completed==0);f.call(n.location(n.target));check("genuine target can complete without any SDK stop",f.completed==1&&n.row.getInt("stopCallbacks")==0);
+  }
+  static void errorsAndSecurity()throws Exception{
+    TrialNavigation n=state(1);Fixture f=new Fixture(n);f.call(n.start("about:blank"));f.call(n.stop(true));f.call(n.error(n.target,2,34));check("exact target native SSL34 category2 finishes strict rejection",f.completed==1&&f.failure.isEmpty()&&n.row.getBoolean("nativeErrorUrlMatched"));
+    for(String uri:new String[]{"about:blank","https://foreign.invalid/",n.target+"&stale=1"}){TrialNavigation bad=state(1);Fixture denied=new Fixture(bad);denied.call(bad.error(uri,2,34));check("foreign native SSL error URI cannot admit "+uri,denied.completed==0&&denied.failure.equals("UnownedLoadError"));}
+    for(int[] error:new int[][]{{3,51},{2,50},{1,34},{2,35}}){TrialNavigation bad=state(1);Fixture denied=new Fixture(bad);denied.call(bad.error(bad.target,error[0],error[1]));check("timeout certificate or wrong native error cannot be strict proof "+error[0]+":"+error[1],denied.completed==0&&denied.failure.equals("UnexpectedNativeLoadError"));}
+    TrialNavigation positive=state(0);Fixture denied=new Fixture(positive);denied.call(positive.error(positive.target,2,34));check("SSL error cannot complete expected-success trial",denied.completed==0&&denied.failure.equals("UnexpectedNativeLoadError"));
+    for(boolean exception:new boolean[]{false,true}){TrialNavigation bad=state(0);Fixture blocked=new Fixture(bad);blocked.call(bad.security("fp-a.pocketchat.test",true,exception,exception?LEAF:"e".repeat(64)));check("wrong leaf or certificate exception fails closed "+exception,blocked.failure.equals("ControlledCertificateMismatch")&&blocked.completed==0);}
+    TrialNavigation foreign=state(0);Fixture pending=new Fixture(foreign);pending.call(foreign.start(foreign.target));pending.call(foreign.location(foreign.target));pending.call(foreign.title("Native TLS trial0:"+NONCE));pending.call(foreign.security("foreign.invalid",true,false,LEAF));check("foreign security host does not complete target",pending.completed==0&&!foreign.row.optBoolean("leafVerified"));
+    pending.call(foreign.start("https://other.invalid/"));check("uncontrolled native start fails closed",pending.failure.equals("UncontrolledNavigation"));
+  }
+  static void dispatch()throws Exception{
+    TrialNavigation active=state(0),old=state(0);Fixture f=new Fixture(active);f.callback(old,0,TrialNavigation.TLS_READY);check("foreign navigation helper cannot complete current trial",f.completed==0&&f.failure.isEmpty());
+    f.callback(active,1,TrialNavigation.TLS_READY);check("wrong trial dispatch cannot complete",f.completed==0);f.restoring=true;f.callback(active,0,TrialNavigation.TLS_READY);check("restore retires completion dispatch",f.completed==0);f.restoring=false;f.done=true;f.callback(active,0,TrialNavigation.TLS_READY);check("terminal dispatch ignores late readiness",f.completed==0);
+  }
+  public static void main(String[] args)throws Exception{owner();blankAndStops();errorsAndSecurity();dispatch();System.out.println(J.obj("status","passed","passed",passed,"total",passed,"checks",checks));}
+}
