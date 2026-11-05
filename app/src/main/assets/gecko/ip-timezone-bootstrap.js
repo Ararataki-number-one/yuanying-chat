@@ -1,7 +1,7 @@
 /* DIAGNOSTIC-ONLY: bounded enum observations, never an admission condition. */
 (() => {
   'use strict';
-  const STAGES=new Set(['bootstrap-loaded','create-enter','create-rejected','create-ready','lookup-received','lookup-rejected','lookup-start','fetch-start','fetch-response','fetch-rejected','deadline','finish-null','finish-observed','before-request','before-redirect','authorization','native-lookup-received','bootstrap-bound','proxy-event','proxy-authorization','header-event','header-authorization','header-listener','hello-result','hello-send-start','hello-failed','snapshot-send-result','native-prepare-received','native-prepare-result','native-protection-received','native-protection-result']);
+  const STAGES=new Set(['bootstrap-loaded','create-enter','create-rejected','create-ready','lookup-received','lookup-rejected','lookup-start','fetch-start','fetch-response','fetch-rejected','deadline','finish-null','finish-observed','before-request','before-redirect','authorization','native-lookup-received','bootstrap-bound','proxy-event','proxy-authorization','header-event','header-authorization','header-listener','hello-result','hello-send-start','hello-failed','snapshot-send-result','native-prepare-received','native-prepare-result','native-protection-received','native-protection-result','port-message-entry','port-connected','port-disconnected']);
   const RESULTS=new Set(['none','ready','rejected','missing-port','runtime-url','features','registration','exception','shape-or-busy','pending','accepted','absent','invalid','closed','cancelled','observed']);
   const ERRORS=new Set(['none','AbortError','NetworkError','TypeError','SecurityError','TimeoutError','NotAllowedError','InvalidStateError','other']);
   const SCRIPTS=['ip-timezone-bootstrap.js','request-headers.js','request-identity-background.js','native-timezone-bridge.js','background.js'];
@@ -20,20 +20,28 @@
     if(typeof value!=='string')return 'invalid';
     try{const u=new URL(value),own=new URL(browser.runtime.getURL(''));return !u.username&&!u.password&&u.protocol===own.protocol&&u.host===own.host?'own':'foreign';}catch(_){return 'invalid';}
   };
-  const record=(stage,details=null,result='none',error=null)=>{
+  const record=(stage,details=null,result='none',error=null,metadata=null)=>{
     try{
       if(!STAGES.has(stage)||!RESULTS.has(result)){invalid=Math.min(10000,invalid+1);return;}
       const name=error===null?'none':ERRORS.has(error?.name)?error.name:'other';
       const row={sequence:events.length+1,stage,urlClass:urlClass(details?.url),exactGeo:details?.url==='https://ipwho.is/?fields=success,ip,timezone.id',get:details?.method==='GET',origin:details===null?'unseen':principal(details.originUrl),document:details===null?'unseen':principal(details.documentUrl),requestIdPresent:typeof details?.requestId==='string'&&details.requestId.length>0&&details.requestId.length<=128,result,errorName:name};
+      if(metadata!==null)Object.assign(row,metadata);
       if(events.some(old=>Object.keys(row).every(key=>key==='sequence'||old[key]===row[key]))){omitted=Math.min(10000,omitted+1);return;}
       if(events.length>=32){omitted=Math.min(10000,omitted+1);return;}events.push(Object.freeze(row));
       if(typeof browser.runtime.getManifest==='function'){
         try{console.info('POCKET_IP_TZ_DIAG4 '+JSON.stringify({schema:1,diagnosticOnly:true,releaseAcceptance:false,event:row,runtimeManifest:runtimeManifest(),helperPresence:{bootstrap:typeof globalThis.PocketIpTimeZoneBootstrap,headers:typeof globalThis.PocketGeckoRequestHeaders,identity:typeof globalThis.PocketRequestIdentityBackground,timezone:typeof globalThis.PocketNativeTimezoneBridge}}));}catch(_){}
-        if(['bootstrap-loaded','create-ready','bootstrap-bound','native-lookup-received','fetch-start','fetch-rejected','deadline','finish-null','finish-observed','native-prepare-received','native-prepare-result','native-protection-received','native-protection-result'].includes(stage))announce();
+        if(['bootstrap-loaded','create-ready','bootstrap-bound','native-lookup-received','fetch-start','fetch-rejected','deadline','finish-null','finish-observed','native-prepare-received','native-prepare-result','native-protection-received','native-protection-result','port-message-entry'].includes(stage))announce();
       }
     }catch(_){invalid=Math.min(10000,invalid+1);}
   };
-  globalThis.PocketIpTimeZoneDiagnostic=Object.freeze({record,snapshot(nonce){
+  const kindClasses=new Map([['prepare','prepare'],['protection','protection'],['timezoneIpLookup','lookup'],['timezoneIpDiagnosticSnapshot','snapshot'],['timezoneIpCancel','cancel'],['requestHeaderPolicyChanged','header-policy']]);
+  const kindClass=value=>kindClasses.get(value)??'other';
+  const portEvent=(stage,message,current,generation)=>{try{
+    const object=message!==null&&typeof message==='object'&&!Array.isArray(message),own=key=>object&&Object.prototype.hasOwnProperty.call(message,key);
+    const nested=object&&message.message!==null&&typeof message.message==='object'?message.message:object&&message.data!==null&&typeof message.data==='object'?message.data:null;
+    record(stage,null,current?'accepted':'rejected',null,{generation:Number.isInteger(generation)&&generation>=0&&generation<=10000?generation:0,portCurrent:current===true,messageType:message===null?'null':typeof message,kindClass:object?kindClass(message.kind):'other',nestedKindClass:nested?kindClass(nested.kind):'none',hasKind:own('kind'),hasMessage:own('message'),hasData:own('data')});
+  }catch(_){}};
+  globalThis.PocketIpTimeZoneDiagnostic=Object.freeze({record,portEvent,snapshot(nonce){
     if(typeof nonce!=='string'||!(/^[0-9a-f]{32}$/).test(nonce))return null;
     return {schema:1,diagnosticOnly:true,releaseAcceptance:false,requestNonce:nonce,runtimeManifest:runtimeManifest(),helperPresence:{bootstrap:typeof globalThis.PocketIpTimeZoneBootstrap,headers:typeof globalThis.PocketGeckoRequestHeaders,identity:typeof globalThis.PocketRequestIdentityBackground,timezone:typeof globalThis.PocketNativeTimezoneBridge},events:events.map(row=>({...row})),omitted,invalid,bootstrapObject:typeof globalThis.PocketIpTimeZoneBootstrap==='object',bootstrapCreate:typeof globalThis.PocketIpTimeZoneBootstrap?.create==='function',headersObject:typeof globalThis.PocketGeckoRequestHeaders==='object'};
   }});

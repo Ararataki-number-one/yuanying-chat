@@ -2,6 +2,7 @@
 const ipProbe=(...args)=>{try{globalThis.PocketIpTimeZoneDiagnostic?.record(...args);}catch(_){}};
 const blocked = {type:'socks', host:'127.0.0.1', port:9, proxyDNS:true, failoverTimeout:1};
 let timezoneIp=null;
+let diagnosticConnection=0;
 // One runtime belongs to exactly one existing Android environment process.
 // All requests, including workers, consult that environment's existing guard.
 browser.proxy.onRequest.addListener(async request => {
@@ -229,12 +230,13 @@ const reconnectHost=()=>{
 const connectHost=()=>{
   let port;
   try{port=browser.runtime.connectNative('pocketroute');}catch(_){reconnectHost();return;}
-  host=port;
+  host=port;const diagnosticGeneration=diagnosticConnection=Math.min(10000,diagnosticConnection+1);try{globalThis.PocketIpTimeZoneDiagnostic?.portEvent('port-connected',undefined,port===host,diagnosticGeneration);}catch(_){}
   timezoneIp?.close();try{timezoneIp=globalThis.PocketIpTimeZoneBootstrap?.create(port)??null;}catch(_){timezoneIp=null;}
   ipProbe('bootstrap-bound',null,timezoneIp?'ready':'absent');
   const headers=globalThis.PocketGeckoRequestHeaders?.activate(port,timezoneIp);
-  port.onMessage.addListener(message=>handleHostMessage(message,port));
+  port.onMessage.addListener(message=>{try{globalThis.PocketIpTimeZoneDiagnostic?.portEvent('port-message-entry',message,port===host,diagnosticGeneration);}catch(_){}return handleHostMessage(message,port);});
   port.onDisconnect?.addListener(()=>{
+    try{globalThis.PocketIpTimeZoneDiagnostic?.portEvent('port-disconnected',undefined,port===host,diagnosticGeneration);}catch(_){}
     if(port!==host)return;
     host=null;latestProtection=currentProtectionRequest=confirmedProtection=null;
     timezoneIp?.close();timezoneIp=null;

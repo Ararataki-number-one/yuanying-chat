@@ -77,7 +77,7 @@ def safe_trust(receipt):
         'cleanupRootUid','cleanupShellUid','shellRestoredAfterCleanup'}
     return {key:value for key,value in receipt.items() if key in allowed}
 
-EXTENSION_STAGES={'bootstrap-loaded','create-enter','create-rejected','create-ready','lookup-received','lookup-rejected','lookup-start','fetch-start','fetch-response','fetch-rejected','deadline','finish-null','finish-observed','before-request','before-redirect','authorization','native-lookup-received','bootstrap-bound','proxy-event','proxy-authorization','header-event','header-authorization','header-listener','hello-result','hello-send-start','hello-failed','snapshot-send-result','native-prepare-received','native-prepare-result','native-protection-received','native-protection-result'}
+EXTENSION_STAGES={'bootstrap-loaded','create-enter','create-rejected','create-ready','lookup-received','lookup-rejected','lookup-start','fetch-start','fetch-response','fetch-rejected','deadline','finish-null','finish-observed','before-request','before-redirect','authorization','native-lookup-received','bootstrap-bound','proxy-event','proxy-authorization','header-event','header-authorization','header-listener','hello-result','hello-send-start','hello-failed','snapshot-send-result','native-prepare-received','native-prepare-result','native-protection-received','native-protection-result','port-message-entry','port-connected','port-disconnected'}
 EXTENSION_RESULTS={'none','ready','rejected','missing-port','runtime-url','features','registration','exception','shape-or-busy','pending','accepted','absent','invalid','closed','cancelled','observed'}
 EXTENSION_ERRORS={'none','AbortError','NetworkError','TypeError','SecurityError','TimeoutError','NotAllowedError','InvalidStateError','other'}
 EXTENSION_SCRIPTS={'ip-timezone-bootstrap.js','request-headers.js','request-identity-background.js','native-timezone-bridge.js','background.js','other'}
@@ -108,9 +108,12 @@ def extension_debug(value,nonce):
     helpers=latest['helperPresence'];require(type(helpers) is dict and set(helpers)=={'bootstrap','headers','identity','timezone'} and all(type(v) is str and v in ('undefined','object','function','boolean','number','string','symbol','bigint') for v in helpers.values()),'runtime helper presence differs')
     rows=latest['events'];require(type(rows) is list and len(rows)<=32,'extension event bound differs')
     for i,row in enumerate(rows):
-        require(type(row) is dict and set(row)=={'sequence','stage','urlClass','exactGeo','get','origin','document','requestIdPresent','result','errorName'},'extension event keys differ')
+        require(type(row) is dict and {'sequence','stage','urlClass','exactGeo','get','origin','document','requestIdPresent','result','errorName'}<=set(row)<={'sequence','stage','urlClass','exactGeo','get','origin','document','requestIdPresent','result','errorName','generation','portCurrent','messageType','kindClass','nestedKindClass','hasKind','hasMessage','hasData'},'extension event keys differ')
         require(type(row['sequence']) is int and row['sequence']==i+1 and row['stage'] in EXTENSION_STAGES and row['urlClass'] in ('geo-exact','geo-host-variant','other') and row['origin'] in ('own','foreign','absent','invalid','unseen') and row['document'] in ('own','foreign','absent','invalid','unseen') and row['result'] in EXTENSION_RESULTS and row['errorName'] in EXTENSION_ERRORS,'extension event enum differs')
         require(all(type(row[k]) is bool for k in ('exactGeo','get','requestIdPresent')),'extension event flag differs')
+        extra={'generation','portCurrent','messageType','kindClass','nestedKindClass','hasKind','hasMessage','hasData'}
+        if set(row)&extra:
+            require(extra<=set(row) and type(row['generation']) is int and 0<=row['generation']<=10000 and row['messageType'] in ('undefined','object','string','boolean','number','function','symbol','bigint','null') and row['kindClass'] in ('prepare','protection','lookup','snapshot','cancel','header-policy','other') and row['nestedKindClass'] in ('prepare','protection','lookup','snapshot','cancel','header-policy','other','none') and all(type(row[k]) is bool for k in ('portCurrent','hasKind','hasMessage','hasData')),'port entry fields differ')
     return value
 
 

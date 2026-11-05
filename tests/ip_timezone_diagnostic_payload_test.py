@@ -39,6 +39,10 @@ class Controls(unittest.TestCase):
    p=pathlib.Path(tmp);cases=p/'cases.json';cases.write_text(json.dumps(values));host=p/'Host.java';host.write_text('import org.json.*;import java.util.*;public final class Host {\n'+actual+'\npublic static void main(String[]a)throws Exception{JSONArray cases=new JSONArray(new String(java.nio.file.Files.readAllBytes(java.nio.file.Paths.get(a[0])),java.nio.charset.StandardCharsets.UTF_8));for(int i=0;i<cases.length();i++)if(extensionDiagnosticPayload(cases.getJSONObject(i),"'+NONCE+'")!=(i==0))throw new AssertionError("case"+i);System.out.println("actualJavaPayloadControls="+cases.length());}}')
    for index,jar in enumerate(jars):
     out=p/str(index);out.mkdir();subprocess.run([str(java/'bin/javac'),'-cp',str(jar),'-d',str(out),str(host)],check=True,capture_output=True);r=subprocess.run([str(java/'bin/java'),'-cp',str(out)+os.pathsep+str(jar),'Host',str(cases)],check=True,capture_output=True,text=True);self.assertIn('actualJavaPayloadControls=15',r.stdout)
+    good=payload();good['events'][0].update(stage='port-message-entry',generation=1,portCurrent=True,messageType='object',kindClass='lookup',nestedKindClass='none',hasKind=True,hasMessage=False,hasData=False);extra=[good]
+    for key,value in [('kindClass','PRIVATE_PASSWORD'),('messageType','https://secret.invalid'),('generation',True),('portCurrent',1),('unknown','secret')]:
+     bad=copy.deepcopy(good);bad['events'][0][key]=value;extra.append(bad)
+    bad=copy.deepcopy(good);bad['events'][0].pop('hasKind');extra.append(bad);other=p/'port-cases.json';other.write_text(json.dumps(extra));r=subprocess.run([str(java/'bin/java'),'-cp',str(out)+os.pathsep+str(jar),'Host',str(other)],check=True,capture_output=True,text=True);self.assertIn('actualJavaPayloadControls=7',r.stdout)
 class ConsoleControls(unittest.TestCase):
  def test_only_bound_native_pid_and_whitelisted_enum_json_are_exported(self):
   from run_gecko_ip_timezone_integration import console_debug
@@ -58,6 +62,11 @@ class ConsoleControls(unittest.TestCase):
   proof=dict(pid=121,uid=99001,role='gecko-env6');present=console_debug(raw,ps,binding,owner,[proof]);self.assertEqual(len(present['events']),1);self.assertEqual(present['events'][0]['pid'],121)
   for bad in (dict(proof,pid=122),dict(proof,uid=99002),dict(proof,role='profile6')):
    self.assertEqual(console_debug(raw,ps,binding,owner,[bad])['events'],[])
+ def test_pre_guard_port_metadata_is_closed_and_typed(self):
+  row=dict(payload()['events'][0],stage='port-message-entry',generation=1,portCurrent=True,messageType='object',kindClass='lookup',nestedKindClass='none',hasKind=True,hasMessage=False,hasData=False);v=payload();v['events']=[row];self.assertEqual(extension_debug(dict(registered=True,accepted=1,rejected=0,latest=v),NONCE)['accepted'],1)
+  for key,value in [('kindClass','PRIVATE_PASSWORD'),('messageType','https://secret.invalid'),('generation',True),('portCurrent',1),('unknown','secret')]:
+   bad=copy.deepcopy(v);bad['events'][0][key]=value
+   with self.assertRaises(ValueError):extension_debug(dict(registered=True,accepted=1,rejected=0,latest=bad),NONCE)
  def test_poll_and_sdk_reflection_are_typed_and_unavailable_is_explicit(self):
   v=dict(registered=True,accepted=0,rejected=0,latest={},hello=0,poll=dict(count=1,ineligible=1,eligible=False,portPresent=False,extensionSame=False,runtimeSame=False,attempted=0,returned=0,threw=0,consoleEnabled=False,processPid=120,processUid=10200),port=dict(present=False,id=None,disconnected=None,listenersRegistered=None,dispatcherPresent=False,dispatcherAttached=None,pendingMessages=None))
   self.assertEqual(extension_debug(v,NONCE),v)
