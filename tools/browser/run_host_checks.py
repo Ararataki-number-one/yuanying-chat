@@ -94,6 +94,7 @@ def main():
     add('public-source-history','tests/browser_public_history_test.py')
     add('page-bridge-guard-adapters','tests/profile_page_bridge_guard_adapters_test.py')
     add('page-bridge-budget-source-history','tests/profile_page_bridge_budget_source_compatibility_test.py')
+    add('ip-timezone-source-history','tests/profile_ip_timezone_source_compatibility_test.py')
     add('ip-timezone-publication','tests/browser_ip_timezone_publication_test.py')
     add('ip-timezone-publisher-gate','tests/browser_ip_timezone_publish_gate_test.py')
     add('ip-timezone-server-controls','tests/browser_ip_timezone_server_test.py')
