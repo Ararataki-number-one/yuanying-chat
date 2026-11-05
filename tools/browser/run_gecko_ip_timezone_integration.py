@@ -77,13 +77,26 @@ def safe_trust(receipt):
         'cleanupRootUid','cleanupShellUid','shellRestoredAfterCleanup'}
     return {key:value for key,value in receipt.items() if key in allowed}
 
-EXTENSION_STAGES={'bootstrap-loaded','create-enter','create-rejected','create-ready','lookup-received','lookup-rejected','lookup-start','fetch-start','fetch-response','fetch-rejected','deadline','finish-null','finish-observed','before-request','before-redirect','authorization','native-lookup-received','bootstrap-bound','proxy-event','proxy-authorization','header-event','header-authorization','header-listener'}
+EXTENSION_STAGES={'bootstrap-loaded','create-enter','create-rejected','create-ready','lookup-received','lookup-rejected','lookup-start','fetch-start','fetch-response','fetch-rejected','deadline','finish-null','finish-observed','before-request','before-redirect','authorization','native-lookup-received','bootstrap-bound','proxy-event','proxy-authorization','header-event','header-authorization','header-listener','hello-result','hello-send-start','hello-failed','snapshot-send-result','native-prepare-received','native-prepare-result','native-protection-received','native-protection-result'}
 EXTENSION_RESULTS={'none','ready','rejected','missing-port','runtime-url','features','registration','exception','shape-or-busy','pending','accepted','absent','invalid','closed','cancelled','observed'}
 EXTENSION_ERRORS={'none','AbortError','NetworkError','TypeError','SecurityError','TimeoutError','NotAllowedError','InvalidStateError','other'}
 EXTENSION_SCRIPTS={'ip-timezone-bootstrap.js','request-headers.js','request-identity-background.js','native-timezone-bridge.js','background.js','other'}
 def extension_debug(value,nonce):
-    require(type(value) is dict and set(value)=={'registered','accepted','rejected','latest'},'extension diagnostic keys differ')
+    require(type(value) is dict and {'registered','accepted','rejected','latest'}<=set(value)<={'registered','accepted','rejected','latest','hello','poll','port','processes'},'extension diagnostic keys differ')
     require(type(value['registered']) is bool and all(type(value[k]) is int and 0<=value[k]<=10000 for k in ('accepted','rejected')),'extension diagnostic counters differ')
+    if 'hello' in value:require(type(value['hello']) is int and 0<=value['hello']<=10000,'hello counter differs')
+    if 'poll' in value:
+        poll=value['poll'];require(type(poll) is dict and set(poll)=={'count','ineligible','eligible','portPresent','extensionSame','runtimeSame','attempted','returned','threw','consoleEnabled','processPid','processUid'},'poll keys differ')
+        for k,v in poll.items():require(type(v) is int and 0<=v<2**31 if k in ('processPid','processUid') else type(v) is int and 0<=v<=10000 if k in ('count','ineligible','attempted','returned','threw') else type(v) is bool,'poll value differs')
+    if 'port' in value:
+        port=value['port'];require(type(port) is dict and set(port)=={'present','id','disconnected','listenersRegistered','dispatcherPresent','dispatcherAttached','pendingMessages'},'port keys differ')
+        for k,v in port.items():
+            if k in ('present','dispatcherPresent'):require(type(v) is bool,'port present flag differs')
+            elif k in ('id','pendingMessages'):require(v is None or type(v) is int and -1<=v<=2**63-1 and (k!='pendingMessages' or v<=10000),'port number differs')
+            else:require(v is None or type(v) is bool,'port field differs')
+    if 'processes' in value:
+        require(type(value['processes']) is list and len(value['processes'])<=64,'native process bound differs')
+        for process in value['processes']:require(type(process) is dict and set(process)=={'pid','uid','role'} and type(process['pid']) is int and 1<process['pid']<2**31 and type(process['uid']) is int and 0<=process['uid']<2**31 and process['role'] in ('profile6','gecko-env6'),'native process identity differs')
     latest=value['latest'];require(type(latest) is dict,'extension diagnostic payload object required')
     if not latest:return value
     require(set(latest)=={'schema','diagnosticOnly','releaseAcceptance','requestNonce','runtimeManifest','helperPresence','events','omitted','invalid','bootstrapObject','bootstrapCreate','headersObject'},'extension payload keys differ')
@@ -144,6 +157,40 @@ def native_debug(value,binding):
                 for field,item in v.items():leaf(field,item)
             else:leaf(key,v)
     return value
+
+
+CONSOLE_PREFIX='POCKET_IP_TZ_DIAG4 '
+def console_debug(raw,process_raw,binding,native_process,native_children=()):
+    require(type(raw) is bytes and len(raw)<=4*1024*1024 and type(process_raw) is bytes and len(process_raw)<=262144,'bounded console/process data required')
+    processes=[]
+    for line in process_raw.decode('utf-8','strict').splitlines():
+        fields=line.split()
+        if len(fields)!=3 or not fields[0].isdigit() or not fields[1].isdigit():continue
+        pid,uid=int(fields[0]),int(fields[1]);name=fields[2]
+        role='profile6' if name=='local.pocketchat.test:profile6' else 'gecko-env6' if re.fullmatch(r'local\.pocketchat\.test:gecko_env6_[A-Za-z0-9_]+',name) else None
+        if role and 1<pid<2**31 and 10000<=uid<200000:processes.append(dict(pid=pid,uid=uid,role=role))
+    require(len(processes)<=64 and len({p['pid'] for p in processes})==len(processes),'process binding bound differs')
+    owners=[p for p in processes if p['role']=='profile6'];require(len(owners)==1,'one actual canonical process required')
+    owner=owners[0];require(type(native_process) is dict and owner['pid']==native_process.get('processPid') and owner['uid']==native_process.get('processUid'),'console PID differs from installed native report');unverified=sum(1 for p in processes if p['uid']!=owner['uid'] and p not in native_children);processes=[p for p in processes if p['uid']==owner['uid'] or 99000<=p['uid']<=99999 and p in native_children];pids={p['pid'] for p in processes}
+    accepted=[];dropped=0
+    pattern=re.compile(r'^\d\d-\d\d\s+\d\d:\d\d:\d\d\.\d+\s+(\d+)\s+(\d+)\s+[VDIWEF]\s+[^:]+:\s*(.*)$')
+    for line in raw.decode('utf-8','strict').splitlines():
+        if CONSOLE_PREFIX not in line:continue
+        try:
+            match=pattern.fullmatch(line);require(match is not None and int(match[1]) in pids,'console owner differs')
+            message=match[3];index=message.index(CONSOLE_PREFIX);value=strict_json(message[index+len(CONSOLE_PREFIX):])
+            require({'schema','diagnosticOnly','releaseAcceptance','event'}<=set(value)<={'schema','diagnosticOnly','releaseAcceptance','event','runtimeManifest','helperPresence'} and type(value['schema']) is int and value['schema']==1 and value['diagnosticOnly'] is True and value['releaseAcceptance'] is False,'console diagnostic scope differs')
+            event=value['event'];require(type(event) is dict and type(event.get('sequence')) is int and 1<=event['sequence']<=32,'console event sequence differs')
+            row=dict(event,sequence=1)
+            latest=dict(schema=1,diagnosticOnly=True,releaseAcceptance=False,requestNonce=binding['runNonce'],runtimeManifest=dict(available=False,version='unavailable',id='unavailable',scriptCount=-1,scripts=[]),helperPresence=dict(bootstrap='undefined',headers='undefined',identity='undefined',timezone='undefined'),events=[row],omitted=0,invalid=0,bootstrapObject=False,bootstrapCreate=False,headersObject=False)
+            if 'runtimeManifest' in value:latest['runtimeManifest']=value['runtimeManifest']
+            if 'helperPresence' in value:latest['helperPresence']=value['helperPresence']
+            extension_debug(dict(registered=False,accepted=0,rejected=0,latest=latest),binding['runNonce'])
+            record=dict(pid=int(match[1]),tid=int(match[2]),event=event,runtimeManifest=latest['runtimeManifest'],helperPresence=latest['helperPresence'])
+            if record in accepted:continue
+            require(len(accepted)<32,'console row bound differs');accepted.append(record)
+        except (ValueError,TypeError,KeyError,UnicodeError):dropped=min(10000,dropped+1)
+    return dict(schema=1,binding=binding,diagnosticOnly=True,releaseAcceptance=False,actualPublicIpGeolocationVerified=False,processes=processes,unverifiedProcessCount=unverified,isolatedChildRequiresNativeActivityManagerPackageProof=True,events=accepted,rejectedOrOmitted=dropped,wholeLogcatExported=False,scope='Only fixed-prefix typed enum JSON from actual canonical profile6 or its named SDK env6 process PIDs. All other logcat content is omitted; diagnostic timing and console output do not establish a production fix.')
 
 
 def main():
@@ -221,6 +268,11 @@ def main():
                 'native diagnostic source/APK/run differs')
             debug.update(deviceDebugAvailable=True,device=device_debug)
         except Exception as diagnostic_error:debug['deviceCollectionErrorType']=type(diagnostic_error).__name__
+        try:
+            process_rows=adb('shell','ps -A -o PID,UID,NAME',check=False,timeout=10).stdout
+            console_rows=adb('shell',"logcat -d -t 2048 -v threadtime GeckoConsole:V Gecko:V '*:S' | grep -F 'POCKET_IP_TZ_DIAG4 '",check=False,timeout=10).stdout
+            debug['console']=console_debug(console_rows,process_rows,binding,device_debug['extensionDiagnostic']['poll'],device_debug['extensionDiagnostic'].get('processes',[]))
+        except Exception as diagnostic_error:debug['consoleCollectionErrorType']=type(diagnostic_error).__name__
         # Every independent cleanup action executes even when an earlier action
         # fails. Never mask the original fixture failure or convert cleanup to a
         # successful result. No replay/input/retry is performed here.

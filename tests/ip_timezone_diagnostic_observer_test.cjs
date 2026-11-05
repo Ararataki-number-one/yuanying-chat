@@ -44,3 +44,17 @@ test('diagnostic observer exceptions never modify original successful route/head
 test('actual 8000 ms timeout and abort remain unchanged and observable',async()=>{
  const {h,result}=held();h.advance(8000);assert.equal(await result,null);assert.ok(snapshot(h).events.some(x=>x.stage==='deadline'));assert.equal(h.fetches[0].settings.signal.aborted,true);assert.equal(h.timers.size,0);
 });
+test('actual diagnostic hello replies require a primitive nonce and do not ask the original port',async()=>{
+ const manifest={version:'2.1.2.104',browser_specific_settings:{gecko:{id:'browser@pocketchat.local'}},background:{scripts:['ip-timezone-bootstrap.js','request-headers.js','request-identity-background.js','native-timezone-bridge.js','background.js']}};
+ const source=fs.readFileSync(path.join(ROOT,'app/src/main/assets/gecko/ip-timezone-bootstrap.js'),'utf8');
+ for(const reply of [nonce,{nonce}]){
+  const module='browser.runtime.getManifest=()=>('+JSON.stringify(manifest)+');globalThis.__ipConsole=[];console={info(value){__ipConsole.push(value);}};\n'+source;
+  const h=harness({module,native:(app,message)=>{assert.equal(app,'pocketipdiagnostic');return Promise.resolve(message.kind==='hello'?reply:null);}});await flush();const calls=h.nativeCalls;assert.ok(calls.some(x=>x.message.kind==='hello'));assert.equal(calls.some(x=>x.message.requestNonce===nonce),typeof reply==='string');assert.equal(h.fetches.length,0);assert.equal(h.timers.size,0);assert.ok(plain(h.context.__ipConsole).every(x=>x.startsWith('POCKET_IP_TZ_DIAG4 ')));
+  const raw=await h.bootstrap.lookup(lookup());assert.ok(JSON.parse(raw).body,'Observer cannot admit or deny actual body');await flush();assert.ok(plain(h.context.__ipConsole).length<=32);
+ }
+});
+test('independent hello failure exposes only fixed error-name enum and never raw exception text',async()=>{
+ const source=fs.readFileSync(path.join(ROOT,'app/src/main/assets/gecko/ip-timezone-bootstrap.js'),'utf8');
+ const module="browser.runtime.getManifest=()=>({version:'2.1.2.104',browser_specific_settings:{gecko:{id:'browser@pocketchat.local'}}});globalThis.__ipConsole=[];console={info(value){__ipConsole.push(value);}};\n"+source;
+ const h=harness({module,native:()=>Promise.reject(new Error('PRIVATE_PASSWORD'))});await flush();const d=snapshot(h);assert.ok(d.events.some(x=>x.stage==='hello-send-start'));assert.ok(d.events.some(x=>x.stage==='hello-failed'&&x.errorName==='other'));assert.ok(!JSON.stringify(d).includes('PRIVATE_PASSWORD'));assert.ok(!JSON.stringify(plain(h.context.__ipConsole)).includes('PRIVATE_PASSWORD'));assert.equal(h.timers.size,0);assert.equal(h.fetches.length,0);
+});

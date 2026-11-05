@@ -183,6 +183,7 @@ const handleHostMessage=async(message,port)=>{
     postHost(port,{kind:'timezoneReady',id:message.id,result:JSON.stringify(result)});return;
   }
   if(message.kind==='prepare'){
+    ipProbe('native-prepare-received');
     const claim=claimProtection(message,port);
     try{
       await cookieReady;
@@ -190,15 +191,17 @@ const handleHostMessage=async(message,port)=>{
       // opens a session only after both; a hung setting cannot hide cookie-ready.
       if(!postHost(port,{kind:'cookiePrepared'}))return;
       const result=claim.reference?await protect(claim.reference):{acknowledged:false};
+      ipProbe('native-prepare-result',null,result.acknowledged?'accepted':'rejected');
       if(!claim.reference)rejectProtection(message,port,claim.reason);
       postHost(port,{kind:'ready'});
       if(port===host&&result.acknowledged)reconnectAttempts=0;
     }catch(_){postHost(port,{kind:'cookieRecoveryError'});}return;
   }
   if(message.kind==='protection'){
+    ipProbe('native-protection-received');
     const claim=claimProtection(message,port);
     if(!claim.reference){rejectProtection(message,port,claim.reason);return;}
-    const result=await protect(claim.reference);
+    const result=await protect(claim.reference);ipProbe('native-protection-result',null,result.acknowledged?'accepted':'rejected');
     if(port===host&&result.acknowledged)reconnectAttempts=0;
     return;
   }
