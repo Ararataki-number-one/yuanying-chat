@@ -321,7 +321,7 @@ class ProducerBoundaryControls(unittest.TestCase):
         for forbidden in ('GeckoRuntime.create','new GeckoRuntime','setGeckoPref(','clearGeckoUserPref(','evaluateJavascript(','remoteDebuggingEnabled','setDefaultSSL'):self.assertNotIn(forbidden,java)
         stop=java[java.index('public void onPageStop'):java.index('public void onProgressChange')];self.assertNotIn('terminal=true',stop);self.assertNotIn('titleMatched=true',stop)
         self.assertIn('Binder.getCallingUid()!=2000',provider);self.assertIn('Files.isSymbolicLink',provider)
-        original=subprocess.check_output(['git','show','138a071d9f39dd624af0ae82eb12a604d5a246a0:tests/gecko/AndroidManifest.xml'],cwd=ROOT,text=True)
+        original=subprocess.check_output(['git','show','e4a20469326f16dc8ff8cfabd4fe67bf3d0148de:tests/gecko/AndroidManifest.xml'],cwd=ROOT,text=True)
         current=(ROOT/'tests/gecko/AndroidManifest.xml').read_text();filtered='\n'.join(line for line in current.split('\n') if not any(name in line for name in ('GeckoTlsAcceptance','NativeTlsProbe','GeckoTlsCpuIpCombo')))
         self.assertEqual(filtered,original)
         for name in ('tls-acceptance-page.js','tls-acceptance-worker.js'):

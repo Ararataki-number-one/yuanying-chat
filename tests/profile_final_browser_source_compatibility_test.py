@@ -36,8 +36,11 @@ CPU_FIXTURE = 'tests/fixtures/cpu-ip-source-deltas.json'
 OLD_CPU_SHA = '66c9b3643b26edb54b0c371c2053d56e482efcce2035aa1ca067fdead8f48e5a'
 IP_FIXTURE = 'tests/fixtures/ip-timezone-source-deltas.json'
 IP_SHA = '2a84a6ac4cb8246ea633d314bbcc9b75b8ab9e180507e6a7017533519106c0bb'
-FINAL_SHA = '167329f7fd195601a9b5cbf50a3e754ea17033daf4b82dd8d75c1b64210d5fb5'
+FINAL_SHA = '8bb0bb6580879fcef6258f48e57fbdce19304c0d3ea0061131d993b815877a16'
 INVENTORY_115_PINS = {'tests/baselines/public-source-history.json': ('3a25f8963e7571f7e8c33f48998d67381d595896bc942aca227a71e48cf5ae17', 34730), 'tools/browser/source_history.py': ('4924f0255fccc91bcbaf34a31a893471ba3d77957420c6f704b524845e22080c', 8992)}
+
+INVENTORY_116_PINS = {'tests/baselines/public-source-history.json': ('84ee908575ae516d65adceac8cfddaafcc0f86a3d8cd82584c689e9b0699b230', 35166), 'tools/browser/source_history.py': ('43d6c0c5778fc1c4fbb4a7ae43e1ddf42a2dc30aa7a7cdffd9ee65cdfc40e33c', 8992)}
+INVENTORY_CLEANUP_CONTEXT_COUNTS = {'tests/baselines/public-source-history.json': 12, 'tools/browser/source_history.py': 1}
 
 PUBLISHER_METADATA_PINS = {
     'tests/browser_fingerprint_publish_gate_test.py':
@@ -67,16 +70,93 @@ SHA = lambda raw: hashlib.sha256(raw).hexdigest()
 
 
 def current_context(relative, row, delta):
-    """Compose only the two declared catalog tails for current-image controls."""
+    """Map a declared context to its unique span in the exact raw current image."""
     chunk = delta['current'].encode()
-    if relative in INVENTORY_115_PINS and delta['id'] != row['deltas'][-1]['id']:
-        tail = row['deltas'][-1]
-        previous, current = tail['previous'].encode(), tail['current'].encode()
-        if previous in chunk:
-            if chunk.count(previous) != 1:
-                raise ValueError('Catalog tail must compose exactly once in an old context')
-            chunk = chunk.replace(previous, current, 1)
-    return chunk
+    if relative not in INVENTORY_115_PINS:
+        return chunk
+    current = (ROOT/relative).read_bytes()
+    if (SHA(current), len(current)) != (row['reviewedSha256'], row['reviewedBytes']):
+        raise ValueError('Current catalog context requires its exact whole image')
+    index = next(i for i, item in enumerate(row['deltas']) if item['id'] == delta['id'])
+    later = row['deltas'][index+1:]
+    phase = current
+    for tail in reversed(later):
+        after, before = tail['current'].encode(), tail['previous'].encode()
+        if phase.count(after) != 1:
+            raise ValueError('Catalog context inverse must be unique')
+        phase = phase.replace(after, before, 1)
+    if phase.count(chunk) != 1:
+        raise ValueError('Original catalog context must occur once at its own phase')
+    left = phase.index(chunk)
+    right = left + len(chunk)
+    for tail in later:
+        before, after = tail['previous'].encode(), tail['current'].encode()
+        if phase.count(before) != 1:
+            raise ValueError('Catalog context forward replay must be unique')
+        a = phase.index(before)
+        b = a + len(before)
+        change = len(after) - len(before)
+        if b <= left:
+            left += change
+            right += change
+        elif a < right:
+            left = min(left, a)
+            right = max(right, b) + change
+        phase = phase.replace(before, after, 1)
+    if phase != current or not 0 <= left < right <= len(current):
+        raise ValueError('Catalog context replay did not restore the whole current image')
+    mapped = phase[left:right]
+    if current.count(mapped) != 1:
+        raise ValueError('Mapped catalog context must be unique in raw current source')
+    return mapped
+
+
+def tagged_current_context(relative, row, delta):
+    """Independent byte-label oracle for the numeric position replay above."""
+    current = (ROOT/relative).read_bytes()
+    index = next(i for i, item in enumerate(row['deltas']) if item['id'] == delta['id'])
+    later = row['deltas'][index+1:]
+    phase = current
+    for tail in reversed(later):
+        after, before = tail['current'].encode(), tail['previous'].encode()
+        if phase.count(after) != 1:
+            raise ValueError('Tagged context requires a unique inverse')
+        phase = phase.replace(after, before, 1)
+    chunk = delta['current'].encode()
+    if phase.count(chunk) != 1:
+        raise ValueError('Tagged original context must be unique')
+    start = phase.index(chunk)
+    tags = bytearray(len(phase))
+    tags[start:start+len(chunk)] = b'\x01'*len(chunk)
+    for tail in later:
+        before, after = tail['previous'].encode(), tail['current'].encode()
+        if phase.count(before) != 1:
+            raise ValueError('Tagged context requires a unique forward edit')
+        start = phase.index(before)
+        stop = start + len(before)
+        inherited = any(tags[start:stop])
+        tags[start:stop] = bytes([inherited])*len(after)
+        phase = phase.replace(before, after, 1)
+    if phase != current or len(tags) != len(current):
+        raise ValueError('Tagged replay must restore the complete raw source')
+    start = tags.index(1)
+    stop = len(tags) - tags[::-1].index(1)
+    if not all(tags[start:stop]):
+        raise ValueError('Tagged context must remain contiguous')
+    return current[start:stop]
+
+
+def inventory_116_input(raw, relative, value):
+    """A strictly checked historical left input for the retained116-tail proof."""
+    restored = raw
+    for tail in reversed(value['files'][relative]['deltas'][-INVENTORY_CLEANUP_CONTEXT_COUNTS[relative]:]):
+        current, previous = tail['current'].encode(), tail['previous'].encode()
+        if restored.count(current) != 1:
+            raise ValueError('Cleanup catalog tail must occur exactly once')
+        restored = restored.replace(current, previous, 1)
+    if (SHA(restored), len(restored)) != INVENTORY_116_PINS[relative]:
+        raise ValueError('Cleanup catalog tail did not restore the exact116 image')
+    return restored
 
 
 @lru_cache(maxsize=None)
@@ -152,10 +232,10 @@ class FinalBrowserHistoricalSources(unittest.TestCase):
                     inverse = inverse.replace(after, previous, 1)
                 self.assertEqual(forward, current)
                 self.assertEqual(inverse, before)
-        self.assertEqual(contexts - 1 - len(INVENTORY_115_PINS), 43)
+        self.assertEqual(contexts - 1 - len(INVENTORY_115_PINS) - sum(INVENTORY_CLEANUP_CONTEXT_COUNTS.values()), 43)
         previous_paths = layer.PATHS-PUBLISHER_METADATA_PINS.keys()
         self.assertEqual(len(previous_paths), 17)
-        self.assertEqual(sum(len(value['files'][relative]['deltas']) for relative in previous_paths) - 1 - len(INVENTORY_115_PINS), 41)
+        self.assertEqual(sum(len(value['files'][relative]['deltas']) for relative in previous_paths) - 1 - len(INVENTORY_115_PINS) - sum(INVENTORY_CLEANUP_CONTEXT_COUNTS.values()), 41)
 
     def test_every_context_rejects_missing_duplicate_changed_moved_and_unknown_images(self):
         rejected = 0
@@ -163,7 +243,7 @@ class FinalBrowserHistoricalSources(unittest.TestCase):
         for relative, row in value['files'].items():
             current = (ROOT/relative).read_bytes()
             # The appended P2 context has its own complete-image controls below.
-            for delta in (row['deltas'][:-1] if relative == GV or relative in INVENTORY_115_PINS else row['deltas']):
+            for delta in (row['deltas'][:-1] if relative == GV else row['deltas'][:-(1 + INVENTORY_CLEANUP_CONTEXT_COUNTS[relative])] if relative in INVENTORY_115_PINS else row['deltas']):
                 chunk = current_context(relative, row, delta)
                 remainder = current.replace(chunk, b'', 1)
                 moved = remainder+chunk
@@ -759,6 +839,10 @@ class FinalBrowserHistoricalSources(unittest.TestCase):
 
     def test_p2_preserves_all_original_nineteen_rows_and_forty_three_contexts(self):
         value = copy.deepcopy(layer.manifest())
+        for path, (digest, size) in INVENTORY_116_PINS.items():
+            inventory = value['files'][path]
+            del inventory['deltas'][-INVENTORY_CLEANUP_CONTEXT_COUNTS[path]:]
+            inventory['reviewedSha256'], inventory['reviewedBytes'] = digest, size
         for path, (digest, size) in INVENTORY_115_PINS.items():
             inventory = value['files'][path]
             inventory['deltas'].pop()
@@ -873,17 +957,24 @@ class FinalBrowserHistoricalSources(unittest.TestCase):
         self.assertNotIn('p2_input', host)
 
     def test_public_window_catalog_additions_preserve_all_original_forty_four_contexts(self):
-        value = copy.deepcopy(layer.manifest())
+        full = layer.manifest()
+        value = copy.deepcopy(full)
+        for relative, (digest, size) in INVENTORY_116_PINS.items():
+            row = value['files'][relative]
+            del row['deltas'][-INVENTORY_CLEANUP_CONTEXT_COUNTS[relative]:]
+            row['reviewedSha256'], row['reviewedBytes'] = digest, size
         rejected = 0
         for relative, (digest, size) in INVENTORY_115_PINS.items():
             row = value['files'][relative]
             delta = row['deltas'].pop()
             current = (ROOT/relative).read_bytes()
             before, after = delta['previous'].encode(), delta['current'].encode()
-            self.assertEqual(current.count(after), 1)
-            restored = current.replace(after, before, 1)
+            phase = inventory_116_input(current, relative, full)
+            self.assertEqual(phase.count(after), 1)
+            restored = phase.replace(after, before, 1)
             self.assertEqual((SHA(restored), len(restored)), (digest, size))
             row['reviewedSha256'], row['reviewedBytes'] = digest, size
+            after = current_context(relative, full['files'][relative], delta)
             removed = current.replace(after, b'', 1)
             moved = removed+after
             if moved == current:
@@ -898,8 +989,93 @@ class FinalBrowserHistoricalSources(unittest.TestCase):
         self.assertEqual(SHA(restored_fixture), 'ad897f6a3f9f53913392786788034022d79ab9c1f29a658721005f2fc8443570')
         self.assertEqual(len(value['files']), 19)
         self.assertEqual(sum(len(row['deltas']) for row in value['files'].values()), 44)
-        self.assertEqual(sum(len(row['deltas']) for row in layer.manifest()['files'].values()), 46)
+        self.assertEqual(sum(len(row['deltas']) for row in layer.manifest()['files'].values()) - sum(INVENTORY_CLEANUP_CONTEXT_COUNTS.values()), 46)
         self.assertEqual(rejected, 12)
+
+    def test_old_inventory_context_attacks_change_the_actual_current_image(self):
+        mapped = 0
+        rejected = 0
+        for relative in INVENTORY_115_PINS:
+            row = layer.manifest()['files'][relative]
+            current = (ROOT/relative).read_bytes()
+            self.assertEqual(layer.source_input(current, relative), git('show', B+':'+relative))
+            retained = row['deltas'][:-INVENTORY_CLEANUP_CONTEXT_COUNTS[relative]]
+            for delta in retained:
+                part = current_context(relative, row, delta)
+                self.assertEqual(part, tagged_current_context(relative, row, delta))
+                self.assertEqual(current.count(part), 1)
+                mapped += part != delta['current'].encode()
+                removed = current.replace(part, b'', 1)
+                moved = removed+part
+                if moved == current:
+                    moved = part+removed
+                for candidate in (removed, current.replace(part, part+part, 1),
+                        current.replace(part, part+b' ', 1), moved,
+                        current[:-1], b'unknown current catalog image'+current):
+                    self.assertNotEqual(candidate, current)
+                    with self.assertRaises(ValueError):
+                        layer.source_input(candidate, relative)
+                    rejected += 1
+        self.assertGreater(mapped, 0)
+        self.assertEqual(rejected, 30)
+        source = (ROOT/'tests/profile_final_browser_source_compatibility_test.py').read_text()
+        function = next(node for node in ast.parse(source).body
+                        if isinstance(node, ast.FunctionDef) and node.name == 'current_context')
+        body = ast.get_source_segment(source, function)
+        positions = "        if b <= left:\n            left += change\n            right += change\n        elif a < right:\n            left = min(left, a)\n            right = max(right, b) + change\n"
+        self.assertEqual(body.count(positions), 1)
+        bypass = '    if relative not in INVENTORY_115_PINS:'
+        self.assertEqual(body.count(bypass), 1)
+        def exact_current_mapping(mapper):
+            for path in INVENTORY_115_PINS:
+                item = layer.manifest()['files'][path]
+                retained = item['deltas'][:-INVENTORY_CLEANUP_CONTEXT_COUNTS[path]]
+                for context in retained:
+                    try:
+                        result = mapper(path, item, context)
+                    except ValueError as failure:
+                        raise AssertionError('Exact raw-current mapping did not complete') from failure
+                    self.assertEqual(result, tagged_current_context(path, item, context))
+        exact_current_mapping(current_context)
+        for label, counterfeit in (('removed-position-replay', body.replace(positions, '', 1)),
+                ('bypassed-position-replay', body.replace(bypass, '    if True:', 1))):
+            namespace = globals().copy()
+            exec(compile(counterfeit, '<'+label+'>', 'exec'), namespace)
+            with self.assertRaises(AssertionError):
+                exact_current_mapping(namespace['current_context'])
+
+    def test_cleanup_catalog_additions_preserve_all_original_forty_six_contexts(self):
+        value = copy.deepcopy(layer.manifest())
+        rejected = 0
+        for relative, (digest, size) in INVENTORY_116_PINS.items():
+            row = value['files'][relative]
+            deltas = row['deltas'][-INVENTORY_CLEANUP_CONTEXT_COUNTS[relative]:]
+            del row['deltas'][-INVENTORY_CLEANUP_CONTEXT_COUNTS[relative]:]
+            current = (ROOT/relative).read_bytes()
+            restored = current
+            for delta in reversed(deltas):
+                before, after = delta['previous'].encode(), delta['current'].encode()
+                self.assertEqual(current.count(after), 1)
+                self.assertEqual(restored.count(after), 1)
+                restored = restored.replace(after, before, 1)
+                removed = current.replace(after, b'', 1)
+                moved = removed+after
+                if moved == current:
+                    moved = after+removed
+                for candidate in (removed, current.replace(after, after+after, 1),
+                        current.replace(after, after+b' ', 1), moved,
+                        current[:-1], b'unknown cleanup catalog image'+current):
+                    with self.assertRaises(ValueError):
+                        layer.source_input(candidate, relative)
+                    rejected += 1
+            self.assertEqual((SHA(restored), len(restored)), (digest, size))
+            row['reviewedSha256'], row['reviewedBytes'] = digest, size
+        restored_fixture = (json.dumps(value, ensure_ascii=False, indent=2)+'\n').encode()
+        self.assertEqual(SHA(restored_fixture), '167329f7fd195601a9b5cbf50a3e754ea17033daf4b82dd8d75c1b64210d5fb5')
+        self.assertEqual(len(value['files']), 19)
+        self.assertEqual(sum(len(row['deltas']) for row in value['files'].values()), 46)
+        self.assertEqual(sum(len(row['deltas']) for row in layer.manifest()['files'].values()), 59)
+        self.assertEqual(rejected, 78)
 
     def test_current_workflow_reads_raw_yaml_seven_declared_and_thirteen_expanded_jobs(self):
         import browser_acceptance_workflow_test as workflow
