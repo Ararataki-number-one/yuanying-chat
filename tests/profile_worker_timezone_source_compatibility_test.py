@@ -244,7 +244,8 @@ class WorkerTimezoneSourceCompatibility(unittest.TestCase):
         self.assertEqual(after.replace(DUAL_HOOK.encode(), b'', 1), before)
         relative = 'tests/profile_dual_browser_source_compatibility_test.py'
         before = subprocess.check_output(['git', 'show', overlay.BASE_COMMIT + ':' + relative], cwd=ROOT)
-        after = (ROOT / relative).read_bytes()
+        from page_bridge_budget_source_compatibility import PATHS as budget_paths, source_input as budget_source_input
+        after = budget_source_input((ROOT / relative).read_bytes(), relative) if relative in budget_paths else (ROOT / relative).read_bytes()
         # Remove only the reviewed host-adapter historical read ports before
         # the original complete-file oracle below; no actual host sees a view.
         host_import = b'        from worker_timezone_host_source_compatibility import PATHS as host_adapter_paths, source_input as host_adapter_source_input\n'

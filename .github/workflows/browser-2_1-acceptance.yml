@@ -97,6 +97,7 @@ env:
     temporary=target.with_suffix('.partial');temporary.write_text(json.dumps(record,sort_keys=True)+'\n');temporary.replace(target)
     print('ANDROID_CAPACITY_PREFLIGHT '+json.dumps(record,sort_keys=True),flush=True)
     sys.exit(0 if passed else 1)
+  GIT_NO_LAZY_FETCH: '1'
 jobs:
   build:
     runs-on: ubuntu-24.04
@@ -1040,6 +1041,7 @@ jobs:
         cp work/browser-acceptance/browser-fingerprint-results.json work/gecko-integration/public/browser-fingerprint-results.json
         cp work/browser-acceptance/worker-policy-results.json work/gecko-integration/public/worker-policy-results.json
         cp work/browser-acceptance/gecko-environment-policy-results.json work/gecko-integration/public/gecko-environment-policy-results.json
+        python3 tools/browser/ip_timezone_publication.py --directory work/browser-acceptance --destination work/gecko-integration/public --source "$GITHUB_SHA" --device-reference work/gecko-integration/public/device-results.json
         python3 tools/browser/check_evidence.py --directory work/gecko-integration/public --source "$GITHUB_SHA" --output work/gecko-integration/public/browser-regression.json
     - name: Publish complete source-bound evidence including the browser gate
       run: python3 tools/gecko/publish_ci.py
@@ -1052,6 +1054,8 @@ jobs:
           work/gecko-integration/public/browser-fingerprint-results.json
           work/gecko-integration/public/worker-policy-results.json
           work/gecko-integration/public/gecko-environment-policy-results.json
+          work/gecko-integration/public/gecko-ip-timezone-results.json
+          work/gecko-integration/public/gecko-ip-timezone-evidence/*.json
           work/gecko-integration/public/browser-regression.json
           work/gecko-integration/public/manifest.json
         if-no-files-found: error
@@ -1120,6 +1124,9 @@ jobs:
     - name: Execute production Gecko timezone and public Worker identity controls
       if: ${{ !cancelled() }}
       run: python3 tools/browser/run_gecko_environment_policy_integration.py --adb "$(command -v adb)" --serial emulator-5554 --output work/browser-acceptance
+    - name: Execute production exit-IP timezone defaults and route transitions
+      if: ${{ !cancelled() }}
+      run: python3 tools/browser/run_gecko_ip_timezone_integration.py --adb "$(command -v adb)" --serial emulator-5554 --apk app/build/outputs/apk/integration/app-x86_64-integration.apk --source "$GITHUB_SHA" --output work/browser-acceptance
     - name: Preserve bounded source-bound browser evidence
       if: always()
       uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
@@ -1129,6 +1136,7 @@ jobs:
           work/browser-acceptance/*.json
           work/browser-acceptance/*.txt
           work/browser-acceptance/*.png
+          work/browser-acceptance/gecko-ip-timezone-evidence/*.json
           work/browser-acceptance/emulator.log
         if-no-files-found: warn
         retention-days: 7

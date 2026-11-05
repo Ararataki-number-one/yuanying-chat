@@ -43,7 +43,7 @@ final class GeckoTimeZonePolicy {
   static boolean validContext(String value){return value!=null&&value.matches("[1-9][0-9]{0,23}");}
   static boolean validSession(String value){return value!=null&&value.matches("[A-Za-z0-9_.:-]{1,160}");}
   static boolean legacySystemMayContinue(GeckoTimeZoneSpec desired){return desired!=null&&desired.followsSystem();}
-  static boolean protectionConflict(int protectionLevel,GeckoTimeZoneSpec desired){return protectionLevel>=2&&desired!=null&&!desired.followsSystem();}
+  static boolean protectionConflict(int protectionLevel,GeckoTimeZoneSpec desired){return protectionLevel>=2&&desired!=null&&!desired.followsSystem()&&!desired.followsIp();}
   static String nativeScope(){return "原生上下文设置回读；页面、Worker 与 Service Worker 的实际时区需分别观测，强化保护可能采用自己的时区策略。";}
   static long integer(JSONObject value,String key)throws IOException{
     Object raw=value.opt(key);if(!(raw instanceof Integer||raw instanceof Long||raw instanceof Short||raw instanceof Byte))throw new IOException("时区记录整数无效");return ((Number)raw).longValue();

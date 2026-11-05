@@ -99,7 +99,7 @@ assert not subprocess.check_output(['git','status','--porcelain'],cwd=root,text=
 release_tool_files={'.github/workflows/publish-gecko-release.yml','tools/publish-gecko-release.py','tools/gecko/release_channel_contract.py','tools/gecko/release_channel_contract_test.py'}
 if browser_release:release_tool_files.add('tools/browser/check_evidence.py')
 if fingerprint_release:release_tool_files.update({'tools/browser/check_fingerprint_evidence.py'})
-if worker_timezone_release:release_tool_files.update({'tools/browser/check_worker_policy_evidence.py','tools/browser/check_gecko_environment_policy_evidence.py'})
+if worker_timezone_release:release_tool_files.update({'tools/browser/check_worker_policy_evidence.py','tools/browser/check_gecko_environment_policy_evidence.py','tools/browser/ip_timezone_publication.py'})
 if release_tools_commit!=args.source:
     subprocess.run(['git','merge-base','--is-ancestor',args.source,release_tools_commit],cwd=root,check=True)
     changed=set(subprocess.check_output(['git','diff','--name-only',args.source,release_tools_commit],cwd=root,text=True).splitlines())
@@ -293,6 +293,12 @@ if fingerprint_release:
 if worker_timezone_release:
     for name in ('check_worker_policy_evidence.py','check_gecko_environment_policy_evidence.py'):
         shutil.copy2(root/'tools/browser'/name,stage/'tools/browser'/name)
+ip_timezone_required=manifest['controlledBrowserRegression']['geckoIpTimeZoneRegression'] if worker_timezone_release else None
+if worker_timezone_release:
+    from browser.ip_timezone_publication import copy_gecko_ip_timezone_evidence, copy_gecko_ip_timezone_tools
+    ip_timezone_publication=copy_gecko_ip_timezone_evidence(args.evidence,stage,args.source,report['eventTransport']['buildIdentity'],required_regression=ip_timezone_required)
+    performance_files+=ip_timezone_publication['files']
+    copy_gecko_ip_timezone_tools(root,stage,args.source)
 branch='apk/gecko-release-20261003'
 if version_code>=70:
     for mode in ('retry','application','internal'):

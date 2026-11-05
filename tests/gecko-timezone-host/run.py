@@ -14,7 +14,7 @@ def main():
         value=str(a.java_home/'bin'/name) if a.java_home else shutil.which(name)
         if not value:p.error('Provide --java-home with '+name)
         return value
-    sources=[PRODUCTION/name for name in ['GeckoTimeZoneSpec.java','GeckoTimeZoneStore.java','GeckoTimeZonePolicy.java','EnvironmentSpec.java','NetworkShareJson.java','J.java']]
+    sources=[PRODUCTION/name for name in ['GeckoTimeZoneSpec.java','GeckoTimeZoneStore.java','GeckoTimeZonePolicy.java','GeckoIpTimeZonePolicy.java','EnvironmentSpec.java','NetworkShareJson.java','J.java']]
     inputs=sources+[HERE/'GeckoTimeZoneHost.java',Path(__file__).resolve()];hashes={str(path.relative_to(ROOT)):digest(path) for path in inputs};results=[]
     with tempfile.TemporaryDirectory(prefix='gecko-timezone-host-') as temp:
         work=Path(temp);classes=work/'classes';context=work/'android/content/Context.java';context.parent.mkdir(parents=True)

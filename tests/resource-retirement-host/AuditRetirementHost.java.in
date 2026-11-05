@@ -37,6 +37,10 @@ final class LoginPagePolicy {static boolean login(String s){return false;}}
 final class EnvironmentAudit {
   final ChatSession session;final Probe serviceProbe=new Probe(),requestIdentity=new Probe();
   Object nativeRuntimeIdentity;
+  // Opaque ownership token only: these extracted methods test null/nonnull.
+  // No pending document/native proof implementation is simulated or accepted.
+  static final class PendingPageAudit {}
+  PendingPageAudit pendingPageAudit=null;
   boolean running=true,geckoRun=true;long serial=5,auditNavigation=7;String auditUrl="https://chatgpt.com/c/original",lastError="",report="previous report bytes";
   Runnable completed;FutureTask<Void> nativeWork;final InlineExecutor closer=new InlineExecutor();HttpURLConnection connection;
   EnvironmentAudit(ChatSession s){session=s;nativeWork=new FutureTask<>(()->null);}
@@ -63,6 +67,8 @@ final class ChatSession {
 }
 public final class AuditRetirementHost {
   static int checks,invalidatedChecksStillRunning,cancelledFutures,disconnectedConnections,idleActivityHeld;static boolean expectFixed;
+  static int pendingChecks;
+  static void pendingCheck(String name,boolean pass){if(!pass)throw new AssertionError(name);pendingChecks++;System.out.println("PENDING_PASS "+name);}
   static void check(String name,boolean pass){if(!pass)throw new AssertionError(name);checks++;System.out.println("PASS "+name);}
   static ChatSession armed()throws Exception{ChatSession s=new ChatSession();s.audit.connection=new DummyConnection();return s;}
   static void change(ChatSession s,boolean route){if(route)s.invalidateConnection();else s.beginNavigation("https://chatgpt.com/c/next","loading");}
@@ -113,9 +119,24 @@ public final class AuditRetirementHost {
       check("Retiring optional check keeps actual browser predicate active for "+kind,s.browserWorkActive());
     }
   }
+  static void pendingControls()throws Exception{
+    ChatSession s=armed();EnvironmentAudit a=s.audit;a.geckoRun=false;a.pendingPageAudit=new EnvironmentAudit.PendingPageAudit();FutureTask<Void> work=a.nativeWork;DummyConnection connection=(DummyConnection)a.connection;long serial=a.serial;int[] done={0};a.completed=()->done[0]++;String report=a.report,draft=s.draft;
+    a.retirePageCheck();
+    pendingCheck("Pending page check is retired before Gecko sampling begins",!a.running&&work.isCancelled()&&connection.disconnects==1&&a.serial==serial+1&&done[0]==1);
+    pendingCheck("Retirement cancellation clears the pending ownership slot",a.pendingPageAudit==null);
+    pendingCheck("Pending retirement preserves previous report and user draft",report.equals(a.report)&&draft.equals(s.draft));
+    a.retirePageCheck();a.cancel();pendingCheck("Repeated pending cancellation never repeats completion or disconnect",a.serial==serial+1&&done[0]==1&&connection.disconnects==1);
+    ChatSession explicit=armed();EnvironmentAudit current=explicit.audit;current.geckoRun=false;current.pendingPageAudit=new EnvironmentAudit.PendingPageAudit();FutureTask<Void> explicitWork=current.nativeWork;DummyConnection explicitConnection=(DummyConnection)current.connection;
+    current.cancel();pendingCheck("Explicit cancellation clears a nonnull pending token",current.pendingPageAudit==null&&!current.running&&explicitWork.isCancelled()&&explicitConnection.disconnects==1);
+    for(boolean identity:new boolean[]{false,true}){
+      ChatSession dedicated=armed();EnvironmentAudit selected=dedicated.audit;selected.geckoRun=false;EnvironmentAudit.PendingPageAudit pending=new EnvironmentAudit.PendingPageAudit();selected.pendingPageAudit=pending;if(identity)selected.requestIdentity.active=true;else selected.serviceProbe.active=true;
+      selected.retirePageCheck();pendingCheck("Dedicated check keeps its own pending ownership "+identity,selected.running&&selected.pendingPageAudit==pending&&selected.serviceProbe.cancels==0&&selected.requestIdentity.cancels==0);
+    }
+    ChatSession finished=armed();EnvironmentAudit inactive=finished.audit;inactive.running=false;inactive.geckoRun=false;EnvironmentAudit.PendingPageAudit token=new EnvironmentAudit.PendingPageAudit();inactive.pendingPageAudit=token;inactive.retirePageCheck();pendingCheck("Inactive check cannot be revived by an opaque pending token",!inactive.running&&inactive.pendingPageAudit==token&&!inactive.nativeWork.isCancelled());
+  }
   public static void main(String[] args)throws Exception{
-    expectFixed=Boolean.parseBoolean(args[0]);ordinary(false);ordinary(true);dedicated();documentControls();workProtection();
+    expectFixed=Boolean.parseBoolean(args[0]);ordinary(false);ordinary(true);dedicated();documentControls();workProtection();pendingControls();
     System.out.println("METRICS {\"invalidatedChecksStillRunning\":"+invalidatedChecksStillRunning+",\"cancelledFutures\":"+cancelledFutures+",\"disconnectedConnections\":"+disconnectedConnections+",\"idleActivityHeld\":"+idleActivityHeld+"}");
-    System.out.println("TOTAL "+checks);System.out.println("SCOPE host extracted methods, fake scheduling and native connection; no Android/Gecko/phone memory measurement");
+    System.out.println("PENDING_TOTAL "+pendingChecks);System.out.println("TOTAL "+checks);System.out.println("SCOPE host extracted methods, fake scheduling and native connection; no Android/Gecko/phone memory measurement");
   }
 }

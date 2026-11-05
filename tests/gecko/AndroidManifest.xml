@@ -1,5 +1,8 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
-  <application>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" xmlns:tools="http://schemas.android.com/tools">
+  <application android:name="local.pocketchat.IpTimeZoneFixtureApplication" tools:replace="android:name">
+    <meta-data android:name="local.pocketchat.test.genericTimeZoneScope" android:value="explicit-manual-system-baseline" />
+    <activity android:name="local.pocketchat.GeckoIpTimeZoneIntegrationActivity" android:exported="true" android:process=":profile6" android:launchMode="singleTask" android:taskAffinity="local.pocketchat.test.gecko_ip_timezone" android:configChanges="orientation|screenSize|keyboardHidden|uiMode" />
+    <provider android:name="local.pocketchat.GeckoIpTimeZoneEvidenceProvider" android:authorities="local.pocketchat.test.gecko-ip-timezone-evidence" android:exported="true" android:process=":ip_timezone_setup" />
     <activity android:name="local.pocketchat.WorkerPolicyIntegrationActivity" android:exported="true" android:launchMode="singleTask" android:taskAffinity="local.pocketchat.test.worker_policy_probe" android:configChanges="orientation|screenSize|keyboardHidden|uiMode" />
     <provider android:name="local.pocketchat.WorkerPolicyEvidenceProvider" android:authorities="local.pocketchat.test.worker-policy-evidence" android:exported="true" />
     <activity android:name="local.pocketchat.GeckoEnvironmentPolicyIntegrationActivity" android:exported="true" android:launchMode="singleTask" android:taskAffinity="local.pocketchat.test.gecko_environment_policy" android:configChanges="orientation|screenSize|keyboardHidden|uiMode" />

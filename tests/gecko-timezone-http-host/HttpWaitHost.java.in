@@ -55,6 +55,13 @@ public final class HttpWaitHost {
     // actual bodies are independently covered by the route/header host suites.
     JSONObject route(String target){routeCalls++;events.add("route");lastRoute=target;return J.obj("allowed",routeGuard&&targetAllowed&&timeZoneAllows(current),"target",target);}
     ResultBoundary<Object> requestHeaderPolicy(String target){headerCalls++;events.add("headers");lastHeader=target;ResultBoundary<Object> result=new ResultBoundary<>();if(headerDeferred){pendingHeader=result;return result;}if(headerFails){result.fail(new IllegalStateException("declared header boundary failure"));return result;}result.complete(J.obj("allowed",headerGuard&&targetAllowed&&timeZoneAllows(current),"target",target).toString());return result;}
+    // Real current lease map/release; no IP lookup or native transport is modeled.
+    @IP_ROUTE_FIELDS@
+    static final class IpLookupBoundary {SessionBoundary session;TimeZoneGate gate;private IpLookupBoundary(){throw new UnsupportedOperationException("IP lookup is outside this manual HTTP-wait boundary");}}
+    IpLookupBoundary ipLookup=null;
+    void cancelIpLookup(){throw new UnsupportedOperationException("IP lookup is outside this manual HTTP-wait boundary");}
+    boolean manualTimeZonePolicy=true;int manualIpFailureNotifications;
+    void finishIpNavigationFailure(SessionBoundary session,TimeZoneGate gate,String issue){if(!manualTimeZonePolicy)throw new UnsupportedOperationException("IP failure UI is outside this manual HTTP-wait boundary");manualIpFailureNotifications++;}
     @METHODS@
   }
   static WebBoundary.TimeZoneGate gate(WebBoundary web){return web.timeZoneGates.get(web.current);}
@@ -143,12 +150,19 @@ public final class HttpWaitHost {
     WebBoundary web=new WebBoundary();WebBoundary.TimeZoneGate gate=gate(web);gate.proofWaiting.add(ready->web.events.add(ready?"proof":"proof-denied"));ResultBoundary<Object> route=web.guardedRoute(TARGET),header=web.guardedRequestHeaderPolicy(TARGET);web.owner.timeZone.grant(web.current,gate.epoch);web.finishTimeZone(web.current,gate,true);
     check("Private document proof callbacks run before public HTTP helpers",web.events.equals(List.of("proof","route","headers"))&&allowed(route)&&allowed(header)&&gate.proofWaiting.isEmpty()&&gate.networkWaiting.isEmpty()&&web.owner.handler.tasks.isEmpty());
   }
+  static void actualIpLease(){
+    WebBoundary web=new WebBoundary();WebBoundary.TimeZoneGate gate=gate(web);ChromiumRouteLease.Registry registry=new ChromiumRouteLease.Registry();ChromiumRouteLease.Handle handle=registry.acquireSurface();web.ipRouteLeases.put(gate,handle);
+    web.releaseIpRoute(new WebBoundary.TimeZoneGate());check("An unrelated gate cannot release the current IP lease",registry.held()&&web.ipRouteLeases.get(gate)==handle&&!handle.closed);
+    web.releaseIpRoute(gate);check("Actual IP lease release removes its exact gate entry",web.ipRouteLeases.isEmpty());check("Actual IP lease release closes its real registry handle",handle.closed&&!registry.held());
+    long revision=registry.snapshot().revision;web.releaseIpRoute(gate);check("Actual IP lease release is idempotent after removal",registry.snapshot().revision==revision&&!registry.held());
+    handle=registry.acquireSurface();web.ipRouteLeases.put(gate,handle);web.owner.timeZone.grant(web.current,gate.epoch);web.finishTimeZone(web.current,gate,true);check("Actual finish method closes its owned IP lease",web.ipRouteLeases.isEmpty()&&handle.closed&&!registry.held());
+  }
   static void run(String focus){
     if(focus.startsWith("fence:")){fence(focus.substring(6));return;}
-    switch(focus){case "entry":entry();return;case "success":success();return;case "helpers":helpers();return;case "cap":cap();return;case "timeout":timeout();return;case "race":race();return;case "failed-private":failedPrivate();return;case "proof-order":proofOrder();return;default:throw new AssertionError("Unknown focus "+focus);}
+    switch(focus){case "entry":entry();return;case "success":success();return;case "helpers":helpers();return;case "cap":cap();return;case "timeout":timeout();return;case "race":race();return;case "failed-private":failedPrivate();return;case "proof-order":proofOrder();return;case "ip-lease":actualIpLease();return;default:throw new AssertionError("Unknown focus "+focus);}
   }
   public static void main(String[] args){
-    if(args.length>0)run(args[0]);else{for(String group:List.of("entry","success","helpers","cap","timeout","race","failed-private","proof-order"))run(group);for(String kind:List.of("current","gate","document","port","null-port","navigation","connection","identity-policy","protection","desired-revision","desired-missing","sdk-readiness","controller-open-epoch","controller-object","gate-readiness","closed","deleted","destroyed","unknown-session"))fence(kind);}
+    if(args.length>0)run(args[0]);else{for(String group:List.of("entry","success","helpers","cap","timeout","race","failed-private","proof-order","ip-lease"))run(group);for(String kind:List.of("current","gate","document","port","null-port","navigation","connection","identity-policy","protection","desired-revision","desired-missing","sdk-readiness","controller-open-epoch","controller-object","gate-readiness","closed","deleted","destroyed","unknown-session"))fence(kind);}
     JSONArray values=new JSONArray();for(JSONObject check:checks)values.put(check);System.out.println(J.obj("status","passed","passed",checks.size(),"total",checks.size(),"checks",values,"actualAndroidExecution",false,"actualGeckoExecution",false,"scope","Actual selected GeckoWebView HTTP wait/gate methods with declared SDK, Handler, private-controller and counting route/header application boundaries; no browser, native SDK, network or performance execution"));
   }
 }

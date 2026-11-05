@@ -19,7 +19,7 @@ from run import member_at
 MEMBERS = (
     'static final class TimeZoneGate', 'static final class ProtectionRestore',
     'boolean timeZoneSessionAlive(', 'boolean timeZoneAllows(',
-    'void retireTimeZone(', 'void retireTimeZones(', 'void finishTimeZone(',
+    'void retireTimeZone(', 'void retireTimeZones(', 'void finishTimeZone(', 'void releaseIpRoute(',
     'void sendTimeZone(', 'void prepareTimeZone(', 'private void startTimeZone(',
     'void revalidateTimeZone(', 'void completeTimeZoneRequests(', 'void completeTimeZoneProofs(',
     'boolean waitForDocumentTimeZone(', 'GeckoResult<Object> guardedRoute(',
@@ -62,6 +62,11 @@ MUTATIONS = (
 )
 
 
+LEASE_MUTATIONS = (
+    ('ip-lease-close', 'void releaseIpRoute(', 'lease.close();', ';', 'Actual IP lease release closes its real registry handle'),
+    ('ip-lease-remove', 'void releaseIpRoute(', 'ipRouteLeases.remove(gate)', 'ipRouteLeases.get(gate)', 'Actual IP lease release removes its exact gate entry'),
+)
+
 def digest(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
@@ -87,15 +92,19 @@ def main():
 
     source = PROD / 'GeckoWebView.java'
     identity = ROOT / 'app/src/main/java/org/mozilla/geckoview/AppSessionIdentity.java'
-    complete = [PROD / name for name in ('J.java', 'BrowserBridgeRequests.java', 'BrowserRuntimePolicy.java', 'BrowserAddressPolicy.java', 'GeckoNavigationPolicy.java')]
+    complete = [PROD / name for name in ('J.java', 'BrowserBridgeRequests.java', 'BrowserRuntimePolicy.java', 'BrowserAddressPolicy.java', 'GeckoNavigationPolicy.java', 'ChromiumRouteLease.java')]
     files = [source, identity, HERE / 'RoutingHost.java.in', Path(__file__).resolve(), ROOT / 'tests/gecko-navigation-host/run.py'] + complete
     hashes = {str(path.relative_to(ROOT)): digest(path) for path in files}
     jar_hash = digest(args.json_jar)
     text = source.read_text()
     selected = {name: declaration(text, name) for name in MEMBERS}
+    fields = [line.strip() for line in text.splitlines() if line.strip().startswith('final Map<TimeZoneGate,ChromiumRouteLease.Handle> ipRouteLeases=')]
+    if len(fields) != 1 or not fields[0].endswith(';'):
+        raise ValueError('Unique complete actual IP route lease map field required')
     identity_body = declaration(identity.read_text(), 'public static String id(')
     template = (HERE / 'RoutingHost.java.in').read_text()
     replacements = (
+        ('GeckoWebView.this', 'WebBoundary.this'),
         ('WebExtension.Port', 'PortBoundary'),
         ('GeckoSession.SessionState', 'StateBoundary'),
         ('GeckoSession', 'SessionBoundary'),
@@ -106,7 +115,7 @@ def main():
     )
 
     def generate(members):
-        value = template.replace('@METHODS@', '\n'.join(members.values())).replace('@IDENTITY_METHOD@', identity_body)
+        value = template.replace('@METHODS@', '\n'.join(members.values())).replace('@IP_ROUTE_FIELDS@', fields[0]).replace('@IDENTITY_METHOD@', identity_body)
         for before, after in replacements:
             value = value.replace(before, after)
         return value
@@ -141,9 +150,15 @@ def main():
         if ran.returncode:
             raise RuntimeError(ran.stdout + ran.stderr)
         report = json.loads(ran.stdout)
-        for case, member, before, after, assertion in MUTATIONS:
+        for case, member, before, after, assertion in (*MUTATIONS, *LEASE_MUTATIONS):
             # Some conditions occur twice in a method. The chosen first hunk is
             # intentional; reply-port/after-worker-gate use longer unique hunks.
+            if case == 'window-port' and before not in selected[member]:
+                if (before, after) != ('&&routePort==port;', ';'):
+                    raise ValueError('Original port mutation contract differs')
+                before, after = '&&routePort==port&&(!autoIpMode()', '&&(!autoIpMode()'
+                if selected[member].count(before) != 1:
+                    raise ValueError('Unique actual expanded port guard required')
             if before not in selected[member]:
                 raise ValueError('Exact mutation hunk required: ' + case)
             pristine = execute(selected, 'pristine-' + case, case)
@@ -157,10 +172,12 @@ def main():
             controls.append(dict(case=case, pristinePassed=True, mutantRejected=True, assertion=assertion))
 
     unchanged = all(digest(path) == hashes[str(path.relative_to(ROOT))] for path in files) and digest(args.json_jar) == jar_hash
-    report.update(sourceFiles=hashes, jsonJarSha256=jar_hash, productionMembers=MEMBERS,
+    report.update(sourceFiles=hashes, jsonJarSha256=jar_hash, productionMembers=MEMBERS,actualJavaIpLeaseReleaseExecution=True,actualIpTransportExecution=False,
                   negativeControls=controls, executionInputsUnchanged=unchanged,
                   boundaries=[
                       'SDK GeckoSession/GeckoResult/SessionState/WebExtension.Port type tokens become named Session/Result/State/PortBoundary doubles; no org.mozilla fake package',
+                      'GeckoWebView.this becomes the same enclosing WebBoundary.this; original manual-timezone cases declare no IP lookup, and unexpected IP collaborators throw instead of simulating success',
+                      'The current IP lease map/release member and complete actual Java ChromiumRouteLease execute; IP route admission/lookup/native transport are not modeled',
                       'ControllerBoundary scripts prepare and allowed decisions for exact session/epoch; production controller and persistent store are separate test scopes',
                       'HandlerBoundary virtual clock and ExecutorBoundary queue expose SDK-window timeout and restoration interleavings',
                       'Guard, route lease, protection, app owner, draft policy, metadata status and serialized SDK state are explicit app/SDK boundaries',

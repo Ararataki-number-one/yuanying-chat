@@ -3,7 +3,7 @@
   'use strict';
   const CANCEL=Object.freeze({cancel:true});
   const DEADLINE_MS=5000;
-  let installed=false,attempted=false,owner=null,serial=0,revision=null;
+  let installed=false,attempted=false,owner=null,serial=0,revision=null,ipBootstrap=null;
   const pending=new Set();
   const changed=()=>{serial++;for(const cancel of Array.from(pending))cancel();};
   const ownOrigin=()=>{
@@ -58,13 +58,17 @@
     if(!present)result.push({name:'User-Agent',value:userAgent});
     return {requestHeaders:result};
   };
+  const ipHeaders=values=>values.filter(value=>!['cookie','authorization','proxy-authorization','origin','referer'].includes(value.name.toLowerCase()));
   const filter=(details,sanitized={})=>{
     if(!installed||owner===null||!details||typeof details!=='object'||typeof details.url!=='string'||details.url.length>8192)return Promise.resolve(CANCEL);
     try{const url=new URL(details.url);if(!['http:','https:'].includes(url.protocol)||url.username||url.password)return Promise.resolve(CANCEL);}catch(_){return Promise.resolve(CANCEL);}
-    const values=headers(details,sanitized);if(values===null)return Promise.resolve(CANCEL);
+    let values=headers(details,sanitized);if(values===null)return Promise.resolve(CANCEL);
     const port=owner,epoch=serial;
+    const bootstrap=ipBootstrap;let ipAuthorization;
+    try{ipAuthorization=bootstrap?.authorization(details)??null;}catch(_){return Promise.resolve(CANCEL);}
+    if(ipAuthorization)values=ipHeaders(values);
     try{
-      if(extensionInitiated(details)&&globalThis.PocketRequestIdentityBackground?.controlRequest(details)===true)return Promise.resolve({requestHeaders:values});
+      if(!ipAuthorization&&extensionInitiated(details)&&globalThis.PocketRequestIdentityBackground?.controlRequest(details)===true)return Promise.resolve({requestHeaders:values});
     }catch(_){return Promise.resolve(CANCEL);}
     return new Promise(resolve=>{
       let finished=false;
@@ -73,11 +77,11 @@
       const timer=setTimeout(()=>finish(CANCEL),DEADLINE_MS);
       pending.add(cancel);
       let request;
-      try{request=browser.runtime.sendNativeMessage('pocketroute',{kind:'requestHeaderPolicy',url:details.url});}
+      try{request=browser.runtime.sendNativeMessage('pocketroute',ipAuthorization?{kind:'timezoneIpHeaders',url:details.url,method:details.method,requestToken:ipAuthorization.requestToken,routeStamp:ipAuthorization.routeStamp}:{kind:'requestHeaderPolicy',url:details.url});}
       catch(_){finish(CANCEL);return;}
       Promise.resolve(request).then(raw=>{
-        if(finished||!current(port,epoch)){finish(CANCEL);return;}
-        const accepted=proof(raw);if(!accepted||revision!==null&&accepted.revision!==revision){finish(CANCEL);return;}
+        if(finished||!current(port,epoch)||ipAuthorization&&(bootstrap!==ipBootstrap||bootstrap.authorization(details)!==ipAuthorization)){finish(CANCEL);return;}
+        const accepted=proof(raw);if(!accepted||ipAuthorization&&accepted.scope||revision!==null&&accepted.revision!==revision){finish(CANCEL);return;}
         let latest;
         try{
           const scope=globalThis.PocketRequestIdentityBackground;
@@ -87,7 +91,8 @@
           // be undone if a subsequent sanitizer has fewer fields to remove.
           const snapshot={...details,requestHeaders:values};latest=headers(snapshot,scope.headerDecision(snapshot));
         }catch(_){finish(CANCEL);return;}
-        if(latest===null||!current(port,epoch)){finish(CANCEL);return;}
+        if(ipAuthorization&&latest!==null)latest=ipHeaders(latest);
+        if(latest===null||!current(port,epoch)||ipAuthorization&&(bootstrap!==ipBootstrap||bootstrap.authorization(details)!==ipAuthorization)){finish(CANCEL);return;}
         // Only a still-current first proof may establish the initial revision.
         // A delayed response never overwrites a newer native invalidation.
         if(revision===null)revision=accepted.revision;
@@ -116,11 +121,11 @@
     return installed;
   };
   globalThis.PocketGeckoRequestHeaders=Object.freeze({
-    activate(port){
+    activate(port,bootstrap=null){
       if(!port||typeof port!=='object')return {installed:false};
-      owner=port;changed();revision=null;return {installed:install()};
+      owner=port;ipBootstrap=bootstrap;changed();revision=null;return {installed:install()};
     },
-    clear(port){if(port!==owner)return false;owner=null;changed();revision=null;return true;},
+    clear(port){if(port!==owner)return false;owner=null;ipBootstrap=null;changed();revision=null;return true;},
     invalidate(port,value){
       if(port!==owner||!Number.isSafeInteger(value)||value<1||revision!==null&&value<revision)return false;
       changed();revision=value;return true;

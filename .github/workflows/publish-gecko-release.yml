@@ -38,7 +38,7 @@ jobs:
           if tuple(map(int,m['version'].split('.'))) >= (2,1,1):
               release_files.update({'tools/browser/check_fingerprint_evidence.py'})
           if tuple(map(int,m['version'].split('.'))) >= (2,1,2):
-              release_files.update({'tools/browser/check_worker_policy_evidence.py','tools/browser/check_gecko_environment_policy_evidence.py'})
+              release_files.update({'tools/browser/check_worker_policy_evidence.py','tools/browser/check_gecko_environment_policy_evidence.py','tools/browser/ip_timezone_publication.py'})
           if tools_commit!=m['sourceCommit']:
               subprocess.run(['git','merge-base','--is-ancestor',m['sourceCommit'],tools_commit],check=True)
               changed=set(subprocess.check_output(['git','diff','--name-only',m['sourceCommit'],tools_commit],text=True).splitlines())
@@ -52,6 +52,9 @@ jobs:
                   'tests/fixtures/network-settings-callback-source-deltas.json':'tests/fixtures/network-settings-callback-source-deltas.json'}
               for staged_name,source_name in settings_dependencies.items():
                   assert pathlib.Path(staged_name).read_bytes()==subprocess.check_output(['git','show',m['sourceCommit']+':'+source_name]),'Network settings dependency differs from tested source: '+staged_name
+          if tuple(map(int,m['version'].split('.'))) >= (2,1,2):
+              for source_name in ('tools/browser/check_gecko_ip_timezone_evidence.py','tools/browser/run_gecko_ip_timezone_integration.py','tools/browser/ip_timezone_fixture_server.py','tools/browser/fingerprint_fixture_server.py','tools/browser/newworker_fixture_server.py'):
+                  assert pathlib.Path(source_name).read_bytes()==subprocess.check_output(['git','show',m['sourceCommit']+':'+source_name]),'IP timezone dependency differs from tested source: '+source_name
           subprocess.run(['python3','tools/gecko/release_channel_contract_test.py'],check=True)
           from tools.gecko.release_channel_contract import release_tag, requires_manual_acceptance, verify_manual_acceptance, verify_direct_release
           release_tag(m)

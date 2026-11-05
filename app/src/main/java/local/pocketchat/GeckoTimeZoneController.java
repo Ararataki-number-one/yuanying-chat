@@ -11,18 +11,22 @@ final class GeckoTimeZoneController {
     boolean current();
     void read(String requestToken,Consumer<String> success,Consumer<Throwable> failure);
     void apply(String zoneId,String requestToken,Consumer<String> success,Consumer<Throwable> failure);
+    default String ipRouteStamp(){return "";}
+    default void lookupIp(String requestToken,Consumer<String> success,Consumer<Throwable> failure){failure.accept(new UnsupportedOperationException("当前浏览器出口尚不能查询 IP 时区"));}
   }
   final ChatSession session;
   volatile GeckoTimeZoneStore.State cached;
   private final Map<Object,Operation> operations=new IdentityHashMap<>();
   private final Set<Runnable> listeners=new HashSet<>();
   private String loadIssue="";private long editSerial;
+  private GeckoIpTimeZonePolicy.Observation resolvedIp;private long resolvedRevision;private EnvironmentSpec.Identity resolvedIdentity;
   private final String auditInstance=token();private volatile long auditSerial,configurationSerial;
   private static final class Operation {
     final Object nativeSession;final String sessionId,epoch;final NativeAccess access;
     final List<Consumer<Boolean>> waiters=new ArrayList<>();
-    GeckoTimeZoneStore.State desired;GeckoTimeZoneStore.Ticket ticket;
-    volatile boolean retired,finished;boolean started,ready,verified,unsupported;String issue="";
+    GeckoTimeZoneStore.State desired;GeckoTimeZoneStore.Ticket ticket;GeckoTimeZoneSpec effective;
+    GeckoIpTimeZonePolicy.Observation ipObservation;String routeStamp="";
+    volatile boolean retired,finished;boolean started,ready,verified,unsupported,rfpManaged;String issue="";
     Operation(Object nativeSession,String sessionId,String epoch,NativeAccess access){this.nativeSession=nativeSession;this.sessionId=sessionId;this.epoch=epoch;this.access=access;}
   }
   GeckoTimeZoneController(ChatSession session){this.session=session;}
@@ -53,21 +57,22 @@ final class GeckoTimeZoneController {
   String auditStamp(){return auditSerial+"|"+auditConfigurationStamp();}
   /** Configuration identity for one explicitly owned navigation. It never
    * admits page observations or replaces the full native/document stamp. */
-  String auditConfigurationStamp(){GeckoTimeZoneStore.State desired=cached;return auditInstance+"|"+configurationSerial+"|"+(desired==null?"unloaded":desired.identity.environmentId+":"+desired.identity.generation+":"+desired.revision+":"+desired.spec.zoneId)+"|"+loadIssue.isEmpty();}
+  String auditConfigurationStamp(){GeckoTimeZoneStore.State desired=cached;return auditInstance+"|"+configurationSerial+"|"+(desired==null?"unloaded":desired.identity.environmentId+":"+desired.identity.generation+":"+desired.revision+":"+desired.spec.mode+":"+desired.spec.zoneId)+"|"+loadIssue.isEmpty();}
   private void boundaryChanged(Object nativeSession,String epoch){auditSerial++;if(session.audit!=null)session.audit.nativeDocumentProofChanged(nativeSession,epoch);}
   private void configurationChanged(){configurationSerial++;boundaryChanged(null,"");}
   JSONObject auditExpected(JSONObject expected){
     GeckoTimeZoneStore.State desired=cached;
     if(desired!=null&&!desired.spec.followsSystem()&&session.privacy.level()<2)try{
-      expected.put("offset",JSONObject.NULL).put("timezoneStrategy","native-independent").put("timezoneRequestedZone",desired.spec.zoneId)
-          .put("timezoneNativeReadback",status().optBoolean("nativeSettingReadback")).put("timezoneObservationStartedAt",System.currentTimeMillis());
+      JSONObject current=status();expected.put("offset",JSONObject.NULL).put("timezoneStrategy","native-independent").put("timezoneRequestedZone",desired.spec.followsIp()?current.optString("effectiveZone"):desired.spec.zoneId)
+          .put("timezoneNativeReadback",current.optBoolean("nativeSettingReadback")).put("timezoneObservationStartedAt",System.currentTimeMillis());
     }catch(JSONException ignored){}return expected;
   }
   boolean popupAllowed(){return identity(cached)&&loadIssue.isEmpty()&&cached.spec.followsSystem();}
-  boolean allowed(Object nativeSession,String epoch){Operation op=operations.get(nativeSession);return alive(op)&&op.epoch.equals(epoch)&&op.finished&&op.ready&&accessCurrent(op)&&!GeckoTimeZonePolicy.protectionConflict(session.privacy.level(),cached.spec);}
-  private boolean accessCurrent(Operation op){try{return op.access.current();}catch(RuntimeException unavailable){return false;}}
+  boolean allowed(Object nativeSession,String epoch){Operation op=operations.get(nativeSession);return alive(op)&&op.epoch.equals(epoch)&&op.finished&&op.ready&&accessCurrent(op)&&protectionCurrent(op);}
+  private boolean protectionCurrent(Operation op){return op.desired!=null&&(op.desired.spec.followsIp()?op.rfpManaged==(session.privacy.level()>=2):!GeckoTimeZonePolicy.protectionConflict(session.privacy.level(),op.desired.spec));}
+  private boolean accessCurrent(Operation op){try{return op.access.current()&&(op.desired==null||!op.desired.spec.followsIp()||op.rfpManaged||GeckoIpTimeZonePolicy.token(op.routeStamp)&&op.routeStamp.equals(op.access.ipRouteStamp()));}catch(RuntimeException unavailable){return false;}}
   private boolean alive(Operation op){return op!=null&&!op.retired&&!session.deleted&&operations.get(op.nativeSession)==op&&identity(cached)&&loadIssue.isEmpty()&&(op.desired==null||op.desired.revision==cached.revision&&op.desired.identity.equals(cached.identity)&&op.desired.spec.equals(cached.spec));}
-  private boolean pending(Operation op){if(!alive(op)||op.finished||!accessCurrent(op))return false;if(GeckoTimeZonePolicy.protectionConflict(session.privacy.level(),op.desired.spec)){fail(op,false,"强化保护优先使用自己的时区策略，独立时区尚未应用");return false;}return true;}
+  private boolean pending(Operation op){if(!alive(op)||op.finished||!accessCurrent(op))return false;if(!protectionCurrent(op)){fail(op,false,"保护模板已变化，需重新确认时区；强化保护保持不变");return false;}return true;}
   void prepare(Object nativeSession,String sessionId,String epoch,NativeAccess access,Consumer<Boolean> gate){
     prepare(nativeSession,sessionId,epoch,access,gate,false);
   }
@@ -92,6 +97,30 @@ final class GeckoTimeZoneController {
   private void begin(Operation op){
     if(!alive(op)||op.started)return;op.started=true;op.desired=cached;
     if(GeckoTimeZonePolicy.protectionConflict(session.privacy.level(),op.desired.spec)){fail(op,false,"强化保护优先使用自己的时区策略；请明确切换模板后再应用独立时区，强化保护保持不变");return;}
+    if(op.desired.spec.followsIp()){
+      if(session.privacy.level()>=2){op.rfpManaged=true;op.effective=GeckoTimeZoneSpec.system();beginNative(op);return;}
+      try{op.routeStamp=op.access.ipRouteStamp();}catch(RuntimeException unavailable){op.routeStamp="";}
+      if(!GeckoIpTimeZonePolicy.token(op.routeStamp)||!accessCurrent(op)){fail(op,false,"当前浏览器出口尚未确认，IP 时区未匹配；可重试或明确选择系统／IANA 时区");return;}
+      if(resolvedIp!=null&&resolvedRevision==op.desired.revision&&op.desired.identity.equals(resolvedIdentity)&&op.routeStamp.equals(resolvedIp.routeStamp)){
+        op.ipObservation=resolvedIp;op.effective=resolvedIp.effective();beginNative(op);return;
+      }
+      session.handler.postDelayed(()->{if(alive(op)&&!op.finished&&op.effective==null)fail(op,false,"出口 IP 时区查询超时，尚未匹配；可重试或手动选择时区");},8000);
+      String request=token();try{op.access.lookupIp(request,raw->session.handler.post(()->{
+        if(!pending(op)||op.effective!=null)return;
+        try{
+          GeckoIpTimeZonePolicy.Observation observed=GeckoIpTimeZonePolicy.parse(raw,request,op.routeStamp,System.currentTimeMillis());
+          op.ipObservation=observed;op.effective=observed.effective();
+          if(resolvedIp==null||!resolvedIp.routeStamp.equals(observed.routeStamp)||!resolvedIp.ip.equals(observed.ip)||!resolvedIp.zoneId.equals(observed.zoneId)||resolvedRevision!=op.desired.revision||!op.desired.identity.equals(resolvedIdentity))configurationChanged();
+          resolvedIp=observed;resolvedRevision=op.desired.revision;resolvedIdentity=op.desired.identity;beginNative(op);
+        }catch(Exception invalid){fail(op,false,"出口 IP 或 IANA 时区响应无效，IP 时区未匹配；可重试或手动选择");}
+      }),error->session.handler.post(()->{if(pending(op)&&op.effective==null)fail(op,error instanceof UnsupportedOperationException,"当前出口的 IP 时区查询失败，尚未匹配；可重试或手动选择");}));}
+      catch(RuntimeException unavailable){fail(op,false,"当前出口的 IP 时区查询不可用，尚未匹配；可重试或手动选择");}
+      return;
+    }
+    op.effective=op.desired.spec;beginNative(op);
+  }
+  private void beginNative(Operation op){
+    if(!pending(op)||op.effective==null)return;
     session.handler.postDelayed(()->{if(alive(op)&&!op.finished)fail(op,false,"原生时区准备未完成；独立时区尚未应用");},15000);
     String bootstrap=token();
     try{op.access.read(bootstrap,raw->session.handler.post(()->{
@@ -100,7 +129,7 @@ final class GeckoTimeZoneController {
         JSONObject context=GeckoTimeZonePolicy.contextReadback(raw,bootstrap,op.sessionId);String contextId=context.getString("contextId");
         GeckoTimeZoneStore.Binding binding=new GeckoTimeZoneStore.Binding(GeckoWebView.VERSION,op.sessionId,op.epoch,contextId);
         session.environmentIo.execute(()->{
-          GeckoTimeZoneStore.Ticket ticket=null;try{if(!op.retired)ticket=GeckoTimeZoneStore.activate(session.context,op.desired.identity,op.desired.revision,binding);}catch(Exception unavailable){}
+          GeckoTimeZoneStore.Ticket ticket=null;try{if(!op.retired)ticket=op.rfpManaged?GeckoTimeZoneStore.activateRfp(session.context,op.desired.identity,op.desired.revision,binding):op.ipObservation==null?GeckoTimeZoneStore.activate(session.context,op.desired.identity,op.desired.revision,binding):GeckoTimeZoneStore.activateIp(session.context,op.desired.identity,op.desired.revision,binding,op.ipObservation);}catch(Exception unavailable){}
           GeckoTimeZoneStore.Ticket active=ticket;
           session.handler.post(()->{if(!pending(op)){retireTicket(active);return;}if(active==null){fail(op,false,"时区配置或环境已变化，尚未应用");return;}op.ticket=active;apply(op);});
         });
@@ -109,9 +138,9 @@ final class GeckoTimeZoneController {
     catch(RuntimeException unavailable){fail(op,unavailable instanceof UnsupportedOperationException,"当前内核未提供可确认的独立时区，未应用独立覆盖");}
   }
   private void apply(Operation op){
-    try{op.access.apply(op.desired.spec.zoneId,op.ticket.requestToken,raw->session.handler.post(()->{
+    try{op.access.apply(op.effective.zoneId,op.ticket.requestToken,raw->session.handler.post(()->{
       if(!pending(op))return;
-      try{GeckoTimeZonePolicy.nativeReadback(raw,op.desired.spec,op.ticket.requestToken,op.sessionId,op.ticket.binding.contextId);}
+      try{GeckoTimeZonePolicy.nativeReadback(raw,op.effective,op.ticket.requestToken,op.sessionId,op.ticket.binding.contextId);}
       catch(Exception invalid){fail(op,unsupported(raw),"原生时区设置未被当前上下文确认，独立时区尚未应用");return;}
       session.environmentIo.execute(()->{
         boolean saved=false;try{if(!op.retired&&!op.finished){GeckoTimeZoneStore.record(session.context,op.ticket,raw);saved=true;}}catch(Exception unavailable){}
@@ -127,7 +156,10 @@ final class GeckoTimeZoneController {
   private void finish(Operation op){boundaryChanged(op.nativeSession,op.epoch);op.finished=true;List<Consumer<Boolean>> waiters=new ArrayList<>(op.waiters);op.waiters.clear();changed();for(Consumer<Boolean> waiter:waiters)waiter.accept(op.ready);}
   void retire(Object nativeSession,String epoch){Operation op=operations.get(nativeSession);if(op==null||!op.epoch.equals(epoch))return;boundaryChanged(nativeSession,epoch);operations.remove(nativeSession);op.retired=true;retireTicket(op.ticket);if(!op.finished){op.ready=false;finish(op);}changed();}
   private void retireTicket(GeckoTimeZoneStore.Ticket ticket){if(ticket!=null)session.environmentIo.execute(()->{try{GeckoTimeZoneStore.retire(session.context,ticket);}catch(Exception ignored){}});}
-  private void invalidate(){for(Operation op:new ArrayList<>(operations.values()))retire(op.nativeSession,op.epoch);}
+  private void invalidate(){resolvedIp=null;resolvedIdentity=null;resolvedRevision=0;for(Operation op:new ArrayList<>(operations.values()))retire(op.nativeSession,op.epoch);}
+  /** Route authority changed. A visible page stays intact; its next requests
+   * cannot borrow an old IP/native confirmation or silently hot-switch clocks. */
+  void ipRouteChanged(){if(cached!=null&&cached.spec.followsIp()){configurationChanged();invalidate();changed();}}
   void saveConfirmed(GeckoTimeZoneStore.State expected,GeckoTimeZoneSpec selected,BooleanSupplier stillSafe,Consumer<String> done){
     saveConfirmed(expected,selected,stillSafe,checked->checked.accept(true),done);
   }
@@ -159,8 +191,11 @@ final class GeckoTimeZoneController {
   JSONObject status(){Object current=session.web==null?null:session.web.current;Operation op=operations.get(current);return status(current,op==null?"":op.epoch);}
   JSONObject status(Object nativeSession,String epoch){
     GeckoTimeZoneStore.State desired=cached;Operation op=operations.get(nativeSession);boolean current=alive(op)&&op.epoch.equals(epoch)&&accessCurrent(op),verified=current&&op.verified&&allowed(nativeSession,epoch),conflict=desired!=null&&GeckoTimeZonePolicy.protectionConflict(session.privacy.level(),desired.spec);
-    String state=desired==null?"loading":!loadIssue.isEmpty()?"failed":conflict?"conflict":verified?"native-readback":current&&op.unsupported?"unsupported":current&&!op.issue.isEmpty()?"failed":"saved";
-    return J.obj("schema",1,"engine","gecko","loaded",desired!=null,"desiredZone",desired==null?JSONObject.NULL:desired.spec.zoneId,"desiredRevision",desired==null?0:desired.revision,"state",state,
+    String state=desired==null?"loading":!loadIssue.isEmpty()?"failed":conflict?"conflict":verified&&op.rfpManaged?"native-standardized-priority":verified?"native-readback":current&&op.unsupported?"unsupported":current&&!op.issue.isEmpty()?"failed":"saved";
+    boolean matched=verified&&desired.spec.followsIp()&&op.ipObservation!=null;
+    return J.obj("schema",1,"engine","gecko","loaded",desired!=null,"desiredMode",desired==null?JSONObject.NULL:desired.spec.mode,"desiredZone",desired==null?JSONObject.NULL:desired.spec.zoneId,"desiredRevision",desired==null?0:desired.revision,"state",state,
+        "effectiveMode",verified&&op.rfpManaged?"rfp-priority":verified?"native-override":"unconfirmed","rfpPriority",desired!=null&&desired.spec.followsIp()&&session.privacy.level()>=2,
+        "effectiveZone",verified&&op.effective!=null?op.effective.zoneId:"","observedIp",matched?op.ipObservation.ip:"","ipMatched",matched,"ipRouteStamp",matched?op.routeStamp:"","ipObservedAt",matched?op.ipObservation.observedAt:0,"ipSource",GeckoIpTimeZonePolicy.SOURCE,
         "nativeSettingReadback",verified,"scope","top-browsing-context","appliedScope",verified?"top-browsing-context":"","pageObservationVerified",false,"workerCoverageVerified",false,"serviceWorkerCoverageVerified",false,"issue",!loadIssue.isEmpty()?loadIssue:conflict?"强化保护优先使用自己的时区策略，独立设置尚未生效":current?op.issue:"");
   }
   private static String token(){return UUID.randomUUID().toString().replace("-","")+UUID.randomUUID().toString().replace("-","");}

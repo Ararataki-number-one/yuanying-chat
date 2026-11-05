@@ -1,10 +1,14 @@
 'use strict';
 const blocked = {type:'socks', host:'127.0.0.1', port:9, proxyDNS:true, failoverTimeout:1};
+let timezoneIp=null;
 // One runtime belongs to exactly one existing Android environment process.
 // All requests, including workers, consult that environment's existing guard.
 browser.proxy.onRequest.addListener(async request => {
   try {
-    const route = JSON.parse(await browser.runtime.sendNativeMessage('pocketroute', {kind:'route', url:request.url}));
+    const bootstrap=timezoneIp,authorization=bootstrap?.authorization(request);
+    const message=authorization?{kind:'timezoneIpRoute',url:request.url,method:request.method,requestToken:authorization.requestToken,routeStamp:authorization.routeStamp}:{kind:'route',url:request.url};
+    const route = JSON.parse(await browser.runtime.sendNativeMessage('pocketroute', message));
+    if(authorization&&(bootstrap!==timezoneIp||bootstrap.authorization(request)!==authorization))return blocked;
     // Gecko's explicit null removes the closed default proxy for this request.
     // A "direct" ProxyInfo instead inherits that default when it is present.
     if (route && route.type === 'direct') return null;
@@ -158,6 +162,14 @@ const handleHostMessage=async(message,port)=>{
   if(message.kind==='requestHeaderPolicyChanged'){
     globalThis.PocketGeckoRequestHeaders?.invalidate(port,message.revision);return;
   }
+  if(message.kind==='timezoneIpCancel'){
+    timezoneIp?.cancel(message);return;
+  }
+  if(message.kind==='timezoneIpLookup'&&Number.isInteger(message.id)&&message.id>0){
+    const bootstrap=timezoneIp;let result=null;
+    try{result=await bootstrap?.lookup(message)??null;}catch(_){}
+    if(bootstrap===timezoneIp)postHost(port,{kind:'timezoneIpReady',id:message.id,result:typeof result==='string'?result:'null'});return;
+  }
   if((message.kind==='timezoneApply'||message.kind==='timezoneRead')&&Number.isInteger(message.id)&&message.id>0){
     let result;
     try{result=await globalThis.PocketNativeTimezoneBridge?.handle(message)??{schema:1,status:'unsupported',nativeSettingReadback:false,reason:'native-api-unavailable'};}
@@ -209,11 +221,13 @@ const connectHost=()=>{
   let port;
   try{port=browser.runtime.connectNative('pocketroute');}catch(_){reconnectHost();return;}
   host=port;
-  const headers=globalThis.PocketGeckoRequestHeaders?.activate(port);
+  timezoneIp?.close();try{timezoneIp=globalThis.PocketIpTimeZoneBootstrap?.create(port)??null;}catch(_){timezoneIp=null;}
+  const headers=globalThis.PocketGeckoRequestHeaders?.activate(port,timezoneIp);
   port.onMessage.addListener(message=>handleHostMessage(message,port));
   port.onDisconnect?.addListener(()=>{
     if(port!==host)return;
     host=null;latestProtection=currentProtectionRequest=confirmedProtection=null;
+    timezoneIp?.close();timezoneIp=null;
     globalThis.PocketGeckoRequestHeaders?.clear(port);
     try{globalThis.PocketRequestIdentityBackground?.clear();}catch(_){}
     if(protectionPending?.port===port){finishProtection(protectionPending,false,false,'bridge-disconnected');protectionPending=null;}

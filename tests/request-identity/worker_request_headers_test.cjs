@@ -11,6 +11,7 @@ const ROOT=path.resolve(__dirname,'../..');
 const HELPER=fs.readFileSync(path.join(ROOT,'app/src/main/assets/gecko/request-identity-background.js'),'utf8');
 const SOURCE=fs.readFileSync(path.join(ROOT,'app/src/main/assets/gecko/request-headers.js'),'utf8');
 const BACKGROUND=fs.readFileSync(path.join(ROOT,'app/src/main/assets/gecko/background.js'),'utf8');
+const IP_BOOTSTRAP=fs.readFileSync(path.join(ROOT,'app/src/main/assets/gecko/ip-timezone-bootstrap.js'),'utf8');
 const TIMEZONE_BRIDGE=fs.readFileSync(path.join(ROOT,'app/src/main/assets/gecko/native-timezone-bridge.js'),'utf8');
 const MANIFEST=JSON.parse(fs.readFileSync(path.join(ROOT,'app/src/main/assets/gecko/manifest.json'),'utf8'));
 const BASE='https://audit.example/pocketchat-identity/v1/',NONCE='a'.repeat(32);
@@ -22,6 +23,8 @@ const privateAdmission=(revision=1)=>JSON.stringify({allowed:true,scope:'private
 const response=value=>({status:200,body:{getReader(){let done=false;return {async read(){if(done)return {done:true};done=true;return {done:false,value:new TextEncoder().encode(JSON.stringify(value))};},async cancel(){},releaseLock(){}};}}});
 const ordinary=(extra={})=>({url:SITE,method:'GET',type:'xmlhttprequest',tabId:-1,requestHeaders:[{name:'User-Agent',value:'WorkerMobile/157'}],...extra});
 const diagnostic=(operation='observe',extra={})=>ordinary({url:BASE+operation+'?nonce='+NONCE+(operation==='observe'?'&source=worker':''),...extra});
+const COMPLETE_SCRIPTS=['ip-timezone-bootstrap.js','request-headers.js','request-identity-background.js','native-timezone-bridge.js','background.js'];
+function completeScripts(manifest){assert.deepEqual(manifest.background.scripts,COMPLETE_SCRIPTS);return manifest.background.scripts;}
 
 function matches(pattern,target){
   const url=new URL(target),parts=/^(https?):\/\/([^/]+)(\/.*)$/.exec(pattern);if(!parts||url.protocol!==parts[1]+':')return false;
@@ -168,7 +171,7 @@ test('private positive proof cannot undo actual diagnostic filtering or scope ca
   const held=deferred(),pending=harness({native:()=>held.promise});pending.register();const waiting=pending.decisions(diagnostic());pending.helper.handle({action:'cancel',endpoint:BASE,nonce:NONCE});held.resolve(privateAdmission());for(const result of await waiting)assert.deepEqual(result,{cancel:true});
 });
 test('actual complete manifest startup advertises listener readiness before prepare and fences reconnection',async()=>{
-  assert.deepEqual(MANIFEST.background.scripts,['request-headers.js','request-identity-background.js','native-timezone-bridge.js','background.js']);
+  assert.deepEqual(MANIFEST.background.scripts,['ip-timezone-bootstrap.js','request-headers.js','request-identity-background.js','native-timezone-bridge.js','background.js']);
   let now=1000,timerId=0,rfp=false,mode='ready',nativeUa='FirstNative/157',nativeRevision=1;
   const timers=new Map(),ports=[],nativeCalls=[],headerHooks=[],proxyHooks=[],privacyCalls=[];let pendingProof;
   const event=()=>({listeners:[],addListener(callback){this.listeners.push(callback);},emit(value){return Promise.all(this.listeners.map(callback=>callback(value)));}});
@@ -176,7 +179,7 @@ test('actual complete manifest startup advertises listener readiness before prep
   for(const name of ['onBeforeRequest','onBeforeSendHeaders','onHeadersReceived'])browser.webRequest[name]={addListener(callback,filter,extra){if(name==='onBeforeSendHeaders')headerHooks.push({callback,filter:plain(filter),extra:plain(extra)});},removeListener(callback){const index=headerHooks.findIndex(value=>value.callback===callback);if(index>=0)headerHooks.splice(index,1);}};
   class Clock extends Date{static now(){return now;}}
   const context=vm.createContext({browser,URL,Date:Clock,AbortController,TextDecoder,Uint8Array,setTimeout(callback,delay){const id=++timerId;timers.set(id,{at:now+delay,callback});return id;},clearTimeout(id){timers.delete(id);},fetch(){throw Error('No network in startup controls');}});
-  const sources={'request-headers.js':SOURCE,'request-identity-background.js':HELPER,'native-timezone-bridge.js':TIMEZONE_BRIDGE,'background.js':BACKGROUND};for(const name of MANIFEST.background.scripts)vm.runInContext(sources[name],context,{filename:name});
+  const sources={'ip-timezone-bootstrap.js':IP_BOOTSTRAP,'request-headers.js':SOURCE,'request-identity-background.js':HELPER,'native-timezone-bridge.js':TIMEZONE_BRIDGE,'background.js':BACKGROUND};for(const name of completeScripts(MANIFEST))vm.runInContext(sources[name],context,{filename:name});
   const first=ports[0];assert.equal(ports.length,1);assert.deepEqual(first.sent,[{kind:'requestHeadersPrepared',installed:true}]);assert.equal(nativeCalls.length,0);assert.equal(headerHooks.length,1);assert.equal(proxyHooks.length,1);assert.deepEqual(proxyHooks[0].filter,{urls:['<all_urls>']});
   await first.onMessage.emit({kind:'prepare',level:1,token:1,generation:1,timeoutMs:8000});assert.deepEqual(first.sent.map(value=>value.kind),['requestHeadersPrepared','cookiePrepared','protectionReady','ready']);assert.equal(first.sent[2].acknowledged,true);assert.deepEqual(privacyCalls,[{value:false}]);assert.equal(nativeCalls.length,0,'Cookie/RFP preparation needs no session UA query');
   await first.onMessage.emit({kind:'requestHeaderPolicyChanged',revision:1});const header=headerHooks[0].callback;assert.deepEqual(ua(plain(await header(ordinary()))),['FirstNative/157']);assert.deepEqual(nativeCalls,[{app:'pocketroute',message:{kind:'requestHeaderPolicy',url:SITE}}]);
@@ -186,4 +189,8 @@ test('actual complete manifest startup advertises listener readiness before prep
   advance(499);assert.equal(ports.length,1);advance(1);assert.equal(ports.length,2);const second=ports[1];assert.deepEqual(second.sent,[{kind:'requestHeadersPrepared',installed:true}]);assert.equal(headerHooks.length,1,'Reconnect reuses the one installed listener');
   await first.onMessage.emit({kind:'requestHeaderPolicyChanged',revision:999});await first.onDisconnect.emit();await second.onMessage.emit({kind:'prepare',level:1,token:2,generation:2,timeoutMs:8000});await second.onMessage.emit({kind:'requestHeaderPolicyChanged',revision:2});mode='ready';nativeUa='ReconnectedNative/157';nativeRevision=2;
   assert.deepEqual(ua(plain(await header(ordinary()))),['ReconnectedNative/157']);assert.equal(second.sent.some(value=>value.kind==='protectionReady'&&value.acknowledged===true),true);assert.equal(timers.size,0);
+});
+test('complete current manifest rejects extra, duplicate, missing or reordered background modules',()=>{
+  assert.deepEqual(completeScripts(MANIFEST),COMPLETE_SCRIPTS);
+  for(const scripts of [[...COMPLETE_SCRIPTS,'unknown.js'],[...COMPLETE_SCRIPTS,COMPLETE_SCRIPTS[0]],COMPLETE_SCRIPTS.slice(1),[COMPLETE_SCRIPTS[1],COMPLETE_SCRIPTS[0],...COMPLETE_SCRIPTS.slice(2)]])assert.throws(()=>completeScripts({background:{scripts}}),assert.AssertionError);
 });

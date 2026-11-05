@@ -103,8 +103,10 @@ def verify_browser_evidence(directory,source,reader=source_bytes):
     if tuple(map(int,version.split('.'))) >= (2,1,2):
         from browser.check_worker_policy_evidence import verify_worker_policy_evidence
         from browser.check_gecko_environment_policy_evidence import verify_gecko_environment_policy_evidence
+        from browser.check_gecko_ip_timezone_evidence import verify_gecko_ip_timezone_evidence
         checked['workerPolicyRegression']=verify_worker_policy_evidence(directory,source,expected,reader=reader)
         checked['geckoEnvironmentPolicyRegression']=verify_gecko_environment_policy_evidence(directory,source,expected,reader=reader)
+        checked['geckoIpTimeZoneRegression']=verify_gecko_ip_timezone_evidence(directory,source,expected,reader=reader)
     return checked
 
 

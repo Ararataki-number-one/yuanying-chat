@@ -53,7 +53,7 @@ def main():
     template_path = HERE / 'StaleTicketHost.java.in'
     adapters = ROOT / 'tests/gecko-timezone-host/GeckoTimeZoneHost.java'
     sources = [PROD / name for name in ('GeckoTimeZoneSpec.java', 'GeckoTimeZoneStore.java',
-               'GeckoTimeZonePolicy.java', 'EnvironmentSpec.java', 'NetworkShareJson.java', 'J.java')]
+               'GeckoTimeZonePolicy.java', 'GeckoIpTimeZonePolicy.java', 'EnvironmentSpec.java', 'NetworkShareJson.java', 'J.java')]
     inputs = sources + [fixture, template_path, adapters, EXTRACTOR, Path(__file__).resolve(), HERE / 'README.md']
     hashes = {str(path.relative_to(ROOT)): digest(path) for path in inputs}
     jar_hash = digest(args.json_jar)

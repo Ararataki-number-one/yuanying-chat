@@ -59,13 +59,14 @@ def main():
         for name,script in [('gecko-session-navigation','tests/gecko-navigation-host/session_navigation.py'),('gecko-client-ready','tests/gecko-navigation-host/client_ready.py')]:
             target=out/(name+'-'+label+'.json');add(name+'-'+label,script,java+['--json-jar',jar,'--output',target],target)
         target=out/('chromium-fingerprint-activity-'+label+'.json');add('chromium-fingerprint-activity-'+label,'tests/chromium-fingerprint-activity-host/run.py',java+['--json-jar',jar,'--output',target],target)
-        for name,script in [('chromium-worker-policy','tests/chromium-worker-policy-host/run.py'),('gecko-request-headers','tests/gecko-request-headers-host/run.py'),('gecko-timezone','tests/gecko-timezone-host/run.py'),('gecko-timezone-report','tests/gecko-timezone-host/report.py'),('gecko-timezone-flow','tests/gecko-timezone-flow-host/run.py'),('gecko-timezone-stale','tests/gecko-timezone-stale-host/run.py'),('gecko-timezone-routing','tests/gecko-timezone-routing-host/run.py'),('gecko-timezone-delete','tests/gecko-timezone-delete-host/run.py'),('gecko-timezone-http-wait','tests/gecko-timezone-http-host/run.py'),('gecko-addon-lifecycle','tests/gecko-addon-lifecycle-host/run.py'),('request-identity-timezone','tests/request-identity-timezone-host/run.py'),('environment-audit-pending','tests/environment-audit-pending-host/run.py')]:
+        for name,script in [('chromium-worker-policy','tests/chromium-worker-policy-host/run.py'),('gecko-request-headers','tests/gecko-request-headers-host/run.py'),('gecko-timezone','tests/gecko-timezone-host/run.py'),('gecko-timezone-report','tests/gecko-timezone-host/report.py'),('gecko-timezone-flow','tests/gecko-timezone-flow-host/run.py'),('gecko-timezone-stale','tests/gecko-timezone-stale-host/run.py'),('gecko-timezone-routing','tests/gecko-timezone-routing-host/run.py'),('gecko-timezone-delete','tests/gecko-timezone-delete-host/run.py'),('gecko-timezone-http-wait','tests/gecko-timezone-http-host/run.py'),('gecko-addon-lifecycle','tests/gecko-addon-lifecycle-host/run.py'),('request-identity-timezone','tests/request-identity-timezone-host/run.py'),('environment-audit-pending','tests/environment-audit-pending-host/run.py'),('gecko-ip-timezone','tests/gecko-ip-timezone-host/run.py'),('gecko-ip-transport','tests/gecko-ip-transport-host/run.py'),('ip-timezone-fixture-setup','tests/ip-timezone-fixture-setup-host/run.py'),('gecko-popup-navigation','tests/gecko-popup-navigation-host/run.py')]:
             target=out/(name+'-'+label+'.json');add(name+'-'+label,script,java+['--json-jar',jar,'--output',target],target)
         target=out/('runtime-origin-adapter-'+label+'.json');add('runtime-origin-adapter-'+label,'tests/runtime-origin-adapter-host/run.py',java+['--json-jar',jar,'--android-jar',a.android_jar.resolve(),'--jsdom-module',a.jsdom_module.resolve(),'--output',target],target)
     cases.append(('gecko-site-boundary',['node','--test','tests/browser-runtime/gecko-site-boundary.test.cjs'],None))
     cases.append(('chromium-fingerprint-script',['node','--test','tests/chromium-fingerprint-script.test.cjs'],None))
     cases.append(('gecko-worker-request-headers',['node','--test','tests/request-identity/worker_request_headers_test.cjs'],None))
     cases.append(('gecko-native-timezone-bridge',['node','--test','tests/request-identity/native_timezone_bridge_test.cjs'],None))
+    cases.append(('gecko-ip-timezone-bootstrap',['node','--test','tests/request-identity/ip_timezone_bootstrap_test.cjs'],None))
     cases.append(('gecko-timezone-native-signal',['node','--test','tests/gecko-timezone-host/signal.test.cjs'],None))
     target=out/'native-protection-independent-boundaries.json';cases.append(('native-protection-independent-boundaries',['node','tests/browser-runtime/native-protection-independent-boundaries.test.cjs','--receipt',str(target)],target))
     cases.append(('session-cookies-coalescing',['node','tests/browser-runtime/session-cookies-coalescing.test.cjs'],None))
@@ -90,6 +91,14 @@ def main():
     add('worker-timezone-source-history','tests/profile_worker_timezone_source_compatibility_test.py')
     add('worker-timezone-host-source-history','tests/profile_worker_timezone_host_source_compatibility_test.py')
     add('phase1-context-fix-source-history','tests/profile_phase1_context_fix_source_compatibility_test.py')
+    add('public-source-history','tests/browser_public_history_test.py')
+    add('page-bridge-guard-adapters','tests/profile_page_bridge_guard_adapters_test.py')
+    add('page-bridge-budget-source-history','tests/profile_page_bridge_budget_source_compatibility_test.py')
+    add('ip-timezone-publication','tests/browser_ip_timezone_publication_test.py')
+    add('ip-timezone-publisher-gate','tests/browser_ip_timezone_publish_gate_test.py')
+    add('ip-timezone-server-controls','tests/browser_ip_timezone_server_test.py')
+    add('ip-timezone-evidence-gate','tests/gecko_ip_timezone_evidence_test.py')
+    add('ip-timezone-runner-controls','tests/gecko_ip_timezone_runner_test.py')
     names=subprocess.check_output(['git','ls-files','--cached','--others','--exclude-standard','app/src/main/java','app/src/main/assets','tests','tools/browser','tools/gecko','.github/workflows/browser-2_1-acceptance.yml'],cwd=ROOT,text=True).splitlines()
     files=[ROOT/name for name in sorted(set(names)) if (ROOT/name).is_file()]
     hashes={str(path.relative_to(ROOT)):hashlib.sha256(path.read_bytes()).hexdigest() for path in files}

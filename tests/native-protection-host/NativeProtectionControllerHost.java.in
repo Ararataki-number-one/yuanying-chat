@@ -106,6 +106,17 @@ final class NativeProtectionControllerHost {
     // Its actual lifecycle is outside this host; disabled admission below runs
     // the current production guard with a counted navigation-failure boundary.
     boolean addonDisabled=false;int nativeNavigationFailures;
+    // Retained cases explicitly select manual system/IANA. No IP lookup can be
+    // created at this boundary, and the new popup collaborator only counts UI offers.
+    static final class IpLookup {
+      boolean sent;WebExtension.Port port;int id;
+      private IpLookup(){throw new UnsupportedOperationException("IP lookup is outside the manual protection boundary");}
+    }
+    IpLookup ipLookup=null;
+    int manualIpRetryChecks;boolean ipMode;
+    boolean retryFailedIpNavigation(String target){manualIpRetryChecks++;if(ipMode)throw new AssertionError("IP retry and replacement are outside the manual-system protection scope");return true;}
+    static final class BlockedPopupUiBoundary {int offers;void offer(GeckoSession source,String target){offers++;}}
+    final BlockedPopupUiBoundary blockedPopups=new BlockedPopupUiBoundary();
     int protectionLevel=-1,configuredProtection=2,requestedProtection=-1,opens;
     long protectionRequest;String queued="";Object surface,extension=new Object();
     GeckoSession current,primary;WebExtension.Port routePort=new WebExtension.Port();Runnable protectionTimeout,protectionRetry;
@@ -139,6 +150,7 @@ final class NativeProtectionControllerHost {
     __MAYBE_OPEN__
     __BLOCKED__
     __ROUTE__
+    __PROTECTED_ROUTE__
     __LOAD_URL__
     __RESTORE_CHECKPOINT__
     __DISABLED_NAVIGATION__

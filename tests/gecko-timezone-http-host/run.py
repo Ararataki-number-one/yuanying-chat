@@ -25,6 +25,7 @@ MEMBERS = (
     'boolean timeZoneSessionAlive(',
     'boolean timeZoneAllows(',
     'void finishTimeZone(',
+    'void releaseIpRoute(',
     'void completeTimeZoneRequests(',
     'void completeTimeZoneProofs(',
     'boolean waitForDocumentTimeZone(',
@@ -51,6 +52,8 @@ MUTATIONS = (
     ('once-only', WAIT, 'if(!once.compareAndSet(false,true))return;', '', 'race', 'HTTP completion and a dequeued timeout resolve only once: true'),
     ('route-helper-recheck', 'GeckoResult<Object> guardedRoute(', 'ready?route(target):blocked()', 'ready?J.obj("allowed",true):blocked()', 'helpers', 'Successful release reruns current target and application helpers: target'),
     ('private-proof-before-http', 'void finishTimeZone(', 'completeTimeZoneProofs(gate,gate.ready);completeTimeZoneRequests(gate,gate.ready);', 'completeTimeZoneRequests(gate,gate.ready);completeTimeZoneProofs(gate,gate.ready);', 'proof-order', 'Private document proof callbacks run before public HTTP helpers'),
+    ('ip-lease-close', 'void releaseIpRoute(', 'lease.close();', ';', 'ip-lease', 'Actual IP lease release closes its real registry handle'),
+    ('ip-lease-remove', 'void releaseIpRoute(', 'ipRouteLeases.remove(gate)', 'ipRouteLeases.get(gate)', 'ip-lease', 'Actual IP lease release removes its exact gate entry'),
 )
 
 
@@ -78,12 +81,15 @@ def main():
         return selected
 
     source = PROD / 'GeckoWebView.java'
-    files = [source, PROD / 'J.java', HERE / 'HttpWaitHost.java.in', Path(__file__).resolve(), ROOT / 'tests/gecko-navigation-host/run.py']
+    files = [source, PROD / 'J.java', PROD / 'ChromiumRouteLease.java', HERE / 'HttpWaitHost.java.in', Path(__file__).resolve(), ROOT / 'tests/gecko-navigation-host/run.py']
     contents = {path: path.read_bytes() for path in files}
     hashes = {str(path.relative_to(ROOT)): hashlib.sha256(value).hexdigest() for path, value in contents.items()}
     jar_hash = digest(args.json_jar)
     source_text = contents[source].decode('utf-8')
     selected = {name: declaration(source_text, name) for name in MEMBERS}
+    fields = [line.strip() for line in source_text.splitlines() if line.strip().startswith('final Map<TimeZoneGate,ChromiumRouteLease.Handle> ipRouteLeases=')]
+    if len(fields) != 1 or not fields[0].endswith(';'):
+        raise ValueError('Unique complete actual IP lease map field required')
     template = contents[HERE / 'HttpWaitHost.java.in'].decode('utf-8')
     substitutions = [('WebExtension.Port', 'PortBoundary'), ('GeckoSession', 'SessionBoundary'), ('GeckoResult', 'ResultBoundary')]
 
@@ -91,7 +97,7 @@ def main():
         body = '\n'.join(members.values())
         for before, after in substitutions:
             body = body.replace(before, after)
-        return template.replace('@METHODS@', body)
+        return template.replace('@METHODS@', body).replace('@IP_ROUTE_FIELDS@', fields[0])
 
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.unlink(missing_ok=True)
@@ -107,7 +113,7 @@ def main():
             host = out / 'HttpWaitHost.java'
             host.write_text(generate(members))
             classes = work / label
-            command = [tool('javac'), '--release', '17', '-encoding', 'UTF-8', '-cp', str(args.json_jar.resolve()), '-d', str(classes), str(host), str(PROD / 'J.java')]
+            command = [tool('javac'), '--release', '17', '-encoding', 'UTF-8', '-cp', str(args.json_jar.resolve()), '-d', str(classes), str(host), str(PROD / 'J.java'), str(PROD / 'ChromiumRouteLease.java')]
             run = subprocess.run(command, capture_output=True, text=True, timeout=60)
             (out / 'compile.command.json').write_text(json.dumps(command) + '\n')
             (out / 'compile.stdout.log').write_text(run.stdout)
@@ -150,7 +156,7 @@ def main():
     changed_inputs = [name for name, value in hashes.items() if digest(ROOT / name) != value]
     if digest(args.json_jar) != jar_hash:
         changed_inputs.append(str(args.json_jar))
-    report = dict(schema=1,status='passed' if not changed_inputs else 'failed',passed=workload['passed'],total=workload['total'],checks=workload['checks'],negativeControls=controls,sourceCommit=subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip(),files=hashes,selectedProductionMembers={name: hashlib.sha256(value.encode()).hexdigest() for name,value in selected.items()},declaredSubstitutions=substitutions,jsonJar=dict(path=str(args.json_jar.resolve()),sha256=jar_hash),javaHome=str(args.java_home.resolve()) if args.java_home else None,executionInputsUnchanged=not changed_inputs,changedInputs=changed_inputs,actualAndroidExecution=False,actualGeckoExecution=False,actualNetworkExecution=False,scope=workload['scope'])
+    report = dict(schema=1,status='passed' if not changed_inputs else 'failed',passed=workload['passed'],total=workload['total'],checks=workload['checks'],negativeControls=controls,sourceCommit=subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip(),files=hashes,selectedProductionMembers={name: hashlib.sha256(value.encode()).hexdigest() for name,value in selected.items()},declaredSubstitutions=substitutions,jsonJar=dict(path=str(args.json_jar.resolve()),sha256=jar_hash),javaHome=str(args.java_home.resolve()) if args.java_home else None,executionInputsUnchanged=not changed_inputs,changedInputs=changed_inputs,actualJavaIpLeaseReleaseExecution=True,actualIpTransportExecution=False,actualAndroidExecution=False,actualGeckoExecution=False,actualNetworkExecution=False,scope=workload['scope'])
     args.output.write_text(json.dumps(report,ensure_ascii=False,indent=2)+'\n')
     print(json.dumps(dict(status=report['status'],passed=report['passed'],total=report['total'],negativeControls=len(controls),executionInputsUnchanged=report['executionInputsUnchanged'],output=str(args.output))))
     if changed_inputs:

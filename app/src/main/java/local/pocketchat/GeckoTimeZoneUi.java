@@ -8,6 +8,11 @@ import org.json.*;
 
 /** Environment-scoped editor; never changes Android's timezone or page Date. */
 final class GeckoTimeZoneUi {
+  static int selectionFor(GeckoTimeZoneSpec spec){return spec.followsIp()?0:spec.followsSystem()?1:spec.zoneId.equals("UTC")?2:3;}
+  static GeckoTimeZoneSpec selected(int selection,String zone){
+    if(selection==0)return GeckoTimeZoneSpec.automatic();if(selection==1)return GeckoTimeZoneSpec.system();if(selection==2)return GeckoTimeZoneSpec.of("UTC");if(selection==3&&zone!=null&&!zone.isEmpty())return GeckoTimeZoneSpec.of(zone);
+    throw new IllegalArgumentException("请选择明确的时区模式");
+  }
   static void show(MainActivity activity){
     ChatSession session=activity.session;
     session.timeZone.refresh(state->{if(activity.isDestroyed()||activity.isFinishing()||activity.session!=session||session.deleted)return;
@@ -18,20 +23,22 @@ final class GeckoTimeZoneUi {
     ReferenceUi.Modal dialog=new ReferenceUi.Modal(a,"此环境的独立时区");LinearLayout box=dialog.body;
     TextView status=DesignUi.text(a,"",14,DesignUi.TEXT);box.addView(status);
     DesignUi.note(box,"仅保存到当前环境的 Gecko。不会修改手机时区，也不会用网页脚本伪造 Date。保存配置与当前会话原生回读分别显示。");
-    Spinner mode=new Spinner(a);mode.setContentDescription("此环境时区模式");mode.setMinimumHeight(DesignUi.dp(a,48));mode.setAdapter(DesignUi.spinnerAdapter(a,new String[]{"跟随系统时区","UTC","指定 IANA 时区"}));mode.setSelection(initial.spec.followsSystem()?0:initial.spec.zoneId.equals("UTC")?1:2);box.addView(mode);
-    EditText zone=DesignUi.input(box,"IANA 时区名称",initial.spec.followsSystem()||initial.spec.zoneId.equals("UTC")?"":initial.spec.zoneId,"例如 Asia/Shanghai、America/New_York");
+    Spinner mode=new Spinner(a);mode.setContentDescription("此环境时区模式");mode.setMinimumHeight(DesignUi.dp(a,48));mode.setAdapter(DesignUi.spinnerAdapter(a,new String[]{"跟随当前出口 IP（默认）","跟随系统时区","UTC","指定 IANA 时区"}));mode.setSelection(selectionFor(initial.spec));box.addView(mode);
+    EditText zone=DesignUi.input(box,"IANA 时区名称",initial.spec.followsIp()||initial.spec.followsSystem()||initial.spec.zoneId.equals("UTC")?"":initial.spec.zoneId,"例如 Asia/Shanghai、America/New_York");
     zone.setSingleLine(true);zone.setInputType(InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_URI);zone.setFilters(new InputFilter[]{new InputFilter.LengthFilter(80)});
     DesignUi.note(box,"IANA 地区时区保留真实夏令时规则，不能用固定小时偏移代替。强化模板有自己的时区策略；选择独立时区不会自动减弱强化保护。");
-    DesignUi.note(box,"原生上下文设置回读不代表当前页面或所有 Worker 已采用该时区。自定义时区时暂不打开新弹窗；应用设置会关闭已有弹窗并重新加载网页。");
+    DesignUi.note(box,"默认通过当前 Gecko 浏览器线路向 ipwho.is 查询出口 IP 与 IANA 时区，不发送登录账号或 Cookie。查询失败会显示未匹配，并暂停新网页；可重试或明确选择系统／IANA 时区。线路变化后会重新确认，不会在回复、附件或输入期间自动重载网页。");
+    DesignUi.note(box,"强化保护启用时，自动模式由强化保护的原生统一时区优先；仍可按强化保护浏览，但不会标为 IP 时区匹配，也不必减弱保护。手动指定 IANA 时区与强化模板冲突时会保留原保护。");
+    DesignUi.note(box,"原生上下文设置回读不代表当前页面或所有 Worker 已采用该时区。IP 跟随或指定时区时暂不打开新弹窗；应用设置会关闭已有弹窗并重新加载网页。");
     DesignUi.note(box,"Service Worker 仍可读取系统时区，不能提供完整时区隔离。当前环境的页面与 Worker 实际效果仍需分别验证。");
     TextView result=DesignUi.text(a,"",13,DesignUi.MUTED);box.addView(result);GeckoTimeZoneStore.State[] expected={initial};
     Runnable update=()->{if(!a.isDestroyed()&&a.session==s&&dialog.isShowing())status.setText(summary(s.timeZone.status()));};
     dialog.setOnDismissListener(ignored->s.timeZone.removeListener(update));
     dialog.buttons("关闭",dialog::dismiss,"应用并重新加载",()->{
-      String selected=mode.getSelectedItemPosition()==0?"":mode.getSelectedItemPosition()==1?"UTC":zone.getText().toString();
+      int selection=mode.getSelectedItemPosition();String selected=selection==1?"":selection==2?"UTC":zone.getText().toString();
       dialog.primary().setEnabled(false);result.setText("正在核对时区名称与当前网页…");
       s.environmentIo.execute(()->{
-        GeckoTimeZoneSpec spec=null;String error="";try{spec=GeckoTimeZoneSpec.of(selected);}catch(Exception invalid){error=invalid.getMessage();}
+        GeckoTimeZoneSpec spec=null;String error="";try{spec=selected(selection,selected);}catch(Exception invalid){error=invalid.getMessage();}
         GeckoTimeZoneSpec wanted=spec;String invalid=error;s.handler.post(()->{
           if(a.isDestroyed()||a.isFinishing()||a.session!=s||!dialog.isShowing())return;
           Consumer<String> done=message->{if(!a.isDestroyed()&&a.session==s&&dialog.isShowing()){
@@ -42,13 +49,17 @@ final class GeckoTimeZoneUi {
           applySafely(a,s,expected[0],wanted,done);
         });
       });
-    });dialog.show();s.timeZone.addListener(update);update.run();
+    });
+    DesignUi.action(box,"重试当前出口 IP 查询",false,()->{if(mode.getSelectedItemPosition()!=0){result.setText("当前是手动时区；选择“跟随当前出口 IP”后可查询，手动选择不会自动改变。");return;}if(s.privacy.level()>=2){result.setText("强化保护的原生统一时区优先，IP 匹配未生效；无需查询或减弱保护。");return;}if(dialog.primary().isEnabled())dialog.primary().performClick();});
+    dialog.show();s.timeZone.addListener(update);update.run();
   }
   static String summary(JSONObject status){
     String zone=status.opt("desiredZone") instanceof String?(String)status.opt("desiredZone"):"";
-    String desired=status.optBoolean("loaded")?(zone.isEmpty()?"跟随系统时区":zone):"尚未读取";
+    boolean automatic="ip".equals(status.optString("desiredMode"));
+    String desired=status.optBoolean("loaded")?(automatic?"跟随当前出口 IP":zone.isEmpty()?"跟随系统时区":zone):"尚未读取";
     String current=status.optBoolean("nativeSettingReadback")?"当前会话原生设置已回读；页面与 Worker 尚未验证":"尚未取得当前会话的原生设置确认";
-    String issue=status.optString("issue");return "已保存："+desired+"\n当前："+current+(status.optBoolean("loaded")&&!zone.isEmpty()?"\nService Worker 仍可读取系统时区，不能提供完整时区隔离。":"")+(issue.isEmpty()?"":"\n"+issue);
+    String ip=automatic?(status.optBoolean("rfpPriority")?"\n强化保护原生统一时区优先，IP 匹配未生效；"+(status.optBoolean("nativeSettingReadback")?"可继续按强化保护浏览":"尚待原生确认，无需减弱保护"):status.optBoolean("ipMatched")?"\n当前出口观测："+status.optString("observedIp")+" · "+status.optString("effectiveZone")+"（ipwho.is）":"\nIP 时区未匹配；可点按“应用并重新加载”重试，或手动选择时区"):"";
+    String issue=status.optString("issue");return "已保存："+desired+"\n当前："+current+ip+(status.optBoolean("loaded")&&(automatic||!zone.isEmpty())?"\nService Worker 仍可读取系统时区，不能提供完整时区隔离。":"")+(issue.isEmpty()?"":"\n"+issue);
   }
   static String busy(ChatSession s,boolean ownsCapture){return BrowserSettingsPolicy.reason(s.pending!=null,s.submitting,s.operation&&!ownsCapture,s.transferActive,s.fileWorkActive()||s.resourceFilesUncertain(),s.currentReplyActive());}
   /** Native fence uses only current in-memory state, with catalog identity

@@ -173,9 +173,10 @@ class DualBrowserSourceCompatibility(unittest.TestCase):
 
     def test_java_policy_dependency_sources_reject_all_unknown_contexts(self):
         import gecko_policy_dependency_source_compatibility as dependency
+        from page_bridge_budget_source_compatibility import PATHS as budget_paths, source_input as budget_source_input
         rejected = 0
         for relative, row in dependency.manifest()['files'].items():
-            current = (ROOT / relative).read_bytes()
+            current = budget_source_input((ROOT / relative).read_bytes(), relative) if relative in budget_paths else (ROOT / relative).read_bytes()
             for delta in row['deltas']:
                 chunk = delta['current'].encode()
                 self.assertEqual(current.count(chunk), 1)

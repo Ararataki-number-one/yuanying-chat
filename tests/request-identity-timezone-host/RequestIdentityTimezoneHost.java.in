@@ -103,7 +103,14 @@ public final class RequestIdentityTimezoneHost {
     List<Boolean> result=new ArrayList<>();s.web.awaitIdentityAuditDocumentProof(s.web.url,s.navigationEpoch,s.web.current,s.web.runtime,old,result::add);
     check("Actual proof rejects the same SDK object with a different open gate",result.equals(Arrays.asList(false)));
   }
-  public static void main(String[] args)throws Exception{root=Paths.get(args[0]);Files.createDirectories(root);legal();configurationChanges();proofFailure();preflightAndScope();reportLifecycle();openProof();System.out.println(J.obj("status","passed","passed",checks.size(),"total",checks.size(),"checks",new JSONArray(checks)));}
+  static void actualIpLeaseRelease()throws Exception{
+    ChatSession s=session();GeckoWebView.TimeZoneGate gate=s.web.timeZoneGates.get(s.web.current);ChromiumRouteLease.Registry registry=new ChromiumRouteLease.Registry();ChromiumRouteLease.Handle handle=registry.acquireSurface();s.web.ipRouteLeases.put(gate,handle);
+    s.web.releaseIpRoute(new GeckoWebView.TimeZoneGate());check("An unrelated gate cannot release the actual current IP lease",registry.held()&&s.web.ipRouteLeases.get(gate)==handle&&!handle.closed);
+    s.web.releaseIpRoute(gate);check("Actual IP lease release removes only its owned gate entry",s.web.ipRouteLeases.isEmpty());check("Actual IP lease release closes its owned real registry handle",handle.closed&&!registry.held());
+    long revision=registry.snapshot().revision;s.web.releaseIpRoute(gate);check("Repeated actual IP lease release is idempotent",registry.snapshot().revision==revision&&!registry.held());
+    handle=registry.acquireSurface();s.web.ipRouteLeases.put(gate,handle);s.web.finishTimeZone(s.web.current,gate,true);check("Actual native-finish method releases its gate's owned route lease",s.web.ipRouteLeases.isEmpty()&&handle.closed&&!registry.held());
+  }
+  public static void main(String[] args)throws Exception{root=Paths.get(args[0]);Files.createDirectories(root);legal();configurationChanges();proofFailure();preflightAndScope();reportLifecycle();openProof();actualIpLeaseRelease();System.out.println(J.obj("status","passed","passed",checks.size(),"total",checks.size(),"checks",new JSONArray(checks)));}
 }
 final class Native implements GeckoTimeZoneController.NativeAccess {
   final Object session;final String sid,epoch;String context="7",zone="",readToken,applyToken;Consumer<String> readSuccess,applySuccess;Consumer<Throwable> readFailure,applyFailure;boolean live=true;
@@ -129,6 +136,14 @@ final class EnvironmentAudit {
  /*@@AUDIT@@*/
 }
 final class GeckoWebView {
+ // Verbatim current map and release member use the complete real Java registry.
+ // Other retained cases select manual IANA and have no IP lookup in flight.
+ /*@@IP_ROUTE_FIELDS@@*/
+ static final class IpLookupBoundary {GeckoSession session;TimeZoneGate gate;private IpLookupBoundary(){throw new UnsupportedOperationException("IP lookup is outside this manual request-identity boundary");}}
+ IpLookupBoundary ipLookup=null;
+ void cancelIpLookup(){throw new UnsupportedOperationException("IP lookup is outside this manual request-identity boundary");}
+ int manualIpFailureNotifications;
+ void finishIpNavigationFailure(GeckoSession session,TimeZoneGate gate,String issue){if("ip".equals(owner.timeZone.status().optString("desiredMode")))throw new UnsupportedOperationException("IP navigation failure UI is outside this manual request-identity boundary");manualIpFailureNotifications++;}
  static final String VERSION="GeckoView 157.0 HOST SDK BOUNDARY";final ChatSession owner;GeckoSession current=new GeckoSession();Object runtime=new Object();boolean destroyed,visible,protectedNetwork=true;String url="";long identityPolicyRevision=1;int loads,auditCalls,evidenceCalls;Consumer<String> auditCallback,evidenceCallback;final GeckoSettings settings=new GeckoSettings();final Map<GeckoSession,String> locations=new IdentityHashMap<>();final Set<GeckoSession> popups=Collections.newSetFromMap(new IdentityHashMap<GeckoSession,Boolean>());final Map<GeckoSession,TimeZoneGate> timeZoneGates=new IdentityHashMap<>();WebExtension.Port routePort=new WebExtension.Port();final NativeProtection nativeProtection=new NativeProtection();final Metadata metadata=new Metadata();ExitIpPage exitIpPage;
  GeckoWebView(ChatSession s){owner=s;locations.put(current,"");}static boolean active(GeckoWebView v){return !v.destroyed;}Object nativeRuntimeIdentity(){return runtime;}GeckoSettings getSettings(){return settings;}String getUrl(){return url;}boolean hasVisibleDocument(){return visible;}boolean protectionAllowsNetwork(){return protectedNetwork;}String identityLanguage(){return "en-US";}void timezoneConfigurationChanged(){}void loadUrl(String target){loads++;}void runEnvironmentAudit(JSONObject input,Consumer<String> result){auditCalls++;auditCallback=result;}void cancelEnvironmentAudit(){}
  void requestIdentityScope(JSONObject input,Consumer<String> done){String action=input.optString("action");if(action.equals("register"))done.accept(J.obj("ok",true,"nonce",input.optString("nonce"),"credentialFilter",true,"redirectsBlocked",true).toString());else if(action.equals("evidence")){evidenceCalls++;evidenceCallback=done;}else if(action.equals("cancel"))done.accept("{}");else throw new AssertionError(action);}

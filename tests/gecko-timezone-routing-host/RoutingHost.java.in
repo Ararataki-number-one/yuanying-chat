@@ -283,6 +283,16 @@ public final class RoutingHost {
       check("Independent addon refusal precedes SDK timezone work: "+path,web.addonChecks>0&&web.current.reads==0&&web.current.events.isEmpty()&&web.owner.timeZone.calls.isEmpty());
     }
   }
+  static void manualIpBoundary(){
+    WebBoundary web=new WebBoundary();check("Retained timezone routes declare manual policy explicitly",!web.autoIpMode()&&web.manualPolicyReads==1);
+    for(String action:new String[]{"policy","stamp","lookup","cancel"}){boolean rejected=false;try{if(action.equals("policy")){web.manualTimeZonePolicy=false;web.autoIpMode();}else if(action.equals("stamp"))web.ipRouteStamp();else if(action.equals("lookup"))web.lookupIpTimeZone(web.current,null,"token",value->{throw new AssertionError("IP success invented");},error->{throw new AssertionError("IP lookup invented");});else{web.ipLookup=new WebBoundary.IpLookupBoundary(web.current);web.retireTimeZone(web.current);}}catch(UnsupportedOperationException expected){rejected=true;}check("Unexpected IP operation is outside the declared manual boundary: "+action,rejected);}
+  }
+  static void actualIpLease(){
+    WebBoundary web=new WebBoundary();WebBoundary.TimeZoneGate gate=new WebBoundary.TimeZoneGate();web.timeZoneGates.put(web.current,gate);ChromiumRouteLease.Registry registry=new ChromiumRouteLease.Registry();ChromiumRouteLease.Handle handle=registry.acquireSurface();web.ipRouteLeases.put(gate,handle);
+    web.releaseIpRoute(new WebBoundary.TimeZoneGate());check("An unrelated gate cannot release the current IP lease",registry.held()&&web.ipRouteLeases.get(gate)==handle&&!handle.closed);
+    web.releaseIpRoute(gate);check("Actual IP lease release removes its exact gate entry",web.ipRouteLeases.isEmpty());check("Actual IP lease release closes its real registry handle",handle.closed&&!registry.held());long revision=registry.snapshot().revision;web.releaseIpRoute(gate);check("Actual IP lease release is idempotent after removal",registry.snapshot().revision==revision&&!registry.held());
+    handle=registry.acquireSurface();web.ipRouteLeases.put(gate,handle);web.retireTimeZone(web.current);check("Actual retirement closes its owned IP route lease",web.ipRouteLeases.isEmpty()&&handle.closed&&!registry.held());
+  }
   public static void main(String[] args){
     if(args.length>0){switch(args[0]){
       case "load-first-gate":firstLoad();break;case "restore-first-gate":checkpoint();break;case "navigation-first-gate":navigation();break;
@@ -294,13 +304,15 @@ public final class RoutingHost {
       case "held-route":case "held-header":heldRequests();break;case "held-queue-cap":heldQueueBound();break;
       case "held-identity":heldOwnership("identity");break;case "held-desired":heldOwnership("desired");break;
       case "proof-before-requests":proofBeforeRequests();break;
+      case "ip-lease-close":case "ip-lease-remove":actualIpLease();break;
       default:throw new AssertionError(args[0]);
-    }}else{firstLoad();checkpoint();navigation();gate("");retired();windowChanged("window-port");windowChanged("window-session");changedEpoch();changedRestore("restore-epoch");changedRestore("restore-current");timeout();disconnected();send("all");popups();filteredRestore();filteredRecheck();guards();intentOwnership();directSendPort();secondaryNavigation();sameNativeIntent();documentRevalidation();heldRequests();for(String kind:new String[]{"navigation","connection","identity","protection","desired","port","closed","destroyed","deleted","current"})heldOwnership(kind);heldQueueBound();heldNewDocument();proofBeforeRequests();addonEntryBoundary();}
+    }}else{firstLoad();checkpoint();navigation();gate("");retired();windowChanged("window-port");windowChanged("window-session");changedEpoch();changedRestore("restore-epoch");changedRestore("restore-current");timeout();disconnected();send("all");popups();filteredRestore();filteredRecheck();guards();intentOwnership();directSendPort();secondaryNavigation();sameNativeIntent();documentRevalidation();heldRequests();for(String kind:new String[]{"navigation","connection","identity","protection","desired","port","closed","destroyed","deleted","current"})heldOwnership(kind);heldQueueBound();heldNewDocument();proofBeforeRequests();addonEntryBoundary();manualIpBoundary();actualIpLease();}
     System.out.println(J.obj("status","passed","passed",checks.length(),"total",checks.length(),"checks",checks,"actualAndroidExecution",false,"actualGeckoExecution",false,"nativeTimezoneReadback",false,"dateIntlEffectVerified",false,"workerEffectVerified",false).toString());
   }
 }
 
 class WebBoundary {
+  @IP_ROUTE_FIELDS@
   @METHODS@
   final OwnerBoundary owner=new OwnerBoundary();final MetadataBoundary metadata=new MetadataBoundary();final StoreBoundary sessionStore=new StoreBoundary();
   final Map<SessionBoundary,TimeZoneGate> timeZoneGates=new IdentityHashMap<>();final Map<SessionBoundary,String> timeZoneLoads=new IdentityHashMap<>(),locations=new IdentityHashMap<>(),deferredGeneralLoads=new IdentityHashMap<>();
@@ -317,6 +329,18 @@ class WebBoundary {
   boolean rejectDisabledNavigation(SessionBoundary session,String target){addonChecks++;return addonRejected;}
   ProtectionRestore generalRestore,protectionRestore;
   final BrowserBridgeRequests cookieCallbacks=new BrowserBridgeRequests(new BrowserBridgeRequests.Timer(){public void schedule(Runnable task,long delay){owner.handler.postDelayed(task,delay);}public void cancel(Runnable task){owner.handler.removeCallbacks(task);}},null);
+  // Retained cases explicitly model manual system/IANA. IP transport is outside
+  // this boundary and fails loudly if an unexpected lookup reaches it.
+  static final class IpLookupBoundary {final SessionBoundary session;TimeZoneGate gate;IpLookupBoundary(SessionBoundary session){this.session=session;}}
+  IpLookupBoundary ipLookup;boolean ipRouteNeedsReload,manualTimeZonePolicy=true;int manualPolicyReads;
+  static final class IpFailureBoundary {final SessionBoundary session;private IpFailureBoundary(){session=null;throw new UnsupportedOperationException("IP navigation failure is outside this manual routing boundary");}}
+  IpFailureBoundary ipNavigationFailure=null;int manualIpFailureNotifications,manualRetryReads;
+  void finishIpNavigationFailure(SessionBoundary session,TimeZoneGate gate,String issue){if(!manualTimeZonePolicy)throw new UnsupportedOperationException("IP failure UI is outside this manual routing boundary");manualIpFailureNotifications++;}
+  boolean retryFailedIpNavigation(String target){if(!manualTimeZonePolicy)throw new UnsupportedOperationException("IP retry is outside this manual routing boundary");manualRetryReads++;return true;}
+  boolean autoIpMode(){manualPolicyReads++;if(!manualTimeZonePolicy)throw new UnsupportedOperationException("IP policy is not a manual timezone boundary");return false;}
+  String ipRouteStamp(){throw new UnsupportedOperationException("No IP route is modeled");}
+  void lookupIpTimeZone(SessionBoundary session,TimeZoneGate gate,String token,Consumer<String> ok,Consumer<Throwable> fail){throw new UnsupportedOperationException("No IP lookup is modeled");}
+  void cancelIpLookup(){throw new UnsupportedOperationException("No IP lookup is modeled");}
   WebBoundary(){locations.put(current,"");}
   JSONObject timeZoneStatus(){return J.obj("boundary","metadata-only");}
   boolean allowedUrl(String target){return GeckoNavigationPolicy.publicWeb(target);}

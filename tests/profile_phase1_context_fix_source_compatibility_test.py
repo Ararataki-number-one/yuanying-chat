@@ -101,7 +101,8 @@ class Phase1ContextFixSourceCompatibility(unittest.TestCase):
  def test_precise_input_ports_strip_to_entire_real_1a06_and_all_original_assertions(self):
   path='tests/worker_timezone_source_compatibility.py';before=subprocess.check_output(['git','show',overlay.BASE_COMMIT+':'+path],cwd=ROOT);current=(ROOT/path).read_bytes()
   self.assertEqual(current.count(HOOK.encode()),1);self.assertEqual(current.replace(HOOK.encode(),b'',1),before)
-  path='tests/profile_worker_timezone_source_compatibility_test.py';before=subprocess.check_output(['git','show',overlay.BASE_COMMIT+':'+path],cwd=ROOT);current=(ROOT/path).read_bytes()
+  from page_bridge_budget_source_compatibility import source_input as budget_source_input
+  path='tests/profile_worker_timezone_source_compatibility_test.py';before=subprocess.check_output(['git','show',overlay.BASE_COMMIT+':'+path],cwd=ROOT);current=budget_source_input((ROOT/path).read_bytes(),path)
   self.assertEqual(assertions(current),assertions(before));self.assertEqual(current.count(IMPORT),1);current=current.replace(IMPORT,b'',1)
   for indent,name in ((16,'after'),(12,'after'),(8,'after'),(12,'current'),(8,'current')):
    hook=read_hook(indent,name);self.assertEqual(current.count(hook),1);current=current.replace(hook,b'',1)

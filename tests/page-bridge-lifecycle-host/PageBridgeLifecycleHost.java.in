@@ -52,6 +52,10 @@ public final class PageBridgeLifecycleHost {
     // This legacy bridge workload assumes the builtin addon remains enabled.
     // Authoritative SDK addon lifecycle and late disabled events run separately.
     boolean destroyed,addonDisabled;String url=URL;float readingLayout=1;int appearanceRequests,visible;
+    int manualIpFailureChecks,popupInvalidations;boolean ipMode;
+    boolean ipNavigationFailed(GeckoSession session){manualIpFailureChecks++;if(ipMode)throw new AssertionError("IP failure lifecycle is outside the explicit manual-system bridge scope");return false;}
+    final class BlockedPopupBoundary {void invalidate(){popupInvalidations++;}}
+    final BlockedPopupBoundary blockedPopups=new BlockedPopupBoundary();
     // Existing bridge cases display their primary surface, with no auxiliary
     // IP document. Actual surface ownership belongs to the separate overview host.
     boolean auxiliaryPageVisible;

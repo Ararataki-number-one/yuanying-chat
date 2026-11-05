@@ -10,7 +10,18 @@ import org.json.*;
 public final class TimezoneFlowHost {
   static Path root;static int ordinal;static final List<String> checks=new ArrayList<>();
   static void check(String label,boolean pass){if(!pass)throw new AssertionError(label);checks.add(label);}
-  static ChatSession session(String zone)throws Exception{ChatSession s=new ChatSession(new TestContext(root.resolve("case-"+(++ordinal)),new EnvironmentSpec.Identity(2,4,GeckoTimeZoneHost.ID)));GeckoTimeZoneStore.State initial=GeckoTimeZoneStore.load(s.context);if(!zone.isEmpty())GeckoTimeZoneStore.save(s.context,initial.identity,initial.revision,GeckoTimeZoneSpec.of(zone));s.timeZone.load();s.pump();return s;}
+  // These retained controller/UI cases deliberately select their manual policy.
+  // Empty here means an explicit system choice, never the missing-store default.
+  static ChatSession session(String zone)throws Exception{ChatSession s=new ChatSession(new TestContext(root.resolve("case-"+(++ordinal)),new EnvironmentSpec.Identity(2,4,GeckoTimeZoneHost.ID)));GeckoTimeZoneStore.State initial=GeckoTimeZoneStore.load(s.context);GeckoTimeZoneStore.save(s.context,initial.identity,initial.revision,GeckoTimeZoneSpec.of(zone));s.timeZone.load();s.pump();return s;}
+  static void selectManualSystem(ChatSession s)throws Exception{GeckoTimeZoneStore.State initial=GeckoTimeZoneStore.load(s.context);GeckoTimeZoneStore.save(s.context,initial.identity,initial.revision,GeckoTimeZoneSpec.system());}
+  static void actualMissingDefaultAndLegacySelection()throws Exception{
+    ChatSession s=new ChatSession(new TestContext(root.resolve("fresh-ip-default"),new EnvironmentSpec.Identity(2,4,GeckoTimeZoneHost.ID)));GeckoTimeZoneStore.State fresh=GeckoTimeZoneStore.load(s.context);
+    check("Fresh actual store retains the new IP default before any manual choice",fresh.spec.followsIp()&&!fresh.spec.followsSystem()&&fresh.revision==1);
+    s.timeZone.load();s.pump();Native n=nativeFor(s);List<Boolean> out=prepare(s,n);
+    check("Unresolved IP default cannot borrow this manual-only native boundary",out.equals(Arrays.asList(false))&&n.readCalls==0&&n.applyCalls==0&&!verified(s,n)&&!s.timeZone.popupAllowed()&&s.timeZone.cached.spec.followsIp());
+    GeckoTimeZoneSpec legacy=GeckoTimeZoneSpec.from(J.obj("schema",1,"engine","gecko","zoneId",""));
+    check("A saved schema-one system selection remains explicit system",legacy.followsSystem()&&!legacy.followsIp());
+  }
   static Native nativeFor(ChatSession s){Native n=new Native(s.web.current,"native_session_"+ordinal,"epoch_"+ordinal);return n;}
   static List<Boolean> prepare(ChatSession s,Native n){List<Boolean> out=new ArrayList<>();s.timeZone.prepare(n.session,n.sid,n.epoch,n,out::add);return out;}
   static void bootstrap(ChatSession s,Native n){n.readSuccess.accept(n.ack(n.readToken,"",n.context));s.handler.drain();s.environmentIo.drain();s.handler.drain();}
@@ -75,7 +86,7 @@ public final class TimezoneFlowHost {
     ChatSession unloaded=new ChatSession(new TestContext(root.resolve("audit-unloaded"),new EnvironmentSpec.Identity(2,4,GeckoTimeZoneHost.ID)));String before=unloaded.timeZone.auditStamp();unloaded.timeZone.load();unloaded.pump();check("Initial asynchronous desired load changes audit identity",!before.equals(unloaded.timeZone.auditStamp()));
   }
   static void pendingLoadAndFailure()throws Exception{
-    ChatSession s=new ChatSession(new TestContext(root.resolve("pending-load"),new EnvironmentSpec.Identity(2,4,GeckoTimeZoneHost.ID)));Native n=nativeFor(s);List<Boolean> out=prepare(s,n);check("Native prepare waits for actual asynchronous desired load",out.isEmpty()&&n.readCalls==0&&!s.timeZone.popupAllowed());s.timeZone.load();s.pump();check("Loaded legacy default begins exact native bootstrap",n.readCalls==1&&out.isEmpty());accept(s,n);check("Preparation queued before load completes only after normal handshake",out.equals(Arrays.asList(true))&&verified(s,n));
+    ChatSession s=new ChatSession(new TestContext(root.resolve("pending-load"),new EnvironmentSpec.Identity(2,4,GeckoTimeZoneHost.ID)));selectManualSystem(s);Native n=nativeFor(s);List<Boolean> out=prepare(s,n);check("Native prepare waits for actual asynchronous desired load",out.isEmpty()&&n.readCalls==0&&!s.timeZone.popupAllowed());s.timeZone.load();s.pump();check("Loaded legacy default begins exact native bootstrap",n.readCalls==1&&out.isEmpty());accept(s,n);check("Preparation queued before load completes only after normal handshake",out.equals(Arrays.asList(true))&&verified(s,n));
     String stamp=s.timeZone.auditStamp();s.context.vault.failRead=true;s.timeZone.refresh(null);s.pump();check("Later vault-read failure revokes previous confirmation without reset",!verified(s,n)&&!s.timeZone.popupAllowed()&&!stamp.equals(s.timeZone.auditStamp())&&s.timeZone.cached.spec.followsSystem());s.context.vault.failRead=false;s.timeZone.refresh(null);s.pump();check("Recovered desired load does not revive previous completed ACK automatically",!verified(s,n));
     s=new ChatSession(new TestContext(root.resolve("failed-load"),new EnvironmentSpec.Identity(2,4,GeckoTimeZoneHost.ID)));s.context.vault.failRead=true;n=nativeFor(s);out=prepare(s,n);s.timeZone.load();s.pump();check("Unknown unreadable desired state cannot speculate system continuation",out.equals(Arrays.asList(false))&&n.readCalls==0&&!s.timeZone.popupAllowed());
   }
@@ -194,7 +205,7 @@ public final class TimezoneFlowHost {
     check("Same-revision spec A to B to A still advances a non-revivable configuration epoch",!beforeCounterfeit.equals(s.timeZone.auditConfigurationStamp())&&!changed.equals(s.timeZone.auditConfigurationStamp()));
     ChatSession another=session("America/New_York");check("Independent controller instances cannot lend configuration authorization",!another.timeZone.auditConfigurationStamp().equals(s.timeZone.auditConfigurationStamp()));
   }
-  public static void main(String[] args)throws Exception{root=Paths.get(args[0]);Files.createDirectories(root);successfulPublication();identityFailures();staleAndTimeout();parallelSessions();observationBinding();pendingLoadAndFailure();defaultsAndProtection();finalDraftAndSafety();uiEntry();committedContexts();committedContextFailures();configurationStamp();System.out.println(J.obj("status","passed","passed",checks.size(),"total",checks.size(),"checks",new JSONArray(checks)));}
+  public static void main(String[] args)throws Exception{root=Paths.get(args[0]);Files.createDirectories(root);actualMissingDefaultAndLegacySelection();successfulPublication();identityFailures();staleAndTimeout();parallelSessions();observationBinding();pendingLoadAndFailure();defaultsAndProtection();finalDraftAndSafety();uiEntry();committedContexts();committedContextFailures();configurationStamp();System.out.println(J.obj("status","passed","passed",checks.size(),"total",checks.size(),"checks",new JSONArray(checks)));}
 }
 
 final class Native implements GeckoTimeZoneController.NativeAccess {

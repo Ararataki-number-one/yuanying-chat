@@ -53,6 +53,12 @@ class EnvironmentPublicationTests(unittest.TestCase):
         calls=[];source='a'*40;reader=lambda commit,path:b'explicit source reader boundary'
         fp=types.ModuleType('browser.check_fingerprint_evidence');fp.verify_fingerprint_evidence=lambda *a,**k:{'scope':'synthetic fingerprint boundary'}
         modules={'browser.check_fingerprint_evidence':fp}
+        ip=types.ModuleType('browser.check_gecko_ip_timezone_evidence')
+        def verify_ip(directory,actual,expected,reader):
+            if (Path(directory)/'gecko-ip-timezone-results.json').read_bytes()!=b'explicit synthetic IP checker boundary':raise ValueError('Required IP evidence rejected')
+            return {'scope':'synthetic IP metadata boundary only'}
+        ip.verify_gecko_ip_timezone_evidence=verify_ip
+        modules['browser.check_gecko_ip_timezone_evidence']=ip
         for module_name,function,report in (('browser.check_worker_policy_evidence','verify_worker_policy_evidence',REPORTS[0]),('browser.check_gecko_environment_policy_evidence','verify_gecko_environment_policy_evidence',REPORTS[1])):
             module=types.ModuleType(module_name)
             def verify(directory,actual,expected,reader,report=report):
@@ -63,6 +69,7 @@ class EnvironmentPublicationTests(unittest.TestCase):
         result={'buildIdentity':{},'checks':[{}],'provider':{'package':'synthetic','version':'fixture'}}
         with tempfile.TemporaryDirectory() as tmp:
             directory=Path(tmp);(directory/'browser-results.json').write_text(json.dumps({'expectedBuildIdentity':{}}))
+            (directory/'gecko-ip-timezone-results.json').write_bytes(b'explicit synthetic IP checker boundary')
             expected={'sourceCommit':source,'sourceTree':'b'*40,'apkSha256':'c'*64,'version':'2.1.1','sdkBuildIdentity':{'runId':'11','runAttempt':'1'}}
             def device():(directory/'device-results.json').write_text(json.dumps({'status':'passed','sourceCommit':source,'actualAndroidExecution':True,'eventTransport':{'buildIdentity':expected}}))
             device()

@@ -29,6 +29,9 @@ public final class GeckoTimeZoneHost {
   static void specifications()throws Exception{
     GeckoTimeZoneSpec system=GeckoTimeZoneSpec.system(),utc=GeckoTimeZoneSpec.of("UTC");
     check("Legacy system selection is an empty override, not today's resolved phone timezone",system.followsSystem()&&system.json().getString("zoneId").isEmpty());
+    check("New IP default is distinct from an explicitly selected system override",GeckoTimeZoneSpec.automatic().followsIp()&&!GeckoTimeZoneSpec.automatic().equals(system));
+    check("Schema1 empty choice migrates conservatively as manual system",GeckoTimeZoneSpec.from(J.obj("schema",1,"engine","gecko","zoneId","")).followsSystem());
+    check("Schema1 IANA choice stays manual and keeps its original zone",GeckoTimeZoneSpec.from(J.obj("schema",1,"engine","gecko","zoneId","Asia/Kathmandu")).equals(GeckoTimeZoneSpec.of("Asia/Kathmandu")));
     check("Only system default can continue without native override capability",GeckoTimeZonePolicy.legacySystemMayContinue(system)&&!GeckoTimeZonePolicy.legacySystemMayContinue(utc));
     check("UTC is an explicit named zero-offset setting",utc.offsetAt(Instant.parse("2026-07-01T12:00:00Z")).getTotalSeconds()==0&&!utc.followsSystem());
     GeckoTimeZoneSpec ny=GeckoTimeZoneSpec.of("America/New_York"),howe=GeckoTimeZoneSpec.of("Australia/Lord_Howe"),kathmandu=GeckoTimeZoneSpec.of("Asia/Kathmandu");
@@ -46,7 +49,7 @@ public final class GeckoTimeZoneHost {
   }
 
   static void policy()throws Exception{
-    TestContext c=context("policy");GeckoTimeZoneStore.State state=GeckoTimeZoneStore.load(c);GeckoTimeZoneStore.Ticket ticket=GeckoTimeZoneStore.activate(c,state.identity,state.revision,binding());
+    TestContext c=context("policy");GeckoTimeZoneStore.State fresh=GeckoTimeZoneStore.load(c),state=GeckoTimeZoneStore.save(c,fresh.identity,fresh.revision,GeckoTimeZoneSpec.system());GeckoTimeZoneStore.Ticket ticket=GeckoTimeZoneStore.activate(c,state.identity,state.revision,binding());
     JSONObject nativeAck=ack(ticket,state.spec);
     check("Exact synthetic native readback retains separate observation scope",GeckoTimeZonePolicy.nativeReadback(nativeAck.toString(),state.spec,ticket.requestToken,ticket.binding.sessionId,ticket.binding.contextId).getBoolean("nativeSettingReadback"));
     JSONObject read=new JSONObject(nativeAck.toString());read.put("status","read");check("Read-only native setting ACK can confirm exact current value",GeckoTimeZonePolicy.nativeReadback(read.toString(),state.spec,ticket.requestToken,ticket.binding.sessionId,ticket.binding.contextId).getString("status").equals("read"));
@@ -63,7 +66,7 @@ public final class GeckoTimeZoneHost {
   }
 
   static void independentSessions()throws Exception{
-    TestContext c=context("independent-sessions");GeckoTimeZoneStore.State state=GeckoTimeZoneStore.load(c);
+    TestContext c=context("independent-sessions");GeckoTimeZoneStore.State freshDefault=GeckoTimeZoneStore.load(c),state=GeckoTimeZoneStore.save(c,freshDefault.identity,freshDefault.revision,GeckoTimeZoneSpec.system());
     GeckoTimeZoneStore.Ticket primary=GeckoTimeZoneStore.activate(c,state.identity,state.revision,binding());GeckoTimeZoneStore.record(c,primary,ack(primary,state.spec).toString());
     GeckoTimeZoneStore.Binding auxBinding=new GeckoTimeZoneStore.Binding("157","aux_native_session","aux_open_epoch","456");
     GeckoTimeZoneStore.Ticket aux=GeckoTimeZoneStore.activate(c,state.identity,state.revision,auxBinding);
@@ -88,7 +91,7 @@ public final class GeckoTimeZoneHost {
 
   static void storage()throws Exception{
     TestContext c=context("storage");Files.write(c.directory.resolve("environment-spec.host-vault"),new byte[]{9,8,7});
-    GeckoTimeZoneStore.State initial=GeckoTimeZoneStore.load(c);check("Missing sidecar defaults to system/revision1",initial.revision==1&&initial.spec.followsSystem()&&initial.identity.equals(c.catalog.current));
+    GeckoTimeZoneStore.State initial=GeckoTimeZoneStore.load(c);check("Missing sidecar defaults to exit-IP policy/revision1",initial.revision==1&&initial.spec.followsIp()&&initial.identity.equals(c.catalog.current));
     check("Independent timezone sidecar does not rewrite existing environment schema",Arrays.equals(Files.readAllBytes(c.directory.resolve("environment-spec.host-vault")),new byte[]{9,8,7}));
     long writes=c.vault.writes;GeckoTimeZoneStore.State same=GeckoTimeZoneStore.save(c,initial.identity,initial.revision,initial.spec);check("Unchanged save is stable without a new revision or write",same.revision==1&&c.vault.writes==writes);
     GeckoTimeZoneStore.State tokyo=GeckoTimeZoneStore.save(c,initial.identity,1,GeckoTimeZoneSpec.of("Asia/Tokyo"));check("Desired timezone save has independent monotonic revision",tokyo.revision==2&&tokyo.spec.zoneId.equals("Asia/Tokyo")&&rawObject(c).getJSONObject("receipt").length()==0);
@@ -118,7 +121,7 @@ public final class GeckoTimeZoneHost {
     check("Reset generation keeps desired named timezone but never old native ACK",rebound.identity.generation==5&&rebound.spec.equals(saved.spec)&&rebound.revision==saved.revision&&rawObject(c).getJSONObject("receipt").length()==0);
     rejects("Old environment generation cannot save or record",()->GeckoTimeZoneStore.record(c,old,ack(old,saved.spec).toString()));
     c.catalog.current=new EnvironmentSpec.Identity(2,0,OTHER);GeckoTimeZoneStore.State reused=GeckoTimeZoneStore.load(c);
-    check("Slot reuse never copies a deleted owner's timezone",reused.identity.environmentId.equals(OTHER)&&reused.revision==1&&reused.spec.followsSystem());
+    check("Slot reuse never copies a deleted owner's timezone",reused.identity.environmentId.equals(OTHER)&&reused.revision==1&&reused.spec.followsIp());
     rejects("Old UUID cannot save into reused slot",()->GeckoTimeZoneStore.save(c,saved.identity,saved.revision,GeckoTimeZoneSpec.of("UTC")));
     JSONObject future=rawObject(c);future.getJSONObject("identity").put("generation",99);rawWrite(c,future.toString().getBytes(StandardCharsets.UTF_8));byte[] raw=raw(c);
     rejects("Future-generation record is preserved instead of migrated backwards",()->GeckoTimeZoneStore.load(c));unchanged("Future generation bytes unchanged",c,raw);
@@ -141,7 +144,7 @@ public final class GeckoTimeZoneHost {
     check("Concurrent same-revision saves have exactly one CAS winner",wins.get()==1&&conflicts.get()==1&&GeckoTimeZoneStore.load(c).revision==2);
     TestContext held=context("catalog-barrier");GeckoTimeZoneStore.State initial=GeckoTimeZoneStore.load(held);CountDownLatch publicationEntered=new CountDownLatch(1),publicationRelease=new CountDownLatch(1);held.vault.entered=publicationEntered;held.vault.release=publicationRelease;CountDownLatch identityAttempted=new CountDownLatch(1),identityChanged=new CountDownLatch(1);ExecutorService race=Executors.newFixedThreadPool(2);
     try{Future<?> save=race.submit(()->{try{GeckoTimeZoneStore.save(held,initial.identity,1,GeckoTimeZoneSpec.of("UTC"));}catch(Exception e){throw new RuntimeException(e);}});check("Actual save reaches controlled vault publication while holding identity gate",publicationEntered.await(3,TimeUnit.SECONDS));
-      Future<?> change=race.submit(()->{identityAttempted.countDown();synchronized(held.catalog.gate){held.catalog.current=new EnvironmentSpec.Identity(2,0,OTHER);identityChanged.countDown();}});check("Identity replacement caller actually reached held gate",identityAttempted.await(3,TimeUnit.SECONDS));check("Delete/reuse cannot cross an active protected save",!identityChanged.await(50,TimeUnit.MILLISECONDS));held.vault.release.countDown();save.get(3,TimeUnit.SECONDS);change.get(3,TimeUnit.SECONDS);check("New owner starts system after the old save completes",GeckoTimeZoneStore.load(held).spec.followsSystem());
+      Future<?> change=race.submit(()->{identityAttempted.countDown();synchronized(held.catalog.gate){held.catalog.current=new EnvironmentSpec.Identity(2,0,OTHER);identityChanged.countDown();}});check("Identity replacement caller actually reached held gate",identityAttempted.await(3,TimeUnit.SECONDS));check("Delete/reuse cannot cross an active protected save",!identityChanged.await(50,TimeUnit.MILLISECONDS));held.vault.release.countDown();save.get(3,TimeUnit.SECONDS);change.get(3,TimeUnit.SECONDS);check("New owner starts the exit-IP default after the old save completes",GeckoTimeZoneStore.load(held).spec.followsIp());
     }finally{held.vault.release.countDown();race.shutdownNow();}
   }
 

@@ -13,6 +13,8 @@ from page_bridge42_source_compatibility import DELTAS, PREVIOUS_SHA256, bridge42
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / 'app/src/main/java/local/pocketchat'
 HERE = ROOT / 'tests/page-bridge-lifecycle-host'
+from page_bridge_guard_adapters import current_deltas
+DELTAS = current_deltas((SOURCE / 'GeckoWebView.java').read_bytes(), DELTAS)
 spec = importlib.util.spec_from_file_location('page_bridge_source_members', ROOT / 'tests/page-recovery-host/run.py')
 extract = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(extract)
@@ -41,7 +43,7 @@ def execute(view=None):
         if fixture.count(marker) != 1:
             raise AssertionError('Unique production member marker required')
         fixture = fixture.replace(marker, value, 1)
-    files = [SOURCE / 'GeckoWebView.java', SOURCE / 'BrowserBridgeRequests.java', SOURCE / 'GeckoNavigationPolicy.java', SOURCE / 'BrowserAddressPolicy.java', HERE / 'PageBridgeLifecycleHost.java.in', Path(__file__), ROOT / 'tests/page-recovery-host/run.py']
+    files = [SOURCE / 'GeckoWebView.java', SOURCE / 'BrowserBridgeRequests.java', SOURCE / 'GeckoNavigationPolicy.java', SOURCE / 'BrowserAddressPolicy.java', HERE / 'PageBridgeLifecycleHost.java.in', Path(__file__), ROOT / 'tests/page_bridge_guard_adapters.py', ROOT / 'tests/page-recovery-host/run.py']
     hashes = {str(p.relative_to(ROOT)): hashlib.sha256(p.read_bytes()).hexdigest() for p in files}
     with tempfile.TemporaryDirectory(prefix='page-bridge-lifecycle-') as temp:
         out = Path(temp)
