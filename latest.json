@@ -1,14 +1,14 @@
 {
   "schema": 1,
   "package": "local.pocketchat",
-  "version": "2.1.0",
-  "versionCode": 102,
+  "version": "2.1.1",
+  "versionCode": 103,
   "abi": "arm64-v8a",
   "minSdk": 26,
-  "bytes": 119623418,
-  "sha256": "a6d68b709549f5cad6b4bf9069d2bba713d7f8eff87ab2f213d4ecb3d48bac94",
+  "bytes": 119656262,
+  "sha256": "b8d717470963e03e225c1278dc5dead761c5c2ea77e219770e6743a4ef7aacf6",
   "signerSha256": "f0afa2ef2b9ac68020b374276318b12d2bb4de65d2a3b788194de551356b9434",
-  "downloadUrl": "https://github.com/Ararataki-number-one/yuanying-chat/releases/download/v2.1.0-gecko/PocketChat-2.1.0-gecko-arm64.apk",
-  "notes": "# 2.1.0 · 通用浏览与 Chromium\n\n版本号 `2.1.0`，版本代码 `102`。本文件描述已实现的源码与验收范围；安装包的正式发布状态以 GitHub Release 为准。\n\n## 浏览不再局限于 ChatGPT\n\n会话菜单新增「通用浏览器 · Chromium」。地址栏接受网址或搜索词，域名默认使用 HTTPS，默认首页仍为 `https://chatgpt.com/`。支持前进、后退、停止加载、刷新、主页、最多八个标签页、收藏夹、浏览历史、页内查找、桌面版网站、网址分享及复制。可在系统默认应用设置中选择本应用打开网页链接。\n\n「浏览器与启动偏好」按环境保存启动界面和默认网站。缺省保持原来的 ChatGPT 增强界面；选择通用浏览器后，冷启动不再创建 Gecko 会话。两种界面使用独立任务，来回切换保留各自网页，通知、下载和网络设置仍进入原有对应界面。\n\n## 实际内核与数据\n\nChromium 使用 Android System WebView 或 Chrome 提供的 Blink/V8，不是修改 User-Agent 冒充 Chrome，也不捆绑完整的 Chrome 应用。内核信息显示实际提供组件的包名与版本，内核更新由系统组件负责。\n\n每个环境使用独立进程与 WebView 数据目录，API 28 以上在 Application 初始化最早阶段设置目录后缀；API 26–27 仅使用默认环境。两种内核分别保存登录与 Cookie，不相互迁移。重置和删除环境会清理对应两种内核的站点数据，其他环境保留。\n\n网页操作使用网站自己的 DOM 与登录流程。通用浏览器不注入 ChatGPT 专用读取、草稿恢复或发送操作，Gecko 界面继续保留原功能。Chromium 不提供 Gecko 指纹模板、WebRTC 限制、原生保护确认或后台回复提醒；Chrome 扩展尚不支持。\n\n## 网络、权限和文件\n\nChromium 在代理回调确认后才开始联网。内置线路必须是当前已核验的实例，失效时暂停并退役旧页面；不会因连接失败改成直连。正常线路复核、返回前台和文件选择器回程保留有效页面与输入。代理更新按进程串行处理，旧回调不能打开新线路。\n\n通用浏览器只要仍有网页（包括后台标签）或未完成下载，就会保留当前线路，推迟自动优选和待应用网络设置。可从浏览器菜单选择「关闭浏览器」，确认未保存输入和取消下载后释放线路，并唤醒待应用设置；真实连接失效时仍会阻断旧页面，首次启动和关闭后的显式重试继续执行原有核验。\n\nHTTP(S) 网页请求和 Service Worker 使用环境线路；WebRTC、UDP 和 Chromium 自身流量不具有 Gecko 的原生控制保证。HTTP 代理不是设备级网络保护，需要覆盖这些连接时应自行配置完整 VPN，应用不会自动开启 VPN。HTTP 页面在地址栏显示不安全，证书错误继续阻止连接。\n\n摄像头、麦克风与大致位置仅接受当前前台 HTTPS 站点的一次性请求。先显示站点，再申请缺失的 Android 权限；切换页面、标签或线路会取消未完成的授权。可在「当前网站权限」结束并重载当前页面，停止该页已开始的媒体访问。\n\n文件选择使用系统文档选择器，支持多选，并校验只读授权与旧请求失效。下载在独立线程使用已确认线路和目标站点 Cookie，逐次检查重定向、长度、取消和线路归属；文件发布与原有全局下载索引保存成功后才提示完成；两种界面的文件共用下载中心，删除环境仍保留已保存文件。API 29 以上保存到 `Download/元婴期浏览器/窗口_N/`。下载限额为 512 MiB，退出浏览器会确认取消未完成下载；切到后台可继续执行，但受 Android 进程管理限制。HTTPS/SOCKS 显式代理的原生下载和临时 blob 下载存在限制，界面会说明；不会静默改用直连。\n\n## 会话流畅性\n\n保留此前全部会话帧调度与流式观察优化，并继续复用消息文档顺序、移除重复的历史全文偏好写入。具体固定工作量对照见[长会话优化](CHAT-HISTORY-FLUIDITY-v2.0.47-candidate2.md)。这些计数不代表设备 FPS。\n\n## 验收\n\n地址、偏好、权限、收藏历史、代理竞态、环境清理和文件链路已有生产源码主机测试。新增受控 Android WebView 验收使用真实 System WebView、ProxyController 和合成 HTTP 代理，保留既有完整 Gecko 验收门槛。真实账号登录、物理 ARM 手机、实际公网速度和内存容量仍需现场验收；不以桌面 Chromium 或 API 编译代替 Android 执行结果。\n\n原签名正式 APK、公开下载及更新入口只有在实际构建、受控验收、原签名和发布记录核对后才能标为已发布。",
-  "sourceCommit": "72e3bcac55285fea483e612ba4481f7e073a5422"
+  "downloadUrl": "https://github.com/Ararataki-number-one/yuanying-chat/releases/download/v2.1.1-gecko/PocketChat-2.1.1-gecko-arm64.apk",
+  "notes": "# 2.1.1 · 两核网址切换与独立指纹配置\n\n版本号 `2.1.1`，版本代码 `103`。本文件记录实现范围；正式安装包及发布状态以 GitHub Release 为准。\n\n## 两个内核都能打开其他网站\n\nGecko 增加原生地址／搜索入口与主页按钮，可打开公共 HTTP、HTTPS 网站。Chromium 保留多标签和地址栏。默认网站仍为 `https://chatgpt.com/`，环境设置中的首页对两个内核生效。两核分别保存登录和 Cookie。\n\nGecko 的普通网站位置与 ChatGPT 会话位置分别保存。在其他网站不注入 ChatGPT 会话、附件、回复检测或草稿操作脚本；导航后的旧异步回调不能把这些操作带入新网站。现有 Gecko 原生隐私模板仍然生效。\n\n## Chromium 独立指纹配置\n\n每个环境单独保存 Chromium 的显示模式、保护模式与稳定随机种子。配置用 Android Keystore 加密，并校验环境身份、配置版本和当前运行代际。新环境不会继承已删除环境的指纹配置，重启或换页不能把历史确认显示为当前确认。\n\n在网页加载之前配置原生 UA／UA-CH，使用当前 WebView 提供者的实际 Chromium 版本。保护模式要求运行时支持 UA 元数据和文档开始脚本；缺少能力时阻止按该配置加载，并显示原因。\n\n可选的文档保护包括二维 Canvas 图像读出／导出、WebGL 调试显卡标识、音频 `copyFromChannel` 复制读出和页面 WebRTC 连接构造器。支持的框架也在文档开始阶段应用脚本。保护种子在同一环境、同一来源保持稳定，可显式更换；保存配置或更换种子会先提示重新加载所有 Chromium 标签页。\n\n原生设置回读与当前页面自检分别显示。它们只确认对应字段和当前运行，不代表完整指纹验证通过。\n\n## 已知范围\n\nChromium 使用 Android System WebView。Worker、Service Worker、OffscreenCanvas、AudioWorklet、WebGL `readPixels`、实时音频缓冲、独立时区、字体、硬件、系统语言、TLS 和 HTTP/2 指纹未覆盖。电脑版不会把 Android 变成桌面操作系统。页面 WebRTC 限制不覆盖 Worker，HTTP 代理不能代替设备 VPN。\n\nGecko 使用现有原生保护链路，其支持范围与确认记录在 Gecko 设置和自检中单独查看。不同内核的保护范围不相同。\n\n验证结果随同源构建报告提供；不以主机适配器或桌面 Chromium 的结果代替 Android 验收。",
+  "sourceCommit": "8a0a487002993f5dacc02ed313fab00648ccb79a"
 }
