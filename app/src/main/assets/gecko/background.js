@@ -234,7 +234,7 @@ const connectHost=()=>{
   timezoneIp?.close();try{timezoneIp=globalThis.PocketIpTimeZoneBootstrap?.create(port)??null;}catch(_){timezoneIp=null;}
   ipProbe('bootstrap-bound',null,timezoneIp?'ready':'absent');
   const headers=globalThis.PocketGeckoRequestHeaders?.activate(port,timezoneIp);
-  port.onMessage.addListener(message=>{try{globalThis.PocketIpTimeZoneDiagnostic?.portEvent('port-message-entry',message,port===host,diagnosticGeneration);}catch(_){}return handleHostMessage(message,port);});
+  port.onMessage.addListener(message=>{try{globalThis.PocketIpTimeZoneDiagnostic?.portEvent('port-message-entry',message,port===host,diagnosticGeneration,()=>port===host);}catch(_){}return handleHostMessage(message,port);});
   port.onDisconnect?.addListener(()=>{
     try{globalThis.PocketIpTimeZoneDiagnostic?.portEvent('port-disconnected',undefined,port===host,diagnosticGeneration);}catch(_){}
     if(port!==host)return;

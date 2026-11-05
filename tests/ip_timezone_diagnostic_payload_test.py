@@ -73,4 +73,22 @@ class ConsoleControls(unittest.TestCase):
   for mutate in (lambda x:x['poll'].update(rawError='secret'),lambda x:x['port'].update(disconnected=0),lambda x:x['poll'].update(returned=True),lambda x:x['port'].update(pendingMessages=10001)):
    bad=copy.deepcopy(v);mutate(bad)
    with self.assertRaises(ValueError):extension_debug(bad,NONCE)
+class Diag6Controls(unittest.TestCase):
+ def test_window_and_legacy_read_payloads_reject_unknown_or_untyped_evidence(self):
+  row=dict(sequence=1,revalidate=False,completed=True,reason='timeout',received=False,ready=False,consumer=False)
+  control=dict(attempted=True,returned=True,threw=False,id=4,pendingDelta=0,portCurrent=True,responseVerified=False)
+  value=dict(registered=True,accepted=0,rejected=0,latest={},windows=[row],legacyRead=control)
+  self.assertEqual(extension_debug(value,NONCE),value)
+  mutations=[lambda d:d['windows'].append(dict(row,rawUserAgent='secret')),lambda d:d.update(windows=[row]*9),lambda d:d['windows'][0].update(reason='private message'),lambda d:d['windows'][0].update(received=0),lambda d:d['windows'][0].update(sequence=True),lambda d:d['legacyRead'].update(pendingDelta=1),lambda d:d['legacyRead'].update(responseVerified=True),lambda d:d['legacyRead'].update(id=True),lambda d:d['legacyRead'].update(token='secret')]
+  for mutate in mutations:
+   bad=copy.deepcopy(value);mutate(bad)
+   with self.assertRaises(ValueError):extension_debug(bad,NONCE)
+ def test_old_read_is_original_readonly_api_without_callback_pending_or_setter(self):
+  api=(ROOT/'app/src/main/assets/gecko/native-timezone-api.js').read_text();start=api.index('async readSession(');end=api.index('\n    }',start)+6;read=api[start:end]
+  self.assertIn('match.top.timezoneOverride',read);self.assertNotRegex(read,r'timezoneOverride\s*=(?!=)');self.assertNotIn('applySession(',read)
+  source=(ROOT/'tests/gecko/GeckoIpTimeZoneIntegrationActivity.java').read_text();start=source.index('      if(!legacyReadAttempted');end=source.index('      JSONObject value=',start);control=source[start:end]
+  self.assertIn('remote.ipLookup.sent',control);self.assertIn('remote.ipLookupCurrent(remote.ipLookup)',control);self.assertIn('remote.cookieCallbacks.add(legacyReadPort,null,0)',control);self.assertIn('"kind","timezoneRead"',control);self.assertNotIn('"zoneId"',control)
+  self.assertNotIn('timezoneApply',control);self.assertNotIn('postDelayed',control);self.assertNotIn('complete(',control)
+  bridge=(ROOT/'app/src/main/java/local/pocketchat/BrowserBridgeRequests.java').read_text();self.assertRegex(bridge,r'if\(callback==null\)return id;')
+
 if __name__=='__main__':unittest.main()

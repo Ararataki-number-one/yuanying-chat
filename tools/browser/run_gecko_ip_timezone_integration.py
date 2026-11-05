@@ -77,12 +77,12 @@ def safe_trust(receipt):
         'cleanupRootUid','cleanupShellUid','shellRestoredAfterCleanup'}
     return {key:value for key,value in receipt.items() if key in allowed}
 
-EXTENSION_STAGES={'bootstrap-loaded','create-enter','create-rejected','create-ready','lookup-received','lookup-rejected','lookup-start','fetch-start','fetch-response','fetch-rejected','deadline','finish-null','finish-observed','before-request','before-redirect','authorization','native-lookup-received','bootstrap-bound','proxy-event','proxy-authorization','header-event','header-authorization','header-listener','hello-result','hello-send-start','hello-failed','snapshot-send-result','native-prepare-received','native-prepare-result','native-protection-received','native-protection-result','port-message-entry','port-connected','port-disconnected'}
+EXTENSION_STAGES={'bootstrap-loaded','create-enter','create-rejected','create-ready','lookup-received','lookup-rejected','lookup-start','fetch-start','fetch-response','fetch-rejected','deadline','finish-null','finish-observed','before-request','before-redirect','authorization','native-lookup-received','bootstrap-bound','proxy-event','proxy-authorization','header-event','header-authorization','header-listener','hello-result','hello-send-start','hello-failed','snapshot-send-result','native-prepare-received','native-prepare-result','native-protection-received','native-protection-result','port-message-entry','port-connected','port-disconnected','watchdog-scheduled','watchdog-fired','watchdog-hello-start','watchdog-hello-result','watchdog-hello-failed','watchdog-snapshot-result'}
 EXTENSION_RESULTS={'none','ready','rejected','missing-port','runtime-url','features','registration','exception','shape-or-busy','pending','accepted','absent','invalid','closed','cancelled','observed'}
 EXTENSION_ERRORS={'none','AbortError','NetworkError','TypeError','SecurityError','TimeoutError','NotAllowedError','InvalidStateError','other'}
 EXTENSION_SCRIPTS={'ip-timezone-bootstrap.js','request-headers.js','request-identity-background.js','native-timezone-bridge.js','background.js','other'}
 def extension_debug(value,nonce):
-    require(type(value) is dict and {'registered','accepted','rejected','latest'}<=set(value)<={'registered','accepted','rejected','latest','hello','poll','port','processes'},'extension diagnostic keys differ')
+    require(type(value) is dict and {'registered','accepted','rejected','latest'}<=set(value)<={'registered','accepted','rejected','latest','hello','poll','port','processes','legacyRead','windows'},'extension diagnostic keys differ')
     require(type(value['registered']) is bool and all(type(value[k]) is int and 0<=value[k]<=10000 for k in ('accepted','rejected')),'extension diagnostic counters differ')
     if 'hello' in value:require(type(value['hello']) is int and 0<=value['hello']<=10000,'hello counter differs')
     if 'poll' in value:
@@ -97,6 +97,12 @@ def extension_debug(value,nonce):
     if 'processes' in value:
         require(type(value['processes']) is list and len(value['processes'])<=64,'native process bound differs')
         for process in value['processes']:require(type(process) is dict and set(process)=={'pid','uid','role'} and type(process['pid']) is int and 1<process['pid']<2**31 and type(process['uid']) is int and 0<=process['uid']<2**31 and process['role'] in ('profile6','gecko-env6'),'native process identity differs')
+    if 'windows' in value:
+        require(type(value['windows']) is list and len(value['windows'])<=8,'window diagnostic bound differs')
+        for row in value['windows']:
+            require(type(row) is dict and set(row)=={'sequence','revalidate','completed','reason','received','ready','consumer'} and type(row['sequence']) is int and 1<=row['sequence']<=10000 and all(type(row[k]) is bool for k in ('revalidate','completed')) and row['reason'] in ('none','success','error','timeout','throw','revalidate-error') and all(row[k] is None or type(row[k]) is bool for k in ('received','ready','consumer')),'window diagnostic row differs')
+    if 'legacyRead' in value:
+        control=value['legacyRead'];require(type(control) is dict and set(control)=={'attempted','returned','threw','id','pendingDelta','portCurrent','responseVerified'} and all(type(control[k]) is bool for k in ('attempted','returned','threw','portCurrent','responseVerified')) and control['responseVerified'] is False and type(control['id']) is int and 0<=control['id']<=2147483647 and type(control['pendingDelta']) is int and control['pendingDelta']==0,'legacy readonly control differs')
     latest=value['latest'];require(type(latest) is dict,'extension diagnostic payload object required')
     if not latest:return value
     require(set(latest)=={'schema','diagnosticOnly','releaseAcceptance','requestNonce','runtimeManifest','helperPresence','events','omitted','invalid','bootstrapObject','bootstrapCreate','headersObject'},'extension payload keys differ')
@@ -113,7 +119,7 @@ def extension_debug(value,nonce):
         require(all(type(row[k]) is bool for k in ('exactGeo','get','requestIdPresent')),'extension event flag differs')
         extra={'generation','portCurrent','messageType','kindClass','nestedKindClass','hasKind','hasMessage','hasData'}
         if set(row)&extra:
-            require(extra<=set(row) and type(row['generation']) is int and 0<=row['generation']<=10000 and row['messageType'] in ('undefined','object','string','boolean','number','function','symbol','bigint','null') and row['kindClass'] in ('prepare','protection','lookup','snapshot','cancel','header-policy','other') and row['nestedKindClass'] in ('prepare','protection','lookup','snapshot','cancel','header-policy','other','none') and all(type(row[k]) is bool for k in ('portCurrent','hasKind','hasMessage','hasData')),'port entry fields differ')
+            require(extra<=set(row) and type(row['generation']) is int and 0<=row['generation']<=10000 and row['messageType'] in ('undefined','object','string','boolean','number','function','symbol','bigint','null') and row['kindClass'] in ('prepare','protection','lookup','snapshot','cancel','header-policy','timezone-read','other') and row['nestedKindClass'] in ('prepare','protection','lookup','snapshot','cancel','header-policy','timezone-read','other','none') and all(type(row[k]) is bool for k in ('portCurrent','hasKind','hasMessage','hasData')),'port entry fields differ')
     return value
 
 

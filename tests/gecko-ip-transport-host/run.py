@@ -14,7 +14,7 @@ import tempfile
 ROOT=Path(__file__).resolve().parents[2];HERE=Path(__file__).resolve().parent;PROD=ROOT/'app/src/main/java/local/pocketchat'
 EXTRACTOR=ROOT/'tests/gecko-timezone-flow-host/run.py'
 spec=importlib.util.spec_from_file_location('ip_transport_verbatim_members',EXTRACTOR);extract=importlib.util.module_from_spec(spec);spec.loader.exec_module(extract)
-MEMBERS=('static final class IpLookup {','static final class TimeZoneGate {','static final class IpNavigationFailure {','boolean autoIpMode(',
+MEMBERS=('static final class IpLookup {','static final class TimeZoneGate {','static final class IpNavigationFailure {','static final class TimeZoneWindowDiagnostic {','TimeZoneWindowDiagnostic diagnosticWindowStart(', 'void diagnosticComplete(', 'boolean autoIpMode(',
  'void queueIpRouteCheck(', 'void checkIpRoute(', '  String ipRouteStamp(', 'boolean ipLookupCurrent(',
  'void lookupIpTimeZone(', 'void tryStartIpLookup(', 'void cancelIpLookup(', 'void releaseIpRoute(',
  'boolean ipBootstrapRequest(', 'GeckoResult<Object> ipBootstrapHeaders(', 'boolean timeZoneSessionAlive(',
@@ -45,9 +45,11 @@ def main():
  selected['nativePort.onPortMessage']=extract.block(scoped,'public void onPortMessage(Object message,WebExtension.Port incoming)')
  watch_methods={marker:extract.block(watch.read_text(),marker) for marker in ['static final class Snapshot {','private void update(', 'private void updateLinks(', 'Snapshot snapshot(']}
  extras={'@IDENTITY@':extract.block(identity.read_text(),'public static String id('),'@VALID_PROXY@':extract.block(main_activity.read_text(),'static boolean validProxy('),'@HASH@':extract.block(network.read_text(),'static String hash(String s)')}
+ diagnostic_fields=re.findall(r'^  final ArrayList<TimeZoneWindowDiagnostic> timeZoneWindowDiagnostics=.*;$',text,re.MULTILINE)
+ if len(diagnostic_fields)!=1:raise ValueError('Unique actual diagnostic fields required')
  template=template_path.read_text();renames=(('WebExtension.MessageSender','SenderBoundary'),('WebExtension.Port','PortBoundary'),('GeckoSession','SessionBoundary'),('GeckoRuntime','RuntimeBoundary'),('GeckoResult','ResultBoundary'),('GeckoWebView','WebBoundary'),('GeckoIpRouteWatch','RouteWatchBoundary'),('NativeNetwork','NetworkBoundary'),('AppSessionIdentity','IdentityBoundary'),('SystemClock','ClockBoundary'),('Looper.','LooperBoundary.'),('Uri.','UriBoundary.'))
  def generate(members,watching):
-  value=template.replace('@METHODS@','\n'.join(members.values())).replace('@WATCH@','\n'.join(watching.values()))
+  value=template.replace('@METHODS@','\n'.join(members.values())).replace('@WATCH@','\n'.join(watching.values())).replace('@WINDOW_DIAGNOSTIC_FIELDS@',diagnostic_fields[0])
   for marker,body in extras.items():value=value.replace(marker,body)
   # Only SDK/OS/app boundary type names change; selected method bodies and
   # real controller/store/callback/lease production sources otherwise execute.

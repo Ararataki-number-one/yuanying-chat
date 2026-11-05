@@ -340,18 +340,31 @@ class GeckoWebView extends FrameLayout {
     if(!timeZoneSessionAlive(session)||popups.contains(session))return;
     startTimeZone(session,ignored->{},true);
   }
+  // DIAGNOSTIC ONLY: values are never read by a native policy or workload gate.
+  static final class TimeZoneWindowDiagnostic {
+    int sequence;boolean revalidate,completed;String reason="none";Boolean received,ready,consumer;
+  }
+  final ArrayList<TimeZoneWindowDiagnostic> timeZoneWindowDiagnostics=new ArrayList<>();int timeZoneWindowDiagnosticSequence;
+  TimeZoneWindowDiagnostic diagnosticWindowStart(boolean revalidate){
+    TimeZoneWindowDiagnostic row=new TimeZoneWindowDiagnostic();row.sequence=timeZoneWindowDiagnosticSequence=Math.min(10000,timeZoneWindowDiagnosticSequence+1);row.revalidate=revalidate;
+    while(timeZoneWindowDiagnostics.size()>=8)timeZoneWindowDiagnostics.remove(0);timeZoneWindowDiagnostics.add(row);return row;
+  }
+  void diagnosticComplete(GeckoResult<Boolean> window,TimeZoneWindowDiagnostic row,boolean result){
+    row.completed=true;row.ready=result;window.complete(result);
+  }
   private void startTimeZone(GeckoSession session,java.util.function.Consumer<Boolean> done,boolean revalidate){
     if(!timeZoneSessionAlive(session)){done.accept(false);return;}if(!revalidate&&timeZoneAllows(session)){done.accept(true);return;}
     if(popups.contains(session)){done.accept(owner.timeZone.popupAllowed());return;}
     TimeZoneGate existing=timeZoneGates.get(session);if(existing==null){existing=new TimeZoneGate();timeZoneGates.put(session,existing);}final TimeZoneGate gate=existing;
     if(revalidate){completeTimeZoneProofs(gate,false);completeTimeZoneRequests(gate,false);gate.documentSerial++;gate.preparing=false;gate.ready=false;gate.revalidating=true;}
     gate.waiting.add(done);if(gate.preparing)return;gate.preparing=true;gate.ready=false;final WebExtension.Port port=routePort;final long document=gate.documentSerial;
+    final TimeZoneWindowDiagnostic diagnostic=diagnosticWindowStart(revalidate);final String[] diagnosticCaller={"none"};
     final GeckoResult<Boolean> window=new GeckoResult<>();
     java.util.concurrent.atomic.AtomicBoolean once=new java.util.concurrent.atomic.AtomicBoolean();
     final Runnable[] deadline={null};
     java.util.function.Consumer<Boolean> windowReady=ready->{
-      if(!once.compareAndSet(false,true))return;if(deadline[0]!=null)owner.handler.removeCallbacks(deadline[0]);
-      window.complete(ready&&timeZoneSessionAlive(session)&&timeZoneGates.get(session)==gate&&gate.documentSerial==document&&port!=null&&routePort==port);
+      if(!once.compareAndSet(false,true))return;diagnostic.reason=diagnosticCaller[0];diagnostic.received=ready;if(deadline[0]!=null)owner.handler.removeCallbacks(deadline[0]);
+      diagnosticComplete(window,diagnostic,ready&&timeZoneSessionAlive(session)&&timeZoneGates.get(session)==gate&&gate.documentSerial==document&&port!=null&&routePort==port);
     };
     GeckoTimeZoneController.NativeAccess access=new GeckoTimeZoneController.NativeAccess(){
       public boolean current(){return timeZoneSessionAlive(session)&&timeZoneGates.get(session)==gate&&gate.documentSerial==document&&port!=null&&routePort==port&&(!autoIpMode()||!ipRouteNeedsReload&&owner.guard.allowed());}
@@ -366,15 +379,16 @@ class GeckoWebView extends FrameLayout {
     java.util.function.Consumer<Boolean> finished=ok->{if(timeZoneGates.get(session)==gate&&gate.documentSerial==document)finishTimeZone(session,gate,ok);};
     if(revalidate){
       try{owner.timeZone.revalidate(session,AppSessionIdentity.id(session),gate.epoch,access,finished);}
-      catch(RuntimeException unavailable){finished.accept(false);windowReady.accept(false);return;}
+      catch(RuntimeException unavailable){finished.accept(false);diagnosticCaller[0]="revalidate-error";windowReady.accept(false);return;}
     }else{
       window.accept(ready->{
+        diagnostic.consumer=ready;
         if(!access.current()){finished.accept(false);return;}
         try{owner.timeZone.prepare(session,AppSessionIdentity.id(session),gate.epoch,access,finished);}catch(RuntimeException unavailable){finished.accept(false);}
       },error->finished.accept(false));
     }
-    deadline[0]=()->windowReady.accept(false);owner.handler.postDelayed(deadline[0],5000);
-    try{session.getUserAgent().accept(value->windowReady.accept(true),error->windowReady.accept(false));}catch(RuntimeException unavailable){windowReady.accept(false);}
+    deadline[0]=()->{diagnosticCaller[0]="timeout";windowReady.accept(false);};owner.handler.postDelayed(deadline[0],5000);
+    try{session.getUserAgent().accept(value->{diagnosticCaller[0]="success";windowReady.accept(true);},error->{diagnosticCaller[0]="error";windowReady.accept(false);});}catch(RuntimeException unavailable){diagnosticCaller[0]="throw";windowReady.accept(false);}
     metadata.timeZonePolicy=timeZoneStatus();
   }
   void completeTimeZoneRequests(TimeZoneGate gate,boolean ready){
