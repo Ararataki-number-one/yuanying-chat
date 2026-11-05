@@ -261,7 +261,7 @@ jobs:
         export PROFILE_ANDROID_JSON_JAR="$PWD/work/gecko-ip-timezone-host-deps/android-json.jar"
         python3 tests/ip_timezone_diagnostic_payload_test.py
         python3 tests/ip_timezone_window_diagnostic_test.py --java-home "$JAVA_HOME_17_X64"
-        node --test --test-isolation=none tests/ip_timezone_diagnostic_observer_test.cjs tests/gecko_ip_timezone_watchdog_test.cjs
+        node --test tests/ip_timezone_diagnostic_observer_test.cjs tests/gecko_ip_timezone_watchdog_test.cjs
     - name: Bind exact diagnostic build payload bytes
       shell: bash
       run: "set -euo pipefail\npython3 - <<'CPU_BUILD'\nimport hashlib,json,os,pathlib,subprocess\nfiles=['app/build/outputs/apk/integration/app-x86_64-integration.apk',\
