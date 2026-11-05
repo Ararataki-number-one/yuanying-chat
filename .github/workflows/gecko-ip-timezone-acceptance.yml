@@ -259,6 +259,8 @@ jobs:
         export PROFILE_JAVA="$JAVA_HOME_17_X64" PROFILE_JAVA_HOME="$JAVA_HOME_17_X64"
         export PROFILE_JSON_JAR="$PWD/work/gecko-ip-timezone-host-deps/desktop-json.jar"
         export PROFILE_ANDROID_JSON_JAR="$PWD/work/gecko-ip-timezone-host-deps/android-json.jar"
+        python3 tests/ip-timezone-fixture-process-host/run.py --java-home "$JAVA_HOME_17_X64" --json-jar "$PROFILE_JSON_JAR" --output work/gecko-ip-timezone-acceptance-probe-host/process-desktop.json
+        python3 tests/ip-timezone-fixture-process-host/run.py --java-home "$JAVA_HOME_17_X64" --json-jar "$PROFILE_ANDROID_JSON_JAR" --output work/gecko-ip-timezone-acceptance-probe-host/process-android.json
         python3 tests/ip_timezone_diagnostic_payload_test.py
         python3 tests/ip_timezone_window_diagnostic_test.py --java-home "$JAVA_HOME_17_X64"
         node --test tests/ip_timezone_diagnostic_observer_test.cjs tests/gecko_ip_timezone_watchdog_test.cjs
