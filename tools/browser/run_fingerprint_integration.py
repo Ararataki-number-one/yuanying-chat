@@ -5,6 +5,7 @@ import hashlib
 import json
 from pathlib import Path
 import re
+import shlex
 import subprocess
 import sys
 import time
@@ -15,6 +16,14 @@ sys.path.insert(0,str(ROOT/'tools/gecko'))
 from profile_invocation_contract import expected_build,verify_installed
 sys.path.insert(0,str(Path(__file__).resolve().parent))
 from fingerprint_fixture_server import EphemeralCertificates,FingerprintServer,AndroidUserCa,GUEST_PORT
+
+
+def activity_start_args(engine,component,nonce,source,leaf,ca):
+    expected={'chromium':'BrowserFingerprintIntegrationActivity','gecko':'BrowserFingerprintIntegrationActivity$Gecko'}
+    if expected.get(engine)!=component or not re.fullmatch('[0-9a-f]{32}',nonce) or not re.fullmatch('[0-9a-f]{40}',source) or not all(re.fullmatch('[0-9a-f]{64}',value) for value in (leaf,ca)):raise ValueError('Invalid source-bound activity launch')
+    tokens=['am','start','-W','-n','local.pocketchat.test/local.pocketchat.'+component,'--es','runNonce',nonce,'--es','sourceCommit',source,'--ei','fixturePort',str(GUEST_PORT),'--es','fixtureEngine',engine,'--es','expectedLeafSha256',leaf,'--es','publicCaPemSha256',ca]
+    # adb joins shell arguments before the device shell parses them. Quote once for that shell.
+    return ['shell',shlex.join(tokens)]
 
 
 def source_inputs():
@@ -52,9 +61,10 @@ def main():
         # Fresh test-only data prevents a previous run's desktop policy, receipts or WebView profile from qualifying.
         if adb('shell','pm','clear','local.pocketchat.test').stdout.decode().strip()!='Success':raise ValueError('Fresh integration-only app data required')
         for engine,component,budget in [('chromium','BrowserFingerprintIntegrationActivity',330),('gecko','BrowserFingerprintIntegrationActivity$Gecko',150)]:
+            if adb('shell','id','-u').stdout.decode().strip()!='2000':raise ValueError('Shell-only fixture evidence requires UID 2000')
             adb('shell','am','force-stop','local.pocketchat.test')
             server.begin(engine)
-            adb('shell','am','start','-W','-n','local.pocketchat.test/local.pocketchat.'+component,'--es','runNonce',nonce,'--es','sourceCommit',source,'--ei','fixturePort',str(GUEST_PORT),'--es','fixtureEngine',engine,'--es','expectedLeafSha256',certificates.leaf_sha,'--es','publicCaPemSha256',certificates.ca_sha)
+            adb(*activity_start_args(engine,component,nonce,source,certificates.leaf_sha,certificates.ca_sha))
             deadline=time.monotonic()+budget;current=None
             while time.monotonic()<deadline:
                 raw=adb('exec-out','content','read','--uri','content://local.pocketchat.test.browser-fingerprint-evidence/'+engine,check=False,timeout=15).stdout

@@ -1,6 +1,8 @@
 """Actual host TLS/proxy and controlled adb-boundary tests; no Android execution claim."""
 import importlib.util
+import os
 from pathlib import Path
+import shlex
 import socket
 import ssl
 import subprocess
@@ -109,19 +111,26 @@ class EphemeralHostTests(unittest.TestCase):
 
 
 class ControlledAdb:
-    def __init__(self,certificates,fault=''):self.certificates=certificates;self.fault=fault;self.calls=[];self.present=False
+    def __init__(self,certificates,fault=''):self.certificates=certificates;self.fault=fault;self.calls=[];self.present=False;self.uid=2000;self.root_calls=0
     def __call__(self,*args,check=True,timeout=30):
         self.calls.append(args);code=0;out=b''
-        if args==('shell','getprop','ro.kernel.qemu'):out=b'1\n'
-        elif args==('shell','id','-u'):out=b'2000\n' if self.fault=='root' else b'0\n'
+        if args==('root',):self.root_calls+=1;self.uid=2000 if self.fault=='root' or self.fault=='cleanup-root' and self.root_calls>1 else 0
+        elif args==('unroot',):self.uid=0 if self.fault=='unroot' else 2000
+        elif args==('shell','getprop','ro.kernel.qemu'):out=b'1\n'
+        elif args==('shell','id','-u'):out=str(self.uid).encode()+b'\n'
         elif args==('shell','am','get-current-user'):out=b'1\n' if self.fault=='user' else b'0\n'
         elif args==('shell','getenforce'):out=b'Permissive\n' if self.fault=='selinux' else b'Enforcing\n'
         elif args[:3]==('shell','test','-e'):code=0 if self.present or self.fault=='collision' else 1
-        elif args[0]=='push':self.present=True
+        elif args[0]=='push':
+            if self.uid!=0:raise AssertionError('CA writes require controlled root')
+            self.present=True
         elif args[:2]==('exec-out','cat'):code=0 if self.present else 1;out=(b'changed' if self.fault=='bytes' else self.certificates.ca_bytes) if self.present else b''
         elif args[:3]==('shell','stat','-c'):out=b'600:0:0\n' if self.fault=='mode' else b'644:1000:1000\n'
         elif args[:3]==('shell','ls','-Zd'):out=b'u:object_r:unlabeled:s0 path\n' if self.fault=='label' else b'u:object_r:usercacerts_file:s0 path\n'
-        elif args[:2]==('shell','rm'):self.present=False
+        elif args[:2]==('shell','rm'):
+            if self.uid!=0:raise AssertionError('CA removal requires controlled root')
+            self.present=False
+        elif args[:3]==('exec-out','content','read'):code=0 if self.uid==2000 else 1;out=b'{"synthetic":true}' if code==0 else b'SecurityException: Read-only shell evidence'
         if check and code:raise subprocess.CalledProcessError(code,args)
         return SimpleNamespace(returncode=code,stdout=out,stderr=b'')
 
@@ -129,11 +138,14 @@ class ControlledAdb:
 class UserCaInstallationBoundaryTests(unittest.TestCase):
     def setUp(self):self.certificates=SimpleNamespace(subject_hash='1234abcd',ca=Path('/tmp/public-ca.pem'),ca_bytes=b'PUBLIC CA certificate only',ca_sha='e'*64,leaf_sha='f'*64)
     def test_exact_public_ca_only_is_installed_read_back_and_removed(self):
-        adb=ControlledAdb(self.certificates);installer=host.AndroidUserCa(adb,self.certificates);receipt=installer.install();self.assertTrue(receipt['installedPublicCaBytesMatch']);self.assertFalse(receipt['removedAfterExecution']);installer.remove();self.assertTrue(receipt['removedAfterExecution']);self.assertFalse(adb.present)
+        adb=ControlledAdb(self.certificates);installer=host.AndroidUserCa(adb,self.certificates);receipt=installer.install();self.assertTrue(receipt['installedPublicCaBytesMatch']);self.assertFalse(receipt['removedAfterExecution'])
+        self.assertEqual(adb.uid,2000);self.assertEqual(receipt['evidenceShellUid'],2000);self.assertTrue(receipt['shellRestoredAfterInstall']);self.assertEqual(adb('exec-out','content','read','--uri','content://local.pocketchat.test.browser-fingerprint-evidence/chromium').returncode,0)
+        installer.remove();self.assertTrue(receipt['removedAfterExecution']);self.assertFalse(adb.present);self.assertEqual(receipt['cleanupRootUid'],0);self.assertEqual(receipt['cleanupShellUid'],2000);self.assertTrue(receipt['shellRestoredAfterCleanup']);self.assertEqual(adb.uid,2000)
         self.assertEqual([a for a in adb.calls if a[0]=='push'],[('push','/tmp/public-ca.pem','/data/misc/user/0/cacerts-added/1234abcd.0')]);self.assertFalse(any('.key' in str(a) for a in adb.calls))
         self.assertIn(('shell','am','force-stop','local.pocketchat.test'),adb.calls)
+        self.assertEqual([a for a in adb.calls if a in [('root',),('unroot',)]],[('root',),('unroot',),('root',),('unroot',)])
     def test_root_user_selinux_collision_readback_mode_and_context_fail_closed(self):
-        for fault in ('root','user','selinux','collision','bytes','mode','label'):
+        for fault in ('root','user','selinux','collision','bytes','mode','label','unroot'):
             with self.subTest(fault=fault):
                 adb=ControlledAdb(self.certificates,fault);installer=host.AndroidUserCa(adb,self.certificates)
                 with self.assertRaises(ValueError):installer.install()
@@ -142,7 +154,42 @@ class UserCaInstallationBoundaryTests(unittest.TestCase):
     def test_cleanup_refuses_to_remove_changed_or_preexisting_certificate(self):
         adb=ControlledAdb(self.certificates);installer=host.AndroidUserCa(adb,self.certificates);installer.install();adb.fault='bytes'
         with self.assertRaises(ValueError):installer.remove()
-        self.assertTrue(adb.present);self.assertFalse(any(a[:2]==('shell','rm') for a in adb.calls))
+        self.assertTrue(adb.present);self.assertFalse(any(a[:2]==('shell','rm') for a in adb.calls));self.assertEqual(adb.uid,2000)
+
+    def test_root_only_provider_read_is_denied_and_cleanup_root_failure_cannot_qualify(self):
+        adb=ControlledAdb(self.certificates);adb('root')
+        self.assertEqual(adb('exec-out','content','read','--uri','content://local.pocketchat.test.browser-fingerprint-evidence/chromium',check=False).returncode,1)
+        adb=ControlledAdb(self.certificates,'cleanup-root');installer=host.AndroidUserCa(adb,self.certificates);receipt=installer.install()
+        with self.assertRaises(ValueError):installer.remove()
+        self.assertTrue(adb.present);self.assertFalse(receipt['removedAfterExecution']);self.assertEqual(adb.uid,2000)
+
+    def test_failed_install_before_filename_assignment_restores_shell_for_cleanup(self):
+        adb=ControlledAdb(self.certificates,'user');installer=host.AndroidUserCa(adb,self.certificates)
+        with self.assertRaises(ValueError):installer.install()
+        self.assertEqual(adb.uid,0);installer.remove();self.assertEqual(adb.uid,2000);self.assertFalse(adb.present)
+
+
+class DeviceShellSerializationTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        spec=importlib.util.spec_from_file_location('fingerprint_launch_runner',ROOT/'tools/browser/run_fingerprint_integration.py');cls.runner=importlib.util.module_from_spec(spec);spec.loader.exec_module(cls.runner)
+    def parse_with_real_shell(self,command,gecko):
+        env={'PATH':os.environ.get('PATH','')}
+        if gecko is not None:env['Gecko']=gecko
+        result=subprocess.run(['/bin/sh','-c','am() { printf "%s\\0" "$@"; }; '+command],env=env,capture_output=True,check=True,timeout=10)
+        return result.stdout.rstrip(b'\0').decode().split('\0')
+    def test_literal_nested_component_survives_actual_device_style_shell_with_variable_set_or_unset(self):
+        args=self.runner.activity_start_args('gecko','BrowserFingerprintIntegrationActivity$Gecko','c'*32,'a'*40,'e'*64,'f'*64);self.assertEqual(args[0],'shell')
+        expected=shlex.split(args[1]);component='local.pocketchat.test/local.pocketchat.BrowserFingerprintIntegrationActivity$Gecko'
+        for gecko in (None,'WRONG_NESTED_ACTIVITY'):
+            with self.subTest(variable=gecko):
+                fixed=self.parse_with_real_shell(args[1],gecko);old=self.parse_with_real_shell(' '.join(expected),gecko)
+                self.assertEqual(fixed,expected[1:]);self.assertEqual(fixed[fixed.index('-n')+1],component);self.assertNotEqual(old[old.index('-n')+1],component)
+    def test_mobile_component_and_all_source_extras_preserve_exact_tokens_and_reject_unknown_component(self):
+        args=self.runner.activity_start_args('chromium','BrowserFingerprintIntegrationActivity','c'*32,'a'*40,'e'*64,'f'*64)
+        self.assertEqual(self.parse_with_real_shell(args[1],'WRONG'),shlex.split(args[1])[1:])
+        for engine,component in [('gecko','BrowserFingerprintIntegrationActivity'),('chromium','BrowserFingerprintIntegrationActivity$Gecko'),('gecko','Bad; exit 9')]:
+            with self.assertRaises(ValueError):self.runner.activity_start_args(engine,component,'c'*32,'a'*40,'e'*64,'f'*64)
 
 
 if __name__=='__main__':unittest.main(verbosity=2)

@@ -186,12 +186,16 @@ class FingerprintServer:
 
 class AndroidUserCa:
     """Only PUBLIC CA bytes cross adb; no system/APEX writes or permissive TLS."""
-    def __init__(self,adb,certificates):self.adb=adb;self.certificates=certificates;self.path=None;self.receipt={}
+    def __init__(self,adb,certificates):self.adb=adb;self.certificates=certificates;self.path=None;self.receipt={};self.root_requested=False
+    def set_root(self,root):
+        self.adb('root' if root else 'unroot');self.adb('wait-for-device',timeout=60)
+        uid=self.adb('shell','id','-u').stdout.decode().strip()
+        require(uid==('0' if root else '2000'),'adb root unavailable' if root else 'shell evidence UID 2000 unavailable')
+        return int(uid)
     def install(self):
         a=self.adb;c=self.certificates
         require(a('shell','getprop','ro.kernel.qemu').stdout.decode().strip()=='1','controlled emulator required')
-        a('root');a('wait-for-device',timeout=60)
-        require(a('shell','id','-u').stdout.decode().strip()=='0','adb root unavailable')
+        self.root_requested=True;self.set_root(True)
         require(a('shell','am','get-current-user').stdout.decode().strip()=='0','primary Android user required')
         require(a('shell','getenforce').stdout.decode().strip()=='Enforcing','SELinux enforcing required')
         store='/data/misc/user/0/cacerts-added';path=store+'/'+c.subject_hash+'.0'
@@ -204,15 +208,22 @@ class AndroidUserCa:
         label=a('shell','ls','-Zd',path).stdout.decode().strip().split()[0];require(re.fullmatch(r'u:object_r:(?!unlabeled)[a-zA-Z0-9_]+:s0',label),'CA SELinux label missing')
         require(not a('shell','restorecon','-n','-v',path).stdout.strip(),'CA SELinux label not restored')
         a('shell','am','force-stop','local.pocketchat.test')
-        self.receipt=dict(method='domain-scoped-user-ca',androidUser=0,adbRoot=True,selinuxEnforcing=True,installedPublicCaBytesMatch=True,ownerAndMode=mode,selinuxContext=label,storePath=path,subjectHashOld=c.subject_hash,appForceStoppedAfterInstall=True,publicCaPemSha256=c.ca_sha,expectedLeafDerSha256=c.leaf_sha,removedAfterExecution=False)
+        evidence_uid=self.set_root(False)
+        self.receipt=dict(method='domain-scoped-user-ca',androidUser=0,adbRoot=True,selinuxEnforcing=True,installedPublicCaBytesMatch=True,ownerAndMode=mode,selinuxContext=label,storePath=path,subjectHashOld=c.subject_hash,appForceStoppedAfterInstall=True,publicCaPemSha256=c.ca_sha,expectedLeafDerSha256=c.leaf_sha,evidenceShellUid=evidence_uid,shellRestoredAfterInstall=True,removedAfterExecution=False)
         return self.receipt
 
     def remove(self):
-        if self.path is None:return
-        # Delete only this invocation's exact PUBLIC certificate, never a preexisting CA.
-        existing=self.adb('exec-out','cat',self.path,check=False)
-        if existing.returncode==0:
-            require(existing.stdout==self.certificates.ca_bytes,'CA changed before cleanup; refusing removal')
-            self.adb('shell','rm',self.path)
-        require(self.adb('shell','test','-e',self.path,check=False).returncode==1,'ephemeral PUBLIC CA cleanup failed')
-        self.receipt['removedAfterExecution']=True;self.path=None
+        if self.path is None:
+            if self.root_requested:self.set_root(False);self.root_requested=False
+            return
+        try:
+            cleanup_uid=self.set_root(True)
+            # Delete only this invocation's exact PUBLIC certificate, never a preexisting CA.
+            existing=self.adb('exec-out','cat',self.path,check=False)
+            if existing.returncode==0:
+                require(existing.stdout==self.certificates.ca_bytes,'CA changed before cleanup; refusing removal')
+                self.adb('shell','rm',self.path)
+            require(self.adb('shell','test','-e',self.path,check=False).returncode==1,'ephemeral PUBLIC CA cleanup failed')
+            self.receipt['removedAfterExecution']=True;self.receipt['cleanupRootUid']=cleanup_uid;self.path=None
+        finally:
+            self.receipt['cleanupShellUid']=self.set_root(False);self.receipt['shellRestoredAfterCleanup']=True;self.root_requested=False

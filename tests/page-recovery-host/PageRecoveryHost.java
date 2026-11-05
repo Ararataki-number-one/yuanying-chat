@@ -1,5 +1,5 @@
 package local.pocketchat;
-import java.util.*;import java.net.URI;import org.json.*;
+import java.util.*;import java.net.URI;import org.json.*;import android.net.Uri;
 /** The runner substitutes exact source members, not rewritten policy copies. */
 public class PageRecoveryHost {
  static int checks;
@@ -8,6 +8,34 @@ public class PageRecoveryHost {
  static ChatSession route(){LocalDraftPolicy.allowed=true;NativeNetwork.network=new NativeNetwork();ProfileCatalog.generation=4;ProfileCatalog.available=true;ProfileCatalog.deleting=false;ProfileCatalog.resetting=false;SystemClock.now=1000;return new ChatSession();}
  static JSONObject snapshot(ChatSession s,String text){return j("ok",true,"url",s.web.url,"documentId",s.lastDocumentId,"draft",text,"draftComplete",true,"draftLength",text.length());}
  static GeckoWebView lifecycle(int attempts,boolean visible){ChatSession s=route();s.pending=j("id","retained-lifecycle-task","kind","web","confirmed",true);s.uiVisible=visible;s.status="已连接";GeckoWebView view=new GeckoWebView(s);view.contentRecoveries=attempts;view.recoveryWindow=1000;SystemClock.now=10000;return view;}
+ static int currentPolicyAndCleanup(){
+   int start=checks;
+   for(String target:new String[]{"https://www.wikipedia.org/wiki/Main_Page","http://example.com/article"}){
+     ChatSession s=route();s.web.url=target;
+     check("Public website remains a browser destination: "+target,GeckoNavigationPolicy.publicWeb(target));
+     s.sync();check("Generic website cannot dispatch ChatGPT synchronization: "+target,!s.chatAutomationAllowed()&&s.bridgeCalls==0&&s.driverResult==null&&!s.inFlight);
+   }
+   for(String target:new String[]{"http://chatgpt.com/c/current","https://chatgpt.com.evil/c/current","https://user@chatgpt.com/c/current","https://chatgpt.com:444/c/current","about:blank","invalid URL"}){
+     ChatSession s=route();s.web.url=target;s.sync();check("Current production origin policy refuses non-ChatGPT automation: "+target,!s.chatAutomationAllowed()&&s.bridgeCalls==0&&s.driverResult==null);
+   }
+   ChatSession s=route();s.web.url="https://chatgpt.com:443/c/current";s.sync();check("Exact HTTPS ChatGPT origin still dispatches current synchronization",s.chatAutomationAllowed()&&s.bridgeCalls==1&&s.driverResult!=null);
+   s=route();s.deleted=true;s.sync();check("Deleted environment cannot synchronize an otherwise valid ChatGPT origin",!s.chatAutomationAllowed()&&s.bridgeCalls==0);
+   check("No prior case owns a generic route lease",!ChromiumRouteLease.held());
+   GeckoWebView view=lifecycle(2,false);GeckoSession stopped=view.current,other=new GeckoSession();
+   ChromiumRouteLease.Handle stoppedLease=ChromiumRouteLease.acquireSurface(),otherLease=ChromiumRouteLease.acquireSurface(),download=ChromiumRouteLease.acquireDownload();
+   try{
+     view.generalSessions.add(stopped);view.generalSessions.add(other);view.generalRoutes.put(stopped,stoppedLease);view.generalRoutes.put(other,otherLease);
+     view.deferredGeneralLoads.put(stopped,"https://example.com/stopped");view.deferredGeneralLoads.put(other,"https://example.org/retained");
+     view.stopOther(new GeckoSession());check("Unowned content exit leaves both real leases and deferred targets intact",ChromiumRouteLease.snapshot().surfaces==2&&view.generalSessions.size()==2&&view.deferredGeneralLoads.size()==2);
+     view.stop();
+     check("Stopped content retires only its desired session and deferred target",!view.generalSessions.contains(stopped)&&!view.deferredGeneralLoads.containsKey(stopped)&&view.generalSessions.contains(other)&&view.deferredGeneralLoads.containsKey(other));
+     check("Stopped content closes its real surface lease without losing popup or native download",stoppedLease.closed&&ChromiumRouteLease.snapshot().surfaces==1&&ChromiumRouteLease.snapshot().downloads==1&&view.generalRoutes.get(other)==otherLease&&!otherLease.closed);
+     view.forgetGeneralRoute(stopped);check("Duplicate stopped-session cleanup never decrements another real lease",ChromiumRouteLease.snapshot().surfaces==1&&ChromiumRouteLease.snapshot().downloads==1);
+     view.forgetGeneralRoute(other);check("Final page cleanup preserves the independently owned download",ChromiumRouteLease.snapshot().surfaces==0&&ChromiumRouteLease.snapshot().downloads==1&&ChromiumRouteLease.held());
+     download.close();check("Closing final native work releases the actual process registry",!ChromiumRouteLease.held());
+   }finally{stoppedLease.close();otherLease.close();download.close();}
+   return checks-start;
+ }
  public static void main(String[] args)throws Exception{
    ChatSession s=route();s.networkReady=false;s.recoveryScheduled=true;s.recoveryToken=41;s.recoveryAttempt=3;s.manualAttention=true;s.networkIssue="service disconnected";s.connectionStage="waiting";s.status="service disconnected";s.navigationFailed=true;
    s.acceptTranscript(j("ok",true,"url",s.web.url,"entries",new JSONArray().put(j("id","answer"))),j("composer",true,"model","test"),true);
@@ -116,7 +144,8 @@ public class PageRecoveryHost {
    check("Exhausted foreground notice preserves an independently scheduled network retry",s.pageError.contains("自动恢复已暂停")&&s.status.equals(s.pageError)&&s.recoveryScheduled&&s.scheduled==existingScheduled&&s.recoveryToken==oldRetry&&s.recoveryAttempt==0&&s.connectionStage.equals(existingStage)&&s.pending==retainedTask&&s.loads==0&&s.opened==0&&stopped.recoveryDispatches==0&&stopped.contentRecoveries==2);
    s.runRecovery(oldRetry);check("Independent network retry remains runnable after the pure foreground notice",s.opened==1&&s.recoveryAttempt==1&&s.recoveryToken==oldRetry&&!s.recoveryScheduled&&s.pending==retainedTask&&stopped.recoveryDispatches==0);
    int lifecycleChecks=checks-lifecycleStart;
-   System.out.println(j("status","passed","checks",checks,"contentLifecycleChecks",lifecycleChecks));
+   int originalChecks=checks,currentPolicyChecks=currentPolicyAndCleanup();
+   System.out.println(j("status","passed","checks",checks,"contentLifecycleChecks",lifecycleChecks,"originalChecks",originalChecks,"currentPolicyAndCleanupChecks",currentPolicyChecks));
  }
 }
 class ChatSession {
@@ -136,7 +165,7 @@ class ChatSession {
 class PageMemory {/* MEMORY */}
 class MainActivity {
  ChatSession session;Web remote;boolean destroyed,finishing,reloadChecking;ReferenceUi.Modal reloadDialog;Text status=new Text();AppHub hub=new AppHub();String lastUiStatus="";
- int reloadRequests,shownPages;void requestReload(){reloadRequests++;}void showPage(boolean show){shownPages++;}void clickStatus() /* STATUS_CLICK */ MainActivity(ChatSession s){session=s;remote=s.web;}boolean isDestroyed(){return destroyed;}boolean isFinishing(){return finishing;}static boolean chatUrl(String x){return x!=null&&x.startsWith("https://chatgpt.com/");}
+ int reloadRequests,shownPages;void requestReload(){reloadRequests++;}void showPage(boolean show){shownPages++;}void clickStatus() /* STATUS_CLICK */ MainActivity(ChatSession s){session=s;remote=s.web;}boolean isDestroyed(){return destroyed;}boolean isFinishing(){return finishing;}
  /* MAIN */
 }
 class ReplyState {/* REPLY */}
@@ -170,6 +199,7 @@ class Audit{void retirePageCheck(){}boolean requestIdentitySelected;boolean requ
  static boolean active(Web w){return true;}final ChatSession owner;GeckoSession current=new GeckoSession();boolean destroyed,enabled=true,failed;long recoveryWindow;int contentRecoveries,recoveryDispatches;String url="https://chatgpt.com/c/lifecycle-current";
  final Map<GeckoSession,String> locations=new IdentityHashMap<>();final Map<GeckoSession,WebExtension.Port> ports=new IdentityHashMap<>();final Set<GeckoSession> crashed=new HashSet<>(),pendingLoads=new HashSet<>(),painted=new HashSet<>(),usable=new HashSet<>();final Runnable recovery=()->recoveryDispatches++;
  final BrowserBridgeRequests callbacks=new BrowserBridgeRequests(new BrowserBridgeRequests.Timer(){public void schedule(Runnable r,long delay){}public void cancel(Runnable r){}},"null");
+ /* ROUTE_FIELDS */
  GeckoWebView(ChatSession s){owner=s;locations.put(current,url);ports.put(current,new WebExtension.Port());usable.add(current);}void cancelZoom(){}void retireAppearance(WebExtension.Port port){}void stop(){contentStopped(current,"网页进程已退出，点按重新加载可恢复当前环境");}void stopOther(GeckoSession session){contentStopped(session,"other session");}
  /* LIFECYCLE */
 }
