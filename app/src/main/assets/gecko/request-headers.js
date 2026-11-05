@@ -1,6 +1,7 @@
 /* Real request-header alignment. This never changes a website JavaScript API. */
 (() => {
   'use strict';
+  const ipProbe=(...args)=>{try{globalThis.PocketIpTimeZoneDiagnostic?.record(...args);}catch(_){}};
   const CANCEL=Object.freeze({cancel:true});
   const DEADLINE_MS=5000;
   let installed=false,attempted=false,owner=null,serial=0,revision=null,ipBootstrap=null;
@@ -66,6 +67,7 @@
     const port=owner,epoch=serial;
     const bootstrap=ipBootstrap;let ipAuthorization;
     try{ipAuthorization=bootstrap?.authorization(details)??null;}catch(_){return Promise.resolve(CANCEL);}
+    ipProbe('header-authorization',details,ipAuthorization?'accepted':'absent');
     if(ipAuthorization)values=ipHeaders(values);
     try{
       if(!ipAuthorization&&extensionInitiated(details)&&globalThis.PocketRequestIdentityBackground?.controlRequest(details)===true)return Promise.resolve({requestHeaders:values});
@@ -103,6 +105,7 @@
     });
   };
   const listener=details=>{
+    ipProbe('header-event',details);
     let sanitized;
     try{
       if(typeof globalThis.PocketRequestIdentityBackground?.headerDecision!=='function')return Promise.resolve(CANCEL);
@@ -133,5 +136,5 @@
     filter,
     status(){return {installed};}
   });
-  install();
+  install();ipProbe('header-listener',null,installed?'ready':'rejected');
 })();

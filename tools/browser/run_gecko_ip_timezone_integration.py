@@ -77,14 +77,39 @@ def safe_trust(receipt):
         'cleanupRootUid','cleanupShellUid','shellRestoredAfterCleanup'}
     return {key:value for key,value in receipt.items() if key in allowed}
 
+EXTENSION_STAGES={'bootstrap-loaded','create-enter','create-rejected','create-ready','lookup-received','lookup-rejected','lookup-start','fetch-start','fetch-response','fetch-rejected','deadline','finish-null','finish-observed','before-request','before-redirect','authorization','native-lookup-received','bootstrap-bound','proxy-event','proxy-authorization','header-event','header-authorization','header-listener'}
+EXTENSION_RESULTS={'none','ready','rejected','missing-port','runtime-url','features','registration','exception','shape-or-busy','pending','accepted','absent','invalid','closed','cancelled','observed'}
+EXTENSION_ERRORS={'none','AbortError','NetworkError','TypeError','SecurityError','TimeoutError','NotAllowedError','InvalidStateError','other'}
+EXTENSION_SCRIPTS={'ip-timezone-bootstrap.js','request-headers.js','request-identity-background.js','native-timezone-bridge.js','background.js','other'}
+def extension_debug(value,nonce):
+    require(type(value) is dict and set(value)=={'registered','accepted','rejected','latest'},'extension diagnostic keys differ')
+    require(type(value['registered']) is bool and all(type(value[k]) is int and 0<=value[k]<=10000 for k in ('accepted','rejected')),'extension diagnostic counters differ')
+    latest=value['latest'];require(type(latest) is dict,'extension diagnostic payload object required')
+    if not latest:return value
+    require(set(latest)=={'schema','diagnosticOnly','releaseAcceptance','requestNonce','runtimeManifest','helperPresence','events','omitted','invalid','bootstrapObject','bootstrapCreate','headersObject'},'extension payload keys differ')
+    require(type(latest['schema']) is int and latest['schema']==1 and latest['diagnosticOnly'] is True and latest['releaseAcceptance'] is False and latest['requestNonce']==nonce,'extension diagnostic scope/nonce differs')
+    require(all(type(latest[k]) is int and 0<=latest[k]<=10000 for k in ('omitted','invalid')) and all(type(latest[k]) is bool for k in ('bootstrapObject','bootstrapCreate','headersObject')),'extension payload counter/flag differs')
+    manifest=latest['runtimeManifest'];require(type(manifest) is dict and set(manifest)=={'available','version','id','scriptCount','scripts'},'runtime manifest keys differ')
+    require(type(manifest['available']) is bool and manifest['version'] in ('2.1.2.104','other','unavailable') and manifest['id'] in ('browser@pocketchat.local','other','unavailable') and type(manifest['scriptCount']) is int and -1<=manifest['scriptCount']<=10000,'runtime manifest values differ')
+    require(type(manifest['scripts']) is list and len(manifest['scripts'])<=8 and all(type(v) is str and v in EXTENSION_SCRIPTS for v in manifest['scripts']),'runtime manifest scripts differ')
+    helpers=latest['helperPresence'];require(type(helpers) is dict and set(helpers)=={'bootstrap','headers','identity','timezone'} and all(type(v) is str and v in ('undefined','object','function','boolean','number','string','symbol','bigint') for v in helpers.values()),'runtime helper presence differs')
+    rows=latest['events'];require(type(rows) is list and len(rows)<=32,'extension event bound differs')
+    for i,row in enumerate(rows):
+        require(type(row) is dict and set(row)=={'sequence','stage','urlClass','exactGeo','get','origin','document','requestIdPresent','result','errorName'},'extension event keys differ')
+        require(type(row['sequence']) is int and row['sequence']==i+1 and row['stage'] in EXTENSION_STAGES and row['urlClass'] in ('geo-exact','geo-host-variant','other') and row['origin'] in ('own','foreign','absent','invalid','unseen') and row['document'] in ('own','foreign','absent','invalid','unseen') and row['result'] in EXTENSION_RESULTS and row['errorName'] in EXTENSION_ERRORS,'extension event enum differs')
+        require(all(type(row[k]) is bool for k in ('exactGeo','get','requestIdPresent')),'extension event flag differs')
+    return value
+
+
 def native_debug(value,binding):
     """Independent whitelist; a diagnostic cannot export arbitrary app text."""
     required={'schema','diagnosticOnly','releaseAcceptance','sourceCommit','sourceTree','runNonce',
         'integrationApkSha256','sdkRunId','sdkRunAttempt','snapshots','actualPublicIpGeolocationVerified','scope'}
-    require(type(value) is dict and set(value)==required and type(value['schema']) is int and value['schema']==1
+    require(type(value) is dict and required<=set(value)<=required|{'extensionDiagnostic'} and type(value['schema']) is int and value['schema']==1
         and value['diagnosticOnly'] is True and value['releaseAcceptance'] is False
         and value['actualPublicIpGeolocationVerified'] is False,'diagnostic envelope differs')
     for key,expected in binding.items():require(_typed_equal(value.get(key),expected),'native diagnostic binding differs')
+    if 'extensionDiagnostic' in value:extension_debug(value['extensionDiagnostic'],binding['runNonce'])
     fields={
         'timeZonePolicy':{'schema','desiredMode','desiredRevision','state','effectiveMode','rfpPriority','ipMatched','nativeSettingReadback','issue'},
         'defaultNetwork':{'known','internet','vpn','revision','identityPresent'},
@@ -94,7 +119,7 @@ def native_debug(value,binding):
         'gate':{'present','epoch','documentSerial','preparing','ready','revalidating','waiting','proofWaiting','networkWaiting','routeLeasePresent'},
         'lookup':{'present','sent','id','currentSession','currentGate','currentPort','currentRuntime','requestToken','routeStamp','remainingMs','leasePresent','leaseClosed','documentSerial','connectionEpoch','desiredRevision'},
         'operation':{'present','started','retired','finished','ready','verified','unsupported','rfpManaged'},
-        'routingCounters':{'bootstrapGeoAllowed','bootstrapGeoDenied','bootstrapOtherAllowed','bootstrapOtherDenied','protectedGeoBlocked','protectedGeoFixedSocks','protectedGeoFixedHttp','protectedGeoFixedHttps','protectedGeoOther','ordinaryGeoBlocked','ordinaryGeoOther','capped'},
+        'routingCounters':{'bootstrapGeoAllowed','bootstrapGeoDenied','bootstrapOtherAllowed','bootstrapOtherDenied','protectedGeoBlocked','protectedGeoFixedSocks','protectedGeoFixedHttp','protectedGeoFixedHttps','protectedGeoOther','ordinaryGeoBlocked','ordinaryGeoOther','bootstrapGeoVariantAllowed','bootstrapGeoVariantDenied','protectedGeoVariant','ordinaryGeoVariant','capped'},
     }
     base={'elapsedRealtime','stage','terminal','sessionPresent','viewPresent'}
     optional={'networkReady','connecting','navigating','navigationFailed','navigationEpoch','connectionEpoch','ownerDeleted'}|set(fields)
