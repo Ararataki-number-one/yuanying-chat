@@ -5,6 +5,7 @@ import java.util.function.*;
 import org.mozilla.geckoview.*;
 
 /** Public pinned native preferences only; the request path never uses JavaScript TLS claims. */
+@androidx.annotation.OptIn(markerClass=org.mozilla.geckoview.ExperimentalGeckoViewApi.class)
 final class GeckoTlsNative implements GeckoTlsController.NativeAccess {
   static final String RFP="privacy.resistFingerprinting",H2="network.http.http2.enabled",H3="network.http.http3.enable";
   final BooleanSupplier owner;

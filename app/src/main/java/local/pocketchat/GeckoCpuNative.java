@@ -5,6 +5,7 @@ import java.util.function.*;
 import org.mozilla.geckoview.*;
 
 /** Public, pinned Gecko embedding API. No page scripts or extension privileges. */
+@androidx.annotation.OptIn(markerClass=org.mozilla.geckoview.ExperimentalGeckoViewApi.class)
 final class GeckoCpuNative implements GeckoCpuController.NativeAccess {
   private static final String RFP="privacy.resistFingerprinting";
   final BooleanSupplier current;

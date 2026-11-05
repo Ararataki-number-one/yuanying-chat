@@ -14,7 +14,7 @@ ROOT = Path(__file__).resolve().parents[2]
 REPOSITORY = 'Ararataki-number-one/yuanying-chat'
 ORIGINS = ('https://github.com/' + REPOSITORY, 'https://github.com/' + REPOSITORY + '.git')
 MANIFEST = 'tests/baselines/public-source-history.json'
-MANIFEST_SHA256 = '3a25f8963e7571f7e8c33f48998d67381d595896bc942aca227a71e48cf5ae17'
+MANIFEST_SHA256 = '84ee908575ae516d65adceac8cfddaafcc0f86a3d8cd82584c689e9b0699b230'
 
 
 class MissingHistoricalObject(RuntimeError):

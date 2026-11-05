@@ -3,6 +3,7 @@
 import argparse
 import hashlib
 import importlib.util
+import inspect
 import json
 import os
 from pathlib import Path
@@ -15,6 +16,9 @@ HERE = Path(__file__).resolve().parent
 PROD = ROOT / 'app/src/main/java/local/pocketchat'
 BASE = '972b7767300587af98b3f4a2088a44dd30af8098'
 SOURCE_PATH = 'app/src/main/java/local/pocketchat/GeckoWebView.java'
+COMPOSED_SOURCE = '12a45fb8a1343bbe5767bdf6c3fba54519650fa1'
+COMPOSED_GV_SHA256 = '34a651c3ccc50499dd5c720c370353600ccf20669df5393ccbf68d6a689f9670'
+WINDOW_LOOKUP_SHA256 = '181b9349f1330e64eb174d7995030b2785c157351a9a47dee44fa481184f018e'
 MEMBERS = ('static final class TimeZoneGate', 'boolean timeZoneSessionAlive(',
            'boolean timeZoneAllows(', 'private void startTimeZone(')
 module_spec = importlib.util.spec_from_file_location('window_gate_extraction', ROOT / 'tests/gecko-navigation-host/run.py')
@@ -30,6 +34,114 @@ def declaration(source, needle):
     if source.count(needle) != 1:
         raise ValueError('Unique actual production member required: ' + needle)
     return extraction.member_at(source, source.index(needle))
+
+
+def verify_source_delta(current_raw, baseline_raw, composed_raw):
+    current = current_raw.decode('utf-8')
+    baseline = baseline_raw.decode('utf-8')
+    lookup = 'public void lookupIp('
+    original_lookup = declaration(baseline, lookup)
+    current_lookup = declaration(current, lookup)
+    # Preserve the original complete window-only inverse as the first branch.
+    if current_raw.replace(current_lookup.encode(), original_lookup.encode(), 1) == baseline_raw:
+        return dict(scope='lookup-only-whole-file-inverse', lookupOnlyWholeFileInverseVerified=True,
+                    composedWholeImageVerified=False, originalInitialConsumerPreserved=True,
+                    originalFiveEightAndEightPointFiveSecondBudgetsPreserved=True)
+    if current_raw != composed_raw or sha(current_raw) != COMPOSED_GV_SHA256 or sha(composed_raw) != COMPOSED_GV_SHA256:
+        raise AssertionError('Unknown composed raw whole-source image')
+    composed_lookup = declaration(composed_raw.decode('utf-8'), lookup)
+    if current_lookup != composed_lookup or sha(current_lookup.encode()) != WINDOW_LOOKUP_SHA256:
+        raise AssertionError('Exact published window lookup member required')
+    original_start = declaration(baseline, 'private void startTimeZone(')
+    current_start = declaration(current, 'private void startTimeZone(')
+    if current_start.replace(current_lookup, original_lookup, 1) != original_start:
+        raise AssertionError('Original initial consumer and five-second window budget must remain byte-identical')
+    for inherited in ('static final class IpLookup {', 'void lookupIpTimeZone('):
+        if declaration(current, inherited) != declaration(baseline, inherited):
+            raise AssertionError('Original native IP lookup eight/eight-point-five-second members must remain byte-identical')
+    return dict(scope='exact-published-composed-whole-image', lookupOnlyWholeFileInverseVerified=False,
+                composedWholeImageVerified=True, originalInitialConsumerPreserved=True,
+                originalFiveEightAndEightPointFiveSecondBudgetsPreserved=True,
+                composedSource=COMPOSED_SOURCE, composedSourceSha256=COMPOSED_GV_SHA256,
+                windowLookupSha256=WINDOW_LOOKUP_SHA256)
+
+
+def source_metadata_controls(composed_raw, baseline_raw):
+    # Counterfeit inputs come only from the published composed image. This
+    # preserves the independently accepted original window-only branch; no
+    # candidate is ever a source for the current Java workload.
+    current_raw = composed_raw
+    controls = []
+    lookup = 'public void lookupIp('
+    current = current_raw.decode('utf-8')
+    selected_lookup = declaration(current, lookup)
+    original_lookup = declaration(baseline_raw.decode('utf-8'), lookup)
+    window_only = baseline_raw.replace(original_lookup.encode(), selected_lookup.encode(), 1)
+    if not verify_source_delta(window_only, baseline_raw, composed_raw)['lookupOnlyWholeFileInverseVerified']:
+        raise AssertionError('Original lookup-only whole-file branch must remain available')
+    # Isolated validator copies permit a forged metadata digest solely to show
+    # the independent member guards reject it. No app source or Git input is
+    # changed, projected or used for current Java generation.
+    def copied(function_source=None, digest=None):
+        namespace = dict(verify_source_delta.__globals__)
+        if digest is not None:
+            namespace['COMPOSED_GV_SHA256'] = digest
+        exec(compile(function_source or inspect.getsource(verify_source_delta), '<isolated-source-metadata-validator>', 'exec'), namespace)
+        return namespace['verify_source_delta']
+    def denied(name, validator, candidate, reference, message):
+        try:
+            validator(candidate, baseline_raw, reference)
+        except AssertionError as error:
+            if message not in str(error):
+                raise AssertionError('Wrong metadata rejection boundary: ' + name + ': ' + str(error))
+            controls.append(dict(case=name, rejected=True, message=message, javaGeneratedFromCandidate=False))
+            return
+        raise AssertionError('Source metadata false-proof escaped: ' + name)
+    unknown = current_raw + b'\n// Unknown source outside the selected window methods.\n'
+    denied('unknown-whole-image', verify_source_delta, unknown, composed_raw, 'Unknown composed raw whole-source image')
+    denied('wrong-published-whole-image', verify_source_delta, current_raw, composed_raw+b'\n', 'Unknown composed raw whole-source image')
+    broken_lookup = selected_lookup.replace('if(!ready||!current())', 'if(!current())', 1)
+    if broken_lookup == selected_lookup:
+        raise AssertionError('Unique ready/current lookup guard required')
+    changed_lookup = current_raw.replace(selected_lookup.encode(), broken_lookup.encode(), 1)
+    denied('forged-whole-metadata-cannot-hide-lookup-change', copied(digest=sha(changed_lookup)), changed_lookup, changed_lookup, 'Exact published window lookup member required')
+    start = declaration(current, 'private void startTimeZone(')
+    changed_initial = current_raw.replace(start.encode(), start.replace('if(!access.current()){finished.accept(false);return;}', 'if(false){finished.accept(false);return;}', 1).encode(), 1)
+    if changed_initial == current_raw:
+        raise AssertionError('Unique original initial window consumer required')
+    denied('forged-whole-metadata-cannot-hide-initial-consumer-change', copied(digest=sha(changed_initial)), changed_initial, changed_initial, 'Original initial consumer and five-second window budget')
+    changed_five = current_raw.replace(start.encode(), start.replace('deadline[0],5000', 'deadline[0],5001', 1).encode(), 1)
+    if changed_five == current_raw:
+        raise AssertionError('Unique original five-second window deadline required')
+    denied('forged-whole-metadata-cannot-hide-window-budget-change', copied(digest=sha(changed_five)), changed_five, changed_five, 'Original initial consumer and five-second window budget')
+    for name, marker, old, new in [('eight-second','static final class IpLookup {','+8000','+8001'), ('eight-point-five-second','void lookupIpTimeZone(', '},8500', '},8501')]:
+        member = declaration(current, marker)
+        if member.count(old) != 1:
+            raise AssertionError('Unique original lookup budget required: ' + name)
+        changed = current_raw.replace(member.encode(), member.replace(old,new,1).encode(),1)
+        denied('forged-whole-metadata-cannot-hide-'+name+'-change', copied(digest=sha(changed)), changed, changed, 'Original native IP lookup eight/eight-point-five-second members')
+    source = inspect.getsource(verify_source_delta)
+    mutants = [
+        ('removed-raw-whole-pin', "    if current_raw != composed_raw or sha(current_raw) != COMPOSED_GV_SHA256 or sha(composed_raw) != COMPOSED_GV_SHA256:\n        raise AssertionError('Unknown composed raw whole-source image')\n", unknown, composed_raw, None),
+        ('removed-exact-lookup-pin', "    if current_lookup != composed_lookup or sha(current_lookup.encode()) != WINDOW_LOOKUP_SHA256:\n        raise AssertionError('Exact published window lookup member required')\n", changed_lookup, changed_lookup, sha(changed_lookup)),
+        ('removed-original-initial-window-body-guard', "    if current_start.replace(current_lookup, original_lookup, 1) != original_start:\n        raise AssertionError('Original initial consumer and five-second window budget must remain byte-identical')\n", changed_initial, changed_initial, sha(changed_initial)),
+    ]
+    counterfeits = []
+    for name, removed, candidate, reference, digest in mutants:
+        if source.count(removed) != 1:
+            raise AssertionError('Unique source metadata counterfeit required: ' + name)
+        mutant = copied(source.replace(removed, '', 1), digest)
+        try:
+            denied(name, mutant, candidate, reference, '')
+        except AssertionError as error:
+            if 'Source metadata false-proof escaped: '+name not in str(error):
+                raise
+            counterfeits.append(dict(case=name, pythonCompiled=True, sameNegativeExpectationRejected=True,
+                                     productionOrGitInputChanged=False, javaGeneratedFromCandidate=False))
+        else:
+            raise AssertionError('Metadata counterfeit did not exercise the expected missing guard: ' + name)
+    return dict(legacyWindowOnlyBranchVerified=True, counterfeitMetadataUsesPublishedComposedImage=True, rejectedInputs=controls,
+                pythonGuardCounterfeits=counterfeits, actualCurrentJavaUsesRawSource=True)
 
 
 def main():
@@ -102,8 +214,9 @@ def main():
         lookup_declaration = 'public void lookupIp('
         original_lookup = declaration(baseline_raw.decode(), lookup_declaration)
         current_lookup = declaration(source.read_text(), lookup_declaration)
-        if source.read_bytes().replace(current_lookup.encode(), original_lookup.encode(), 1) != baseline_raw:
-            raise AssertionError('Production delta must be only the exact lookupIp member; initial consumer and all existing budgets stay byte-identical')
+        composed_raw = subprocess.check_output(['git', 'show', COMPOSED_SOURCE + ':' + SOURCE_PATH], cwd=ROOT, env=git_env, timeout=30)
+        delta_scope = verify_source_delta(source.read_bytes(), baseline_raw, composed_raw)
+        metadata_controls = source_metadata_controls(composed_raw, baseline_raw)
         control_specs = [('actual-before', baseline, 'pending', 'Pending window has zero IP transport invocations true')]
         before = 'if(!ready||!current()){fail.accept(new IOException("出口时区查询上下文已变化"))'
         method = 'private void startTimeZone('
@@ -128,7 +241,8 @@ def main():
     unchanged = all(sha(path.read_bytes()) == hashes[str(path.relative_to(ROOT))] for path in files) and sha(jar.read_bytes()) == jar_hash
     report.update(sourceFiles=hashes, sourceMethodHashes={name: sha(body.encode()) for name, body in selected.items()},
                   identityMethodSha256=sha(identity_body.encode()), jsonJarSha256=jar_hash,
-                  lookupOnlyWholeFileInverseVerified=True, originalInitialConsumerPreserved=True,
+                  lookupOnlyWholeFileInverseVerified=delta_scope['lookupOnlyWholeFileInverseVerified'], originalInitialConsumerPreserved=True,
+                  sourceDeltaScope=delta_scope, sourceMetadataControls=metadata_controls,
                   baseline=dict(commit=BASE, sourceSha256=sha(baseline_raw), usage='Real Git before-image runs only as a separately compiled negative; current workload executes raw current methods'),
                   negativeControls=controls, executionInputsUnchanged=unchanged,
                   typeTokenSubstitutions=replacements,

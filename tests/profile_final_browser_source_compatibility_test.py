@@ -36,7 +36,9 @@ CPU_FIXTURE = 'tests/fixtures/cpu-ip-source-deltas.json'
 OLD_CPU_SHA = '66c9b3643b26edb54b0c371c2053d56e482efcce2035aa1ca067fdead8f48e5a'
 IP_FIXTURE = 'tests/fixtures/ip-timezone-source-deltas.json'
 IP_SHA = '2a84a6ac4cb8246ea633d314bbcc9b75b8ab9e180507e6a7017533519106c0bb'
-FINAL_SHA = 'ad897f6a3f9f53913392786788034022d79ab9c1f29a658721005f2fc8443570'
+FINAL_SHA = '167329f7fd195601a9b5cbf50a3e754ea17033daf4b82dd8d75c1b64210d5fb5'
+INVENTORY_115_PINS = {'tests/baselines/public-source-history.json': ('3a25f8963e7571f7e8c33f48998d67381d595896bc942aca227a71e48cf5ae17', 34730), 'tools/browser/source_history.py': ('4924f0255fccc91bcbaf34a31a893471ba3d77957420c6f704b524845e22080c', 8992)}
+
 PUBLISHER_METADATA_PINS = {
     'tests/browser_fingerprint_publish_gate_test.py':
         '40f681d0b10ea17893a93c40b6eb3519b7433196d63b4b393167a15cb8f5c9e8',
@@ -62,6 +64,19 @@ S_PATHS = frozenset(('tests/cpu_ip_source_compatibility.py', CPU_FIXTURE,
     'tests/browser_fingerprint_publish_gate_test.py',
     'tests/browser_environment_publish_gate_test.py'))
 SHA = lambda raw: hashlib.sha256(raw).hexdigest()
+
+
+def current_context(relative, row, delta):
+    """Compose only the two declared catalog tails for current-image controls."""
+    chunk = delta['current'].encode()
+    if relative in INVENTORY_115_PINS and delta['id'] != row['deltas'][-1]['id']:
+        tail = row['deltas'][-1]
+        previous, current = tail['previous'].encode(), tail['current'].encode()
+        if previous in chunk:
+            if chunk.count(previous) != 1:
+                raise ValueError('Catalog tail must compose exactly once in an old context')
+            chunk = chunk.replace(previous, current, 1)
+    return chunk
 
 
 @lru_cache(maxsize=None)
@@ -128,7 +143,7 @@ class FinalBrowserHistoricalSources(unittest.TestCase):
                     self.assertEqual((SHA(previous), SHA(after)),
                         (delta['previousSha256'], delta['currentSha256']))
                     self.assertEqual(forward.count(previous), 1)
-                    self.assertEqual(current.count(after), 1)
+                    self.assertEqual(current.count(current_context(relative, row, delta)), 1)
                     forward = forward.replace(previous, after, 1)
                     contexts += 1
                 for delta in reversed(row['deltas']):
@@ -137,10 +152,10 @@ class FinalBrowserHistoricalSources(unittest.TestCase):
                     inverse = inverse.replace(after, previous, 1)
                 self.assertEqual(forward, current)
                 self.assertEqual(inverse, before)
-        self.assertEqual(contexts - 1, 43)
+        self.assertEqual(contexts - 1 - len(INVENTORY_115_PINS), 43)
         previous_paths = layer.PATHS-PUBLISHER_METADATA_PINS.keys()
         self.assertEqual(len(previous_paths), 17)
-        self.assertEqual(sum(len(value['files'][relative]['deltas']) for relative in previous_paths) - 1, 41)
+        self.assertEqual(sum(len(value['files'][relative]['deltas']) for relative in previous_paths) - 1 - len(INVENTORY_115_PINS), 41)
 
     def test_every_context_rejects_missing_duplicate_changed_moved_and_unknown_images(self):
         rejected = 0
@@ -148,8 +163,8 @@ class FinalBrowserHistoricalSources(unittest.TestCase):
         for relative, row in value['files'].items():
             current = (ROOT/relative).read_bytes()
             # The appended P2 context has its own complete-image controls below.
-            for delta in (row['deltas'][:-1] if relative == GV else row['deltas']):
-                chunk = delta['current'].encode()
+            for delta in (row['deltas'][:-1] if relative == GV or relative in INVENTORY_115_PINS else row['deltas']):
+                chunk = current_context(relative, row, delta)
                 remainder = current.replace(chunk, b'', 1)
                 moved = remainder+chunk
                 if moved == current:
@@ -744,6 +759,10 @@ class FinalBrowserHistoricalSources(unittest.TestCase):
 
     def test_p2_preserves_all_original_nineteen_rows_and_forty_three_contexts(self):
         value = copy.deepcopy(layer.manifest())
+        for path, (digest, size) in INVENTORY_115_PINS.items():
+            inventory = value['files'][path]
+            inventory['deltas'].pop()
+            inventory['reviewedSha256'], inventory['reviewedBytes'] = digest, size
         row = value['files'][GV]
         delta = row['deltas'].pop()
         self.assertEqual(delta['id'], 'context-08')
@@ -852,6 +871,35 @@ class FinalBrowserHistoricalSources(unittest.TestCase):
         self.assertIn('text=source.read_text()', host)
         self.assertNotIn('final_browser_source_compatibility', host)
         self.assertNotIn('p2_input', host)
+
+    def test_public_window_catalog_additions_preserve_all_original_forty_four_contexts(self):
+        value = copy.deepcopy(layer.manifest())
+        rejected = 0
+        for relative, (digest, size) in INVENTORY_115_PINS.items():
+            row = value['files'][relative]
+            delta = row['deltas'].pop()
+            current = (ROOT/relative).read_bytes()
+            before, after = delta['previous'].encode(), delta['current'].encode()
+            self.assertEqual(current.count(after), 1)
+            restored = current.replace(after, before, 1)
+            self.assertEqual((SHA(restored), len(restored)), (digest, size))
+            row['reviewedSha256'], row['reviewedBytes'] = digest, size
+            removed = current.replace(after, b'', 1)
+            moved = removed+after
+            if moved == current:
+                moved = after+removed
+            for candidate in (removed, current.replace(after, after+after, 1),
+                    current.replace(after, after+b' ', 1), moved,
+                    current[:-1], b'unknown window catalog image'+current):
+                with self.assertRaises(ValueError):
+                    layer.source_input(candidate, relative)
+                rejected += 1
+        restored_fixture = (json.dumps(value, ensure_ascii=False, indent=2)+'\n').encode()
+        self.assertEqual(SHA(restored_fixture), 'ad897f6a3f9f53913392786788034022d79ab9c1f29a658721005f2fc8443570')
+        self.assertEqual(len(value['files']), 19)
+        self.assertEqual(sum(len(row['deltas']) for row in value['files'].values()), 44)
+        self.assertEqual(sum(len(row['deltas']) for row in layer.manifest()['files'].values()), 46)
+        self.assertEqual(rejected, 12)
 
     def test_current_workflow_reads_raw_yaml_seven_declared_and_thirteen_expanded_jobs(self):
         import browser_acceptance_workflow_test as workflow
