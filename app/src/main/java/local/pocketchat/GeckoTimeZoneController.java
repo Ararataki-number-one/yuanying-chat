@@ -54,8 +54,8 @@ final class GeckoTimeZoneController {
   /** Configuration identity for one explicitly owned navigation. It never
    * admits page observations or replaces the full native/document stamp. */
   String auditConfigurationStamp(){GeckoTimeZoneStore.State desired=cached;return auditInstance+"|"+configurationSerial+"|"+(desired==null?"unloaded":desired.identity.environmentId+":"+desired.identity.generation+":"+desired.revision+":"+desired.spec.zoneId)+"|"+loadIssue.isEmpty();}
-  private void boundaryChanged(){auditSerial++;if(session.audit!=null)session.audit.retirePageCheck();}
-  private void configurationChanged(){configurationSerial++;boundaryChanged();}
+  private void boundaryChanged(Object nativeSession,String epoch){auditSerial++;if(session.audit!=null)session.audit.nativeDocumentProofChanged(nativeSession,epoch);}
+  private void configurationChanged(){configurationSerial++;boundaryChanged(null,"");}
   JSONObject auditExpected(JSONObject expected){
     GeckoTimeZoneStore.State desired=cached;
     if(desired!=null&&!desired.spec.followsSystem()&&session.privacy.level()<2)try{
@@ -86,7 +86,7 @@ final class GeckoTimeZoneController {
       if(old.finished)gate.accept(allowed(nativeSession,epoch));else old.waiters.add(gate);return;
     }
     if(old!=null)retire(nativeSession,old.epoch);
-    boundaryChanged();Operation op=new Operation(nativeSession,sessionId,epoch,access);op.waiters.add(gate);operations.put(nativeSession,op);
+    boundaryChanged(nativeSession,epoch);Operation op=new Operation(nativeSession,sessionId,epoch,access);op.waiters.add(gate);operations.put(nativeSession,op);
     if(!loadIssue.isEmpty())fail(op,false,loadIssue);else if(cached!=null)begin(op);
   }
   private void begin(Operation op){
@@ -124,8 +124,8 @@ final class GeckoTimeZoneController {
   private void fail(Operation op,boolean unsupported,String message){
     if(op==null||op.retired||op.finished)return;op.unsupported=unsupported;op.issue=message;op.ready=op.desired!=null&&GeckoTimeZonePolicy.legacySystemMayContinue(op.desired.spec)&&accessCurrent(op);op.verified=false;retireTicket(op.ticket);finish(op);
   }
-  private void finish(Operation op){boundaryChanged();op.finished=true;List<Consumer<Boolean>> waiters=new ArrayList<>(op.waiters);op.waiters.clear();changed();for(Consumer<Boolean> waiter:waiters)waiter.accept(op.ready);}
-  void retire(Object nativeSession,String epoch){Operation op=operations.get(nativeSession);if(op==null||!op.epoch.equals(epoch))return;boundaryChanged();operations.remove(nativeSession);op.retired=true;retireTicket(op.ticket);if(!op.finished){op.ready=false;finish(op);}changed();}
+  private void finish(Operation op){boundaryChanged(op.nativeSession,op.epoch);op.finished=true;List<Consumer<Boolean>> waiters=new ArrayList<>(op.waiters);op.waiters.clear();changed();for(Consumer<Boolean> waiter:waiters)waiter.accept(op.ready);}
+  void retire(Object nativeSession,String epoch){Operation op=operations.get(nativeSession);if(op==null||!op.epoch.equals(epoch))return;boundaryChanged(nativeSession,epoch);operations.remove(nativeSession);op.retired=true;retireTicket(op.ticket);if(!op.finished){op.ready=false;finish(op);}changed();}
   private void retireTicket(GeckoTimeZoneStore.Ticket ticket){if(ticket!=null)session.environmentIo.execute(()->{try{GeckoTimeZoneStore.retire(session.context,ticket);}catch(Exception ignored){}});}
   private void invalidate(){for(Operation op:new ArrayList<>(operations.values()))retire(op.nativeSession,op.epoch);}
   void saveConfirmed(GeckoTimeZoneStore.State expected,GeckoTimeZoneSpec selected,BooleanSupplier stillSafe,Consumer<String> done){

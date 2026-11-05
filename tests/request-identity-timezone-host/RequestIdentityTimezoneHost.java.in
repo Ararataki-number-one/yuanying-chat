@@ -125,7 +125,7 @@ final class ChatSession {
 }
 final class EnvironmentAudit {
  static final String OBSERVATION_EXECUTION_ID=UUID.randomUUID().toString();final ChatSession session;final RequestIdentityAuditSession requestIdentity;final ServiceProbe serviceProbe=new ServiceProbe();boolean running,networkRun,geckoRun;String lastError="",auditUrl="";long serial,auditNavigation,identityAppliedRevision;Runnable completed;JSONObject report=new JSONObject(),requestIdentityReport=new JSONObject();int retired,recorded,saves;
- EnvironmentAudit(ChatSession s){session=s;requestIdentity=new RequestIdentityAuditSession(this);}boolean current(long id){return running&&serial==id;}void retirePageCheck(){retired++;}void cleanup(){running=false;}void refresh(boolean force){}boolean save(){saves++;return true;}void decorateObservation(JSONObject report,String url,long navigation){}void recordObservation(JSONObject report,String url){recorded++;}
+ EnvironmentAudit(ChatSession s){session=s;requestIdentity=new RequestIdentityAuditSession(this);}boolean current(long id){return running&&serial==id;}void retirePageCheck(){retired++;}/* Dedicated request-identity fixture has no pending ordinary audit; keep its original retirement counter. */void nativeDocumentProofChanged(Object nativeSession,String epoch){retirePageCheck();}void cleanup(){running=false;}void refresh(boolean force){}boolean save(){saves++;return true;}void decorateObservation(JSONObject report,String url,long navigation){}void recordObservation(JSONObject report,String url){recorded++;}
  /*@@AUDIT@@*/
 }
 final class GeckoWebView {

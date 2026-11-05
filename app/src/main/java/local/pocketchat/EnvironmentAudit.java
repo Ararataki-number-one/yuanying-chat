@@ -21,6 +21,11 @@ class EnvironmentAudit {
   JSONObject baseline=new JSONObject(),report=new JSONObject(),observed=new JSONObject(),initial=new JSONObject(),requestIdentityReport=new JSONObject(),pinnedDeepBaseline=new JSONObject(),fingerprintContextBaselines=new JSONObject(),fingerprintComparison=new JSONObject();JSONArray changes=new JSONArray();String storageIssue="",lastError="";
   Object nativeRuntimeIdentity;
   volatile boolean running;boolean networkRun,webDone,nativeDone,geckoRun;String auditUrl="";long auditNavigation;volatile long serial;long epoch,deadline,lastRefresh,identityAppliedRevision;String stamp="",policy="";JSONObject sample=new JSONObject(),nativeResult=new JSONObject();Runnable completed;Future<?> nativeWork;volatile HttpURLConnection connection;
+  PendingPageAudit pendingPageAudit;
+  static final class PendingPageAudit {
+    final long id,applied;final String configuration,route,environment;final int generation;final Object document;final boolean network,apiChecks;
+    PendingPageAudit(EnvironmentAudit audit,long id,boolean network,boolean apiChecks){this.id=id;this.network=network;this.apiChecks=apiChecks;document=audit.session.web.environmentAuditDocumentFence();configuration=audit.requestIdentityPolicyStamp();route=audit.routeStamp();applied=audit.session.identityAuditAppliedRevision();environment=audit.session.environmentId;generation=audit.session.environmentGeneration;}
+  }
   EnvironmentAudit(ChatSession s){
     session=s;store=new SecretStore(s.context);requestIdentity=new RequestIdentityAuditSession(this);serviceProbe=new RequestIdentityServiceProbe(this);
     try{byte[] bytes=store.get("environment-audit");if(bytes!=null){
@@ -103,13 +108,41 @@ class EnvironmentAudit {
   }
   boolean start(boolean network,Runnable done){return start(network,false,done);}
   boolean start(boolean network,boolean apiChecks,Runnable done){if(running)return false;lastError="";if(apiChecks&&(ProfileUi.working(session)||session.currentReplyActive()||session.resourceFilesUncertain())){lastError="当前有回复、上传或下载，请完成后再进行图形与音频检查";return false;}if(network&&ProfileUi.working(session)){lastError="有未完成回复、上传或下载，请结束后再检查网络出口";return false;}if(network&&(!session.networkReady||!session.guard.allowed()||!session.web.protectionAllowsNetwork())){lastError="当前连接尚未受保护，请先恢复连接；没有发出检测请求";return false;}
-    geckoRun=GeckoWebView.active(session.web);if(geckoRun&&!session.web.hasVisibleDocument()){lastError="请等当前网页显示后再检查";return false;}auditUrl=session.web.getUrl();auditNavigation=session.navigationEpoch;running=true;networkRun=network;completed=done;sample=new JSONObject();nativeResult=new JSONObject();webDone=false;nativeDone=!network;nativeRuntimeIdentity=session.web.nativeRuntimeIdentity();initial=localExpected();identityAppliedRevision=session.identityAuditAppliedRevision();epoch=session.connectionEpoch;stamp=routeStamp();policy=policyStamp();deadline=SystemClock.elapsedRealtime()+14000;long id=++serial;session.updateBrowserActivity();
+    boolean gecko=GeckoWebView.active(session.web);if(gecko&&!session.web.hasVisibleDocument()){lastError="请等当前网页显示后再检查";return false;}
+    running=true;geckoRun=false;networkRun=network;completed=done;pendingPageAudit=null;sample=new JSONObject();nativeResult=new JSONObject();initial=new JSONObject();webDone=false;nativeDone=!network;nativeRuntimeIdentity=null;epoch=-1;stamp=policy="";deadline=SystemClock.elapsedRealtime()+14000;long id=++serial;session.updateBrowserActivity();
+    session.handler.postDelayed(()->{if(current(id)){if(pendingPageAudit!=null)abortOrdinaryStart(id,"当前网页原生确认未完成，检查未启动");else{webDone=nativeDone=true;finishIfReady(id);}}},14500);
+    if(!gecko){beginOrdinaryAudit(id,false,network,apiChecks);return true;}
+    try{
+      PendingPageAudit pending=new PendingPageAudit(this,id,network,apiChecks);pendingPageAudit=pending;
+      session.web.awaitEnvironmentAuditDocumentProof(pending.document,ready->{
+        if(!current(id)||pendingPageAudit!=pending)return;
+        if(!ready||!pendingPageCurrent(pending)){abortOrdinaryStart(id,"当前网页或环境已变化，原生确认未完成，检查未启动");return;}
+        pendingPageAudit=null;beginOrdinaryAudit(id,true,network,apiChecks);
+      });
+    }catch(RuntimeException unavailable){abortOrdinaryStart(id,"当前网页原生确认不可用，检查未启动");}
+    return true;
+  }
+  boolean pendingPageCurrent(PendingPageAudit pending){
+    try{return pending!=null&&pendingPageAudit==pending&&current(pending.id)&&!session.deleted&&GeckoWebView.active(session.web)
+        &&session.environmentId.equals(pending.environment)&&session.environmentGeneration==pending.generation&&session.identityAuditAppliedRevision()==pending.applied
+        &&pending.route.equals(routeStamp())&&pending.configuration.equals(requestIdentityPolicyStamp())&&session.web.environmentAuditDocumentCurrent(pending.document)
+        &&(!pending.network||session.networkReady&&session.guard.allowed()&&session.web.protectionAllowsNetwork());}catch(RuntimeException unavailable){return false;}
+  }
+  void abortOrdinaryStart(long id,String message){
+    if(!current(id))return;pendingPageAudit=null;serial++;lastError=message;cleanup();Runnable callback=completed;completed=null;if(callback!=null)callback.run();
+  }
+  void beginOrdinaryAudit(long id,boolean gecko,boolean network,boolean apiChecks){
+    if(!current(id))return;long remaining=deadline-SystemClock.elapsedRealtime();
+    if(remaining<=0){abortOrdinaryStart(id,"检查等待已超时，没有开始网页或网络采样");return;}
+    if((apiChecks&&(ProfileUi.working(session)||session.currentReplyActive()||session.resourceFilesUncertain()))||(network&&ProfileUi.working(session))){abortOrdinaryStart(id,"当前有回复、上传或下载，检查未启动");return;}
+    if(network&&(!session.networkReady||!session.guard.allowed()||!session.web.protectionAllowsNetwork())){abortOrdinaryStart(id,"当前连接尚未受保护，没有发出检测请求");return;}
+    try{geckoRun=gecko;auditUrl=session.web.getUrl();auditNavigation=session.navigationEpoch;nativeRuntimeIdentity=session.web.nativeRuntimeIdentity();initial=localExpected();identityAppliedRevision=session.identityAuditAppliedRevision();epoch=session.connectionEpoch;stamp=routeStamp();policy=policyStamp();}
+    catch(RuntimeException unavailable){abortOrdinaryStart(id,"当前环境状态无法核对，检查未启动");return;}
     try{if(geckoRun){
-      session.web.runEnvironmentAudit(J.obj("id",String.valueOf(id),"network",network,"apiChecks",apiChecks),raw->{if(!current(id))return;JSONObject result=raw!=null&&raw.length()<=64000?J.parse(raw):new JSONObject();if(result.optString("id").equals(String.valueOf(id)))sample=result;webDone=true;finishIfReady(id);});
+      session.web.runEnvironmentAudit(J.obj("id",String.valueOf(id),"network",network,"apiChecks",apiChecks,"budgetMillis",remaining),raw->{if(!current(id))return;JSONObject result=raw!=null&&raw.length()<=64000?J.parse(raw):new JSONObject();if(result.optString("id").equals(String.valueOf(id)))sample=result;webDone=true;finishIfReady(id);});
     }
       if(network)nativeWork=worker.submit(()->{JSONObject result;try{result=queryNative(id);}catch(Exception e){result=J.obj("error","No verifiable response");}JSONObject value=result;session.handler.post(()->{if(!current(id))return;nativeResult=value;nativeDone=true;finishIfReady(id);});});
-      session.handler.postDelayed(()->{if(current(id)){webDone=nativeDone=true;finishIfReady(id);}},14500);return true;
-    }catch(Exception e){webDone=nativeDone=true;lastError="本机检查页面无法启动";finishIfReady(id);return true;}
+    }catch(Exception e){webDone=nativeDone=true;lastError="本机检查页面无法启动";finishIfReady(id);}
   }
   WebResourceResponse resource(WebResourceRequest request){String url=request.getUrl().toString();if(networkRun&&running&&fresh()&&(url.equals(IPV4)||url.equals(IPV6)||url.equals(HEADERS)))return null;return BrowserNetworkGuard.denied();}
   void poll(long id){if(!current(id))return;android.webkit.ValueCallback<String> callback=raw->{if(!current(id))return;JSONObject result=raw!=null&&raw.length()<64000?J.parse(raw):new JSONObject();if(result.optString("id").equals(String.valueOf(id))){sample=result;webDone=true;finishIfReady(id);}else if(SystemClock.elapsedRealtime()<deadline)session.handler.postDelayed(()->poll(id),100);else{webDone=true;finishIfReady(id);}};session.web.evaluateJavascript("window.__pocketAuditResult||null",callback);}
@@ -117,9 +150,12 @@ class EnvironmentAudit {
   HttpURLConnection open(URL url,Proxy proxy)throws IOException{return (HttpURLConnection)url.openConnection(proxy);}
   JSONObject queryNative(long id)throws Exception{if(!current(id)||!fresh())throw new IOException("Connection changed");HttpURLConnection c=open(new URL(IPV4),proxy());connection=c;try{if(!current(id)||!fresh())throw new IOException("Check cancelled");c.setInstanceFollowRedirects(false);c.setConnectTimeout(5000);c.setReadTimeout(6500);c.setRequestProperty("User-Agent",initial.optString("ua"));c.setRequestProperty("Accept","application/json");c.setUseCaches(false);if(c.getResponseCode()!=200||!current(id)||!fresh())throw new IOException("Unverified response");try(InputStream in=c.getInputStream()){JSONObject data=J.parse(J.text(in,4096));return AuditReport.v4(data.optString("ip"))?J.obj("ip",data.optString("ip")):J.obj("error","Invalid response");}}finally{c.disconnect();if(connection==c)connection=null;}}
   void finishIfReady(long id){if(!current(id)||!webDone||!nativeDone)return;boolean fresh=fresh();report=AuditReport.build(sample,nativeResult,initial,networkRun,fresh);try{report.put("identityAppliedRevision",identityAppliedRevision);report.put("policy",policy);report.put("route",stamp);report.put("connectionEpoch",epoch);report.put("executionId",OBSERVATION_EXECUTION_ID);}catch(Exception ignored){}if(networkRun&&fresh){JSONObject net=sample.optJSONObject("network"),browser=net==null?null:net.optJSONObject("ipv4");String ip=AuditReport.ip(browser);if(AuditReport.v4(ip)&&ip.equals(nativeResult.optString("ip")))observed=J.obj("ipv4",ip,"route",stamp);}decorateObservation(report,auditUrl,auditNavigation);if(fresh){session.identityObserved(report);recordObservation(report,auditUrl);}cleanup();refresh(true);save();Runnable callback=completed;completed=null;if(callback!=null)callback.run();}
-  void cancel(){if(serviceProbe.active){serviceProbe.cancel();return;}if(requestIdentity.active){requestIdentity.cancel();return;}if(!running)return;serial++;lastError="检查已取消，没有更新报告或环境基线";cleanup();Runnable callback=completed;completed=null;if(callback!=null)callback.run();}
+  void cancel(){if(serviceProbe.active){serviceProbe.cancel();return;}if(requestIdentity.active){requestIdentity.cancel();return;}if(!running)return;pendingPageAudit=null;serial++;lastError="检查已取消，没有更新报告或环境基线";cleanup();Runnable callback=completed;completed=null;if(callback!=null)callback.run();}
+  /** A pending request has collected no observations. Only its owned native
+   * proof may finish before the immutable full sampling stamp is captured. */
+  void nativeDocumentProofChanged(Object nativeSession,String epoch){PendingPageAudit pending=pendingPageAudit;if(pending!=null&&pendingPageCurrent(pending)&&session.web.environmentAuditDocumentOwns(pending.document,nativeSession,epoch))return;retirePageCheck();}
   /** Navigation and route changes retire page work; dedicated checks own their lifecycle. */
-  void retirePageCheck(){if(running&&geckoRun&&!serviceProbe.active&&!requestIdentity.active)cancel();}
+  void retirePageCheck(){if(running&&(geckoRun||pendingPageAudit!=null)&&!serviceProbe.active&&!requestIdentity.active)cancel();}
   void cleanup(){if(geckoRun&&auditNavigation==session.navigationEpoch&&auditUrl.equals(session.web.getUrl()))session.web.cancelEnvironmentAudit();running=false;nativeRuntimeIdentity=null;if(nativeWork!=null){nativeWork.cancel(true);nativeWork=null;}HttpURLConnection c=connection;connection=null;if(c!=null)closer.submit(()->c.disconnect());session.updateBrowserActivity();}
   JSONObject observationMetadata(String sourceUrl,long revision){
     String appVersion="";long appVersionCode=0;

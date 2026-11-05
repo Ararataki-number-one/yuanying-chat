@@ -79,6 +79,15 @@ def failure_summary(activity):
         'status', 'stage', 'failedAtStage', 'failure', 'checks', 'currentTimeZonePolicy',
         'lastNativeReadback', 'lifecycle')}
     result['nativeEvents'] = activity.get('nativeEvents', [])[-12:]
+    for name in ('staleTicketProof', 'staleRevisionProof'):
+        proof = activity.get(name)
+        if isinstance(proof, dict):
+            result[name] = {key: proof[key] for key in (
+                'actualStoreRecordAttempt', 'actualStoreReceiptAttempt', 'currentReceiptRead',
+                'oldRecordRejected', 'oldReceiptEmpty', 'oldReceiptRejected',
+                'currentReceiptPreserved', 'oldRevision', 'newRevision',
+                'oldContextId', 'newContextId', 'oldToken', 'newToken')
+                if key in proof and type(proof[key]) in (bool, int, str) and len(str(proof[key])) <= 160}
     raw = activity.get('lastPageObservation', {})
     def document(row):
         if not isinstance(row, dict):

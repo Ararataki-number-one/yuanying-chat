@@ -114,6 +114,7 @@ class GeckoEnvironmentEvidenceTests(unittest.TestCase):
         fixture.update(requests=requests, accepted=len(requests), tlsConnections=len(requests))
         activity = dict(schema=1, engine='gecko', status='passed', stage='complete', sourceCommit=SOURCE, sourceTree=TREE, runNonce=NONCE, buildIdentity=copy.deepcopy(identity), checks=[dict(id=name, **{'pass': True}) for name in sorted(gate.REQUIRED)], samples=[sample for sample in samples if sample['label'] in gate.LABELS], transitionSamples=[by_label['desktop-applied'], by_label['mobile-restored-applied']], rfpResetBaseline=by_label['rfp-system-reset'], rfpFinalObservation=by_label['rfp-applied'],
             staleTicketProof=dict(actualStoreRecordAttempt=True, oldRecordRejected=True, oldReceiptEmpty=True, oldContextId=native('reload')['contextId'], newContextId=native('reopen')['contextId'], oldToken=native('reload')['receipt']['requestToken'], newToken=native('reopen')['receipt']['requestToken']),
+            staleRevisionProof=dict(actualStoreRecordAttempt=True, actualStoreReceiptAttempt=True, currentReceiptRead=True, oldRecordRejected=True, oldReceiptRejected=True, currentReceiptPreserved=True, oldRevision=native('new-york')['desiredRevision'], newRevision=native('kathmandu')['desiredRevision'], oldContextId=native('new-york')['contextId'], newContextId=native('kathmandu')['contextId'], oldToken=native('new-york')['receipt']['requestToken'], newToken=native('kathmandu')['receipt']['requestToken']),
             popupProof=dict(actualNavigationDelegate=True, customRejected=True, sessionCountBefore=1, sessionCountAfter=1, oldNativeSessionUnchanged=True),
             rfpConflictProof=dict(actualUiAttempt=True, levelBefore=2, levelAfter=2, rfpConfirmed=True, desiredRevisionBefore=4, desiredRevisionAfter=4, savedZoneBefore='', savedZoneAfter='', customSaveRejected=True), lifecycle=lifecycle, fixture=fixture, actualAndroidExecution=True, actualGeckoExecution=True, actualPublicWebsiteExecution=False, workerCoverageVerified=False, serviceWorkerCoverageVerified=False)
         return dict(schema=1, fixtureType=gate.FIXTURE_TYPE, status='passed', sourceCommit=SOURCE, sourceTree=TREE, runNonce=NONCE, expectedBuildIdentity=copy.deepcopy(identity), activity=activity, hostTls=copy.deepcopy(previous['hostTls']), systemTimeZone=dict(zoneId='UTC', source='android-getprop-persist.sys.timezone', januaryOffsetMinutes=0, julyOffsetMinutes=0), sourceFiles={path: SHA for path in gate.SOURCE_INPUTS}, executionInputsUnchanged=True, cleanup=dict(appStopped=True, reverseRemoved=True, caRemoved=True, privateMaterialRemoved=True))
@@ -249,6 +250,21 @@ class GeckoEnvironmentEvidenceTests(unittest.TestCase):
             lambda r: r['activity']['popupProof'].update(actualNavigationDelegate=False), lambda r: r['activity']['popupProof'].update(sessionCountAfter=2), lambda r: r['activity']['popupProof'].update(oldNativeSessionUnchanged=False),
             lambda r: r['activity']['rfpConflictProof'].update(actualUiAttempt=False), lambda r: r['activity']['rfpConflictProof'].update(levelAfter=1), lambda r: r['activity']['rfpConflictProof'].update(rfpConfirmed=False), lambda r: r['activity']['rfpConflictProof'].update(desiredRevisionAfter=5), lambda r: r['activity']['rfpConflictProof'].update(savedZoneAfter='Asia/Kathmandu'),
         ])
+
+    def test_old_revision_proof_requires_both_actual_rejections_and_current_receipt(self):
+        changes = []
+        for key in ('actualStoreRecordAttempt', 'actualStoreReceiptAttempt', 'currentReceiptRead',
+                    'oldRecordRejected', 'oldReceiptRejected', 'currentReceiptPreserved'):
+            changes.append(lambda r, key=key: r['activity']['staleRevisionProof'].update({key: False}))
+        changes.extend([
+            lambda r: r['activity'].pop('staleRevisionProof'),
+            lambda r: r['activity']['staleRevisionProof'].update(oldRevision=3),
+            lambda r: r['activity']['staleRevisionProof'].update(newRevision=2),
+            lambda r: r['activity']['staleRevisionProof'].update(oldRevision=True),
+            lambda r: r['activity']['staleRevisionProof'].update(oldToken='d' * 64),
+            lambda r: r['activity']['staleRevisionProof'].update(newContextId='999'),
+        ])
+        self.reject_changes(changes)
 
     def test_coop_current_context_and_actual_header_trace_cannot_be_assumed(self):
         def without_header(report):

@@ -32,6 +32,8 @@ REQUIRED = {
     'clock.system', 'clock.new-york', 'clock.coop', 'clock.kathmandu',
     'navigation.reload', 'navigation.reopen', 'navigation.restore',
     'stale.actual-store-record-rejected', 'popup.custom-rejected',
+    'stale.old-revision-record-rejected', 'stale.old-revision-receipt-rejected',
+    'stale.current-receipt-preserved',
     'rfp.conflict-preserves-protection', 'ua.mobile.native', 'ua.desktop.native',
     'ua.mobile-restored.native', 'wire.public-only', 'gpt.generic-hotpath-off',
     'coverage.worker-scopes-honest',
@@ -212,6 +214,11 @@ def proof_lifecycle(activity, samples):
     stale = activity.get('staleTicketProof')
     require(type(stale) is dict and all(stale.get(key) is True for key in ('actualStoreRecordAttempt', 'oldRecordRejected', 'oldReceiptEmpty')) and token(stale.get('oldContextId'), '[1-9][0-9]{0,23}') and token(stale.get('newContextId'), '[1-9][0-9]{0,23}') and stale['oldContextId'] != stale['newContextId'] and sha(stale.get('oldToken')) and sha(stale.get('newToken')) and stale['oldToken'] != stale['newToken'], 'actual old sidecar ticket rejection missing')
     require(any(s['native']['contextId'] == stale['oldContextId'] and s['native']['receipt']['requestToken'] == stale['oldToken'] for s in samples.values()) and any(s['native']['contextId'] == stale['newContextId'] and s['native']['receipt']['requestToken'] == stale['newToken'] for s in samples.values()), 'stale ticket tokens do not belong to observed old/new native contexts')
+    revision = activity.get('staleRevisionProof')
+    require(type(revision) is dict and all(revision.get(key) is True for key in ('actualStoreRecordAttempt', 'actualStoreReceiptAttempt', 'currentReceiptRead', 'oldRecordRejected', 'oldReceiptRejected', 'currentReceiptPreserved')), 'actual old desired-revision rejection or preserved current receipt missing')
+    old, current = samples['new-york']['native'], samples['kathmandu']['native']
+    require(type(revision.get('oldRevision')) is type(revision.get('newRevision')) is int and revision['oldRevision'] == old['desiredRevision'] and revision['newRevision'] == current['desiredRevision'] and revision['oldRevision'] < revision['newRevision']
+            and revision.get('oldContextId') == old['contextId'] and revision.get('newContextId') == current['contextId'] and revision.get('oldToken') == old['receipt']['requestToken'] and revision.get('newToken') == current['receipt']['requestToken'], 'old desired-revision rejection is not bound to the observed New York and Kathmandu tickets')
     popup = activity.get('popupProof')
     require(type(popup) is dict and popup.get('actualNavigationDelegate') is True and popup.get('customRejected') is True and popup.get('oldNativeSessionUnchanged') is True and integer(popup.get('sessionCountBefore'), 0, 32) and type(popup.get('sessionCountAfter')) is int and popup['sessionCountBefore'] == popup['sessionCountAfter'], 'custom-zone popup must be rejected by the actual navigation delegate')
     baseline, final = activity['rfpResetBaseline']['native'], activity['rfpFinalObservation']['native']

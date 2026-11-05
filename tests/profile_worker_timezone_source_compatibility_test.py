@@ -11,6 +11,7 @@ import unittest
 from unittest.mock import patch
 
 import worker_timezone_source_compatibility as overlay
+from phase1_context_fix_source_compatibility import PATHS as context_paths, source_input as context_source_input
 import dual_browser_source_compatibility as dual
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -52,6 +53,8 @@ class WorkerTimezoneSourceCompatibility(unittest.TestCase):
             with self.subTest(path=relative):
                 before = subprocess.check_output(['git', 'show', overlay.BASE_COMMIT + ':' + relative], cwd=ROOT)
                 after = (ROOT / relative).read_bytes()
+                if relative in context_paths:
+                    after = context_source_input(after, relative)
                 self.assertEqual((SHA(before), len(before)), (row['previousSha256'], row['previousBytes']))
                 self.assertEqual((SHA(after), len(after)), (row['reviewedSha256'], row['reviewedBytes']))
                 self.assertEqual(overlay.source_input(before, relative), before)
@@ -70,6 +73,8 @@ class WorkerTimezoneSourceCompatibility(unittest.TestCase):
         rejected = 0
         for relative, row in overlay.manifest()['files'].items():
             after = (ROOT / relative).read_bytes()
+            if relative in context_paths:
+                after = context_source_input(after, relative)
             for delta in row['deltas']:
                 current = delta['current'].encode()
                 self.assertEqual(after.count(current), 1)
@@ -111,6 +116,8 @@ class WorkerTimezoneSourceCompatibility(unittest.TestCase):
         )
         for relative, before, after in variants:
             current = (ROOT / relative).read_bytes()
+            if relative in context_paths:
+                current = context_source_input(current, relative)
             self.assertEqual(current.count(before.encode()), 1)
             mutant = current.replace(before.encode(), after.encode(), 1)
             with self.assertRaises(ValueError):
@@ -152,6 +159,8 @@ class WorkerTimezoneSourceCompatibility(unittest.TestCase):
             ('if(rejectDisabledNavigation(s,request.uri))return GeckoResult.fromValue(AllowOrDeny.DENY);', ''),
         )
         current = (ROOT / relative).read_bytes()
+        if relative in context_paths:
+            current = context_source_input(current, relative)
         for before, after in variants:
             with self.subTest(guard=before):
                 self.assertEqual(current.count(before.encode()), 1)
@@ -167,6 +176,8 @@ class WorkerTimezoneSourceCompatibility(unittest.TestCase):
         relative = 'app/src/main/java/local/pocketchat/GeckoWebView.java'
         row = overlay.manifest()['files'][relative]
         after = (ROOT / relative).read_bytes()
+        if relative in context_paths:
+            after = context_source_input(after, relative)
         class ForbiddenContext:
             def encode(self, *args):
                 raise AssertionError('An unknown source reached a contextual replacement')

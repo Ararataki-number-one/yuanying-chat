@@ -277,6 +277,23 @@ class GeckoWebView extends FrameLayout {
     for(java.util.function.Consumer<Boolean> waiting:pending)try{waiting.accept(ready);}catch(RuntimeException ignored){}
   }
   Object identityAuditNativeOpen(){return timeZoneSessionAlive(current)?timeZoneGates.get(current):null;}
+  static final class AuditDocumentFence {
+    final GeckoSession session;final GeckoRuntime runtime;final TimeZoneGate open;final WebExtension.Port route,page;
+    final String url;final long navigation,document,identity,connection,protection,desired;
+    AuditDocumentFence(GeckoWebView view){session=view.current;runtime=view.runtime;open=view.timeZoneGates.get(session);route=view.routePort;page=view.ports.get(session);url=view.getUrl();navigation=view.owner.navigationEpoch;document=open==null?-1:open.documentSerial;identity=view.identityPolicyRevision;connection=view.owner.connectionEpoch;protection=view.nativeProtection.token();desired=view.owner.timeZone.status().optLong("desiredRevision",-1);}
+  }
+  Object environmentAuditDocumentFence(){AuditDocumentFence fence=new AuditDocumentFence(this);return environmentAuditDocumentCurrent(fence)?fence:null;}
+  boolean environmentAuditDocumentCurrent(Object expected){
+    if(!(expected instanceof AuditDocumentFence))return false;AuditDocumentFence fence=(AuditDocumentFence)expected;
+    return !addonDisabled&&fence.session==current&&fence.runtime!=null&&fence.runtime==runtime&&fence.open!=null&&timeZoneGates.get(current)==fence.open&&timeZoneSessionAlive(current)
+        &&fence.document==fence.open.documentSerial&&Objects.equals(fence.url,getUrl())&&fence.navigation==owner.navigationEpoch&&fence.connection==owner.connectionEpoch&&fence.identity==identityPolicyRevision&&fence.protection==nativeProtection.token()
+        &&fence.route!=null&&fence.route==routePort&&fence.page!=null&&fence.page==ports.get(current)&&!staleAppearanceConnections.contains(fence.page)&&fence.desired==owner.timeZone.status().optLong("desiredRevision",-1);
+  }
+  boolean environmentAuditDocumentOwns(Object expected,Object nativeSession,String epoch){if(!(expected instanceof AuditDocumentFence))return false;AuditDocumentFence fence=(AuditDocumentFence)expected;return fence.session==nativeSession&&fence.open!=null&&Objects.equals(fence.open.epoch,epoch)&&environmentAuditDocumentCurrent(fence);}
+  void awaitEnvironmentAuditDocumentProof(Object expected,java.util.function.Consumer<Boolean> done){
+    if(!environmentAuditDocumentCurrent(expected)){done.accept(false);return;}AuditDocumentFence fence=(AuditDocumentFence)expected;
+    awaitIdentityAuditDocumentProof(fence.url,fence.navigation,fence.session,fence.runtime,fence.open,ready->done.accept(ready&&environmentAuditDocumentCurrent(fence)));
+  }
   void awaitIdentityAuditDocumentProof(String expectedUrl,long navigation,Object expectedSession,Object expectedRuntime,Object expectedOpen,java.util.function.Consumer<Boolean> done){
     GeckoSession session=current;TimeZoneGate gate=timeZoneGates.get(session);
     if(expectedSession!=session||expectedRuntime==null||expectedRuntime!=runtime||expectedOpen==null||expectedOpen!=gate||expectedUrl==null||expectedUrl.isEmpty()||session==null||gate==null||!Objects.equals(expectedUrl,getUrl())||owner.navigationEpoch!=navigation||!timeZoneSessionAlive(session)){done.accept(false);return;}
@@ -980,9 +997,12 @@ class GeckoWebView extends FrameLayout {
     try{port.postMessage(J.obj("kind","evaluate","id",id,"code",code));}catch(Exception error){callbacks.complete(port,id,"null");}
   }
   void runEnvironmentAudit(JSONObject configuration,ValueCallback<String> callback){
+    int budget=14000;
+    if(configuration==null){callback.onReceiveValue("null");return;}
+    if(configuration.has("budgetMillis")){Object value=configuration.opt("budgetMillis");if(!(value instanceof Integer||value instanceof Long)||((Number)value).longValue()<1||((Number)value).longValue()>14000){callback.onReceiveValue("null");return;}budget=((Number)value).intValue();}
     WebExtension.Port port=ports.get(current);
     if(destroyed||port==null||staleAppearanceConnections.contains(port)){callback.onReceiveValue("null");return;}
-    int request=callbacks.add(port,callback::onReceiveValue,14000);
+    int request=callbacks.add(port,callback::onReceiveValue,budget);
     try{port.postMessage(J.obj("kind","audit","id",request,"configuration",configuration));}
     catch(Exception error){callbacks.complete(port,request,"null");}
   }

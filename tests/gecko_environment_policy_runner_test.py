@@ -101,6 +101,20 @@ class GeckoEnvironmentRunnerTests(unittest.TestCase):
         self.assertEqual(summary['lastPageObservation']['page'], {'nativeTimeZone': {'timeZone': 'UTC'}})
         self.assertEqual(runner.failure_summary(None), {'stage': 'unavailable'})
 
+    def test_failure_summary_preserves_bounded_stale_contract_evidence_only(self):
+        proof = dict(actualStoreRecordAttempt=True, oldRecordRejected=True,
+                     oldReceiptEmpty=False, oldToken='d' * 64, privateKey='never export')
+        value = dict(self.activity(), staleTicketProof=proof,
+                     staleRevisionProof=dict(proof, actualStoreReceiptAttempt=True,
+                                             oldReceiptRejected=True, newRevision=3,
+                                             newToken='x' * 161))
+        summary = runner.failure_summary(value)
+        self.assertEqual(summary['staleTicketProof']['oldReceiptEmpty'], False)
+        self.assertEqual(summary['staleRevisionProof']['oldReceiptRejected'], True)
+        for name in ('staleTicketProof', 'staleRevisionProof'):
+            self.assertNotIn('privateKey', summary[name])
+        self.assertNotIn('newToken', summary['staleRevisionProof'])
+
     def test_source_inventory_binds_every_required_producer_and_real_app_source(self):
         paths = runner.source_inputs()
         self.assertEqual(len(paths), len(set(paths)))

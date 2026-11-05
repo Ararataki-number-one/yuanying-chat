@@ -1,0 +1,144 @@
+package local.pocketchat;
+
+import java.io.*;
+import java.nio.file.*;
+import java.util.*;
+import java.util.concurrent.Executor;
+import java.util.function.Consumer;
+import org.json.*;
+
+/** Exact current fixture methods, real Store, explicit UI/page/native boundaries. */
+public final class StaleTicketHost {
+  static final String OLD_ASSERT="stale.actual-store-record-rejected";
+  static final List<String> checks=new ArrayList<>();
+  static final List<JSONObject> observations=new ArrayList<>();
+  static Path root;
+  static void check(String name,boolean value){if(!value)throw new AssertionError(name);checks.add(name);}
+  static final class QueueBoundary implements Executor {
+    final ArrayDeque<Runnable> pending=new ArrayDeque<>();
+    public void execute(Runnable task){pending.add(task);}
+    void post(Runnable task){execute(task);}
+    void one(){if(pending.isEmpty())throw new AssertionError("A queued boundary task is required");pending.remove().run();}
+  }
+  static final class SessionBoundary {
+    final TestContext context;final QueueBoundary environmentIo=new QueueBoundary();
+    SessionBoundary(TestContext context){this.context=context;}
+  }
+  static final class BrowserFingerprintFixture {static final String A="fp-a.pocketchat.test",B="fp-b.pocketchat.test";}
+  static final class FixtureBoundary {
+    interface Ready {boolean get()throws Exception;}
+    interface Step {void run()throws Exception;}
+    final SessionBoundary session;final QueueBoundary probe=new QueueBoundary();
+    final List<String> trace=new ArrayList<>();
+    JSONObject staleTicketProof=new JSONObject(),staleRevisionProof=new JSONObject(),lifecycle=new JSONObject();
+    GeckoTimeZoneStore.Ticket retainedTicket,currentTicket;
+    JSONObject retainedReceipt,currentSample;
+    Throwable failure;boolean completed;int saves,navigations;
+    FixtureBoundary(String label)throws Exception{
+      TestContext context=new TestContext(root.resolve(label),new EnvironmentSpec.Identity(2,4,GeckoTimeZoneHost.ID));session=new SessionBoundary(context);
+      GeckoTimeZoneStore.State initial=GeckoTimeZoneStore.load(context);
+      GeckoTimeZoneStore.save(context,initial.identity,initial.revision,GeckoTimeZoneSpec.of("America/New_York"));
+      bind("6",BrowserFingerprintFixture.A,"new-york");trace.clear();
+    }
+    void bind(String context,String host,String phase)throws Exception{
+      GeckoTimeZoneStore.State desired=GeckoTimeZoneStore.load(session.context);
+      currentTicket=GeckoTimeZoneStore.activate(session.context,desired.identity,desired.revision,new GeckoTimeZoneStore.Binding("synthetic-native-ACK-boundary","native_session","open_epoch",context));
+      JSONObject receipt=GeckoTimeZoneStore.record(session.context,currentTicket,GeckoTimeZoneHost.ack(currentTicket,desired.spec).toString());
+      currentSample=J.obj("page",J.obj("origin","https://"+host,"phase",phase,"documentId",phase+"-"+context,"boundaryFirstInlineZone",desired.spec.zoneId),
+          "native",J.obj("contextId",context,"desiredRevision",desired.revision,"desiredZone",desired.spec.zoneId,"receipt",receipt));
+      trace.add("bind:"+context+":"+desired.revision);
+    }
+    GeckoTimeZoneStore.Ticket ticket(){return currentTicket;}
+    void retain()throws Exception{retainedTicket=ticket();retainedReceipt=currentSample.getJSONObject("native").getJSONObject("receipt");}
+    void check(String id,boolean value){StaleTicketHost.check(id,value);trace.add("check:"+id);}
+    void failed(Throwable error){if(failure==null)failure=error;}
+    void propagate()throws Exception{if(failure instanceof Error)throw (Error)failure;if(failure instanceof Exception)throw (Exception)failure;if(failure!=null)throw new RuntimeException(failure);}
+    void pump()throws Exception{
+      int steps=0;while(!session.environmentIo.pending.isEmpty()||!probe.pending.isEmpty()){
+        if(++steps>100)throw new AssertionError("Fixture queues must terminate without an unbounded retry");
+        if(!session.environmentIo.pending.isEmpty())session.environmentIo.one();propagate();
+        if(!probe.pending.isEmpty())probe.one();propagate();
+      }
+    }
+    // The three exact methods below see only these declared synthetic page/UI
+    // boundaries. They are not Date/Intl, network, Gecko or trusted gesture proof.
+    boolean firstInline(JSONObject value)throws Exception{return value.getJSONObject("page").getString("boundaryFirstInlineZone").equals(value.getJSONObject("native").getString("desiredZone"));}
+    boolean clockMatches(JSONObject value,String zone)throws Exception{return zone.equals(value.getJSONObject("page").getString("boundaryFirstInlineZone"));}
+    boolean coopResponseObserved(){return navigations==1;}
+    void navigate(String host,String phase,Step after){
+      navigations++;trace.add("navigate:"+phase);session.environmentIo.execute(()->{try{bind("7",host,phase);probe.post(()->{try{after.run();}catch(Throwable error){failed(error);}});}catch(Throwable error){failed(error);}});
+    }
+    void capture(String label,boolean workers,Consumer<JSONObject> after){
+      trace.add("capture:"+label);JSONObject captured=currentSample;probe.post(()->after.accept(captured));
+    }
+    void waitFor(String label,Ready ready,Step after){probe.post(()->{try{if(!ready.get())throw new AssertionError("Declared readiness boundary not ready: "+label);after.run();}catch(Throwable error){failed(error);}});}
+    void saveZone(String zone,Step after){
+      saves++;trace.add("save-request:"+zone);session.environmentIo.execute(()->{try{
+        GeckoTimeZoneStore.State before=GeckoTimeZoneStore.load(session.context);
+        GeckoTimeZoneStore.save(session.context,before.identity,before.revision,GeckoTimeZoneSpec.of(zone));trace.add("save-published:"+zone);
+        bind("10",BrowserFingerprintFixture.B,"kathmandu");probe.post(()->{try{after.run();}catch(Throwable error){failed(error);}});
+      }catch(Throwable error){failed(error);}});
+    }
+    // The remaining Android reload/restore workload is outside this focused
+    // harness. Stop after invoking the exact revision helper on the real store.
+    void kathmandu(JSONObject captured){try{staleRevisionTicket(captured.getJSONObject("native"),()->{completed=true;trace.add("completed");});}catch(Throwable error){failed(error);}}
+
+    @METHODS@
+  }
+
+  static JSONObject nativeSample(FixtureBoundary fixture)throws Exception{return fixture.currentSample.getJSONObject("native");}
+  static byte[] bytes(FixtureBoundary fixture)throws Exception{return GeckoTimeZoneHost.raw(fixture.session.context);}
+  static void exactFailure(FixtureBoundary fixture,String name)throws Exception{
+    boolean exact=false;try{fixture.pump();}catch(AssertionError expected){exact=name.equals(expected.getMessage());}
+    check("Actual fixture rejects the precise negative control: "+name,exact);
+  }
+  static void sameRevision()throws Exception{
+    FixtureBoundary f=new FixtureBoundary("same-revision");f.retain();String token=f.retainedTicket.requestToken;f.bind("7",BrowserFingerprintFixture.B,"coop");byte[] before=bytes(f);final boolean[] done={false};
+    check("Same-revision control really replaced the native context and token",f.retainedTicket.revision==f.currentTicket.revision&&!token.equals(f.currentTicket.requestToken)&&!f.retainedTicket.binding.contextId.equals(f.currentTicket.binding.contextId));
+    f.staleNativeTicket(nativeSample(f),()->done[0]=true);
+    check("Actual stale proof waits for the environment writer",!done[0]&&f.staleTicketProof.length()==0&&f.session.environmentIo.pending.size()==1);
+    f.session.environmentIo.one();
+    check("Writer completion still waits for probe delivery",!done[0]&&f.staleTicketProof.length()==0&&f.probe.pending.size()==1);
+    f.pump();
+    check("Actual same-revision stale proof completes without changing current durable bytes",done[0]&&Arrays.equals(before,bytes(f)));
+    check("Original context rejection reports denied old record and empty historical receipt",f.staleTicketProof.getBoolean("oldRecordRejected")&&f.staleTicketProof.getBoolean("oldReceiptEmpty"));
+    check("Current replacement receipt remains accepted after rejected old-context write",GeckoTimeZoneStore.lastReceipt(f.session.context,f.currentTicket).getString("requestToken").equals(f.currentTicket.requestToken));
+    observations.add(J.obj("case","same-revision","proof",f.staleTicketProof,"desiredRevision",f.currentTicket.revision));
+  }
+  static void revision()throws Exception{
+    FixtureBoundary f=new FixtureBoundary("revision");f.retain();f.saveZone("Asia/Kathmandu",()->{});f.pump();byte[] before=bytes(f);final boolean[] done={false};
+    f.staleRevisionTicket(nativeSample(f),()->done[0]=true);check("Revision proof is not successful before the writer executes",!done[0]&&f.staleRevisionProof.length()==0);f.pump();
+    check("Actual revision proof completes only with independent old-record and old-receipt denials",done[0]&&f.staleRevisionProof.getBoolean("oldRecordRejected")&&f.staleRevisionProof.getBoolean("oldReceiptRejected"));
+    check("Revision proof preserves the independently readable current receipt and exact bytes",f.staleRevisionProof.getBoolean("currentReceiptPreserved")&&Arrays.equals(before,bytes(f)));
+    check("Revision proof uses distinct old NY and new Kathmandu desired revisions",f.staleRevisionProof.getLong("oldRevision")==2&&f.staleRevisionProof.getLong("newRevision")==3&&GeckoTimeZoneStore.load(f.session.context).spec.zoneId.equals("Asia/Kathmandu"));
+    observations.add(J.obj("case","revision","proof",f.staleRevisionProof));
+  }
+  static void orchestration()throws Exception{
+    FixtureBoundary f=new FixtureBoundary("orchestration");f.newYork(f.currentSample);
+    check("Actual newYork orchestration starts with queued navigation rather than inline store success",f.saves==0&&!f.completed&&f.session.environmentIo.pending.size()==1);f.pump();
+    check("Actual newYork orchestration reaches the current Kathmandu revision proof",f.completed&&f.navigations==1&&f.saves==1&&f.staleRevisionProof.getBoolean("currentReceiptPreserved"));
+    int proof=f.trace.indexOf("check:"+OLD_ASSERT),save=f.trace.indexOf("save-published:Asia/Kathmandu");
+    check("Actual wiring proves old native context before the later desired revision changes",proof>=0&&save>proof);
+    check("Wired stale-native proof belongs to observed same-revision contexts six and seven",f.staleTicketProof.getString("oldContextId").equals("6")&&f.staleTicketProof.getString("newContextId").equals("7")&&f.lifecycle.getJSONObject("coop").getBoolean("contextChanged"));
+    check("Wired revision proof independently observes revision two versus three",f.staleRevisionProof.getLong("oldRevision")==2&&f.staleRevisionProof.getLong("newRevision")==3);
+    observations.add(J.obj("case","actual-newYork-wiring","nativeProof",f.staleTicketProof,"revisionProof",f.staleRevisionProof,"trace",new JSONArray(f.trace)));
+  }
+  static void rejectedInputs()throws Exception{
+    FixtureBoundary oldOrder=new FixtureBoundary("old-after-revision");oldOrder.retain();oldOrder.saveZone("Asia/Kathmandu",()->{});oldOrder.pump();byte[] current=bytes(oldOrder);oldOrder.staleNativeTicket(nativeSample(oldOrder),()->oldOrder.completed=true);exactFailure(oldOrder,OLD_ASSERT);
+    check("Old after-revision fixture order reproduces denial true and empty false",oldOrder.staleTicketProof.getBoolean("oldRecordRejected")&&!oldOrder.staleTicketProof.getBoolean("oldReceiptEmpty")&&!oldOrder.completed);
+    check("Reproduced old-order failure still preserves the current Kathmandu receipt",Arrays.equals(current,bytes(oldOrder))&&GeckoTimeZoneStore.lastReceipt(oldOrder.session.context,oldOrder.currentTicket).length()>0);
+    observations.add(J.obj("case","old-order-reproduced-as-failure","proof",oldOrder.staleTicketProof,"expectedAssertion",OLD_ASSERT));
+    FixtureBoundary counterfeit=new FixtureBoundary("live-ticket-is-not-stale");counterfeit.retain();counterfeit.staleNativeTicket(nativeSample(counterfeit),()->counterfeit.completed=true);exactFailure(counterfeit,OLD_ASSERT);
+    check("A current live ticket cannot be mislabeled a rejected stale ticket",!counterfeit.staleTicketProof.getBoolean("oldRecordRejected")&&!counterfeit.staleTicketProof.getBoolean("oldReceiptEmpty")&&!counterfeit.completed);
+    FixtureBoundary unreadable=new FixtureBoundary("unreadable");unreadable.retain();unreadable.bind("7",BrowserFingerprintFixture.B,"coop");unreadable.session.context.vault.failRead=true;unreadable.staleNativeTicket(nativeSample(unreadable),()->unreadable.completed=true);exactFailure(unreadable,OLD_ASSERT);unreadable.session.context.vault.failRead=false;
+    check("A vault read failure cannot masquerade as an empty historical receipt",unreadable.staleTicketProof.getBoolean("oldRecordRejected")&&!unreadable.staleTicketProof.getBoolean("oldReceiptEmpty")&&!unreadable.completed);
+    FixtureBoundary wrongCurrent=new FixtureBoundary("wrong-current");wrongCurrent.retain();wrongCurrent.saveZone("Asia/Kathmandu",()->{});wrongCurrent.pump();JSONObject forged=new JSONObject(nativeSample(wrongCurrent).toString());forged.getJSONObject("receipt").put("requestToken",new String(new char[64]).replace('\0','f'));wrongCurrent.staleRevisionTicket(forged,()->wrongCurrent.completed=true);exactFailure(wrongCurrent,"stale.current-receipt-preserved");
+    check("Two old-revision denials alone cannot hide a counterfeit current receipt",wrongCurrent.staleRevisionProof.getBoolean("oldRecordRejected")&&wrongCurrent.staleRevisionProof.getBoolean("oldReceiptRejected")&&!wrongCurrent.staleRevisionProof.getBoolean("currentReceiptPreserved")&&!wrongCurrent.completed);
+  }
+  public static void main(String[] args)throws Exception{
+    root=Paths.get(args[0]);Files.createDirectories(root);String focus=args.length>1?args[1]:"full";
+    if(focus.equals("full")){sameRevision();revision();orchestration();rejectedInputs();}
+    else if(focus.equals("same-revision"))sameRevision();else if(focus.equals("revision"))revision();else if(focus.equals("orchestration"))orchestration();else throw new IllegalArgumentException("Unknown focus: "+focus);
+    System.out.println(J.obj("status","passed","passed",checks.size(),"total",checks.size(),"checks",new JSONArray(checks),"observations",new JSONArray(observations)));
+  }
+}
