@@ -263,6 +263,7 @@ jobs:
         python3 tests/ip-timezone-fixture-process-host/run.py --java-home "$JAVA_HOME_17_X64" --json-jar "$PROFILE_ANDROID_JSON_JAR" --output work/gecko-ip-timezone-acceptance-probe-host/process-android.json
         python3 tests/ip_timezone_diagnostic_payload_test.py
         python3 tests/ip_timezone_window_diagnostic_test.py --java-home "$JAVA_HOME_17_X64"
+        python3 tests/gecko_ip_timezone_rfp_standard_test.py --java-home "$JAVA_HOME_17_X64" --output work/gecko-ip-timezone-acceptance-probe-host/rfp-standard.json
         node --test tests/ip_timezone_diagnostic_observer_test.cjs tests/gecko_ip_timezone_watchdog_test.cjs
     - name: Bind exact diagnostic build payload bytes
       shell: bash

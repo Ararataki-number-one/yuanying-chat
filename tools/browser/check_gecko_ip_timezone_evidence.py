@@ -23,6 +23,8 @@ REPORT_NAME='gecko-ip-timezone-results.json'
 RAW_DIRECTORY='gecko-ip-timezone-evidence'
 FIXTURE_TYPE='gecko-production-ip-timezone-v1'
 GEO_SOURCE='https://ipwho.is/?fields=success,ip,timezone.id'
+# Gecko157 nsRFPService::GetSpoofedJSTimeZone; official Git0c469c2352451630bc69fc328c9f0c589c6c534d.
+RFP_STANDARD_ZONE='Atlantic/Reykjavik'
 CASES=('default-socks','route-switch-http','https-proxy','cancel-late','manual-system',
        'manual-iana','rfp-priority','manual-rfp-denied','bootstrap-isolation',
        'redirect-rejected','invalid-geo-rejected')
@@ -209,7 +211,7 @@ def validate_behavior(report,source,expected,raw_values,reader):
     for row in checks: keys(row,('id','pass'));require(text(row['id']) and row['pass'] is True,'failed actual assertion');ids.append(row['id'])
     require(len(ids)==len(set(ids)) and REQUIRED<=set(ids),'missing/duplicate original IP assertions')
     system=report.get('systemTimeZone',{});require(type(system) is dict and system.get('before')==system.get('after') and text(system.get('before'),80),'Android system timezone changed')
-    desired={'default-socks':('ip','America/New_York'),'route-switch-http':('ip','Asia/Kathmandu'),'https-proxy':('ip','UTC'),'manual-system':('system',system['before']),'manual-iana':('iana','Asia/Kathmandu'),'rfp-priority':('ip','UTC')}
+    desired={'default-socks':('ip','America/New_York'),'route-switch-http':('ip','Asia/Kathmandu'),'https-proxy':('ip','UTC'),'manual-system':('system',system['before']),'manual-iana':('iana','Asia/Kathmandu'),'rfp-priority':('ip',RFP_STANDARD_ZONE)}
     for name,(mode,wanted) in desired.items():
         sample=case_values[name];keys(sample,('page','frames','workers','native','security','case'),('oldTicketReadAttempted','oldTicketRejected','geoCountBefore','geoCountAfter'));require(sample['case']==name,'sample case differs');page(sample['page'],source,report['runNonce'],wanted)
         require(type(sample['frames']) is list and len(sample['frames'])==2 and {v.get('origin') for v in sample['frames']}==ORIGINS,'both real controlled frames required')
