@@ -436,8 +436,9 @@ public final class ActualStartupReadyHost {
   static final class ProxyBoundary {final AtomicInteger successes=new AtomicInteger(1);}
   RuntimeBoundary runtime=new RuntimeBoundary();WebBoundary surface=new WebBoundary();
   final TabBoundary selected=new TabBoundary();final ProxyBoundary fixture=new ProxyBoundary();
-  boolean policyReady=true,finished,destroyed,foreground=true;long targetGeneration=1;
+  boolean policyReady=true,finished,destroyed,foreground=true,nativeCompletion=true;String completionPath="/start";long targetGeneration=1;
   WebBoundary web(){return surface;}
+  boolean nativePageCompleted(String path){return nativeCompletion&&path.equals(completionPath);}
   boolean fingerprintTraffic(TabBoundary tab,WebBoundary view){return policyReady&&tab==selected&&view!=null&&view==surface;}
   public static void main(String[] args){
     ActualStartupReadyHost f=new ActualStartupReadyHost();
@@ -455,7 +456,10 @@ public final class ActualStartupReadyHost {
     f.runtime.valid=false;check(!f.startReady());f.runtime=null;check(!f.startReady());
     f.runtime=new RuntimeBoundary();f.surface=null;check(!f.startReady());f.surface=new WebBoundary();f.surface.progress=100;check(f.startReady());
     check(f.targetCurrent(f.surface,1));f.policyReady=false;check(!f.startReady());check(!f.targetCurrent(f.surface,1));f.policyReady=true;check(f.startReady());check(f.targetCurrent(f.surface,1));
-    System.out.println("{\"checks\":"+checks+",\"oldPredicateAdvancesBeforeProgress\":true,\"newPredicateWaits\":true,\"continuationsAfterProgress100\":"+continuations+",\"originalRenderCheckAfterWait\":true}");
+    int originalChecks=checks;
+    f.nativeCompletion=false;check(!f.page("/start"));check(!f.startReady());f.nativeCompletion=true;check(f.startReady());
+    f.completionPath="/second";check(!f.startReady());f.completionPath="/start";check(f.startReady());
+    System.out.println("{\"checks\":"+checks+",\"originalChecks\":"+originalChecks+",\"completionChecks\":"+(checks-originalChecks)+",\"oldPredicateAdvancesBeforeProgress\":true,\"newPredicateWaits\":true,\"continuationsAfterProgress100\":"+continuations+",\"originalRenderCheckAfterWait\":true}");
   }
 }
 '''
@@ -477,7 +481,9 @@ public final class ActualStartupReadyHost {
                 capture_output=True, text=True, timeout=20)
             self.assertEqual(ran.returncode, 0, ran.stdout + ran.stderr)
             observed = json.loads(ran.stdout)
-            self.assertEqual(observed['checks'], 26)
+            self.assertEqual(observed['checks'], 31)
+            self.assertEqual(observed['originalChecks'], 26)
+            self.assertEqual(observed['completionChecks'], 5)
             self.assertTrue(observed['oldPredicateAdvancesBeforeProgress'])
             self.assertTrue(observed['newPredicateWaits'])
             self.assertEqual(observed['continuationsAfterProgress100'], 1)
@@ -528,6 +534,79 @@ public final class ActualStartupReadyHost {
         encoded = json.dumps(packet, ensure_ascii=False, separators=(',', ':'))
         self.assertIn('Controlled boot failure', encoded)
         self.assertLessEqual(len(encoded.encode('utf-8')), 16000)
+
+    def native_page_state(self):
+        return dict(path='/second',loading=False,failed=False,generation=3,progress=100,
+                    fingerprintLoading=False,fingerprintSaving=False,fingerprintReady=True,
+                    history=dict(count=2,start=True,second=True))
+
+    def native_page_event(self, sequence=1):
+        return dict(sequence=sequence,path='/second',eligible=True,selected=True,currentView=True,
+                    generation=3,loadingBefore=True,failedBefore=False,loadingAfter=False,
+                    failedAfter=False,progress=100,history=dict(count=2,start=True,second=True))
+
+    def test_native_callback_diagnostic_retains_typed_fixture_labels_without_mutation(self):
+        state,events=self.native_page_state(),[self.native_page_event(47),self.native_page_event(48)]
+        current=self.current();current.update(nativePageState=state,nativePageEvents=events)
+        before=copy.deepcopy(current)
+        packet=controller.diagnostic_failure(current,'controlled history failure',[],[])
+        self.assertEqual(packet['lastValidatedReport']['nativePageState'],state)
+        self.assertEqual(packet['lastValidatedReport']['nativePageEvents'],events)
+        self.assertEqual(current,before)
+        state['history']['count']=0;events[0]['history']['count']=0
+        self.assertEqual(packet['lastValidatedReport']['nativePageState']['history']['count'],2)
+        self.assertEqual(packet['lastValidatedReport']['nativePageEvents'][0]['history']['count'],2)
+        for path in controller.PAGE_PATHS:
+            self.assertEqual(controller.native_page_summary(dict(before['nativePageState'],path=path))['path'],path)
+
+    def test_callback_diagnostic_rejects_unknown_paths_secrets_extras_and_raw_history(self):
+        for section,factory,sanitize in (
+                ('state',self.native_page_state,controller.native_page_summary),
+                ('event',self.native_page_event,lambda row:controller.native_page_summary(row,event=True))):
+            mutations={
+                'foreign URL':lambda row:row.update(path='https://private.invalid/SECRET'),
+                'unknown controlled path':lambda row:row.update(path='/secret'),
+                'extra page body':lambda row:row.update(body='SECRET'),
+                'raw history rows':lambda row:row['history'].update(rows=[{'url':'SECRET'}]),
+                'history URL instead of flag':lambda row:row['history'].update(start='SECRET'),
+                'missing history flag':lambda row:row['history'].pop('second'),
+                'boolean history count':lambda row:row['history'].update(count=True),
+                'oversize history':lambda row:row['history'].update(count=201),
+                'negative history':lambda row:row['history'].update(count=-1),
+                'float generation':lambda row:row.update(generation=3.0),
+                'boolean generation':lambda row:row.update(generation=True),
+                'oversize generation':lambda row:row.update(generation=10000001),
+                'negative generation':lambda row:row.update(generation=-2),
+                'float progress':lambda row:row.update(progress=100.0),
+                'invalid progress':lambda row:row.update(progress=101),
+                'string path':lambda row:row.update(path=['/second']),
+            }
+            flag='eligible' if section=='event' else 'loading'
+            mutations['nonboolean flag']=lambda row:row.update({flag:0})
+            for name,mutate in mutations.items():
+                with self.subTest(section=section,mutation=name):
+                    row=factory();mutate(row);self.assertIsNone(sanitize(row))
+                    current=self.current();current['nativePageState' if section=='state' else 'nativePageEvents']=row if section=='state' else [row]
+                    packet=controller.diagnostic_failure(current,'controlled',[],[])
+                    self.assertNotIn('nativePageState' if section=='state' else 'nativePageEvents',packet['lastValidatedReport'])
+                    self.assertNotIn('SECRET',json.dumps(packet))
+
+    def test_callback_event_framing_is_strict_and_overlong_arrays_are_dropped(self):
+        for value in (None,{},'SECRET',[self.native_page_event()]*49,
+                      [self.native_page_event(2),self.native_page_event(1)],
+                      [self.native_page_event(),self.native_page_event()],
+                      [dict(self.native_page_event(),sequence=True)],
+                      [dict(self.native_page_event(),sequence=0)],
+                      [dict(self.native_page_event(),sequence=10000001)]):
+            with self.subTest(value=repr(value)[:100]):
+                self.assertIsNone(controller.native_page_events_summary(value))
+        current=self.current();current['nativePageEvents']=[self.native_page_event(i+1) for i in range(48)]
+        self.assertEqual(len(controller.native_page_events_summary(current['nativePageEvents'])),48)
+        current.update(failure='控制失败😀'*10000,checks=[{'name':'😀'*200,'pass':False}]*6)
+        packet=controller.diagnostic_failure(current,'😀'*10000,['😀'*1000]*8,[{'kind':'😀'*100,'stage':'😀'*100}]*8)
+        encoded=json.dumps(packet,ensure_ascii=False,separators=(',',':')).encode()
+        self.assertLessEqual(len(encoded),16000)
+        self.assertEqual(json.loads(encoded),packet)
 
     def run_controller_failure(self, ready, latest=None):
         """Run the real controller with explicit, failing device boundaries.

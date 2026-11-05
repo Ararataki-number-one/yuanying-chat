@@ -5,6 +5,8 @@ import json
 import os
 from pathlib import Path
 import re
+import secrets
+import shlex
 import shutil
 import subprocess
 import threading
@@ -174,31 +176,90 @@ def _compile_parser(root, binding, deadline):
     return [str(java), '-cp', str(classes), CLASS], dict(parserClassesSha256=digest(json.dumps(saved['classes'], sort_keys=True).encode()), cache=cache, classes=saved['classes'])
 
 
+IDENTITY_FRAMES = (('pid',128),('first-stat',65536),('status',65536),
+                   ('cmdline',65536),('last-stat',65536),('system-package',65536),
+                   ('test-package',65536),('build-identity',65536))
+
+
+def _identity_script(token):
+    """One raw shell transport; each original read still runs once in order."""
+    need(re.fullmatch('[0-9a-f]{32}', token or '') is not None, 'invalid-request')
+    need(re.fullmatch('[A-Za-z][A-Za-z0-9_.]*', PACKAGE) is not None, 'invalid-request')
+    package=shlex.quote(PACKAGE)
+    uri=shlex.quote('content://'+PACKAGE+'.evidence/build-identity')
+    script=[
+        'identity_frame() {',
+        '  identity_index="$1"; identity_name="$2"; shift 2',
+        '  printf "PCHR1 '+token+' %s %s\\n" "$identity_index" "$identity_name"',
+        '  "$@"',
+        '  identity_exit=$?',
+        '  printf "\\nPCHR1 '+token+' %s exit %s\\n" "$identity_index" "$identity_exit"',
+        '  [ "$identity_exit" -eq 0 ] || exit 0',
+        '}',
+        'identity_pid=$(pidof '+package+')',
+        'identity_exit=$?',
+        'printf "PCHR1 '+token+' 0 pid\\n%s\\n\\nPCHR1 '+token+' 0 exit %s\\n" "$identity_pid" "$identity_exit"',
+        '[ "$identity_exit" -eq 0 ] || exit 0',
+        'case "$identity_pid" in ""|0*|*[!0-9]*) exit 0;; esac',
+        'identity_frame 1 first-stat cat "/proc/$identity_pid/stat"',
+        'identity_frame 2 status cat "/proc/$identity_pid/status"',
+        'identity_frame 3 cmdline cat "/proc/$identity_pid/cmdline"',
+        'identity_frame 4 last-stat cat "/proc/$identity_pid/stat"',
+        'identity_frame 5 system-package pm list packages -U --user 0 com.android.systemui',
+        'identity_frame 6 test-package pm list packages -U --user 0 '+package,
+        'identity_frame 7 build-identity content read --uri '+uri,
+    ]
+    return ('\n'.join(script)+'\n').encode('ascii')
+
+
+def _identity_frames(raw,token):
+    """Reject partial, reordered, duplicate, overlong or ambiguous raw frames."""
+    need(type(raw) is bytes and re.fullmatch('[0-9a-f]{32}',token or '') is not None, 'invalid-observation')
+    marker=b'PCHR1 '+token.encode('ascii')+b' ';offset=0;values=[]
+    for index,(name,limit) in enumerate(IDENTITY_FRAMES):
+        header=marker+str(index).encode()+b' '+name.encode()+b'\n'
+        need(raw.startswith(header,offset),'invalid-observation');offset+=len(header)
+        end=raw.find(b'\n'+marker,offset)
+        need(end>=offset,'invalid-observation')
+        value=raw[offset:end]
+        need(len(value)<=limit,'output-too-large')
+        offset=end+1;line_end=raw.find(b'\n',offset)
+        need(line_end>=offset,'invalid-observation')
+        status=re.fullmatch(re.escape(marker+str(index).encode()+b' exit ')+rb'(0|[1-9][0-9]{0,2})',raw[offset:line_end])
+        need(status is not None and int(status[1])<=255,'invalid-observation')
+        need(status[1]==b'0','observation-failed');offset=line_end+1
+        values.append(value)
+        if index==0:need(re.fullmatch(rb'[1-9][0-9]*',value.strip()) is not None,'identity-changed')
+    need(offset==len(raw),'invalid-observation')
+    return values
+
+
 def _identity(prefix, identity, deadline):
-    def call(*parts, limit=65536):
-        return _checked(prefix+list(parts), deadline, stdout_limit=limit)
-    pid = call('shell', 'pidof', PACKAGE, limit=128).decode('ascii').strip()
+    token=secrets.token_hex(16)
+    raw=_checked(prefix+['shell','-T','sh','-s'],deadline,input_bytes=_identity_script(token),
+                 stdout_limit=sum(limit for _,limit in IDENTITY_FRAMES)+4096)
+    pid_raw,first_raw,status_raw,command,last_raw,system_raw,package_raw,provider_raw=_identity_frames(raw,token)
+    pid = pid_raw.decode('ascii').strip()
     need(re.fullmatch('[1-9][0-9]*', pid) is not None, 'identity-changed')
-    first = call('exec-out', 'cat', '/proc/'+pid+'/stat').decode('ascii')
-    status = call('exec-out', 'cat', '/proc/'+pid+'/status').decode('ascii')
-    command = call('exec-out', 'cat', '/proc/'+pid+'/cmdline')
-    last = call('exec-out', 'cat', '/proc/'+pid+'/stat').decode('ascii')
+    first = first_raw.decode('ascii')
+    status = status_raw.decode('ascii')
+    last = last_raw.decode('ascii')
     need(first.startswith(pid+' (') and last.startswith(pid+' ('), 'identity-changed')
     ticks = first[first.rindex(')')+2:].split()[19]
     need(re.fullmatch('[1-9][0-9]*', ticks) is not None and ticks == last[last.rindex(')')+2:].split()[19], 'identity-changed')
     uids = re.findall(r'^Uid:\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s*$', status, re.MULTILINE)
     need(len(uids) == 1 and len(set(uids[0])) == 1 and 10000 <= int(uids[0][0]) < 100000
          and command.split(b'\0')[0] == PACKAGE.encode(), 'identity-changed')
-    def package_uid(package):
-        packages = call('shell', 'pm', 'list', 'packages', '-U', '--user', '0', package).decode('ascii').splitlines()
+    def package_uid(package,raw):
+        packages = raw.decode('ascii').splitlines()
         rows = [re.fullmatch(r'package:([A-Za-z0-9_.]+) uid:([0-9]+)', row) for row in packages]
         need(rows and len(rows) <= 256 and all(rows), 'identity-changed')
         selected = [int(row[2]) for row in rows if row[1] == package]
         need(len(selected) == 1 and 10000 <= selected[0] < 100000, 'identity-changed')
         return selected[0]
-    system = package_uid('com.android.systemui')
-    need(package_uid(PACKAGE) == int(uids[0][0]) and system != int(uids[0][0]), 'identity-changed')
-    provider = decode(call('exec-out', 'content', 'read', '--uri', 'content://'+PACKAGE+'.evidence/build-identity'))
+    system = package_uid('com.android.systemui',system_raw)
+    need(package_uid(PACKAGE,package_raw) == int(uids[0][0]) and system != int(uids[0][0]), 'identity-changed')
+    provider = decode(provider_raw)
     try:
         verify_installed(provider, identity)
     except (AssertionError, KeyError, TypeError, ValueError):

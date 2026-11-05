@@ -158,7 +158,7 @@ class GeckoWebView extends FrameLayout {
   boolean generalRouteReady(){return generalRoutes.keySet().containsAll(generalSessions);}
   boolean retainGeneralRoute(GeckoSession session,String target){
     if(session==null||destroyed||failed||crashed.contains(session))return false;
-    if(allowedUrl(target)&&!MainActivity.chatUrl(target))generalSessions.add(session);
+    if(GeckoNavigationPolicy.publicWeb(target)&&!MainActivity.chatUrl(target))generalSessions.add(session);
     if(!generalSessions.contains(session)||generalRoutes.containsKey(session))return true;
     if(destroyed||!owner.guard.allowed()||!protectionAllowsNetwork())return false;
     ChromiumRouteLease.Handle lease=ChromiumRouteLease.acquireSurface();if(lease==null)return false;
@@ -318,14 +318,14 @@ class GeckoWebView extends FrameLayout {
         if(destroyed||!locations.containsKey(s))return;boolean committed=pendingLoads.remove(s);locations.put(s,target);
         if(committed){painted.remove(s);usable.remove(s);pageScales.remove(s);viewportWidths.remove(s);loadingTargets.put(s,target);appearanceCommitted(s);}
         else{WebExtension.Port page=ports.get(s);if(page!=null)appearance(page);}
-        if(MainActivity.chatUrl(target))forgetGeneralRoute(s);else if(allowedUrl(target))retainGeneralRoute(s,target);
+        if(MainActivity.chatUrl(target))forgetGeneralRoute(s);else if(GeckoNavigationPolicy.publicWeb(target))retainGeneralRoute(s,target);
         if(s!=current)return;url=target;owner.rememberBrowserLocation(target);
         if(committed&&!"about:blank".equals(target)){cancelZoom();if(client!=null)client.onPageStarted(null,target,null);}if(MainActivity.chatUrl(target)&&!LoginPagePolicy.login(target))owner.prefs.edit().putString("url",target).apply();
       }
       @Override public void onCanGoBack(GeckoSession s,boolean value){if(destroyed||!locations.containsKey(s))return;backStates.put(s,value);if(s==current)canBack=value;}
       @Override public GeckoResult<GeckoSession> onNewSession(GeckoSession s,String target){
         if(destroyed||failed||crashed.contains(s)||s!=current||popups.size()>=8||!protectionAllowsNetwork()||!identityRequestAllowed(target)||!owner.guard.allowed()||!(target==null||target.isEmpty()||"about:blank".equals(target)||allowedUrl(target)))return GeckoResult.fromValue(null);
-        ChromiumRouteLease.Handle lease=null;if(allowedUrl(target)&&!MainActivity.chatUrl(target)){lease=ChromiumRouteLease.acquireSurface();if(lease==null){owner.setStatus("线路正在更新，请稍后重试打开链接");return GeckoResult.fromValue(null);}}
+        ChromiumRouteLease.Handle lease=null;if(GeckoNavigationPolicy.publicWeb(target)&&!MainActivity.chatUrl(target)){lease=ChromiumRouteLease.acquireSurface();if(lease==null){owner.setStatus("线路正在更新，请稍后重试打开链接");return GeckoResult.fromValue(null);}}
         GeckoSession popup;try{popup=newSession();}catch(RuntimeException unavailable){if(lease!=null)lease.close();owner.setStatus("新网页暂时无法打开，请稍后重试");return GeckoResult.fromValue(null);}popups.add(popup);if(lease!=null){generalSessions.add(popup);generalRoutes.put(popup,lease);}
         locations.put(popup,target==null?"":target);
         owner.handler.post(()->{if(destroyed||!popups.contains(popup))return;activate(popup);});
@@ -655,7 +655,7 @@ class GeckoWebView extends FrameLayout {
     locations.remove(old);backStates.remove(old);pageScales.remove(old);measuredCompositors.remove(old);viewportWidths.remove(old);loadingTargets.remove(old);pendingLoads.remove(old);painted.remove(old);usable.remove(old);crashed.remove(old);states.remove(old);stateDraftRevisions.remove(old);
     if(old.isOpen())old.close();return true;
   }
-  boolean hasWebsitePages(){return !generalSessions.isEmpty()||allowedUrl(getUrl())&&!MainActivity.chatUrl(getUrl());}
+  boolean hasWebsitePages(){return !generalSessions.isEmpty()||GeckoNavigationPolicy.publicWeb(getUrl())&&!MainActivity.chatUrl(getUrl());}
   void closeWebsitePages(){
     closeExitIpPage();
     generalRestore=null;queued="";deferredGeneralLoads.clear();

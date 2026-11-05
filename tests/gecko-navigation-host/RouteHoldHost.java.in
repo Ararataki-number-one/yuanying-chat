@@ -34,6 +34,38 @@ public final class RouteHoldHost {
       check("Missing desired session can acquire its own lease",web.retainGeneralRoute(missing,SECOND)&&web.generalRouteReady()&&ChromiumRouteLease.snapshot().surfaces==3);
     }finally{dispose(web);}
   }
+  static final String[] PRIVATE={"https://127.0.0.1:9877/pool","https://127.0.0.1:9878/pool","http://192.168.1.20/page","https://[::1]/page","https://fixture.internal/page"};
+  static void privateRetention(){
+    WebBoundary web=fresh();try{
+      for(String target:PRIVATE){
+        web.extendedAdmission.add(target);SessionBoundary session=site(web,target);
+        check("Private admission is explicit and outside the public navigation policy",web.allowedUrl(target)&&!GeckoNavigationPolicy.publicWeb(target));
+        check("Extended private admission is not a public retained surface",web.retainGeneralRoute(session,target)&&!web.generalSessions.contains(session)&&!web.generalRoutes.containsKey(session)&&!ChromiumRouteLease.held());
+      }
+      ChromiumRouteLease.Handle change=ChromiumRouteLease.tryChange();check("Private fixture admission leaves real route maintenance admissible",change!=null);if(change!=null)change.close();
+      web.owner.handler.drain();check("Private admission callback work cannot create a public surface lease",!ChromiumRouteLease.held()&&web.generalSessions.isEmpty());
+      SessionBoundary publicPage=site(web,FIRST);check("An extended admission set does not weaken actual public surface retention",web.retainGeneralRoute(publicPage,FIRST)&&ChromiumRouteLease.snapshot().surfaces==1);
+      web.url=PRIVATE[0];check("A previously retained public document keeps its sticky membership on a private transition",web.hasWebsitePages()&&web.retainGeneralRoute(publicPage,PRIVATE[0])&&ChromiumRouteLease.snapshot().surfaces==1);
+    }finally{dispose(web);}
+  }
+  static void privatePopup(){
+    for(String target:PRIVATE){
+      WebBoundary web=fresh();try{
+        web.extendedAdmission.add(target);web.current=site(web,"https://chatgpt.com/c/opener");
+        ResultBoundary<SessionBoundary> result=web.onNewSession(web.current,target);
+        check("Extended private popup still obeys its explicit admission boundary",result.value!=null&&web.constructCalls==1&&web.locations.get(result.value).equals(target));
+        check("Extended private popup admission does not retain a public route",!ChromiumRouteLease.held()&&!web.generalSessions.contains(result.value)&&!web.generalRoutes.containsKey(result.value));
+        web.owner.handler.drain();check("Private popup activation creates no deferred public lease",web.current==result.value&&!ChromiumRouteLease.held());
+      }finally{dispose(web);}
+    }
+  }
+  static void privatePages(){
+    WebBoundary web=fresh();try{
+      for(String target:PRIVATE){web.extendedAdmission.add(target);web.url=target;check("Extended private current URL is not a public website page",web.allowedUrl(target)&&!web.hasWebsitePages());}
+      for(String target:new String[]{FIRST,SECOND}){web.url=target;check("Current public website remains classified before route membership is recorded",web.hasWebsitePages());}
+      for(String target:new String[]{"https://chatgpt.com/c/chat","about:blank",""}){web.url=target;check("ChatGPT and blank current URLs do not become generic website pages",!web.hasWebsitePages());}
+    }finally{dispose(web);}
+  }
   static void denial(String kind){
     WebBoundary web=fresh();try{
       SessionBoundary session=site(web,FIRST);
@@ -61,10 +93,12 @@ public final class RouteHoldHost {
   static void blockedRelease(){
     WebBoundary web=fresh();try{
       SessionBoundary first=site(web,FIRST),second=site(web,SECOND);web.retainGeneralRoute(first,FIRST);web.retainGeneralRoute(second,SECOND);web.owner.handler.drain();
-      web.owner.guard.blocked=true;web.routeAdmissionChanged();
+      web.owner.guard.setBlocked(true);
       check("Blocked admission releases actual held routes before callback work",!ChromiumRouteLease.held()&&web.generalRoutes.isEmpty()&&web.generalSessions.size()==2&&!web.generalRouteReady());
+      check("Actual request gate blocks settings and releases both surfaces synchronously",web.settings.blocked&&web.settings.changes==1&&web.owner.guard.blocked);
+      ChromiumRouteLease.Handle change=ChromiumRouteLease.tryChange();check("Explicit blocked recovery can acquire its real route change barrier",change!=null);if(change!=null)change.close();
       web.owner.handler.drain();check("Blocked admission callbacks cannot reacquire or load",!ChromiumRouteLease.held()&&first.loads.isEmpty()&&second.loads.isEmpty());
-      web.owner.guard.blocked=false;web.routeAdmissionChanged();web.owner.handler.drain();
+      web.owner.guard.setBlocked(false);check("Unblocked admission only queues route reacquisition",!web.settings.blocked&&web.settings.changes==2&&!ChromiumRouteLease.held());web.owner.handler.drain();
       check("Protected admission reacquires desired routes after the block",ChromiumRouteLease.snapshot().surfaces==2&&web.generalRouteReady());
       web.owner.guard.protectedRoute=false;web.routeAdmissionChanged();web.owner.handler.drain();
       check("Lost native route protection releases and stays blocked",!ChromiumRouteLease.held()&&!web.generalRouteReady());
@@ -155,8 +189,8 @@ public final class RouteHoldHost {
     }finally{if(download!=null)download.close();dispose(web);}
   }
   public static void main(String[] args){
-    if(args.length==1){if(args[0].equals("identity"))identityReadiness();else if(args[0].equals("barrier"))barrier();else if(args[0].equals("release"))blockedRelease();else if(args[0].equals("destroyed"))deniedExisting("destroyed");else if(args[0].equals("popup-failure"))popupFailure();else if(args[0].equals("popup-failed"))popupLate("failed");else if(args[0].equals("popup-crashed"))popupLate("crashed");else denial(args[0]);}
-    else{readiness();identityReadiness();for(String kind:new String[]{"destroyed","failed","crashed","blocked","unprotected","native-protection"})denial(kind);deniedExisting();blockedRelease();barrier();releaseAndDownload();offMainRetry();popupCreation();popupFailure();popupBarrier();popupDenial();popupLate("failed");popupLate("crashed");}
+    if(args.length==1){if(args[0].equals("identity"))identityReadiness();else if(args[0].equals("barrier"))barrier();else if(args[0].equals("release")||args[0].equals("guard-release"))blockedRelease();else if(args[0].equals("destroyed"))deniedExisting("destroyed");else if(args[0].equals("popup-failure"))popupFailure();else if(args[0].equals("popup-failed"))popupLate("failed");else if(args[0].equals("popup-crashed"))popupLate("crashed");else if(args[0].equals("private-retention"))privateRetention();else if(args[0].equals("private-popup"))privatePopup();else if(args[0].equals("private-pages"))privatePages();else denial(args[0]);}
+    else{readiness();identityReadiness();privateRetention();privatePopup();privatePages();for(String kind:new String[]{"destroyed","failed","crashed","blocked","unprotected","native-protection"})denial(kind);deniedExisting();blockedRelease();barrier();releaseAndDownload();offMainRetry();popupCreation();popupFailure();popupBarrier();popupDenial();popupLate("failed");popupLate("crashed");}
     check("Fixture ends with no actual process registry hold or barrier",!ChromiumRouteLease.held()&&ChromiumRouteLease.snapshot().changes==0);
     System.out.println(J.obj("status","passed","passed",checks.length(),"total",checks.length(),"checks",checks,"syntheticControlledHost",true,"actualAndroidExecution",false,"actualGeckoExecution",false,"actualNetworkExecution",false).toString());
   }
@@ -165,11 +199,13 @@ public final class RouteHoldHost {
 class WebBoundary {
   @PRODUCTION_FIELDS@
   @PRODUCTION_MEMBERS@
-  final OwnerBoundary owner=new OwnerBoundary();boolean destroyed,failed,ready=true,networkAllowed=true,generalRouteRetryQueued,failConstruction,identityAllowed=true;int constructCalls,activations;
-  SessionBoundary current;ProtectionRestore generalRestore;String queued="";
+  final OwnerBoundary owner=new OwnerBoundary(this);final SettingsBoundary settings=new SettingsBoundary();final Set<String> extendedAdmission=new HashSet<>();boolean destroyed,failed,ready=true,networkAllowed=true,generalRouteRetryQueued,failConstruction,identityAllowed=true;int constructCalls,activations;
+  SessionBoundary current;ProtectionRestore generalRestore;String queued="",url="";
   WebBoundary(){ChromiumRouteLease.addListener(routeLeaseChanged);}
   boolean protectionAllowsNetwork(){return networkAllowed;}
-  boolean allowedUrl(String value){return GeckoNavigationPolicy.publicWeb(value);}
+  boolean allowedUrl(String value){return GeckoNavigationPolicy.publicWeb(value)||extendedAdmission.contains(value);}
+  String getUrl(){return url;}
+  SettingsBoundary getSettings(){return settings;}
   boolean identityRequestAllowed(String value){return identityAllowed;}
   SessionBoundary newSession(){constructCalls++;if(failConstruction)throw new IllegalStateException("Controlled SDK constructor failure");return new SessionBoundary();}
   void activate(SessionBoundary session){activations++;current=session;}
@@ -183,8 +219,9 @@ class SessionBoundary {
   void loadUri(String uri){loads.add(uri);}
 }
 class ResultBoundary<T> {final T value;ResultBoundary(T value){this.value=value;}static <T>ResultBoundary<T> fromValue(T value){return new ResultBoundary<>(value);}}
-class OwnerBoundary {final GuardBoundary guard=new GuardBoundary();final HandlerBoundary handler=new HandlerBoundary();long navigationEpoch=1;String message="";void setStatus(String value){message=value;}}
-class GuardBoundary {boolean blocked,protectedRoute=true;boolean allowed(){return !blocked&&protectedRoute;}boolean routeProtected(){return protectedRoute;}}
+class OwnerBoundary {final WebBoundary web;final GuardBoundary guard;final HandlerBoundary handler=new HandlerBoundary();long navigationEpoch=1;String message="";OwnerBoundary(WebBoundary web){this.web=web;guard=new GuardBoundary(this);}void setStatus(String value){message=value;}}
+class GuardBoundary {final OwnerBoundary session;boolean blocked,protectedRoute=true;GuardBoundary(OwnerBoundary session){this.session=session;}@GUARD_MEMBERS@ boolean allowed(){return !blocked&&protectedRoute;}boolean routeProtected(){return protectedRoute;}}
+class SettingsBoundary {boolean blocked;int changes;void setBlockNetworkLoads(boolean value){blocked=value;changes++;}}
 class MainActivity {static boolean chatUrl(String url){try{return BrowserRuntimePolicy.official(URI.create(url));}catch(Exception invalid){return false;}}}
 class Looper {static final Object MAIN=new Object();static Object current=MAIN;static Object myLooper(){return current;}}
 class HandlerBoundary {

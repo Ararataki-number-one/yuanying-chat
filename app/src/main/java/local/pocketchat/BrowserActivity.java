@@ -194,6 +194,11 @@ public class BrowserActivity extends ThemedActivity {
   void failFingerprintSurface(Tab tab,WebView view,Exception failure){if(tab.web!=view)return;String reason="Chromium 指纹未能应用，网页保持暂停："+fingerprintProblem(failure);retire(tab);tab.saved=null;tab.failed=true;tab.fingerprintError=reason;fingerprintError=reason;if(selected==tab)message(reason);}
   void invalidateFingerprintObservation(){fingerprintObservationGeneration++;fingerprintObserving=false;if(fingerprintObservationTimeout!=null){fingerprintMain.removeCallbacks(fingerprintObservationTimeout);fingerprintObservationTimeout=null;}}
   void beforeFingerprintNavigation(Tab tab){retireFingerprintBinding(tab);if(tab==selected)invalidateFingerprintObservation();tab.generation++;}
+  void finishedPage(Tab tab,WebView source,String url){
+        if(!live(tab,source)||!url.equals(source.getUrl()))return;tab.loading=false;
+        if(!tab.failed&&BrowserAddressPolicy.allowed(url)){tab.url=url;library.remember("history",url,tab.title,200);}
+        if(tab==selected)updateChrome();
+  }
   boolean fingerprintFileChoiceCurrent(FingerprintFileChoice choice){return choice!=null&&files!=null&&files.pending==choice.pending&&selected==choice.tab&&live(choice.tab,choice.view)&&fingerprintState==choice.policy&&choice.tab.fingerprintPolicy==choice.policy&&choice.surface==choice.tab.surfaceGeneration&&choice.navigation==choice.tab.generation&&Objects.equals(choice.url,choice.view.getUrl())&&choice.providerPackage.equals(choice.tab.fingerprintProviderPackage)&&choice.providerVersion.equals(choice.tab.fingerprintProviderVersion)&&fingerprintProviderMatches(choice.tab);}
   void cancelFingerprintFileResult(String reason){FingerprintFileChoice choice=fingerprintFileChoice;fingerprintFileChoice=null;fingerprintFileResult=null;fingerprintFileRequest=0;if(choice!=null&&files!=null&&files.pending==choice.pending){files.cancelFor(choice.view);if(reason!=null)message(reason);}}
   void drainFingerprintFileResult(){
@@ -309,9 +314,7 @@ public class BrowserActivity extends ThemedActivity {
         if(!fingerprintTraffic(tab,source)||!BrowserAddressPolicy.allowed(url)&&!"about:blank".equals(url)){source.stopLoading();tab.loading=false;tab.failed=true;if(tab==selected){message("网页地址、线路或指纹配置未确认，已暂停加载");updateChrome();}return;}ensureFingerprintBinding(tab);if(tab==selected){message("");updateChrome();}
       }
       @Override public void onPageFinished(WebView source,String url){
-        if(!live(tab,source)||!url.equals(source.getUrl()))return;tab.loading=false;
-        if(!tab.failed&&BrowserAddressPolicy.allowed(url)){tab.url=url;library.remember("history",url,tab.title,200);}
-        if(tab==selected)updateChrome();
+        finishedPage(tab,source,url);
       }
       @Override public void doUpdateVisitedHistory(WebView source,String url,boolean reload){if(live(tab,source)&&BrowserAddressPolicy.allowed(url)){if(!url.equals(tab.url)){beforeFingerprintNavigation(tab);tab.url=url;ensureFingerprintBinding(tab);}if(tab==selected)updateChrome();}}
       @Override public void onReceivedError(WebView source,WebResourceRequest request,WebResourceError error){if(live(tab,source)&&request.isForMainFrame()&&request.getUrl().toString().equals(source.getUrl())){tab.loading=false;tab.failed=true;if(tab==selected){message("网页暂时无法打开，检查网络后可刷新重试");updateChrome();}}}
@@ -342,11 +345,11 @@ public class BrowserActivity extends ThemedActivity {
   void go(String input){
     try{String url=BrowserAddressPolicy.normalizeInput(input==null||input.trim().isEmpty()?BrowserPreferences.home(this):input);hideKeyboard();closeFind();
       if(selected==null){newTab(url);return;}denyFingerprintPopup(selected);selected.url=url;selected.saved=null;
-      if(web()!=null&&fingerprintTraffic(selected,web())){selected.fingerprintNavigation=null;files.cancelFor(web());permissions.onNavigation(web());beforeFingerprintNavigation(selected);web().loadUrl(url);}else{selected.fingerprintNavigation=url;if(runtime!=null)runtime.refresh();showSelected();}updateChrome();
+      if(web()!=null&&fingerprintTraffic(selected,web())){selected.fingerprintNavigation=null;files.cancelFor(web());permissions.onNavigation(web());beforeFingerprintNavigation(selected);selected.loading=true;web().loadUrl(url);}else{selected.fingerprintNavigation=url;if(runtime!=null)runtime.refresh();showSelected();}updateChrome();
     }catch(IllegalArgumentException invalid){message(invalid.getMessage());}
   }
-  void history(int direction){if(web()==null||!fingerprintTraffic(selected,web()))return;closeFind();files.cancelFor(web());permissions.onNavigation(web());if(direction<0&&web().canGoBack()){beforeFingerprintNavigation(selected);web().goBack();}else if(direction>0&&web().canGoForward()){beforeFingerprintNavigation(selected);web().goForward();}}
-  void reloadOrStop(){if(selected==null)return;if(selected.loading&&web()!=null){web().stopLoading();selected.loading=false;updateChrome();return;}if(!selected.fingerprintError.isEmpty()){retire(selected);selected.saved=null;selected.fingerprintError="";loadFingerprintState();return;}if(runtime==null)return;if(runtime.allowed()){if(web()==null)showSelected();else if(fingerprintTraffic(selected,web())){files.cancelFor(web());permissions.onNavigation(web());beforeFingerprintNavigation(selected);web().reload();}}else runtime.refresh();}
+  void history(int direction){if(web()==null||!fingerprintTraffic(selected,web()))return;closeFind();files.cancelFor(web());permissions.onNavigation(web());if(direction<0&&web().canGoBack()){beforeFingerprintNavigation(selected);selected.loading=true;web().goBack();}else if(direction>0&&web().canGoForward()){beforeFingerprintNavigation(selected);selected.loading=true;web().goForward();}updateChrome();}
+  void reloadOrStop(){if(selected==null)return;if(selected.loading&&web()!=null){web().stopLoading();selected.loading=false;updateChrome();return;}if(!selected.fingerprintError.isEmpty()){retire(selected);selected.saved=null;selected.fingerprintError="";loadFingerprintState();return;}if(runtime==null)return;if(runtime.allowed()){if(web()==null)showSelected();else if(fingerprintTraffic(selected,web())){files.cancelFor(web());permissions.onNavigation(web());beforeFingerprintNavigation(selected);selected.loading=true;web().reload();updateChrome();}}else runtime.refresh();}
   void updateChrome(){
     if(selected==null)return;if(!address.hasFocus()&&!selected.url.contentEquals(address.getText()))address.setText(selected.url);
     String safety=selected.url.startsWith("https://")?"HTTPS":"HTTP · 不安全";caption.setText("Chromium · "+safety+" · "+(selected.title.isEmpty()?Profiles.display(this,Profiles.slot(this)):selected.title));

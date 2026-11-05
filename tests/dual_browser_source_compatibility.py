@@ -13,7 +13,7 @@ ROOT = Path(__file__).resolve().parents[1]
 BASE_COMMIT = '72e3bcac55285fea483e612ba4481f7e073a5422'
 BASE_TREE = '17901d0d1d5eccc2efff6b7c80564a85426a0ca4'
 DELTA_PATH = ROOT / 'tests/fixtures/dual-browser-source-deltas.json'
-DELTA_SHA256 = '45ee1ea8bdc825aba6e69126b409d2bb6de4791a617346c7f9f4971fbf307d9e'
+DELTA_SHA256 = '1df912ff8530382de7998b7aa9d123bcdc3f44010f43950f72c64e827d7057ef'
 MAX_FIXTURE_BYTES = 512 * 1024
 PATHS = frozenset((
     'app/src/main/java/local/pocketchat/ChatSession.java',

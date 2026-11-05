@@ -35,6 +35,9 @@ public final class BrowserIntegrationActivity extends BrowserActivity {
   WebView first,returnSurface;Object oldRoute;int picker;boolean pickerOpened,finished,switchedAway;
   int baselineDownloads;JSONObject target=new JSONObject();
   long targetGeneration,visualSequence;Runnable targetTimeout;
+  final Map<Tab,NativePageCompletion> nativePageCompletions=new IdentityHashMap<>();
+  final JSONArray nativePageEvents=new JSONArray();long nativePageSequence;
+  static final class NativePageCompletion {final WebView view;final String url;final long generation;NativePageCompletion(WebView view,String url,long generation){this.view=view;this.url=url;this.generation=generation;}}
 
   @Override protected void onCreate(Bundle saved){
     if(!"local.pocketchat.test".equals(getPackageName()))throw new SecurityException("Integration package only");
@@ -54,7 +57,17 @@ public final class BrowserIntegrationActivity extends BrowserActivity {
   interface Ready{boolean get()throws Exception;}
   interface Step{void run()throws Exception;}
   void check(String name,boolean pass)throws Exception{checks.put(new JSONObject().put("name",name).put("pass",pass));if(!pass)throw new AssertionError(name);}
-  boolean page(String path){return web()!=null&&(ORIGIN+path).equals(web().getUrl())&&("Fixture "+path).equals(web().getTitle())&&!selected.loading;}
+  boolean nativePageCompleted(String path){NativePageCompletion completed=nativePageCompletions.get(selected);return completed!=null&&completed.view==web()&&completed.generation==selected.generation&&(ORIGIN+path).equals(completed.url);}
+  boolean page(String path){return web()!=null&&(ORIGIN+path).equals(web().getUrl())&&("Fixture "+path).equals(web().getTitle())&&!selected.loading&&nativePageCompleted(path);}
+  static String controlledPagePath(String url){for(String path:new String[]{"/start","/second","/tab","/blocked","/file.txt"})if((ORIGIN+path).equals(url))return path;return "other";}
+  JSONObject historyPageFlags()throws JSONException{boolean start=false,second=false;JSONArray rows=library.list("history");for(int i=0;i<rows.length();i++){String url=rows.getJSONObject(i).optString("url");start|=(ORIGIN+"/start").equals(url);second|=(ORIGIN+"/second").equals(url);}return new JSONObject().put("count",rows.length()).put("start",start).put("second",second);}
+  JSONObject nativePageState()throws JSONException{WebView view=web();Tab tab=selected;return new JSONObject().put("path",controlledPagePath(view==null?null:view.getUrl())).put("loading",tab!=null&&tab.loading).put("failed",tab!=null&&tab.failed).put("generation",tab==null?-1:tab.generation).put("progress",view==null?-1:view.getProgress()).put("fingerprintLoading",fingerprintLoading).put("fingerprintSaving",fingerprintSaving).put("fingerprintReady",tab!=null&&tab.fingerprintReady).put("history",historyPageFlags());}
+  @Override void finishedPage(Tab tab,WebView source,String url){
+    boolean eligible=live(tab,source)&&Objects.equals(url,source.getUrl()),loadingBefore=tab.loading,failedBefore=tab.failed;
+    super.finishedPage(tab,source,url);
+    if(eligible){nativePageCompletions.keySet().retainAll(tabs);nativePageCompletions.put(tab,new NativePageCompletion(source,url,tab.generation));}
+    try{if(nativePageEvents.length()>=48)nativePageEvents.remove(0);nativePageEvents.put(new JSONObject().put("sequence",++nativePageSequence).put("path",controlledPagePath(url)).put("eligible",eligible).put("selected",selected==tab).put("currentView",source==web()).put("generation",tab.generation).put("loadingBefore",loadingBefore).put("failedBefore",failedBefore).put("loadingAfter",tab.loading).put("failedAfter",tab.failed).put("progress",source.getProgress()).put("history",historyPageFlags()));}catch(JSONException invalid){fail(invalid);}
+  }
   boolean startReady(){return runtime!=null&&runtime.allowed()&&fingerprintTraffic(selected,web())&&page("/start")&&fixture.successes.get()>0&&web().getProgress()==100;}
   void await(String name,Ready ready,Step next){
     probe.post(new Runnable(){public void run(){if(finished||destroyed)return;try{if(ready.get()){next.run();return;}if(SystemClock.elapsedRealtime()>deadline)throw new AssertionError("Timed out: "+name+" / "+(runtime==null?"no runtime":runtime.status()));probe.postDelayed(this,75);}catch(Throwable error){fail(error);}}});
@@ -280,6 +293,7 @@ public final class BrowserIntegrationActivity extends BrowserActivity {
     PackageInfo provider=WebView.getCurrentWebViewPackage();JSONObject value=new JSONObject().put("schema",1).put("status",terminal?(failure.isEmpty()?"passed":"failed"):"running").put("stage",stage).put("runNonce",nonce).put("taskId",getTaskId()).put("buildIdentity",build).put("sourceCommit",build.getString("sourceCommit")).put("checks",checks).put("layoutObservations",layoutObservations).put("leaseObservations",leaseObservations).put("passed",passed).put("total",checks.length()).put("failure",failure).put("tapTarget",target).put("provider",provider==null?JSONObject.NULL:new JSONObject().put("package",provider.packageName).put("version",provider.versionName)).put("proxy",fixture.snapshot()).put("actualAndroidExecution",true).put("actualAndroidWebViewExecution",web()!=null||first!=null).put("actualGeckoExecution",false).put("actualPublicWebsiteExecution",false).put("actualDevicePerformanceMeasurement",false).put("scope","Real production BrowserActivity, ChromiumRuntime, ProxyController, Android WebView and native download store with a loopback synthetic HTTP proxy; no upstream forwarding. Chooser and download actions require trusted shell taps. Not phone, public ChatGPT, camera/microphone or frame-rate acceptance.");
     value.put("foreground",foreground).put("pendingChooser",files!=null&&files.pending!=null).put("routeAllowed",runtime!=null&&runtime.allowed());
     value.put("nativeInputEvents",nativeInputEvents).put("pickerBarrier",pickerBarrierObservation).put("pickerBarrierHistory",pickerBarrierHistory);
+    value.put("nativePageState",nativePageState()).put("nativePageEvents",nativePageEvents);
     AtomicFile file=new AtomicFile(new File(getFilesDir(),"browser-integration-results.json"));FileOutputStream stream=null;try{stream=file.startWrite();stream.write((value.toString()+"\n").getBytes(StandardCharsets.UTF_8));file.finishWrite(stream);}catch(Exception error){if(stream!=null)file.failWrite(stream);throw error;}
   }
   @Override protected void onPause(){

@@ -13,7 +13,7 @@ MEMBERS = ('static final class ProtectionRestore', 'boolean generalRouteReady(',
            'boolean retainGeneralRoute(', 'void forgetGeneralRoute(',
            'void releaseGeneralRoutes(', 'void routeAdmissionChanged(',
            'void queueGeneralRouteRetry(', 'void retryGeneralRoutes(',
-           'public GeckoResult<GeckoSession> onNewSession(')
+           'public GeckoResult<GeckoSession> onNewSession(', 'boolean hasWebsitePages(')
 FIELDS = ('final Set<GeckoSession> generalSessions=',
           'final Map<GeckoSession,ChromiumRouteLease.Handle> generalRoutes=',
           'final Map<GeckoSession,String> deferredGeneralLoads=',
@@ -42,6 +42,18 @@ MUTATIONS = (
     ('popup-crashed', 'if(destroyed||failed||crashed.contains(s)||s!=current',
      'if(destroyed||failed||s!=current',
      'Late unavailable opener cannot construct or acquire a popup: crashed'),
+    ('private-retention', 'if(GeckoNavigationPolicy.publicWeb(target)&&!MainActivity.chatUrl(target))generalSessions.add(session);',
+     'if(allowedUrl(target)&&!MainActivity.chatUrl(target))generalSessions.add(session);',
+     'Extended private admission is not a public retained surface'),
+    ('private-popup', 'if(GeckoNavigationPolicy.publicWeb(target)&&!MainActivity.chatUrl(target)){lease=ChromiumRouteLease.acquireSurface();',
+     'if(allowedUrl(target)&&!MainActivity.chatUrl(target)){lease=ChromiumRouteLease.acquireSurface();',
+     'Extended private popup admission does not retain a public route'),
+    ('private-pages', 'return !generalSessions.isEmpty()||GeckoNavigationPolicy.publicWeb(getUrl())&&!MainActivity.chatUrl(getUrl());',
+     'return !generalSessions.isEmpty()||allowedUrl(getUrl())&&!MainActivity.chatUrl(getUrl());',
+     'Extended private current URL is not a public website page'),
+    ('guard-release', 'session.web.routeAdmissionChanged();',
+     'session.web.getSettings();',
+     'Blocked admission releases actual held routes before callback work'),
 )
 
 
@@ -58,7 +70,8 @@ def main():
     production=PROD/'GeckoWebView.java';template=HERE/'RouteHoldHost.java.in'
     complete=[PROD/name for name in ('ChromiumRouteLease.java','BrowserRuntimePolicy.java',
               'BrowserAddressPolicy.java','GeckoNavigationPolicy.java','J.java')]
-    files=[production,template,Path(__file__).resolve(),HERE/'run.py']+complete
+    guard=PROD/'BrowserNetworkGuard.java'
+    files=[production,guard,template,Path(__file__).resolve(),HERE/'run.py']+complete
     hashes={str(path.relative_to(ROOT)):digest(path) for path in files};json_hash=digest(args.json_jar)
     source=production.read_text();selected=[]
     for needle in MEMBERS:
@@ -71,8 +84,11 @@ def main():
         if len(lines)!=1:raise ValueError('Review actual identity-map field: '+needle)
         field_lines.append(lines[0])
     body='\n'.join(selected);fields='\n'.join(field_lines)
-    def generate(members):
-        return template.read_text().replace('@PRODUCTION_MEMBERS@',members.replace('GeckoSession','SessionBoundary').replace('GeckoResult','ResultBoundary')).replace('@PRODUCTION_FIELDS@',fields.replace('GeckoSession','SessionBoundary'))
+    guard_source=guard.read_text();guard_needle='void setBlocked('
+    if guard_source.count(guard_needle)!=1:raise ValueError('Review actual process request gate setter')
+    guard_body=member_at(guard_source,guard_source.index(guard_needle))
+    def generate(members,guard_members=guard_body):
+        return template.read_text().replace('@PRODUCTION_MEMBERS@',members.replace('GeckoSession','SessionBoundary').replace('GeckoResult','ResultBoundary')).replace('@PRODUCTION_FIELDS@',fields.replace('GeckoSession','SessionBoundary')).replace('@GUARD_MEMBERS@',guard_members)
     args.output.parent.mkdir(parents=True,exist_ok=True)
     artifacts=args.output.parent/(args.output.stem+'-artifacts');artifacts.mkdir(parents=True,exist_ok=True)
     generated=generate(body);(artifacts/'RouteHoldHost.java').write_text(generated)
@@ -96,15 +112,15 @@ def main():
         if ran.returncode:raise RuntimeError(ran.stdout+ran.stderr)
         report=json.loads(ran.stdout)
         for index,(case,before,after,assertion) in enumerate(MUTATIONS):
-            if body.count(before)!=1:raise ValueError('Review one-hunk negative control: '+case)
+            if body.count(before)+guard_body.count(before)!=1:raise ValueError('Review one-hunk negative control: '+case)
             pristine=compile_and_run(generated,'pristine-'+case,case)
             if pristine.returncode or json.loads(pristine.stdout)['status']!='passed':raise AssertionError('Pristine focused schedule failed: '+case+pristine.stderr)
-            mutant=generate(body.replace(before,after,1))
+            mutant=generate(body.replace(before,after,1),guard_body.replace(before,after,1))
             rejected=compile_and_run(mutant,'mutation-'+case,case)
             if rejected.returncode==0 or 'AssertionError: '+assertion not in rejected.stderr:raise AssertionError('Missing exact expected mutated-guard failure: '+case+rejected.stderr)
             controls.append(dict(case=case,removed=before,replacement=after,pristinePassed=True,mutantRejected=True,expectedAssertion=assertion,mutantGeneratedSha256=hashlib.sha256(mutant.encode()).hexdigest()))
     unchanged=all(digest(path)==hashes[str(path.relative_to(ROOT))] for path in files) and digest(args.json_jar)==json_hash
-    report.update(status='passed' if unchanged else 'source-changed',sourceFiles=hashes,sourceCommit=subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip(),jsonJarSha256=json_hash,generatedSourceSha256=hashlib.sha256(generated.encode()).hexdigest(),productionMembers=MEMBERS,productionFields=FIELDS,negativeControls=controls,executionInputsUnchanged=unchanged,boundarySubstitutions=['GeckoSession type tokens → explicitly declared SessionBoundary, with controlled isOpen/loadUri/state interfaces','GeckoResult type tokens → ResultBoundary; newSession constructor success/failure and posted activate are explicit controlled JVM interfaces','Owner/guard/protection/handler/Looper are declared controlled JVM boundaries','MainActivity.chatUrl delegates to actual BrowserRuntimePolicy.official with JVM URI','allowedUrl delegates to actual GeckoNavigationPolicy.publicWeb; BrowserNetworkGuard/Android Uri are not executed','Constructor listener registration and teardown are explicit fixture lifecycle boundaries; actual Gecko construction/destroy are not executed'],scope='Actual Gecko generic-route retention/admission/retry/release methods and actual process lease registry with controlled JVM sessions and callback queue. No Android, Gecko SDK, native protection API, website or network execution.')
+    report.update(status='passed' if unchanged else 'source-changed',sourceFiles=hashes,sourceCommit=subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip(),jsonJarSha256=json_hash,generatedSourceSha256=hashlib.sha256(generated.encode()).hexdigest(),productionMembers=MEMBERS,productionFields=FIELDS,guardProductionMembers=['BrowserNetworkGuard.setBlocked'],negativeControls=controls,executionInputsUnchanged=unchanged,boundarySubstitutions=['GeckoSession type tokens → explicitly declared SessionBoundary, with controlled isOpen/loadUri/state interfaces','GeckoResult type tokens → ResultBoundary; newSession constructor success/failure and posted activate are explicit controlled JVM interfaces','Owner/protection/handler/Looper and routeProtected/allowed reads are declared controlled JVM boundaries','BrowserNetworkGuard.setBlocked is extracted unchanged; WebSettings.setBlockNetworkLoads is an explicitly counted app boundary, not an Android or SDK execution','MainActivity.chatUrl delegates to actual BrowserRuntimePolicy.official with JVM URI','allowedUrl delegates to actual GeckoNavigationPolicy.publicWeb plus an explicit fixture admission set; public route classification still executes actual GeckoNavigationPolicy.publicWeb','Constructor listener registration and teardown are explicit fixture lifecycle boundaries; actual Gecko construction/destroy are not executed'],scope='Actual Gecko generic-route retention/admission/retry/release/current-page methods, actual BrowserNetworkGuard.setBlocked and actual process lease registry with controlled JVM sessions, settings and callback queue. No Android, Gecko SDK, native protection API, website or network execution.')
     if not report['checks'] or not all(row['pass'] is True for row in report['checks']):raise AssertionError('Route helper workload failed')
     args.output.write_text(json.dumps(report,ensure_ascii=False,indent=2)+'\n')
     print(json.dumps(dict(status=report['status'],passed=report['passed'],total=report['total'],negativeControls=len(controls),executionInputsUnchanged=unchanged,output=str(args.output)),ensure_ascii=False))

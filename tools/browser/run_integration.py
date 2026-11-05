@@ -81,6 +81,40 @@ def input_summary(value):
     return result
 
 
+PAGE_PATHS={'/start','/second','/tab','/blocked','/file.txt','other'}
+
+
+def page_history_summary(value):
+    if type(value) is not dict or set(value)!={'count','start','second'}:return None
+    if type(value['count']) is not int or not 0<=value['count']<=200:return None
+    if any(type(value[key]) is not bool for key in ('start','second')):return None
+    return dict(value)
+
+
+def native_page_summary(value,event=False):
+    """Only fixture path labels and typed callback state; never URLs or rows."""
+    flags=('eligible','selected','currentView','loadingBefore','failedBefore','loadingAfter','failedAfter') if event else ('loading','failed','fingerprintLoading','fingerprintSaving','fingerprintReady')
+    keys={'path','generation','progress','history',*flags}
+    if event:keys.add('sequence')
+    if type(value) is not dict or set(value)!=keys:return None
+    if type(value['path']) is not str or value['path'] not in PAGE_PATHS:return None
+    if any(type(value[key]) is not bool for key in flags):return None
+    if type(value['generation']) is not int or not -1<=value['generation']<=10000000:return None
+    if type(value['progress']) is not int or not -1<=value['progress']<=100:return None
+    if event and (type(value['sequence']) is not int or not 1<=value['sequence']<=10000000):return None
+    history=page_history_summary(value['history'])
+    if history is None:return None
+    return dict(value,history=history)
+
+
+def native_page_events_summary(value):
+    if type(value) is not list or len(value)>48:return None
+    rows=[native_page_summary(row,event=True) for row in value]
+    if any(row is None for row in rows):return None
+    if any(first['sequence']>=second['sequence'] for first,second in zip(rows,rows[1:])):return None
+    return rows
+
+
 def diagnostic_failure(current,error,last_resumed,actions):
     """Bounded synthetic diagnostics; excludes page content, cookies and extras."""
     value=current if type(current) is dict else {};summary={}
@@ -90,6 +124,10 @@ def diagnostic_failure(current,error,last_resumed,actions):
         if type(value.get(key)) in (bool,int) and abs(value[key])<=10000000:summary[key]=value[key]
     summary['tapTarget']=target_summary(value.get('tapTarget'))
     summary['pickerBarrier']=input_summary(value.get('pickerBarrier'))
+    state=native_page_summary(value.get('nativePageState'))
+    events=native_page_events_summary(value.get('nativePageEvents'))
+    if state is not None:summary['nativePageState']=state
+    if events is not None:summary['nativePageEvents']=events
     native=value.get('nativeInputEvents')
     if type(native) is list:
         summary['nativeInputEvents']=[]
@@ -110,6 +148,7 @@ def diagnostic_failure(current,error,last_resumed,actions):
     packet=dict(event='browser-acceptance-failure',error=brief(error),lastValidatedReport=summary,lastResumedComponents=resumed,trustedAndroidActions=trusted)
     if len(json.dumps(packet,ensure_ascii=False,separators=(',',':')).encode('utf-8'))>16000:
         packet.update(lastResumedComponents=[],trustedAndroidActions=[],diagnosticTrimmed=True);summary.pop('checks',None)
+        if len(json.dumps(packet,ensure_ascii=False,separators=(',',':')).encode('utf-8'))>16000:summary.pop('nativePageEvents',None)
     return packet
 
 

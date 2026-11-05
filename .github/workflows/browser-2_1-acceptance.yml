@@ -1103,6 +1103,9 @@ jobs:
     - name: Execute real WebView, file picker, native download and engine-task roundtrip checks
       run: python3 tools/browser/run_integration.py --adb "$(command -v adb)" --serial emulator-5554 --output work/browser-acceptance
     - name: Execute first-document fingerprint and Gecko website isolation checks
+      # Its fresh app data and separate report allow both failures to be diagnosed in one run.
+      # The original browser step and the complete job must still succeed for publication.
+      if: ${{ !cancelled() }}
       run: python3 tools/browser/run_fingerprint_integration.py --adb "$(command -v adb)" --serial emulator-5554 --output work/browser-acceptance
     - name: Preserve bounded source-bound browser evidence
       if: always()

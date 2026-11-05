@@ -40,11 +40,13 @@ are never rewritten. Generated sources, commands and raw logs accompany the JSON
 report. This is JVM behavior evidence, not Android or Gecko runtime acceptance.
 
 `route_hold.py` runs the actual `GeckoWebView` generic-route readiness,
-retain/forget/release, admission-change and deferred-retry helpers with the actual
-`ChromiumRouteLease` registry. Use the same arguments as `run.py`, with a separate
+retain/forget/release, admission-change, deferred-retry and current-website helpers
+with the actual `ChromiumRouteLease` registry. It also extracts the unchanged
+`BrowserNetworkGuard.setBlocked` method; its settings call is an explicitly counted
+JVM app boundary. Use the same arguments as `run.py`, with a separate
 output file. The runner extracts the actual session identity-map fields and
 rewrites only Gecko session type tokens to the explicitly declared
-`SessionBoundary`; it supplies controlled guard/protection, Handler/Looper and
+`SessionBoundary`; it supplies controlled route-protection reads, Handler/Looper and
 session load/state boundaries. It does not define an `org.mozilla` SDK package
 or execute Gecko native APIs. Restore-state and native URL-dispatch boundaries
 fail if unexpectedly invoked; they are outside this helper workload.
@@ -57,8 +59,13 @@ callbacks assert that the actual registry monitor is not held; final and duplica
 closes check wake counts and idempotence. Actual `onNewSession` tests also cover
 HTTP(S) popup ownership, GPT/about-blank exclusion, admission barriers, constructor
 failure cleanup, and late failed/crashed opener rejection while preserving the
-primary page and native download. Nine focused negative controls replace one
-readiness, barrier, release, unavailable-page or popup-cleanup guard in temporary
+primary page and native download. An explicitly expanded private fixture admission
+set remains outside the actual public-website classifier for primary pages, popups
+and the current-page query. Public HTTP(S) and ChatGPT cases retain their original
+behavior. Blocking through the actual request-gate setter releases held surfaces
+synchronously before a real change barrier can be acquired; unblocking queues
+reacquisition. Thirteen focused negative controls replace one
+readiness, barrier, release, unavailable-page, popup-cleanup or public-classification guard in temporary
 source copies and must fail their precise original assertion. Actual Gecko
 construction, page-closing UI, native protection and session-state restoration
 still require the separate real Android integration workload.

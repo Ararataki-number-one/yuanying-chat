@@ -37,6 +37,8 @@ class FirstTapHistoricalSourceControls(unittest.TestCase):
     def test_missing_duplicate_moved_changed_and_unknown_whole_inputs_reject(self):
         rejected = 0
         for relative, row in compat.manifest()['files'].items():
+            if relative == 'tools/gecko/chrome_header_readiness.py':
+                continue  # The original two rows retain all fourteen old controls.
             raw = (ROOT / relative).read_bytes()
             for delta in row['deltas']:
                 chunk = delta['current'].encode()
@@ -55,6 +57,44 @@ class FirstTapHistoricalSourceControls(unittest.TestCase):
                     compat.source_input(candidate, relative)
                 rejected += 1
         self.assertEqual(rejected, 14)
+
+    def test_reviewed_header_transport_input_has_exact_bounded_negative_controls(self):
+        relative = 'tools/gecko/chrome_header_readiness.py'
+        row = compat.manifest()['files'][relative]
+        current = (ROOT / relative).read_bytes()
+        original = subprocess.check_output(['git', 'show', compat.BASE_COMMIT + ':' + relative], cwd=ROOT)
+        self.assertEqual(original, subprocess.check_output(['git', 'show', '72e3bcac55285fea483e612ba4481f7e073a5422:' + relative], cwd=ROOT))
+        self.assertEqual(compat.source_input(current, relative), original)
+        rejected = 0
+        for delta in row['deltas']:
+            chunk = delta['current'].encode()
+            self.assertEqual(current.count(chunk), 1)
+            removed = current.replace(chunk, b'', 1)
+            moved = removed + chunk
+            if moved == current:
+                moved = chunk + removed
+            for candidate in (removed, current.replace(chunk, chunk * 2, 1),
+                              current.replace(chunk, chunk + b' ', 1), moved):
+                with self.subTest(delta=delta['id'], mutant=SHA(candidate)):
+                    self.assertNotEqual(candidate, current)
+                    with self.assertRaisesRegex(ValueError, 'Unreviewed header readiness change'):
+                        compat.source_input(candidate, relative)
+                    rejected += 1
+        for candidate in (current + b' ', current[:100], b'unknown header source'):
+            with self.assertRaises(ValueError):
+                compat.source_input(candidate, relative)
+            rejected += 1
+        self.assertEqual(rejected, len(row['deltas']) * 4 + 3)
+        for value in (current.decode(), bytearray(current), None):
+            with self.assertRaises(ValueError):
+                compat.source_input(value, relative)
+        for path in ('/' + relative, '../' + relative, relative + '.other', Path(relative), None):
+            with self.assertRaises(ValueError):
+                compat.source_input(current, path)
+        # Actual current runtime and its transport controls never receive this view.
+        for path in ('tools/gecko/chrome_header_readiness.py',
+                     'tests/profile_chrome_header_readiness_test.py'):
+            self.assertNotIn('chrome_first_tap_source_compatibility', (ROOT / path).read_text())
 
     def test_existing_header_whole_golden_home_ast_and_all_original_assertions_remain(self):
         current = (ROOT / RUNNER).read_text()
@@ -110,7 +150,7 @@ class FirstTapHistoricalSourceControls(unittest.TestCase):
                          RUNNER, 'tests/gecko/ChromeCollapseIntegration.java'):
             self.assertNotIn('chrome_first_tap_source_compatibility', (ROOT / relative).read_text())
         relative = 'tools/gecko/chrome_header_readiness.py'
-        self.assertEqual((ROOT / relative).read_bytes(),
+        self.assertEqual(compat.source_input((ROOT / relative).read_bytes(), relative),
                          subprocess.check_output(['git', 'show', compat.BASE_COMMIT + ':' + relative], cwd=ROOT))
 
 

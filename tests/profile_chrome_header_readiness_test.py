@@ -4,6 +4,8 @@ The visible-shade input is a controlled counterexample shaped like a separate
 clean WM capture. It is not a WM capture from a failed gesture instant.
 """
 from contextlib import ExitStack, redirect_stdout
+import base64
+import copy
 import hashlib
 import importlib.util
 import io
@@ -548,6 +550,195 @@ class ChromeHeaderReadinessControllerTest(unittest.TestCase):
             with self.assertRaises(self.adapter.HeaderReadinessFailure) as failure:
                 self.adapter._source_bindings(root, source, identity, deadline)
             self.assertEqual(failure.exception.reason, 'source-unverified')
+
+
+class ChromeIdentityBatchTest(unittest.TestCase):
+    """Actual generated POSIX shell, with explicit host command/process edges."""
+    @classmethod
+    def setUpClass(cls):
+        directory = str(ROOT/'tools/gecko')
+        sys.path.insert(0, directory)
+        try:
+            spec = importlib.util.spec_from_file_location(
+                'chrome_identity_batch_under_test', ROOT/'tools/gecko/chrome_header_readiness.py')
+            cls.adapter = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(cls.adapter)
+        finally:
+            sys.path.remove(directory)
+
+    def setUp(self):
+        self.temporary = tempfile.TemporaryDirectory(prefix='identity-raw-shell-host-')
+        self.addCleanup(self.temporary.cleanup)
+        self.out = Path(self.temporary.name)
+        self.bin = self.out/'bin'; self.bin.mkdir()
+        self.journal = self.out/'commands.jsonl'
+        self.config_path = self.out/'boundary.json'
+        self.apk = self.out/'synthetic-apk-bytes'
+        self.apk.write_bytes(b'Explicit host-only APK hash boundary, not an Android APK.')
+        sdk = self.adapter.verify_installed.__globals__['_sdk']
+        source = subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip()
+        tree = subprocess.check_output(['git','rev-parse','HEAD^{tree}'],cwd=ROOT,text=True).strip()
+        manifest, manifest_sha = sdk.selected_manifest(source)
+        receipt = dict(manifest,sourceCommit=source,sourceTree=tree,runId='42',runAttempt='1',sdkManifestSha256=manifest_sha)
+        asset = sdk.identity_from_receipt(json.dumps(receipt).encode(),manifest,manifest_sha,source,tree)
+        self.identity = dict(schema=1,package='local.pocketchat.test',sourceCommit=source,sourceTree=tree,
+            dirtySource=False,version='2.1.1',versionCode=103,sdkCoordinate=sdk.SDK_COORDINATE,
+            apkSha256=hashlib.sha256(self.apk.read_bytes()).hexdigest(),apkBytes=self.apk.stat().st_size,
+            buildStampSha256='f'*64,sdkBuildIdentity=asset)
+        self.stat = ('4914 (owned fixture) '+' '.join(['S']+['0']*18+['12120']+['0']*4)+'\n').encode()
+        self.values = [b'4914\n',self.stat,b'Name:\tfixture\nUid:\t10209\t10209\t10209\t10209\n',
+                       b'local.pocketchat.test\0--controlled\0',self.stat,
+                       b'package:com.android.systemui uid:10181\n',
+                       b'package:local.pocketchat.test uid:10209\n',json.dumps(self.identity).encode()]
+        self.commands = [['pidof','local.pocketchat.test'],
+                         ['cat','/proc/4914/stat'],['cat','/proc/4914/status'],
+                         ['cat','/proc/4914/cmdline'],['cat','/proc/4914/stat'],
+                         ['pm','list','packages','-U','--user','0','com.android.systemui'],
+                         ['pm','list','packages','-U','--user','0','local.pocketchat.test'],
+                         ['content','read','--uri','content://local.pocketchat.test.evidence/build-identity']]
+        self.config = dict(commands=self.commands,values=[base64.b64encode(v).decode() for v in self.values],
+                           identity=self.identity,apk=str(self.apk),journal=str(self.journal))
+        # Each original Android command is an explicit host boundary. The
+        # adapter's actual shell script/frames, byte pipes, parser and installed
+        # identity validator execute unmodified; no Android claim is made.
+        boundary = self.bin/'boundary'
+        boundary.write_text('#!'+sys.executable+'\n'+r'''
+import base64,hashlib,json,os,pathlib,sys
+config=json.loads(pathlib.Path(os.environ['IDENTITY_BOUNDARY_CONFIG']).read_text())
+journal=pathlib.Path(config['journal'])
+rows=journal.read_text().splitlines() if journal.exists() else []
+index=len(rows)%8
+command=[pathlib.Path(sys.argv[0]).name]+sys.argv[1:]
+if command!=config['commands'][index]:
+    raise SystemExit('Unexpected controlled command')
+with journal.open('a') as output:output.write(json.dumps(command)+'\n')
+if config.get('fault')==index:
+    os.write(1,base64.b64decode(config.get('faultOutput','')))
+    os.write(2,config.get('faultStderr','').encode())
+    raise SystemExit(config.get('faultExit',0))
+raw=base64.b64decode(config['values'][index])
+if index==7:
+    apk=pathlib.Path(config['apk']);identity=dict(config['identity'])
+    identity.update(apkSha256=hashlib.sha256(apk.read_bytes()).hexdigest(),apkBytes=apk.stat().st_size)
+    raw=json.dumps(identity).encode()
+os.write(1,raw)
+''')
+        boundary.chmod(0o700)
+        for name in ('pidof','cat','pm','content'):(self.bin/name).symlink_to(boundary.name)
+        self.calls = []
+
+    def invoke(self, deadline=None):
+        deadline = time.monotonic()+10 if deadline is None else deadline
+        self.config_path.write_text(json.dumps(self.config))
+        real_checked = self.adapter._checked
+        def transport(parts, actual_deadline, **kwargs):
+            self.calls.append((parts,actual_deadline,dict(kwargs)))
+            self.assertEqual(parts,['adb-host','-s','emulator-5554','shell','-T','sh','-s'])
+            self.assertEqual(actual_deadline,deadline)
+            self.assertEqual(set(kwargs),{'input_bytes','stdout_limit'})
+            return real_checked(['/bin/sh','-s'],actual_deadline,**kwargs)
+        with patch.dict(os.environ,PATH=str(self.bin)+os.pathsep+os.environ.get('PATH',''),
+                        IDENTITY_BOUNDARY_CONFIG=str(self.config_path)),\
+                patch.object(self.adapter,'_checked',side_effect=transport):
+            return self.adapter._identity(['adb-host','-s','emulator-5554'],self.identity,deadline)
+
+    def frames(self, values=None, token='1'*32, statuses=None):
+        raw=b''
+        for index,((name,_),value) in enumerate(zip(self.adapter.IDENTITY_FRAMES,values or self.values)):
+            status=0 if statuses is None else statuses[index]
+            raw+=(f'PCHR1 {token} {index} {name}\n'.encode()+value+
+                  f'\nPCHR1 {token} {index} exit {status}\n'.encode())
+        return raw
+
+    def test_actual_shell_preserves_eight_ordered_reads_in_one_transport_per_fence(self):
+        owner=self.invoke()
+        self.assertEqual(owner,dict(pid='4914',uid=10209,startTicks='12120',systemUiUid=10181))
+        self.assertEqual(len(self.calls),1)
+        self.assertEqual([json.loads(v) for v in self.journal.read_text().splitlines()],self.commands)
+        self.assertIn(b'"/proc/$identity_pid/cmdline"',self.calls[0][2]['input_bytes'])
+        self.assertNotIn(b'input tap',self.calls[0][2]['input_bytes'])
+        self.assertNotIn(b'input swipe',self.calls[0][2]['input_bytes'])
+        self.assertEqual(self.invoke(),owner)
+        self.assertEqual(len(self.calls),2)
+        self.assertEqual([json.loads(v) for v in self.journal.read_text().splitlines()],self.commands*2)
+        first_token=self.calls[0][2]['input_bytes'].split(b'PCHR1 ')[1][:32]
+        second_token=self.calls[1][2]['input_bytes'].split(b'PCHR1 ')[1][:32]
+        self.assertNotEqual(first_token,second_token)
+
+    def test_actual_provider_hash_is_fresh_at_every_identity_fence(self):
+        self.invoke()
+        self.apk.write_bytes(self.apk.read_bytes()+b' changed')
+        with self.assertRaises(self.adapter.HeaderReadinessFailure) as failed:self.invoke()
+        self.assertEqual(failed.exception.reason,'identity-changed')
+        self.assertEqual([json.loads(v) for v in self.journal.read_text().splitlines()],self.commands*2)
+        self.assertEqual(len(self.calls),2)
+
+    def test_every_native_command_exit_and_stderr_remains_fail_closed(self):
+        for index in range(8):
+            with self.subTest(index=index):
+                self.journal.unlink(missing_ok=True)
+                self.config.update(fault=index,faultOutput='',faultExit=7)
+                with self.assertRaises(self.adapter.HeaderReadinessFailure) as failed:self.invoke()
+                self.assertEqual(failed.exception.reason,'observation-failed')
+                self.assertEqual(len(self.journal.read_text().splitlines()),index+1)
+        self.journal.unlink();self.config.update(fault=7,faultExit=0,faultStderr='controlled error')
+        with self.assertRaises(self.adapter.HeaderReadinessFailure) as failed:self.invoke()
+        self.assertEqual(failed.exception.reason,'observation-failed')
+
+    def test_framing_rejects_truncation_reorder_replay_extra_bytes_and_injected_markers(self):
+        token='1'*32;raw=self.frames(token=token)
+        self.assertEqual(self.adapter._identity_frames(raw,token),self.values)
+        marker=f'PCHR1 {token}'.encode()
+        corruptions=[raw[:-1],raw+b'x',b'x'+raw,raw.replace(marker,marker+b'x',1),
+                     raw.replace(b' 1 first-stat\n',b' 2 first-stat\n',1),
+                     raw.replace(b' 3 cmdline\n',b' 3 status\n',1),
+                     raw.replace(b' 7 exit 0\n',b' 7 exit 00\n'),
+                     raw.replace(b' 7 exit 0\n',b' 7 exit 256\n'),
+                     raw.replace(b' 7 exit 0\n',b' 7 exit true\n')]
+        collision=copy.deepcopy(self.values);collision[2]+=b'\n'+marker+b' 2 exit 0\nSECRET'
+        corruptions.append(self.frames(collision))
+        for changed in corruptions:
+            with self.subTest(sha256=hashlib.sha256(changed).hexdigest()):
+                with self.assertRaises(self.adapter.HeaderReadinessFailure):self.adapter._identity_frames(changed,token)
+        for index,(_,maximum) in enumerate(self.adapter.IDENTITY_FRAMES):
+            values=list(self.values);values[index]=b'1'*(maximum+1)
+            with self.subTest(overlong=index),self.assertRaises(self.adapter.HeaderReadinessFailure) as failed:
+                self.adapter._identity_frames(self.frames(values),token)
+            self.assertEqual(failed.exception.reason,'output-too-large')
+
+    def test_original_process_and_package_fences_reject_controlled_mutations(self):
+        mutations=[
+            (0,b'4914 4915\n'),(0,b'0\n'),(0,b'04914\n'),
+            (1,self.stat.replace(b'4914 (',b'4915 (')),
+            (4,self.stat.replace(b'12120',b'12121')),
+            (2,b'Uid:\t10209\t10209\t10210\t10209\n'),
+            (2,b'Uid:\t999\t999\t999\t999\n'),
+            (2,self.values[2]+self.values[2]),
+            (3,b'other.application\0'),(5,b'package:com.android.systemui uid:10209\n'),
+            (6,b'package:local.pocketchat.test uid:10210\n'),
+            (6,self.values[6]*2)]
+        for index,value in mutations:
+            with self.subTest(index=index,value=repr(value)):
+                self.journal.unlink(missing_ok=True)
+                self.config.update(fault=index,faultOutput=base64.b64encode(value).decode(),faultExit=0)
+                with self.assertRaises(self.adapter.HeaderReadinessFailure) as failed:self.invoke()
+                self.assertEqual(failed.exception.reason,'identity-changed')
+
+    def test_script_rejects_untrusted_tokens_and_package_quoting_inputs(self):
+        for token in ('',None,'1'*31,'1'*33,'a'*31+';','a'*31+"'",'a'*31+'\n'):
+            with self.subTest(token=token),self.assertRaises(self.adapter.HeaderReadinessFailure):
+                self.adapter._identity_script(token)
+        for package in ("local.test; touch /tmp/forbidden", "local.test'bad", 'local.test\nbad', 'local.test$(false)'):
+            with self.subTest(package=package),patch.object(self.adapter,'PACKAGE',package),\
+                    self.assertRaises(self.adapter.HeaderReadinessFailure):
+                self.adapter._identity_script('1'*32)
+        self.assertEqual(self.calls,[])
+
+    def test_expired_original_deadline_never_launches_a_native_command(self):
+        with self.assertRaises(self.adapter.HeaderReadinessFailure) as failed:self.invoke(time.monotonic()-1)
+        self.assertEqual(failed.exception.reason,'deadline')
+        self.assertFalse(self.journal.exists())
+        self.assertEqual(len(self.calls),1)
 
 
 if __name__ == '__main__':
