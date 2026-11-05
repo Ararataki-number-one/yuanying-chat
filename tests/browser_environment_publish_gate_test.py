@@ -22,7 +22,7 @@ class EnvironmentPublicationTests(unittest.TestCase):
         tool=ast.parse((ROOT/'tools/publish-gecko-release.py').read_text());workflow=workflow_tree()
         for version in ('2.1.0','2.1.1','2.1.2','2.1.3','3.0.0'):
             parts=tuple(map(int,version.split('.')));values=[]
-            for tree,name,namespace in ((tool,'release_tool_files',dict(version=version,browser_release=parts>=(2,1,0),fingerprint_release=parts>=(2,1,1),worker_timezone_release=parts>=(2,1,2))),(workflow,'release_files',dict(m={'version':version}))):
+            for tree,name,namespace in ((tool,'release_tool_files',dict(version=version,browser_release=parts>=(2,1,0),fingerprint_release=parts>=(2,1,1),worker_timezone_release=parts>=(2,1,2),cpu_release=parts>=(2,1,3))),(workflow,'release_files',dict(m={'version':version}))):
                 nodes=[n for n in tree.body if isinstance(n,ast.Assign) and any(isinstance(t,ast.Name) and t.id==name for t in n.targets)]
                 nodes += [n for n in tree.body if isinstance(n,ast.If) and any(isinstance(v,ast.Call) and ast.unparse(v.func) in (name+'.add',name+'.update') for v in ast.walk(n))]
                 execute(nodes,namespace);values.append(namespace[name])

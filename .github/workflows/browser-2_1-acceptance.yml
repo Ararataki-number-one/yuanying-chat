@@ -8,6 +8,8 @@ name: Dual browser and complete original Gecko acceptance
     - release/browser-2.1.1-*
     - release/browser-2.1.2
     - release/browser-2.1.2-*
+    - release/browser-2.1.3
+    - release/browser-2.1.3-*
     paths:
     - app/**
     - tests/**
@@ -1040,6 +1042,14 @@ jobs:
         cp work/browser-acceptance/browser-fingerprint-results.json work/gecko-integration/public/browser-fingerprint-results.json
         cp work/browser-acceptance/worker-policy-results.json work/gecko-integration/public/worker-policy-results.json
         cp work/browser-acceptance/gecko-environment-policy-results.json work/gecko-integration/public/gecko-environment-policy-results.json
+        python3 - <<'CPU_EVIDENCE'
+        import json,os,pathlib,sys
+        sys.path.insert(0,'tools')
+        from browser.check_evidence import copy_gecko_cpu_evidence
+        destination=pathlib.Path('work/gecko-integration/public')
+        expected=json.loads((destination/'device-results.json').read_text())['eventTransport']['buildIdentity']
+        copy_gecko_cpu_evidence(pathlib.Path('work/browser-acceptance'),destination,os.environ['GITHUB_SHA'],expected)
+        CPU_EVIDENCE
         python3 tools/browser/check_evidence.py --directory work/gecko-integration/public --source "$GITHUB_SHA" --output work/gecko-integration/public/browser-regression.json
     - name: Publish complete source-bound evidence including the browser gate
       run: python3 tools/gecko/publish_ci.py
@@ -1052,6 +1062,8 @@ jobs:
           work/gecko-integration/public/browser-fingerprint-results.json
           work/gecko-integration/public/worker-policy-results.json
           work/gecko-integration/public/gecko-environment-policy-results.json
+          work/gecko-integration/public/gecko-cpu-results.json
+          work/gecko-integration/public/gecko-cpu-evidence/
           work/gecko-integration/public/browser-regression.json
           work/gecko-integration/public/manifest.json
         if-no-files-found: error
@@ -1120,6 +1132,9 @@ jobs:
     - name: Execute production Gecko timezone and public Worker identity controls
       if: ${{ !cancelled() }}
       run: python3 tools/browser/run_gecko_environment_policy_integration.py --adb "$(command -v adb)" --serial emulator-5554 --output work/browser-acceptance
+    - name: Execute production cold CPU defaults and native five-context workloads
+      if: ${{ !cancelled() }}
+      run: python3 tools/browser/run_gecko_cpu_integration.py --adb "$(command -v adb)" --serial emulator-5554 --apk app/build/outputs/apk/integration/app-x86_64-integration.apk --source "$GITHUB_SHA" --output work/browser-acceptance
     - name: Preserve bounded source-bound browser evidence
       if: always()
       uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
@@ -1127,6 +1142,16 @@ jobs:
         name: browser-${{ github.run_id }}-${{ github.run_attempt }}-android
         path: |
           work/browser-acceptance/*.json
+          work/browser-acceptance/gecko-cpu-evidence/case-cap1.json
+          work/browser-acceptance/gecko-cpu-evidence/case-cap2.json
+          work/browser-acceptance/gecko-cpu-evidence/case-automatic-stale-user.json
+          work/browser-acceptance/gecko-cpu-evidence/case-rfp.json
+          work/browser-acceptance/gecko-cpu-evidence/case-persistent-before.json
+          work/browser-acceptance/gecko-cpu-evidence/case-persistent-after.json
+          work/browser-acceptance/gecko-cpu-evidence/case-concurrent-cap1.json
+          work/browser-acceptance/gecko-cpu-evidence/case-concurrent-cap2.json
+          work/browser-acceptance/gecko-cpu-evidence/case-concurrent-cap1-resample.json
+          work/browser-acceptance/gecko-cpu-evidence/case-normal-template-rfp.json
           work/browser-acceptance/*.txt
           work/browser-acceptance/*.png
           work/browser-acceptance/emulator.log

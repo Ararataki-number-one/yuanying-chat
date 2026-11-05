@@ -137,6 +137,8 @@ class DualBrowserSourceCompatibility(unittest.TestCase):
         )
         for relative, old, new in targets:
             current = (ROOT / relative).read_bytes()
+            from cpu_source_compatibility import source_input as cpu_source_input
+            current = cpu_source_input(current, relative)
             self.assertIn(old.encode(), current)
             with self.assertRaises(ValueError):
                 dual.source_input(current.replace(old.encode(), new.encode(), 1), relative)
@@ -147,7 +149,12 @@ class DualBrowserSourceCompatibility(unittest.TestCase):
         for relative, row in dependency.manifest()['files'].items():
             with self.subTest(path=relative):
                 previous = subprocess.check_output(['git', 'show', dependency.BASE_COMMIT + ':' + relative], cwd=ROOT)
-                current = host_adapter_source_input((ROOT / relative).read_bytes(), relative) if relative in host_adapter_paths else (ROOT / relative).read_bytes()
+                current = (ROOT / relative).read_bytes()
+                from cpu_source_compatibility import source_input as cpu_source_input
+                if relative == 'tests/profile_native_protection_test.py':
+                    current = cpu_source_input(current, relative)
+                if relative in host_adapter_paths:
+                    current = host_adapter_source_input(current, relative)
                 self.assertEqual((SHA(previous), len(previous)), (row['previousSha256'], row['previousBytes']))
                 self.assertEqual((SHA(current), len(current)), (row['reviewedSha256'], row['reviewedBytes']))
                 self.assertEqual(dependency.source_input(current, relative), previous)
@@ -159,7 +166,12 @@ class DualBrowserSourceCompatibility(unittest.TestCase):
                     forward = forward.replace(before, after, 1)
                 self.assertEqual(forward, current)
         for relative in ('tests/profile_native_protection_test.py', 'tests/profile_page_bridge_lifecycle_test.py'):
-            current = host_adapter_source_input((ROOT / relative).read_bytes(), relative) if relative in host_adapter_paths else (ROOT / relative).read_bytes()
+            current = (ROOT / relative).read_bytes()
+            from cpu_source_compatibility import source_input as cpu_source_input
+            if relative == 'tests/profile_native_protection_test.py':
+                current = cpu_source_input(current, relative)
+            if relative in host_adapter_paths:
+                current = host_adapter_source_input(current, relative)
             previous = subprocess.check_output(['git', 'show', dependency.BASE_COMMIT + ':' + relative], cwd=ROOT)
             self.assertEqual(assertions(current), assertions(previous))
             tree = ast.parse(current)
@@ -257,6 +269,7 @@ class DualBrowserSourceCompatibility(unittest.TestCase):
             self.assertNotIn('experience46_source_bytes', source, relative)
             self.assertNotIn('event_journal_source_compatibility', source, relative)
         allowed = {path for path in dual.PATHS if path.endswith('.py')} | {
+            'tests/profile_cpu_source_compatibility_test.py',
             'tests/profile_worker_timezone_source_compatibility_test.py',
             'tests/profile_dual_browser_source_compatibility_test.py',
             'tests/profile_fingerprint_local_supplement_test.py',

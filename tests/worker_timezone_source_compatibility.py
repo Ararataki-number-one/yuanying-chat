@@ -60,6 +60,11 @@ def source_input(raw, relative):
         raise ValueError('Worker/timezone inverse requires exact complete bytes and an owned relative path')
     row = manifest()['files'][relative]
     digest = _sha(raw)
+    if (digest, len(raw)) not in ((row['previousSha256'], row['previousBytes']),
+                                  (row['reviewedSha256'], row['reviewedBytes'])):
+        from cpu_source_compatibility import source_input as cpu_source_input
+        raw = cpu_source_input(raw, relative)
+        digest = _sha(raw)
     if digest == row['previousSha256'] and len(raw) == row['previousBytes']:
         return raw
     if digest != row['reviewedSha256'] or len(raw) != row['reviewedBytes']:

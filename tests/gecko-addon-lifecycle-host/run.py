@@ -26,6 +26,10 @@ def main():
   result=run(parts,'current')
   if result.returncode:raise RuntimeError(result.stdout+result.stderr)
   report=json.loads(result.stdout);negative=[]
+  cpu=run(parts,'cpu-dependency','cpu')
+  if cpu.returncode:raise RuntimeError('Declared automatic CPU dependency failed: '+cpu.stderr)
+  report['automaticCpuDependency']=json.loads(cpu.stdout)
+  report['actualCpuPolicyExecution']=False;report['nativeCpuReadbackVerified']=False
   mutations=[('runtime-authority','boolean builtinAddonCurrent(','runtime==expected&&','','authority'),('stale-commit','void applyAddonState(','addonStateSerial!=serial||','','authority'),('failure-notification','GeckoResult<String> nativeNavigationFailure(','owner.finishNavigation(owner.pageError,false);','owner.setStatus(owner.pageError);','entries'),('forged-enable','void applyAddonState(','if(!disabled){extension.setMessageDelegate','if(!disabled){privacyReady=true;extension.setMessageDelegate','enable'),('disabled-open','private void maybeOpen(','&&!addonDisabled','','entries'),('late-stop','public void onPageStop(','||addonDisabled','','progress'),('late-visible','private void pageVisible(','||addonDisabled','','progress'),('late-start','public void onPageStart(','||addonDisabled','','progress'),('late-location','public void onLocationChange(','||addonDisabled','','progress')]
   for label,name,old,new,focus in mutations:
    if parts[name].count(old)!=1:raise ValueError('Unique semantic mutation required: '+label)

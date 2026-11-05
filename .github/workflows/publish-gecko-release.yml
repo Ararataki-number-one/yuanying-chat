@@ -39,6 +39,8 @@ jobs:
               release_files.update({'tools/browser/check_fingerprint_evidence.py'})
           if tuple(map(int,m['version'].split('.'))) >= (2,1,2):
               release_files.update({'tools/browser/check_worker_policy_evidence.py','tools/browser/check_gecko_environment_policy_evidence.py'})
+          if tuple(map(int,m['version'].split('.'))) >= (2,1,3):
+              release_files.update({'tools/browser/check_gecko_cpu_evidence.py'})
           if tools_commit!=m['sourceCommit']:
               subprocess.run(['git','merge-base','--is-ancestor',m['sourceCommit'],tools_commit],check=True)
               changed=set(subprocess.check_output(['git','diff','--name-only',m['sourceCommit'],tools_commit],text=True).splitlines())
@@ -52,6 +54,9 @@ jobs:
                   'tests/fixtures/network-settings-callback-source-deltas.json':'tests/fixtures/network-settings-callback-source-deltas.json'}
               for staged_name,source_name in settings_dependencies.items():
                   assert pathlib.Path(staged_name).read_bytes()==subprocess.check_output(['git','show',m['sourceCommit']+':'+source_name]),'Network settings dependency differs from tested source: '+staged_name
+          if tuple(map(int,m['version'].split('.'))) >= (2,1,3):
+              name='tools/gecko/cpu_acceptance_server.py'
+              assert pathlib.Path(name).read_bytes()==subprocess.check_output(['git','show',m['sourceCommit']+':'+name]),'CPU dependency differs from tested source: '+name
           subprocess.run(['python3','tools/gecko/release_channel_contract_test.py'],check=True)
           from tools.gecko.release_channel_contract import release_tag, requires_manual_acceptance, verify_manual_acceptance, verify_direct_release
           release_tag(m)

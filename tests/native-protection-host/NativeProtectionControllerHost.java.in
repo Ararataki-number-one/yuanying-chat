@@ -45,9 +45,19 @@ final class NativeProtectionControllerHost {
     boolean allows(GeckoSession session){checks++;return system&&session!=null;}
     boolean popupAllowed(){popupChecks++;return system;}
   }
+  // CPU native application has its own actual controller/probe suites. These
+  // original RFP cases explicitly select automatic with declared readiness for
+  // one opaque fixture runtime only; no native preference ACK is manufactured.
+  static final class AutomaticCpuBoundary {
+    final Object runtime=new Object();String mode="automatic";boolean declaredReady=true,cpuDenied;
+    int checks,protectionChanges,refreshes;final List<String> trace=new ArrayList<>();
+    boolean readyFor(Object actual){checks++;trace.add("readyFor:"+(actual==null?"null":actual==runtime?"owned":"foreign")+":"+mode+":"+!cpuDenied);return declaredReady&&!cpuDenied&&"automatic".equals(mode)&&actual!=null&&actual==runtime;}
+    void protectionWillChange(){protectionChanges++;trace.add("protectionWillChange");}
+    void refreshNative(){refreshes++;trace.add("refreshNative");}
+  }
   static final class Prefs {String proxy="";String getString(String key,String fallback){return proxy;}}
   static final class Owner {
-    final Handler handler=new Handler();final Privacy privacy=new Privacy();final Guard guard=new Guard();final Prefs prefs=new Prefs();final Object context=new Object();final SystemTimeZoneBoundary timeZone=new SystemTimeZoneBoundary();
+    final Handler handler=new Handler();final Privacy privacy=new Privacy();final Guard guard=new Guard();final Prefs prefs=new Prefs();final Object context=new Object();final SystemTimeZoneBoundary timeZone=new SystemTimeZoneBoundary();final AutomaticCpuBoundary cpu=new AutomaticCpuBoundary();
     long navigationEpoch,connectionEpoch;int changes;String status="";boolean internal,deleted;Audit audit=new Audit();
     boolean internalNetwork(){return internal;}void changed(){changes++;}void setStatus(String value){status=value;}
   }
@@ -98,6 +108,7 @@ final class NativeProtectionControllerHost {
   static final class View {
     final Owner owner=new Owner();final Metadata metadata=new Metadata();final CookieCallbacks cookieCallbacks=new CookieCallbacks();
     final NativeProtectionState nativeProtection=new NativeProtectionState();
+    Object runtime=owner.cpu.runtime;
     final Map<GeckoSession,String> locations=new IdentityHashMap<>();final List<GeckoSession> popups=new ArrayList<>();
     final Map<GeckoSession,GeckoSession.SessionState> states=new IdentityHashMap<>();final Map<GeckoSession,Long> stateDraftRevisions=new IdentityHashMap<>();final Set<GeckoSession> crashed=new HashSet<>();
     final SessionStore sessionStore=new SessionStore();GeckoSession.SessionState startupState;long startupDraftRevision;
@@ -294,11 +305,45 @@ final class NativeProtectionControllerHost {
     View navigation=browsing();navigation.addonDisabled=true;addonCheck("Actual native navigation delegate denies a disabled addon",navigation.navigation(navigation.current,new LoadRequest(target)).value==AllowOrDeny.DENY&&navigation.nativeNavigationFailures==1);
     View unopened=new View();unopened.addonDisabled=true;unopened.start(1);unopened.reply(true,false);View popup=browsing();popup.addonDisabled=true;addonCheck("Actual bootstrap and popup gates stay closed while addon disabled",unopened.opens==0&&popup.popup(popup.current,target).value==null&&popup.popups.isEmpty());
   }
+  static final List<String> cpuChecks=new ArrayList<>(),cpuTrace=new ArrayList<>();
+  static void cpuCheck(String name,boolean value){if(!value)throw new AssertionError(name);cpuChecks.add(name);}
+  static void cpuBoundary(){
+    View allowed=browsing();
+    cpuCheck("CPU dependency explicitly represents automatic and one declared-ready fixture runtime",allowed.owner.cpu.mode.equals("automatic")&&allowed.owner.cpu.declaredReady&&allowed.runtime==allowed.owner.cpu.runtime);
+    cpuCheck("Actual native protection state is independently admitted before CPU controls",allowed.nativeProtection.allows(allowed.owner.privacy.level()));
+    cpuCheck("Declared automatic CPU boundary preserves actual current protection admission",allowed.protectionAllowsNetwork());
+    cpuCheck("Actual protection request records CPU invalidation boundary",allowed.owner.cpu.protectionChanges>0);
+    cpuCheck("Actual protection completion records CPU refresh boundary",allowed.owner.cpu.refreshes>0);
+    cpuCheck("CPU refresh trace follows actual protection invalidation",allowed.owner.cpu.trace.indexOf("protectionWillChange")>=0&&allowed.owner.cpu.trace.indexOf("refreshNative")>allowed.owner.cpu.trace.indexOf("protectionWillChange"));
+    View denied=browsing();denied.owner.cpu.cpuDenied=true;
+    cpuCheck("Independent CPU refusal closes actual protection admission",!denied.protectionAllowsNetwork());
+    cpuCheck("Actual protection admission checks the counted CPU boundary",allowed.owner.cpu.checks>0);
+    cpuCheck("CPU refusal does not counterfeit an RFP failure",denied.nativeProtection.allows(denied.owner.privacy.level()));
+    cpuCheck("CPU refusal keeps the actual protected route closed",denied.route("https://target.invalid/cpu-denied").optInt("port")==9);
+    cpuCheck("CPU refusal denies actual new navigation delegate",denied.navigation(denied.current,new LoadRequest("https://target.invalid/cpu-denied")).value==AllowOrDeny.DENY);
+    cpuCheck("CPU refusal denies actual popup admission",denied.popup(denied.current,"https://target.invalid/cpu-denied").value==null&&denied.popups.isEmpty());
+    denied.loadUrl("https://target.invalid/cpu-denied");cpuCheck("CPU refusal retains load intent without delivering SDK navigation",denied.loadCount()==0&&denied.queued.equals("https://target.invalid/cpu-denied"));
+    denied.restoreCheckpoint(denied.current,new GeckoSession.SessionState("https://target.invalid/cpu-denied"),"https://target.invalid/cpu-denied",4);cpuCheck("CPU refusal defers actual checkpoint restoration",denied.restoreCount()==0&&denied.protectionRestore!=null);
+    View bootstrap=new View();bootstrap.owner.cpu.cpuDenied=true;bootstrap.routePrepared=true;bootstrap.start(2);bootstrap.reply(true,true);bootstrap.receive(J.obj("kind","cookiePrepared"),bootstrap.routePort);
+    cpuCheck("CPU refusal prevents actual bootstrap opening after RFP and cookie confirmation",bootstrap.privacyReady&&bootstrap.routePrepared&&bootstrap.opens==0);
+    View foreign=browsing();foreign.runtime=new Object();cpuCheck("A foreign runtime cannot borrow declared automatic readiness",!foreign.protectionAllowsNetwork());
+    View absent=browsing();absent.runtime=null;cpuCheck("A null runtime cannot borrow declared automatic readiness",!absent.protectionAllowsNetwork());
+    View custom=browsing();custom.owner.cpu.mode="1";cpuCheck("Custom CPU cap is outside this original protection fixture",!custom.protectionAllowsNetwork());
+    View unknown=browsing();unknown.owner.cpu.mode="unknown";cpuCheck("Unknown CPU configuration cannot simulate successful admission",!unknown.protectionAllowsNetwork());
+    View unready=browsing();unready.owner.cpu.declaredReady=false;cpuCheck("Automatic CPU selection without declared readiness remains closed",!unready.protectionAllowsNetwork());
+    cpuTrace.addAll(allowed.owner.cpu.trace);cpuTrace.addAll(denied.owner.cpu.trace);
+  }
+  static String cpuBoundaryJson(){
+    StringBuilder out=new StringBuilder("{\"status\":\"passed\",\"mode\":\"automatic-only\",\"passed\":").append(cpuChecks.size()).append(",\"checks\":[");
+    for(int i=0;i<cpuChecks.size();i++){if(i>0)out.append(',');out.append("{\"name\":").append(quote(cpuChecks.get(i))).append(",\"pass\":true}");}
+    out.append("],\"trace\":[");for(int i=0;i<cpuTrace.size();i++){if(i>0)out.append(',');out.append(quote(cpuTrace.get(i)));}
+    return out.append("],\"actualCpuPolicyExecution\":false,\"nativeSettingReadback\":false,\"actualAndroidExecution\":false}").toString();
+  }
   public static void main(String[] args){
-    basicPolicy();controller();bootstrap();identityAdmission();disabledAddonAdmission();
+    basicPolicy();controller();bootstrap();identityAdmission();disabledAddonAdmission();cpuBoundary();
     StringBuilder out=new StringBuilder("{\"status\":\"passed\",\"passed\":").append(checks.size()).append(",\"checks\":[");
     for(int i=0;i<checks.size();i++){if(i>0)out.append(',');out.append("{\"name\":").append(quote(checks.get(i))).append(",\"pass\":true}");}
     out.append("],\"addonBoundaryPassed\":").append(addonChecks.size()).append(",\"addonBoundaryChecks\":[");for(int i=0;i<addonChecks.size();i++){if(i>0)out.append(',');out.append("{\"name\":").append(quote(addonChecks.get(i))).append(",\"pass\":true}");}
-    System.out.println(out.append("],\"actualAndroidExecution\":false,\"actualGeckoExecution\":false,\"actualAddonLifecycleExecution\":false,\"actualGeneralRouteExecution\":false,\"generalRouteBoundary\":\"Available independent app route with counted readiness/retain and lease facades; actual current production protection/controller methods remain extracted unchanged\"}"));
+    System.out.println(out.append("],\"cpuBoundary\":").append(cpuBoundaryJson()).append(",\"actualAndroidExecution\":false,\"actualGeckoExecution\":false,\"actualAddonLifecycleExecution\":false,\"actualGeneralRouteExecution\":false,\"generalRouteBoundary\":\"Available independent app route with counted readiness/retain and lease facades; actual current production protection/controller methods remain extracted unchanged\"}"));
   }
 }

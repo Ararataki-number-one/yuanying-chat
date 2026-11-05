@@ -28,7 +28,7 @@ class BrowserWorkflowTests(unittest.TestCase):
                     if key=='steps':continue
                     self.assertEqual(current[key],value+['browser'] if name=='verify' and key=='needs' else value)
     def test_single_pipeline_shares_actual_apk_and_gates_browser(self):
-        self.assertEqual(self.new['on']['push']['branches'],['release/browser-2.1.0','release/browser-2.1.0-*','release/browser-2.1.1','release/browser-2.1.1-*','release/browser-2.1.2','release/browser-2.1.2-*'])
+        self.assertEqual(self.new['on']['push']['branches'],['release/browser-2.1.0','release/browser-2.1.0-*','release/browser-2.1.1','release/browser-2.1.1-*','release/browser-2.1.2','release/browser-2.1.2-*','release/browser-2.1.3','release/browser-2.1.3-*'])
         self.assertIn('browser',self.new['jobs']['verify']['needs'])
         self.assertEqual(self.new['jobs']['browser']['needs'],'build')
         browser=self.new['jobs']['browser'];self.assertNotIn('continue-on-error',browser)
@@ -52,6 +52,31 @@ class BrowserWorkflowTests(unittest.TestCase):
             for line in step['with']['path'].splitlines():
                 self.assertNotIn('private',line);self.assertNotIn('.jks',line);self.assertNotIn('.keystore',line);self.assertNotIn('.pem',line)
         self.assertIn('work/native-caret-sdk/maven/',upload[1]['with']['path'])
+
+    def test_cpu_workload_keeps_same_build_and_exports_only_original_case_json(self):
+        browser=self.new['jobs']['browser'];steps=browser['steps']
+        cpu=[step for step in steps if 'tools/browser/run_gecko_cpu_integration.py' in step.get('run','')]
+        self.assertEqual(len(cpu),1);self.assertEqual(cpu[0]['if'],'${{ !cancelled() }}')
+        self.assertNotIn('continue-on-error',cpu[0]);self.assertEqual(browser['needs'],'build')
+        self.assertEqual(browser['timeout-minutes'],35)
+        self.assertIn('--source "$GITHUB_SHA"',cpu[0]['run'])
+        self.assertIn('--apk app/build/outputs/apk/integration/app-x86_64-integration.apk',cpu[0]['run'])
+        self.assertIn('--output work/browser-acceptance',cpu[0]['run'])
+        upload=next(step for step in steps if step.get('name')=='Preserve bounded source-bound browser evidence')
+        cases=('cap1','cap2','automatic-stale-user','rfp','persistent-before','persistent-after',
+               'concurrent-cap1','concurrent-cap2','concurrent-cap1-resample','normal-template-rfp')
+        raw=[line for line in upload['with']['path'].splitlines() if 'gecko-cpu-evidence' in line]
+        self.assertEqual(raw,['work/browser-acceptance/gecko-cpu-evidence/case-'+name+'.json' for name in cases])
+        final=next(step for step in self.new['jobs']['verify']['steps']
+                   if step.get('name')=='Require the additional real Android browser release gate')['run']
+        self.assertIn('test "$BROWSER_RESULT" = success',final)
+        self.assertIn('copy_gecko_cpu_evidence',final)
+        self.assertIn("['eventTransport']['buildIdentity']",final)
+        self.assertIn("os.environ['GITHUB_SHA']",final)
+        qualification=next(step for step in self.new['jobs']['verify']['steps']
+                           if step.get('name')=='Preserve the additional browser qualification receipt')['with']['path']
+        self.assertIn('work/gecko-integration/public/gecko-cpu-results.json',qualification)
+        self.assertIn('work/gecko-integration/public/gecko-cpu-evidence/',qualification)
 
     def test_actual_manifest_runtime_names_and_browser_fixture_contract(self):
         android='{http://schemas.android.com/apk/res/android}'

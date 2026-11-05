@@ -58,10 +58,10 @@ public class NativeRuntimeCapabilitiesHost {
   a.networkRun=true;s.networkReady=false;check("Network checks still require the admitted current network",!a.fresh());s.networkReady=true;s.guard.allowed=false;check("Network checks still require the existing network guard",!a.fresh());s.guard.allowed=true;s.web.protection=false;check("Network checks still require native protection admission",!a.fresh());
   a.cleanup();check("Completed or cancelled checks release the captured runtime reference",a.nativeRuntimeIdentity==null&&!a.running);
   check("All captures made no native policy setter call",GeckoRuntimeSettings.writes==0&&ContentBlocking.Settings.writes==0);
-  System.out.println(J.obj("status","passed","checks",checks.length(),"results",checks,"actualAndroidExecution",false,"actualGeckoExecution",false,"actualSdkApiCompile",false,"physicalPhoneAcceptance",false,"sandboxAcceptance",false));
+  System.out.println(J.obj("status","passed","checks",checks.length(),"results",checks,"actualAndroidExecution",false,"actualGeckoExecution",false,"actualSdkApiCompile",false,"physicalPhoneAcceptance",false,"sandboxAcceptance",false,"automaticCpuMetadataBoundary",AutomaticCpuMetadataBoundary.verify()));
  }
 }
-class ChatSession {Object context=new Object();String environmentId="environment-a";int environmentGeneration=4;long applied=11,navigationEpoch=3,connectionEpoch=9;boolean deleted,networkReady=true,offline;GeckoWebView web;Guard guard=new Guard();Privacy privacy=new Privacy();final SystemTimeZoneBoundary timeZone=new SystemTimeZoneBoundary();long identityAuditAppliedRevision(){return applied;}boolean internalNetwork(){return false;}void updateBrowserActivity(){}}
+class ChatSession {final AutomaticCpuMetadataBoundary cpu=new AutomaticCpuMetadataBoundary();Object context=new Object();String environmentId="environment-a";int environmentGeneration=4;long applied=11,navigationEpoch=3,connectionEpoch=9;boolean deleted,networkReady=true,offline;GeckoWebView web;Guard guard=new Guard();Privacy privacy=new Privacy();final SystemTimeZoneBoundary timeZone=new SystemTimeZoneBoundary();long identityAuditAppliedRevision(){return applied;}boolean internalNetwork(){return false;}void updateBrowserActivity(){}}
 /** Independent default-system policy boundary only; native timezone writes,
  * readback, custom-zone page observations and lifecycle stamps are tested by
  * their separate current-policy hosts, not by this SDK capability reader. */
@@ -85,4 +85,11 @@ class Audit{
  /* AUDIT_EXPECTED */
  /* AUDIT_LOCAL_EXPECTED */
  /* AUDIT_CLEANUP */
+}
+
+/** Original capabilities workload has unobserved automatic CPU metadata, never an ACK or effective getter proof. */
+final class AutomaticCpuMetadataBoundary {
+ String mode="automatic";int captures;
+ JSONObject status(){if(!"automatic".equals(mode))throw new AssertionError("Custom or unknown CPU metadata is outside the legacy SDK host");captures++;return J.obj("state","unavailable","desiredMode","automatic","nativeSettingReadback",false,"workerCoverageVerified",false);}
+ static JSONObject verify(){AutomaticCpuMetadataBoundary value=new AutomaticCpuMetadataBoundary();JSONObject current=value.status();if(value.captures!=1||!current.optString("state").equals("unavailable")||current.optBoolean("nativeSettingReadback")||current.optBoolean("workerCoverageVerified"))throw new AssertionError("Unobserved CPU metadata cannot become native proof");int controls=1;for(String mode:new String[]{"1","unknown"}){value.mode=mode;boolean refused=false;try{value.status();}catch(AssertionError expected){refused=true;}if(!refused||value.captures!=1)throw new AssertionError("Out-of-scope metadata accepted");controls++;}return J.obj("status","passed","controls",controls,"actualCpuPolicyExecution",false,"nativeSettingReadback",false);}
 }

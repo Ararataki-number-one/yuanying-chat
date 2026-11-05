@@ -27,7 +27,7 @@ class GeckoWebView extends FrameLayout {
   Object nativeRuntimeIdentity(){return destroyed||!enabled||owner.deleted?null:runtime;}
   JSONObject nativeRuntimeCapabilities(){
     JSONObject value=GeckoPolicyAdapter.runtimeCapabilityStatus((GeckoRuntime)nativeRuntimeIdentity(),Build.VERSION.SDK_INT);
-    try{value.put("environmentId",owner.environmentId);value.put("environmentGeneration",owner.environmentGeneration);value.put("configurationRevision",owner.identityAuditAppliedRevision());value.put("identityPolicyRevision",identityPolicyRevision);value.put("requestHeaderPolicy",J.parse(metadata.requestHeaderPolicy.toString()));value.put("timeZonePolicy",timeZoneStatus());}catch(JSONException ignored){}
+    try{value.put("environmentId",owner.environmentId);value.put("environmentGeneration",owner.environmentGeneration);value.put("configurationRevision",owner.identityAuditAppliedRevision());value.put("identityPolicyRevision",identityPolicyRevision);value.put("requestHeaderPolicy",J.parse(metadata.requestHeaderPolicy.toString()));value.put("timeZonePolicy",timeZoneStatus());value.put("cpuPolicy",owner.cpu.status());}catch(JSONException ignored){}
     return value;
   }
   void setHost(android.app.Activity activity){if(activity==null)closeExitIpPage();displayContext.setBaseContext(activity==null?owner.context:activity);}
@@ -42,7 +42,7 @@ class GeckoWebView extends FrameLayout {
     if(chrome!=null){if(readingOwnerVisible())chrome.webTouch(event);else chrome.cancelWebGesture();}return handled;
   }
   void destroy(){
-    if(destroyed)return;destroyed=true;retireTimeZones();requestHeadersInstalled=false;retireRequestHeaderPolicy();generalRestore=null;ChromiumRouteLease.removeListener(routeLeaseChanged);releaseGeneralRoutes();generalSessions.clear();deferredGeneralLoads.clear();closeExitIpPage();if(contentPermissions!=null)contentPermissions.close();
+    if(destroyed)return;destroyed=true;owner.cpu.retire(runtime);retireTimeZones();requestHeadersInstalled=false;retireRequestHeaderPolicy();generalRestore=null;ChromiumRouteLease.removeListener(routeLeaseChanged);releaseGeneralRoutes();generalSessions.clear();deferredGeneralLoads.clear();closeExitIpPage();if(contentPermissions!=null)contentPermissions.close();
     cancelZoom();cancelProtectionTasks();nativeProtection.closed();protectionRestore=null;owner.handler.removeCallbacks(recovery);owner.handler.removeCallbacks(checkpoint);saveCheckpoint();
     callbacks.clear();cookieCallbacks.clear();appearanceSync.clear();
     appearanceLoads.clear();appearanceConnections.clear();appearanceDocuments.clear();staleAppearanceConnections.clear();
@@ -58,6 +58,7 @@ class GeckoWebView extends FrameLayout {
   final ChatSession owner;
   GeckoView surface;GeckoRuntime runtime;WebExtension extension;GeckoSession primary,current;
   boolean addonDisabled;long addonStateSerial;
+  GeckoCpuController.Boot cpuBoot;boolean cpuStartupRequested;
   interface ExitIpPageListener{void changed(String message);void closed();}
   ExitIpPageSession exitIpPage;int exitIpTopInset;
   boolean hasExitIpPage(){return exitIpPage!=null;}
@@ -360,17 +361,15 @@ class GeckoWebView extends FrameLayout {
     resourceAdmission=owner.resources.request(runtime!=null,startupState!=null||owner.resourceRestoreWork(),memory);
     if(resourceAdmission==ResourcePressureController.Admission.DEFER){resourceDeferred=true;owner.setStatus(ResourcePressureController.DEFERRED_MESSAGE);return;}
     resourceDeferred=false;
+    if(cpuBoot==null){
+      if(!cpuStartupRequested){cpuStartupRequested=true;owner.cpu.prepareStartup(value->{
+        if(destroyed||owner.deleted)return;if(value==null){failure("CPU 冷启动配置未能安全准备，请重新打开当前环境");return;}cpuBoot=value;initialize();
+      });}return;
+    }
     try{
       if(sdkBuildIdentity==null)sdkBuildIdentity=NormalCaretSdkReceipt.read(owner.context);
-      File directory=new File(owner.context.getNoBackupFilesDir(),"gecko-browser");
-      if(!directory.isDirectory()&&!directory.mkdirs())throw new IOException("无法创建浏览器数据目录");
-      File config=new File(owner.context.getNoBackupFilesDir(),"gecko-browser.yaml");
-      // Closed bootstrap route. The built-in route delegate opens only the existing guarded route.
-      String prefs="prefs:\n  network.proxy.type: 1\n  network.proxy.socks: '127.0.0.1'\n  network.proxy.socks_port: 9\n"
-        +"  network.proxy.socks_version: 5\n  network.proxy.socks_remote_dns: true\n  network.proxy.no_proxies_on: ''\n"
-        +"  network.proxy.allow_hijacking_localhost: true\n  network.trr.mode: 5\n  network.dns.disablePrefetch: true\n"
-        +"  network.prefetch-next: false\n  network.http.speculative-parallel-limit: 0\n  media.peerconnection.enabled: false\n";
-      Files.write(config.toPath(),prefs.getBytes(StandardCharsets.UTF_8));
+      File directory=cpuBoot.profile,config=cpuBoot.config;
+      if(!owner.cpu.claimRuntime(cpuBoot))throw new IOException("CPU cold runtime ownership changed");
       runtime=GeckoRuntime.create(new GeckoEnvironmentContext(owner.context),new GeckoRuntimeSettings.Builder()
         .arguments(new String[]{"-profile",directory.getAbsolutePath()}).configFilePath(config.getAbsolutePath())
         .isolatedProcessEnabled(Build.VERSION.SDK_INT>=29).appZygoteProcessEnabled(false)
@@ -378,6 +377,10 @@ class GeckoWebView extends FrameLayout {
         .preferredColorScheme(AppAppearance.dark()?GeckoRuntimeSettings.COLOR_SCHEME_DARK:GeckoRuntimeSettings.COLOR_SCHEME_LIGHT)
         .forceUserScalableEnabled(true).inputAutoZoomEnabled(true).build());
       owner.resources.runtimeCreated();
+      GeckoRuntime cpuRuntime=runtime;
+      owner.cpu.attachRuntime(cpuBoot,cpuRuntime,new GeckoCpuNative(()->!destroyed&&!owner.deleted&&runtime==cpuRuntime),accepted->{
+        if(destroyed||runtime!=cpuRuntime)return;if(!accepted){failure("原生 CPU 配置未确认，请重新打开当前环境");return;}maybeOpen();
+      });
       final GeckoRuntime created=runtime;final long addonSerial=addonStateSerial;
       created.getWebExtensionController().setAddonManagerDelegate(new WebExtensionController.AddonManagerDelegate(){
         @Override public void onDisabled(WebExtension value){addonStateChanged(created,value,true);}
@@ -832,7 +835,7 @@ class GeckoWebView extends FrameLayout {
     if(metadata.policyAcknowledged){metadata.acceptedBrowserIdentity=BrowserIdentitySpec.legacy(desktop,configuredProtection).withLocales(identityPolicy==null?Collections.emptyList():identityPolicy.locales).json();owner.identityPolicyAcknowledged();}
   }
   private void requestProtection(WebExtension.Port port,String kind,int level){
-    closeExitIpPage();
+    owner.cpu.protectionWillChange();closeExitIpPage();
     cancelProtectionTasks();nativeProtection.begin(level);requestedProtection=level;
     if(level<0||level>2){privacyReady=fingerprintingProtected=false;metadata.rfpAcknowledged=metadata.policyAcknowledged=false;owner.setStatus("保护等级无效，请主动重新选择保护等级");owner.changed();return;}
     sendProtectionAttempt(port,kind);
@@ -858,7 +861,7 @@ class GeckoWebView extends FrameLayout {
   private void protectionAttemptFinished(WebExtension.Port port){
     protectionLevel=requestedProtection;fingerprintingProtected=nativeProtection.confirmed()&&nativeProtection.fingerprinting();
     metadata.rfpAcknowledged=nativeProtection.confirmed();privacyReady=requestedProtection<2||nativeProtection.confirmed();
-    acknowledgeIdentity();
+    owner.cpu.refreshNative();acknowledgeIdentity();
     if(!privacyReady&&nativeProtection.canRetry()){
       nativeProtection.awaitingRetry();long generation=nativeProtection.generation();
       protectionRetry=()->{protectionRetry=null;if(!destroyed&&port==routePort&&generation==nativeProtection.generation()&&requestedProtection==owner.privacy.level())sendProtectionAttempt(port,"protection");};
@@ -874,7 +877,7 @@ class GeckoWebView extends FrameLayout {
     if(restore!=null&&restore.session==current&&restore.navigation==owner.navigationEpoch&&(queued.isEmpty()||queued.equals(restore.url))){queued="";restoreCheckpoint(restore.session,restore.state,restore.url,restore.draftRevision);return;}
     if(!queued.isEmpty()){String target=queued;queued="";loadUrl(target);}
   }
-  boolean protectionAllowsNetwork(){return nativeProtection.allows(owner.privacy.level());}
+  boolean protectionAllowsNetwork(){return owner.cpu.readyFor(runtime)&&nativeProtection.allows(owner.privacy.level());}
   boolean protectionBootstrapBlocked(){return !destroyed&&!failed&&!ready&&surface==null&&current==null&&primary==null&&locations.isEmpty()&&popups.isEmpty()&&owner.privacy.level()>=2&&nativeProtection.level()==owner.privacy.level()&&"failed".equals(nativeProtection.state());}
   boolean retryProtection(){
     if(destroyed||nativeProtection.level()==owner.privacy.level()&&("pending".equals(nativeProtection.state())||nativeProtection.confirmed()))return false;

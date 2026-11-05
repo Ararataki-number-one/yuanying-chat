@@ -43,8 +43,20 @@ def member(text,signature):
     start=text.index(signature)
     return signature+body(text,start)
 
-def execute(source_override=None):
+class CompiledControllerRejection(AssertionError):
+    def __init__(self,result,generated,parts):
+        super().__init__(result.stdout+result.stderr)
+        self.receipt=dict(status='rejected',compiled=True,compilerExitCode=0,runtimeExitCode=result.returncode,
+            stderr=result.stderr,generatedSha256=hashlib.sha256(generated.encode()).hexdigest(),
+            executedProductionSha256={key:hashlib.sha256(value.encode()).hexdigest() for key,value in parts.items()},
+            actualAndroidExecution=False,actualCpuPolicyExecution=False,nativeSettingReadback=False)
+
+def execute(source_override=None,cpu_gate_removed=False):
     source=VIEW.read_text() if source_override is None else source_override
+    if cpu_gate_removed:
+        gate='owner.cpu.readyFor(runtime)&&nativeProtection.allows(owner.privacy.level())'
+        if source.count(gate)!=1:raise AssertionError('Exact current CPU admission expression required')
+        source=source.replace(gate,'nativeProtection.allows(owner.privacy.level())',1)
     identity=IDENTITY.read_text();constant_start=identity.index('static final String PATH=')
     identity_policy=identity[constant_start:identity.index(';',constant_start)+1]+'\n'+'\n'.join(member(identity,signature) for signature in [
         'static String endpoint(String value)',
@@ -93,17 +105,21 @@ def execute(source_override=None):
         result=subprocess.run(command,capture_output=True,text=True,timeout=30)
         if result.returncode:raise AssertionError(result.stdout+result.stderr)
         result=subprocess.run([java,'-cp',temp,'local.pocketchat.NativeProtectionControllerHost'],capture_output=True,text=True,timeout=15)
-        if result.returncode:raise AssertionError(result.stdout+result.stderr)
+        if result.returncode:raise CompiledControllerRejection(result,generated,parts)
     report=json.loads(result.stdout)
     report.update(scope='Actual production pure-Java state plus byte-extracted native controller, route, navigation, load, checkpoint restore, port-message and diagnostic URL policy methods. Handler, Gecko/Android, environment lifecycle, network guard and JSON boundaries are synthetic; no actual network or SDK execution.',
                   auxiliaryPageBoundary='Default absent; close returns false only while absent, and any auxiliary freshness/close behavior fails explicitly. Real auxiliary lifecycle is not exercised.',
                   actualRequestHeaderPolicyExecution=False,actualTimeZonePolicyExecution=False,
                   actualAddonLifecycleExecution=False,addonBoundary='The original 98 protection cases explicitly assume an enabled independent add-on. Separate checks execute the current byte-extracted disabled-navigation guard and its original call sites against counted application/SDK boundaries; no real add-on lifecycle or native navigation is exercised.',
+                  actualCpuPolicyExecution=False,
+                  cpuBoundaryScope='Only automatic with explicit declared readiness for one opaque fixture runtime; counted protection invalidation, native-refresh facade and readyFor checks. Independent denial/custom/unknown/null runtime controls execute current protection admission; no CPU native/profile/Worker execution or ACK is represented.',
                   requestHeaderBoundary='Independent header filter is explicitly installed at fixture creation; retirement is counted only. Real header installation, policy replies and HTTP wire behavior are not executed here.',
                   timeZoneBoundary='Independent system timezone is explicitly ready, with counted checks, popup admission, preparation and retirement. Custom-timezone deferral fails explicitly; real timezone/session policy executes in separate current-policy hosts. The intent maps and claim/clear/has helpers are byte-extracted current production, not readiness facades.',
                   newNetworkRequestsActuallySent=False,fullFingerprintProtectionAccepted=False,
                   sourceSha256={str(p.relative_to(ROOT)):hashlib.sha256(p.read_bytes()).hexdigest() for p in [VIEW,POLICY,NAVIGATION,ADDRESS,IDENTITY,TEMPLATE,Path(__file__)]},
                   extractedProductionSha256={name:hashlib.sha256(value.encode()).hexdigest() for name,value in parts.items()})
+    configured_jar=os.environ.get('PROFILE_JSON_JAR')
+    report['jsonBoundary']=dict(kind='synthetic-hashmap',configuredJarSha256=hashlib.sha256(Path(configured_jar).read_bytes()).hexdigest() if configured_jar and Path(configured_jar).is_file() else None,configuredJarConsumed=False,actualJsonParserExecution=False)
     return report
 
 class NativeProtectionTest(unittest.TestCase):
@@ -116,6 +132,32 @@ class NativeProtectionTest(unittest.TestCase):
         output=ROOT/'work/profile-host/native-protection-controller-results.json'
         output.parent.mkdir(parents=True,exist_ok=True)
         output.write_text(json.dumps(report,ensure_ascii=False,indent=2)+'\n')
+    def test_current_cpu_dependency_is_explicit_and_independently_closed(self):
+        report=execute();boundary=report['cpuBoundary']
+        self.assertEqual(boundary['status'],'passed')
+        self.assertEqual(boundary['mode'],'automatic-only')
+        self.assertEqual(boundary['passed'],20)
+        self.assertEqual(len(boundary['checks']),20)
+        self.assertTrue(all(value['pass'] is True for value in boundary['checks']))
+        self.assertTrue(boundary['trace'])
+        self.assertFalse(boundary['actualCpuPolicyExecution'])
+        self.assertFalse(boundary['nativeSettingReadback'])
+        self.assertFalse(boundary['actualAndroidExecution'])
+        output=ROOT/'work/profile-host/native-protection-cpu-boundary-results.json'
+        output.parent.mkdir(parents=True,exist_ok=True)
+        output.write_text(json.dumps(report,ensure_ascii=False,indent=2)+'\n')
+    def test_removing_actual_cpu_admission_gate_fails_after_successful_compilation(self):
+        with self.assertRaisesRegex(CompiledControllerRejection,'Independent CPU refusal closes actual protection admission') as rejected:
+            execute(cpu_gate_removed=True)
+        receipt=rejected.exception.receipt
+        self.assertEqual(receipt['runtimeExitCode'],1)
+        self.assertTrue(receipt['compiled'])
+        receipt.update(productionSourceSha256=hashlib.sha256(VIEW.read_bytes()).hexdigest(),
+            mutation='Only remove owner.cpu.readyFor(runtime)&& from actual current protectionAllowsNetwork',
+            compilerFailureAccepted=False,actualJsonParserExecution=False)
+        output=ROOT/'work/profile-host/native-protection-cpu-gate-negative.json'
+        output.parent.mkdir(parents=True,exist_ok=True)
+        output.write_text(json.dumps(receipt,ensure_ascii=False,indent=2)+'\n')
     def test_actual_background_never_releases_a_hung_setting_lock_for_a_new_confirmation(self):
         node=shutil.which('node')
         self.assertTrue(node,'Node required for the production extension controls')
