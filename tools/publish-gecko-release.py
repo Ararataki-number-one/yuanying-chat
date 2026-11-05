@@ -70,6 +70,7 @@ resource_release=tuple(map(int,version.split('.'))) >= (2,0,0)
 browser_release=tuple(map(int,version.split('.'))) >= (2,1,0)
 fingerprint_release=tuple(map(int,version.split('.'))) >= (2,1,1)
 worker_timezone_release=tuple(map(int,version.split('.'))) >= (2,1,2)
+cpu_release=tuple(map(int,version.split('.'))) >= (2,1,3)
 p=argparse.ArgumentParser()
 p.add_argument('--source',required=True)
 p.add_argument('--apk',type=pathlib.Path,default=root/f'dist/PocketChat-{version}-gecko-arm64.apk')
@@ -100,6 +101,7 @@ release_tool_files={'.github/workflows/publish-gecko-release.yml','tools/publish
 if browser_release:release_tool_files.add('tools/browser/check_evidence.py')
 if fingerprint_release:release_tool_files.update({'tools/browser/check_fingerprint_evidence.py'})
 if worker_timezone_release:release_tool_files.update({'tools/browser/check_worker_policy_evidence.py','tools/browser/check_gecko_environment_policy_evidence.py','tools/browser/ip_timezone_publication.py'})
+if cpu_release:release_tool_files.update({'tools/browser/check_gecko_cpu_evidence.py','tools/browser/cpu_ip_combo_publication.py'})
 if release_tools_commit!=args.source:
     subprocess.run(['git','merge-base','--is-ancestor',args.source,release_tools_commit],cwd=root,check=True)
     changed=set(subprocess.check_output(['git','diff','--name-only',args.source,release_tools_commit],cwd=root,text=True).splitlines())
@@ -255,6 +257,12 @@ if version_code>=70:
     performance_files.extend(SETTINGS_REPORTS)
 performance_files.extend(item.name for pattern in ('native-input-*.json','native-input-*.log','native-input-*.txt') for item in args.evidence.glob(pattern) if item.is_file())
 for name in performance_files:shutil.copy2(args.evidence/name,stage/name)
+if cpu_release:
+    from browser.check_evidence import copy_gecko_cpu_evidence
+    performance_files.extend(copy_gecko_cpu_evidence(args.evidence,stage,args.source,report['eventTransport']['buildIdentity']))
+if tuple(map(int,version.split('.'))) >= (2,1,3):
+    from browser.cpu_ip_combo_publication import copy_gecko_cpu_ip_combo_evidence
+    performance_files.extend(copy_gecko_cpu_ip_combo_evidence(args.evidence,stage,args.source,report['eventTransport']['buildIdentity']))
 performance_files.extend(copy_network_scope_evidence(args.evidence, stage))
 shutil.copy2(args.notes,stage/'RELEASE.md')
 workflow=stage/'.github/workflows/publish-gecko-release.yml';workflow.parent.mkdir(parents=True)
@@ -299,6 +307,12 @@ if worker_timezone_release:
     ip_timezone_publication=copy_gecko_ip_timezone_evidence(args.evidence,stage,args.source,report['eventTransport']['buildIdentity'],required_regression=ip_timezone_required)
     performance_files+=ip_timezone_publication['files']
     copy_gecko_ip_timezone_tools(root,stage,args.source)
+if cpu_release:
+    shutil.copy2(root/'tools/browser/check_gecko_cpu_evidence.py',stage/'tools/browser/check_gecko_cpu_evidence.py')
+    shutil.copy2(root/'tools/gecko/cpu_acceptance_server.py',stage/'tools/gecko/cpu_acceptance_server.py')
+if tuple(map(int,version.split('.'))) >= (2,1,3):
+    from browser.cpu_ip_combo_publication import copy_gecko_cpu_ip_combo_tools
+    copy_gecko_cpu_ip_combo_tools(root,stage,args.source)
 branch='apk/gecko-release-20261003'
 if version_code>=70:
     for mode in ('retry','application','internal'):
