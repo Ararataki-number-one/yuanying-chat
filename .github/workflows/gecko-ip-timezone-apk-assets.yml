@@ -1,0 +1,99 @@
+name: Read immutable IP diagnostic APK public extension assets
+'on':
+  push:
+    branches:
+    - diagnostics/ip-apk-assets-20261105-1
+permissions:
+  contents: read
+  actions: read
+jobs:
+  read_public_apk_assets:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+    - name: Bind original failed diagnostic and read six exact public APK assets
+      env:
+        GH_TOKEN: ${{ github.token }}
+      shell: bash
+      run: "set -euo pipefail\npython3 - <<'IP_ASSET_READER'\n\"\"\"Read only one\
+        \ immutable build ZIP and six public APK asset members.\"\"\"\nimport hashlib,io,json,os,pathlib,stat,subprocess,tempfile,zipfile\n\
+        REPO='Ararataki-number-one/yuanying-chat';REPO_ID=1401080063\nRUN=42068081955;ATTEMPT=1;SOURCE='4bcf982ae9b82606386b26d3f79bec2565e523a7';TREE='81b1cebc5a9f6414b870b83609af6038b11d4b1c'\n\
+        BRANCH='diagnostics/gecko-ip-timezone-20261105-2';WORKFLOW='.github/workflows/gecko-ip-timezone-acceptance.yml'\n\
+        BUILD_JOB=127387796961;DEVICE_JOB=127391875381\nARTIFACT=13433804419;ARTIFACT_NAME='gecko-ip-timezone-acceptance-build-42068081955-1'\n\
+        ZIP_BYTES=247192968;ZIP_SHA='aca74e695b37f825a9581a2a6f04b33e53f86e56e49b3d6d170b1ecc192f0766'\n\
+        APK_PATH='app/build/outputs/apk/integration/app-x86_64-integration.apk';APK_BYTES=127166663;APK_SHA='ffc4c63dd9ad64706a4abe9393ca7b93a1ea67298c9b47655db5f684ff9f14c3'\n\
+        SCRIPTS=['ip-timezone-bootstrap.js','request-headers.js','request-identity-background.js','native-timezone-bridge.js','background.js']\n\
+        EXPECTED={'assets/gecko/manifest.json': {'bytes': 1041, 'sha256': '6097827b000f8ae3f65b0c9c21cda622d339027df35dcbe077964531fd10a1c9'},\
+        \ 'assets/gecko/ip-timezone-bootstrap.js': {'bytes': 6834, 'sha256': 'e93eb1e6ad53eb811a88b4ec2965221c5be70bfbd4838b226838b4dc5d3496c8'},\
+        \ 'assets/gecko/request-headers.js': {'bytes': 7958, 'sha256': 'cd6d9d86e316fb7343af7a06bbd1db3befabd66da1a4416a4396e3541bb3ae8f'},\
+        \ 'assets/gecko/request-identity-background.js': {'bytes': 14922, 'sha256':\
+        \ '46f298bcfd79485161fb773b368f106083e745c5b44964e8216beed073ee7175'}, 'assets/gecko/native-timezone-bridge.js':\
+        \ {'bytes': 3932, 'sha256': '3a1ff20be289e87d974a9594da386da75ef3733414f7e536c1e4349c0181338d'},\
+        \ 'assets/gecko/background.js': {'bytes': 13688, 'sha256': '1416e78530713d63891ea4b3992ce084919326b662d16f49ec0c6f09e5f0a09c'}}\n\
+        \ndef require(value,reason):\n    if not value:raise ValueError(reason)\n\
+        def sha(raw):return hashlib.sha256(raw).hexdigest()\ndef api(path):\n    result=subprocess.run(['gh','api','/repos/'+REPO+path],stdout=subprocess.PIPE,stderr=subprocess.DEVNULL,check=False,timeout=90)\n\
+        \    require(result.returncode==0,'metadata-unavailable');return json.loads(result.stdout)\n\
+        def safe_entries(archive,maximum,total):\n    entries=archive.infolist();require(len(entries)<=maximum\
+        \ and len({x.filename for x in entries})==len(entries),'archive-members')\n\
+        \    require(sum(x.file_size for x in entries)<=total,'archive-expansion')\n\
+        \    for x in entries:\n        p=pathlib.PurePosixPath(x.filename)\n    \
+        \    require(not p.is_absolute() and '..' not in p.parts and '\\\\' not in\
+        \ x.filename and '\\x00' not in x.filename and not stat.S_ISLNK(x.external_attr>>16)\
+        \ and not x.flag_bits&1,'archive-path')\n    return entries\n\ndef main():\n\
+        \    require(os.environ.get('GITHUB_REPOSITORY')==REPO and os.environ.get('GITHUB_REPOSITORY_ID')==str(REPO_ID),'reader-repository')\n\
+        \    run=api('/actions/runs/'+str(RUN));commit=api('/git/commits/'+SOURCE);artifact=api('/actions/artifacts/'+str(ARTIFACT));jobs=api('/actions/runs/'+str(RUN)+'/attempts/1/jobs?per_page=100')['jobs']\n\
+        \    require(run['id']==RUN and run['run_attempt']==ATTEMPT and run['head_sha']==SOURCE\
+        \ and run['head_branch']==BRANCH and run['path']==WORKFLOW and run['event']=='push'\
+        \ and run['status']=='completed' and run['conclusion']=='failure','original-run-binding')\n\
+        \    require(run['repository']['id']==REPO_ID and run['repository']['full_name']==REPO\
+        \ and run['head_repository']['id']==REPO_ID,'original-repository')\n    require(commit['sha']==SOURCE\
+        \ and commit['tree']['sha']==TREE,'original-source-tree')\n    require(len(jobs)==2\
+        \ and {x['id']:x['conclusion'] for x in jobs}=={BUILD_JOB:'success',DEVICE_JOB:'failure'}\
+        \ and all(x['status']=='completed' and x['head_sha']==SOURCE and x['run_attempt']==1\
+        \ for x in jobs),'original-job-outcomes')\n    require(artifact['id']==ARTIFACT\
+        \ and artifact['name']==ARTIFACT_NAME and artifact['size_in_bytes']==ZIP_BYTES\
+        \ and artifact['digest']=='sha256:'+ZIP_SHA and artifact['expired'] is False,'artifact-pins')\n\
+        \    origin=artifact['workflow_run'];require(origin['id']==RUN and origin['head_sha']==SOURCE\
+        \ and origin['head_branch']==BRANCH and origin['repository_id']==origin['head_repository_id']==REPO_ID,'artifact-origin')\n\
+        \    with tempfile.TemporaryDirectory(prefix='public-apk-assets-') as temporary:\n\
+        \        directory=pathlib.Path(temporary);bundle=directory/'build.zip';apk=directory/'integration.apk'\n\
+        \        with bundle.open('wb') as stream:\n            result=subprocess.run(['gh','api','/repos/'+REPO+'/actions/artifacts/'+str(ARTIFACT)+'/zip'],stdout=stream,stderr=subprocess.DEVNULL,check=False,timeout=300)\n\
+        \        require(result.returncode==0 and bundle.stat().st_size==ZIP_BYTES,'download-size')\n\
+        \        h=hashlib.sha256()\n        with bundle.open('rb') as stream:\n \
+        \           for block in iter(lambda:stream.read(1048576),b''):h.update(block)\n\
+        \        require(h.hexdigest()==ZIP_SHA,'download-sha256')\n        with zipfile.ZipFile(bundle)\
+        \ as archive:\n            entries=safe_entries(archive,64,320000000);items=[x\
+        \ for x in entries if x.filename==APK_PATH]\n            require(len(items)==1\
+        \ and items[0].file_size==APK_BYTES,'exact-integration-member')\n        \
+        \    h=hashlib.sha256();written=0\n            with archive.open(items[0])\
+        \ as stream,apk.open('xb') as out:\n                for block in iter(lambda:stream.read(1048576),b''):\n\
+        \                    written+=len(block);require(written<=APK_BYTES,'apk-bound');out.write(block);h.update(block)\n\
+        \        require(written==APK_BYTES and h.hexdigest()==APK_SHA,'whole-apk-sha256')\n\
+        \        rows=[]\n        with zipfile.ZipFile(apk) as archive:\n        \
+        \    entries=safe_entries(archive,100000,400000000)\n            for name\
+        \ in ['manifest.json',*SCRIPTS]:\n                path='assets/gecko/'+name;items=[x\
+        \ for x in entries if x.filename==path]\n                require(len(items)==1\
+        \ and 0<items[0].file_size<=1048576,'public-asset-member')\n             \
+        \   raw=archive.read(items[0]);require(len(raw)==items[0].file_size,'public-asset-size')\n\
+        \                pin=EXPECTED[path];row=dict(path=path,bytes=len(raw),sha256=sha(raw),sourceBytes=pin['bytes'],sourceSha256=pin['sha256'],matchesSelectedSource=len(raw)==pin['bytes']\
+        \ and sha(raw)==pin['sha256']);rows.append(row)\n                if name=='manifest.json':\n\
+        \                    manifest=json.loads(raw);require(manifest.get('manifest_version')==2\
+        \ and manifest.get('version')=='2.1.2.104' and manifest.get('browser_specific_settings',{}).get('gecko',{}).get('id')=='browser@pocketchat.local','extension-identity')\n\
+        \                    require(manifest.get('background',{}).get('scripts')==SCRIPTS,'five-background-scripts')\n\
+        \        receipt=dict(schema=1,status='passed' if all(x['matchesSelectedSource']\
+        \ for x in rows) else 'failed',diagnosticOnly=True,releaseAcceptance=False,deviceExecution=False,actualPublicIpGeolocationVerified=False,originalSource=SOURCE,originalTree=TREE,originalRunId=str(RUN),originalRunAttempt=str(ATTEMPT),artifactId=ARTIFACT,artifactZipBytes=ZIP_BYTES,artifactZipSha256=ZIP_SHA,sourceMemberPath=APK_PATH,integrationApkBytes=APK_BYTES,integrationApkSha256=APK_SHA,extensionId='browser@pocketchat.local',extensionVersion='2.1.2.104',backgroundScripts=SCRIPTS,assets=rows,installedExtensionRuntimeVerified=False,scope='Exact\
+        \ original build ZIP and full integration APK verified; only six public asset\
+        \ members read. No Android execution, input replay, network geolocation, private\
+        \ assets or whole-extension-runtime claim.')\n        pathlib.Path('apk-extension-assets-receipt.json').write_text(json.dumps(receipt,separators=(',',':'))+'\\\
+        n')\n        print('IP_APK_ASSET_RECEIPT '+json.dumps(receipt,separators=(',',':')))\n\
+        \        require(receipt['status']=='passed','asset-source-mismatch')\nif\
+        \ __name__=='__main__':main()\n\nIP_ASSET_READER\n"
+    - name: Preserve bounded asset metadata only
+      if: always()
+      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+      with:
+        name: gecko-ip-timezone-original-apk-assets-${{ github.run_id }}-${{ github.run_attempt
+          }}
+        path: apk-extension-assets-receipt.json
+        if-no-files-found: ignore
+        retention-days: 7
