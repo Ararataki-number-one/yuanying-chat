@@ -18,6 +18,8 @@ class BrowserWorkflowTests(unittest.TestCase):
         cls.old=yaml.safe_load((ROOT/'.github/workflows/gecko-integration.yml').read_text())
         cls.new=yaml.safe_load((ROOT/'.github/workflows/browser-2_1-acceptance.yml').read_text())
     def test_original_checks_retained_in_order(self):
+        self.assertIn('timeout-minutes',self.old['jobs']['build']);self.assertIn('timeout-minutes',self.new['jobs']['build'])
+        self.assertIs(type(self.old['jobs']['build']['timeout-minutes']),int);self.assertEqual(self.old['jobs']['build']['timeout-minutes'],40)
         for name,job in self.old['jobs'].items():
             with self.subTest(job=name):
                 current=self.new['jobs'][name];position=0
@@ -26,7 +28,10 @@ class BrowserWorkflowTests(unittest.TestCase):
                     self.assertIsNotNone(found,(name,step.get('name')));position=found+1
                 for key,value in job.items():
                     if key=='steps':continue
-                    self.assertEqual(current[key],value+['browser'] if name=='verify' and key=='needs' else value)
+                    if (name,key)==('build','timeout-minutes'):
+                        self.assertIs(type(current[key]),int);self.assertEqual(current[key],60)
+                    else:
+                        self.assertEqual(current[key],value+['browser'] if name=='verify' and key=='needs' else value)
     def test_single_pipeline_shares_actual_apk_and_gates_browser(self):
         self.assertEqual(self.new['on']['push']['branches'][:6],['release/browser-2.1.0','release/browser-2.1.0-*','release/browser-2.1.1','release/browser-2.1.1-*','release/browser-2.1.2','release/browser-2.1.2-*'])
         self.assertEqual(self.new['on']['push']['branches'][6:],['release/browser-2.1.3','release/browser-2.1.3-*'])

@@ -144,10 +144,14 @@ class IpTimezonePublishGateTests(unittest.TestCase):
         current = yaml.safe_load((ROOT / '.github/workflows/browser-2_1-acceptance.yml').read_text())
         original = yaml.safe_load((ROOT / '.github/workflows/gecko-integration.yml').read_text())
         self.assertEqual(set(current['jobs']), set(original['jobs']) | {'browser'})
+        self.assertIn('timeout-minutes',original['jobs']['build']);self.assertIn('timeout-minutes',current['jobs']['build'])
+        self.assertIs(type(original['jobs']['build']['timeout-minutes']),int);self.assertEqual(original['jobs']['build']['timeout-minutes'],40)
         for name, previous in original['jobs'].items():
             for field in ('timeout-minutes', 'permissions', 'strategy', 'continue-on-error', 'if', 'needs'):
                 expected = previous.get(field)
-                if name == 'verify' and field == 'needs':
+                if (name,field)==('build','timeout-minutes'):
+                    self.assertIs(type(current['jobs'][name].get(field)),int);expected=60
+                elif name == 'verify' and field == 'needs':
                     expected = expected + ['browser']
                 self.assertEqual(current['jobs'][name].get(field), expected, (name, field))
         browser = current['jobs']['browser']

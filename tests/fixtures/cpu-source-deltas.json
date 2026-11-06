@@ -120,16 +120,23 @@
     "tests/browser_acceptance_workflow_test.py": {
       "previousSha256": "2326b1d819bfe98e860f77f515c3bdf2e75565770409e4b33603d47cf96b4fde",
       "previousBytes": 6079,
-      "reviewedSha256": "0a5cd82767ec879fadcdf1b0bf4b551cf7eb6d708ed7a90cf63a5f191ff0526a",
-      "reviewedBytes": 6200,
+      "reviewedSha256": "98c4ff6a7d8c55cfc8e8bd93ceb87904cff8b371d74e278c5edf3eec1d109af9",
+      "reviewedBytes": 6660,
       "contextLines": 3,
       "deltas": [
         {
           "id": "context-00",
-          "previous": "                    if key=='steps':continue\n                    self.assertEqual(current[key],value+['browser'] if name=='verify' and key=='needs' else value)\n    def test_single_pipeline_shares_actual_apk_and_gates_browser(self):\n        self.assertEqual(self.new['on']['push']['branches'],['release/browser-2.1.0','release/browser-2.1.0-*','release/browser-2.1.1','release/browser-2.1.1-*','release/browser-2.1.2','release/browser-2.1.2-*'])\n        self.assertIn('browser',self.new['jobs']['verify']['needs'])\n        self.assertEqual(self.new['jobs']['browser']['needs'],'build')\n        browser=self.new['jobs']['browser'];self.assertNotIn('continue-on-error',browser)\n",
-          "current": "                    if key=='steps':continue\n                    self.assertEqual(current[key],value+['browser'] if name=='verify' and key=='needs' else value)\n    def test_single_pipeline_shares_actual_apk_and_gates_browser(self):\n        self.assertEqual(self.new['on']['push']['branches'][:6],['release/browser-2.1.0','release/browser-2.1.0-*','release/browser-2.1.1','release/browser-2.1.1-*','release/browser-2.1.2','release/browser-2.1.2-*'])\n        self.assertEqual(self.new['on']['push']['branches'][6:],['release/browser-2.1.3','release/browser-2.1.3-*'])\n        self.assertIn('browser',self.new['jobs']['verify']['needs'])\n        self.assertEqual(self.new['jobs']['browser']['needs'],'build')\n        browser=self.new['jobs']['browser'];self.assertNotIn('continue-on-error',browser)\n",
-          "previousSha256": "b4bd3f98c98f00f19c42c280eac2d942f3e57e5acce0c95da976282a7b35f9e4",
-          "currentSha256": "70480df50d679d28a500cb1e4459913c12984f9868c998d4d9d632e6f3379df6"
+          "previous": "        cls.old=yaml.safe_load((ROOT/'.github/workflows/gecko-integration.yml').read_text())\n        cls.new=yaml.safe_load((ROOT/'.github/workflows/browser-2_1-acceptance.yml').read_text())\n    def test_original_checks_retained_in_order(self):\n        for name,job in self.old['jobs'].items():\n            with self.subTest(job=name):\n                current=self.new['jobs'][name];position=0\n",
+          "current": "        cls.old=yaml.safe_load((ROOT/'.github/workflows/gecko-integration.yml').read_text())\n        cls.new=yaml.safe_load((ROOT/'.github/workflows/browser-2_1-acceptance.yml').read_text())\n    def test_original_checks_retained_in_order(self):\n        self.assertIn('timeout-minutes',self.old['jobs']['build']);self.assertIn('timeout-minutes',self.new['jobs']['build'])\n        self.assertIs(type(self.old['jobs']['build']['timeout-minutes']),int);self.assertEqual(self.old['jobs']['build']['timeout-minutes'],40)\n        for name,job in self.old['jobs'].items():\n            with self.subTest(job=name):\n                current=self.new['jobs'][name];position=0\n",
+          "previousSha256": "da44a9f6610e32180073116dd794d6b625421e2b642bd740b2432ed08886cc5b",
+          "currentSha256": "16fef70ccea95794c789f0010357f244ba236362ec59e0e24f39cf91af92279a"
+        },
+        {
+          "id": "context-01",
+          "previous": "                    self.assertIsNotNone(found,(name,step.get('name')));position=found+1\n                for key,value in job.items():\n                    if key=='steps':continue\n                    self.assertEqual(current[key],value+['browser'] if name=='verify' and key=='needs' else value)\n    def test_single_pipeline_shares_actual_apk_and_gates_browser(self):\n        self.assertEqual(self.new['on']['push']['branches'],['release/browser-2.1.0','release/browser-2.1.0-*','release/browser-2.1.1','release/browser-2.1.1-*','release/browser-2.1.2','release/browser-2.1.2-*'])\n        self.assertIn('browser',self.new['jobs']['verify']['needs'])\n        self.assertEqual(self.new['jobs']['browser']['needs'],'build')\n        browser=self.new['jobs']['browser'];self.assertNotIn('continue-on-error',browser)\n",
+          "current": "                    self.assertIsNotNone(found,(name,step.get('name')));position=found+1\n                for key,value in job.items():\n                    if key=='steps':continue\n                    if (name,key)==('build','timeout-minutes'):\n                        self.assertIs(type(current[key]),int);self.assertEqual(current[key],60)\n                    else:\n                        self.assertEqual(current[key],value+['browser'] if name=='verify' and key=='needs' else value)\n    def test_single_pipeline_shares_actual_apk_and_gates_browser(self):\n        self.assertEqual(self.new['on']['push']['branches'][:6],['release/browser-2.1.0','release/browser-2.1.0-*','release/browser-2.1.1','release/browser-2.1.1-*','release/browser-2.1.2','release/browser-2.1.2-*'])\n        self.assertEqual(self.new['on']['push']['branches'][6:],['release/browser-2.1.3','release/browser-2.1.3-*'])\n        self.assertIn('browser',self.new['jobs']['verify']['needs'])\n        self.assertEqual(self.new['jobs']['browser']['needs'],'build')\n        browser=self.new['jobs']['browser'];self.assertNotIn('continue-on-error',browser)\n",
+          "previousSha256": "028f806188889aa8d55bcaa9398351853acadccefec0d8cde1c104c9c6d921af",
+          "currentSha256": "5147932f1fe854f44504d52778371c12597da21845c357187f5ea5f39eeedb70"
         }
       ]
     },
@@ -168,8 +175,8 @@
     "tests/browser_ip_timezone_publish_gate_test.py": {
       "previousSha256": "c94ad2f25d167b821525740df8857fc6810c283a72c749781a6a2438fbfc2f0f",
       "previousBytes": 12671,
-      "reviewedSha256": "9e1b6bdff6f8b66aa76d2e438f2107058cebdc57a68a7886b0d5f5a68e275234",
-      "reviewedBytes": 12703,
+      "reviewedSha256": "aaabe73da513cd74d6e566628a0ab6cb39024e5c88a5e0a974389d85ffd9705d",
+      "reviewedBytes": 13126,
       "contextLines": 3,
       "deltas": [
         {
@@ -178,6 +185,13 @@
           "current": "            sets = []\n            for tree, name, namespace in (\n                (tool, 'release_tool_files', dict(version=version, browser_release=parts >= (2, 1, 0),\n                    fingerprint_release=parts >= (2, 1, 1), worker_timezone_release=parts >= (2, 1, 2), cpu_release=parts >= (2, 1, 3))),\n                (workflow, 'release_files', dict(m=dict(version=version))),\n            ):\n                nodes = [node for node in tree.body if isinstance(node, ast.Assign)\n",
           "previousSha256": "1bd6ddcbddd6185e24c9783e09edf7f3b90609f144ef52c2d24ed74c83942f8b",
           "currentSha256": "89d211c947d4508e20ed1092d90e48ed64029517e62d2e744fb6a49859c6d438"
+        },
+        {
+          "id": "context-01",
+          "previous": "        current = yaml.safe_load((ROOT / '.github/workflows/browser-2_1-acceptance.yml').read_text())\n        original = yaml.safe_load((ROOT / '.github/workflows/gecko-integration.yml').read_text())\n        self.assertEqual(set(current['jobs']), set(original['jobs']) | {'browser'})\n        for name, previous in original['jobs'].items():\n            for field in ('timeout-minutes', 'permissions', 'strategy', 'continue-on-error', 'if', 'needs'):\n                expected = previous.get(field)\n                if name == 'verify' and field == 'needs':\n                    expected = expected + ['browser']\n                self.assertEqual(current['jobs'][name].get(field), expected, (name, field))\n        browser = current['jobs']['browser']\n",
+          "current": "        current = yaml.safe_load((ROOT / '.github/workflows/browser-2_1-acceptance.yml').read_text())\n        original = yaml.safe_load((ROOT / '.github/workflows/gecko-integration.yml').read_text())\n        self.assertEqual(set(current['jobs']), set(original['jobs']) | {'browser'})\n        self.assertIn('timeout-minutes',original['jobs']['build']);self.assertIn('timeout-minutes',current['jobs']['build'])\n        self.assertIs(type(original['jobs']['build']['timeout-minutes']),int);self.assertEqual(original['jobs']['build']['timeout-minutes'],40)\n        for name, previous in original['jobs'].items():\n            for field in ('timeout-minutes', 'permissions', 'strategy', 'continue-on-error', 'if', 'needs'):\n                expected = previous.get(field)\n                if (name,field)==('build','timeout-minutes'):\n                    self.assertIs(type(current['jobs'][name].get(field)),int);expected=60\n                elif name == 'verify' and field == 'needs':\n                    expected = expected + ['browser']\n                self.assertEqual(current['jobs'][name].get(field), expected, (name, field))\n        browser = current['jobs']['browser']\n",
+          "previousSha256": "a6cc91d5ab235446c5fccc2d4db62c1ebb3c0885a6642d6a6a32c88b8988ae5a",
+          "currentSha256": "b7f100a0389af71366a59b9abbc051f589ed1dfcca4f8976c1460466e42d2802"
         }
       ]
     },

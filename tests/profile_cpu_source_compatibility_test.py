@@ -40,7 +40,7 @@ def strip_read_ports(raw):
 class CpuHistoricalSources(unittest.TestCase):
  def test_public_working_predecessor_and_all_whole_rows_forward_inverse(self):
   self.assertEqual(git('rev-parse',cpu.BASE_COMMIT+'^{tree}').decode().strip(),cpu.BASE_TREE)
-  m=cpu.manifest();self.assertEqual(len(m['files']),23);self.assertEqual(sum(len(r['deltas'])for r in m['files'].values()),84)
+  m=cpu.manifest();self.assertEqual(len(m['files']),23);self.assertEqual(sum(len(r['deltas'])for r in m['files'].values()),86)
   self.assertFalse(m['actualAndroidExecution']);self.assertFalse(m['runtimeAcceptance'])
   for path,row in m['files'].items():
    before=git('show',cpu.BASE_COMMIT+':'+path);current=(ROOT/path).read_bytes()
@@ -62,7 +62,7 @@ class CpuHistoricalSources(unittest.TestCase):
    for bad in (raw[:60],raw+b' ',b'unknown complete image'):
     with self.assertRaises(ValueError):cpu.source_input(bad,path)
     count+=1
-  self.assertEqual(count,405)
+  self.assertEqual(count,413)
   path=next(iter(cpu.PATHS));raw=(ROOT/path).read_bytes()
   for bad in (None,True,bytearray(raw),raw.decode()):
    with self.assertRaises(ValueError):cpu.source_input(bad,path)
@@ -174,7 +174,7 @@ class CpuHistoricalSources(unittest.TestCase):
   removed=raw.replace(current,b'',1)
   for bad in (raw+b' ',raw[:60],b'',removed,raw.replace(current,current*2,1),removed+current,raw.replace(current,current+b' ',1)):
    with self.assertRaises(ValueError):cpu.metadata_input(bad,path)
-  self.assertEqual((len(cpu.manifest()['files']),sum(len(r['deltas'])for r in cpu.manifest()['files'].values())),(23,84))
+  self.assertEqual((len(cpu.manifest()['files']),sum(len(r['deltas'])for r in cpu.manifest()['files'].values())),(23,86))
   class Forbidden:
    def encode(self):raise AssertionError('Unknown capture host reached context inversion')
   with patch.object(cpu,'UI_CAPTURE_TEST_REVIEWED_CONTEXT',Forbidden()),self.assertRaisesRegex(ValueError,'Unknown whole'):cpu.metadata_input(raw+b' ',path)
