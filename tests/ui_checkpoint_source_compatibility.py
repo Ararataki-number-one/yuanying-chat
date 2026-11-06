@@ -11,12 +11,16 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 FIXTURE = ROOT / 'tests/fixtures/ui-checkpoint-source-deltas.json'
-FIXTURE_SHA256 = 'a68cfd57e995e9d0109af8a0e200e916522182c0434c57c931ef1ed4c56b5c5f'
+FIXTURE_SHA256 = '91559ec13f9f31aeafdc5f87d16b54c9780fe80a341081c00e75ee1a99173480'
 RUNNER = 'tests/gecko/run_ui_visuals.py'
 RUNNER_CURRENT_SHA256 = 'b85896aa5b94e33fb40bbada323d239a66f75c12a39bf9adb2a4ff3e3483e14d'
 PREFERENCE_PREVIOUS_SHA256 = 'be5c80463eb66171fc49a0056bbff3b5a8d47fc88d193b4647e37e301857a9b4'
 PREFERENCE_PREVIOUS = "expected={'保存本机输入草稿','恢复网页滚动位置','允许此环境的后台回复提醒','仅在 Wi-Fi 下载文件','自动清理 30 天以上的无引用中间文件'}"
 PREFERENCE_CURRENT = "expected={'保存本机输入草稿','恢复网页滚动位置','允许此环境的后台回复提醒','仅在 Wi-Fi 下载文件','自动清理 30 天以上的无引用中间文件','自动检测外部网络响应'}"
+WORKFLOW_CURRENT_SHA256 = 'a4ef3a60391eb6a9fc86dba2986fcd7f7fc053f9e32bc4818cc6e773d8c84435'
+WORKFLOW_PREVIOUS_SHA256 = 'a0fdfae87d0b32ee1ab9479aacdbff81755e9e5fe45cfcaf92a8bce3e11a0069'
+TLS_DOWNLOAD_PREVIOUS = '    - name: Collect independent TLS workload from the exact same build and run\n      uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0\n      with:\n        name: tls-${{ github.run_id }}-${{ github.run_attempt }}-android\n        path: work/tls-acceptance\n'
+TLS_DOWNLOAD_CURRENT = '    - name: Collect independent TLS workload from the exact same build and run\n      uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0\n      with:\n        name: tls-${{ github.run_id }}-${{ github.run_attempt }}-android\n        path: work\n'
 BASE_COMMIT = '4dd0f4434a40c010e060d9651a371a986b6bd2c4'
 BASE_TREE = '3f2cd6b5fe591d6f9eda4822c0b5326c38baceeb'
 PREVIOUS = {
@@ -79,6 +83,16 @@ def checkpoint_runner_input(raw):
     assert raw.count(current) == 1, 'Exact Preferences literal required'
     restored = raw.replace(current, previous, 1)
     assert sha(restored) == PREFERENCE_PREVIOUS_SHA256, 'Entire pre-sixth-label runner did not restore'
+    return restored
+
+
+def checkpoint_workflow_input(raw):
+    """Source-oracle LHS only: inverse the one reviewed artifact download root."""
+    assert type(raw) is bytes and sha(raw) == WORKFLOW_CURRENT_SHA256, 'Actual frozen TLS download workflow required'
+    current, previous = TLS_DOWNLOAD_CURRENT.encode(), TLS_DOWNLOAD_PREVIOUS.encode()
+    assert raw.count(current) == 1, 'One exact named TLS download root required'
+    restored = raw.replace(current, previous, 1)
+    assert sha(restored) == WORKFLOW_PREVIOUS_SHA256, 'Entire original canonical workflow did not restore'
     return restored
 
 

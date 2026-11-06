@@ -115,16 +115,16 @@
       "previousCommit": "20ea36d470a34470d90d5f1d2ff4a785d1346e1e",
       "previousBytes": 7197,
       "previousSha256": "32769fd0108f37858aefe38fdd9336ddb1ef18e724f970999fa0044cd747d0a7",
-      "reviewedBytes": 7311,
-      "reviewedSha256": "26f5a0cc71e8fbf20298ca38c7cdb6273439ff31f8501d63320aa3c5d8d65ec9",
+      "reviewedBytes": 7365,
+      "reviewedSha256": "47cbfb8a00e703c8c920bc263c8071b0952bccac2140436022e06b5d49fc7154",
       "deltas": [
         {
-          "previous": "                self.assertEqual(error.exception.code, 2)\n\n    def test_two_opt_in_insertions_inverse_entire_actual_runner_to_exact_before(self):\n        source = RUNNER.read_text()\n        self.assertEqual(source.count(FLAG_DECLARATION), 1)\n        self.assertEqual(source.count(FLAG_RETURN), 1)\n        before = source.replace(FLAG_DECLARATION, '', 1).replace(FLAG_RETURN, '', 1)\n",
-          "current": "                self.assertEqual(error.exception.code, 2)\n\n    def test_two_opt_in_insertions_inverse_entire_actual_runner_to_exact_before(self):\n        from ui_checkpoint_source_compatibility import checkpoint_runner_input\n        source = checkpoint_runner_input(RUNNER.read_bytes()).decode()\n        self.assertEqual(source.count(FLAG_DECLARATION), 1)\n        self.assertEqual(source.count(FLAG_RETURN), 1)\n        before = source.replace(FLAG_DECLARATION, '', 1).replace(FLAG_RETURN, '', 1)\n",
-          "previousBytes": 382,
-          "currentBytes": 496,
-          "previousSha256": "0b78fb98cdc2b3a23ebe12c181cd4f62b6c7cda05cff8a4db621f0f32aa571d8",
-          "currentSha256": "1dded9bf9d8e6a052cb824071ab75dd0b40fd7a866d3998caec4a717e8b7edc8"
+          "previous": "                self.assertEqual(error.exception.code, 2)\n\n    def test_two_opt_in_insertions_inverse_entire_actual_runner_to_exact_before(self):\n        source = RUNNER.read_text()\n        self.assertEqual(source.count(FLAG_DECLARATION), 1)\n        self.assertEqual(source.count(FLAG_RETURN), 1)\n        before = source.replace(FLAG_DECLARATION, '', 1).replace(FLAG_RETURN, '', 1)\n        self.assertEqual(hashlib.sha256(before.encode()).hexdigest(), BEFORE_SHA256)\n        workflow = ROOT / '.github/workflows/browser-2_1-acceptance.yml'\n        self.assertEqual(hashlib.sha256(workflow.read_bytes()).hexdigest(),\n                         'a0fdfae87d0b32ee1ab9479aacdbff81755e9e5fe45cfcaf92a8bce3e11a0069')\n\n    def test_actual_legacy_targeted_generator_guard_contract_remains_valid(self):\n",
+          "current": "                self.assertEqual(error.exception.code, 2)\n\n    def test_two_opt_in_insertions_inverse_entire_actual_runner_to_exact_before(self):\n        from ui_checkpoint_source_compatibility import checkpoint_runner_input, checkpoint_workflow_input\n        source = checkpoint_runner_input(RUNNER.read_bytes()).decode()\n        self.assertEqual(source.count(FLAG_DECLARATION), 1)\n        self.assertEqual(source.count(FLAG_RETURN), 1)\n        before = source.replace(FLAG_DECLARATION, '', 1).replace(FLAG_RETURN, '', 1)\n        self.assertEqual(hashlib.sha256(before.encode()).hexdigest(), BEFORE_SHA256)\n        workflow = ROOT / '.github/workflows/browser-2_1-acceptance.yml'\n        self.assertEqual(hashlib.sha256(checkpoint_workflow_input(workflow.read_bytes())).hexdigest(),\n                         'a0fdfae87d0b32ee1ab9479aacdbff81755e9e5fe45cfcaf92a8bce3e11a0069')\n\n    def test_actual_legacy_targeted_generator_guard_contract_remains_valid(self):\n",
+          "previousBytes": 792,
+          "currentBytes": 960,
+          "previousSha256": "7f74d294fd578f2524f9ed8f4183b654c9975d6ffeca05ab27fe54d8b6fb87dc",
+          "currentSha256": "43e0ffa37df2eb6c71bb79b6fad82fe85db9120a74b0cdc8b731bd8b8799c42f"
         }
       ]
     }

@@ -14,6 +14,31 @@ PREPARATION = ("from ui_test_device import prepare_workflow as prepare_ui_test_d
 
 
 class UiCheckpointSourceCompatibilityTests(unittest.TestCase):
+    def test_tls_artifact_root_matches_exact_original_checker_directory(self):
+        import os
+        import yaml
+        workflow = yaml.safe_load((ROOT / '.github/workflows/browser-2_1-acceptance.yml').read_text())
+        upload = [step for step in workflow['jobs']['tls']['steps']
+                  if step.get('name') == 'Preserve only original source-bound TLS JSON']
+        download = [step for step in workflow['jobs']['verify']['steps']
+                    if step.get('name') == 'Collect independent TLS workload from the exact same build and run']
+        self.assertEqual(len(upload), 1);self.assertEqual(len(download), 1)
+        self.assertEqual(upload[0]['with']['name'], download[0]['with']['name'])
+        paths = [line.strip() for line in upload[0]['with']['path'].splitlines() if line.strip()]
+        self.assertEqual(paths, ['work/tls-acceptance/gecko-tls-results.json',
+                                'work/tls-acceptance/gecko-tls-evidence/*.json',
+                                'work/tls-acceptance/package-separation.json',
+                                'work/gecko-integration/android-capacity-tls-tls.json'])
+        # upload-artifact preserves paths relative to the least common ancestor.
+        common = os.path.commonpath([os.path.dirname(path) for path in paths])
+        self.assertEqual(common, 'work')
+        restored = [str(Path(download[0]['with']['path']) / os.path.relpath(path, common)) for path in paths]
+        self.assertEqual(restored, paths)
+        copy = [step for step in workflow['jobs']['verify']['steps']
+                if step.get('name') == 'Require independent TLS source-bound originals before final browser qualification']
+        self.assertEqual(len(copy), 1)
+        self.assertIn("copy_gecko_tls_evidence(pathlib.Path('work/tls-acceptance'),destination,os.environ['GITHUB_SHA'],expected)", copy[0]['run'])
+
     def test_actual_current_runner_and_entire_two_snippet_inverse(self):
         raw = (ROOT / checkpoint.RUNNER).read_bytes()
         old = checkpoint.require_current_runner(raw)
@@ -33,6 +58,18 @@ class UiCheckpointSourceCompatibilityTests(unittest.TestCase):
                     and node.name != 'test_two_opt_in_insertions_inverse_entire_actual_runner_to_exact_before'}
         self.assertEqual(runtime_functions(actual), runtime_functions(previous))
         self.assertEqual(checkpoint.sha(checkpoint.checkpoint_runner_input(raw)), checkpoint.PREFERENCE_PREVIOUS_SHA256)
+        workflow = (ROOT / '.github/workflows/browser-2_1-acceptance.yml').read_bytes()
+        before = checkpoint.checkpoint_workflow_input(workflow)
+        self.assertEqual(checkpoint.sha(before), checkpoint.WORKFLOW_PREVIOUS_SHA256)
+        self.assertEqual(before.replace(checkpoint.TLS_DOWNLOAD_PREVIOUS.encode(), checkpoint.TLS_DOWNLOAD_CURRENT.encode(), 1), workflow)
+        for changed in (before, workflow + b' ', workflow[:64],
+                        workflow.replace(checkpoint.TLS_DOWNLOAD_CURRENT.encode(), b'', 1),
+                        workflow.replace(checkpoint.TLS_DOWNLOAD_CURRENT.encode(), checkpoint.TLS_DOWNLOAD_CURRENT.encode() * 2, 1),
+                        workflow.replace(b'timeout-minutes: 60', b'timeout-minutes: 61', 1),
+                        workflow.replace(checkpoint.TLS_DOWNLOAD_CURRENT.encode(), b'', 1) + checkpoint.TLS_DOWNLOAD_CURRENT.encode()):
+            self.assertNotEqual(changed, workflow)
+            with self.assertRaises(AssertionError):checkpoint.checkpoint_workflow_input(changed)
+
 
     def test_four_source_rows_keep_fixed_before_pins_and_forward_roundtrip(self):
         manifest = checkpoint.manifest()
