@@ -18,6 +18,7 @@ BASE = '972b7767300587af98b3f4a2088a44dd30af8098'
 SOURCE_PATH = 'app/src/main/java/local/pocketchat/GeckoWebView.java'
 COMPOSED_SOURCE = '12a45fb8a1343bbe5767bdf6c3fba54519650fa1'
 COMPOSED_GV_SHA256 = '34a651c3ccc50499dd5c720c370353600ccf20669df5393ccbf68d6a689f9670'
+CURRENT_GV_SHA256 = '55225a8da3ba67b3be724e243c9b442e635dbc5aa282a2ef0257653e8fb2b364'
 WINDOW_LOOKUP_SHA256 = '181b9349f1330e64eb174d7995030b2785c157351a9a47dee44fa481184f018e'
 MEMBERS = ('static final class TimeZoneGate', 'boolean timeZoneSessionAlive(',
            'boolean timeZoneAllows(', 'private void startTimeZone(')
@@ -36,6 +37,19 @@ def declaration(source, needle):
     return extraction.member_at(source, source.index(needle))
 
 
+def verify_recovery_source(raw,composed_raw):
+    if type(raw) is not bytes or len(raw)!=128874 or sha(raw)!=CURRENT_GV_SHA256:
+        raise AssertionError('Unknown composed raw recovery image')
+    current=b'initialize();if(!resourceDeferred&&!failed){if(!target.isEmpty())owner.beginNavigation'
+    previous=b'initialize();if(!resourceDeferred&&!failed&&runtime!=null){if(!target.isEmpty())owner.beginNavigation'
+    if raw.count(current)!=1:
+        raise AssertionError('Unique composed raw recovery context required')
+    restored=raw.replace(current,previous,1)
+    if type(composed_raw) is not bytes or restored!=composed_raw or len(restored)!=128889 or sha(restored)!='34a651c3ccc50499dd5c720c370353600ccf20669df5393ccbf68d6a689f9670':
+        raise AssertionError('Exact composed raw recovery predecessor required')
+    return dict(currentSha256=sha(raw),currentBytes=len(raw),previousSha256=sha(restored),previousBytes=len(restored),removedBytes=15,proofOnly=True,currentJavaUnchanged=True)
+
+
 def verify_source_delta(current_raw, baseline_raw, composed_raw):
     current = current_raw.decode('utf-8')
     baseline = baseline_raw.decode('utf-8')
@@ -47,6 +61,11 @@ def verify_source_delta(current_raw, baseline_raw, composed_raw):
         return dict(scope='lookup-only-whole-file-inverse', lookupOnlyWholeFileInverseVerified=True,
                     composedWholeImageVerified=False, originalInitialConsumerPreserved=True,
                     originalFiveEightAndEightPointFiveSecondBudgetsPreserved=True)
+    recovery_scope=None
+    if sha(current_raw)==CURRENT_GV_SHA256:
+        recovery_scope=verify_recovery_source(current_raw,composed_raw)
+        # Proof comparison only. The actual Java members above/main remain raw.
+        current_raw=current_raw.replace(b'initialize();if(!resourceDeferred&&!failed){if(!target.isEmpty())owner.beginNavigation',b'initialize();if(!resourceDeferred&&!failed&&runtime!=null){if(!target.isEmpty())owner.beginNavigation',1)
     if current_raw != composed_raw or sha(current_raw) != COMPOSED_GV_SHA256 or sha(composed_raw) != COMPOSED_GV_SHA256:
         raise AssertionError('Unknown composed raw whole-source image')
     composed_lookup = declaration(composed_raw.decode('utf-8'), lookup)
@@ -59,11 +78,11 @@ def verify_source_delta(current_raw, baseline_raw, composed_raw):
     for inherited in ('static final class IpLookup {', 'void lookupIpTimeZone('):
         if declaration(current, inherited) != declaration(baseline, inherited):
             raise AssertionError('Original native IP lookup eight/eight-point-five-second members must remain byte-identical')
-    return dict(scope='exact-published-composed-whole-image', lookupOnlyWholeFileInverseVerified=False,
+    return dict(scope='exact-recovery-successor-of-published-composed-image'if recovery_scope else'exact-published-composed-whole-image', lookupOnlyWholeFileInverseVerified=False,
                 composedWholeImageVerified=True, originalInitialConsumerPreserved=True,
                 originalFiveEightAndEightPointFiveSecondBudgetsPreserved=True,
                 composedSource=COMPOSED_SOURCE, composedSourceSha256=COMPOSED_GV_SHA256,
-                windowLookupSha256=WINDOW_LOOKUP_SHA256)
+                windowLookupSha256=WINDOW_LOOKUP_SHA256,resourceRecoveryWholeProof=recovery_scope)
 
 
 def source_metadata_controls(composed_raw, baseline_raw):
@@ -216,6 +235,7 @@ def main():
         current_lookup = declaration(source.read_text(), lookup_declaration)
         composed_raw = subprocess.check_output(['git', 'show', COMPOSED_SOURCE + ':' + SOURCE_PATH], cwd=ROOT, env=git_env, timeout=30)
         delta_scope = verify_source_delta(source.read_bytes(), baseline_raw, composed_raw)
+        recovery_scope = None if delta_scope['lookupOnlyWholeFileInverseVerified'] else verify_recovery_source(source.read_bytes(),composed_raw)
         metadata_controls = source_metadata_controls(composed_raw, baseline_raw)
         control_specs = [('actual-before', baseline, 'pending', 'Pending window has zero IP transport invocations true')]
         before = 'if(!ready||!current()){fail.accept(new IOException("出口时区查询上下文已变化"))'
@@ -242,7 +262,7 @@ def main():
     report.update(sourceFiles=hashes, sourceMethodHashes={name: sha(body.encode()) for name, body in selected.items()},
                   identityMethodSha256=sha(identity_body.encode()), jsonJarSha256=jar_hash,
                   lookupOnlyWholeFileInverseVerified=delta_scope['lookupOnlyWholeFileInverseVerified'], originalInitialConsumerPreserved=True,
-                  sourceDeltaScope=delta_scope, sourceMetadataControls=metadata_controls,
+                  sourceDeltaScope=delta_scope, sourceMetadataControls=metadata_controls, resourceRecoveryWholeProof=recovery_scope,
                   baseline=dict(commit=BASE, sourceSha256=sha(baseline_raw), usage='Real Git before-image runs only as a separately compiled negative; current workload executes raw current methods'),
                   negativeControls=controls, executionInputsUnchanged=unchanged,
                   typeTokenSubstitutions=replacements,

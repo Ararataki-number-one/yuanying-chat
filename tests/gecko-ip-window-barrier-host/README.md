@@ -27,6 +27,13 @@ The source metadata guard retains the original window-only whole-file inverse.
 For the composed final application it accepts only the exact public
 `12a45fb8a1343bbe5767bdf6c3fba54519650fa1` raw source and SHA-256
 `34a651c3ccc50499dd5c720c370353600ccf20669df5393ccbf68d6a689f9670`.
+That existing catalogued object remains the complete predecessor. The current
+128,874-byte image is pinned separately to
+`55225a8da3ba67b3be724e243c9b442e635dbc5aa282a2ef0257653e8fb2b364`;
+only the unique 15-byte recovery predicate deletion may be reversed to exactly
+the original 128,889-byte image for this metadata proof. No new Git object or
+fetch is needed. Current Java generation still extracts the unmodified current
+source; the inverse bytes are never compiled.
 The exact lookup member is independently pinned; replacing that member with the
 original must restore the complete original `startTimeZone` body, and the
 eight/eight-and-a-half-second native lookup members remain byte-identical.
