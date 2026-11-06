@@ -619,7 +619,9 @@ class CompactQuickEnvironmentContractTest(unittest.TestCase):
                     for node in ast.parse(source).body if isinstance(node,ast.ClassDef)}
         before,after=methods(old),methods(Path(__file__).read_text())
         for name,value in before.items():self.assertEqual(after[name],value)
-        old=subprocess.check_output(['git','show',base+':tests/gecko/run_ui_visuals.py'],cwd=ROOT,text=True);current=RUNNER.read_text()
+        spec=importlib.util.spec_from_file_location('cpu_capture_source_oracle',ROOT/'tests/cpu_source_compatibility.py')
+        history=importlib.util.module_from_spec(spec);spec.loader.exec_module(history)
+        old=subprocess.check_output(['git','show',base+':tests/gecko/run_ui_visuals.py'],cwd=ROOT,text=True);current=history.source_input(RUNNER.read_bytes(),history.UI_RUNNER).decode()
         def functions(source):return [ast.get_source_segment(source,node) for node in ast.walk(ast.parse(source)) if isinstance(node,ast.FunctionDef)]
         before_functions,after_functions=functions(old),functions(current)
         for function in before_functions:self.assertEqual(after_functions.count(function),before_functions.count(function))

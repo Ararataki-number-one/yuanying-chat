@@ -120,6 +120,8 @@ def main():
     add('resource-recovery-async','tests/profile_resource_recovery_async_test.py')
     add('browser-profile-path-boundary','tests/profile_browser_profile_path_boundary_test.py')
     cases.append(('cpu-source-history',[sys.executable,'-m','unittest','discover','-s','tests','-p','profile_cpu_source_compatibility_test.py'],None))
+    for label,jar in [('desktop',desktop),('android-json',android_json)]:
+        target=out/('ip-timezone-fixture-ui-hotpath-'+label+'.json');add('ip-timezone-fixture-ui-hotpath-'+label,'tests/ip-timezone-fixture-ui-hotpath-host/run.py',java+['--json-jar',jar,'--output',target],target)
     names=subprocess.check_output(['git','ls-files','--cached','--others','--exclude-standard','app/src/main/java','app/src/main/assets','tests','tools/browser','tools/gecko','.github/workflows/browser-2_1-acceptance.yml'],cwd=ROOT,text=True).splitlines()
     files=[ROOT/name for name in sorted(set(names)) if (ROOT/name).is_file()]
     hashes={str(path.relative_to(ROOT)):hashlib.sha256(path.read_bytes()).hexdigest() for path in files}

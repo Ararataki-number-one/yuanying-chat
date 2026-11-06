@@ -164,4 +164,40 @@ class CpuHistoricalSources(unittest.TestCase):
      if imported:self.assertIn(p.relative_to(ROOT).as_posix(),allowed)
     elif directory=='app/src/main':self.assertNotIn('cpu_source_compatibility',p.read_text())
   self.assertFalse(cpu.manifest()['actualAndroidExecution']);self.assertFalse(cpu.manifest()['runtimeAcceptance'])
+ def test_capture_host_only_known_whole_inverse_and_independent_guards(self):
+  path=cpu.UI_CAPTURE_TEST;raw=(ROOT/path).read_bytes();before=cpu.metadata_input(raw,path)
+  self.assertEqual((len(before),SHA(before)),cpu.UI_CAPTURE_TEST_PREVIOUS)
+  self.assertIs(cpu.metadata_input(before,path),before)
+  current,previous=cpu.UI_CAPTURE_TEST_REVIEWED_CONTEXT.encode(),cpu.UI_CAPTURE_TEST_PREVIOUS_CONTEXT.encode()
+  self.assertEqual(raw.count(current),1);self.assertEqual(before.count(previous),1)
+  self.assertEqual(before.replace(previous,current,1),raw)
+  removed=raw.replace(current,b'',1)
+  for bad in (raw+b' ',raw[:60],b'',removed,raw.replace(current,current*2,1),removed+current,raw.replace(current,current+b' ',1)):
+   with self.assertRaises(ValueError):cpu.metadata_input(bad,path)
+  self.assertEqual((len(cpu.manifest()['files']),sum(len(r['deltas'])for r in cpu.manifest()['files'].values())),(23,84))
+  class Forbidden:
+   def encode(self):raise AssertionError('Unknown capture host reached context inversion')
+  with patch.object(cpu,'UI_CAPTURE_TEST_REVIEWED_CONTEXT',Forbidden()),self.assertRaisesRegex(ValueError,'Unknown whole'):cpu.metadata_input(raw+b' ',path)
+  source=Path(cpu.__file__).read_text()
+  guards=[(" if (len(raw),sha(raw))!=UI_CAPTURE_TEST_REVIEWED:raise ValueError('Unknown whole capture source-oracle host')\n",'whole'),(" if (len(raw),sha(raw))!=UI_CAPTURE_TEST_PREVIOUS:raise ValueError('Entire previous capture source-oracle host did not restore')\n",'closure')]
+  for guard,label in guards:
+   self.assertEqual(source.count(guard),1);namespace={'__file__':cpu.__file__};exec(compile(source.replace(guard,'',1),'<compiled-capture-host-'+label+'>','exec'),namespace)
+   if label=='whole':
+    namespace['UI_CAPTURE_TEST_REVIEWED_CONTEXT']=Forbidden()
+    with self.assertRaisesRegex(AssertionError,'reached context'):namespace['metadata_input'](raw+b' ',path)
+   else:
+    with patch.object(cpu,'UI_CAPTURE_TEST_PREVIOUS_CONTEXT',cpu.UI_CAPTURE_TEST_PREVIOUS_CONTEXT+'changed closing input'),self.assertRaisesRegex(ValueError,'did not restore'):cpu.metadata_input(raw,path)
+    namespace['UI_CAPTURE_TEST_PREVIOUS_CONTEXT']+='changed closing input'
+    self.assertNotEqual(namespace['metadata_input'](raw,path),before)
+ def test_actual_capture_behavior_uses_raw_six_fields_without_metadata_loader(self):
+  path=ROOT/cpu.UI_CAPTURE_TEST;spec=importlib.util.spec_from_file_location('actual_raw_capture_host',path);module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
+  with patch.object(module.importlib.util,'spec_from_file_location',side_effect=AssertionError('Behavior entered historical loader')):
+   tree=module.runner_functions('capture')
+  actual=next(n for n in ast.parse((ROOT/cpu.UI_RUNNER).read_text()).body if isinstance(n,ast.FunctionDef)and n.name=='capture')
+  self.assertEqual(ast.dump(tree.body[0],include_attributes=False),ast.dump(actual,include_attributes=False))
+  values=[n for n in ast.walk(tree)if isinstance(n,ast.Set)and any(isinstance(v,ast.Constant)and v.value==cpu.UI_LABEL for v in n.elts)]
+  self.assertEqual(len(values),1);self.assertEqual(len(values[0].elts),6)
+  before=cpu.metadata_input(path.read_bytes(),cpu.UI_CAPTURE_TEST)
+  self.assertEqual((len(before),SHA(before)),cpu.UI_CAPTURE_TEST_PREVIOUS)
+
 if __name__=='__main__':unittest.main(verbosity=2)

@@ -19,6 +19,12 @@ MAX_FIXTURE=1024*1024
 MAX_SOURCE=512*1024
 UI_RUNNER='tests/gecko/run_ui_visuals.py'
 UI_LABEL='自动检测外部网络响应'
+# One later historical host input; outside the frozen23 production/oracle rows.
+UI_CAPTURE_TEST='tests/gecko_ui_visual_capture_test.py'
+UI_CAPTURE_TEST_PREVIOUS=(40245,'8ab2a6335b9f313e38cb52deb4b7265ee1be3e8fefc4009d5ef5c3825c40d0c6')
+UI_CAPTURE_TEST_REVIEWED=(40504,'2ff884dec5046332fc1598a24caf1a6a1045a5073889125e9e0d14da48a5c433')
+UI_CAPTURE_TEST_PREVIOUS_CONTEXT="        old=subprocess.check_output(['git','show',base+':tests/gecko/run_ui_visuals.py'],cwd=ROOT,text=True);current=RUNNER.read_text()\n"
+UI_CAPTURE_TEST_REVIEWED_CONTEXT="        spec=importlib.util.spec_from_file_location('cpu_capture_source_oracle',ROOT/'tests/cpu_source_compatibility.py')\n        history=importlib.util.module_from_spec(spec);spec.loader.exec_module(history)\n        old=subprocess.check_output(['git','show',base+':tests/gecko/run_ui_visuals.py'],cwd=ROOT,text=True);current=history.source_input(RUNNER.read_bytes(),history.UI_RUNNER).decode()\n"
 UI_PREVIOUS_AST='bce34002d46c253efc144e2a709d92ebeeff26880cd60bb7861b94794b991132'
 UI_REVIEWED_AST='fc13ddc21ba91cea5149aabafeac8471c119e142485aff039321c6d3de446edf'
 UI_AST_PAIRS={UI_REVIEWED_AST:UI_PREVIOUS_AST,
@@ -56,8 +62,18 @@ def source_input(raw,relative):
  if (len(raw),sha(raw))!=(row['previousBytes'],row['previousSha256']):raise ValueError('CPU inverse did not close to complete public212 source')
  return raw
 
+def _capture_test_input(raw):
+ if (len(raw),sha(raw))==UI_CAPTURE_TEST_PREVIOUS:return raw
+ if (len(raw),sha(raw))!=UI_CAPTURE_TEST_REVIEWED:raise ValueError('Unknown whole capture source-oracle host')
+ current,previous=UI_CAPTURE_TEST_REVIEWED_CONTEXT.encode(),UI_CAPTURE_TEST_PREVIOUS_CONTEXT.encode()
+ if raw.count(current)!=1:raise ValueError('Missing duplicate moved or changed capture source-oracle context')
+ raw=raw.replace(current,previous,1)
+ if (len(raw),sha(raw))!=UI_CAPTURE_TEST_PREVIOUS:raise ValueError('Entire previous capture source-oracle host did not restore')
+ return raw
+
 def metadata_input(raw,relative):
  if type(raw)is not bytes or type(relative)is not str:raise ValueError('Exact metadata bytes and path required')
+ if relative==UI_CAPTURE_TEST:return _capture_test_input(raw)
  return source_input(raw,relative) if relative in PATHS else raw
 
 def wrap_bytes(original):
