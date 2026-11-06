@@ -282,13 +282,15 @@ class GeckoWebView extends FrameLayout {
   void releaseIpRoute(TimeZoneGate gate){ChromiumRouteLease.Handle lease=ipRouteLeases.remove(gate);if(lease!=null)lease.close();}
   boolean ipNavigationFailed(GeckoSession session){IpNavigationFailure value=ipNavigationFailure;return value!=null&&value.session==session&&current==session&&timeZoneGates.get(session)==value.gate&&!value.gate.ready&&value.gate.documentSerial==0&&value.navigation==owner.navigationEpoch&&value.target.equals(owner.navigationTarget)&&autoIpMode();}
   void finishIpNavigationFailure(GeckoSession session,TimeZoneGate gate,String issue){
-    if(destroyed||session!=current||timeZoneGates.get(session)!=gate||gate.ready||gate.revalidating||gate.documentSerial!=0||!autoIpMode()||!owner.navigating||timeZoneIntents.get(session)==null||hasVisibleDocument())return;
-    String location=locations.getOrDefault(session,"");if(!location.isEmpty()&&!"about:blank".equals(location))return;
+    if(destroyed||session!=current||timeZoneGates.get(session)!=gate||gate.ready||gate.revalidating||gate.documentSerial!=0||!autoIpMode()||!owner.navigating||timeZoneIntents.get(session)==null)return;
+    boolean visible=hasVisibleDocument();if(visible&&!ipRouteNeedsReload)return;
+    String location=locations.getOrDefault(session,"");if(!visible&&!location.isEmpty()&&!"about:blank".equals(location))return;
     if(owner.pending!=null||owner.submitting||owner.operation||owner.transferActive||owner.resourceChoosers>0||owner.resourceFilePreparations>0||owner.fileWorkActive())return;
     String target=queued.isEmpty()?owner.navigationTarget:queued;if(!target.equals(owner.navigationTarget)||!allowedUrl(target)||!identityRequestAllowed(target))return;
     queued=target;ipNavigationFailure=new IpNavigationFailure(session,gate,owner.navigationEpoch,target);
     // A service/clock failure is not evidence that the admitted route died.
-    // Keep the exact target and task state; do not schedule network recovery.
+    // Keep the exact target, any visible old document and task state; do not
+    // schedule network recovery or retry a route awaiting explicit rematching.
     owner.navigating=false;owner.navigationFailed=true;owner.pageError=issue;owner.setStatus(issue);
   }
   boolean retryFailedIpNavigation(String target){
@@ -356,7 +358,9 @@ class GeckoWebView extends FrameLayout {
     GeckoTimeZoneController.NativeAccess access=new GeckoTimeZoneController.NativeAccess(){
       public boolean current(){return timeZoneSessionAlive(session)&&timeZoneGates.get(session)==gate&&gate.documentSerial==document&&port!=null&&routePort==port&&(!autoIpMode()||!ipRouteNeedsReload&&owner.guard.allowed());}
       public String ipRouteStamp(){return GeckoWebView.this.ipRouteStamp();}
-      public void lookupIp(String token,java.util.function.Consumer<String> ok,java.util.function.Consumer<Throwable> fail){if(!current()){fail.accept(new IOException("出口时区查询上下文已变化"));return;}lookupIpTimeZone(session,gate,token,ok,fail);}
+      public void lookupIp(String token,java.util.function.Consumer<String> ok,java.util.function.Consumer<Throwable> fail){
+        window.accept(ready->{if(!ready||!current()){fail.accept(new IOException("出口时区查询上下文已变化"));return;}lookupIpTimeZone(session,gate,token,ok,fail);},fail::accept);
+      }
       void request(String kind,String zone,String token,java.util.function.Consumer<String> ok,java.util.function.Consumer<Throwable> fail){
         window.accept(ready->{if(!ready||!current()){fail.accept(new IOException("浏览器窗口或文档已变化，时区尚未确认"));return;}sendTimeZone(port,session,gate,kind,zone,token,ok,fail);},fail::accept);
       }

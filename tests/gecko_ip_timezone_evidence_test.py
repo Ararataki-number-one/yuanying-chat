@@ -38,9 +38,14 @@ class IpEvidenceTests(unittest.TestCase):
         for index,(name,mode,wanted,privacy) in enumerate((
             ('default-socks','ip','America/New_York',1),('route-switch-http','ip','Asia/Kathmandu',1),
             ('https-proxy','ip','UTC',1),('manual-system','system','UTC',1),
-            ('manual-iana','iana','Asia/Kathmandu',1),('rfp-priority','ip','UTC',2))):
+            ('manual-iana','iana','Asia/Kathmandu',1),('rfp-priority','ip',gate.RFP_STANDARD_ZONE,2))):
             original=copy.deepcopy(prior['activity']['samples'][0]);value={key:original[key] for key in ('page','frames','workers','security')}
-            value['case']=name;value['page'].update(nativeTimeZone=old.raw_clock(wanted),documentId='00000000-0000-0000-0000-'+str(index+1).zfill(12))
+            # The older modeled helper only supports its original UTC/NY/KTM
+            # inputs. Keep it unchanged; current157 RFP has UTC numeric parts
+            # and its own exact standardized Intl identifier.
+            modeled_clock=old.raw_clock('UTC' if name=='rfp-priority' else wanted)
+            if name=='rfp-priority':modeled_clock['timeZone']=gate.RFP_STANDARD_ZONE
+            value['case']=name;value['page'].update(nativeTimeZone=modeled_clock,documentId='00000000-0000-0000-0000-'+str(index+1).zfill(12))
             actual=original['native'];receipt=copy.deepcopy(actual['receipt']);receipt.update(identity=copy.deepcopy(owner),desiredRevision=index+1,requestToken=format(100+index,'064x'))
             receipt['binding'].update(sessionId='session-'+str(index),sessionEpoch='epoch-'+str(index),contextId=str(100+index))
             effective='' if mode=='system' or privacy==2 else wanted

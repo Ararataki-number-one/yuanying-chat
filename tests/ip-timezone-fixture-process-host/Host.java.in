@@ -1,0 +1,68 @@
+package local.pocketchat;
+import android.content.*;import java.io.*;import java.nio.file.*;import java.util.*;import org.json.*;
+
+/** Actual fixture Application and scope methods; collaborators never stand for Android execution. */
+public final class Host {
+ static final String SOURCE="a".repeat(40),PACKAGE="local.pocketchat.test";
+ static final String[] LEGACY=@LEGACY@;
+ static final List<String> trace=Collections.synchronizedList(new ArrayList<>());
+ static volatile java.util.function.IntConsumer itemHook;static volatile Runnable loadHook,saveHook;
+ static int passed,loads,saves,prepares,bootstrapCalls,firstProfileReads,parentCreates,parentInstalls;
+ static IpTimeZoneFixtureApplication app;static boolean forbidden,forbidCatalog,nullApplicationInfo;static int identityReads;static final Map<String,Integer> io=new LinkedHashMap<>();
+ static final List<String> checks=new ArrayList<>();static final List<String> children=new ArrayList<>();
+ public static synchronized void touch(String kind){io.put(kind,io.getOrDefault(kind,0)+1);if(forbidden||forbidCatalog&&kind.startsWith("catalog"))throw new AssertionError("Forbidden fixture IO in non-owner process: "+kind);}
+ public static void parentCreated(){parentCreates++;}public static void parentInstalled(){parentInstalls++;}public static void atomicSaved(File file){}
+ public static android.content.pm.ApplicationInfo applicationInfo(){identityReads++;return nullApplicationInfo?null:new android.content.pm.ApplicationInfo();}
+ static void check(String name,boolean yes){if(!yes)throw new AssertionError(name);passed++;checks.add(name);}
+ static void reset(String process)throws Exception{
+  forbidden=false;forbidCatalog=false;nullApplicationInfo=false;identityReads=0;io.clear();loads=saves=prepares=bootstrapCalls=firstProfileReads=parentCreates=parentInstalls=0;trace.clear();itemHook=null;loadHook=null;saveHook=null;
+  app=new IpTimeZoneFixtureApplication();Context.directory=Files.createTempDirectory("fixture-process-boundary-").toFile();Context.application=app;Context.packageName=PACKAGE;android.app.Application.processName=process;android.os.Build.VERSION.SDK_INT=35;android.os.Binder.uid=2000;android.os.Process.uid=10200;
+  android.content.pm.PackageManager.scope="explicit-manual-system-baseline";ProfileCatalog.instance=new ProfileCatalog();Arrays.fill(ProfileCatalog.instance.created,true);SecretStore.records.clear();GeckoTimeZoneStore.states.clear();GeckoTimeZoneStore.monitorViolations=0;
+  java.lang.reflect.Field cache=IpTimeZoneFixtureScopes.class.getDeclaredField("installed");cache.setAccessible(true);cache.set(null,null);
+  java.lang.reflect.Field seen=IpTimeZoneFixtureScopes.class.getDeclaredField("SEEN");seen.setAccessible(true);((Set<?>)seen.get(null)).clear();
+ }
+ static void child(String process,int uid)throws Exception{
+  reset(process);android.os.Process.uid=uid;forbidden=true;app.attachBaseContext(app);app.onCreate();
+  check("Child preserves actual parent lifecycle: "+process,parentCreates==1&&parentInstalls==3&&bootstrapCalls==1);
+  check("Child performs zero fixture catalog/vault/store/metadata/filesystem IO: "+process,io.isEmpty()&&loads==0&&saves==0&&prepares==0);
+  boolean parentOwner=process!=null&&(process.equals(PACKAGE)||process.matches(java.util.regex.Pattern.quote(PACKAGE)+":profile[1-7]"));
+  check("Child preserves only the original parent bootstrap context access: "+process,firstProfileReads==(parentOwner?1:0)&&identityReads==1);
+  Context first=app.profile(6),again=app.profile(6);check("Child later profile remains same context without activating fixture seeding: "+process,first==again&&first instanceof ProfileContext&&io.isEmpty()&&loads==0&&saves==0);
+  children.add((process==null?"<null>":process)+" uid-boundary="+uid);
+ }
+ static void legacy(String suffix)throws Exception{
+  reset(PACKAGE+suffix);app.attachBaseContext(app);check("Legacy fixture parent bootstrap remains inert: "+suffix,firstProfileReads==0&&io.isEmpty());app.onCreate();
+  check("Exact declared legacy fixture retains all eight generic seeds: "+suffix,loads==8&&saves==8&&GeckoTimeZoneStore.states.size()==8&&parentCreates==1&&identityReads==1);
+ }
+ static void rejectedPackagesAndMissingIdentity()throws Exception{
+  for(String process:new String[]{"local.pocketchat","local.pocketchat:gecko_env6_tab0_disable_art_image_",null}){
+   reset(process);Context.packageName="local.pocketchat";forbidden=true;boolean denied=false;try{app.onCreate();}catch(SecurityException expected){denied=true;}
+   check("Original production-package rejection is not swallowed by process return: "+process,denied&&io.isEmpty()&&identityReads==0&&loads==0&&saves==0);
+  }
+  reset(PACKAGE);nullApplicationInfo=true;forbidden=true;app.attachBaseContext(app);app.onCreate();Context first=app.profile(6);
+  check("Missing Android application identity returns inert without fixture IO",identityReads==1&&first==app.profile(6)&&io.isEmpty()&&loads==0&&saves==0);
+ }
+ static void owned(int slot)throws Exception{
+  String process=PACKAGE+(slot==0?"":":profile"+slot);reset(process);app.attachBaseContext(app);
+  check("Owner early parent profile bootstrap stays inert before onCreate: "+slot,firstProfileReads==1&&io.isEmpty()&&loads==0&&saves==0);
+  app.onCreate();check("Actual EnvironmentProcessPolicy accepts exact owner: "+slot,Profiles.processSlot()==slot&&EnvironmentProcessPolicy.owns(PACKAGE,process,slot));
+  check("Owner retains full generic eight-slot seeding: "+slot,loads==8&&saves==8&&GeckoTimeZoneStore.states.size()==8&&io.getOrDefault("metadata",0)>0&&ProfileCatalog.instance.opens>0);
+  for(int i=0;i<8;i++)check("Owner seeded actual manual-system spec for slot "+slot+"/"+i,GeckoTimeZoneStore.states.get(i).spec.followsSystem());
+  Context first=app.profile(6),again=app.profile(6);check("Owner same profile does not repeat persisted seed: "+slot,first==again&&loads==8&&saves==8&&GeckoTimeZoneStore.monitorViolations==0);
+ }
+ static void dedicatedSetup()throws Exception{
+  reset(PACKAGE+":ip_timezone_setup");forbidCatalog=true;app.attachBaseContext(app);app.onCreate();
+  check("Dedicated setup retains declared generic metadata check",io.getOrDefault("metadata",0)>0);
+  check("Dedicated setup does not create catalog or pre-access profile6",ProfileCatalog.instance.opens==0&&firstProfileReads==0&&loads==0&&saves==0&&prepares==0&&io.keySet().stream().noneMatch(x->x.startsWith("catalog")||x.equals("vault")||x.equals("store")||x.equals("files")));
+  check("Dedicated setup retains actual parent lifecycle",parentCreates==1&&parentInstalls==3&&bootstrapCalls==1);
+ }
+ public static void main(String[] args)throws Exception{
+  for(String process:new String[]{PACKAGE+":tab0",null,"",PACKAGE+":socket",PACKAGE+":gecko",PACKAGE+":rdd",PACKAGE+":utility",PACKAGE+":engine_restart",PACKAGE+":ip_timezone_setup_foreign","foreign.app:profile6","foreign.app",PACKAGE+":profile0",PACKAGE+":profile8",PACKAGE+":profile6:tab0"})child(process,10200);
+  child(PACKAGE+":tab0",99000);child("org.mozilla.gecko.process.GeckoChildProcess0",99000);child(PACKAGE,99000);child(PACKAGE+":profile6",99000);child(PACKAGE+":ip_timezone_setup",99000);
+  for(String suffix:LEGACY)child(PACKAGE+suffix,99000);
+  List<String> types=new ArrayList<>(Arrays.asList("socket","gpu","rdd","utility","gmplugin","ipdlunittest"));for(int i=0;i<40;i++)types.add("tab"+i);
+  for(int slot=0;slot<8;slot++)for(String type:types)child(PACKAGE+":gecko_env"+slot+"_"+type+"_disable_art_image_",10200);
+  for(int slot=0;slot<8;slot++)owned(slot);for(String suffix:LEGACY)legacy(suffix);dedicatedSetup();rejectedPackagesAndMissingIdentity();
+  System.out.println(J.obj("status","passed","passed",passed,"total",passed,"checks",new JSONArray(checks),"childCases",new JSONArray(children),"ownerCases",8,"legacyCases",14,"dedicatedSetupCases",1));
+ }
+}

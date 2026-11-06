@@ -5,6 +5,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+from ip_timezone_source_compatibility import historical_read
 import subprocess
 import tempfile
 import unittest
@@ -28,7 +29,7 @@ class Phase1ContextFixSourceCompatibility(unittest.TestCase):
   self.assertEqual(subprocess.check_output(['git','rev-parse',overlay.BASE_COMMIT+'^{tree}'],cwd=ROOT,text=True).strip(),overlay.BASE_TREE)
   rows=overlay.manifest()['files'];self.assertEqual(len(rows),1);self.assertEqual(sum(len(row['deltas'])for row in rows.values()),2)
   for path,row in rows.items():
-   before=subprocess.check_output(['git','show',overlay.BASE_COMMIT+':'+path],cwd=ROOT);after=(ROOT/path).read_bytes()
+   before=subprocess.check_output(['git','show',overlay.BASE_COMMIT+':'+path],cwd=ROOT);after=historical_read(path)
    self.assertEqual((SHA(before),len(before)),(row['previousSha256'],row['previousBytes']));self.assertEqual((SHA(after),len(after)),(row['reviewedSha256'],row['reviewedBytes']))
    self.assertEqual(overlay.source_input(before,path),before);self.assertEqual(overlay.source_input(after,path),before)
    forward=before
@@ -38,7 +39,7 @@ class Phase1ContextFixSourceCompatibility(unittest.TestCase):
  def test_missing_duplicate_mutated_moved_truncated_and_unknown_whole_sources_reject(self):
   rejected=0
   for path,row in overlay.manifest()['files'].items():
-   current=(ROOT/path).read_bytes()
+   current=historical_read(path)
    for delta in row['deltas']:
     chunk=delta['current'].encode();self.assertEqual(current.count(chunk),1);remaining=current.replace(chunk,b'',1);moved=remaining+chunk
     if moved==current:moved=chunk+remaining
@@ -50,7 +51,7 @@ class Phase1ContextFixSourceCompatibility(unittest.TestCase):
     rejected+=1
   self.assertEqual(rejected,11);type(self).source_negatives=rejected
  def test_document_native_ownership_pending_and_remaining_budget_guards_cannot_normalize_away(self):
-  path='app/src/main/java/local/pocketchat/GeckoWebView.java';current=(ROOT/path).read_bytes()
+  path='app/src/main/java/local/pocketchat/GeckoWebView.java';current=historical_read(path)
   variants=(
    ('!addonDisabled&&fence.session==current','fence.session==current'),
    ('fence.document==fence.open.documentSerial','true'),
@@ -69,7 +70,7 @@ class Phase1ContextFixSourceCompatibility(unittest.TestCase):
     with self.assertRaises(ValueError):overlay.source_input(current.replace(before.encode(),after.encode(),1),path)
   self.assertEqual(len(variants),10);type(self).guard_negatives=len(variants)
  def test_type_path_and_whole_source_identity_precedes_context_access(self):
-  path='app/src/main/java/local/pocketchat/GeckoWebView.java';current=(ROOT/path).read_bytes()
+  path='app/src/main/java/local/pocketchat/GeckoWebView.java';current=historical_read(path)
   for bad in (current.decode(),bytearray(current),memoryview(current),None):
    with self.assertRaises(ValueError):overlay.source_input(bad,path)
   for name in ('../'+path,'/'+path,path+'.other',Path(path),None,'app/src/main/java/local/pocketchat/EnvironmentAudit.java','app/src/main/java/local/pocketchat/GeckoTimeZoneController.java'):
@@ -99,10 +100,10 @@ class Phase1ContextFixSourceCompatibility(unittest.TestCase):
    with patch.object(overlay,'DELTA_PATH',target),self.assertRaises(ValueError):overlay.manifest()
   self.assertEqual(len(variants)+2,24);type(self).fixture_negatives=len(variants)+2
  def test_precise_input_ports_strip_to_entire_real_1a06_and_all_original_assertions(self):
-  path='tests/worker_timezone_source_compatibility.py';before=subprocess.check_output(['git','show',overlay.BASE_COMMIT+':'+path],cwd=ROOT);current=(ROOT/path).read_bytes()
+  path='tests/worker_timezone_source_compatibility.py';before=subprocess.check_output(['git','show',overlay.BASE_COMMIT+':'+path],cwd=ROOT);current=historical_read(path)
   self.assertEqual(current.count(HOOK.encode()),1);self.assertEqual(current.replace(HOOK.encode(),b'',1),before)
   from page_bridge_budget_source_compatibility import source_input as budget_source_input
-  path='tests/profile_worker_timezone_source_compatibility_test.py';before=subprocess.check_output(['git','show',overlay.BASE_COMMIT+':'+path],cwd=ROOT);current=budget_source_input((ROOT/path).read_bytes(),path)
+  path='tests/profile_worker_timezone_source_compatibility_test.py';before=subprocess.check_output(['git','show',overlay.BASE_COMMIT+':'+path],cwd=ROOT);current=budget_source_input(historical_read(path),path)
   self.assertEqual(assertions(current),assertions(before));self.assertEqual(current.count(IMPORT),1);current=current.replace(IMPORT,b'',1)
   for indent,name in ((16,'after'),(12,'after'),(8,'after'),(12,'current'),(8,'current')):
    hook=read_hook(indent,name);self.assertEqual(current.count(hook),1);current=current.replace(hook,b'',1)

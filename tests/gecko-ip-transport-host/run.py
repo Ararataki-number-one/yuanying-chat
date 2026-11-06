@@ -36,15 +36,15 @@ def main():
   found=str(a.java_home/'bin'/name) if a.java_home else shutil.which(name)
   if not found:p.error('Provide JDK17 --java-home')
   return found
- source=PROD/'GeckoWebView.java';watch=PROD/'GeckoIpRouteWatch.java';identity=ROOT/'app/src/main/java/org/mozilla/geckoview/AppSessionIdentity.java';main_activity=PROD/'MainActivity.java';network=PROD/'NativeNetwork.java'
+ source=PROD/'GeckoWebView.java';watch=PROD/'GeckoIpRouteWatch.java';identity=ROOT/'app/src/main/java/org/mozilla/geckoview/AppSessionIdentity.java';main_activity=PROD/'MainActivity.java';network=PROD/'NativeNetwork.java';chat=PROD/'ChatSession.java'
  full=[PROD/name for name in ['GeckoTimeZoneController.java','GeckoTimeZoneSpec.java','GeckoTimeZoneStore.java','GeckoTimeZonePolicy.java','GeckoIpTimeZonePolicy.java','EnvironmentSpec.java','NetworkShareJson.java','J.java','ChromiumRouteLease.java','BrowserBridgeRequests.java','NetworkPoolIdentity.java','Sha256.java','BrowserAddressPolicy.java','GeckoNavigationPolicy.java']]
  adapters=ROOT/'tests/gecko-timezone-host/GeckoTimeZoneHost.java';template_path=HERE/'IpTransportHost.java.in'
- files=[source,watch,identity,main_activity,network,adapters,template_path,EXTRACTOR,Path(__file__).resolve(),HERE/'README.md',*full];hashes={str(path.relative_to(ROOT)):sha(path) for path in files};jar=sha(a.json_jar)
+ files=[source,watch,identity,main_activity,network,chat,adapters,template_path,EXTRACTOR,Path(__file__).resolve(),HERE/'README.md',*full];hashes={str(path.relative_to(ROOT)):sha(path) for path in files};jar=sha(a.json_jar)
  text=source.read_text();selected={marker:extract.block(text,marker) for marker in MEMBERS}
  scoped=text[text.index('private final WebExtension.MessageDelegate routeMessages='):text.index('final WebExtension.MessageDelegate pageMessages=')]
  selected['nativePort.onPortMessage']=extract.block(scoped,'public void onPortMessage(Object message,WebExtension.Port incoming)')
  watch_methods={marker:extract.block(watch.read_text(),marker) for marker in ['static final class Snapshot {','private void update(', 'private void updateLinks(', 'Snapshot snapshot(']}
- extras={'@IDENTITY@':extract.block(identity.read_text(),'public static String id('),'@VALID_PROXY@':extract.block(main_activity.read_text(),'static boolean validProxy('),'@HASH@':extract.block(network.read_text(),'static String hash(String s)')}
+ extras={'@IDENTITY@':extract.block(identity.read_text(),'public static String id('),'@VALID_PROXY@':extract.block(main_activity.read_text(),'static boolean validProxy('),'@HASH@':extract.block(network.read_text(),'static String hash(String s)'),'@NAV_TIMEOUT@':extract.block(chat.read_text(),'void navigationTimeout(')}
  template=template_path.read_text();renames=(('WebExtension.MessageSender','SenderBoundary'),('WebExtension.Port','PortBoundary'),('GeckoSession','SessionBoundary'),('GeckoRuntime','RuntimeBoundary'),('GeckoResult','ResultBoundary'),('GeckoWebView','WebBoundary'),('GeckoIpRouteWatch','RouteWatchBoundary'),('NativeNetwork','NetworkBoundary'),('AppSessionIdentity','IdentityBoundary'),('SystemClock','ClockBoundary'),('Looper.','LooperBoundary.'),('Uri.','UriBoundary.'))
  def generate(members,watching):
   value=template.replace('@METHODS@','\n'.join(members.values())).replace('@WATCH@','\n'.join(watching.values()))
@@ -70,6 +70,13 @@ def main():
   current=execute(selected,watch_methods,'current')
   if current.returncode:raise RuntimeError(current.stdout+current.stderr)
   result=json.loads(current.stdout)
+  # Recreate only the reviewed former failure member, never a production or
+  # runtime input. CI needs no local Git predecessor to compile this negative.
+  failure_member='void finishIpNavigationFailure('
+  original_failure=replace(selected[failure_member],'timeZoneIntents.get(session)==null)return;','timeZoneIntents.get(session)==null||hasVisibleDocument())return;','former-blank-only-intent')
+  original_failure=replace(original_failure,'boolean visible=hasVisibleDocument();if(visible&&!ipRouteNeedsReload)return;\n    String location=locations.getOrDefault(session,"");if(!visible&&!location.isEmpty()&&!"about:blank".equals(location))return;','String location=locations.getOrDefault(session,"");if(!location.isEmpty()&&!"about:blank".equals(location))return;','former-blank-only-location')
+  original_failure=replace(original_failure,'// Keep the exact target, any visible old document and task state; do not\n    // schedule network recovery or retry a route awaiting explicit rematching.','// Keep the exact target and task state; do not schedule network recovery.','former-blank-only-comment')
+  if hashlib.sha256(original_failure.encode()).hexdigest()!='ceb1dfd5573af8b8847b2caeb967a519ae602aa42aceef61a0e732f4b5b9dd0a':raise ValueError('Exact reviewed former failure member required')
   mutations=[
    ('native-sender','public GeckoResult<Object> onMessage(String app,','||sender.environmentType!=WebExtension.MessageSender.ENV_TYPE_EXTENSION','','protocol','Content native-message caller cannot borrow IP bootstrap'),
    ('lookup-token','boolean ipBootstrapRequest(','claim.token.equals(token)&&','','protocol','Wrong native lookup token is denied even for exact source'),
@@ -86,6 +93,11 @@ def main():
    ('spinner-late-progress','public void onPageStop(','||ipNavigationFailed(s)','','spinner','Late native errors and progress cannot overwrite exact failed initial IP state'),
    ('spinner-retry-gate','boolean retryFailedIpNavigation(','return reopenIpCurrent();','return true;','spinner','Explicit retry uses actual loadUrl and retires the failed native window before a fresh SDK barrier'),
    ('spinner-retry-task','boolean retryFailedIpNavigation(','owner.pending!=null||','','spinner','Explicit IP retry does not replace a protected live task: pending'),
+   ('visible-route-old-blank-only',failure_member,selected[failure_member],original_failure,'visible-spinner','Visible route failure ends only the refused explicit navigation'),
+   ('visible-route-required','void finishIpNavigationFailure(','if(visible&&!ipRouteNeedsReload)return;','','visible-spinner','Visible-route failure preserves protected state: no-route-change'),
+   ('visible-route-task','void finishIpNavigationFailure(','owner.pending!=null||','','visible-spinner','Visible-route failure preserves protected state: pending'),
+   ('visible-route-navigation-epoch','boolean ipNavigationFailed(','value.navigation==owner.navigationEpoch','true','visible-spinner','A new navigation epoch cannot borrow the old failure marker'),
+   ('visible-route-late-progress','public void onPageStart(','||ipNavigationFailed(s)','','visible-spinner','Late old-page callbacks preserve visible A and the terminal B state'),
    ('watch-link-owner','private void updateLinks(','!state.network.equals(network)||','','watch','Old default-network link callback cannot replace the current network'),
   ]
   for label,member,before,after,focus,assertion in mutations:
@@ -98,6 +110,8 @@ def main():
  stable=all(sha(path)==hashes[str(path.relative_to(ROOT))] for path in files) and sha(a.json_jar)==jar
  result.update(schema=1,status='passed' if stable else 'source-changed',sourceFiles=hashes,sourceCommit=subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip(),executionInputsUnchanged=stable,jsonJarSha256=jar,productionMethodSha256={key:hashlib.sha256(value.encode()).hexdigest() for key,value in selected.items()},watchMethodSha256={key:hashlib.sha256(value.encode()).hexdigest() for key,value in watch_methods.items()},compiledSemanticMutants=controls,actualAndroidExecution=False,actualGeckoExecution=False,actualNetworkExecution=False,actualPublicGeoExecution=False,actualDateIntlExecution=False,actualWorkerExecution=False,actualSqliteExecution=False,actualAesKeystoreExecution=False,httpOriginPrincipalVerifiedByThisJavaHost=False,httpRequestIdVerifiedByThisJavaHost=False,scope='Actual current Java native bootstrap/native-message and port callbacks, full real Controller/Spec/Store/Policy/parser, real ChromiumRouteLease/BrowserBridgeRequests/NetworkPoolIdentity and pure address/hash policies. Actual initial-IP failure, late progress delegates, explicit loadUrl retry, full native-session replacement and route-watch lifecycle execute. Real filesystem/FileLock/atomic replacement via declared existing core IO adapters. Named SDK session/result/runtime/port, UA read, Handler clock, native route admission/default-network/link snapshot and native read/apply inputs are controlled JVM boundaries. Actual extension HTTP principal/requestId and credential stripping are independently exercised by unchanged Node producer suites, never inferred from Java endpoint matching. This host executes native-message sender environment and request-id/port ownership, not native network/BC/page/Worker effects.')
  result.update(actualPublicIpGeolocationVerified=False,syntheticGeoService=True,syntheticGeoInputs=True)
+ result['chatNavigationTimeoutMethodSha256']=hashlib.sha256(extras['@NAV_TIMEOUT@'].encode()).hexdigest()
+ result['formerFailureCounterfeitSha256']=hashlib.sha256(original_failure.encode()).hexdigest()
  a.output.write_text(json.dumps(result,ensure_ascii=False,indent=2)+'\n');print(json.dumps({key:result[key] for key in ['schema','status','passed','total','executionInputsUnchanged','actualAndroidExecution']}))
  if not stable:raise SystemExit(1)
 if __name__=='__main__':main()

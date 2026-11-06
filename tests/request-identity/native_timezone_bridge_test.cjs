@@ -73,7 +73,7 @@ test('actual bundled parent API matches only one named session and preserves sep
   windows.push(window('session:one',{id:33,timezoneOverride:''}));assert.equal((await h.handle(apply())).nativeSettingReadback,false);
 });
 test('actual manifest host-only glue correlates ACKs and cannot publish a disconnected or content-origin operation',async()=>{
-  assert.deepEqual(MANIFEST.background.scripts,['request-headers.js','request-identity-background.js','native-timezone-bridge.js','background.js']);
+  assert.deepEqual(MANIFEST.background.scripts,['ip-timezone-bootstrap.js','request-headers.js','request-identity-background.js','native-timezone-bridge.js','background.js']);
   const event=()=>({listeners:[],addListener(callback){this.listeners.push(callback);},async emit(...args){return Promise.all(this.listeners.map(callback=>callback(...args)));}});
   const ports=[],nativeCalls=[],timers=new Map(),publicMessages=event();let timerId=0,heldResolve,hold=false;
   const api={async applySession(sessionId,zoneId,requestToken){nativeCalls.push({method:'applySession',sessionId,zoneId,requestToken});const result=ack({kind:'timezoneApply',sessionId,zoneId,requestToken});return hold?new Promise(resolve=>{heldResolve=()=>resolve(result);}):result;},async readSession(sessionId,requestToken){nativeCalls.push({method:'readSession',sessionId,requestToken});return ack({kind:'timezoneRead',sessionId,requestToken},'read','Asia/Shanghai');}};

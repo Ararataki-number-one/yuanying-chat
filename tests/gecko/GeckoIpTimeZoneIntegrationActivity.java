@@ -19,6 +19,9 @@ import org.mozilla.geckoview.*;
 public final class GeckoIpTimeZoneIntegrationActivity extends MainActivity {
   static final String ORIGIN="https://fp-a.pocketchat.test", ROOT=ORIGIN+"/env-policy?phase=";
   static final String GEO="https://ipwho.is/?fields=success,ip,timezone.id";
+  // Gecko157 nsRFPService::GetSpoofedJSTimeZone, official immutable source:
+  // mozilla-firefox/firefox@0c469c2352451630bc69fc328c9f0c589c6c534d (nsRFPService.cpp:1063).
+  static final String RFP_STANDARD_ZONE="Atlantic/Reykjavik";
   final Handler probe=new Handler(Looper.getMainLooper());
   final ExecutorService io=Executors.newSingleThreadExecutor();
   final JSONArray checks=new JSONArray(),events=new JSONArray();
@@ -122,7 +125,7 @@ public final class GeckoIpTimeZoneIntegrationActivity extends MainActivity {
     JSONObject measured=value.optJSONObject("workers");if(workers&&(measured==null||!measured.optBoolean("started"))){remote.evaluateJavascript("document.dispatchEvent(new CustomEvent('pocketchat-gecko-env-run-workers',{detail:"+JSONObject.quote(nonce)+"}))",ignored->{});probe.postDelayed(()->capture(name,zone,true,done),60);return;}
     if(workers&&!measured.optBoolean("complete")){if(measured.has("error"))throw new IOException("Actual native Worker observation failed");probe.postDelayed(()->capture(name,zone,true,done),60);return;}
     nativeProof(proof->{try{value.put("native",proof).put("security",securities.get(remote.current)).put("case",name);
-      check(name+".first-inline-native-clock",early.getBoolean("firstInline")&&early.getBoolean("secure")&&early.getBoolean("networkAllowed")&&GeckoEnvironmentPolicyIntegrationActivity.clockMatches(value,zone));
+      check(name+".first-inline-native-clock",early.getBoolean("firstInline")&&early.getBoolean("secure")&&early.getBoolean("networkAllowed")&&GeckoEnvironmentPolicyIntegrationActivity.clockMatches(value,zone)&&(!"rfp-priority".equals(name)||RFP_STANDARD_ZONE.equals(early.getJSONObject("nativeTimeZone").opt("timeZone"))));
       check(name+".exact-native-context",proof.getJSONObject("receipt").getBoolean("nativeSettingReadback")&&proof.getJSONObject("status").getBoolean("currentSessionPrepared"));
       cases.put(name,value);lastSample=value;publish();done.accept(value);
     }catch(Throwable error){failed(error);}});
@@ -178,7 +181,7 @@ public final class GeckoIpTimeZoneIntegrationActivity extends MainActivity {
     View editor=GeckoEnvironmentPolicyIntegrationActivity.window("保存模板");Spinner selection=GeckoEnvironmentPolicyIntegrationActivity.first(editor,Spinner.class);if(selection==null)throw new IOException("Actual template spinner absent");selection.setSelection(rfp?4:0);GeckoEnvironmentPolicyIntegrationActivity.button(editor,"保存模板").performClick();
     waitFor("actual native template",()->ready()&&session.privacy.level()==(rfp?2:1)&&remote.nativeProtection.confirmed()&&!session.identityApplicationPending&&!DeferredBrowserSettings.pending(session),()->{GeckoEnvironmentPolicyIntegrationActivity.closeWindow(editor,"关闭环境模板");after.run();});
   });}
-  void prepareRfp(){next("https-proxy",()->applyZone(0,"",()->next("rfp-priority",()->snapshot(before->{try{int count=geoCount(before);template(true,()->capture("rfp-priority","UTC",false,value->snapshot(after->{try{
+  void prepareRfp(){next("https-proxy",()->applyZone(0,"",()->next("rfp-priority",()->snapshot(before->{try{int count=geoCount(before);template(true,()->capture("rfp-priority",RFP_STANDARD_ZONE,false,value->snapshot(after->{try{
     JSONObject status=value.getJSONObject("native").getJSONObject("status");check("rfp.auto-priority-browses",status.getBoolean("rfpPriority")&&!status.getBoolean("ipMatched")&&"rfp-priority".equals(status.getString("effectiveMode"))&&value.getJSONObject("native").getBoolean("nativeRfpConfirmed")&&geoCount(after)==count);
     value.put("geoCountBefore",count).put("geoCountAfter",geoCount(after));rfpDenied();
   }catch(Throwable error){failed(error);}})));}catch(Throwable error){failed(error);}}))));}
