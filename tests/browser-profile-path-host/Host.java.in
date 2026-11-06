@@ -1,0 +1,54 @@
+package local.pocketchat;
+import android.content.*;import java.io.*;import java.nio.file.*;import java.util.*;import java.util.concurrent.*;import org.json.*;
+/** Real app profile/controllers/stores and active runtime path statement; SDK and Android edges are explicit. */
+public final class PathHost {
+ static int slot;static final List<String> checks=new ArrayList<>();static void check(String name,boolean value){if(!value)throw new AssertionError(name);checks.add(name);}
+ public static void main(String[] args)throws Exception{
+  slot=Integer.parseInt(args[1]);Path data=Paths.get(args[0]).resolve("app-data"),base=data.resolve("no_backup");Files.createDirectories(base);GlobalContext global=new GlobalContext(data,base,slot);Context context=new ProfileContext(global,slot);
+  Path expected=slot==0?base:base.resolve("profiles/env"+slot);Files.createDirectories(expected);expected=expected.toRealPath();
+  Path profile=expected.resolve("gecko-browser");Files.createDirectories(profile.resolve("storage/default"));byte[] cookies={1,4,9,16},draft="opaque existing draft 旧草稿".getBytes("UTF-8");Files.write(profile.resolve("cookies.sqlite"),cookies);Files.write(profile.resolve("storage/default/draft-opaque"),draft);Files.createDirectories(expected.resolve("foreign-root"));
+  ChatSession session=new ChatSession(context,global.catalog.current);final GeckoCpuController.Boot[] cpu={null};final GeckoTlsController.Boot[] tls={null};
+  MainQueue.ui=true;try{session.cpu.prepareStartup(value->cpu[0]=value);}finally{MainQueue.ui=false;}check("CPU preparation remains deferred off the calling UI",cpu[0]==null);session.environmentIo.drain();session.handler.drain();check("Actual CPU cold preparation publishes boot",cpu[0]!=null);
+  MainQueue.ui=true;try{session.tls.prepareStartup(value->tls[0]=value);}finally{MainQueue.ui=false;}check("TLS preparation remains deferred off the calling UI",tls[0]==null);session.environmentIo.drain();session.handler.drain();check("Actual TLS cold preparation publishes boot",tls[0]!=null);
+  ActiveView view=new ActiveView(session,cpu[0],tls[0]);view.create();
+  check("Actual runtime -profile consumes original persistent environment directory",Arrays.equals(GeckoRuntime.received.arguments,new String[]{"-profile",profile.toFile().getAbsolutePath()}));
+  check("Actual runtime receives the settings object from the active create call",GeckoRuntime.creates==1&&view.runtime!=null&&GeckoRuntime.received==view.runtime.settings);
+  check("CPU Boot path equals original no-backup directory",cpu[0].profile.equals(profile.toFile()));check("TLS Boot path equals the same original no-backup directory",tls[0].profile.equals(profile.toFile()));
+  check("Runtime config comes from that exact environment root",GeckoRuntime.received.config.equals(expected.resolve("gecko-browser.yaml").toString()));
+  check("Prepared directory still contains opaque original cookies",Arrays.equals(Files.readAllBytes(profile.resolve("cookies.sqlite")),cookies));check("Prepared directory still contains opaque original draft",Arrays.equals(Files.readAllBytes(profile.resolve("storage/default/draft-opaque")),draft));
+  System.out.println(J.obj("status","passed","slot",slot,"checks",new JSONArray(checks),"passed",checks.size(),"runtimeArgumentVerified",true,"actualGeckoRuntime",false));
+ }
+}
+final class ActiveView {
+ final ChatSession owner;final GeckoCpuController.Boot cpuBoot;final GeckoTlsController.Boot tlsBoot;GeckoRuntime runtime;
+ ActiveView(ChatSession owner,GeckoCpuController.Boot cpu,GeckoTlsController.Boot tls){this.owner=owner;cpuBoot=cpu;tlsBoot=tls;}
+ void create()throws Exception{@ACTIVE_RUNTIME@}
+}
+final class ProfileContext extends ContextWrapper {
+ final int slot;ProfileContext(Context base,int slot){super(base);this.slot=slot;}public Context getApplicationContext(){return this;}
+ @DIRECTORY@
+ @NO_BACKUP@
+}
+final class Profiles {static final int MAX=8;static int processSlot(){return PathHost.slot;}@SLOT@ @GLOBAL@}
+final class GlobalContext extends Context {
+ final Path data,noBackup;final ProfileCatalog catalog;GlobalContext(Path data,Path noBackup,int slot){this.data=data;this.noBackup=noBackup;catalog=new ProfileCatalog(slot);}
+ public Context getApplicationContext(){return this;}public File getNoBackupFilesDir(){if(MainQueue.ui)throw new AssertionError("Profile filesystem access on UI");return noBackup.toFile();}public android.content.pm.ApplicationInfo getApplicationInfo(){android.content.pm.ApplicationInfo info=new android.content.pm.ApplicationInfo();info.dataDir=data.toString();return info;}
+}
+final class ChatSession {
+ final Context context;final String environmentId;final int environmentGeneration;boolean deleted;final ManualExecutor environmentIo=new ManualExecutor();final MainQueue handler=new MainQueue();final GeckoCpuController cpu;final GeckoTlsController tls;
+ ChatSession(Context context,EnvironmentSpec.Identity identity){this.context=context;environmentId=identity.environmentId;environmentGeneration=identity.generation;cpu=new GeckoCpuController(this);tls=new GeckoTlsController(this);}
+}
+final class ManualExecutor extends AbstractExecutorService {final List<Runnable> tasks=new ArrayList<>();public void execute(Runnable task){tasks.add(task);}void drain(){while(!tasks.isEmpty())tasks.remove(0).run();}public void shutdown(){}public List<Runnable> shutdownNow(){return Collections.emptyList();}public boolean isShutdown(){return false;}public boolean isTerminated(){return false;}public boolean awaitTermination(long n,TimeUnit u){return false;}}
+final class MainQueue {static boolean ui;final List<Runnable> tasks=new ArrayList<>(),delayed=new ArrayList<>();void post(Runnable task){tasks.add(task);}void postDelayed(Runnable task,long ignored){delayed.add(task);}void drain(){ui=true;try{while(!tasks.isEmpty())tasks.remove(0).run();}finally{ui=false;}}}
+final class ProfileCatalog {
+ final EnvironmentSpec.Identity current;ProfileCatalog(int slot){current=new EnvironmentSpec.Identity(slot,1,String.format(Locale.ROOT,"00000000-0000-0000-0000-%012d",slot+1));}static ProfileCatalog get(Context context){return ((GlobalContext)Profiles.global(context)).catalog;}EnvironmentSpec.Identity identity(int slot){if(slot!=current.slot)throw new IllegalStateException();return current;}interface IdentityAction<T>{T run()throws Exception;}synchronized<T>T withIdentity(EnvironmentSpec.Identity expected,IdentityAction<T> work)throws Exception{if(!current.equals(expected))throw new IOException("Owner changed");return work.run();}
+}
+final class SecretStore {final Context context;SecretStore(Context context){this.context=context;}byte[] get(String key)throws Exception{Path p=new File(context.getNoBackupFilesDir(),key+".vault").toPath();return Files.exists(p)?Files.readAllBytes(p):null;}void put(String key,byte[] bytes)throws Exception{Path root=context.getNoBackupFilesDir().toPath(),tmp=Files.createTempFile(root,"vault-",".tmp");Files.write(tmp,bytes);Files.move(tmp,root.resolve(key+".vault"),StandardCopyOption.ATOMIC_MOVE,StandardCopyOption.REPLACE_EXISTING);}}
+final class GeckoEnvironmentContext extends ContextWrapper {GeckoEnvironmentContext(Context context){super(context);}}
+final class AppAppearance {static boolean dark(){return false;}}
+final class Build {static final class VERSION {static final int SDK_INT=35;}}
+final class GeckoRuntime {static GeckoRuntimeSettings received;static int creates;final GeckoRuntimeSettings settings;GeckoRuntime(GeckoRuntimeSettings value){settings=value;}static GeckoRuntime create(Context context,GeckoRuntimeSettings value){received=value;creates++;return new GeckoRuntime(value);}}
+final class GeckoRuntimeSettings {
+ static final int TRR_MODE_DISABLED=5,COLOR_SCHEME_DARK=0,COLOR_SCHEME_LIGHT=1;String[] arguments;String config;
+ static final class Builder {final GeckoRuntimeSettings value=new GeckoRuntimeSettings();Builder arguments(String[] arguments){value.arguments=arguments.clone();return this;}Builder configFilePath(String path){value.config=path;return this;}Builder isolatedProcessEnabled(boolean x){return this;}Builder appZygoteProcessEnabled(boolean x){return this;}Builder remoteDebuggingEnabled(boolean x){return this;}Builder consoleOutput(boolean x){return this;}Builder trustedRecursiveResolverMode(int x){return this;}Builder preferredColorScheme(int x){return this;}Builder forceUserScalableEnabled(boolean x){return this;}Builder inputAutoZoomEnabled(boolean x){return this;}GeckoRuntimeSettings build(){return value;}}
+}
