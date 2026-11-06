@@ -10,6 +10,11 @@ Android, Gecko, SQLite, Keystore, native preferences or browser login execution.
 Current Java never uses historical source views. Compiled wrong bindings must fail
 actual runtime-profile assertions, independently of the source metadata pins.
 
+Release qualification remains separate from this path proof. A cancelled or partial
+CI run cannot qualify an APK. Keep every original workload and time budget; a retry
+must produce fresh, complete source/run/attempt-bound results for all thirteen jobs,
+including the build, before original-key signing and publication.
+
 The real `org.json:json:20240303` dependency is self-contained for every retained
 CLI caller. `tests/persistent-runtime-path-host/json-20240303.jar.b64` decodes to
 the original 78,332-byte Maven JAR, SHA-256
