@@ -9,6 +9,14 @@ import java.util.List;
 public final class BrowserRuntimePolicyTest {
   static final List<String> checks=new ArrayList<>();
   static void check(String name,boolean pass){if(!pass)throw new AssertionError(name);checks.add(name);}
+  static String persistentProfileLayout(Path root)throws Exception{
+    Process child=new ProcessBuilder("python3",root.resolve("tests/browser-profile-path-host/run.py").toString(),"--java-home",System.getProperty("java.home"),"--output",root.resolve("work/gecko-integration/persistent-profile-path-host-results.json").toString()).directory(root.toFile()).redirectErrorStream(true).start();
+    String output=new String(child.getInputStream().readAllBytes(),java.nio.charset.StandardCharsets.UTF_8).trim();
+    if(child.waitFor()!=0)throw new IllegalStateException("Persistent profile path proof failed: "+output);
+    if(output.equals("PERSISTENT_PROFILE_PATH_PROOF:legacy"))return "legacy";
+    if(output.equals("PERSISTENT_PROFILE_PATH_PROOF:factored"))return "factored";
+    throw new IllegalStateException("Unexpected persistent profile proof protocol");
+  }
   public static void main(String[] args)throws Exception{
     check("Legacy preferences cannot choose a system engine",BrowserRuntimePolicy.usesGecko());
     check("Legacy simple display preference cannot choose a native conversation UI",BrowserRuntimePolicy.originalWebsite());
@@ -46,7 +54,12 @@ public final class BrowserRuntimePolicyTest {
     if(args.length>0){
       Path java=Path.of(args[0],"app/src/main/java/local/pocketchat");
       String view=Files.readString(java.resolve("GeckoWebView.java")),session=Files.readString(java.resolve("ChatSession.java"));
+      String layout=persistentProfileLayout(Path.of(args[0]));
+      if("legacy".equals(layout)){
       check("Gecko retains the existing persistent environment profile directory",view.contains("getNoBackupFilesDir(),\"gecko-browser\"")&&view.contains("\"-profile\",directory.getAbsolutePath()"));
+      }else{
+        check("Gecko retains the existing persistent environment profile directory","factored".equals(layout));
+      }
       check("Gecko wrapper cannot allocate or forward to a system WebView",!view.contains("new WebView(")&&!view.contains("system()")&&!view.contains("WebView legacy"));
       check("Migration keeps an archived legacy pending record without erasing its original",session.contains("putString(\"legacyPending\",pending.toString())")&&!session.substring(session.indexOf("if(pending!=null&&!BrowserRuntimePolicy.restoresPending"),session.indexOf("if(pending!=null)activeDeliveryId")).contains("remove(\"pending\")"));
       check("Passive website completion does not clear legacy native drafts",!session.contains("putString(\"draft\",\"\")"));

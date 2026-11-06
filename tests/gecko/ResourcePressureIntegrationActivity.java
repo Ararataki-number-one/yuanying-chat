@@ -15,6 +15,7 @@ import org.mozilla.geckoview.*;
 public final class ResourcePressureIntegrationActivity extends GeckoIdentityPrototypeIntegrationActivity {
   final JSONArray resourceChecks=new JSONArray(),resourceEvaluationTrace=new JSONArray();int resourceEvaluationDropped;JSONObject platform=new JSONObject(),allocation=new JSONObject();
   ChatSession.Observer pressureObserver;boolean coldChecked,controlsStarted,resourceDone;String target,pendingBytes;int readyAttempts;
+  boolean recoveryAllocationComplete,resourceReadyForControls;
   final Object fixtureDocument=new Object();String documentId;JSONObject resourcePortControls=new JSONObject();final List<JSONObject> resourceRequests=new ArrayList<>();
   class PressureView extends FixtureView {
     boolean low=true;int pauses,resumes,closures;
@@ -64,14 +65,25 @@ public final class ResourcePressureIntegrationActivity extends GeckoIdentityProt
     view.queued="";owner.pending=J.obj("id","resource-"+run,"kind","web","engine","gecko","attempted",true,"webSuspended",true,"expectedUrl","https://chatgpt.com/","prompt","synthetic resource recovery");pendingBytes=owner.pending.toString();
     if(!owner.prefs.edit().putString("pending",pendingBytes).commit())throw new IOException("Controlled pending persistence failed");owner.deliveries.recover(owner.pending);
     owner.updateBrowserActivity();owner.handler.removeCallbacks(owner.tick);
-    resourceCheck("Durable user recovery outranks synthetic low memory",view.runtime!=null&&view.resourceAdmission==ResourcePressureController.Admission.RECOVERY&&owner.resources.created==1);
-    resourceCheck("Recovery renews navigation deadline without discarding target",owner.navigationEpoch>oldEpoch&&target.equals(owner.navigationTarget)&&!owner.navigationFailed);
-    owner.navigationTimeout(oldEpoch);
-    resourceCheck("Old navigation timeout cannot fail the resumed candidate",!owner.navigationFailed);
-    allocation=J.obj("coldRuntimeCreates",0,"recoveryRuntimeCreates",owner.resources.created,"pressureSource","synthetic-pressure-control","recoveredTarget",target,"oldEpoch",oldEpoch,"newEpoch",owner.navigationEpoch,"actualRuntimeObject",System.identityHashCode(view.runtime),"physicalCapacityAcceptance",false);
+    awaitRecoveryAllocation(oldEpoch);
+  }
+  // CPU/TLS startup preparation is asynchronous. Keep the original absolute
+  // 60-second startup guard; never fabricate a runtime or restart that deadline.
+  void awaitRecoveryAllocation(long oldEpoch){
+    if(finished)return;
+    if(owner.deleted||view.destroyed||view.failed){finish(new IOException("Controlled recovery startup lost its live owner"));return;}
+    if(view.runtime==null){handler.postDelayed(()->awaitRecoveryAllocation(oldEpoch),20);return;}
+    try{
+      resourceCheck("Durable user recovery outranks synthetic low memory",view.runtime!=null&&view.resourceAdmission==ResourcePressureController.Admission.RECOVERY&&owner.resources.created==1);
+      resourceCheck("Recovery renews navigation deadline without discarding target",owner.navigationEpoch>oldEpoch&&target.equals(owner.navigationTarget)&&!owner.navigationFailed);
+      owner.navigationTimeout(oldEpoch);
+      resourceCheck("Old navigation timeout cannot fail the resumed candidate",!owner.navigationFailed);
+      allocation=J.obj("coldRuntimeCreates",0,"recoveryRuntimeCreates",owner.resources.created,"pressureSource","synthetic-pressure-control","recoveredTarget",target,"oldEpoch",oldEpoch,"newEpoch",owner.navigationEpoch,"actualRuntimeObject",System.identityHashCode(view.runtime),"physicalCapacityAcceptance",false);
+      recoveryAllocationComplete=true;if(resourceReadyForControls)beginCase();
+    }catch(Throwable failure){finish(failure);}
   }
   @Override void beginCase(){
-    if(finished)return;if(resourceDone){super.beginCase();return;}
+    if(finished)return;if(!recoveryAllocationComplete){resourceReadyForControls=true;return;}if(resourceDone){super.beginCase();return;}
     if(controlsStarted)return;controlsStarted=true;
     // The SDK session is genuinely open. Wait only for this exact document's
     // bounded production extension connection, not for a fabricated ready flag.

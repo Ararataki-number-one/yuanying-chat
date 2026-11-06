@@ -8,8 +8,8 @@ import java.util.*;
 
 /** Profile-local preferences. backgroundWait remains only for portable legacy compatibility. */
 final class AppPrefs {
-  static final String[] KEYS={"autoHistory","saveDraft","restoreScroll","backgroundWait","replyNotice","wifiDownloads","cleanTemporaryCache"};
-  static final String[] LABELS={"自动同步可见历史会话","保存本机输入草稿","恢复网页滚动位置","后台检测回复","允许此环境的后台回复提醒","仅在 Wi-Fi 下载文件","自动清理 30 天以上的无引用中间文件"};
+  static final String[] KEYS={"autoHistory","saveDraft","restoreScroll","backgroundWait","replyNotice","wifiDownloads","cleanTemporaryCache","automaticLatencyChecks"};
+  static final String[] LABELS={"自动同步可见历史会话","保存本机输入草稿","恢复网页滚动位置","后台检测回复","允许此环境的后台回复提醒","仅在 Wi-Fi 下载文件","自动清理 30 天以上的无引用中间文件","自动检测外部网络响应"};
   static boolean enabled(Context c,String key){if("backgroundWait".equals(key))return false;return c.getSharedPreferences("chat",0).getBoolean(key,!key.equals("wifiDownloads")&&!key.equals("cleanTemporaryCache"));}
   static JSONObject values(Context c){JSONObject out=new JSONObject();for(String key:KEYS)try{out.put(key,enabled(c,key));}catch(Exception ignored){}return out;}
   static void apply(Context c,JSONObject options){SharedPreferences.Editor edit=c.getSharedPreferences("chat",0).edit();for(String key:KEYS)if(!"backgroundWait".equals(key)&&options.opt(key) instanceof Boolean)edit.putBoolean(key,options.optBoolean(key));edit.putBoolean("backgroundWait",false);if(options.opt("saveDraft") instanceof Boolean&&options.optBoolean("saveDraft")!=enabled(c,"saveDraft"))edit.putLong("localDraftPolicyRevision",c.getSharedPreferences("chat",0).getLong("localDraftPolicyRevision",0)+1);edit.commit();}

@@ -90,7 +90,7 @@ class IpTimezonePublishGateTests(unittest.TestCase):
             sets = []
             for tree, name, namespace in (
                 (tool, 'release_tool_files', dict(version=version, browser_release=parts >= (2, 1, 0),
-                    fingerprint_release=parts >= (2, 1, 1), worker_timezone_release=parts >= (2, 1, 2))),
+                    fingerprint_release=parts >= (2, 1, 1), worker_timezone_release=parts >= (2, 1, 2), cpu_release=parts >= (2, 1, 3))),
                 (workflow, 'release_files', dict(m=dict(version=version))),
             ):
                 nodes = [node for node in tree.body if isinstance(node, ast.Assign)

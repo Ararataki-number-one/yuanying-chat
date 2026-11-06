@@ -109,7 +109,8 @@ def historical_read(relative):
     source = ROOT / relative
     if source.is_symlink() or not source.is_file() or source.resolve() != source.absolute():
         raise ValueError('Historical read requires an ordinary source file')
-    raw = source.read_bytes()
+    from cpu_source_compatibility import metadata_input as _cpu_metadata_input
+    raw = _cpu_metadata_input(source.read_bytes(), relative)
     return source_input(raw, relative) if relative in PATHS else raw
 
 

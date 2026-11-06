@@ -3,6 +3,26 @@ import java.util.*;import java.net.HttpURLConnection;import org.json.*;import or
 /** Exact production adapter/members with controlled SDK setting objects; no native-process proof. */
 public class NativeRuntimeCapabilitiesHost {
  static final JSONArray checks=new JSONArray();
+ static final JSONArray cpuBoundaryResults=new JSONArray();
+ static void cpuBoundaryCheck(String name,boolean pass){cpuBoundaryResults.put(J.obj("name",name,"pass",pass));if(!pass)throw new AssertionError(name);}
+ static boolean cpuBoundaryUnobserved(JSONObject value){
+  if(!"unobserved".equals(value.optString("status"))||!"synthetic-unobserved-cpu-metadata-boundary".equals(value.optString("scope")))return false;
+  for(String key:new String[]{"nativeSettingReadback","currentSessionPrepared","nativeApplied","pageApplied","pageObservationVerified","workerApplied","workerCoverageVerified","serviceWorkerApplied","serviceWorkerCoverageVerified"})if(!Boolean.FALSE.equals(value.opt(key)))return false;
+  return true;
+ }
+ static void verifyCpuBoundary()throws Exception{
+  UnobservedCpuMetadataBoundary cpu=new UnobservedCpuMetadataBoundary();JSONObject value=cpu.status();
+  cpuBoundaryCheck("The CPU metadata collaborator is explicitly unobserved",value.optString("status").equals("unobserved")&&value.optString("scope").equals("synthetic-unobserved-cpu-metadata-boundary"));
+  cpuBoundaryCheck("Unobserved CPU metadata grants no native readback preparation or application",Boolean.FALSE.equals(value.opt("nativeSettingReadback"))&&Boolean.FALSE.equals(value.opt("currentSessionPrepared"))&&Boolean.FALSE.equals(value.opt("nativeApplied")));
+  cpuBoundaryCheck("Unobserved CPU metadata grants no page or Worker application",Boolean.FALSE.equals(value.opt("pageApplied"))&&Boolean.FALSE.equals(value.opt("pageObservationVerified"))&&Boolean.FALSE.equals(value.opt("workerApplied"))&&Boolean.FALSE.equals(value.opt("workerCoverageVerified"))&&Boolean.FALSE.equals(value.opt("serviceWorkerApplied"))&&Boolean.FALSE.equals(value.opt("serviceWorkerCoverageVerified")));
+  boolean noValues=true;for(String key:new String[]{"configuredCap","defaultCap","hardwareConcurrency","desiredMode","desiredRevision","requestToken","nativeReceipt","receipt","ack"})noValues&=!value.has(key);
+  cpuBoundaryCheck("Unobserved CPU metadata fabricates no preference count revision or acknowledgement",noValues);
+  cpuBoundaryCheck("Serialized CPU boundary metadata retains only unobserved false claims",cpuBoundaryUnobserved(new JSONObject(value.toString())));
+  ChatSession owner=route();JSONObject captured=owner.web.nativeRuntimeCapabilities().getJSONObject("cpuPolicy");
+  cpuBoundaryCheck("The actual capability reader receives only the unobserved CPU metadata boundary",owner.cpu.statusCalls>0&&cpuBoundaryUnobserved(captured));
+  value.put("nativeApplied",true);
+  cpuBoundaryCheck("A caller cannot mutate a later CPU boundary observation",cpuBoundaryUnobserved(cpu.status()));
+ }
  static void check(String name,boolean pass){checks.put(J.obj("name",name,"pass",pass));if(!pass)throw new AssertionError(name);}
  static JSONObject item(JSONObject value,String key){return value.optJSONObject("settings").optJSONObject(key);}
  static boolean unknown(JSONObject value,String key){JSONObject v=item(value,key);return v.optString("status").equals("unavailable")&&v.opt("value")==JSONObject.NULL;}
@@ -58,10 +78,18 @@ public class NativeRuntimeCapabilitiesHost {
   a.networkRun=true;s.networkReady=false;check("Network checks still require the admitted current network",!a.fresh());s.networkReady=true;s.guard.allowed=false;check("Network checks still require the existing network guard",!a.fresh());s.guard.allowed=true;s.web.protection=false;check("Network checks still require native protection admission",!a.fresh());
   a.cleanup();check("Completed or cancelled checks release the captured runtime reference",a.nativeRuntimeIdentity==null&&!a.running);
   check("All captures made no native policy setter call",GeckoRuntimeSettings.writes==0&&ContentBlocking.Settings.writes==0);
-  System.out.println(J.obj("status","passed","checks",checks.length(),"results",checks,"actualAndroidExecution",false,"actualGeckoExecution",false,"actualSdkApiCompile",false,"physicalPhoneAcceptance",false,"sandboxAcceptance",false));
+  verifyCpuBoundary();
+  System.out.println(J.obj("status","passed","checks",checks.length(),"results",checks,"actualAndroidExecution",false,"actualGeckoExecution",false,"actualSdkApiCompile",false,"physicalPhoneAcceptance",false,"sandboxAcceptance",false,"cpuBoundaryChecks",cpuBoundaryResults.length(),"cpuBoundaryResults",cpuBoundaryResults,"actualCpuPolicyExecution",false,"actualCpuControllerExecution",false,"actualCpuNativeReadback",false,"actualCpuPageObservation",false,"actualCpuWorkerObservation",false));
  }
 }
-class ChatSession {Object context=new Object();String environmentId="environment-a";int environmentGeneration=4;long applied=11,navigationEpoch=3,connectionEpoch=9;boolean deleted,networkReady=true,offline;GeckoWebView web;Guard guard=new Guard();Privacy privacy=new Privacy();final SystemTimeZoneBoundary timeZone=new SystemTimeZoneBoundary();long identityAuditAppliedRevision(){return applied;}boolean internalNetwork(){return false;}void updateBrowserActivity(){}}
+class ChatSession {Object context=new Object();String environmentId="environment-a";int environmentGeneration=4;long applied=11,navigationEpoch=3,connectionEpoch=9;boolean deleted,networkReady=true,offline;GeckoWebView web;Guard guard=new Guard();Privacy privacy=new Privacy();final SystemTimeZoneBoundary timeZone=new SystemTimeZoneBoundary();final UnobservedCpuMetadataBoundary cpu=new UnobservedCpuMetadataBoundary();long identityAuditAppliedRevision(){return applied;}boolean internalNetwork(){return false;}void updateBrowserActivity(){}}
+/** Metadata-only collaborator for this capability reader. It instantiates no
+ * CPU controller, native preference access, write, readback or acknowledgement.
+ * Actual CPU policy/getter/Worker effects belong to their independent gates. */
+class UnobservedCpuMetadataBoundary {
+ int statusCalls;
+ JSONObject status(){statusCalls++;return J.obj("status","unobserved","scope","synthetic-unobserved-cpu-metadata-boundary","nativeSettingReadback",false,"currentSessionPrepared",false,"nativeApplied",false,"pageApplied",false,"pageObservationVerified",false,"workerApplied",false,"workerCoverageVerified",false,"serviceWorkerApplied",false,"serviceWorkerCoverageVerified",false);}
+}
 /** Independent default-system policy boundary only; native timezone writes,
  * readback, custom-zone page observations and lifecycle stamps are tested by
  * their separate current-policy hosts, not by this SDK capability reader. */

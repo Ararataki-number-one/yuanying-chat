@@ -86,3 +86,7 @@ def source_input(raw, relative):
     if len(raw) != row['previousBytes'] or _sha(raw) != row['previousSha256']:
         raise ValueError('Dual-browser inverse did not restore the complete original source')
     return raw
+
+# Later CPU additions are reversed only for retained source oracles.
+from cpu_source_compatibility import wrap_bytes as _cpu_wrap_bytes
+source_input = _cpu_wrap_bytes(source_input)

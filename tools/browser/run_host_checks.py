@@ -105,6 +105,21 @@ def main():
             target=out/(name+'-'+label+'.json');add(name+'-'+label,script,java+['--json-jar',jar,'--output',target],target)
     target=out/'gecko-ip-rfp-standard.json';add('gecko-ip-rfp-standard','tests/gecko_ip_timezone_rfp_standard_test.py',java+['--output',target],target)
     add('pure212-ci-source-history','tests/profile_pure212_ci_source_compatibility_test.py')
+    # Additive 2.1.3 CPU/IP and completed latency controls; original137 cases stay ordered.
+    for label,jar in [('desktop',desktop),('android-json',android_json)]:
+        for name,script in [('gecko-cpu-core','tests/gecko-cpu-host/run.py'),('gecko-cpu-ui','tests/gecko-cpu-ui-host/run.py'),('gecko-cpu-controller','tests/gecko-cpu-controller-host/run.py'),('automatic-latency','tests/automatic-latency-host/run.py'),('combo-native-admission','tests/combo-native-admission-host/run.py')]:
+            target=out/(name+'-'+label+'.json');add(name+'-'+label,script,java+['--json-jar',jar,'--output',target],target)
+    target=out/'gecko-cpu-cleanup.json';add('gecko-cpu-cleanup','tests/gecko-cpu-host/cleanup.py',java+['--output',target],target)
+    add('gecko-cpu-evidence-gate','tests/gecko_cpu_acceptance_test.py')
+    add('gecko-cpu-publication-gate','tests/browser_cpu_publish_gate_test.py')
+    add('cpu-ip-composition-controls','tests/browser_cpu_ip_composition_test.py')
+    cases.append(('cpu-ip-combo-first-inline',['node','tests/browser-runtime/gecko-cpu-ip-combo-page.test.cjs'],None))
+    add('cpu-ip-combo-evidence','tests/gecko_cpu_ip_combo_evidence_test.py')
+    add('cpu-ip-combo-runner','tests/gecko_cpu_ip_combo_runner_test.py')
+    add('cpu-ip-combo-native-admission-controls','tests/gecko_cpu_ip_combo_native_admission_test.py')
+    add('resource-recovery-async','tests/profile_resource_recovery_async_test.py')
+    add('browser-profile-path-boundary','tests/profile_browser_profile_path_boundary_test.py')
+    cases.append(('cpu-source-history',[sys.executable,'-m','unittest','discover','-s','tests','-p','profile_cpu_source_compatibility_test.py'],None))
     names=subprocess.check_output(['git','ls-files','--cached','--others','--exclude-standard','app/src/main/java','app/src/main/assets','tests','tools/browser','tools/gecko','.github/workflows/browser-2_1-acceptance.yml'],cwd=ROOT,text=True).splitlines()
     files=[ROOT/name for name in sorted(set(names)) if (ROOT/name).is_file()]
     hashes={str(path.relative_to(ROOT)):hashlib.sha256(path.read_bytes()).hexdigest() for path in files}

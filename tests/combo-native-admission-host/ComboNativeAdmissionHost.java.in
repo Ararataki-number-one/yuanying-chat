@@ -1,0 +1,186 @@
+package local.pocketchat;
+
+import java.io.*;
+import java.net.*;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.security.MessageDigest;
+import java.util.*;
+import org.json.*;
+
+/** Execute actual fixture overrides, original external routing and diagnostic producers. */
+public final class ComboNativeAdmissionHost {
+  static final String RS="https://firefox.settings.services.mozilla.com/v2/";
+  static final String ATTACHMENTS="https://firefox-settings-attachments.cdn.mozilla.net/attachments/";
+  static final JSONArray checks=new JSONArray();static String focus;
+  static void check(String name,boolean value){checks.put(J.obj("name",name,"pass",value));if(!value)throw new AssertionError(name);}
+  static void run(String name,Throwing test)throws Exception{if(focus==null||focus.equals(name))test.run();}
+  interface Throwing {void run()throws Exception;}
+  static boolean same(JSONObject a,JSONObject b){
+    if(a.length()!=b.length())return false;Iterator<String> keys=a.keys();
+    while(keys.hasNext()){String key=keys.next();if(!Objects.equals(a.opt(key),b.opt(key)))return false;}return true;
+  }
+  static String hash(String value)throws Exception{StringBuilder out=new StringBuilder();for(byte b:MessageDigest.getInstance("SHA-256").digest(value.getBytes(StandardCharsets.US_ASCII)))out.append(String.format(Locale.ROOT,"%02x",b&255));return out.toString();}
+  static FixtureBoundary fresh()throws Exception{AtomicFileBoundary.writes=0;AtomicFileBoundary.beforeWrite=null;AtomicFileBoundary.writeFailure=null;return new FixtureBoundary();}
+  static void exactTargets()throws Exception{
+    FixtureBoundary f=fresh();FixtureBoundary.Observed view=f.new Observed(new OwnerBoundary());
+    String[] targets={RS,ATTACHMENTS,"https://firefox.settings.services.mozilla.com:443/v2/private?token=PRIVATE_URL_TOKEN#fragment","https://firefox-settings-attachments.cdn.mozilla.net:443/"};
+    for(int i=0;i<targets.length;i++){
+      JSONObject route=view.protectedNetworkRoute(targets[i]);JSONObject event=f.nativeRefusals.getJSONObject(i);
+      check("Exact HTTPS targets use the original closed native route "+i,FixtureBoundary.closedNativeRefusal(route)&&same(route,new WebBoundary(new OwnerBoundary()).blocked()));
+      check("An exact target records its actual virtual admission predicate "+i,event.optBoolean("admissionPredicateObserved")&&event.optBoolean("closedRoute")&&FixtureBoundary.closedNativeRefusal(event.getJSONObject("superRoute")));
+      check("An exact target restores its thread-local admission owner "+i,view.admissionCall.get()==null);
+    }
+    check("A native callback queues only one diagnostic writer and does no file IO",f.writer.tasks.size()==1&&AtomicFileBoundary.writes==0&&f.failures==0);
+    f.writer.drain();f.probe.drain();JSONObject report=f.report();
+    check("A diagnostic snapshot contains neither a raw target nor a private query",!report.toString().contains("PRIVATE_URL_TOKEN")&&!report.toString().contains("https://"));
+  }
+  static void scope()throws Exception{
+    String[] variants={
+      "https://FP.invalid/", "https://example.invalid/", "https://sub.firefox.settings.services.mozilla.com/",
+      "https://firefox.settings.services.mozilla.com.invalid/", "https://FIREFOX.SETTINGS.SERVICES.MOZILLA.COM/",
+      "https://firefox.settings.services.mozilla.com./", "https://firefox.settings.services.mozilla.com:444/",
+      "https://firefox.settings.services.mozilla.com:0443/", "https://user@firefox.settings.services.mozilla.com/",
+      "https://firefox.settings.services.mozilla.com@other.invalid/", "http://firefox.settings.services.mozilla.com/",
+      "HTTPS://firefox.settings.services.mozilla.com/", "wss://firefox.settings.services.mozilla.com/socket",
+      "ws://firefox-settings-attachments.cdn.mozilla.net/socket", "https://%66irefox.settings.services.mozilla.com/",
+      "https://firefox-settings-attachments.cdn.mozilla.net./", "https://FIREFOX-SETTINGS-ATTACHMENTS.CDN.MOZILLA.NET/",
+      "https://user@firefox-settings-attachments.cdn.mozilla.net/", "https://firefox-settings-attachments.cdn.mozilla.net:444/",
+      "https://other.invalid/?url=https://firefox.settings.services.mozilla.com/", "not a URI", "", null,
+      "https://firefox.settings.services.mozilla.com/"+"x".repeat(16384)
+    };
+    FixtureBoundary f=fresh();OwnerBoundary owner=new OwnerBoundary();FixtureBoundary.Observed observed=f.new Observed(owner);WebBoundary original=new WebBoundary(owner);
+    for(int i=0;i<variants.length;i++){
+      String target=variants[i];check("A close or unknown variant is outside the exact fixture classifier "+i,FixtureBoundary.remoteSettingsRole(target).isEmpty());
+      JSONObject expected=null,actual=null;Class<?> expectedFailure=null,actualFailure=null;
+      try{expected=original.protectedNetworkRoute(target);}catch(RuntimeException failure){expectedFailure=failure.getClass();}
+      try{actual=observed.protectedNetworkRoute(target);}catch(RuntimeException failure){actualFailure=failure.getClass();}
+      check("An unclassified input retains the original route or original exception "+i,expectedFailure==actualFailure&&(expectedFailure!=null||same(expected,actual)));
+      check("Unclassified inputs are never consumed as native refusal evidence "+i,f.nativeRefusalCount==0&&f.nativeRefusals.length()==0&&f.failures==0);
+    }
+    check("Unclassified inputs never queue a diagnostic writer",f.writer.tasks.isEmpty());
+  }
+  static void mainRoutes()throws Exception{
+    FixtureBoundary f=fresh();OwnerBoundary owner=new OwnerBoundary();FixtureBoundary.Observed observed=f.new Observed(owner);WebBoundary original=new WebBoundary(owner);
+    String[] targets={"https://fp-a.pocketchat.test/env-policy?phase=gecko-new-york","https://fp-b.pocketchat.test/env-policy?phase=gecko-new-york","https://ipwho.is/?fields=success,ip,timezone.id"};
+    for(int i=0;i<targets.length;i++){
+      JSONObject route=observed.protectedNetworkRoute(targets[i]);
+      check("The three controlled main targets keep the actual production SOCKS route "+i,same(route,original.protectedNetworkRoute(targets[i]))&&"socks".equals(route.opt("type"))&&route.optInt("port")==18766&&Boolean.TRUE.equals(route.opt("proxyDNS")));
+    }
+    check("Main target traffic creates no Remote Settings refusal row",f.nativeRefusalCount==0&&f.writer.tasks.isEmpty()&&f.failures==0);
+  }
+  static void strictProof()throws Exception{
+    WebBoundary original=new WebBoundary(new OwnerBoundary());JSONObject exact=original.blocked();
+    check("The actual blocked result has exactly five original keys",exact.length()==5&&FixtureBoundary.closedNativeRefusal(exact));
+    ArrayList<JSONObject> invalid=new ArrayList<>();invalid.add(null);invalid.add(J.obj("type","direct"));
+    String[] keys={"type","host","port","proxyDNS","failoverTimeout"};
+    for(String key:keys){JSONObject value=new JSONObject(exact.toString());value.remove(key);invalid.add(value);}
+    JSONObject extra=new JSONObject(exact.toString());extra.put("PRIVATE_EXTRA_KEY","PRIVATE_VALUE");invalid.add(extra);
+    Object[][] changes={{"type","http"},{"host","127.0.0.2"},{"port",18766},{"port",9L},{"port",9.0},{"port","9"},{"proxyDNS",false},{"proxyDNS","true"},{"failoverTimeout",2},{"failoverTimeout",1L},{"failoverTimeout",1.0},{"failoverTimeout","1"}};
+    for(Object[] pair:changes){JSONObject value=new JSONObject(exact.toString());value.put((String)pair[0],pair[1]);invalid.add(value);}
+    for(int i=0;i<invalid.size();i++)check("Strict closed-route proof rejects an altered route "+i,!FixtureBoundary.closedNativeRefusal(invalid.get(i)));
+    FixtureBoundary f=fresh();FixtureBoundary.Observed view=f.new Observed(new OwnerBoundary());f.recordNativeRefusal(view,"remote-settings",J.obj("type","direct"),true);
+    JSONObject row=f.nativeRefusals.getJSONObject(0);
+    check("A direct result cannot become successful native refusal evidence",f.failures==1&&!row.optBoolean("closedRoute")&&row.opt("superRoute")==JSONObject.NULL);
+    f.writer.drain();f.probe.drain();
+    f=fresh();view=f.new Observed(new OwnerBoundary());f.recordNativeRefusal(view,"unknown-role",exact,true);
+    check("The actual recorder rejects an unknown role without creating evidence",f.failures==1&&f.nativeRefusalCount==0&&f.nativeRefusals.length()==0&&f.writer.tasks.isEmpty());
+  }
+  static void causalGate()throws Exception{
+    for(int i=0;i<3;i++){
+      FixtureBoundary f=fresh();OwnerBoundary owner=new OwnerBoundary();FixtureBoundary.Observed view=f.new Observed(owner);
+      if(i==0)view.requestHeadersInstalled=false;if(i==1)owner.guard.allowed=false;if(i==2)view.identityAllowed=false;
+      JSONObject route=view.protectedNetworkRoute(RS);JSONObject row=f.nativeRefusals.getJSONObject(0);
+      check("An earlier original guard remains closed without claiming the admission predicate "+i,FixtureBoundary.closedNativeRefusal(route)&&row.optBoolean("closedRoute")&&Boolean.FALSE.equals(row.opt("admissionPredicateObserved"))&&f.failures==0);
+      check("An earlier guard leaves no thread-local admission marker "+i,view.admissionCall.get()==null);
+    }
+  }
+  static void bindingAndCap()throws Exception{
+    FixtureBoundary f=fresh();FixtureBoundary.Observed first=f.new Observed(new OwnerBoundary());FixtureBoundary.Observed second=f.new Observed(new OwnerBoundary());
+    first.current=new NativeSessionBoundary("session-a");second.current=new NativeSessionBoundary("session-b");
+    first.protectedNetworkRoute(RS);second.protectedNetworkRoute(ATTACHMENTS);
+    JSONObject firstRow=f.nativeRefusals.getJSONObject(0),secondRow=f.nativeRefusals.getJSONObject(1);
+    check("Recorded identities belong to each actual source boundary",firstRow.optInt("viewInstance")==System.identityHashCode(first)&&firstRow.optInt("runtimeInstance")==System.identityHashCode(first.runtime)&&"session-a".equals(firstRow.optString("sessionId"))&&secondRow.optInt("viewInstance")==System.identityHashCode(second)&&"session-b".equals(secondRow.optString("sessionId")));
+    check("Fixed role hashes match the exact observed public host bytes",hash("firefox.settings.services.mozilla.com").equals(firstRow.optString("hostSha256"))&&hash("firefox-settings-attachments.cdn.mozilla.net").equals(secondRow.optString("hostSha256")));
+    for(int i=2;i<131;i++)first.protectedNetworkRoute(i%2==0?RS:ATTACHMENTS);
+    check("The actual recorder caps rows while preserving the refusal total",f.nativeRefusalCount==131&&f.nativeRefusals.length()==128&&f.writer.tasks.size()==1&&AtomicFileBoundary.writes==0);
+    f.writer.drain();f.probe.drain();JSONObject report=f.report();
+    check("The published diagnostic binds the current source build and nonce",report.getString("sourceCommit").equals(f.build.getString("sourceCommit"))&&report.getString("sourceTree").equals(f.build.getString("sourceTree"))&&report.getString("runNonce").equals(f.nonce)&&same(report.getJSONObject("buildIdentity"),f.build));
+    JSONObject process=report.getJSONObject("process");
+    check("The published diagnostic reads the declared current process boundary",process.optInt("pid")==ProcessBoundary.myPid()&&process.optInt("uid")==ProcessBoundary.myUid()&&ApplicationBoundary.getProcessName().equals(process.optString("name")));
+    check("The published snapshot is bounded and explicitly outside qualification",report.optInt("eventLimit")==128&&report.optLong("totalRefusals")==131&&report.optLong("droppedEvents")==3&&report.getJSONArray("events").length()==128&&Boolean.TRUE.equals(report.opt("diagnosticOnly"))&&Boolean.FALSE.equals(report.opt("qualificationEvidence"))&&Boolean.FALSE.equals(report.opt("automaticLatencyChecks"))&&Files.size(f.path().toPath())<=262144);
+    check("One queued writer persists the current bounded snapshot once",AtomicFileBoundary.writes==1&&!f.admissionWriteQueued&&f.writer.tasks.isEmpty()&&f.failures==0);
+  }
+  static void writerRace()throws Exception{
+    FixtureBoundary f=fresh();FixtureBoundary.Observed view=f.new Observed(new OwnerBoundary());view.protectedNetworkRoute(RS);
+    AtomicFileBoundary.beforeWrite=()->view.protectedNetworkRoute(ATTACHMENTS);
+    f.writer.drain();f.probe.drain();JSONObject report=f.report();
+    check("A refusal during persistence is coalesced into a later actual snapshot",report.optInt("totalRefusals")==2&&report.getJSONArray("events").length()==2&&AtomicFileBoundary.writes==2&&!f.admissionWriteQueued&&f.writer.tasks.isEmpty()&&f.failures==0);
+  }
+  static void fatalClosure()throws Exception{
+    FixtureBoundary f=fresh();FixtureBoundary.Observed view=f.new Observed(new OwnerBoundary());f.terminal=true;f.stage="complete";
+    f.recordNativeRefusal(view,"remote-settings",J.obj("type","direct"),true);
+    check("A late invalid native route invalidates an already terminal success",f.terminal&&"failed".equals(f.stage)&&f.failure.startsWith("SecurityException")&&f.activityPublishes==1);
+    f=fresh();view=f.new Observed(new OwnerBoundary());f.terminal=true;f.stage="complete";view.protectedNetworkRoute(RS);
+    AtomicFileBoundary.writeFailure=new IOException("Declared publisher IO boundary");f.writer.drain();
+    check("A queued publisher error waits for the actual handler dispatch",f.terminal&&f.failure.isEmpty()&&f.activityPublishes==0&&f.probe.tasks.size()==1);
+    f.probe.drain();
+    check("A queued publisher IO error invalidates an already terminal success",f.terminal&&"failed".equals(f.stage)&&f.failure.startsWith("IOException")&&f.activityPublishes==1);
+    f=fresh();f.terminal=true;f.stage="failed";f.failure="original-terminal-failure";f.failNativeAdmission(new IllegalStateException("later"));
+    check("The first terminal failure reason is preserved",f.terminal&&"failed".equals(f.stage)&&"original-terminal-failure".equals(f.failure)&&f.activityPublishes==0);
+  }
+  public static void main(String[] args)throws Exception{
+    focus=args.length==0?null:args[0];run("exact",ComboNativeAdmissionHost::exactTargets);run("scope",ComboNativeAdmissionHost::scope);
+    run("main",ComboNativeAdmissionHost::mainRoutes);run("proof",ComboNativeAdmissionHost::strictProof);run("causal",ComboNativeAdmissionHost::causalGate);
+    run("binding",ComboNativeAdmissionHost::bindingAndCap);run("writer",ComboNativeAdmissionHost::writerRace);run("fatal",ComboNativeAdmissionHost::fatalClosure);
+    System.out.println(J.obj("status","passed","passed",checks.length(),"checks",checks,
+      "actualAndroidExecution",false,"actualGeckoExecution",false,"actualNetworkExecution",false,"actualPublicNetworkExecution",false,
+      "actualProductionExternalRouteMethods",true,"actualFixtureAdmissionMethods",true,"actualJvmFileWrites",true));
+  }
+}
+
+final class FixtureBoundary extends ContextBoundary {
+@FIXTURE_FIELDS@
+  final QueueBoundary writer=new QueueBoundary(),probe=new QueueBoundary();
+  final JSONObject build=J.obj("sourceCommit","a".repeat(40),"sourceTree","b".repeat(40),"sdk","declared-sdk-boundary");
+  final String nonce="c".repeat(32);int failures,activityPublishes;boolean terminal;String failure="",stage="running";
+  FixtureBoundary()throws Exception{super();prefs.values.put("automaticLatencyChecks",false);}
+  // The full Android activity report is outside this host scope. Count the
+  // actual failed method's publication after it sets the real terminal state.
+  void publish(){activityPublishes++;if(!failure.isEmpty())failures++;}
+  File path(){return new File(getFilesDir(),ADMISSION_FILE);}
+  JSONObject report()throws Exception{return new JSONObject(Files.readString(path().toPath(),StandardCharsets.UTF_8));}
+@FIXTURE_METHODS@
+  final class Observed extends WebBoundary {
+@OBSERVED_FIELDS@
+    Observed(OwnerBoundary owner){super(owner);}
+@OBSERVED_METHODS@
+  }
+}
+class WebBoundary {
+  final OwnerBoundary owner;Object runtime=new Object();NativeSessionBoundary current=new NativeSessionBoundary("session-current");
+  boolean destroyed,enabled=true,requestHeadersInstalled=true,protectionAllowed=true,identityAllowed=true,generalReady=true;
+  WebBoundary(OwnerBoundary owner){this.owner=owner;}
+  boolean protectionAllowsNetwork(){return protectionAllowed;}boolean identityRequestAllowed(String target){return identityAllowed;}boolean generalRouteReady(){return generalReady;}
+  String internalPoolKey(NetworkBoundary network){throw new AssertionError("Internal native route is outside this external host scope");}
+@BASE_METHODS@
+}
+final class OwnerBoundary {final ContextBoundary context;final PreferencesBoundary prefs;final GuardBoundary guard=new GuardBoundary();long connectionEpoch=7;OwnerBoundary(){try{context=new ContextBoundary();}catch(Exception error){throw new RuntimeException(error);}prefs=context.prefs;prefs.values.put("proxy","socks://127.0.0.1:18766");}boolean internalNetwork(){return false;}}
+class ContextBoundary {static int serial;final File directory;final PreferencesBoundary prefs=new PreferencesBoundary();ContextBoundary()throws Exception{directory=new File(System.getProperty("host.outputDirectory"),"boundary-context-"+(++serial));if(!directory.mkdirs())throw new IOException("Could not create declared context directory");}File getFilesDir(){return directory;}PreferencesBoundary getSharedPreferences(String name,int mode){if(!"chat".equals(name))throw new AssertionError("Unexpected preference file");return prefs;}}
+final class PreferencesBoundary {final Map<String,Object> values=new HashMap<>();boolean getBoolean(String key,boolean fallback){Object value=values.get(key);return value==null?fallback:(Boolean)value;}String getString(String key,String fallback){Object value=values.get(key);return value==null?fallback:(String)value;}}
+final class AppPrefs {
+@PREFERENCE_METHOD@
+}
+final class GuardBoundary {boolean allowed=true;boolean allowed(){return allowed;}}
+final class UriBoundary {final String raw;UriBoundary(String raw){this.raw=raw;}static UriBoundary parse(String raw){return new UriBoundary(raw);}URI value(){return URI.create(raw);}String getScheme(){return value().getScheme();}String getHost(){return value().getHost();}int getPort(){return value().getPort();}}
+final class GuardPolicyBoundary {static boolean publicWeb(UriBoundary uri){return GeckoNavigationPolicy.publicWeb(uri.raw);}}
+final class ProxyPolicyBoundary {static boolean validProxy(String value){return "socks://127.0.0.1:18766".equals(value);}}
+final class ProfileBoundary {static int slot(ContextBoundary c){return 6;}static ContextBoundary global(ContextBoundary c){return c;}}
+final class NativeSessionBoundary {final String id;NativeSessionBoundary(String id){this.id=id;}}
+final class SessionIdentityBoundary {static String id(NativeSessionBoundary source){return source.id;}}
+final class ProcessBoundary {static int myPid(){return 7716;}static int myUid(){return 10062;}}
+final class ApplicationBoundary {static String getProcessName(){return "declared.process.profile6";}}
+final class QueueBoundary {final ArrayDeque<Runnable> tasks=new ArrayDeque<>();void execute(Runnable task){tasks.add(task);}void post(Runnable task){tasks.add(task);}void drain(){int iterations=0;while(!tasks.isEmpty()){if(++iterations>20)throw new AssertionError("Unbounded diagnostic replay");tasks.remove().run();}}}
+final class AtomicFileBoundary {static int writes;static Runnable beforeWrite;static IOException writeFailure;final File file;AtomicFileBoundary(File file){this.file=file;}FileOutputStream startWrite()throws IOException{if(beforeWrite!=null){Runnable callback=beforeWrite;beforeWrite=null;callback.run();}if(writeFailure!=null)throw writeFailure;return new FileOutputStream(file);}void finishWrite(FileOutputStream out)throws IOException{out.close();writes++;}void failWrite(FileOutputStream out){try{out.close();}catch(IOException ignored){}}}
+final class NetworkBoundary {static NetworkBoundary get(ContextBoundary c){throw new AssertionError("Unexpected native-core route");}static final class ExitRouteReceipt {int proxy;boolean matches(NetworkBoundary n,Object state){return false;}}ExitRouteReceipt verifiedRoute;boolean ready,starting,recoveryBlocked;TransportBoundary transport;}
+final class TransportBoundary {Object state;}

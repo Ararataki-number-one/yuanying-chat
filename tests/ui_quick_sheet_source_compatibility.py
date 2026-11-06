@@ -87,3 +87,12 @@ def original_runner_tree(tree):
     body[start:end] = replacement.body
     assert tree_sha(tree) == value['allowedModulePairs'][current], 'Complete committed Source7 AST did not restore'
     return tree
+
+# CPU latency preference changes affect historical metadata only.
+import importlib.util as _cpu_util
+_cpu_spec = _cpu_util.spec_from_file_location('_quick_cpu_metadata', ROOT/'tests/cpu_source_compatibility.py')
+_cpu_metadata = _cpu_util.module_from_spec(_cpu_spec)
+_cpu_spec.loader.exec_module(_cpu_metadata)
+source_input = _cpu_metadata.wrap_bytes(source_input)
+history_input = _cpu_metadata.wrap_bytes(history_input)
+original_runner_tree = _cpu_metadata.wrap_tree(original_runner_tree)

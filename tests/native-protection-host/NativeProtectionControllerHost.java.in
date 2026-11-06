@@ -46,8 +46,18 @@ final class NativeProtectionControllerHost {
     boolean popupAllowed(){popupChecks++;return system;}
   }
   static final class Prefs {String proxy="";String getString(String key,String fallback){return proxy;}}
+  // Explicit opaque default CPU prerequisite only: no CPU controller, native
+  // preference, durable receipt or page/Worker observation executes here.
+  static final class CpuBoundary {
+    Object expectedRuntime;boolean defaultMode=true,admitted=true,retired;int checks,invalidations,refreshes;
+    boolean readyFor(Object runtime){checks++;return defaultMode&&admitted&&!retired&&runtime!=null&&runtime==expectedRuntime;}
+    void protectionWillChange(){invalidations++;}void refreshNative(){refreshes++;}
+  }
+  static final List<String> cpuChecks=new ArrayList<>();
+  static void cpuCheck(String name,boolean value){if(!value)throw new AssertionError(name);cpuChecks.add(name);}
   static final class Owner {
     final Handler handler=new Handler();final Privacy privacy=new Privacy();final Guard guard=new Guard();final Prefs prefs=new Prefs();final Object context=new Object();final SystemTimeZoneBoundary timeZone=new SystemTimeZoneBoundary();
+    final CpuBoundary cpu=new CpuBoundary();
     long navigationEpoch,connectionEpoch;int changes;String status="";boolean internal,deleted;Audit audit=new Audit();
     boolean internalNetwork(){return internal;}void changed(){changes++;}void setStatus(String value){status=value;}
   }
@@ -96,6 +106,8 @@ final class NativeProtectionControllerHost {
   // is exercised elsewhere; never simulate successful auxiliary behavior here.
   static final class AuxiliaryPageBoundary {boolean fresh(){throw new AssertionError("Auxiliary IP page is outside this protection fixture");}}
   static final class View {
+    Object runtime=new Object();
+    View(){owner.cpu.expectedRuntime=runtime;}
     final Owner owner=new Owner();final Metadata metadata=new Metadata();final CookieCallbacks cookieCallbacks=new CookieCallbacks();
     final NativeProtectionState nativeProtection=new NativeProtectionState();
     final Map<GeckoSession,String> locations=new IdentityHashMap<>();final List<GeckoSession> popups=new ArrayList<>();
@@ -306,11 +318,25 @@ final class NativeProtectionControllerHost {
     View navigation=browsing();navigation.addonDisabled=true;addonCheck("Actual native navigation delegate denies a disabled addon",navigation.navigation(navigation.current,new LoadRequest(target)).value==AllowOrDeny.DENY&&navigation.nativeNavigationFailures==1);
     View unopened=new View();unopened.addonDisabled=true;unopened.start(1);unopened.reply(true,false);View popup=browsing();popup.addonDisabled=true;addonCheck("Actual bootstrap and popup gates stay closed while addon disabled",unopened.opens==0&&popup.popup(popup.current,target).value==null&&popup.popups.isEmpty());
   }
+  static void cpuPrerequisiteAdmission(){
+    String target="https://target.invalid/cpu-boundary";View ready=browsing();
+    cpuCheck("Declared default CPU boundary preserves original admission",ready.protectionAllowsNetwork());
+    for(String state:Arrays.asList("custom","unconfirmed","retired","foreign","replaced","absent")){
+      View blocked=browsing();CpuBoundary cpu=blocked.owner.cpu;
+      switch(state){case "custom":cpu.defaultMode=false;break;case "unconfirmed":cpu.admitted=false;break;case "retired":cpu.retired=true;break;case "foreign":cpu.expectedRuntime=new Object();break;case "replaced":blocked.runtime=new Object();break;case "absent":blocked.runtime=null;break;}
+      cpuCheck("CPU prerequisite rejects "+state,!blocked.protectionAllowsNetwork());
+      cpuCheck("CPU prerequisite stops native navigation "+state,blocked.navigation(blocked.current,new LoadRequest(target)).value==AllowOrDeny.DENY);
+      cpuCheck("CPU prerequisite stops new popup "+state,blocked.popup(blocked.current,target).value==null&&blocked.popups.isEmpty());
+    }
+    View protectedView=browsing();protectedView.owner.cpu.admitted=false;protectedView.start(2);protectedView.reply(true,true);
+    cpuCheck("Independent protection acknowledgement cannot create CPU readiness",!protectedView.protectionAllowsNetwork()&&protectedView.owner.cpu.invalidations>0&&protectedView.owner.cpu.refreshes>0);
+  }
   public static void main(String[] args){
-    basicPolicy();controller();bootstrap();identityAdmission();disabledAddonAdmission();
+    basicPolicy();controller();bootstrap();identityAdmission();disabledAddonAdmission();cpuPrerequisiteAdmission();
     StringBuilder out=new StringBuilder("{\"status\":\"passed\",\"passed\":").append(checks.size()).append(",\"checks\":[");
     for(int i=0;i<checks.size();i++){if(i>0)out.append(',');out.append("{\"name\":").append(quote(checks.get(i))).append(",\"pass\":true}");}
     out.append("],\"addonBoundaryPassed\":").append(addonChecks.size()).append(",\"addonBoundaryChecks\":[");for(int i=0;i<addonChecks.size();i++){if(i>0)out.append(',');out.append("{\"name\":").append(quote(addonChecks.get(i))).append(",\"pass\":true}");}
+    out.append("],\"cpuBoundaryPassed\":").append(cpuChecks.size()).append(",\"cpuBoundaryChecks\":[");for(int i=0;i<cpuChecks.size();i++){if(i>0)out.append(',');out.append("{\"name\":").append(quote(cpuChecks.get(i))).append(",\"pass\":true}");}
     System.out.println(out.append("],\"actualAndroidExecution\":false,\"actualGeckoExecution\":false,\"actualAddonLifecycleExecution\":false,\"actualGeneralRouteExecution\":false,\"generalRouteBoundary\":\"Available independent app route with counted readiness/retain and lease facades; actual current production protection/controller methods remain extracted unchanged\"}"));
   }
 }

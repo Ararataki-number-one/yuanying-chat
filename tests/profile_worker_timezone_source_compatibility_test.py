@@ -14,6 +14,8 @@ import worker_timezone_source_compatibility as overlay
 from phase1_context_fix_source_compatibility import PATHS as context_paths, source_input as context_source_input
 import dual_browser_source_compatibility as dual
 
+import cpu_source_compatibility as _cpu_history
+
 ROOT = Path(__file__).resolve().parents[1]
 SHA = lambda value: hashlib.sha256(value).hexdigest()
 DUAL_HOOK = """    if (digest, len(raw)) not in ((row['previousSha256'], row['previousBytes']),
@@ -52,7 +54,7 @@ class WorkerTimezoneSourceCompatibility(unittest.TestCase):
         for relative, row in manifest['files'].items():
             with self.subTest(path=relative):
                 before = subprocess.check_output(['git', 'show', overlay.BASE_COMMIT + ':' + relative], cwd=ROOT)
-                after = (ROOT / relative).read_bytes()
+                after = _cpu_history.metadata_input((ROOT / relative).read_bytes(), relative)
                 if relative in context_paths:
                     after = context_source_input(after, relative)
                 self.assertEqual((SHA(before), len(before)), (row['previousSha256'], row['previousBytes']))
@@ -72,7 +74,7 @@ class WorkerTimezoneSourceCompatibility(unittest.TestCase):
     def test_all_missing_duplicate_mutated_moved_truncated_and_unknown_sources_fail(self):
         rejected = 0
         for relative, row in overlay.manifest()['files'].items():
-            after = (ROOT / relative).read_bytes()
+            after = _cpu_history.metadata_input((ROOT / relative).read_bytes(), relative)
             if relative in context_paths:
                 after = context_source_input(after, relative)
             for delta in row['deltas']:
@@ -115,7 +117,7 @@ class WorkerTimezoneSourceCompatibility(unittest.TestCase):
              'return nativeProtection.allows(owner.privacy.level());', 'return true;'),
         )
         for relative, before, after in variants:
-            current = (ROOT / relative).read_bytes()
+            current = _cpu_history.metadata_input((ROOT / relative).read_bytes(), relative)
             if relative in context_paths:
                 current = context_source_input(current, relative)
             self.assertEqual(current.count(before.encode()), 1)
@@ -158,7 +160,7 @@ class WorkerTimezoneSourceCompatibility(unittest.TestCase):
              'if(read==null||destroyed||failed||!enabled||owner.deleted||!requestHeadersInstalled||current!=read.session'),
             ('if(rejectDisabledNavigation(s,request.uri))return GeckoResult.fromValue(AllowOrDeny.DENY);', ''),
         )
-        current = (ROOT / relative).read_bytes()
+        current = _cpu_history.metadata_input((ROOT / relative).read_bytes(), relative)
         if relative in context_paths:
             current = context_source_input(current, relative)
         for before, after in variants:
@@ -175,7 +177,7 @@ class WorkerTimezoneSourceCompatibility(unittest.TestCase):
     def test_source_identity_is_checked_before_any_context_inverse(self):
         relative = 'app/src/main/java/local/pocketchat/GeckoWebView.java'
         row = overlay.manifest()['files'][relative]
-        after = (ROOT / relative).read_bytes()
+        after = _cpu_history.metadata_input((ROOT / relative).read_bytes(), relative)
         if relative in context_paths:
             after = context_source_input(after, relative)
         class ForbiddenContext:
@@ -236,16 +238,16 @@ class WorkerTimezoneSourceCompatibility(unittest.TestCase):
                          'tests/fixtures/event-journal-source-deltas.json',
                          'tests/fixtures/reading45-restoration-source-deltas.json',
                          'tests/fixtures/gecko-policy-dependency-source-deltas.json'):
-            self.assertEqual((ROOT / relative).read_bytes(), subprocess.check_output(['git', 'show', overlay.BASE_COMMIT + ':' + relative], cwd=ROOT))
+            self.assertEqual(_cpu_history.metadata_input((ROOT / relative).read_bytes(), relative), subprocess.check_output(['git', 'show', overlay.BASE_COMMIT + ':' + relative], cwd=ROOT))
         relative = 'tests/dual_browser_source_compatibility.py'
         before = subprocess.check_output(['git', 'show', overlay.BASE_COMMIT + ':' + relative], cwd=ROOT)
-        after = (ROOT / relative).read_bytes()
+        after = _cpu_history.metadata_input((ROOT / relative).read_bytes(), relative)
         self.assertEqual(after.count(DUAL_HOOK.encode()), 1)
         self.assertEqual(after.replace(DUAL_HOOK.encode(), b'', 1), before)
         relative = 'tests/profile_dual_browser_source_compatibility_test.py'
         before = subprocess.check_output(['git', 'show', overlay.BASE_COMMIT + ':' + relative], cwd=ROOT)
         from page_bridge_budget_source_compatibility import PATHS as budget_paths, source_input as budget_source_input
-        after = budget_source_input((ROOT / relative).read_bytes(), relative) if relative in budget_paths else (ROOT / relative).read_bytes()
+        after = budget_source_input(_cpu_history.metadata_input((ROOT / relative).read_bytes(), relative), relative) if relative in budget_paths else _cpu_history.metadata_input((ROOT / relative).read_bytes(), relative)
         # Remove only the reviewed host-adapter historical read ports before
         # the original complete-file oracle below; no actual host sees a view.
         host_import = b'        from worker_timezone_host_source_compatibility import PATHS as host_adapter_paths, source_input as host_adapter_source_input\n'

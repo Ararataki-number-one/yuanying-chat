@@ -1,0 +1,207 @@
+package local.pocketchat;
+
+import java.io.*;
+import java.net.*;
+import java.nio.charset.StandardCharsets;
+import java.util.*;
+import java.util.function.*;
+import org.json.*;
+
+/** Actual preference and probe scheduling methods over explicitly counted boundaries. */
+public final class AutomaticLatencyHost {
+  static final String KEY="automaticLatencyChecks";
+  static final JSONArray checks=new JSONArray();
+  static String focus;
+  static void check(String name,boolean condition){checks.put(J.obj("name",name,"pass",condition));if(!condition)throw new AssertionError(name);}
+  static void run(String name,Runnable test){if(focus==null||focus.equals(name))test.run();}
+  static void setting(SessionBoundary session,boolean enabled){AppPrefs.apply(session.context,J.obj(KEY,enabled));}
+  static SessionBoundary fresh(){
+    ClockBoundary.wall=1_800_000_000_000L;ClockBoundary.monotonic=1_000_000;
+    NetworkRegion.latencyRunning=false;NetworkRegion.latencyAttempted=0;NetworkRegion.latencyAttemptRoute="";
+    NetworkRegion.latencyWorker.tasks.clear();ProbeBoundary.reset();ProjectionBoundary.saves=0;GuardPolicyBoundary.publicAllowed=true;
+    return new SessionBoundary();
+  }
+  static void complete(SessionBoundary session){NetworkRegion.latencyWorker.drain();session.handler.drain();}
+  static void preferences(){
+    SessionBoundary s=fresh();int index=Arrays.asList(AppPrefs.KEYS).indexOf(KEY);
+    check("The actual preference inventory exposes automatic latency with a label",index>=0&&AppPrefs.KEYS.length==AppPrefs.LABELS.length&&!AppPrefs.LABELS[index].isEmpty());
+    check("A missing automatic latency preference defaults to enabled",AppPrefs.enabled(s.context,KEY)&&AppPrefs.values(s.context).optBoolean(KEY));
+    AppPrefs.apply(s.context,J.obj(KEY,"false"));
+    check("The actual preference API ignores a nonboolean automatic latency value",AppPrefs.enabled(s.context,KEY));
+    setting(s,false);
+    check("The actual preference API persists an explicit automatic latency disable",!AppPrefs.enabled(s.context,KEY)&&Boolean.FALSE.equals(AppPrefs.values(s.context).opt(KEY)));
+    CheckBoxBoundary[] options=PreferenceEntryBoundary.render(s.context,new JSONObject());
+    check("The actual environment editor renders the automatic latency checkbox",options[index]!=null&&options[index].text.equals(AppPrefs.LABELS[index])&&!options[index].isChecked());
+    options[index].setChecked(true);AppPrefs.apply(s.context,PreferenceEntryBoundary.read(options));
+    check("The actual editor read loop reaches the real preference apply method",AppPrefs.enabled(s.context,KEY)&&PreferenceEntryBoundary.render(s.context,new JSONObject())[index].isChecked());
+    ContextBoundary foreign=new ContextBoundary();
+    setting(s,false);
+    check("Disabling one environment leaves another environment enabled",!AppPrefs.enabled(s.context,KEY)&&AppPrefs.enabled(foreign,KEY));
+  }
+  static void automaticDefault(){
+    SessionBoundary s=fresh();NetworkRegion.refreshLatency(s,null);
+    check("Default automatic latency queues one current probe",NetworkRegion.latencyWorker.tasks.size()==1&&NetworkRegion.latencyRunning&&ProbeBoundary.opens==0);
+    NetworkRegion.refreshLatency(s,null);
+    check("Repeated UI reads cannot duplicate an already queued probe",NetworkRegion.latencyWorker.tasks.size()==1);
+    complete(s);
+    check("Default automatic latency opens the counted probe boundary once",ProbeBoundary.invocations==1&&ProbeBoundary.opens==1&&NetworkBoundary.PROBE.equals(ProbeBoundary.lastTarget));
+    check("The current automatic sample is persisted and projected",s.context.writes==1&&s.context.publications==1&&s.changes==1&&ProjectionBoundary.saves==1&&s.context.sample.optInt("delay")==43);
+    check("The counted probe keeps the selected explicit SOCKS route",ProbeBoundary.lastProxy.type()==Proxy.Type.SOCKS&&((InetSocketAddress)ProbeBoundary.lastProxy.address()).getPort()==18766);
+    NetworkRegion.refreshLatency(s,null);complete(s);
+    check("A fresh automatic sample suppresses another queued or counted open",ProbeBoundary.opens==1&&NetworkRegion.latencyWorker.tasks.isEmpty());
+  }
+  static void disabled(){
+    SessionBoundary s=fresh();setting(s,false);
+    for(int i=0;i<4;i++)NetworkRegion.refreshLatency(s,null);
+    check("Disabled automatic latency queues no work and opens no probe",NetworkRegion.latencyWorker.tasks.isEmpty()&&ProbeBoundary.invocations==0&&ProbeBoundary.opens==0&&!NetworkRegion.latencyRunning);
+    complete(s);
+    check("Disabled automatic latency cannot persist or project a sample",s.context.writes==0&&s.context.publications==0&&ProjectionBoundary.saves==0&&s.changes==0);
+  }
+  static void queuedDisable(){
+    SessionBoundary s=fresh();NetworkRegion.refreshLatency(s,null);
+    check("A real automatic job is queued before its setting changes",NetworkRegion.latencyWorker.tasks.size()==1);
+    setting(s,false);complete(s);
+    check("Disabling a queued automatic job prevents even probe invocation",ProbeBoundary.invocations==0&&ProbeBoundary.opens==0);
+    check("A disabled queued job cannot stamp an automatic attempt",NetworkRegion.latencyAttempted==0&&NetworkRegion.latencyAttemptRoute.isEmpty());
+    check("A cancelled automatic job releases its running state without saving",!NetworkRegion.latencyRunning&&s.context.writes==0&&s.context.publications==0&&ProjectionBoundary.saves==0);
+  }
+  static void completedDisable(){
+    SessionBoundary s=fresh();ProbeBoundary.onCompleted=()->setting(s,false);
+    NetworkRegion.refreshLatency(s,null);complete(s);
+    check("A completed probe can race with a real preference disable",ProbeBoundary.opens==1&&!AppPrefs.enabled(s.context,KEY));
+    check("Disabling before persistence prevents the old automatic sample from being saved",s.context.writes==0&&s.context.publications==0&&ProjectionBoundary.saves==0&&s.changes==0);
+    SessionBoundary pending=fresh();NetworkRegion.refreshLatency(pending,null);NetworkRegion.latencyWorker.drain();
+    setting(pending,false);pending.handler.drain();
+    check("Disabling before UI dispatch suppresses the old automatic notification",pending.context.writes==1&&pending.context.publications==1&&ProjectionBoundary.saves==0&&pending.changes==0);
+  }
+  static void manual(){
+    SessionBoundary s=fresh();setting(s,false);CallbackBoundary callback=new CallbackBoundary();
+    NetworkRegion.refreshLatency(s,callback);complete(s);
+    check("Manual latency still opens once when automatic latency is disabled",ProbeBoundary.invocations==1&&ProbeBoundary.opens==1&&callback.calls==1&&callback.success);
+    check("Manual latency still persists its current measured sample",s.context.writes==1&&s.context.sample.optInt("delay")==43);
+    s=fresh();setting(s,false);s.guard.permitted=false;callback=new CallbackBoundary();
+    NetworkRegion.refreshLatency(s,callback);complete(s);
+    check("Manual latency still requires the actual session guard",ProbeBoundary.opens==0&&NetworkRegion.latencyWorker.tasks.isEmpty()&&callback.calls==1&&!callback.success);
+    s=fresh();setting(s,false);s.offline=true;callback=new CallbackBoundary();NetworkRegion.refreshLatency(s,callback);complete(s);
+    check("Manual latency remains denied while offline",ProbeBoundary.opens==0&&callback.calls==1&&!callback.success);
+    s=fresh();setting(s,false);callback=new CallbackBoundary();NetworkRegion.refreshLatency(s,callback);s.route="external:foreign-manual-route";complete(s);
+    check("Manual latency still rejects a route replaced after queueing",ProbeBoundary.opens==0&&s.context.writes==0&&callback.calls==1&&!callback.success);
+  }
+  static void foreignRoute(){
+    SessionBoundary s=fresh();NetworkRegion.refreshLatency(s,null);s.route="external:replacement-route";complete(s);
+    check("A queued probe cannot query a foreign current route",ProbeBoundary.opens==0&&s.context.writes==0);
+    s=fresh();NetworkRegion.refreshLatency(s,null);s.connectionEpoch++;complete(s);
+    check("A queued probe cannot query after its connection epoch changes",ProbeBoundary.opens==0&&s.context.writes==0);
+    s=fresh();NetworkRegion.refreshLatency(s,null);s.guard.permitted=false;complete(s);
+    check("A queued probe cannot query after route protection is lost",ProbeBoundary.opens==0&&s.context.writes==0);
+  }
+  static void reenable(){
+    SessionBoundary s=fresh();String previous=NetworkRegion.latencyRoute(s);
+    s.context.sample=J.obj("route",previous,"at",ClockBoundary.wallMillis(),"delay",17);
+    setting(s,false);NetworkRegion.refreshLatency(s,null);complete(s);
+    s.route="external:current-route-b";s.networkIdentity="proof-b";setting(s,true);
+    NetworkRegion.refreshLatency(s,null);complete(s);
+    check("Reenabling automatic latency probes the current route despite a foreign fresh cache",ProbeBoundary.opens==1&&s.context.writes==1&&!previous.equals(s.context.sample.optString("route"))&&NetworkRegion.latencyRoute(s).equals(s.context.sample.optString("route")));
+    s=fresh();s.context.cacheReady=false;NetworkRegion.refreshLatency(s,null);
+    check("An unresolved initial cache still prevents automatic work",NetworkRegion.latencyWorker.tasks.isEmpty()&&ProbeBoundary.opens==0);
+    s.context.cacheReady=true;NetworkRegion.refreshLatency(s,null);complete(s);
+    check("A resolved initial cache permits the first automatic probe",ProbeBoundary.opens==1);
+  }
+  public static void main(String[] args){
+    focus=args.length==0?null:args[0];
+    run("preferences",AutomaticLatencyHost::preferences);run("default",AutomaticLatencyHost::automaticDefault);
+    run("disabled",AutomaticLatencyHost::disabled);run("queued-disable",AutomaticLatencyHost::queuedDisable);
+    run("completed-disable",AutomaticLatencyHost::completedDisable);run("manual",AutomaticLatencyHost::manual);
+    run("foreign-route",AutomaticLatencyHost::foreignRoute);run("reenable",AutomaticLatencyHost::reenable);
+    System.out.println(J.obj("status","passed","passed",checks.length(),"checks",checks,
+      "actualAndroidExecution",false,"actualGeckoExecution",false,"actualNetworkExecution",false,
+      "actualPublicNetworkExecution",false,"actualNativeProbeExecution",false,
+      "countedProbeBoundary",true,"actualPreferenceMethodsExecution",true,"actualEditorPreferenceLoopExecution",true));
+  }
+}
+
+final class AppPrefs {
+@PREFS_MEMBERS@
+}
+final class NetworkRegion {
+  static final ExecutorBoundary latencyWorker=new ExecutorBoundary();
+  static boolean latencyRunning;static long latencyAttempted;static String latencyAttemptRoute="";
+  static final CacheBoundary cache=new CacheBoundary();
+  static JSONObject readLatency(ContextBoundary context){return context.sample;}
+  static boolean ready(ContextBoundary context,String name){return context.cacheReady;}
+@REGION_MEMBERS@
+}
+final class NetworkBoundary {
+  interface Callback {void done(boolean ok,String message);}
+@NATIVE_MEMBERS@
+  static NetworkBoundary get(ContextBoundary context){return new NetworkBoundary();}
+}
+final class PreferenceEntryBoundary {
+  static CheckBoxBoundary[] render(ContextBoundary a,JSONObject initial){
+    LayoutBoundary preferences=new LayoutBoundary();
+@EDITOR_BLOCK@
+    return options;
+  }
+  static JSONObject read(CheckBoxBoundary[] options){JSONObject value=new JSONObject();
+@EDITOR_READ@
+  }
+}
+final class ContextBoundary {
+  static int nextId;final int id=++nextId;final PreferencesBoundary prefs=new PreferencesBoundary();
+  final ConnectivityBoundary connectivity=new ConnectivityBoundary();
+  JSONObject sample=new JSONObject(),diskSample=new JSONObject();boolean cacheReady=true;int writes,publications;
+  PreferencesBoundary getSharedPreferences(String name,int mode){if(!"chat".equals(name))throw new AssertionError("Unexpected preference file");return prefs;}
+  <T>T getSystemService(Class<T> type){if(type!=ConnectivityBoundary.class)throw new AssertionError("Unexpected service");return type.cast(connectivity);}
+}
+final class PreferencesBoundary {
+  final Map<String,Object> values=new HashMap<>();
+  boolean getBoolean(String key,boolean fallback){Object value=values.get(key);return value==null?fallback:(Boolean)value;}
+  String getString(String key,String fallback){Object value=values.get(key);return value==null?fallback:(String)value;}
+  long getLong(String key,long fallback){Object value=values.get(key);return value==null?fallback:((Number)value).longValue();}
+  Editor edit(){return new Editor();}
+  final class Editor {
+    final Map<String,Object> pending=new HashMap<>();
+    Editor putBoolean(String key,boolean value){pending.put(key,value);return this;}
+    Editor putString(String key,String value){pending.put(key,value);return this;}
+    Editor putLong(String key,long value){pending.put(key,value);return this;}
+    boolean commit(){values.putAll(pending);return true;}
+  }
+}
+final class SessionBoundary {
+  final ContextBoundary context=new ContextBoundary();final PreferencesBoundary prefs=context.prefs;
+  final HandlerBoundary handler=new HandlerBoundary();final GuardBoundary guard=new GuardBoundary();final WebBoundary web=new WebBoundary();
+  boolean deleted,offline,connecting,internal;boolean networkReady=true,uiVisible=true;long connectionEpoch=1;
+  String route="external:socks://127.0.0.1:18766",networkIdentity="proof-a";int changes;
+  SessionBoundary(){prefs.edit().putBoolean("networkConfigured",true).putString("proxy","socks://127.0.0.1:18766").commit();}
+  boolean internalNetwork(){return internal;}String networkIdentity(){return route;}void changed(){changes++;}
+}
+final class GuardBoundary {boolean permitted=true,needsVpn;boolean allowed(){return permitted;}boolean requiresVpn(){return needsVpn;}}
+final class WebBoundary {String url="https://fp-a.pocketchat.test/env-policy";String getUrl(){return url;}}
+final class UriBoundary {final String value;UriBoundary(String value){this.value=value;}static UriBoundary parse(String value){return new UriBoundary(value);}}
+final class GuardPolicyBoundary {static boolean publicAllowed=true;static boolean publicHttps(UriBoundary uri){return publicAllowed&&uri!=null;}}
+final class BoundNetworkBoundary {}
+final class ConnectivityBoundary {BoundNetworkBoundary active=new BoundNetworkBoundary();BoundNetworkBoundary getActiveNetwork(){return active;}}
+final class ClockBoundary {static long wall,monotonic;static long wallMillis(){return wall;}static long elapsedRealtime(){return monotonic;}}
+final class ExecutorBoundary {final ArrayDeque<Runnable> tasks=new ArrayDeque<>();void execute(Runnable task){tasks.add(task);}void drain(){int n=0;while(!tasks.isEmpty()){if(++n>50)throw new AssertionError("Unexpected unbounded executor replay");tasks.remove().run();}}}
+final class HandlerBoundary {final ArrayDeque<Runnable> tasks=new ArrayDeque<>();void post(Runnable task){tasks.add(task);}void drain(){int n=0;while(!tasks.isEmpty()){if(++n>50)throw new AssertionError("Unexpected unbounded handler replay");tasks.remove().run();}}}
+final class CallbackBoundary implements NetworkBoundary.Callback {int calls;boolean success;public void done(boolean ok,String message){calls++;success=ok;}}
+final class ProbeBoundary {
+  interface Gate {void check()throws IOException;}
+  static int invocations,opens;static Proxy lastProxy;static String lastTarget;static Runnable onCompleted;
+  static void reset(){invocations=opens=0;lastProxy=null;lastTarget=null;onCompleted=null;}
+  static int measure(String target,Proxy proxy,BoundNetworkBoundary bound,Gate gate)throws IOException{
+    invocations++;gate.check();gate.check();opens++;lastProxy=proxy;lastTarget=target;gate.check();
+    if(onCompleted!=null){Runnable completed=onCompleted;onCompleted=null;completed.run();}return 43;
+  }
+}
+final class StoreBoundary {
+  static final Map<File,ContextBoundary> owners=new HashMap<>();final ContextBoundary context;
+  StoreBoundary(ContextBoundary context){this.context=context;}
+  void put(String name,byte[] raw){if(!"route-latency".equals(name))throw new AssertionError("Unexpected storage key");context.writes++;context.diskSample=J.parse(new String(raw,StandardCharsets.UTF_8));}
+  File file(String name){File file=new File("boundary-environment-"+context.id,name);owners.put(file,context);return file;}
+}
+final class CacheBoundary {void publish(File file,JSONObject sample){ContextBoundary context=StoreBoundary.owners.get(file);if(context==null)throw new AssertionError("Unexpected cache owner");context.publications++;context.sample=sample;}}
+final class ProjectionBoundary {static int saves;static void save(ContextBoundary c,SessionBoundary s,NetworkBoundary n){saves++;}}
+final class CheckBoxBoundary {String text="";boolean checked;CheckBoxBoundary(ContextBoundary c){}void setText(String value){text=value;}void setTextColor(int value){}void setTextSize(int value){}void setChecked(boolean value){checked=value;}boolean isChecked(){return checked;}}
+final class LayoutBoundary {final List<CheckBoxBoundary> children=new ArrayList<>();void addView(CheckBoxBoundary value){children.add(value);}}
+final class DesignBoundary {static final int TEXT=0;static void section(LayoutBoundary root,String heading,String summary){}static LayoutBoundary card(ContextBoundary c){return new LayoutBoundary();}static void addCard(LayoutBoundary root,LayoutBoundary child){root.children.addAll(child.children);}}

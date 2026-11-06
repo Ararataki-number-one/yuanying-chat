@@ -42,6 +42,18 @@ def preserved_source_input(raw):
         if sha(raw) != '8812872161d8441e1ff4c41118ccfa50c992490caa703c855245c7ed0019f440':raise ValueError('Entire window-only source did not restore')
     return raw
 
+def composed_cpu_source_verified(raw, baseline_raw, reference):
+    """Exact metadata guard only; compiled declarations still read raw source."""
+    if type(raw) is not bytes or sha(raw) != 'a99936da23c75199bcfd38fe9afbe81a64f412a723065296edcf0a5905437e62':return False
+    if type(reference) is not bytes or sha(reference) != 'c4a9a2e404ec18b4fad1ac252e9ea69af6e3a5763855f901d47c9b80d3337a3d':return False
+    lookup='public void lookupIp('
+    for marker in (*MEMBERS,lookup,'void prepareTimeZone(','void revalidateTimeZone(','void finishTimeZone(','void sendTimeZone(','void lookupIpTimeZone(','static final class IpLookup {'):
+        if declaration(raw.decode(),marker)!=declaration(reference.decode(),marker):return False
+    old_lookup=declaration(baseline_raw.decode(),lookup)
+    current_lookup=declaration(reference.decode(),lookup)
+    return preserved_source_input(reference).replace(current_lookup.encode(),old_lookup.encode(),1)==baseline_raw
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--java-home', type=Path)
@@ -112,8 +124,13 @@ def main():
         lookup_declaration = 'public void lookupIp('
         original_lookup = declaration(baseline_raw.decode(), lookup_declaration)
         current_lookup = declaration(source.read_text(), lookup_declaration)
+        legacy_lookup_only = preserved_source_input(source.read_bytes()).replace(current_lookup.encode(), original_lookup.encode(), 1) == baseline_raw
+        composed_cpu = False
         if preserved_source_input(source.read_bytes()).replace(current_lookup.encode(), original_lookup.encode(), 1) != baseline_raw:
-            raise AssertionError('Production delta must be only the exact lookupIp member; initial consumer and all existing budgets stay byte-identical')
+            reference = subprocess.check_output(['git', '--no-replace-objects', 'show', '8c11554b631684cae8f18cd5b7ad4311f943bf2c:' + SOURCE_PATH], cwd=ROOT, env=git_env, timeout=30)
+            composed_cpu = composed_cpu_source_verified(source.read_bytes(), baseline_raw, reference)
+            if not composed_cpu:
+                raise AssertionError('Production delta must be only the exact lookupIp member; initial consumer and all existing budgets stay byte-identical')
         control_specs = [('actual-before', baseline, 'pending', 'Pending window has zero IP transport invocations true')]
         before = 'if(!ready||!current()){fail.accept(new IOException("出口时区查询上下文已变化"))'
         method = 'private void startTimeZone('
@@ -138,7 +155,7 @@ def main():
     unchanged = all(sha(path.read_bytes()) == hashes[str(path.relative_to(ROOT))] for path in files) and sha(jar.read_bytes()) == jar_hash
     report.update(sourceFiles=hashes, sourceMethodHashes={name: sha(body.encode()) for name, body in selected.items()},
                   identityMethodSha256=sha(identity_body.encode()), jsonJarSha256=jar_hash,
-                  lookupOnlyWholeFileInverseVerified=True, originalInitialConsumerPreserved=True,
+                  lookupOnlyWholeFileInverseVerified=legacy_lookup_only, originalInitialConsumerPreserved=True, composedCpuWholeFileVerified=composed_cpu,
                   baseline=dict(commit=BASE, sourceSha256=sha(baseline_raw), usage='Real Git before-image runs only as a separately compiled negative; current workload executes raw current methods'),
                   negativeControls=controls, executionInputsUnchanged=unchanged,
                   typeTokenSubstitutions=replacements,

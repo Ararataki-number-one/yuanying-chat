@@ -56,3 +56,7 @@ def metadata_input(raw, relative):
     """Leave non-owned old metadata inputs with their original strict guard."""
     if type(raw) is not bytes or type(relative) is not str:raise ValueError('Exact metadata bytes and relative string required')
     return source_input(raw, relative) if relative in PATHS else raw
+
+# Later CPU additions are reversed only for retained source oracles.
+from cpu_source_compatibility import wrap_bytes as _cpu_wrap_bytes
+source_input = _cpu_wrap_bytes(source_input)

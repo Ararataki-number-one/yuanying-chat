@@ -9,6 +9,8 @@ import ui_quick_sheet_source_compatibility as quick
 import ui_visual_preservation_contract as original_ui
 import ui_runner14_source_contract as runner14
 
+import cpu_source_compatibility as _cpu_history
+
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -24,7 +26,7 @@ class QuickSheetSourceCompatibilityTests(unittest.TestCase):
         self.assertEqual(quick.BASE_COMMIT, '03d0c4ace70942a3f6899daffac086cc6682885e')
         self.assertEqual(quick.BASE_TREE, 'bfd7bbcdf89ef947dd466dab795e94e83fc992c3')
         for path, row in quick.manifest()['files'].items():
-            current = (ROOT / path).read_bytes()
+            current = _cpu_history.metadata_input((ROOT / path).read_bytes(), path)
             previous = quick.source_input(current, path)
             self.assertEqual(hashlib.sha256(previous).hexdigest(), quick.PREVIOUS[path])
             self.assertEqual(len(previous), row['previousBytes'])
@@ -37,7 +39,7 @@ class QuickSheetSourceCompatibilityTests(unittest.TestCase):
 
     def test_unknown_missing_duplicate_moved_or_altered_hunks_rejected(self):
         for path, row in quick.manifest()['files'].items():
-            raw = (ROOT / path).read_bytes()
+            raw = _cpu_history.metadata_input((ROOT / path).read_bytes(), path)
             for delta in row['deltas']:
                 addition = delta['current'].encode()
                 remaining = raw.replace(addition, b'', 1)
@@ -52,7 +54,7 @@ class QuickSheetSourceCompatibilityTests(unittest.TestCase):
                 self.reject(changed, path)
 
     def test_exact_types_paths_and_complete_ast_required(self):
-        raw = (ROOT / quick.RUNNER).read_bytes()
+        raw = _cpu_history.metadata_input((ROOT / quick.RUNNER).read_bytes(), quick.RUNNER)
         for changed in (None, raw.decode(), bytearray(raw), memoryview(raw), True, raw[:1024]):
             self.reject(changed, quick.RUNNER)
         for path in (None, Path(quick.RUNNER), '', '../' + quick.RUNNER, '/' + quick.RUNNER,
@@ -66,7 +68,7 @@ class QuickSheetSourceCompatibilityTests(unittest.TestCase):
         with self.assertRaises(AssertionError):quick.history_input(raw, 'unknown/path')
 
     def test_complete_current_formatted_and_independent_preparation_ast_variants(self):
-        current = (ROOT / quick.RUNNER).read_bytes()
+        current = _cpu_history.metadata_input((ROOT / quick.RUNNER).read_bytes(), quick.RUNNER)
         previous = quick.source_input(current, quick.RUNNER)
         block = ("from ui_test_device import prepare_workflow as prepare_ui_test_device\n"
                  "(out/'ui-test-device-isolation.json').write_text(json.dumps(prepare_ui_test_device(adb,serial=args.serial,environment=os.environ),sort_keys=True,indent=2)+'\\n')\n")
@@ -82,7 +84,7 @@ class QuickSheetSourceCompatibilityTests(unittest.TestCase):
                 self.assertFalse(receipt['actualAndroidExecution'])
 
     def test_current_and_old_predicates_cannot_normalize_away(self):
-        raw = (ROOT / quick.RUNNER).read_bytes()
+        raw = _cpu_history.metadata_input((ROOT / quick.RUNNER).read_bytes(), quick.RUNNER)
         text = raw.decode()
         for before, after in (("quick_environment_sheet(dump(),0,package)", "quick_environment_sheet(dump(),1,package)"),
                               ("deadline=time.monotonic()+20\n        while time.monotonic()<deadline:\n            xml=dump()", "deadline=time.monotonic()+21\n        while time.monotonic()<deadline:\n            xml=dump()"),
@@ -106,16 +108,16 @@ class QuickSheetSourceCompatibilityTests(unittest.TestCase):
         self.assertEqual(hashlib.sha256(fixture.read_bytes()).hexdigest(), '998637d381722c943cb32517cb1c72e092d0d0db7581e0f7c9103d74303b42c8')
         self.assertEqual(observer.FIXTURE_SHA256, '998637d381722c943cb32517cb1c72e092d0d0db7581e0f7c9103d74303b42c8')
         for path in ('tests/ui_observer_source_compatibility.py', 'tests/profile_ui_observer_source_compatibility_test.py'):
-            current = (ROOT / path).read_bytes()
+            current = _cpu_history.metadata_input((ROOT / path).read_bytes(), path)
             previous = quick.source_input(current, path)
             def assertions(raw):
                 return [ast.dump(node, include_attributes=False) for node in ast.walk(ast.parse(raw)) if isinstance(node, ast.Assert)]
             self.assertEqual(assertions(current), assertions(previous))
-        self.assertEqual(observer.source_input((ROOT / quick.RUNNER).read_bytes(), quick.RUNNER),
+        self.assertEqual(observer.source_input(_cpu_history.metadata_input((ROOT / quick.RUNNER).read_bytes(), quick.RUNNER), quick.RUNNER),
                          observer.source_input(quick.source_input((ROOT / quick.RUNNER).read_bytes(), quick.RUNNER), quick.RUNNER))
 
     def test_forwarding_port_still_requires_original_guards_for_unknown_input(self):
-        raw = (ROOT / quick.RUNNER).read_bytes()
+        raw = _cpu_history.metadata_input((ROOT / quick.RUNNER).read_bytes(), quick.RUNNER)
         self.assertEqual(quick.history_input(raw, quick.RUNNER), quick.source_input(raw, quick.RUNNER))
         predicate_drift = raw.replace("assert '已选 8 个' in xml".encode(), b'assert True', 1)
         for changed in (raw + b' ', b'', predicate_drift):
@@ -128,9 +130,9 @@ class QuickSheetSourceCompatibilityTests(unittest.TestCase):
     def test_actual_host_keeps_current_runner_and_all_thirty_seven_old_methods(self):
         manifest = quick.manifest()
         host = manifest['host']
-        raw = (ROOT / host['path']).read_bytes()
+        raw = _cpu_history.metadata_input((ROOT / host['path']).read_bytes(), host['path'])
         self.assertEqual(hashlib.sha256(raw).hexdigest(), host['reviewedSha256'])
-        self.assertEqual(hashlib.sha256((ROOT / quick.RUNNER).read_bytes()).hexdigest(), '65fb205cbb7a466858a0a1869cd4b5388f70026d4e09da078318827e92432f4f')
+        self.assertEqual(hashlib.sha256(_cpu_history.metadata_input((ROOT / quick.RUNNER).read_bytes(), quick.RUNNER)).hexdigest(), '65fb205cbb7a466858a0a1869cd4b5388f70026d4e09da078318827e92432f4f')
         text = raw.decode()
         classes = {node.name: node for node in ast.parse(text).body if isinstance(node, ast.ClassDef)}
         for name, methods in host['previousMethods'].items():
@@ -140,8 +142,8 @@ class QuickSheetSourceCompatibilityTests(unittest.TestCase):
         self.assertEqual(host['previousTests'], 37)
         self.assertNotIn('ui_quick_sheet_source_compatibility', text)
         self.assertIn('tree = ast.parse(RUNNER.read_text())', text)
-        actual = ast.parse((ROOT / quick.RUNNER).read_bytes())
-        old = ast.parse(quick.source_input((ROOT / quick.RUNNER).read_bytes(), quick.RUNNER))
+        actual = ast.parse(_cpu_history.metadata_input((ROOT / quick.RUNNER).read_bytes(), quick.RUNNER))
+        old = ast.parse(quick.source_input(_cpu_history.metadata_input((ROOT / quick.RUNNER).read_bytes(), quick.RUNNER), quick.RUNNER))
         self.assertEqual(len([node for node in ast.walk(actual) if isinstance(node, ast.FunctionDef) and node.name == 'quick_environment_sheet']), 1)
         self.assertFalse(any(isinstance(node, ast.FunctionDef) and node.name == 'quick_environment_sheet' for node in ast.walk(old)))
 

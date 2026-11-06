@@ -31,7 +31,7 @@ final class WindowNetworkState {
     long measured=runtime.optLong("delayAt");boolean measuredHere=internal?sameExit&&sameSubscription&&entry.equals(runtime.optString("delayEntry")):!runtime.optString("route").isEmpty()&&runtime.optString("route").equals(runtime.optString("delayRoute"));int delay=runtime.optInt("delay",-1);
     String measuredText=LatencyProbePolicy.label(runtime.optString("delayKind","unknown"),delay);
     latency=!measuredHere||measured<=0?"延迟未测":delay<=0?"探测未通过":!connected||now-measured>=LatencyRefreshPolicy.INTERVAL||now<measured-60000?measuredText+"（上次）":measuredText;
-    latencyTimer=!configured||!fresh||!runtime.optBoolean("connected")||runtime.optBoolean("offline")||runtime.optBoolean("starting")||runtime.optBoolean("blocked")?"（等待连接）":runtime.optBoolean("latencyMeasuring")?"（测速中）":LatencyRefreshPolicy.countdown(runtime.optLong("latencyRemaining"));
+    latencyTimer=!internal&&!prefs.getBoolean("automaticLatencyChecks",true)?"（自动检测已关闭）":!configured||!fresh||!runtime.optBoolean("connected")||runtime.optBoolean("offline")||runtime.optBoolean("starting")||runtime.optBoolean("blocked")?"（等待连接）":runtime.optBoolean("latencyMeasuring")?"（测速中）":LatencyRefreshPolicy.countdown(runtime.optLong("latencyRemaining"));
   }
   int color(){return connected&&state.equals("正常")?ReferenceUi.GREEN:state.equals("离线")||state.equals("出口异常")?ReferenceUi.RED:state.equals("需检查")||state.equals("连接中")||state.equals("核验待恢复")?ReferenceUi.ORANGE:ReferenceUi.MUTED;}
   String mainline(){return (region.isEmpty()?"地区未标注":region)+" · "+(ip.isEmpty()?"IP 未核验":connected?ip:"上次 "+ip)+" · "+latency;}

@@ -61,7 +61,29 @@ public final class AddonHost {
   check("Automatic IP failures and retries refuse the manual-system addon boundary",failureRejected&&retryRejected);
   check("Popup entry boundary cannot manufacture an automatic IP UI or opened session",popupRejected&&v.blockedPopups.offers==0&&v.newSessions==0);
  }
- public static void main(String[] args){String focus=args.length==0?"all":args[0];if(focus.equals("manual-ip-boundary"))manualIpBoundary();if(focus.equals("all")||focus.equals("authority"))authority();if(focus.equals("all")||focus.equals("entries"))entries();if(focus.equals("all")||focus.equals("enable"))enable();if(focus.equals("all")||focus.equals("progress"))progress();if(focus.equals("all")||focus.equals("audit"))audit();System.out.println(J.obj("status","passed","passed",checks.size(),"total",checks.size(),"checks",new JSONArray(checks)));}
+ static void cpuBoundary(){
+  for(String wrong:new String[]{"unconfirmed","custom","retired","foreign","null"}){
+   View v=new View();
+   if(wrong.equals("unconfirmed"))v.owner.cpu.confirmed=false;
+   if(wrong.equals("custom"))v.owner.cpu.defaultMode=false;
+   if(wrong.equals("retired"))v.owner.cpu.retired=true;
+   if(wrong.equals("foreign"))v.runtime=new GeckoRuntime();
+   if(wrong.equals("null"))v.runtime=null;
+   boolean admitted=v.protectionAllowsNetwork();
+   check("CPU "+wrong+" prerequisite denies actual native guard",!admitted);
+   check("CPU "+wrong+" guard consults the exact opaque runtime boundary",v.owner.cpu.readyCalls==1&&v.owner.cpu.lastRuntime==v.runtime);
+   v.loadUrl(SITE);
+   check("CPU "+wrong+" prerequisite prevents actual load dispatch",v.current.loads==0&&v.current.restores==0&&v.ipRetries==0&&v.queued.equals(SITE)&&v.owner.cpu.readyCalls==2);
+  }
+  View ready=new View();
+  check("Confirmed default CPU prerequisite is initialized to this view runtime",ready.owner.cpu.runtime==ready.runtime&&ready.owner.cpu.confirmed&&ready.owner.cpu.defaultMode&&!ready.owner.cpu.retired);
+  check("Exact confirmed default CPU and native protection admit the actual guard",ready.protectionAllowsNetwork()&&ready.owner.cpu.readyCalls==1&&ready.owner.cpu.lastRuntime==ready.runtime);
+  ready.loadUrl(SITE);
+  check("Confirmed default CPU prerequisite permits actual load dispatch",ready.current.loads==1&&ready.owner.cpu.readyCalls==2);
+  View protection=new View();protection.owner.privacy.desired=2;protection.nativeProtection.begin(2);
+  check("Confirmed CPU prerequisite cannot replace native protection acknowledgement",!protection.protectionAllowsNetwork()&&protection.owner.cpu.readyCalls==1);
+ }
+ public static void main(String[] args){String focus=args.length==0?"all":args[0];if(focus.equals("cpu-boundary"))cpuBoundary();if(focus.equals("manual-ip-boundary"))manualIpBoundary();if(focus.equals("all")||focus.equals("authority"))authority();if(focus.equals("all")||focus.equals("entries"))entries();if(focus.equals("all")||focus.equals("enable"))enable();if(focus.equals("all")||focus.equals("progress"))progress();if(focus.equals("all")||focus.equals("audit"))audit();System.out.println(J.obj("status","passed","passed",checks.size(),"total",checks.size(),"checks",new JSONArray(checks)));}
 }
 class View {
  @@MEMBERS@@
@@ -77,7 +99,7 @@ class View {
  void requireManualSystem(){if(owner.timeZone.followsIp)throw new AssertionError("Automatic IP execution is outside the manual-system addon host");}
  boolean ipNavigationFailed(GeckoSession session){requireManualSystem();ipFailureReads++;return false;}
  boolean retryFailedIpNavigation(String target){requireManualSystem();ipRetries++;return true;}
- View(){owner.timeZone.followsIp=false;locations.put(current,"about:blank");nativeProtection.begin(1);long token=nativeProtection.request();nativeProtection.receive(token,nativeProtection.generation(),1,true,false,"");}
+ View(){owner.cpu.confirmDefault(runtime);owner.timeZone.followsIp=false;locations.put(current,"about:blank");nativeProtection.begin(1);long token=nativeProtection.request();nativeProtection.receive(token,nativeProtection.generation(),1,true,false,"");}
  void open(){opens++;ready=true;}void closeExitIpPage(){}void cancelProtectionTasks(){}void retireTimeZones(){timeZoneRetirements++;timeZonePermitted=false;timeZoneLoads.clear();timeZoneIntents.clear();nativeTimeZoneIntents.clear();}void retireRequestHeaderPolicy(){headerRetirements++;}void releaseGeneralRoutes(){routeReleases++;generalRoutes.clear();}
  boolean identityRequestAllowed(String target){return true;}boolean allowedUrl(String target){return target!=null&&target.startsWith("https:");}boolean timeZoneSessionAlive(GeckoSession session){return session!=null&&session.isOpen()&&locations.containsKey(session);}boolean timeZoneAllows(GeckoSession session){return timeZonePermitted;}void prepareTimeZone(GeckoSession s,Consumer<Boolean> ready){throw new AssertionError("Unexpected modeled native preparation");}
  boolean retainGeneralRoute(GeckoSession s,String target){return true;}boolean generalRouteReady(){return true;}boolean reopenCurrent(){return true;}Object claimTimeZoneIntent(GeckoSession s,boolean restore){Object value=new Object();timeZoneIntents.put(s,value);return value;}void clearTimeZoneIntent(GeckoSession s,Object value){timeZoneIntents.remove(s);}boolean hasTimeZoneIntent(GeckoSession s){return timeZoneIntents.containsKey(s);}String protectionSummary(){return "protection boundary";}GeckoSession newSession(){newSessions++;return new GeckoSession();}void activate(GeckoSession s){current=s;}
@@ -88,9 +110,9 @@ class GeckoRuntime {}
 class GeckoSession {interface PermissionDelegate{class ContentPermission {}}int loads,restores,stops;boolean open=true;boolean isOpen(){return open;}void stop(){stops++;}void loadUri(String url){loads++;}void restoreState(SessionState value){restores++;}static class SessionState {static SessionState fromString(String value){return new SessionState();}int size(){return 1;}int getCurrentIndex(){return 0;}Item get(int index){return new Item();}}static class Item{String getUri(){return AddonHost.SITE;}}}
 class WebExtension {final String id;final boolean isBuiltIn;final MetaData metaData;int bindings;Object delegate;String host;WebExtension(String id,boolean builtin,MetaData data){this.id=id;isBuiltIn=builtin;metaData=data;}void setMessageDelegate(Object delegate,String host){bindings++;this.delegate=delegate;this.host=host;}static class MetaData{final boolean enabled;final int disabledFlags;MetaData(boolean enabled){this.enabled=enabled;disabledFlags=enabled?0:2;}}static class Port {int disconnected;void disconnect(){disconnected++;}}}
 class Metadata {boolean policyAcknowledged=true,rfpAcknowledged=true;}
-class Owner {boolean deleted,navigating,navigationFailed,lastRetry;int finishes,changes;long navigationEpoch;String navigationTarget=AddonHost.SITE,pageError="",status="";Object context=new Object();final Audit audit=new Audit();final Privacy privacy=new Privacy();final Guard guard=new Guard();final TimeZone timeZone=new TimeZone();final Queue handler=new Queue();final Prefs prefs=new Prefs();int remembered;void rememberBrowserLocation(String target){remembered++;}void finishNavigation(String message,boolean retry){finishes++;navigating=false;navigationFailed=!message.isEmpty();lastRetry=retry;}void setStatus(String value){status=value;}void changed(){changes++;}}
+class Owner {final CpuPrerequisiteBoundary cpu=new CpuPrerequisiteBoundary();boolean deleted,navigating,navigationFailed,lastRetry;int finishes,changes;long navigationEpoch;String navigationTarget=AddonHost.SITE,pageError="",status="";Object context=new Object();final Audit audit=new Audit();final Privacy privacy=new Privacy();final Guard guard=new Guard();final TimeZone timeZone=new TimeZone();final Queue handler=new Queue();final Prefs prefs=new Prefs();int remembered;void rememberBrowserLocation(String target){remembered++;}void finishNavigation(String message,boolean retry){finishes++;navigating=false;navigationFailed=!message.isEmpty();lastRetry=retry;}void setStatus(String value){status=value;}void changed(){changes++;}}
 class Audit {boolean consume;int calls;boolean identityPageFailed(String target,String message){calls++;return consume;}}
-class Privacy{int level(){return 1;}}class Guard{boolean allowed(){return true;}}class TimeZone{boolean followsIp=true;boolean popupAllowed(){if(followsIp)throw new AssertionError("Automatic IP popup permission is outside the manual-system addon host");return true;}}
+class Privacy{int desired=1;int level(){return desired;}}class Guard{boolean allowed(){return true;}}class TimeZone{boolean followsIp=true;boolean popupAllowed(){if(followsIp)throw new AssertionError("Automatic IP popup permission is outside the manual-system addon host");return true;}}
 class Queue {final List<Runnable> tasks=new ArrayList<>();void post(Runnable task){tasks.add(task);}}
 class Cookies {final List<WebExtension.Port> cancelled=new ArrayList<>();void cancel(WebExtension.Port port){cancelled.add(port);}}
 class Store {final Executor io=task->{throw new AssertionError("Unexpected checkpoint writer dispatch");};}
@@ -106,6 +128,15 @@ class Client {final Owner owner;int started,committed,finished;Client(Owner owne
 class Prefs {Prefs edit(){return this;}Prefs putString(String name,String value){return this;}void apply(){}}
 class LoginPagePolicy {static boolean login(String target){return false;}}
 class NativeNetwork {static String hash(String value){return value;}}
+
+/** Default-only CPU prerequisite collaborator for addon control flow. Opaque
+ * runtime equality and an explicit confirmation flag; no controller, cap,
+ * native readback or custom CPU-mode execution is simulated. */
+class CpuPrerequisiteBoundary {
+ Object runtime,lastRuntime;boolean confirmed,defaultMode,retired;int readyCalls;
+ void confirmDefault(Object actual){runtime=actual;confirmed=actual!=null;defaultMode=true;retired=false;}
+ boolean readyFor(Object actual){readyCalls++;lastRuntime=actual;return actual!=null&&runtime==actual&&confirmed&&defaultMode&&!retired;}
+}
 
 /** Counted app-only UI collaborator; no Android rendering, status or native popup. */
 class PopupBoundary {final View web;int offers,invalidations;GeckoSession source;String target;PopupBoundary(View web){this.web=web;}void offer(GeckoSession source,String target){web.requireManualSystem();offers++;this.source=source;this.target=target;}void invalidate(){web.requireManualSystem();invalidations++;source=null;target=null;}}

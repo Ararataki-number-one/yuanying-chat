@@ -107,7 +107,52 @@ def verify_browser_evidence(directory,source,reader=source_bytes):
         checked['workerPolicyRegression']=verify_worker_policy_evidence(directory,source,expected,reader=reader)
         checked['geckoEnvironmentPolicyRegression']=verify_gecko_environment_policy_evidence(directory,source,expected,reader=reader)
         checked['geckoIpTimeZoneRegression']=verify_gecko_ip_timezone_evidence(directory,source,expected,reader=reader)
+    if tuple(map(int,version.split('.'))) >= (2,1,3):
+        from browser.check_gecko_cpu_evidence import verify_gecko_cpu_evidence
+        from browser.check_gecko_cpu_ip_combo_evidence import verify_gecko_cpu_ip_combo_evidence
+        checked['geckoCpuRegression']=verify_gecko_cpu_evidence(directory,source,expected,reader=reader)
+        checked['geckoCpuIpComboRegression']=verify_gecko_cpu_ip_combo_evidence(directory,source,expected,reader=reader)
     return checked
+
+
+def copy_gecko_cpu_evidence(directory,destination,source,expected,reader=source_bytes):
+    """Copy only verified original CPU JSON bytes, never TLS material or logs."""
+    from browser.check_gecko_cpu_evidence import verify_gecko_cpu_evidence,CASE_SPECS
+    directory=Path(directory);destination=Path(destination)
+    require(all(not node.is_symlink() for base in (directory,destination) for node in (base,*base.parents)),
+            'ordinary CPU evidence directories required')
+    checked=verify_gecko_cpu_evidence(directory,source,expected,reader=reader)
+    summary=directory/'gecko-cpu-results.json';raw_directory=directory/'gecko-cpu-evidence'
+    require(raw_directory.is_dir() and not raw_directory.is_symlink(),'original CPU case directory required')
+    names={'case-'+spec[0]+'.json' for spec in CASE_SPECS}
+    discovered={node.name for node in raw_directory.iterdir()}
+    require(discovered in (names,names|{'results.json'}),'CPU raw directory contains unexpected files')
+    for node in raw_directory.iterdir():
+        require(node.is_file() and not node.is_symlink(),'ordinary original CPU JSON files required')
+    if 'results.json' in discovered:
+        duplicate=raw_directory/'results.json'
+        require(duplicate.stat().st_size<=4*1024*1024 and duplicate.read_bytes()==summary.read_bytes(),
+                'duplicate CPU summary differs from original')
+    records={'gecko-cpu-results.json':summary.read_bytes()}
+    require(0<len(records['gecko-cpu-results.json'])<=4*1024*1024,'bounded original CPU summary required')
+    require(hashlib.sha256(records['gecko-cpu-results.json']).hexdigest()==checked['reportSha256'],
+            'CPU summary changed after verification')
+    for spec in CASE_SPECS:
+        label=spec[0];name='case-'+label+'.json';path=raw_directory/name
+        require(path.stat().st_size<=262144,'bounded original CPU case required')
+        raw=path.read_bytes();require(hashlib.sha256(raw).hexdigest()==checked['caseSha256'][label],
+                                    'CPU case changed after verification: '+label)
+        records['gecko-cpu-evidence/'+name]=raw
+    require(not (destination/'gecko-cpu-results.json').exists()
+            and not (destination/'gecko-cpu-results.json').is_symlink()
+            and not (destination/'gecko-cpu-evidence').exists()
+            and not (destination/'gecko-cpu-evidence').is_symlink(),'fresh CPU destination required')
+    destination.mkdir(parents=True,exist_ok=True);(destination/'gecko-cpu-evidence').mkdir()
+    for name,raw in records.items():
+        target=destination/name
+        with target.open('xb') as output:output.write(raw)
+        require(target.read_bytes()==raw,'copied CPU evidence differs: '+name)
+    return list(records)
 
 
 def main():

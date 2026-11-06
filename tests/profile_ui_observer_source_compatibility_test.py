@@ -8,6 +8,8 @@ import ui_observer_source_compatibility as source_input
 import ui_visual_preservation_contract as original_ui
 import ui_quick_sheet_source_compatibility as quick_input
 
+import cpu_source_compatibility as _cpu_history
+
 ROOT = Path(__file__).resolve().parents[1]
 PREVIOUS = {
     'tests/gecko/run_ui_visuals.py': 'e955b67f4e1afefe6a5253875ca527a54b8a72c789e17c0903bc2c395bd3c99d',
@@ -24,7 +26,7 @@ class UiObserverSourceCompatibilityTests(unittest.TestCase):
         manifest = source_input.manifest()
         self.assertEqual(set(PREVIOUS), set(manifest['files']))
         for path, expected in PREVIOUS.items():
-            current = quick_input.history_input((ROOT / path).read_bytes(), path)
+            current = quick_input.history_input(_cpu_history.metadata_input((ROOT / path).read_bytes(), path), path)
             original = source_input.source_input(current, path)
             self.assertEqual(hashlib.sha256(original).hexdigest(), expected)
             for delta in manifest['files'][path]['deltas']:
@@ -34,7 +36,7 @@ class UiObserverSourceCompatibilityTests(unittest.TestCase):
 
     def test_unknown_missing_duplicate_relocated_and_changed_context_are_rejected(self):
         for path, row in source_input.manifest()['files'].items():
-            raw = quick_input.history_input((ROOT / path).read_bytes(), path)
+            raw = quick_input.history_input(_cpu_history.metadata_input((ROOT / path).read_bytes(), path), path)
             changes = [raw + b'\n', b'unknown', b'']
             for delta in row['deltas']:
                 current = delta['current'].encode()
@@ -47,7 +49,7 @@ class UiObserverSourceCompatibilityTests(unittest.TestCase):
                     source_input.source_input(changed, path)
 
     def test_raw_types_relative_paths_and_incomplete_excerpts_fail_closed(self):
-        raw = quick_input.history_input((ROOT / source_input.RUNNER).read_bytes(), source_input.RUNNER)
+        raw = quick_input.history_input(_cpu_history.metadata_input((ROOT / source_input.RUNNER).read_bytes(), source_input.RUNNER), source_input.RUNNER)
         for value in (None, raw.decode(), bytearray(raw), raw[:1024]):
             with self.assertRaises(AssertionError):source_input.source_input(value, source_input.RUNNER)
         for path in (None, Path(source_input.RUNNER), '/'+source_input.RUNNER, '../'+source_input.RUNNER,
@@ -58,7 +60,7 @@ class UiObserverSourceCompatibilityTests(unittest.TestCase):
             with self.assertRaises(AssertionError):source_input.original_runner_tree(tree)
 
     def test_formatted_and_no_preparation_ast_inputs_keep_all_original_goldens(self):
-        raw = quick_input.history_input((ROOT / source_input.RUNNER).read_bytes(), source_input.RUNNER)
+        raw = quick_input.history_input(_cpu_history.metadata_input((ROOT / source_input.RUNNER).read_bytes(), source_input.RUNNER), source_input.RUNNER)
         old = source_input.source_input(raw, source_input.RUNNER)
         block = ("from ui_test_device import prepare_workflow as prepare_ui_test_device\n"
                  "(out/'ui-test-device-isolation.json').write_text(json.dumps(prepare_ui_test_device(adb,serial=args.serial,environment=os.environ),sort_keys=True,indent=2)+'\\n')\n")
@@ -72,7 +74,7 @@ class UiObserverSourceCompatibilityTests(unittest.TestCase):
                 self.assertIs(report['actualAndroidExecution'], False)
 
     def test_old_predicates_and_fresh_scope_mutations_never_normalize_away(self):
-        source = quick_input.history_input((ROOT / source_input.RUNNER).read_bytes(), source_input.RUNNER).decode()
+        source = quick_input.history_input(_cpu_history.metadata_input((ROOT / source_input.RUNNER).read_bytes(), source_input.RUNNER), source_input.RUNNER).decode()
         changes = [("assert '已选 8 个' in xml", 'assert True'),
                    ('deadline=time.monotonic()+35;readiness_scrolls=0', 'deadline=time.monotonic()+36;readiness_scrolls=0'),
                    ('readiness_scrolls<8', 'readiness_scrolls<9'),
@@ -94,7 +96,7 @@ class UiObserverSourceCompatibilityTests(unittest.TestCase):
 
     def test_only_explicit_historical_source_calls_change_guard_inputs(self):
         path = 'tests/ui_runner14_source_contract.py'
-        actual = (ROOT / path).read_bytes()
+        actual = _cpu_history.metadata_input((ROOT / path).read_bytes(), path)
         previous = source_input.source_input(actual, path)
         def functions(raw):
             text = raw.decode()
@@ -102,10 +104,10 @@ class UiObserverSourceCompatibilityTests(unittest.TestCase):
         before, after = functions(previous), functions(actual)
         self.assertEqual(before, {key: after[key] for key in before})
         guard = 'tests/ui_visual_preservation_contract.py'
-        receipt = original_ui.verify_download_visual_fixture_source((ROOT / 'tests/gecko/UiVisualIntegrationActivity.java').read_bytes())
+        receipt = original_ui.verify_download_visual_fixture_source(_cpu_history.metadata_input((ROOT / 'tests/gecko/UiVisualIntegrationActivity.java').read_bytes(), 'tests/gecko/UiVisualIntegrationActivity.java'))
         self.assertEqual(receipt['originalFixtureSha256'], '0e6b5e11649a0a7a9e6e2badf1cd2c6194b4b0cecd632dc9094fb97d09a37b0e')
         self.assertEqual(receipt['selectedFixtureSha256'], hashlib.sha256((ROOT / 'tests/gecko/UiVisualIntegrationActivity.java').read_bytes()).hexdigest())
-        previous_guard = source_input.source_input((ROOT / guard).read_bytes(), guard).decode()
+        previous_guard = source_input.source_input(_cpu_history.metadata_input((ROOT / guard).read_bytes(), guard), guard).decode()
         fixture_guard = next(node for node in ast.parse(previous_guard).body if isinstance(node, ast.FunctionDef) and node.name == 'verify_download_visual_fixture_source')
         self.assertEqual(ast.get_source_segment(previous_guard, fixture_guard).count("text=raw.decode('utf-8')"), 1)
 

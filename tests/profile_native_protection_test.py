@@ -99,6 +99,7 @@ def execute(source_override=None):
     report.update(scope='Actual production pure-Java state plus byte-extracted native controller, route, navigation, load, checkpoint restore, port-message and diagnostic URL policy methods. Handler, Gecko/Android, environment lifecycle, network guard and JSON boundaries are synthetic; no actual network or SDK execution.',
                   auxiliaryPageBoundary='Default absent; close returns false only while absent, and any auxiliary freshness/close behavior fails explicitly. Real auxiliary lifecycle is not exercised.',
                   actualRequestHeaderPolicyExecution=False,actualTimeZonePolicyExecution=False,
+                  actualCpuPolicyExecution=False,cpuBoundary='Explicit default opaque-runtime prerequisite only; custom, unconfirmed, retired, foreign, replaced or null runtime denied. No actual CPU controller/native preference/receipt/page/Worker execution.',
                   actualIpTransportExecution=False,actualBlockedPopupUiExecution=False,
                   ipTransportBoundary='Original cases explicitly select manual timezone. The unrelated IP claim defaults absent and cannot be constructed; no successful lookup, route admission or native IP proof is modeled.',
                   blockedPopupUiBoundary='Counted UI offer only; this boundary cannot open a popup, create a native session or change a route. Actual popup UI is a separate current-method scope.',
@@ -144,5 +145,19 @@ class NativeProtectionTest(unittest.TestCase):
         self.assertNotEqual(source,mutant)
         with self.assertRaisesRegex(AssertionError,'Disabled addon rejects the actual current navigation'):
             execute(mutant)
+
+    def test_cpu_prerequisite_boundary_is_explicit_and_cannot_be_bypassed(self):
+        report=execute()
+        self.assertEqual(report['passed'],98)
+        self.assertEqual(report['addonBoundaryPassed'],8)
+        self.assertEqual(report['cpuBoundaryPassed'],20)
+        self.assertTrue(all(item['pass'] is True for item in report['cpuBoundaryChecks']))
+        self.assertIs(report['actualCpuPolicyExecution'],False)
+        source=VIEW.read_text()
+        original=member(source,'boolean protectionAllowsNetwork()')
+        bypass='boolean protectionAllowsNetwork(){return nativeProtection.allows(owner.privacy.level());}'
+        self.assertNotEqual(original,bypass)
+        with self.assertRaisesRegex(AssertionError,'CPU prerequisite rejects custom'):
+            execute(source.replace(original,bypass,1))
 
 if __name__=='__main__':unittest.main()
