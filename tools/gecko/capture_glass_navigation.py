@@ -88,6 +88,11 @@ def expanded(xml):
                      and node.get('clickable') == 'true')) == 1
 
 
+def native_root_bounds(xml):
+    return [node.get('bounds') for node in ET.fromstring(xml)
+            if node.get('package') == PACKAGE]
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--root', type=Path, default=Path(__file__).resolve().parents[2])
@@ -134,13 +139,23 @@ def main():
 
     def screenshot(name):
         raw = adb('exec-out', 'screencap', '-p', timeout=30)
-        if (len(raw) < 33 or raw[:8] != b'\x89PNG\r\n\x1a\n'
-                or raw[12:16] != b'IHDR' or struct.unpack('>II', raw[16:24]) != (WIDTH, HEIGHT)):
-            raise ValueError('Device did not return the requested complete PNG screenshot')
+        if len(raw) < 33 or raw[:8] != b'\x89PNG\r\n\x1a\n' or raw[12:16] != b'IHDR':
+            diagnostic = Path(name).stem + '.raw'
+            (args.out / diagnostic).write_bytes(raw)
+            report.setdefault('screenshotErrors', []).append(dict(file=diagnostic,
+                bytes=len(raw), prefixHex=raw[:64].hex(), reason='PNG signature/header missing'))
+            raise ValueError('Device returned a non-PNG screenshot; raw bytes retained in ' + diagnostic)
+        # Preserve the device's original pixels before checking metadata. A wm
+        # logical-size override need not change the physical capture dimensions.
         (args.out / name).write_bytes(raw)
+        actual_width, actual_height = struct.unpack('>II', raw[16:24])
         report['screenshots'].append(dict(file=name, bytes=len(raw),
-            sha256=hashlib.sha256(raw).hexdigest(), width=WIDTH, height=HEIGHT,
+            sha256=hashlib.sha256(raw).hexdigest(), width=actual_width, height=actual_height,
+            requestedLogicalWidth=WIDTH, requestedLogicalHeight=HEIGHT,
+            matchesRequestedLogicalSize=(actual_width, actual_height) == (WIDTH, HEIGHT),
             acquiredBy='adb exec-out screencap -p', capturedAtUnixNs=time.time_ns()))
+        if raw[-12:] != b'\x00\x00\x00\x00IEND\xaeB`\x82':
+            raise ValueError('Device PNG is incomplete; original bytes retained in ' + name)
 
     def tap(node, reason):
         box = bounds(node)
@@ -216,6 +231,7 @@ def main():
                                   diagnostics=args.out / 'hierarchy-attempts.json')
         xml = wait_for(capture, lambda value: navigation(value) is not None and capsule(value) is not None,
                        'initial')
+        report['initialNativeRootBounds'] = native_root_bounds(xml)
         if not expanded(xml):
             # Exercise the real tap interaction, then cancel without submitting.
             # Dismissing the editor leaves the real toolbar expanded for review.
@@ -236,6 +252,7 @@ def main():
         report['resumedActivity'] = resumed
         report['nativeControls'] = dict(navigation=navigation(xml),
             capsuleBounds=list(bounds(capsule(xml))), capsuleDescription=capsule(xml).get('content-desc'),
+            rootBounds=native_root_bounds(xml),
             expandedHeader=True, readingIsSeparateSquareControl=True,
             ordinaryConversationHasSelectedNavigation=False)
         report['display'] = dict(size=adb('shell', 'wm', 'size').decode().strip(),

@@ -162,6 +162,16 @@ jobs:
           export ANDROID_EMULATOR_HOME="$PWD/work/glass-navigation/emulator-home"
           mkdir -p "$ANDROID_AVD_HOME" "$ANDROID_USER_HOME" "$ANDROID_EMULATOR_HOME"
           echo no | "$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager" create avd --force -n glassnavigation -p "$ANDROID_AVD_HOME/glassnavigation.avd" -k 'system-images;android-35;google_apis;x86_64'
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+          path = Path(os.environ['ANDROID_AVD_HOME']) / 'glassnavigation.avd/config.ini'
+          display = {'hw.lcd.width': '1236', 'hw.lcd.height': '2676', 'hw.lcd.density': '480',
+                     'hw.initialOrientation': 'Portrait', 'skin.name': '1236x2676',
+                     'skin.path': '_no_skin', 'showDeviceFrame': 'no'}
+          lines = [line for line in path.read_text().splitlines() if line.split('=', 1)[0] not in display]
+          path.write_text('\n'.join(lines + [key + '=' + value for key, value in display.items()]) + '\n')
+          PY
           "$ANDROID_HOME/emulator/emulator" -avd glassnavigation -no-window -no-audio -no-snapshot -no-boot-anim -no-metrics -accel on -port 5554 -gpu swiftshader -memory 3072 -cores 2 > work/glass-navigation/emulator.log 2>&1 &
           echo "$!" > work/glass-navigation/emulator.pid
           timeout 60 "$ANDROID_HOME/platform-tools/adb" -s emulator-5554 wait-for-device
@@ -207,6 +217,7 @@ jobs:
           retention-days: 7
           path: |
             work/glass-navigation/*.png
+            work/glass-navigation/*.raw
             work/glass-navigation/*.xml
             work/glass-navigation/*.json
             work/glass-navigation/*.log
