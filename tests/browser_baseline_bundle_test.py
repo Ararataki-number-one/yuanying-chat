@@ -14,7 +14,11 @@ class BaselineBundleTests(unittest.TestCase):
         with tempfile.TemporaryDirectory(prefix='browser-baseline-restore-') as temporary:
             repo=Path(temporary)
             def git(*args):return subprocess.check_output(['git',*args],cwd=repo,stderr=subprocess.PIPE,text=True).strip()
-            git('init','-q');git('fetch','--no-tags','--depth=1',str(ROOT),metadata['prerequisite']);git('update-ref','HEAD',metadata['prerequisite'])
+            git('init','-q')
+            # Keep this disposable repository's Git writers synchronous with
+            # the test, so detached housekeeping cannot race directory cleanup.
+            git('config','gc.auto','0');git('config','maintenance.auto','false')
+            git('fetch','--no-tags','--depth=1',str(ROOT),metadata['prerequisite']);git('update-ref','HEAD',metadata['prerequisite'])
             self.assertNotEqual(subprocess.run(['git','cat-file','-e',metadata['requiredCommits']['f43adac']],cwd=repo,capture_output=True).returncode,0)
             (repo/'tools/browser').mkdir(parents=True);(repo/'tests/baselines').mkdir(parents=True)
             shutil.copy2(ROOT/'tools/browser/prepare_baselines.py',repo/'tools/browser/prepare_baselines.py')
