@@ -1,0 +1,608 @@
+{
+  "total": 89,
+  "checks": [
+    {
+      "pass": true,
+      "name": "Default draft saving remains enabled at revision zero"
+    },
+    {
+      "pass": true,
+      "name": "Unrelated preference does not change draft revision"
+    },
+    {
+      "pass": true,
+      "name": "Nonboolean setting cannot change draft policy"
+    },
+    {
+      "pass": true,
+      "name": "Enabled snapshot retains draft and exact revision"
+    },
+    {
+      "pass": true,
+      "name": "Disabling advances revision once"
+    },
+    {
+      "pass": true,
+      "name": "Repeated disabled save does not advance revision"
+    },
+    {
+      "pass": true,
+      "name": "Disabled snapshot omits text and selection but keeps scroll and draft presence"
+    },
+    {
+      "pass": true,
+      "name": "Disabled snapshots omit both editor selection descriptors"
+    },
+    {
+      "pass": true,
+      "name": "Snapshot policy never alters original visible draft object"
+    },
+    {
+      "pass": true,
+      "name": "Disabled does not treat unknown draft as empty or complete"
+    },
+    {
+      "pass": true,
+      "name": "Off on cycle invalidates pre-disable snapshot"
+    },
+    {
+      "pass": true,
+      "name": "Late pre-disable capture stays redacted after enabling"
+    },
+    {
+      "pass": true,
+      "name": "New enabled snapshot can restore new draft"
+    },
+    {
+      "pass": true,
+      "name": "SDK disabled filter removes complete form tree only"
+    },
+    {
+      "pass": true,
+      "name": "SDK enabled filter keeps original serialized bytes"
+    },
+    {
+      "pass": true,
+      "name": "SDK disabled malformed JSON fails closed"
+    },
+    {
+      "pass": true,
+      "name": "Enabled archive stores unsent draft"
+    },
+    {
+      "pass": true,
+      "name": "Disabled archive rejects nonempty new draft without deleting old history"
+    },
+    {
+      "pass": true,
+      "name": "Disabled empty draft creates no archive row"
+    },
+    {
+      "pass": true,
+      "name": "Reenabled archive accepts newly supplied draft"
+    },
+    {
+      "pass": true,
+      "name": "Explicit clear is separate and removes archive history"
+    },
+    {
+      "pass": true,
+      "name": "Disabled remember and restore never send a draft restoration"
+    },
+    {
+      "pass": true,
+      "name": "Disabled restore conflict cannot queue archive write"
+    },
+    {
+      "pass": true,
+      "name": "Production capture callback across off on cannot restore old text"
+    },
+    {
+      "pass": true,
+      "name": "Production fresh capture after enabling restores allowed text"
+    },
+    {
+      "pass": true,
+      "name": "Queued conflict archive across off on must not persist old draft"
+    },
+    {
+      "pass": true,
+      "name": "Existing capture serial still protects newer snapshot"
+    },
+    {
+      "pass": true,
+      "name": "Enabled session store writes complete current SDK snapshot"
+    },
+    {
+      "pass": true,
+      "name": "Read of preexisting SDK checkpoint filters old formdata"
+    },
+    {
+      "pass": true,
+      "name": "Read filtering does not silently delete original checkpoint history"
+    },
+    {
+      "pass": true,
+      "name": "Disabled session store writes only history scroll and unrelated fields"
+    },
+    {
+      "pass": true,
+      "name": "Malformed disabled snapshot cannot replace safe checkpoint with raw data"
+    },
+    {
+      "pass": true,
+      "name": "Queued SDK snapshot across off on must not persist pre-disable forms"
+    },
+    {
+      "pass": true,
+      "name": "Fresh post-enable SDK checkpoint can persist forms"
+    },
+    {
+      "pass": true,
+      "name": "Queued SDK read across off on cannot expose old formdata"
+    },
+    {
+      "pass": true,
+      "name": "Coalesced valid bytes are filtered again after later snapshot toggles"
+    },
+    {
+      "pass": true,
+      "name": "Legacy unstamped SDK checkpoint preserves default revision zero"
+    },
+    {
+      "pass": true,
+      "name": "Legacy disk forms cannot return after an off on cycle"
+    },
+    {
+      "pass": true,
+      "name": "New checkpoint persists its write-time revision outside the exact SDK payload"
+    },
+    {
+      "pass": true,
+      "name": "Disabled read of stamped disk retains only SDK history and scroll"
+    },
+    {
+      "pass": true,
+      "name": "Cold new store rejects committed forms from an earlier enabled revision"
+    },
+    {
+      "pass": true,
+      "name": "Actual SDK restore consumer cannot rebind filtered cold disk forms to current policy"
+    },
+    {
+      "pass": true,
+      "name": "A fresh post-enable write is cold-restorable under its persisted new revision"
+    },
+    {
+      "pass": true,
+      "name": "Invalid or unsupported disk header cannot enable forms: PocketChat-Session-1:-1"
+    },
+    {
+      "pass": true,
+      "name": "Invalid or unsupported disk header cannot enable forms: PocketChat-Session-1:9223372036854775808"
+    },
+    {
+      "pass": true,
+      "name": "Invalid or unsupported disk header cannot enable forms: PocketChat-Session-1:garbled"
+    },
+    {
+      "pass": true,
+      "name": "Invalid or unsupported disk header cannot enable forms: PocketChat-Session-2:2"
+    },
+    {
+      "pass": true,
+      "name": "Truncated checkpoint header fails closed"
+    },
+    {
+      "pass": true,
+      "name": "Header does not reduce the existing SDK payload size limit"
+    },
+    {
+      "pass": true,
+      "name": "Oversized legacy raw payload still fails the original bound"
+    },
+    {
+      "pass": true,
+      "name": "Header allowance cannot expand SDK payload size"
+    },
+    {
+      "pass": true,
+      "name": "Enabled SDK restore keeps existing synchronous path"
+    },
+    {
+      "pass": true,
+      "name": "Reenabled SDK restore rejects forms from an older policy revision"
+    },
+    {
+      "pass": true,
+      "name": "SDK filtered restore respects none lifecycle"
+    },
+    {
+      "pass": true,
+      "name": "SDK filtered restore respects target lifecycle"
+    },
+    {
+      "pass": true,
+      "name": "SDK filtered restore respects epoch lifecycle"
+    },
+    {
+      "pass": true,
+      "name": "SDK filtered restore respects guard lifecycle"
+    },
+    {
+      "pass": true,
+      "name": "SDK filtered restore respects deleted lifecycle"
+    },
+    {
+      "pass": true,
+      "name": "SDK filtered restore respects destroyed lifecycle"
+    },
+    {
+      "pass": true,
+      "name": "SDK filtered restore respects closed lifecycle"
+    },
+    {
+      "pass": true,
+      "name": "Invalid disabled SDK state falls back to load without raw restore"
+    },
+    {
+      "pass": true,
+      "name": "Queued navigation archive respects captured draft policy enabled"
+    },
+    {
+      "pass": true,
+      "name": "Draft policy never drops the independent archived send observation enabled"
+    },
+    {
+      "pass": true,
+      "name": "Queued navigation archive respects captured draft policy off-on"
+    },
+    {
+      "pass": true,
+      "name": "Draft policy never drops the independent archived send observation off-on"
+    },
+    {
+      "pass": true,
+      "name": "Queued navigation archive respects captured draft policy off-then-on"
+    },
+    {
+      "pass": true,
+      "name": "Draft policy never drops the independent archived send observation off-then-on"
+    },
+    {
+      "pass": true,
+      "name": "Queued navigation archive respects captured draft policy disabled"
+    },
+    {
+      "pass": true,
+      "name": "Draft policy never drops the independent archived send observation disabled"
+    },
+    {
+      "pass": true,
+      "name": "Generic restore acquires and retains one actual route lease"
+    },
+    {
+      "pass": true,
+      "name": "Actual generic page lease fences route mutation"
+    },
+    {
+      "pass": true,
+      "name": "Generic disabled draft restores history and scroll under an actual retained route"
+    },
+    {
+      "pass": true,
+      "name": "Generic restore never crosses a held route-change barrier"
+    },
+    {
+      "pass": true,
+      "name": "Closing actual change barrier retries the exact deferred generic checkpoint once"
+    },
+    {
+      "pass": true,
+      "name": "Generic deferred checkpoint cannot replay after successful retry"
+    },
+    {
+      "pass": true,
+      "name": "Generic restore waits for every desired route owner"
+    },
+    {
+      "pass": true,
+      "name": "Resolving missing route ownership resumes retained generic checkpoint"
+    },
+    {
+      "pass": true,
+      "name": "Generic checkpoint rejects unavailable native route or owner: guard"
+    },
+    {
+      "pass": true,
+      "name": "Generic deferred checkpoint resumes only after positive guard admission"
+    },
+    {
+      "pass": true,
+      "name": "Generic checkpoint rejects unavailable native route or owner: protection"
+    },
+    {
+      "pass": true,
+      "name": "Generic deferred checkpoint resumes only after positive protection admission"
+    },
+    {
+      "pass": true,
+      "name": "Generic checkpoint rejects unavailable native route or owner: identity"
+    },
+    {
+      "pass": true,
+      "name": "Generic checkpoint rejects unavailable native route or owner: failed"
+    },
+    {
+      "pass": true,
+      "name": "Generic checkpoint rejects unavailable native route or owner: crashed"
+    },
+    {
+      "pass": true,
+      "name": "Generic checkpoint rejects unavailable native route or owner: destroyed"
+    },
+    {
+      "pass": true,
+      "name": "Deferred generic restore rejects a retired navigation epoch"
+    },
+    {
+      "pass": true,
+      "name": "Deferred generic restore rejects changed target"
+    },
+    {
+      "pass": true,
+      "name": "Deferred generic restore rejects changed closed"
+    },
+    {
+      "pass": true,
+      "name": "Generic restore host leaves no actual process route holds or barriers"
+    }
+  ],
+  "syntheticTimeZoneBoundary": {
+    "uriDispatches": 0,
+    "defaultSystemReady": true,
+    "preparationCalls": 0,
+    "actualNativeTimeZoneExecution": false,
+    "readinessCalls": 31
+  },
+  "passed": 89,
+  "status": "passed",
+  "timeZoneFacadeControls": {
+    "actualDateOrEngineExecution": false,
+    "checks": 6,
+    "actualNativeTimeZoneExecution": false,
+    "status": "passed"
+  },
+  "manualSystemIpBoundaryControls": {
+    "checks": 3,
+    "actualNativeTimeZoneExecution": false,
+    "actualIpLookupExecution": false,
+    "status": "passed"
+  },
+  "actualIpLookupExecution": false,
+  "addonAdmissionBoundaryControls": {
+    "total": 2,
+    "checks": [
+      {
+        "pass": true,
+        "name": "Explicit denied addon collaborator prevents SDK restoration or URI dispatch"
+      },
+      {
+        "pass": true,
+        "name": "Declared default addon collaborator preserves the original enabled restore"
+      }
+    ],
+    "syntheticTimeZoneBoundary": {
+      "uriDispatches": 0,
+      "defaultSystemReady": true,
+      "preparationCalls": 0,
+      "actualNativeTimeZoneExecution": false,
+      "readinessCalls": 1
+    },
+    "passed": 2,
+    "status": "passed"
+  },
+  "actualAddonLifecycleExecution": false,
+  "addonBoundaryScope": "Explicit default-enabled/denied admission collaborator only. Actual extracted restore stays current; real SDK addon authority, error signaling and lifecycle are outside this legacy host.",
+  "sourceCommit": "e06317dd060ba9949d300e0d26eba7a2d51cdf26",
+  "beforeRef": null,
+  "selectedProductionClasses": {
+    "LocalDraftPolicy.java": {
+      "sourceCommit": "e06317dd060ba9949d300e0d26eba7a2d51cdf26",
+      "sha256": "5e3624e236d3a41d9efd2e08ca6ea2b4096e05fa69c9b3346412313b731ce6dd",
+      "workingTree": true
+    },
+    "PageMemory.java": {
+      "sourceCommit": "e06317dd060ba9949d300e0d26eba7a2d51cdf26",
+      "sha256": "d73f50d72442d8d083d900438e4b5a8f07c6cc43024796f8a9f13b23d51a6ac5",
+      "workingTree": true
+    },
+    "DraftArchive.java": {
+      "sourceCommit": "e06317dd060ba9949d300e0d26eba7a2d51cdf26",
+      "sha256": "f489029742e63e7a33399c5ee33ce42eec9095b5d02ea752f2d4d895639d7953",
+      "workingTree": true
+    },
+    "BrowserSessionStore.java": {
+      "sourceCommit": "e06317dd060ba9949d300e0d26eba7a2d51cdf26",
+      "sha256": "2f7f2c82f9680471ed8d75cf3edf5079f35af8a1c058a3669f514580a5303b73",
+      "workingTree": true
+    },
+    "ChromiumRouteLease.java": {
+      "sourceCommit": "e06317dd060ba9949d300e0d26eba7a2d51cdf26",
+      "sha256": "250ab6cc798de22c7fada9b0699a755c722374a691594080d6da08efd40253f0",
+      "workingTree": true
+    },
+    "BrowserRuntimePolicy.java": {
+      "sourceCommit": "e06317dd060ba9949d300e0d26eba7a2d51cdf26",
+      "sha256": "e697e80c615be56ff7eb6648ff1c3ef366b233e4a4f5839e25bfe5944fcafe5a",
+      "workingTree": true
+    },
+    "BrowserAddressPolicy.java": {
+      "sourceCommit": "e06317dd060ba9949d300e0d26eba7a2d51cdf26",
+      "sha256": "46bd704a999cd045619437e631449aa9049002961a42a1ff3d32fc83edbfc117",
+      "workingTree": true
+    },
+    "GeckoNavigationPolicy.java": {
+      "sourceCommit": "e06317dd060ba9949d300e0d26eba7a2d51cdf26",
+      "sha256": "6819742b0ff2a7b36b6ae6f48c867568f18507f9189321cd9c273ff6ae922a01",
+      "workingTree": true
+    }
+  },
+  "sourceFiles": {
+    "app/src/main/java/local/pocketchat/LocalDraftPolicy.java": "5e3624e236d3a41d9efd2e08ca6ea2b4096e05fa69c9b3346412313b731ce6dd",
+    "app/src/main/java/local/pocketchat/PageMemory.java": "d73f50d72442d8d083d900438e4b5a8f07c6cc43024796f8a9f13b23d51a6ac5",
+    "app/src/main/java/local/pocketchat/DraftArchive.java": "f489029742e63e7a33399c5ee33ce42eec9095b5d02ea752f2d4d895639d7953",
+    "app/src/main/java/local/pocketchat/BrowserSessionStore.java": "2f7f2c82f9680471ed8d75cf3edf5079f35af8a1c058a3669f514580a5303b73",
+    "app/src/main/java/local/pocketchat/ChromiumRouteLease.java": "250ab6cc798de22c7fada9b0699a755c722374a691594080d6da08efd40253f0",
+    "app/src/main/java/local/pocketchat/BrowserRuntimePolicy.java": "e697e80c615be56ff7eb6648ff1c3ef366b233e4a4f5839e25bfe5944fcafe5a",
+    "app/src/main/java/local/pocketchat/BrowserAddressPolicy.java": "46bd704a999cd045619437e631449aa9049002961a42a1ff3d32fc83edbfc117",
+    "app/src/main/java/local/pocketchat/GeckoNavigationPolicy.java": "6819742b0ff2a7b36b6ae6f48c867568f18507f9189321cd9c273ff6ae922a01",
+    "app/src/main/java/local/pocketchat/AppPrefs.java": "6531846b3638692e83aa2402925e8742ce0594d657576299a94d682caa3f9100",
+    "app/src/main/java/local/pocketchat/GeckoWebView.java": "55225a8da3ba67b3be724e243c9b442e635dbc5aa282a2ef0257653e8fb2b364",
+    "app/src/main/java/local/pocketchat/WebReplyObserver.java": "49e2e39e9655d0d825a52507593d1399fcdb3383b6916896d94a3b8aeff72a73",
+    "tests/local-draft-policy-host/LocalDraftPolicyHost.java": "00d785bb887b2383b2c8145fda21897e2738b4219007e523d8c97476bb42c264",
+    "tests/local-draft-policy-host/stubs/android/content/ContentValues.java": "0193caf0d761d71c7e88b6f9f1c7d044879e87223b5ef4f78ff0645301546d00",
+    "tests/local-draft-policy-host/stubs/android/content/Context.java": "3773dde57e7bb2a469e46b04a2723c518ba1e1dc6f7655c110d7e5bd690d33f5",
+    "tests/local-draft-policy-host/stubs/android/content/SharedPreferences.java": "ed252268db5a899f2c7abe99834ca5041c8e59c9af26ee81b66bed293f0b03cb",
+    "tests/local-draft-policy-host/stubs/android/content/pm/ApplicationInfo.java": "a95938b381194a0fb7abe48ded5ed93f1c7661e7a5e8d81608524edaca3bb594",
+    "tests/local-draft-policy-host/stubs/android/database/Cursor.java": "9504bbb3c191a09ad14847cc9430fd13061f457b611e6a6673d402c41addcd2f",
+    "tests/local-draft-policy-host/stubs/android/database/sqlite/SQLiteDatabase.java": "608095a359004fa81212a0cb11b5f8e1f61303200786e2ddb05e34e3c3130d56",
+    "tests/local-draft-policy-host/stubs/android/database/sqlite/SQLiteOpenHelper.java": "09a76797ffd811aacf0ed7191f9cba81b8f3b42493cabb794a928c6346f9ab6e",
+    "tests/local-draft-policy-host/stubs/android/net/Uri.java": "e45faf5e805175b8a8b09b8427a67a7f75678539761fff2b5d07e0ebf84f437d",
+    "tests/local-draft-policy-host/stubs/android/os/Looper.java": "c05c2c427a55aac6b7db901cf25f259d94c8bba65124f582f3225a87b8b15391",
+    "tests/local-draft-policy-host/stubs/android/util/AtomicFile.java": "2129164beb7f25b5d255ee1bf7cd88fd6eaa83f7343152ce44decf09de4d0564",
+    "tests/local-draft-policy-host/stubs/org/mozilla/geckoview/GeckoSession.java": "3313375a89f26da7be231ae5811256398d04feede5a19e2877ff1c60e6c28cbf",
+    "tests/local-draft-policy-host/run.py": "fccfe6293838203adb25ccac0ef8bfd59a46a85a25c96672d2814011d5e6c076"
+  },
+  "jsonJarSha256": "dfb7bae2f404cfe0b72b4d23944698cb716b7665171812a0a4d0f5926c0fac79",
+  "executionInputsUnchanged": true,
+  "actualAndroidExecution": false,
+  "actualNativeTimeZoneExecution": false,
+  "actualDateOrEngineExecution": false,
+  "syntheticTimeZoneFacade": "explicit manual-system-ready; automatic IP, custom or unready scope throws; IP scheduling counted only",
+  "productionClasses": [
+    "LocalDraftPolicy.java",
+    "PageMemory.java",
+    "DraftArchive.java",
+    "BrowserSessionStore.java",
+    "ChromiumRouteLease.java",
+    "BrowserRuntimePolicy.java",
+    "BrowserAddressPolicy.java",
+    "GeckoNavigationPolicy.java"
+  ],
+  "productionMethods": {
+    "AppPrefs.java": [
+      "static boolean enabled(",
+      "static void apply("
+    ],
+    "GeckoWebView.java": [
+      "void restoreCheckpoint(",
+      "static final class ProtectionRestore",
+      "boolean generalRouteReady(",
+      "boolean retainGeneralRoute(",
+      "void forgetGeneralRoute(",
+      "void releaseGeneralRoutes(",
+      "void routeAdmissionChanged(",
+      "void queueGeneralRouteRetry(",
+      "void retryGeneralRoutes(",
+      "Object claimTimeZoneIntent(",
+      "void clearTimeZoneIntent("
+    ],
+    "WebReplyObserver.java": [
+      "static boolean webJob(",
+      "boolean archiveNavigation("
+    ]
+  },
+  "productionRouteFields": [
+    "final Set<GeckoSession> generalSessions=",
+    "final Map<GeckoSession,ChromiumRouteLease.Handle> generalRoutes=",
+    "final Map<GeckoSession,String> deferredGeneralLoads=",
+    "final Runnable routeLeaseChanged=",
+    "final Map<GeckoSession,String> locations=",
+    "final Set<GeckoSession> crashed=",
+    "final Map<GeckoSession,String> timeZoneLoads=",
+    "final Map<GeckoSession,Object> timeZoneIntents=",
+    "final Map<GeckoSession,Object> nativeTimeZoneIntents="
+  ],
+  "selectedGeckoClosureSha256": {
+    "void restoreCheckpoint(": "0fedc8bcb1e2add6698b048c8b37b88e9da094710ca0d6c6cb085b8dba16145c",
+    "static final class ProtectionRestore": "4078b0fc13eb53c6670f50eee5fad2a75793e38a60c4158b5c658175b2440193",
+    "boolean generalRouteReady(": "a79d31c4655606d69b894b0d2770b1e06409daa4c5dd4767d4c8bb7353d85a15",
+    "boolean retainGeneralRoute(": "84f3a5db4b355d2cb8339b517b7388d0b3b1eac8b82f3b174aadfb3185bd8cc2",
+    "void forgetGeneralRoute(": "11739bfcd98a24edaab3cda875155ec4e73bbc56b1f98f685acd0eb4a0a1850d",
+    "void releaseGeneralRoutes(": "7061844a3e5382860e4b8a30f3c33d16d3fbac13a65bb761cb0e1068f2ed8426",
+    "void routeAdmissionChanged(": "8adec0683ca1b27540940da5d16f5dcaea3ae8df512992ed8210ff272bf14c9d",
+    "void queueGeneralRouteRetry(": "84818608c5efce29521d795bd585558655873f7e876fbc02ae99459e176c2c30",
+    "void retryGeneralRoutes(": "028ad742305ebd8cd8ba1f9c8a1e6896af2f07dee0f2ef18eec5b1f3517c3fbc",
+    "Object claimTimeZoneIntent(": "7b94854452c88383ca5d8b03add54366a092a9345b5034091545643aa09002d4",
+    "void clearTimeZoneIntent(": "c7a8e380f7f884ed834888877f60382d249863f2efc1e8abf1841e93fb6639e4",
+    "final Set<GeckoSession> generalSessions=": "bd66b35b2b56af71d457493b355e5801bebdddbd89d8f6a44f8fba59b40d1e6d",
+    "final Map<GeckoSession,ChromiumRouteLease.Handle> generalRoutes=": "af97e030ad5860dd8d843486925ee80373ec75e4fde8a0ee55ca35d0a854bfdf",
+    "final Map<GeckoSession,String> deferredGeneralLoads=": "24d06cf4c8f30993aff00ea5bad5f6b5472f6b36144d64ba18696b7435035d76",
+    "final Runnable routeLeaseChanged=": "0b10156b40dd3061072167d63df697ab406ae542dc0e3a9ef3bba6527b75c922",
+    "final Map<GeckoSession,String> locations=": "c830f172af85dd70bcd3bee92fbb860d53bc5f5ce71c4795b2c5732999cf7d48",
+    "final Set<GeckoSession> crashed=": "a3d2d91363b6b4fbbcc9847b32464c125f42934551d31863f90ca4d5589e3731",
+    "final Map<GeckoSession,String> timeZoneLoads=": "3838887d9e4251f4cc33d696c88855bc42a53c9014256ebd3b98269b9481abf4",
+    "final Map<GeckoSession,Object> timeZoneIntents=": "443d1244a34b89d9e927ea5eb10aa1f09f3643020854be587876cd86e34c1915",
+    "final Map<GeckoSession,Object> nativeTimeZoneIntents=": "132f9b077b2641b98f83be0d5d0b6b4c9421aaf832967e4edd1e473f6c3eebe3"
+  },
+  "negativeControls": [
+    {
+      "case": "restore-route-gate",
+      "expectedAssertion": "Generic restore never crosses a held route-change barrier",
+      "mutantRejected": true,
+      "failedAssertions": [
+        "Generic restore acquires and retains one actual route lease",
+        "Actual generic page lease fences route mutation",
+        "Generic disabled draft restores history and scroll under an actual retained route",
+        "Generic restore never crosses a held route-change barrier",
+        "Closing actual change barrier retries the exact deferred generic checkpoint once",
+        "Generic restore waits for every desired route owner",
+        "Generic checkpoint rejects unavailable native route or owner: guard",
+        "Generic deferred checkpoint resumes only after positive guard admission",
+        "Generic deferred checkpoint resumes only after positive protection admission",
+        "Generic checkpoint rejects unavailable native route or owner: failed",
+        "Generic checkpoint rejects unavailable native route or owner: crashed",
+        "Generic checkpoint rejects unavailable native route or owner: destroyed",
+        "Deferred generic restore rejects a retired navigation epoch",
+        "Deferred generic restore rejects changed target",
+        "Deferred generic restore rejects changed closed"
+      ],
+      "generatedSourceSha256": "cd1cafdda6ec7fe9b643db78476aee23926ba265b0ed6ff28cb5a2f4aae3dc77"
+    },
+    {
+      "case": "all-session-readiness",
+      "expectedAssertion": "Generic restore waits for every desired route owner",
+      "mutantRejected": true,
+      "failedAssertions": [
+        "Generic restore waits for every desired route owner"
+      ],
+      "generatedSourceSha256": "20e11c37b1c3359fcd0a3ee9531dfbb6f02bbfd0796a4a17baa65004feafcda6"
+    },
+    {
+      "case": "actual-held-lease",
+      "expectedAssertion": "Generic restore acquires and retains one actual route lease",
+      "mutantRejected": true,
+      "failedAssertions": [
+        "Generic restore acquires and retains one actual route lease",
+        "Actual generic page lease fences route mutation",
+        "Generic disabled draft restores history and scroll under an actual retained route",
+        "Closing actual change barrier retries the exact deferred generic checkpoint once",
+        "Generic deferred checkpoint resumes only after positive guard admission",
+        "Generic deferred checkpoint resumes only after positive protection admission"
+      ],
+      "generatedSourceSha256": "c2e7c139772cd12dd30e798f3b354714baf7f12cda71e32ab3f49a468c3385a7"
+    },
+    {
+      "case": "stale-deferred-epoch",
+      "expectedAssertion": "Deferred generic restore rejects a retired navigation epoch",
+      "mutantRejected": true,
+      "failedAssertions": [
+        "Deferred generic restore rejects a retired navigation epoch"
+      ],
+      "generatedSourceSha256": "a0a91f031d273c80420b0b6d2dc3306b1a9064d38b50f7e74358a2d8594564e3"
+    }
+  ],
+  "generatedSourceSha256": "6bf0dd0fb2a287a94706b3ff9e6e64cd84e365c92a5fd977ba1eaf91d3211c06",
+  "scope": "Complete current production policy/PageMemory/archive/session-store, process route lease and navigation-policy classes plus verbatim AppPrefs, Gecko restore/intent ownership and route retention/retry helper methods/fields. Controlled Android/SQLite/SDK, protection/identity/owner/handler boundaries and real JVM workers/files. The time-zone collaborator is a counted synthetic default-system-ready boundary; custom or unready scope throws. It does not execute GeckoTimeZoneController, SDK time-zone APIs, Date or engine behavior. Constructor listener registration and teardown are explicit lifecycle adapters; only SDK restoreState/loadUri counters model native dispatch. Four compiled route counterfeits must fail their exact behavior. No actual Android SQLite, AtomicFile durability, Gecko native restore, network or live webpage claim."
+}
