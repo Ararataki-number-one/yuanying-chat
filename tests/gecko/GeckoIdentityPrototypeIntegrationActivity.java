@@ -114,7 +114,9 @@ public class GeckoIdentityPrototypeIntegrationActivity extends Activity {
   void openBrowser(){
     if(finished)return;
     try{
-      Context context=new PrivateContext(getApplicationContext());
+      // The runner clears this fixed test package before every fixture. Use
+      // the real profile root required by CPU/TLS cold boot and scoped setup.
+      Context context=Profiles.context(getApplicationContext(),Profiles.processSlot());
       context.getSharedPreferences("chat",0).edit().putString("networkMode","external").putString("proxy","").putBoolean("requireExternalVpn",false).putBoolean("networkConfigured",false).putInt("privacyLevel",0).putBoolean("backgroundWait",false).commit();
       ProfileCatalog.get(context).created(Profiles.slot(context));
       ChatSession.browserFactory=(c,s)->createFixtureView(c,s);owner=ChatSession.get(context);view=(FixtureView)owner.web;

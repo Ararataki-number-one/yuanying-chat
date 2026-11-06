@@ -213,6 +213,9 @@ def p2_input(raw, relative):
 def metadata_input(raw, relative):
     """Finite left inputs only; unowned bytes still face the original golden."""
     _metadata_path(raw, relative)
+    from profile_fixture_root_source_compatibility import PATHS as fixture_root_paths, source_input as fixture_root_input
+    if relative in fixture_root_paths:
+        raw = fixture_root_input(raw, relative)
     if relative in PATHS:
         return source_input(raw, relative)
     if relative in TEMPLATE_PATHS:

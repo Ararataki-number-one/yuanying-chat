@@ -22,7 +22,8 @@ sys.path.insert(0,str(ROOT/'tools/gecko'))
 sys.path.insert(0,str(Path(__file__).resolve().parent))
 from profile_invocation_contract import expected_build,verify_installed
 from fingerprint_fixture_server import AndroidUserCa
-from ip_timezone_fixture_server import IpFixtureCertificates,IpTimeZoneFleet
+from ip_timezone_fixture_server import (IpFixtureCertificates,IpTimeZoneFleet,ROUTES,
+    MAX_TRANSPORT_DIAGNOSTICS,TRANSPORT_STAGES,TRANSPORT_EXCEPTION_TYPES,TRANSPORT_GUARD_CODES)
 from check_gecko_cpu_ip_combo_evidence import (SOURCE_INPUTS,REPORT_NAME,RAW_DIRECTORY,RAW_FILES,
     FIXTURE_TYPE,verify_gecko_cpu_ip_combo_evidence)
 from check_gecko_ip_timezone_evidence import expected_clock,strict_json,_typed_equal
@@ -30,6 +31,7 @@ from check_gecko_ip_timezone_evidence import expected_clock,strict_json,_typed_e
 ACTIVITY='local.pocketchat.test/local.pocketchat.GeckoCpuIpComboIntegrationActivity'
 URI='content://local.pocketchat.test.gecko-cpu-ip-combo-evidence'
 MAX_ACTIVITY_BYTES=524288
+TRANSPORT_DIAGNOSTIC_NAME='gecko-cpu-ip-combo-transport-diagnostic.json'
 
 
 def require(value,message):
@@ -78,6 +80,35 @@ def safe_trust(receipt):
         'expectedLeafDerSha256','evidenceShellUid','shellRestoredAfterInstall','removedAfterExecution',
         'cleanupRootUid','cleanupShellUid','shellRestoredAfterCleanup'}
     return {key:value for key,value in receipt.items() if key in allowed}
+
+
+def write_transport_diagnostic(directory,server,binding,route_receipts):
+    """Separate typed diagnostics, never rewrite route errors or acceptance JSON."""
+    value=server.diagnostic_snapshot()
+    fields={'schema','kind','binding','collectorClosed','quiescent','eventLimit','totalFailures','recordedEvents','droppedEvents','counts','events'}
+    require(type(value) is dict and set(value)==fields and type(value['schema']) is int and value['schema']==1 and value['kind']=='ip-timezone-transport-diagnostics-v1' and _typed_equal(value['binding'],binding),'typed transport diagnostic identity differs')
+    require(all(type(value[key]) is bool for key in ('collectorClosed','quiescent')) and (not value['quiescent'] or value['collectorClosed']),'transport diagnostic cleanup state differs')
+    require(type(value['eventLimit']) is int and value['eventLimit']==MAX_TRANSPORT_DIAGNOSTICS and all(type(value[key]) is int and value[key]>=0 for key in ('totalFailures','recordedEvents','droppedEvents')),'transport diagnostic counters differ')
+    events=value['events'];require(type(events) is list and len(events)==value['recordedEvents']<=MAX_TRANSPORT_DIAGNOSTICS and value['recordedEvents']==min(value['totalFailures'],MAX_TRANSPORT_DIAGNOSTICS) and value['droppedEvents']==value['totalFailures']-len(events),'bounded transport diagnostic events differ')
+    counts=value['counts'];categories=set(TRANSPORT_EXCEPTION_TYPES.values())|{'OtherSSLError','OtherUnicodeError','OtherOSError','OtherValueError'}
+    guard_codes=set(TRANSPORT_GUARD_CODES.values())|{'other-guard'}
+    require(type(counts) is dict and set(counts)==set(ROUTES),'transport diagnostic routes differ')
+    totals={}
+    for route,stages in counts.items():
+        require(type(stages) is dict and set(stages)==set(TRANSPORT_STAGES),'transport diagnostic phases differ')
+        for buckets in stages.values():
+            require(type(buckets) is dict and set(buckets)<=categories and all(type(count) is int and count>0 for count in buckets.values()),'transport diagnostic exception counters differ')
+        totals[route]=sum(count for buckets in stages.values() for count in buckets.values())
+    require(sum(totals.values())==value['totalFailures'],'transport diagnostic failure total differs')
+    recorded={route:{stage:{} for stage in TRANSPORT_STAGES} for route in ROUTES}
+    for index,event in enumerate(events,1):
+        require(type(event) is dict and set(event)=={'sequence','route','protocol','stage','exceptionClass','guardCode','collectorClosed'} and type(event['sequence']) is int and event['sequence']==index and type(event['route']) is str and event['route'] in ROUTES and event['protocol']==ROUTES[event['route']]['protocol'] and type(event['stage']) is str and event['stage'] in TRANSPORT_STAGES and type(event['exceptionClass']) is str and event['exceptionClass'] in categories and type(event['guardCode']) is str and event['guardCode'] in guard_codes and type(event['collectorClosed']) is bool,'transport diagnostic event escapes fixed enums')
+        buckets=recorded[event['route']][event['stage']];category=event['exceptionClass'];buckets[category]=buckets.get(category,0)+1
+        require(not event['collectorClosed'] or value['collectorClosed'],'transport diagnostic close state regressed')
+    require(all(count<=counts[route][stage].get(category,0) for route,stages in recorded.items() for stage,buckets in stages.items() for category,count in buckets.items()) and (value['droppedEvents']>0 or _typed_equal(recorded,counts)),'diagnostic event and aggregate buckets differ')
+    if value['quiescent']:
+        require(type(route_receipts) is dict and route_receipts.get('closed') is True and _typed_equal(route_receipts.get('binding'),binding) and _typed_equal(route_receipts.get('errors'),totals),'diagnostics must preserve the closed original route owner and every error')
+    return write_json(Path(directory)/TRANSPORT_DIAGNOSTIC_NAME,dict(schema=1,binding=dict(binding),diagnosticOnly=True,qualificationEvidence=False,snapshot=value))
 
 
 def main():
@@ -173,6 +204,12 @@ def main():
         try:route_receipts=server.snapshot() if server is not None else {}
         except Exception as failure:
             route_receipts={};error=error or failure;report.update(status='failed',errorType=type(error).__name__)
+        if server is not None:
+            try:write_transport_diagnostic(args.output,server,binding,route_receipts)
+            except Exception as failure:
+                # Fail the command without rewriting the device-derived outcome,
+                # just as a later acceptance-checker rejection does below.
+                error=error or failure
         try:unchanged=all(path.is_file() and hashlib.sha256(path.read_bytes()).hexdigest()==hashes[str(path.relative_to(ROOT))] for path in paths)
         except OSError:unchanged=False
         if not unchanged:error=error or ValueError('Source changed');report.update(status='failed',errorType='SourceChanged')

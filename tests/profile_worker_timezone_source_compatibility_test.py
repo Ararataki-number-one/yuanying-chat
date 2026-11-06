@@ -242,7 +242,7 @@ class WorkerTimezoneSourceCompatibility(unittest.TestCase):
             self.assertEqual((ROOT / relative).read_bytes(), subprocess.check_output(['git', 'show', overlay.BASE_COMMIT + ':' + relative], cwd=ROOT))
         relative = 'tests/dual_browser_source_compatibility.py'
         before = subprocess.check_output(['git', 'show', overlay.BASE_COMMIT + ':' + relative], cwd=ROOT)
-        after = (ROOT / relative).read_bytes()
+        after = final_metadata_input((ROOT / relative).read_bytes(), relative)
         self.assertEqual(after.count(DUAL_HOOK.encode()), 1)
         self.assertEqual(after.replace(DUAL_HOOK.encode(), b'', 1), before)
         relative = 'tests/profile_dual_browser_source_compatibility_test.py'

@@ -35,6 +35,58 @@ CASES = ('default-socks', 'route-switch-http', 'https-proxy', 'cancel-late',
          'manual-system', 'manual-iana', 'rfp-priority', 'manual-rfp-denied',
          'bootstrap-isolation', 'redirect-rejected', 'invalid-geo-rejected')
 MAX_NATIVE_EVENTS = 240
+MAX_TRANSPORT_DIAGNOSTICS = 128
+TRANSPORT_STAGES = ('connection', 'proxy-tls', 'greeting', 'authentication',
+                    'command', 'host', 'port', 'target-tls', 'http-connect',
+                    'http', 'send')
+TRANSPORT_EXCEPTION_TYPES = {
+    ValueError: 'ValueError', OSError: 'OSError', TimeoutError: 'TimeoutError',
+    ConnectionError: 'ConnectionError', BrokenPipeError: 'BrokenPipeError',
+    ConnectionAbortedError: 'ConnectionAbortedError',
+    ConnectionRefusedError: 'ConnectionRefusedError',
+    ConnectionResetError: 'ConnectionResetError',
+    ssl.SSLError: 'SSLError', ssl.SSLEOFError: 'SSLEOFError',
+    ssl.SSLZeroReturnError: 'SSLZeroReturnError',
+    ssl.SSLWantReadError: 'SSLWantReadError', ssl.SSLWantWriteError: 'SSLWantWriteError',
+    ssl.SSLSyscallError: 'SSLSyscallError',
+    ssl.SSLCertVerificationError: 'SSLCertVerificationError',
+    UnicodeError: 'UnicodeError', UnicodeDecodeError: 'UnicodeDecodeError',
+    UnicodeEncodeError: 'UnicodeEncodeError', UnicodeTranslateError: 'UnicodeTranslateError',
+}
+TRANSPORT_GUARD_CODES = {
+    'Synthetic TLS fixture: incomplete controlled transport': 'incomplete-read',
+    'Synthetic TLS fixture: SOCKS version invalid': 'socks-version',
+    'Synthetic TLS fixture: SOCKS authentication unsupported': 'socks-authentication',
+    'Synthetic TLS fixture: SOCKS must use proxy domain DNS': 'socks-command',
+    'Synthetic TLS fixture: SOCKS hostname bound invalid': 'socks-host-bound',
+    'Synthetic TLS fixture: SOCKS target port invalid': 'socks-port',
+    'Synthetic TLS fixture: SOCKS target outside controlled hosts': 'socks-host',
+    'Synthetic TLS fixture: CONNECT target invalid': 'connect-target',
+    'Synthetic TLS fixture: CONNECT authority differs': 'connect-authority',
+    'Synthetic TLS fixture: controlled target authority differs': 'http-authority',
+    'Synthetic TLS fixture: actual target TLS SNI differs': 'target-sni',
+    'Incomplete synthetic request': 'incomplete-http-read',
+    'Synthetic header exceeds bound': 'http-header-bound',
+    'Synthetic TLS fixture: request line invalid': 'http-request-line',
+    'Synthetic TLS fixture: header invalid': 'http-header',
+    'Synthetic TLS fixture: header duplicate or invalid': 'http-header-duplicate',
+    'Synthetic TLS fixture: header value exceeds bound': 'http-header-value-bound',
+    'Synthetic TLS fixture: request body unsupported': 'http-body',
+    'Synthetic TLS fixture: fixed credential-free geo GET required': 'geo-request',
+    'Synthetic TLS fixture: held geo response was not released': 'geo-hold-deadline',
+    'Synthetic TLS fixture: only synthetic Worker GET permitted': 'content-method',
+    'Synthetic TLS fixture: target outside Worker fixture paths': 'content-target',
+    'Synthetic TLS fixture: Worker HTTP authority differs': 'content-authority',
+    'Synthetic TLS fixture: duplicate Worker query': 'content-query-duplicate',
+    'Synthetic TLS fixture: favicon query differs': 'content-favicon-query',
+    'Synthetic TLS fixture: Worker phase invalid': 'content-phase',
+    'Synthetic TLS fixture: Worker document query differs': 'content-document-query',
+    'Synthetic TLS fixture: Worker resource query differs': 'content-resource-query',
+    'Synthetic TLS fixture: Worker realm/document invalid': 'content-realm',
+    'Synthetic TLS fixture: Worker path/realm differs': 'content-path-realm',
+    'Synthetic TLS fixture: Worker request receipt bound exceeded': 'content-receipt-bound',
+    'Synthetic TLS fixture: native event bound exceeded': 'native-event-bound',
+}
 
 
 def digest(raw):
@@ -170,32 +222,46 @@ class IpRouteProxy(WorkerFixtureServer):
         return current
 
     def _serve(self, connection, engine):
+        self._response.transport_stage = 'connection'
         try:
             connection.settimeout(15)
             proxy_tls = self.route['protocol'] == 'https-connect'
             if proxy_tls:
+                self._response.transport_stage = 'proxy-tls'
                 connection = self._track(connection, self.certificates.context.wrap_socket(connection, server_side=True))
             if self.route['protocol'] == 'socks5':
+                self._response.transport_stage = 'greeting'
                 require(exact_bytes(connection, 1) == b'\x05', 'SOCKS version invalid')
                 count = exact_bytes(connection, 1)[0]
+                self._response.transport_stage = 'authentication'
                 require(1 <= count <= 16 and 0 in exact_bytes(connection, count), 'SOCKS authentication unsupported')
+                self._response.transport_stage = 'send'
                 connection.sendall(b'\x05\x00')
+                self._response.transport_stage = 'command'
                 require(exact_bytes(connection, 4) == b'\x05\x01\x00\x03', 'SOCKS must use proxy domain DNS')
+                self._response.transport_stage = 'host'
                 count = exact_bytes(connection, 1)[0]
                 require(1 <= count <= 80, 'SOCKS hostname bound invalid')
                 host = exact_bytes(connection, count).decode('ascii')
+                self._response.transport_stage = 'port'
                 require(exact_bytes(connection, 2) == b'\x01\xbb', 'SOCKS target port invalid')
+                self._response.transport_stage = 'host'
                 require(host in (*HOSTS, GEO_HOST), 'SOCKS target outside controlled hosts')
+                self._response.transport_stage = 'send'
                 connection.sendall(b'\x05\x00\x00\x01\x7f\x00\x00\x01\x00\x00')
             else:
+                self._response.transport_stage = 'http-connect'
                 method, target, headers = read_header(connection)
                 require(method == 'CONNECT' and target in tuple(host + ':443' for host in (*HOSTS, GEO_HOST)), 'CONNECT target invalid')
                 host = target[:-4]
                 require(headers.get('host') in (host, target) and 'proxy-authorization' not in headers, 'CONNECT authority differs')
+                self._response.transport_stage = 'send'
                 connection.sendall(b'HTTP/1.1 200 Connection Established\r\n\r\n')
+            self._response.transport_stage = 'target-tls'
             target_tls = (NestedTlsChannel(connection, self.certificates.context) if proxy_tls
                           else self.certificates.context.wrap_socket(connection, server_side=True))
             connection = self._track(connection, target_tls)
+            self._response.transport_stage = 'http'
             method, target, headers = read_header(connection)
             require(method == 'GET' and headers.get('host') in (host, host + ':443'), 'controlled target authority differs')
             require(self.certificates.server_name(connection) == host, 'actual target TLS SNI differs')
@@ -209,8 +275,9 @@ class IpRouteProxy(WorkerFixtureServer):
                     phase=query.get('phase', [''])[0], realm=query.get('realm', ['document'])[0],
                     documentId=query.get('documentId', [''])[0], responseSha256=self._response.sha,
                     tls=True, proxyTls=proxy_tls, targetSni=host, responseWritten=True))
-        except (ValueError, OSError, ssl.SSLError, UnicodeError):
+        except (ValueError, OSError, ssl.SSLError, UnicodeError) as error:
             self.fleet.error(self.name, 'controlled-transport-rejected')
+            self.fleet._transport_failure(self.name, self._response.transport_stage, error)
         finally:
             with self._lock:
                 self._clients.discard(connection)
@@ -229,8 +296,11 @@ class IpRouteProxy(WorkerFixtureServer):
                 + json.dumps(GEO_SOURCE) + ",{credentials:'omit',redirect:'error',cache:'no-store'});allowed=r.ok;}catch(_){}"
                 "event.ports[0].postMessage({executed:true,networkAllowed:allowed});})());});").encode()
             body = prefix + body
+        previous_stage = getattr(self._response, 'transport_stage', 'http')
+        self._response.transport_stage = 'send'
         WorkerFixtureServer._send(connection, kind, body, coop=coop)
         self._response.sha = digest(body)
+        self._response.transport_stage = previous_stage
 
 
 class IpTimeZoneFleet:
@@ -241,6 +311,10 @@ class IpTimeZoneFleet:
         self.behavior = {name: 'normal' for name in ROUTES}
         self.release_events = {name: threading.Event() for name in ROUTES}
         self.events, self.errors = [], {name: 0 for name in ROUTES}
+        self._transport_events = []
+        self._transport_counts = {name: {stage: {} for stage in TRANSPORT_STAGES} for name in ROUTES}
+        self._transport_total = 0
+        self._transport_quiescent = False
         self.control_requests = 0
         self.closed = False
         self.proxies = {name: IpRouteProxy(self, name, script, binding, gecko_script) for name in ROUTES}
@@ -332,6 +406,47 @@ class IpTimeZoneFleet:
         with self.lock:
             self.errors[route] += 1
 
+    def _transport_failure(self, route, stage, error):
+        """Fixed classes/buckets only; never retain exception messages or wire data.
+
+        The original error counter is deliberately separate and remains strict.
+        Other* identifies an unlisted subclass, not its potentially private name.
+        """
+        require(route in ROUTES and stage in TRANSPORT_STAGES, 'fixed diagnostic transport owner')
+        require(isinstance(error, (ValueError, OSError, ssl.SSLError, UnicodeError)), 'fixed diagnostic exception family')
+        category = TRANSPORT_EXCEPTION_TYPES.get(type(error))
+        if category is None:
+            category = ('OtherSSLError' if isinstance(error, ssl.SSLError) else
+                        'OtherUnicodeError' if isinstance(error, UnicodeError) else
+                        'OtherOSError' if isinstance(error, OSError) else 'OtherValueError')
+        guard_code = 'other-guard'
+        if type(error) is ValueError and len(error.args) == 1 and type(error.args[0]) is str:
+            guard_code = TRANSPORT_GUARD_CODES.get(error.args[0], 'other-guard')
+        with self.lock:
+            self._transport_total += 1
+            counts = self._transport_counts[route][stage]
+            counts[category] = counts.get(category, 0) + 1
+            if len(self._transport_events) < MAX_TRANSPORT_DIAGNOSTICS:
+                self._transport_events.append(dict(sequence=self._transport_total,
+                    route=route, protocol=ROUTES[route]['protocol'], stage=stage,
+                    exceptionClass=category, guardCode=guard_code, collectorClosed=self.closed))
+
+    def diagnostic_snapshot(self):
+        """Separate bounded failure observations, never an EOF exemption or proof.
+
+        quiescent becomes true only after the unchanged close guards complete.
+        A pre-close snapshot can still gain later failures and is not final.
+        """
+        with self.lock:
+            return dict(schema=1, kind='ip-timezone-transport-diagnostics-v1',
+                binding=json.loads(json.dumps(self.binding)),
+                collectorClosed=self.closed, quiescent=self._transport_quiescent,
+                eventLimit=MAX_TRANSPORT_DIAGNOSTICS, totalFailures=self._transport_total,
+                recordedEvents=len(self._transport_events),
+                droppedEvents=self._transport_total - len(self._transport_events),
+                counts=json.loads(json.dumps(self._transport_counts)),
+                events=json.loads(json.dumps(self._transport_events)))
+
     def geo(self, proxy, connection, target, headers, proxy_tls):
         require(target == GEO_TARGET and 'authorization' not in headers and 'cookie' not in headers,
                 'fixed credential-free geo GET required')
@@ -354,6 +469,7 @@ class IpTimeZoneFleet:
                 ('Location: https://' + HOSTS[0] + '/forbidden-geo-redirect\r\n' if status == 302 else '') + '\r\n').encode('ascii')
         with self.lock:
             row['responseAttempted'] = True
+        proxy._response.transport_stage = 'send'
         try:
             connection.sendall(head + body)
         except (OSError, ssl.SSLError):
@@ -391,3 +507,5 @@ class IpTimeZoneFleet:
             except Exception:
                 failures.append(name)
         require(not self.control_thread.is_alive() and not failures, 'native fixture did not quiesce')
+        with self.lock:
+            self._transport_quiescent = True

@@ -9,7 +9,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 DELTA_PATH = ROOT / 'tests/fixtures/network-settings-callback-source-deltas.json'
-DELTA_SHA256 = '8f4157350dc8eb9bf2b6c8e6d6345b4383f67c5585198ca4299b0134ae56e21c'
+DELTA_SHA256 = '232bb1fea99a27287a048771e78d10d47d94802e002db2097c82a12274b2a916'
 BASE_COMMIT = 'e21b4fd6698074310ee36f85f980b16ad643c934'
 BASE_TREE = 'cee24c278512c18926edf3db5102c87958f6b699'
 BASE_SOURCES = {

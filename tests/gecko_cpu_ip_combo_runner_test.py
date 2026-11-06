@@ -52,6 +52,7 @@ class ComboRunnerTests(unittest.TestCase):
             def close(self):actions.append('private-removed');self.directory.rmdir()
         class Server:
             closed=False
+            diagnostic_quiescent=False
             def __init__(self,*args):pass
             def start(self):return self
             def control(self,value):
@@ -62,9 +63,17 @@ class ComboRunnerTests(unittest.TestCase):
             def close(self):
                 self.closed=True;actions.append('server-closed')
                 if where=='server-close':raise RuntimeError('MODELED server close')
+                self.diagnostic_quiescent=True
             def snapshot(self):
                 if where=='snapshot':raise RuntimeError('MODELED snapshot')
                 result=copy.deepcopy(report['routeReceipts']);result['closed']=self.closed;return result
+            def diagnostic_snapshot(self):
+                # Declared host collector boundary only; no Android/native data.
+                if where=='diagnostic':raise ValueError('MODELED diagnostic snapshot')
+                binding=report['routeReceipts']['binding']
+                return dict(schema=1,kind='ip-timezone-transport-diagnostics-v1',binding=copy.deepcopy(binding),
+                    collectorClosed=self.closed,quiescent=self.diagnostic_quiescent,eventLimit=128,totalFailures=0,
+                    recordedEvents=0,droppedEvents=0,counts={name:{stage:{} for stage in runner.TRANSPORT_STAGES} for name in runner.ROUTES},events=[])
         class Ca:
             def __init__(self,*a):self.receipt=copy.deepcopy(report['hostTls']['trustInstallation'])
             def install(self):actions.append('ca-installed')

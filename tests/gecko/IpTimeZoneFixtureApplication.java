@@ -22,7 +22,7 @@ public final class IpTimeZoneFixtureApplication extends PocketApplication {
     // Finish catalog creation while reentrant profile() calls are inert.
     ProfileCatalog.get(this).getWritableDatabase();
     initializing=false;
-    for(int slot=0;slot<Profiles.MAX;slot++)if(ProfileCatalog.get(this).available(slot))profile(slot);
+    for(int slot=0;slot<Profiles.MAX;slot++)if(ProfileCatalog.get(this).available(slot))IpTimeZoneFixtureScopes.prepareGeneric(this,super.profile(slot),slot);
   }
   static final String[] LEGACY_FIXTURE_PROCESSES={":caret_controlled_ime",":environment_intent_fixture",":environment_spec_fixture",":extension_upgrade_test",":fingerprint_followups",":identity_prototype",":management_test",":native_timezone_probe",":native_tls_probe",":network_preflight",":network_protection",":resource_pressure_fixture",":template_fixture",":transport_binding_fixture",":transport_binding_services"};
   static boolean fixtureProcess(String packageName,String process,int slot){
@@ -34,7 +34,10 @@ public final class IpTimeZoneFixtureApplication extends PocketApplication {
   }
   @Override Context profile(int slot){
     Context context=super.profile(slot); // Parent releases its monitor first.
-    if(!initializing)IpTimeZoneFixtureScopes.prepareGeneric(this,context,slot);
+    // UI context lookup is a cache operation. The explicit startup loop above
+    // seeds old fixtures; background Store/Controller access still validates
+    // the current environment identity and marker before its first load.
+    if(!initializing&&android.os.Looper.myLooper()!=android.os.Looper.getMainLooper())IpTimeZoneFixtureScopes.prepareGeneric(this,context,slot);
     return context;
   }
 }

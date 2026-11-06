@@ -76,6 +76,9 @@ SOURCE_INPUTS = {
 }
 ACK_KEYS = {'schema', 'status', 'requestToken', 'sessionId', 'requestedZoneId', 'nativeZoneId', 'contextId', 'nativeSettingReadback', 'scope', 'workerCoverageVerified', 'serviceWorkerCoverageVerified'}
 RECEIPT_KEYS = {'schema', 'identity', 'desiredRevision', 'processNonce', 'requestToken', 'binding', 'nativeSettingReadback', 'pageObservationVerified', 'workerCoverageVerified', 'serviceWorkerCoverageVerified', 'nativeReceipt', 'recordedAt'}
+INSTALLED_IDENTITY_BASE_KEYS = {'schema', 'package', 'sourceCommit', 'sourceTree', 'dirtySource', 'version', 'versionCode', 'sdkCoordinate', 'apkSha256', 'apkBytes', 'buildStampSha256', 'sdkBuildIdentity'}
+INSTALLED_IDENTITY_KEYS = INSTALLED_IDENTITY_BASE_KEYS | set(SDK_FIELDS)
+INSTALLED_IDENTITY_SCOPE = 'Installed synthetic integration APK bytes and embedded source stamp only'
 CLOCK_FIELDS = {'offsetMinutes', 'year', 'month', 'day', 'hour', 'minute'}
 ZONE_ALIASES = ({'Asia/Kathmandu', 'Asia/Katmandu'}, {'UTC', 'Etc/UTC', 'Etc/GMT', 'GMT', 'UCT', 'Etc/UCT', 'Universal', 'Zulu'})
 
@@ -83,6 +86,19 @@ ZONE_ALIASES = ({'Asia/Kathmandu', 'Asia/Katmandu'}, {'UTC', 'Etc/UTC', 'Etc/GMT
 def require(value, message):
     if not value:
         raise ValueError('Gecko environment policy acceptance: ' + message)
+
+
+def installed_identity(actual, expected):
+    # IntegrationBuildIdentity.read adds this fixed scope declaration to the
+    # host's security fields. It is part of the native schema, not another
+    # security identity or permission to ignore arbitrary additional fields.
+    require(type(expected) is dict and type(expected.get('sdkBuildIdentity')) is dict, 'exact expected installed identity fields required')
+    kind = expected['sdkBuildIdentity'].get('sdkBuildKind', 'official')
+    keys = INSTALLED_IDENTITY_KEYS if kind == 'source-derived-java' else INSTALLED_IDENTITY_BASE_KEYS
+    require(kind in ('official', 'source-derived-java') and set(expected) == keys, 'exact expected installed identity fields required')
+    require(type(actual) is dict and set(actual) == keys | {'scope'}, 'exact native installed identity fields required')
+    require(type(actual['scope']) is str and actual['scope'] == INSTALLED_IDENTITY_SCOPE, 'native installed identity scope differs')
+    require(all(_typed_equal(actual[key], expected[key]) for key in keys), 'wrapper and installed build identity fields differ')
 
 
 def integer(value, minimum=0, maximum=2**63-1):
@@ -240,7 +256,8 @@ def validate_behavior(report, source, reader=source_bytes):
     unclaimed(activity)
     for value in (report, activity):
         require(all(value.get(key) is False for key in ('actualAndroidWebViewExecution', 'actualDesktopChromiumExecution', 'actualDevicePerformanceMeasurement', 'fingerprintProtectionVerified') if key in value), 'unexecuted browser/performance or complete fingerprint coverage must not be claimed')
-    require(type(report.get('expectedBuildIdentity')) is dict and _typed_equal(activity.get('buildIdentity'), report['expectedBuildIdentity']) and report['expectedBuildIdentity'].get('sourceCommit') == source and report['expectedBuildIdentity'].get('sourceTree') == report['sourceTree'] and report['expectedBuildIdentity'].get('dirtySource') is False, 'wrapper and installed clean-source build identities differ')
+    installed_identity(activity.get('buildIdentity'), report.get('expectedBuildIdentity'))
+    require(report['expectedBuildIdentity'].get('sourceCommit') == source and report['expectedBuildIdentity'].get('sourceTree') == report['sourceTree'] and report['expectedBuildIdentity'].get('dirtySource') is False, 'wrapper and installed clean-source build identities differ')
     checks = activity.get('checks')
     require(type(checks) is list and 0 < len(checks) <= 500 and all(type(row) is dict and set(row) == {'id', 'pass'} and token(row.get('id'), '[A-Za-z0-9_.:-]{1,160}') and row.get('pass') is True for row in checks), 'all activity checks must be explicit and passed')
     names = [row['id'] for row in checks]

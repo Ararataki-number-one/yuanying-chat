@@ -1,0 +1,100 @@
+package local.pocketchat;
+
+import android.app.Activity;
+import android.app.Application;
+import android.content.*;
+import android.widget.*;
+import java.io.*;
+import java.nio.file.*;
+import java.util.*;
+import org.json.*;
+
+/** Framework/UI collaborators are models; storage and fixture methods are actual source. */
+public final class FixtureRootHost extends Activity {
+  static final List<String> checks=new ArrayList<>();
+  boolean finished;Throwable failure;ChatSession owner;FixtureView view;
+  FixtureRootHost(PocketApplication application){super(application);}
+  void finish(Throwable error){failure=error;}
+  FixtureView createFixtureView(Context context,ChatSession session){return new FixtureView(context);}
+@@PRIVATE_CONTEXT@@
+@@OPEN_BROWSER@@
+  Context followupContext(){@@FOLLOWUP_CONTEXT@@return context;}
+  Context protectionContext(){@@PROTECTION_CONTEXT@@return context;}
+  static void check(String name,boolean pass){if(!pass)throw new AssertionError(name);checks.add(name);}
+  interface Work{void run()throws Exception;}
+  static void rejects(String name,Work work)throws Exception{boolean rejected=false;try{work.run();}catch(IOException expected){rejected=true;}check(name,rejected);}
+  public static void main(String[] args)throws Exception{
+    Path root=Paths.get(args[0]);Files.createDirectories(root);
+    for(int slot:new int[]{0,3}){
+      android.app.Application.process="local.pocketchat.test"+(slot==0?":identity_prototype":":profile3");
+      PocketApplication app=new PocketApplication(root.resolve("app"+slot));Context selected=app.profile(slot);
+      Path marker=selected.getNoBackupFilesDir().toPath().resolve("explicit-manual-system-fixture");Files.write(marker,new byte[]{4,2});
+      FixtureRootHost host=new FixtureRootHost(app);ChatSession.reset();ProfileCatalog.created=-1;host.openBrowser();
+      check("Actual fixture startup admits the anchored framework profile slot "+slot,host.failure==null&&host.view!=null&&host.view.hosted);
+      check("Actual fixture passes the selected profile to ChatSession slot "+slot,host.owner.context==selected&&host.view.context==selected);
+      check("Selected profile retains existing scoped setup bytes slot "+slot,Arrays.equals(Files.readAllBytes(marker),new byte[]{4,2}));
+      check("Profile catalog creation uses the exact process slot "+slot,ProfileCatalog.created==slot&&ChatSession.factories==1);
+      check("CPU runtime paths remain in exact selected framework root slot "+slot,host.view.storage.root.equals(selected.getNoBackupFilesDir().getCanonicalFile())&&Files.exists(selected.getNoBackupFilesDir().toPath().resolve("gecko-browser.yaml")));
+      check("Guard and task lifecycle initialization is retained slot "+slot,host.owner.networkReady&&!host.owner.offline&&host.owner.uiVisible&&!host.owner.guard.blocked&&host.owner.handler.removed==host.owner.tick);
+      check("Original view attachment/layout still runs slot "+slot,host.content!=null&&host.view.host==host);
+      PrivateContext old=new PrivateContext(app);
+      rejects("Original nested private wrapper is refused by the actual storage guard slot "+slot,()->GeckoCpuProfile.storage(old));
+      check("Refused nested wrapper never acquires a browser profile slot "+slot,!Files.exists(old.getNoBackupFilesDir().toPath().resolve("gecko-browser")));
+      FixtureRootHost stopped=new FixtureRootHost(app);stopped.finished=true;ChatSession.reset();stopped.openBrowser();
+      check("Finished fixture cannot create a new session slot "+slot,stopped.owner==null&&ChatSession.factories==0);
+    }
+    android.app.Application.process="local.pocketchat.test:fingerprint_followups";
+    for(String caller:new String[]{"followup","protection"}){
+      Path first=null;
+      for(int invocation=0;invocation<2;invocation++){
+        PocketApplication app=new PocketApplication(root.resolve(caller+invocation));FixtureRootHost host=new FixtureRootHost(app);
+        Context selected=caller.equals("followup")?host.followupContext():host.protectionContext();
+        GeckoCpuProfile.Storage found=null;try{found=GeckoCpuProfile.storage(selected);}catch(IOException refused){}
+        check("Actual "+caller+" entry declaration uses the owned profile",found!=null&&selected==app.profile(0)&&found.root.equals(app.getNoBackupFilesDir().getCanonicalFile()));
+        Path sentinel=selected.getNoBackupFilesDir().toPath().resolve("invocation");Files.write(sentinel,new byte[]{(byte)invocation});
+        check("Separate cleared-package "+caller+" invocations retain distinct roots",first==null||!sentinel.getParent().equals(first));
+        if(first!=null)check("Later "+caller+" invocation cannot alter earlier profile bytes",Files.readAllBytes(first.resolve("invocation"))[0]==0);
+        first=sentinel.getParent();
+      }
+    }
+    check("New production timezone defaults remain IP",GeckoTimeZoneSpec.automatic().followsIp()&&!GeckoTimeZoneSpec.automatic().followsSystem());
+    check("Explicit system timezone remains distinct",GeckoTimeZoneSpec.system().followsSystem()&&!GeckoTimeZoneSpec.system().followsIp());
+    check("Schema one explicit system selection is preserved",GeckoTimeZoneSpec.from(J.obj("schema",1,"engine","gecko","zoneId","")).followsSystem());
+    System.out.println(J.obj("status","passed","passed",checks.size(),"total",checks.size(),"checks",new JSONArray(checks),"actualAndroidExecution",false,"actualGeckoExecution",false,"nativeSettingReadback",false));
+  }
+}
+final class Profiles {
+  static final int MAX=8;
+@@PROFILES_METHODS@@
+}
+final class ProfileContext extends ContextWrapper {
+  final int slot;
+  ProfileContext(Context base,int slot){super(base);this.slot=slot;}
+@@PROFILE_CONTEXT_METHODS@@
+}
+final class PocketApplication extends Context {
+  final File root;final Map<Integer,Context> profiles=new HashMap<>();final Map<String,SharedPreferences> prefs=new HashMap<>();
+  PocketApplication(Path path)throws IOException{root=path.toFile().getCanonicalFile();Files.createDirectories(root.toPath().resolve("no_backup"));}
+  Context profile(int slot){return profiles.computeIfAbsent(slot,id->new ProfileContext(this,id));}
+  public Context getApplicationContext(){return this;}
+  public File getNoBackupFilesDir(){return new File(root,"no_backup");}
+  public android.content.pm.ApplicationInfo getApplicationInfo(){android.content.pm.ApplicationInfo info=new android.content.pm.ApplicationInfo();info.dataDir=root.getPath();return info;}
+  public SharedPreferences getSharedPreferences(String name,int mode){return prefs.computeIfAbsent(name,key->new SharedPreferences());}
+}
+final class ProfileCatalog {static int created=-1;static ProfileCatalog get(Context context){return new ProfileCatalog();}void created(int slot){created=slot;}}
+final class Handler {Object removed;void removeCallbacks(Object value){removed=value;}}
+final class Guard {boolean blocked=true;void setBlocked(boolean value){blocked=value;}}
+final class ChatSession {
+  interface BrowserFactory{FixtureView create(Context context,ChatSession session);}
+  static BrowserFactory browserFactory;static ChatSession instance;static int factories;
+  final Context context;final Handler handler=new Handler();final Object tick=new Object();final Guard guard=new Guard();FixtureView web;
+  boolean networkReady,offline=true,uiVisible;
+  ChatSession(Context context){this.context=context;}
+  static ChatSession get(Context context){if(instance==null){instance=new ChatSession(context);factories++;instance.web=browserFactory.create(context,instance);}return instance;}
+  static void reset(){instance=null;factories=0;}
+}
+final class FixtureView {
+  final Context context;FixtureRootHost host;GeckoCpuProfile.Storage storage;boolean hosted;
+  FixtureView(Context context){this.context=context;}
+  void setHost(FixtureRootHost host)throws Exception{this.host=host;storage=GeckoCpuProfile.storage(context);GeckoCpuProfile.prepare(storage.root,new File(storage.root,"gecko-browser"),GeckoCpuSpec.automatic());hosted=true;}
+}

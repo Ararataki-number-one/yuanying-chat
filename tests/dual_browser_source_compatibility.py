@@ -70,6 +70,10 @@ def source_input(raw, relative):
     digest = _sha(raw)
     if (digest, len(raw)) not in ((row['previousSha256'], row['previousBytes']),
                                   (row['reviewedSha256'], row['reviewedBytes'])):
+        if relative == 'tests/gecko/FingerprintFollowupIntegrationActivity.java':
+            from profile_fixture_root_source_compatibility import source_input as fixture_root_input
+            raw = fixture_root_input(raw, relative)
+            digest = _sha(raw)
         from worker_timezone_source_compatibility import PATHS as worker_paths, source_input as worker_source_input
         if relative in worker_paths:
             raw = worker_source_input(raw, relative)

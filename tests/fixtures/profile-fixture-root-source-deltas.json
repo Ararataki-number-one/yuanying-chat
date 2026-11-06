@@ -1,0 +1,104 @@
+{
+  "schema": 1,
+  "kind": "historical-source-input-only",
+  "baseCommit": "6ee06aced87581e52aa301431f8996ed46d666b8",
+  "baseTree": "19b74a878d2c238cdb209dd51d2fb66076057963",
+  "actualAndroidExecution": false,
+  "runtimeAcceptance": false,
+  "files": {
+    "tests/gecko/FingerprintFollowupIntegrationActivity.java": {
+      "previousSha256": "992a155c73c121ca7f7934df2cf18bcaf96ae9dce8780d3e891f957c3753209d",
+      "previousBytes": 82624,
+      "reviewedSha256": "aac64b137b041b89f6c262b5b52e691fb94a3bb4a0abd5322f4ce5973aad3036",
+      "reviewedBytes": 82639,
+      "contextLines": 3,
+      "deltas": [
+        {
+          "id": "context-00",
+          "previous": "  }\n  void open()throws Exception{\n    ui(()->{\n      Context context=new PrivateContext(getApplicationContext(),nonce);context.getSharedPreferences(\"chat\",0).edit().clear().putString(\"networkMode\",\"external\").putString(\"proxy\",\"\").putBoolean(\"requireExternalVpn\",false).putBoolean(\"networkConfigured\",false).putInt(\"privacyLevel\",1).putBoolean(\"backgroundWait\",false).commit();\n      ProfileCatalog.get(context).created(Profiles.slot(context));ChatSession.browserFactory=(c,s)->new FixtureView(c,s);owner=ChatSession.get(context);view=(FixtureView)owner.web;\n      owner.handler.removeCallbacks(owner.tick);owner.networkReady=true;owner.offline=false;owner.uiVisible=true;owner.guard.setBlocked(false);\n      WebViewClient original=owner.client();view.setWebViewClient(new WebViewClient(){\n",
+          "current": "  }\n  void open()throws Exception{\n    ui(()->{\n      Context context=Profiles.context(getApplicationContext(),Profiles.processSlot());context.getSharedPreferences(\"chat\",0).edit().clear().putString(\"networkMode\",\"external\").putString(\"proxy\",\"\").putBoolean(\"requireExternalVpn\",false).putBoolean(\"networkConfigured\",false).putInt(\"privacyLevel\",1).putBoolean(\"backgroundWait\",false).commit();\n      ProfileCatalog.get(context).created(Profiles.slot(context));ChatSession.browserFactory=(c,s)->new FixtureView(c,s);owner=ChatSession.get(context);view=(FixtureView)owner.web;\n      owner.handler.removeCallbacks(owner.tick);owner.networkReady=true;owner.offline=false;owner.uiVisible=true;owner.guard.setBlocked(false);\n      WebViewClient original=owner.client();view.setWebViewClient(new WebViewClient(){\n",
+          "previousSha256": "e0624307c71e5fd7190420ac9fc5944fd579354c105aaca07ce2e6e7cc9aaabd",
+          "currentSha256": "f6569b34f62e01c485af04844923ce269388d38dd5a23af6bb944dbf7f9b9d8d"
+        }
+      ]
+    },
+    "tests/dual_browser_source_compatibility.py": {
+      "previousSha256": "23f51bb9a3ff4ff405de68c5ef0eeba68a8d8c4861efdfd00c82777fa1a03455",
+      "previousBytes": 4933,
+      "reviewedSha256": "2f36e797407ecee55bce6545c461ad9b0fb4879bb4d01b1e8e6378122efc6cf8",
+      "reviewedBytes": 5199,
+      "contextLines": 3,
+      "deltas": [
+        {
+          "id": "context-00",
+          "previous": "    digest = _sha(raw)\n    if (digest, len(raw)) not in ((row['previousSha256'], row['previousBytes']),\n                                  (row['reviewedSha256'], row['reviewedBytes'])):\n        from worker_timezone_source_compatibility import PATHS as worker_paths, source_input as worker_source_input\n        if relative in worker_paths:\n            raw = worker_source_input(raw, relative)\n",
+          "current": "    digest = _sha(raw)\n    if (digest, len(raw)) not in ((row['previousSha256'], row['previousBytes']),\n                                  (row['reviewedSha256'], row['reviewedBytes'])):\n        if relative == 'tests/gecko/FingerprintFollowupIntegrationActivity.java':\n            from profile_fixture_root_source_compatibility import source_input as fixture_root_input\n            raw = fixture_root_input(raw, relative)\n            digest = _sha(raw)\n        from worker_timezone_source_compatibility import PATHS as worker_paths, source_input as worker_source_input\n        if relative in worker_paths:\n            raw = worker_source_input(raw, relative)\n",
+          "previousSha256": "23672ed98fd1067d87fe0a8b07f345dae26b7aafaf75c364baac32eff4c60449",
+          "currentSha256": "17171fd22e9f1e7e92e10dcef7c1671158461f40b1b1c8790e188ecfd40f0081"
+        }
+      ]
+    },
+    "tests/profile_dual_browser_source_compatibility_test.py": {
+      "previousSha256": "7df965ca9da87bd418a2edd571edef3d0ff519aae3d7242c21e95619b31f211a",
+      "previousBytes": 20409,
+      "reviewedSha256": "ef7b697479f6ba9c25ea5c2d78a3ac1198e64edc96d830e2d73d529a99207d81",
+      "reviewedBytes": 20562,
+      "contextLines": 3,
+      "deltas": [
+        {
+          "id": "context-00",
+          "previous": "from unittest.mock import patch\n\nimport dual_browser_source_compatibility as dual\nfrom final_browser_source_compatibility import producer_input as final_producer_input\n\nROOT = Path(__file__).resolve().parents[1]\n",
+          "current": "from unittest.mock import patch\n\nimport dual_browser_source_compatibility as dual\nfrom profile_fixture_root_source_compatibility import historical_input as fixture_root_input\nfrom final_browser_source_compatibility import producer_input as final_producer_input\n\nROOT = Path(__file__).resolve().parents[1]\n",
+          "previousSha256": "1eb9e7b8296a14c66ee958c5b8dd511f45fa8293fba9cc260260433cda11aea2",
+          "currentSha256": "1b528df60a10a556e1d01a80e3046639fbd771664ba596bd350cc868948775c9"
+        },
+        {
+          "id": "context-01",
+          "previous": "        for relative, row in dual.manifest()['files'].items():\n            with self.subTest(path=relative):\n                previous = subprocess.check_output(['git', 'show', dual.BASE_COMMIT + ':' + relative], cwd=ROOT)\n                current = (ROOT / relative).read_bytes()\n                from worker_timezone_source_compatibility import PATHS as worker_paths, source_input as worker_source_input\n                if relative in worker_paths:\n                    current = worker_source_input(current, relative)\n",
+          "current": "        for relative, row in dual.manifest()['files'].items():\n            with self.subTest(path=relative):\n                previous = subprocess.check_output(['git', 'show', dual.BASE_COMMIT + ':' + relative], cwd=ROOT)\n                current = fixture_root_input((ROOT / relative).read_bytes(), relative)\n                from worker_timezone_source_compatibility import PATHS as worker_paths, source_input as worker_source_input\n                if relative in worker_paths:\n                    current = worker_source_input(current, relative)\n",
+          "previousSha256": "8d2e08c031c3c64313995bd3430db403aa6d9f5b9832245347bd2cf4413a983a",
+          "currentSha256": "a7fbb1d53b6d46e142a92402f6ee6868a94937bff3f3ed6a7295dd62d24de7f7"
+        },
+        {
+          "id": "context-02",
+          "previous": "    def test_missing_duplicate_mutated_relocated_and_unknown_sources_are_rejected(self):\n        rejected = 0\n        for relative, row in dual.manifest()['files'].items():\n            current = (ROOT / relative).read_bytes()\n            from worker_timezone_source_compatibility import PATHS as worker_paths, source_input as worker_source_input\n            if relative in worker_paths:\n                current = worker_source_input(current, relative)\n",
+          "current": "    def test_missing_duplicate_mutated_relocated_and_unknown_sources_are_rejected(self):\n        rejected = 0\n        for relative, row in dual.manifest()['files'].items():\n            current = fixture_root_input((ROOT / relative).read_bytes(), relative)\n            from worker_timezone_source_compatibility import PATHS as worker_paths, source_input as worker_source_input\n            if relative in worker_paths:\n                current = worker_source_input(current, relative)\n",
+          "previousSha256": "ce8adef3659422b145dc0a9129f6085ad0f69cd1b80ce684a6179ee98938ead4",
+          "currentSha256": "b3a88dc892c7c55561d1e616457b4da8ccfa786b0031fc5ad3ea9ed110a6be6d"
+        }
+      ]
+    },
+    "tests/profile_worker_timezone_source_compatibility_test.py": {
+      "previousSha256": "cb1767b9a5bc21fd914f7790e466486bcac2752f10451693d84947f7c27a5fec",
+      "previousBytes": 21610,
+      "reviewedSha256": "196cbb82d790c8d8e55e1c40c3b4ea1ddcf354b2df4f4747a21d41cff94288ac",
+      "reviewedBytes": 21642,
+      "contextLines": 3,
+      "deltas": [
+        {
+          "id": "context-00",
+          "previous": "            self.assertEqual((ROOT / relative).read_bytes(), subprocess.check_output(['git', 'show', overlay.BASE_COMMIT + ':' + relative], cwd=ROOT))\n        relative = 'tests/dual_browser_source_compatibility.py'\n        before = subprocess.check_output(['git', 'show', overlay.BASE_COMMIT + ':' + relative], cwd=ROOT)\n        after = (ROOT / relative).read_bytes()\n        self.assertEqual(after.count(DUAL_HOOK.encode()), 1)\n        self.assertEqual(after.replace(DUAL_HOOK.encode(), b'', 1), before)\n        relative = 'tests/profile_dual_browser_source_compatibility_test.py'\n",
+          "current": "            self.assertEqual((ROOT / relative).read_bytes(), subprocess.check_output(['git', 'show', overlay.BASE_COMMIT + ':' + relative], cwd=ROOT))\n        relative = 'tests/dual_browser_source_compatibility.py'\n        before = subprocess.check_output(['git', 'show', overlay.BASE_COMMIT + ':' + relative], cwd=ROOT)\n        after = final_metadata_input((ROOT / relative).read_bytes(), relative)\n        self.assertEqual(after.count(DUAL_HOOK.encode()), 1)\n        self.assertEqual(after.replace(DUAL_HOOK.encode(), b'', 1), before)\n        relative = 'tests/profile_dual_browser_source_compatibility_test.py'\n",
+          "previousSha256": "46cafa315c6aa16d15e86c5c257239b89f7aaefb0307e01abcb642a3f4e020bd",
+          "currentSha256": "6a26e6deed1b9da8016f4f06c567a131fa584f44539fcf0e0d14bde8e3557016"
+        }
+      ]
+    },
+    "tests/final_browser_source_compatibility.py": {
+      "previousSha256": "0c57aeb34471f92629a36cdc8f71447f2353daaac6a7940423c2e85d9141e37d",
+      "previousBytes": 16085,
+      "reviewedSha256": "118fcc1063e93ca7bd96e9fb5e49580c65541faaed0bf7d017ca88c26fe1f1f7",
+      "reviewedBytes": 16294,
+      "contextLines": 3,
+      "deltas": [
+        {
+          "id": "context-00",
+          "previous": "def metadata_input(raw, relative):\n    \"\"\"Finite left inputs only; unowned bytes still face the original golden.\"\"\"\n    _metadata_path(raw, relative)\n    if relative in PATHS:\n        return source_input(raw, relative)\n    if relative in TEMPLATE_PATHS:\n",
+          "current": "def metadata_input(raw, relative):\n    \"\"\"Finite left inputs only; unowned bytes still face the original golden.\"\"\"\n    _metadata_path(raw, relative)\n    from profile_fixture_root_source_compatibility import PATHS as fixture_root_paths, source_input as fixture_root_input\n    if relative in fixture_root_paths:\n        raw = fixture_root_input(raw, relative)\n    if relative in PATHS:\n        return source_input(raw, relative)\n    if relative in TEMPLATE_PATHS:\n",
+          "previousSha256": "e07bd9b7036e526ac35765e40c8d0292f0317ea138d62930dc843f3558ab3f86",
+          "currentSha256": "0de5d47ddbc7a599ea6b649d16da81c7ac8640c291d0cadaa0bfc1bd4204ec71"
+        }
+      ]
+    }
+  }
+}

@@ -124,6 +124,17 @@ def main():
     for label,jar in [('desktop',desktop),('android-json',android_json)]:
         target=out/('ip-timezone-fixture-process-'+label+'.json');add('ip-timezone-fixture-process-'+label,'tests/ip-timezone-fixture-process-host/run.py',java+['--json-jar',jar,'--output',target],target)
     target=out/'ip-timezone-rfp-standard.json';add('ip-timezone-rfp-standard','tests/gecko_ip_timezone_rfp_standard_test.py',java+['--output',target],target)
+    # BEGIN_DEVICE_FIX_HOSTS
+    # Preserve the complete original 169-suite prefix and its per-child budget.
+    add('gecko-environment-identity-scope','tests/gecko_environment_identity_scope_test.py')
+    add('gecko-cpu-ip-combo-transport-diagnostic','tests/gecko_cpu_ip_combo_transport_diagnostic_test.py')
+    target=out/'ip-timezone-transport-diagnostics.json';add('ip-timezone-transport-diagnostics','tests/ip_timezone_transport_diagnostics_test.py',['--output',target],target)
+    add('profile-fixture-root-source-history','tests/profile_fixture_root_source_compatibility_test.py')
+    for label,jar in [('desktop',desktop),('android-json',android_json)]:
+        for name,script in [('profile-fixture-root','tests/profile-fixture-root-host/run.py'),('fixture-ui-hotpath','tests/ip-timezone-fixture-ui-hotpath-host/run.py'),('network-internal-admission','tests/network-internal-admission-host/run.py')]:
+            target=out/(name+'-'+label+'.json');add(name+'-'+label,script,java+['--json-jar',jar,'--output',target],target)
+    add('device-fix-host-registry','tests/browser_device_fix_host_registry_test.py')
+    # END_DEVICE_FIX_HOSTS
     names=subprocess.check_output(['git','ls-files','--cached','--others','--exclude-standard','app/src/main/java','app/src/main/assets','tests','tools/browser','tools/gecko','.github/workflows/browser-2_1-acceptance.yml'],cwd=ROOT,text=True).splitlines()
     files=[ROOT/name for name in sorted(set(names)) if (ROOT/name).is_file()]
     hashes={str(path.relative_to(ROOT)):hashlib.sha256(path.read_bytes()).hexdigest() for path in files}

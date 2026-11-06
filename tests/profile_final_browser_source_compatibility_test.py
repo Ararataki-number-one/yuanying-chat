@@ -19,6 +19,7 @@ from unittest.mock import patch
 
 import cpu_ip_source_compatibility as cpu
 import final_browser_source_compatibility as layer
+from profile_fixture_root_source_compatibility import historical_input as fixture_root_input
 import profile_ip_timezone_source_compatibility_test as retained_ip
 import profile_worker_timezone_source_compatibility_test as retained_worker
 import tls_cpu_ip_source_compatibility as tls
@@ -160,6 +161,8 @@ def inventory_116_input(raw, relative, value):
 
 
 def build_budget_helper_before(raw):
+    from profile_fixture_root_source_compatibility import historical_input as fixture_root_input
+    raw = fixture_root_input(raw, 'tests/final_browser_source_compatibility.py')
     constants = b'# BEGIN_BUILD_BUDGET_METADATA\nBUILD_BUDGET_PATH = \'tests/browser_acceptance_workflow_test.py\'\nBUILD_BUDGET_PREVIOUS_SHA256 = \'2792c0919de89b13eb9040660be96f7c3ba55cf689e54abd075646f103e479bf\'\nBUILD_BUDGET_PREVIOUS_BYTES = 7205\nBUILD_BUDGET_CURRENT_SHA256 = \'655d7a4a385aa9d0d6684807a177035ee177a8470eb396a6f7da3efe0759db71\'\nBUILD_BUDGET_CURRENT_BYTES = 7668\nBUILD_BUDGET_PREVIOUS = b"        for name,job in self.old[\'jobs\'].items():\\n            with self.subTest(job=name):\\n                current=self.new[\'jobs\'][name];position=0\\n                for step in job[\'steps\']:\\n                    found=next((at for at in range(position,len(current[\'steps\'])) if current[\'steps\'][at]==step),None)\\n                    self.assertIsNotNone(found,(name,step.get(\'name\')));position=found+1\\n                for key,value in job.items():\\n                    if key==\'steps\':continue\\n                    self.assertEqual(current[key],value+[\'browser\',\'tls\'] if name==\'verify\' and key==\'needs\' else value)\\n    def test_single_pipeline_shares_actual_apk_and_gates_browser(self):\\n        self.assertEqual(self.new[\'on\'][\'push\'][\'branches\'],[\'release/browser-2.1.0\',\'release/browser-2.1.0-*\',\'release/browser-2.1.1\',\'release/browser-2.1.1-*\',\'release/browser-2.1.2\',\'release/browser-2.1.2-*\',\'release/browser-2.1.3\',\'release/browser-2.1.3-*\',\'release/browser-2.1.4\',\'release/browser-2.1.4-*\'])\\n        self.assertIn(\'browser\',self.new[\'jobs\'][\'verify\'][\'needs\'])\\n        self.assertEqual(self.new[\'jobs\'][\'browser\'][\'needs\'],\'build\')\\n        browser=self.new[\'jobs\'][\'browser\'];self.assertNotIn(\'continue-on-error\',browser)\\n        body=\'\\\\n\'.join(step.get(\'run\',\'\') for step in browser[\'steps\'])\\n"\nBUILD_BUDGET_CURRENT = b"        for name,job in self.old[\'jobs\'].items():\\n            with self.subTest(job=name):\\n                current=self.new[\'jobs\'][name];position=0\\n                for step in job[\'steps\']:\\n                    found=next((at for at in range(position,len(current[\'steps\'])) if current[\'steps\'][at]==step),None)\\n                    self.assertIsNotNone(found,(name,step.get(\'name\')));position=found+1\\n                if name==\'build\':\\n                    self.assertIn(\'timeout-minutes\',job)\\n                for key,value in job.items():\\n                    if key==\'steps\':continue\\n                    if name==\'build\' and key==\'timeout-minutes\':\\n                        self.assertIs(type(value),int)\\n                        self.assertEqual(value,40)\\n                        self.assertIn(key,current)\\n                        self.assertIs(type(current[key]),int)\\n                        self.assertEqual(current[key],60)\\n                    else:\\n                        self.assertEqual(current[key],value+[\'browser\',\'tls\'] if name==\'verify\' and key==\'needs\' else value)\\n    def test_single_pipeline_shares_actual_apk_and_gates_browser(self):\\n        self.assertEqual(self.new[\'on\'][\'push\'][\'branches\'],[\'release/browser-2.1.0\',\'release/browser-2.1.0-*\',\'release/browser-2.1.1\',\'release/browser-2.1.1-*\',\'release/browser-2.1.2\',\'release/browser-2.1.2-*\',\'release/browser-2.1.3\',\'release/browser-2.1.3-*\',\'release/browser-2.1.4\',\'release/browser-2.1.4-*\'])\\n        self.assertIn(\'browser\',self.new[\'jobs\'][\'verify\'][\'needs\'])\\n        self.assertEqual(self.new[\'jobs\'][\'browser\'][\'needs\'],\'build\')\\n        browser=self.new[\'jobs\'][\'browser\'];self.assertNotIn(\'continue-on-error\',browser)\\n        body=\'\\\\n\'.join(step.get(\'run\',\'\') for step in browser[\'steps\'])\\n"\n# END_BUILD_BUDGET_METADATA\n'
     hook = b"    if (relative == BUILD_BUDGET_PATH and (digest, len(raw)) not in\n            ((row['previousSha256'], row['previousBytes']), (row['reviewedSha256'], row['reviewedBytes']))):\n        raw = build_budget_input(raw, relative)\n        digest = _sha(raw)\n"
     if raw.count(constants) != 1 or raw.count(hook) != 1:
@@ -226,7 +229,7 @@ class FinalBrowserHistoricalSources(unittest.TestCase):
                 commit, tree = provenance[relative]
                 self.assertEqual((row['previousCommit'], row['previousTree']), (commit, tree))
                 before = git('show', commit+':'+relative)
-                current = layer.build_budget_input((ROOT/relative).read_bytes(), relative)
+                current = layer.build_budget_input(fixture_root_input((ROOT/relative).read_bytes(), relative), relative)
                 self.assertEqual((SHA(before), len(before)), (row['previousSha256'], row['previousBytes']))
                 self.assertEqual((SHA(current), len(current)), (row['reviewedSha256'], row['reviewedBytes']))
                 self.assertEqual(row['contextLines'], 6)
@@ -257,7 +260,7 @@ class FinalBrowserHistoricalSources(unittest.TestCase):
         rejected = 0
         value = layer.manifest()
         for relative, row in value['files'].items():
-            current = layer.build_budget_input((ROOT/relative).read_bytes(), relative)
+            current = layer.build_budget_input(fixture_root_input((ROOT/relative).read_bytes(), relative), relative)
             # The appended P2 context has its own complete-image controls below.
             for delta in (row['deltas'][:-1] if relative == GV else row['deltas'][:-(1 + INVENTORY_CLEANUP_CONTEXT_COUNTS[relative])] if relative in INVENTORY_115_PINS else row['deltas']):
                 chunk = current_context(relative, row, delta)
@@ -731,7 +734,7 @@ class FinalBrowserHistoricalSources(unittest.TestCase):
         self.assertEqual(current.count(hook), 1)
         self.assertEqual(current.replace(hook, b'', 1), git('show', S+':'+relative))
         relative = 'tests/profile_worker_timezone_source_compatibility_test.py'
-        current, previous = (ROOT/relative).read_bytes(), git('show', S+':'+relative)
+        current, previous = fixture_root_input((ROOT/relative).read_bytes(), relative), git('show', S+':'+relative)
         imported = b'from final_browser_source_compatibility import producer_input as final_producer_input, metadata_input as final_metadata_input\n'
         self.assertEqual(current.count(imported), 1)
         restored = current.replace(imported, b'', 1)
@@ -771,7 +774,7 @@ class FinalBrowserHistoricalSources(unittest.TestCase):
 
     def test_dual_producer_hook_strips_to_whole_S_and_keeps_all_native_guard_targets(self):
         relative = 'tests/profile_dual_browser_source_compatibility_test.py'
-        current, previous = (ROOT/relative).read_bytes(), git('show', S+':'+relative)
+        current, previous = fixture_root_input((ROOT/relative).read_bytes(), relative), git('show', S+':'+relative)
         restored = current
         for hook in (b'from final_browser_source_compatibility import producer_input as final_producer_input\n',
                      b'            current = final_producer_input(current, relative)\n'):

@@ -10,6 +10,7 @@ import unittest
 from unittest.mock import patch
 
 import dual_browser_source_compatibility as dual
+from profile_fixture_root_source_compatibility import historical_input as fixture_root_input
 from final_browser_source_compatibility import producer_input as final_producer_input
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -30,7 +31,7 @@ class DualBrowserSourceCompatibility(unittest.TestCase):
         for relative, row in dual.manifest()['files'].items():
             with self.subTest(path=relative):
                 previous = subprocess.check_output(['git', 'show', dual.BASE_COMMIT + ':' + relative], cwd=ROOT)
-                current = (ROOT / relative).read_bytes()
+                current = fixture_root_input((ROOT / relative).read_bytes(), relative)
                 from worker_timezone_source_compatibility import PATHS as worker_paths, source_input as worker_source_input
                 if relative in worker_paths:
                     current = worker_source_input(current, relative)
@@ -50,7 +51,7 @@ class DualBrowserSourceCompatibility(unittest.TestCase):
     def test_missing_duplicate_mutated_relocated_and_unknown_sources_are_rejected(self):
         rejected = 0
         for relative, row in dual.manifest()['files'].items():
-            current = (ROOT / relative).read_bytes()
+            current = fixture_root_input((ROOT / relative).read_bytes(), relative)
             from worker_timezone_source_compatibility import PATHS as worker_paths, source_input as worker_source_input
             if relative in worker_paths:
                 current = worker_source_input(current, relative)

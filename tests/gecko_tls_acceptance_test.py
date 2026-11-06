@@ -289,6 +289,82 @@ class ManualPreparationOrderingControls(unittest.TestCase):
         with self.assertRaises(AssertionError):namespace['prepare_manual_scope'](adb,SOURCE,RUN,CASE_SPECS[9],'concurrent-strict-tls13')
         self.assertIn(('clear',2),events);self.assertIn(('prepare',2),events);SEMANTIC_MUTANTS.append('missing-all-listed-pidof');NEGATIVE_CONTROLS.append('compiled writer absence mutant')
 
+class FixtureProcessObservationControls(unittest.TestCase):
+    def observe(self,result,*,process=None,phase='manual-prepare',label='restored-default-tls12',rows=None):
+        rows=[] if rows is None else rows
+        return runner.observe_fixture_process(('shell','pidof',process or runner.PACKAGE),result,rows,phase,label),rows
+    def test_actual_pidof_outcomes_keep_typed_live_pid_and_absence_distinct(self):
+        for process in runner.scope_processes():
+            row,rows=self.observe(subprocess.CompletedProcess([],0,b'4767\n',b''),process=process)
+            self.assertEqual((row['status'],row['pids'],row['returnCode']),('present',[4767],0));self.assertEqual(row['processName'],process);self.assertEqual(rows,[row])
+            row,rows=self.observe(subprocess.CompletedProcess([],1,b'',b''),process=process)
+            self.assertEqual((row['status'],row['pids'],row['returnCode']),('absent',[],1));self.assertEqual(row['label'],'restored-default-tls12')
+    def test_unknown_pidof_output_cannot_become_absence_and_never_exports_raw_text(self):
+        results=[(0,b'',b''),(1,b'4767\n',b''),(2,b'',b''),(-9,b'',b''),(0,b'unknown-private-content',b''),(1,b'',b'private-adb-error'),(0,b'0\n',b''),(0,b'4767 4767\n',b''),(True,b'4767\n',b''),(0,b'1'*513,b''),(1,b'',b'x'*4097)]
+        for code,out,err in results:
+            rows=[]
+            with self.subTest(code=code,out=out[:20],stderr=len(err)):
+                with self.assertRaises(ValueError):self.observe(subprocess.CompletedProcess([],code,out,err),rows=rows)
+                self.assertEqual(len(rows),1);self.assertEqual(rows[0]['status'],'invalid-command-result');self.assertEqual(rows[0]['pids'],[])
+                self.assertNotIn('private',json.dumps(rows));NEGATIVE_CONTROLS.append('typed pidof refuses ambiguous result '+str(len(NEGATIVE_CONTROLS)))
+        for process,phase,label in ((runner.PACKAGE+':unknown','manual-prepare','restored-default-tls12'),(runner.PACKAGE,'unowned','restored-default-tls12'),(runner.PACKAGE,'manual-prepare','unknown-case')):
+            with self.assertRaises(ValueError):self.observe(subprocess.CompletedProcess([],1,b'',b''),process=process,phase=phase,label=label)
+            NEGATIVE_CONTROLS.append('fixed pidof metadata owner '+process+phase+label)
+    def test_actual_adb_wrapper_records_failure_before_original_guard_and_preserves_check(self):
+        main=next(n for n in ast.parse((ROOT/'tools/gecko/run_gecko_tls_acceptance.py').read_text()).body if isinstance(n,ast.FunctionDef) and n.name=='main')
+        adb=next(n for n in main.body if isinstance(n,ast.FunctionDef) and n.name=='adb');rows=[]
+        namespace=dict(runner.__dict__,a=argparse.Namespace(adb='declared-adb-boundary',serial='emulator-5554'),fixture_process_observations=rows,observation_context=['manual-prepare','restored-default-tls12'])
+        exec(compile(ast.Module(body=[adb],type_ignores=[]),'actual-TLS-observed-adb','exec'),namespace)
+        seen=[]
+        def completed(parts,**kwargs):
+            seen.append((parts,kwargs))
+            if parts[-3:]==['shell','id','-u']:return subprocess.CompletedProcess(parts,0,b'2000\n',b'')
+            self.assertEqual(parts[-3:-1],['shell','pidof'],'No mutation may occur before all writers are absent')
+            live=parts[-1]==runner.PACKAGE
+            return subprocess.CompletedProcess(parts,0 if live else 1,b'4767\n' if live else b'',b'')
+        with patch.object(runner.subprocess,'run',side_effect=completed):
+            with self.assertRaises(ValueError):runner.prepare_manual_scope(namespace['adb'],SOURCE,RUN,CASE_SPECS[4],'restored-default-tls12')
+        self.assertEqual(len(rows),2);self.assertEqual(rows[0]['status'],'absent');self.assertEqual(rows[1]['pids'],[4767])
+        self.assertEqual(rows[1]['processName'],runner.PACKAGE);self.assertEqual(rows[1]['phase'],'manual-prepare')
+        self.assertTrue(seen[0][1]['check']);self.assertTrue(all(not options['check'] for _,options in seen[1:]))
+        with patch.object(runner.subprocess,'run',return_value=subprocess.CompletedProcess([],1,b'',b'')):
+            with self.assertRaises(subprocess.CalledProcessError):namespace['adb']('shell','pidof',runner.PACKAGE)
+        self.assertEqual(rows[-1]['status'],'absent')
+        with patch.object(runner.subprocess,'run',return_value=subprocess.CompletedProcess([],2,b'',b'')):
+            with self.assertRaises(ValueError):namespace['adb']('shell','pidof',runner.PACKAGE,check=False)
+        self.assertEqual(rows[-1]['returnCode'],2);self.assertEqual(rows[-1]['status'],'invalid-command-result')
+        for failure,kind in ((subprocess.TimeoutExpired('controlled-adb',25,output=b'not-a-pid'),'TimeoutExpired'),(OSError('controlled transport exception'),'OSError')):
+            with patch.object(runner.subprocess,'run',side_effect=failure):
+                with self.assertRaises(type(failure)):namespace['adb']('shell','pidof',runner.PACKAGE,check=False)
+            self.assertEqual(rows[-1]['commandErrorType'],kind);self.assertEqual(rows[-1]['processName'],runner.PACKAGE);self.assertEqual(rows[-1]['status'],'invalid-command-result')
+            NEGATIVE_CONTROLS.append('actual pidof wrapper preserves '+kind)
+    def test_compiled_observation_mutants_cannot_drop_failure_or_accept_query_errors(self):
+        source=(ROOT/'tools/gecko/run_gecko_tls_acceptance.py').read_text()
+        changes=[('drop-observation','observations.append(row)','pass'),('accept-query-error',"require(valid,'fixed process observation failed for '+parts[2])",'pass')]
+        for label,before,after in changes:
+            self.assertEqual(source.count(before),1);parsed=ast.parse(source.replace(before,after,1));function=next(n for n in parsed.body if isinstance(n,ast.FunctionDef) and n.name=='observe_fixture_process');namespace=dict(runner.__dict__)
+            exec(compile(ast.Module(body=[function],type_ignores=[]),'actual-TLS-observation-'+label,'exec'),namespace);rows=[]
+            def invariant():
+                try:namespace['observe_fixture_process'](('shell','pidof',runner.PACKAGE),subprocess.CompletedProcess([],2,b'',b''),rows,'manual-prepare','restored-default-tls12')
+                except ValueError:pass
+                else:raise AssertionError('An unsuccessful query was accepted')
+                self.assertEqual(len(rows),1,'The failed native query must remain in the original report')
+                self.assertEqual(rows[0]['status'],'invalid-command-result')
+            with self.assertRaises(AssertionError):invariant()
+            SEMANTIC_MUTANTS.append(label);NEGATIVE_CONTROLS.append('compiled process observation mutant '+label)
+
+    def test_original_writer_guard_still_rejects_recorded_live_process_without_mutation(self):
+        rows=[];events=[]
+        def adb(*parts,**kwargs):
+            if parts==('shell','id','-u'):return subprocess.CompletedProcess(parts,0,b'2000\n',b'')
+            if parts[:2]==('shell','pidof'):
+                live=parts[2]==runner.PACKAGE+':profile3';result=subprocess.CompletedProcess(parts,0 if live else 1,b'8492\n' if live else b'',b'')
+                runner.observe_fixture_process(parts,result,rows,'manual-prepare','restored-default-tls12');return result
+            events.append(parts);raise AssertionError('Scope mutation after live writer')
+        with self.assertRaises(ValueError):runner.prepare_manual_scope(adb,SOURCE,RUN,CASE_SPECS[4],'restored-default-tls12')
+        self.assertFalse(events);self.assertEqual(rows[-1]['processName'],runner.PACKAGE+':profile3');self.assertEqual(rows[-1]['pids'],[8492])
+        self.assertEqual(rows[-1]['phase'],'manual-prepare');NEGATIVE_CONTROLS.append('recorded live writer still blocks original mutation guard')
+
 class ProducerBoundaryControls(unittest.TestCase):
     def test_finally_helper_freezes_after_late_socket_and_all_cleanup_even_on_failure(self):
         events=[];errors=[];cleanup={k:False for k in ('appStopped','appDataCleared','reverseRemoved','serverClosed','serverThreadsJoined','caRemoved','privateMaterialRemoved','shellUidRestored')}

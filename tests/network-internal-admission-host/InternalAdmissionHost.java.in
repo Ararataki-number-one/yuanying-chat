@@ -1,0 +1,85 @@
+package local.pocketchat;
+import java.util.*;
+import java.util.concurrent.*;
+import java.util.function.Consumer;
+import java.io.IOException;
+import org.json.*;
+
+/** Explicit scheduler/observer boundaries; current fixture bodies are inserted verbatim. */
+public final class InternalAdmissionHost {
+  final Activity a=new Activity();final JSONObject admissionEvidence=new JSONObject();
+  @FIXTURE_METHODS@
+  static final JSONArray checks=new JSONArray();
+  static void check(String name,boolean value){checks.put(J.obj("name",name,"pass",value));if(!value)throw new AssertionError(name);}
+  static TaskGuardSnapshot guard(boolean known,boolean busy,int slot,int generation,String owner,long navigation,String binding,String document,long sequence,long work){return new TaskGuardSnapshot(known,busy,false,false,false,false,slot,generation,owner,navigation,binding,document,sequence,work);}
+  static TaskGuardSnapshot freshGuard(){return guard(true,false,0,3,"environment-owner",7,"resource-binding","document-1234567890123456",1,11);}
+  static boolean rejected(Action action){try{action.run();return false;}catch(Exception expected){return true;}}
+  interface Action {void run()throws Exception;}
+  static void guards(){
+    ChatSession session=new ChatSession();TaskGuardSnapshot current=freshGuard();session.current=current;
+    check("Exact current idle guard is admitted",currentIdleGuard(session,current));
+    check("An absent response is never considered known idle",!currentIdleGuard(session,null));
+    check("Unknown response cannot borrow a cached known idle observation",!currentIdleGuard(session,guard(false,false,0,3,"environment-owner",7,"resource-binding","document-1234567890123456",1,11)));
+    session.current=guard(false,false,0,3,"environment-owner",7,"resource-binding","document-1234567890123456",1,11);
+    check("A retired current guard cannot borrow a former fresh callback",!currentIdleGuard(session,current));session.current=current;
+    for(int changed=0;changed<8;changed++){
+      TaskGuardSnapshot old=guard(true,changed==7,changed==0?1:0,changed==1?4:3,changed==2?"other-owner":"environment-owner",changed==3?8:7,changed==4?"other-binding":"resource-binding",changed==5?"other-document-123456789012":"document-1234567890123456",1,changed==6?12:11);
+      check("Changed guard owner/document/work or busy field "+changed+" is rejected",!currentIdleGuard(session,old));
+    }
+    session.current=guard(true,false,0,3,"environment-owner",7,"resource-binding","document-1234567890123456",9,11);
+    check("A later still-idle observation on the same owned document need not reuse an old sequence",currentIdleGuard(session,current));
+    session.operation=true;
+    session.current=new TaskGuardSnapshot(true,false,false,false,true,false,0,3,"environment-owner",7,"resource-binding","document-1234567890123456",9,11);
+    check("Unowned operation remains busy under the exact production taskIdle gate",!currentIdleGuard(session,current));
+  }
+  static void precondition()throws Exception{
+    InternalAdmissionHost host=new InternalAdmissionHost();host.a.session.current=guard(false,false,0,3,"environment-owner",7,"resource-binding","document-1234567890123456",1,11);
+    final InternalAdmissionHost delayed=host;host.a.tick=()->{if(delayed.a.polls==3){delayed.a.session.current=freshGuard();delayed.a.session.answer(freshGuard());}};
+    host.idle();check("Fixture waits for the real callback despite all legacy busy flags being idle",host.a.polls==3&&host.a.session.requests==1);
+    check("Fresh observer request stays inside the existing 15-second idle wait",host.a.budget==15000);
+    check("Fixture preserves synchronization and waits for the original environment IO barrier",host.a.session.syncs==1&&host.a.session.environmentIo.barriers==1);
+    check("Fixture still removes only the two controlled provider wake callbacks",host.a.provider.main.removed==2);
+    host=new InternalAdmissionHost();host.a.session.current=freshGuard();final InternalAdmissionHost noReply=host;
+    check("Cached known idle alone cannot substitute for a requested callback",rejected(noReply::idle)&&host.a.session.requests==1&&host.a.session.environmentIo.barriers==0);
+    host=new InternalAdmissionHost();host.a.session.current=freshGuard();host.a.session.reply=guard(false,false,0,3,"environment-owner",7,"resource-binding","document-1234567890123456",1,11);final InternalAdmissionHost unknown=host;
+    check("A native unknown callback fails closed without a fabricated known bit",rejected(unknown::idle));
+    host=new InternalAdmissionHost();host.a.session.reply=freshGuard();host.a.session.current=freshGuard();host.a.session.inFlight=true;final InternalAdmissionHost busy=host;
+    check("Fresh observer idle does not remove the original native in-flight guard",rejected(busy::idle));
+  }
+  static void diagnostic()throws Exception{
+    InternalAdmissionHost host=new InternalAdmissionHost();JSONObject offered=J.obj("done",false,"phase","choice-required","choice",J.obj("operationId","saved-operation","token","fixture-token","candidateId","candidate","reason","当前任务状态待确认"));
+    host.a.provider.jobs.put("saved-operation",offered);
+    check("Choice-required is preserved as pending rather than synthesized complete",!host.applicationDone("saved-operation"));
+    JSONObject evidence=host.admissionEvidence.getJSONObject("job");
+    check("Diagnostic retains the original native choice and reason",evidence.toString().equals(offered.toString())&&host.admissionEvidence.getJSONObject("guard").getBoolean("known"));
+    evidence.put("phase","altered-copy");check("Diagnostic JSON is an owned copy and cannot mutate the real provider job",offered.getString("phase").equals("choice-required"));
+    host.a.provider.jobs.put("saved-operation",J.obj("done",true,"ok",false));
+    check("A failed production completion remains failed while satisfying only the completion wait",host.applicationDone("saved-operation")&&!host.a.provider.jobs.get("saved-operation").getBoolean("ok"));
+    check("Missing job is observed without manufacturing a completion",!host.applicationDone("missing")&&host.admissionEvidence.isNull("job"));
+  }
+  public static void main(String[] args)throws Exception{guards();precondition();diagnostic();System.out.println(J.obj("status","passed","passed",checks.length(),"checks",checks));}
+}
+final class Activity {
+  final ChatSession session=new ChatSession();final NetworkUiProvider provider=new NetworkUiProvider();int polls;long budget;Runnable tick=()->{};
+  interface Condition {boolean get()throws Exception;}
+  <T>T ui(Callable<T> action)throws Exception{return action.call();}
+  void await(String name,Condition condition,long timeout)throws Exception{budget=timeout;for(polls=1;polls<=6;polls++){tick.run();if(condition.get())return;}throw new IOException(name+" timed out");}
+}
+final class ChatSession {
+  TaskGuardSnapshot current=InternalAdmissionHost.freshGuard(),reply;Consumer<TaskGuardSnapshot> waiter;int requests,syncs;
+  boolean configurationCapture,operation,inFlight,connecting,navigating;long stateEpoch=7,navigationEpoch=7;
+  final Audit audit=new Audit();final BarrierExecutor environmentIo=new BarrierExecutor();
+  TaskGuardSnapshot taskGuardSnapshot(){return current;}
+  void requestTaskGuardStatus(String id,Consumer<TaskGuardSnapshot> callback){requests++;waiter=callback;if(reply!=null)answer(reply);}
+  void answer(TaskGuardSnapshot value){Consumer<TaskGuardSnapshot> pending=waiter;waiter=null;if(pending!=null)pending.accept(value);}
+  void sync(){syncs++;}boolean currentReplyActive(){return false;}boolean fileWorkActive(){return false;}
+  static final class Audit {boolean running;}
+}
+final class BarrierExecutor {int barriers;CompletableFuture<Void> submit(Runnable action){action.run();barriers++;return CompletableFuture.completedFuture(null);}}
+final class NetworkUiProvider {
+  final Map<String,JSONObject> jobs=new HashMap<>();final Main main=new Main();final Runnable drain=()->{},pendingWake=()->{};
+  @TASK_IDLE@
+  static final class Main {int removed;void removeCallbacks(Runnable value){removed++;}}
+}
+final class ChromiumRouteLease {static boolean held(){return false;}}
+final class NetworkCatalog {static void put(JSONObject object,String key,Object value){try{object.put(key,value);}catch(JSONException error){throw new IllegalStateException(error);}}}

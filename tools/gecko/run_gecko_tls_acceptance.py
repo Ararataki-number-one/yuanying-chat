@@ -35,6 +35,23 @@ def manual_claim(raw):
 def scope_processes():
     return [PACKAGE]+[PACKAGE+':profile'+str(slot) for slot in range(1,8)]
 
+def observe_fixture_process(parts,result,observations,phase,label,command_error=''):
+    """Preserve raw command outcome without mistaking a failed query for absence."""
+    require(type(parts) is tuple and len(parts)==3 and parts[:2]==('shell','pidof') and parts[2] in scope_processes(),'fixed fixture process observation')
+    require(type(observations) is list and len(observations)<4096 and phase in ('initial','cold-stop','manual-prepare','collect','resident','cleanup','combined') and (label=='' or label in {s[0] for s in CASE_SPECS}),'bounded fixture process observation owner')
+    require(command_error in ('','TimeoutExpired','OSError'),'fixed process command exception type')
+    stdout=result.stdout;stderr=result.stderr;code=result.returncode
+    typed=type(stdout) is bytes and type(stderr) is bytes and type(code) is int
+    bounded=typed and len(stdout)<=512 and len(stderr)<=4096
+    pids=[]
+    if bounded and re.fullmatch(rb'[1-9][0-9]{0,9}(?:[ \t]+[1-9][0-9]{0,9})*[\r\n]*',stdout):pids=[int(value) for value in stdout.split()]
+    valid=not command_error and bounded and not stderr and ((code==0 and 0<len(pids)<=16 and len(set(pids))==len(pids)) or (code==1 and not stdout.strip()))
+    row=dict(sequence=len(observations)+1,phase=phase,label=label,processName=parts[2],commandErrorType=command_error or None,returnCode=code if type(code) is int else None,pids=pids if valid else [],status=('present' if pids else 'absent') if valid else 'invalid-command-result',stdoutBytes=len(stdout) if type(stdout) is bytes else None,stderrBytes=len(stderr) if type(stderr) is bytes else None,stdoutSha256=hashlib.sha256(stdout).hexdigest() if type(stdout) is bytes else None,stderrSha256=hashlib.sha256(stderr).hexdigest() if type(stderr) is bytes else None)
+    observations.append(row)
+    require(valid,'fixed process observation failed for '+parts[2])
+    return row
+
+
 def prepare_manual_scope(adb,source,run,spec,before_label,prearmed=None):
     label,slot=spec[:2]
     require(not spec[6] and adb('shell','id','-u').stdout.strip()==b'2000','cold manual scope shell owner')
@@ -109,14 +126,30 @@ def main():
     output=a.output.absolute();require(not output.exists() and all(not q.is_symlink() for q in (output,*output.parents)),'fresh ordinary output')
     gradle=(ROOT/'app/build.gradle').read_text();identity=expected_build(a.apk,source,tree,re.search(r"versionName '([^']+)'",gradle)[1],int(re.search(r'versionCode ([0-9]+)',gradle)[1]))
     before=snapshot();output.mkdir(parents=True);run=uuid.uuid4().hex
-    server=certificates=ca=None;reversed_port=False;entries=[];process_checks=[];errors=[];host_tls={};guest={};checked=None;manual_checks=[];combined=None;combined_finding=None
+    server=certificates=ca=None;reversed_port=False;entries=[];process_checks=[];errors=[];host_tls={};guest={};checked=None;manual_checks=[];combined=None;combined_finding=None;fixture_process_observations=[];observation_context=['initial','']
     cleanup=dict(appStopped=False,appDataCleared=False,reverseRemoved=False,serverClosed=False,serverThreadsJoined=False,caRemoved=False,privateMaterialRemoved=False,shellUidRestored=False)
-    def adb(*parts,check=True,timeout=25):return subprocess.run([a.adb,'-s',a.serial,*parts],capture_output=True,check=check,timeout=timeout)
+    def adb(*parts,check=True,timeout=25):
+        fixed_pidof=len(parts)==3 and parts[:2]==('shell','pidof') and parts[2] in scope_processes()
+        try:result=subprocess.run([a.adb,'-s',a.serial,*parts],capture_output=True,check=False if fixed_pidof else check,timeout=timeout)
+        except (subprocess.TimeoutExpired,OSError) as error:
+            if fixed_pidof:
+                outcome=subprocess.CompletedProcess(parts,None,getattr(error,'stdout',None) or b'',getattr(error,'stderr',None) or b'')
+                try:observe_fixture_process(parts,outcome,fixture_process_observations,*observation_context,command_error='TimeoutExpired' if isinstance(error,subprocess.TimeoutExpired) else 'OSError')
+                except ValueError:pass
+            raise
+        if fixed_pidof:
+            observe_fixture_process(parts,result,fixture_process_observations,*observation_context)
+            if check:result.check_returncode()
+        return result
+    def prepare_scope(spec,before_label,prearmed):
+        observation_context[:]=['manual-prepare',spec[0]]
+        return prepare_manual_scope(adb,source,run,spec,before_label,prearmed)
     def cold_stop():
         adb('shell','am','force-stop',PACKAGE)
         for process in scope_processes():require(not adb('shell','pidof',process,check=False).stdout.strip(),'old environment remains alive')
     def collect(spec,scoped):
         label,slot,mode,rfp,retain,stale,resample,version,success,service=spec
+        observation_context[:]=['collect',label]
         if scoped is not None:manual_checks.append(scoped)
         case=uuid.uuid4().hex;binding=server.begin(label,case)
         entry=dict(label=label,binding=binding,status='failed');entries.append(entry)
@@ -138,6 +171,7 @@ def main():
         require(adb('shell','pidof',PACKAGE+':profile'+str(slot)).stdout.decode('ascii').strip()==str(finding['pid']),'actual native report PID owner')
         entry.update(status='passed',finding=finding)
     def resident(stage):
+        observation_context[:]=['resident','']
         require(adb('shell','id','-u').stdout.strip()==b'2000','actual shell UID2000')
         selected={e['label']:e for e in entries}
         for label in ('concurrent-strict-tls13','concurrent-default-tls12'):
@@ -154,23 +188,29 @@ def main():
         server=TlsAcceptanceServer(certificates,run,source,(ROOT/'tests/gecko/assets/tls-acceptance-page.js').read_text(),(ROOT/'tests/gecko/assets/tls-acceptance-worker.js').read_text()).start()
         adb('reverse','tcp:'+str(GUEST_PORT),'tcp:'+str(server.port));reversed_port=True
         require(adb('shell','pm','clear',PACKAGE).stdout.strip()==b'Success','fresh integration-only initial data')
-        run_original_cases(cold_stop,lambda spec,before_label,prearmed:prepare_manual_scope(adb,source,run,spec,before_label,prearmed),collect,resident)
+        def observed_cold_stop():
+            observation_context[:]=['cold-stop','']
+            cold_stop()
+        run_original_cases(observed_cold_stop,prepare_scope,collect,resident)
         validate_cross(entries,process_checks)
         validate_manual_cross(entries,manual_checks,run=run,source=source)
     except Exception as error:errors.append(dict(stage='actual-production-native-and-wire',errorType=type(error).__name__,reason=str(error)[:400] if isinstance(error,ValueError) and str(error).startswith(('Gecko product TLS evidence:','Product TLS fixture:')) else 'actual-production-workload-failed'))
     finally:
+        observation_context[:]=['cleanup','']
         host=finish_resources(adb,cold_stop,server,certificates,ca,reversed_port,cleanup,errors,host_tls)
     if len(entries)==len(CASE_SPECS) and all(e['status']=='passed' for e in entries) and host is not None:
         try:checked=validate_wire(host,entries,run=run,source=source)
         except Exception as error:errors.append(dict(stage='final-original-wire-replay',errorType=type(error).__name__,reason=str(error)[:400]))
     if checked is not None and not errors and all(cleanup.values()):
-        try:combined,combined_finding=run_combo(adb,output,source,tree,identity,run)
+        try:
+            observation_context[:]=['combined','']
+            combined,combined_finding=run_combo(adb,output,source,tree,identity,run)
         except Exception as error:
             if isinstance(error,ComboFailure):combined=error.envelope
             errors.append(dict(stage='independent-cold-cpu-ip-tls13',errorType=type(error).__name__,reason=str(error)[:400] if isinstance(error,ValueError) else 'combined-workload-failed'))
     stable=snapshot()==before;passed=checked is not None and combined_finding is not None and not errors and all(cleanup.values()) and stable
     public_entries=[{k:v for k,v in e.items() if k!='device'} for e in entries]
-    result=dict(schema=1,kind='gecko-production-tls-v1',status='passed' if passed else 'failed',diagnosticOnly=True,releaseAcceptance=False,sourceCommit=source,sourceTree=tree,runId=os.environ.get('GITHUB_RUN_ID'),runAttempt=os.environ.get('GITHUB_RUN_ATTEMPT'),runNonce=run,expectedBuildIdentity=identity,guest=guest,caseRecords=public_entries,processChecks=process_checks,manualScopeChecks=manual_checks,combinedCase=combined,combinedFinding=combined_finding,coldCpuIpTlsCombinationMeasured=passed,hostTls=host_tls,host=host,cleanup=cleanup,errors=errors,checked=checked,sourceFiles=before,executionInputsUnchanged=stable,actualAndroidExecution=any(e['status']=='passed' for e in entries),actualGeckoExecution=any(e['status']=='passed' for e in entries),productionGeckoWebTlsWorkloadPassed=passed,persistentServiceWorkerTlsMeasured=passed,workerCoverageVerified=False,serviceWorkerCoverageVerified=False,fullTlsFingerprintEmulation=False,quicWireVerified=False,rawFatalAlertPacketDecoded=False,appIndependentTlsStacksCovered=False,scope='Actual production Gecko web connections under per-environment cold native TLS policy, exact native DEFAULT/effective readback, trusted controlled TLS12/TLS13 peers and original ClientHello bytes. Real desired-only UI pending state, nonempty old USER reconciliation, retained registration with separately measured Service Worker fetch across true cold start, and simultaneous isolated environments. Independent app downloader/connection checks/proxy entrance Java or other TLS stacks, arbitrary TLS fingerprints and QUIC are not covered.')
+    result=dict(schema=1,kind='gecko-production-tls-v1',status='passed' if passed else 'failed',diagnosticOnly=True,releaseAcceptance=False,sourceCommit=source,sourceTree=tree,runId=os.environ.get('GITHUB_RUN_ID'),runAttempt=os.environ.get('GITHUB_RUN_ATTEMPT'),runNonce=run,expectedBuildIdentity=identity,guest=guest,caseRecords=public_entries,processChecks=process_checks,manualScopeChecks=manual_checks,fixtureProcessObservations=fixture_process_observations,combinedCase=combined,combinedFinding=combined_finding,coldCpuIpTlsCombinationMeasured=passed,hostTls=host_tls,host=host,cleanup=cleanup,errors=errors,checked=checked,sourceFiles=before,executionInputsUnchanged=stable,actualAndroidExecution=any(e['status']=='passed' for e in entries),actualGeckoExecution=any(e['status']=='passed' for e in entries),productionGeckoWebTlsWorkloadPassed=passed,persistentServiceWorkerTlsMeasured=passed,workerCoverageVerified=False,serviceWorkerCoverageVerified=False,fullTlsFingerprintEmulation=False,quicWireVerified=False,rawFatalAlertPacketDecoded=False,appIndependentTlsStacksCovered=False,scope='Actual production Gecko web connections under per-environment cold native TLS policy, exact native DEFAULT/effective readback, trusted controlled TLS12/TLS13 peers and original ClientHello bytes. Real desired-only UI pending state, nonempty old USER reconciliation, retained registration with separately measured Service Worker fetch across true cold start, and simultaneous isolated environments. Independent app downloader/connection checks/proxy entrance Java or other TLS stacks, arbitrary TLS fingerprints and QUIC are not covered.')
     raw=(json.dumps(result,ensure_ascii=False,indent=2)+'\n').encode();require(len(raw)<=4*1024*1024,'bounded final original summary');(output/'results.json').write_bytes(raw)
     print(json.dumps({k:result[k] for k in ('status','sourceCommit','productionGeckoWebTlsWorkloadPassed','executionInputsUnchanged')}));return 0 if passed else 1
 
