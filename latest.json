@@ -1,14 +1,14 @@
 {
   "schema": 1,
   "package": "local.pocketchat",
-  "version": "2.1.1",
-  "versionCode": 103,
+  "version": "2.1.2",
+  "versionCode": 104,
   "abi": "arm64-v8a",
   "minSdk": 26,
-  "bytes": 119656262,
-  "sha256": "b8d717470963e03e225c1278dc5dead761c5c2ea77e219770e6743a4ef7aacf6",
+  "bytes": 119726305,
+  "sha256": "b24897ec4369f278e97d1526db2fd32d0ae63d54b1b15ea52125b64f2c5c27e9",
   "signerSha256": "f0afa2ef2b9ac68020b374276318b12d2bb4de65d2a3b788194de551356b9434",
-  "downloadUrl": "https://github.com/Ararataki-number-one/yuanying-chat/releases/download/v2.1.1-gecko/PocketChat-2.1.1-gecko-arm64.apk",
-  "notes": "# 2.1.1 · 两核网址切换与独立指纹配置\n\n版本号 `2.1.1`，版本代码 `103`。本文件记录实现范围；正式安装包及发布状态以 GitHub Release 为准。\n\n## 两个内核都能打开其他网站\n\nGecko 增加原生地址／搜索入口与主页按钮，可打开公共 HTTP、HTTPS 网站。Chromium 保留多标签和地址栏。默认网站仍为 `https://chatgpt.com/`，环境设置中的首页对两个内核生效。两核分别保存登录和 Cookie。\n\nGecko 的普通网站位置与 ChatGPT 会话位置分别保存。在其他网站不注入 ChatGPT 会话、附件、回复检测或草稿操作脚本；导航后的旧异步回调不能把这些操作带入新网站。现有 Gecko 原生隐私模板仍然生效。\n\n## Chromium 独立指纹配置\n\n每个环境单独保存 Chromium 的显示模式、保护模式与稳定随机种子。配置用 Android Keystore 加密，并校验环境身份、配置版本和当前运行代际。新环境不会继承已删除环境的指纹配置，重启或换页不能把历史确认显示为当前确认。\n\n在网页加载之前配置原生 UA／UA-CH，使用当前 WebView 提供者的实际 Chromium 版本。保护模式要求运行时支持 UA 元数据和文档开始脚本；缺少能力时阻止按该配置加载，并显示原因。\n\n可选的文档保护包括二维 Canvas 图像读出／导出、WebGL 调试显卡标识、音频 `copyFromChannel` 复制读出和页面 WebRTC 连接构造器。支持的框架也在文档开始阶段应用脚本。保护种子在同一环境、同一来源保持稳定，可显式更换；保存配置或更换种子会先提示重新加载所有 Chromium 标签页。\n\n原生设置回读与当前页面自检分别显示。它们只确认对应字段和当前运行，不代表完整指纹验证通过。\n\n## 已知范围\n\nChromium 使用 Android System WebView。Worker、Service Worker、OffscreenCanvas、AudioWorklet、WebGL `readPixels`、实时音频缓冲、独立时区、字体、硬件、系统语言、TLS 和 HTTP/2 指纹未覆盖。电脑版不会把 Android 变成桌面操作系统。页面 WebRTC 限制不覆盖 Worker，HTTP 代理不能代替设备 VPN。\n\nGecko 使用现有原生保护链路，其支持范围与确认记录在 Gecko 设置和自检中单独查看。不同内核的保护范围不相同。\n\n验证结果随同源构建报告提供；不以主机适配器或桌面 Chromium 的结果代替 Android 验收。",
-  "sourceCommit": "8a0a487002993f5dacc02ed313fab00648ccb79a"
+  "downloadUrl": "https://github.com/Ararataki-number-one/yuanying-chat/releases/download/v2.1.2-gecko/PocketChat-2.1.2-gecko-arm64.apk",
+  "notes": "# 2.1.2 · Worker 请求策略与原生网页时区\n\n版本号 `2.1.2`，版本代码 `104`。本页说明实现范围，正式安装包及验证结果以 GitHub Release 为准。\n\n## 保留现有内核\n\nGecko 沿用原有 GeckoView SDK 与原生库；Chromium 继续使用 Android System WebView。默认网站仍为 ChatGPT，两个内核均可切换网址。\n\n## Worker 策略\n\nGecko 为应用允许的公共 HTTP、HTTPS 请求增加身份对齐：请求头采用当前环境真实 Gecko 会话的 User-Agent，覆盖经过相同网络请求链路的 Worker 请求。页面读取的身份、原生会话设置与服务端收到的请求头分别确认。底层 SDK 对内部私有地址的行为不因此改变；这项策略不等于完整桌面身份、TLS 或 HTTP/2 指纹伪装。\n\nChromium 新增可选的 Worker 限制，默认保持允许。限制模式在文档开始阶段限制页面及受支持框架新建 Dedicated Worker、Shared Worker 和注册 Service Worker，并使用原生设置阻止 Service Worker 联网。设置需要当前环境身份、配置版本与原生回读一致后才放行；网络线路重新建立不会取消已选的限制。\n\n页面创建限制与原生后台联网限制分别显示。已有 Worker 不会因此全部停止，已经缓存的 Service Worker 内容仍可能执行。这些限制不是 Worker 内部指纹伪装。\n\n## Gecko 原生网页时区\n\n新增每个环境独立保存的跟随出口 IP、系统、UTC 与 IANA 时区选择，通过应用自带扩展访问现有引擎的原生上下文时区设置，不替换页面 `Date` 或 `Intl`，不修改手机系统时区。\n\n新环境默认跟随出口 IP；已保存的系统或手选时区继续保留。查询由 Gecko 自带扩展沿当前浏览器代理与 DNS 线路访问 `ipwho.is`，使用返回的 IANA 时区，再等待原生设置确认。查询失败会保留目标网址并结束加载提示，可重试或明确改为手选；不把系统时区标为 IP 匹配。受控测试使用本地合成地理服务，实际公网提供商连通性尚未核验。\n\n线路或 DNS 改变后，旧 IP 匹配失效，现有页面、回复、草稿与任务保留；确认重开或重试才准备新会话。强化保护优先沿用内核 RFP，不查询或声称 IP 匹配。\n\n自选时区在原生设置确认之前保持首次导航、恢复及重开操作等待。强化保护与自选时区冲突时保留原保护，并提示用户选择。自选时区暂时阻止不能保证首脚本前完成确认的新窗口；被阻止的有效公共网址提供“在当前页打开”入口，仍经过草稿与任务确认；系统时区模式保留原有新窗口行为。\n\n原生设置回读与当前页面实际观测分开记录。修改配置、关闭或重建网页后，旧自检结果不再标为当前。现有内核的独立 Android 能力诊断中，页面、Dedicated、Blob 和 Shared Worker 的原生时区随设置改变；Service Worker 仍可读取系统时区，不能提供完整时区隔离。该差异会在设置和保存确认中提示。能力诊断不替代当前生产应用的保存、导航、恢复及各执行环境验收。\n\n## 仍需分别验证的范围\n\nChromium 没有新增原生独立时区接口。硬件可控参数与 TLS、HTTP/2、HTTP/3 原生策略仍按后续独立阶段处理，本版本不声称已覆盖，也不承诺模拟任意设备或浏览器。\n\n最终验证须包含原有完整回归、真实 Android Worker 请求与限制、生产时区配置链路，以及原签名公开安装包核验。主机测试、桌面浏览器结果与内核能力探针分别记录。",
+  "sourceCommit": "22e09f66cb233154d7d8981037580a61c5195492"
 }
