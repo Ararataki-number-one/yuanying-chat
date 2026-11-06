@@ -133,6 +133,84 @@ jobs:
       - name: State build verification scope
         run: |
           printf '%s\n' 'Pinned upstream SDK verification, reviewed single-class source build, release/test APK compilation and lint passed. APKs remain unsigned or signed with an ephemeral synthetic key. No emulator/ARM execution, real ChatGPT login or WAN measurement is implied; no release is published.' >> "$GITHUB_STEP_SUMMARY"
+      # This branch needs one review screenshot of the real product. Keep it
+      # separate from the fixed UI acceptance workloads and their receipts.
+      - name: Retain the actual glass navigation integration APK
+        if: ${{ (github.head_ref || github.ref_name) == 'codex/compact-glass-reading' }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: glass-navigation-apk-${{ github.run_id }}-${{ github.run_attempt }}
+          path: app/build/outputs/apk/integration/app-x86_64-integration.apk
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7
+      - name: Prepare a disposable emulator for the glass screenshot
+        if: ${{ (github.head_ref || github.ref_name) == 'codex/compact-glass-reading' }}
+        timeout-minutes: 12
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p work/glass-navigation
+          exec > >(tee work/glass-navigation/setup.log) 2>&1
+          test -c /dev/kvm
+          sudo chmod a+rw /dev/kvm
+          python3 tools/gecko/prepare_android_image.py --component emulator --sdk-root "$ANDROID_HOME" --cache work/glass-navigation/packages --report work/glass-navigation/emulator-package.json
+          python3 tools/gecko/prepare_android_image.py --sdk-root "$ANDROID_HOME" --cache work/glass-navigation/packages --report work/glass-navigation/system-image.json
+          python3 tools/gecko/prepare_platform_tools.py --sdk-root "$ANDROID_HOME" --cache work/glass-navigation/packages --report work/glass-navigation/platform-tools.json
+          export ANDROID_AVD_HOME="$PWD/work/glass-navigation/avd"
+          export ANDROID_USER_HOME="$PWD/work/glass-navigation/android-user"
+          export ANDROID_EMULATOR_HOME="$PWD/work/glass-navigation/emulator-home"
+          mkdir -p "$ANDROID_AVD_HOME" "$ANDROID_USER_HOME" "$ANDROID_EMULATOR_HOME"
+          echo no | "$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager" create avd --force -n glassnavigation -p "$ANDROID_AVD_HOME/glassnavigation.avd" -k 'system-images;android-35;google_apis;x86_64'
+          "$ANDROID_HOME/emulator/emulator" -avd glassnavigation -no-window -no-audio -no-snapshot -no-boot-anim -no-metrics -accel on -port 5554 -gpu swiftshader -memory 3072 -cores 2 > work/glass-navigation/emulator.log 2>&1 &
+          echo "$!" > work/glass-navigation/emulator.pid
+          timeout 60 "$ANDROID_HOME/platform-tools/adb" -s emulator-5554 wait-for-device
+          task_glass_booted=false
+          for task_glass_attempt in $(seq 1 120); do
+            if [ "$(timeout 5 "$ANDROID_HOME/platform-tools/adb" -s emulator-5554 shell getprop sys.boot_completed | tr -d '\r')" = 1 ]; then
+              task_glass_booted=true
+              break
+            fi
+            sleep 1
+          done
+          test "$task_glass_booted" = true
+      - name: Capture the actual glass navigation screen
+        if: ${{ (github.head_ref || github.ref_name) == 'codex/compact-glass-reading' }}
+        timeout-minutes: 6
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/gecko/capture_glass_navigation.py \
+            --root "$PWD" --apk app/build/outputs/apk/integration/app-x86_64-integration.apk \
+            --build-work work/profile-build --adb "$ANDROID_HOME/platform-tools/adb" \
+            --serial emulator-5554 --aapt2 "$ANDROID_HOME/build-tools/37.0.0/aapt2" \
+            --apksigner "$ANDROID_HOME/build-tools/37.0.0/apksigner" \
+            --out work/glass-navigation 2>&1 | tee work/glass-navigation/capture.log
+      - name: Keep screenshot diagnostics and stop the disposable emulator
+        if: ${{ always() && (github.head_ref || github.ref_name) == 'codex/compact-glass-reading' }}
+        shell: bash
+        run: |
+          if [ -f work/glass-navigation/emulator.pid ]; then
+            timeout 15 "$ANDROID_HOME/platform-tools/adb" -s emulator-5554 logcat -d -s 'PocketUiVisual:I' 'AndroidRuntime:E' '*:S' > work/glass-navigation/final-logcat.txt 2>&1 || true
+            timeout 10 "$ANDROID_HOME/platform-tools/adb" -s emulator-5554 emu kill > work/glass-navigation/emulator-stop.txt 2>&1 || true
+            task_glass_pid=$(cat work/glass-navigation/emulator.pid)
+            if kill -0 "$task_glass_pid" 2>/dev/null; then
+              kill "$task_glass_pid" 2>/dev/null || true
+            fi
+          fi
+      - name: Upload glass screenshots and source evidence
+        if: ${{ always() && (github.head_ref || github.ref_name) == 'codex/compact-glass-reading' }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: glass-navigation-screenshots-${{ github.run_id }}-${{ github.run_attempt }}
+          if-no-files-found: warn
+          retention-days: 7
+          path: |
+            work/glass-navigation/*.png
+            work/glass-navigation/*.xml
+            work/glass-navigation/*.json
+            work/glass-navigation/*.log
+            work/glass-navigation/*.txt
       - name: Preserve build logs and lint report
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02

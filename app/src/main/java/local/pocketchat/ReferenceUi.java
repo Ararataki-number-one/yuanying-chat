@@ -54,18 +54,28 @@ final class ReferenceUi {
     if(buttons==null)buttons=new Button[DesignUi.NAV.length];
     LinearLayout bar=DesignUi.column(a);bar.setPadding(dp(a,12),dp(a,6),dp(a,12),dp(a,8));
     bar.setClipChildren(false);bar.setClipToPadding(false);
+    int heightDp=navHeightDp(a),height=dp(a,heightDp),radius=(heightDp+1)/2;
+    LinearLayout row=DesignUi.row(a);row.setClipChildren(false);row.setClipToPadding(false);
     LinearLayout dock=DesignUi.row(a);dock.setPadding(dp(a,5),dp(a,3),dp(a,5),dp(a,3));
-    dock.setBackground(DesignUi.glass(a,27));dock.setElevation(dp(a,3));
+    dock.setBackground(DesignUi.glass(a,radius));dock.setElevation(dp(a,3));
+    row.addView(dock,new LinearLayout.LayoutParams(0,height,1));
+    // Destinations share one pill; reading stays an independent mode control.
+    FrameLayout reading=new FrameLayout(a);reading.setBackground(DesignUi.glass(a,radius));reading.setElevation(dp(a,3));
+    LinearLayout.LayoutParams readingLayout=new LinearLayout.LayoutParams(height,height);readingLayout.setMarginStart(dp(a,12));row.addView(reading,readingLayout);
     for(int i=0;i<DesignUi.NAV.length;i++){
       final int n=i;Button b=link(a,DesignUi.NAV[i],()->action.accept(n));b.setTextSize(12);b.setSingleLine(true);
+      b.setMinWidth(dp(a,48));b.setMinimumWidth(dp(a,48));
       b.setPadding(dp(a,2),dp(a,5),dp(a,2),dp(a,5));
       b.setContentDescription(i==WorkspaceNavigation.READING?"进入专注阅读模式":DesignUi.NAV[i]);
       Ui.Icon icon=new Ui.Icon(DesignUi.GLYPHS[i],MUTED);icon.setBounds(0,0,dp(a,22),dp(a,22));
       b.setCompoundDrawables(null,icon,null,null);b.setCompoundDrawablePadding(dp(a,5));
-      dock.addView(b,new LinearLayout.LayoutParams(0,dp(a,Math.max(58,(int)(38+18*a.getResources().getConfiguration().fontScale))),1));buttons[i]=b;
+      if(i==WorkspaceNavigation.READING)reading.addView(b,new FrameLayout.LayoutParams(-1,-1));
+      else dock.addView(b,new LinearLayout.LayoutParams(0,-1,1));
+      buttons[i]=b;
     }
-    bar.addView(dock,new LinearLayout.LayoutParams(-1,-2));markNav(buttons,selected);return bar;
+    bar.addView(row,new LinearLayout.LayoutParams(-1,-2));markNav(buttons,selected);return bar;
   }
+  private static int navHeightDp(Context c){return Math.max(64,(int)Math.ceil(44+20*c.getResources().getConfiguration().fontScale));}
   static void markNav(Button[] tabs,int selected){
     if(tabs==null)return;
     for(int i=0;i<tabs.length;i++){
@@ -73,7 +83,8 @@ final class ReferenceUi {
       b.setSelected(active);b.setTextColor(active?BLUE:MUTED);
       // A light wash leaves the shared glass visible through the selected item.
       int tint=active?(AppAppearance.dark()?0x303b75bf:0x1c3984ef):Color.TRANSPARENT;
-      b.setBackground(new InsetDrawable(Ui.ripple(b.getContext(),tint,23),dp(b.getContext(),3),dp(b.getContext(),3),dp(b.getContext(),3),dp(b.getContext(),3)));
+      int radius=i==WorkspaceNavigation.READING?(navHeightDp(b.getContext())+1)/2:23;
+      b.setBackground(new InsetDrawable(Ui.ripple(b.getContext(),tint,radius),dp(b.getContext(),3),dp(b.getContext(),3),dp(b.getContext(),3),dp(b.getContext(),3)));
       Drawable icon=b.getCompoundDrawables()[1];if(icon instanceof Ui.Icon)((Ui.Icon)icon).color=active?BLUE:MUTED;b.invalidate();
     }
   }

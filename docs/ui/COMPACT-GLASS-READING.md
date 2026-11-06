@@ -3,6 +3,14 @@
 ## Design
 
 This change follows the requested four-action layout: **环境 / 网络 / 下载 / 阅读**.
+The three destinations share a floating glass capsule. Reading uses a separate
+circular glass button on its right, with a book icon and the short label 阅读;
+its accessibility label is 进入专注阅读模式. Both surfaces are 64 dp high at the
+default font size, separated by 12 dp, and grow together for larger text. The
+reading circle is always square, and each destination retains a 48 dp minimum
+touch target. The outer bar still participates in the existing keyboard and
+focus-reading visibility rules.
+
 The expanded environment capsule occupies 84% of its former flexible center
 space, with equal spaces on either side. Both compact and expanded forms use a
 globe icon and retain a 48 dp minimum touch height. The compact visual pill stays
