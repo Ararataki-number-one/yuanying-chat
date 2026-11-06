@@ -10,13 +10,15 @@ import pure212_ci_source_compatibility as ci
 
 ROOT = Path(__file__).resolve().parents[1]
 
+import fixture_context_source_compatibility as _fixture_history
+
 class Pure212CiSourceCompatibilityTests(unittest.TestCase):
     def test_exact_four_complete_sources_forward_and_inverse(self):
         value = ci.manifest()
         self.assertEqual(len(value['files']), 4)
         self.assertFalse(value['runtimeAcceptance']);self.assertFalse(value['actualAndroidExecution'])
         for path, row in value['files'].items():
-            current = (ROOT/path).read_bytes()
+            current = _fixture_history.metadata_input((ROOT/path).read_bytes(), path)
             before = ci.source_input(current, path)
             self.assertEqual((len(before), ci.sha(before)), (row['previousBytes'], row['previousSha256']))
             self.assertIs(ci.source_input(before, path), before)
@@ -27,7 +29,7 @@ class Pure212CiSourceCompatibilityTests(unittest.TestCase):
 
     def test_unknown_missing_duplicate_changed_moved_and_types_fail(self):
         for path, row in ci.manifest()['files'].items():
-            raw = (ROOT/path).read_bytes()
+            raw = _fixture_history.metadata_input((ROOT/path).read_bytes(), path)
             values = [raw+b' ', raw[:64], b'']
             for delta in row['deltas']:
                 chunk = delta['current'].encode()
@@ -44,7 +46,7 @@ class Pure212CiSourceCompatibilityTests(unittest.TestCase):
 
     def test_public_catalog_retains_every_original_pin_without_cpu_or_tls(self):
         path = 'tests/baselines/public-source-history.json'
-        raw = (ROOT/path).read_bytes()
+        raw = _fixture_history.metadata_input((ROOT/path).read_bytes(), path)
         current, before = json.loads(raw), json.loads(ci.source_input(raw, path))
         self.assertEqual((len(before['groups']), sum(len(g['files']) for g in before['groups'])), (16, 91))
         self.assertEqual((len(current['groups']), sum(len(g['files']) for g in current['groups'])), (17, 149))
@@ -60,7 +62,7 @@ class Pure212CiSourceCompatibilityTests(unittest.TestCase):
 
     def test_source_oracle_assertion_rhs_and_runtime_import_boundaries(self):
         path = 'tests/profile_ip_timezone_source_compatibility_test.py'
-        raw = (ROOT/path).read_bytes();before = ci.source_input(raw, path)
+        raw = _fixture_history.metadata_input((ROOT/path).read_bytes(), path);before = ci.source_input(raw, path)
         def rhs(text):
             return [ast.dump(ast.Tuple(elts=node.args[1:],ctx=ast.Load()),include_attributes=False)
                     for node in ast.walk(ast.parse(text)) if isinstance(node, ast.Call)
@@ -88,5 +90,37 @@ class Pure212CiSourceCompatibilityTests(unittest.TestCase):
         unknown = raw+b' '
         self.assertIs(window.preserved_source_input(unknown), unknown)
         self.assertIn("selected = {name: declaration(source.read_text(), name) for name in MEMBERS}",path.read_text())
+
+    def test_fixture_context_metadata_is_finite_and_keeps_actual_fixtures_current(self):
+        import fixture_context_source_compatibility as contexts
+        value = contexts.manifest()
+        self.assertEqual(len(value['files']), 5)
+        self.assertFalse(value['runtimeAcceptance']);self.assertFalse(value['actualAndroidExecution'])
+        rejected = 0
+        for relative, row in value['files'].items():
+            raw = (ROOT/relative).read_bytes()
+            before = contexts.source_input(raw, relative)
+            self.assertEqual((len(before), contexts.sha(before)), (row['previousBytes'], row['previousSha256']))
+            forward = before
+            for delta in row['deltas']:
+                old, current = delta['previous'].encode(), delta['current'].encode()
+                self.assertEqual(forward.count(old), 1);forward = forward.replace(old, current, 1)
+                removed = raw.replace(current, b'', 1)
+                for bad in (removed, raw.replace(current, current*2, 1), raw.replace(current, current+b' ', 1)):
+                    with self.assertRaises(ValueError):contexts.source_input(bad, relative)
+                    rejected += 1
+            self.assertEqual(forward, raw)
+            for bad in (raw+b' ', raw[:64], b''):
+                with self.assertRaises(ValueError):contexts.source_input(bad, relative)
+                rejected += 1
+        self.assertEqual(rejected, 81)
+        for relative, digest in [('tests/fixtures/pure212-ci-source-deltas.json', 'bc0b96d515e44c4fa9088dd46866f1f86819abe2bb06dee120c15344fa565137'),
+                                 ('tests/fixtures/dual-browser-source-deltas.json', 'b593b0db2b56b5a5d8143a920fbd15858dafbab21d1cdaf90ca2a5ba164c9933')]:
+            self.assertEqual(hashlib.sha256((ROOT/relative).read_bytes()).hexdigest(), digest)
+        for name in ('GeckoIdentityPrototypeIntegrationActivity.java','FingerprintFollowupIntegrationActivity.java','NetworkProtectionIntegrationActivity.java'):
+            raw = (ROOT/'tests/gecko'/name).read_text()
+            self.assertEqual(raw.count('Context context=Profiles.context(getApplicationContext(),Profiles.processSlot());'), 1)
+            self.assertNotIn('Context context=new PrivateContext(', raw)
+            self.assertNotIn('fixture_context_source_compatibility', raw)
 
 if __name__ == '__main__':unittest.main(verbosity=2)

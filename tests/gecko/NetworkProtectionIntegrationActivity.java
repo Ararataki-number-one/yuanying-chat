@@ -113,7 +113,7 @@ public final class NetworkProtectionIntegrationActivity extends Activity {
   }
   void openBrowser()throws Exception{
     ui(()->{
-      Context context=new PrivateContext(getApplicationContext(),nonce);
+      Context context=Profiles.context(getApplicationContext(),Profiles.processSlot());
       context.getSharedPreferences("chat",0).edit().clear().putString("networkMode","external").putString("proxy","").putBoolean("requireExternalVpn",false).putBoolean("networkConfigured",false).putInt("privacyLevel",0).putBoolean("backgroundWait",false).commit();
       ProfileCatalog.get(context).created(Profiles.slot(context));ChatSession.browserFactory=(c,s)->new FixtureView(c,s);owner=ChatSession.get(context);view=(FixtureView)owner.web;
       owner.handler.removeCallbacks(owner.tick);owner.networkReady=true;owner.offline=false;owner.uiVisible=true;owner.guard.setBlocked(false);

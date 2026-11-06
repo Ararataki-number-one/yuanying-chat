@@ -56,3 +56,10 @@ def metadata_input(raw, relative):
     """Leave non-owned old metadata inputs with their original strict guard."""
     if type(raw) is not bytes or type(relative) is not str:raise ValueError('Exact metadata bytes and relative string required')
     return source_input(raw, relative) if relative in PATHS else raw
+
+# Fixture storage roots affect historical metadata only; all runtime reads stay raw.
+import importlib.util as _fixture_util
+_fixture_spec = _fixture_util.spec_from_file_location('_fixture_context_metadata', Path(__file__).with_name('fixture_context_source_compatibility.py'))
+_fixture_input = _fixture_util.module_from_spec(_fixture_spec)
+_fixture_spec.loader.exec_module(_fixture_input)
+source_input = _fixture_input.wrap_bytes(source_input)

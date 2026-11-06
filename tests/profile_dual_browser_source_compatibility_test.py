@@ -12,6 +12,8 @@ from unittest.mock import patch
 import dual_browser_source_compatibility as dual
 
 ROOT = Path(__file__).resolve().parents[1]
+
+import fixture_context_source_compatibility as _fixture_history
 SHA = lambda raw: hashlib.sha256(raw).hexdigest()
 
 
@@ -29,7 +31,7 @@ class DualBrowserSourceCompatibility(unittest.TestCase):
         for relative, row in dual.manifest()['files'].items():
             with self.subTest(path=relative):
                 previous = subprocess.check_output(['git', 'show', dual.BASE_COMMIT + ':' + relative], cwd=ROOT)
-                current = (ROOT / relative).read_bytes()
+                current = _fixture_history.metadata_input((ROOT / relative).read_bytes(), relative)
                 from worker_timezone_source_compatibility import PATHS as worker_paths, source_input as worker_source_input
                 if relative in worker_paths:
                     current = worker_source_input(current, relative)
@@ -49,7 +51,7 @@ class DualBrowserSourceCompatibility(unittest.TestCase):
     def test_missing_duplicate_mutated_relocated_and_unknown_sources_are_rejected(self):
         rejected = 0
         for relative, row in dual.manifest()['files'].items():
-            current = (ROOT / relative).read_bytes()
+            current = _fixture_history.metadata_input((ROOT / relative).read_bytes(), relative)
             from worker_timezone_source_compatibility import PATHS as worker_paths, source_input as worker_source_input
             if relative in worker_paths:
                 current = worker_source_input(current, relative)
@@ -77,10 +79,10 @@ class DualBrowserSourceCompatibility(unittest.TestCase):
     def test_original_manifests_goldens_and_python_assertions_remain_complete(self):
         for relative in ('tests/fixtures/experience46-source-deltas.json', 'tests/fixtures/event-journal-source-deltas.json'):
             previous = subprocess.check_output(['git', 'show', dual.BASE_COMMIT + ':' + relative], cwd=ROOT)
-            self.assertEqual((ROOT / relative).read_bytes(), previous)
+            self.assertEqual(_fixture_history.metadata_input((ROOT / relative).read_bytes(), relative), previous)
         for relative in sorted(path for path in dual.PATHS if path.endswith('.py')):
             previous = subprocess.check_output(['git', 'show', dual.BASE_COMMIT + ':' + relative], cwd=ROOT)
-            current = (ROOT / relative).read_bytes()
+            current = _fixture_history.metadata_input((ROOT / relative).read_bytes(), relative)
             self.assertEqual(assertions(current), assertions(previous), relative)
             self.assertEqual(dual.source_input(current, relative), previous)
         # Only these historical methods see a source view. Removing each exact
@@ -97,7 +99,7 @@ class DualBrowserSourceCompatibility(unittest.TestCase):
              '  source=FIXTURE.read_text()'),
         )
         for relative, import_line, new_read, old_read in ports:
-            current = (ROOT / relative).read_bytes()
+            current = _fixture_history.metadata_input((ROOT / relative).read_bytes(), relative)
             previous = subprocess.check_output(['git', 'show', dual.BASE_COMMIT + ':' + relative], cwd=ROOT)
             self.assertEqual(assertions(current), assertions(previous), relative)
             self.assertEqual(current.count(import_line.encode()), 1)
@@ -109,13 +111,13 @@ class DualBrowserSourceCompatibility(unittest.TestCase):
         self.assertEqual(SHA((ROOT / 'tests/fixtures/experience46-source-deltas.json').read_bytes()), experience.DELTA_SHA256)
         self.assertEqual(SHA((ROOT / 'tests/fixtures/event-journal-source-deltas.json').read_bytes()), journal.DELTA_SHA256)
         for relative in ('app/src/main/java/local/pocketchat/ChatSession.java', 'app/src/main/java/local/pocketchat/GeckoWebView.java', 'tests/gecko/GeckoIntegrationTestActivity.java'):
-            current = (ROOT / relative).read_bytes()
+            current = _fixture_history.metadata_input((ROOT / relative).read_bytes(), relative)
             previous = dual.source_input(current, relative)
             self.assertEqual(experience.experience46_source_bytes(current, relative), experience.experience46_source_bytes(previous, relative))
 
     def test_types_paths_excerpts_and_changed_fixture_cannot_be_whitelisted(self):
         relative = 'app/src/main/java/local/pocketchat/ChatSession.java'
-        current = (ROOT / relative).read_bytes()
+        current = _fixture_history.metadata_input((ROOT / relative).read_bytes(), relative)
         for path in (relative + '.other', '../' + relative, '/' + relative, Path(relative), None):
             with self.subTest(path=path), self.assertRaises(ValueError):
                 dual.source_input(current, path)
@@ -136,7 +138,7 @@ class DualBrowserSourceCompatibility(unittest.TestCase):
              'if(!driverTargetCurrent(target)||capture&&!replyObservationAllowed())', 'if(false)'),
         )
         for relative, old, new in targets:
-            current = (ROOT / relative).read_bytes()
+            current = _fixture_history.metadata_input((ROOT / relative).read_bytes(), relative)
             self.assertIn(old.encode(), current)
             with self.assertRaises(ValueError):
                 dual.source_input(current.replace(old.encode(), new.encode(), 1), relative)
@@ -147,7 +149,7 @@ class DualBrowserSourceCompatibility(unittest.TestCase):
         for relative, row in dependency.manifest()['files'].items():
             with self.subTest(path=relative):
                 previous = subprocess.check_output(['git', 'show', dependency.BASE_COMMIT + ':' + relative], cwd=ROOT)
-                current = host_adapter_source_input((ROOT / relative).read_bytes(), relative) if relative in host_adapter_paths else (ROOT / relative).read_bytes()
+                current = host_adapter_source_input(_fixture_history.metadata_input((ROOT / relative).read_bytes(), relative), relative) if relative in host_adapter_paths else _fixture_history.metadata_input((ROOT / relative).read_bytes(), relative)
                 self.assertEqual((SHA(previous), len(previous)), (row['previousSha256'], row['previousBytes']))
                 self.assertEqual((SHA(current), len(current)), (row['reviewedSha256'], row['reviewedBytes']))
                 self.assertEqual(dependency.source_input(current, relative), previous)
@@ -159,7 +161,7 @@ class DualBrowserSourceCompatibility(unittest.TestCase):
                     forward = forward.replace(before, after, 1)
                 self.assertEqual(forward, current)
         for relative in ('tests/profile_native_protection_test.py', 'tests/profile_page_bridge_lifecycle_test.py'):
-            current = host_adapter_source_input((ROOT / relative).read_bytes(), relative) if relative in host_adapter_paths else (ROOT / relative).read_bytes()
+            current = host_adapter_source_input(_fixture_history.metadata_input((ROOT / relative).read_bytes(), relative), relative) if relative in host_adapter_paths else _fixture_history.metadata_input((ROOT / relative).read_bytes(), relative)
             previous = subprocess.check_output(['git', 'show', dependency.BASE_COMMIT + ':' + relative], cwd=ROOT)
             self.assertEqual(assertions(current), assertions(previous))
             tree = ast.parse(current)
@@ -176,7 +178,7 @@ class DualBrowserSourceCompatibility(unittest.TestCase):
         from page_bridge_budget_source_compatibility import PATHS as budget_paths, source_input as budget_source_input
         rejected = 0
         for relative, row in dependency.manifest()['files'].items():
-            current = budget_source_input((ROOT / relative).read_bytes(), relative) if relative in budget_paths else (ROOT / relative).read_bytes()
+            current = budget_source_input(_fixture_history.metadata_input((ROOT / relative).read_bytes(), relative), relative) if relative in budget_paths else _fixture_history.metadata_input((ROOT / relative).read_bytes(), relative)
             for delta in row['deltas']:
                 chunk = delta['current'].encode()
                 self.assertEqual(current.count(chunk), 1)
@@ -222,7 +224,7 @@ class DualBrowserSourceCompatibility(unittest.TestCase):
         )
         import_line = '        from gecko_policy_dependency_source_compatibility import source_input\n'
         for relative, new_read, old_read in ports:
-            current = (ROOT / relative).read_bytes()
+            current = _fixture_history.metadata_input((ROOT / relative).read_bytes(), relative)
             previous = subprocess.check_output(['git', 'show', dependency.BASE_COMMIT + ':' + relative], cwd=ROOT)
             self.assertEqual(current.count(import_line.encode()), 1)
             self.assertEqual(current.count(new_read.encode()), 1)

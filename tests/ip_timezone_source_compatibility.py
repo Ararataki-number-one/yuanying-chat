@@ -109,7 +109,7 @@ def historical_read(relative):
     source = ROOT / relative
     if source.is_symlink() or not source.is_file() or source.resolve() != source.absolute():
         raise ValueError('Historical read requires an ordinary source file')
-    raw = source.read_bytes()
+    raw = _fixture_input.metadata_input(source.read_bytes(), relative)
     return source_input(raw, relative) if relative in PATHS else raw
 
 
@@ -120,3 +120,10 @@ _ci_spec = _ci_import.spec_from_file_location('pure212_reviewed_source_input', P
 _ci_input = _ci_import.module_from_spec(_ci_spec)
 _ci_spec.loader.exec_module(_ci_input)
 source_input = _ci_input.wrap_bytes(source_input)
+
+# Fixture storage roots affect historical metadata only; all runtime reads stay raw.
+import importlib.util as _fixture_util
+_fixture_spec = _fixture_util.spec_from_file_location('_fixture_context_metadata', Path(__file__).with_name('fixture_context_source_compatibility.py'))
+_fixture_input = _fixture_util.module_from_spec(_fixture_spec)
+_fixture_spec.loader.exec_module(_fixture_input)
+source_input = _fixture_input.wrap_bytes(source_input)

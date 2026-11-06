@@ -134,6 +134,7 @@ def main():
     identity = expected_build(ROOT / 'app/build/outputs/apk/integration/app-x86_64-integration.apk',
                               source, tree, re.search(r"versionName '([^']+)'", settings).group(1),
                               int(re.search(r'versionCode (\d+)', settings).group(1)))
+    identity['scope'] = 'Installed synthetic integration APK bytes and embedded source stamp only'
     paths = source_inputs()
     hashes = {str(path.relative_to(ROOT)): hashlib.sha256(path.read_bytes()).hexdigest() for path in paths}
     nonce = uuid.uuid4().hex

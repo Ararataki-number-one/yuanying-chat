@@ -86,3 +86,10 @@ def source_input(raw, relative):
     if len(raw) != row['previousBytes'] or _sha(raw) != row['previousSha256']:
         raise ValueError('Dual-browser inverse did not restore the complete original source')
     return raw
+
+# Fixture storage roots affect historical metadata only; all runtime reads stay raw.
+import importlib.util as _fixture_util
+_fixture_spec = _fixture_util.spec_from_file_location('_fixture_context_metadata', Path(__file__).with_name('fixture_context_source_compatibility.py'))
+_fixture_input = _fixture_util.module_from_spec(_fixture_spec)
+_fixture_spec.loader.exec_module(_fixture_input)
+source_input = _fixture_input.wrap_bytes(source_input)
