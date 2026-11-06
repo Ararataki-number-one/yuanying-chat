@@ -11,13 +11,17 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 FIXTURE = ROOT / 'tests/fixtures/ui-checkpoint-source-deltas.json'
-FIXTURE_SHA256 = 'baaba054cf4cd031edd0f553b2c0a118af0975e907f9679f81412db3d3f70acd'
+FIXTURE_SHA256 = 'a68cfd57e995e9d0109af8a0e200e916522182c0434c57c931ef1ed4c56b5c5f'
 RUNNER = 'tests/gecko/run_ui_visuals.py'
-RUNNER_CURRENT_SHA256 = 'be5c80463eb66171fc49a0056bbff3b5a8d47fc88d193b4647e37e301857a9b4'
+RUNNER_CURRENT_SHA256 = 'b85896aa5b94e33fb40bbada323d239a66f75c12a39bf9adb2a4ff3e3483e14d'
+PREFERENCE_PREVIOUS_SHA256 = 'be5c80463eb66171fc49a0056bbff3b5a8d47fc88d193b4647e37e301857a9b4'
+PREFERENCE_PREVIOUS = "expected={'保存本机输入草稿','恢复网页滚动位置','允许此环境的后台回复提醒','仅在 Wi-Fi 下载文件','自动清理 30 天以上的无引用中间文件'}"
+PREFERENCE_CURRENT = "expected={'保存本机输入草稿','恢复网页滚动位置','允许此环境的后台回复提醒','仅在 Wi-Fi 下载文件','自动清理 30 天以上的无引用中间文件','自动检测外部网络响应'}"
 BASE_COMMIT = '4dd0f4434a40c010e060d9651a371a986b6bd2c4'
 BASE_TREE = '3f2cd6b5fe591d6f9eda4822c0b5326c38baceeb'
 PREVIOUS = {
     RUNNER: '65fb205cbb7a466858a0a1869cd4b5388f70026d4e09da078318827e92432f4f',
+    'tests/gecko_ui_checkpoint_publication_test.py': '32769fd0108f37858aefe38fdd9336ddb1ef18e724f970999fa0044cd747d0a7',
     'tests/gecko_ui_visual_capture_test.py': '8ab2a6335b9f313e38cb52deb4b7265ee1be3e8fefc4009d5ef5c3825c40d0c6',
     'tests/ui_quick_sheet_source_compatibility.py': '5be2bc842cc093c92523aa05dc77aefd8e7a076dd95c6d4f7ac6e861ee66b047',
     'tests/profile_ui_quick_sheet_source_compatibility_test.py': '637ca4c120c9ccc3be460f7c1c7227bc467aecec654d8a7307ba12a9f0ce3e01',
@@ -65,6 +69,19 @@ def source_input(raw, path):
     return raw
 
 
+def checkpoint_runner_input(raw):
+    """Only the source-oracle LHS: restore the exact pre-sixth-label runner.
+
+    Actual capture, parser and checkpoint hosts still compile current bytes.
+    """
+    assert type(raw) is bytes and sha(raw) == RUNNER_CURRENT_SHA256, 'Actual frozen six-control UI runner required'
+    current, previous = PREFERENCE_CURRENT.encode(), PREFERENCE_PREVIOUS.encode()
+    assert raw.count(current) == 1, 'Exact Preferences literal required'
+    restored = raw.replace(current, previous, 1)
+    assert sha(restored) == PREFERENCE_PREVIOUS_SHA256, 'Entire pre-sixth-label runner did not restore'
+    return restored
+
+
 def require_current_runner(raw):
     assert type(raw) is bytes and sha(raw) == RUNNER_CURRENT_SHA256, 'Actual frozen checkpoint opt-out runner required'
     return source_input(raw, RUNNER)
@@ -106,6 +123,14 @@ def original_runner_tree(tree):
     del checkpoint[0].body[2]
     assert tree_sha(checkpoint[0]) == value['checkpointPreviousSha256'], 'Original complete checkpoint did not restore'
     del tree.body[position]
+    capture = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == 'capture')
+    expected = ast.parse(PREFERENCE_CURRENT).body[0]
+    preferences = [n for n in capture.body if isinstance(n, ast.If) and len(n.body) > 2
+                   and tree_sha(n.body[2]) == tree_sha(expected)
+                   and ast.dump(n.test, include_attributes=False) == ast.dump(ast.parse("scene=='preferences'", mode='eval').body, include_attributes=False)]
+    assert len(preferences) == 1, 'Exact Preferences capture branch required'
+    assert len(preferences[0].body) > 2 and tree_sha(preferences[0].body[2]) == tree_sha(expected), 'Six-control expectation moved or changed'
+    preferences[0].body[2] = ast.parse(PREFERENCE_PREVIOUS).body[0]
     assert tree_sha(tree) == value['allowedModulePairs'][current], 'Entire pre-opt-out AST did not restore'
     return tree
 

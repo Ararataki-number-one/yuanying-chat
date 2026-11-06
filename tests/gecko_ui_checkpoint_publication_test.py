@@ -96,7 +96,8 @@ class CheckpointPublicationControls(unittest.TestCase):
                 self.assertEqual(error.exception.code, 2)
 
     def test_two_opt_in_insertions_inverse_entire_actual_runner_to_exact_before(self):
-        source = RUNNER.read_text()
+        from ui_checkpoint_source_compatibility import checkpoint_runner_input
+        source = checkpoint_runner_input(RUNNER.read_bytes()).decode()
         self.assertEqual(source.count(FLAG_DECLARATION), 1)
         self.assertEqual(source.count(FLAG_RETURN), 1)
         before = source.replace(FLAG_DECLARATION, '', 1).replace(FLAG_RETURN, '', 1)

@@ -49,6 +49,8 @@ public final class GeckoTlsCpuIpComboIntegrationActivity extends MainActivity {
     getSharedPreferences("chat",0).edit().clear().putBoolean("environmentInitialized",true).putString("networkMode","external")
       .putString("proxy","socks://127.0.0.1:18766").putBoolean("networkConfigured",true).putBoolean("requireExternalVpn",false)
       .putString("geckoBrowserUrl",TARGET).putString("url",TARGET).putInt("privacyLevel",1).putBoolean("saveDraft",true).commit();
+    AppPrefs.apply(this,J.obj("automaticLatencyChecks",false));
+    if(AppPrefs.enabled(this,"automaticLatencyChecks"))throw new IOException("Automatic response checks remained enabled");
     ChatSession.browserFactory=(context,owner)->new Observed(context,owner);getIntent().putExtra("legacyChat",true);
     super.onCreate(null);stage="production-cold-bootstrap";publish();probe.post(this::tick);
   }catch(Throwable error){failed(error);}}
@@ -58,8 +60,42 @@ public final class GeckoTlsCpuIpComboIntegrationActivity extends MainActivity {
     super.onResume();
   }
 
+  // Match the existing closed-world CPU/IP fixture. Unknown inputs retain the
+  // original production route, including native wss-to-https normalization.
+static String remoteSettingsRole(String target){
+    if(target==null||target.length()>16384)return "";
+    try{java.net.URI uri=new java.net.URI(target);if(!"https".equals(uri.getScheme())||uri.getRawUserInfo()!=null)return "";
+      String authority=uri.getRawAuthority();String host=uri.getHost();int port=uri.getPort();
+      if(host==null||!(port==-1||port==443)||!(host.equals(authority)||(host+":443").equals(authority)))return "";
+      if("firefox.settings.services.mozilla.com".equals(host))return "remote-settings";
+      if("firefox-settings-attachments.cdn.mozilla.net".equals(host))return "remote-settings-attachments";
+    }catch(java.net.URISyntaxException invalid){}return "";
+  }
+  static boolean closedNativeRefusal(JSONObject actual){
+    return actual!=null&&actual.length()==5&&"socks".equals(actual.opt("type"))&&"127.0.0.1".equals(actual.opt("host"))
+      &&actual.opt("port") instanceof Integer&&actual.optInt("port")==9&&Boolean.TRUE.equals(actual.opt("proxyDNS"))
+      &&actual.opt("failoverTimeout") instanceof Integer&&actual.optInt("failoverTimeout")==1;
+  }
+
   final class Observed extends GeckoWebView {
+    final ThreadLocal<String[]> admissionCall=new ThreadLocal<>();
     Observed(android.content.Context context,ChatSession owner){super(context,owner);}
+    @Override protected boolean allowedUrl(String target){
+      String role=remoteSettingsRole(target);String[] observed=admissionCall.get();
+      if(observed!=null&&observed[1].isEmpty())return super.allowedUrl(target);
+      if(observed!=null&&!role.isEmpty())observed[0]=role;
+      return role.isEmpty()&&super.allowedUrl(target);
+    }
+    @Override JSONObject protectedNetworkRoute(String target){
+      String[] previous=admissionCall.get(),observed={"",remoteSettingsRole(target)};admissionCall.set(observed);
+      try{JSONObject actual=super.protectedNetworkRoute(target);String role=remoteSettingsRole(target);
+        if(!role.isEmpty()&&!closedNativeRefusal(actual)){
+          if(terminal&&failure.isEmpty())terminal=false;
+          failed(new SecurityException("Native fixture refusal did not use the closed route"));
+        }
+        return actual;
+      }finally{if(previous==null)admissionCall.remove();else admissionCall.set(previous);}
+    }
     @Override GeckoSession newSession(){
       runtime.getSettings().setEnterpriseRootsEnabled(true);roots=runtime.getSettings().getEnterpriseRootsEnabled();
       GeckoSession sdk=super.newSession();GeckoSession.ProgressDelegate progress=sdk.getProgressDelegate();

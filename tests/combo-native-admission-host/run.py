@@ -38,6 +38,8 @@ def field(text, prefix):
     return rows[0]
 
 
+TLS_EXTRA_TEMPLATE='class TlsOriginalRouteBoundary extends WebBoundary {\n  int originalCalls;JSONObject forced;\n  TlsOriginalRouteBoundary(OwnerBoundary owner){super(owner);}\n  @Override JSONObject protectedNetworkRoute(String target){originalCalls++;return forced==null?super.protectedNetworkRoute(target):forced;}\n}\nfinal class TlsFixtureBoundary {\n  boolean terminal;String failure="",stage="running";int publishes;\n  void publish(){publishes++;}\n@TLS_HELPERS@\n  final class Observed extends TlsOriginalRouteBoundary {\n@TLS_FIELD@\n    Observed(OwnerBoundary owner){super(owner);}\n@TLS_OVERRIDES@\n  }\n}\nfinal class TlsAdmissionExtraHost {\n  static int checks;static void check(String name,boolean yes){if(!yes)throw new AssertionError(name);checks++;}\n  public static void main(String[]args)throws Exception{\n    String[] exact={"https://firefox.settings.services.mozilla.com/v2/","https://firefox-settings-attachments.cdn.mozilla.net/file","https://firefox.settings.services.mozilla.com:443/v2/"};\n    for(String target:exact){TlsFixtureBoundary f=new TlsFixtureBoundary();TlsFixtureBoundary.Observed v=f.new Observed(new OwnerBoundary());JSONObject actual=v.protectedNetworkRoute(target);check("TLS exact RS uses actual original super",v.originalCalls==1&&TlsFixtureBoundary.closedNativeRefusal(actual)&&!f.terminal);check("TLS call owner restored",v.admissionCall.get()==null);}\n    String[] ordinary={"https://fp-a.pocketchat.test/env-policy","https://fp-b.pocketchat.test/frame","https://ipwho.is/8.8.8.8","wss://firefox.settings.services.mozilla.com/ws","http://firefox.settings.services.mozilla.com/","https://FIREFOX.settings.services.mozilla.com/","https://user@firefox.settings.services.mozilla.com/","https://firefox.settings.services.mozilla.com:444/","https://firefox.settings.services.mozilla.com./","https://firefox.settings.services.mozilla.com.evil/"};\n    for(String target:ordinary){OwnerBoundary o=new OwnerBoundary();WebBoundary base=new WebBoundary(o);TlsFixtureBoundary f=new TlsFixtureBoundary();TlsFixtureBoundary.Observed v=f.new Observed(o);check("TLS unknown and WSS preserve original route",ComboNativeAdmissionHost.same(base.protectedNetworkRoute(target),v.protectedNetworkRoute(target))&&v.originalCalls==1&&!f.terminal&&v.admissionCall.get()==null);}\n    TlsFixtureBoundary f=new TlsFixtureBoundary();TlsFixtureBoundary.Observed v=f.new Observed(new OwnerBoundary());f.terminal=true;f.stage="complete";v.forced=J.obj("type","direct");JSONObject actual=v.protectedNetworkRoute(exact[0]);check("TLS nonclosed actual route is not forged",actual==v.forced);check("TLS late bad route retires old success",f.terminal&&!f.failure.isEmpty()&&f.publishes==1);\n    System.out.println(J.obj("status","passed","passed",checks,"actualAndroidExecution",false));\n  }\n}\n'
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--java-home', type=Path)
@@ -58,7 +60,7 @@ def main():
     if not re.search(r'version "17[.]',versions[0]) or not re.search(r'javac 17[.]',versions[1]):
         parser.error('Use actual JDK 17 for this host scope')
     complete = [PROD/name for name in ('J.java','BrowserAddressPolicy.java','GeckoNavigationPolicy.java')]
-    inputs = [ACTIVITY, PROD/'GeckoWebView.java', PROD/'AppPrefs.java', Path(__file__).resolve(),
+    inputs = [ROOT/'tests/gecko/GeckoTlsCpuIpComboIntegrationActivity.java', ACTIVITY, PROD/'GeckoWebView.java', PROD/'AppPrefs.java', Path(__file__).resolve(),
         HERE/'ComboNativeAdmissionHost.java.in',HERE/'README.md',ROOT/'tests/gecko-navigation-host/run.py']+complete
     hashes = {str(path.relative_to(ROOT)):digest(path) for path in inputs}
     jar_hash = digest(args.json_jar)
@@ -80,6 +82,14 @@ def main():
         'admission-fields':field(activity,'final JSONArray nativeRefusals='),
         'call-field':field(activity,'final ThreadLocal<String[]> admissionCall='),
     }
+    tls_source=(ROOT/'tests/gecko/GeckoTlsCpuIpComboIntegrationActivity.java').read_text()
+    tls_selected={name:declaration(tls_source,needle) for name,needle in (
+        ('role','static String remoteSettingsRole('),('closed','static boolean closedNativeRefusal('),
+        ('allow','@Override protected boolean allowedUrl('),('route','@Override JSONObject protectedNetworkRoute('),('failed','void failed('))}
+    tls_selected['field']=field(tls_source,'final ThreadLocal<String[]> admissionCall=')
+    if tls_selected['role']!=selected['role'] or tls_selected['closed']!=selected['closed']:raise ValueError('TLS fixture must copy the exact proven narrow functions')
+    clear_at=tls_source.index('getSharedPreferences("chat",0).edit().clear()')
+    if not(clear_at<tls_source.index('AppPrefs.apply(this,J.obj("automaticLatencyChecks",false))')<tls_source.index('super.onCreate(null)')):raise ValueError('TLS fixture preference must follow clear and precede MainActivity')
     template = (HERE/'ComboNativeAdmissionHost.java.in').read_text()
     aliases = (
         ('android.os.Process','ProcessBoundary'),('android.app.Application','ApplicationBoundary'),
@@ -104,9 +114,11 @@ def main():
     with tempfile.TemporaryDirectory(prefix='combo-native-admission-host-') as temporary:
         work=Path(temporary)
         invocations=0
-        def compile_members(m,label):
+        def tls_extra(m):
+            return TLS_EXTRA_TEMPLATE.replace('@TLS_HELPERS@',adapt(m['role']+'\n'+m['closed']+'\n'+m['failed'])).replace('@TLS_FIELD@',m['field']).replace('@TLS_OVERRIDES@',adapt(m['allow']+'\n'+m['route']))
+        def compile_members(m,label,tls_members=None):
             out=artifacts/label;out.mkdir(exist_ok=True)
-            host=out/'ComboNativeAdmissionHost.java';host.write_text(generate(m))
+            host=out/'ComboNativeAdmissionHost.java';host.write_text(generate(m)+tls_extra(tls_selected if tls_members is None else tls_members))
             classes=work/label
             command=[tool('javac'),'--release','17','-encoding','UTF-8','-cp',str(args.json_jar.resolve()),'-d',str(classes),str(host)]+[str(p) for p in complete]
             result=subprocess.run(command,text=True,capture_output=True,timeout=60)
@@ -149,6 +161,21 @@ def main():
             mutant_classes,mutant_out=compile_members(m,'mutant-'+label);mutant=execute(mutant_classes,mutant_out,focus)
             if mutant.returncode==0 or 'AssertionError: '+assertion not in mutant.stderr:raise AssertionError('Precise semantic mutation must fail: '+label+mutant.stderr)
             controls.append(dict(case=label,pristinePassed=True,mutantRejected=True,assertion=assertion))
+        def tls_run(classes):
+            invocation=Path(tempfile.mkdtemp(prefix='tls-runtime-',dir=work))
+            return subprocess.run([tool('java'),'-Dhost.outputDirectory='+str(invocation),'-cp',str(classes)+os.pathsep+str(args.json_jar.resolve()),'local.pocketchat.TlsAdmissionExtraHost'],text=True,capture_output=True,timeout=30)
+        pristine_tls=tls_run(classes)
+        if pristine_tls.returncode:raise RuntimeError(pristine_tls.stderr)
+        tls_report=json.loads(pristine_tls.stdout);tls_controls=[]
+        for label,key,before,after,assertion in [
+            ('tls-super-bypass','route','super.protectedNetworkRoute(target)','blocked()','TLS exact RS uses actual original super'),
+            ('tls-wss-overreach','allow','if(observed!=null&&observed[1].isEmpty())return super.allowedUrl(target);','','TLS unknown and WSS preserve original route'),
+            ('tls-unsafe-route','route','!role.isEmpty()&&!closedNativeRefusal(actual)','false','TLS late bad route retires old success')]:
+            if tls_selected[key].count(before)!=1:raise ValueError('Unique TLS current mutant required: '+label)
+            changed=dict(tls_selected);changed[key]=changed[key].replace(before,after,1);mutated,_=compile_members(selected,label,changed);bad=tls_run(mutated)
+            if bad.returncode==0 or 'AssertionError: '+assertion not in bad.stderr:raise AssertionError('Actual TLS route mutant escaped '+label+bad.stderr)
+            tls_controls.append(dict(name=label,compiled=True,rejected=True,assertion=assertion))
+        report['tlsFixture']=dict(tls_report,negativeControls=tls_controls,actualSourceMembersSha256={k:hashlib.sha256(v.encode()).hexdigest() for k,v in tls_selected.items()})
     stable=all(digest(path)==hashes[str(path.relative_to(ROOT))] for path in inputs) and digest(args.json_jar)==jar_hash
     report.update(sourceFiles=hashes,jsonJarSha256=jar_hash,javaVersion='\n'.join(versions).strip(),productionMembers=list(selected),negativeControls=controls,executionInputsUnchanged=stable,
         boundaries=[

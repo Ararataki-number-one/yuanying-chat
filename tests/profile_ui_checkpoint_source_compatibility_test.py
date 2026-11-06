@@ -21,10 +21,18 @@ class UiCheckpointSourceCompatibilityTests(unittest.TestCase):
         self.assertEqual(checkpoint.sha(old), '65fb205cbb7a466858a0a1869cd4b5388f70026d4e09da078318827e92432f4f')
         self.assertEqual(raw.count(checkpoint.FLAG_DECLARATION.encode()), 1)
         self.assertEqual(raw.count(checkpoint.FLAG_RETURN.encode()), 1)
-        self.assertEqual(raw.replace(checkpoint.FLAG_DECLARATION.encode(), b'', 1).replace(checkpoint.FLAG_RETURN.encode(), b'', 1), old)
+        self.assertEqual(checkpoint.checkpoint_runner_input(raw).replace(checkpoint.FLAG_DECLARATION.encode(), b'', 1).replace(checkpoint.FLAG_RETURN.encode(), b'', 1), old)
         with self.assertRaises(AssertionError):checkpoint.require_current_runner(old)
-        for path in ('tests/gecko/run_ui_visuals.py', 'tests/gecko_ui_checkpoint_publication_test.py'):
-            self.assertNotIn('ui_checkpoint_source_compatibility', (ROOT / path).read_text())
+        self.assertNotIn('ui_checkpoint_source_compatibility', (ROOT / checkpoint.RUNNER).read_text())
+        path = 'tests/gecko_ui_checkpoint_publication_test.py'
+        actual = (ROOT / path).read_bytes()
+        previous = checkpoint.source_input(actual, path)
+        def runtime_functions(raw):
+            return {node.name: ast.dump(node, include_attributes=False)
+                    for node in ast.walk(ast.parse(raw)) if isinstance(node, ast.FunctionDef)
+                    and node.name != 'test_two_opt_in_insertions_inverse_entire_actual_runner_to_exact_before'}
+        self.assertEqual(runtime_functions(actual), runtime_functions(previous))
+        self.assertEqual(checkpoint.sha(checkpoint.checkpoint_runner_input(raw)), checkpoint.PREFERENCE_PREVIOUS_SHA256)
 
     def test_four_source_rows_keep_fixed_before_pins_and_forward_roundtrip(self):
         manifest = checkpoint.manifest()
@@ -73,11 +81,15 @@ class UiCheckpointSourceCompatibilityTests(unittest.TestCase):
                    source.replace("action='store_true',help='Disable checkpoint", "action='store_true',default=True,help='Disable checkpoint", 1),
                    source.replace("timeout=90).decode(errors='replace')", "timeout=91).decode(errors='replace')", 1),
                    source.replace('deadline=time.monotonic()+35;readiness_scrolls=0', 'deadline=time.monotonic()+36;readiness_scrolls=0', 1),
-                   source.replace("assert '已选 8 个' in xml", 'assert True', 1)]
+                   source.replace("assert '已选 8 个' in xml", 'assert True', 1),
+                   source.replace(checkpoint.PREFERENCE_CURRENT, checkpoint.PREFERENCE_PREVIOUS, 1),
+                   source.replace("'自动检测外部网络响应'", "'unexpected-control'", 1),
+                   source.replace(checkpoint.PREFERENCE_CURRENT, checkpoint.PREFERENCE_CURRENT + ';' + checkpoint.PREFERENCE_CURRENT, 1)]
         for value in changed:
             with self.subTest(sha=checkpoint.sha(value.encode())):
                 self.assertNotEqual(value, source)
                 with self.assertRaises(AssertionError):checkpoint.require_current_runner(value.encode())
+                with self.assertRaises(AssertionError):checkpoint.checkpoint_runner_input(value.encode())
                 with self.assertRaises(AssertionError):checkpoint.original_runner_tree(ast.parse(value.encode()))
                 with self.assertRaises(AssertionError):original_ui.verify_shared_ui_source(value)
         # A complete valid predecessor remains a historical input, never a

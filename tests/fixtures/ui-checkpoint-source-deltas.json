@@ -7,8 +7,8 @@
       "previousCommit": "76d838cf697f86f9f4795b21d97d9c475271ea84",
       "previousBytes": 45804,
       "previousSha256": "65fb205cbb7a466858a0a1869cd4b5388f70026d4e09da078318827e92432f4f",
-      "reviewedBytes": 45983,
-      "reviewedSha256": "be5c80463eb66171fc49a0056bbff3b5a8d47fc88d193b4647e37e301857a9b4",
+      "reviewedBytes": 46016,
+      "reviewedSha256": "b85896aa5b94e33fb40bbada323d239a66f75c12a39bf9adb2a4ff3e3483e14d",
       "deltas": [
         {
           "previous": "import sys\n\nroot=pathlib.Path(__file__).resolve().parents[2];out=root/'work/gecko-integration';shots=out/'ui-visuals';shots.mkdir(exist_ok=True)\np=argparse.ArgumentParser();p.add_argument('--adb',required=True);p.add_argument('--serial',required=True);args=p.parse_args()\nsource=subprocess.check_output(['git','rev-parse','HEAD'],cwd=root,text=True).strip()\npackage='local.pocketchat.test';records=[]\nsys.path.insert(0,str(root/'tools/gecko'))\n",
@@ -25,6 +25,14 @@
           "currentBytes": 729,
           "previousSha256": "aeff10accb9cb982628a8a73a064dbb94dd8c1c5dc6c3f30a62035023ead475b",
           "currentSha256": "18bc0a2fb2ca0eb7077a23b0de69dae56f85c1ce1fd505c461fc54c210e1fc6f"
+        },
+        {
+          "previous": "        click_editor_tab(xml,'浏览器');time.sleep(2.5);xml=dump();assert '网页显示方式' in xml\n    if scene=='preferences':\n        tab_scrolls=click_editor_tab(xml,'使用偏好');time.sleep(.5)\n        expected={'保存本机输入草稿','恢复网页滚动位置','允许此环境的后台回复提醒','仅在 Wi-Fi 下载文件','自动清理 30 天以上的无引用中间文件'}\n        seen=set();collected=[]\n        for attempt in range(8):\n            xml=dump();collected.append(xml)\n",
+          "current": "        click_editor_tab(xml,'浏览器');time.sleep(2.5);xml=dump();assert '网页显示方式' in xml\n    if scene=='preferences':\n        tab_scrolls=click_editor_tab(xml,'使用偏好');time.sleep(.5)\n        expected={'保存本机输入草稿','恢复网页滚动位置','允许此环境的后台回复提醒','仅在 Wi-Fi 下载文件','自动清理 30 天以上的无引用中间文件','自动检测外部网络响应'}\n        seen=set();collected=[]\n        for attempt in range(8):\n            xml=dump();collected.append(xml)\n",
+          "previousBytes": 507,
+          "currentBytes": 540,
+          "previousSha256": "96f8e4e38b5d2e15ea6bd79d17d0a9e630923ac450c1273db973198694b0e113",
+          "currentSha256": "ed2fb6d13e9da95d9475af1c45e64c76bce6353eacd75e5f52c376b57715c626"
         }
       ]
     },
@@ -102,12 +110,29 @@
           "currentSha256": "89526d8d9d6be05ef4efe722882607b5afe941d616b1352b52eaaa23b0a96755"
         }
       ]
+    },
+    "tests/gecko_ui_checkpoint_publication_test.py": {
+      "previousCommit": "20ea36d470a34470d90d5f1d2ff4a785d1346e1e",
+      "previousBytes": 7197,
+      "previousSha256": "32769fd0108f37858aefe38fdd9336ddb1ef18e724f970999fa0044cd747d0a7",
+      "reviewedBytes": 7311,
+      "reviewedSha256": "26f5a0cc71e8fbf20298ca38c7cdb6273439ff31f8501d63320aa3c5d8d65ec9",
+      "deltas": [
+        {
+          "previous": "                self.assertEqual(error.exception.code, 2)\n\n    def test_two_opt_in_insertions_inverse_entire_actual_runner_to_exact_before(self):\n        source = RUNNER.read_text()\n        self.assertEqual(source.count(FLAG_DECLARATION), 1)\n        self.assertEqual(source.count(FLAG_RETURN), 1)\n        before = source.replace(FLAG_DECLARATION, '', 1).replace(FLAG_RETURN, '', 1)\n",
+          "current": "                self.assertEqual(error.exception.code, 2)\n\n    def test_two_opt_in_insertions_inverse_entire_actual_runner_to_exact_before(self):\n        from ui_checkpoint_source_compatibility import checkpoint_runner_input\n        source = checkpoint_runner_input(RUNNER.read_bytes()).decode()\n        self.assertEqual(source.count(FLAG_DECLARATION), 1)\n        self.assertEqual(source.count(FLAG_RETURN), 1)\n        before = source.replace(FLAG_DECLARATION, '', 1).replace(FLAG_RETURN, '', 1)\n",
+          "previousBytes": 382,
+          "currentBytes": 496,
+          "previousSha256": "0b78fb98cdc2b3a23ebe12c181cd4f62b6c7cda05cff8a4db621f0f32aa571d8",
+          "currentSha256": "1dded9bf9d8e6a052cb824071ab75dd0b40fd7a866d3998caec4a717e8b7edc8"
+        }
+      ]
     }
   },
   "runnerAst": {
     "allowedModulePairs": {
-      "5110ec14cad176f93f7b94392b6e1196c1c6fefa8efdb5a0f1df9b177224ad07": "bce34002d46c253efc144e2a709d92ebeeff26880cd60bb7861b94794b991132",
-      "131f7f86546eecba2c0ac0c1f3938fa7fc87ac1dd2f54b2dad6f66b5a9d8a5da": "e321267b96c447c8d6253482134b9bec71a95838d67911ec363666ed0ff3b1ed"
+      "e4d4116f7bf22e5a791af482e4315446c3e521d5dec0a4d15543337650491220": "bce34002d46c253efc144e2a709d92ebeeff26880cd60bb7861b94794b991132",
+      "1e9931102c092304b30ea22c910f46737ddf34aa4879e7bf9cd93b8de5e5cbb3": "e321267b96c447c8d6253482134b9bec71a95838d67911ec363666ed0ff3b1ed"
     },
     "checkpointReviewedSha256": "beff98f6b3c7e9bb3dee7548de829f94ed1e9c0f7109b44546a839b6b0799c46",
     "checkpointPreviousSha256": "57d58a5ee75695c7e54a44fbf3a0799022d02767dde3a617ae241ac33a852f3b"

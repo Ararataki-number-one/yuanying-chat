@@ -116,5 +116,6 @@ def run_combo(adb,output,source,tree,identity,nonce):
     if error is not None:raise ComboFailure(envelope,error) from error
     engine=re.findall(r'^\s*static final String VERSION=("(?:[^"\\]|\\.)*");',(ROOT/'app/src/main/java/local/pocketchat/GeckoWebView.java').read_text(),re.M);require(len(engine)==1,'exact actual Gecko version')
     import json
-    finding=validate_combo(device,envelope,source=source,expected=identity,run=nonce,engine=json.loads(engine[0]))
+    try:finding=validate_combo(device,envelope,source=source,expected=identity,run=nonce,engine=json.loads(engine[0]))
+    except Exception as failure:raise ComboFailure(envelope,failure) from failure
     return envelope,finding

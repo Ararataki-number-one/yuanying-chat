@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Actual combined validators against synthetic device + real local TLS inputs."""
 import argparse
+import ast
 import copy
 import hashlib
 import json
@@ -409,9 +410,28 @@ class CombinedValidatorControls(unittest.TestCase):
                 MUTANTS.append(name)
 
 
+def preserve_validator_failure_control(test):
+    raw=(ROOT/'tools/gecko/run_gecko_tls_cpu_ip_combo.py').read_text();module=ast.parse(raw)
+    function=next(node for node in module.body if isinstance(node,ast.FunctionDef) and node.name=='run_combo')
+    block=next(node for node in function.body if isinstance(node,ast.Try) and any(isinstance(item,ast.Assign) and any(isinstance(t,ast.Name) and t.id=='finding' for t in item.targets) for item in node.body))
+    envelope={'routeReceipts':{'errors':{'socks':1},'closed':True},'wire':{'original':'must-stay-identical'}};original=ValueError('TLS CPU IP evidence: fixture route errors or unquiesced collector')
+    def rejected(*args,**kwargs):raise original
+    namespace=dict(runner.__dict__,validate_combo=rejected,device={},envelope=envelope,source=SOURCE,identity={},nonce=RUN,engine=['"pinned-engine"'],json=json)
+    with test.assertRaises(runner.ComboFailure) as caught:exec(compile(ast.Module(body=[block],type_ignores=[]),'actual-final-combo-validation','exec'),namespace)
+    test.assertIs(caught.exception.envelope,envelope);test.assertIs(caught.exception.__cause__,original);test.assertEqual(envelope['routeReceipts']['errors']['socks'],1)
+    # Removing only the actual exception wrapper must lose the required type.
+    def invariant():
+        try:exec(compile(ast.Module(body=block.body,type_ignores=[]),'unwrapped-final-combo-mutant','exec'),namespace)
+        except Exception as failure:test.assertIsInstance(failure,runner.ComboFailure)
+        else:test.fail('Validator failure cannot become successful')
+    with test.assertRaises(AssertionError):invariant()
+    MUTANTS.append('lost original combo validation envelope');NEGATIVES.append('validator failure remains failed with original envelope and cause')
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__); parser.add_argument('--output',type=Path)
     args = parser.parse_args(); before = source_hashes()
+    def preserves_envelope(self):preserve_validator_failure_control(self)
+    CombinedValidatorControls.test_actual_final_validator_failure_preserves_envelope=preserves_envelope
     suite = unittest.defaultTestLoader.loadTestsFromTestCase(CombinedValidatorControls)
     result = unittest.TextTestRunner(stream=sys.stderr,verbosity=2).run(suite)
     after = source_hashes(); passed = result.wasSuccessful() and before == after
