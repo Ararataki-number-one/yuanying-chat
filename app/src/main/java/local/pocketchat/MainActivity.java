@@ -107,7 +107,7 @@ public class MainActivity extends ThemedActivity {
     attachments=new Attachments(this);downloads=new FileDownloads(this);remote.setWebViewClient(remoteClient());remote.setWebChromeClient(attachments.chrome());
     chatDownloadProgress=new ChatDownloadProgressUi(this,root,stack,downloads);
     stack.addView(remote,new FrameLayout.LayoutParams(-1,-1));stack.addView(loading.cover,new FrameLayout.LayoutParams(-1,-1));
-    focusExit=DesignUi.button(this,"退出专注",false,()->setFocusReading(false));focusExit.setContentDescription("退出专注阅读，恢复应用工具栏和导航");focusExit.setTextSize(12);focusExit.setElevation(dp(4));focusExit.setBackground(DesignUi.surface(this,DesignUi.CARD,18,DesignUi.LINE));focusExit.setVisibility(View.GONE);
+    focusExit=DesignUi.button(this,"退出阅读",false,()->setFocusReading(false));focusExit.setContentDescription("退出专注阅读，恢复应用工具栏和导航");focusExit.setTextSize(12);focusExit.setElevation(dp(3));focusExit.setBackground(DesignUi.surface(this,DesignUi.CARD,24,DesignUi.LINE));focusExit.setVisibility(View.GONE);
     FrameLayout.LayoutParams focusParams=new FrameLayout.LayoutParams(-2,dp(48),Gravity.TOP|Gravity.END);focusParams.topMargin=dp(8);focusParams.rightMargin=dp(8);stack.addView(focusExit,focusParams);
     hub=new AppHub(this,root,stack);setContentView(root);
     sessionUi=new UiFrameScheduler(new UiFrameScheduler.Frames(){public void post(Runnable frame){remote.postOnAnimation(frame);}public void cancel(Runnable frame){remote.removeCallbacks(frame);}},this::applySession);
@@ -148,18 +148,20 @@ public class MainActivity extends ThemedActivity {
     if(session!=null)session.wakePolling();
   }
   void updateReadingLayout(){if(session!=null)session.reading.keyboard(keyboardVisible&&hub!=null&&hub.page==AppHub.CHAT);applyFocusLayout();}
-  boolean focusActive(){return FocusReadingPolicy.active(focusReading,hub!=null&&hub.page==AppHub.CHAT,remote!=null&&remote.hasVisibleDocument()&&chatUrl(remote.getUrl())&&!LoginPagePolicy.login(remote.getUrl())&&session!=null&&!session.audit.canReturnRequestIdentity());}
+  boolean focusActive(){return FocusReadingPolicy.active(focusReading,hub!=null&&hub.page==AppHub.CHAT,remote!=null&&remote.hasVisibleDocument()&&BrowserAddressPolicy.allowed(remote.getUrl())&&!LoginPagePolicy.login(remote.getUrl())&&session!=null&&!session.audit.canReturnRequestIdentity());}
   void setFocusReading(boolean value){
     focusReading=value;
     if(value&&hub!=null&&hub.page!=AppHub.CHAT)hub.select(AppHub.CHAT);
     if(designChrome!=null)designChrome.cancelWebGesture();
     applyFocusLayout();
+    if(hub!=null)hub.mark();
     if(!value&&designChrome!=null)designChrome.reveal();
-    if(focusExit!=null)focusExit.announceForAccessibility(value?"已进入专注阅读，返回键或退出专注按钮可恢复工具栏":"已退出专注阅读");
+    if(focusExit!=null)focusExit.announceForAccessibility(value?(focusActive()?"已进入专注阅读，返回键或退出阅读按钮可恢复工具栏":"网页就绪后进入专注阅读，登录页面保留工具栏"):"已退出专注阅读");
   }
   void applyFocusLayout(){
     if(hub==null||toolbar==null)return;
     boolean chat=hub.page==AppHub.CHAT,focused=focusActive();
+    hub.mark();
     chromeVisibility(toolbar,chat&&!focused);
     boolean navigation=FocusReadingPolicy.navigation(focused,chat,keyboardVisible);
     chromeVisibility(hub.bar,navigation);chromeVisibility(hub.divider,navigation);
@@ -172,6 +174,7 @@ public class MainActivity extends ThemedActivity {
   void applySession(){
     if(session==null||destroyed)return;syncSessionReferences();
     if(geckoAddress!=null)geckoAddress.refresh();
+    updateReadingLayout();
     if(sessionStatusDirty){sessionStatusDirty=false;status(session.status);}NetworkMetricsUi.update(this);if(loading!=null)loading.update();if(chatDownloadProgress!=null)chatDownloadProgress.update();
   }
   void syncSessionReferences(){if(session==null)return;pending=session.pending;networkReady=session.networkReady;submitting=session.submitting;entries=session.entries;conversation=session.conversation;}
@@ -180,7 +183,7 @@ public class MainActivity extends ThemedActivity {
   TextView label(String text,int size,int color){TextView v=new TextView(this);v.setText(text);v.setTextSize(size);v.setTextColor(AppAppearance.text(color));return v;}
   void moreSheet(){
     ReferenceUi.Modal d=new ReferenceUi.Modal(this,"会话选项").asSheet();
-    option(d,"打开网址或搜索 · Gecko",()->GeckoAddressUi.show(this));
+    option(d,"打开网址或搜索",()->GeckoAddressUi.show(this));
     if(remote.hasWebsitePages())option(d,"关闭网站并返回 ChatGPT",()->GeckoAddressUi.closeSites(this));
     option(d,"搜索操作",()->ActionSearchUi.show(this));
     option(d,"快速切换环境",()->EnvironmentSwitcherUi.show(this));
@@ -301,7 +304,7 @@ public class MainActivity extends ThemedActivity {
   @Override protected void onActivityResult(int request,int result,Intent data){super.onActivityResult(request,result,data);if(request==74&&attachments!=null)attachments.result(result,data);if(request==FileDownloads.SAVE&&downloads!=null)downloads.result(result,data);if(request==SavedFileActions.EXPORT&&downloads!=null)downloads.savedActions.result(result,data);}
   void openNotification(Intent intent){
     if(intent==null)return;if(intent.hasExtra("openConversation")||intent.hasExtra("openDownload")){intent.removeExtra(EnvironmentOverviewUi.NONCE);intent.removeExtra(EnvironmentOverviewUi.SOURCE);}String windowAction=intent.getStringExtra("openWindowAction");
-    if(windowAction!=null){intent.removeExtra("openWindowAction");intent.removeExtra("forceWebMode");if(hub!=null){int target="settings".equals(windowAction)?AppHub.SETTINGS:"network".equals(windowAction)?AppHub.NETWORK:AppHub.CHAT;if(hub.page!=target)hub.show(target);if("network".equals(windowAction))hub.network();}if("edit".equals(windowAction))handler.postDelayed(()->EnvironmentEditorUi.show(this),200);}
+    if(windowAction!=null){intent.removeExtra("openWindowAction");intent.removeExtra("forceWebMode");if(hub!=null){int target="settings".equals(windowAction)?AppHub.SETTINGS:"network".equals(windowAction)?AppHub.NETWORK:AppHub.CHAT;if(hub.page!=target)hub.show(target);if("network".equals(windowAction))hub.network();if("reading".equals(windowAction))setFocusReading(true);}if("edit".equals(windowAction))handler.postDelayed(()->EnvironmentEditorUi.show(this),200);}
     if(intent.getBooleanExtra("openEnvironmentEditor",false)){intent.removeExtra("openEnvironmentEditor");handler.postDelayed(()->EnvironmentEditorUi.show(this),200);}
     String download=intent.getStringExtra("openDownload");if(download!=null){intent.removeExtra("openDownload");if(hub!=null)hub.select(AppHub.DOWNLOADS);for(int i=0;i<downloads.tasks.rows.length();i++){JSONObject row=downloads.tasks.rows.optJSONObject(i);if(download.equals(row.optString("id"))){downloads.taskActions(row);break;}}return;}
     String url=intent.getStringExtra("openConversation");if(!chatUrl(url))return;intent.removeExtra("openConversation");if(hub!=null)hub.select(AppHub.CHAT);

@@ -50,8 +50,33 @@ final class ReferenceUi {
     HorizontalScrollView scroll=new HorizontalScrollView(c);scroll.setHorizontalScrollBarEnabled(false);scroll.addView(bar);scroll.post(()->scroll.smoothScrollTo(Math.max(0,bar.getChildAt(selected).getLeft()-dp(c,12)),0));
     LinearLayout host=DesignUi.column(c);host.addView(scroll,new LinearLayout.LayoutParams(-1,-2));return host;
   }
-  static LinearLayout nav(Activity a,int selected,java.util.function.IntConsumer action,Button[] buttons){if(buttons==null)buttons=new Button[5];LinearLayout bar=DesignUi.row(a);bar.setPadding(dp(a,6),0,dp(a,6),0);bar.setBackgroundColor(WHITE);for(int i=0;i<5;i++){final int n=i;Button b=link(a,DesignUi.NAV[i],()->action.accept(n));b.setTextSize(12);b.setPadding(0,dp(a,4),0,dp(a,4));Ui.Icon icon=new Ui.Icon(DesignUi.GLYPHS[i],MUTED);icon.setBounds(0,0,dp(a,21),dp(a,21));b.setCompoundDrawables(null,icon,null,null);b.setCompoundDrawablePadding(dp(a,3));bar.addView(b,new LinearLayout.LayoutParams(0,dp(a,Math.max(60,(int)(36+16*a.getResources().getConfiguration().fontScale))),1));buttons[i]=b;}markNav(buttons,selected);return bar;}
-  static void markNav(Button[] tabs,int selected){if(tabs==null)return;for(int i=0;i<tabs.length;i++){Button b=tabs[i];b.setSelected(i==selected);b.setTextColor(i==selected?BLUE:MUTED);b.setBackground(new InsetDrawable(Ui.ripple(b.getContext(),i==selected?BLUE_SOFT:Color.TRANSPARENT,16),dp(b.getContext(),3),dp(b.getContext(),5),dp(b.getContext(),3),dp(b.getContext(),5)));Drawable icon=b.getCompoundDrawables()[1];if(icon instanceof Ui.Icon)((Ui.Icon)icon).color=i==selected?BLUE:MUTED;b.invalidate();}}
+  static LinearLayout nav(Activity a,int selected,java.util.function.IntConsumer action,Button[] buttons){
+    if(buttons==null)buttons=new Button[DesignUi.NAV.length];
+    LinearLayout bar=DesignUi.column(a);bar.setPadding(dp(a,12),dp(a,6),dp(a,12),dp(a,8));
+    bar.setClipChildren(false);bar.setClipToPadding(false);
+    LinearLayout dock=DesignUi.row(a);dock.setPadding(dp(a,5),dp(a,3),dp(a,5),dp(a,3));
+    dock.setBackground(DesignUi.glass(a,27));dock.setElevation(dp(a,3));
+    for(int i=0;i<DesignUi.NAV.length;i++){
+      final int n=i;Button b=link(a,DesignUi.NAV[i],()->action.accept(n));b.setTextSize(12);b.setSingleLine(true);
+      b.setPadding(dp(a,2),dp(a,5),dp(a,2),dp(a,5));
+      b.setContentDescription(i==WorkspaceNavigation.READING?"进入专注阅读模式":DesignUi.NAV[i]);
+      Ui.Icon icon=new Ui.Icon(DesignUi.GLYPHS[i],MUTED);icon.setBounds(0,0,dp(a,22),dp(a,22));
+      b.setCompoundDrawables(null,icon,null,null);b.setCompoundDrawablePadding(dp(a,5));
+      dock.addView(b,new LinearLayout.LayoutParams(0,dp(a,Math.max(58,(int)(38+18*a.getResources().getConfiguration().fontScale))),1));buttons[i]=b;
+    }
+    bar.addView(dock,new LinearLayout.LayoutParams(-1,-2));markNav(buttons,selected);return bar;
+  }
+  static void markNav(Button[] tabs,int selected){
+    if(tabs==null)return;
+    for(int i=0;i<tabs.length;i++){
+      Button b=tabs[i];if(b==null)continue;boolean active=i==selected;
+      b.setSelected(active);b.setTextColor(active?BLUE:MUTED);
+      // A light wash leaves the shared glass visible through the selected item.
+      int tint=active?(AppAppearance.dark()?0x303b75bf:0x1c3984ef):Color.TRANSPARENT;
+      b.setBackground(new InsetDrawable(Ui.ripple(b.getContext(),tint,23),dp(b.getContext(),3),dp(b.getContext(),3),dp(b.getContext(),3),dp(b.getContext(),3)));
+      Drawable icon=b.getCompoundDrawables()[1];if(icon instanceof Ui.Icon)((Ui.Icon)icon).color=active?BLUE:MUTED;b.invalidate();
+    }
+  }
   static void insets(Activity a,View root){insets(a,root,null);}
   static void insets(Activity a,View root,java.util.function.Consumer<Boolean> keyboard){
     a.getWindow().setStatusBarColor(CHAT_BG);a.getWindow().setNavigationBarColor(WHITE);if(Build.VERSION.SDK_INT>=29)a.getWindow().setNavigationBarContrastEnforced(false);

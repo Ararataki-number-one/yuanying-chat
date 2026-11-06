@@ -7,7 +7,7 @@ import android.widget.*;
 /** Navigation preserves the live chat document while displaying native workspaces. */
 final class AppHub {
   static final int CHAT=0, DOWNLOADS=1, ENVIRONMENTS=2, SETTINGS=3, NETWORK=4;
-  private static final int[] DESTINATIONS={CHAT,ENVIRONMENTS,DOWNLOADS,NETWORK,SETTINGS};
+  private static final int[] DESTINATIONS={ENVIRONMENTS,NETWORK,DOWNLOADS};
   final MainActivity a;
   final LinearLayout root,bar,feedbackBar;
   final TextView feedbackText;
@@ -16,7 +16,8 @@ final class AppHub {
   int page,settingsTab,networkTab,downloadFilter;
   long navigation;
   String rendered="";
-  final Button[] tabs=new Button[5];
+  private int markedPage=-1;private boolean markedFocus,markedDark,marked;
+  final Button[] tabs=new Button[DesignUi.NAV.length];
   final NetworkWorkspaceUi networkWorkspace;
   DesignDownloads.Controller downloadController;
   View downloadScreen;
@@ -32,8 +33,9 @@ final class AppHub {
     Button close=DesignUi.button(a,"×",false,()->feedbackBar.setVisibility(View.GONE));close.setTextSize(20);close.setContentDescription("关闭提示");
     LinearLayout.LayoutParams cp=new LinearLayout.LayoutParams(a.dp(48),a.dp(48));cp.leftMargin=a.dp(8);feedbackBar.addView(close,cp);
     root.addView(feedbackBar,new LinearLayout.LayoutParams(-1,-2));
-    divider=new View(a);divider.setBackgroundColor(ReferenceUi.LINE);root.addView(divider,new LinearLayout.LayoutParams(-1,a.dp(1)));
-    bar=ReferenceUi.nav(a,0,n->select(DESTINATIONS[n]),tabs);root.addView(bar,new LinearLayout.LayoutParams(-1,-2));networkWorkspace=new NetworkWorkspaceUi(a,panel);mark();
+    divider=new View(a);root.addView(divider,new LinearLayout.LayoutParams(-1,0));
+    bar=ReferenceUi.nav(a,-1,n->{if(n==WorkspaceNavigation.READING)a.setFocusReading(!a.focusActive());else select(DESTINATIONS[n]);},tabs);
+    root.addView(bar,new LinearLayout.LayoutParams(-1,-2));networkWorkspace=new NetworkWorkspaceUi(a,panel);mark();
   }
   void updateTick(){if(!a.active||a.destroyed||page==CHAT)return;if(page==DOWNLOADS||page==NETWORK)refresh();a.handler.postDelayed(tick,2500);}
   void select(int target){
@@ -53,7 +55,15 @@ final class AppHub {
     else{a.status(a.session.status);a.session.pageMemory.restorePending=true;if(a.session.networkReady&&MainActivity.chatUrl(a.remote.getUrl()))a.session.pageMemory.restore(a.remote.getUrl(),a.session.navigationEpoch);a.session.wakePolling();}
   }
   void keyboard(){a.applyFocusLayout();}
-  void mark(){int selected=0;for(int i=0;i<DESTINATIONS.length;i++)if(DESTINATIONS[i]==page)selected=i;ReferenceUi.markNav(tabs,selected);}
+  void mark(){
+    boolean focused=page==CHAT&&a.focusActive(),dark=AppAppearance.dark();
+    if(marked&&markedPage==page&&markedFocus==focused&&markedDark==dark)return;
+    marked=true;markedPage=page;markedFocus=focused;markedDark=dark;
+    int selected=-1;for(int i=0;i<DESTINATIONS.length;i++)if(DESTINATIONS[i]==page)selected=i;
+    if(focused)selected=WorkspaceNavigation.READING;
+    ReferenceUi.markNav(tabs,selected);
+    tabs[WorkspaceNavigation.READING].setContentDescription(focused?"退出专注阅读模式":"进入专注阅读模式");
+  }
   LinearLayout layout(String title){
     String identity=page+"|"+settingsTab+"|"+networkTab+"|"+downloadFilter+"|"+title;int oldY=0;
     if(identity.equals(rendered)&&panel.getChildCount()>0){ViewGroup old=(ViewGroup)panel.getChildAt(0);if(old.getChildCount()>1&&old.getChildAt(1) instanceof ScrollView)oldY=old.getChildAt(1).getScrollY();}

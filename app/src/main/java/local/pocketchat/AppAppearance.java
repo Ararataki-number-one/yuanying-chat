@@ -137,13 +137,8 @@ final class AppAppearance {
     @Override public void setStroke(int width,int border){this.width=width;this.border=border;super.setStroke(width,color(border));}
     void refresh(){super.setColor(color(fill));super.setStroke(width,color(border));invalidateSelf();}
   }
-  /** A small tinted material, without a screen-wide blur or browser snapshot. */
-  static final class Glass extends GradientDrawable {
-    final int edge;
-    Glass(Context c,int radius){edge=Math.max(1,Math.round(c.getResources().getDisplayMetrics().density*.5f));setCornerRadius(Ui.dp(c,radius));setOrientation(Orientation.TOP_BOTTOM);refresh();}
-    void refresh(){
-      setColors(dark?new int[]{0xf036363b,0xe62a2a2f}:new int[]{0xfaffffff,0xe6eeeef3});
-      setStroke(edge,dark?0x386e6e77:0x99ffffff);invalidateSelf();
-    }
+  /** Keeps the shared material on the existing appearance/ripple path. */
+  static final class Glass extends LiquidGlassDrawable {
+    Glass(Context c,int radius){super(c,radius);}
   }
 }

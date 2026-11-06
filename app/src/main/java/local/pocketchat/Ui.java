@@ -45,6 +45,7 @@ final class Ui {
         case "image":canvas.drawRoundRect(new RectF(3,3,21,21),4,4,p);canvas.drawCircle(8,8,1.4f,p);path.moveTo(4,18);path.lineTo(10,12);path.lineTo(14,16);path.lineTo(17,13);path.lineTo(21,17);canvas.drawPath(path,p);break;
         case "download":canvas.drawLine(12,3,12,15,p);path.moveTo(7,10);path.lineTo(12,15);path.lineTo(17,10);canvas.drawPath(path,p);path.reset();path.moveTo(4,16);path.lineTo(4,21);path.lineTo(20,21);path.lineTo(20,16);canvas.drawPath(path,p);break;
         case "globe":canvas.drawCircle(12,12,9,p);canvas.drawOval(new RectF(8,3,16,21),p);canvas.drawLine(3,12,21,12,p);break;
+        case "book":path.moveTo(12,5);path.cubicTo(9,3,5,3,2,4);path.lineTo(2,20);path.cubicTo(5,19,9,19,12,21);path.cubicTo(15,19,19,19,22,20);path.lineTo(22,4);path.cubicTo(19,3,15,3,12,5);path.lineTo(12,21);canvas.drawPath(path,p);break;
         case "undo":path.moveTo(4,9);path.lineTo(14,9);path.cubicTo(23,9,23,20,14,20);canvas.drawPath(path,p);path.reset();path.moveTo(8,4);path.lineTo(3,9);path.lineTo(8,14);canvas.drawPath(path,p);break;
         case "clipboard":canvas.drawRoundRect(new RectF(5,5,19,22),2,2,p);canvas.drawRoundRect(new RectF(8,2,16,7),2,2,p);break;
         case "search":canvas.drawCircle(10,10,6,p);canvas.drawLine(14.5f,14.5f,20,20,p);break;

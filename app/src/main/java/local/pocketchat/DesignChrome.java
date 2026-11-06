@@ -45,49 +45,50 @@ final class DesignChrome {
     profileRow=ProfileCatalog.get(a).item(Profiles.slot(a));
     compactTitle=ReferenceUi.text(a,profileLabel(profileRow,Profiles.slot(a)),12,ReferenceUi.TEXT,true);
     ReferenceUi.single(compactTitle);
-    compactTitle.setMaxWidth(a.dp(240));
+    compactTitle.setMaxWidth(a.dp(220));
     compactTitle.setGravity(Gravity.CENTER);
     compactTitle.setPadding(a.dp(14),0,a.dp(12),0);
-    Ui.Icon disclosure=new Ui.Icon("chevron",ReferenceUi.MUTED);disclosure.setBounds(0,0,a.dp(12),a.dp(12));
-    compactTitle.setCompoundDrawables(null,null,disclosure,null);compactTitle.setCompoundDrawablePadding(a.dp(7));
+    Ui.Icon disclosure=new Ui.Icon("globe",ReferenceUi.MUTED);disclosure.setBounds(0,0,a.dp(12),a.dp(12));
+    compactTitle.setCompoundDrawables(disclosure,null,null,null);compactTitle.setCompoundDrawablePadding(a.dp(7));
     compactTitle.setBackground(DesignUi.glass(a,14));
     compactTitle.setDuplicateParentStateEnabled(true);
     compactTitle.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
-    FrameLayout.LayoutParams compactLabel=new FrameLayout.LayoutParams(-2,-1,Gravity.CENTER);
+    FrameLayout.LayoutParams compactLabel=new FrameLayout.LayoutParams(-2,Math.max(a.dp(28),textHeight(compactTitle)+a.dp(8)),Gravity.CENTER);
     compactLabel.leftMargin=a.dp(16);compactLabel.rightMargin=a.dp(16);
     compact.addView(compactTitle,compactLabel);
     compact.setFocusable(true);
     compact.setDefaultFocusHighlightEnabled(false);
-    compact.setContentDescription("当前环境："+compactTitle.getText()+"，点击展开环境工具栏");
-    compact.setOnClickListener(v->reveal());
-    compact.setAccessibilityDelegate(new View.AccessibilityDelegate(){
-      @Override public void onInitializeAccessibilityNodeInfo(View host,AccessibilityNodeInfo info){
-        super.onInitializeAccessibilityNodeInfo(host,info);info.setClassName(Button.class.getName());
-      }
-    });
-    AccessibilityManager accessibility=(AccessibilityManager)a.getSystemService(android.content.Context.ACCESSIBILITY_SERVICE);
-    int compactHeight=Math.max(a.dp(accessibility!=null&&accessibility.isTouchExplorationEnabled()?48:28),textHeight(compactTitle)+a.dp(8));
+    compact.setContentDescription("当前环境："+compactTitle.getText()+"，点按输入网址，长按切换环境");
+    addressCapsule(compact);
+    int compactHeight=Math.max(a.dp(48),textHeight(compactTitle)+a.dp(8));
     a.toolbar.addView(compact,new LinearLayout.LayoutParams(-1,compactHeight));
     top=DesignUi.row(a);
     a.navigation=new Ui.IconButton(a,"hamburger","管理环境",false);
     a.navigation.setOnClickListener(v->a.showDrawer());
-    title=ReferenceUi.text(a,compactTitle.getText().toString(),16,ReferenceUi.TEXT,true);
+    title=ReferenceUi.text(a,compactTitle.getText().toString(),15,ReferenceUi.TEXT,true);
     profileName=title.getText().toString();
     ReferenceUi.single(title);
     title.setGravity(Gravity.CENTER);
     title.setPadding(a.dp(12),0,a.dp(12),0);
-    title.setBackground(DesignUi.glass(a,20));
-    title.setOnClickListener(v->a.chooseEnvironment());
+    Ui.Icon addressIcon=new Ui.Icon("globe",ReferenceUi.MUTED);addressIcon.setBounds(0,0,a.dp(15),a.dp(15));
+    title.setCompoundDrawables(addressIcon,null,null,null);title.setCompoundDrawablePadding(a.dp(6));
+    title.setBackground(DesignUi.glass(a,24));title.setElevation(a.dp(2));
+    title.setContentDescription("当前环境："+profileName+"，点按输入网址，长按切换环境");
+    addressCapsule(title);
 
     more=ReferenceUi.more(a,()->a.moreSheet());
     // The shared button style reserves 48 dp; this compact shell expands touch separately.
     more.setMinHeight(0);
     more.setMinimumHeight(0);
     more.setPadding(a.dp(4),0,a.dp(4),0);
-    int topHeight=Math.max(a.dp(40),textHeight(title)+a.dp(4));
+    int topHeight=Math.max(a.dp(48),textHeight(title)+a.dp(4));
+    top.setClipChildren(false);top.setClipToPadding(false);
     top.addView(a.navigation,new LinearLayout.LayoutParams(a.dp(44),topHeight));
-    top.addView(title,new LinearLayout.LayoutParams(0,topHeight,1));
-    top.addView(more,new LinearLayout.LayoutParams(a.dp(42),topHeight));
+    // Keep the capsule centered and 16% shorter than the old fill-width title.
+    top.addView(new Space(a),new LinearLayout.LayoutParams(0,1,.08f));
+    top.addView(title,new LinearLayout.LayoutParams(0,topHeight,.84f));
+    top.addView(new Space(a),new LinearLayout.LayoutParams(0,1,.08f));
+    top.addView(more,new LinearLayout.LayoutParams(a.dp(44),topHeight));
     a.toolbar.addView(top,new LinearLayout.LayoutParams(-1,topHeight));
     a.geckoAddress=new GeckoAddressUi(a);a.toolbar.addView(a.geckoAddress.row,new LinearLayout.LayoutParams(-1,-2));
 
@@ -138,6 +139,20 @@ final class DesignChrome {
   }
 
   boolean expanded(){return !collapsed;}
+
+  /** Android consumes a handled long press, so releasing it cannot open the editor. */
+  private void addressCapsule(View view){
+    view.setFocusable(true);
+    view.setOnClickListener(v->{reveal();GeckoAddressUi.show(a);});
+    view.setOnLongClickListener(v->{cancelWebGesture();a.chooseEnvironment();return true;});
+    view.setAccessibilityDelegate(new View.AccessibilityDelegate(){
+      @Override public void onInitializeAccessibilityNodeInfo(View host,AccessibilityNodeInfo info){
+        super.onInitializeAccessibilityNodeInfo(host,info);info.setClassName(Button.class.getName());
+        info.addAction(new AccessibilityNodeInfo.AccessibilityAction(AccessibilityNodeInfo.ACTION_CLICK,"输入网址"));
+        info.addAction(new AccessibilityNodeInfo.AccessibilityAction(AccessibilityNodeInfo.ACTION_LONG_CLICK,"切换环境"));
+      }
+    });
+  }
 
   /** Explicit native navigation offers the environment controls again. */
   void reveal(){
@@ -233,8 +248,8 @@ final class DesignChrome {
     if(a.destroyed||!a.active)return;UiPerfStats.chromeUpdate();refreshMetadata();
     text(title,profileName);
     text(compactTitle,profileName);
-    description(compact,"当前环境："+profileName+"，点击展开环境工具栏");
-    description(title,"当前环境："+profileName+"，点击切换环境");
+    description(compact,"当前环境："+profileName+"，点按输入网址，长按切换环境");
+    description(title,"当前环境："+profileName+"，点按输入网址，长按切换环境");
     boolean diagnostic=a.session.audit.canReturnRequestIdentity();int diagnosticVisibility=diagnostic?View.VISIBLE:View.GONE;if(diagnosticRow.getVisibility()!=diagnosticVisibility)diagnosticRow.setVisibility(diagnosticVisibility);diagnosticResults.setEnabled(!a.session.audit.running);
     NativeNetwork network=metrics?NetworkMetricsUi.maintainNow(a):NativeNetwork.get(a);
     JSONObject config=network.settings==null?new JSONObject():network.settings;

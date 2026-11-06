@@ -39,7 +39,7 @@ public final class UiVisualIntegrationActivity extends Activity {
         for(int i=0;i<data.length();i++){JSONObject row=data.optJSONObject(i);controller.preparedOwners.put(DesignDownloads.key(row),row.optInt("slot")==1?"资料整理":"日常会话");}
         try{controller.apply(data,0,now);}finally{controller.preparedOwners=null;}
       }else DesignSettingsUi.render(this,box,()->{});
-      root.addView(ReferenceUi.nav(this,downloads?2:4,n->{},new Button[5]));setContentView(root);AppAppearance.apply(root);
+      root.addView(ReferenceUi.nav(this,downloads?WorkspaceNavigation.DOWNLOADS:WorkspaceNavigation.NONE,n->{},new Button[DesignUi.NAV.length]));setContentView(root);AppAppearance.apply(root);
       if("downloads".equals(action)){String nonce=getIntent().getStringExtra("visualNonce");downloadObservationNonces.add(nonce);downloadLocationEvidence=new DownloadLocationLayoutEvidence(this,root,nonce);}
       if("appearance".equals(action))DesignSettingsUi.appearance(this,()->{});
       if("default-entry".equals(action))DesignSettingsUi.defaultEntry(this,()->{});
@@ -56,7 +56,7 @@ public final class UiVisualIntegrationActivity extends Activity {
     if(Build.VERSION.SDK_INT>=30)getWindow().setDecorFitsSystemWindows(false);
     LinearLayout root=DesignUi.screen(this);FrameLayout host=new FrameLayout(this);
     root.addView(host,new LinearLayout.LayoutParams(-1,0,1));
-    root.addView(ReferenceUi.nav(this,3,n->{if(n==1)startActivity(new Intent(this,WindowHomeActivity.class));},new Button[5]));
+    root.addView(ReferenceUi.nav(this,WorkspaceNavigation.NETWORK,n->{if(n==WorkspaceNavigation.ENVIRONMENTS)startActivity(new Intent(this,WindowHomeActivity.class));},new Button[DesignUi.NAV.length]));
     setContentView(root);ReferenceUi.insets(this,root);
     workspace=new NetworkWorkspaceUi(this,host);workspace.show(0);
     workspace.afterRead=()->{

@@ -11,7 +11,7 @@ public class DownloadCenterActivity extends ThemedActivity {
     super.onCreate(state);filter=state==null?0:Math.max(0,Math.min(3,state.getInt("filter")));
     actions=new SavedFileActions(this);root=DesignUi.screen(this);box=DesignUi.body(this,root,"下载中心",()->finish());
     problem=DesignUi.text(this,"",13,DesignUi.RED);problem.setPadding(DesignUi.dp(this,14),DesignUi.dp(this,6),DesignUi.dp(this,14),DesignUi.dp(this,6));problem.setAccessibilityLiveRegion(android.view.View.ACCESSIBILITY_LIVE_REGION_POLITE);problem.setVisibility(android.view.View.GONE);root.addView(problem,1,new LinearLayout.LayoutParams(-1,-2));
-    root.addView(DesignUi.nav(this,2,n->WorkspaceNavigation.select(this,2,n),null));setContentView(root);downloadsView=new DesignDownloads.Controller(this,box,filter,n->{if(n==filter)return;filter=n;render(false);},actions);downloadsView.restoreState(state);
+    root.addView(DesignUi.nav(this,WorkspaceNavigation.DOWNLOADS,n->WorkspaceNavigation.select(this,WorkspaceNavigation.DOWNLOADS,n),null));setContentView(root);downloadsView=new DesignDownloads.Controller(this,box,filter,n->{if(n==filter)return;filter=n;render(false);},actions);downloadsView.restoreState(state);
   }
   void showProblem(String message){problem.setText(message);problem.setVisibility(message.isEmpty()?android.view.View.GONE:android.view.View.VISIBLE);}
   int recentSlot(){return AppSettings.recentSlot(this);}

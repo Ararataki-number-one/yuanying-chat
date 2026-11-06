@@ -5,7 +5,7 @@ import android.app.*;import android.content.*;import android.content.res.ColorSt
 /** Native design system. Website content and network/identity policies are not restyled here. */
 final class DesignUi {
   static int BG=0xfff4f7fb,CARD=0xffffffff,FIELD=0xfff8fafc,LINE=0xffe0e7f0,TEXT=0xff172033,MUTED=0xff64748b,BLUE=0xff2468f2,CYAN=0xff2468f2,PURPLE=0xff2468f2,GREEN=0xff16845b,RED=0xffc93747;
-  static final String[] NAV={"会话","环境","下载","网络","设置"},GLYPHS={"chat","window","download","globe","settings"};
+  static final String[] NAV={"环境","网络","下载","阅读"},GLYPHS={"window","globe","download","book"};
   static int dp(Context c,int n){return Ui.dp(c,n);}
   static TextView text(Context c,String value,int size,int color){TextView v=new TextView(c);v.setText(value);v.setTextSize(size);v.setTextColor(AppAppearance.text(color));v.setIncludeFontPadding(false);v.setLineSpacing(dp(c,3),1);return v;}
   /** Keep short action words intact in read-only copy; never alter editable values. */

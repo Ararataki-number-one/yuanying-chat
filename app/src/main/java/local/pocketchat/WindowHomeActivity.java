@@ -126,7 +126,7 @@ public class WindowHomeActivity extends ThemedActivity {
       batchActions.addView(actions[i],params);
     }
     selectionBar.addView(batchActions);root.addView(selectionBar);
-    root.addView(DesignUi.nav(this,1,n->WorkspaceNavigation.select(this,1,n),null));
+    root.addView(DesignUi.nav(this,WorkspaceNavigation.ENVIRONMENTS,n->WorkspaceNavigation.select(this,WorkspaceNavigation.ENVIRONMENTS,n),null));
     setContentView(root);
     Context workspaceContext=Profiles.global(this);
     snapshotQueue=new EnvironmentRefreshQueue<>(snapshotWorker,task->handler.post(task),()->EnvironmentHomeSnapshot.read(workspaceContext),this::acceptSnapshot,error->{if(workspaceVisible)showProblem(SNAPSHOT_READ_PROBLEM);});
