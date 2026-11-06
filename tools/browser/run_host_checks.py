@@ -138,6 +138,11 @@ def main():
     for label,jar in [('desktop',desktop),('android-json',android_json)]:
         target=out/('resource-recovery-'+label+'.json');add('resource-recovery-'+label,'tests/resource-recovery-host/run.py',java+['--json-jar',jar,'--output',target],target)
     add('resource-startup-source-history','tests/profile_resource_startup_source_compatibility_test.py')
+    add('ui-checkpoint-publication','tests/gecko_ui_checkpoint_publication_test.py')
+    for label,jar in [('desktop',desktop),('android-json',android_json)]:
+        for name,script in [('automatic-latency','tests/automatic-latency-host/run.py'),('combo-native-admission','tests/combo-native-admission-host/run.py')]:
+            target=out/(name+'-'+label+'.json');add(name+'-'+label,script,java+['--json-jar',jar,'--output',target],target)
+    add('combo-native-admission-collector','tests/gecko_cpu_ip_combo_native_admission_test.py')
     # END_DEVICE_FIX_HOSTS
     names=subprocess.check_output(['git','ls-files','--cached','--others','--exclude-standard','app/src/main/java','app/src/main/assets','tests','tools/browser','tools/gecko','.github/workflows/browser-2_1-acceptance.yml'],cwd=ROOT,text=True).splitlines()
     files=[ROOT/name for name in sorted(set(names)) if (ROOT/name).is_file()]

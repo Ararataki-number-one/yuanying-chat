@@ -15,6 +15,8 @@ import org.mozilla.geckoview.*;
 public final class GeckoCpuIpComboIntegrationActivity extends MainActivity {
   static final String TARGET="https://fp-a.pocketchat.test/env-policy?phase=gecko-new-york";
   static final String FILE="gecko-cpu-ip-combo-activity.json";
+  static final String ADMISSION_FILE="gecko-cpu-ip-combo-native-admission.json";
+  final JSONArray nativeRefusals=new JSONArray();long nativeRefusalCount,admissionRevision;boolean admissionWriteQueued;
   final Handler probe=new Handler(Looper.getMainLooper());
   final ExecutorService writer=Executors.newSingleThreadExecutor();
   final JSONArray checks=new JSONArray(),events=new JSONArray();
@@ -43,12 +45,28 @@ public final class GeckoCpuIpComboIntegrationActivity extends MainActivity {
     getSharedPreferences("chat",0).edit().clear().putBoolean("environmentInitialized",true).putString("networkMode","external")
       .putString("proxy","socks://127.0.0.1:18766").putBoolean("networkConfigured",true).putBoolean("requireExternalVpn",false)
       .putString("geckoBrowserUrl",TARGET).putString("url",TARGET).putInt("privacyLevel",1).putBoolean("saveDraft",true).commit();
+    AppPrefs.apply(this,J.obj("automaticLatencyChecks",false));
+    if(AppPrefs.enabled(this,"automaticLatencyChecks"))throw new IOException("Automatic response checks remained enabled");
     ChatSession.browserFactory=(context,owner)->new Observed(context,owner);getIntent().putExtra("legacyChat",true);
-    super.onCreate(null);stage="production-cold-bootstrap";publish();probe.post(this::tick);
+    super.onCreate(null);stage="production-cold-bootstrap";publishNativeRefusals();publish();probe.post(this::tick);
   }catch(Throwable error){failed(error);}}
 
   final class Observed extends GeckoWebView {
+    final ThreadLocal<String[]> admissionCall=new ThreadLocal<>();
     Observed(android.content.Context context,ChatSession owner){super(context,owner);}
+    @Override protected boolean allowedUrl(String target){
+      String role=remoteSettingsRole(target);String[] observed=admissionCall.get();
+      if(observed!=null&&observed[1].isEmpty())return super.allowedUrl(target);
+      if(observed!=null&&!role.isEmpty())observed[0]=role;
+      return role.isEmpty()&&super.allowedUrl(target);
+    }
+    @Override JSONObject protectedNetworkRoute(String target){
+      String[] previous=admissionCall.get(),observed={"",remoteSettingsRole(target)};admissionCall.set(observed);
+      try{JSONObject actual=super.protectedNetworkRoute(target);String role=remoteSettingsRole(target);
+        if(!role.isEmpty())recordNativeRefusal(this,role,actual,role.equals(observed[0]));
+        return actual;
+      }finally{if(previous==null)admissionCall.remove();else admissionCall.set(previous);}
+    }
     @Override GeckoSession newSession(){
       runtime.getSettings().setEnterpriseRootsEnabled(true);roots=runtime.getSettings().getEnterpriseRootsEnabled();
       GeckoSession sdk=super.newSession();GeckoSession.ProgressDelegate progress=sdk.getProgressDelegate();
@@ -65,6 +83,58 @@ public final class GeckoCpuIpComboIntegrationActivity extends MainActivity {
         }catch(Throwable error){failed(error);}}
       });return sdk;
     }
+  }
+  // This integration fixture is a closed world. These two actual SDK startup
+  // targets are refused by the original virtual admission gate, never sent to
+  // the controlled proxy. All other inputs, including unknown hosts and close
+  // variants, retain the production admission and original strict proxy guard.
+  static String remoteSettingsRole(String target){
+    if(target==null||target.length()>16384)return "";
+    try{java.net.URI uri=new java.net.URI(target);if(!"https".equals(uri.getScheme())||uri.getRawUserInfo()!=null)return "";
+      String authority=uri.getRawAuthority();String host=uri.getHost();int port=uri.getPort();
+      if(host==null||!(port==-1||port==443)||!(host.equals(authority)||(host+":443").equals(authority)))return "";
+      if("firefox.settings.services.mozilla.com".equals(host))return "remote-settings";
+      if("firefox-settings-attachments.cdn.mozilla.net".equals(host))return "remote-settings-attachments";
+    }catch(java.net.URISyntaxException invalid){}return "";
+  }
+  static boolean closedNativeRefusal(JSONObject actual){
+    return actual!=null&&actual.length()==5&&"socks".equals(actual.opt("type"))&&"127.0.0.1".equals(actual.opt("host"))
+      &&actual.opt("port") instanceof Integer&&actual.optInt("port")==9&&Boolean.TRUE.equals(actual.opt("proxyDNS"))
+      &&actual.opt("failoverTimeout") instanceof Integer&&actual.optInt("failoverTimeout")==1;
+  }
+  void recordNativeRefusal(Observed source,String role,JSONObject actual,boolean predicateObserved){
+    try{
+      if(!"remote-settings".equals(role)&&!"remote-settings-attachments".equals(role))throw new SecurityException("Unknown native admission role");
+      boolean closed=closedNativeRefusal(actual);
+      synchronized(nativeRefusals){nativeRefusalCount++;
+        if(nativeRefusals.length()<128)nativeRefusals.put(J.obj("sequence",nativeRefusalCount,"role",role,"hostSha256",
+          "remote-settings".equals(role)?"3a89382624c14be6f9b46ba27222e537fa59f5a36c63aacd6cd762965f1aff0d":"329ef95339e0fd70cc2fa20c8ea4b30288dc5ad57c8c96dc860d4479a61c9b79",
+          "runtimeInstance",System.identityHashCode(source.runtime),"viewInstance",System.identityHashCode(source),
+          "sessionId",source.current==null?"":AppSessionIdentity.id(source.current),"admissionPredicateObserved",predicateObserved,"closedRoute",closed,"superRoute",closed?new JSONObject(actual.toString()):JSONObject.NULL));
+      }
+      publishNativeRefusals();if(!closed)failNativeAdmission(new SecurityException("Native fixture refusal did not use the closed route"));
+    }catch(Exception error){failNativeAdmission(error);}
+  }
+  void failNativeAdmission(Throwable error){
+    if(terminal&&failure.isEmpty())terminal=false;
+    failed(error);
+  }
+  // Coalesce this independent diagnostic on the existing IO executor. Native
+  // route callbacks only add bounded memory rows, never wait for disk IO.
+  void publishNativeRefusals(){
+    if(build==null)return;synchronized(nativeRefusals){admissionRevision++;if(admissionWriteQueued)return;admissionWriteQueued=true;}
+    writer.execute(()->{try{while(!Thread.currentThread().isInterrupted()){
+      JSONObject value;long revision;
+      synchronized(nativeRefusals){revision=admissionRevision;value=J.obj("schema",1,"kind","gecko-cpu-ip-combo-native-admission-v1","sourceCommit",build.getString("sourceCommit"),"sourceTree",build.getString("sourceTree"),"runNonce",nonce,"buildIdentity",build,
+        "process",J.obj("pid",android.os.Process.myPid(),"uid",android.os.Process.myUid(),"name",android.app.Application.getProcessName()),
+        "scope","integration-only-exact-remote-settings-https-admission","automaticLatencyChecks",AppPrefs.enabled(this,"automaticLatencyChecks"),
+        "eventLimit",128,"totalRefusals",nativeRefusalCount,"droppedEvents",nativeRefusalCount-nativeRefusals.length(),"events",new JSONArray(nativeRefusals.toString()),
+        "snapshotScope","persisted-async-snapshot-before-force-stop-later-events-not-covered","diagnosticOnly",true,"qualificationEvidence",false);}
+      byte[] raw=(value.toString()+"\n").getBytes(StandardCharsets.UTF_8);if(raw.length>262144)throw new IOException("Bounded native admission report exceeded");
+      AtomicFile file=new AtomicFile(new File(Profiles.global(this).getFilesDir(),ADMISSION_FILE));FileOutputStream out=null;
+      try{out=file.startWrite();out.write(raw);file.finishWrite(out);}catch(Exception error){if(out!=null)file.failWrite(out);throw error;}
+      synchronized(nativeRefusals){if(revision==admissionRevision){admissionWriteQueued=false;return;}}
+    }}catch(Exception error){synchronized(nativeRefusals){admissionWriteQueued=false;}probe.post(()->failNativeAdmission(error));}});
   }
   void event(String kind,GeckoSession sdk,String url){if(terminal)return;if(events.length()>=80){failed(new IOException("Native event bound"));return;}
     events.put(J.obj("sequence",events.length()+1,"kind",kind,"targetOwned",TARGET.equals(url),"sessionId",AppSessionIdentity.id(sdk),"navigation",session==null?0:session.navigationEpoch));}

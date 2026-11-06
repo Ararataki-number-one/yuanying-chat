@@ -21,6 +21,7 @@ public final class GeckoCpuIpComboEvidenceProvider extends ContentProvider {
   public ParcelFileDescriptor openFile(Uri uri,String mode)throws FileNotFoundException{
     shell();if(!"r".equals(mode)||uri.getQuery()!=null||uri.getFragment()!=null)throw new SecurityException("Fixed read-only combined reports");
     File file;if("/report".equals(uri.getPath()))file=new File(Profiles.global(getContext()).getFilesDir(),GeckoCpuIpComboIntegrationActivity.FILE);
+    else if("/admission".equals(uri.getPath()))file=new File(Profiles.global(getContext()).getFilesDir(),GeckoCpuIpComboIntegrationActivity.ADMISSION_FILE);
     else if("/setup".equals(uri.getPath()))file=IpTimeZoneFixtureScopes.file(getContext(),IpTimeZoneFixtureScopes.SETUP);else throw new FileNotFoundException("Unknown combined report");
     if(java.nio.file.Files.isSymbolicLink(file.toPath())||!file.isFile()||file.length()>524288)throw new FileNotFoundException("Bounded combined report absent");return ParcelFileDescriptor.open(file,ParcelFileDescriptor.MODE_READ_ONLY);
   }

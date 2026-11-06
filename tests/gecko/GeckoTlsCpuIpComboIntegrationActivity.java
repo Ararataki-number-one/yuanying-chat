@@ -31,6 +31,7 @@ public final class GeckoTlsCpuIpComboIntegrationActivity extends MainActivity {
     setup=IpTimeZoneFixtureScopes.read(this,IpTimeZoneFixtureScopes.SETUP);
     if(ChatSession.peek()!=null)throw new SecurityException("Cold session precondition lost");
     Future<JSONObject[]> prepared=writer.submit(()->{
+      GeckoTlsAcceptanceActivity.pauseFixtureUpdateChecks(this);
       if(new SecretStore(this).get(GeckoTimeZoneStore.STORE)!=null||new SecretStore(this).get(GeckoCpuStore.STORE)!=null||new SecretStore(this).get(GeckoTlsStore.STORE)!=null)throw new IOException("Fresh stores required");
       GeckoTimeZoneStore.State zone=GeckoTimeZoneStore.load(this);GeckoCpuStore.State cpu=GeckoCpuStore.load(this);
       if(zone.revision!=1||!zone.spec.followsIp()||zone.identity.slot!=6||cpu.revision!=1||!cpu.spec.isAutomatic()||!zone.identity.equals(cpu.identity))throw new IOException("Actual missing-store defaults differ");
@@ -51,6 +52,11 @@ public final class GeckoTlsCpuIpComboIntegrationActivity extends MainActivity {
     ChatSession.browserFactory=(context,owner)->new Observed(context,owner);getIntent().putExtra("legacyChat",true);
     super.onCreate(null);stage="production-cold-bootstrap";publish();probe.post(this::tick);
   }catch(Throwable error){failed(error);}}
+
+  @Override protected void onResume(){
+    try{GeckoTlsAcceptanceActivity.requireFixtureUpdateChecks(this);}catch(Throwable error){if(terminal&&failure.isEmpty())terminal=false;failed(error);throw new IllegalStateException("Combined TLS fixture update prerequisite failed",error);}
+    super.onResume();
+  }
 
   final class Observed extends GeckoWebView {
     Observed(android.content.Context context,ChatSession owner){super(context,owner);}

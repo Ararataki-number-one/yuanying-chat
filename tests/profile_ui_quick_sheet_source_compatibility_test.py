@@ -8,6 +8,7 @@ import ui_observer_source_compatibility as observer
 import ui_quick_sheet_source_compatibility as quick
 import ui_visual_preservation_contract as original_ui
 import ui_runner14_source_contract as runner14
+import ui_checkpoint_source_compatibility as checkpoint_input
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -24,7 +25,7 @@ class QuickSheetSourceCompatibilityTests(unittest.TestCase):
         self.assertEqual(quick.BASE_COMMIT, '03d0c4ace70942a3f6899daffac086cc6682885e')
         self.assertEqual(quick.BASE_TREE, 'bfd7bbcdf89ef947dd466dab795e94e83fc992c3')
         for path, row in quick.manifest()['files'].items():
-            current = (ROOT / path).read_bytes()
+            current = checkpoint_input.history_input((ROOT / path).read_bytes(), path)
             previous = quick.source_input(current, path)
             self.assertEqual(hashlib.sha256(previous).hexdigest(), quick.PREVIOUS[path])
             self.assertEqual(len(previous), row['previousBytes'])
@@ -128,9 +129,9 @@ class QuickSheetSourceCompatibilityTests(unittest.TestCase):
     def test_actual_host_keeps_current_runner_and_all_thirty_seven_old_methods(self):
         manifest = quick.manifest()
         host = manifest['host']
-        raw = (ROOT / host['path']).read_bytes()
+        raw = checkpoint_input.history_input((ROOT / host['path']).read_bytes(), host['path'])
         self.assertEqual(hashlib.sha256(raw).hexdigest(), host['reviewedSha256'])
-        self.assertEqual(hashlib.sha256((ROOT / quick.RUNNER).read_bytes()).hexdigest(), '65fb205cbb7a466858a0a1869cd4b5388f70026d4e09da078318827e92432f4f')
+        self.assertEqual(hashlib.sha256(checkpoint_input.history_input((ROOT / quick.RUNNER).read_bytes(), quick.RUNNER)).hexdigest(), '65fb205cbb7a466858a0a1869cd4b5388f70026d4e09da078318827e92432f4f')
         text = raw.decode()
         classes = {node.name: node for node in ast.parse(text).body if isinstance(node, ast.ClassDef)}
         for name, methods in host['previousMethods'].items():

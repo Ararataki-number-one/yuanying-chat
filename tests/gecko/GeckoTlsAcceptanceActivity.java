@@ -26,6 +26,7 @@ public class GeckoTlsAcceptanceActivity extends MainActivity {
     run=getIntent().getStringExtra("runNonce");build=IntegrationBuildIdentity.read(this);slot=Profiles.slot(this);bind(getIntent(),false);
     final Throwable[] error={null};Thread writer=new Thread(()->{try{
       manualScope=GeckoTlsFixtureScopes.admitCase(this,build.getString("sourceCommit"),run,slot,getClass().getName(),invocation,null);
+      pauseFixtureUpdateChecks(this);
       GeckoCpuProfile.Storage anchor=GeckoCpuProfile.storage(this);storage=anchor.evidence;
       ProfileCatalog.get(this).created(slot);BrowserFingerprintIntegrationActivity.configure(this,PORT,target);
       getSharedPreferences("chat",0).edit().putInt("privacyLevel",rfp?2:1).putBoolean("pageMode",true).commit();
@@ -51,6 +52,30 @@ public class GeckoTlsAcceptanceActivity extends MainActivity {
     ChatSession.browserFactory=(context,owner)->new ObservedGecko(context,owner);getIntent().putExtra("legacyChat",true);
     super.onCreate(null);stage="production-cold-bootstrap";deadline=SystemClock.elapsedRealtime()+120000;publish();poll.post(this::tick);
   }catch(Throwable error){fail(error);}}
+  /** Closed-world TLS setup only; production and other update fixtures retain defaults. */
+  static android.app.job.JobScheduler fixtureUpdateJobs(Context context)throws IOException{
+    String owner=context.getClass().getName();
+    if(!"local.pocketchat.test".equals(context.getPackageName())||!Arrays.asList("local.pocketchat.GeckoTlsAcceptanceActivity$Profile1","local.pocketchat.GeckoTlsAcceptanceActivity$Profile2","local.pocketchat.GeckoTlsCpuIpComboIntegrationActivity").contains(owner))throw new SecurityException("Exact TLS fixture update scope required");
+    Object service=context.getSystemService(Context.JOB_SCHEDULER_SERVICE);
+    if(!(service instanceof android.app.job.JobScheduler))throw new IOException("Fixture update scheduler unavailable");
+    return (android.app.job.JobScheduler)service;
+  }
+  static void pauseFixtureUpdateChecks(Context context)throws IOException{
+    if(Looper.myLooper()==Looper.getMainLooper())throw new IOException("Fixture update setup requires its bounded writer");
+    android.app.job.JobScheduler jobs=fixtureUpdateJobs(context);
+    AppSettings.put(context,"updateAutoCheck","false");
+    if(!"false".equals(AppSettings.get(context,"updateAutoCheck","missing")))throw new IOException("Fixture update setting did not persist");
+    jobs.cancel(AppUpdates.ON_OPEN);jobs.cancel(AppUpdates.PERIODIC);
+    requireFixtureUpdateChecks(context);
+  }
+  static void requireFixtureUpdateChecks(Context context)throws IOException{
+    android.app.job.JobScheduler jobs=fixtureUpdateJobs(context);
+    if(!"false".equals(AppSettings.get(context,"updateAutoCheck","missing"))||jobs.getPendingJob(AppUpdates.ON_OPEN)!=null||jobs.getPendingJob(AppUpdates.PERIODIC)!=null)throw new IOException("Fixture automatic update work is not paused");
+  }
+  @Override protected void onResume(){
+    try{requireFixtureUpdateChecks(this);}catch(Throwable error){if(terminal&&failure.isEmpty())terminal=false;fail(error);throw new IllegalStateException("TLS fixture update prerequisite failed",error);}
+    super.onResume();
+  }
   void bind(Intent intent,boolean resumed)throws Exception{
     String fresh=intent.getStringExtra("caseNonce"),source=intent.getStringExtra("sourceCommit"),nextMode=intent.getStringExtra("tlsMode");
     int port=intent.getIntExtra("peerPort",-1);String nextLeaf=intent.getStringExtra("expectedLeafSha256");
@@ -64,7 +89,7 @@ public class GeckoTlsAcceptanceActivity extends MainActivity {
   @Override protected void onNewIntent(Intent intent){try{
     if(!terminal||session==null||remote==null||!intent.getBooleanExtra("resample",false)||Profiles.slot(this)!=slot)throw new SecurityException("LiveResampleOnly");
     bind(intent,true);
-    Future<JSONObject> scoped=observer.submit(()->GeckoTlsFixtureScopes.admitCase(this,build.getString("sourceCommit"),run,slot,getClass().getName(),invocation,manualScope.getString("claimNonce")));
+    Future<JSONObject> scoped=observer.submit(()->{JSONObject own=GeckoTlsFixtureScopes.admitCase(this,build.getString("sourceCommit"),run,slot,getClass().getName(),invocation,manualScope.getString("claimNonce"));pauseFixtureUpdateChecks(this);return own;});
     manualScope=scoped.get(8000,TimeUnit.MILLISECONDS);super.onNewIntent(intent);setIntent(intent);terminal=false;failure="";resetObservation();deadline=SystemClock.elapsedRealtime()+120000;
     if(uiRequested){
       stage="saving-pending-default";GeckoTlsStore.State expected=session.tls.snapshot();uiBefore=taskSnapshot();publish();

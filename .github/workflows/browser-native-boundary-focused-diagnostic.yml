@@ -659,7 +659,7 @@ jobs:
         if ! python3 tests/gecko/run_quiet_notifications.py --adb "$(command -v adb)" --serial emulator-5554; then
           checks_failed=1
         fi
-        if ! python3 tests/gecko/run_ui_visuals.py --adb "$(command -v adb)" --serial emulator-5554; then
+        if ! python3 tests/gecko/run_ui_visuals.py --adb "$(command -v adb)" --serial emulator-5554 --no-checkpoint-publication; then
           checks_failed=1
         fi
         if [ "$checks_failed" -ne 0 ]; then exit 1; fi

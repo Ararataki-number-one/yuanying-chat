@@ -87,3 +87,14 @@ def original_runner_tree(tree):
     body[start:end] = replacement.body
     assert tree_sha(tree) == value['allowedModulePairs'][current], 'Complete committed Source7 AST did not restore'
     return tree
+
+
+# The explicit checkpoint opt-out has a separate whole-pinned source-only port.
+# Every unchanged QuickSheet/observer/UI14 oracle still runs after this inverse.
+import importlib.util as _checkpoint_import
+_checkpoint_spec = _checkpoint_import.spec_from_file_location('selected_ui_checkpoint_source_input', Path(__file__).with_name('ui_checkpoint_source_compatibility.py'))
+_checkpoint_input = _checkpoint_import.module_from_spec(_checkpoint_spec)
+_checkpoint_spec.loader.exec_module(_checkpoint_input)
+source_input = _checkpoint_input.wrap_bytes(source_input)
+history_input = _checkpoint_input.wrap_bytes(history_input)
+original_runner_tree = _checkpoint_input.wrap_ast(original_runner_tree)

@@ -5,7 +5,7 @@ import http.server,importlib.util,threading,uuid,os
 import sys
 
 root=pathlib.Path(__file__).resolve().parents[2];out=root/'work/gecko-integration';shots=out/'ui-visuals';shots.mkdir(exist_ok=True)
-p=argparse.ArgumentParser();p.add_argument('--adb',required=True);p.add_argument('--serial',required=True);args=p.parse_args()
+p=argparse.ArgumentParser();p.add_argument('--adb',required=True);p.add_argument('--serial',required=True);p.add_argument('--no-checkpoint-publication',action='store_true',help='Disable checkpoint publication for nonqualifying diagnostics');args=p.parse_args()
 source=subprocess.check_output(['git','rev-parse','HEAD'],cwd=root,text=True).strip()
 package='local.pocketchat.test';records=[]
 sys.path.insert(0,str(root/'tools/gecko'))
@@ -78,6 +78,7 @@ def click_editor_tab(xml,label):
 def checkpoint():
     partial={'status':'in_progress','actualAndroidExecution':True,'sourceCommit':source,'comparisonMode':'current-only','historicalUIRebuilt':False,'screenshots':records,'expectedCaptures':len(required_captures()),'scope':'Incomplete capture checkpoint for review; never release acceptance.'}
     (out/'ui-visual-results.json').write_text(json.dumps(partial,ensure_ascii=False,indent=2)+'\n')
+    if args.no_checkpoint_publication:return
     if os.environ.get('GITHUB_ACTIONS')=='true':
         result=subprocess.run([sys.executable,str(root/'tools/gecko/publish_ci.py')],cwd=root)
         print(json.dumps({'event':'ui-capture-checkpoint','count':len(records),'publishExitCode':result.returncode}),flush=True)

@@ -14,3 +14,14 @@ the actual source must fail the original behavior assertions.
 
 Run `python3 tests/tls-fixture-update-cause-host/run.py --java-home JDK17
 --output NEW_REPORT.json`. There is no JSON JAR dependency or network access.
+
+The added isolation workload executes the exact current fixture pause/check and
+onResume members, complete AppUpdates, actual fail/failed publication guards, and actual AppSettings get/put/bool
+methods. SQLite, JobScheduler, Context and superclass lifecycle are explicitly
+named JVM seams. It checks persisted false before actual schedule, two owned
+cancellations/readback, late warm interference, write/read/scheduler faults,
+wrong package/class, and unchanged TRANSFER/unrelated sentinels. Six compiled
+helper changes must fail, including preservation of a previously passed record. The original twelve causal assertions and four
+mutants remain. The modeled data-clear case checks default policy restoration;
+only the existing device finally pm-clear result proves real cleanup. No
+production/test-package branch or component disable is added.

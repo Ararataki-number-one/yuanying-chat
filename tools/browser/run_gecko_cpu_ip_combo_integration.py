@@ -33,6 +33,9 @@ ACTIVITY='local.pocketchat.test/local.pocketchat.GeckoCpuIpComboIntegrationActiv
 URI='content://local.pocketchat.test.gecko-cpu-ip-combo-evidence'
 MAX_ACTIVITY_BYTES=524288
 TRANSPORT_DIAGNOSTIC_NAME='gecko-cpu-ip-combo-transport-diagnostic.json'
+NATIVE_ADMISSION_NAME='gecko-cpu-ip-combo-native-admission.json'
+NATIVE_ADMISSION_HASHES={'remote-settings':'3a89382624c14be6f9b46ba27222e537fa59f5a36c63aacd6cd762965f1aff0d',
+    'remote-settings-attachments':'329ef95339e0fd70cc2fa20c8ea4b30288dc5ad57c8c96dc860d4479a61c9b79'}
 
 
 def require(value,message):
@@ -118,6 +121,48 @@ def write_transport_diagnostic(directory,server,binding,route_receipts):
     return write_json(Path(directory)/TRANSPORT_DIAGNOSTIC_NAME,dict(schema=1,binding=dict(binding),diagnosticOnly=True,qualificationEvidence=False,snapshot=value))
 
 
+def validate_native_admission(raw,source,nonce,expected):
+    """Validate an independent original native snapshot, never acceptance data."""
+    require(type(raw) is bytes and 0<len(raw)<=262144,'bounded native admission snapshot required')
+    value=strict_json(raw)
+    fields={'schema','kind','sourceCommit','sourceTree','runNonce','buildIdentity','process','scope','automaticLatencyChecks',
+        'eventLimit','totalRefusals','droppedEvents','events','snapshotScope','diagnosticOnly','qualificationEvidence'}
+    require(type(value) is dict and set(value)==fields and type(value['schema']) is int and value['schema']==1
+        and value['kind']=='gecko-cpu-ip-combo-native-admission-v1','typed native admission schema differs')
+    require(value['sourceCommit']==source and value['sourceTree']==expected['sourceTree'] and value['runNonce']==nonce,'native admission invocation differs')
+    require(type(value['buildIdentity']) is dict and set(value['buildIdentity'])==set(expected)|{'scope'}
+        and value['buildIdentity']['scope']=='Installed synthetic integration APK bytes and embedded source stamp only'
+        and all(_typed_equal(value['buildIdentity'][key],expected[key]) for key in expected),'native admission installed identity differs')
+    verify_installed(value['buildIdentity'],expected)
+    require(value['scope']=='integration-only-exact-remote-settings-https-admission'
+        and value['snapshotScope']=='persisted-async-snapshot-before-force-stop-later-events-not-covered'
+        and value['automaticLatencyChecks'] is False and value['diagnosticOnly'] is True and value['qualificationEvidence'] is False,'native admission scope differs')
+    process=value['process'];require(type(process) is dict and set(process)=={'pid','uid','name'} and type(process['pid']) is int and process['pid']>0
+        and type(process['uid']) is int and process['uid']>=10000 and process['name']=='local.pocketchat.test:profile6','native admission process differs')
+    events=value['events'];require(type(value['eventLimit']) is int and value['eventLimit']==128 and type(value['totalRefusals']) is int and 0<=value['totalRefusals']<=9223372036854775807
+        and type(value['droppedEvents']) is int and type(events) is list and len(events)==min(128,value['totalRefusals'])
+        and value['droppedEvents']==value['totalRefusals']-len(events),'native admission event bounds differ')
+    closed={'type':'socks','host':'127.0.0.1','port':9,'proxyDNS':True,'failoverTimeout':1}
+    for index,event in enumerate(events,1):
+        require(type(event) is dict and set(event)=={'sequence','role','hostSha256','runtimeInstance','viewInstance','sessionId','admissionPredicateObserved','closedRoute','superRoute'}
+            and type(event['sequence']) is int and event['sequence']==index and type(event['role']) is str and event['role'] in NATIVE_ADMISSION_HASHES
+            and event['hostSha256']==NATIVE_ADMISSION_HASHES[event['role']],'native admission target differs')
+        require(all(type(event[key]) is int and event[key]!=0 for key in ('runtimeInstance','viewInstance'))
+            and type(event['sessionId']) is str and (event['sessionId']=='' or re.fullmatch('[A-Za-z0-9_.:-]{1,160}',event['sessionId']) is not None),'native admission owner differs')
+        require(type(event['admissionPredicateObserved']) is bool and type(event['closedRoute']) is bool and ((_typed_equal(event['superRoute'],closed) and event['closedRoute'])
+            or (event['superRoute'] is None and not event['closedRoute'])),'native admission actual super route differs')
+    return value
+
+def capture_native_admission(adb,directory,source,nonce,expected):
+    # Read before force-stop/scope clear. Preserve exact original bytes. This
+    # snapshot cannot establish that no later native event occurred.
+    raw=adb('exec-out','content','read','--uri',URI+'/admission',check=False,timeout=20).stdout
+    value=validate_native_admission(raw,source,nonce,expected)
+    path=Path(directory)/NATIVE_ADMISSION_NAME
+    with os.fdopen(os.open(path,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o644),'wb') as stream:stream.write(raw)
+    return value
+
+
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--adb',default='adb');parser.add_argument('--serial',required=True)
@@ -192,6 +237,12 @@ def main():
         # Every independent cleanup action executes even when an earlier action
         # fails. Never mask the original fixture failure or convert cleanup to a
         # successful result. No replay/input/retry is performed here.
+        if scope_prepared:
+            try:
+                admission=capture_native_admission(adb,args.output,source,nonce,identity)
+                if activity is not None:require(_typed_equal(admission['process'],activity.get('process')),'native admission and actual activity process differ')
+                require(all(event['closedRoute'] for event in admission['events']),'observed native admission returned an unsafe route')
+            except Exception as failure:error=error or failure
         actions=[('appStopped',lambda:adb('shell','am','force-stop','local.pocketchat.test'))]
         if scope_prepared:actions.append(('scopeCleared',lambda:adb(*scope_command('clear',source,nonce))))
         if server is not None:actions.append(('serverQuiesced',server.close))

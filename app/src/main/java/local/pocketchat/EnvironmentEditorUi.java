@@ -73,11 +73,11 @@ final class EnvironmentEditorUi {
     }));
 
     CheckBox[] options=new CheckBox[AppPrefs.KEYS.length];
-    String[] headings={"会话与恢复","回复提醒","下载与存储"};
-    String[][] preferenceGroups={{"saveDraft","restoreScroll"},{"replyNotice"},{"wifiDownloads","cleanTemporaryCache"}};
+    String[] headings={"会话与恢复","回复提醒","下载与存储","连接检测"};
+    String[][] preferenceGroups={{"saveDraft","restoreScroll"},{"replyNotice"},{"wifiDownloads","cleanTemporaryCache"},{"automaticLatencyChecks"}};
     List<String> preferenceKeys=Arrays.asList(AppPrefs.KEYS);
     for(int section=0;section<preferenceGroups.length;section++){
-      DesignUi.section(preferences,headings[section],"");LinearLayout card=DesignUi.card(a);
+      DesignUi.section(preferences,headings[section],section==3?"自动检测会访问公开测试地址；关闭可减少后台请求，仍可手动检测。":"");LinearLayout card=DesignUi.card(a);
       for(String key:preferenceGroups[section]){
         int i=preferenceKeys.indexOf(key);if(i<0)continue;
         options[i]=new CheckBox(a);options[i].setText(AppPrefs.LABELS[i]);options[i].setTextColor(DesignUi.TEXT);options[i].setTextSize(14);

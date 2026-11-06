@@ -45,6 +45,12 @@ class ComboRunnerTests(unittest.TestCase):
         report,expected=modeled.fixture();activity=copy.deepcopy(report['activity'])
         if where=='expired':activity.update(status='running',stage='production-cold-bootstrap')
         if where=='device-failed':activity.update(status='failed',stage='failed',failure='Synthetic device failure')
+        # Explicit default-header/native-admission snapshot boundary only;
+        # actual SDK route execution is covered by its separate Java host.
+        admission_identity=copy.deepcopy(expected);admission_identity['scope']='Installed synthetic integration APK bytes and embedded source stamp only'
+        admission=dict(schema=1,kind='gecko-cpu-ip-combo-native-admission-v1',sourceCommit=modeled.SOURCE,sourceTree=modeled.TREE,runNonce=modeled.NONCE,buildIdentity=admission_identity,
+            process=copy.deepcopy(activity['process']),scope='integration-only-exact-remote-settings-https-admission',automaticLatencyChecks=False,eventLimit=128,totalRefusals=0,droppedEvents=0,events=[],
+            snapshotScope='persisted-async-snapshot-before-force-stop-later-events-not-covered',diagnosticOnly=True,qualificationEvidence=False)
         device_raw=(json.dumps(activity,indent=2)+'\n').encode();actions=[];verification=[];temporary=tempfile.TemporaryDirectory();self.addCleanup(temporary.cleanup);base=Path(temporary.name);apk=base/'integration.apk';apk.write_bytes(b'EXPLICIT MODELED APK BOUNDARY');out=base/'out'
         class Certificates:
             def __init__(self):
@@ -86,6 +92,7 @@ class ComboRunnerTests(unittest.TestCase):
             elif words==['shell','pm','clear','local.pocketchat.test']:raw=b'Success\n'
             elif words==['shell','pidof',modeled.gate.PROCESS]:raw=b'7711 7712\n' if where=='pid' else b'7711\n'
             elif words==['exec-out','content','read','--uri',runner.URI+'/setup']:raw=json.dumps(report['prelaunchSetup']).encode()
+            elif words==['exec-out','content','read','--uri',runner.URI+'/admission']:raw=json.dumps(admission).encode()
             elif words==['exec-out','content','read','--uri',runner.URI+'/report']:
                 raw=device_raw;actions.append(('report-timeout',kwargs['timeout']))
             elif len(words)==2 and words[0]=='shell' and '--method prepare' in words[1] and where=='prepare':raise subprocess.CalledProcessError(1,command)
