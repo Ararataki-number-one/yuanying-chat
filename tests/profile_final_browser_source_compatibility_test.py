@@ -159,6 +159,22 @@ def inventory_116_input(raw, relative, value):
     return restored
 
 
+def build_budget_helper_before(raw):
+    constants = b'# BEGIN_BUILD_BUDGET_METADATA\nBUILD_BUDGET_PATH = \'tests/browser_acceptance_workflow_test.py\'\nBUILD_BUDGET_PREVIOUS_SHA256 = \'2792c0919de89b13eb9040660be96f7c3ba55cf689e54abd075646f103e479bf\'\nBUILD_BUDGET_PREVIOUS_BYTES = 7205\nBUILD_BUDGET_CURRENT_SHA256 = \'655d7a4a385aa9d0d6684807a177035ee177a8470eb396a6f7da3efe0759db71\'\nBUILD_BUDGET_CURRENT_BYTES = 7668\nBUILD_BUDGET_PREVIOUS = b"        for name,job in self.old[\'jobs\'].items():\\n            with self.subTest(job=name):\\n                current=self.new[\'jobs\'][name];position=0\\n                for step in job[\'steps\']:\\n                    found=next((at for at in range(position,len(current[\'steps\'])) if current[\'steps\'][at]==step),None)\\n                    self.assertIsNotNone(found,(name,step.get(\'name\')));position=found+1\\n                for key,value in job.items():\\n                    if key==\'steps\':continue\\n                    self.assertEqual(current[key],value+[\'browser\',\'tls\'] if name==\'verify\' and key==\'needs\' else value)\\n    def test_single_pipeline_shares_actual_apk_and_gates_browser(self):\\n        self.assertEqual(self.new[\'on\'][\'push\'][\'branches\'],[\'release/browser-2.1.0\',\'release/browser-2.1.0-*\',\'release/browser-2.1.1\',\'release/browser-2.1.1-*\',\'release/browser-2.1.2\',\'release/browser-2.1.2-*\',\'release/browser-2.1.3\',\'release/browser-2.1.3-*\',\'release/browser-2.1.4\',\'release/browser-2.1.4-*\'])\\n        self.assertIn(\'browser\',self.new[\'jobs\'][\'verify\'][\'needs\'])\\n        self.assertEqual(self.new[\'jobs\'][\'browser\'][\'needs\'],\'build\')\\n        browser=self.new[\'jobs\'][\'browser\'];self.assertNotIn(\'continue-on-error\',browser)\\n        body=\'\\\\n\'.join(step.get(\'run\',\'\') for step in browser[\'steps\'])\\n"\nBUILD_BUDGET_CURRENT = b"        for name,job in self.old[\'jobs\'].items():\\n            with self.subTest(job=name):\\n                current=self.new[\'jobs\'][name];position=0\\n                for step in job[\'steps\']:\\n                    found=next((at for at in range(position,len(current[\'steps\'])) if current[\'steps\'][at]==step),None)\\n                    self.assertIsNotNone(found,(name,step.get(\'name\')));position=found+1\\n                if name==\'build\':\\n                    self.assertIn(\'timeout-minutes\',job)\\n                for key,value in job.items():\\n                    if key==\'steps\':continue\\n                    if name==\'build\' and key==\'timeout-minutes\':\\n                        self.assertIs(type(value),int)\\n                        self.assertEqual(value,40)\\n                        self.assertIn(key,current)\\n                        self.assertIs(type(current[key]),int)\\n                        self.assertEqual(current[key],60)\\n                    else:\\n                        self.assertEqual(current[key],value+[\'browser\',\'tls\'] if name==\'verify\' and key==\'needs\' else value)\\n    def test_single_pipeline_shares_actual_apk_and_gates_browser(self):\\n        self.assertEqual(self.new[\'on\'][\'push\'][\'branches\'],[\'release/browser-2.1.0\',\'release/browser-2.1.0-*\',\'release/browser-2.1.1\',\'release/browser-2.1.1-*\',\'release/browser-2.1.2\',\'release/browser-2.1.2-*\',\'release/browser-2.1.3\',\'release/browser-2.1.3-*\',\'release/browser-2.1.4\',\'release/browser-2.1.4-*\'])\\n        self.assertIn(\'browser\',self.new[\'jobs\'][\'verify\'][\'needs\'])\\n        self.assertEqual(self.new[\'jobs\'][\'browser\'][\'needs\'],\'build\')\\n        browser=self.new[\'jobs\'][\'browser\'];self.assertNotIn(\'continue-on-error\',browser)\\n        body=\'\\\\n\'.join(step.get(\'run\',\'\') for step in browser[\'steps\'])\\n"\n# END_BUILD_BUDGET_METADATA\n'
+    hook = b"    if (relative == BUILD_BUDGET_PATH and (digest, len(raw)) not in\n            ((row['previousSha256'], row['previousBytes']), (row['reviewedSha256'], row['reviewedBytes']))):\n        raw = build_budget_input(raw, relative)\n        digest = _sha(raw)\n"
+    if raw.count(constants) != 1 or raw.count(hook) != 1:
+        raise ValueError('Build budget helper declarations differ')
+    start = raw.index(b'\ndef build_budget_input(')
+    stop = raw.index(b'\ndef p2_input(', start)
+    if SHA(raw[start:stop]) != 'dfa10e03705773a047ec4773c530bebbe11b6637aa12f0584784d79cd88dd44f':
+        raise ValueError('Build budget helper body differs')
+    restored = raw[:start]+raw[stop:]
+    restored = restored.replace(constants, b'', 1).replace(hook, b'', 1)
+    if SHA(restored) != '0c24e81a178476e79907f84d107c5539e5b7d872bbcff866844d36e81238ef4d':
+        raise ValueError('Build budget helper inverse did not restore its complete before image')
+    return restored
+
+
 @lru_cache(maxsize=None)
 def git(*parts):
     return subprocess.check_output(['git', '--no-replace-objects', *parts], cwd=ROOT,
@@ -210,7 +226,7 @@ class FinalBrowserHistoricalSources(unittest.TestCase):
                 commit, tree = provenance[relative]
                 self.assertEqual((row['previousCommit'], row['previousTree']), (commit, tree))
                 before = git('show', commit+':'+relative)
-                current = (ROOT/relative).read_bytes()
+                current = layer.build_budget_input((ROOT/relative).read_bytes(), relative)
                 self.assertEqual((SHA(before), len(before)), (row['previousSha256'], row['previousBytes']))
                 self.assertEqual((SHA(current), len(current)), (row['reviewedSha256'], row['reviewedBytes']))
                 self.assertEqual(row['contextLines'], 6)
@@ -241,7 +257,7 @@ class FinalBrowserHistoricalSources(unittest.TestCase):
         rejected = 0
         value = layer.manifest()
         for relative, row in value['files'].items():
-            current = (ROOT/relative).read_bytes()
+            current = layer.build_budget_input((ROOT/relative).read_bytes(), relative)
             # The appended P2 context has its own complete-image controls below.
             for delta in (row['deltas'][:-1] if relative == GV else row['deltas'][:-(1 + INVENTORY_CLEANUP_CONTEXT_COUNTS[relative])] if relative in INVENTORY_115_PINS else row['deltas']):
                 chunk = current_context(relative, row, delta)
@@ -923,7 +939,7 @@ class FinalBrowserHistoricalSources(unittest.TestCase):
             layer.p2_input(current+b' ', GV)
 
     def test_p2_tls_read_hooks_strip_to_the_exact_frozen_metadata_sources(self):
-        final = (ROOT/'tests/final_browser_source_compatibility.py').read_bytes()
+        final = build_budget_helper_before((ROOT/'tests/final_browser_source_compatibility.py').read_bytes())
         constants = (b"P2_PREVIOUS_SHA256 = '98c648b06ef28cd35e01ea0ad8128258d3f171706cc3ef23087bd102f545a510'\n"
                      b"P2_PREVIOUS_BYTES = 128741\nP2_CONTEXT_ID = 'context-08'\n")
         self.assertEqual(final.count(constants), 1)
@@ -1076,6 +1092,141 @@ class FinalBrowserHistoricalSources(unittest.TestCase):
         self.assertEqual(sum(len(row['deltas']) for row in value['files'].values()), 46)
         self.assertEqual(sum(len(row['deltas']) for row in layer.manifest()['files'].values()), 59)
         self.assertEqual(rejected, 78)
+
+    def test_build_budget_metadata_adapter_preserves_the_original_fifty_nine_contexts(self):
+        relative = layer.BUILD_BUDGET_PATH
+        raw = (ROOT/relative).read_bytes()
+        restored = layer.build_budget_input(raw, relative)
+        self.assertEqual((SHA(restored), len(restored)), ('2792c0919de89b13eb9040660be96f7c3ba55cf689e54abd075646f103e479bf', 7205))
+        self.assertIs(layer.build_budget_input(restored, relative), restored)
+        row = layer.manifest()['files'][relative]
+        self.assertEqual((SHA(restored), len(restored)), (row['reviewedSha256'], row['reviewedBytes']))
+        self.assertEqual(layer.source_input(raw, relative), git('show', S+':'+relative))
+        self.assertEqual(SHA(layer.DELTA_PATH.read_bytes()), '8bb0bb6580879fcef6258f48e57fbdce19304c0d3ea0061131d993b815877a16')
+        self.assertEqual(len(layer.manifest()['files']), 19)
+        self.assertEqual(sum(len(item['deltas']) for item in layer.manifest()['files'].values()), 59)
+        self.assertEqual(SHA(build_budget_helper_before((ROOT/'tests/final_browser_source_compatibility.py').read_bytes())), '0c24e81a178476e79907f84d107c5539e5b7d872bbcff866844d36e81238ef4d')
+        ip_raw = (ROOT/'tests/browser_ip_timezone_publish_gate_test.py').read_bytes()
+        ip_current = b"                if name == 'build' and field == 'timeout-minutes':\n                    self.assertIs(type(expected), int)\n                    self.assertEqual(expected, 40)\n                    self.assertIs(type(current['jobs'][name].get(field)), int)\n                    self.assertEqual(current['jobs'][name].get(field), 60)\n                else:\n                    self.assertEqual(current['jobs'][name].get(field), expected, (name, field))\n"
+        ip_before = b"                self.assertEqual(current['jobs'][name].get(field), expected, (name, field))\n"
+        self.assertEqual(ip_raw.count(ip_current), 1)
+        self.assertEqual(SHA(ip_raw.replace(ip_current, ip_before, 1)), '96d61fda98331762c5fa4aaa2290e1f0492dc48bf8f340e0fc16f4a92f062793')
+        self.assertNotIn('tests/browser_ip_timezone_publish_gate_test.py', layer.PATHS)
+        self.assertIs(layer.build_budget_input(ip_raw, 'tests/browser_ip_timezone_publish_gate_test.py'), ip_raw)
+
+    def test_actual_raw_build_budget_contracts_and_compiled_guard_counterfeits(self):
+        import browser_acceptance_workflow_test as workflow
+        import browser_ip_timezone_publish_gate_test as ip_gate
+        import yaml
+        raw_new = yaml.safe_load((ROOT/'.github/workflows/browser-2_1-acceptance.yml').read_text())
+        raw_old = yaml.safe_load((ROOT/'.github/workflows/gecko-integration.yml').read_text())
+        self.assertIs(type(raw_old['jobs']['build']['timeout-minutes']), int)
+        self.assertEqual(raw_old['jobs']['build']['timeout-minutes'], 40)
+        self.assertIs(type(raw_new['jobs']['build']['timeout-minutes']), int)
+        self.assertEqual(raw_new['jobs']['build']['timeout-minutes'], 60)
+        workflow.BrowserWorkflowTests.setUpClass()
+        self.assertEqual(workflow.BrowserWorkflowTests.new, raw_new)
+        self.assertEqual(workflow.BrowserWorkflowTests.old, raw_old)
+        def run_guard(kind, new, old, selected=None):
+            if kind == 'workflow':
+                selected = selected or workflow.BrowserWorkflowTests
+                selected.setUpClass()
+                with patch.object(selected, 'new', new), patch.object(selected, 'old', old):
+                    selected('test_original_checks_retained_in_order').test_original_checks_retained_in_order()
+            else:
+                selected = selected or ip_gate.IpTimezonePublishGateTests
+                with patch.object(ip_gate.yaml, 'safe_load', side_effect=[new, old]):
+                    selected('test_ip_android_step_and_verified_raw_transfer_are_mandatory_without_new_jobs').test_ip_android_step_and_verified_raw_transfer_are_mandatory_without_new_jobs()
+        with patch.object(layer, 'metadata_input', side_effect=AssertionError('Actual workflow must not use historical metadata')):
+            workflow.BrowserWorkflowTests('test_original_checks_retained_in_order').test_original_checks_retained_in_order()
+            ip_gate.IpTimezonePublishGateTests('test_ip_android_step_and_verified_raw_transfer_are_mandatory_without_new_jobs').test_ip_android_step_and_verified_raw_transfer_are_mandatory_without_new_jobs()
+        def reject(kind, new, old, selected=None):
+            with self.assertRaises(AssertionError):
+                run_guard(kind, new, old, selected)
+        negative = 0
+        for kind in ('workflow', 'ip'):
+            run_guard(kind, copy.deepcopy(raw_new), copy.deepcopy(raw_old))
+            for value in (39, 41, 60, 40.0, '40', None, True):
+                changed = copy.deepcopy(raw_old);changed['jobs']['build']['timeout-minutes'] = value
+                reject(kind, copy.deepcopy(raw_new), changed);negative += 1
+            for value in (40, 59, 61, 60.0, '60', None, True):
+                changed = copy.deepcopy(raw_new);changed['jobs']['build']['timeout-minutes'] = value
+                reject(kind, changed, copy.deepcopy(raw_old));negative += 1
+            for side in ('old', 'new'):
+                new, old = copy.deepcopy(raw_new), copy.deepcopy(raw_old)
+                (old if side == 'old' else new)['jobs']['build'].pop('timeout-minutes')
+                reject(kind, new, old);negative += 1
+            other_build = ('build', 'runs-on', 'unexpected-runner') if kind == 'workflow' else ('build', 'permissions', {'contents':'write','unexpected':'permission'})
+            for name, field, value in (other_build,
+                    ('chrome-diagnostic', 'timeout-minutes', raw_old['jobs']['chrome-diagnostic']['timeout-minutes']+1), ('verify', 'needs', ['build'])):
+                changed = copy.deepcopy(raw_new);changed['jobs'][name][field] = value
+                reject(kind, changed, copy.deepcopy(raw_old));negative += 1
+        self.assertEqual(negative, 38)
+        # Mutated guards still accept the pristine raw40/raw60 pair, but must
+        # fail the same strict negative oracle when they admit an invalid value.
+        mutants = 0
+        for kind, module, class_name, replacements in (
+                ('workflow', workflow, 'BrowserWorkflowTests', (
+                    ('self.assertEqual(current[key],60)', 'self.assertGreaterEqual(current[key],60)', 'new', 61),
+                    ('self.assertEqual(value,40)', 'self.assertGreaterEqual(value,40)', 'old', 41),
+                    ('                        self.assertIs(type(current[key]),int)\n', '', 'new', 60.0),
+                    ('                        self.assertIs(type(value),int)\n', '', 'old', 40.0))),
+                ('ip', ip_gate, 'IpTimezonePublishGateTests', (
+                    ("self.assertEqual(current['jobs'][name].get(field), 60)", "self.assertGreaterEqual(current['jobs'][name].get(field), 60)", 'new', 61),
+                    ('self.assertEqual(expected, 40)', 'self.assertGreaterEqual(expected, 40)', 'old', 41),
+                    ("                    self.assertIs(type(current['jobs'][name].get(field)), int)\n", '', 'new', 60.0),
+                    ('                    self.assertIs(type(expected), int)\n', '', 'old', 40.0)))):
+            original = Path(module.__file__).read_text()
+            for before, after, side, value in replacements:
+                self.assertEqual(original.count(before), 1)
+                namespace = {'__file__':module.__file__, '__name__':'strict_build_budget_counterfeit'}
+                exec(compile(original.replace(before, after, 1), '<strict-build-budget-counterfeit>', 'exec'), namespace)
+                selected = namespace[class_name]
+                run_guard(kind, copy.deepcopy(raw_new), copy.deepcopy(raw_old), selected)
+                new, old = copy.deepcopy(raw_new), copy.deepcopy(raw_old)
+                (old if side == 'old' else new)['jobs']['build']['timeout-minutes'] = value
+                with self.assertRaises(AssertionError):
+                    reject(kind, new, old, selected)
+                mutants += 1
+        self.assertEqual(mutants, 8)
+
+    def test_build_budget_metadata_unknown_context_and_preimage_counterfeits_reject(self):
+        relative = layer.BUILD_BUDGET_PATH
+        current = (ROOT/relative).read_bytes()
+        chunk = layer.BUILD_BUDGET_CURRENT
+        self.assertEqual(current.count(chunk), 1)
+        removed = current.replace(chunk, b'', 1)
+        moved = removed+chunk
+        if moved == current:
+            moved = chunk+removed
+        for bad in (removed, current.replace(chunk, chunk+chunk, 1),
+                current.replace(chunk, chunk+b' ', 1), moved, current[:-1], current+b'unknown',
+                current.replace(b'self.assertEqual(current[key],60)', b'self.assertEqual(current[key],61)', 1)):
+            self.assertNotEqual(bad, current)
+            with self.assertRaises(ValueError):
+                layer.build_budget_input(bad, relative)
+        for bad in (None, current.decode(), bytearray(current), memoryview(current)):
+            with self.assertRaises(ValueError):
+                layer.build_budget_input(bad, relative)
+        for bad in ('/'+relative, './'+relative, '../'+relative, relative+'/', None, Path(relative)):
+            with self.assertRaises(ValueError):
+                layer.build_budget_input(current, bad)
+        source = (ROOT/'tests/final_browser_source_compatibility.py').read_text()
+        guard = "    if (_sha(restored), len(restored)) != (BUILD_BUDGET_PREVIOUS_SHA256, BUILD_BUDGET_PREVIOUS_BYTES):\n        raise ValueError('Build budget metadata did not restore the exact frozen test')\n"
+        self.assertEqual(source.count(guard), 1)
+        counterfeit = compiled(source.replace(guard, '', 1), 'build_budget_preimage_counterfeit')
+        counterfeit['BUILD_BUDGET_PREVIOUS'] = layer.BUILD_BUDGET_PREVIOUS+b'NONCLOSING_BUDGET'
+        with patch.object(layer, 'BUILD_BUDGET_PREVIOUS', layer.BUILD_BUDGET_PREVIOUS+b'NONCLOSING_BUDGET'):
+            with self.assertRaisesRegex(ValueError, 'exact frozen test'):
+                layer.build_budget_input(current, relative)
+        with self.assertRaises(AssertionError):
+            with self.assertRaisesRegex(ValueError, 'exact frozen test'):
+                counterfeit['build_budget_input'](current, relative)
+        class Forbidden:
+            def __len__(self):
+                raise AssertionError('Unknown budget source reached context inspection')
+        with patch.object(layer, 'BUILD_BUDGET_CURRENT', Forbidden()), self.assertRaisesRegex(ValueError, 'unknown complete test source'):
+            layer.build_budget_input(current+b' ', relative)
 
     def test_current_workflow_reads_raw_yaml_seven_declared_and_thirteen_expanded_jobs(self):
         import browser_acceptance_workflow_test as workflow

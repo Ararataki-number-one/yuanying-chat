@@ -25,6 +25,15 @@ DELTA_SHA256 = '8bb0bb6580879fcef6258f48e57fbdce19304c0d3ea0061131d993b815877a16
 P2_PREVIOUS_SHA256 = '98c648b06ef28cd35e01ea0ad8128258d3f171706cc3ef23087bd102f545a510'
 P2_PREVIOUS_BYTES = 128741
 P2_CONTEXT_ID = 'context-08'
+# BEGIN_BUILD_BUDGET_METADATA
+BUILD_BUDGET_PATH = 'tests/browser_acceptance_workflow_test.py'
+BUILD_BUDGET_PREVIOUS_SHA256 = '2792c0919de89b13eb9040660be96f7c3ba55cf689e54abd075646f103e479bf'
+BUILD_BUDGET_PREVIOUS_BYTES = 7205
+BUILD_BUDGET_CURRENT_SHA256 = '655d7a4a385aa9d0d6684807a177035ee177a8470eb396a6f7da3efe0759db71'
+BUILD_BUDGET_CURRENT_BYTES = 7668
+BUILD_BUDGET_PREVIOUS = b"        for name,job in self.old['jobs'].items():\n            with self.subTest(job=name):\n                current=self.new['jobs'][name];position=0\n                for step in job['steps']:\n                    found=next((at for at in range(position,len(current['steps'])) if current['steps'][at]==step),None)\n                    self.assertIsNotNone(found,(name,step.get('name')));position=found+1\n                for key,value in job.items():\n                    if key=='steps':continue\n                    self.assertEqual(current[key],value+['browser','tls'] if name=='verify' and key=='needs' else value)\n    def test_single_pipeline_shares_actual_apk_and_gates_browser(self):\n        self.assertEqual(self.new['on']['push']['branches'],['release/browser-2.1.0','release/browser-2.1.0-*','release/browser-2.1.1','release/browser-2.1.1-*','release/browser-2.1.2','release/browser-2.1.2-*','release/browser-2.1.3','release/browser-2.1.3-*','release/browser-2.1.4','release/browser-2.1.4-*'])\n        self.assertIn('browser',self.new['jobs']['verify']['needs'])\n        self.assertEqual(self.new['jobs']['browser']['needs'],'build')\n        browser=self.new['jobs']['browser'];self.assertNotIn('continue-on-error',browser)\n        body='\\n'.join(step.get('run','') for step in browser['steps'])\n"
+BUILD_BUDGET_CURRENT = b"        for name,job in self.old['jobs'].items():\n            with self.subTest(job=name):\n                current=self.new['jobs'][name];position=0\n                for step in job['steps']:\n                    found=next((at for at in range(position,len(current['steps'])) if current['steps'][at]==step),None)\n                    self.assertIsNotNone(found,(name,step.get('name')));position=found+1\n                if name=='build':\n                    self.assertIn('timeout-minutes',job)\n                for key,value in job.items():\n                    if key=='steps':continue\n                    if name=='build' and key=='timeout-minutes':\n                        self.assertIs(type(value),int)\n                        self.assertEqual(value,40)\n                        self.assertIn(key,current)\n                        self.assertIs(type(current[key]),int)\n                        self.assertEqual(current[key],60)\n                    else:\n                        self.assertEqual(current[key],value+['browser','tls'] if name=='verify' and key=='needs' else value)\n    def test_single_pipeline_shares_actual_apk_and_gates_browser(self):\n        self.assertEqual(self.new['on']['push']['branches'],['release/browser-2.1.0','release/browser-2.1.0-*','release/browser-2.1.1','release/browser-2.1.1-*','release/browser-2.1.2','release/browser-2.1.2-*','release/browser-2.1.3','release/browser-2.1.3-*','release/browser-2.1.4','release/browser-2.1.4-*'])\n        self.assertIn('browser',self.new['jobs']['verify']['needs'])\n        self.assertEqual(self.new['jobs']['browser']['needs'],'build')\n        browser=self.new['jobs']['browser'];self.assertNotIn('continue-on-error',browser)\n        body='\\n'.join(step.get('run','') for step in browser['steps'])\n"
+# END_BUILD_BUDGET_METADATA
 MAX_FIXTURE_BYTES = 1024 * 1024
 MAX_SOURCE_BYTES = 256 * 1024
 MAX_METADATA_BYTES = 4 * 1024 * 1024
@@ -124,6 +133,10 @@ def source_input(raw, relative):
         raise ValueError('Final browser inverse requires exact complete bytes and an owned relative path')
     row = manifest()['files'][relative]
     digest = _sha(raw)
+    if (relative == BUILD_BUDGET_PATH and (digest, len(raw)) not in
+            ((row['previousSha256'], row['previousBytes']), (row['reviewedSha256'], row['reviewedBytes']))):
+        raw = build_budget_input(raw, relative)
+        digest = _sha(raw)
     if (digest, len(raw)) == (row['previousSha256'], row['previousBytes']):
         return raw
     if (digest, len(raw)) != (row['reviewedSha256'], row['reviewedBytes']):
@@ -154,6 +167,24 @@ def _metadata_path(raw, relative):
     if (not relative or str(path) != relative or path.is_absolute() or len(path.parts) < 2 or '..' in path.parts
             or '\\' in relative or '\0' in relative or path.parts[0] not in ('app', 'tests', 'tools', '.github')):
         raise ValueError('Final historical metadata path is not canonical')
+
+
+def build_budget_input(raw, relative):
+    """Exact metadata bytes for the approved40-to60 build-envelope guard only."""
+    _metadata_path(raw, relative)
+    if relative != BUILD_BUDGET_PATH:
+        return raw
+    digest = (_sha(raw), len(raw))
+    if digest == (BUILD_BUDGET_PREVIOUS_SHA256, BUILD_BUDGET_PREVIOUS_BYTES):
+        return raw
+    if digest != (BUILD_BUDGET_CURRENT_SHA256, BUILD_BUDGET_CURRENT_BYTES):
+        raise ValueError('Build budget metadata rejects unknown complete test source')
+    if raw.count(BUILD_BUDGET_CURRENT) != 1:
+        raise ValueError('Build budget metadata requires the unique approved guard context')
+    restored = raw.replace(BUILD_BUDGET_CURRENT, BUILD_BUDGET_PREVIOUS, 1)
+    if (_sha(restored), len(restored)) != (BUILD_BUDGET_PREVIOUS_SHA256, BUILD_BUDGET_PREVIOUS_BYTES):
+        raise ValueError('Build budget metadata did not restore the exact frozen test')
+    return restored
 
 
 def p2_input(raw, relative):

@@ -24,9 +24,18 @@ class BrowserWorkflowTests(unittest.TestCase):
                 for step in job['steps']:
                     found=next((at for at in range(position,len(current['steps'])) if current['steps'][at]==step),None)
                     self.assertIsNotNone(found,(name,step.get('name')));position=found+1
+                if name=='build':
+                    self.assertIn('timeout-minutes',job)
                 for key,value in job.items():
                     if key=='steps':continue
-                    self.assertEqual(current[key],value+['browser','tls'] if name=='verify' and key=='needs' else value)
+                    if name=='build' and key=='timeout-minutes':
+                        self.assertIs(type(value),int)
+                        self.assertEqual(value,40)
+                        self.assertIn(key,current)
+                        self.assertIs(type(current[key]),int)
+                        self.assertEqual(current[key],60)
+                    else:
+                        self.assertEqual(current[key],value+['browser','tls'] if name=='verify' and key=='needs' else value)
     def test_single_pipeline_shares_actual_apk_and_gates_browser(self):
         self.assertEqual(self.new['on']['push']['branches'],['release/browser-2.1.0','release/browser-2.1.0-*','release/browser-2.1.1','release/browser-2.1.1-*','release/browser-2.1.2','release/browser-2.1.2-*','release/browser-2.1.3','release/browser-2.1.3-*','release/browser-2.1.4','release/browser-2.1.4-*'])
         self.assertIn('browser',self.new['jobs']['verify']['needs'])

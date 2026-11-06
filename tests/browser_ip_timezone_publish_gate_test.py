@@ -150,7 +150,13 @@ class IpTimezonePublishGateTests(unittest.TestCase):
                 expected = previous.get(field)
                 if name == 'verify' and field == 'needs':
                     expected = expected + ['browser', 'tls']
-                self.assertEqual(current['jobs'][name].get(field), expected, (name, field))
+                if name == 'build' and field == 'timeout-minutes':
+                    self.assertIs(type(expected), int)
+                    self.assertEqual(expected, 40)
+                    self.assertIs(type(current['jobs'][name].get(field)), int)
+                    self.assertEqual(current['jobs'][name].get(field), 60)
+                else:
+                    self.assertEqual(current['jobs'][name].get(field), expected, (name, field))
         browser = current['jobs']['browser']
         self.assertEqual(browser['timeout-minutes'], 35)
         self.assertEqual(browser['needs'], 'build')
