@@ -11,6 +11,7 @@ import subprocess
 import sys
 import time
 import uuid
+import xml.etree.ElementTree as ET
 from profile_invocation_contract import expected_build,verify_installed
 from tls_acceptance_server import TlsAcceptanceServer,CASE_SPECS,GUEST_PORT,strict_json,require
 from tls_acceptance_contract import validate_device,validate_wire,validate_cross
@@ -50,6 +51,61 @@ def observe_fixture_process(parts,result,observations,phase,label,command_error=
     observations.append(row)
     require(valid,'fixed process observation failed for '+parts[2])
     return row
+
+
+PROC_START_HOSTING=frozenset(('service','content provider','activity','broadcast','restart','added application','backup','on-hold','top-activity','next-activity','next-top-activity','link fail','webview_service'))
+
+def declared_fixture_components(manifests):
+    result=set();android='{http://schemas.android.com/apk/res/android}'
+    for raw in manifests:
+        require(type(raw) is bytes and 0<len(raw)<=131072,'bounded source manifest')
+        root=ET.fromstring(raw)
+        for node in root.iter():
+            if node.tag not in ('activity','activity-alias','provider','receiver','service'):continue
+            name=node.get(android+'name')
+            require(type(name) is str and re.fullmatch(r'local\.pocketchat\.[A-Za-z0-9_.$]+',name),'fixed declared application component')
+            result.add(PACKAGE+'/'+name)
+    return frozenset(result)
+
+def process_start_events(raw,pid,components):
+    """Extract only a typed exact-process event; never return another log line."""
+    require(type(pid) is int and 0<pid<2147483648 and type(components) is frozenset,'fixed live process event owner')
+    unknown=dict(status='unknown',reason='no-exact-process-event',eventCount=0)
+    if type(raw) is not bytes or len(raw)>131072:return dict(unknown,reason='event-output-bound')
+    lines=raw.splitlines()
+    if len(lines)>258 or any(len(line)>2048 for line in lines):return dict(unknown,reason='event-line-bound')
+    matched=[]
+    for line in lines:
+        text=line.decode('ascii','replace').strip()
+        match=re.fullmatch(r'\[([0-9]+),\s*([0-9]+),\s*([0-9]+),\s*([^,]+),\s*([^,]+),\s*(.*)\]',text)
+        if match is None:continue
+        user,actual,uid=int(match[1]),int(match[2]),int(match[3]);process=match[4].strip()
+        if actual!=pid or process!=PACKAGE:continue
+        hosting=match[5].strip();component=match[6].strip()
+        if component.startswith('ComponentInfo{') and component.endswith('}'):component=component[14:-1]
+        elif component.startswith('{') and component.endswith('}'):component=component[1:-1]
+        matched.append((user,uid,hosting,component))
+    if len(matched)!=1:return dict(unknown,reason='ambiguous-process-events' if matched else 'no-exact-process-event',eventCount=len(matched))
+    user,uid,hosting,component=matched[0]
+    if user>2147483647 or uid>2147483647:return dict(unknown,reason='event-identity-bound',eventCount=1)
+    if hosting not in PROC_START_HOSTING:return dict(unknown,reason='unknown-hosting-type',eventCount=1)
+    if component not in components:return dict(unknown,reason='unknown-component',eventCount=1)
+    return dict(status='observed',reason='exact-process-start-event',eventCount=1,user=user,pid=pid,uid=uid,processName=PACKAGE,hostingType=hosting,component=component)
+
+def failed_manual_main_start(adb,error,observations,components):
+    # This is diagnosis after an existing failure, never a readiness decision.
+    if not isinstance(error,ValueError) or str(error)!='Product TLS fixture: all generic fixture writers must be absent before manual preparation' or not observations:return None
+    last=observations[-1]
+    if last.get('phase')!='manual-prepare' or last.get('processName')!=PACKAGE or last.get('status')!='present' or last.get('returnCode')!=0 or type(last.get('pids')) is not list or len(last['pids'])!=1:return None
+    pid=last['pids'][0]
+    if type(pid) is not int or not 0<pid<2147483648 or last.get('label') not in {s[0] for s in CASE_SPECS}:return None
+    base=dict(schema=1,kind='failed-tls-fixture-main-start',diagnosticOnly=True,readOnly=True,originalFailurePreserved=True,phase=last['phase'],label=last['label'],observedPid=pid,queryAttempted=True)
+    try:
+        result=adb('shell','logcat','-b','events','-d','-t','256','-v','raw','-s','am_proc_start:I',check=False,timeout=5)
+        if type(result.returncode) is not int or result.returncode!=0 or type(result.stderr) is not bytes or result.stderr:return dict(base,status='unknown',reason='event-command-failed')
+        return dict(base,**process_start_events(result.stdout,pid,components))
+    except subprocess.TimeoutExpired:return dict(base,status='unknown',reason='event-command-timeout')
+    except Exception:return dict(base,status='unknown',reason='event-observation-unavailable')
 
 
 def prepare_manual_scope(adb,source,run,spec,before_label,prearmed=None):
@@ -126,7 +182,7 @@ def main():
     output=a.output.absolute();require(not output.exists() and all(not q.is_symlink() for q in (output,*output.parents)),'fresh ordinary output')
     gradle=(ROOT/'app/build.gradle').read_text();identity=expected_build(a.apk,source,tree,re.search(r"versionName '([^']+)'",gradle)[1],int(re.search(r'versionCode ([0-9]+)',gradle)[1]))
     before=snapshot();output.mkdir(parents=True);run=uuid.uuid4().hex
-    server=certificates=ca=None;reversed_port=False;entries=[];process_checks=[];errors=[];host_tls={};guest={};checked=None;manual_checks=[];combined=None;combined_finding=None;fixture_process_observations=[];observation_context=['initial','']
+    server=certificates=ca=None;reversed_port=False;entries=[];process_checks=[];errors=[];host_tls={};guest={};checked=None;manual_checks=[];combined=None;combined_finding=None;fixture_process_observations=[];observation_context=['initial',''];failed_main_start=None
     cleanup=dict(appStopped=False,appDataCleared=False,reverseRemoved=False,serverClosed=False,serverThreadsJoined=False,caRemoved=False,privateMaterialRemoved=False,shellUidRestored=False)
     def adb(*parts,check=True,timeout=25):
         fixed_pidof=len(parts)==3 and parts[:2]==('shell','pidof') and parts[2] in scope_processes()
@@ -194,7 +250,10 @@ def main():
         run_original_cases(observed_cold_stop,prepare_scope,collect,resident)
         validate_cross(entries,process_checks)
         validate_manual_cross(entries,manual_checks,run=run,source=source)
-    except Exception as error:errors.append(dict(stage='actual-production-native-and-wire',errorType=type(error).__name__,reason=str(error)[:400] if isinstance(error,ValueError) and str(error).startswith(('Gecko product TLS evidence:','Product TLS fixture:')) else 'actual-production-workload-failed'))
+    except Exception as error:
+        errors.append(dict(stage='actual-production-native-and-wire',errorType=type(error).__name__,reason=str(error)[:400] if isinstance(error,ValueError) and str(error).startswith(('Gecko product TLS evidence:','Product TLS fixture:')) else 'actual-production-workload-failed'))
+        try:failed_main_start=failed_manual_main_start(adb,error,fixture_process_observations,declared_fixture_components([(ROOT/'app/src/main/AndroidManifest.xml').read_bytes(),(ROOT/'tests/gecko/AndroidManifest.xml').read_bytes()]))
+        except Exception:failed_main_start=dict(schema=1,status='unknown',reason='source-component-observation-unavailable',diagnosticOnly=True,originalFailurePreserved=True)
     finally:
         observation_context[:]=['cleanup','']
         host=finish_resources(adb,cold_stop,server,certificates,ca,reversed_port,cleanup,errors,host_tls)
@@ -210,7 +269,7 @@ def main():
             errors.append(dict(stage='independent-cold-cpu-ip-tls13',errorType=type(error).__name__,reason=str(error)[:400] if isinstance(error,ValueError) else 'combined-workload-failed'))
     stable=snapshot()==before;passed=checked is not None and combined_finding is not None and not errors and all(cleanup.values()) and stable
     public_entries=[{k:v for k,v in e.items() if k!='device'} for e in entries]
-    result=dict(schema=1,kind='gecko-production-tls-v1',status='passed' if passed else 'failed',diagnosticOnly=True,releaseAcceptance=False,sourceCommit=source,sourceTree=tree,runId=os.environ.get('GITHUB_RUN_ID'),runAttempt=os.environ.get('GITHUB_RUN_ATTEMPT'),runNonce=run,expectedBuildIdentity=identity,guest=guest,caseRecords=public_entries,processChecks=process_checks,manualScopeChecks=manual_checks,fixtureProcessObservations=fixture_process_observations,combinedCase=combined,combinedFinding=combined_finding,coldCpuIpTlsCombinationMeasured=passed,hostTls=host_tls,host=host,cleanup=cleanup,errors=errors,checked=checked,sourceFiles=before,executionInputsUnchanged=stable,actualAndroidExecution=any(e['status']=='passed' for e in entries),actualGeckoExecution=any(e['status']=='passed' for e in entries),productionGeckoWebTlsWorkloadPassed=passed,persistentServiceWorkerTlsMeasured=passed,workerCoverageVerified=False,serviceWorkerCoverageVerified=False,fullTlsFingerprintEmulation=False,quicWireVerified=False,rawFatalAlertPacketDecoded=False,appIndependentTlsStacksCovered=False,scope='Actual production Gecko web connections under per-environment cold native TLS policy, exact native DEFAULT/effective readback, trusted controlled TLS12/TLS13 peers and original ClientHello bytes. Real desired-only UI pending state, nonempty old USER reconciliation, retained registration with separately measured Service Worker fetch across true cold start, and simultaneous isolated environments. Independent app downloader/connection checks/proxy entrance Java or other TLS stacks, arbitrary TLS fingerprints and QUIC are not covered.')
+    result=dict(schema=1,kind='gecko-production-tls-v1',status='passed' if passed else 'failed',diagnosticOnly=True,releaseAcceptance=False,sourceCommit=source,sourceTree=tree,runId=os.environ.get('GITHUB_RUN_ID'),runAttempt=os.environ.get('GITHUB_RUN_ATTEMPT'),runNonce=run,expectedBuildIdentity=identity,guest=guest,caseRecords=public_entries,processChecks=process_checks,manualScopeChecks=manual_checks,fixtureProcessObservations=fixture_process_observations,fixtureMainStartDiagnostic=failed_main_start,combinedCase=combined,combinedFinding=combined_finding,coldCpuIpTlsCombinationMeasured=passed,hostTls=host_tls,host=host,cleanup=cleanup,errors=errors,checked=checked,sourceFiles=before,executionInputsUnchanged=stable,actualAndroidExecution=any(e['status']=='passed' for e in entries),actualGeckoExecution=any(e['status']=='passed' for e in entries),productionGeckoWebTlsWorkloadPassed=passed,persistentServiceWorkerTlsMeasured=passed,workerCoverageVerified=False,serviceWorkerCoverageVerified=False,fullTlsFingerprintEmulation=False,quicWireVerified=False,rawFatalAlertPacketDecoded=False,appIndependentTlsStacksCovered=False,scope='Actual production Gecko web connections under per-environment cold native TLS policy, exact native DEFAULT/effective readback, trusted controlled TLS12/TLS13 peers and original ClientHello bytes. Real desired-only UI pending state, nonempty old USER reconciliation, retained registration with separately measured Service Worker fetch across true cold start, and simultaneous isolated environments. Independent app downloader/connection checks/proxy entrance Java or other TLS stacks, arbitrary TLS fingerprints and QUIC are not covered.')
     raw=(json.dumps(result,ensure_ascii=False,indent=2)+'\n').encode();require(len(raw)<=4*1024*1024,'bounded final original summary');(output/'results.json').write_bytes(raw)
     print(json.dumps({k:result[k] for k in ('status','sourceCommit','productionGeckoWebTlsWorkloadPassed','executionInputsUnchanged')}));return 0 if passed else 1
 

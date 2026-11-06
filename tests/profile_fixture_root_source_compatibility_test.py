@@ -155,7 +155,8 @@ class FixtureRootHistoricalInputs(unittest.TestCase):
                 namespace['source_input'](raw+b' ', relative)
 
     def test_final_historical_read_hooks_strip_to_the_complete_prior_suite(self):
-        raw = (ROOT/'tests/profile_final_browser_source_compatibility_test.py').read_bytes()
+        from resource_startup_source_compatibility import source_input as resource_input
+        raw = resource_input((ROOT/'tests/profile_final_browser_source_compatibility_test.py').read_bytes(), 'tests/profile_final_browser_source_compatibility_test.py')
         restored = raw
         global_import = b'from profile_fixture_root_source_compatibility import historical_input as fixture_root_input\n'
         local_hook = (b'    from profile_fixture_root_source_compatibility import historical_input as fixture_root_input\n'
@@ -187,7 +188,8 @@ class FixtureRootHistoricalInputs(unittest.TestCase):
                              for n in main.body), 1)
         allowed = {'tests/dual_browser_source_compatibility.py', 'tests/profile_dual_browser_source_compatibility_test.py',
                    'tests/final_browser_source_compatibility.py', 'tests/profile_final_browser_source_compatibility_test.py',
-                   'tests/profile_fixture_root_source_compatibility_test.py'}
+                   'tests/profile_fixture_root_source_compatibility_test.py',
+                   'tests/profile_resource_startup_source_compatibility_test.py'}
         imports = set()
         for folder in ('app', 'tests', 'tools'):
             for path in (ROOT/folder).rglob('*.py'):

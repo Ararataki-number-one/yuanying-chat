@@ -19,7 +19,7 @@ class ComboTransportDiagnosticTests(unittest.TestCase):
         events = []
         if failures:
             counts['socks']['command']['ValueError'] = failures
-            events = [dict(sequence=index, route='socks', protocol='socks5', stage='command', exceptionClass='ValueError', guardCode='other-guard', collectorClosed=False) for index in range(1, min(failures, 128) + 1)]
+            events = [dict(sequence=index, route='socks', protocol='socks5', stage='command', exceptionClass='ValueError', guardCode='other-guard', collectorClosed=False, hostRole='unavailable', hostForm='unavailable', hostSha256=None) for index in range(1, min(failures, 128) + 1)]
         value = dict(schema=1, kind='ip-timezone-transport-diagnostics-v1', binding=copy.deepcopy(binding),
                      collectorClosed=closed, quiescent=closed, eventLimit=128, totalFailures=failures,
                      recordedEvents=len(events), droppedEvents=failures-len(events), counts=counts, events=events)
@@ -130,6 +130,43 @@ class ComboTransportDiagnosticTests(unittest.TestCase):
         self.assertTrue(all(report['cleanup'].values()))
         self.assertFalse((out/runner.TRANSPORT_DIAGNOSTIC_NAME).exists())
         self.assertEqual((out/runner.RAW_DIRECTORY/'combo.json').read_bytes(), original)
+
+    def test_fixed_target_metadata_exports_only_role_form_and_bounded_digest(self):
+        pairs = [('fixture-a', 'exact'), ('fixture-a', 'case-variant'), ('fixture-b', 'trailing-dot'),
+                 ('geo', 'case-and-trailing-dot'), ('latency-probe-host', 'exact'), ('update-host', 'exact'),
+                 ('gecko-startup-host', 'exact'), ('other', 'other'), ('other', 'ipv4'), ('other', 'ipv6')]
+        for role, form in pairs:
+            value, binding, routes = self.fixture(1)
+            value['events'][0].update(hostRole=role, hostForm=form, hostSha256='a'*64)
+            with self.subTest(role=role, form=form), tempfile.TemporaryDirectory() as folder:
+                self.export(folder, value, binding, routes)
+                exported = json.loads(Path(folder, runner.TRANSPORT_DIAGNOSTIC_NAME).read_bytes())['snapshot']['events'][0]
+                self.assertEqual((exported['hostRole'], exported['hostForm'], exported['hostSha256']), (role, form, 'a'*64))
+                self.assertNotIn('host', exported)
+                self.assertNotIn('url', exported)
+                self.assertEqual(routes['errors']['socks'], 1, 'A named target remains a counted failure')
+
+    def test_unknown_inconsistent_or_raw_target_metadata_never_exports(self):
+        changes = [lambda e: e.update(hostRole='PRIVATE_HOST'),
+                   lambda e: e.update(hostForm='PRIVATE_HOST'),
+                   lambda e: e.update(hostSha256='private.example'),
+                   lambda e: e.update(hostSha256=b'a'*64),
+                   lambda e: e.update(hostSha256='A'*64),
+                   lambda e: e.update(hostRole='other', hostForm='other'),
+                   lambda e: e.update(hostRole='other', hostForm='exact', hostSha256='a'*64),
+                   lambda e: e.update(hostRole='fixture-a', hostForm='other', hostSha256='a'*64),
+                   lambda e: e.update(host='PRIVATE_HOST'),
+                   lambda e: e.update(url='https://private.example/secret')]
+        for index, change in enumerate(changes):
+            value, binding, routes = self.fixture(1); change(value['events'][0])
+            with self.subTest(index=index), tempfile.TemporaryDirectory() as folder, self.assertRaises(ValueError):
+                self.export(folder, value, binding, routes)
+        for role, form, digest in [('unavailable', 'unavailable', None), ('fixture-a', 'exact', 'a'*64),
+                                    ('fixture-b', 'exact', 'a'*64), ('geo', 'exact', 'a'*64)]:
+            value, binding, routes = self.fixture(1)
+            value['events'][0].update(guardCode='socks-host', hostRole=role, hostForm=form, hostSha256=digest)
+            with self.subTest(rejected_role=role), tempfile.TemporaryDirectory() as folder, self.assertRaises(ValueError):
+                self.export(folder, value, binding, routes)
 
 
 if __name__ == '__main__':

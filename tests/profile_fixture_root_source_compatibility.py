@@ -75,7 +75,9 @@ def manifest():
                 raise ValueError('Fixture-root metadata context differs')
     if total != 7:
         raise ValueError('Fixture-root metadata context count differs')
-    return value
+    from connections_admission_metadata_compatibility import profile_manifest_input
+    from resource_startup_source_compatibility import root_manifest_input
+    return root_manifest_input(profile_manifest_input(value))
 
 
 def _path(raw, relative):

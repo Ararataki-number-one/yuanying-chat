@@ -6,7 +6,7 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 RUNNER = ROOT / 'tools/browser/run_host_checks.py'
 BEFORE_SHA = '6a5e736f71da5391f64b4cb7737973c813cdfbe45ce71ac61963488ac67d8513'
-ADDITION_SHA = '1f29f7fb1a206fa3773640d8ba2d8bb47ceeeb70bd9e578f7af5953a77e158dd'
+ADDITION_SHA = '538d4c166026369c96381fbc3f1662c8c1d9b8cf56a3a64d09e393b9974b6b06'
 BEGIN = b'    # BEGIN_DEVICE_FIX_HOSTS\n'
 END = b'    # END_DEVICE_FIX_HOSTS\n'
 
@@ -30,7 +30,7 @@ class DeviceFixHostRegistryTests(unittest.TestCase):
         self.assertEqual(hashlib.sha256(original).hexdigest(), BEFORE_SHA)
         self.assertIn(b'timeout=300', original)
 
-    def test_eleven_real_controls_are_unconditional_unique_and_source_bound(self):
+    def test_fifteen_real_controls_are_unconditional_unique_and_source_bound(self):
         before, _, block = declaration()
         namespace = {}
         # The exact hash-locked block only declares commands. This does not run
@@ -54,11 +54,20 @@ class DeviceFixHostRegistryTests(unittest.TestCase):
             'fixture-ui-hotpath-android-json',
             'network-internal-admission-android-json',
             'device-fix-host-registry',
+            'tls-fixture-update-cause',
+            'resource-recovery-desktop',
+            'resource-recovery-android-json',
+            'resource-startup-source-history',
         ])
-        self.assertEqual(len({row[0] for row in rows}), 11)
+        self.assertEqual(len({row[0] for row in rows}), 15)
         for _, script, _, _ in rows:
             self.assertTrue((ROOT / script).is_file(), script)
         for row in rows[4:10]:
+            self.assertEqual(row[2][:2], ['--java-home', '/declared-jdk'])
+            self.assertIn('--json-jar', row[2])
+            self.assertIn('--output', row[2])
+            self.assertIsNotNone(row[3])
+        for row in rows[12:14]:
             self.assertEqual(row[2][:2], ['--java-home', '/declared-jdk'])
             self.assertIn('--json-jar', row[2])
             self.assertIn('--output', row[2])

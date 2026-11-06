@@ -23,7 +23,8 @@ sys.path.insert(0,str(Path(__file__).resolve().parent))
 from profile_invocation_contract import expected_build,verify_installed
 from fingerprint_fixture_server import AndroidUserCa
 from ip_timezone_fixture_server import (IpFixtureCertificates,IpTimeZoneFleet,ROUTES,
-    MAX_TRANSPORT_DIAGNOSTICS,TRANSPORT_STAGES,TRANSPORT_EXCEPTION_TYPES,TRANSPORT_GUARD_CODES)
+    MAX_TRANSPORT_DIAGNOSTICS,TRANSPORT_STAGES,TRANSPORT_EXCEPTION_TYPES,TRANSPORT_GUARD_CODES,
+    TRANSPORT_HOST_ROLES,TRANSPORT_HOST_FORMS)
 from check_gecko_cpu_ip_combo_evidence import (SOURCE_INPUTS,REPORT_NAME,RAW_DIRECTORY,RAW_FILES,
     FIXTURE_TYPE,verify_gecko_cpu_ip_combo_evidence)
 from check_gecko_ip_timezone_evidence import expected_clock,strict_json,_typed_equal
@@ -102,7 +103,13 @@ def write_transport_diagnostic(directory,server,binding,route_receipts):
     require(sum(totals.values())==value['totalFailures'],'transport diagnostic failure total differs')
     recorded={route:{stage:{} for stage in TRANSPORT_STAGES} for route in ROUTES}
     for index,event in enumerate(events,1):
-        require(type(event) is dict and set(event)=={'sequence','route','protocol','stage','exceptionClass','guardCode','collectorClosed'} and type(event['sequence']) is int and event['sequence']==index and type(event['route']) is str and event['route'] in ROUTES and event['protocol']==ROUTES[event['route']]['protocol'] and type(event['stage']) is str and event['stage'] in TRANSPORT_STAGES and type(event['exceptionClass']) is str and event['exceptionClass'] in categories and type(event['guardCode']) is str and event['guardCode'] in guard_codes and type(event['collectorClosed']) is bool,'transport diagnostic event escapes fixed enums')
+        require(type(event) is dict and set(event)=={'sequence','route','protocol','stage','exceptionClass','guardCode','collectorClosed','hostRole','hostForm','hostSha256'} and type(event['sequence']) is int and event['sequence']==index and type(event['route']) is str and event['route'] in ROUTES and event['protocol']==ROUTES[event['route']]['protocol'] and type(event['stage']) is str and event['stage'] in TRANSPORT_STAGES and type(event['exceptionClass']) is str and event['exceptionClass'] in categories and type(event['guardCode']) is str and event['guardCode'] in guard_codes and type(event['collectorClosed']) is bool,'transport diagnostic event escapes fixed enums')
+        role,form,host_sha=event['hostRole'],event['hostForm'],event['hostSha256']
+        require(type(role) is str and role in TRANSPORT_HOST_ROLES and type(form) is str and form in TRANSPORT_HOST_FORMS,'transport diagnostic host classification escapes fixed enums')
+        require((role=='unavailable' and form=='unavailable' and host_sha is None) or (role!='unavailable' and form!='unavailable' and type(host_sha) is str and re.fullmatch('[0-9a-f]{64}',host_sha) is not None),'transport diagnostic host digest or availability differs')
+        require(role=='unavailable' or (form in ('other','ipv4','ipv6') if role=='other' else form in ('exact','case-variant','trailing-dot','case-and-trailing-dot')),'transport diagnostic host role and form differ')
+        if event['guardCode']=='socks-host':
+            require(role!='unavailable' and not (role in ('fixture-a','fixture-b','geo') and form=='exact'),'SOCKS host rejection must retain a rejected target classification')
         buckets=recorded[event['route']][event['stage']];category=event['exceptionClass'];buckets[category]=buckets.get(category,0)+1
         require(not event['collectorClosed'] or value['collectorClosed'],'transport diagnostic close state regressed')
     require(all(count<=counts[route][stage].get(category,0) for route,stages in recorded.items() for stage,buckets in stages.items() for category,count in buckets.items()) and (value['droppedEvents']>0 or _typed_equal(recorded,counts)),'diagnostic event and aggregate buckets differ')

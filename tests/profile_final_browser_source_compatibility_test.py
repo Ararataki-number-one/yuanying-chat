@@ -372,7 +372,8 @@ class FinalBrowserHistoricalSources(unittest.TestCase):
                     layer.manifest()
             path.write_bytes(raw)
             with patch.object(layer, 'ROOT', root), patch.object(layer, 'DELTA_PATH', path):
-                self.assertEqual(layer.manifest(), layer._decode(raw))
+                from resource_startup_source_compatibility import frozen_manifest_input
+                self.assertEqual(frozen_manifest_input(layer.manifest()), layer._decode(raw))
         with tempfile.TemporaryDirectory(prefix='final-history-parent-') as folder:
             root = Path(folder); outside = root/'ordinary'; outside.mkdir()
             (outside/'final-browser-source-deltas.json').write_bytes(raw)
@@ -857,7 +858,8 @@ class FinalBrowserHistoricalSources(unittest.TestCase):
             require_reverse_rejection(counterfeit['source_input'])
 
     def test_p2_preserves_all_original_nineteen_rows_and_forty_three_contexts(self):
-        value = copy.deepcopy(layer.manifest())
+        from resource_startup_source_compatibility import frozen_manifest_input
+        value = copy.deepcopy(frozen_manifest_input(layer.manifest()))
         for path, (digest, size) in INVENTORY_116_PINS.items():
             inventory = value['files'][path]
             del inventory['deltas'][-INVENTORY_CLEANUP_CONTEXT_COUNTS[path]:]
@@ -881,7 +883,8 @@ class FinalBrowserHistoricalSources(unittest.TestCase):
                          '5be9cb62c0470a0db6f3276ac510d7a6916dbb586cde16788aeecfb2cb3c9709')
 
     def test_p2_whole_image_unique_context_and_frozen_preimage_are_independent(self):
-        current = (ROOT/GV).read_bytes()
+        from resource_startup_source_compatibility import source_input as resource_input
+        current = resource_input((ROOT/GV).read_bytes(), GV)
         delta = layer.manifest()['files'][GV]['deltas'][-1]
         before, after = delta['previous'].encode(), delta['current'].encode()
         frozen = current.replace(after, before, 1)
@@ -976,7 +979,8 @@ class FinalBrowserHistoricalSources(unittest.TestCase):
         self.assertNotIn('p2_input', host)
 
     def test_public_window_catalog_additions_preserve_all_original_forty_four_contexts(self):
-        full = layer.manifest()
+        from resource_startup_source_compatibility import frozen_manifest_input
+        full = frozen_manifest_input(layer.manifest())
         value = copy.deepcopy(full)
         for relative, (digest, size) in INVENTORY_116_PINS.items():
             row = value['files'][relative]
@@ -1064,7 +1068,8 @@ class FinalBrowserHistoricalSources(unittest.TestCase):
                 exact_current_mapping(namespace['current_context'])
 
     def test_cleanup_catalog_additions_preserve_all_original_forty_six_contexts(self):
-        value = copy.deepcopy(layer.manifest())
+        from resource_startup_source_compatibility import frozen_manifest_input
+        value = copy.deepcopy(frozen_manifest_input(layer.manifest()))
         rejected = 0
         for relative, (digest, size) in INVENTORY_116_PINS.items():
             row = value['files'][relative]

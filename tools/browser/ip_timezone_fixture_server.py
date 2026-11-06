@@ -39,6 +39,10 @@ MAX_TRANSPORT_DIAGNOSTICS = 128
 TRANSPORT_STAGES = ('connection', 'proxy-tls', 'greeting', 'authentication',
                     'command', 'host', 'port', 'target-tls', 'http-connect',
                     'http', 'send')
+TRANSPORT_HOST_ROLES = ('fixture-a', 'fixture-b', 'geo', 'latency-probe-host',
+                        'update-host', 'gecko-startup-host', 'other', 'unavailable')
+TRANSPORT_HOST_FORMS = ('exact', 'case-variant', 'trailing-dot', 'case-and-trailing-dot',
+                        'ipv4', 'ipv6', 'other', 'unavailable')
 TRANSPORT_EXCEPTION_TYPES = {
     ValueError: 'ValueError', OSError: 'OSError', TimeoutError: 'TimeoutError',
     ConnectionError: 'ConnectionError', BrokenPipeError: 'BrokenPipeError',
@@ -91,6 +95,52 @@ TRANSPORT_GUARD_CODES = {
 
 def digest(raw):
     return hashlib.sha256(raw).hexdigest()
+
+
+def _transport_target(host):
+    """Classify bounded ASCII bytes only; this never authorizes a target.
+
+    Known Gecko hosts are default URLs in the locally inspected SDK omni.ja
+    d9141a46206221677da206884e3be2789e48d9e3b84eaeded50a374699687b45:
+    modules/AppConstants.sys.mjs and defaults/pref/x86_64/geckoview-prefs.js.
+    A known default endpoint is not evidence that a request actually occurred.
+    """
+    if type(host) is not str or not 1 <= len(host) <= 80:
+        return ('unavailable', 'unavailable', None)
+    try:
+        raw = host.encode('ascii')
+    except UnicodeError:
+        return ('unavailable', 'unavailable', None)
+    known = {
+        HOSTS[0]: 'fixture-a', HOSTS[1]: 'fixture-b', GEO_HOST: 'geo',
+        # NativeNetwork.PROBE and AppUpdatePolicy's fixed trusted origins.
+        'www.gstatic.com': 'latency-probe-host',
+        'api.github.com': 'update-host', 'github.com': 'update-host',
+        'raw.githubusercontent.com': 'update-host',
+        'release-assets.githubusercontent.com': 'update-host',
+        'objects.githubusercontent.com': 'update-host',
+        'firefox.settings.services.mozilla.com': 'gecko-startup-host',
+        'aus5.mozilla.org': 'gecko-startup-host',
+        'versioncheck-bg.addons.mozilla.org': 'gecko-startup-host',
+        'versioncheck.addons.mozilla.org': 'gecko-startup-host',
+    }
+    without_dot = host[:-1] if host.endswith('.') else host
+    role = known.get(without_dot.lower(), 'other')
+    form = 'other'
+    if role != 'other':
+        case = without_dot != without_dot.lower()
+        dot = host.endswith('.')
+        form = ('case-and-trailing-dot' if case and dot else 'case-variant' if case
+                else 'trailing-dot' if dot else 'exact')
+    else:
+        for family, kind in ((socket.AF_INET, 'ipv4'), (socket.AF_INET6, 'ipv6')):
+            try:
+                socket.inet_pton(family, host)
+                form = kind
+                break
+            except (OSError, ValueError):
+                pass
+    return (role, form, digest(raw))
 
 
 class IpFixtureCertificates:
@@ -223,6 +273,7 @@ class IpRouteProxy(WorkerFixtureServer):
 
     def _serve(self, connection, engine):
         self._response.transport_stage = 'connection'
+        self._response.transport_target = None
         try:
             connection.settimeout(15)
             proxy_tls = self.route['protocol'] == 'https-connect'
@@ -243,6 +294,7 @@ class IpRouteProxy(WorkerFixtureServer):
                 count = exact_bytes(connection, 1)[0]
                 require(1 <= count <= 80, 'SOCKS hostname bound invalid')
                 host = exact_bytes(connection, count).decode('ascii')
+                self._response.transport_target = _transport_target(host)
                 self._response.transport_stage = 'port'
                 require(exact_bytes(connection, 2) == b'\x01\xbb', 'SOCKS target port invalid')
                 self._response.transport_stage = 'host'
@@ -254,6 +306,7 @@ class IpRouteProxy(WorkerFixtureServer):
                 method, target, headers = read_header(connection)
                 require(method == 'CONNECT' and target in tuple(host + ':443' for host in (*HOSTS, GEO_HOST)), 'CONNECT target invalid')
                 host = target[:-4]
+                self._response.transport_target = _transport_target(host)
                 require(headers.get('host') in (host, target) and 'proxy-authorization' not in headers, 'CONNECT authority differs')
                 self._response.transport_stage = 'send'
                 connection.sendall(b'HTTP/1.1 200 Connection Established\r\n\r\n')
@@ -277,7 +330,7 @@ class IpRouteProxy(WorkerFixtureServer):
                     tls=True, proxyTls=proxy_tls, targetSni=host, responseWritten=True))
         except (ValueError, OSError, ssl.SSLError, UnicodeError) as error:
             self.fleet.error(self.name, 'controlled-transport-rejected')
-            self.fleet._transport_failure(self.name, self._response.transport_stage, error)
+            self.fleet._transport_failure(self.name, self._response.transport_stage, error, self._response.transport_target)
         finally:
             with self._lock:
                 self._clients.discard(connection)
@@ -406,8 +459,8 @@ class IpTimeZoneFleet:
         with self.lock:
             self.errors[route] += 1
 
-    def _transport_failure(self, route, stage, error):
-        """Fixed classes/buckets only; never retain exception messages or wire data.
+    def _transport_failure(self, route, stage, error, target=None):
+        """Fixed classes/buckets only; never retain exception messages or raw wire data.
 
         The original error counter is deliberately separate and remains strict.
         Other* identifies an unlisted subclass, not its potentially private name.
@@ -422,6 +475,7 @@ class IpTimeZoneFleet:
         guard_code = 'other-guard'
         if type(error) is ValueError and len(error.args) == 1 and type(error.args[0]) is str:
             guard_code = TRANSPORT_GUARD_CODES.get(error.args[0], 'other-guard')
+        role, form, target_sha = ('unavailable', 'unavailable', None) if target is None else target
         with self.lock:
             self._transport_total += 1
             counts = self._transport_counts[route][stage]
@@ -429,7 +483,8 @@ class IpTimeZoneFleet:
             if len(self._transport_events) < MAX_TRANSPORT_DIAGNOSTICS:
                 self._transport_events.append(dict(sequence=self._transport_total,
                     route=route, protocol=ROUTES[route]['protocol'], stage=stage,
-                    exceptionClass=category, guardCode=guard_code, collectorClosed=self.closed))
+                    exceptionClass=category, guardCode=guard_code, collectorClosed=self.closed,
+                    hostRole=role, hostForm=form, hostSha256=target_sha))
 
     def diagnostic_snapshot(self):
         """Separate bounded failure observations, never an EOF exemption or proof.

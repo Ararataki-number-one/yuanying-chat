@@ -8,6 +8,7 @@ import argparse
 import ast
 import concurrent.futures
 import contextlib
+import errno
 import hashlib
 import json
 from pathlib import Path
@@ -31,6 +32,8 @@ SOURCE_INPUTS = (
     'tools/browser/fingerprint_fixture_server.py',
     'tools/browser/newworker_fixture_server.py',
     'tests/ip_timezone_transport_diagnostics_test.py',
+    'app/src/main/java/local/pocketchat/NativeNetwork.java',
+    'app/src/main/java/local/pocketchat/AppUpdatePolicy.java',
 )
 ORIGINAL_SNAPSHOT_KEYS = {'schema', 'binding', 'syntheticGeoService',
     'actualPublicIpGeolocationVerified', 'productionEndpointOverride', 'geoSource',
@@ -39,7 +42,8 @@ ORIGINAL_SNAPSHOT_KEYS = {'schema', 'binding', 'syntheticGeoService',
     'leafDerSha256', 'closed'}
 DIAGNOSTIC_KEYS = {'schema', 'kind', 'binding', 'collectorClosed', 'quiescent',
     'eventLimit', 'totalFailures', 'recordedEvents', 'droppedEvents', 'counts', 'events'}
-EVENT_KEYS = {'sequence', 'route', 'protocol', 'stage', 'exceptionClass', 'guardCode', 'collectorClosed'}
+EVENT_KEYS = {'sequence', 'route', 'protocol', 'stage', 'exceptionClass', 'guardCode',
+              'collectorClosed', 'hostRole', 'hostForm', 'hostSha256'}
 BASE_SOURCE = '6ee06aced87581e52aa301431f8996ed46d666b8'
 BASE_PATH = 'tools/browser/ip_timezone_fixture_server.py'
 BASE_BYTES = 20523
@@ -48,6 +52,18 @@ BASE_METHOD_SHA256 = {
     'error': '0e12b1700676c46182914611f7486b605ab81447774c3d256fbc77b5e737eca5',
     'snapshot': 'c00b1cd463cc9a8216af1ce3516534f96696877c74bf9e7e8ee6c58811314bba',
 }
+SDK_HOST_PROVENANCE = dict(
+    kind='local-sdk-source-inspection-not-request-observation',
+    apkSha256='3a4b61c1bd6a9b3cd95b20de9b606b603b9143a157a1a8e9d30428a1d7132bf8',
+    omniPath='assets/omni.ja', omniBytes=15105755,
+    omniSha256='d9141a46206221677da206884e3be2789e48d9e3b84eaeded50a374699687b45',
+    modules={
+        'modules/AppConstants.sys.mjs': 'dc84b0727f90eb56734f8eea94b9995353cbaba0aef98b053e32c969d6cefe45',
+        'modules/services-settings/Utils.sys.mjs': 'bf35186d47f27cdee1f27dc95d64a37fd0b7ade9cda3c05270990c0cf66a8718',
+        'defaults/pref/x86_64/geckoview-prefs.js': 'c54e545ebb433b171fb30bc0d87ffd35537d6cdcaf15f382b1f8f01230f6abe1',
+    },
+    sourceInspectionOnly=True, actualRequestObserved=False,
+    coldCiUsesLocalApkOrHistoricalGit=False)
 
 
 def preservation_proof():
@@ -59,7 +75,8 @@ def preservation_proof():
     current = (ROOT/BASE_PATH).read_text()
     tree = ast.parse(current)
     new_constants = {'MAX_TRANSPORT_DIAGNOSTICS', 'TRANSPORT_STAGES',
-                     'TRANSPORT_EXCEPTION_TYPES', 'TRANSPORT_GUARD_CODES'}
+                     'TRANSPORT_EXCEPTION_TYPES', 'TRANSPORT_GUARD_CODES',
+                     'TRANSPORT_HOST_ROLES', 'TRANSPORT_HOST_FORMS'}
     removals = set()
     found = set()
     for node in tree.body:
@@ -67,14 +84,18 @@ def preservation_proof():
             found.add(node.targets[0].id)
             removals.update(range(node.lineno, node.end_lineno+1))
     if found != new_constants:
-        raise AssertionError('Exactly the four diagnostic constants are required')
+        raise AssertionError('Exactly the six diagnostic constants are required')
     restored = ''.join(line for number, line in enumerate(current.splitlines(keepends=True), 1) if number not in removals)
+    start = restored.index('def _transport_target(')
+    end = restored.index('class IpFixtureCertificates:', start)
+    restored = restored[:start] + restored[end:]
     start = restored.index('    def _transport_failure(')
     end = restored.index('    def geo(', start)
     restored = restored[:start] + restored[end:]
     exact_lines = {
         "        previous_stage = getattr(self._response, 'transport_stage', 'http')\n",
-        '            self.fleet._transport_failure(self.name, self._response.transport_stage, error)\n',
+        '            self.fleet._transport_failure(self.name, self._response.transport_stage, error, self._response.transport_target)\n',
+        '        self._response.transport_target = None\n',
         '        self._transport_events = []\n',
         '        self._transport_counts = {name: {stage: {} for stage in TRANSPORT_STAGES} for name in ROUTES}\n',
         '        self._transport_total = 0\n',
@@ -84,6 +105,10 @@ def preservation_proof():
         if restored.count(line) != 1:
             raise AssertionError('Exactly one enumerated diagnostic insertion is required')
         restored = restored.replace(line, '', 1)
+    line = '                self._response.transport_target = _transport_target(host)\n'
+    if restored.count(line) != 2:
+        raise AssertionError('Exactly the SOCKS and admitted CONNECT target observations are required')
+    restored = restored.replace(line, '')
     allowed_stage_lines = {'self._response.transport_stage = ' + repr(stage) + '\n'
         for stage in ('connection', 'proxy-tls', 'greeting', 'authentication',
                       'command', 'host', 'port', 'target-tls', 'http-connect', 'http', 'send')}
@@ -108,7 +133,7 @@ def preservation_proof():
         restoredSourceSha256=hashlib.sha256(restored).hexdigest(),
         originalBytes=BASE_BYTES, restoredBytes=len(restored),
         completeOriginalSourceRestored=len(restored) == BASE_BYTES and hashlib.sha256(restored).hexdigest() == BASE_SHA256,
-        inverseScope='Only the four new constants, two new methods, diagnostic stage assignments/call, exception alias, initialization and close-completion markers are removed.')
+        inverseScope='Only the six new constants, three new diagnostic functions/methods, stage/target observations and diagnostic call, exception alias, initialization and close-completion markers are removed.')
 
 
 class TransportDiagnosticTests(unittest.TestCase):
@@ -165,6 +190,16 @@ class TransportDiagnosticTests(unittest.TestCase):
             if len(result) > 262144:
                 raise AssertionError('Controlled response exceeded its host-test bound')
 
+    @staticmethod
+    def shutdown_write(client):
+        try:
+            client.shutdown(socket.SHUT_WR)
+        except OSError as error:
+            # A real malformed request can already have been rejected/closed.
+            # Keep all other client failures visible, including timeouts.
+            if error.errno != errno.ENOTCONN:
+                raise
+
     def reject_socks(self, payload, after_greeting=False, target_tls=False):
         client = self.raw()
         try:
@@ -179,7 +214,7 @@ class TransportDiagnosticTests(unittest.TestCase):
                     raise AssertionError('Actual SOCKS command response missing')
             if payload:
                 client.sendall(payload)
-            client.shutdown(socket.SHUT_WR)
+            self.shutdown_write(client)
             with contextlib.suppress(ConnectionResetError):
                 self.drain(client)
         finally:
@@ -253,7 +288,7 @@ class TransportDiagnosticTests(unittest.TestCase):
     def test_real_proxy_tls_target_tls_connect_and_http_failures_are_separate(self):
         client = self.raw('https')
         client.sendall(b'PRIVATE_BAD_TLS_RECORD')
-        client.shutdown(socket.SHUT_WR)
+        self.shutdown_write(client)
         with contextlib.suppress(ConnectionResetError):
             self.drain(client)
         client.close()
@@ -362,6 +397,121 @@ class TransportDiagnosticTests(unittest.TestCase):
         self.check('Concurrent actual connections retain their own protocol stages', all(diagnostic['counts']['socks'][stage] == {'ValueError': 3} for stage in ('greeting', 'authentication', 'command')))
         self.check('Concurrent failures are counted exactly once on the original route', self.fleet.snapshot()['errors'] == dict(socks=9, http=0, https=0) and diagnostic['totalFailures'] == 9)
 
+    def test_real_socks_hosts_are_typed_without_changing_strict_admission(self):
+        cases = [
+            ('fixture-a-exact', HOSTS[0].encode(), 'fixture-a', 'exact', 'socks-port'),
+            ('fixture-b-exact', HOSTS[1].encode(), 'fixture-b', 'exact', 'socks-port'),
+            ('geo-exact', fixture.GEO_HOST.encode(), 'geo', 'exact', 'socks-port'),
+            ('fixture-case', HOSTS[0].upper().encode(), 'fixture-a', 'case-variant', 'socks-host'),
+            ('fixture-dot', (HOSTS[1]+'.').encode(), 'fixture-b', 'trailing-dot', 'socks-host'),
+            ('geo-case-and-dot', (fixture.GEO_HOST.upper()+'.').encode(), 'geo', 'case-and-trailing-dot', 'socks-host'),
+            ('latency-source', b'www.gstatic.com', 'latency-probe-host', 'exact', 'socks-host'),
+            ('latency-case-and-dot', b'WWW.GSTATIC.COM.', 'latency-probe-host', 'case-and-trailing-dot', 'socks-host'),
+            ('update-api', b'api.github.com', 'update-host', 'exact', 'socks-host'),
+            ('update-release', b'github.com', 'update-host', 'exact', 'socks-host'),
+            ('update-feed', b'raw.githubusercontent.com', 'update-host', 'exact', 'socks-host'),
+            ('update-assets', b'release-assets.githubusercontent.com', 'update-host', 'exact', 'socks-host'),
+            ('update-objects', b'objects.githubusercontent.com', 'update-host', 'exact', 'socks-host'),
+            ('gecko-settings', b'firefox.settings.services.mozilla.com', 'gecko-startup-host', 'exact', 'socks-host'),
+            ('gecko-system-addons', b'aus5.mozilla.org', 'gecko-startup-host', 'exact', 'socks-host'),
+            ('gecko-background-addons', b'versioncheck-bg.addons.mozilla.org', 'gecko-startup-host', 'exact', 'socks-host'),
+            ('gecko-addons', b'versioncheck.addons.mozilla.org', 'gecko-startup-host', 'exact', 'socks-host'),
+            ('unknown-host', b'PRIVATE_TARGET_TOKEN.invalid', 'other', 'other', 'socks-host'),
+            ('unknown-case-and-dot', b'PRIVATE_TARGET_TOKEN.INVALID.', 'other', 'other', 'socks-host'),
+            ('multiple-trailing-dots', (HOSTS[0]+'..').encode(), 'other', 'other', 'socks-host'),
+            ('ipv4-literal', b'203.0.113.19', 'other', 'ipv4', 'socks-host'),
+            ('ipv6-literal', b'2001:db8::19', 'other', 'ipv6', 'socks-host'),
+            ('ascii-controls', b'PRIVATE_TARGET_TOKEN\x00\r\n', 'other', 'other', 'socks-host'),
+            ('ascii-boundary', b'PRIVATE_'+b'x'*72, 'other', 'other', 'socks-host'),
+        ]
+        for total, (name, raw, role, form, guard) in enumerate(cases, 1):
+            port = b'\x00\x50' if guard == 'socks-port' else b'\x01\xbb'
+            self.reject_socks(b'\x05\x01\x00\x03'+bytes([len(raw)])+raw+port, True)
+            self.settled(total)
+            row = self.fleet.diagnostic_snapshot()['events'][-1]
+            self.check('Actual SOCKS target role/form ' + name, (row['hostRole'], row['hostForm']) == (role, form))
+            self.check('Actual SOCKS target hash retains exact original ASCII bytes ' + name, row['hostSha256'] == hashlib.sha256(raw).hexdigest())
+            self.check('Target classification preserves the original strict guard ' + name, row['guardCode'] == guard)
+            NEGATIVE_CASES.append('typed-target-' + name)
+        diagnostic = self.fleet.diagnostic_snapshot()
+        hashes = [row['hostSha256'] for row in diagnostic['events']]
+        self.check('Case and dot variants never share a normalized target hash', len(hashes) == len(set(hashes)))
+        self.check('All typed host failures retain exactly one original error', self.fleet.snapshot()['errors'] == dict(socks=len(cases), http=0, https=0) and diagnostic['totalFailures'] == len(cases))
+        self.check('Typed target observations have only fixed fields and enum values', all(set(row) == EVENT_KEYS and row['hostRole'] in fixture.TRANSPORT_HOST_ROLES and row['hostForm'] in fixture.TRANSPORT_HOST_FORMS for row in diagnostic['events']))
+        text = json.dumps(diagnostic)
+        self.check('No raw target including arbitrary ASCII data is exported', all(value not in text for value in ('PRIVATE_TARGET_TOKEN', '203.0.113.19', '2001:db8::19', *HOSTS, fixture.GEO_HOST, 'www.gstatic.com', 'github.com', 'mozilla.org')))
+        self.check('Host observations do not become native content receipts', self.fleet.snapshot()['events'] == [])
+
+    def test_incomplete_or_non_ascii_targets_never_receive_a_digest(self):
+        cases = [
+            ('missing-target', b'', 'incomplete-read'),
+            ('empty-target', b'\x05\x01\x00\x03\x00', 'socks-host-bound'),
+            ('over-bound-target', b'\x05\x01\x00\x03\x51'+b'x'*81, 'socks-host-bound'),
+            ('incomplete-target', b'\x05\x01\x00\x03\x04abc', 'incomplete-read'),
+            ('non-ascii-target', b'\x05\x01\x00\x03\x01\xff', 'other-guard'),
+        ]
+        for total, (name, payload, guard) in enumerate(cases, 1):
+            self.reject_socks(payload, True)
+            self.settled(total)
+            row = self.fleet.diagnostic_snapshot()['events'][-1]
+            self.check('Only a complete bounded ASCII target can be observed ' + name, (row['hostRole'], row['hostForm'], row['hostSha256']) == ('unavailable', 'unavailable', None))
+            self.check('Unavailable target preserves the actual rejection ' + name, row['guardCode'] == guard)
+            NEGATIVE_CASES.append('unavailable-target-' + name)
+        self.check('Unavailable target errors are never exempted', self.fleet.snapshot()['errors']['socks'] == len(cases))
+
+    def test_concurrent_target_metadata_and_closed_collectors_are_isolated(self):
+        cases = [
+            (HOSTS[0].upper().encode(), 'fixture-a', 'case-variant'),
+            ((HOSTS[1]+'.').encode(), 'fixture-b', 'trailing-dot'),
+            (b'www.gstatic.com', 'latency-probe-host', 'exact'),
+            (b'PRIVATE_CONCURRENT_TARGET.invalid', 'other', 'other'),
+            (b'2001:db8::19', 'other', 'ipv6'),
+        ]
+        expected = {hashlib.sha256(raw).hexdigest(): (role, form) for raw, role, form in cases}
+        payloads = [b'\x05\x01\x00\x03'+bytes([len(raw)])+raw+b'\x01\xbb' for raw, _, _ in cases]
+        payloads.append(b'')
+        with concurrent.futures.ThreadPoolExecutor(4) as pool:
+            list(pool.map(lambda payload: self.reject_socks(payload, True), payloads))
+        self.settled(len(payloads))
+        observed = self.fleet.diagnostic_snapshot()['events']
+        available = [row for row in observed if row['hostSha256'] is not None]
+        unavailable = [row for row in observed if row['hostSha256'] is None]
+        self.check('Concurrent actual sockets retain their own target role form and digest', len(available) == len(cases) and {row['hostSha256']: (row['hostRole'], row['hostForm']) for row in available} == expected)
+        self.check('A concurrent early EOF cannot inherit another connection target', len(unavailable) == 1 and unavailable[0]['hostRole'] == unavailable[0]['hostForm'] == 'unavailable')
+        client = self.raw()
+        client.sendall(b'\x05\x01\x00')
+        self.check('Close-generation target uses actual SOCKS greeting', fixture.exact_bytes(client, 2) == b'\x05\x00')
+        raw = fixture.GEO_HOST.encode('ascii')
+        target_observed = threading.Event()
+        actual_target = fixture._transport_target
+        def observe_target(host):
+            value = actual_target(host)
+            target_observed.set()
+            return value
+        # Observe the actual classifier without substituting its output. Keep
+        # the real tracked socket waiting for one remaining target-port byte.
+        with patch.object(fixture, '_transport_target', side_effect=observe_target):
+            client.sendall(b'\x05\x01\x00\x03'+bytes([len(raw)])+raw+b'\x01')
+            self.check('Close-generation target was actually read before the pending port', target_observed.wait(4))
+            self.fleet.close()
+        final = self.fleet.diagnostic_snapshot()
+        row = final['events'][-1]
+        self.check('Closing a collector retains its own already-read target', row['collectorClosed'] is True and (row['hostRole'], row['hostForm'], row['hostSha256']) == ('geo', 'exact', hashlib.sha256(raw).hexdigest()) and final['quiescent'] is True)
+        binding = dict(self.binding, runNonce='e'*32)
+        script = 'const fixture=__WORKER_POLICY_FIXTURE__;'
+        fresh = fixture.IpTimeZoneFleet(self.certificates, script, script, binding).start()
+        self.addCleanup(fresh.close)
+        client = socket.create_connection(('127.0.0.1', fresh.proxies['socks'].port), timeout=4)
+        self.clients.append(client)
+        self.shutdown_write(client)
+        self.drain(client)
+        self.wait(lambda: fresh.diagnostic_snapshot()['totalFailures'] == 1)
+        fresh.close()
+        next_generation = fresh.diagnostic_snapshot()
+        row = next_generation['events'][0]
+        self.check('A new collector binding and target begin independently', next_generation['binding'] == binding and (row['hostRole'], row['hostForm'], row['hostSha256']) == ('unavailable', 'unavailable', None))
+        self.check('A later collector cannot mutate an earlier quiescent ledger', self.fleet.diagnostic_snapshot() == final)
+
     def test_only_fixed_known_guard_messages_are_classified(self):
         PRESERVATION.update(preservation_proof())
         self.check('Removing only diagnostic additions restores the complete original source bytes', PRESERVATION['completeOriginalSourceRestored'])
@@ -397,8 +547,11 @@ if __name__ == '__main__':
         total=len(CHECKS), failures=len(result.failures), errors=len(result.errors),
         negativeCases=len(NEGATIVE_CASES), checks=CHECKS, sourceFiles=hashes,
         preservationProof=PRESERVATION,
+        targetClassification=dict(hostRoles=list(fixture.TRANSPORT_HOST_ROLES), hostForms=list(fixture.TRANSPORT_HOST_FORMS),
+            exactAsciiSha256=True, targetAdmissionChanged=False, sdkHostProvenance=SDK_HOST_PROVENANCE),
         executionInputsUnchanged=stable, actualLoopbackSocketExecution=True,
         actualTlsSocketExecution=True, injectedWriteFailureBoundary=True,
+        transparentTargetReadObserver=True,
         actualAndroidExecution=False, actualGeckoExecution=False,
         actualPublicNetworkExecution=False, actualComboFailureCauseEstablished=False,
         eofErrorsExempted=False, scope='Real fixed-loopback SOCKS/CONNECT/TLS parser and shutdown controls; malformed protocol and explicitly injected response-write exception boundaries. Diagnostics remain separate from original counters/snapshot. No Android, Gecko, public endpoint, prior errors38 cause, EOF exemption or release qualification.')

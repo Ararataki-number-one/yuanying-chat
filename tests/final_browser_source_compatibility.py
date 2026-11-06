@@ -92,7 +92,8 @@ def manifest():
         raise ValueError('Final browser fixture requires the exact ordinary source path')
     if not 0 < DELTA_PATH.stat().st_size <= MAX_FIXTURE_BYTES:
         raise ValueError('Final browser historical fixture bound')
-    return _decode(DELTA_PATH.read_bytes())
+    from resource_startup_source_compatibility import final_manifest_input
+    return final_manifest_input(_decode(DELTA_PATH.read_bytes()))
 
 
 def _decode(raw):
@@ -192,10 +193,12 @@ def p2_input(raw, relative):
     _metadata_path(raw, relative)
     if relative != GV:
         return raw
+    from resource_startup_source_compatibility import p2_current_input, p2_reference_row
+    raw = p2_current_input(raw, relative)
     digest = (_sha(raw), len(raw))
     if digest == (P2_PREVIOUS_SHA256, P2_PREVIOUS_BYTES):
         return raw
-    row = manifest()['files'][GV]
+    row = p2_reference_row(manifest()['files'][GV])
     if digest != (row['reviewedSha256'], row['reviewedBytes']):
         raise ValueError('P2 metadata input rejects unknown whole Gecko bytes')
     delta = row['deltas'][-1]
@@ -213,6 +216,9 @@ def p2_input(raw, relative):
 def metadata_input(raw, relative):
     """Finite left inputs only; unowned bytes still face the original golden."""
     _metadata_path(raw, relative)
+    if relative == 'tests/fixtures/network-settings-callback-source-deltas.json':
+        from connections_admission_metadata_compatibility import callback_metadata_input
+        return callback_metadata_input(raw, relative)
     from profile_fixture_root_source_compatibility import PATHS as fixture_root_paths, source_input as fixture_root_input
     if relative in fixture_root_paths:
         raw = fixture_root_input(raw, relative)

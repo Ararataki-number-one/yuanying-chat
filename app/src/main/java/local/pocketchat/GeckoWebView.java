@@ -536,7 +536,7 @@ class GeckoWebView extends FrameLayout {
   ResourcePressureController.MemorySample resourceMemory(){return owner.resources.sample();}
   boolean resourcePage(String target){return MainActivity.chatUrl(target);}
   boolean resourceSamePage(String a,String b){return WebReplyObserver.same(a,b);}
-  boolean retryResourceStart(){if(!resourceDeferred||destroyed||runtime!=null)return false;String target=queued.isEmpty()?owner.navigationTarget:queued;if(!target.isEmpty()&&allowedUrl(target)&&owner.guard.allowed())queued=target;initialize();if(!resourceDeferred&&!failed&&runtime!=null){if(!target.isEmpty())owner.beginNavigation(target,"正在打开当前环境");else owner.setStatus("正在打开当前环境");owner.wakePolling();}return true;}
+  boolean retryResourceStart(){if(!resourceDeferred||destroyed||runtime!=null)return false;String target=queued.isEmpty()?owner.navigationTarget:queued;if(!target.isEmpty()&&allowedUrl(target)&&owner.guard.allowed())queued=target;initialize();if(!resourceDeferred&&!failed){if(!target.isEmpty())owner.beginNavigation(target,"正在打开当前环境");else owner.setStatus("正在打开当前环境");owner.wakePolling();}return true;}
   boolean hasOpenPopup(){return !popups.isEmpty();}
   boolean builtinAddonCurrent(GeckoRuntime expected,WebExtension value,boolean disabled){
     return !destroyed&&runtime==expected&&expected!=null&&value!=null&&value.isBuiltIn&&"browser@pocketchat.local".equals(value.id)&&value.metaData!=null&&value.metaData.enabled!=disabled;

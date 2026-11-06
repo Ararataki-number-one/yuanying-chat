@@ -365,6 +365,45 @@ class FixtureProcessObservationControls(unittest.TestCase):
         self.assertFalse(events);self.assertEqual(rows[-1]['processName'],runner.PACKAGE+':profile3');self.assertEqual(rows[-1]['pids'],[8492])
         self.assertEqual(rows[-1]['phase'],'manual-prepare');NEGATIVE_CONTROLS.append('recorded live writer still blocks original mutation guard')
 
+class FailedMainStartEventControls(unittest.TestCase):
+    def components(self):return runner.declared_fixture_components([(ROOT/'app/src/main/AndroidManifest.xml').read_bytes(),(ROOT/'tests/gecko/AndroidManifest.xml').read_bytes()])
+    def event(self,pid=5011,package=runner.PACKAGE,hosting='content provider',component='local.pocketchat.AppUpdateProvider'):
+        return ('[0,'+str(pid)+',10200,'+package+','+hosting+','+package+'/'+component+']\n').encode()
+    def row(self):return dict(phase='manual-prepare',label='restored-default-tls12',processName=runner.PACKAGE,status='present',returnCode=0,pids=[5011])
+    def failure(self):return ValueError('Product TLS fixture: all generic fixture writers must be absent before manual preparation')
+    def test_exact_process_event_reports_only_declared_component_and_typed_identity(self):
+        components=self.components();expected=dict(status='observed',reason='exact-process-start-event',eventCount=1,user=0,pid=5011,uid=10200,processName=runner.PACKAGE,hostingType='content provider',component=runner.PACKAGE+'/local.pocketchat.AppUpdateProvider')
+        self.assertEqual(runner.process_start_events(self.event(),5011,components),expected)
+        self.assertEqual(runner.process_start_events(self.event(component='AppUpdateProvider').replace(b'/AppUpdateProvider',b'/local.pocketchat.AppUpdateProvider'),5011,components),expected)
+        raw=self.event().replace((runner.PACKAGE+'/local.pocketchat.AppUpdateProvider').encode(),('ComponentInfo{'+runner.PACKAGE+'/local.pocketchat.AppUpdateProvider}').encode())
+        self.assertEqual(runner.process_start_events(raw,5011,components),expected)
+    def test_foreign_unknown_ambiguous_or_unbounded_events_never_claim_cause(self):
+        cases=[('wrong-pid',self.event(pid=5012)),('foreign-package',self.event(package='foreign.private')),('unknown-hosting',self.event(hosting='private-hosting')),('unknown-component',self.event(component='PrivateUnknown')),('oversized',b'x'*131073),('overlong-line',b'x'*2049),('too-many-lines',b'\n'*259),('duplicate',self.event()*2),('malformed',b'[0,5011,private]\n'),('bad-uid',self.event().replace(b',10200,',b',2147483648,'))]
+        for name,raw in cases:
+            result=runner.process_start_events(raw,5011,self.components());self.assertEqual(result['status'],'unknown');self.assertNotIn('private',json.dumps(result));self.assertNotIn('PrivateUnknown',json.dumps(result));self.assertNotIn('component',result);NEGATIVE_CONTROLS.append('fixed process start refuses '+name)
+    def test_diagnostic_query_occurs_once_only_after_original_owned_main_guard_failure(self):
+        calls=[]
+        def adb(*parts,**kw):calls.append((parts,kw));return subprocess.CompletedProcess(parts,0,self.event(),b'')
+        for failure,rows in ((RuntimeError('other'),[self.row()]),(ValueError('other'),[self.row()]),(self.failure(),[]),(self.failure(),[dict(self.row(),pids=[True])]),(self.failure(),[dict(self.row(),processName=runner.PACKAGE+':profile1')]),(self.failure(),[dict(self.row(),phase='collect')]),(self.failure(),[dict(self.row(),status='absent')])):
+            self.assertIsNone(runner.failed_manual_main_start(adb,failure,rows,self.components()));self.assertFalse(calls);NEGATIVE_CONTROLS.append('unowned failure cannot query process start')
+        result=runner.failed_manual_main_start(adb,self.failure(),[self.row()],self.components());self.assertEqual(result['status'],'observed');self.assertTrue(result['originalFailurePreserved']);self.assertEqual(len(calls),1)
+        self.assertEqual(calls[0],(('shell','logcat','-b','events','-d','-t','256','-v','raw','-s','am_proc_start:I'),dict(check=False,timeout=5)))
+    def test_readonly_query_errors_remain_unknown_without_retries_or_raw_output(self):
+        for value in (subprocess.CompletedProcess([],1,b'private',b'private-stderr'),subprocess.CompletedProcess([],False,self.event(),b''),subprocess.TimeoutExpired('fixed-logcat',5),OSError('private-path')):
+            calls=[]
+            def adb(*parts,**kw):
+                calls.append(parts)
+                if isinstance(value,Exception):raise value
+                return value
+            result=runner.failed_manual_main_start(adb,self.failure(),[self.row()],self.components());self.assertEqual(result['status'],'unknown');self.assertTrue(result['originalFailurePreserved']);self.assertEqual(len(calls),1);self.assertNotIn('private',json.dumps(result));NEGATIVE_CONTROLS.append('readonly diagnostic failure '+type(value).__name__)
+    def test_compiled_event_ownership_counterfeits_are_rejected(self):
+        source=(ROOT/'tools/gecko/run_gecko_tls_acceptance.py').read_text();changes=[('wrong-process-match','if actual!=pid or process!=PACKAGE:continue','if actual!=pid:continue'),('borrow-duplicate','if len(matched)!=1:','if not matched:'),('unknown-component-claim','if component not in components:','if False:')]
+        for label,before,after in changes:
+            self.assertEqual(source.count(before),1);tree=ast.parse(source.replace(before,after,1));node=next(n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name=='process_start_events');namespace=dict(runner.__dict__);exec(compile(ast.Module(body=[node],type_ignores=[]),'actual-event-owner-'+label,'exec'),namespace)
+            raw=self.event(package='foreign.private').replace(b'foreign.private/local.pocketchat.AppUpdateProvider',(runner.PACKAGE+'/local.pocketchat.AppUpdateProvider').encode()) if label=='wrong-process-match' else self.event()*2 if label=='borrow-duplicate' else self.event(component='PrivateUnknown')
+            with self.assertRaises(AssertionError):self.assertEqual(namespace['process_start_events'](raw,5011,self.components())['status'],'unknown')
+            SEMANTIC_MUTANTS.append(label);NEGATIVE_CONTROLS.append('compiled event ownership mutant '+label)
+
 class ProducerBoundaryControls(unittest.TestCase):
     def test_finally_helper_freezes_after_late_socket_and_all_cleanup_even_on_failure(self):
         events=[];errors=[];cleanup={k:False for k in ('appStopped','appDataCleared','reverseRemoved','serverClosed','serverThreadsJoined','caRemoved','privateMaterialRemoved','shellUidRestored')}

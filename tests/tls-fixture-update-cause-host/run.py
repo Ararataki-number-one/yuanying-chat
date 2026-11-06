@@ -1,0 +1,40 @@
+#!/usr/bin/env python3
+"""Whole actual AppUpdates code on explicitly modeled framework/queue boundaries."""
+import argparse,hashlib,json,os,subprocess,tempfile
+from pathlib import Path
+ROOT=Path(__file__).resolve().parents[2];HERE=Path(__file__).resolve().parent
+sha=lambda p:hashlib.sha256(p.read_bytes()).hexdigest()
+STUBS={
+'android/content/Context.java':'''package android.content;public class Context{public static final String JOB_SCHEDULER_SERVICE="jobs";public static final ContentResolver resolver=new ContentResolver();public static final android.app.job.JobScheduler jobs=new android.app.job.JobScheduler();public String getPackageName(){return "local.pocketchat.test";}public ContentResolver getContentResolver(){return resolver;}public Object getSystemService(String n){return jobs;}public SharedPreferences getSharedPreferences(String n,int m){return new SharedPreferences();}}''',
+'android/content/SharedPreferences.java':'''package android.content;public class SharedPreferences{public int getInt(String k,int v){return v;}}''',
+'android/content/ContentResolver.java':'''package android.content;import android.os.*;import android.net.*;public class ContentResolver{public boolean enabled=true,mainRunning;public int launches,calls,slot;public String uri,action;public void reset(){enabled=true;mainRunning=false;launches=calls=slot=0;uri=action="";}public Bundle call(Uri u,String a,String arg,Bundle b){calls++;if(!enabled)throw new IllegalStateException("Declared disabled provider boundary");uri=u.toString();action=a;slot=b.getInt("originSlot",-1);if(!mainRunning){mainRunning=true;launches++;}return new Bundle();}}''',
+'android/content/ComponentName.java':'''package android.content;public class ComponentName{public final String name;public ComponentName(Context c,Class<?> type){name=type.getName();}}''',
+'android/content/Intent.java':'''package android.content;public class Intent{public Intent(Context c,Class<?> t){}public Intent putExtra(String k,int v){return this;}}''',
+'android/net/Uri.java':'''package android.net;public final class Uri{final String value;Uri(String v){value=v;}public static Uri parse(String v){return new Uri(v);}public String toString(){return value;}}''',
+'android/os/Bundle.java':'''package android.os;import java.util.*;public class Bundle{final Map<String,Object> values=new HashMap<>();public void putInt(String k,int v){values.put(k,v);}public int getInt(String k,int v){Object x=values.get(k);return x instanceof Integer?(Integer)x:v;}public void putString(String k,String v){values.put(k,v);}}''',
+'android/app/Activity.java':'''package android.app;public class Activity extends android.content.Context{public void startActivity(android.content.Intent i){}}''',
+'android/app/job/JobInfo.java':'''package android.app.job;import android.content.*;public class JobInfo{public static final int NETWORK_TYPE_ANY=1,NETWORK_TYPE_UNMETERED=2,BACKOFF_POLICY_EXPONENTIAL=1;public int id,network;public long latency,period;public boolean persisted;public String component;public static final class Builder{final JobInfo j=new JobInfo();public Builder(int id,ComponentName c){j.id=id;j.component=c.name;}public Builder setRequiredNetworkType(int v){j.network=v;return this;}public Builder setPeriodic(long v){j.period=v;return this;}public Builder setPersisted(boolean v){j.persisted=v;return this;}public Builder setMinimumLatency(long v){j.latency=v;return this;}public Builder setBackoffCriteria(long v,int p){return this;}public JobInfo build(){return j;}}}''',
+'android/app/job/JobScheduler.java':'''package android.app.job;import java.util.*;public class JobScheduler{public final Map<Integer,JobInfo> pending=new HashMap<>();public final List<Integer> cancelled=new ArrayList<>();public void reset(){pending.clear();cancelled.clear();}public void cancel(int id){cancelled.add(id);pending.remove(id);}public JobInfo getPendingJob(int id){return pending.get(id);}public int schedule(JobInfo j){pending.put(j.id,j);return 1;}}''',
+'local/pocketchat/Collaborators.java':'''package local.pocketchat;import android.content.*;import java.util.*;import java.util.concurrent.*;class MainActivity extends android.app.Activity{}class BrandLaunchActivity extends android.app.Activity{}class AppUpdateActivity extends android.app.Activity{int originSlot;}class AppUpdateJob{}final class AppUpdatePolicy{static final long DAY=24*60*60*1000L;}final class Profiles{static final int MAX=8;static int slot=1;static int slot(Context c){return slot;}static Context global(Context c){return c;}}final class AppSettings{static boolean autoCheck=true;static boolean bool(Context c,String k,boolean d){return autoCheck;}static int defaultSlot(Context c){return 0;}}final class AppUpdateManager{static final QueueExecutor queue=new QueueExecutor();static ExecutorService backgroundExecutor(String n){return queue;}}final class QueueExecutor extends AbstractExecutorService{final Queue<Runnable>tasks=new ArrayDeque<>();public void execute(Runnable r){tasks.add(r);}void drain(){while(!tasks.isEmpty())tasks.remove().run();}public void shutdown(){}public List<Runnable>shutdownNow(){return new ArrayList<>();}public boolean isShutdown(){return false;}public boolean isTerminated(){return false;}public boolean awaitTermination(long t,TimeUnit u){return false;}}'''}
+def main():
+ p=argparse.ArgumentParser();p.add_argument('--java-home',required=True,type=Path);p.add_argument('--output',required=True,type=Path);a=p.parse_args();actual=ROOT/'app/src/main/java/local/pocketchat/AppUpdates.java';raw=actual.read_text();inputs=[actual,ROOT/'app/src/main/java/local/pocketchat/MainActivity.java',ROOT/'app/src/main/AndroidManifest.xml',HERE/'Host.java.in',HERE/'README.md',Path(__file__).resolve()];before={str(p.relative_to(ROOT)):sha(p)for p in inputs}
+ with tempfile.TemporaryDirectory(prefix='tls-update-cause-model-')as temp:
+  root=Path(temp)
+  def execute(label,source):
+   out=root/label;sources=[]
+   for name,text in dict(STUBS,**{'local/pocketchat/AppUpdates.java':source,'local/pocketchat/Host.java':(HERE/'Host.java.in').read_text()}).items():
+    q=out/name;q.parent.mkdir(parents=True,exist_ok=True);q.write_text(text);sources.append(q)
+   c=subprocess.run([str(a.java_home/'bin/javac'),'--release','17','-d',str(out/'classes'),*map(str,sources)],capture_output=True,text=True,timeout=30)
+   if c.returncode:raise RuntimeError(c.stderr)
+   return subprocess.run([str(a.java_home/'bin/java'),'-cp',str(out/'classes'),'local.pocketchat.Host'],capture_output=True,text=True,timeout=30)
+  current=execute('actual-whole-source',raw)
+  if current.returncode:raise RuntimeError(current.stderr)
+  result=json.loads(current.stdout);neg=[]
+  for name,old,new in [('drop-origin','remember(context,Profiles.slot(context))','remember(context,-1)'),('auto-check-cancel','if(!AppSettings.bool(c,"updateAutoCheck",true))','if(false)'),('unknown-slot','slot>=0&&slot<Profiles.MAX','true'),('changed-job-latency','setMinimumLatency(1000)','setMinimumLatency(1001)')]:
+   if raw.count(old)!=1:raise ValueError('Unique actual update control required')
+   bad=execute(name,raw.replace(old,new,1))
+   if bad.returncode==0 or 'AssertionError:'not in bad.stderr:raise AssertionError('Actual compiled counterfeit escaped '+name)
+   neg.append(dict(name=name,compiled=True,rejected=True,assertion=bad.stderr.split('AssertionError:',1)[1].splitlines()[0].strip()))
+ stable=all(sha(ROOT/name)==value for name,value in before.items());result.update(schema=1,status='passed'if stable else'failed',sourceFiles=before,executionInputsUnchanged=stable,negativeControls=neg,actualObservedProcessCause=False,productionChanged=False,actualAndroidExecution=False,scope='Whole current AppUpdates.java runs on declared framework ContentResolver/JobScheduler and queued Executor boundaries. Demonstrates reachability and possible pending-provider sequence only; does not attribute Android PID5011 or change any actual component setting.')
+ a.output.parent.mkdir(parents=True,exist_ok=True);a.output.write_text(json.dumps(result,indent=2)+'\n');print(json.dumps(result));raise SystemExit(0 if stable else 1)
+if __name__=='__main__':main()
