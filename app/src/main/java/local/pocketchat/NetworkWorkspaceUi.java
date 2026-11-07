@@ -19,8 +19,9 @@ final class NetworkWorkspaceUi {
     pageSummary=ReferenceUi.text(a,"正在读取网络信息",12,ReferenceUi.MUTED,false);
     pageSummary.setPadding(0,dp(3),0,0);pageSummary.setMaxLines(2);pageSummary.setEllipsize(android.text.TextUtils.TruncateAt.END);heading.addView(pageSummary);
     head.addView(heading,new LinearLayout.LayoutParams(0,-2,1));
-    filterButton=ReferenceUi.link(a,"筛选",this::filters);filterButton.setTextSize(13);
-    head.addView(filterButton,new LinearLayout.LayoutParams(DesignUi.actionWidth(filterButton,52),dp(48)));
+    filterButton=ReferenceUi.link(a,"筛选",this::filters);filterButton.setTextSize(13);filterButton.setSingleLine(true);
+    filterButton.setMinWidth(dp(52));filterButton.setMinimumWidth(dp(52));
+    head.addView(filterButton,new LinearLayout.LayoutParams(-2,-2));
     Button refresh=ReferenceUi.iconButton(a,"refresh","刷新网络状态",()->{lastRead=0;fetch();});
     head.addView(refresh,new LinearLayout.LayoutParams(dp(48),dp(48)));
     head.addView(ReferenceUi.more(a,()->networkMore()),new LinearLayout.LayoutParams(dp(48),dp(48)));root.addView(head);
