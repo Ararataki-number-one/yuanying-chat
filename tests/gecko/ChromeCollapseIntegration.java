@@ -172,7 +172,13 @@ final class ChromeCollapseIntegration {
   }
   CollapseView web(){return (CollapseView)a.remote;}
   void pauseObservers(){a.handler.removeCallbacks(a.ticker);a.session.remove(a.sessionObserver);a.session.handler.removeCallbacks(a.session.tick);}
+  Object visibleCenter(View view){return view!=null&&view.isShown()&&view.getWidth()>0&&view.getHeight()>0?a.center(view):JSONObject.NULL;}
   void start(){
+    // Keep the historical v1 evidence/runner intact. Its fixed six-tap path
+    // cannot exercise the URL dialog and four-action dock without a new contract.
+    if(a.getIntent().getIntExtra("chromeNavigationVersion",1)!=2){
+      emit("error",J.obj("navigationContract",2,"error","Chrome navigation contract v2 required: the v1 collapse runner targets removed Chat/Settings tabs and assumes capsule taps only expand. Version the address-dialog/menu/back workload before running this fixture."));return;
+    }
     web().diagnostic=this;diagnostic("start-before");a.handler.postDelayed(diagnosticTick,1000);
     pauseObservers();
     if(Build.VERSION.SDK_INT>=33)a.registerReceiver(receiver,new IntentFilter(ACTION),Context.RECEIVER_EXPORTED);else a.registerReceiver(receiver,new IntentFilter(ACTION));
@@ -204,10 +210,10 @@ final class ChromeCollapseIntegration {
     snapshotEvaluations++;diagnostic("snapshot-evaluate");pauseObservers();
     a.remote.evaluateJavascript("(()=>{const t="+TELEMETRY+";return {draft:document.getElementById('prompt-textarea').value,cookie:document.cookie,sendCount:Number(document.getElementById('send-count').textContent),path:location.pathname,document:document.documentElement.dataset.reloadDocument,scrollY:scrollY,innerWidth:innerWidth,innerHeight:innerHeight,trusted:t?.events||[],fixtureInputTelemetry:t,telemetryReady:"+TELEMETRY_READY+"};})()",raw->{
       snapshotCallbacks++;diagnostic("snapshot-callback");JSONObject result=J.parse(raw);int[] location=new int[2];a.remote.getLocationOnScreen(location);
-      try{result.put("command",command).put("expanded",a.designChrome.expanded()).put("toolbarVisibility",a.toolbar.getVisibility()).put("toolbarHeight",a.toolbar.getHeight())
+      try{result.put("command",command).put("navigationContract",2).put("expanded",a.designChrome.expanded()).put("toolbarVisibility",a.toolbar.getVisibility()).put("toolbarHeight",a.toolbar.getHeight())
         .put("compactVisibility",a.designChrome.compact.getVisibility()).put("compactHeight",a.designChrome.compact.getHeight())
         .put("compactName",a.designChrome.compactTitle.getText().toString()).put("environmentName",Profiles.display(a,Profiles.slot(a)))
-        .put("compactTap",a.center(a.designChrome.compact)).put("topVisibility",a.designChrome.top.getVisibility()).put("networkVisibility",a.designChrome.networkRow.getVisibility())
+        .put("compactTap",visibleCenter(a.designChrome.compact)).put("topVisibility",a.designChrome.top.getVisibility()).put("networkVisibility",a.designChrome.networkRow.getVisibility())
         .put("webWidth",a.remote.getWidth()).put("webHeight",a.remote.getHeight()).put("webX",location[0]).put("webY",location[1])
         .put("surface",System.identityHashCode(a.remote)).put("sdkSession",System.identityHashCode(a.remote.current)).put("attachedSession",System.identityHashCode(a.remote.surface.getSession()))
         .put("loads",web().loads).put("stops",web().stops).put("documents",documents).put("page",a.hub.page).put("keyboard",a.keyboardVisible)
@@ -215,7 +221,10 @@ final class ChromeCollapseIntegration {
         .put("documentReadyEvidence",web().documentReadyEvidence)
         .put("pending",a.session.pending==null?JSONObject.NULL:new JSONObject(a.session.pending.toString())).put("pendingStored",a.session.prefs.getString("pending",""))
         .put("activityStarts",activityStarts).put("menuOpens",menuOpens).put("windowFocus",a.hasWindowFocus())
-        .put("touches",web().touchesObserved).put("nativeTouches",nativeTouches).put("toolbarBounds",a.bounds(a.toolbar)).put("chatTap",a.center(a.hub.tabs[0])).put("settingsTap",a.center(a.hub.tabs[4]));
+        .put("touches",web().touchesObserved).put("nativeTouches",nativeTouches).put("toolbarBounds",a.bounds(a.toolbar))
+        .put("environmentTap",visibleCenter(a.hub.tabs[WorkspaceNavigation.ENVIRONMENTS])).put("networkTap",visibleCenter(a.hub.tabs[WorkspaceNavigation.NETWORK]))
+        .put("downloadsTap",visibleCenter(a.hub.tabs[WorkspaceNavigation.DOWNLOADS])).put("readingTap",visibleCenter(a.hub.tabs[WorkspaceNavigation.READING]))
+        .put("addressTap",visibleCenter(a.designChrome.title)).put("moreTap",visibleCenter(a.designChrome.more));
         if(a.designChrome.expanded()){
           java.lang.reflect.Method method=DesignChrome.class.getDeclaredMethod("touchBounds",View.class);method.setAccessible(true);
           android.graphics.Rect target=(android.graphics.Rect)method.invoke(a.designChrome,a.designChrome.title);int[] origin=new int[2];a.toolbar.getLocationOnScreen(origin);target.offset(origin[0],origin[1]);

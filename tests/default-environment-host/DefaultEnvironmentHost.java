@@ -19,11 +19,38 @@ public final class DefaultEnvironmentHost{
   ProfileCatalog c=setup(3);BrandLaunchActivity brand=new BrandLaunchActivity();brand.route();check("Direct launch with no available environment routes to manager without indexing Profiles",brand.launched!=null&&brand.launched.target==WindowHomeActivity.class&&Profiles.lastActivity==-1&&brand.finished);
   c=setup(2,1,2);EnvironmentSpec.Identity identity=c.identity(2);brand=new BrandLaunchActivity();brand.route();check("Valid default launch keeps exact selected environment identity",Profiles.lastActivity==2&&brand.launched!=null&&Boolean.TRUE.equals(brand.launched.extras.get("forceWebMode"))&&c.identity(2).equals(identity));
   overview("Default launcher shows the selected native dashboard",brand.launched,identity);
-  c=setup(7);Activity downloads=new DownloadCenterActivity();WorkspaceNavigation.select(downloads,2,0);check("Conversation tab with no available environment opens existing manager",downloads.launched!=null&&downloads.launched.target==WindowHomeActivity.class&&Profiles.lastActivity==-1);
-  WindowHomeActivity home=new WindowHomeActivity();WorkspaceNavigation.select(home,1,3);check("Manager with no available environment does not pass an invalid slot to Profiles",home.launched==null&&Profiles.lastActivity==-1);
-  c=setup(2,1,2);Activity workspace=new DownloadCenterActivity();WorkspaceNavigation.select(workspace,2,0);check("Conversation navigation retains valid default fallback",Profiles.lastActivity==2);overview("Workspace conversation opens the identity-bound dashboard",workspace.launched,c.identity(2));
-  home=new WindowHomeActivity();home.openWindow(2,"chat");overview("Environment list uses the same one-shot dashboard contract",home.launched,c.identity(2));
-  workspace=new DownloadCenterActivity();WorkspaceNavigation.select(workspace,2,3);check("Opening network settings does not insert a chat dashboard",workspace.launched!=null&&!workspace.launched.extras.containsKey("manualEnvironmentOverview"));
+  // Tab indices are the public four-action layout: environment, network, downloads, reading.
+  for(int target:new int[]{0,1,3}){
+   c=setup(7);Activity downloads=new DownloadCenterActivity();WorkspaceNavigation.select(downloads,2,target);
+   check("Tab "+target+" with no environment returns to manager without indexing Profiles",downloads.launched!=null&&downloads.launched.target==WindowHomeActivity.class&&Profiles.lastActivity==-1&&downloads.finished);
+  }
+  for(int target:new int[]{1,3}){
+   c=setup(7);WindowHomeActivity home=new WindowHomeActivity();WorkspaceNavigation.select(home,0,target);
+   check("Manager offers creation for tab "+target+" when no environment is available",home.launched==null&&!home.finished&&!home.problem.isEmpty()&&Profiles.lastActivity==-1);
+  }
+  c=setup(2,1,2);Activity workspace=new DownloadCenterActivity();WorkspaceNavigation.select(workspace,2,0);
+  check("Environment tab opens manager rather than an arbitrary profile",workspace.launched!=null&&workspace.launched.target==WindowHomeActivity.class&&Profiles.lastActivity==-1&&workspace.finished);
+  WindowHomeActivity home=new WindowHomeActivity();WorkspaceNavigation.select(home,0,2);
+  check("Downloads tab opens downloads while retaining environment manager",home.launched!=null&&home.launched.target==DownloadCenterActivity.class&&!home.finished&&Profiles.lastActivity==-1);
+  workspace=new AppSettingsActivity();WorkspaceNavigation.select(workspace,-1,2);
+  check("Settings has no selected tab and can open downloads",workspace.launched!=null&&workspace.launched.target==DownloadCenterActivity.class&&workspace.finished);
+  c=setup(2,1,2);identity=c.identity(2);workspace=new DownloadCenterActivity();WorkspaceNavigation.select(workspace,2,3);
+  check("Reading uses the selected default when no recent environment exists",Profiles.lastActivity==2&&workspace.launched!=null&&"reading".equals(workspace.launched.extras.get("openWindowAction"))&&!workspace.launched.extras.containsKey("manualEnvironmentOverview")&&c.identity(2).equals(identity));
+  c.db.rows.get(1).put("opened",999L);EnvironmentSpec.Identity recent=c.identity(1);
+  for(int target:new int[]{1,3}){
+   workspace=new DownloadCenterActivity();WorkspaceNavigation.select(workspace,2,target);
+   check("Tab "+target+" keeps the latest valid environment and exact action",Profiles.lastActivity==1&&workspace.launched!=null&&(target==1?"network":"reading").equals(workspace.launched.extras.get("openWindowAction"))&&!workspace.launched.extras.containsKey("manualEnvironmentOverview")&&c.identity(1).equals(recent));
+  }
+  c.db.rows.get(1).put("resetting",1);workspace=new DownloadCenterActivity();WorkspaceNavigation.select(workspace,2,3);
+  check("Reading excludes a more recent unavailable environment",Profiles.lastActivity==2&&workspace.launched!=null&&"reading".equals(workspace.launched.extras.get("openWindowAction")));
+  c=setup(2,1,2);home=new WindowHomeActivity();home.openWindow(2,"chat");overview("Environment list keeps the one-shot dashboard contract",home.launched,c.identity(2));
+  home=new WindowHomeActivity();WorkspaceNavigation.select(home,0,3);
+  check("Reading from manager opens the recent environment with the reading action",Profiles.lastActivity==2&&home.launched!=null&&"reading".equals(home.launched.extras.get("openWindowAction"))&&!home.launched.extras.containsKey("manualEnvironmentOverview")&&!home.finished);
+  workspace=new DownloadCenterActivity();WorkspaceNavigation.select(workspace,2,2);
+  check("Reselecting downloads remains a no-op",workspace.launched==null&&!workspace.finished);
+  home=new WindowHomeActivity();WorkspaceNavigation.select(home,0,0);
+  check("Reselecting environment manager remains a no-op",home.launched==null&&!home.finished);
+  for(int target:new int[]{-1,4}){workspace=new AppSettingsActivity();WorkspaceNavigation.select(workspace,-1,target);check("Invalid removed tab "+target+" does not navigate",workspace.launched==null&&!workspace.finished);}
  }
  static void overview(String label,Intent intent,EnvironmentSpec.Identity identity){
   check(label,intent!=null&&"chat".equals(intent.extras.get("openWindowAction"))&&"environment-list-chat".equals(intent.extras.get("overviewSource"))&&identity.environmentId.equals(intent.extras.get("overviewEnvironmentId"))&&Integer.valueOf(identity.slot).equals(intent.extras.get("overviewSlot"))&&Integer.valueOf(identity.generation).equals(intent.extras.get("overviewGeneration"))&&Long.valueOf(123456L).equals(intent.extras.get("overviewRequestedAt"))&&String.valueOf(intent.extras.get("manualEnvironmentOverview")).matches("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"));
@@ -53,7 +80,7 @@ class J{static JSONObject obj(Object...x){JSONObject o=new JSONObject();try{for(
 
 class MainActivity extends Activity{}class DownloadCenterActivity extends Activity{}class AppSettingsActivity extends Activity{}class AppUpdates{static void schedule(android.content.Context c){}}
 class BrandLaunchActivity extends Activity{/* BRAND */}
-class WindowHomeActivity extends Activity{int lastWindow(){return AppSettings.recentSlot(this);}void showProblem(String message){}/* OPEN_WINDOW */}
+class WindowHomeActivity extends Activity{String problem="";int lastWindow(){return AppSettings.recentSlot(this);}void showProblem(String message){problem=message;}/* OPEN_WINDOW */}
 
 /** New 46 dependencies are boundary adapters only. The original catalogue/default
  * cases do not exercise global reply-policy methods, metadata I/O, or UI rendering.

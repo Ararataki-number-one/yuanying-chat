@@ -59,7 +59,7 @@ def main():
         if not selected:parser.error('Provide --java-home containing '+name)
         return selected
     source=PRODUCTION/'MainActivity.java'
-    inputs=[source,PRODUCTION/'AppHub.java',PRODUCTION/'FocusReadingPolicy.java',PRODUCTION/'LoginPagePolicy.java',HERE/'focus_host.java',Path(__file__).resolve()]
+    inputs=[source,PRODUCTION/'AppHub.java',PRODUCTION/'FocusReadingPolicy.java',PRODUCTION/'LoginPagePolicy.java',PRODUCTION/'BrowserAddressPolicy.java',HERE/'focus_host.java',Path(__file__).resolve()]
     hashes={str(path.relative_to(ROOT)):digest(path.read_bytes()) for path in inputs}
     original=source.read_text()
     needles=['static boolean chatUrl(','void updateReadingLayout(','boolean focusActive(','void setFocusReading(','void applyFocusLayout(','static void chromeVisibility(','@Override public void onBackPressed(']
@@ -77,7 +77,7 @@ def main():
         uri=work/'android/net/Uri.java';uri.parent.mkdir(parents=True)
         uri.write_text('package android.net;public final class Uri {private java.net.URI value;public static Uri parse(String text){Uri result=new Uri();result.value=java.net.URI.create(text);return result;}public String getScheme(){return value.getScheme();}public String getHost(){return value.getHost();}public String getUserInfo(){return value.getUserInfo();}public int getPort(){return value.getPort();}}\n')
         classes=work/'classes'
-        compiled=subprocess.run([tool('javac'),'-encoding','UTF-8','-source','8','-target','8','-d',str(classes),str(java),str(uri),str(PRODUCTION/'FocusReadingPolicy.java'),str(PRODUCTION/'LoginPagePolicy.java')],text=True,capture_output=True)
+        compiled=subprocess.run([tool('javac'),'-encoding','UTF-8','-source','8','-target','8','-d',str(classes),str(java),str(uri),str(PRODUCTION/'FocusReadingPolicy.java'),str(PRODUCTION/'LoginPagePolicy.java'),str(PRODUCTION/'BrowserAddressPolicy.java')],text=True,capture_output=True)
         if compiled.returncode:raise RuntimeError(compiled.stderr)
         ran=subprocess.run([tool('java'),'-cp',str(classes),'local.pocketchat.FocusIntegrationHost'],text=True,capture_output=True)
         if ran.returncode:raise RuntimeError(ran.stderr)
@@ -89,7 +89,7 @@ def main():
         extractedMethods={name:digest(text.encode()) for name,text in selected.items()},
         focusExitInitializationSha256=digest(exit_initialization.encode()),
         generatedHarnessSha256=digest(generated.encode()),
-        scope='Verbatim MainActivity focusActive/setFocusReading/applyFocusLayout/updateReadingLayout/onBackPressed/chatUrl and real focus-exit initialization statement, plus complete production FocusReadingPolicy and LoginPagePolicy. Deterministic native View, hub selection, browser visibility/history, session, overlay and accessibility adapters. No actual Android layout, input, Activity lifecycle, Gecko document, device or network acceptance.')
+        scope='Verbatim MainActivity focusActive/setFocusReading/applyFocusLayout/updateReadingLayout/onBackPressed/chatUrl and real focus-exit initialization statement, plus complete production FocusReadingPolicy, LoginPagePolicy and BrowserAddressPolicy. Deterministic native View, hub selection, browser visibility/history, session, overlay and accessibility adapters. No actual Android layout, input, Activity lifecycle, Gecko document, device or network acceptance.')
     if not stable:report['status']='source-changed'
     args.output.parent.mkdir(parents=True,exist_ok=True)
     args.output.write_text(json.dumps(report,ensure_ascii=False,indent=2)+'\n')

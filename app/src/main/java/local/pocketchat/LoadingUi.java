@@ -2,36 +2,55 @@ package local.pocketchat;
 
 import android.app.*;
 import android.content.res.ColorStateList;
-import android.graphics.Color;
 import android.view.*;
 import android.widget.*;
 
 /** Small, real-state progress indicators; never invent a completion percentage. */
 final class LoadingUi {
-  final MainActivity a;final LinearLayout band,cover,actions;final TextView bandText,title,hint;final ProgressBar wheel;final Button retry,website;
-  boolean actionLayoutKnown,actionsHorizontal;
+  final MainActivity a;final LinearLayout band,cover,actions;final TextView bandText,title,hint;final ProgressBar wheel;final ImageView symbol;final Button retry,website;
   final PageLoadingWait wait=new PageLoadingWait();
   Dialog taskDialog;boolean taskRunning,coverShown=false,hintBound;String taskMessage="",lastTitle="",lastHint;
   LoadingUi(MainActivity activity){a=activity;
     band=new LinearLayout(a);band.setGravity(Gravity.CENTER_VERTICAL);band.setPadding(a.dp(22),a.dp(4),a.dp(22),a.dp(9));band.setVisibility(View.GONE);
     band.addView(spinner(16),new LinearLayout.LayoutParams(a.dp(16),a.dp(16)));bandText=a.label("",12,Ui.MUTED);bandText.setPadding(a.dp(10),0,0,0);band.addView(bandText);band.setOnClickListener(v->{if(taskRunning)showTask();else ReplyState.show(a);});band.setContentDescription("回复状态，点按检查或恢复连接");band.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
-    cover=new LinearLayout(a);cover.setOrientation(LinearLayout.VERTICAL);cover.setGravity(Gravity.CENTER);cover.setPadding(a.dp(28),a.dp(16),a.dp(28),a.dp(16));cover.setBackgroundColor(Ui.PAPER);cover.setClickable(true);cover.setVisibility(View.GONE);
+    cover=new LinearLayout(a);cover.setOrientation(LinearLayout.VERTICAL);cover.setGravity(Gravity.CENTER);cover.setPadding(a.dp(24),a.dp(24),a.dp(24),a.dp(24));cover.setBackgroundColor(ReferenceUi.CHAT_BG);cover.setClickable(true);cover.setVisibility(View.GONE);
     // Short windows scroll the empty-page explanation instead of squeezing buttons.
-    LinearLayout content=DesignUi.column(a);content.setGravity(Gravity.CENTER);ScrollView overflow=new ScrollView(a);overflow.setFillViewport(true);overflow.addView(content,new ScrollView.LayoutParams(-1,-2));cover.addView(overflow,new LinearLayout.LayoutParams(-1,-1));
-    wheel=spinner(32);content.addView(wheel,new LinearLayout.LayoutParams(a.dp(32),a.dp(32)));title=a.label("",16,Ui.INK);title.setGravity(Gravity.CENTER);title.setPadding(0,a.dp(20),0,a.dp(8));title.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);content.addView(title);
-    hint=a.label("",13,Ui.MUTED);hint.setGravity(Gravity.CENTER);content.addView(hint);retry=DesignUi.button(a,"重新加载",true,()->a.session.retryCurrent());
-    website=DesignUi.button(a,"检查网络",false,()->NetworkStatusUi.show(a));
-    actions=DesignUi.column(a);content.addView(actions,new LinearLayout.LayoutParams(-1,-2));
-    for(Button action:new Button[]{retry,website}){LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(-1,-2);p.topMargin=a.dp(12);actions.addView(action,p);}
-    fitActions();cover.addOnLayoutChangeListener((v,l,t,r,b,ol,ot,or,ob)->fitActions());
+    LinearLayout content=new LinearLayout(a){
+      @Override protected void onMeasure(int widthSpec,int heightSpec){
+        int available=MeasureSpec.getMode(widthSpec)==MeasureSpec.UNSPECIFIED?a.dp(300):MeasureSpec.getSize(widthSpec);
+        super.onMeasure(MeasureSpec.makeMeasureSpec(Math.min(a.dp(300),available),MeasureSpec.EXACTLY),heightSpec);
+      }
+    };
+    content.setOrientation(LinearLayout.VERTICAL);content.setGravity(Gravity.CENTER);
+    ScrollView overflow=new ScrollView(a);overflow.setFillViewport(true);overflow.setVerticalScrollBarEnabled(false);
+    overflow.addView(content,new ScrollView.LayoutParams(-2,-2,Gravity.CENTER_HORIZONTAL));cover.addView(overflow,new LinearLayout.LayoutParams(-1,-1));
+    FrameLayout emblem=new FrameLayout(a);emblem.setBackground(Ui.shape(a,ReferenceUi.BLUE_SOFT,30));emblem.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+    content.addView(emblem,new LinearLayout.LayoutParams(a.dp(60),a.dp(60)));
+    symbol=new ImageView(a);symbol.setImageDrawable(new Ui.Icon("globe",DesignUi.BLUE));symbol.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);symbol.setVisibility(View.GONE);
+    emblem.addView(symbol,new FrameLayout.LayoutParams(a.dp(28),a.dp(28),Gravity.CENTER));
+    wheel=spinner(28);wheel.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);emblem.addView(wheel,new FrameLayout.LayoutParams(a.dp(28),a.dp(28),Gravity.CENTER));
+    title=a.label("",20,Ui.INK);title.setGravity(Gravity.CENTER);title.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
+    LinearLayout.LayoutParams heading=new LinearLayout.LayoutParams(-1,-2);heading.topMargin=a.dp(18);heading.bottomMargin=a.dp(8);content.addView(title,heading);
+    hint=a.label("",13,Ui.MUTED);hint.setGravity(Gravity.CENTER);hint.setLineSpacing(a.dp(3),1.1f);content.addView(hint,new LinearLayout.LayoutParams(-1,-2));
+    retry=DesignUi.button(a,"重新加载",true,()->a.session.retryCurrent());retry.setPadding(a.dp(16),a.dp(8),a.dp(16),a.dp(8));
+    website=ReferenceUi.link(a,"检查网络",()->NetworkStatusUi.show(a));website.setTextSize(13);website.setPadding(a.dp(16),a.dp(8),a.dp(16),a.dp(8));
+    for(Button action:new Button[]{retry,website}){action.setSingleLine(false);action.setEllipsize(null);}
+    actions=new LinearLayout(a){
+      @Override protected void onMeasure(int widthSpec,int heightSpec){
+        int available=MeasureSpec.getMode(widthSpec)==MeasureSpec.UNSPECIFIED?a.dp(300):MeasureSpec.getSize(widthSpec);
+        // Keep one compact primary action, but allow enlarged labels to use the
+        // full content width and wrap vertically instead of being truncated.
+        int desired=Math.max(a.dp(200),Math.max(DesignUi.actionWidth(retry,48),DesignUi.actionWidth(website,48)));
+        super.onMeasure(MeasureSpec.makeMeasureSpec(Math.min(desired,available),MeasureSpec.EXACTLY),heightSpec);
+      }
+    };
+    actions.setOrientation(LinearLayout.VERTICAL);actions.setGravity(Gravity.CENTER_HORIZONTAL);
+    LinearLayout.LayoutParams actionBlock=new LinearLayout.LayoutParams(-2,-2);actionBlock.topMargin=a.dp(18);content.addView(actions,actionBlock);
+    actions.addView(retry,new LinearLayout.LayoutParams(-1,-2));
+    LinearLayout.LayoutParams secondary=new LinearLayout.LayoutParams(-2,-2);secondary.topMargin=a.dp(2);actions.addView(website,secondary);
     title.setTypeface(android.graphics.Typeface.create("sans-serif-medium",android.graphics.Typeface.NORMAL));
   }
-  void fitActions(){
-    boolean horizontal=a.getResources().getConfiguration().orientation==android.content.res.Configuration.ORIENTATION_LANDSCAPE;
-    if(actionLayoutKnown&&horizontal==actionsHorizontal)return;
-    actionLayoutKnown=true;actionsHorizontal=horizontal;actions.setOrientation(horizontal?LinearLayout.HORIZONTAL:LinearLayout.VERTICAL);
-    int index=0;for(Button action:new Button[]{retry,website}){LinearLayout.LayoutParams p=(LinearLayout.LayoutParams)action.getLayoutParams();p.width=horizontal?0:-1;p.weight=horizontal?1:0;p.topMargin=a.dp(12);p.leftMargin=horizontal&&index>0?a.dp(12):0;action.setLayoutParams(p);index++;}
-  }
+  private void loadingSymbol(boolean spinning){MainActivity.chromeVisibility(wheel,spinning);MainActivity.chromeVisibility(symbol,!spinning);}
   ProgressBar spinner(int size){ProgressBar p=new ProgressBar(a);p.setIndeterminate(true);p.setIndeterminateTintList(ColorStateList.valueOf(DesignUi.BLUE));return p;}
   static void text(TextView view,String value){if(!android.text.TextUtils.equals(view.getText(),value))view.setText(value);}
   void hint(String value){if(hintBound&&android.text.TextUtils.equals(lastHint,value))return;hintBound=true;lastHint=value;DesignUi.readable(hint,value,"重新加载");}
@@ -47,7 +66,6 @@ final class LoadingUi {
   void update(){
     ChatSession s=a.session;if(s==null)return;
     a.applyFocusLayout();
-    fitActions();
     boolean visible=s.web.hasVisibleDocument();
     boolean slow=wait.update(!visible&&!s.web.resourceDeferred,android.os.SystemClock.elapsedRealtime());
     MainActivity.chromeVisibility(band,false);
@@ -55,7 +73,7 @@ final class LoadingUi {
     // loading or rendering a reply. Only an empty surface needs our cover.
     if(visible){hideCover();return;}
     MainActivity.chromeVisibility(a.status,false);showCover();
-    if(s.web.resourceDeferred){lastTitle="稍后打开当前环境";text(title,lastTitle);hint(ResourcePressureController.DEFERRED_MESSAGE);MainActivity.chromeVisibility(wheel,false);text(retry,"重试打开");MainActivity.chromeVisibility(retry,true);MainActivity.chromeVisibility(website,false);return;}
+    if(s.web.resourceDeferred){lastTitle="稍后打开当前环境";text(title,lastTitle);hint(ResourcePressureController.DEFERRED_MESSAGE);loadingSymbol(false);text(retry,"重试打开");MainActivity.chromeVisibility(retry,true);MainActivity.chromeVisibility(website,false);return;}
     text(retry,"重新加载");
     {
       boolean error=s.navigationFailed||!s.connecting&&!s.networkReady;
@@ -67,7 +85,7 @@ final class LoadingUi {
         else detail="网页尚未打开。请重新加载或检查当前环境网络。";
       }
       String stage=s.connectionStage==null||s.connectionStage.isEmpty()?"等待当前环境连接":s.connectionStage;
-      hint(error?detail:stage+(slow?"\n可检查当前线路；登录和草稿会保留，不会自动重发消息。":"\n网页可见后自动显示"));MainActivity.chromeVisibility(wheel,!(error||slow));
+      hint(error?detail:stage+(slow?"\n可检查当前线路；登录和草稿会保留，不会自动重发消息。":"\n网页可见后自动显示"));loadingSymbol(!(error||slow));
       MainActivity.chromeVisibility(retry,error);MainActivity.chromeVisibility(website,error||slow);
     }
   }
