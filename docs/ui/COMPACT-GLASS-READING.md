@@ -20,28 +20,35 @@ touch height through their existing host/delegate. The compact visual pill stays
 smaller inside that touch area. Long environment names remain single-line and
 ellipsized; the full name and both actions are exposed to accessibility services.
 
-After visual review rejected the pale outlined version, the native chrome uses
-smoked glass with white labels and quiet light icons. Dock icon/label blocks are
-centered as a unit, including the separate reading circle. Background wrappers
-do not overwrite that content padding. The native loading/error explanation is
-also narrower, with adjacent recovery actions when their measured labels fit;
-its actual status, network rules and action handlers remain unchanged.
+The user rejected the smoked-gray revision as too dark. The current light-mode
+chrome uses a clear, lightly white-tinted center with dark text and quiet gray
+icons. Dock icon/label blocks remain centered as a unit, including the separate
+reading circle. Background wrappers do not overwrite that content padding. The
+native loading/error explanation remains narrower, with adjacent recovery
+actions when their measured labels fit; its actual status, network rules and
+action handlers remain unchanged.
 
-The material direction comes from the user's reference, [Lens](https://ruiqichenbiec.github.io/design-systems/):
+The latest material reference is [Glasswork](https://github.com/kubai087/glasswork),
+whose [material CSS](https://github.com/kubai087/glasswork/blob/main/glass.css)
+and [installation guide](https://github.com/kubai087/glasswork/blob/main/INSTALL.md)
+describe clear glass with a thin edge, localized reflections and dark ink:
 
-- A translucent smoke-gray center, narrow directional highlights, quiet gray
-  shoulder reflections and a weak cyan return along the lower edge.
-- Interrupted highlights rather than a continuous white border or rainbow rim.
-- A soft contact shadow outside the glass, without a filled platform shadow
-  showing through the center.
+- A low-opacity white center in light mode, without a dark backing plate or
+  painted cyan/rainbow bands.
+- A very fine neutral outer boundary and white inner edge. Narrow upper-left
+  and lower-right catches supply the sense of a rounded glass rim.
+- A shallow bevel restricted to the edge and a soft contact shadow strictly
+  outside the glass; the platform outline has no filled shadow.
 - One material for the address capsule and floating navigation dock.
-- White text and light icons above the material, with a translucent light selection wash.
+- Theme-aware dark ink in light mode. Selected destinations use the existing
+  product blue and a restrained translucent blue wash. Touch feedback follows
+  the theme even for already-open windows.
 - No continuous decorative animation, audio, or screenshot loop.
 
-See the reference's [design contract](https://github.com/ruiqichenbiec/design-systems/blob/main/lens/lab/design-system/DESIGN.md)
-and [integration boundaries](https://github.com/ruiqichenbiec/design-systems/blob/main/lens/START-HERE.md).
-The native drawable is an independent Canvas implementation; no WebGL renderer
-or third-party runtime has been imported.
+This is an independent native Canvas adaptation of the reference's visual
+principles. Its wallpaper colors are not copied into the conversation page;
+the plain app background stays light. No WebGL renderer, third-party runtime,
+or packaged Skill has been installed.
 
 **Material boundary:** `LiquidGlassDrawable` supplies the native surface,
 reflection and edge treatment. It does not sample or refract the Gecko page.
@@ -106,7 +113,7 @@ editor, and retains the unmodified screenshots plus control bounds. Its fixture
 has no configured VPN or live website content. It is visual review evidence, not
 physical-phone, network, performance, or full interaction acceptance.
 
-The Lens material revision is reviewed against that baseline with the same
+Material revisions are reviewed against that baseline with the same
 diagnostic. The capture runs in light mode at font scale 1.0; dark mode, transient
 press feedback and large-font behavior are outside this screenshot's evidence.
 The existing full host job also has historical-input and frozen-fixture failures,

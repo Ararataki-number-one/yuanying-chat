@@ -5,7 +5,7 @@ import android.app.*;import android.content.*;import android.content.res.ColorSt
 /** Native design system. Website content and network/identity policies are not restyled here. */
 final class DesignUi {
   static int BG=0xfff4f7fb,CARD=0xffffffff,FIELD=0xfff8fafc,LINE=0xffe0e7f0,TEXT=0xff172033,MUTED=0xff64748b,BLUE=0xff2468f2,CYAN=0xff2468f2,PURPLE=0xff2468f2,GREEN=0xff16845b,RED=0xffc93747;
-  static final int GLASS_INK=Color.WHITE,GLASS_MUTED=0xffe1e8f0;
+  static int GLASS_INK=TEXT,GLASS_MUTED=MUTED;
   static final String[] NAV={"环境","网络","下载","阅读"},GLYPHS={"window","globe","download","book"};
   static int dp(Context c,int n){return Ui.dp(c,n);}
   static TextView text(Context c,String value,int size,int color){TextView v=new TextView(c);v.setText(value);v.setTextSize(size);v.setTextColor(AppAppearance.text(color));v.setIncludeFontPadding(false);v.setLineSpacing(dp(c,3),1);return v;}
@@ -32,8 +32,7 @@ final class DesignUi {
       // The optical inset must not replace the view's existing content padding.
       @Override public boolean getPadding(Rect padding){padding.setEmpty();return false;}
     };
-    return new RippleDrawable(ColorStateList.valueOf(0x24e6f4ff),
-      new AppAppearance.Glass(c,radius),opticalMask);
+    return new AppAppearance.GlassRipple(new AppAppearance.Glass(c,radius),opticalMask);
   }
   static void chrome(Activity a){AppAppearance.window(a.getWindow());}
   static LinearLayout column(Context c){LinearLayout v=new LinearLayout(c);v.setOrientation(LinearLayout.VERTICAL);return v;}

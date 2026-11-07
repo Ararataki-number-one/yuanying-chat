@@ -194,8 +194,8 @@ jobs:
           PY
           cat > work/glass-navigation/emulator-supervisor.sh <<'SH'
           set -uo pipefail
-          # Use the documented Vulkan-off compatibility path for this screenshot.
-          "$ANDROID_HOME/emulator/emulator" -avd glassnavigation -no-window -no-audio -no-snapshot -no-boot-anim -no-metrics -accel on -port 5554 -gpu swiftshader -feature -Vulkan -memory 3072 -cores 2 < /dev/null > work/glass-navigation/emulator.log 2>&1 &
+          # Use ANGLE's software GLES path for this native screenshot diagnostic.
+          "$ANDROID_HOME/emulator/emulator" -avd glassnavigation -no-window -no-audio -no-snapshot -no-boot-anim -no-metrics -accel on -port 5554 -gpu swangle -feature -Vulkan -memory 3072 -cores 2 < /dev/null > work/glass-navigation/emulator.log 2>&1 &
           task_glass_pid=$!
           printf '%s\n' "$task_glass_pid" > work/glass-navigation/emulator.pid
           printf 'emulator_pid=%s\n' "$task_glass_pid"
@@ -244,6 +244,7 @@ jobs:
           if [ -f work/glass-navigation/host-resources.sh ]; then
             bash work/glass-navigation/host-resources.sh > work/glass-navigation/resources-after-capture.txt 2>&1 || true
             sudo dmesg --color=never | rg -i 'oom|out of memory|kill' > work/glass-navigation/kernel-oom.txt || true
+            sudo dmesg --color=never | rg -i 'segfault|general protection|qemu-system|emulator' > work/glass-navigation/kernel-emulator.txt || true
           fi
           if [ -f work/glass-navigation/emulator.pid ]; then
             timeout 15 "$ANDROID_HOME/platform-tools/adb" -s emulator-5554 logcat -d -s 'PocketUiVisual:I' 'AndroidRuntime:E' '*:S' > work/glass-navigation/final-logcat.txt 2>&1 || true

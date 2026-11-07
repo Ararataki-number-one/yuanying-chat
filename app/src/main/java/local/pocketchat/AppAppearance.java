@@ -60,6 +60,7 @@ final class AppAppearance {
   private static void palette(){
     DesignUi.BG=color(0xfff4f7fb);DesignUi.CARD=color(Color.WHITE);DesignUi.FIELD=color(0xfff8fafc);DesignUi.LINE=color(0xffe0e7f0);
     DesignUi.TEXT=color(0xff172033);DesignUi.MUTED=color(0xff64748b);DesignUi.BLUE=DesignUi.CYAN=DesignUi.PURPLE=color(0xff2468f2);DesignUi.GREEN=color(0xff16845b);DesignUi.RED=color(0xffc93747);
+    DesignUi.GLASS_INK=DesignUi.TEXT;DesignUi.GLASS_MUTED=DesignUi.MUTED;
     ReferenceUi.BG=DesignUi.BG;ReferenceUi.CHAT_BG=color(0xfff9fbfe);ReferenceUi.WHITE=DesignUi.CARD;ReferenceUi.TEXT=DesignUi.TEXT;
     ReferenceUi.MUTED=DesignUi.MUTED;ReferenceUi.LINE=DesignUi.LINE;ReferenceUi.BLUE=DesignUi.BLUE;ReferenceUi.BLUE_SOFT=color(0xffedf4ff);ReferenceUi.GREEN=DesignUi.GREEN;ReferenceUi.ORANGE=color(0xffa96c0a);ReferenceUi.RED=DesignUi.RED;
     Ui.INK=color(0xff1e293b);Ui.MUTED=DesignUi.MUTED;Ui.PAPER=color(0xfff4f6fa);Ui.SOFT=color(0xffeaf1ff);
@@ -124,6 +125,7 @@ final class AppAppearance {
   }
   private static void drawable(Drawable d){
     if(d instanceof NativeControls.Field)((NativeControls.Field)d).refresh();
+    else if(d instanceof GlassRipple)((GlassRipple)d).refresh();
     else if(d instanceof Glass)((Glass)d).refresh();
     else if(d instanceof Surface)((Surface)d).refresh();
     else if(d instanceof ColorDrawable)((ColorDrawable)d).setColor(color(((ColorDrawable)d).getColor()));
@@ -140,5 +142,11 @@ final class AppAppearance {
   /** Keeps the shared material on the existing appearance/ripple path. */
   static final class Glass extends LiquidGlassDrawable {
     Glass(Context c,int radius){super(c,radius);}
+  }
+  /** Low-contrast touch feedback follows the ink when an open window changes theme. */
+  static final class GlassRipple extends RippleDrawable {
+    GlassRipple(Drawable content,Drawable mask){super(ColorStateList.valueOf(ink()),content,mask);}
+    private static int ink(){return dark()?0x24ffffff:0x18000000;}
+    void refresh(){setColor(ColorStateList.valueOf(ink()));}
   }
 }

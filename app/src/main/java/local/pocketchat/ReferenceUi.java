@@ -98,16 +98,16 @@ final class ReferenceUi {
     if(tabs==null)return;
     for(int i=0;i<tabs.length;i++){
       Button b=tabs[i];if(b==null)continue;boolean active=i==selected;
-      b.setSelected(active);b.setTextColor(DesignUi.GLASS_INK);
-      // A restrained light selection remains legible on the shared smoked lens.
-      int tint=active?0x28ffffff:Color.TRANSPARENT;
+      b.setSelected(active);b.setTextColor(active?DesignUi.BLUE:DesignUi.GLASS_INK);
+      // Only the active destination receives a quiet blue wash; the glass stays clear.
+      int tint=active?0x142468f2:Color.TRANSPARENT;
       int radius=i==WorkspaceNavigation.READING?(navHeightDp(b.getContext())+1)/2:23;
-      Drawable feedback=new RippleDrawable(ColorStateList.valueOf(0x24e6f4ff),surface(b.getContext(),tint,radius,Color.TRANSPARENT),surface(b.getContext(),Color.WHITE,radius,Color.TRANSPARENT));
+      Drawable feedback=new AppAppearance.GlassRipple(surface(b.getContext(),tint,radius,Color.TRANSPARENT),surface(b.getContext(),Color.WHITE,radius,Color.TRANSPARENT));
       InsetDrawable inset=new InsetDrawable(feedback,dp(b.getContext(),3)){
         @Override public boolean getPadding(Rect padding){padding.setEmpty();return false;}
       };
       b.setBackground(inset);centerDockContents(b);
-      Drawable icon=b.getCompoundDrawables()[1];if(icon instanceof Ui.Icon)((Ui.Icon)icon).color=active?DesignUi.GLASS_INK:DesignUi.GLASS_MUTED;b.invalidate();
+      Drawable icon=b.getCompoundDrawables()[1];if(icon instanceof Ui.Icon)((Ui.Icon)icon).color=active?DesignUi.BLUE:DesignUi.GLASS_MUTED;b.invalidate();
     }
   }
   static void insets(Activity a,View root){insets(a,root,null);}
