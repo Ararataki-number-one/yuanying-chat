@@ -29,12 +29,12 @@ import android.graphics.drawable.Drawable;
 class LiquidGlassDrawable extends Drawable {
   static final int INSET_DP=2;
   private final Paint paint=new Paint(Paint.ANTI_ALIAS_FLAG);
-  private final RectF body=new RectF(),outer=new RectF(),near=new RectF(),corner=new RectF();
-  private final Path farShadow=new Path(),nearShadow=new Path(),mainReflection=new Path(),oppositeReflection=new Path();
+  private final RectF body=new RectF(),outer=new RectF(),near=new RectF(),inner=new RectF(),corner=new RectF();
+  private final Path farShadow=new Path(),nearShadow=new Path(),mainReflection=new Path(),oppositeReflection=new Path(),innerReflection=new Path();
   private final Matrix reflectionMatrix=new Matrix();
   private final float density,requestedRadius,edgeWidth;
   private float radius;
-  private Shader fill,coolReflection,warmReflection,broadReflection,edgeTint,mainGlint,oppositeGlint,farShade,nearShade;
+  private Shader fill,coolReflection,warmReflection,broadReflection,edgeTint,mainGlint,oppositeGlint,innerGlint,farShade,nearShade;
   private int alpha=255;
   private boolean dark;
 
@@ -64,10 +64,10 @@ class LiquidGlassDrawable extends Drawable {
     outsideBand(farShadow,outer,Math.max(0,requestedRadius-.2f*density));
     outsideBand(nearShadow,near,Math.max(0,requestedRadius-.9f*density));
     farShade=new LinearGradient(0,outer.top,0,outer.bottom,
-      dark?new int[]{0x00121b2a,0x00121b2a,0x10121b2a}:new int[]{0x00465770,0x00465770,0x08465770},
+      dark?new int[]{0x00121b2a,0x00121b2a,0x10121b2a}:new int[]{0x00465770,0x00465770,0x0b465770},
       new float[]{0f,.42f,1f},Shader.TileMode.CLAMP);
     nearShade=new LinearGradient(0,near.top,0,near.bottom,
-      dark?new int[]{0x00040810,0x00040810,0x20040810}:new int[]{0x00465770,0x00465770,0x0c465770},
+      dark?new int[]{0x00040810,0x00040810,0x20040810}:new int[]{0x00465770,0x00465770,0x12465770},
       new float[]{0f,.55f,1f},Shader.TileMode.CLAMP);
 
     // Low-density tint lets the native surface show through the center. Color
@@ -108,12 +108,27 @@ class LiquidGlassDrawable extends Drawable {
     oppositeReflection.arcTo(corner,90,-90,false);
     oppositeGlint=new LinearGradient(Math.min(bottomStart,body.right-density),body.bottom,body.right,body.bottom,
       dark?new int[]{0x006e9fc7,0x5578b2df,0x298e9fcf,0x008e9fcf}
-          :new int[]{0x009bc6e2,0x759bc6e2,0x42e4c6cd,0x00e4c6cd},
+          :new int[]{0x009bc6e2,0x899bc6e2,0x42e4c6cd,0x00e4c6cd},
       new float[]{0f,.58f,.88f,1f},Shader.TileMode.CLAMP);
     edgeTint=new LinearGradient(body.left,body.top,body.right,body.bottom,
       dark?new int[]{0x0c95cbe4,0x0095cbe4,0x007c9bbd,0x297c9bbd}
-          :new int[]{0x1297bfd8,0x0097bfd8,0x00839fbf,0x21839fbf},
+          :new int[]{0x3097bfd8,0x0097bfd8,0x00839fbf,0x21839fbf},
       new float[]{0f,.35f,.7f,1f},Shader.TileMode.CLAMP);
+
+    // A local return of light just inside the lower shoulder separates the
+    // bright inner face from its cool outer edge, including on a pale canvas.
+    float innerInset=Math.min(1.35f*density,Math.min(body.width(),body.height())/4f);
+    inner.set(body);inner.inset(innerInset,innerInset);
+    float innerRadius=Math.max(0,radius-innerInset);
+    float innerStart=inner.left+innerRadius+straight*.36f;
+    innerReflection.rewind();innerReflection.moveTo(innerStart,inner.bottom);
+    innerReflection.lineTo(inner.right-innerRadius,inner.bottom);
+    corner.set(inner.right-2*innerRadius,inner.bottom-2*innerRadius,inner.right,inner.bottom);
+    innerReflection.arcTo(corner,90,-90,false);
+    innerGlint=new LinearGradient(Math.min(innerStart,inner.right-density),inner.bottom,inner.right,inner.bottom,
+      dark?new int[]{0x00dceeff,0x46dceeff,0x1edceeff,0x00dceeff}
+          :new int[]{0x00ffffff,0xc4ffffff,0x70ffffff,0x00ffffff},
+      new float[]{0f,.58f,.88f,1f},Shader.TileMode.CLAMP);
   }
 
   private void outsideBand(Path path,RectF edge,float edgeRadius){
@@ -138,12 +153,14 @@ class LiquidGlassDrawable extends Drawable {
     paint.setShader(coolReflection);canvas.drawRoundRect(body,radius,radius,paint);
     paint.setShader(warmReflection);canvas.drawRoundRect(body,radius,radius,paint);
     paint.setShader(broadReflection);canvas.drawRoundRect(body,radius,radius,paint);
-    paint.setStyle(Paint.Style.STROKE);paint.setStrokeWidth(edgeWidth);
+    paint.setStyle(Paint.Style.STROKE);paint.setStrokeWidth(Math.max(1f,1.15f*density));
     paint.setShader(edgeTint);canvas.drawRoundRect(body,radius,radius,paint);
-    paint.setStrokeCap(Paint.Cap.ROUND);
+    paint.setStrokeCap(Paint.Cap.ROUND);paint.setStrokeWidth(edgeWidth);
     paint.setShader(mainGlint);canvas.drawPath(mainReflection,paint);
-    paint.setStrokeWidth(Math.max(1f,.5f*density));
+    paint.setStrokeWidth(Math.max(1f,.95f*density));
     paint.setShader(oppositeGlint);canvas.drawPath(oppositeReflection,paint);
+    paint.setStrokeWidth(Math.max(1f,.7f*density));
+    paint.setShader(innerGlint);canvas.drawPath(innerReflection,paint);
     paint.setShader(null);
   }
 
