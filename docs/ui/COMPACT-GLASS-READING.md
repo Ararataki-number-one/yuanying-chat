@@ -45,6 +45,12 @@ clearer hierarchy instead of increasing the material's opacity or shadow.
   reading glyphs are 22 dp; the cube's larger optical footprint remains 20 dp.
   Current-destination/reading labels use medium weight. Outer spacing is 10 dp
   above and 12 dp below, with unchanged keyboard/focus visibility rules.
+- Native workspaces fade content beneath the full footer toward the page
+  background. This prevents sharp row actions from appearing between the pill
+  and reading circle. The glass continues sampling the independent native panel;
+  the fade is not part of that sample. Empty footer gaps consume touches so
+  faded rows cannot be activated through them; named navigation buttons keep
+  their own actions and accessibility. Conversation layout stays unchanged.
 - Native network items share a grouped surface, so environment names lead and
   metadata, route information and secondary actions sit at lower visual weight.
   All connection, ownership, pending-configuration and operation guards remain
@@ -58,6 +64,10 @@ The native screenshot diagnostic uses a modest observed scroll (at most 100 dp)
 after opening the actual network page. This suits the denser list without
 jumping directly into its final bottom-padding area. It still records the
 actual bounds, input, selected route, source/APK identity and original PNG.
+The final hierarchy is observed after the still's settling delay. If exactly one
+real feedback close button is present then, the capture can dismiss it once and
+record its bounds and the refreshed hierarchy before the PNG. A recurring notice
+is retained; this does not change connection state or suppress application errors.
 
 ## Curved glass material and native backdrop
 

@@ -47,6 +47,7 @@ final class AppHub {
     footer.addView(feedbackBar,new LinearLayout.LayoutParams(-1,-2));
     divider=new View(a);footer.addView(divider,new LinearLayout.LayoutParams(-1,0));
     bar=ReferenceUi.nav(a,-1,n->{if(n==WorkspaceNavigation.READING)a.setFocusReading(!a.focusActive());else select(DESTINATIONS[n]);},tabs);
+    bar.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
     footer.addView(bar,new LinearLayout.LayoutParams(-1,-2));panel.bindControls(bar);
     footer.addOnLayoutChangeListener((v,l,t,r,b,ol,ot,or,ob)->{if(b-t!=ob-ot)updateNativeInsets();});
     networkWorkspace=new NetworkWorkspaceUi(a,panel);mark();
@@ -106,6 +107,14 @@ final class AppHub {
     boolean focused=page==CHAT&&a.focusActive(),dark=AppAppearance.dark();
     if(marked&&markedPage==page&&markedFocus==focused&&markedDark==dark)return;
     marked=true;markedPage=page;markedFocus=focused;markedDark=dark;
+    // Quiet the native content between the floating controls. The glass still
+    // samples the independent panel; this fade belongs only to the footer.
+    int surface=ReferenceUi.BG&0x00ffffff;
+    bar.setBackground(page==CHAT?null:new android.graphics.drawable.GradientDrawable(
+        android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM,
+        new int[]{surface,0xed000000|surface,0xff000000|surface}));
+    // Faded rows must not be activated through the empty gaps in the dock.
+    bar.setClickable(page!=CHAT);bar.setFocusable(false);
     int selected=-1;for(int i=0;i<DESTINATIONS.length;i++)if(DESTINATIONS[i]==page)selected=i;
     if(focused)selected=WorkspaceNavigation.READING;
     ReferenceUi.markNav(tabs,selected);

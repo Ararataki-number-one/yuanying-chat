@@ -485,24 +485,6 @@ def capture_native_backdrop_preview(args, report, capture, adb, wait_for, tap, s
             and bool(nodes(value, lambda node: node.get('class') == 'android.widget.ScrollView'))
             and not nodes(value, lambda node: node.get('text', '').startswith('正在读取窗口网络')))
         xml = wait_for(capture, ready, 'native-backdrop-network-before-scroll', seconds=20)
-        feedback_close = lambda node: (node.get('class') == 'android.widget.Button'
-            and node.get('content-desc') == '关闭提示' and node.get('text') == '×'
-            and node.get('clickable') == 'true' and node.get('enabled') == 'true')
-        feedback = nodes(xml, feedback_close)
-        preview['feedbackDismissal'] = dict(observedMatchingControls=len(feedback), tapIssued=False)
-        if len(feedback) == 1:
-            before = args.out / 'native-backdrop-feedback-before-dismiss.xml'
-            before.write_text(xml)
-            preview['feedbackDismissal'].update(hierarchySource=before.name, hierarchySha256=sha(before),
-                observedBounds=list(bounds(feedback[0])), inputIndex=len(report['inputs']))
-            tap(feedback[0], 'Dismiss the single observed × / 关闭提示 feedback notice once for the native screenshot')
-            report['inputs'][-1].update(phase='native-backdrop-preview', hierarchySource=before.name)
-            preview['feedbackDismissal']['tapIssued'] = True
-            # Refresh actual geometry after the notice closes. A recurring
-            # notice is left alone; this is one UI dismissal, not suppression.
-            xml = wait_for(capture, ready, 'native-backdrop-network-before-scroll', seconds=20)
-            preview['feedbackDismissal'].update(matchingControlsAfterTap=len(nodes(xml, feedback_close)),
-                refreshedHierarchySha256=sha(args.out / 'native-backdrop-network-before-scroll.xml'))
         scrolls = nodes(xml, lambda node: node.get('class') == 'android.widget.ScrollView'
                         and node.get('scrollable') == 'true')
         preview['scroll'] = dict(inputIssued=False, observedScrollableViews=len(scrolls))
@@ -532,9 +514,6 @@ def capture_native_backdrop_preview(args, report, capture, adb, wait_for, tap, s
                 preview['scroll']['skipReason'] = 'No sufficiently large gesture area above the actual navigation'
         else:
             preview['scroll']['skipReason'] = 'No unique scrollable native ScrollView'
-        xml = wait_for(capture, ready, 'native-network-glass', seconds=15)
-        preview['hierarchy'] = dict(file='native-network-glass.xml', sha256=sha(args.out / 'native-network-glass.xml'),
-            selectedNavigation='网络', bounds={label: list(bounds(button(xml, label))) for label in LABELS})
         activity = adb('shell', 'dumpsys', 'activity', 'activities', timeout=10).decode('utf-8', 'replace')
         (args.out / 'native-network-activity.txt').write_text(activity)
         resumed = [line.strip() for line in activity.splitlines()
@@ -544,6 +523,30 @@ def capture_native_backdrop_preview(args, report, capture, adb, wait_for, tap, s
         preview['resumedActivity'] = resumed
         preview['stillSettleMillis'] = 600
         time.sleep(.6)
+        # Observe the final settled UI immediately before the still. A notice
+        # can arrive after the scroll, so dismiss at most this one observed UI.
+        xml = wait_for(capture, ready, 'native-network-glass', seconds=15)
+        feedback_close = lambda node: (node.get('class') == 'android.widget.Button'
+            and node.get('content-desc') == '关闭提示' and node.get('text') == '×'
+            and node.get('clickable') == 'true' and node.get('enabled') == 'true')
+        feedback = nodes(xml, feedback_close)
+        preview['feedbackDismissal'] = dict(observedMatchingControls=len(feedback), tapIssued=False)
+        if len(feedback) == 1:
+            before = args.out / 'native-backdrop-feedback-before-dismiss.xml'
+            before.write_text(xml)
+            preview['feedbackDismissal'].update(hierarchySource=before.name, hierarchySha256=sha(before),
+                observedBounds=list(bounds(feedback[0])), inputIndex=len(report['inputs']))
+            tap(feedback[0], 'Dismiss the single observed × / 关闭提示 feedback notice once for the native screenshot')
+            report['inputs'][-1].update(phase='native-backdrop-preview', hierarchySource=before.name)
+            preview['feedbackDismissal']['tapIssued'] = True
+            # Refresh actual geometry after the notice closes. A recurring
+            # notice is left alone; this is one UI dismissal, not suppression.
+            xml = wait_for(capture, ready, 'native-network-glass', seconds=15)
+            preview['feedbackDismissal'].update(matchingControlsAfterTap=len(nodes(xml, feedback_close)),
+                refreshedHierarchySource='native-network-glass.xml',
+                refreshedHierarchySha256=sha(args.out / 'native-network-glass.xml'))
+        preview['hierarchy'] = dict(file='native-network-glass.xml', sha256=sha(args.out / 'native-network-glass.xml'),
+            selectedNavigation='网络', bounds={label: list(bounds(button(xml, label))) for label in LABELS})
         screenshot('native-network-glass.png')
         preview['screenshot'] = dict(report['screenshots'][-1])
         if (preview['screenshot']['width'], preview['screenshot']['height']) != (WIDTH, HEIGHT):
