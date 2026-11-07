@@ -34,7 +34,7 @@ class LiquidGlassDrawable extends Drawable {
   private final float[] baseX=new float[SAMPLES],baseY=new float[SAMPLES],point=new float[2];
   private final float density,requestedRadius;
   private float radius,perimeter,restPhase,phase,targetPhase,strength,bend,gatherFraction;
-  private float hotspotX,hotspotY,bumpX,bumpY,lightX=-.72f,lightY=-.69f,travelDirection=1f;
+  private float hotspotX,hotspotY,touchX,touchY,bumpX,bumpY,lightX=-.72f,lightY=-.69f,travelDirection=1f;
   private ValueAnimator animation;
   private int alpha=255;
   private boolean dark,pressed,gpuBroken,rasterDeformed;
@@ -79,7 +79,7 @@ class LiquidGlassDrawable extends Drawable {
       rim.getPosTan(perimeter*i/SAMPLES,point,null);baseX[i]=point[0];baseY[i]=point[1];
     }
     restPhase=nearestPhase(body.left+body.width()*.26f,body.top-body.height()*.4f);
-    phase=targetPhase=restPhase;hotspotX=body.centerX();hotspotY=body.centerY();
+    phase=targetPhase=restPhase;touchX=hotspotX=body.centerX();touchY=hotspotY=body.centerY();
     updateOptics();
   }
 
@@ -95,9 +95,12 @@ class LiquidGlassDrawable extends Drawable {
     if(body.isEmpty()||!isVisible()||getCallback()==null){resetMotion();return true;}
     if(down){
       pressedRaster=null;targetPhase=lightPhase();
-      if(strength==0f)phase=targetPhase;
-      strength=Math.max(strength,.65f);bend=Math.max(bend,.65f);
-      updateOptics();invalidateSelf();gather(110);
+      if(strength==0f){
+        phase=targetPhase;touchX=hotspotX;touchY=hotspotY;
+        // The first frame responds immediately, without jumping to a full bulge.
+        strength=.16f;bend=.10f;
+      }
+      updateOptics();invalidateSelf();gather(90);
     }else release();
     return true;
   }
@@ -115,23 +118,31 @@ class LiquidGlassDrawable extends Drawable {
   }
 
   private float lightPhase(){
-    return nearestPhase(hotspotX+(hotspotX-body.centerX())*.12f,hotspotY-body.height()*.72f);
+    // Keep a small upper-light preference at the exact centre; elsewhere the
+    // nearest edge follows the finger instead of always bending the top edge.
+    return nearestPhase(hotspotX,hotspotY-body.height()*.08f);
   }
 
   private void gather(long duration){
     stopAnimation();
     if(!ValueAnimator.areAnimatorsEnabled()){
-      phase=targetPhase;strength=1f;bend=0f;updateOptics();invalidateSelf();return;
+      phase=targetPhase;touchX=hotspotX;touchY=hotspotY;
+      strength=1f;bend=0f;updateOptics();invalidateSelf();return;
     }
     final float startStrength=strength,startBend=bend;gatherFraction=0f;
     ValueAnimator run=ValueAnimator.ofFloat(0f,1f);animation=run;
     run.setDuration(duration);run.setInterpolator(new DecelerateInterpolator(1.5f));
     run.addUpdateListener(value->{
       if(animation!=value)return;
-      if(!ValueAnimator.areAnimatorsEnabled()){stopAnimation();phase=targetPhase;strength=1f;bend=0f;updateOptics();invalidateSelf();return;}
+      if(!isVisible()||getCallback()==null){resetMotion();return;}
+      if(!ValueAnimator.areAnimatorsEnabled()){
+        stopAnimation();phase=targetPhase;touchX=hotspotX;touchY=hotspotY;
+        strength=1f;bend=0f;updateOptics();invalidateSelf();return;
+      }
       float t=(float)value.getAnimatedValue();
       float step=gatherFraction>=1f?1f:clamp((t-gatherFraction)/(1f-gatherFraction),0f,1f);
       phase+=shortest(targetPhase-phase)*step;gatherFraction=t;
+      touchX+=(hotspotX-touchX)*step;touchY+=(hotspotY-touchY)*step;
       strength=startStrength+(1f-startStrength)*t;bend=startBend+(1f-startBend)*t;
       updateOptics();invalidateSelf();
     });
@@ -144,15 +155,17 @@ class LiquidGlassDrawable extends Drawable {
   private void release(){
     stopAnimation();if(strength==0f||!ValueAnimator.areAnimatorsEnabled()){resetMotion();return;}
     final float startPhase=phase,startStrength=strength,startBend=bend;
-    final float travel=travelDirection*Math.min(32f*density,perimeter*.19f);
+    final float travel=travelDirection*Math.min(18f*density,perimeter*.10f);
     ValueAnimator run=ValueAnimator.ofFloat(0f,1f);animation=run;
-    run.setDuration(480);run.setInterpolator(new LinearInterpolator());
+    run.setDuration(320);run.setInterpolator(new LinearInterpolator());
     run.addUpdateListener(value->{
       if(animation!=value)return;
-      if(!ValueAnimator.areAnimatorsEnabled()){resetMotion();return;}
+      if(!isVisible()||getCallback()==null||!ValueAnimator.areAnimatorsEnabled()){resetMotion();return;}
       float t=(float)value.getAnimatedValue(),remaining=1f-t;
-      phase=startPhase+travel*(1f-remaining*remaining);strength=startStrength*remaining;
-      bend=startBend*remaining*remaining*(float)Math.cos(Math.PI*1.2f*t);
+      phase=startPhase+travel*(1f-remaining*remaining*remaining);
+      strength=startStrength*(1f-t*t*(3f-2f*t));
+      // One small undershoot, then rest. A new press can take over this pose.
+      bend=startBend*remaining*remaining*(float)Math.cos(Math.PI*1.35f*t);
       updateOptics();invalidateSelf();
     });
     run.addListener(new AnimatorListenerAdapter(){
@@ -164,7 +177,7 @@ class LiquidGlassDrawable extends Drawable {
   private void stopAnimation(){ValueAnimator old=animation;animation=null;if(old!=null)old.cancel();}
   private void resetMotion(){
     stopAnimation();pressed=false;strength=bend=0f;phase=targetPhase=restPhase;travelDirection=1f;
-    if(!body.isEmpty())updateOptics();invalidateSelf();
+    if(!body.isEmpty()){touchX=body.centerX();touchY=body.centerY();updateOptics();}invalidateSelf();
   }
   @Override public void jumpToCurrentState(){resetMotion();}
   @Override public boolean setVisible(boolean visible,boolean restart){
@@ -179,7 +192,9 @@ class LiquidGlassDrawable extends Drawable {
     float x=(bumpX-body.centerX())/Math.max(body.width()*.5f,1f);
     float y=(bumpY-body.centerY())/Math.max(body.height()*.5f,1f);
     float len=(float)Math.hypot(x,y);if(len>.001f){x/=len;y/=len;}
-    float energy=.82f*strength;
+    // The environment light stays stable; the shader lights the moving touch
+    // locally rather than rotating every highlight around the entire capsule.
+    float energy=.14f*strength;
     lightX=-.72f*(1f-energy)+x*energy;lightY=-.69f*(1f-energy)+y*energy;
     len=(float)Math.hypot(lightX,lightY);
     if(len>.001f){lightX/=len;lightY/=len;}else{lightX=-.72f;lightY=-.69f;}
@@ -204,17 +219,17 @@ class LiquidGlassDrawable extends Drawable {
     if(Build.VERSION.SDK_INT>=33&&canvas.isHardwareAccelerated()&&colorFilter==null&&!gpuBroken){
       try{
         if(renderer==null)renderer=new GlassLensRenderer(context,density);
-        if(renderer.draw(canvas,getBounds(),radius,strength,bend,lightX,lightY,bumpX,bumpY,
+        if(renderer.draw(canvas,getBounds(),radius,strength,bend,lightX,lightY,bumpX,bumpY,touchX,touchY,
             alpha,dark,backdrop==null?null:backdrop.get(),owner==null?null:owner.get()))return;
       }catch(Exception|LinkageError error){
         gpuBroken=true;renderer=null;Log.w("GlassLens","AGSL unavailable; using cached material",error);
       }
     }
     Rect bounds=getBounds();
-    if(restingRaster==null)restingRaster=GlassMaterialRaster.create(bounds.width(),bounds.height(),density,radius,dark,-.72f,-.69f,body.centerX()-bounds.left,body.top-bounds.top,0f,0f);
+    if(restingRaster==null)restingRaster=GlassMaterialRaster.create(bounds.width(),bounds.height(),density,radius,dark,-.72f,-.69f,body.centerX()-bounds.left,body.top-bounds.top,body.centerX()-bounds.left,body.centerY()-bounds.top,0f,0f);
     boolean deform=ValueAnimator.areAnimatorsEnabled();
     if(strength>0f&&(pressedRaster==null||rasterDeformed!=deform)){
-      pressedRaster=GlassMaterialRaster.create(bounds.width(),bounds.height(),density,radius,dark,lightX,lightY,bumpX-bounds.left,bumpY-bounds.top,1f,deform?1f:0f);rasterDeformed=deform;
+      pressedRaster=GlassMaterialRaster.create(bounds.width(),bounds.height(),density,radius,dark,lightX,lightY,bumpX-bounds.left,bumpY-bounds.top,touchX-bounds.left,touchY-bounds.top,1f,deform?1f:0f);rasterDeformed=deform;
     }
     paint.setColorFilter(colorFilter);paint.setAlpha(Math.round(alpha*(1-strength)));
     if(paint.getAlpha()>0)canvas.drawBitmap(restingRaster,null,bounds,paint);

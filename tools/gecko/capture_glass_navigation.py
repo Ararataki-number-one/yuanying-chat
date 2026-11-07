@@ -26,7 +26,9 @@ PACKAGE = 'local.pocketchat.test'
 COMPONENT = PACKAGE + '/local.pocketchat.UiVisualIntegrationActivity'
 WIDTH, HEIGHT, DENSITY = 1236, 2676, 480
 LABELS = ('环境', '网络', '下载', '阅读')
-MOTION_WIDTH, MOTION_HEIGHT, MOTION_BIT_RATE, MOTION_SECONDS = 618, 1338, 3500000, 20
+MOTION_WIDTH, MOTION_HEIGHT, MOTION_BIT_RATE, MOTION_SECONDS = 618, 1338, 3500000, 60
+MOTION_MIN_WALL_SECONDS, MOTION_OBSERVATION_SECONDS, MOTION_RELEASE_SETTLE_SECONDS = 20, 20, 1.2
+MOTION_REVIEW_MIN_SECONDS = 12
 
 
 def sha(path):
@@ -183,6 +185,10 @@ def mp4_metadata(path):
 def capture_motion(args, report, capture, adb, wait_for):
     """Optional, bounded recording of actual controls after the original PNG.
 
+    The 60-second hard cap allows bounded hierarchy acquisition. A successful
+    clip stops after all four inputs and their release tail, with a 20-second
+    wall-time floor. The encoded MP4 duration is reported independently.
+
     Official screenrecord options: https://developer.android.com/tools/adb#screenrecord
     AOSP InputShellCommand.sendSwipe emits DOWN/MOVE/UP within one input command:
     https://android.googlesource.com/platform/frameworks/base/+/master/services/core/java/com/android/server/input/InputShellCommand.java
@@ -193,6 +199,11 @@ def capture_motion(args, report, capture, adb, wait_for):
                   apkSha256=report['installedApk']['sha256'],
                   requestedWidth=MOTION_WIDTH, requestedHeight=MOTION_HEIGHT,
                   requestedBitRate=MOTION_BIT_RATE, timeLimitSeconds=MOTION_SECONDS,
+                  minimumRecordingWallSeconds=MOTION_MIN_WALL_SECONDS,
+                  requestedReviewMinSeconds=MOTION_REVIEW_MIN_SECONDS,
+                  requestedReviewMaxSeconds=MOTION_SECONDS,
+                  observationTimeoutSeconds=MOTION_OBSERVATION_SECONDS,
+                  releaseSettleMillis=round(MOTION_RELEASE_SETTLE_SECONDS * 1000),
                   acquiredBy='Android screenrecord; adb pull; original MP4 bytes',
                   animationAppearanceVerified=False, animationTimingMeasurement=False,
                   interactionsComplete=False, observations=[], errors=[])
@@ -204,6 +215,7 @@ def capture_motion(args, report, capture, adb, wait_for):
     log_stream = None
     recorder_row = None
     device_pid = None
+    recording_started = None
     stop_deadline = None
     gesture_in_flight = False
     cancel_supported = False
@@ -224,7 +236,8 @@ def capture_motion(args, report, capture, adb, wait_for):
 
     def observe(predicate, name, *, during_recording=True):
         xml = wait_for(capture, predicate, name,
-                       seconds=min(8, active_seconds()) if during_recording else 10)
+                       seconds=min(MOTION_OBSERVATION_SECONDS, active_seconds())
+                       if during_recording else MOTION_OBSERVATION_SECONDS)
         if during_recording:
             active_seconds()
         motion['observations'].append(dict(file=name + '.xml', sha256=sha(args.out / (name + '.xml')),
@@ -303,7 +316,7 @@ def capture_motion(args, report, capture, adb, wait_for):
         motion['animationEvidenceScope'] = ('System animation scale is zero; no visible-animation validation claimed'
             if motion['zeroAnimationScales'] else 'Recorded for visual review; settings unchanged; animation not automatically verified')
         xml = wait_for(capture, lambda value: navigation(value) is not None and expanded(value)
-                       and capsule(value) is not None, 'motion-initial', seconds=10)
+                       and capsule(value) is not None, 'motion-initial', seconds=MOTION_OBSERVATION_SECONDS)
         motion['initialHierarchySha256'] = sha(args.out / 'motion-initial.xml')
         initial_reading_bounds = bounds(button(xml, '阅读'))
         # The remote shell becomes screenrecord, preserving the exact owned PID.
@@ -318,7 +331,8 @@ def capture_motion(args, report, capture, adb, wait_for):
         log_stream = log.open('wb')
         process = subprocess.Popen(parts, stdin=subprocess.DEVNULL, stdout=log_stream,
                                    stderr=subprocess.STDOUT)
-        stop_deadline = time.monotonic() + MOTION_SECONDS
+        recording_started = time.monotonic()
+        stop_deadline = recording_started + MOTION_SECONDS
         motion['status'] = 'recording'
         save()
         time.sleep(.8)
@@ -338,8 +352,8 @@ def capture_motion(args, report, capture, adb, wait_for):
         reading = button(xml, '阅读')
         # AppHub retains this same bottom bar while showing its native pages.
         # Require two independently observed layouts to agree before reusing
-        # its bounds across Back. A third slow hierarchy read here would spend
-        # most of the 20-second clip waiting rather than showing interactions.
+        # its bounds across Back. The final hierarchy verifies the actual chat
+        # after the reading gesture without a third acquisition before input.
         if bounds(reading) != initial_reading_bounds:
             raise ValueError('Reading control moved between the actual chat and network layouts')
         motion['readingBoundsSource'] = dict(hierarchy='motion-network.xml',
@@ -356,19 +370,40 @@ def capture_motion(args, report, capture, adb, wait_for):
                               and capsule(value) is not None
                               and not nodes(value, lambda node: node.get('text') == '退出阅读'))
         swipe(reading, 'Move the reading material hotspot diagonally, releasing outside to cancel the action', cancel=True)
-        time.sleep(.35)
-        # The final read may finish after the recorder's time limit. All inputs
-        # must have completed while it was running; this read checks the final
-        # real UI state and does not claim to inspect individual video frames.
+        sequence = report['inputs'][motion['firstInputIndex']:]
+        if ([item['action'] for item in sequence] !=
+                ['short-press', 'short-press', 'keyevent', 'swipe-to-cancel']
+                or not all(item.get('completedWhileRecorderRunning') for item in sequence)):
+            raise ValueError('The four actual inputs did not all complete inside the recording')
+        motion['lastGestureCompletedAtUnixNs'] = sequence[-1]['completedAtUnixNs']
+        # Uiautomator needs time to observe the real route transitions. Give it
+        # bounded headroom, but do not fill a successful movie with idle time.
+        # Keep the old 20-second wall-time floor and a visible release tail.
+        settle = max(MOTION_RELEASE_SETTLE_SECONDS,
+                     recording_started + MOTION_MIN_WALL_SECONDS - time.monotonic())
+        if settle > active_seconds():
+            raise TimeoutError('Recording has no remaining budget for the complete release tail')
+        motion['postGestureWaitSeconds'] = settle
+        time.sleep(settle)
+        active_seconds()
+        motion['recorderStopReason'] = 'four-input-sequence-and-release-tail-completed'
+        motion['recordingWallSecondsAtStopRequest'] = time.monotonic() - recording_started
+        if not signal_owned('INT'):
+            raise RuntimeError('The completed recording no longer has its verified owned recorder')
+        process.wait(timeout=8)
+        recorder_row.update(completedAtUnixNs=time.time_ns(), exitCode=process.returncode)
+        motion['recorderStoppedAtUnixNs'] = recorder_row['completedAtUnixNs']
+        if process.returncode != 0:
+            raise RuntimeError('Screenrecord exited with code ' + str(process.returncode))
+        # Only this final state check runs after muxer finalization. All four
+        # inputs and the release tail were checked while the recorder was live.
+        # This remains a real hierarchy assertion, not video-frame inspection.
         observe(chat, 'motion-reading-cancelled', during_recording=False)
         motion['interactionsComplete'] = True
         motion['lastInputIndexExclusive'] = len(report['inputs'])
         motion['readingGestureReleasedOutsideObservedButton'] = True
         motion['returnedToOrdinaryChat'] = True
-        # Let the device's documented time limit finalize the MP4 naturally.
-        process.wait(timeout=max(1, stop_deadline - time.monotonic() + 8))
-        if process.returncode != 0:
-            raise RuntimeError('Screenrecord exited with code ' + str(process.returncode))
+        motion['finalStateVerifiedAfterRecorderStop'] = True
     except Exception as error:
         failed(error, 'recording-or-interactions')
     finally:
@@ -397,10 +432,12 @@ def capture_motion(args, report, capture, adb, wait_for):
         if log_stream is not None:
             log_stream.close()
         if recorder_row is not None:
-            recorder_row.update(completedAtUnixNs=time.time_ns(),
-                exitCode=process.poll() if process is not None else None)
+            recorder_row.setdefault('completedAtUnixNs', time.time_ns())
+            recorder_row['exitCode'] = process.poll() if process is not None else None
             if log.is_file():
                 recorder_row.update(outputLogBytes=log.stat().st_size, outputLogSha256=sha(log))
+        if 'firstInputIndex' in motion:
+            motion['lastInputIndexExclusive'] = len(report['inputs'])
 
     if process is not None:
         try:
@@ -418,7 +455,10 @@ def capture_motion(args, report, capture, adb, wait_for):
                 raise ValueError('The encoder did not use the requested half-size dimensions')
             if not 0 < motion['video']['durationSeconds'] <= MOTION_SECONDS + 3:
                 raise ValueError('Unexpected recorded video duration')
-            motion['video']['meetsRequestedReviewLength'] = 12 <= motion['video']['durationSeconds'] <= 21
+            duration = motion['video']['durationSeconds']
+            motion['video']['meetsRequestedReviewLength'] = (
+                motion['requestedReviewMinSeconds'] <= duration <= motion['requestedReviewMaxSeconds'])
+            motion['video']['meetsLegacy12To21SecondLength'] = 12 <= duration <= 21
             if motion['interactionsComplete'] and not motion['errors']:
                 motion['status'] = 'captured'
         except Exception as error:
@@ -792,7 +832,7 @@ def main():
             capture_motion(args, report, capture, adb, wait_for)
         except Exception as error:
             report['motionReport'].update(status='failed', errorType=type(error).__name__, error=str(error))
-        # This separate still must not spend any of the original 20-second movie
+        # This separate still must not spend any of the bounded movie's
         # budget or turn a failed movie into a passed motion observation.
         try:
             capture_native_backdrop_preview(args, report, capture, adb, wait_for, tap, screenshot)

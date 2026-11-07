@@ -8,15 +8,15 @@ import android.graphics.Bitmap;
  */
 final class GlassMaterialRaster {
   static Bitmap create(int width,int height,float density,float radius,boolean dark,
-      float lightX,float lightY,float bumpX,float bumpY,float pressure,float bend){
+      float lightX,float lightY,float bumpX,float bumpY,float touchX,float touchY,float pressure,float bend){
     float scale=Math.min(1f,2f/density);
     int w=Math.max(1,(int)Math.ceil(width*scale)),h=Math.max(1,(int)Math.ceil(height*scale));
     int[] colors=new int[w*h];
     double bx=width*.5-4*density,by=height*.5-4*density;
-    double bevel=Math.max(2*density,Math.min(8*density,Math.min(bx,by)*.34));
+    double bevel=Math.max(2*density,Math.min(6.5*density,Math.min(bx,by)*.30));
     double sigma=Math.max(8*density,Math.min(by*1.15,32*density)),sigma2=sigma*sigma;
     double ll=Math.hypot(lightX,lightY),lx=lightX/ll,ly=lightY/ll;
-    double veil=dark?.18:.10,shadowStrength=dark?.12:.035;
+    double veil=dark?.15:.04,shadowStrength=dark?.12:.035;
     double tr=dark?.12:.98,tg=dark?.15:.99,tb=dark?.20:1;
     double aa=Math.max(.7,density*.28);
     for(int y=0;y<h;y++)for(int x=0;x<w;x++){
@@ -32,9 +32,9 @@ final class GlassMaterialRaster {
         double nearX=px-bumpX,nearY=py-bumpY,farX=px-(width-bumpX),farY=py-(height-bumpY);
         double near=Math.exp(-(nearX*nearX+nearY*nearY)/sigma2);
         double far=Math.exp(-(farX*farX+farY*farY)/sigma2);
-        d-=bend*density*(3*near-.9*far);
-        nx-=bend*density*(-6*nearX*near+1.8*farX*far)/sigma2;
-        ny-=bend*density*(-6*nearY*near+1.8*farY*far)/sigma2;
+        d-=bend*density*(3.2*near-.7*far);
+        nx-=bend*density*(-6.4*nearX*near+1.4*farX*far)/sigma2;
+        ny-=bend*density*(-6.4*nearY*near+1.4*farY*far)/sigma2;
         double normalLength=Math.hypot(nx,ny);nx/=normalLength;ny/=normalLength;
       }
       double cover=1-smooth(-aa,aa,d);
@@ -42,16 +42,16 @@ final class GlassMaterialRaster {
       double shadowD=d-ny*density;
       double shadow=Math.exp(-Math.max(shadowD,0)/(1.8*density))*shadowStrength*(1-cover);
       if(cover<.001){colors[y*w+x]=byteValue(shadow)<<24;continue;}
-      double edge=clamp(1+d/bevel,0,1),slope=Math.pow(edge,1.65)*.94;
+      double edge=clamp(1+d/bevel,0,1),slope=Math.pow(edge,1.45)*.96;
       double fx=clamp(dx/Math.max(bx,1),-1,1),fy=clamp(dy/Math.max(by,1),-1,1);
       double normalX=nx*slope+fx*.035*(1-edge),normalY=ny*slope+fy*.035*(1-edge);
       double nz=Math.sqrt(Math.max(1-normalX*normalX-normalY*normalY,.001));
-      double fresnel=.04+.96*Math.pow(1-nz,5);
+      double fresnel=.03+.97*Math.pow(1-nz,5);
       double dot=nx*lx+ny*ly,key=Math.pow(Math.max(dot,0),5),back=Math.pow(Math.max(-dot,0),5)*.58;
-      double side=Math.pow(Math.abs(nx*-ly+ny*lx),2.4),sideMix=side*.78;
+      double side=Math.pow(Math.abs(nx*-ly+ny*lx),2.4),sideMix=side*.55;
       double lit=clamp(key+back*.8,0,1);
-      double er=mix(mix(.99,.55,sideMix),1,lit),eg=mix(mix(.995,.61,sideMix),1,lit),eb=mix(mix(1,.70,sideMix),1,lit);
-      double reflection=clamp(fresnel*.82+Math.pow(edge,4)*(.04+side*.07),0,.36);
+      double er=mix(mix(.99,.63,sideMix),1,lit),eg=mix(mix(.995,.70,sideMix),1,lit),eb=mix(mix(1,.80,sideMix),1,lit);
+      double reflection=clamp(fresnel*.72+Math.pow(edge,5)*(.015+side*.045),0,.32);
       double a=reflection+(1-reflection)*veil;
       double r=reflection*er+(1-reflection)*veil*tr;
       double g=reflection*eg+(1-reflection)*veil*tg;
@@ -61,7 +61,11 @@ final class GlassMaterialRaster {
       double caustic=Math.exp(-square((d+2.2*density)/(.85*density)));
       double shine=clamp(rim*(key*.68+back*.40)+soft*(key*.07+back*.04)+caustic*back*.07,0,.86);
       double broad=Math.exp(-square((fx*.55+fy*.8-lx*.4)*1.6));
-      shine=Math.min(.90,shine+broad*(.006+pressure*.015));
+      double touchRadius=Math.max(14*density,Math.min(by*1.35,34*density))*(.72+pressure*.28);
+      double touchDx=(px-touchX)/touchRadius,touchDy=(py-touchY)/touchRadius;
+      double contact=Math.exp(-(touchDx*touchDx+touchDy*touchDy));
+      double touchRim=contact*Math.exp(-square((d+1.1*density)/(1.25*density)));
+      shine=Math.min(.90,shine+broad*.004+pressure*(contact*.055+touchRim*.34));
       r=shine+(1-shine)*r;g=shine+(1-shine)*g;b=shine+(1-shine)*b;
       a=shine+(1-shine)*a;
       double surfaceAlpha=a*cover,alpha=surfaceAlpha+shadow*(1-surfaceAlpha);

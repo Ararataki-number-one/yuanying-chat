@@ -42,12 +42,12 @@ final class GlassLensRenderer {
     }
     shader=new RuntimeShader(program);
     content.setClipToBounds(false);
-    blur=RenderEffect.createBlurEffect(6.5f*density,6.5f*density,Shader.TileMode.CLAMP);
+    blur=RenderEffect.createBlurEffect(3f*density,3f*density,Shader.TileMode.CLAMP);
     Log.i(TAG,"AGSL material ready");
   }
 
   boolean draw(Canvas canvas,Rect bounds,float radius,float pressure,float bend,
-      float lightX,float lightY,float bumpX,float bumpY,int alpha,boolean dark,
+      float lightX,float lightY,float bumpX,float bumpY,float touchX,float touchY,int alpha,boolean dark,
       GlassBackdrop source,View host){
     if(!canvas.isHardwareAccelerated()||bounds.isEmpty())return false;
     int margin=(int)Math.ceil(18*density),w=bounds.width(),h=bounds.height();
@@ -91,6 +91,7 @@ final class GlassLensRenderer {
     shader.setFloatUniform("bend",bend);
     shader.setFloatUniform("light",lightX,lightY);
     shader.setFloatUniform("bump",bumpX-bounds.left,bumpY-bounds.top);
+    shader.setFloatUniform("touch",touchX-bounds.left,touchY-bounds.top);
     shader.setFloatUniform("darkTheme",dark?1f:0f);
     shader.setFloatUniform("hasBackdrop",backdrop?1f:0f);
     shader.setFloatUniform("opacity",alpha/255f);

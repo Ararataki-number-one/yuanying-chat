@@ -81,10 +81,10 @@ On API 33+, `GlassLensRenderer` runs `assets/ui/liquid-glass.agsl` through a
 material-only RenderNode. Text and icons are drawn afterwards by their existing
 native views. No effect is installed on the control's full View tree.
 
-- The curved bevel occupies up to 8 dp inside the edge (17% of the shorter
-  visible side). Additional side reflection follows the fourth power of the
+- The curved bevel occupies up to 6.5 dp inside the edge (15% of the shorter
+  visible side). Additional side reflection follows the fifth power of the
   edge profile, concentrating it near the boundary instead of a wide gray face.
-- The center is a transparent coating with about 10% white veil in light mode.
+- The center is a transparent coating with about 4% white veil in light mode.
   Reflection uses a soft fixed environment-light model, not a captured wallpaper
   or an opaque white background. Its opacity varies with the surface normal.
 - A pair of directional white glints and a weaker inner caustic emphasize the
@@ -113,19 +113,20 @@ and invalidates weakly registered glass controls; there is no pre-draw loop or
 idle timer. Capture and notification have re-entry guards. Recordings are
 bounded to the glass region plus 18 dp overscan and cached by source, revision,
 relative host position, size and appearance. Sampling coordinates are clamped
-inside that recorded area. Native pixels pass through a 6.5 dp blur and a Snell
-refraction model (glass-like index 1.45), with very small edge color separation.
-Only the light native material adds a 28% soft white backing at its center,
-falling to zero at the curved edge. This keeps background text from competing
-with the foreground glyphs while retaining the edge's visible lens detail.
+inside that recorded area. Native pixels pass through a 3 dp blur and a Snell
+refraction model (glass-like index 1.42), with very small edge color separation.
+Only the light native material adds a 6.5% soft white backing at its center,
+plus up to 8% over darker source strokes, falling to zero at the curved edge.
+This replaces the previous uniform 28% backing and 6.5 dp blur, preserving more
+background color while the curved edge supplies the visible lens detail.
 There is no full-surface dimming or automatic pure-white-to-gray transform.
 
-The first actual API 35 capture of the new renderer (`23b2ae5a`) confirmed the
-AGSL and native recording paths, but showed a soft raised appearance on white
-and dark blurred titles behind dock icons. The narrower reflection profile and
-native-only blur/backing above address those observed defects. Final images and
-runtime evidence must be checked for the subsequent exact commit, not inferred
-from that earlier successful build.
+Earlier actual API 35 captures confirmed the AGSL and native recording paths,
+but the material still read as a soft raised control on white and overly milky
+over native content. This revision reduces the central white layers, narrows
+the side reflection and separates fixed environment light from local touch
+light. The footer fade remains in place. Final images and runtime evidence must
+be checked for this exact commit, not inferred from an earlier successful build.
 
 ### Conversation and compatibility boundaries
 
@@ -192,18 +193,23 @@ instead of choosing an arbitrary slot.
 Text, icons, layout and hit regions stay fixed while the material's curvature
 and light respond to the touch. There is no idle floating or repeating highlight.
 
-- A short press immediately supplies optical pressure, gathering the remaining
-  response over 110 ms. Pointer movement retargets the existing run without
+- A short press immediately supplies a small optical response, gathering the
+  remaining response over 90 ms. Pointer movement retargets the existing run without
   resetting its animation clock, using an 85 ms follow response thereafter.
-- A local 3 dp outward bend and 0.9 dp opposite response stay inside the 4 dp
+- A local 3.2 dp outward bend and 0.7 dp opposite response stay inside the 4 dp
   optical inset. The SDF, normal field, caustic and sampled pixels all use it.
-- On release the optical focus travels up to 32 dp along the perimeter and
-  settles over 480 ms. This reuses the existing finite input response.
+- The finger's position drives a separate local light field. The environment
+  light receives only a small directional bias, so pressing one end does not
+  relight the entire capsule. Touch and edge-deformation positions are smoothed
+  independently; a new press during release continues from the current pose.
+- On release the optical focus travels up to 18 dp along the perimeter and
+  settles over 320 ms, with one small reverse bend and a smooth light fade.
 - Gray system ripple remains transparent on these material surfaces. Actual
   hotspots propagate through the RippleDrawable wrapper; three destination
   buttons share their parent's press state, while reading has a separate source.
-- The actual selected destination uses the existing 240 ms transition with a
-  5.5% blue wash. Conversation has no falsely selected destination; reading's
+- The actual selected destination moves over 280 ms with a 5.5% blue wash that
+  stretches by at most 12 dp along the path, then gathers under the destination.
+  Conversation has no falsely selected destination; reading's
   3.5% accent identifies the action without asserting that it is active.
 
 Disabled system animations use direct optical state without deformation.
@@ -223,7 +229,17 @@ Current APK compilation, lint and source-bound Android captures are reported
 against their exact commit in the PR; earlier captures do not validate this
 new pipeline.
 
-The separate native backdrop preview runs after the original 20-second movie.
+The movie retains four actual inputs: download, network, Back, and a reading
+press released outside its control. Each must finish while the owned recorder
+is running. Hierarchy reads have 20-second absolute budgets; the recorder has
+a 60-second hard cap. After the reading gesture it retains at least 1.2 seconds
+of release motion and a 20-second recording wall-time floor, then verifies the
+owned nonce/PID before stopping. The encoded duration is reported separately,
+with an explicit 12–60-second review range and an independent legacy 12–21-second
+flag. The final ordinary-chat assertion runs after the movie is finalized; a
+failure still fails the motion report. No failed input is retried or inferred.
+
+The separate native backdrop preview runs after that bounded movie.
 It opens the actual network workspace using observed controls, optionally scrolls
 one observed native ScrollView, retains an original full-resolution PNG and XML,
 and returns to conversation. Its status is separate from the original static
