@@ -13,16 +13,51 @@ reading circle is always square, and each destination retains a 48 dp minimum
 touch target. The outer bar still participates in the existing keyboard and
 focus-reading visibility rules.
 
-The expanded environment control is centered at 208 dp wide and 44 dp high by
-default, fitting within narrower windows and growing vertically for larger text.
+The expanded environment control is centered, with a content-measured width from
+168 to 208 dp and a default height of 44 dp, fitting within narrower windows and
+growing vertically for larger text.
 Both compact and expanded forms use a globe icon and retain a 48 dp minimum
 touch height through their existing host/delegate. The compact visual pill stays
 smaller inside that touch area. Long environment names remain single-line and
 ellipsized; the full name and both actions are exposed to accessibility services.
 The globe and name form one centered group with an 8 dp gap in the expanded
-control. Regular-weight text is 14 sp there and 12 sp in the compact control.
+control. Medium-weight text is 15 sp there and 12 sp in the compact control.
 Changing the name first clears its previous centering padding, so compact
 wrap-content measurement does not accumulate whitespace.
+
+## Page hierarchy and visual rhythm
+
+The next refinement responds to the request to learn from well-designed GitHub
+applications. It uses [Read You's list typography](https://github.com/ReadYouApp/ReadYou/tree/main/fastlane/metadata/android/zh-CN/images/phoneScreenshots)
+and [Readest's documented surface and action hierarchy](https://github.com/readest/readest/blob/main/apps/readest-app/DESIGN.md)
+as visual references. Their frameworks, icons and source code are not imported.
+The glass renderer is retained; the work here gives the surrounding content a
+clearer hierarchy instead of increasing the material's opacity or shadow.
+
+- The shorter environment capsule makes its name the focus. Auxiliary toolbar
+  icons use one 21 dp visual size, preserving their existing hit regions.
+- The status strip keeps unknown and previous readings explicit. Missing region
+  text and a redundant waiting-for-connection suffix no longer compete with the
+  state badge; complete values remain in accessibility descriptions and the
+  existing network detail UI. Connected, stale and failed readings still come
+  from the same WindowNetworkState instance.
+- The 3+1 dock keeps its 56 dp controls and 12 dp gap. The globe, download and
+  reading glyphs are 22 dp; the cube's larger optical footprint remains 20 dp.
+  Current-destination/reading labels use medium weight. Outer spacing is 10 dp
+  above and 12 dp below, with unchanged keyboard/focus visibility rules.
+- Native network items share a grouped surface, so environment names lead and
+  metadata, route information and secondary actions sit at lower visual weight.
+  All connection, ownership, pending-configuration and operation guards remain
+  in the existing network model and callbacks.
+- The real loading/offline surface uses a stable icon area, a clearer title and
+  vertically ordered primary/secondary recovery actions. It keeps actual state
+  messages and uses the spinner only while the existing state calls for it.
+  Short windows retain scrolling rather than clipping the actions.
+
+The native screenshot diagnostic uses a modest observed scroll (at most 100 dp)
+after opening the actual network page. This suits the denser list without
+jumping directly into its final bottom-padding area. It still records the
+actual bounds, input, selected route, source/APK identity and original PNG.
 
 ## Curved glass material and native backdrop
 

@@ -40,7 +40,7 @@ final class DesignChrome {
     a.toolbar=new CollapsingToolbar();a.toolbar.setOrientation(LinearLayout.VERTICAL);
     a.toolbar.setVisibility(View.VISIBLE);
     a.toolbar.setBackgroundColor(ReferenceUi.CHAT_BG);
-    a.toolbar.setPadding(a.dp(14),0,a.dp(14),0);
+    a.toolbar.setPadding(a.dp(16),0,a.dp(16),0);
     compact=new FrameLayout(a){
       @Override public void drawableHotspotChanged(float x,float y){
         super.drawableHotspotChanged(x,y);
@@ -49,7 +49,7 @@ final class DesignChrome {
       }
     };
     profileRow=ProfileCatalog.get(a).item(Profiles.slot(a));
-    compactTitle=ReferenceUi.text(a,profileLabel(profileRow,Profiles.slot(a)),12,DesignUi.GLASS_INK,false);
+    compactTitle=ReferenceUi.text(a,profileLabel(profileRow,Profiles.slot(a)),12,DesignUi.GLASS_INK,true);
     ReferenceUi.single(compactTitle);
     compactTitle.setMinWidth(a.dp(112));compactTitle.setMaxWidth(a.dp(196));
     Ui.Icon disclosure=new Ui.Icon("globe",DesignUi.GLASS_MUTED);disclosure.setBounds(0,0,a.dp(12),a.dp(12));
@@ -71,11 +71,11 @@ final class DesignChrome {
     top=DesignUi.row(a);
     a.navigation=new Ui.IconButton(a,"hamburger","管理环境",false);
     a.navigation.setOnClickListener(v->a.showDrawer());
-    title=ReferenceUi.text(a,compactTitle.getText().toString(),14,DesignUi.GLASS_INK,false);
+    title=ReferenceUi.text(a,compactTitle.getText().toString(),15,DesignUi.GLASS_INK,true);
     profileName=title.getText().toString();
     ReferenceUi.single(title);
-    title.setMinWidth(a.dp(208));title.setMaxWidth(a.dp(208));
-    Ui.Icon addressIcon=new Ui.Icon("globe",DesignUi.GLASS_MUTED);addressIcon.setBounds(0,0,a.dp(16),a.dp(16));
+    title.setMinWidth(a.dp(168));title.setMaxWidth(a.dp(208));
+    Ui.Icon addressIcon=new Ui.Icon("globe",DesignUi.GLASS_MUTED);addressIcon.setBounds(0,0,a.dp(14),a.dp(14));
     title.setCompoundDrawables(addressIcon,null,null,null);title.setCompoundDrawablePadding(a.dp(8));
     centerCapsuleContents(title,16);
     title.setBackground(DesignUi.glass(a,22));title.setElevation(a.dp(2));
@@ -102,7 +102,7 @@ final class DesignChrome {
     a.geckoAddress=new GeckoAddressUi(a);a.toolbar.addView(a.geckoAddress.row,new LinearLayout.LayoutParams(-1,-2));
 
     networkRow=DesignUi.row(a);
-    networkRow.setPadding(a.dp(6),0,a.dp(6),0);
+    networkRow.setPadding(a.dp(6),0,a.dp(6),a.dp(4));
     // This is a read-only status line. Network navigation remains in the bottom bar.
     networkRow.setClickable(false);
     networkRow.setFocusable(false);
@@ -118,8 +118,10 @@ final class DesignChrome {
     latencyWord.setGravity(Gravity.CENTER_VERTICAL);
     latencyWord.setPadding(a.dp(6),0,a.dp(6),0);
     stateWord.setGravity(Gravity.CENTER_VERTICAL);
+    stateWord.setPadding(a.dp(7),0,a.dp(7),0);
+    stateWord.setBackground(ReferenceUi.surface(a,0xfff0f2f6,8,Color.TRANSPARENT));
     boolean largeFont=a.getResources().getConfiguration().fontScale>=1.4f;
-    int lineHeight=a.dp(18);
+    int lineHeight=a.dp(20);
     for(TextView text:new TextView[]{dot,a.networkLine,latencyWord,stateWord})lineHeight=Math.max(lineHeight,textHeight(text)+a.dp(largeFont?0:2));
     if(largeFont){
       networkRow.setOrientation(LinearLayout.VERTICAL);
@@ -328,11 +330,15 @@ final class DesignChrome {
   private static void description(View view,String value){if(!TextUtils.equals(view.getContentDescription(),value))view.setContentDescription(value);}
 
   void showNetwork(WindowNetworkState state){
-    String address=(state.region.isEmpty()?"地区未标注":state.region)+" · "+(state.ip.isEmpty()?"IP 未核验":state.connected?state.ip:"上次 "+state.ip);
+    // Keep unknown and previous readings explicit, while avoiding repeated
+    // placeholder phrases competing with the environment's actual state.
+    String address=(state.region.isEmpty()?"":state.region+" · ")+(state.ip.isEmpty()?"出口 IP 未核验":state.connected?state.ip:"上次 "+state.ip);
     text(a.networkLine,address);
+    description(a.networkLine,(state.region.isEmpty()?"地区未标注":state.region)+" · "+(state.ip.isEmpty()?"IP 未核验":state.connected?state.ip:"上次 "+state.ip));
     color(a.networkLine,ReferenceUi.MUTED);
     color(dot,state.color());
-    text(latencyWord,state.latency+state.latencyTimer);
+    text(latencyWord,state.latency+("（等待连接）".equals(state.latencyTimer)?"":state.latencyTimer));
+    description(latencyWord,state.latency+state.latencyTimer);
     text(stateWord,state.state.equals("正常")?"已连接":state.state);
     color(stateWord,state.color());
     description(networkRow,"当前环境网络："+state.strip());

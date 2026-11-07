@@ -514,7 +514,10 @@ def capture_native_backdrop_preview(args, report, capture, adb, wait_for, tap, s
             if box[2] - box[0] >= 144 and safe_bottom - safe_top >= 288:
                 x = (box[0] + box[2]) // 2
                 height = safe_bottom - safe_top
-                start_y, end_y = safe_top + height * 3 // 4, safe_top + height // 3
+                start_y = safe_top + height * 3 // 4
+                # A modest real scroll keeps the denser grouped list in view,
+                # instead of jumping to its final padded end in one gesture.
+                end_y = max(safe_top, start_y - min(height // 4, DENSITY * 5 // 8))
                 action = dict(action='swipe', phase='native-backdrop-preview',
                     reason='Scroll the observed native content once above the floating navigation',
                     start=[x, start_y], end=[x, end_y], durationMillis=400,

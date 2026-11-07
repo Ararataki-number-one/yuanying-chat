@@ -52,7 +52,7 @@ final class ReferenceUi {
   }
   static LinearLayout nav(Activity a,int selected,java.util.function.IntConsumer action,Button[] buttons){
     if(buttons==null)buttons=new Button[DesignUi.NAV.length];
-    LinearLayout bar=DesignUi.column(a);bar.setPadding(dp(a,12),dp(a,8),dp(a,12),dp(a,10));bar.setGravity(Gravity.CENTER_HORIZONTAL);
+    LinearLayout bar=DesignUi.column(a);bar.setPadding(dp(a,12),dp(a,10),dp(a,12),dp(a,12));bar.setGravity(Gravity.CENTER_HORIZONTAL);
     bar.setClipChildren(false);bar.setClipToPadding(false);
     int heightDp=navHeightDp(a),height=dp(a,heightDp),radius=(heightDp+1)/2;
     final int preferredWidth=dp(a,Math.round(320+48*Math.max(0,a.getResources().getConfiguration().fontScale-1)));
@@ -80,7 +80,7 @@ final class ReferenceUi {
       b.setMinWidth(dp(a,48));b.setMinimumWidth(dp(a,48));
       b.setPadding(dp(a,2),dp(a,8),dp(a,2),dp(a,8));
       b.setContentDescription(i==WorkspaceNavigation.READING?"进入专注阅读模式":DesignUi.NAV[i]);
-      int iconSize=dp(a,i==WorkspaceNavigation.READING?19:20);
+      int iconSize=dp(a,i==0?20:22);
       Ui.Icon icon=new Ui.Icon(DesignUi.GLYPHS[i],DesignUi.GLASS_MUTED);icon.setBounds(0,0,iconSize,iconSize);
       b.setCompoundDrawables(null,icon,null,null);b.setCompoundDrawablePadding(dp(a,3));
       b.addOnLayoutChangeListener((v,l,t,r,bottom,ol,ot,or,ob)->centerDockContents((Button)v));
@@ -126,6 +126,7 @@ final class ReferenceUi {
       Button b=tabs[i];if(b==null)continue;boolean active=i==selected;
       int ink=active||i==WorkspaceNavigation.READING?DesignUi.BLUE:DesignUi.GLASS_MUTED;
       b.setSelected(active);b.setTextColor(ink);
+      b.setTypeface(Typeface.create(active||i==WorkspaceNavigation.READING?"sans-serif-medium":"sans-serif",Typeface.NORMAL));
       Drawable icon=b.getCompoundDrawables()[1];if(icon instanceof Ui.Icon)((Ui.Icon)icon).color=ink;b.invalidate();
       if(b.getParent() instanceof GlassDock)dock=(GlassDock)b.getParent();
     }
