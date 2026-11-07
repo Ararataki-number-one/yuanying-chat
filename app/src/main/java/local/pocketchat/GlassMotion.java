@@ -1,62 +1,76 @@
 package local.pocketchat;
 
-import android.animation.ObjectAnimator;
-import android.animation.PropertyValuesHolder;
-import android.animation.StateListAnimator;
-import android.animation.TimeInterpolator;
+import android.graphics.drawable.Drawable;
+import android.graphics.drawable.InsetDrawable;
+import android.graphics.drawable.LayerDrawable;
 import android.view.View;
-import android.view.animation.DecelerateInterpolator;
-import android.view.animation.OvershootInterpolator;
+import android.view.ViewGroup;
+import java.util.Collections;
+import java.util.Set;
+import java.util.WeakHashMap;
 
-/** Finite native press feedback; click, long-press and touch dispatch stay with the view. */
+/** Native drawable feedback; the glass moves while its host and hit region stay fixed. */
 final class GlassMotion {
-  private static final class PressStates extends StateListAnimator {}
+  private static final Set<View> hosts=Collections.newSetFromMap(new WeakHashMap<>());
   private GlassMotion(){}
 
-  /** Install once when constructing a glass control or its visual surface. */
+  /** Preserve the chrome's existing binding API; both shapes use the same material. */
   static void press(View view,boolean reading){
-    StateListAnimator motion=new PressStates();
-    motion.addState(new int[]{android.R.attr.state_enabled,android.R.attr.state_pressed},
-      transform(view,reading?.94f:.98f,reading?1.5f:0f,100,new DecelerateInterpolator(1.5f)));
-    motion.addState(new int[]{android.R.attr.state_enabled},
-      transform(view,1f,0f,reading?260:240,new OvershootInterpolator(1.5f)));
-    motion.addState(new int[]{},transform(view,1f,0f,0,new DecelerateInterpolator()));
+    if(materialBackground(view)==null||!hosts.add(view))return;
+    view.setStateListAnimator(null);
     view.addOnAttachStateChangeListener(new View.OnAttachStateChangeListener(){
-      @Override public void onViewAttachedToWindow(View v){install(v,motion);}
+      @Override public void onViewAttachedToWindow(View v){
+        Drawable background=materialBackground(v);if(background==null)return;
+        background.setVisible(v.isShown()&&v.getWindowVisibility()==View.VISIBLE,false);
+        background.jumpToCurrentState();
+      }
       @Override public void onViewDetachedFromWindow(View v){
-        // Finishing a pressed animator alone would leave its compressed endpoint.
-        if(v.getStateListAnimator()==motion)v.setStateListAnimator(null);
-        restore(v);
+        Drawable background=materialBackground(v);if(background==null)return;
+        background.setVisible(false,false);background.jumpToCurrentState();
       }
     });
-    install(view,motion);
-  }
-
-  private static ObjectAnimator transform(View view,float scale,float rotation,long duration,TimeInterpolator curve){
-    // A single endpoint makes each interrupted state start at the current values.
-    ObjectAnimator animator=ObjectAnimator.ofPropertyValuesHolder(view,
-      PropertyValuesHolder.ofFloat(View.SCALE_X,scale),
-      PropertyValuesHolder.ofFloat(View.SCALE_Y,scale),
-      PropertyValuesHolder.ofFloat(View.ROTATION,rotation));
-    animator.setDuration(duration);animator.setInterpolator(curve);
-    // Native animators also honor the system's zero-duration animation setting.
-    return animator;
-  }
-
-  private static void install(View view,StateListAnimator motion){
-    view.setStateListAnimator(motion);
     reset(view);
   }
 
-  /** Settle an outgoing surface immediately when its owner hides it. */
+  /** Only a material background is affected; ordinary form buttons are untouched. */
   static void reset(View view){
-    StateListAnimator motion=view.getStateListAnimator();
-    if(!(motion instanceof PressStates))return;
-    motion.jumpToCurrentState();
-    restore(view);
+    Drawable background=materialBackground(view);
+    if(background!=null)background.jumpToCurrentState();
   }
 
-  private static void restore(View view){
-    view.setScaleX(1f);view.setScaleY(1f);view.setRotation(0f);
+  /** Merge child press state without calling ViewGroup.setPressed on siblings. */
+  static int[] childState(ViewGroup surface,int[] states){
+    boolean bound=false,enabled=false,pressed=false;
+    for(int i=0;i<surface.getChildCount();i++){
+      View child=surface.getChildAt(i);
+      if(!(child instanceof DesignUi.ActionButton)||!((DesignUi.ActionButton)child).hasPressedSurface(surface))continue;
+      bound=true;
+      if(child.getVisibility()!=View.VISIBLE||!child.isEnabled())continue;
+      enabled=true;pressed|=child.isPressed();
+    }
+    if(!bound)return states;
+    enabled&=surface.isEnabled();
+    int count=0;
+    for(int state:states){
+      if(state==0||state==android.R.attr.state_pressed||state==android.R.attr.state_enabled&&!enabled)continue;
+      states[count++]=state;
+    }
+    if(enabled&&pressed)states[count++]=android.R.attr.state_pressed;
+    while(count<states.length)states[count++]=0;
+    return states;
+  }
+
+  private static Drawable materialBackground(View view){
+    Drawable background=view==null?null:view.getBackground();
+    return hasMaterial(background)?background:null;
+  }
+
+  private static boolean hasMaterial(Drawable drawable){
+    if(drawable instanceof LiquidGlassDrawable)return true;
+    if(drawable instanceof LayerDrawable){
+      LayerDrawable layers=(LayerDrawable)drawable;
+      for(int i=0;i<layers.getNumberOfLayers();i++)if(hasMaterial(layers.getDrawable(i)))return true;
+    }else if(drawable instanceof InsetDrawable)return hasMaterial(((InsetDrawable)drawable).getDrawable());
+    return false;
   }
 }

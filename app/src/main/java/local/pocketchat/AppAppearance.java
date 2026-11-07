@@ -143,10 +143,19 @@ final class AppAppearance {
   static final class Glass extends LiquidGlassDrawable {
     Glass(Context c,int radius){super(c,radius);}
   }
-  /** Low-contrast touch feedback follows the ink when an open window changes theme. */
+  /** Preserve native state/visibility dispatch; liquid content owns its visible feedback. */
   static final class GlassRipple extends RippleDrawable {
-    GlassRipple(Drawable content,Drawable mask){super(ColorStateList.valueOf(ink()),content,mask);}
+    private final LiquidGlassDrawable material;
+    GlassRipple(Drawable content,Drawable mask){
+      super(ColorStateList.valueOf(content instanceof LiquidGlassDrawable?Color.TRANSPARENT:ink()),content,mask);
+      material=content instanceof LiquidGlassDrawable?(LiquidGlassDrawable)content:null;
+    }
+    @Override public void setHotspot(float x,float y){
+      super.setHotspot(x,y);
+      // RippleDrawable consumes hotspots instead of forwarding them to content.
+      if(material!=null)material.setHotspot(x,y);
+    }
     private static int ink(){return dark()?0x24ffffff:0x18000000;}
-    void refresh(){setColor(ColorStateList.valueOf(ink()));}
+    void refresh(){setColor(ColorStateList.valueOf(material==null?ink():Color.TRANSPARENT));}
   }
 }

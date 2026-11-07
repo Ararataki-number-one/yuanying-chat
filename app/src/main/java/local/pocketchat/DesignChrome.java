@@ -41,7 +41,13 @@ final class DesignChrome {
     a.toolbar.setVisibility(View.VISIBLE);
     a.toolbar.setBackgroundColor(ReferenceUi.CHAT_BG);
     a.toolbar.setPadding(a.dp(14),0,a.dp(14),0);
-    compact=new FrameLayout(a);
+    compact=new FrameLayout(a){
+      @Override public void drawableHotspotChanged(float x,float y){
+        super.drawableHotspotChanged(x,y);
+        if(compactTitle!=null&&compactTitle.getBackground()!=null)
+          compactTitle.getBackground().setHotspot(x-compactTitle.getLeft(),y-compactTitle.getTop());
+      }
+    };
     profileRow=ProfileCatalog.get(a).item(Profiles.slot(a));
     compactTitle=ReferenceUi.text(a,profileLabel(profileRow,Profiles.slot(a)),12,DesignUi.GLASS_INK,false);
     ReferenceUi.single(compactTitle);

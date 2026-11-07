@@ -52,39 +52,47 @@ final class DesignUi {
   static void addCard(LinearLayout parent,View card){LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(-1,-2);p.topMargin=dp(parent.getContext(),10);parent.addView(card,p);}
   static final class ActionButton extends Button {
     private View pressedSurface;
+    private float[] surfaceHotspot;
     ActionButton(Context c){super(c);}
     @Override public void setEnabled(boolean enabled){super.setEnabled(enabled);setAlpha(enabled?1f:.45f);}
     /** Optional visual parent; ordinary buttons keep their existing behavior. */
     void pressedSurface(View surface){
       if(pressedSurface==surface)return;
-      if(pressedSurface!=null&&pressedSurface.isPressed())pressedSurface.setPressed(false);
-      pressedSurface=surface;forwardPressedState();
+      View previous=pressedSurface;pressedSurface=surface;
+      if(previous!=null)previous.refreshDrawableState();
+      forwardPressedState();
     }
+    boolean hasPressedSurface(View surface){return pressedSurface==surface;}
     @Override protected void drawableStateChanged(){
       super.drawableStateChanged();forwardPressedState();
       // A delayed native release can arrive after the reading action hides the bar.
       if(!isShown()||getWindowVisibility()!=VISIBLE){
-        GlassMotion.reset(this);if(pressedSurface!=null)GlassMotion.reset(pressedSurface);
+        GlassMotion.reset(this);resetHiddenSurface();
       }
     }
     private void forwardPressedState(){
-      if(pressedSurface==null)return;
-      boolean enabled=isEnabled(),pressed=enabled&&isPressed();
-      if(pressedSurface.isEnabled()!=enabled)pressedSurface.setEnabled(enabled);
-      // A parent also propagates released state to its children: compare first.
-      if(pressedSurface.isPressed()!=pressed)pressedSurface.setPressed(pressed);
+      // The parent derives one material state from every bound child. A late
+      // release from one button cannot clear a different button's native press.
+      if(pressedSurface!=null)pressedSurface.refreshDrawableState();
     }
     @Override public void drawableHotspotChanged(float x,float y){
       super.drawableHotspotChanged(x,y);
-      if(pressedSurface!=null&&getParent()==pressedSurface)pressedSurface.drawableHotspotChanged(x+getLeft(),y+getTop());
+      if(pressedSurface!=null&&getParent()==pressedSurface){
+        if(surfaceHotspot==null)surfaceHotspot=new float[2];
+        surfaceHotspot[0]=x;surfaceHotspot[1]=y;getMatrix().mapPoints(surfaceHotspot);
+        pressedSurface.drawableHotspotChanged(surfaceHotspot[0]+getLeft()-pressedSurface.getScrollX(),surfaceHotspot[1]+getTop()-pressedSurface.getScrollY());
+      }
     }
     @Override public void onVisibilityAggregated(boolean visible){
-      super.onVisibilityAggregated(visible);
-      if(!visible){GlassMotion.reset(this);if(pressedSurface!=null)GlassMotion.reset(pressedSurface);}
+      super.onVisibilityAggregated(visible);forwardPressedState();
+      if(!visible){GlassMotion.reset(this);resetHiddenSurface();}
+    }
+    private void resetHiddenSurface(){
+      if(pressedSurface!=null&&(!pressedSurface.isShown()||pressedSurface.getWindowVisibility()!=VISIBLE))GlassMotion.reset(pressedSurface);
     }
     @Override protected void onDetachedFromWindow(){
-      if(pressedSurface!=null&&pressedSurface.isPressed())pressedSurface.setPressed(false);
-      super.onDetachedFromWindow();
+      if(pressedSurface!=null)setPressed(false);
+      super.onDetachedFromWindow();forwardPressedState();
     }
   }
   static int actionWidth(Button button,int minimumDp){return Math.max(dp(button.getContext(),minimumDp),(int)Math.ceil(button.getPaint().measureText(button.getText().toString()))+button.getCompoundPaddingLeft()+button.getCompoundPaddingRight()+dp(button.getContext(),2));}

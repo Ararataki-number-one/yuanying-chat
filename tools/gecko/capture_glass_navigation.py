@@ -242,17 +242,21 @@ def capture_motion(args, report, capture, adb, wait_for):
             raise ValueError('The observed motion target is missing')
         box = bounds(node)
         x, y = (box[0] + box[2]) // 2, (box[1] + box[3]) // 2
-        # Move 16 dp beyond the actual button's top before releasing. Android
-        # cancels its pressed/click state; this never clicks the reading action.
-        end_y, duration = (max(0, box[1] - DENSITY // 10), 350) if cancel else (y, 140)
+        end_x, end_y, duration = x, y, 140
+        if cancel:
+            # Trace the material hotspot from 25% to 80% of the observed width,
+            # releasing 16 dp above the button to cancel its reading action.
+            width = box[2] - box[0]
+            x, end_x = box[0] + width // 4, box[0] + width * 4 // 5
+            end_y, duration = max(0, box[1] - DENSITY // 10), 400
         if cancel and end_y >= box[1]:
             raise ValueError('No safe point outside the observed reading button')
         action = dict(action='swipe-to-cancel' if cancel else 'short-press', reason=reason,
-                      start=[x, y], end=[x, end_y], durationMillis=duration,
+                      start=[x, y], end=[end_x, end_y], durationMillis=duration,
                       observedBounds=list(box), atUnixNs=time.time_ns())
         report['inputs'].append(action)
         gesture_in_flight = True
-        adb('shell', 'input', 'touchscreen', 'swipe', str(x), str(y), str(x), str(end_y),
+        adb('shell', 'input', 'touchscreen', 'swipe', str(x), str(y), str(end_x), str(end_y),
             str(duration), timeout=min(6, active_seconds()))
         gesture_in_flight = False
         action['completedAtUnixNs'] = time.time_ns()
@@ -350,7 +354,7 @@ def capture_motion(args, report, capture, adb, wait_for):
         chat = lambda value: (navigation(value) is not None and expanded(value)
                               and capsule(value) is not None
                               and not nodes(value, lambda node: node.get('text') == '退出阅读'))
-        swipe(reading, 'Show reading press/release feedback, sliding outside to cancel the action', cancel=True)
+        swipe(reading, 'Move the reading material hotspot diagonally, releasing outside to cancel the action', cancel=True)
         time.sleep(.35)
         # The final read may finish after the recorder's time limit. All inputs
         # must have completed while it was running; this read checks the final
@@ -598,8 +602,8 @@ def main():
             density=adb('shell', 'wm', 'density').decode().strip(),
             fontScale=adb('shell', 'settings', 'get', 'system', 'font_scale').decode().strip(),
             configuration=adb('shell', 'am', 'get-config').decode().strip())
-        report['stillSettleMillis'] = 350
-        time.sleep(.35)
+        report['stillSettleMillis'] = 600
+        time.sleep(.6)
         screenshot('glass-navigation.png')
         report['status'] = 'captured'
         report['staticScreenshotStatus'] = 'captured'

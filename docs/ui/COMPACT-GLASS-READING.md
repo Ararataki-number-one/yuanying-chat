@@ -39,7 +39,7 @@ muted ink. The separate reading action uses the product blue with a very pale
 blue interior, giving the quiet layout one accent without marking reading as
 active.
 
-The latest material reference is [Glasswork](https://github.com/kubai087/glasswork),
+The light material reference is [Glasswork](https://github.com/kubai087/glasswork),
 whose [material CSS](https://github.com/kubai087/glasswork/blob/main/glass.css)
 and [installation guide](https://github.com/kubai087/glasswork/blob/main/INSTALL.md)
 describe clear glass with a thin edge, localized reflections and dark ink:
@@ -47,7 +47,7 @@ describe clear glass with a thin edge, localized reflections and dark ink:
 - A low-opacity white center in light mode, without a dark backing plate or
   painted cyan/rainbow bands.
 - A single 0.5 dp neutral boundary, reduced to roughly 5–6% black in light mode.
-  Short upper-left and lower-right white catches add local reflection without
+  Short localized white catches add local reflection without
   another complete ring.
 - One feathered contact shadow strictly outside the glass, replacing the two
   hard shadow bands. The platform outline has no filled shadow. A 4 dp optical
@@ -58,8 +58,14 @@ describe clear glass with a thin edge, localized reflections and dark ink:
   the theme even for already-open windows.
 - No continuous decorative animation, audio, or screenshot loop.
 
-This is an independent native Canvas adaptation of the reference's visual
-principles. Its wallpaper colors are not copied into the conversation page;
+The subsequent material interaction follows the pointer-driven light and
+finite perimeter flow in the user's [Lens reference renderer](https://github.com/ruiqichenbiec/design-systems/blob/main/lens/lab/design-system/internal/renderer.js).
+Its pointer changes light direction, pressure changes reflection strength,
+and a finite flow envelope travels along the rim. The native implementation
+adapts these principles rather than its WebGL renderer or page sampling.
+
+This is an independent native Canvas adaptation of the references' visual
+principles. Their wallpaper colors are not copied into the conversation page;
 the plain app background stays light. No WebGL renderer, third-party runtime,
 or packaged Skill has been installed.
 
@@ -67,7 +73,9 @@ The contact shadow is generated on a small software bitmap Canvas only when
 the drawable bounds or theme change. A 2.5 dp BlurMaskFilter softens a shape
 offset down by 0.75 dp; CLEAR then removes the actual body's interior. Drawing
 reuses that cache, leaving the View hardware accelerated and the transparent
-center untinted by the shadow. Old bitmaps are not manually recycled while a
+center untinted by the shadow. Drawing also clips the cached shadow outside the
+current deformed contour, so a moving edge cannot expose shadow inside the face.
+Old bitmaps are not manually recycled while a
 RenderThread display list might still reference them. This follows Android's
 [documented distinction between bitmap and hardware canvases](https://developer.android.com/develop/ui/views/graphics/hardware-accel).
 
@@ -109,27 +117,34 @@ instead of choosing an arbitrary slot.
 
 ## Motion and feedback
 
-Feedback is tied to actual input and navigation changes. There is no idle
-floating, pulsing or repeating highlight animation.
+The user found the earlier scale/rotation feedback insufficiently liquid.
+That whole-View transform is removed. Text, icons, layout and hit regions now
+stay fixed while the material's own light and contour respond to the touch.
+There is no idle floating, pulsing or repeating highlight animation.
 
-- The address capsules and ordinary dock controls compress slightly on press
-  (0.98 scale, about 100 ms) and settle on release (about 240 ms).
-- The separate reading surface has a slightly more expressive response
-  (0.94 scale and a 1.5-degree tilt, settling in about 260 ms). Its blue accent
-  identifies an available action; the native selected state still reports
-  whether focus reading is actually active.
-- One faint blue selection background moves between the three destination
-  buttons when the real selected page changes. First selection fades in;
-  returning to the conversation fades out. Ordinary conversation remains
-  unselected.
+- Pressing gathers a localized reflection in about 110 ms. Moving the pointer
+  retargets the light with an 85 ms response from its current state. The visible
+  band covers part of the perimeter, limited to 28–64 dp; a small inner caustic
+  and a restrained local dark facet give it depth on the light background.
+- A local outward bend of at most about 1.2 dp, with a smaller opposite response,
+  stays within the existing 4 dp material inset. It changes only the drawn glass.
+- Release carries the reflection up to 32 dp along the edge and fades it into
+  the stationary light over 480 ms. The small contour response settles once.
+- The system's gray ripple is transparent on these material surfaces. Hotspots
+  are explicitly forwarded through the RippleDrawable wrapper. Three buttons
+  share the dock's material state; the reading action uses its own circular
+  material. Child state is aggregated without clearing a sibling's native press.
+- The real destination selection still moves over 240 ms, now using a lighter
+  5.5% blue wash. Ordinary conversation remains unselected. Reading's 3.5% blue
+  accent identifies the action without falsely marking reading as active.
 
 These effects do not consume touch events, replace click/long-press handlers,
-or delay navigation. Rapid input retargets the current animation. Disabled or
-detached controls reset, and disabled system animations use direct state
-changes. Real layout changes settle the selection shape, and hidden controls
-are returned to their resting transform. The dock also settles delayed native
-release callbacks received while hidden; no repeating animation is scheduled.
-The original control frames remain the layout and accessibility targets.
+or delay navigation. Disabled system animations use direct optical state changes.
+Visibility, detach, disabled state, appearance and actual geometry changes end
+the finite material animation. Paths and shader matrices are reused during
+motion; shadow bitmaps are never rebuilt by an animation frame. Hidden controls
+also settle delayed release callbacks. All feedback uses public APIs available
+from the app's minSdk 26; there is no new runtime or continuous screenshot loop.
 
 ## Validation and delivery status
 

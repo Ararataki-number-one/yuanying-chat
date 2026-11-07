@@ -65,10 +65,11 @@ final class ReferenceUi {
     };
     row.setGravity(Gravity.CENTER_VERTICAL);row.setClipChildren(false);row.setClipToPadding(false);
     GlassDock dock=new GlassDock(a);dock.setPadding(dp(a,5),dp(a,2),dp(a,5),dp(a,2));
-    dock.setBackground(DesignUi.glass(a,radius));dock.setElevation(dp(a,3));
+    dock.setBackground(DesignUi.glass(a,radius));dock.setElevation(dp(a,3));GlassMotion.press(dock,false);
     row.addView(dock,new LinearLayout.LayoutParams(0,height,1));
     // Destinations share one pill; reading stays an independent mode control.
     FrameLayout reading=new FrameLayout(a){
+      @Override protected int[] onCreateDrawableState(int extraSpace){return GlassMotion.childState(this,super.onCreateDrawableState(extraSpace+1));}
       @Override public void onVisibilityAggregated(boolean visible){super.onVisibilityAggregated(visible);if(!visible)GlassMotion.reset(this);}
     };
     reading.setBackground(DesignUi.glass(a,radius));reading.setElevation(dp(a,3));GlassMotion.press(reading,true);
@@ -88,7 +89,8 @@ final class ReferenceUi {
         reading.addView(b,new FrameLayout.LayoutParams(-1,-1));
         ((DesignUi.ActionButton)b).pressedSurface(reading);
       }else{
-        dock.addView(b,new LinearLayout.LayoutParams(0,-1,1));GlassMotion.press(b,false);
+        dock.addView(b,new LinearLayout.LayoutParams(0,-1,1));
+        ((DesignUi.ActionButton)b).pressedSurface(dock);
       }
       buttons[i]=b;
     }
@@ -100,10 +102,10 @@ final class ReferenceUi {
     Drawable content;
     if(reading){
       GradientDrawable wash=new GradientDrawable();wash.setCornerRadius(dp(context,radius));
-      wash.setColor(new ColorStateList(new int[][]{{android.R.attr.state_selected},{}},new int[]{0x142468f2,0x092468f2}));
-      // The parent glass supplies the reading ripple, so it follows the whole circle.
+      wash.setColor(new ColorStateList(new int[][]{{android.R.attr.state_selected},{}},new int[]{0x0e2468f2,0x092468f2}));
+      // The shared material owns interaction; this is only the reading accent.
       content=wash;
-    }else content=new AppAppearance.GlassRipple(surface(context,Color.TRANSPARENT,radius,Color.TRANSPARENT),surface(context,Color.WHITE,radius,Color.TRANSPARENT));
+    }else content=new ColorDrawable(Color.TRANSPARENT);
     return new InsetDrawable(content,dp(context,LiquidGlassDrawable.INSET_DP+1)){
       @Override public boolean getPadding(Rect padding){padding.setEmpty();return false;}
     };

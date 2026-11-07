@@ -29,6 +29,8 @@ final class GlassDock extends LinearLayout {
     inset=Ui.dp(context,LiquidGlassDrawable.INSET_DP+1);radius=Ui.dp(context,23);
   }
 
+  @Override protected int[] onCreateDrawableState(int extraSpace){return GlassMotion.childState(this,super.onCreateDrawableState(extraSpace+1));}
+
   /** Called after all Button.selected values have been updated. */
   void selectionChanged(){
     View next=selectedButton();
@@ -97,7 +99,7 @@ final class GlassDock extends LinearLayout {
   @Override protected void dispatchDraw(Canvas canvas){
     if(opacity>0f&&!highlight.isEmpty()){
       // Read the live palette so an appearance change never restarts the motion.
-      paint.setColor(DesignUi.BLUE);paint.setAlpha(Math.round(20*opacity));
+      paint.setColor(DesignUi.BLUE);paint.setAlpha(Math.round(14*opacity));
       float corner=Math.min(radius,Math.min(highlight.width(),highlight.height())/2f);
       canvas.drawRoundRect(highlight,corner,corner,paint);
     }
@@ -125,8 +127,8 @@ final class GlassDock extends LinearLayout {
     return changed;
   }
 
-  @Override public void onVisibilityAggregated(boolean visible){super.onVisibilityAggregated(visible);if(!visible)settle();}
-  @Override protected void onWindowVisibilityChanged(int visibility){super.onWindowVisibilityChanged(visibility);if(visibility!=VISIBLE)settle();}
+  @Override public void onVisibilityAggregated(boolean visible){super.onVisibilityAggregated(visible);if(!visible){settle();GlassMotion.reset(this);}}
+  @Override protected void onWindowVisibilityChanged(int visibility){super.onWindowVisibilityChanged(visibility);if(visibility!=VISIBLE){settle();GlassMotion.reset(this);}}
   @Override protected void onAttachedToWindow(){super.onAttachedToWindow();settle();}
   @Override protected void onDetachedFromWindow(){settle();super.onDetachedFromWindow();}
 }
