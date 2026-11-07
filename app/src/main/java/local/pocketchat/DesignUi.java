@@ -22,7 +22,18 @@ final class DesignUi {
   }
   static GradientDrawable surface(Context c,int color,int radius,int stroke){GradientDrawable d=Ui.shape(c,color,radius);d.setStroke(dp(c,1),stroke);return d;}
   static GradientDrawable gradient(Context c){return surface(c,0xff1268ff,14,Color.TRANSPARENT);}
-  static Drawable glass(Context c,int radius){return new RippleDrawable(ColorStateList.valueOf(0x142468f2),new AppAppearance.Glass(c,radius),surface(c,Color.WHITE,radius,Color.TRANSPARENT));}
+  static Drawable glass(Context c,int radius){
+    // The mask only bounds touch feedback; it is never a backing plate. Match
+    // the optical body's inset so the ripple does not color its outer shadow.
+    GradientDrawable mask=new GradientDrawable();mask.setColor(Color.WHITE);
+    mask.setCornerRadius(dp(c,Math.max(0,radius-LiquidGlassDrawable.INSET_DP)));
+    InsetDrawable opticalMask=new InsetDrawable(mask,dp(c,LiquidGlassDrawable.INSET_DP)){
+      // The optical inset must not replace the view's existing content padding.
+      @Override public boolean getPadding(Rect padding){padding.setEmpty();return false;}
+    };
+    return new RippleDrawable(ColorStateList.valueOf(AppAppearance.dark()?0x1f9bdcff:0x105eb2dd),
+      new AppAppearance.Glass(c,radius),opticalMask);
+  }
   static void chrome(Activity a){AppAppearance.window(a.getWindow());}
   static LinearLayout column(Context c){LinearLayout v=new LinearLayout(c);v.setOrientation(LinearLayout.VERTICAL);return v;}
   static LinearLayout row(Context c){LinearLayout v=new LinearLayout(c);v.setGravity(Gravity.CENTER_VERTICAL);return v;}

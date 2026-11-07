@@ -19,7 +19,12 @@ ellipsized; the full name and both actions are exposed to accessibility services
 
 The material direction comes from the user's reference, [Lens](https://ruiqichenbiec.github.io/design-systems/):
 
-- A translucent center, a narrow directional highlight, and a weak broad reflection.
+- A clear, lightly tinted center, narrow directional highlights, and weak local
+  cyan/blue and peach reflections drawn from the Lens environment palette.
+- Interrupted highlights rather than a continuous white border. A fine tinted
+  edge gives the curved surface depth without making the whole surface milky.
+- A soft contact shadow outside the glass. The translucent center must not
+  reveal a solid platform elevation shadow beneath it.
 - One material for the address capsule and floating navigation dock.
 - Clear text and icons above the material, with a translucent blue selection wash.
 - No continuous decorative animation, audio, or screenshot loop.
@@ -83,6 +88,20 @@ These checks are not a full application build or device acceptance. No APK has
 been published. Actual keyboard timing, long-press/tap exclusion, accessibility,
 large fonts, day/night rendering and visual quality still need Android device
 verification before release.
+
+The subsequent [Android build and screenshot run](https://github.com/Ararataki-number-one/yuanying-chat/actions/runs/42238648675)
+compiled the release and integration APKs, passed release lint, and captured the
+actual `MainActivity` on a disposable API 35 x86_64 emulator. The source-bound
+diagnostic checks the installed APK identity, opens and dismisses the real URL
+editor, and retains the unmodified screenshots plus control bounds. Its fixture
+has no configured VPN or live website content. It is visual review evidence, not
+physical-phone, network, performance, or full interaction acceptance.
+
+The Lens material revision is reviewed against that baseline with the same
+diagnostic. The capture runs in light mode at font scale 1.0; dark mode, transient
+press feedback and large-font behavior are outside this screenshot's evidence.
+The existing full host job also has historical-input and frozen-fixture failures,
+so a successful Android screenshot does not make the entire PR green.
 
 The frozen v1 collapse and experience device workloads depend on the removed
 Chat/Settings tabs and assume capsule taps only expand chrome. Their exact input
