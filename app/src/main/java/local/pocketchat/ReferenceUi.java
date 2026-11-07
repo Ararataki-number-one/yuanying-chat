@@ -72,10 +72,12 @@ final class ReferenceUi {
     LinearLayout.LayoutParams readingLayout=new LinearLayout.LayoutParams(height,height);readingLayout.setMarginStart(dp(a,12));row.addView(reading,readingLayout);
     for(int i=0;i<DesignUi.NAV.length;i++){
       final int n=i;Button b=link(a,DesignUi.NAV[i],()->action.accept(n));b.setTextSize(11);b.setSingleLine(true);b.setGravity(Gravity.CENTER);
+      b.setTypeface(Typeface.create("sans-serif",Typeface.NORMAL));
       b.setMinWidth(dp(a,48));b.setMinimumWidth(dp(a,48));
       b.setPadding(dp(a,2),dp(a,8),dp(a,2),dp(a,8));
       b.setContentDescription(i==WorkspaceNavigation.READING?"进入专注阅读模式":DesignUi.NAV[i]);
-      Ui.Icon icon=new Ui.Icon(DesignUi.GLYPHS[i],DesignUi.GLASS_MUTED);icon.setBounds(0,0,dp(a,22),dp(a,22));
+      int iconSize=dp(a,i==WorkspaceNavigation.READING?19:20);
+      Ui.Icon icon=new Ui.Icon(DesignUi.GLYPHS[i],DesignUi.GLASS_MUTED);icon.setBounds(0,0,iconSize,iconSize);
       b.setCompoundDrawables(null,icon,null,null);b.setCompoundDrawablePadding(dp(a,3));
       b.addOnLayoutChangeListener((v,l,t,r,bottom,ol,ot,or,ob)->centerDockContents((Button)v));
       if(i==WorkspaceNavigation.READING)reading.addView(b,new FrameLayout.LayoutParams(-1,-1));
@@ -84,7 +86,7 @@ final class ReferenceUi {
     }
     bar.addView(row,new LinearLayout.LayoutParams(-1,-2));markNav(buttons,selected);return bar;
   }
-  private static int navHeightDp(Context c){return Math.max(60,(int)Math.ceil(38+22*c.getResources().getConfiguration().fontScale));}
+  private static int navHeightDp(Context c){return Math.max(56,(int)Math.ceil(34+22*c.getResources().getConfiguration().fontScale));}
   private static void centerDockContents(Button b){
     Drawable icon=b.getCompoundDrawables()[1];if(icon==null||b.getHeight()==0)return;
     // TextView pins a top compound drawable to its padding. Center the complete
@@ -98,12 +100,12 @@ final class ReferenceUi {
     if(tabs==null)return;
     for(int i=0;i<tabs.length;i++){
       Button b=tabs[i];if(b==null)continue;boolean active=i==selected;
-      b.setSelected(active);b.setTextColor(active?DesignUi.BLUE:DesignUi.GLASS_INK);
+      b.setSelected(active);b.setTextColor(active?DesignUi.BLUE:DesignUi.GLASS_MUTED);
       // Only the active destination receives a quiet blue wash; the glass stays clear.
       int tint=active?0x142468f2:Color.TRANSPARENT;
       int radius=i==WorkspaceNavigation.READING?(navHeightDp(b.getContext())+1)/2:23;
       Drawable feedback=new AppAppearance.GlassRipple(surface(b.getContext(),tint,radius,Color.TRANSPARENT),surface(b.getContext(),Color.WHITE,radius,Color.TRANSPARENT));
-      InsetDrawable inset=new InsetDrawable(feedback,dp(b.getContext(),3)){
+      InsetDrawable inset=new InsetDrawable(feedback,dp(b.getContext(),LiquidGlassDrawable.INSET_DP+1)){
         @Override public boolean getPadding(Rect padding){padding.setEmpty();return false;}
       };
       b.setBackground(inset);centerDockContents(b);

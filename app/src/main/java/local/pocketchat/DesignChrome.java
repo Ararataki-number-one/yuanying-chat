@@ -43,13 +43,12 @@ final class DesignChrome {
     a.toolbar.setPadding(a.dp(14),0,a.dp(14),0);
     compact=new FrameLayout(a);
     profileRow=ProfileCatalog.get(a).item(Profiles.slot(a));
-    compactTitle=ReferenceUi.text(a,profileLabel(profileRow,Profiles.slot(a)),12,DesignUi.GLASS_INK,true);
+    compactTitle=ReferenceUi.text(a,profileLabel(profileRow,Profiles.slot(a)),12,DesignUi.GLASS_INK,false);
     ReferenceUi.single(compactTitle);
     compactTitle.setMinWidth(a.dp(112));compactTitle.setMaxWidth(a.dp(196));
-    compactTitle.setGravity(Gravity.CENTER);
-    compactTitle.setPadding(a.dp(14),0,a.dp(12),0);
     Ui.Icon disclosure=new Ui.Icon("globe",DesignUi.GLASS_MUTED);disclosure.setBounds(0,0,a.dp(12),a.dp(12));
     compactTitle.setCompoundDrawables(disclosure,null,null,null);compactTitle.setCompoundDrawablePadding(a.dp(7));
+    centerCapsuleContents(compactTitle,14);
     compactTitle.setBackground(DesignUi.glass(a,16));
     compactTitle.setDuplicateParentStateEnabled(true);
     compactTitle.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
@@ -65,13 +64,13 @@ final class DesignChrome {
     top=DesignUi.row(a);
     a.navigation=new Ui.IconButton(a,"hamburger","管理环境",false);
     a.navigation.setOnClickListener(v->a.showDrawer());
-    title=ReferenceUi.text(a,compactTitle.getText().toString(),15,DesignUi.GLASS_INK,true);
+    title=ReferenceUi.text(a,compactTitle.getText().toString(),14,DesignUi.GLASS_INK,false);
     profileName=title.getText().toString();
     ReferenceUi.single(title);
-    title.setGravity(Gravity.CENTER);
-    title.setPadding(a.dp(16),0,a.dp(16),0);title.setMinWidth(a.dp(208));title.setMaxWidth(a.dp(208));
-    Ui.Icon addressIcon=new Ui.Icon("globe",DesignUi.GLASS_MUTED);addressIcon.setBounds(0,0,a.dp(15),a.dp(15));
-    title.setCompoundDrawables(addressIcon,null,null,null);title.setCompoundDrawablePadding(a.dp(6));
+    title.setMinWidth(a.dp(208));title.setMaxWidth(a.dp(208));
+    Ui.Icon addressIcon=new Ui.Icon("globe",DesignUi.GLASS_MUTED);addressIcon.setBounds(0,0,a.dp(16),a.dp(16));
+    title.setCompoundDrawables(addressIcon,null,null,null);title.setCompoundDrawablePadding(a.dp(8));
+    centerCapsuleContents(title,16);
     title.setBackground(DesignUi.glass(a,22));title.setElevation(a.dp(2));
     title.setContentDescription("当前环境："+profileName+"，点按输入网址，长按切换环境");
     addressCapsule(title);
@@ -230,6 +229,32 @@ final class DesignChrome {
   private static int textHeight(TextView text){
     Paint.FontMetrics metrics=text.getPaint().getFontMetrics();
     return (int)Math.ceil(metrics.bottom-metrics.top);
+  }
+
+  /** Center the icon and label together, rather than pinning the icon to the rim. */
+  private static void centerCapsuleContents(TextView label,int insetDp){
+    int minimum=Ui.dp(label.getContext(),insetDp);
+    label.setGravity(Gravity.LEFT|Gravity.CENTER_VERTICAL);
+    label.setPadding(minimum,0,minimum,0);
+    label.addOnLayoutChangeListener((v,l,t,r,b,ol,ot,or,ob)->{
+      android.graphics.drawable.Drawable icon=label.getCompoundDrawables()[0];
+      if(icon==null||label.getWidth()==0)return;
+      int leading=icon.getBounds().width()+label.getCompoundDrawablePadding();
+      int available=Math.max(0,label.getWidth()-2*minimum-leading);
+      int text=Math.min(available,(int)Math.ceil(label.getPaint().measureText(label.getText().toString())));
+      int padding=Math.max(minimum,(label.getWidth()-leading-text)/2);
+      if(label.getPaddingLeft()!=padding||label.getPaddingRight()!=padding)label.setPadding(padding,0,padding,0);
+    });
+    label.addTextChangedListener(new android.text.TextWatcher(){
+      public void beforeTextChanged(CharSequence s,int start,int count,int after){}
+      public void onTextChanged(CharSequence s,int start,int before,int count){}
+      public void afterTextChanged(android.text.Editable value){
+        // Remove the previous name's centering padding before wrap-content
+        // measurement. Long names still use the native single-line ellipsis.
+        if(label.getPaddingLeft()!=minimum||label.getPaddingRight()!=minimum)label.setPadding(minimum,0,minimum,0);
+        label.requestLayout();
+      }
+    });
   }
 
   void update(){

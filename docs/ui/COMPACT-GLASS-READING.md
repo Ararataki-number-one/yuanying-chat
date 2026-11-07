@@ -5,7 +5,7 @@
 This change follows the requested four-action layout: **环境 / 网络 / 下载 / 阅读**.
 The three destinations share a floating glass capsule. Reading uses a separate
 circular glass button on its right, with a book icon and the short label 阅读;
-its accessibility label is 进入专注阅读模式. Both surfaces are 60 dp high at the
+its accessibility label is 进入专注阅读模式. Both containers are 56 dp high at the
 default font size, separated by 12 dp. The complete row is centered and capped at
 320 dp at the default font size, rather than filling the screen. Its width and
 height grow for larger text, and its width is constrained by the available window. The
@@ -13,12 +13,16 @@ reading circle is always square, and each destination retains a 48 dp minimum
 touch target. The outer bar still participates in the existing keyboard and
 focus-reading visibility rules.
 
-The expanded environment capsule is centered at 208 dp wide and 44 dp high by
+The expanded environment control is centered at 208 dp wide and 44 dp high by
 default, fitting within narrower windows and growing vertically for larger text.
 Both compact and expanded forms use a globe icon and retain a 48 dp minimum
 touch height through their existing host/delegate. The compact visual pill stays
 smaller inside that touch area. Long environment names remain single-line and
 ellipsized; the full name and both actions are exposed to accessibility services.
+The globe and name form one centered group with an 8 dp gap in the expanded
+control. Regular-weight text is 14 sp there and 12 sp in the compact control.
+Changing the name first clears its previous centering padding, so compact
+wrap-content measurement does not accumulate whitespace.
 
 The user rejected the smoked-gray revision as too dark. The current light-mode
 chrome uses a clear, lightly white-tinted center with dark text and quiet gray
@@ -26,7 +30,11 @@ icons. Dock icon/label blocks remain centered as a unit, including the separate
 reading circle. Background wrappers do not overwrite that content padding. The
 native loading/error explanation remains narrower, with adjacent recovery
 actions when their measured labels fit; its actual status, network rules and
-action handlers remain unchanged.
+action handlers remain unchanged. A subsequent visual review found the paired
+edges and lower bevel still resembled a raised plastic button. The current
+revision removes that second rim and continuous bevel, softens the exterior
+shadow, and uses regular 11 sp dock labels with 20 dp icons (19 dp for the
+optically wider book). Inactive icons and labels share the same muted ink.
 
 The latest material reference is [Glasswork](https://github.com/kubai087/glasswork),
 whose [material CSS](https://github.com/kubai087/glasswork/blob/main/glass.css)
@@ -35,10 +43,12 @@ describe clear glass with a thin edge, localized reflections and dark ink:
 
 - A low-opacity white center in light mode, without a dark backing plate or
   painted cyan/rainbow bands.
-- A very fine neutral outer boundary and white inner edge. Narrow upper-left
-  and lower-right catches supply the sense of a rounded glass rim.
-- A shallow bevel restricted to the edge and a soft contact shadow strictly
-  outside the glass; the platform outline has no filled shadow.
+- A single 0.5 dp neutral boundary, reduced to roughly 5–6% black in light mode.
+  Short upper-left and lower-right white catches add local reflection without
+  another complete ring.
+- One feathered contact shadow strictly outside the glass, replacing the two
+  hard shadow bands. The platform outline has no filled shadow. A 4 dp optical
+  inset leaves room around the material while preserving the control bounds.
 - One material for the address capsule and floating navigation dock.
 - Theme-aware dark ink in light mode. Selected destinations use the existing
   product blue and a restrained translucent blue wash. Touch feedback follows
@@ -49,6 +59,14 @@ This is an independent native Canvas adaptation of the reference's visual
 principles. Its wallpaper colors are not copied into the conversation page;
 the plain app background stays light. No WebGL renderer, third-party runtime,
 or packaged Skill has been installed.
+
+The contact shadow is generated on a small software bitmap Canvas only when
+the drawable bounds or theme change. A 2.5 dp BlurMaskFilter softens a shape
+offset down by 0.75 dp; CLEAR then removes the actual body's interior. Drawing
+reuses that cache, leaving the View hardware accelerated and the transparent
+center untinted by the shadow. Old bitmaps are not manually recycled while a
+RenderThread display list might still reference them. This follows Android's
+[documented distinction between bitmap and hardware canvases](https://developer.android.com/develop/ui/views/graphics/hardware-accel).
 
 **Material boundary:** `LiquidGlassDrawable` supplies the native surface,
 reflection and edge treatment. It does not sample or refract the Gecko page.
