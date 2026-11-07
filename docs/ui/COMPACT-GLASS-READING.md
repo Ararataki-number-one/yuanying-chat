@@ -127,13 +127,18 @@ There is no idle floating, pulsing or repeating highlight animation.
   light animation without restarting its clock; subsequent movement uses an
   85 ms response from its current state. The visible
   band covers part of the perimeter, limited to 28–64 dp; a small inner caustic
-  and a restrained local dark facet give it depth on the light background.
-- A local outward bend of at most about 1.8 dp, with a smaller opposite response,
+  and a cool, localized edge facet give it depth on the light background. The
+  facet's peak alpha is about 29%; it is clipped to a narrow inside edge, never
+  applied to the glass face. The white highlight and inner caustic stay thin.
+- A local outward bend of at most about 3 dp, with a 0.9 dp opposite response,
   stays within the existing 4 dp material inset. It changes only the drawn glass.
 - Release carries the reflection up to 32 dp along the edge and fades it into
   the stationary light over 480 ms with a gradual fade. The small contour response
   settles once. Normal-size review of the first capture motivated the stronger
   local edge and a fix for repeated MOVE events starving a restarted animator.
+  A second actual capture still read as nearly stationary at normal size; this
+  motivates the more visible localized bend and cool edge, with the same native
+  gesture retained for comparison. These are material changes, not View scaling.
 - The system's gray ripple is transparent on these material surfaces. Hotspots
   are explicitly forwarded through the RippleDrawable wrapper. Three buttons
   share the dock's material state; the reading action uses its own circular
