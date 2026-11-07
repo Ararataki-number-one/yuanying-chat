@@ -64,10 +64,10 @@ class LiquidGlassDrawable extends Drawable {
     outsideBand(farShadow,outer,Math.max(0,requestedRadius-.2f*density));
     outsideBand(nearShadow,near,Math.max(0,requestedRadius-.9f*density));
     farShade=new LinearGradient(0,outer.top,0,outer.bottom,
-      dark?new int[]{0x00080d14,0x00080d14,0x30080d14}:new int[]{0x00212e3b,0x00212e3b,0x14212e3b},
+      dark?new int[]{0x00080d14,0x00080d14,0x24080d14}:new int[]{0x00212e3b,0x00212e3b,0x0f212e3b},
       new float[]{0f,.42f,1f},Shader.TileMode.CLAMP);
     nearShade=new LinearGradient(0,near.top,0,near.bottom,
-      dark?new int[]{0x00040810,0x00040810,0x38040810}:new int[]{0x00212e3b,0x00212e3b,0x1c212e3b},
+      dark?new int[]{0x00040810,0x00040810,0x2a040810}:new int[]{0x00212e3b,0x00212e3b,0x15212e3b},
       new float[]{0f,.55f,1f},Shader.TileMode.CLAMP);
 
     // A stable 84-88% smoke tint supports white foregrounds even over a white
@@ -86,19 +86,21 @@ class LiquidGlassDrawable extends Drawable {
       Math.max(body.width()*.72f,body.height()),body.height()*1.25f,
       dark?0x30a8b5c2:0x2aa8b5c2);
 
-    // Only the lit shoulders shine. Their paths fade before completing a ring.
+    // Keep the short highlight inside the dark surface so its full width stays
+    // visible on a pale canvas. It fades after the left shoulder, never a ring.
     float straight=Math.max(0,body.width()-2*radius);
-    float topEnd=body.left+radius+straight*.68f;
+    float highlightInset=Math.min(density,radius*.25f);
+    float highlightLeft=body.left+highlightInset,highlightTop=body.top+highlightInset;
+    float highlightRadius=Math.max(0,radius-highlightInset);
+    float topEnd=highlightLeft+highlightRadius+straight*.28f;
     mainReflection.rewind();
-    mainReflection.moveTo(body.left,body.top+radius+Math.min(body.height()*.12f,radius*.2f));
-    mainReflection.lineTo(body.left,body.top+radius);
-    corner.set(body.left,body.top,body.left+2*radius,body.top+2*radius);
+    mainReflection.moveTo(highlightLeft,highlightTop+highlightRadius);
+    corner.set(highlightLeft,highlightTop,highlightLeft+2*highlightRadius,highlightTop+2*highlightRadius);
     mainReflection.arcTo(corner,180,90,false);
-    mainReflection.lineTo(topEnd,body.top);
-    mainGlint=new LinearGradient(body.left,body.top,Math.max(body.left+density,topEnd),body.top,
-      dark?new int[]{0x00f0f6fc,0x8af0f6fc,0x42dce5ee,0x00dce5ee}
-          :new int[]{0x00f0f6fc,0x73f0f6fc,0x38dce5ee,0x00dce5ee},
-      new float[]{0f,.2f,.64f,1f},Shader.TileMode.CLAMP);
+    mainReflection.lineTo(topEnd,highlightTop);
+    mainGlint=new LinearGradient(highlightLeft,highlightTop,Math.max(highlightLeft+density,topEnd),highlightTop,
+      new int[]{0x00f0f6fc,0xc8f6fbff,0x78eaf4fc,0x00eaf4fc},
+      new float[]{0f,.34f,.68f,1f},Shader.TileMode.CLAMP);
 
     float bottomStart=body.left+radius+straight*.36f;
     oppositeReflection.rewind();
@@ -140,7 +142,7 @@ class LiquidGlassDrawable extends Drawable {
     paint.setShader(broadReflection);canvas.drawRoundRect(body,radius,radius,paint);
     paint.setStyle(Paint.Style.STROKE);paint.setStrokeWidth(edgeWidth);
     paint.setShader(edgeTint);canvas.drawRoundRect(body,radius,radius,paint);
-    paint.setStrokeCap(Paint.Cap.ROUND);paint.setStrokeWidth(edgeWidth);
+    paint.setStrokeCap(Paint.Cap.ROUND);paint.setStrokeWidth(Math.max(1f,density));
     paint.setShader(mainGlint);canvas.drawPath(mainReflection,paint);
     paint.setStrokeWidth(Math.max(1f,.55f*density));
     paint.setShader(oppositeGlint);canvas.drawPath(oppositeReflection,paint);
