@@ -107,12 +107,13 @@ final class AppHub {
     boolean focused=page==CHAT&&a.focusActive(),dark=AppAppearance.dark();
     if(marked&&markedPage==page&&markedFocus==focused&&markedDark==dark)return;
     marked=true;markedPage=page;markedFocus=focused;markedDark=dark;
-    // Quiet the native content between the floating controls. The glass still
-    // samples the independent panel; this fade belongs only to the footer.
+    // Keep the native scroll edge consistent outside and inside the clear lens.
+    // GlassBackdrop draws only this background, never the footer's controls.
     int surface=ReferenceUi.BG&0x00ffffff;
     bar.setBackground(page==CHAT?null:new android.graphics.drawable.GradientDrawable(
         android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM,
         new int[]{surface,0xed000000|surface,0xff000000|surface}));
+    panel.setScrollEdge(page==CHAT?null:bar);
     // Faded rows must not be activated through the empty gaps in the dock.
     bar.setClickable(page!=CHAT);bar.setFocusable(false);
     int selected=-1;for(int i=0;i<DESTINATIONS.length;i++)if(DESTINATIONS[i]==page)selected=i;

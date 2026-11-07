@@ -47,8 +47,9 @@ clearer hierarchy instead of increasing the material's opacity or shadow.
   above and 12 dp below, with unchanged keyboard/focus visibility rules.
 - Native workspaces fade content beneath the full footer toward the page
   background. This prevents sharp row actions from appearing between the pill
-  and reading circle. The glass continues sampling the independent native panel;
-  the fade is not part of that sample. Empty footer gaps consume touches so
+  and reading circle. The glass samples the independent native panel plus this
+  same background fade, so faded text cannot reappear dark inside the lens.
+  No footer controls are included in that sample. Empty footer gaps consume touches so
   faded rows cannot be activated through them; named navigation buttons keep
   their own actions and accessibility. Conversation layout stays unchanged.
 - Native network items share a grouped surface, so environment names lead and
@@ -107,8 +108,11 @@ height as bottom padding with `clipToPadding(false)`, so its last control can
 still scroll above the navigation. Original padding is retained and not added
 repeatedly. The navigation views never change their parent during page changes.
 
-`GlassBackdrop` records only the independent native panel. The footer and Gecko
-are never in that source. Source invalidation/scroll/layout increases a revision
+`GlassBackdrop` records the independent native panel and the navigation bar's
+existing scroll-edge background Drawable. It never draws the footer View tree,
+controls, feedback notice or Gecko. A weak reference and a layout listener keep
+the shared background's coordinates current; palette changes also invalidate the
+source, and detach removes the listener. Source invalidation/scroll/layout increases a revision
 and invalidates weakly registered glass controls; there is no pre-draw loop or
 idle timer. Capture and notification have re-entry guards. Recordings are
 bounded to the glass region plus 18 dp overscan and cached by source, revision,
@@ -125,7 +129,10 @@ Earlier actual API 35 captures confirmed the AGSL and native recording paths,
 but the material still read as a soft raised control on white and overly milky
 over native content. This revision reduces the central white layers, narrows
 the side reflection and separates fixed environment light from local touch
-light. The footer fade remains in place. Final images and runtime evidence must
+light. The first clear-material capture (`70571f94`) exposed dark blurred text
+inside the lens where the surrounding footer had already faded that same text.
+Sampling the existing fade with the native panel fixes that mismatch while
+retaining the clearer coating and touch response. Final images and runtime evidence must
 be checked for this exact commit, not inferred from an earlier successful build.
 
 ### Conversation and compatibility boundaries

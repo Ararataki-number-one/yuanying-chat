@@ -11,16 +11,21 @@ import android.view.ViewGroup;
 import android.view.ViewParent;
 import android.view.ViewTreeObserver;
 import android.widget.FrameLayout;
+import java.lang.ref.WeakReference;
 import java.util.Collections;
 import java.util.Set;
 import java.util.WeakHashMap;
 
-/** Native page content only. Glass controls are siblings, never part of this source. */
+/** Native page and its scroll-edge fade. Glass controls never enter this source. */
 final class GlassBackdrop extends FrameLayout {
   private final Set<View> controls=Collections.newSetFromMap(new WeakHashMap<>());
-  private final int[] sourceLocation=new int[2],controlLocation=new int[2];
+  private final int[] sourceLocation=new int[2],controlLocation=new int[2],edgeLocation=new int[2];
   private final ViewTreeObserver.OnScrollChangedListener scrollListener=this::sourceChanged;
+  private final OnLayoutChangeListener edgeLayoutListener=(v,l,t,r,b,ol,ot,or,ob)->{
+    if(l!=ol||t!=ot||r!=or||b!=ob)sourceChanged();
+  };
   private ViewTreeObserver observedTree;
+  private WeakReference<View> scrollEdge;
   private boolean glassActive,recording,notifying;
   private long sourceRevision;
 
@@ -37,6 +42,18 @@ final class GlassBackdrop extends FrameLayout {
   }
 
   long revision(){return sourceRevision;}
+
+  /** Share the visible native scroll-edge background without recording its controls. */
+  void setScrollEdge(View edge){
+    View previous=scrollEdge==null?null:scrollEdge.get();
+    if(previous!=edge){
+      if(previous!=null)previous.removeOnLayoutChangeListener(edgeLayoutListener);
+      scrollEdge=edge==null?null:new WeakReference<>(edge);
+      if(edge!=null&&isAttachedToWindow())edge.addOnLayoutChangeListener(edgeLayoutListener);
+    }
+    // Palette changes may replace the background while retaining the same View.
+    sourceChanged();
+  }
 
   /** Keeps the public navigation views and their click/press dispatch unchanged. */
   void bindControls(View root){
@@ -61,7 +78,7 @@ final class GlassBackdrop extends FrameLayout {
   }
 
   /**
-   * Records only this native page into the caller's already bounded render target.
+   * Records this native page and its scroll-edge fade into the bounded target.
    * The caller owns clearing, clipping, RenderNode allocation and cache lifetime.
    */
   boolean drawBehind(Canvas canvas,View host,float margin){
@@ -73,8 +90,25 @@ final class GlassBackdrop extends FrameLayout {
     int saved=canvas.save();recording=true;
     try{
       canvas.translate(margin+sourceLocation[0]-controlLocation[0],margin+sourceLocation[1]-controlLocation[1]);
-      super.draw(canvas);return true;
+      super.draw(canvas);drawScrollEdge(canvas);return true;
     }finally{recording=false;canvas.restoreToCount(saved);}
+  }
+
+  private void drawScrollEdge(Canvas canvas){
+    View edge=scrollEdge==null?null:scrollEdge.get();
+    if(edge==null||!edge.isAttachedToWindow()||!edge.isShown()
+        ||edge.getWindowToken()!=getWindowToken()||isInsideSource(edge))return;
+    Drawable background=edge.getBackground();
+    if(background==null||edge.getWidth()<=0||edge.getHeight()<=0)return;
+    edge.getLocationInWindow(edgeLocation);
+    int saved=canvas.save();
+    try{
+      canvas.translate(edgeLocation[0]-sourceLocation[0],edgeLocation[1]-sourceLocation[1]);
+      canvas.clipRect(0,0,edge.getWidth(),edge.getHeight());
+      // Only the existing background is drawn: no footer, glyphs or feedback.
+      // Text faded outside the lens must not reappear dark inside the lens.
+      background.draw(canvas);
+    }finally{canvas.restoreToCount(saved);}
   }
 
   private boolean isInsideSource(View view){
@@ -118,11 +152,15 @@ final class GlassBackdrop extends FrameLayout {
 
   @Override protected void onAttachedToWindow(){
     super.onAttachedToWindow();observedTree=getViewTreeObserver();
+    View edge=scrollEdge==null?null:scrollEdge.get();
+    if(edge!=null)edge.addOnLayoutChangeListener(edgeLayoutListener);
     observedTree.addOnScrollChangedListener(scrollListener);sourceChanged();
   }
 
   @Override protected void onDetachedFromWindow(){
     if(observedTree!=null&&observedTree.isAlive())observedTree.removeOnScrollChangedListener(scrollListener);
+    View edge=scrollEdge==null?null:scrollEdge.get();
+    if(edge!=null)edge.removeOnLayoutChangeListener(edgeLayoutListener);
     observedTree=null;super.onDetachedFromWindow();sourceChanged();
   }
 
