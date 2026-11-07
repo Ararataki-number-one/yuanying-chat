@@ -51,8 +51,41 @@ final class DesignUi {
   };}
   static void addCard(LinearLayout parent,View card){LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(-1,-2);p.topMargin=dp(parent.getContext(),10);parent.addView(card,p);}
   static final class ActionButton extends Button {
+    private View pressedSurface;
     ActionButton(Context c){super(c);}
     @Override public void setEnabled(boolean enabled){super.setEnabled(enabled);setAlpha(enabled?1f:.45f);}
+    /** Optional visual parent; ordinary buttons keep their existing behavior. */
+    void pressedSurface(View surface){
+      if(pressedSurface==surface)return;
+      if(pressedSurface!=null&&pressedSurface.isPressed())pressedSurface.setPressed(false);
+      pressedSurface=surface;forwardPressedState();
+    }
+    @Override protected void drawableStateChanged(){
+      super.drawableStateChanged();forwardPressedState();
+      // A delayed native release can arrive after the reading action hides the bar.
+      if(!isShown()||getWindowVisibility()!=VISIBLE){
+        GlassMotion.reset(this);if(pressedSurface!=null)GlassMotion.reset(pressedSurface);
+      }
+    }
+    private void forwardPressedState(){
+      if(pressedSurface==null)return;
+      boolean enabled=isEnabled(),pressed=enabled&&isPressed();
+      if(pressedSurface.isEnabled()!=enabled)pressedSurface.setEnabled(enabled);
+      // A parent also propagates released state to its children: compare first.
+      if(pressedSurface.isPressed()!=pressed)pressedSurface.setPressed(pressed);
+    }
+    @Override public void drawableHotspotChanged(float x,float y){
+      super.drawableHotspotChanged(x,y);
+      if(pressedSurface!=null&&getParent()==pressedSurface)pressedSurface.drawableHotspotChanged(x+getLeft(),y+getTop());
+    }
+    @Override public void onVisibilityAggregated(boolean visible){
+      super.onVisibilityAggregated(visible);
+      if(!visible){GlassMotion.reset(this);if(pressedSurface!=null)GlassMotion.reset(pressedSurface);}
+    }
+    @Override protected void onDetachedFromWindow(){
+      if(pressedSurface!=null&&pressedSurface.isPressed())pressedSurface.setPressed(false);
+      super.onDetachedFromWindow();
+    }
   }
   static int actionWidth(Button button,int minimumDp){return Math.max(dp(button.getContext(),minimumDp),(int)Math.ceil(button.getPaint().measureText(button.getText().toString()))+button.getCompoundPaddingLeft()+button.getCompoundPaddingRight()+dp(button.getContext(),2));}
   static Button button(Context c,String title,boolean primary,Runnable action){

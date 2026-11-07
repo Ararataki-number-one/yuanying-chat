@@ -64,11 +64,14 @@ final class ReferenceUi {
       }
     };
     row.setGravity(Gravity.CENTER_VERTICAL);row.setClipChildren(false);row.setClipToPadding(false);
-    LinearLayout dock=DesignUi.row(a);dock.setPadding(dp(a,5),dp(a,2),dp(a,5),dp(a,2));
+    GlassDock dock=new GlassDock(a);dock.setPadding(dp(a,5),dp(a,2),dp(a,5),dp(a,2));
     dock.setBackground(DesignUi.glass(a,radius));dock.setElevation(dp(a,3));
     row.addView(dock,new LinearLayout.LayoutParams(0,height,1));
     // Destinations share one pill; reading stays an independent mode control.
-    FrameLayout reading=new FrameLayout(a);reading.setBackground(DesignUi.glass(a,radius));reading.setElevation(dp(a,3));
+    FrameLayout reading=new FrameLayout(a){
+      @Override public void onVisibilityAggregated(boolean visible){super.onVisibilityAggregated(visible);if(!visible)GlassMotion.reset(this);}
+    };
+    reading.setBackground(DesignUi.glass(a,radius));reading.setElevation(dp(a,3));GlassMotion.press(reading,true);
     LinearLayout.LayoutParams readingLayout=new LinearLayout.LayoutParams(height,height);readingLayout.setMarginStart(dp(a,12));row.addView(reading,readingLayout);
     for(int i=0;i<DesignUi.NAV.length;i++){
       final int n=i;Button b=link(a,DesignUi.NAV[i],()->action.accept(n));b.setTextSize(11);b.setSingleLine(true);b.setGravity(Gravity.CENTER);
@@ -80,13 +83,31 @@ final class ReferenceUi {
       Ui.Icon icon=new Ui.Icon(DesignUi.GLYPHS[i],DesignUi.GLASS_MUTED);icon.setBounds(0,0,iconSize,iconSize);
       b.setCompoundDrawables(null,icon,null,null);b.setCompoundDrawablePadding(dp(a,3));
       b.addOnLayoutChangeListener((v,l,t,r,bottom,ol,ot,or,ob)->centerDockContents((Button)v));
-      if(i==WorkspaceNavigation.READING)reading.addView(b,new FrameLayout.LayoutParams(-1,-1));
-      else dock.addView(b,new LinearLayout.LayoutParams(0,-1,1));
+      b.setBackground(navFeedback(a,i==WorkspaceNavigation.READING,radius));
+      if(i==WorkspaceNavigation.READING){
+        reading.addView(b,new FrameLayout.LayoutParams(-1,-1));
+        ((DesignUi.ActionButton)b).pressedSurface(reading);
+      }else{
+        dock.addView(b,new LinearLayout.LayoutParams(0,-1,1));GlassMotion.press(b,false);
+      }
       buttons[i]=b;
     }
     bar.addView(row,new LinearLayout.LayoutParams(-1,-2));markNav(buttons,selected);return bar;
   }
   private static int navHeightDp(Context c){return Math.max(56,(int)Math.ceil(34+22*c.getResources().getConfiguration().fontScale));}
+  private static Drawable navFeedback(Context context,boolean reading,int readingRadius){
+    int radius=reading?readingRadius:23;
+    Drawable content;
+    if(reading){
+      GradientDrawable wash=new GradientDrawable();wash.setCornerRadius(dp(context,radius));
+      wash.setColor(new ColorStateList(new int[][]{{android.R.attr.state_selected},{}},new int[]{0x142468f2,0x092468f2}));
+      // The parent glass supplies the reading ripple, so it follows the whole circle.
+      content=wash;
+    }else content=new AppAppearance.GlassRipple(surface(context,Color.TRANSPARENT,radius,Color.TRANSPARENT),surface(context,Color.WHITE,radius,Color.TRANSPARENT));
+    return new InsetDrawable(content,dp(context,LiquidGlassDrawable.INSET_DP+1)){
+      @Override public boolean getPadding(Rect padding){padding.setEmpty();return false;}
+    };
+  }
   private static void centerDockContents(Button b){
     Drawable icon=b.getCompoundDrawables()[1];if(icon==null||b.getHeight()==0)return;
     // TextView pins a top compound drawable to its padding. Center the complete
@@ -98,19 +119,15 @@ final class ReferenceUi {
   }
   static void markNav(Button[] tabs,int selected){
     if(tabs==null)return;
+    GlassDock dock=null;
     for(int i=0;i<tabs.length;i++){
       Button b=tabs[i];if(b==null)continue;boolean active=i==selected;
-      b.setSelected(active);b.setTextColor(active?DesignUi.BLUE:DesignUi.GLASS_MUTED);
-      // Only the active destination receives a quiet blue wash; the glass stays clear.
-      int tint=active?0x142468f2:Color.TRANSPARENT;
-      int radius=i==WorkspaceNavigation.READING?(navHeightDp(b.getContext())+1)/2:23;
-      Drawable feedback=new AppAppearance.GlassRipple(surface(b.getContext(),tint,radius,Color.TRANSPARENT),surface(b.getContext(),Color.WHITE,radius,Color.TRANSPARENT));
-      InsetDrawable inset=new InsetDrawable(feedback,dp(b.getContext(),LiquidGlassDrawable.INSET_DP+1)){
-        @Override public boolean getPadding(Rect padding){padding.setEmpty();return false;}
-      };
-      b.setBackground(inset);centerDockContents(b);
-      Drawable icon=b.getCompoundDrawables()[1];if(icon instanceof Ui.Icon)((Ui.Icon)icon).color=active?DesignUi.BLUE:DesignUi.GLASS_MUTED;b.invalidate();
+      int ink=active||i==WorkspaceNavigation.READING?DesignUi.BLUE:DesignUi.GLASS_MUTED;
+      b.setSelected(active);b.setTextColor(ink);
+      Drawable icon=b.getCompoundDrawables()[1];if(icon instanceof Ui.Icon)((Ui.Icon)icon).color=ink;b.invalidate();
+      if(b.getParent() instanceof GlassDock)dock=(GlassDock)b.getParent();
     }
+    if(dock!=null)dock.selectionChanged();
   }
   static void insets(Activity a,View root){insets(a,root,null);}
   static void insets(Activity a,View root,java.util.function.Consumer<Boolean> keyboard){

@@ -52,6 +52,7 @@ final class DesignChrome {
     compactTitle.setBackground(DesignUi.glass(a,16));
     compactTitle.setDuplicateParentStateEnabled(true);
     compactTitle.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+    GlassMotion.press(compactTitle,false);
     FrameLayout.LayoutParams compactLabel=new FrameLayout.LayoutParams(-2,Math.max(a.dp(32),textHeight(compactTitle)+a.dp(8)),Gravity.CENTER);
     compactLabel.leftMargin=a.dp(16);compactLabel.rightMargin=a.dp(16);
     compact.addView(compactTitle,compactLabel);
@@ -72,6 +73,7 @@ final class DesignChrome {
     title.setCompoundDrawables(addressIcon,null,null,null);title.setCompoundDrawablePadding(a.dp(8));
     centerCapsuleContents(title,16);
     title.setBackground(DesignUi.glass(a,22));title.setElevation(a.dp(2));
+    GlassMotion.press(title,false);
     title.setContentDescription("当前环境："+profileName+"，点按输入网址，长按切换环境");
     addressCapsule(title);
 
@@ -200,6 +202,13 @@ final class DesignChrome {
   private final class CollapsingToolbar extends LinearLayout {
     boolean sequence;
     CollapsingToolbar(){super(a);}
+    @Override public void onVisibilityAggregated(boolean visible){
+      super.onVisibilityAggregated(visible);
+      if(!visible){
+        if(title!=null)GlassMotion.reset(title);
+        if(compactTitle!=null)GlassMotion.reset(compactTitle);
+      }
+    }
     @Override public boolean dispatchTouchEvent(MotionEvent event){
       int action=event.getActionMasked();if(action==MotionEvent.ACTION_DOWN)sequence=gestureAllowed(false);
       boolean owned=sequence;int result=gestureEvent(event,false);boolean handled;
@@ -214,6 +223,7 @@ final class DesignChrome {
 
   private void setCollapsed(boolean value){
     if(collapsed==value)return;collapsed=value;
+    GlassMotion.reset(title);GlassMotion.reset(compactTitle);
     // Never leave hidden expanded controls' touch delegates over the compact label.
     touchTargets=null;a.toolbar.setTouchDelegate(null);
     compact.setVisibility(value?View.VISIBLE:View.GONE);

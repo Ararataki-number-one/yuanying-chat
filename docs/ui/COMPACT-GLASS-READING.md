@@ -34,7 +34,10 @@ action handlers remain unchanged. A subsequent visual review found the paired
 edges and lower bevel still resembled a raised plastic button. The current
 revision removes that second rim and continuous bevel, softens the exterior
 shadow, and uses regular 11 sp dock labels with 20 dp icons (19 dp for the
-optically wider book). Inactive icons and labels share the same muted ink.
+optically wider book). Inactive destination icons and labels share the same
+muted ink. The separate reading action uses the product blue with a very pale
+blue interior, giving the quiet layout one accent without marking reading as
+active.
 
 The latest material reference is [Glasswork](https://github.com/kubai087/glasswork),
 whose [material CSS](https://github.com/kubai087/glasswork/blob/main/glass.css)
@@ -104,6 +107,30 @@ notifications do not rebuild the selection backgrounds. If no environment is
 available, the global network/reading actions return to environment management
 instead of choosing an arbitrary slot.
 
+## Motion and feedback
+
+Feedback is tied to actual input and navigation changes. There is no idle
+floating, pulsing or repeating highlight animation.
+
+- The address capsules and ordinary dock controls compress slightly on press
+  (0.98 scale, about 100 ms) and settle on release (about 240 ms).
+- The separate reading surface has a slightly more expressive response
+  (0.94 scale and a 1.5-degree tilt, settling in about 260 ms). Its blue accent
+  identifies an available action; the native selected state still reports
+  whether focus reading is actually active.
+- One faint blue selection background moves between the three destination
+  buttons when the real selected page changes. First selection fades in;
+  returning to the conversation fades out. Ordinary conversation remains
+  unselected.
+
+These effects do not consume touch events, replace click/long-press handlers,
+or delay navigation. Rapid input retargets the current animation. Disabled or
+detached controls reset, and disabled system animations use direct state
+changes. Real layout changes settle the selection shape, and hidden controls
+are returned to their resting transform. The dock also settles delayed native
+release callbacks received while hidden; no repeating animation is scheduled.
+The original control frames remain the layout and accessibility targets.
+
 ## Validation and delivery status
 
 Validated in the host environment:
@@ -132,8 +159,13 @@ has no configured VPN or live website content. It is visual review evidence, not
 physical-phone, network, performance, or full interaction acceptance.
 
 Material revisions are reviewed against that baseline with the same
-diagnostic. The capture runs in light mode at font scale 1.0; dark mode, transient
-press feedback and large-font behavior are outside this screenshot's evidence.
+diagnostic. The capture runs in light mode at font scale 1.0; dark mode and
+large-font behavior are outside this screenshot's evidence. A separate optional
+screenrecord in the same source-bound run demonstrates native short presses,
+destination changes and a cancelled reading gesture. It records the actual
+screen at half resolution and retains the original MP4 with its hash; it is
+not a rendered mockup or a measurement of frame rate or touch latency. Static
+screenshot success and optional recording success are reported separately.
 The existing full host job also has historical-input and frozen-fixture failures,
 so a successful Android screenshot does not make the entire PR green.
 
