@@ -152,6 +152,26 @@ jobs:
           set -euo pipefail
           mkdir -p work/glass-navigation
           exec > >(tee work/glass-navigation/setup.log) 2>&1
+          cat > work/glass-navigation/host-resources.sh <<'SH'
+          set -u
+          date -u
+          free -m
+          ps -eo pid,ppid,stat,rss,comm --sort=-rss
+          cat /proc/self/cgroup
+          task_glass_cgroup=$(awk -F: '$1 == "0" {print $3}' /proc/self/cgroup)
+          for task_glass_group in "/sys/fs/cgroup${task_glass_cgroup:-/}" /sys/fs/cgroup; do
+            for task_glass_counter in memory.current memory.max memory.peak memory.events; do
+              task_glass_file="$task_glass_group/$task_glass_counter"
+              if [ -r "$task_glass_file" ]; then
+                printf '%s\n' "$task_glass_file"
+                cat "$task_glass_file"
+              fi
+            done
+          done
+          SH
+          bash work/glass-navigation/host-resources.sh > work/glass-navigation/resources-before-gradle-stop.txt
+          timeout 60 work/profile-build/gradle/gradle-9.8.0/bin/gradle --stop --console=plain 2>&1 | tee work/glass-navigation/gradle-stop.log
+          bash work/glass-navigation/host-resources.sh > work/glass-navigation/resources-after-gradle-stop.txt
           test -c /dev/kvm
           sudo chmod a+rw /dev/kvm
           python3 tools/gecko/prepare_android_image.py --component emulator --sdk-root "$ANDROID_HOME" --cache work/glass-navigation/packages --report work/glass-navigation/emulator-package.json
@@ -172,11 +192,27 @@ jobs:
           lines = [line for line in path.read_text().splitlines() if line.split('=', 1)[0] not in display]
           path.write_text('\n'.join(lines + [key + '=' + value for key, value in display.items()]) + '\n')
           PY
-          "$ANDROID_HOME/emulator/emulator" -avd glassnavigation -no-window -no-audio -no-snapshot -no-boot-anim -no-metrics -accel on -port 5554 -gpu swiftshader -memory 3072 -cores 2 > work/glass-navigation/emulator.log 2>&1 &
-          echo "$!" > work/glass-navigation/emulator.pid
+          cat > work/glass-navigation/emulator-supervisor.sh <<'SH'
+          set -uo pipefail
+          "$ANDROID_HOME/emulator/emulator" -avd glassnavigation -no-window -no-audio -no-snapshot -no-boot-anim -no-metrics -accel on -port 5554 -gpu swiftshader -memory 3072 -cores 2 < /dev/null > work/glass-navigation/emulator.log 2>&1 &
+          task_glass_pid=$!
+          printf '%s\n' "$task_glass_pid" > work/glass-navigation/emulator.pid
+          printf 'emulator_pid=%s\n' "$task_glass_pid"
+          if wait "$task_glass_pid"; then task_glass_exit=0; else task_glass_exit=$?; fi
+          printf '%s\n' "$task_glass_exit" > work/glass-navigation/emulator-exit.txt
+          printf 'emulator_exit=%s\n' "$task_glass_exit"
+          exit "$task_glass_exit"
+          SH
+          nohup bash work/glass-navigation/emulator-supervisor.sh < /dev/null > work/glass-navigation/emulator-supervisor.log 2>&1 &
+          timeout 5 bash -c 'until [ -s work/glass-navigation/emulator.pid ]; do sleep 0.1; done'
+          task_glass_pid=$(cat work/glass-navigation/emulator.pid)
+          kill -0 "$task_glass_pid"
+          test ! -f work/glass-navigation/emulator-exit.txt
           timeout 60 "$ANDROID_HOME/platform-tools/adb" -s emulator-5554 wait-for-device
           task_glass_booted=false
           for task_glass_attempt in $(seq 1 120); do
+            kill -0 "$task_glass_pid"
+            test ! -f work/glass-navigation/emulator-exit.txt
             if [ "$(timeout 5 "$ANDROID_HOME/platform-tools/adb" -s emulator-5554 shell getprop sys.boot_completed | tr -d '\r')" = 1 ]; then
               task_glass_booted=true
               break
@@ -190,6 +226,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          task_glass_pid=$(cat work/glass-navigation/emulator.pid)
+          kill -0 "$task_glass_pid"
+          test ! -f work/glass-navigation/emulator-exit.txt
+          test "$(timeout 5 "$ANDROID_HOME/platform-tools/adb" -s emulator-5554 get-state)" = device
           python3 tools/gecko/capture_glass_navigation.py \
             --root "$PWD" --apk app/build/outputs/apk/integration/app-x86_64-integration.apk \
             --build-work work/profile-build --adb "$ANDROID_HOME/platform-tools/adb" \
@@ -200,6 +240,10 @@ jobs:
         if: ${{ always() && (github.head_ref || github.ref_name) == 'codex/compact-glass-reading' }}
         shell: bash
         run: |
+          if [ -f work/glass-navigation/host-resources.sh ]; then
+            bash work/glass-navigation/host-resources.sh > work/glass-navigation/resources-after-capture.txt 2>&1 || true
+            sudo dmesg --color=never | rg -i 'oom|out of memory|kill' > work/glass-navigation/kernel-oom.txt || true
+          fi
           if [ -f work/glass-navigation/emulator.pid ]; then
             timeout 15 "$ANDROID_HOME/platform-tools/adb" -s emulator-5554 logcat -d -s 'PocketUiVisual:I' 'AndroidRuntime:E' '*:S' > work/glass-navigation/final-logcat.txt 2>&1 || true
             timeout 10 "$ANDROID_HOME/platform-tools/adb" -s emulator-5554 emu kill > work/glass-navigation/emulator-stop.txt 2>&1 || true
@@ -207,6 +251,10 @@ jobs:
             if kill -0 "$task_glass_pid" 2>/dev/null; then
               kill "$task_glass_pid" 2>/dev/null || true
             fi
+            for task_glass_attempt in $(seq 1 20); do
+              if [ -f work/glass-navigation/emulator-exit.txt ]; then break; fi
+              sleep 0.25
+            done
           fi
       - name: Upload glass screenshots and source evidence
         if: ${{ always() && (github.head_ref || github.ref_name) == 'codex/compact-glass-reading' }}
