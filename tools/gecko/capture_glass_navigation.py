@@ -6,6 +6,7 @@ acceptance workload. The ordinary integration APK starts its actual MainActivity
 with the existing local, unconfigured visual fixture. No website, account, WAN
 connection, physical phone or performance acceptance is claimed.
 The optional recording is a visual-review artifact, not animation acceptance.
+An additional native-network screenshot runs after recording, with its own status.
 """
 import argparse
 import hashlib
@@ -432,6 +433,157 @@ def capture_motion(args, report, capture, adb, wait_for):
     save()
 
 
+def capture_native_backdrop_preview(args, report, capture, adb, wait_for, tap, screenshot):
+    """Photograph the actual native workspace after the bounded movie has ended."""
+    preview = report['nativeBackdropPreview']
+    preview.update(status='started', startedAtUnixNs=time.time_ns(),
+        runNonce=report['runNonce'], sourceCommit=report['buildIdentity']['sourceCommit'],
+        apkSha256=report['installedApk']['sha256'], firstInputIndex=len(report['inputs']),
+        scene='actual-main-activity-native-network', imageCaptured=False,
+        returnedToOrdinaryChat=False, errors=[],
+        scope='Real native workspace and original device PNG; no website, WAN or GPU acceptance.')
+    network_tapped = False
+    network_observed = False
+
+    def chat(xml):
+        return (navigation(xml) is not None and expanded(xml) and capsule(xml) is not None
+                and not nodes(xml, lambda node: node.get('text') in ('打开网址', '退出阅读')))
+
+    def known_screen(xml):
+        return chat(xml) or selected_navigation(xml, '网络') or selected_navigation(xml, '下载')
+
+    def back_to_chat(reason, name):
+        action = dict(action='keyevent', keyCode=4, reason=reason,
+                      phase='native-backdrop-preview', atUnixNs=time.time_ns())
+        report['inputs'].append(action)
+        adb('shell', 'input', 'keyevent', '4', timeout=6)
+        action['completedAtUnixNs'] = time.time_ns()
+        return wait_for(capture, chat, name, seconds=15)
+
+    def failure(error, stage):
+        preview['errors'].append(dict(stage=stage, errorType=type(error).__name__, error=str(error)))
+
+    try:
+        xml = wait_for(capture, known_screen, 'native-backdrop-initial', seconds=15)
+        initial_name = 'native-backdrop-initial.xml'
+        if not chat(xml):
+            # An optional movie failure may leave one of these observed native
+            # pages open. Recover only from a recognized page, never a dialog.
+            xml = back_to_chat('Restore the observed native workspace before the separate still preview',
+                               'native-backdrop-chat-before')
+            initial_name = 'native-backdrop-chat-before.xml'
+            preview['restoredChatBeforePreview'] = True
+        preview['initialChatHierarchy'] = dict(file=initial_name, sha256=sha(args.out / initial_name))
+        tap(button(xml, '网络'), 'Open the actual native network workspace for a separate backdrop screenshot')
+        network_tapped = True
+        xml = wait_for(capture, lambda value: selected_navigation(value, '网络'),
+                       'native-backdrop-network-selected', seconds=15)
+        network_observed = True
+        # Wait for the existing native content, without inserting fixture rows
+        # or pressing any connect, verification, import or network-test control.
+        ready = lambda value: (selected_navigation(value, '网络')
+            and bool(nodes(value, lambda node: node.get('class') == 'android.widget.ScrollView'))
+            and not nodes(value, lambda node: node.get('text', '').startswith('正在读取窗口网络')))
+        xml = wait_for(capture, ready, 'native-backdrop-network-before-scroll', seconds=20)
+        scrolls = nodes(xml, lambda node: node.get('class') == 'android.widget.ScrollView'
+                        and node.get('scrollable') == 'true')
+        preview['scroll'] = dict(inputIssued=False, observedScrollableViews=len(scrolls))
+        if len(scrolls) == 1:
+            box = bounds(scrolls[0])
+            nav_top = min(bounds(button(xml, label))[1] for label in LABELS)
+            safe_top = box[1] + DENSITY // 10
+            safe_bottom = min(box[3], nav_top) - DENSITY // 10
+            if box[2] - box[0] >= 144 and safe_bottom - safe_top >= 288:
+                x = (box[0] + box[2]) // 2
+                height = safe_bottom - safe_top
+                start_y, end_y = safe_top + height * 3 // 4, safe_top + height // 3
+                action = dict(action='swipe', phase='native-backdrop-preview',
+                    reason='Scroll the observed native content once above the floating navigation',
+                    start=[x, start_y], end=[x, end_y], durationMillis=400,
+                    observedScrollViewBounds=list(box), observedNavigationTop=nav_top,
+                    hierarchySource='native-backdrop-network-before-scroll.xml', atUnixNs=time.time_ns())
+                report['inputs'].append(action)
+                adb('shell', 'input', 'touchscreen', 'swipe', str(x), str(start_y), str(x), str(end_y),
+                    '400', timeout=6)
+                action['completedAtUnixNs'] = time.time_ns()
+                preview['scroll'].update(inputIssued=True, input=action)
+            else:
+                preview['scroll']['skipReason'] = 'No sufficiently large gesture area above the actual navigation'
+        else:
+            preview['scroll']['skipReason'] = 'No unique scrollable native ScrollView'
+        xml = wait_for(capture, ready, 'native-network-glass', seconds=15)
+        preview['hierarchy'] = dict(file='native-network-glass.xml', sha256=sha(args.out / 'native-network-glass.xml'),
+            selectedNavigation='网络', bounds={label: list(bounds(button(xml, label))) for label in LABELS})
+        activity = adb('shell', 'dumpsys', 'activity', 'activities', timeout=10).decode('utf-8', 'replace')
+        (args.out / 'native-network-activity.txt').write_text(activity)
+        resumed = [line.strip() for line in activity.splitlines()
+                   if 'mResumedActivity' in line or 'topResumedActivity' in line]
+        if not any(PACKAGE + '/local.pocketchat.MainActivity' in line for line in resumed):
+            raise ValueError('The native backdrop preview is not in the actual MainActivity')
+        preview['resumedActivity'] = resumed
+        preview['stillSettleMillis'] = 600
+        time.sleep(.6)
+        screenshot('native-network-glass.png')
+        preview['screenshot'] = dict(report['screenshots'][-1])
+        if (preview['screenshot']['width'], preview['screenshot']['height']) != (WIDTH, HEIGHT):
+            raise ValueError('Native preview PNG dimensions differ from the configured physical screen')
+        preview['imageCaptured'] = True
+    except Exception as error:
+        failure(error, 'native-network-capture')
+    finally:
+        try:
+            if network_tapped:
+                if not network_observed:
+                    recovery = wait_for(capture, known_screen, 'native-backdrop-recovery', seconds=10)
+                    network_observed = not chat(recovery)
+                if network_observed:
+                    back_to_chat('Return from the separate native backdrop preview to the existing chat',
+                                 'native-backdrop-returned-chat')
+                else:
+                    wait_for(capture, chat, 'native-backdrop-returned-chat', seconds=10)
+                preview['returnedToOrdinaryChat'] = True
+                preview['returnedChatHierarchy'] = dict(file='native-backdrop-returned-chat.xml',
+                    sha256=sha(args.out / 'native-backdrop-returned-chat.xml'))
+        except Exception as error:
+            failure(error, 'return-to-chat')
+        preview['status'] = ('captured' if preview['imageCaptured'] and preview['returnedToOrdinaryChat']
+                             and not preview['errors'] else 'failed')
+        preview['lastInputIndexExclusive'] = len(report['inputs'])
+        preview['completedAtUnixNs'] = time.time_ns()
+        write(args.out / 'capture.json', report)
+
+
+def collect_glass_lens_logs(args, report, adb):
+    """Keep observed runtime messages as diagnostics, never as image/GPU proof."""
+    diagnostic = report['glassLensDiagnostics']
+    diagnostic.update(status='collecting', runNonce=report['runNonce'],
+        startedAtUnixNs=time.time_ns(), gpuRenderingVerified=False,
+        scope='Logcat history for the observed application PID; review PNG/MP4 independently. Missing errors do not establish success.')
+    try:
+        raw_pids = adb('shell', 'pidof', PACKAGE, timeout=5, check=False).decode().strip()
+        pids = raw_pids.split() if re.fullmatch(r'[1-9][0-9]*(?:\s+[1-9][0-9]*)*', raw_pids) else []
+        raw = adb('logcat', '-d', '-v', 'threadtime', '-s', 'GlassLens:V', '*:S', timeout=10)
+        path = args.out / 'glass-lens-logcat.txt'
+        path.write_bytes(raw)
+        observed = []
+        for line in raw.decode('utf-8', 'replace').splitlines():
+            match = re.match(r'^\d\d-\d\d\s+\d\d:\d\d:\d\d\.\d+\s+(\d+)\s+\d+\s+([VDIWEFAS])\s+GlassLens\s*:\s?(.*)$', line)
+            if match and match.group(1) in pids:
+                observed.append((match.group(2), match.group(3), line))
+        notices = [line for priority, message, line in observed
+                   if priority in 'WEFA' or 'fallback' in message.lower()]
+        diagnostic.update(status='collected', file=path.name, bytes=len(raw), sha256=sha(path),
+            observedAppPids=pids, currentAppMessageCount=len(observed),
+            observedAgslMaterialReady=any('AGSL material ready' in message for _, message, _ in observed),
+            observedNativeBackdropRecorded=any('native backdrop recorded' in message for _, message, _ in observed),
+            fallbackOrErrorCount=len(notices), fallbackOrErrorLines=notices[:40],
+            fallbackOrErrorLinesTruncated=len(notices) > 40)
+    except Exception as error:
+        diagnostic.update(status='failed', errorType=type(error).__name__, error=str(error))
+    finally:
+        diagnostic['completedAtUnixNs'] = time.time_ns()
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--root', type=Path, default=Path(__file__).resolve().parents[2])
@@ -455,7 +607,11 @@ def main():
                   staticScreenshotStatus='pending',
                   motionReport=dict(status='not-attempted', optional=True,
                                     applicationAcceptance=False, physicalPhoneAcceptance=False,
-                                    wanAcceptance=False, performanceMeasurement=False))
+                                    wanAcceptance=False, performanceMeasurement=False),
+                  nativeBackdropPreview=dict(status='not-attempted', optional=True,
+                                             applicationAcceptance=False, physicalPhoneAcceptance=False,
+                                             wanAcceptance=False, gpuRenderingVerified=False),
+                  glassLensDiagnostics=dict(status='not-attempted', gpuRenderingVerified=False))
 
     def command(parts, timeout=45, check=True):
         row = dict(command=list(map(str, parts)), startedAtUnixNs=time.time_ns())
@@ -612,9 +768,16 @@ def main():
             capture_motion(args, report, capture, adb, wait_for)
         except Exception as error:
             report['motionReport'].update(status='failed', errorType=type(error).__name__, error=str(error))
+        # This separate still must not spend any of the original 20-second movie
+        # budget or turn a failed movie into a passed motion observation.
+        try:
+            capture_native_backdrop_preview(args, report, capture, adb, wait_for, tap, screenshot)
+        except Exception as error:
+            report['nativeBackdropPreview'].update(status='failed', errorType=type(error).__name__, error=str(error))
         print(json.dumps(dict(status='captured', sourceCommit=source,
             apkSha256=installed_sha, image='glass-navigation.png',
             motionStatus=report['motionReport']['status'],
+            nativeBackdropStatus=report['nativeBackdropPreview']['status'],
             scope='Actual Android MainActivity; local unconfigured environment, no live website'), ensure_ascii=False))
     except Exception as error:
         report.update(status='failed', staticScreenshotStatus='failed', errorType=type(error).__name__, error=str(error))
@@ -625,6 +788,8 @@ def main():
                 report['failureScreenshotError'] = str(capture_error)
         raise
     finally:
+        if device_ready:
+            collect_glass_lens_logs(args, report, adb)
         report['completedAtUnixNs'] = time.time_ns()
         write(args.out / 'capture.json', report)
 

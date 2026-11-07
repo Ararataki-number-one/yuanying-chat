@@ -3,20 +3,23 @@ package local.pocketchat;
 import android.content.*;
 import android.view.*;
 import android.widget.*;
+import java.util.WeakHashMap;
 
 /** Navigation preserves the live chat document while displaying native workspaces. */
 final class AppHub {
   static final int CHAT=0, DOWNLOADS=1, ENVIRONMENTS=2, SETTINGS=3, NETWORK=4;
   private static final int[] DESTINATIONS={ENVIRONMENTS,NETWORK,DOWNLOADS};
   final MainActivity a;
-  final LinearLayout root,bar,feedbackBar;
+  final LinearLayout root,bar,feedbackBar,footer;
   final TextView feedbackText;
   final View chat,divider;
-  final FrameLayout panel;
+  final FrameLayout workspace;
+  final GlassBackdrop panel;
   int page,settingsTab,networkTab,downloadFilter;
   long navigation;
   String rendered="";
   private int markedPage=-1;private boolean markedFocus,markedDark,marked;
+  private final WeakHashMap<ScrollView,ScrollPadding> scrollPadding=new WeakHashMap<>();
   final Button[] tabs=new Button[DesignUi.NAV.length];
   final NetworkWorkspaceUi networkWorkspace;
   DesignDownloads.Controller downloadController;
@@ -25,17 +28,28 @@ final class AppHub {
 
   AppHub(MainActivity a,LinearLayout root,View chat){
     this.a=a;this.root=root;this.chat=chat;
-    panel=new FrameLayout(a);panel.setVisibility(View.GONE);
-    root.addView(panel,new LinearLayout.LayoutParams(-1,0,1));
+    workspace=new FrameLayout(a);
+    panel=new GlassBackdrop(a);panel.setVisibility(View.GONE);
+    workspace.addView(panel,new FrameLayout.LayoutParams(-1,-1));
+    footer=DesignUi.column(a);
+    workspace.addView(footer,new FrameLayout.LayoutParams(-1,-2,Gravity.BOTTOM));
+    // Chat keeps its original measured navigation slot. Only native pages put
+    // their content behind the same footer; controls never change their parent.
+    root.addView(workspace,new LinearLayout.LayoutParams(-1,-2));
     feedbackBar=DesignUi.row(a);feedbackBar.setPadding(a.dp(14),a.dp(4),a.dp(14),a.dp(4));feedbackBar.setVisibility(View.GONE);
+    // This opaque notice now overlays page content; its empty area must not
+    // activate an obscured row beneath it. The close button keeps its action.
+    feedbackBar.setClickable(true);feedbackBar.setFocusable(false);
     feedbackText=DesignUi.text(a,"",13,DesignUi.TEXT);feedbackText.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
     feedbackBar.addView(feedbackText,new LinearLayout.LayoutParams(0,-2,1));
     Button close=DesignUi.button(a,"×",false,()->feedbackBar.setVisibility(View.GONE));close.setTextSize(20);close.setContentDescription("关闭提示");
     LinearLayout.LayoutParams cp=new LinearLayout.LayoutParams(a.dp(48),a.dp(48));cp.leftMargin=a.dp(8);feedbackBar.addView(close,cp);
-    root.addView(feedbackBar,new LinearLayout.LayoutParams(-1,-2));
-    divider=new View(a);root.addView(divider,new LinearLayout.LayoutParams(-1,0));
+    footer.addView(feedbackBar,new LinearLayout.LayoutParams(-1,-2));
+    divider=new View(a);footer.addView(divider,new LinearLayout.LayoutParams(-1,0));
     bar=ReferenceUi.nav(a,-1,n->{if(n==WorkspaceNavigation.READING)a.setFocusReading(!a.focusActive());else select(DESTINATIONS[n]);},tabs);
-    root.addView(bar,new LinearLayout.LayoutParams(-1,-2));networkWorkspace=new NetworkWorkspaceUi(a,panel);mark();
+    footer.addView(bar,new LinearLayout.LayoutParams(-1,-2));panel.bindControls(bar);
+    footer.addOnLayoutChangeListener((v,l,t,r,b,ol,ot,or,ob)->{if(b-t!=ob-ot)updateNativeInsets();});
+    networkWorkspace=new NetworkWorkspaceUi(a,panel);mark();
   }
   void updateTick(){if(!a.active||a.destroyed||page==CHAT)return;if(page==DOWNLOADS||page==NETWORK)refresh();a.handler.postDelayed(tick,2500);}
   void select(int target){
@@ -49,10 +63,43 @@ final class AppHub {
     if(target!=page||target==CHAT)feedbackBar.setVisibility(View.GONE);
     page=target;downloadsVisible(a.active);chat.setVisibility(page==CHAT?View.VISIBLE:View.GONE);if(page!=CHAT)a.designChrome.cancelWebGesture();
     if(a.chatDownloadProgress!=null)a.chatDownloadProgress.update();
-    a.status.setVisibility(View.GONE);panel.setVisibility(page==CHAT?View.GONE:View.VISIBLE);
+    a.status.setVisibility(View.GONE);workspaceMode();
     a.session.foreground(a.active);mark();a.updateReadingLayout();a.handler.removeCallbacks(tick);
     if(page!=CHAT){a.hideKeyboard();refresh();a.handler.postDelayed(tick,2500);}
     else{a.status(a.session.status);a.session.pageMemory.restorePending=true;if(a.session.networkReady&&MainActivity.chatUrl(a.remote.getUrl()))a.session.pageMemory.restore(a.remote.getUrl(),a.session.navigationEpoch);a.session.wakePolling();}
+  }
+  private void workspaceMode(){
+    boolean nativePage=page!=CHAT;
+    LinearLayout.LayoutParams layout=(LinearLayout.LayoutParams)workspace.getLayoutParams();
+    int height=nativePage?0:ViewGroup.LayoutParams.WRAP_CONTENT;float weight=nativePage?1f:0f;
+    if(layout.height!=height||layout.weight!=weight){layout.height=height;layout.weight=weight;workspace.setLayoutParams(layout);}
+    panel.setVisibility(nativePage?View.VISIBLE:View.GONE);panel.setGlassActive(nativePage);
+  }
+
+  private void updateNativeInsets(){
+    if(page!=CHAT)insetScrollViews(panel,Math.max(0,footer.getHeight()));
+  }
+
+  private void insetScrollViews(View view,int footerHeight){
+    if(view.getVisibility()==View.GONE)return;
+    if(view instanceof ScrollView){
+      ScrollView scroll=(ScrollView)view;ScrollPadding padding=scrollPadding.get(scroll);
+      if(padding==null){padding=new ScrollPadding(scroll.getPaddingBottom());scrollPadding.put(scroll,padding);}
+      else if(scroll.getPaddingBottom()!=padding.applied)padding.base=scroll.getPaddingBottom();
+      padding.applied=padding.base+footerHeight;
+      if(scroll.getPaddingBottom()!=padding.applied)
+        scroll.setPadding(scroll.getPaddingLeft(),scroll.getPaddingTop(),scroll.getPaddingRight(),padding.applied);
+      if(scroll.getClipToPadding())scroll.setClipToPadding(false);
+      // The outer vertical scroller owns the safe end space; nested scrollers
+      // must not each add another full navigation height.
+      return;
+    }
+    if(view instanceof ViewGroup){ViewGroup group=(ViewGroup)view;for(int i=0;i<group.getChildCount();i++)insetScrollViews(group.getChildAt(i),footerHeight);}
+  }
+
+  private static final class ScrollPadding {
+    int base,applied;
+    ScrollPadding(int bottom){base=applied=bottom;}
   }
   void keyboard(){a.applyFocusLayout();}
   void mark(){
@@ -69,6 +116,7 @@ final class AppHub {
     if(identity.equals(rendered)&&panel.getChildCount()>0){ViewGroup old=(ViewGroup)panel.getChildAt(0);if(old.getChildCount()>1&&old.getChildAt(1) instanceof ScrollView)oldY=old.getChildAt(1).getScrollY();}
     rendered=identity;final int restoreY=oldY;LinearLayout screen=DesignUi.screen(a),box=DesignUi.body(a,screen,title,()->select(CHAT));
     panel.removeAllViews();panel.addView(screen,new FrameLayout.LayoutParams(-1,-1));
+    updateNativeInsets();
     if(screen.getChildCount()>1&&screen.getChildAt(1) instanceof ScrollView){ScrollView scroll=(ScrollView)screen.getChildAt(1);scroll.post(()->scroll.scrollTo(0,restoreY));}return box;
   }
   void action(LinearLayout box,String label,Runnable run){DesignUi.action(box,label,false,run);}
@@ -77,7 +125,7 @@ final class AppHub {
     if(page==CHAT)return;feedbackText.setText(message);feedbackText.setTextColor(error?DesignUi.RED:DesignUi.TEXT);
     feedbackBar.setBackgroundColor(AppAppearance.color(error?0xfffff1f2:0xffedf5ff));feedbackBar.setVisibility(View.VISIBLE);
   }
-  void refresh(){if(page==DOWNLOADS)downloads();if(page==SETTINGS)settings();if(page==NETWORK)networkWorkspace.show(networkTab);}
+  void refresh(){if(page==DOWNLOADS)downloads();if(page==SETTINGS)settings();if(page==NETWORK)networkWorkspace.show(networkTab);updateNativeInsets();}
   void downloadsVisible(boolean foreground){if(downloadController!=null)downloadController.setVisible(foreground&&page==DOWNLOADS);}
   void downloads(){
     if(downloadController==null||panel.getChildCount()==0||panel.getChildAt(0)!=downloadScreen){

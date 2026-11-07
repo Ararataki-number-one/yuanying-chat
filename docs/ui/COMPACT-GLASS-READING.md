@@ -24,66 +24,82 @@ control. Regular-weight text is 14 sp there and 12 sp in the compact control.
 Changing the name first clears its previous centering padding, so compact
 wrap-content measurement does not accumulate whitespace.
 
-The user rejected the smoked-gray revision as too dark. The current light-mode
-chrome uses a clear, lightly white-tinted center with dark text and quiet gray
-icons. Dock icon/label blocks remain centered as a unit, including the separate
-reading circle. Background wrappers do not overwrite that content padding. The
-native loading/error explanation remains narrower, with adjacent recovery
-actions when their measured labels fit; its actual status, network rules and
-action handlers remain unchanged. A subsequent visual review found the paired
-edges and lower bevel still resembled a raised plastic button. The current
-revision removes that second rim and continuous bevel, softens the exterior
-shadow, and uses regular 11 sp dock labels with 20 dp icons (19 dp for the
-optically wider book). Inactive destination icons and labels share the same
-muted ink. The separate reading action uses the product blue with a very pale
-blue interior, giving the quiet layout one accent without marking reading as
-active.
+## Curved glass material and native backdrop
 
-The light material reference is [Glasswork](https://github.com/kubai087/glasswork),
-whose [material CSS](https://github.com/kubai087/glasswork/blob/main/glass.css)
-and [installation guide](https://github.com/kubai087/glasswork/blob/main/INSTALL.md)
-describe clear glass with a thin edge, localized reflections and dark ink:
+The earlier translucent fill, hairline boundary and travelling path highlights
+still read as ordinary rounded controls. This revision replaces that material
+with a continuous signed-distance field (SDF), bevel normals, Fresnel-weighted
+reflection, directional rim light and an inner caustic. The actual silhouette,
+normal field, light and native refraction share the same local deformation.
 
-- A low-opacity white center in light mode, without a dark backing plate or
-  painted cyan/rainbow bands.
-- A single 0.5 dp neutral boundary, reduced to roughly 5–6% black in light mode.
-  Short localized white catches add local reflection without
-  another complete ring.
-- One feathered contact shadow strictly outside the glass, replacing the two
-  hard shadow bands. The platform outline has no filled shadow. A 4 dp optical
-  inset leaves room around the material while preserving the control bounds.
-- One material for the address capsule and floating navigation dock.
-- Theme-aware dark ink in light mode. Selected destinations use the existing
-  product blue and a restrained translucent blue wash. Touch feedback follows
-  the theme even for already-open windows.
-- No continuous decorative animation, audio, or screenshot loop.
+On API 33+, `GlassLensRenderer` runs `assets/ui/liquid-glass.agsl` through a
+material-only RenderNode. Text and icons are drawn afterwards by their existing
+native views. No effect is installed on the control's full View tree.
 
-The subsequent material interaction follows the pointer-driven light and
-finite perimeter flow in the user's [Lens reference renderer](https://github.com/ruiqichenbiec/design-systems/blob/main/lens/lab/design-system/internal/renderer.js).
-Its pointer changes light direction, pressure changes reflection strength,
-and a finite flow envelope travels along the rim. The native implementation
-adapts these principles rather than its WebGL renderer or page sampling.
+- The soft curved bevel occupies up to 12 dp inside the edge (24% of the shorter
+  visible side), rather than using an equal-width dark or bright outline.
+- The center is a transparent coating with about 10% white veil in light mode.
+  Reflection uses a soft fixed environment-light model, not a captured wallpaper
+  or an opaque white background. Its opacity varies with the surface normal.
+- A pair of directional white glints and a weaker inner caustic emphasize the
+  continuous bevel. There is no painted cyan band or complete second ring.
+- Light-mode exterior shadow is capped at 3.5%, with a 1 dp vertical offset and
+  a 1.8 dp decay. It is composed outside the material face. The platform outline
+  has zero shadow alpha, avoiding a second filled platform shadow.
+- `RuntimeShader` output is premultiplied. The API 26–32 / software fallback uses
+  the same coating model in `GlassMaterialRaster`, writing straight ARGB pixels
+  for `Bitmap.setPixels`. Geometry/theme caches and a per-press cache are reused;
+  no bitmap is built by an animation frame. The fallback does not sample content.
 
-This is an independent native Canvas adaptation of the references' visual
-principles. Their wallpaper colors are not copied into the conversation page;
-the plain app background stays light. No WebGL renderer, third-party runtime,
-or packaged Skill has been installed.
+### Native content behind the floating dock
 
-The contact shadow is generated on a small software bitmap Canvas only when
-the drawable bounds or theme change. A 2.5 dp BlurMaskFilter softens a shape
-offset down by 0.75 dp; CLEAR then removes the actual body's interior. Drawing
-reuses that cache, leaving the View hardware accelerated and the transparent
-center untinted by the shadow. Drawing also clips the cached shadow outside the
-current deformed contour, so a moving edge cannot expose shadow inside the face.
-Old bitmaps are not manually recycled while a
-RenderThread display list might still reference them. This follows Android's
-[documented distinction between bitmap and hardware canvases](https://developer.android.com/develop/ui/views/graphics/hardware-accel).
+In the MainActivity's native network/download workspaces, content now extends
+behind the navigation. `AppHub` keeps one stable `workspace` parent containing
+`GlassBackdrop panel` and a separate bottom `footer`. Its native-page layout is
+weighted to fill the available content region. ScrollView content gets footer
+height as bottom padding with `clipToPadding(false)`, so its last control can
+still scroll above the navigation. Original padding is retained and not added
+repeatedly. The navigation views never change their parent during page changes.
 
-**Material boundary:** `LiquidGlassDrawable` supplies the native surface,
-reflection and edge treatment. It does not sample or refract the Gecko page.
-The current top and bottom chrome are siblings outside the browser viewport.
-Actual page-backed refraction requires a separate change to layering and
-compositor sampling. This change must not be described as live webpage blur.
+`GlassBackdrop` records only the independent native panel. The footer and Gecko
+are never in that source. Source invalidation/scroll/layout increases a revision
+and invalidates weakly registered glass controls; there is no pre-draw loop or
+idle timer. Capture and notification have re-entry guards. Recordings are
+bounded to the glass region plus 18 dp overscan and cached by source, revision,
+relative host position, size and appearance. Sampling coordinates are clamped
+inside that recorded area. Native pixels pass through a 3.5 dp blur and a Snell
+refraction model (glass-like index 1.45), with very small edge color separation.
+There is no full-surface dimming or automatic pure-white-to-gray transform.
+
+### Conversation and compatibility boundaries
+
+The conversation keeps its measured browser viewport and existing keyboard /
+focus-reading behavior. Its workspace occupies only the footer's measured
+height, and its native panel is hidden. Top and bottom controls use the same
+transparent curved coating, without sampling or refracting Gecko. Independent
+activities that use the shared navigation receive the new material but are not
+rewrapped into the MainActivity's native backdrop layout in this change.
+
+This is an Android implementation inspired by the references, not Apple's
+proprietary material or an assertion of visual equivalence. A flat backdrop has
+no visible detail to refract; its appearance depends on reflection and curvature.
+No new third-party runtime, Compose layer or continuous screenshot loop is added.
+
+### References and attribution
+
+- [Apple, Meet Liquid Glass](https://developer.apple.com/videos/play/wwdc2025/219/)
+  explains lensing, adaptive layers, material thickness and appropriate use.
+- [Apple materials guidance](https://developer.apple.com/design/human-interface-guidelines/materials)
+  distinguishes regular navigation material from clear material over rich media.
+- The user's [Lens renderer](https://github.com/ruiqichenbiec/design-systems/blob/main/lens/lab/design-system/internal/renderer.js)
+  informs the SDF bevel/normal relationship and finite pointer-driven response.
+- [QWEA0 v2.0.11 GlassLensRenderer](https://github.com/QWEA0/Liquid-Glass-Android/blob/v2.0.11/liquidglass/src/main/java/com/example/liquidglass/GlassLensRenderer.kt)
+  informs the isolated RenderNode input, blur-before-lens chain, guarded source
+  recording, bounded sampling and dual-lobe light. Its MIT license is retained
+  in `third-party/ui/QWEA0-Liquid-Glass-Android-LICENSE`.
+- [Android AGSL guidance](https://developer.android.com/develop/ui/views/graphics/agsl/using-agsl)
+  and [RenderEffect](https://developer.android.com/reference/android/graphics/RenderEffect)
+  define the actual Java/Canvas APIs used by the API 33+ path.
 
 ## Interaction
 
@@ -117,47 +133,48 @@ instead of choosing an arbitrary slot.
 
 ## Motion and feedback
 
-The user found the earlier scale/rotation feedback insufficiently liquid.
-That whole-View transform is removed. Text, icons, layout and hit regions now
-stay fixed while the material's own light and contour respond to the touch.
-There is no idle floating, pulsing or repeating highlight animation.
+Text, icons, layout and hit regions stay fixed while the material's curvature
+and light respond to the touch. There is no idle floating or repeating highlight.
 
-- Pressing immediately supplies a visible local reflection, then gathers the
-  remaining pressure in about 110 ms. Moving the pointer retargets the live
-  light animation without restarting its clock; subsequent movement uses an
-  85 ms response from its current state. The visible
-  band covers part of the perimeter, limited to 28–64 dp; a small inner caustic
-  and a cool, localized edge facet give it depth on the light background. The
-  facet's peak alpha is about 29%; it is clipped to a narrow inside edge, never
-  applied to the glass face. The white highlight and inner caustic stay thin.
-- A local outward bend of at most about 3 dp, with a 0.9 dp opposite response,
-  stays within the existing 4 dp material inset. It changes only the drawn glass.
-- Release carries the reflection up to 32 dp along the edge and fades it into
-  the stationary light over 480 ms with a gradual fade. The small contour response
-  settles once. Normal-size review of the first capture motivated the stronger
-  local edge and a fix for repeated MOVE events starving a restarted animator.
-  A second actual capture still read as nearly stationary at normal size; this
-  motivates the more visible localized bend and cool edge, with the same native
-  gesture retained for comparison. These are material changes, not View scaling.
-- The system's gray ripple is transparent on these material surfaces. Hotspots
-  are explicitly forwarded through the RippleDrawable wrapper. Three buttons
-  share the dock's material state; the reading action uses its own circular
-  material. Child state is aggregated without clearing a sibling's native press.
-- The real destination selection still moves over 240 ms, now using a lighter
-  5.5% blue wash. Ordinary conversation remains unselected. Reading's 3.5% blue
-  accent identifies the action without falsely marking reading as active.
+- A short press immediately supplies optical pressure, gathering the remaining
+  response over 110 ms. Pointer movement retargets the existing run without
+  resetting its animation clock, using an 85 ms follow response thereafter.
+- A local 3 dp outward bend and 0.9 dp opposite response stay inside the 4 dp
+  optical inset. The SDF, normal field, caustic and sampled pixels all use it.
+- On release the optical focus travels up to 32 dp along the perimeter and
+  settles over 480 ms. This reuses the existing finite input response.
+- Gray system ripple remains transparent on these material surfaces. Actual
+  hotspots propagate through the RippleDrawable wrapper; three destination
+  buttons share their parent's press state, while reading has a separate source.
+- The actual selected destination uses the existing 240 ms transition with a
+  5.5% blue wash. Conversation has no falsely selected destination; reading's
+  3.5% accent identifies the action without asserting that it is active.
 
-These effects do not consume touch events, replace click/long-press handlers,
-or delay navigation. Disabled system animations use direct optical state changes.
-Visibility, detach, disabled state, appearance and actual geometry changes end
-the finite material animation. Paths and shader matrices are reused during
-motion; shadow bitmaps are never rebuilt by an animation frame. Hidden controls
-also settle delayed release callbacks. All feedback uses public APIs available
-from the app's minSdk 26; there is no new runtime or continuous screenshot loop.
+Disabled system animations use direct optical state without deformation.
+Visibility, detach, disabled state, appearance and geometry changes end finite
+animations. Hidden controls discard retained native background recordings.
+The old-system fallback crossfades two cached material states; it does not claim
+per-frame native refraction or the full GPU response. Clicks and long presses
+continue through their original handlers without artificial delays.
 
 ## Validation and delivery status
 
-Validated in the host environment:
+Current SDF/native-backdrop revision: whitespace and capture-script syntax
+checks pass. A direct GLSL translation of the material asset compiled and
+rendered finite RGBA pixels under desktop EGL, including flat and test-pattern
+inputs. That diagnostic is not Android AGSL execution or a product screenshot.
+Current APK compilation, lint and source-bound Android captures are reported
+against their exact commit in the PR; earlier captures do not validate this
+new pipeline.
+
+The separate native backdrop preview runs after the original 20-second movie.
+It opens the actual network workspace using observed controls, optionally scrolls
+one observed native ScrollView, retains an original full-resolution PNG and XML,
+and returns to conversation. Its status is separate from the original static
+and movie results. GlassLens log observations are retained with the actual PID;
+ready messages or absence of errors alone do not assert visual/GPU acceptance.
+
+Historical host checks from the earlier navigation implementation:
 
 | Check | Result | Scope |
 | --- | --- | --- |

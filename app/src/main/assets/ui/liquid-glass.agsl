@@ -1,0 +1,106 @@
+// Rounded SDF, bevel normals and a transparent optical coating.
+// Based on the public geometric techniques described in docs/ui/COMPACT-GLASS-READING.md.
+// Native workspace pixels enter only through the separate content RenderNode.
+uniform shader content;
+uniform float2 size;
+uniform float margin;
+uniform float density;
+uniform float radius;
+uniform float press;
+uniform float bend;
+uniform float2 light;
+uniform float2 bump;
+uniform float darkTheme;
+uniform float hasBackdrop;
+uniform float opacity;
+
+float square(float value) { return value * value; }
+
+float roundedBox(float2 p, float2 b, float r) {
+    float2 q = abs(p) - b + r;
+    return length(max(q, float2(0.0))) + min(max(q.x, q.y), 0.0) - r;
+}
+
+float surfaceDistance(float2 p) {
+    float2 halfSize = size * 0.5 - float2(4.0 * density);
+    float d = roundedBox(p - size * 0.5, halfSize, radius);
+    float sigma = max(8.0 * density, min(halfSize.y * 1.15, 32.0 * density));
+    float2 near = (p - bump) / sigma;
+    float2 far = (p - (size - bump)) / sigma;
+    return d - bend * density * (3.0 * exp(-dot(near, near)) - 0.9 * exp(-dot(far, far)));
+}
+
+half4 main(float2 coord) {
+    float2 p = coord - float2(margin);
+    float2 halfSize = size * 0.5 - float2(4.0 * density);
+    float d = surfaceDistance(p);
+    float aa = max(0.7, density * 0.28);
+    float cover = 1.0 - smoothstep(-aa, aa, d);
+
+    // A soft, low-opacity contact shadow. It never darkens the glass face.
+    float shadowD = surfaceDistance(p - float2(0.0, 1.0 * density));
+    float shadow = exp(-max(shadowD, 0.0) / (1.8 * density))
+        * mix(0.035, 0.12, darkTheme) * (1.0 - cover);
+    if (cover < 0.001) return half4(float3(0.0), shadow * opacity);
+
+    float e = max(0.6, density * 0.45);
+    float2 n = float2(surfaceDistance(p + float2(e, 0.0)) - surfaceDistance(p - float2(e, 0.0)),
+                      surfaceDistance(p + float2(0.0, e)) - surfaceDistance(p - float2(0.0, e)));
+    n = length(n) > 0.0001 ? normalize(n) : float2(0.0, -1.0);
+    float bevel = max(2.0 * density, min(12.0 * density, min(halfSize.x, halfSize.y) * 0.48));
+    float edge = clamp(1.0 + d / bevel, 0.0, 1.0);
+    float slope = pow(edge, 1.65) * 0.94;
+    float2 face = clamp((p - size * 0.5) / max(halfSize, float2(1.0)), float2(-1.0), float2(1.0));
+    float2 normalXY = n * slope + face * 0.035 * (1.0 - edge);
+    float normalZ = sqrt(max(1.0 - dot(normalXY, normalXY), 0.001));
+    float fresnel = 0.04 + 0.96 * pow(1.0 - normalZ, 5.0);
+
+    float2 lightAxis = normalize(light + float2(0.00001));
+    float key = pow(max(dot(n, lightAxis), 0.0), 5.0);
+    float returnLight = pow(max(dot(n, -lightAxis), 0.0), 5.0) * 0.58;
+    float2 sideAxis = float2(-lightAxis.y, lightAxis.x);
+    float side = pow(abs(dot(n, sideAxis)), 2.4);
+    // Fixed soft environment lighting supplies volume even on a plain page.
+    // This is reflection, not an opaque replacement for the page background.
+    float3 reflected = mix(float3(0.99, 0.995, 1.0), float3(0.55, 0.61, 0.70), side * 0.78);
+    reflected = mix(reflected, float3(1.0), clamp(key + returnLight * 0.8, 0.0, 1.0));
+    float reflectance = clamp(fresnel * 0.72 + pow(edge, 2.0) * (0.10 + side * 0.18), 0.0, 0.52);
+    float veil = mix(0.10, 0.18, darkTheme);
+    float3 tint = mix(float3(0.98, 0.99, 1.0), float3(0.12, 0.15, 0.20), darkTheme);
+    float a = reflectance + (1.0 - reflectance) * veil;
+    float3 premul = reflectance * reflected + (1.0 - reflectance) * veil * tint;
+
+    // A narrow glint is embedded in a much wider curved bevel, never a full ring.
+    float rim = exp(-square((d + 0.75 * density) / (0.65 * density)));
+    float softLight = exp(-max(-d, 0.0) / (3.4 * density)) * pow(edge, 0.6);
+    float caustic = exp(-square((d + 3.3 * density) / (1.6 * density)));
+    float shine = clamp(rim * (key * 0.68 + returnLight * 0.40)
+        + softLight * (key * 0.12 + returnLight * 0.07)
+        + caustic * returnLight * 0.12, 0.0, 0.86);
+    float broad = exp(-square((face.x * 0.55 + face.y * 0.8 - lightAxis.x * 0.4) * 1.6));
+    shine = min(0.90, shine + broad * (0.022 + press * 0.025));
+    premul = float3(shine) + (1.0 - shine) * premul;
+    a = shine + (1.0 - shine) * a;
+
+    if (hasBackdrop > 0.5) {
+        // Snell refraction. The source contains native workspace content only.
+        float3 ray = refract(float3(0.0, 0.0, -1.0), float3(normalXY, normalZ), 1.0 / 1.45);
+        float2 offset = ray.xy / max(-ray.z, 0.05) * (24.0 + press * 8.0) * density;
+        offset -= (p - size * 0.5) * 0.015;
+        float2 lo = float2(1.0);
+        float2 hi = size + float2(margin * 2.0 - 1.0);
+        float2 at = clamp(coord + offset, lo, hi);
+        float2 split = n * pow(edge, 2.8) * (0.20 * density);
+        float3 scene = float3(content.eval(clamp(at + split, lo, hi)).r,
+                              content.eval(at).g,
+                              content.eval(clamp(at - split, lo, hi)).b);
+        float luma = dot(scene, float3(0.2126, 0.7152, 0.0722));
+        scene = mix(float3(luma), scene, 1.035);
+        premul += (1.0 - a) * scene;
+        a = 1.0;
+    }
+    float surfaceAlpha = a * cover;
+    float finalAlpha = surfaceAlpha + shadow * (1.0 - surfaceAlpha);
+    return half4(clamp(premul * cover, float3(0.0), float3(finalAlpha)) * opacity,
+                 finalAlpha * opacity);
+}
