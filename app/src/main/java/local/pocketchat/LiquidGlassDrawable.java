@@ -43,7 +43,7 @@ class LiquidGlassDrawable extends Drawable {
   private final Band ambient=new Band(),ambientCounter=new Band(),moving=new Band(),movingCounter=new Band();
   private final float density,requestedRadius,edgeWidth;
   private float radius,perimeter,restPhase,bandLength,hotspotX,hotspotY;
-  private float phase,targetPhase,strength,bend,travelDirection=1f;
+  private float phase,targetPhase,strength,bend,gatherFraction,travelDirection=1f;
   private Shader fill,outerLine;
   private Bitmap shadowBitmap;
   private ValueAnimator animation;
@@ -60,7 +60,7 @@ class LiquidGlassDrawable extends Drawable {
         new float[]{0f,.25f,.65f,1f},Shader.TileMode.CLAMP);
       shade=new LinearGradient(0,0,1,0,
         dark?new int[]{0x00000000,0x38000000,0x18000000,0x00000000}
-            :new int[]{0x003e4b5e,0x203e4b5e,0x163e4b5e,0x003e4b5e},
+            :new int[]{0x003e4b5e,0x283e4b5e,0x1c3e4b5e,0x003e4b5e},
         new float[]{0f,.3f,.7f,1f},Shader.TileMode.CLAMP);
     }
   }
@@ -120,6 +120,10 @@ class LiquidGlassDrawable extends Drawable {
     if(down){
       targetPhase=lightPhase();
       if(strength==0f)phase=targetPhase;
+      // A short tap must have an optical response even before the first frame
+      // of a duration animator. The remaining pressure still gathers smoothly.
+      strength=Math.max(strength,.65f);bend=Math.max(bend,.65f);
+      updateGeometry();invalidateSelf();
       gather(110);
     }else release();
     return true;
@@ -127,14 +131,18 @@ class LiquidGlassDrawable extends Drawable {
 
   /** RippleDrawable must explicitly forward its hotspot to this content. */
   @Override public void setHotspot(float x,float y){
-    if(body.isEmpty())return;
+    if(body.isEmpty()||!isVisible())return;
     float nextX=clamp(x,body.left,body.right),nextY=clamp(y,body.top,body.bottom);
     if(Math.abs(nextX-hotspotX)+Math.abs(nextY-hotspotY)<.2f*density)return;
     hotspotX=nextX;hotspotY=nextY;
     if(!pressed)return;
     float next=lightPhase(),delta=shortest(next-targetPhase);
     if(Math.abs(delta)>.4f*density)travelDirection=delta<0f?-1f:1f;
-    targetPhase=next;gather(85);
+    targetPhase=next;
+    // Retarget the live run instead of restarting its clock on every MOVE.
+    // Input is dispatched before animation frames, so repeated restarts can
+    // otherwise prevent either pressure or the light from advancing at all.
+    if(animation==null||!ValueAnimator.areAnimatorsEnabled())gather(85);
   }
 
   private float lightPhase(){
@@ -148,13 +156,16 @@ class LiquidGlassDrawable extends Drawable {
     if(!ValueAnimator.areAnimatorsEnabled()){
       phase=targetPhase;strength=1f;bend=0f;updateGeometry();invalidateSelf();return;
     }
-    final float startPhase=phase,distance=shortest(targetPhase-phase),startStrength=strength,startBend=bend;
+    final float startStrength=strength,startBend=bend;
+    gatherFraction=0f;
     ValueAnimator run=ValueAnimator.ofFloat(0f,1f);animation=run;
     run.setDuration(duration);run.setInterpolator(new DecelerateInterpolator(1.5f));
     run.addUpdateListener(value->{
       if(animation!=value)return;
       if(!ValueAnimator.areAnimatorsEnabled()){stopAnimation();phase=targetPhase;strength=1f;bend=0f;updateGeometry();invalidateSelf();return;}
-      float t=(float)value.getAnimatedValue();phase=startPhase+distance*t;
+      float t=(float)value.getAnimatedValue();
+      float step=gatherFraction>=1f?1f:clamp((t-gatherFraction)/(1f-gatherFraction),0f,1f);
+      phase+=shortest(targetPhase-phase)*step;gatherFraction=t;
       strength=startStrength+(1f-startStrength)*t;bend=startBend+(1f-startBend)*t;
       updateGeometry();invalidateSelf();
     });
@@ -178,7 +189,7 @@ class LiquidGlassDrawable extends Drawable {
       // A single travelling reflection fades into the stationary light. The
       // small signed bend settles once; it never moves the foreground or hitbox.
       phase=startPhase+travel*(1f-remaining*remaining);
-      strength=startStrength*remaining*remaining;
+      strength=startStrength*remaining;
       bend=startBend*remaining*remaining*(float)Math.cos(Math.PI*1.2f*t);
       updateGeometry();invalidateSelf();
     });
@@ -207,7 +218,7 @@ class LiquidGlassDrawable extends Drawable {
       float width=bandLength*.6f,opticalInset=innerBody.left-body.left;
       for(int i=0;i<SAMPLES;i++){
         float at=perimeter*i/SAMPLES,distance=shortest(at-phase)/width,opposite=shortest(at-phase-perimeter*.5f)/width;
-        float displacement=bend*density*(1.2f*(float)Math.exp(-distance*distance)-.28f*(float)Math.exp(-opposite*opposite));
+        float displacement=bend*density*(1.8f*(float)Math.exp(-distance*distance)-.35f*(float)Math.exp(-opposite*opposite));
         shapeX[i]=baseX[i]+normalX[i]*displacement;shapeY[i]=baseY[i]+normalY[i]*displacement;
       }
       smoothPath(shape,0f);smoothPath(innerShape,opticalInset);
@@ -301,9 +312,9 @@ class LiquidGlassDrawable extends Drawable {
   private void drawBand(Canvas canvas,Band band,float energy){
     if(energy<=0f)return;
     paint.setAlpha(Math.round(alpha*energy));paint.setShader(band.shade);
-    paint.setStrokeWidth((2.2f+energy)*density);canvas.drawPath(band.edge,paint);
-    paint.setShader(band.bright);paint.setStrokeWidth((.65f+.75f*energy)*density);canvas.drawPath(band.edge,paint);
-    paint.setAlpha(Math.round(alpha*energy*.48f));paint.setStrokeWidth((.6f+.25f*energy)*density);canvas.drawPath(band.caustic,paint);
+    paint.setStrokeWidth((2.4f+1.4f*energy)*density);canvas.drawPath(band.edge,paint);
+    paint.setShader(band.bright);paint.setStrokeWidth((.8f+.85f*energy)*density);canvas.drawPath(band.edge,paint);
+    paint.setAlpha(Math.round(alpha*energy*.48f));paint.setStrokeWidth((.8f+.35f*energy)*density);canvas.drawPath(band.caustic,paint);
   }
 
   @Override public void getOutline(Outline outline){
