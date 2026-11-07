@@ -15,22 +15,39 @@ final class LoadingUi {
   LoadingUi(MainActivity activity){a=activity;
     band=new LinearLayout(a);band.setGravity(Gravity.CENTER_VERTICAL);band.setPadding(a.dp(22),a.dp(4),a.dp(22),a.dp(9));band.setVisibility(View.GONE);
     band.addView(spinner(16),new LinearLayout.LayoutParams(a.dp(16),a.dp(16)));bandText=a.label("",12,Ui.MUTED);bandText.setPadding(a.dp(10),0,0,0);band.addView(bandText);band.setOnClickListener(v->{if(taskRunning)showTask();else ReplyState.show(a);});band.setContentDescription("回复状态，点按检查或恢复连接");band.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
-    cover=new LinearLayout(a);cover.setOrientation(LinearLayout.VERTICAL);cover.setGravity(Gravity.CENTER);cover.setPadding(a.dp(28),a.dp(16),a.dp(28),a.dp(16));cover.setBackgroundColor(Ui.PAPER);cover.setClickable(true);cover.setVisibility(View.GONE);
+    cover=new LinearLayout(a);cover.setOrientation(LinearLayout.VERTICAL);cover.setGravity(Gravity.CENTER);cover.setPadding(a.dp(28),a.dp(16),a.dp(28),a.dp(16));cover.setBackgroundColor(ReferenceUi.CHAT_BG);cover.setClickable(true);cover.setVisibility(View.GONE);
     // Short windows scroll the empty-page explanation instead of squeezing buttons.
-    LinearLayout content=DesignUi.column(a);content.setGravity(Gravity.CENTER);ScrollView overflow=new ScrollView(a);overflow.setFillViewport(true);overflow.addView(content,new ScrollView.LayoutParams(-1,-2));cover.addView(overflow,new LinearLayout.LayoutParams(-1,-1));
+    LinearLayout content=new LinearLayout(a){
+      @Override protected void onMeasure(int widthSpec,int heightSpec){
+        int available=MeasureSpec.getMode(widthSpec)==MeasureSpec.UNSPECIFIED?a.dp(300):MeasureSpec.getSize(widthSpec);
+        super.onMeasure(MeasureSpec.makeMeasureSpec(Math.min(a.dp(300),available),MeasureSpec.EXACTLY),heightSpec);
+      }
+    };
+    content.setOrientation(LinearLayout.VERTICAL);content.setGravity(Gravity.CENTER);
+    ScrollView overflow=new ScrollView(a);overflow.setFillViewport(true);
+    overflow.addView(content,new ScrollView.LayoutParams(-2,-2,Gravity.CENTER_HORIZONTAL));cover.addView(overflow,new LinearLayout.LayoutParams(-1,-1));
     wheel=spinner(32);content.addView(wheel,new LinearLayout.LayoutParams(a.dp(32),a.dp(32)));title=a.label("",16,Ui.INK);title.setGravity(Gravity.CENTER);title.setPadding(0,a.dp(20),0,a.dp(8));title.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);content.addView(title);
-    hint=a.label("",13,Ui.MUTED);hint.setGravity(Gravity.CENTER);content.addView(hint);retry=DesignUi.button(a,"重新加载",true,()->a.session.retryCurrent());
+    hint=a.label("",13,Ui.MUTED);hint.setGravity(Gravity.CENTER);hint.setLineSpacing(a.dp(4),1.08f);content.addView(hint);retry=DesignUi.button(a,"重新加载",true,()->a.session.retryCurrent());
     website=DesignUi.button(a,"检查网络",false,()->NetworkStatusUi.show(a));
     actions=DesignUi.column(a);content.addView(actions,new LinearLayout.LayoutParams(-1,-2));
+    android.graphics.drawable.GradientDrawable gap=new android.graphics.drawable.GradientDrawable();gap.setColor(Color.TRANSPARENT);gap.setSize(a.dp(12),0);actions.setDividerDrawable(gap);
     for(Button action:new Button[]{retry,website}){LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(-1,-2);p.topMargin=a.dp(12);actions.addView(action,p);}
-    fitActions();cover.addOnLayoutChangeListener((v,l,t,r,b,ol,ot,or,ob)->fitActions());
+    fitActions();actions.addOnLayoutChangeListener((v,l,t,r,b,ol,ot,or,ob)->fitActions());
     title.setTypeface(android.graphics.Typeface.create("sans-serif-medium",android.graphics.Typeface.NORMAL));
   }
   void fitActions(){
-    boolean horizontal=a.getResources().getConfiguration().orientation==android.content.res.Configuration.ORIENTATION_LANDSCAPE;
+    int available=actions.getWidth()-actions.getPaddingLeft()-actions.getPaddingRight();
+    if(available<=0)return;
+    // Measure both labels even when one is hidden, so loading-state changes do
+    // not flip the layout between a row and a column.
+    int minimum=Math.max(DesignUi.actionWidth(retry,48),DesignUi.actionWidth(website,48));
+    boolean horizontal=a.getResources().getConfiguration().fontScale<=1.3f&&available>=2*minimum+a.dp(12);
     if(actionLayoutKnown&&horizontal==actionsHorizontal)return;
     actionLayoutKnown=true;actionsHorizontal=horizontal;actions.setOrientation(horizontal?LinearLayout.HORIZONTAL:LinearLayout.VERTICAL);
-    int index=0;for(Button action:new Button[]{retry,website}){LinearLayout.LayoutParams p=(LinearLayout.LayoutParams)action.getLayoutParams();p.width=horizontal?0:-1;p.weight=horizontal?1:0;p.topMargin=a.dp(12);p.leftMargin=horizontal&&index>0?a.dp(12):0;action.setLayoutParams(p);index++;}
+    // Native dividers reserve the gap only between visible actions, so a lone
+    // recovery button remains centered without changing the chosen orientation.
+    actions.setShowDividers(horizontal?LinearLayout.SHOW_DIVIDER_MIDDLE:LinearLayout.SHOW_DIVIDER_NONE);
+    for(Button action:new Button[]{retry,website}){LinearLayout.LayoutParams p=(LinearLayout.LayoutParams)action.getLayoutParams();p.width=horizontal?0:-1;p.weight=horizontal?1:0;p.topMargin=a.dp(12);p.leftMargin=0;action.setLayoutParams(p);}
   }
   ProgressBar spinner(int size){ProgressBar p=new ProgressBar(a);p.setIndeterminate(true);p.setIndeterminateTintList(ColorStateList.valueOf(DesignUi.BLUE));return p;}
   static void text(TextView view,String value){if(!android.text.TextUtils.equals(view.getText(),value))view.setText(value);}

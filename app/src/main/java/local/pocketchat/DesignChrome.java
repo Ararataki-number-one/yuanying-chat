@@ -40,20 +40,20 @@ final class DesignChrome {
     a.toolbar=new CollapsingToolbar();a.toolbar.setOrientation(LinearLayout.VERTICAL);
     a.toolbar.setVisibility(View.VISIBLE);
     a.toolbar.setBackgroundColor(ReferenceUi.CHAT_BG);
-    a.toolbar.setPadding(a.dp(10),0,a.dp(10),0);
+    a.toolbar.setPadding(a.dp(14),0,a.dp(14),0);
     compact=new FrameLayout(a);
     profileRow=ProfileCatalog.get(a).item(Profiles.slot(a));
-    compactTitle=ReferenceUi.text(a,profileLabel(profileRow,Profiles.slot(a)),12,ReferenceUi.TEXT,true);
+    compactTitle=ReferenceUi.text(a,profileLabel(profileRow,Profiles.slot(a)),12,DesignUi.GLASS_INK,true);
     ReferenceUi.single(compactTitle);
-    compactTitle.setMaxWidth(a.dp(220));
+    compactTitle.setMinWidth(a.dp(112));compactTitle.setMaxWidth(a.dp(196));
     compactTitle.setGravity(Gravity.CENTER);
     compactTitle.setPadding(a.dp(14),0,a.dp(12),0);
-    Ui.Icon disclosure=new Ui.Icon("globe",ReferenceUi.MUTED);disclosure.setBounds(0,0,a.dp(12),a.dp(12));
+    Ui.Icon disclosure=new Ui.Icon("globe",DesignUi.GLASS_MUTED);disclosure.setBounds(0,0,a.dp(12),a.dp(12));
     compactTitle.setCompoundDrawables(disclosure,null,null,null);compactTitle.setCompoundDrawablePadding(a.dp(7));
-    compactTitle.setBackground(DesignUi.glass(a,14));
+    compactTitle.setBackground(DesignUi.glass(a,16));
     compactTitle.setDuplicateParentStateEnabled(true);
     compactTitle.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
-    FrameLayout.LayoutParams compactLabel=new FrameLayout.LayoutParams(-2,Math.max(a.dp(28),textHeight(compactTitle)+a.dp(8)),Gravity.CENTER);
+    FrameLayout.LayoutParams compactLabel=new FrameLayout.LayoutParams(-2,Math.max(a.dp(32),textHeight(compactTitle)+a.dp(8)),Gravity.CENTER);
     compactLabel.leftMargin=a.dp(16);compactLabel.rightMargin=a.dp(16);
     compact.addView(compactTitle,compactLabel);
     compact.setFocusable(true);
@@ -65,14 +65,14 @@ final class DesignChrome {
     top=DesignUi.row(a);
     a.navigation=new Ui.IconButton(a,"hamburger","管理环境",false);
     a.navigation.setOnClickListener(v->a.showDrawer());
-    title=ReferenceUi.text(a,compactTitle.getText().toString(),15,ReferenceUi.TEXT,true);
+    title=ReferenceUi.text(a,compactTitle.getText().toString(),15,DesignUi.GLASS_INK,true);
     profileName=title.getText().toString();
     ReferenceUi.single(title);
     title.setGravity(Gravity.CENTER);
-    title.setPadding(a.dp(12),0,a.dp(12),0);
-    Ui.Icon addressIcon=new Ui.Icon("globe",ReferenceUi.MUTED);addressIcon.setBounds(0,0,a.dp(15),a.dp(15));
+    title.setPadding(a.dp(16),0,a.dp(16),0);title.setMinWidth(a.dp(208));title.setMaxWidth(a.dp(208));
+    Ui.Icon addressIcon=new Ui.Icon("globe",DesignUi.GLASS_MUTED);addressIcon.setBounds(0,0,a.dp(15),a.dp(15));
     title.setCompoundDrawables(addressIcon,null,null,null);title.setCompoundDrawablePadding(a.dp(6));
-    title.setBackground(DesignUi.glass(a,24));title.setElevation(a.dp(2));
+    title.setBackground(DesignUi.glass(a,22));title.setElevation(a.dp(2));
     title.setContentDescription("当前环境："+profileName+"，点按输入网址，长按切换环境");
     addressCapsule(title);
 
@@ -81,19 +81,21 @@ final class DesignChrome {
     more.setMinHeight(0);
     more.setMinimumHeight(0);
     more.setPadding(a.dp(4),0,a.dp(4),0);
-    int topHeight=Math.max(a.dp(48),textHeight(title)+a.dp(4));
+    int capsuleHeight=Math.max(a.dp(44),textHeight(title)+a.dp(12));
+    int topHeight=Math.max(a.dp(48),capsuleHeight+a.dp(4));
     top.setClipChildren(false);top.setClipToPadding(false);
     top.addView(a.navigation,new LinearLayout.LayoutParams(a.dp(44),topHeight));
-    // Keep the capsule centered and 16% shorter than the old fill-width title.
-    top.addView(new Space(a),new LinearLayout.LayoutParams(0,1,.08f));
-    top.addView(title,new LinearLayout.LayoutParams(0,topHeight,.84f));
-    top.addView(new Space(a),new LinearLayout.LayoutParams(0,1,.08f));
+    // The visual capsule stays compact while its existing touch delegate keeps
+    // a 48 dp action. AT_MOST child measurement also fits narrow windows.
+    FrameLayout capsuleHost=new FrameLayout(a);
+    capsuleHost.addView(title,new FrameLayout.LayoutParams(-2,capsuleHeight,Gravity.CENTER));
+    top.addView(capsuleHost,new LinearLayout.LayoutParams(0,topHeight,1));
     top.addView(more,new LinearLayout.LayoutParams(a.dp(44),topHeight));
     a.toolbar.addView(top,new LinearLayout.LayoutParams(-1,topHeight));
     a.geckoAddress=new GeckoAddressUi(a);a.toolbar.addView(a.geckoAddress.row,new LinearLayout.LayoutParams(-1,-2));
 
     networkRow=DesignUi.row(a);
-    networkRow.setPadding(a.dp(4),0,a.dp(4),0);
+    networkRow.setPadding(a.dp(6),0,a.dp(6),0);
     // This is a read-only status line. Network navigation remains in the bottom bar.
     networkRow.setClickable(false);
     networkRow.setFocusable(false);
@@ -287,7 +289,7 @@ final class DesignChrome {
   void showNetwork(WindowNetworkState state){
     String address=(state.region.isEmpty()?"地区未标注":state.region)+" · "+(state.ip.isEmpty()?"IP 未核验":state.connected?state.ip:"上次 "+state.ip);
     text(a.networkLine,address);
-    color(a.networkLine,ReferenceUi.TEXT);
+    color(a.networkLine,ReferenceUi.MUTED);
     color(dot,state.color());
     text(latencyWord,state.latency+state.latencyTimer);
     text(stateWord,state.state.equals("正常")?"已连接":state.state);

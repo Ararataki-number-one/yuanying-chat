@@ -18,8 +18,8 @@ import android.graphics.drawable.Drawable;
 /**
  * One native lens material for the address capsule and both navigation surfaces.
  *
- * A clear center, weak environmental color and two directional reflections follow
- * Lens's material contract. These are static optical cues, not a sample or a
+ * A smoke-gray center, quiet shoulder reflections and a narrow cyan return keep
+ * light labels readable on either appearance. These are static optical cues, not a sample or a
  * refraction of the separate Gecko compositor. Labels are drawn by their native
  * views above this surface and are never blurred or colored by the material.
  *
@@ -29,12 +29,12 @@ import android.graphics.drawable.Drawable;
 class LiquidGlassDrawable extends Drawable {
   static final int INSET_DP=2;
   private final Paint paint=new Paint(Paint.ANTI_ALIAS_FLAG);
-  private final RectF body=new RectF(),outer=new RectF(),near=new RectF(),inner=new RectF(),corner=new RectF();
-  private final Path farShadow=new Path(),nearShadow=new Path(),mainReflection=new Path(),oppositeReflection=new Path(),innerReflection=new Path();
+  private final RectF body=new RectF(),outer=new RectF(),near=new RectF(),corner=new RectF();
+  private final Path farShadow=new Path(),nearShadow=new Path(),mainReflection=new Path(),oppositeReflection=new Path();
   private final Matrix reflectionMatrix=new Matrix();
   private final float density,requestedRadius,edgeWidth;
   private float radius;
-  private Shader fill,coolReflection,warmReflection,broadReflection,edgeTint,mainGlint,oppositeGlint,innerGlint,farShade,nearShade;
+  private Shader fill,coolReflection,shoulderReflection,broadReflection,edgeTint,mainGlint,oppositeGlint,farShade,nearShade;
   private int alpha=255;
   private boolean dark;
 
@@ -64,27 +64,27 @@ class LiquidGlassDrawable extends Drawable {
     outsideBand(farShadow,outer,Math.max(0,requestedRadius-.2f*density));
     outsideBand(nearShadow,near,Math.max(0,requestedRadius-.9f*density));
     farShade=new LinearGradient(0,outer.top,0,outer.bottom,
-      dark?new int[]{0x00121b2a,0x00121b2a,0x10121b2a}:new int[]{0x00465770,0x00465770,0x0b465770},
+      dark?new int[]{0x00080d14,0x00080d14,0x30080d14}:new int[]{0x00212e3b,0x00212e3b,0x14212e3b},
       new float[]{0f,.42f,1f},Shader.TileMode.CLAMP);
     nearShade=new LinearGradient(0,near.top,0,near.bottom,
-      dark?new int[]{0x00040810,0x00040810,0x20040810}:new int[]{0x00465770,0x00465770,0x12465770},
+      dark?new int[]{0x00040810,0x00040810,0x38040810}:new int[]{0x00212e3b,0x00212e3b,0x1c212e3b},
       new float[]{0f,.55f,1f},Shader.TileMode.CLAMP);
 
-    // Low-density tint lets the native surface show through the center. Color
-    // comes from quiet cyan/blue and peach reflections, not from a gray backing.
+    // A stable 84-88% smoke tint supports white foregrounds even over a white
+    // page. Reflection colors stay neutral; cyan is limited to a weak return.
     fill=new LinearGradient(body.left,body.top,body.left,body.bottom,
-      dark?new int[]{0x3a26344c,0x10202a3c,0x2626354c}
-          :new int[]{0x30ffffff,0x12f7fbff,0x20eef6ff},
+      dark?new int[]{0xe0343f4c,0xdc26313e,0xe0212b37}
+          :new int[]{0xd82c3745,0xdc202a36,0xe0212a35},
       new float[]{0f,.48f,1f},Shader.TileMode.CLAMP);
     coolReflection=reflection(body.left+body.width()*.12f,body.bottom+body.height()*.12f,
       Math.max(body.width()*.58f,body.height()),body.height()*.92f,
-      dark?0x326a9cdb:0x289db7dc);
-    warmReflection=reflection(body.right-body.width()*.08f,body.top-body.height()*.1f,
+      dark?0x1c73bac9:0x1473bac9);
+    shoulderReflection=reflection(body.right-body.width()*.08f,body.top-body.height()*.1f,
       Math.max(body.width()*.4f,body.height()*.8f),body.height()*.95f,
-      dark?0x1fc99bc2:0x2ceccbc1);
+      dark?0x28a8b2be:0x22a8b2be);
     broadReflection=reflection(body.left+body.width()*.35f,body.top-body.height()*.25f,
       Math.max(body.width()*.72f,body.height()),body.height()*1.25f,
-      dark?0x147db9e2:0x26ffffff);
+      dark?0x30a8b5c2:0x2aa8b5c2);
 
     // Only the lit shoulders shine. Their paths fade before completing a ring.
     float straight=Math.max(0,body.width()-2*radius);
@@ -96,8 +96,8 @@ class LiquidGlassDrawable extends Drawable {
     mainReflection.arcTo(corner,180,90,false);
     mainReflection.lineTo(topEnd,body.top);
     mainGlint=new LinearGradient(body.left,body.top,Math.max(body.left+density,topEnd),body.top,
-      dark?new int[]{0x00e5f6ff,0xb8e5f6ff,0x52c2e7fa,0x00c2e7fa}
-          :new int[]{0x00ffffff,0xb3ffffff,0x8cffffff,0x00ffffff},
+      dark?new int[]{0x00f0f6fc,0x8af0f6fc,0x42dce5ee,0x00dce5ee}
+          :new int[]{0x00f0f6fc,0x73f0f6fc,0x38dce5ee,0x00dce5ee},
       new float[]{0f,.2f,.64f,1f},Shader.TileMode.CLAMP);
 
     float bottomStart=body.left+radius+straight*.36f;
@@ -107,28 +107,13 @@ class LiquidGlassDrawable extends Drawable {
     corner.set(body.right-2*radius,body.bottom-2*radius,body.right,body.bottom);
     oppositeReflection.arcTo(corner,90,-90,false);
     oppositeGlint=new LinearGradient(Math.min(bottomStart,body.right-density),body.bottom,body.right,body.bottom,
-      dark?new int[]{0x006e9fc7,0x5578b2df,0x298e9fcf,0x008e9fcf}
-          :new int[]{0x009bc6e2,0x899bc6e2,0x42e4c6cd,0x00e4c6cd},
+      dark?new int[]{0x008dc3d0,0x508dc3d0,0x26becdd9,0x00becdd9}
+          :new int[]{0x008dc3d0,0x3d8dc3d0,0x20becdd9,0x00becdd9},
       new float[]{0f,.58f,.88f,1f},Shader.TileMode.CLAMP);
     edgeTint=new LinearGradient(body.left,body.top,body.right,body.bottom,
-      dark?new int[]{0x0c95cbe4,0x0095cbe4,0x007c9bbd,0x297c9bbd}
-          :new int[]{0x3097bfd8,0x0097bfd8,0x00839fbf,0x21839fbf},
+      dark?new int[]{0x14c7d4e2,0x00c7d4e2,0x0088a4b5,0x1888a4b5}
+          :new int[]{0x12c7d4e2,0x00c7d4e2,0x0088a4b5,0x1288a4b5},
       new float[]{0f,.35f,.7f,1f},Shader.TileMode.CLAMP);
-
-    // A local return of light just inside the lower shoulder separates the
-    // bright inner face from its cool outer edge, including on a pale canvas.
-    float innerInset=Math.min(1.35f*density,Math.min(body.width(),body.height())/4f);
-    inner.set(body);inner.inset(innerInset,innerInset);
-    float innerRadius=Math.max(0,radius-innerInset);
-    float innerStart=inner.left+innerRadius+straight*.36f;
-    innerReflection.rewind();innerReflection.moveTo(innerStart,inner.bottom);
-    innerReflection.lineTo(inner.right-innerRadius,inner.bottom);
-    corner.set(inner.right-2*innerRadius,inner.bottom-2*innerRadius,inner.right,inner.bottom);
-    innerReflection.arcTo(corner,90,-90,false);
-    innerGlint=new LinearGradient(Math.min(innerStart,inner.right-density),inner.bottom,inner.right,inner.bottom,
-      dark?new int[]{0x00dceeff,0x46dceeff,0x1edceeff,0x00dceeff}
-          :new int[]{0x00ffffff,0xc4ffffff,0x70ffffff,0x00ffffff},
-      new float[]{0f,.58f,.88f,1f},Shader.TileMode.CLAMP);
   }
 
   private void outsideBand(Path path,RectF edge,float edgeRadius){
@@ -151,16 +136,14 @@ class LiquidGlassDrawable extends Drawable {
     paint.setShader(nearShade);canvas.drawPath(nearShadow,paint);
     paint.setShader(fill);canvas.drawRoundRect(body,radius,radius,paint);
     paint.setShader(coolReflection);canvas.drawRoundRect(body,radius,radius,paint);
-    paint.setShader(warmReflection);canvas.drawRoundRect(body,radius,radius,paint);
+    paint.setShader(shoulderReflection);canvas.drawRoundRect(body,radius,radius,paint);
     paint.setShader(broadReflection);canvas.drawRoundRect(body,radius,radius,paint);
-    paint.setStyle(Paint.Style.STROKE);paint.setStrokeWidth(Math.max(1f,1.15f*density));
+    paint.setStyle(Paint.Style.STROKE);paint.setStrokeWidth(edgeWidth);
     paint.setShader(edgeTint);canvas.drawRoundRect(body,radius,radius,paint);
     paint.setStrokeCap(Paint.Cap.ROUND);paint.setStrokeWidth(edgeWidth);
     paint.setShader(mainGlint);canvas.drawPath(mainReflection,paint);
-    paint.setStrokeWidth(Math.max(1f,.95f*density));
+    paint.setStrokeWidth(Math.max(1f,.55f*density));
     paint.setShader(oppositeGlint);canvas.drawPath(oppositeReflection,paint);
-    paint.setStrokeWidth(Math.max(1f,.7f*density));
-    paint.setShader(innerGlint);canvas.drawPath(innerReflection,paint);
     paint.setShader(null);
   }
 
@@ -169,7 +152,7 @@ class LiquidGlassDrawable extends Drawable {
     if(bounds.isEmpty()){outline.setEmpty();return;}
     outline.setRoundRect(bounds,Math.min(requestedRadius,Math.min(bounds.width(),bounds.height())/2f));
     // Keep the useful rounded outline, but never cast a filled shadow under the
-    // clear lens. The two cached exterior bands above supply its contact shadow.
+    // lens. The two cached exterior bands above supply its contact shadow.
     outline.setAlpha(0f);
   }
 
