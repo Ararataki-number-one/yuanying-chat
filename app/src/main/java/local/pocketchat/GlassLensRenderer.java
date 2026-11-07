@@ -42,7 +42,7 @@ final class GlassLensRenderer {
     }
     shader=new RuntimeShader(program);
     content.setClipToBounds(false);
-    blur=RenderEffect.createBlurEffect(3.5f*density,3.5f*density,Shader.TileMode.CLAMP);
+    blur=RenderEffect.createBlurEffect(6.5f*density,6.5f*density,Shader.TileMode.CLAMP);
     Log.i(TAG,"AGSL material ready");
   }
 

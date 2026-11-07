@@ -47,7 +47,7 @@ half4 main(float2 coord) {
     float2 n = float2(surfaceDistance(p + float2(e, 0.0)) - surfaceDistance(p - float2(e, 0.0)),
                       surfaceDistance(p + float2(0.0, e)) - surfaceDistance(p - float2(0.0, e)));
     n = length(n) > 0.0001 ? normalize(n) : float2(0.0, -1.0);
-    float bevel = max(2.0 * density, min(12.0 * density, min(halfSize.x, halfSize.y) * 0.48));
+    float bevel = max(2.0 * density, min(8.0 * density, min(halfSize.x, halfSize.y) * 0.34));
     float edge = clamp(1.0 + d / bevel, 0.0, 1.0);
     float slope = pow(edge, 1.65) * 0.94;
     float2 face = clamp((p - size * 0.5) / max(halfSize, float2(1.0)), float2(-1.0), float2(1.0));
@@ -64,21 +64,21 @@ half4 main(float2 coord) {
     // This is reflection, not an opaque replacement for the page background.
     float3 reflected = mix(float3(0.99, 0.995, 1.0), float3(0.55, 0.61, 0.70), side * 0.78);
     reflected = mix(reflected, float3(1.0), clamp(key + returnLight * 0.8, 0.0, 1.0));
-    float reflectance = clamp(fresnel * 0.72 + pow(edge, 2.0) * (0.10 + side * 0.18), 0.0, 0.52);
+    float reflectance = clamp(fresnel * 0.82 + pow(edge, 4.0) * (0.04 + side * 0.07), 0.0, 0.36);
     float veil = mix(0.10, 0.18, darkTheme);
     float3 tint = mix(float3(0.98, 0.99, 1.0), float3(0.12, 0.15, 0.20), darkTheme);
     float a = reflectance + (1.0 - reflectance) * veil;
     float3 premul = reflectance * reflected + (1.0 - reflectance) * veil * tint;
 
-    // A narrow glint is embedded in a much wider curved bevel, never a full ring.
+    // A narrow glint follows the curved edge, never a wide shaded pillow or full ring.
     float rim = exp(-square((d + 0.75 * density) / (0.65 * density)));
-    float softLight = exp(-max(-d, 0.0) / (3.4 * density)) * pow(edge, 0.6);
-    float caustic = exp(-square((d + 3.3 * density) / (1.6 * density)));
+    float softLight = exp(-max(-d, 0.0) / (1.8 * density)) * pow(edge, 0.6);
+    float caustic = exp(-square((d + 2.2 * density) / (0.85 * density)));
     float shine = clamp(rim * (key * 0.68 + returnLight * 0.40)
-        + softLight * (key * 0.12 + returnLight * 0.07)
-        + caustic * returnLight * 0.12, 0.0, 0.86);
+        + softLight * (key * 0.07 + returnLight * 0.04)
+        + caustic * returnLight * 0.07, 0.0, 0.86);
     float broad = exp(-square((face.x * 0.55 + face.y * 0.8 - lightAxis.x * 0.4) * 1.6));
-    shine = min(0.90, shine + broad * (0.022 + press * 0.025));
+    shine = min(0.90, shine + broad * (0.006 + press * 0.015));
     premul = float3(shine) + (1.0 - shine) * premul;
     a = shine + (1.0 - shine) * a;
 
@@ -96,6 +96,11 @@ half4 main(float2 coord) {
                               content.eval(clamp(at - split, lo, hi)).b);
         float luma = dot(scene, float3(0.2126, 0.7152, 0.0722));
         scene = mix(float3(luma), scene, 1.035);
+        // Keep background text from competing with native foreground glyphs.
+        // The clear edge retains its lens detail; only the inner light material
+        // gets a soft backing. Conversation pixels never enter this branch.
+        float backing = 0.28 * (1.0 - edge * edge) * (1.0 - darkTheme);
+        scene = mix(scene, tint, backing);
         premul += (1.0 - a) * scene;
         a = 1.0;
     }

@@ -36,8 +36,9 @@ On API 33+, `GlassLensRenderer` runs `assets/ui/liquid-glass.agsl` through a
 material-only RenderNode. Text and icons are drawn afterwards by their existing
 native views. No effect is installed on the control's full View tree.
 
-- The soft curved bevel occupies up to 12 dp inside the edge (24% of the shorter
-  visible side), rather than using an equal-width dark or bright outline.
+- The curved bevel occupies up to 8 dp inside the edge (17% of the shorter
+  visible side). Additional side reflection follows the fourth power of the
+  edge profile, concentrating it near the boundary instead of a wide gray face.
 - The center is a transparent coating with about 10% white veil in light mode.
   Reflection uses a soft fixed environment-light model, not a captured wallpaper
   or an opaque white background. Its opacity varies with the surface normal.
@@ -67,9 +68,19 @@ and invalidates weakly registered glass controls; there is no pre-draw loop or
 idle timer. Capture and notification have re-entry guards. Recordings are
 bounded to the glass region plus 18 dp overscan and cached by source, revision,
 relative host position, size and appearance. Sampling coordinates are clamped
-inside that recorded area. Native pixels pass through a 3.5 dp blur and a Snell
+inside that recorded area. Native pixels pass through a 6.5 dp blur and a Snell
 refraction model (glass-like index 1.45), with very small edge color separation.
+Only the light native material adds a 28% soft white backing at its center,
+falling to zero at the curved edge. This keeps background text from competing
+with the foreground glyphs while retaining the edge's visible lens detail.
 There is no full-surface dimming or automatic pure-white-to-gray transform.
+
+The first actual API 35 capture of the new renderer (`23b2ae5a`) confirmed the
+AGSL and native recording paths, but showed a soft raised appearance on white
+and dark blurred titles behind dock icons. The narrower reflection profile and
+native-only blur/backing above address those observed defects. Final images and
+runtime evidence must be checked for the subsequent exact commit, not inferred
+from that earlier successful build.
 
 ### Conversation and compatibility boundaries
 

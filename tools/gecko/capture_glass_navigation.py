@@ -485,6 +485,24 @@ def capture_native_backdrop_preview(args, report, capture, adb, wait_for, tap, s
             and bool(nodes(value, lambda node: node.get('class') == 'android.widget.ScrollView'))
             and not nodes(value, lambda node: node.get('text', '').startswith('正在读取窗口网络')))
         xml = wait_for(capture, ready, 'native-backdrop-network-before-scroll', seconds=20)
+        feedback_close = lambda node: (node.get('class') == 'android.widget.Button'
+            and node.get('content-desc') == '关闭提示' and node.get('text') == '×'
+            and node.get('clickable') == 'true' and node.get('enabled') == 'true')
+        feedback = nodes(xml, feedback_close)
+        preview['feedbackDismissal'] = dict(observedMatchingControls=len(feedback), tapIssued=False)
+        if len(feedback) == 1:
+            before = args.out / 'native-backdrop-feedback-before-dismiss.xml'
+            before.write_text(xml)
+            preview['feedbackDismissal'].update(hierarchySource=before.name, hierarchySha256=sha(before),
+                observedBounds=list(bounds(feedback[0])), inputIndex=len(report['inputs']))
+            tap(feedback[0], 'Dismiss the single observed × / 关闭提示 feedback notice once for the native screenshot')
+            report['inputs'][-1].update(phase='native-backdrop-preview', hierarchySource=before.name)
+            preview['feedbackDismissal']['tapIssued'] = True
+            # Refresh actual geometry after the notice closes. A recurring
+            # notice is left alone; this is one UI dismissal, not suppression.
+            xml = wait_for(capture, ready, 'native-backdrop-network-before-scroll', seconds=20)
+            preview['feedbackDismissal'].update(matchingControlsAfterTap=len(nodes(xml, feedback_close)),
+                refreshedHierarchySha256=sha(args.out / 'native-backdrop-network-before-scroll.xml'))
         scrolls = nodes(xml, lambda node: node.get('class') == 'android.widget.ScrollView'
                         and node.get('scrollable') == 'true')
         preview['scroll'] = dict(inputIssued=False, observedScrollableViews=len(scrolls))
