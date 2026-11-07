@@ -274,7 +274,9 @@ def capture_motion(args, report, capture, adb, wait_for):
         return True
 
     try:
-        help_text = adb('shell', 'input', '--help', timeout=5).decode('utf-8', 'replace')
+        # The pinned API 35 image rejects --help. A no-argument input command
+        # requests usage without injecting events; retain either output stream.
+        help_text = adb('shell', 'input 2>&1', timeout=5).decode('utf-8', 'replace')
         (args.out / 'motion-input-help.txt').write_text(help_text)
         cancel_supported = 'motionevent' in help_text and 'CANCEL' in help_text
         # AOSP screenrecord writes its usage text to stderr, including --help.
