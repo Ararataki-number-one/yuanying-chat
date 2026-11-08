@@ -12,11 +12,22 @@ from pathlib import Path
 
 def window_geometry(raw):
     frames = re.findall(r'^\s*DisplayFrames w=(\d+) h=(\d+) r=([0-3])\s*$', raw, re.M)
-    current = re.findall(r'^\s*init=\d+x\d+ \d+dpi .*?base=\d+x\d+ (\d+)dpi cur=(\d+)x(\d+)\b', raw, re.M)
-    if len(frames) != 1 or len(current) != 1:
+    summaries = re.findall(r'^\s*init=(\d+)x(\d+) (\d+)dpi (.*)$', raw, re.M)
+    if (len(frames) != 1 or len(summaries) != 1
+            or len(re.findall(r'^\s*DisplayFrames\b', raw, re.M)) != 1
+            or len(re.findall(r'^\s*init=', raw, re.M)) != 1):
         raise ValueError('One actual logical display frame and density are required')
+    initial_width, initial_height, initial_density, summary = summaries[0]
+    current = re.findall(r'\bcur=(\d+)x(\d+)(?=\s|$)', summary)
+    base = re.findall(r'\bbase=(\d+)x(\d+) (\d+)dpi(?=\s|$)', summary)
+    if (len(current) != 1 or len(re.findall(r'\bcur=', summary)) != 1
+            or len(base) > 1 or len(re.findall(r'\bbase=', summary)) != len(base)
+            or min(map(int, (initial_width, initial_height, initial_density))) <= 0
+            or base and min(map(int, base[0])) <= 0):
+        raise ValueError('One observed current display and a complete optional base override are required')
     width, height, rotation = map(int, frames[0])
-    density, current_width, current_height = map(int, current[0])
+    density = int(base[0][2] if base else initial_density)
+    current_width, current_height = map(int, current[0])
     if min(width, height, density) <= 0 or (width, height) != (current_width, current_height):
         raise ValueError('Window logical frame differs from current display bounds')
     return dict(width=width, height=height, rotation=rotation, density=density)
