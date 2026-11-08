@@ -1,0 +1,67 @@
+package local.pocketchat;
+
+/** Production snapshot callbacks with declared label/activity/render boundaries. */
+class View {static final int GONE=8,VISIBLE=0;}
+class EnvironmentHomeSnapshot {final boolean stars;EnvironmentHomeSnapshot(boolean stars){this.stars=stars;}}
+class DesignUi {static class Stars {static boolean value;static void setting(boolean next){value=next;}}}
+public final class SnapshotDispatchHost {
+  static int checks;
+  static void check(boolean value,String label){checks++;if(!value)throw new AssertionError(label);}
+  static class Current {
+    boolean workspaceVisible=true,destroyed,finishing,snapshotReadIssue;
+    EnvironmentHomeSnapshot snapshot;
+    int renders;
+    static final String SNAPSHOT_READ_PROBLEM="环境记录暂时无法读取，请稍后重试";
+    static final class Label {
+      String text="";int visibility=View.GONE;
+      void setText(String next){text=next;}
+      void setVisibility(int next){visibility=next;}
+    }
+    final Label problem=new Label();
+    boolean isDestroyed(){return destroyed;}
+    boolean isFinishing(){return finishing;}
+    void renderSnapshot(EnvironmentHomeSnapshot value){
+      if(value!=snapshot)throw new AssertionError("foreign snapshot");renders++;
+    }
+    CURRENT_SHOW_PROBLEM
+    CURRENT_ACCEPT
+    CURRENT_RENDER
+  }
+  public static void main(String[] args){
+    Current current=new Current();
+    current.renderCached();check(current.renders==0,"cold render waits for a real snapshot");
+    EnvironmentHomeSnapshot first=new EnvironmentHomeSnapshot(true);
+    current.acceptSnapshot(first);
+    check(current.snapshot==first&&current.renders==1,"visible acceptance binds the actual supplied snapshot");
+    check(DesignUi.Stars.value,"accepted background setting comes from the snapshot");
+    current.renderCached();check(current.renders==2,"cached render keeps the accepted snapshot");
+
+    current.workspaceVisible=false;
+    current.renderCached();check(current.renders==2,"hidden cached render does no work");
+    current.showProblem(Current.SNAPSHOT_READ_PROBLEM);
+    EnvironmentHomeSnapshot replacement=new EnvironmentHomeSnapshot(false);
+    current.acceptSnapshot(replacement);
+    check(current.snapshot==first&&current.renders==2,"hidden acceptance cannot replace the visible snapshot");
+    check(current.snapshotReadIssue&&current.problem.visibility==View.VISIBLE,"hidden success cannot clear a pending read error");
+
+    current.workspaceVisible=true;
+    current.acceptSnapshot(replacement);
+    check(current.snapshot==replacement&&current.renders==3,"visible acceptance resumes with a fresh snapshot");
+    check(!current.snapshotReadIssue&&current.problem.text.isEmpty()&&current.problem.visibility==View.GONE,
+        "successful snapshot clears only its owned transient read error");
+    check(!DesignUi.Stars.value,"fresh background preference replaces the previous value");
+    current.showProblem("Copy operation failed");
+    current.acceptSnapshot(first);
+    check(current.problem.text.equals("Copy operation failed")&&current.problem.visibility==View.VISIBLE,
+        "background refresh preserves unrelated operation failure");
+    current.showProblem("");
+    check(current.problem.visibility==View.GONE&&!current.snapshotReadIssue,"explicit clear resets message ownership");
+
+    int rendered=current.renders;
+    current.destroyed=true;current.acceptSnapshot(replacement);
+    check(current.snapshot==first&&current.renders==rendered,"destroyed activity rejects incoming snapshot");
+    current.destroyed=false;current.finishing=true;current.acceptSnapshot(replacement);
+    check(current.snapshot==first&&current.renders==rendered,"finishing activity rejects incoming snapshot");
+    System.out.println("{\"passed\":"+checks+",\"actualProductionCallbacks\":true,\"actualAndroidExecution\":false,\"asynchronousQueueExecution\":false}");
+  }
+}

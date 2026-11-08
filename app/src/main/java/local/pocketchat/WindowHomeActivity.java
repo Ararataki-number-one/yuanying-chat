@@ -11,18 +11,12 @@ import java.util.*;
 
 /** Native environment workspace. Metadata management never needs an account session. */
 public class WindowHomeActivity extends ThemedActivity {
-  LinearLayout root,cards,filters,selectionBar;
+  LinearLayout root,cards,selectionBar;
   TextView count,selectionCount,problem;
-  EditText search;
-  Button groupButton,sortButton,selectionButton,visibleSelectionButton;
+  Button selectionButton,visibleSelectionButton;
   Button batchGroupButton,favoriteSelectedButton,unfavoriteSelectedButton;
-  Button createButton,filterOptions,viewsButton;
-  LinearLayout inbox;
-  final EnvironmentSavedViews savedViews=new EnvironmentSavedViews();
-  String activeView="",inboxSignature="";
+  Button createButton;
   LinearLayout preparation;
-  int filter,sort;
-  String selectedGroup;
   boolean selecting,preparing;
   final Set<Integer> selectedIds=new LinkedHashSet<>();
   final List<Integer> visibleIds=new ArrayList<>();
@@ -37,15 +31,11 @@ public class WindowHomeActivity extends ThemedActivity {
   GlassBackdrop backdrop;
   ScrollView workspaceScroll;
   LinearLayout workspaceFooter,navigationBar;
-  RecentEnvironment recentEnvironment;
   Object renderPositionToken;
   final Map<String,EnvironmentRow> rowViews=new LinkedHashMap<>();
-  final Button[] filterButtons=new Button[5];
   final Runnable update=new Runnable(){public void run(){if(!workspaceVisible)return;if(snapshotQueue!=null)snapshotQueue.request();handler.postDelayed(this,3000);}};
   void requestSnapshot(){if(snapshotQueue!=null)snapshotQueue.request();}
   void renderCached(){if(workspaceVisible&&snapshot!=null)renderSnapshot(snapshot);}
-  final Runnable searchRender=this::renderCached;
-  void scheduleSearch(){if(!workspaceVisible)return;handler.removeCallbacks(searchRender);handler.postDelayed(searchRender,48);}
 
 
   int dp(int n){return DesignUi.dp(this,n);}
@@ -62,14 +52,13 @@ public class WindowHomeActivity extends ThemedActivity {
     TextView title=workspaceText("环境",30,DesignUi.TEXT,true);title.setContentDescription("环境管理");
     if(Build.VERSION.SDK_INT>=28)title.setAccessibilityHeading(true);
     headingCopy.addView(title);
-    TextView subtitle=workspaceText("账号、会话与网络独立",12,DesignUi.MUTED,false);subtitle.setPadding(0,dp(3),dp(6),0);headingCopy.addView(subtitle);
+    count=workspaceText("",12,DesignUi.MUTED,false);count.setPadding(0,dp(3),dp(6),0);headingCopy.addView(count);
     heading.addView(headingCopy,new LinearLayout.LayoutParams(0,-2,1));
+    selectionButton=ReferenceUi.link(this,"多选",()->setSelecting(!selecting));selectionButton.setTextSize(13);selectionButton.setIncludeFontPadding(true);
+    LinearLayout.LayoutParams selectionAction=new LinearLayout.LayoutParams(DesignUi.actionWidth(selectionButton,54),dp(50));selectionAction.rightMargin=dp(7);heading.addView(selectionButton,selectionAction);
     createButton=ReferenceUi.iconButton(this,"plus","新建环境",this::createWindow);
     createButton.setBackground(DesignUi.glass(this,25));GlassMotion.press(createButton,true);
     heading.addView(createButton,new LinearLayout.LayoutParams(dp(50),dp(50)));
-    Button workspaceMenu=ReferenceUi.iconButton(this,"more","环境管理操作",this::showWorkspaceActions);
-    workspaceMenu.setBackground(DesignUi.glass(this,25));GlassMotion.press(workspaceMenu,true);
-    LinearLayout.LayoutParams menuParams=new LinearLayout.LayoutParams(dp(50),dp(50));menuParams.leftMargin=dp(8);heading.addView(workspaceMenu,menuParams);
     root.addView(heading,new LinearLayout.LayoutParams(-1,-2));
 
     FrameLayout workspace=new FrameLayout(this);workspace.setClipChildren(false);workspace.setClipToPadding(false);
@@ -83,47 +72,12 @@ public class WindowHomeActivity extends ThemedActivity {
     LinearLayout box=DesignUi.column(this);box.setPadding(dp(20),dp(4),dp(20),dp(20));
     workspaceScroll.addView(box,new ScrollView.LayoutParams(-1,-2));backdrop.addView(workspaceScroll,new FrameLayout.LayoutParams(-1,-1));
     root.addView(workspace,new LinearLayout.LayoutParams(-1,0,1));
-    recentEnvironment=new RecentEnvironment();box.addView(recentEnvironment.card,new LinearLayout.LayoutParams(-1,-2));
-    inbox=DesignUi.column(this);inbox.setVisibility(View.GONE);box.addView(inbox);
     preparation=DesignUi.progress(this,"正在创建环境…","完成后会打开新环境，请稍候。");
     preparation.setVisibility(View.GONE);DesignUi.addCard(box,preparation);
-    LinearLayout searchRow=DesignUi.row(this),searchBox=DesignUi.column(this);
-    search=DesignUi.searchInput(searchBox,largeText?"搜索环境":"搜索环境、分组或备注");
-    search.setTextSize(14);search.setIncludeFontPadding(true);if(Build.VERSION.SDK_INT>=28)search.setFallbackLineSpacing(true);
-    search.setFilters(new InputFilter[]{new InputFilter.LengthFilter(120)});
-    search.setContentDescription("搜索环境");searchRow.addView(searchBox,new LinearLayout.LayoutParams(0,-2,1));
-    filterOptions=ReferenceUi.iconButton(this,"settings","筛选与排序",this::chooseFilters);
-    filterOptions.setBackground(Ui.ripple(this,DesignUi.CARD,18));LinearLayout.LayoutParams op=new LinearLayout.LayoutParams(dp(50),dp(50));op.leftMargin=dp(10);searchRow.addView(filterOptions,op);
-    LinearLayout.LayoutParams sp=new LinearLayout.LayoutParams(-1,-2);sp.topMargin=dp(16);box.addView(searchRow,sp);
-    search.addTextChangedListener(new TextWatcher(){
-      public void beforeTextChanged(CharSequence s,int x,int c,int f){}
-      public void onTextChanged(CharSequence s,int x,int b,int c){scheduleSearch();}
-      public void afterTextChanged(Editable e){}
-    });
-    groupButton=DesignUi.button(this,"全部分组 ▾",false,this::chooseGroup);
-    sortButton=DesignUi.button(this,"编号排序 ▾",false,this::chooseSort);
-    HorizontalScrollView filterScroll=new HorizontalScrollView(this);
-    filterScroll.setHorizontalScrollBarEnabled(false);
-    filterScroll.setHorizontalFadingEdgeEnabled(true);filterScroll.setFadingEdgeLength(dp(12));
-    filters=DesignUi.row(this);filterScroll.addView(filters);
-    String[] filterNames={"全部","收藏","运行中","等待回复","需处理"};
-    for(int i=0;i<filterButtons.length;i++){final int target=i;Button button=ReferenceUi.link(this,filterNames[i]+" 0",()->{filter=target;renderCached();});button.setTextSize(13);button.setSingleLine(true);button.setIncludeFontPadding(true);button.setPadding(dp(13),dp(4),dp(13),dp(4));filterButtons[i]=button;LinearLayout.LayoutParams params=new LinearLayout.LayoutParams(DesignUi.actionWidth(button,64),dp(48));params.rightMargin=dp(2);filters.addView(button,params);}
-
-    LinearLayout.LayoutParams fp=new LinearLayout.LayoutParams(-1,dp(48));
-    fp.topMargin=dp(8);box.addView(filterScroll,fp);
-    LinearLayout listHeading=DesignUi.row(this);listHeading.setPadding(dp(2),dp(7),0,dp(2));
-    viewsButton=ReferenceUi.link(this,"全部环境",this::chooseView);viewsButton.setTextColor(DesignUi.TEXT);viewsButton.setTextSize(18);viewsButton.setGravity(Gravity.START|Gravity.CENTER_VERTICAL);viewsButton.setSingleLine(true);viewsButton.setEllipsize(TextUtils.TruncateAt.END);viewsButton.setIncludeFontPadding(true);
-    Ui.Icon viewsArrow=new Ui.Icon("chevron",DesignUi.MUTED);viewsArrow.setBounds(0,0,dp(14),dp(14));viewsButton.setCompoundDrawables(null,null,viewsArrow,null);viewsButton.setCompoundDrawablePadding(dp(7));
-    listHeading.addView(viewsButton,new LinearLayout.LayoutParams(0,-2,1));
-    count=workspaceText("",12,DesignUi.MUTED,false);count.setGravity(Gravity.END|Gravity.CENTER_VERTICAL);
-    if(!largeText){LinearLayout.LayoutParams cp=new LinearLayout.LayoutParams(-2,-2);cp.leftMargin=dp(6);cp.rightMargin=dp(6);listHeading.addView(count,cp);}
-    selectionButton=ReferenceUi.link(this,"多选",()->setSelecting(!selecting));selectionButton.setTextSize(13);selectionButton.setIncludeFontPadding(true);
-    listHeading.addView(selectionButton,new LinearLayout.LayoutParams(DesignUi.actionWidth(selectionButton,54),-2));box.addView(listHeading);
-    if(largeText){count.setGravity(Gravity.START);count.setPadding(dp(4),0,0,dp(8));box.addView(count);}
     problem=DesignUi.text(this,"",13,DesignUi.RED);problem.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);problem.setVisibility(View.GONE);box.addView(problem);
     cards=DesignUi.column(this);box.addView(cards);
     maintenanceRows=DesignUi.column(this);cards.addView(maintenanceRows);
-    environmentList=DesignUi.column(this);DesignUi.addCard(cards,environmentList);
+    environmentList=DesignUi.column(this);cards.addView(environmentList,new LinearLayout.LayoutParams(-1,-2));
     emptyRows=DesignUi.column(this);cards.addView(emptyRows);
 
     workspaceFooter=DesignUi.column(this);workspaceFooter.setClipChildren(false);workspaceFooter.setClipToPadding(false);workspaceFooter.setClickable(true);
@@ -135,7 +89,7 @@ public class WindowHomeActivity extends ThemedActivity {
     selectionCount=DesignUi.text(this,"",13,DesignUi.TEXT);
     selectionCount.setIncludeFontPadding(true);
     selectionTools.addView(selectionCount,new LinearLayout.LayoutParams(0,-2,1));
-    visibleSelectionButton=DesignUi.button(this,"全选当前结果",false,()->selectVisible());
+    visibleSelectionButton=DesignUi.button(this,"全选",false,()->selectVisible());
     visibleSelectionButton.setTextSize(12);visibleSelectionButton.setIncludeFontPadding(true);
     visibleSelectionButton.setMaxWidth(dp(Math.max(150,(int)((getResources().getConfiguration().screenWidthDp-28)*.64f))));
     LinearLayout.LayoutParams visibleParams=new LinearLayout.LayoutParams(-2,-2);visibleParams.leftMargin=dp(8);
@@ -158,7 +112,7 @@ public class WindowHomeActivity extends ThemedActivity {
     selectionBar.setVisibility(View.GONE);selectionBar.setClickable(true);
     LinearLayout.LayoutParams selectionParams=new LinearLayout.LayoutParams(-1,-2);
     selectionParams.setMargins(dp(20),dp(6),dp(20),dp(6));workspaceFooter.addView(selectionBar,selectionParams);
-    navigationBar=DesignUi.nav(this,WorkspaceNavigation.ENVIRONMENTS,n->WorkspaceNavigation.select(this,WorkspaceNavigation.ENVIRONMENTS,n),null);
+    navigationBar=DesignUi.workspaceNav(this,AppHub.ENVIRONMENTS,page->WorkspaceNavigation.selectPage(this,AppHub.ENVIRONMENTS,page),null);
     navigationBar.setBackground(EnvironmentWorkspaceStyle.scrollEdge(this));navigationBar.setClickable(true);navigationBar.setFocusable(false);
     workspaceFooter.addView(navigationBar,new LinearLayout.LayoutParams(-1,-2));
     backdrop.bindControls(navigationBar);backdrop.setScrollEdge(navigationBar);
@@ -169,14 +123,12 @@ public class WindowHomeActivity extends ThemedActivity {
     Context workspaceContext=Profiles.global(this);
     snapshotQueue=new EnvironmentRefreshQueue<>(snapshotWorker,task->handler.post(task),()->EnvironmentHomeSnapshot.read(workspaceContext),this::acceptSnapshot,error->{if(workspaceVisible)showProblem(SNAPSHOT_READ_PROBLEM);});
 
-    if(state==null)applyView(savedViews.current(this));
+    // This small workspace always shows every eligible environment. Old saved
+    // searches and views must never silently hide a card on this page.
     if(state!=null){
-      filter=Math.max(0,Math.min(4,state.getInt("filter")));
-      sort=Math.max(0,Math.min(2,state.getInt("sort")));
-      selectedGroup=state.getString("group");activeView=state.getString("activeView","");selecting=state.getBoolean("selecting");
+      selecting=state.getBoolean("selecting");
       int[] ids=state.getIntArray("selectedIds");
       if(selecting&&ids!=null)for(int id:ids)selectedIds.add(id);
-      search.setText(state.getString("query",""));
     }
     refresh();
   }
@@ -211,92 +163,18 @@ public class WindowHomeActivity extends ThemedActivity {
       }
     });
   }
-  void showWorkspaceActions(){
-    ReferenceUi.Modal panel=new ReferenceUi.Modal(this,"环境管理").asSheet();
-    ReferenceUi.menuAction(panel,"快速切换环境",()->{panel.dismiss();EnvironmentSwitcherUi.show(this);});
-    ReferenceUi.menuAction(panel,"工作视图",()->{panel.dismiss();chooseView();});
-    ReferenceUi.menuAction(panel,selecting?"完成多选":"多选环境",()->{panel.dismiss();setSelecting(!selecting);});
-    ReferenceUi.menuAction(panel,"搜索操作",()->{panel.dismiss();ActionSearchUi.show(this);});
-    panel.show();
-  }
-  final class RecentEnvironment {
-    final LinearLayout card=DesignUi.column(WindowHomeActivity.this);
-    final TextView eyebrow=workspaceText("最近使用",12,DesignUi.MUTED,true),name=workspaceText("",22,DesignUi.TEXT,true),detail=workspaceText("",12,DesignUi.MUTED,false),state=workspaceText("",12,DesignUi.MUTED,false);
-    final EnvironmentWorkspaceStyle.Emblem emblem=new EnvironmentWorkspaceStyle.Emblem(WindowHomeActivity.this,true);
-    JSONObject value;String stamp="";
-    RecentEnvironment(){
-      card.setVisibility(View.GONE);card.setPadding(dp(18),dp(8),dp(18),dp(18));card.setBackground(EnvironmentWorkspaceStyle.card(WindowHomeActivity.this,true,false));
-      card.setClickable(true);card.setFocusable(true);card.setOnClickListener(v->resume());
-      LinearLayout top=DesignUi.row(WindowHomeActivity.this);top.addView(eyebrow,new LinearLayout.LayoutParams(0,-2,1));
-      Button resume=ReferenceUi.link(WindowHomeActivity.this,"继续会话",this::resume);resume.setTextSize(13);resume.setIncludeFontPadding(true);
-      Ui.Icon arrow=new Ui.Icon("chevron-right",DesignUi.BLUE);arrow.setBounds(0,0,dp(14),dp(14));resume.setCompoundDrawables(null,null,arrow,null);resume.setCompoundDrawablePadding(dp(5));
-      top.addView(resume,new LinearLayout.LayoutParams(-2,-2));card.addView(top);
-      LinearLayout identity=DesignUi.row(WindowHomeActivity.this);identity.addView(emblem,new LinearLayout.LayoutParams(dp(56),dp(56)));
-      LinearLayout labels=DesignUi.column(WindowHomeActivity.this);labels.setPadding(dp(14),0,0,0);name.setMaxLines(2);name.setEllipsize(TextUtils.TruncateAt.END);labels.addView(name);
-      detail.setMaxLines(2);detail.setEllipsize(TextUtils.TruncateAt.END);detail.setPadding(0,dp(2),0,0);labels.addView(detail);
-      state.setPadding(0,dp(4),0,0);state.setMaxLines(2);state.setEllipsize(TextUtils.TruncateAt.END);labels.addView(state);
-      identity.addView(labels,new LinearLayout.LayoutParams(0,-2,1));card.addView(identity);
-    }
-    void resume(){if(value!=null)openExpected(value,"chat",false);}
-    void bind(EnvironmentHomeSnapshot source,long now,boolean visible){
-      JSONObject recent=null,fallback=null;
-      for(int i=0;i<source.rows.length();i++){JSONObject row=source.rows.optJSONObject(i);if(!EnvironmentWorkspacePolicy.eligible(row))continue;
-        if(row.optInt("slot")==source.defaultSlot)fallback=row;
-        if(row.optLong("opened")>0&&(recent==null||row.optLong("opened")>recent.optLong("opened")))recent=row;
-      }
-      value=recent==null?fallback:recent;card.setVisibility(visible&&value!=null?View.VISIBLE:View.GONE);
-      if(value==null)return;
-      String next=EnvironmentPresentation.stamp(value,source.running,now,source.defaultSlot,false,false);
-      if(next.equals(stamp))return;stamp=next;
-      boolean active=EnvironmentPresentation.active(value,source.running),fresh=EnvironmentPresentation.fresh(value,now),issue=!value.optString("problem").isEmpty();
-      setText(eyebrow,recent==null?"默认环境":"最近使用");setText(name,value.optString("name"));emblem.bind(value.optInt("slot"));
-      String group=value.optString("group"),identity=group.isEmpty()?"独立环境":group;
-      setText(detail,identity+(value.optInt("slot")==source.defaultSlot&&recent!=null?" · 默认启动":"")+(value.optBoolean("desktopSite")?" · 电脑版":""));
-      setText(state,EnvironmentPresentation.status(value,active,fresh)+(recent==null?"":" · "+recentUse(value.optLong("opened"),now)));
-      state.setTextColor(issue?DesignUi.RED:active?DesignUi.GREEN:DesignUi.MUTED);
-      card.setContentDescription("继续会话："+value.optString("name")+"，"+detail.getText()+"，"+state.getText());
-    }
-  }
   @Override protected void onSaveInstanceState(Bundle state){
     super.onSaveInstanceState(state);
-    state.putInt("filter",filter);state.putInt("sort",sort);state.putString("group",selectedGroup);state.putString("activeView",activeView);
-    state.putString("query",search.getText().toString());state.putBoolean("selecting",selecting);
+    state.putBoolean("selecting",selecting);
     state.putIntArray("selectedIds",selectedIds.stream().mapToInt(Integer::intValue).toArray());
   }
   @Override protected void onResume(){super.onResume();workspaceVisible=true;if(backdrop!=null)backdrop.setGlassActive(true);renderCached();if(snapshotQueue!=null)snapshotQueue.visible(true);handler.removeCallbacks(update);handler.postDelayed(update,3000);}
-  @Override protected void onPause(){workspaceVisible=false;if(backdrop!=null)backdrop.setGlassActive(false);handler.removeCallbacks(update);handler.removeCallbacks(searchRender);if(snapshotQueue!=null)snapshotQueue.visible(false);if(search!=null)savedViews.remember(this,currentView(activeView));super.onPause();}
+  @Override protected void onPause(){workspaceVisible=false;if(backdrop!=null)backdrop.setGlassActive(false);handler.removeCallbacks(update);if(snapshotQueue!=null)snapshotQueue.visible(false);super.onPause();}
   @Override protected void onDestroy(){workspaceVisible=false;handler.removeCallbacksAndMessages(null);if(snapshotQueue!=null)snapshotQueue.close();snapshotWorker.shutdown();super.onDestroy();}
   @Override protected void onNewIntent(Intent intent){super.onNewIntent(intent);setIntent(intent);refresh();}
   @Override public void onBackPressed(){if(selecting){setSelecting(false);return;}super.onBackPressed();}
   Set<Integer> live(){return snapshot==null?Collections.emptySet():snapshot.running;}
   int lastWindow(){return AppSettings.recentSlot(this);}
-  void chooseFilters(){
-    LinearLayout choices=DesignUi.column(this);choices.setPadding(dp(18),dp(8),dp(18),dp(16));
-    groupButton=DesignUi.button(this,(selectedGroup==null?"全部分组":selectedGroup.isEmpty()?"未分组":selectedGroup)+" ▾",false,this::chooseGroup);
-    sortButton=DesignUi.button(this,new String[]{"编号排序 ▾","最近使用 ▾","名称排序 ▾"}[sort],false,this::chooseSort);
-    choices.addView(groupButton,new LinearLayout.LayoutParams(-1,dp(48)));LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(-1,dp(48));p.topMargin=dp(8);choices.addView(sortButton,p);
-    AppAppearance.dialog(this).setTitle("筛选与排序").setView(choices).setPositiveButton("完成",null).show();
-  }
-  void chooseGroup(){
-    List<String> groups=new ArrayList<>();groups.add(null);groups.add("");
-    JSONArray rows=snapshot==null?new JSONArray():snapshot.rows;
-    for(int i=0;i<rows.length();i++){
-      JSONObject row=rows.optJSONObject(i);String group=row.optString("group");
-      if(row.optBoolean("created")&&!group.isEmpty()&&!groups.contains(group))groups.add(group);
-    }
-    String[] names=new String[groups.size()];
-    for(int i=0;i<names.length;i++)names[i]=groups.get(i)==null?"全部分组":groups.get(i).isEmpty()?"未分组":groups.get(i);
-    AppAppearance.dialog(this).setTitle("按分组查看")
-      .setSingleChoiceItems(names,groups.indexOf(selectedGroup),(d,n)->{
-        selectedGroup=groups.get(n);d.dismiss();renderCached();
-      }).setNegativeButton("取消",null).show();
-  }
-  void chooseSort(){
-    AppAppearance.dialog(this).setTitle("环境排序")
-      .setSingleChoiceItems(new String[]{"编号排序","最近使用","名称排序"},sort,(d,n)->{
-        sort=n;d.dismiss();renderCached();
-      }).setNegativeButton("取消",null).show();
-  }
   static boolean matches(JSONObject row,String query,String group){
     if(group!=null&&!group.equals(row.optString("group")))return false;
     return EnvironmentWorkspacePolicy.matches(row,query);
@@ -319,52 +197,47 @@ public class WindowHomeActivity extends ThemedActivity {
   void renderSnapshot(EnvironmentHomeSnapshot value){
     if(cards==null||selectionBar==null)return;
     View anchor=visibleEnvironmentAnchor();int anchorTop=anchor==null?0:environmentContentTop(anchor,workspaceScroll);
-    int previousHero=recentEnvironment.card.getVisibility(),previousInbox=inbox.getVisibility();
     Object positionToken=new Object();renderPositionToken=positionToken;
     JSONArray rows=value.rows;Set<Integer> running=value.running,created=new HashSet<>();long now=System.currentTimeMillis();
-    int[] counts=new int[5];List<JSONObject> ordered=new ArrayList<>();
-    for(int i=0;i<rows.length();i++){JSONObject row=rows.optJSONObject(i);if(!EnvironmentWorkspacePolicy.eligible(row))continue;ordered.add(row);created.add(row.optInt("slot"));counts[0]++;boolean active=EnvironmentPresentation.active(row,running);if(row.optBoolean("favorite"))counts[1]++;if(active)counts[2]++;if(row.optBoolean("waiting")&&active)counts[3]++;if(!row.optString("problem").isEmpty())counts[4]++;}
-    selectedIds.retainAll(created);String query=search.getText().toString().trim();String[] searchTokens=EnvironmentSearchIndex.tokens(query);
-    recentEnvironment.bind(value,now,!selecting&&query.isEmpty()&&filter==0&&selectedGroup==null);
-    renderInbox(rows,running,now);updateViewLabel();
-    setText(groupButton,(selectedGroup==null?"全部分组":selectedGroup.isEmpty()?"未分组":selectedGroup)+" ▾");setText(sortButton,new String[]{"编号排序 ▾","最近使用 ▾","名称排序 ▾"}[sort]);
-    boolean filtered=selectedGroup!=null||sort!=0;filterOptions.setSelected(filtered);filterOptions.setContentDescription("筛选与排序，当前分组："+(selectedGroup==null?"全部":selectedGroup.isEmpty()?"未分组":selectedGroup)+"，"+new String[]{"编号排序","最近使用","名称排序"}[sort]);
-    if(filterOptions.getTag()==null||!Boolean.valueOf(filtered).equals(filterOptions.getTag())){filterOptions.setTag(filtered);filterOptions.setBackground(Ui.ripple(this,filtered?0xffeaf1ff:DesignUi.CARD,18));}
-    String[] labels={"全部","收藏","运行中","等待回复","需处理"};
-    for(int i=0;i<filterButtons.length;i++){
-      Button button=filterButtons[i];setText(button,labels[i]+" "+counts[i]);boolean chosen=i==filter;
-      if(button.isSelected()!=chosen||button.getTag()==null){
-        button.setTag(Boolean.TRUE);button.setSelected(chosen);button.setTextColor(chosen?DesignUi.BLUE:DesignUi.MUTED);
-        button.setTypeface(android.graphics.Typeface.create(chosen?"sans-serif-medium":"sans-serif",android.graphics.Typeface.NORMAL));
-        button.setBackground(new android.graphics.drawable.InsetDrawable(Ui.ripple(this,chosen?0xffeaf1ff:android.graphics.Color.TRANSPARENT,20),0,dp(5),0,dp(5)));
-        // InsetDrawable supplies padding; restore breathing room before measuring.
-        button.setPadding(dp(13),dp(4),dp(13),dp(4));
+    List<JSONObject> ordered=new ArrayList<>();
+    for(int i=0;i<rows.length();i++){
+      JSONObject row=rows.optJSONObject(i);if(!EnvironmentWorkspacePolicy.eligible(row))continue;
+      ordered.add(row);created.add(row.optInt("slot"));
+    }
+    selectedIds.retainAll(created);
+    String previousMaintenance=maintenanceSignature;renderMaintenance(rows);
+    boolean structure=!previousMaintenance.equals(maintenanceSignature);
+    visibleIds.clear();Set<String> retained=new HashSet<>();int index=0;
+    for(JSONObject row:ordered){
+      String key=EnvironmentPresentation.key(row);retained.add(key);EnvironmentRow holder=rowViews.get(key);
+      if(holder==null){holder=new EnvironmentRow();rowViews.put(key,holder);structure=true;}
+      holder.value=row;visibleIds.add(row.optInt("slot"));holder.bind(row,running,now,value.defaultSlot);
+      holder.separator.setVisibility(index==0?View.GONE:View.VISIBLE);
+      if(index>=environmentList.getChildCount()||environmentList.getChildAt(index)!=holder.root){
+        if(holder.root.getParent()==environmentList)environmentList.removeView(holder.root);
+        environmentList.addView(holder.root,index,new LinearLayout.LayoutParams(-1,-2));structure=true;
       }
-      int width=DesignUi.actionWidth(button,64);if(button.getLayoutParams().width!=width){button.getLayoutParams().width=width;button.requestLayout();}
+      index++;
     }
-    if(sort==1)ordered.sort((l,r)->Long.compare(r.optLong("opened"),l.optLong("opened")));if(sort==2)ordered.sort((l,r)->l.optString("name").compareToIgnoreCase(r.optString("name")));
-    renderMaintenance(rows);visibleIds.clear();Set<String> retained=new HashSet<>();int index=0;
-    ScrollView scroll=cards.getParent() instanceof ScrollView?(ScrollView)cards.getParent():null; // body owns scroll; locate below when needed.
-    View parent=cards;while(parent.getParent() instanceof View&&!(parent.getParent() instanceof ScrollView))parent=(View)parent.getParent();if(parent.getParent() instanceof ScrollView)scroll=(ScrollView)parent.getParent();
-    final ScrollView scrolling=scroll;boolean structure=previousHero!=recentEnvironment.card.getVisibility()||previousInbox!=inbox.getVisibility();
-    for(JSONObject row:ordered){String key=EnvironmentPresentation.key(row);retained.add(key);EnvironmentRow holder=rowViews.get(key);if(holder==null){holder=new EnvironmentRow();rowViews.put(key,holder);structure=true;}holder.value=row;
-      boolean show=EnvironmentPresentation.visible(row,running,filter,"",selectedGroup)&&value.search.matches(row,searchTokens);if(show)visibleIds.add(row.optInt("slot"));
-      if(holder.root.getVisibility()!=(show?View.VISIBLE:View.GONE)){holder.root.setVisibility(show?View.VISIBLE:View.GONE);structure=true;}
-      if(show)holder.bind(row,running,now,value.defaultSlot);
-      if(index>=environmentList.getChildCount()||environmentList.getChildAt(index)!=holder.root){if(holder.root.getParent()==environmentList)environmentList.removeView(holder.root);environmentList.addView(holder.root,index,new LinearLayout.LayoutParams(-1,-2));structure=true;}index++;
+    for(Iterator<Map.Entry<String,EnvironmentRow>> it=rowViews.entrySet().iterator();it.hasNext();){
+      Map.Entry<String,EnvironmentRow> entry=it.next();if(!retained.contains(entry.getKey())){
+        environmentList.removeView(entry.getValue().root);it.remove();structure=true;
+      }
     }
-    for(Iterator<Map.Entry<String,EnvironmentRow>> it=rowViews.entrySet().iterator();it.hasNext();){Map.Entry<String,EnvironmentRow> entry=it.next();if(!retained.contains(entry.getKey())){environmentList.removeView(entry.getValue().root);it.remove();structure=true;}}
-    int visibleIndex=0;for(int i=0;i<environmentList.getChildCount();i++){View child=environmentList.getChildAt(i);if(child.getVisibility()==View.VISIBLE){EnvironmentRow holder=null;for(EnvironmentRow candidate:rowViews.values())if(candidate.root==child){holder=candidate;break;}if(holder!=null)holder.separator.setVisibility(visibleIndex++==0?View.GONE:View.VISIBLE);}}
     environmentList.setVisibility(visibleIds.isEmpty()?View.GONE:View.VISIBLE);
     int maintenance=0;for(int i=0;i<rows.length();i++){JSONObject row=rows.optJSONObject(i);if(row.optBoolean("resetting")||row.optBoolean("deleting"))maintenance++;}
-    setText(count,counts[0]==0&&maintenance>0?maintenance+" 个环境待完成维护":visibleIds.size()==counts[0]?counts[0]+" 个环境":"显示 "+visibleIds.size()+" / "+counts[0]);
-    String empty=visibleIds.isEmpty()?(counts[0]==0&&maintenance>0?"maintenance":"filtered"):"";if(!empty.equals(emptySignature)){emptySignature=empty;emptyRows.removeAllViews();if("maintenance".equals(empty))DesignUi.note(emptyRows,"有环境等待完成维护，请点击上方继续重置或清理。");else if("filtered".equals(empty))DesignUi.empty(emptyRows,"没有匹配的环境","试试其他关键词，或重置分组与状态筛选。","重置筛选",()->{filter=0;selectedGroup=null;search.setText("");renderCached();});}
+    setText(count,ordered.isEmpty()&&maintenance>0?maintenance+" 个环境待完成维护":ordered.size()+" 个环境");
+    String empty=ordered.isEmpty()?(maintenance>0?"maintenance":"empty"):"";
+    if(!empty.equals(emptySignature)){
+      emptySignature=empty;emptyRows.removeAllViews();
+      if("maintenance".equals(empty))DesignUi.note(emptyRows,"有环境等待完成维护，请点击上方继续重置或清理。");
+      else if("empty".equals(empty))DesignUi.empty(emptyRows,"还没有环境","创建一个环境，开始独立的会话。","新建环境",this::createWindow);
+    }
     updateSelectionBar(rows);
-    // A heartbeat with unchanged layout must not arm a deferred scroll write.
-    if(anchor!=null&&scrolling!=null&&(structure||environmentList.isLayoutRequested()
-        ||recentEnvironment.card.getVisibility()==View.VISIBLE&&recentEnvironment.card.isLayoutRequested()
+    // Only compensate actual content-layout changes; preserve the user's drag.
+    if(anchor!=null&&(structure||environmentList.isLayoutRequested()||maintenanceRows.isLayoutRequested()
         ||selectionBar.getVisibility()==View.VISIBLE&&selectionBar.isLayoutRequested()))
-      restoreEnvironmentPosition(scrolling,anchor,anchorTop,positionToken);
+      restoreEnvironmentPosition(workspaceScroll,anchor,anchorTop,positionToken);
   }
   static void setText(TextView view,String text){if(!android.text.TextUtils.equals(view.getText(),text))view.setText(text);}
   void renderMaintenance(JSONArray rows){
@@ -373,98 +246,36 @@ public class WindowHomeActivity extends ThemedActivity {
     for(int i=0;i<rows.length();i++){JSONObject row=rows.optJSONObject(i);int id=row.optInt("slot");if(row.optBoolean("deleting"))DesignUi.action(maintenanceRows,"继续清理 · "+row.optString("name"),false,()->{try{startDelete(new EnvironmentSpec.Identity(id,row.optInt("generation"),row.getString("environmentId")));}catch(Exception invalid){showProblem("删除环境已变化，请刷新列表");}});else if(row.optBoolean("resetting"))DesignUi.action(maintenanceRows,"继续重置登录 · "+row.optString("name"),false,()->startReset(id,row.optInt("generation")-1,row.optString("environmentId")));}
   }
   final class EnvironmentRow {
-    final LinearLayout root=DesignUi.column(WindowHomeActivity.this),card=DesignUi.card(WindowHomeActivity.this),head=DesignUi.row(WindowHomeActivity.this),actions=DesignUi.row(WindowHomeActivity.this);
+    final LinearLayout root=DesignUi.column(WindowHomeActivity.this),card=DesignUi.card(WindowHomeActivity.this),head=DesignUi.row(WindowHomeActivity.this),details=DesignUi.row(WindowHomeActivity.this);
     final View separator=new View(WindowHomeActivity.this);final CheckBox check=new CheckBox(WindowHomeActivity.this);
     final EnvironmentWorkspaceStyle.Emblem emblem=new EnvironmentWorkspaceStyle.Emblem(WindowHomeActivity.this,false);
-    final TextView name=workspaceText("",17,DesignUi.TEXT,true),sub=workspaceText("",12,DesignUi.MUTED,false),badge=workspaceText("",11,DesignUi.MUTED,false),network=workspaceText("",12,DesignUi.MUTED,false),recent=workspaceText("",11,DesignUi.MUTED,false);
+    final TextView name=workspaceText("",17,DesignUi.TEXT,true),sub=workspaceText("",11,DesignUi.MUTED,false),badge=workspaceText("",11,DesignUi.MUTED,false),network=workspaceText("",12,DesignUi.MUTED,false);
     JSONObject value;boolean syncing;
-    final Button open=ReferenceUi.iconButton(WindowHomeActivity.this,"chevron-right","打开环境",()->openExpected(value,"chat",true)),more=ReferenceUi.more(WindowHomeActivity.this,()->{if(value!=null)menu(value.optInt("slot"));});
+    final Button more=ReferenceUi.more(WindowHomeActivity.this,()->{if(value!=null)menu(value.optInt("slot"));});
     final EnvironmentPresentation.Binding binding=new EnvironmentPresentation.Binding();
     EnvironmentRow(){
-      root.addView(separator,new LinearLayout.LayoutParams(-1,dp(10)));root.addView(card);card.setPadding(dp(16),dp(14),dp(10),dp(6));
+      root.addView(separator,new LinearLayout.LayoutParams(-1,dp(10)));root.addView(card);card.setPadding(dp(16),dp(12),dp(12),dp(12));
       card.setClickable(true);card.setFocusable(true);card.setOnClickListener(v->{if(value!=null){if(selecting)toggleSelection(value.optInt("slot"));else openExpected(value,"chat",true);}});card.setOnLongClickListener(v->{if(value!=null)toggleSelection(value.optInt("slot"));return true;});
       check.setOnCheckedChangeListener((button,selected)->{if(!syncing&&value!=null)toggleSelection(value.optInt("slot"));});head.addView(check,new LinearLayout.LayoutParams(dp(48),dp(48)));head.addView(emblem,new LinearLayout.LayoutParams(dp(44),dp(44)));
-      LinearLayout titles=DesignUi.column(WindowHomeActivity.this);titles.setPadding(dp(12),0,dp(4),0);name.setMaxLines(2);name.setEllipsize(TextUtils.TruncateAt.END);sub.setMaxLines(2);sub.setEllipsize(TextUtils.TruncateAt.END);sub.setPadding(0,dp(3),0,0);titles.addView(name);titles.addView(sub);head.addView(titles,new LinearLayout.LayoutParams(0,-2,1));head.addView(more,new LinearLayout.LayoutParams(dp(48),dp(48)));card.addView(head);
-      network.setMaxLines(2);network.setEllipsize(TextUtils.TruncateAt.END);network.setPadding(0,dp(10),dp(6),0);Ui.Icon globe=new Ui.Icon("globe",DesignUi.MUTED);globe.setBounds(0,0,dp(14),dp(14));network.setCompoundDrawables(globe,null,null,null);network.setCompoundDrawablePadding(dp(7));card.addView(network);
-      badge.setPadding(dp(8),dp(4),dp(8),dp(4));badge.setGravity(Gravity.CENTER);actions.addView(badge);
-      recent.setSingleLine(true);recent.setEllipsize(TextUtils.TruncateAt.END);recent.setGravity(Gravity.END|Gravity.CENTER_VERTICAL);recent.setPadding(dp(8),0,0,0);actions.addView(recent,new LinearLayout.LayoutParams(0,-2,1));actions.addView(open,new LinearLayout.LayoutParams(dp(48),dp(48)));card.addView(actions);
+      LinearLayout titles=DesignUi.column(WindowHomeActivity.this);titles.setPadding(dp(12),0,dp(4),0);name.setMaxLines(2);name.setEllipsize(TextUtils.TruncateAt.END);sub.setMaxLines(1);sub.setEllipsize(TextUtils.TruncateAt.END);sub.setPadding(0,dp(2),0,0);titles.addView(name);titles.addView(sub);head.addView(titles,new LinearLayout.LayoutParams(0,-2,1));head.addView(more,new LinearLayout.LayoutParams(dp(48),dp(48)));card.addView(head);
+      details.setPadding(0,dp(8),0,0);
+      network.setMaxLines(1);network.setEllipsize(TextUtils.TruncateAt.END);network.setPadding(0,0,dp(8),0);Ui.Icon globe=new Ui.Icon("globe",DesignUi.MUTED);globe.setBounds(0,0,dp(14),dp(14));network.setCompoundDrawables(globe,null,null,null);network.setCompoundDrawablePadding(dp(6));details.addView(network,new LinearLayout.LayoutParams(0,-2,1));
+      badge.setPadding(dp(7),dp(3),dp(7),dp(3));badge.setGravity(Gravity.CENTER);details.addView(badge);card.addView(details);
     }
     void bind(JSONObject row,Set<Integer> running,long now,int defaultSlot){
       if(!binding.changed(EnvironmentPresentation.stamp(row,running,now,defaultSlot,selecting,selectedIds.contains(row.optInt("slot")))))return;
       int id=row.optInt("slot");boolean active=EnvironmentPresentation.active(row,running),fresh=EnvironmentPresentation.fresh(row,now),problem=!row.optString("problem").isEmpty();
-      card.setContentDescription((selecting?"选择环境：":"打开环境：")+row.optString("name"));card.setBackground(EnvironmentWorkspaceStyle.card(WindowHomeActivity.this,false,selecting&&selectedIds.contains(id)));syncing=true;check.setChecked(selectedIds.contains(id));syncing=false;check.setVisibility(selecting?View.VISIBLE:View.GONE);emblem.setVisibility(selecting?View.GONE:View.VISIBLE);emblem.bind(id);check.setContentDescription("选择环境 "+String.format(Locale.ROOT,"%02d",id+1)+" "+row.optString("name"));setText(name,(row.optBoolean("favorite")?"★ ":"")+row.optString("name"));String group=row.optString("group").isEmpty()?"未分组":row.optString("group");setText(sub,String.format(Locale.ROOT,"%02d",id+1)+" · "+group+(row.optBoolean("desktopSite")?" · 电脑版":"")+(id==defaultSlot?" · 默认":"")+(!row.optString("draft").isEmpty()?" · 草稿":""));
-      int color=problem?DesignUi.RED:active?DesignUi.GREEN:DesignUi.MUTED;setText(badge,"• "+EnvironmentPresentation.status(row,active,fresh));badge.setTextColor(color);badge.setBackground(DesignUi.surface(WindowHomeActivity.this,(color&0x00ffffff)|0x11000000,12,android.graphics.Color.TRANSPARENT));setText(network,networkStatus(row,active,fresh));network.setTextColor(problem?DesignUi.RED:DesignUi.MUTED);setText(recent,row.optLong("opened")<=0?"尚未打开":"最近 "+recentUse(row.optLong("opened"),now));open.setVisibility(selecting?View.GONE:View.VISIBLE);more.setVisibility(selecting?View.GONE:View.VISIBLE);actions.setMinimumHeight(dp(48));open.setContentDescription("打开环境 "+row.optString("name"));more.setContentDescription("更多操作 "+row.optString("name"));
+      card.setBackground(EnvironmentWorkspaceStyle.card(WindowHomeActivity.this,id==defaultSlot,selecting&&selectedIds.contains(id)));
+      syncing=true;check.setChecked(selectedIds.contains(id));syncing=false;check.setVisibility(selecting?View.VISIBLE:View.GONE);emblem.setVisibility(selecting?View.GONE:View.VISIBLE);emblem.bind(id);
+      check.setContentDescription("选择环境 "+String.format(Locale.ROOT,"%02d",id+1)+" "+row.optString("name"));
+      setText(name,(row.optBoolean("favorite")?"★ ":"")+row.optString("name"));String group=row.optString("group");
+      setText(sub,String.format(Locale.ROOT,"%02d",id+1)+(group.isEmpty()?"":" · "+group)+(id==defaultSlot?" · 默认":"")+(row.optBoolean("desktopSite")?" · 电脑版":"")+(!row.optString("draft").isEmpty()?" · 草稿":""));
+      int color=problem?DesignUi.RED:active?DesignUi.GREEN:DesignUi.MUTED;
+      setText(badge,"• "+EnvironmentPresentation.status(row,active,fresh));badge.setTextColor(color);badge.setBackground(DesignUi.surface(WindowHomeActivity.this,(color&0x00ffffff)|0x11000000,12,android.graphics.Color.TRANSPARENT));
+      setText(network,networkStatus(row,active,fresh));network.setTextColor(DesignUi.MUTED);
+      more.setVisibility(selecting?View.GONE:View.VISIBLE);more.setContentDescription("更多操作 "+row.optString("name"));
+      card.setContentDescription((selecting?"选择环境：":"打开环境：")+row.optString("name")+"，"+sub.getText()+"，"+network.getText()+"，"+badge.getText());
     }
-  }
-  JSONObject currentView(String name){return EnvironmentSavedViews.view(name,search.getText().toString(),selectedGroup,filter,sort);}
-  void applyView(JSONObject view){
-    if(view==null)return;
-    filter=view.optInt("filter");sort=view.optInt("sort");selectedGroup=view.isNull("group")?null:view.optString("group");activeView=view.optString("name");
-    selecting=false;selectedIds.clear();search.setText(view.optString("query"));handler.removeCallbacks(searchRender);renderCached();
-  }
-  void updateViewLabel(){
-    JSONObject saved=savedViews.find(this,activeView);
-    boolean matches=saved!=null&&EnvironmentSavedViews.sameSettings(saved,currentView(activeView));
-    String heading=search.getText().toString().trim().isEmpty()?(filter==0&&selectedGroup==null?"全部环境":"筛选结果"):"搜索结果";
-    setText(viewsButton,matches?activeView:saved==null?heading:activeView+" · 已修改");
-    viewsButton.setContentDescription(matches?"当前工作视图："+activeView+"，点按切换":"切换或保存工作视图");
-  }
-  void chooseView(){
-    ReferenceUi.Modal panel=new ReferenceUi.Modal(this,"工作视图").asSheet();
-    DesignUi.note(panel.body,"保存搜索、分组、状态和排序，下次一键回到同一工作范围。");
-    ReferenceUi.menuAction(panel,"保存当前视图",()->{panel.dismiss();saveView();});
-    ReferenceUi.menuAction(panel,"查看全部环境",()->{panel.dismiss();applyView(EnvironmentSavedViews.view("","",null,0,0));});
-    JSONArray views=savedViews.list(this);
-    for(int i=0;i<views.length();i++){
-      JSONObject view=views.optJSONObject(i);if(view==null)continue;
-      ReferenceUi.menuAction(panel,view.optString("name"),()->{panel.dismiss();applyView(view);});
-    }
-    if(views.length()>0)ReferenceUi.menuAction(panel,"管理已保存视图",()->{panel.dismiss();manageViews();});
-    panel.show();
-  }
-  void saveView(){
-    LinearLayout box=DesignUi.column(this);box.setPadding(dp(18),0,dp(18),dp(16));
-    EditText name=DesignUi.input(box,"视图名称",activeView,"例如：工作组待处理");name.setFilters(new InputFilter[]{new InputFilter.LengthFilter(24)});
-    DesignUi.note(box,"同名视图会更新为当前条件。保存视图不会更改环境配置或多选结果。");
-    AlertDialog dialog=AppAppearance.dialog(this).setTitle("保存工作视图").setView(box).setNegativeButton("取消",null).setPositiveButton("保存",null).create();dialog.show();
-    dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v->{
-      String title=name.getText().toString().trim();if(title.isEmpty()){name.setError("请输入视图名称");return;}
-      if(!savedViews.save(this,currentView(title))){name.setError("视图未保存；最多 8 个，请删除多余视图或重试");return;}
-      activeView=title;updateViewLabel();dialog.dismiss();
-    });
-  }
-  void manageViews(){
-    JSONArray views=savedViews.list(this);String[] names=new String[views.length()];for(int i=0;i<names.length;i++)names[i]=views.optJSONObject(i).optString("name");
-    AppAppearance.dialog(this).setTitle("删除已保存视图").setItems(names,(d,n)->{
-      String name=names[n];AppAppearance.dialog(this).setTitle("删除视图“"+name+"”？").setMessage("只移除此筛选组合，环境和配置会保留。")
-        .setNegativeButton("取消",null).setPositiveButton("删除视图",(prompt,which)->{savedViews.remove(this,name);if(name.equals(activeView))activeView="";updateViewLabel();}).show();
-    }).setNegativeButton("完成",null).show();
-  }
-  void renderInbox(JSONArray rows,Set<Integer> running,long now){
-    List<JSONObject> tasks=EnvironmentWorkspacePolicy.actionable(rows,running,now);
-    int issues=0,drafts=0,waiting=0;for(JSONObject row:tasks){if(!row.optString("problem").isEmpty())issues++;if(!row.optString("draft").isEmpty())drafts++;if(row.optBoolean("waiting")&&EnvironmentWorkspacePolicy.running(row,running,now))waiting++;}
-    String next=selecting+":"+tasks.size()+":"+issues+":"+drafts+":"+waiting;if(next.equals(inboxSignature))return;inboxSignature=next;
-    inbox.removeAllViews();if(selecting||tasks.isEmpty()){inbox.setVisibility(View.GONE);return;}inbox.setVisibility(View.VISIBLE);
-    LinearLayout notice=DesignUi.row(this);notice.setPadding(dp(14),dp(12),dp(14),dp(12));notice.setBackground(EnvironmentWorkspaceStyle.card(this,false,false));
-    ImageView icon=DesignUi.icon(this,issues>0?"info":"chat",issues>0?DesignUi.RED:DesignUi.BLUE,32);notice.addView(icon);
-    LinearLayout labels=DesignUi.column(this);labels.setPadding(dp(10),0,dp(8),0);labels.addView(workspaceText(tasks.size()+" 个环境有待办",13,DesignUi.TEXT,true));
-    TextView summary=workspaceText((issues>0?issues+" 个连接需处理  ":"")+(drafts>0?drafts+" 个配置草稿  ":"")+(waiting>0?waiting+" 个等待回复":""),12,DesignUi.MUTED,false);summary.setMaxLines(2);summary.setEllipsize(TextUtils.TruncateAt.END);summary.setPadding(0,dp(2),0,0);labels.addView(summary);notice.addView(labels,new LinearLayout.LayoutParams(0,-2,1));
-    ImageView arrow=new ImageView(this);arrow.setImageDrawable(new Ui.Icon("chevron-right",DesignUi.MUTED));notice.addView(arrow,new LinearLayout.LayoutParams(dp(16),dp(20)));
-    notice.setMinimumHeight(dp(64));notice.setClickable(true);notice.setFocusable(true);notice.setContentDescription("查看并继续任务，"+tasks.size()+" 个环境有待办");notice.setOnClickListener(v->showInbox());DesignUi.addCard(inbox,notice);
-  }
-  void showInbox(){
-    ReferenceUi.Modal panel=new ReferenceUi.Modal(this,"环境任务收件箱").asSheet();
-    List<JSONObject> tasks=EnvironmentWorkspacePolicy.actionable(snapshot==null?new JSONArray():snapshot.rows,live(),System.currentTimeMillis());
-    if(tasks.isEmpty())DesignUi.note(panel.body,"当前没有待处理的连接、配置草稿或正在等待的回复。");
-    for(JSONObject row:tasks){
-      LinearLayout card=DesignUi.card(this);card.addView(ReferenceUi.text(this,row.optString("name"),16,DesignUi.TEXT,true));
-      boolean issue=!row.optString("problem").isEmpty(),draft=!row.optString("draft").isEmpty();
-      if(issue){DesignUi.note(card,(EnvironmentWorkspacePolicy.running(row,live(),System.currentTimeMillis())?"":"上次记录 · ")+row.optString("problem"));DesignUi.action(card,"排查此环境连接",true,()->{panel.dismiss();openExpected(row,"network",false);});}
-      if(draft){DesignUi.note(card,"已保存环境配置草稿，尚未应用。");DesignUi.action(card,"继续编辑配置",!issue,()->{panel.dismiss();openExpected(row,"edit",false);});}
-      if(row.optBoolean("waiting")&&EnvironmentWorkspacePolicy.running(row,live(),System.currentTimeMillis()))DesignUi.note(card,"此环境正在等待回复，可切回原会话查看。");
-      DesignUi.action(card,"回到原会话",!issue&&!draft,()->{panel.dismiss();openExpected(row,"chat",false);});DesignUi.addCard(panel.body,card);
-    }
-    DesignUi.note(panel.body,"任务来自本机环境状态；不自动重发消息或应用配置。");panel.show();
   }
   void openExpected(JSONObject expected,String action,boolean overview){
     if(!EnvironmentSwitcherUi.open(this,expected,action,overview))showProblem("环境已变化，请刷新后重新选择");
@@ -485,14 +296,13 @@ public class WindowHomeActivity extends ThemedActivity {
   void updateSelectionBar(JSONArray rows){
     setText(selectionButton,selecting?"完成":"多选");selectionButton.setSelected(selecting);
     selectionBar.setVisibility(selecting?View.VISIBLE:View.GONE);
-    int hidden=0;boolean hasFavorite=false,hasUnfavorite=false;
-    for(int id:selectedIds)if(!visibleIds.contains(id))hidden++;
+    boolean hasFavorite=false,hasUnfavorite=false;
     for(int i=0;i<rows.length();i++){
       JSONObject row=rows.optJSONObject(i);
       if(selectedIds.contains(row.optInt("slot"))){if(row.optBoolean("favorite"))hasFavorite=true;else hasUnfavorite=true;}
     }
-    setText(selectionCount,"已选 "+selectedIds.size()+" 个"+(hidden>0?"\n筛选外 "+hidden+" 个":""));
-    setText(visibleSelectionButton,!visibleIds.isEmpty()&&selectedIds.containsAll(visibleIds)?"取消当前结果选中":"全选当前结果");
+    setText(selectionCount,"已选 "+selectedIds.size()+" 个");
+    setText(visibleSelectionButton,!visibleIds.isEmpty()&&selectedIds.containsAll(visibleIds)?"取消全选":"全选");
     visibleSelectionButton.setEnabled(!visibleIds.isEmpty());
     batchGroupButton.setEnabled(!selectedIds.isEmpty());
     favoriteSelectedButton.setEnabled(hasUnfavorite);unfavoriteSelectedButton.setEnabled(hasFavorite);

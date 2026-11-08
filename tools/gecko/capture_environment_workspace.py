@@ -1,6 +1,6 @@
 """A bounded visual diagnostic of the real environment workspace.
 
-The existing test-only launcher seeds eight local, unconfigured environments and
+The separate test-only launcher seeds five local, unconfigured environments and
 then opens the production WindowHomeActivity. These records are synthetic visual
 data, not live accounts, network receipts or release acceptance. PNGs and MP4s
 are original Android captures; this module never draws or edits their pixels.
@@ -15,10 +15,10 @@ import time
 import xml.etree.ElementTree as ET
 
 PACKAGE = 'local.pocketchat.test'
-COMPONENT = PACKAGE + '/local.pocketchat.UiVisualIntegrationActivity'
+COMPONENT = PACKAGE + '/local.pocketchat.FiveEnvironmentVisualActivity'
 ACTIVITY = PACKAGE + '/local.pocketchat.WindowHomeActivity'
 WIDTH, HEIGHT, DENSITY = 1236, 2676, 480
-LABELS = ('环境', '网络', '下载', '阅读')
+LABELS = ('会话', '环境', '下载', '网络', '设置')
 
 
 def sha(path):
@@ -57,15 +57,21 @@ def row_positions(xml):
                   if node.get('content-desc', '').startswith('更多操作 '))
 
 
+def scrollable_region(xml):
+    candidates = [node for node in visible_nodes(xml)
+                  if node.get('class') == 'android.widget.ScrollView' and node.get('scrollable') == 'true']
+    return max(candidates, key=lambda n: (bounds(n)[2]-bounds(n)[0])*(bounds(n)[3]-bounds(n)[1])) if candidates else None
+
+
 def capture_environment_workspace(args, report, capture, adb, screenshot, *, navigation_geometry, mp4_metadata):
     result = report['environmentWorkspacePreview']
     identity = report['buildIdentity']
     result.update(status='started', startedAtUnixNs=time.time_ns(), actualAndroidExecution=True,
-        actualProductionActivity=ACTIVITY, syntheticFixture=True, seededEnvironmentCount=8,
+        actualProductionActivity=ACTIVITY, syntheticFixture=True, seededEnvironmentCount=5,
         sourceCommit=identity['sourceCommit'], sourceTree=identity['sourceTree'],
         apkSha256=identity['apkSha256'], runNonce=report['runNonce'], runnerSha256=sha(__file__),
         scope=__doc__, viewport=dict(width=WIDTH, height=HEIGHT, densityDpi=DENSITY),
-        observations=[], scenes=[], errors=[], restoredDefaultFont=False,
+        observations=[], scenes=[], errors=[], restoredDefaultFont=False, scrollProbes=[],
         firstCommandIndex=len(report['commands']), firstInputIndex=len(report['inputs']),
         motion=dict(status='not-attempted', interactionsComplete=False,
                     performanceMeasurement=False, animationAppearanceVerified=False))
@@ -91,7 +97,8 @@ def capture_environment_workspace(args, report, capture, adb, screenshot, *, nav
         # The visual heading can be “环境”; its explicit accessibility title is
         # still “环境管理”. Neither path relies on an off-screen text fragment.
         return (selected(xml) and named(xml, '环境管理') is not None
-                and named(xml, '8 个环境') is not None and named(xml, '多选', button=True) is not None)
+                and named(xml, '5 个环境') is not None and named(xml, '多选', button=True) is not None
+                and named(xml, '搜索环境') is None)
 
     def active():
         if process is None or process.poll() is not None or time.monotonic() - recording_started >= 59:
@@ -145,7 +152,7 @@ def capture_environment_workspace(args, report, capture, adb, screenshot, *, nav
     def launch(scale):
         adb('shell', 'am', 'force-stop', PACKAGE)
         adb('shell', 'settings', 'put', 'system', 'font_scale', str(scale))
-        adb('shell', 'am', 'start', '-W', '-n', COMPONENT, '--es', 'visualAction', 'environments')
+        adb('shell', 'am', 'start', '-W', '-n', COMPONENT)
 
     def input_event(parts, action, reason, observation, *, node=None, extra=None):
         active()
@@ -175,11 +182,9 @@ def capture_environment_workspace(args, report, capture, adb, screenshot, *, nav
                     extra=dict(x=x, y=y, label=label))
 
     def scroll(xml, observation, down):
-        candidates = [node for node in visible_nodes(xml)
-                      if node.get('class') == 'android.widget.ScrollView' and node.get('scrollable') == 'true']
-        if not candidates:
+        node = scrollable_region(xml)
+        if node is None:
             raise ValueError('No observed scrollable environment list')
-        node = max(candidates, key=lambda n: (bounds(n)[2]-bounds(n)[0])*(bounds(n)[3]-bounds(n)[1]))
         left, top, right, bottom = bounds(node)
         geometry = navigation_geometry(xml)
         # Start and end inside actual content, above the floating dock's targets.
@@ -222,13 +227,46 @@ def capture_environment_workspace(args, report, capture, adb, screenshot, *, nav
             raise RuntimeError('Environment screenrecord exited with code ' + str(process.returncode))
 
     try:
+        if (not report.get('actualAndroidExecution') or report['installedApk']['sha256'] != identity['apkSha256']
+                or adb('shell', 'getprop', 'ro.kernel.qemu', timeout=5).strip() != b'1'):
+            raise ValueError('The installed disposable integration fixture must be verified before resetting it')
+        # Earlier native-network captures deliberately exercised an unconfigured
+        # ChatSession. Clear that disposable test data before seeding this scene,
+        # so its heartbeat errors cannot masquerade as five-environment data.
+        if adb('shell', 'pm', 'clear', PACKAGE, timeout=15).strip() != b'Success':
+            raise ValueError('The disposable five-environment fixture could not be reset')
+        result['fixtureReset'] = dict(package=PACKAGE, scope='installed integration test package only',
+            completedAtUnixNs=time.time_ns(), verifiedApkSha256=identity['apkSha256'])
         launch(1.0)
         xml, observation = observe(ready, 'environment-default')
         scene('environment-default', xml, observation, 1.0)
+        motion_scale = 1.0
+        result['scrollProbes'].append(dict(fontScale=1.0, hierarchy=observation,
+            hasOverflow=scrollable_region(xml) is not None))
+        # Five compact cards may all fit. Use genuine enlarged-font overflow
+        # when available; never add fake rows or padding to force scrolling.
+        large_font_captured = False
+        if scrollable_region(xml) is None:
+            launch(1.3)
+            xml, observation = observe(ready, 'environment-large-font-1.3')
+            scene('environment-large-font-1.3', xml, observation, 1.3)
+            large_font_captured = True
+            motion_scale = 1.3
+            result['scrollProbes'].append(dict(fontScale=1.3, hierarchy=observation,
+                hasOverflow=scrollable_region(xml) is not None))
+            if scrollable_region(xml) is None:
+                launch(1.6)
+                xml, observation = observe(ready, 'environment-motion-font-1.6')
+                motion_scale = 1.6
+                result['scrollProbes'].append(dict(fontScale=1.6, hierarchy=observation,
+                    hasOverflow=scrollable_region(xml) is not None))
+        can_scroll = scrollable_region(xml) is not None
+        result['scrollInteractionAvailable'] = can_scroll
         try:
             motion.update(status='recording', startedAtUnixNs=time.time_ns(), timeLimitSeconds=60,
                 requestedSize=[618,1338], minimumRecordingWallSeconds=16, firstInputIndex=len(report['inputs']),
                 requestedReviewMinSeconds=6, requestedReviewMaxSeconds=60,
+                fontScale=motion_scale, scrollInteractionAvailable=can_scroll,
                 sourceCommit=identity['sourceCommit'], sourceTree=identity['sourceTree'],
                 apkSha256=identity['apkSha256'], runNonce=report['runNonce'],
                 animationScales={key: adb('shell', 'settings', 'get', 'global', key, timeout=5).decode().strip()
@@ -253,35 +291,41 @@ def capture_environment_workspace(args, report, capture, adb, screenshot, *, nav
             before_rows = row_positions(xml)
             if not before_rows:
                 raise ValueError('No actual environment rows were observed before scrolling')
-            scroll(xml, observation, True)
-            xml, observation = observe(lambda value: selected(value) and bool(row_positions(value))
-                and row_positions(value) != before_rows, 'environment-scrolled', recording=True)
-            result['scrollChangedObservedRows'] = True
-            scene('environment-scrolled', xml, observation, 1.0)
-            for index in range(3):
-                scroll(xml, observation, False)
-                xml, observation = observe(selected, 'environment-controls-' + str(index), recording=True)
-                if ready(xml):
-                    break
-            if not ready(xml):
-                raise ValueError('Environment selection controls did not return after actual scrolling')
+            if can_scroll:
+                scroll(xml, observation, True)
+                xml, observation = observe(lambda value: selected(value) and bool(row_positions(value))
+                    and row_positions(value) != before_rows, 'environment-scrolled', recording=True)
+                result['scrollChangedObservedRows'] = True
+                scene('environment-scrolled', xml, observation, motion_scale)
+                for index in range(3):
+                    scroll(xml, observation, False)
+                    xml, observation = observe(selected, 'environment-controls-' + str(index), recording=True)
+                    if ready(xml) and row_positions(xml) == before_rows:
+                        break
+                if not ready(xml) or row_positions(xml) != before_rows:
+                    raise ValueError('The observed environment rows did not return after actual scrolling')
+            else:
+                result.update(scrollChangedObservedRows=False,
+                    scrollSkipReason='All five actual cards fit at every observed scale; no scrollable vertical region')
+                xml, observation = observe(ready, 'environment-scrolled', recording=True)
+                scene('environment-scrolled', xml, observation, motion_scale)
             tap(xml, '多选', observation)
             xml, observation = observe(lambda value: selected(value)
-                and named(value, '全选当前结果', button=True) is not None,
+                and named(value, '全选', button=True) is not None,
                 'environment-selection-started', recording=True)
-            tap(xml, '全选当前结果', observation)
-            actions = ('取消当前结果选中', '批量分组', '收藏', '取消收藏')
-            xml, observation = observe(lambda value: selected(value) and named(value, '已选 8 个') is not None
+            tap(xml, '全选', observation)
+            actions = ('取消全选', '批量分组', '收藏', '取消收藏')
+            xml, observation = observe(lambda value: selected(value) and named(value, '已选 5 个') is not None
                 and all(named(value, label, button=True) is not None for label in actions),
                 'environment-selection-all', recording=True)
             for label in actions:
                 left, top, right, bottom = bounds(named(xml, label, button=True))
                 if right-left < 48*DENSITY//160 or bottom-top < 48*DENSITY//160:
                     raise ValueError('Actual environment selection target is smaller than 48 dp: ' + label)
-            result['selection'] = dict(selectedCount=8, allFourActionsVisible=True,
+            result['selection'] = dict(selectedCount=5, allFourActionsVisible=True,
                 minimumTouchTargetDp=48, hierarchy=observation,
                 actionBounds={label:list(bounds(named(xml, label, button=True))) for label in actions})
-            scene('environment-selection-all', xml, observation, 1.0)
+            scene('environment-selection-all', xml, observation, motion_scale)
             input_event(('keyevent', '4'), 'keyevent', 'Exit multi-selection using actual Android Back',
                         observation, extra=dict(keyCode=4))
             xml, observation = observe(lambda value: ready(value) and named(value, '批量分组', button=True) is None,
@@ -294,7 +338,8 @@ def capture_environment_workspace(args, report, capture, adb, screenshot, *, nav
             active()
             motion.update(interactionsComplete=True, lastInputIndexExclusive=len(report['inputs']),
                 postGestureWaitSeconds=settle, wallSecondsAtStopRequest=time.monotonic()-recording_started,
-                stopReason='actual-scroll-selection-and-back-completed')
+                stopReason='actual-scroll-selection-and-back-completed' if can_scroll
+                    else 'actual-selection-and-back-completed-content-fits')
             stop_recording()
             xml, observation = observe(ready, 'environment-after-recording')
             motion['finalStateVerifiedAfterStop'] = True
@@ -343,9 +388,10 @@ def capture_environment_workspace(args, report, capture, adb, screenshot, *, nav
                 except Exception as error:
                     motion['status'] = 'failed'
                     failure(error, 'retain-environment-recording')
-        launch(1.3)
-        xml, observation = observe(ready, 'environment-large-font-1.3')
-        scene('environment-large-font-1.3', xml, observation, 1.3)
+        if not large_font_captured:
+            launch(1.3)
+            xml, observation = observe(ready, 'environment-large-font-1.3')
+            scene('environment-large-font-1.3', xml, observation, 1.3)
     except Exception as error:
         failure(error, 'environment-workspace')
     finally:
@@ -362,7 +408,10 @@ def capture_environment_workspace(args, report, capture, adb, screenshot, *, nav
             failure(error, 'restore-environment-default-font')
         expected = {'environment-default', 'environment-scrolled', 'environment-selection-all', 'environment-large-font-1.3'}
         result['status'] = ('captured' if not result['errors'] and result['restoredDefaultFont']
-            and result.get('scrollChangedObservedRows') and result.get('selection', {}).get('backExitedSelection')
+            and (result.get('scrollChangedObservedRows') or
+                (result.get('scrollInteractionAvailable') is False and len(result['scrollProbes']) == 3
+                 and all(not probe['hasOverflow'] for probe in result['scrollProbes']) and result.get('scrollSkipReason')))
+            and result.get('selection', {}).get('backExitedSelection')
             and {value['name'] for value in result['scenes']} == expected and motion['status'] == 'captured' else 'failed')
         result.update(lastCommandIndexExclusive=len(report['commands']),
                       lastInputIndexExclusive=len(report['inputs']), completedAtUnixNs=time.time_ns())

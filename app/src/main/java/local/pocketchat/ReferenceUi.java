@@ -16,6 +16,9 @@ final class ReferenceUi {
   static int BG=DesignUi.BG,CHAT_BG=0xfff9fbfe,WHITE=0xffffffff,TEXT=DesignUi.TEXT,
     MUTED=DesignUi.MUTED,LINE=DesignUi.LINE,BLUE=DesignUi.BLUE,BLUE_SOFT=0xffedf4ff,
     GREEN=DesignUi.GREEN,ORANGE=0xffa96c0a,RED=DesignUi.RED;
+  // Page identities deliberately differ from visual positions in this bar.
+  private static final int[] WORKSPACE_PAGES={AppHub.CHAT,AppHub.ENVIRONMENTS,AppHub.DOWNLOADS,AppHub.NETWORK,AppHub.SETTINGS};
+  private static final String[] WORKSPACE_LABELS={"会话","环境","下载","网络","设置"},WORKSPACE_GLYPHS={"chat","window","download","globe","settings"};
   static int dp(Context c,int n){return Ui.dp(c,n);}
   static TextView text(Context c,String value,int size,int color,boolean strong){TextView v=DesignUi.text(c,value,size,color);if(strong)v.setTypeface(Typeface.create("sans-serif-medium",Typeface.NORMAL));return v;}
   static void single(TextView v){v.setSingleLine(true);v.setEllipsize(TextUtils.TruncateAt.END);}
@@ -92,6 +95,37 @@ final class ReferenceUi {
     }
     GlassNavigationRow row=new GlassNavigationRow(a,dock,reading,height);
     bar.addView(row,new LinearLayout.LayoutParams(-1,-2));markNav(buttons,selected);return bar;
+  }
+  /** Native workspaces use all five destinations; callbacks carry AppHub page IDs. */
+  static LinearLayout workspaceNav(Activity a,int page,java.util.function.IntConsumer action,Button[] buttons){
+    if(buttons==null)buttons=new Button[WORKSPACE_PAGES.length];
+    if(buttons.length!=WORKSPACE_PAGES.length)throw new IllegalArgumentException("Five workspace buttons required");
+    LinearLayout bar=DesignUi.column(a);bar.setPadding(dp(a,12),dp(a,10),dp(a,12),dp(a,12));
+    bar.setClipChildren(false);bar.setClipToPadding(false);
+    int heightDp=navHeightDp(a),radius=(heightDp+1)/2;
+    GlassDock dock=new GlassDock(a);dock.setPadding(dp(a,5),dp(a,2),dp(a,5),dp(a,2));
+    dock.setBackground(DesignUi.glass(a,radius));GlassMotion.press(dock,false);
+    for(int i=0;i<WORKSPACE_PAGES.length;i++){
+      final int destination=WORKSPACE_PAGES[i];
+      Button b=link(a,WORKSPACE_LABELS[i],()->action.accept(destination));b.setTextSize(12);b.setGravity(Gravity.CENTER);
+      b.setSingleLine(false);b.setMaxLines(1);b.setHorizontallyScrolling(false);b.setEllipsize(null);
+      b.setIncludeFontPadding(true);if(Build.VERSION.SDK_INT>=28)b.setFallbackLineSpacing(true);
+      b.setTypeface(Typeface.create("sans-serif",Typeface.NORMAL));
+      b.setMinWidth(dp(a,48));b.setMinimumWidth(dp(a,48));b.setContentDescription(WORKSPACE_LABELS[i]);
+      int iconDp=destination==AppHub.CHAT?20:22,iconSize=dp(a,iconDp);
+      Ui.Icon icon=new Ui.Icon(WORKSPACE_GLYPHS[i],DesignUi.GLASS_MUTED);icon.setBounds(0,0,iconSize,iconSize);
+      b.setCompoundDrawables(null,icon,null,null);b.setCompoundDrawablePadding(dp(a,24-iconDp));
+      b.addOnLayoutChangeListener((v,l,t,r,bottom,ol,ot,or,ob)->centerDockContents((Button)v));
+      b.setBackground(navFeedback(a,false,radius));b.setPadding(dp(a,2),dp(a,8),dp(a,2),dp(a,8));
+      dock.addView(b,new LinearLayout.LayoutParams(0,-1,1));
+      ((DesignUi.ActionButton)b).pressedSurface(dock);buttons[i]=b;
+    }
+    bar.addView(dock,new LinearLayout.LayoutParams(-1,dp(a,heightDp)));markWorkspaceNav(buttons,page);return bar;
+  }
+  static void markWorkspaceNav(Button[] tabs,int page){
+    int position=-1;
+    for(int i=0;i<WORKSPACE_PAGES.length;i++)if(WORKSPACE_PAGES[i]==page){position=i;break;}
+    markNav(tabs,position);
   }
   private static int navHeightDp(Context c){return Math.max(72,(int)Math.ceil(50+22*c.getResources().getConfiguration().fontScale));}
   private static Drawable navFeedback(Context context,boolean reading,int readingRadius){

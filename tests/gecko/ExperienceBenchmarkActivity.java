@@ -152,6 +152,13 @@ public final class ExperienceBenchmarkActivity extends MainActivity {
   JSONArray slice(ArrayList<Double> values,int start){JSONArray result=new JSONArray();for(int i=start;i<values.size();i++)result.put(values.get(i));return result;}
   JSONArray center(View v){int[] p=new int[2];v.getLocationOnScreen(p);return J.arr(p[0]+v.getWidth()/2,p[1]+v.getHeight()/2);}
   Object visibleCenter(View view){return view!=null&&view.isShown()&&view.getWidth()>0&&view.getHeight()>0?center(view):JSONObject.NULL;}
+  Object navigationCenter(int compactIndex,int workspaceIndex){
+    boolean conversation=hub.page==AppHub.CHAT;View[] buttons=conversation?hub.tabs:hub.workspaceTabs;
+    int index=conversation?compactIndex:workspaceIndex;
+    // Workspace indexes are display order: chat, environments, downloads, network, settings.
+    // Reading exists only on the conversation dock; absent or hidden targets stay null.
+    return index<0||index>=buttons.length?JSONObject.NULL:visibleCenter(buttons[index]);
+  }
   void snapshot(String name,Runnable done){snapshot(name,done,SystemClock.uptimeMillis()+3000);}
   void snapshot(String name,Runnable done,long deadline){
     remote.evaluateJavascript(SNAPSHOT,raw->{
@@ -162,13 +169,13 @@ public final class ExperienceBenchmarkActivity extends MainActivity {
         if(!expectedTheme.isEmpty()&&(!expectedTheme.equals(page.optString("theme"))||!expectedBackground.equals(page.optString("themeBackground")))){if(SystemClock.uptimeMillis()>=deadline)throw new IllegalStateException("Fixture CSS color preference did not follow the actual native selection");handler.postDelayed(()->snapshot(name,done,deadline),20);return;}
         if(initial!=null)for(String key:new String[]{"document","draft","cookie","replyFingerprint","sendCount","path"})
           if(!String.valueOf(initial.opt(key)).equals(String.valueOf(page.opt(key))))throw new IllegalStateException("Page preservation failed: "+key);
-        JSONObject points=J.obj("environments",visibleCenter(hub.tabs[WorkspaceNavigation.ENVIRONMENTS]),"network",visibleCenter(hub.tabs[WorkspaceNavigation.NETWORK]),
-          "downloads",visibleCenter(hub.tabs[WorkspaceNavigation.DOWNLOADS]),"reading",visibleCenter(hub.tabs[WorkspaceNavigation.READING]),
+        JSONObject points=J.obj("environments",navigationCenter(WorkspaceNavigation.ENVIRONMENTS,1),"network",navigationCenter(WorkspaceNavigation.NETWORK,3),
+          "downloads",navigationCenter(WorkspaceNavigation.DOWNLOADS,2),"reading",navigationCenter(WorkspaceNavigation.READING,-1),
           "compact",visibleCenter(designChrome.compact),"address",visibleCenter(designChrome.title),"more",visibleCenter(designChrome.more));
         int[] p=new int[2];remote.getLocationOnScreen(p);
         points.put("swipeFrom",J.arr(p[0]+remote.getWidth()/2,p[1]+remote.getHeight()*3/4));
         points.put("swipeTo",J.arr(p[0]+remote.getWidth()/2,p[1]+remote.getHeight()/4));
-        JSONObject value=J.obj("name",name,"navigationContract",2,"page",page,"points",points,"hubPage",hub.page,"expanded",designChrome.expanded(),"mode",AppAppearance.mode(),
+        JSONObject value=J.obj("name",name,"navigationContract",2,"navigationLayout",hub.page==AppHub.CHAT?"conversation-compact":"workspace-five","page",page,"points",points,"hubPage",hub.page,"expanded",designChrome.expanded(),"mode",AppAppearance.mode(),
           "surface",System.identityHashCode(remote.surface),"session",System.identityHashCode(remote.current),"attachedSession",System.identityHashCode(remote.surface.getSession()),
           "visibleDocument",remote.hasVisibleDocument(),"networkReady",session.networkReady,"loadingVisibility",loading.cover.getVisibility(),
           "productionObserverCount",session.observers.size(),"scope",scope());

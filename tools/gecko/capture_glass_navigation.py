@@ -30,6 +30,7 @@ PACKAGE = 'local.pocketchat.test'
 COMPONENT = PACKAGE + '/local.pocketchat.UiVisualIntegrationActivity'
 WIDTH, HEIGHT, DENSITY = 1236, 2676, 480
 LABELS = ('环境', '网络', '下载', '阅读')
+WORKSPACE_LABELS = ('会话', '环境', '下载', '网络', '设置')
 MOTION_WIDTH, MOTION_HEIGHT, MOTION_BIT_RATE, MOTION_SECONDS = 618, 1338, 3500000, 60
 MOTION_MIN_WALL_SECONDS, MOTION_OBSERVATION_SECONDS, MOTION_RELEASE_SETTLE_SECONDS = 20, 20, 1.2
 MOTION_REVIEW_MIN_SECONDS = 12
@@ -48,6 +49,8 @@ def write(path, value):
 
 
 def bounds(node):
+    if node is None:
+        return None
     match = re.fullmatch(r'\[(\d+),(\d+)\]\[(\d+),(\d+)\]', node.get('bounds', ''))
     if match is None:
         return None
@@ -94,7 +97,7 @@ def navigation_geometry(xml):
         readingIsSquare=abs((reading[2] - reading[0]) - (reading[3] - reading[1])) <= 3,
         minimumTouchTargets=all(right - left >= minimum_touch_px and bottom - top >= minimum_touch_px
                                 for left, top, right, bottom in boxes))
-    return dict(coordinateSpace='native XML screen pixels', screenWidthPx=WIDTH,
+    return dict(layout='conversation-split', coordinateSpace='native XML screen pixels', screenWidthPx=WIDTH,
                 configuredDensityDpi=DENSITY, screenCenterX=WIDTH / 2,
                 groupLabels=list(LABELS[:3]), threeItemGroupBounds=list(group),
                 threeItemGroupCenter=group_center, horizontalCenterOffsetPx=offset,
@@ -105,6 +108,44 @@ def navigation_geometry(xml):
                 bounds={label: list(box) for label, box in zip(LABELS, boxes)},
                 selected={label: node.get('selected') for label, node in zip(LABELS, controls)},
                 checks=checks, valid=all(checks.values()))
+
+
+def workspace_navigation_geometry(xml):
+    """Measure the five actual workspace destinations, never the chat actions."""
+    controls = [button(xml, label) for label in WORKSPACE_LABELS]
+    if any(node is None for node in controls):
+        return None
+    boxes = [bounds(node) for node in controls]
+    group = (min(box[0] for box in boxes), min(box[1] for box in boxes),
+             max(box[2] for box in boxes), max(box[3] for box in boxes))
+    center = [(group[0] + group[2]) / 2, (group[1] + group[3]) / 2]
+    widths = [right-left for left, top, right, bottom in boxes]
+    minimum_touch_px = (48 * DENSITY + 159) // 160
+    checks = dict(
+        fiveItemGroupCentered=abs(center[0] - WIDTH / 2) <= 1,
+        leftToRightOrder=all(boxes[i][2] <= boxes[i+1][0] for i in range(4)),
+        equalColumns=max(widths)-min(widths) <= 2,
+        alignedTabs=max(box[1] for box in boxes)-min(box[1] for box in boxes) <= 1
+            and max(box[3] for box in boxes)-min(box[3] for box in boxes) <= 1,
+        readingAbsent=button(xml, '阅读') is None,
+        minimumTouchTargets=all(right-left >= minimum_touch_px and bottom-top >= minimum_touch_px
+                                for left, top, right, bottom in boxes))
+    return dict(layout='workspace-five', coordinateSpace='native XML screen pixels', screenWidthPx=WIDTH,
+                configuredDensityDpi=DENSITY, screenCenterX=WIDTH / 2,
+                groupLabels=list(WORKSPACE_LABELS), fiveItemGroupBounds=list(group),
+                fiveItemGroupCenter=center, horizontalCenterOffsetPx=center[0] - WIDTH / 2,
+                allowedCenterOffsetPx=1,
+                leftToRightLabels=[label for label, box in sorted(zip(WORKSPACE_LABELS, boxes), key=lambda item: item[1][0])],
+                minimumTouchTargetDp=48, minimumTouchTargetPx=minimum_touch_px,
+                bounds={label:list(box) for label,box in zip(WORKSPACE_LABELS,boxes)},
+                selected={label:node.get('selected') for label,node in zip(WORKSPACE_LABELS,controls)},
+                checks=checks, valid=all(checks.values()))
+
+
+def observed_navigation_geometry(xml):
+    compact, workspace = navigation_geometry(xml), workspace_navigation_geometry(xml)
+    # Both complete bars at once is an ambiguous screen, not a valid route.
+    return None if compact is not None and workspace is not None else compact or workspace
 
 
 def navigation(xml):
@@ -134,12 +175,12 @@ def native_root_bounds(xml):
 
 
 def selected_navigation(xml, expected):
-    """A separate diagnostic observation; the static chat assertions stay intact."""
-    geometry = navigation_geometry(xml)
-    if geometry is None or not geometry['valid']:
+    """Native management pages use five destinations; chat assertions stay intact."""
+    geometry = workspace_navigation_geometry(xml)
+    if geometry is None or not geometry['valid'] or expected not in WORKSPACE_LABELS:
         return False
     return all(geometry['selected'][label] == ('true' if label == expected else 'false')
-               for label in LABELS)
+               for label in WORKSPACE_LABELS)
 
 
 def mp4_metadata(path):
@@ -268,13 +309,12 @@ def capture_motion(args, report, capture, adb, wait_for):
                        if during_recording else MOTION_OBSERVATION_SECONDS)
         if during_recording:
             active_seconds()
+        geometry = observed_navigation_geometry(xml)
         motion['observations'].append(dict(file=name + '.xml', sha256=sha(args.out / (name + '.xml')),
             observedAtUnixNs=time.time_ns(),
             recorderStillRunning=process.poll() is None,
-            selectedNavigation=[label for label in LABELS
-                                if button(xml, label) is not None and button(xml, label).get('selected') == 'true'],
-            bounds={label: list(bounds(button(xml, label))) for label in LABELS
-                    if button(xml, label) is not None}, geometry=navigation_geometry(xml)))
+            selectedNavigation=[label for label,value in geometry['selected'].items() if value == 'true'],
+            bounds=geometry['bounds'], geometry=geometry))
         save()
         return xml
 
@@ -381,15 +421,8 @@ def capture_motion(args, report, capture, adb, wait_for):
         swipe(button(xml, '网络'), 'Move the shared selected background from downloads to network')
         xml = observe(lambda value: selected_navigation(value, '网络'), 'motion-network')
         time.sleep(.55)
-        reading = button(xml, '阅读')
-        # AppHub retains this same bottom bar while showing its native pages.
-        # Require two independently observed layouts to agree before reusing
-        # its bounds across Back. The final hierarchy verifies the actual chat
-        # after the reading gesture without a third acquisition before input.
-        if bounds(reading) != initial_reading_bounds:
-            raise ValueError('Reading control moved between the actual chat and network layouts')
-        motion['readingBoundsSource'] = dict(hierarchy='motion-network.xml',
-            matchesInitialChatHierarchy=True, observedBounds=list(initial_reading_bounds))
+        if button(xml, '阅读') is not None:
+            raise ValueError('Reading must be absent from the five-destination network workspace')
         back_input = dict(action='keyevent', keyCode=4,
             reason='Return from the actual native network workspace to the existing chat',
             atUnixNs=time.time_ns())
@@ -401,6 +434,14 @@ def capture_motion(args, report, capture, adb, wait_for):
         chat = lambda value: (navigation(value) is not None and expanded(value)
                               and capsule(value) is not None
                               and not nodes(value, lambda node: node.get('text') == '退出阅读'))
+        # The network page has a different bar. Acquire the restored chat's
+        # actual node after Back; never reuse bounds from the hidden chat bar.
+        xml = observe(chat, 'motion-chat-before-reading')
+        reading = button(xml, '阅读')
+        if bounds(reading) != initial_reading_bounds:
+            raise ValueError('The restored chat reading control differs from the initial chat layout')
+        motion['readingBoundsSource'] = dict(hierarchy='motion-chat-before-reading.xml',
+            matchesInitialChatHierarchy=True, observedBounds=list(bounds(reading)), observedAfterBack=True)
         swipe(reading, 'Move the reading material hotspot diagonally, releasing outside to cancel the action', cancel=True)
         sequence = report['inputs'][motion['firstInputIndex']:]
         if ([item['action'] for item in sequence] !=
@@ -522,7 +563,8 @@ def capture_native_backdrop_preview(args, report, capture, adb, wait_for, tap, s
                 and not nodes(xml, lambda node: node.get('text') in ('打开网址', '退出阅读')))
 
     def known_screen(xml):
-        return chat(xml) or selected_navigation(xml, '网络') or selected_navigation(xml, '下载')
+        return (chat(xml) or selected_navigation(xml, '网络') or selected_navigation(xml, '下载')
+                or selected_navigation(xml, '设置'))
 
     def back_to_chat(reason, name):
         action = dict(action='keyevent', keyCode=4, reason=reason,
@@ -562,7 +604,7 @@ def capture_native_backdrop_preview(args, report, capture, adb, wait_for, tap, s
         preview['scroll'] = dict(inputIssued=False, observedScrollableViews=len(scrolls))
         if len(scrolls) == 1:
             box = bounds(scrolls[0])
-            nav_top = min(bounds(button(xml, label))[1] for label in LABELS)
+            nav_top = min(bounds(button(xml, label))[1] for label in WORKSPACE_LABELS)
             safe_top = box[1] + DENSITY // 10
             safe_bottom = min(box[3], nav_top) - DENSITY // 10
             if box[2] - box[0] >= 144 and safe_bottom - safe_top >= 288:
@@ -618,18 +660,35 @@ def capture_native_backdrop_preview(args, report, capture, adb, wait_for, tap, s
                 refreshedHierarchySource='native-network-glass.xml',
                 refreshedHierarchySha256=sha(args.out / 'native-network-glass.xml'))
         preview['hierarchy'] = dict(file='native-network-glass.xml', sha256=sha(args.out / 'native-network-glass.xml'),
-            selectedNavigation='网络', bounds={label: list(bounds(button(xml, label))) for label in LABELS},
-            geometry=navigation_geometry(xml))
+            selectedNavigation='网络', bounds={label: list(bounds(button(xml, label))) for label in WORKSPACE_LABELS},
+            geometry=workspace_navigation_geometry(xml))
         screenshot('native-network-glass.png')
         preview['screenshot'] = dict(report['screenshots'][-1])
         if (preview['screenshot']['width'], preview['screenshot']['height']) != (WIDTH, HEIGHT):
             raise ValueError('Native preview PNG dimensions differ from the configured physical screen')
         preview['imageCaptured'] = True
+        # Exercise the restored settings destination and the conversation tab
+        # outside the movie's fixed interaction/time budget.
+        tap(button(xml, '设置'), 'Open settings through the actual five-destination workspace navigation')
+        xml = wait_for(capture, lambda value: selected_navigation(value, '设置'),
+                       'native-settings-navigation', seconds=15)
+        settings_geometry = workspace_navigation_geometry(xml)
+        screenshot('native-settings-navigation.png')
+        preview['settingsNavigation'] = dict(
+            hierarchy=dict(file='native-settings-navigation.xml',
+                sha256=sha(args.out / 'native-settings-navigation.xml'), geometry=settings_geometry),
+            screenshot=dict(report['screenshots'][-1]), selectedNavigation='设置')
+        tap(button(xml, '会话'), 'Return through the actual conversation destination and restore the split reading bar')
+        wait_for(capture, chat, 'native-backdrop-returned-chat', seconds=15)
+        preview['returnedViaConversationTab'] = True
+        preview['returnedToOrdinaryChat'] = True
+        preview['returnedChatHierarchy'] = dict(file='native-backdrop-returned-chat.xml',
+            sha256=sha(args.out / 'native-backdrop-returned-chat.xml'))
     except Exception as error:
         failure(error, 'native-network-capture')
     finally:
         try:
-            if network_tapped:
+            if network_tapped and not preview['returnedToOrdinaryChat']:
                 if not network_observed:
                     recovery = wait_for(capture, known_screen, 'native-backdrop-recovery', seconds=10)
                     network_observed = not chat(recovery)
@@ -686,7 +745,7 @@ def capture_navigation_typography(args, report, capture, adb, wait_for, screensh
     result = report['navigationTypography']
     result.update(status='started', startedAtUnixNs=time.time_ns(), runNonce=report['runNonce'],
         sourceCommit=report['buildIdentity']['sourceCommit'], apkSha256=report['buildIdentity']['apkSha256'],
-        scope='Actual ReferenceUi.nav component fixture at font scales 1.0 and 1.3; MainActivity PNG is separate.',
+        scope='Actual conversation and workspace navigation components at font scales 1.0 and 1.3; production screenshots are separate.',
         cases=[], errors=[], restoredDefaultFont=False, returnedToOrdinaryChat=False,
         firstCommandIndex=len(report['commands']))
     identity = report['buildIdentity']
@@ -709,17 +768,21 @@ def capture_navigation_typography(args, report, capture, adb, wait_for, screensh
                     geometry=navigation_geometry(xml), resumedActivity=resumed)
 
     try:
-        for scale in (1.0, 1.3):
+        for mode, scale in (('conversation',1.0),('workspace',1.0),('conversation',1.3),('workspace',1.3)):
+            expected_labels = LABELS if mode == 'conversation' else WORKSPACE_LABELS
+            count = len(expected_labels)
             nonce = secrets.token_hex(16)
-            case = dict(requestedFontScale=scale, nonce=nonce, status='started', startedAtUnixNs=time.time_ns())
+            case = dict(navigationMode=mode, requestedFontScale=scale, nonce=nonce, status='started', startedAtUnixNs=time.time_ns())
             result['cases'].append(case)
             adb('shell', 'am', 'force-stop', PACKAGE)
             adb('shell', 'settings', 'put', 'system', 'font_scale', str(scale))
             adb('shell', 'am', 'start', '-W', '-n', COMPONENT,
                 '--es', 'visualAction', 'navigation-typography', '--es', 'visualNonce', nonce,
+                '--es', 'visualNavigationMode', mode,
                 '--es', 'visualSourceCommit', identity['sourceCommit'], '--ef', 'visualFontScale', str(scale))
             deadline = time.monotonic() + 25
-            path = args.out / ('navigation-typography-font-' + str(scale) + '.log')
+            suffix = ('workspace-' if mode == 'workspace' else '') + 'font-' + str(scale)
+            path = args.out / ('navigation-typography-' + suffix + '.log')
             records, summaries = [], []
             while time.monotonic() < deadline:
                 raw = adb('logcat', '-d', '-v', 'raw', '-s', 'PocketNavType:I', '*:S',
@@ -740,12 +803,14 @@ def capture_navigation_typography(args, report, capture, adb, wait_for, screensh
             if len(summaries) != 1 or summaries[0].get('status') != 'verified':
                 raise ValueError('Native typography fixture did not verify: ' + str(summaries))
             labels = [row for row in records if row.get('kind') == 'label']
-            expected = {(selected, index) for selected in range(-1, 4) for index in range(4)}
+            expected = {(selected, index) for selected in range(-1, count) for index in range(count)}
             keys = [(row.get('selectedIndex'), row.get('measurement', {}).get('buttonIndex')) for row in labels]
-            if len(labels) != 20 or len(set(keys)) != 20 or set(keys) != expected or summaries[0].get('observationCount') != 20:
+            expected_count = count*(count+1)
+            if (len(labels) != expected_count or len(set(keys)) != expected_count or set(keys) != expected
+                    or summaries[0].get('observationCount') != expected_count):
                 raise ValueError('Typography observation phases or labels are incomplete')
             for row in records:
-                if (row.get('schema') != 1 or not row.get('actualAndroidLayout')
+                if (row.get('schema') != 1 or not row.get('actualAndroidLayout') or row.get('navigationMode') != mode
                         or any(row.get(key) != identity[key] for key in ('sourceCommit', 'sourceTree', 'apkSha256'))
                         or abs(row.get('fontScale', -1) - scale) > .001):
                     raise ValueError('Typography record identity or actual font scale differs')
@@ -762,7 +827,7 @@ def capture_navigation_typography(args, report, capture, adb, wait_for, screensh
                 line_left = left + measured['lineLeft'] - measured['scrollX']
                 line_right = left + measured['lineRight'] - measured['scrollX']
                 glyph_left, glyph_right = draw_x + glyph[0], draw_x + glyph[2]
-                if (measured['label'] != LABELS[measured['buttonIndex']]
+                if (measured['label'] != expected_labels[measured['buttonIndex']]
                         or not measured['valid'] or not all(measured['checks'].values())
                         or measured['contentHeight'] != bottom-top or measured['layoutHeight'] > bottom-top
                         or measured['glyphTop'] != glyph_top or measured['glyphBottom'] != glyph_bottom
@@ -776,7 +841,7 @@ def capture_navigation_typography(args, report, capture, adb, wait_for, screensh
                         or glyph_left < left-.5 or glyph_right > right+.5):
                     raise ValueError('Actual navigation label does not fit its native text region')
             case.update(status='verified', labelObservationCount=len(labels), completedAtUnixNs=time.time_ns())
-            case_path = args.out / ('navigation-typography-font-' + str(scale) + '.json')
+            case_path = args.out / ('navigation-typography-' + suffix + '.json')
             write(case_path, case)
             case.update(file=case_path.name, sha256=sha(case_path))
 
@@ -803,7 +868,7 @@ def capture_navigation_typography(args, report, capture, adb, wait_for, screensh
             result.update(restoredDefaultFont=True, returnedToOrdinaryChat=True)
         except Exception as error:
             failure(error, 'restore-default-font-and-chat')
-        result['status'] = ('verified' if len(result['cases']) == 2
+        result['status'] = ('verified' if len(result['cases']) == 4
             and all(case['status'] == 'verified' for case in result['cases'])
             and result['restoredDefaultFont'] and result['returnedToOrdinaryChat'] and not result['errors'] else 'failed')
         result.update(lastCommandIndexExclusive=len(report['commands']), completedAtUnixNs=time.time_ns())
@@ -833,13 +898,13 @@ def main():
                   performanceMeasurement=False, liveWebsiteContentClaimed=False,
                   scope=__doc__, commands=[], inputs=[], screenshots=[],
                   staticScreenshotStatus='pending',
-                  motionReport=dict(status='not-attempted', optional=True,
+                  motionReport=dict(status='not-attempted', optional=not args.environment_workspace,
                                     applicationAcceptance=False, physicalPhoneAcceptance=False,
                                     wanAcceptance=False, performanceMeasurement=False),
-                  nativeBackdropPreview=dict(status='not-attempted', optional=True,
+                  nativeBackdropPreview=dict(status='not-attempted', optional=not args.environment_workspace,
                                              applicationAcceptance=False, physicalPhoneAcceptance=False,
                                              wanAcceptance=False, gpuRenderingVerified=False),
-                  navigationTypography=dict(status='not-attempted', optional=True,
+                  navigationTypography=dict(status='not-attempted', optional=not args.environment_workspace,
                                             applicationAcceptance=False, physicalPhoneAcceptance=False),
                   environmentWorkspacePreview=dict(status='not-attempted', requested=args.environment_workspace,
                       applicationAcceptance=False, physicalPhoneAcceptance=False, wanAcceptance=False,
@@ -901,7 +966,7 @@ def main():
         while time.monotonic() < deadline:
             xml = capture.read(deadline=deadline)
             (args.out / (name + '.xml')).write_text(xml)
-            geometry = navigation_geometry(xml)
+            geometry = observed_navigation_geometry(xml)
             # Keep the latest real geometry, including a failing/incomplete
             # layout, without accepting its route predicate. Null geometry also
             # prevents an earlier observation from referring to a replaced XML.
@@ -1022,14 +1087,18 @@ def main():
             capture_navigation_typography(args, report, capture, adb, wait_for, screenshot)
         except Exception as error:
             report['navigationTypography'].update(status='failed', errorType=type(error).__name__, error=str(error))
+        incomplete = []
         if args.environment_workspace:
             try:
                 from capture_environment_workspace import capture_environment_workspace
                 capture_environment_workspace(args, report, capture, adb, screenshot,
-                    navigation_geometry=navigation_geometry, mp4_metadata=mp4_metadata)
+                    navigation_geometry=workspace_navigation_geometry, mp4_metadata=mp4_metadata)
             except Exception as error:
                 report['environmentWorkspacePreview'].update(status='failed', errorType=type(error).__name__, error=str(error))
-            if report['environmentWorkspacePreview']['status'] != 'captured':
+            required = {'motionReport':'captured', 'nativeBackdropPreview':'captured',
+                        'navigationTypography':'verified', 'environmentWorkspacePreview':'captured'}
+            incomplete = [name for name,status in required.items() if report[name]['status'] != status]
+            if incomplete:
                 report['status'] = 'partial'
         print(json.dumps(dict(status=report['status'], sourceCommit=source,
             apkSha256=installed_sha, image='glass-navigation.png',
@@ -1038,10 +1107,11 @@ def main():
             typographyStatus=report['navigationTypography']['status'],
             environmentWorkspaceStatus=report['environmentWorkspacePreview']['status'],
             scope='Actual Android MainActivity; local unconfigured environment, no live website'), ensure_ascii=False))
-        if args.environment_workspace and report['environmentWorkspacePreview']['status'] != 'captured':
+        if args.environment_workspace and incomplete:
             # Retain successful earlier stills, but never report a green required
-            # environment diagnostic when its captures or actual inputs failed.
-            raise SystemExit('Required environment workspace diagnostic did not complete; see capture.json')
+            # environment/route diagnostic when its actual inputs or glyph checks failed.
+            raise SystemExit('Required workspace navigation diagnostics did not complete: '
+                             + ', '.join(incomplete) + '; see capture.json')
     except Exception as error:
         report.update(status='failed', staticScreenshotStatus='failed', errorType=type(error).__name__, error=str(error))
         if device_ready:

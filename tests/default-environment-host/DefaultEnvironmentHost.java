@@ -52,6 +52,53 @@ public final class DefaultEnvironmentHost{
   check("Reselecting environment manager remains a no-op",home.launched==null&&!home.finished);
   for(int target:new int[]{-1,4}){workspace=new AppSettingsActivity();WorkspaceNavigation.select(workspace,-1,target);check("Invalid removed tab "+target+" does not navigate",workspace.launched==null&&!workspace.finished);}
  }
+ static void workspaceRouting()throws Exception{
+  ProfileCatalog c=setup(2,1,2);EnvironmentSpec.Identity kept=c.identity(2);
+  Activity downloads=new DownloadCenterActivity();WorkspaceNavigation.selectPage(downloads,AppHub.DOWNLOADS,AppHub.ENVIRONMENTS);
+  check("Five-item environment page opens the manager, not the legacy downloads index",downloads.launched!=null&&downloads.launched.target==WindowHomeActivity.class&&downloads.finished&&Profiles.lastActivity==-1);
+  Activity settings=new AppSettingsActivity();WorkspaceNavigation.selectPage(settings,AppHub.SETTINGS,AppHub.DOWNLOADS);
+  check("Five-item downloads page opens native downloads, not the legacy network index",settings.launched!=null&&settings.launched.target==DownloadCenterActivity.class&&settings.finished&&Profiles.lastActivity==-1);
+  downloads=new DownloadCenterActivity();WorkspaceNavigation.selectPage(downloads,AppHub.DOWNLOADS,AppHub.SETTINGS);
+  check("Five-item settings page stays native, not the legacy reading action",downloads.launched!=null&&downloads.launched.target==AppSettingsActivity.class&&downloads.finished&&Profiles.lastActivity==-1);
+  WindowHomeActivity home=new WindowHomeActivity();WorkspaceNavigation.selectPage(home,AppHub.ENVIRONMENTS,AppHub.SETTINGS);
+  check("Opening settings retains the environment manager",home.launched!=null&&home.launched.target==AppSettingsActivity.class&&!home.finished&&Profiles.lastActivity==-1);
+  home=new WindowHomeActivity();WorkspaceNavigation.selectPage(home,AppHub.ENVIRONMENTS,AppHub.DOWNLOADS);
+  check("Opening native downloads retains the environment manager",home.launched!=null&&home.launched.target==DownloadCenterActivity.class&&!home.finished&&Profiles.lastActivity==-1);
+  for(int target:new int[]{AppHub.CHAT,AppHub.NETWORK}){
+   downloads=new DownloadCenterActivity();WorkspaceNavigation.selectPage(downloads,AppHub.DOWNLOADS,target);
+   check("Five-item page "+target+" uses the valid default when no recent environment exists",Profiles.lastActivity==2&&downloads.launched!=null&&(target==AppHub.CHAT?"chat":"network").equals(downloads.launched.extras.get("openWindowAction"))&&downloads.finished&&c.identity(2).equals(kept));
+  }
+  c.db.rows.get(1).put("opened",999L);EnvironmentSpec.Identity recent=c.identity(1);
+  for(int target:new int[]{AppHub.CHAT,AppHub.NETWORK}){
+   downloads=new DownloadCenterActivity();WorkspaceNavigation.selectPage(downloads,AppHub.DOWNLOADS,target);
+   check("Five-item page "+target+" preserves the most recent available environment identity",Profiles.lastActivity==1&&downloads.launched!=null&&(target==AppHub.CHAT?"chat":"network").equals(downloads.launched.extras.get("openWindowAction"))&&c.identity(1).equals(recent));
+  }
+  home=new WindowHomeActivity();WorkspaceNavigation.selectPage(home,AppHub.ENVIRONMENTS,AppHub.CHAT);
+  overview("Five-item chat entry preserves the environment manager's one-shot opening contract",home.launched,recent);
+  check("Five-item chat entry retains the environment manager",!home.finished);
+  c.db.rows.get(1).put("resetting",1);
+  downloads=new DownloadCenterActivity();WorkspaceNavigation.selectPage(downloads,AppHub.DOWNLOADS,AppHub.NETWORK);
+  check("Five-item network excludes an unavailable recent environment",Profiles.lastActivity==2&&"network".equals(downloads.launched.extras.get("openWindowAction")));
+  for(int target:new int[]{AppHub.CHAT,AppHub.NETWORK}){
+   c=setup(7);downloads=new DownloadCenterActivity();WorkspaceNavigation.selectPage(downloads,AppHub.DOWNLOADS,target);
+   check("Five-item page "+target+" without an environment returns to the manager",downloads.launched!=null&&downloads.launched.target==WindowHomeActivity.class&&Profiles.lastActivity==-1&&downloads.finished);
+   home=new WindowHomeActivity();WorkspaceNavigation.selectPage(home,AppHub.ENVIRONMENTS,target);
+   check("Manager stays available to create an environment for page "+target,home.launched==null&&!home.finished&&!home.problem.isEmpty()&&Profiles.lastActivity==-1);
+  }
+  for(int target:new int[]{AppHub.CHAT,AppHub.ENVIRONMENTS,AppHub.DOWNLOADS,AppHub.NETWORK,AppHub.SETTINGS}){
+   MainActivity main=new MainActivity();WorkspaceNavigation.selectPage(main,-1,target);
+   check("Owned MainActivity forwards page identity "+target+" to its hub",main.hub.selected==target&&main.hub.calls==1&&main.launched==null&&!main.finished);
+  }
+  settings=new AppSettingsActivity();WorkspaceNavigation.selectPage(settings,AppHub.SETTINGS,AppHub.SETTINGS);
+  downloads=new DownloadCenterActivity();WorkspaceNavigation.selectPage(downloads,AppHub.DOWNLOADS,AppHub.DOWNLOADS);
+  home=new WindowHomeActivity();WorkspaceNavigation.selectPage(home,AppHub.ENVIRONMENTS,AppHub.ENVIRONMENTS);
+  check("Reselecting each standalone native destination is a no-op",settings.launched==null&&downloads.launched==null&&home.launched==null&&!settings.finished&&!downloads.finished&&!home.finished);
+  for(int target:new int[]{-1,5,99}){
+   settings=new AppSettingsActivity();WorkspaceNavigation.selectPage(settings,AppHub.SETTINGS,target);
+   MainActivity main=new MainActivity();WorkspaceNavigation.selectPage(main,AppHub.NETWORK,target);
+   check("Invalid five-item page "+target+" cannot launch or reach the hub",settings.launched==null&&!settings.finished&&main.hub.calls==0&&main.launched==null&&!main.finished);
+  }
+ }
  static void overview(String label,Intent intent,EnvironmentSpec.Identity identity){
   check(label,intent!=null&&"chat".equals(intent.extras.get("openWindowAction"))&&"environment-list-chat".equals(intent.extras.get("overviewSource"))&&identity.environmentId.equals(intent.extras.get("overviewEnvironmentId"))&&Integer.valueOf(identity.slot).equals(intent.extras.get("overviewSlot"))&&Integer.valueOf(identity.generation).equals(intent.extras.get("overviewGeneration"))&&Long.valueOf(123456L).equals(intent.extras.get("overviewRequestedAt"))&&String.valueOf(intent.extras.get("manualEnvironmentOverview")).matches("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"));
  }
@@ -71,14 +118,16 @@ public final class DefaultEnvironmentHost{
   c=setup(99,0,1);before=c.db.rows.toString();c.db.failDefaultWrite=true;failed=false;try{c.beginDelete(1);}catch(java.io.IOException expected){failed=true;}check("Failed stale-default repair aborts deletion without a false success",failed&&before.equals(c.db.rows.toString())&&"99".equals(c.db.settings.get("defaultSlot")));
   c=setup(0,0,1);c.db.rows.get(1).put("opened",999L);c.db.rows.get(1).put("resetting",1);check("Recent navigation excludes unavailable row",AppSettings.recentSlot(c.root)==0);
  }
- public static void main(String[]args)throws Exception{if(Boolean.getBoolean("before"))baseline();else {current();concurrency();routing();}int passed=0;for(int i=0;i<checks.length();i++)if(checks.optJSONObject(i).optBoolean("pass"))passed++;System.out.println(J.obj("status",passed==checks.length()?"passed":"failed","passed",passed,"total",checks.length(),"checks",checks));if(passed!=checks.length())System.exit(1);}
+ public static void main(String[]args)throws Exception{if(Boolean.getBoolean("before"))baseline();else {current();concurrency();routing();workspaceRouting();}int passed=0;for(int i=0;i<checks.length();i++)if(checks.optJSONObject(i).optBoolean("pass"))passed++;System.out.println(J.obj("status",passed==checks.length()?"passed":"failed","passed",passed,"total",checks.length(),"checks",checks));if(passed!=checks.length())System.exit(1);}
 }
 class ProfileCatalog{static ProfileCatalog instance;final Context root=new Context();final SQLiteDatabase db=new SQLiteDatabase();static ProfileCatalog get(Context c){return instance;}SQLiteDatabase getReadableDatabase(){return db;}SQLiteDatabase getWritableDatabase(){return db;}/* CATALOG */}
 class EnvironmentSpec{static JSONObject object(Object...x){return J.obj(x);}/* IDENTITY */}
 class Profiles{static final int MAX=8;static int lastActivity=-1;static Class<?> activity(int slot){if(slot<0||slot>=MAX)throw new AssertionError("Invalid profile index");lastActivity=slot;return MainActivity.class;}}class UiPerfStats{static void catalogRead(){}}class DesignUi{static class Stars{static void setting(boolean b){}}}class QuietNotifications{static void clearCompletions(Context c){}}
 class J{static JSONObject obj(Object...x){JSONObject o=new JSONObject();try{for(int i=0;i<x.length;i+=2)o.put((String)x[i],x[i+1]);}catch(Exception e){throw new RuntimeException(e);}return o;}}
 
-class MainActivity extends Activity{}class DownloadCenterActivity extends Activity{}class AppSettingsActivity extends Activity{}class AppUpdates{static void schedule(android.content.Context c){}}
+/** Navigation dispatch boundary only; the real AppHub/View behavior is captured on Android. */
+class AppHub{static final int CHAT=0,DOWNLOADS=1,ENVIRONMENTS=2,SETTINGS=3,NETWORK=4;int selected=-1,calls;void select(int page){selected=page;calls++;}}
+class MainActivity extends Activity{AppHub hub=new AppHub();}class DownloadCenterActivity extends Activity{}class AppSettingsActivity extends Activity{}class AppUpdates{static void schedule(android.content.Context c){}}
 class BrandLaunchActivity extends Activity{/* BRAND */}
 class WindowHomeActivity extends Activity{String problem="";int lastWindow(){return AppSettings.recentSlot(this);}void showProblem(String message){problem=message;}/* OPEN_WINDOW */}
 

@@ -10,7 +10,7 @@ public class AppSettingsActivity extends ThemedActivity {
   LinearLayout box;
   @Override public void onCreate(Bundle state){
     super.onCreate(state);LinearLayout root=DesignUi.screen(this);box=DesignUi.body(this,root,"应用设置",()->finish());
-    root.addView(DesignUi.nav(this,WorkspaceNavigation.NONE,n->WorkspaceNavigation.select(this,WorkspaceNavigation.NONE,n),null));setContentView(root);refresh();
+    root.addView(DesignUi.workspaceNav(this,AppHub.SETTINGS,page->WorkspaceNavigation.selectPage(this,AppHub.SETTINGS,page),null));setContentView(root);refresh();
   }
   void refresh(){DesignUi.rebuild(box,true,()->DesignSettingsUi.render(this,box,()->refresh()));}
   @Override protected void onResume(){super.onResume();AppUpdates.schedule(this);if(box!=null)refresh();}
