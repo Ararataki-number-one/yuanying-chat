@@ -10,6 +10,7 @@ import final_browser_source_compatibility as final
 import gradle_workflow_test_source_compatibility as inputs
 import profile_fixture_root_source_compatibility_test as root_controls
 import profile_resource_startup_source_compatibility_test as resource_controls
+from gecko_surface_source_compatibility import historical_resource_row
 
 # Exercise composition through the retained source-control test interfaces.
 # Their fixed metadata-consumer boundary remains unchanged for runtime code.
@@ -88,7 +89,7 @@ class GradleWorkflowTestSourceCompatibilityTests(unittest.TestCase):
             current = current_config['sources'][path]
             self.assertEqual((current['previousSha256'], current['previousBytes']), (old['previousSha256'], old['previousBytes']))
             self.assertEqual(current['edits'][:len(old['edits'])], old['edits'])
-            if path not in inputs.PREVIOUS:self.assertEqual(current, old)
+            if path not in inputs.PREVIOUS:self.assertEqual(historical_resource_row(path, current), old)
         for fixture in ('profile-fixture-root-source-deltas.json', 'resource-startup-source-deltas.json', 'final-browser-source-deltas.json'):
             path = 'tests/fixtures/' + fixture
             self.assertEqual((ROOT / path).read_bytes(), git('show', value['baseCommit'] + ':' + path))

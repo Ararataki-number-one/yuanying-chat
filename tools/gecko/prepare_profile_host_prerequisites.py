@@ -13,7 +13,7 @@ _spec = importlib.util.spec_from_file_location('profile_host_public_history', RO
 history = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(history)
 ADDITIONAL_MANIFEST = 'tests/baselines/glass-source-history.json'
-ADDITIONAL_MANIFEST_SHA256 = 'ca528346544d1c27f692f19308697e60e1f8263c9ebd965d21c35f0484f79e20'
+ADDITIONAL_MANIFEST_SHA256 = 'af35f288a24a95da70d86559903fed6659c7fc7b8a283e1bc807732f964d5920'
 ADDITIONAL_COMMITS = ('6ee06aced87581e52aa301431f8996ed46d666b8',
                       '7402ead321ca74b9fbefeab32a1aaffb32832011')
 
@@ -125,7 +125,8 @@ def additional_manifest(root):
          '.github/workflows/glass-release-validation.yml', 'tests/final_browser_source_compatibility.py',
          'tests/profile_fixture_root_source_compatibility.py', 'tests/profile_final_browser_source_compatibility_test.py',
          'tests/fixtures/profile-fixture-root-source-deltas.json', 'tests/fixtures/resource-startup-source-deltas.json',
-         'tests/fixtures/final-browser-source-deltas.json', 'app/src/main/java/local/pocketchat/ProfileContext.java'},
+         'tests/fixtures/final-browser-source-deltas.json', 'app/src/main/java/local/pocketchat/ProfileContext.java',
+         'app/src/main/java/local/pocketchat/GeckoWebView.java'},
     )
     for group, paths in zip(groups, expected_paths):
         require(type(group) is dict and set(group) == {'commit', 'tree', 'files'}

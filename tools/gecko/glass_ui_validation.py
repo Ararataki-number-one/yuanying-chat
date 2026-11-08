@@ -23,6 +23,7 @@ import uuid
 import xml.etree.ElementTree as ET
 
 from integration_event_contract import EventTransfer, parse_receipt_line
+from glass_display import GlassDisplay, verify_png
 
 
 CONFIGURATIONS = (
@@ -253,34 +254,25 @@ def capture_loading_landscape(args, report, capture, adb, wait_for, screenshot, 
         firstInputIndex=len(report['inputs']), firstCommandIndex=len(report['commands']),
         startedAtUnixNs=time.time_ns(), errors=[])
     previous_display = (api['WIDTH'], api['HEIGHT'], api['DENSITY'])
+    display = GlassDisplay(adb, args.out, api['sha'])
+    previous_state = None
+    result['displayHelperSha256'] = api['sha'](Path(__file__).with_name('glass_display.py'))
     package = api['PACKAGE']
     stem = 'landscape-loading-native'
-    previous_font = '1.0'
-    previous_night = 'no'
 
     def save():
         api['write'](args.out / 'capture.json', report)
 
     try:
-        previous_font = adb('shell', 'settings', 'get', 'system', 'font_scale').decode().strip()
-        if abs(float(previous_font) - 1.0) > .001:
+        previous_state = display.observe(stem + '-previous')
+        result['previousDisplay'] = previous_state
+        if abs(float(previous_state['fontScale']) - 1.0) > .001:
             raise ValueError('The required landscape observation must start after default-font restoration')
-        previous_config = adb('shell', 'am', 'get-config').decode().strip()
-        previous_night = 'yes' if 'night' in previous_config.splitlines()[0].split('-') else 'no'
         api['set_display'](2676, 1236, 480)
         adb('shell', 'am', 'force-stop', package)
-        adb('shell', 'wm', 'size', '2676x1236')
-        adb('shell', 'settings', 'put', 'system', 'font_scale', '1.0')
-        adb('shell', 'cmd', 'uimode', 'night', 'no')
+        display.configure(2676, 1236, 480, 1.0, 'no')
         adb('shell', 'am', 'start', '-W', '-n', api['COMPONENT'], '--es', 'visualAction', 'chat')
-        result['actualDisplay'] = dict(size=adb('shell', 'wm', 'size').decode().strip(),
-            density=adb('shell', 'wm', 'density').decode().strip(),
-            fontScale=adb('shell', 'settings', 'get', 'system', 'font_scale').decode().strip(),
-            configuration=adb('shell', 'am', 'get-config').decode().strip())
-        config_parts = result['actualDisplay']['configuration'].splitlines()[0].split('-')
-        if ('land' not in config_parts or 'notnight' not in config_parts
-                or abs(float(result['actualDisplay']['fontScale']) - 1.0) > .001):
-            raise ValueError('Actual Android configuration did not apply landscape/default-font/light')
+        result['actualDisplay'] = display.require(2676, 1236, 480, 1.0, 'no', stem)
 
         def loading_scroller(xml):
             root = ET.fromstring(xml)
@@ -304,11 +296,12 @@ def capture_loading_landscape(args, report, capture, adb, wait_for, screenshot, 
         initial_stem = stem + '-before-scroll'
         xml = wait_for(capture, native_loading, initial_stem, seconds=30)
         screenshot(initial_stem + '.png')
+        initial_png = verify_png(args.out / (initial_stem + '.png'), 2676, 1236)
         initial_geometry = loading_actions_geometry(xml, api)
         result['initialObservation'] = dict(xml=initial_stem + '.xml',
             xmlSha256=api['sha'](args.out / (initial_stem + '.xml')),
             png=initial_stem + '.png', pngSha256=api['sha'](args.out / (initial_stem + '.png')),
-            geometry=initial_geometry)
+            geometry=initial_geometry, pngDimensions=initial_png)
         # LoadingUi deliberately scrolls short windows. Reveal its real actions
         # once if the initial viewport clips them; never press a network/reload
         # action, change visibility, or relax the final complete-target checks.
@@ -344,6 +337,7 @@ def capture_loading_landscape(args, report, capture, adb, wait_for, screenshot, 
         time.sleep(.6)
         screenshot(stem + '.png')
         result['png'] = dict(file=stem + '.png', sha256=api['sha'](args.out / (stem + '.png')))
+        result['pngDimensions'] = verify_png(args.out / (stem + '.png'), 2676, 1236)
         activity = adb('shell', 'dumpsys', 'activity', 'activities').decode('utf-8', 'replace')
         path = args.out / (stem + '-activity.txt'); path.write_text(activity)
         resumed = [line.strip() for line in activity.splitlines() if 'mResumedActivity' in line or 'topResumedActivity' in line]
@@ -363,6 +357,8 @@ def capture_loading_landscape(args, report, capture, adb, wait_for, screenshot, 
         result['status'] = 'verified'
     except Exception as error:
         result['status'] = 'failed'
+        if hasattr(error, 'observedDisplay'):
+            result['actualDisplay'] = error.observedDisplay
         result['errors'].append(dict(stage='actual-loading-page', errorType=type(error).__name__, error=str(error)))
         if 'png' not in result:
             try:
@@ -371,30 +367,15 @@ def capture_loading_landscape(args, report, capture, adb, wait_for, screenshot, 
                 result['errors'].append(dict(stage='failure-screenshot', errorType=type(capture_error).__name__, error=str(capture_error)))
     finally:
         api['set_display'](*previous_display)
-        cleanup = [('shell', 'am', 'force-stop', package),
-                   ('shell', 'wm', 'size', str(previous_display[0]) + 'x' + str(previous_display[1])),
-                   ('shell', 'settings', 'put', 'system', 'font_scale', previous_font),
-                   ('shell', 'cmd', 'uimode', 'night', previous_night)]
         cleanup_errors = []
-        for command in cleanup:
-            try:
-                adb(*command, timeout=6)
-            except Exception as error:
-                cleanup_errors.append(dict(stage='restore-before-controlled-document', command=list(command),
-                    errorType=type(error).__name__, error=str(error)))
         try:
-            restored = result['restoredDisplay'] = dict(
-                size=adb('shell', 'wm', 'size').decode().strip(),
-                fontScale=adb('shell', 'settings', 'get', 'system', 'font_scale').decode().strip(),
-                configuration=adb('shell', 'am', 'get-config').decode().strip())
-            sizes = re.findall(r'(?:Physical|Override) size:\s*(\d+)x(\d+)', restored['size'])
-            config_parts = restored['configuration'].splitlines()[0].split('-')
-            expected_orientation = 'land' if previous_display[0] > previous_display[1] else 'port'
-            expected_night = 'night' if previous_night == 'yes' else 'notnight'
-            if (not sizes or tuple(map(int, sizes[-1])) != previous_display[:2]
-                    or abs(float(restored['fontScale']) - float(previous_font)) > .001
-                    or expected_orientation not in config_parts or expected_night not in config_parts):
-                raise ValueError('Actual Android display/font/theme was not restored before controlled documents')
+            adb('shell', 'am', 'force-stop', package, timeout=6)
+        except Exception as error:
+            cleanup_errors.append(dict(stage='stop-loading-fixture', errorType=type(error).__name__, error=str(error)))
+        try:
+            if previous_state is None:
+                raise ValueError('Original display state was not acquired for exact restoration')
+            result['restoredDisplay'] = display.restore(previous_state, stem + '-restored')
         except Exception as error:
             cleanup_errors.append(dict(stage='observe-restored-display', errorType=type(error).__name__, error=str(error)))
         result['errors'].extend(cleanup_errors)
@@ -589,6 +570,10 @@ def capture_acceptance_suite(args, report, capture, adb, wait_for, tap, screensh
     identity = report['buildIdentity']
     observations = {}
     previous_overlays = {}
+    display = GlassDisplay(adb, args.out, sha)
+    previous_display = None
+    previous_api_display = (api['WIDTH'], api['HEIGHT'], api['DENSITY'])
+    result['displayHelperSha256'] = sha(Path(__file__).with_name('glass_display.py'))
 
     def save():
         write(args.out / 'capture.json', report)
@@ -610,6 +595,7 @@ def capture_acceptance_suite(args, report, capture, adb, wait_for, tap, screensh
             time.sleep(.6)
             screenshot(stem + '.png')
             item.update(png=stem + '.png', pngSha256=sha(args.out / (stem + '.png')))
+            item['pngDimensions'] = verify_png(args.out / (stem + '.png'), api['WIDTH'], api['HEIGHT'])
         case['observations'][suffix] = item
         save()
         return xml
@@ -779,6 +765,8 @@ def capture_acceptance_suite(args, report, capture, adb, wait_for, tap, screensh
                     or not all(value is True for value in measured['checks'].values())):
                 raise ValueError('A complete Chinese navigation label did not fit its native text region')
         case['typography']['status'] = 'verified'
+        case['typography']['display'] = display.require(case['widthDp'] * 3, case['heightDp'] * 3,
+            480, case['fontScale'], case['requestedNight'], case['name'] + '-typography')
         adb('shell', 'am', 'force-stop', package)
 
     def interactions(case):
@@ -844,6 +832,8 @@ def capture_acceptance_suite(args, report, capture, adb, wait_for, tap, screensh
         for name in SAFE_AREA_OVERLAYS:
             if name not in previous_overlays:
                 raise ValueError('The disposable emulator lacks required safe-area overlay: ' + name)
+        previous_display = display.observe('glass-suite-previous')
+        result['previousDisplay'] = previous_display
         loading = capture_loading_landscape(args, report, capture, adb, wait_for, screenshot, api)
         if loading['status'] != 'verified':
             result['errors'].append(dict(stage='required-landscape-loading',
@@ -858,9 +848,7 @@ def capture_acceptance_suite(args, report, capture, adb, wait_for, tap, screensh
                 try:
                     api['set_display'](width * 3, height * 3, 480)
                     adb('shell', 'am', 'force-stop', package)
-                    adb('shell', 'wm', 'size', str(width * 3) + 'x' + str(height * 3))
-                    adb('shell', 'settings', 'put', 'system', 'font_scale', str(scale))
-                    adb('shell', 'cmd', 'uimode', 'night', night)
+                    display.configure(width * 3, height * 3, 480, scale, night)
                     for overlay in SAFE_AREA_OVERLAYS:
                         if name == 'safearea-light':
                             adb('shell', 'cmd', 'overlay', 'enable-exclusive', '--category', '--user', '0', overlay)
@@ -874,6 +862,7 @@ def capture_acceptance_suite(args, report, capture, adb, wait_for, tap, screensh
                         '--es', 'compactAction', 'collapseStart', '--ei', 'chromeNavigationVersion', '2',
                         '--es', 'eventNonce', case['runNonce'], '--ez', 'longName', 'false')
                     observed_event(case, 'ready', request=False)
+                    case['display'] = display.require(width * 3, height * 3, 480, scale, night, name)
                     case['actualConfiguration'] = adb('shell', 'am', 'get-config').decode().strip()
                     case['observedFontSetting'] = adb('shell', 'settings', 'get', 'system', 'font_scale').decode().strip()
                     if abs(float(case['observedFontSetting']) - scale) > .001:
@@ -902,6 +891,8 @@ def capture_acceptance_suite(args, report, capture, adb, wait_for, tap, screensh
                     case['status'] = 'verified'
                 except Exception as error:
                     case.update(status='failed', errorType=type(error).__name__, error=str(error))
+                    if hasattr(error, 'observedDisplay'):
+                        case['display'] = error.observedDisplay
                     result['errors'].append(dict(case=name, errorType=type(error).__name__, error=str(error)))
                     try:
                         screenshot(name + '-failed.png')
@@ -916,10 +907,8 @@ def capture_acceptance_suite(args, report, capture, adb, wait_for, tap, screensh
         result['status'] = 'failed'
         result['errors'].append(dict(stage='suite-setup-or-server', errorType=type(error).__name__, error=str(error)))
     finally:
-        api['set_display'](1236, 2676, 480)
-        cleanup = [('shell', 'am', 'force-stop', package), ('shell', 'wm', 'size', '1236x2676'),
-                   ('shell', 'settings', 'put', 'system', 'font_scale', '1.0'),
-                   ('shell', 'cmd', 'uimode', 'night', 'no')]
+        api['set_display'](*previous_api_display)
+        cleanup = [('shell', 'am', 'force-stop', package)]
         cleanup.extend(('shell', 'cmd', 'overlay', 'enable' if enabled else 'disable', '--user', '0', name)
                        for name, enabled in previous_overlays.items())
         for command in cleanup:
@@ -929,6 +918,14 @@ def capture_acceptance_suite(args, report, capture, adb, wait_for, tap, screensh
                 result['status'] = 'failed'
                 result['errors'].append(dict(stage='restore-disposable-emulator', command=list(command),
                     errorType=type(error).__name__, error=str(error)))
+        try:
+            if previous_display is None:
+                raise ValueError('Original display state was not acquired for exact restoration')
+            result['restoredDisplay'] = display.restore(previous_display, 'glass-suite-restored')
+        except Exception as error:
+            result['status'] = 'failed'
+            result['errors'].append(dict(stage='restore-disposable-display',
+                errorType=type(error).__name__, error=str(error)))
         result['completedAtUnixNs'] = time.time_ns()
         save()
     if result['status'] != 'verified':

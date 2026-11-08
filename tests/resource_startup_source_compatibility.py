@@ -137,3 +137,7 @@ def root_manifest_input(value):
 # Exact after-image rows; original resource guards and forward contexts remain.
 from gradle_workflow_test_source_compatibility import wrap_resource_config as _gradle_resource_config
 config = _gradle_resource_config(config)
+
+# One exact native-surface successor; retained bodies and fixtures stay whole.
+from gecko_surface_source_compatibility import wrap_resource_config as _surface_resource_config
+config = _surface_resource_config(config)

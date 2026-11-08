@@ -95,6 +95,7 @@ def main():
     input_paths.add(ROOT / "tests/ip-timezone-fixture-ui-hotpath-host/Host.java.in")
     input_paths.add(ROOT / "tests/network-internal-admission-host/InternalAdmissionHost.java.in")
     input_paths.add(ROOT / "tests/resource-recovery-host/ResourceRecoveryHost.java.in")
+    input_paths.add(ROOT / "tests/gecko-ip-window-barrier-host/WindowBarrierHost.java.in")
     input_paths.add(ROOT / "tests/tls-fixture-update-cause-host/Host.java.in")
     input_paths.add(ROOT / "tests/tls-fixture-update-cause-host/IsolationHost.java.in")
     input_paths.add(ROOT / "tests/automatic-latency-host/AutomaticLatencyHost.java.in")
@@ -107,6 +108,7 @@ def main():
     input_paths.add(ROOT / "tests/fixtures/gradle-transport-source-deltas.json")
     input_paths.add(ROOT / "tests/fixtures/gradle-workflow-test-source-deltas.json")
     input_paths.add(ROOT / "tests/fixtures/profile-context-callback-source-deltas.json")
+    input_paths.add(ROOT / "tests/fixtures/gecko-surface-source-deltas.json")
     input_paths.update(ROOT / path for path in ('tests/browser-profile-path-host/Host.java.in',
         'tests/browser-profile-path-host/README.md', 'tests/persistent-runtime-path-host/json-20240303.jar.b64',
         'tests/persistent-runtime-path-host/LICENSE-JSON-java-20240303.txt'))
@@ -114,6 +116,7 @@ def main():
     input_paths.add(ROOT / "tools/gecko/prepare_profile_host_prerequisites.py")
     input_paths.add(ROOT / "tools/gecko/capture_glass_navigation.py")
     input_paths.add(ROOT / "tools/gecko/glass_ui_validation.py")
+    input_paths.add(ROOT / "tools/gecko/glass_display.py")
     input_paths.update(ROOT / path for path in ('.github/workflows/browser-2_1-acceptance.yml',
         '.github/workflows/profile-upgrade-checks.yml', '.github/workflows/glass-release-validation.yml'))
     input_paths.update(ROOT / path for path in ('.github/workflows/gecko-cpu-acceptance.yml',
@@ -526,6 +529,7 @@ def main():
                   ROOT/'app/src/main/java/local/pocketchat/ProfileContext.java',ROOT/'tests/profile_gecko_context_callbacks_test.py',
                   ROOT/'tests/profile_glass_accessibility_idle_test.py',
                   ROOT/'tests/profile_glass_owner_observation_test.py',ROOT/'tools/gecko/glass_ui_validation.py',
+                  ROOT/'tests/profile_glass_display_test.py',ROOT/'tools/gecko/glass_display.py',
                   ROOT/'tests/profile_glass_owner_window_test.py',
                   ROOT/'app/src/main/java/local/pocketchat/LiquidGlassDrawable.java',ROOT/'app/src/main/java/local/pocketchat/GlassDock.java',
                   ROOT/'app/src/main/java/local/pocketchat/GlassBackdrop.java',
@@ -533,6 +537,11 @@ def main():
                   ROOT/'app/src/main/java/local/pocketchat/PocketApplication.java',
                   ROOT/'tests/profile_context_callback_source_compatibility.py',ROOT/'tests/fixtures/profile-context-callback-source-deltas.json',
                   ROOT/'tests/profile_context_callback_source_input_test.py',ROOT/'tests/profile_current_runtime_raw_binding_test.py',
+                  ROOT/'tests/gecko_surface_source_compatibility.py',ROOT/'tests/fixtures/gecko-surface-source-deltas.json',
+                  ROOT/'tests/profile_gecko_surface_source_input_test.py',ROOT/'tests/profile_gecko_surface_metadata_test.py',
+                  ROOT/'tests/profile_gecko_surface_backend_test.py',ROOT/'tests/ux-shell-host/focus_run.py',
+                  ROOT/'tests/gecko-ip-window-barrier-host/run.py',ROOT/'tests/gecko-ip-window-barrier-host/WindowBarrierHost.java.in',
+                  ROOT/'tests/profile_resource_startup_source_compatibility_test.py',
                   ROOT/'tests/browser-profile-path-host/run.py',
                   ROOT/'tests/browser-profile-path-host/Host.java.in',ROOT/'tests/browser-profile-path-host/README.md',
                   ROOT/'tests/gecko-navigation-host/run.py',ROOT/'tests/persistent-runtime-path-host/json-20240303.jar.b64',
