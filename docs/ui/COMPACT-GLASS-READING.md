@@ -184,18 +184,22 @@ On API 33+, `GlassLensRenderer` runs `assets/ui/liquid-glass.agsl` through a
 material-only RenderNode. Text and icons are drawn afterwards by their existing
 native views. No effect is installed on the control's full View tree.
 
-- The curved bevel occupies up to 4.5 dp inside the light-mode edge (6.5 dp in
+- The curved bevel occupies up to 3.5 dp inside the light-mode edge (6.5 dp in
   dark mode), capped at 15% of the shorter visible side. Additional side reflection follows the fifth power of the
   edge profile, concentrating it near the boundary instead of a wide gray face.
-- The center is a transparent coating with a 38% neutral white veil in light mode.
+- The center is a transparent coating with a 16% neutral white veil in light mode.
   Reflection uses a soft fixed environment-light model, not a captured wallpaper
   or an opaque white background. Its opacity varies with the surface normal.
-- A continuous white rim has a 0.85 dp profile width and a 50% baseline in
-  light mode. Directional peaks and a weaker inner caustic add a rounded edge.
+- A continuous white rim has a 0.55 dp profile width and a 22% baseline in
+  light mode. Stronger directional peaks, a weaker inner caustic and a very faint
+  neutral return 1.65 dp inside the edge distinguish the clear face from the rim.
+  That return follows the side/return-light lobes instead of drawing a uniform
+  dark outline. The broad face highlight is only 0.4%. This refinement reduces
+  the uniform white-face and heavy-shadow cues that looked like molded plastic.
   Side reflection is a light neutral silver; no fixed pastel background or
   colored wallpaper is painted into the glass.
-- A 6% ambient exterior shadow uses an 8 dp Gaussian falloff and a 3 dp downward
-  offset. A separate 2.2% contact shadow retains a 1 dp offset and 1.25 dp decay.
+- A 2.8% ambient exterior shadow uses a 6 dp Gaussian falloff and a 2.5 dp downward
+  offset. A separate 1.4% contact shadow retains a 1 dp offset and 1.05 dp decay.
   Both are composed outside the face. Dark mode retains its 12% narrow shadow
   without the added light-mode ambient layer. The platform outline has zero
   shadow alpha, avoiding a second filled platform shadow.
@@ -235,11 +239,12 @@ and invalidates weakly registered glass controls; there is no pre-draw loop or
 idle timer. Capture and notification have re-entry guards. Recordings are
 bounded to the glass region plus 18 dp overscan and cached by source, revision,
 relative host position, size and appearance. Sampling coordinates are clamped
-inside that recorded area. Native pixels pass through an 8 dp blur and a Snell
+inside that recorded area. Native pixels pass through a 5 dp blur (8 dp in dark
+mode) and a Snell
 refraction model (glass-like index 1.42), with very small edge color separation.
 Only the light native material adds a 6.5% soft white backing at its center,
 plus up to 8% over darker source strokes, falling to zero at the curved edge.
-This local backing remains separate from the updated 38% surface coating.
+This local backing remains separate from the 16% surface coating.
 Native background colors remain visible with softer details, as in the user's
 photo-app reference, while the continuous rim defines the lens.
 There is no full-surface dimming or automatic pure-white-to-gray transform.
@@ -247,7 +252,10 @@ There is no full-surface dimming or automatic pure-white-to-gray transform.
 Earlier actual API 35 captures confirmed the AGSL and native recording paths.
 The clear-material iteration reduced central white layers and separated fixed
 environment light from local touch light. The later photo-app reference asks
-for a more readable resting rim and a wider floating shadow. The first
+for a more readable resting rim and a floating shadow. The following optical
+refinement retains those proportions while thinning the coating, narrowing the
+rim, reducing the exterior shadow and concentrating neutral reflection just
+inside the edge. The first
 clear-material capture (`70571f94`) exposed dark blurred text
 inside the lens where the surrounding footer had already faded that same text.
 Sampling the existing fade with the native panel fixes that mismatch while

@@ -38,13 +38,13 @@ half4 main(float2 coord) {
     float aa = max(0.7, density * 0.28);
     float cover = 1.0 - smoothstep(-aa, aa, d);
 
-    // A broad floating shadow and a small contact shadow live outside the
-    // surface. Their transparent tail fits inside the shared 18 dp overscan.
+    // A light floating shadow separates the lens without making its clear
+    // center read as raised, opaque plastic. Both tails fit the 18 dp overscan.
     float shadowD = surfaceDistance(p - float2(0.0, 1.0 * density));
-    float ambientD = roundedBox(p - size * 0.5 - float2(0.0, 3.0 * density), halfSize, radius);
-    float ambient = exp(-square(max(ambientD, 0.0) / (8.0 * density))) * 0.060 * (1.0 - darkTheme);
-    float contactShadow = exp(-max(shadowD, 0.0) / (mix(1.25, 1.8, darkTheme) * density))
-        * mix(0.022, 0.12, darkTheme);
+    float ambientD = roundedBox(p - size * 0.5 - float2(0.0, 2.5 * density), halfSize, radius);
+    float ambient = exp(-square(max(ambientD, 0.0) / (6.0 * density))) * 0.028 * (1.0 - darkTheme);
+    float contactShadow = exp(-max(shadowD, 0.0) / (mix(1.05, 1.8, darkTheme) * density))
+        * mix(0.014, 0.12, darkTheme);
     float shadow = (ambient + contactShadow) * (1.0 - cover);
     if (cover < 0.001) return half4(float3(0.0), shadow * opacity);
 
@@ -52,7 +52,7 @@ half4 main(float2 coord) {
     float2 n = float2(surfaceDistance(p + float2(e, 0.0)) - surfaceDistance(p - float2(e, 0.0)),
                       surfaceDistance(p + float2(0.0, e)) - surfaceDistance(p - float2(0.0, e)));
     n = length(n) > 0.0001 ? normalize(n) : float2(0.0, -1.0);
-    float bevel = max(2.0 * density, min(mix(4.5, 6.5, darkTheme) * density, min(halfSize.x, halfSize.y) * 0.30));
+    float bevel = max(2.0 * density, min(mix(3.5, 6.5, darkTheme) * density, min(halfSize.x, halfSize.y) * 0.30));
     float edge = clamp(1.0 + d / bevel, 0.0, 1.0);
     float slope = pow(edge, 1.45) * 0.96;
     float2 face = clamp((p - size * 0.5) / max(halfSize, float2(1.0)), float2(-1.0), float2(1.0));
@@ -71,19 +71,27 @@ half4 main(float2 coord) {
     float3 reflected = mix(float3(0.99, 0.995, 1.0), sideReflection, side * 0.55);
     reflected = mix(reflected, float3(1.0), clamp(key + returnLight * 0.8, 0.0, 1.0));
     float reflectance = clamp(fresnel * 0.72 + pow(edge, 5.0) * (0.015 + side * 0.045), 0.0, 0.32);
-    float veil = mix(0.38, 0.15, darkTheme);
+    float veil = mix(0.16, 0.15, darkTheme);
     float3 tint = mix(float3(0.995, 0.998, 1.0), float3(0.12, 0.15, 0.20), darkTheme);
     float a = reflectance + (1.0 - reflectance) * veil;
     float3 premul = reflectance * reflected + (1.0 - reflectance) * veil * tint;
 
-    // A continuous white edge gives the lens a readable silhouette at rest;
-    // directional peaks and an inner caustic keep the edge rounded rather than flat.
-    float rim = exp(-square((d + 0.75 * density) / (mix(0.85, 0.65, darkTheme) * density)));
+    // A very narrow neutral return just inside the rim separates the bright
+    // edge from the clear face. It follows the normal, not a uniform gray ring.
+    float shoulder = exp(-square((d + 1.65 * density) / (1.0 * density)))
+        * (0.010 + side * 0.020 + returnLight * 0.050) * (1.0 - darkTheme);
+    premul = shoulder * float3(0.36, 0.43, 0.53) + (1.0 - shoulder) * premul;
+    a = shoulder + (1.0 - shoulder) * a;
+
+    // Keep a fine continuous edge, with stronger separated lighting lobes.
+    // The center carries almost no broad white highlight.
+    float rim = exp(-square((d + mix(0.55, 0.75, darkTheme) * density)
+        / (mix(0.55, 0.65, darkTheme) * density)));
     float softLight = exp(-max(-d, 0.0) / (1.8 * density)) * pow(edge, 0.6);
     float caustic = exp(-square((d + 2.2 * density) / (0.85 * density)));
-    float shine = clamp(rim * (mix(0.50, 0.0, darkTheme)
-        + key * mix(0.30, 0.68, darkTheme) + returnLight * mix(0.32, 0.40, darkTheme))
-        + softLight * (mix(0.025, 0.0, darkTheme) + key * 0.07 + returnLight * 0.04)
+    float shine = clamp(rim * (mix(0.22, 0.0, darkTheme)
+        + key * mix(0.54, 0.68, darkTheme) + returnLight * 0.40)
+        + softLight * (mix(0.008, 0.0, darkTheme) + key * 0.07 + returnLight * 0.04)
         + caustic * returnLight * 0.07, 0.0, 0.86);
     // The environment light stays quiet. Touch adds a separate local light
     // field, so pressing one end no longer relights the entire capsule.
@@ -99,7 +107,7 @@ half4 main(float2 coord) {
     float crestContact = exp(-dot(crestLocal, crestLocal));
     float crest = crestContact * exp(-square((d + 0.8 * density) / (0.9 * density)));
     float broad = exp(-square((face.x * 0.55 + face.y * 0.8 - lightAxis.x * 0.4) * 1.6));
-    shine = min(0.90, shine + broad * mix(0.024, 0.004, darkTheme)
+    shine = min(0.90, shine + broad * 0.004
         + press * (contact * 0.085 + touchRim * 0.42 + crest * 0.42));
     premul = float3(shine) + (1.0 - shine) * premul;
     a = shine + (1.0 - shine) * a;

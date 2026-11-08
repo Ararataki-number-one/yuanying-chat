@@ -23,7 +23,7 @@ final class GlassLensRenderer {
   private final RuntimeShader shader;
   private final RenderNode content=new RenderNode("native-glass-content");
   private final float density;
-  private RenderEffect blur;
+  private final RenderEffect blur,darkBlur;
   private final int[] hostAt=new int[2],sourceAt=new int[2];
   private int width=-1,height=-1,lastX=Integer.MIN_VALUE,lastY=Integer.MIN_VALUE,lastColor;
   private long lastRevision=-1;
@@ -42,7 +42,8 @@ final class GlassLensRenderer {
     }
     shader=new RuntimeShader(program);
     content.setClipToBounds(false);
-    blur=RenderEffect.createBlurEffect(8f*density,8f*density,Shader.TileMode.CLAMP);
+    blur=RenderEffect.createBlurEffect(5f*density,5f*density,Shader.TileMode.CLAMP);
+    darkBlur=RenderEffect.createBlurEffect(8f*density,8f*density,Shader.TileMode.CLAMP);
     Log.i(TAG,"AGSL material ready");
   }
 
@@ -98,7 +99,7 @@ final class GlassLensRenderer {
     // RenderEffect snapshots shader uniforms; rebuilding this lightweight chain
     // is required for a new optical state. The recorded pixels and blur are reused.
     RenderEffect lens=RenderEffect.createRuntimeShaderEffect(shader,"content");
-    content.setRenderEffect(backdrop?RenderEffect.createChainEffect(lens,blur):lens);
+    content.setRenderEffect(backdrop?RenderEffect.createChainEffect(lens,dark?darkBlur:blur):lens);
     canvas.drawRenderNode(content);
     return true;
   }
