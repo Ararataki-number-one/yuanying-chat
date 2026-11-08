@@ -173,6 +173,13 @@ final class ChromeCollapseIntegration {
   CollapseView web(){return (CollapseView)a.remote;}
   void pauseObservers(){a.handler.removeCallbacks(a.ticker);a.session.remove(a.sessionObserver);a.session.handler.removeCallbacks(a.session.tick);}
   Object visibleCenter(View view){return view!=null&&view.isShown()&&view.getWidth()>0&&view.getHeight()>0?a.center(view):JSONObject.NULL;}
+  Object navigationCenter(int compactIndex,int workspaceIndex){
+    boolean conversation=a.hub.page==AppHub.CHAT;View[] buttons=conversation?a.hub.tabs:a.hub.workspaceTabs;
+    int index=conversation?compactIndex:workspaceIndex;
+    // Workspace indexes are display order: chat, environments, downloads, network, settings.
+    // Reading exists only on the conversation dock; absent or hidden targets stay null.
+    return index<0||index>=buttons.length?JSONObject.NULL:visibleCenter(buttons[index]);
+  }
   void start(){
     // Keep the historical v1 evidence/runner intact. Its fixed six-tap path
     // cannot exercise the URL dialog and four-action dock without a new contract.
@@ -210,7 +217,7 @@ final class ChromeCollapseIntegration {
     snapshotEvaluations++;diagnostic("snapshot-evaluate");pauseObservers();
     a.remote.evaluateJavascript("(()=>{const t="+TELEMETRY+";return {draft:document.getElementById('prompt-textarea').value,cookie:document.cookie,sendCount:Number(document.getElementById('send-count').textContent),path:location.pathname,document:document.documentElement.dataset.reloadDocument,scrollY:scrollY,innerWidth:innerWidth,innerHeight:innerHeight,trusted:t?.events||[],fixtureInputTelemetry:t,telemetryReady:"+TELEMETRY_READY+"};})()",raw->{
       snapshotCallbacks++;diagnostic("snapshot-callback");JSONObject result=J.parse(raw);int[] location=new int[2];a.remote.getLocationOnScreen(location);
-      try{result.put("command",command).put("navigationContract",2).put("expanded",a.designChrome.expanded()).put("toolbarVisibility",a.toolbar.getVisibility()).put("toolbarHeight",a.toolbar.getHeight())
+      try{result.put("command",command).put("navigationContract",2).put("navigationLayout",a.hub.page==AppHub.CHAT?"conversation-compact":"workspace-five").put("expanded",a.designChrome.expanded()).put("toolbarVisibility",a.toolbar.getVisibility()).put("toolbarHeight",a.toolbar.getHeight())
         .put("compactVisibility",a.designChrome.compact.getVisibility()).put("compactHeight",a.designChrome.compact.getHeight())
         .put("compactName",a.designChrome.compactTitle.getText().toString()).put("environmentName",Profiles.display(a,Profiles.slot(a)))
         .put("compactTap",visibleCenter(a.designChrome.compact)).put("topVisibility",a.designChrome.top.getVisibility()).put("networkVisibility",a.designChrome.networkRow.getVisibility())
@@ -222,8 +229,8 @@ final class ChromeCollapseIntegration {
         .put("pending",a.session.pending==null?JSONObject.NULL:new JSONObject(a.session.pending.toString())).put("pendingStored",a.session.prefs.getString("pending",""))
         .put("activityStarts",activityStarts).put("menuOpens",menuOpens).put("windowFocus",a.hasWindowFocus())
         .put("touches",web().touchesObserved).put("nativeTouches",nativeTouches).put("toolbarBounds",a.bounds(a.toolbar))
-        .put("environmentTap",visibleCenter(a.hub.tabs[WorkspaceNavigation.ENVIRONMENTS])).put("networkTap",visibleCenter(a.hub.tabs[WorkspaceNavigation.NETWORK]))
-        .put("downloadsTap",visibleCenter(a.hub.tabs[WorkspaceNavigation.DOWNLOADS])).put("readingTap",visibleCenter(a.hub.tabs[WorkspaceNavigation.READING]))
+        .put("environmentTap",navigationCenter(WorkspaceNavigation.ENVIRONMENTS,1)).put("networkTap",navigationCenter(WorkspaceNavigation.NETWORK,3))
+        .put("downloadsTap",navigationCenter(WorkspaceNavigation.DOWNLOADS,2)).put("readingTap",navigationCenter(WorkspaceNavigation.READING,-1))
         .put("addressTap",visibleCenter(a.designChrome.title)).put("moreTap",visibleCenter(a.designChrome.more));
         if(a.designChrome.expanded()){
           java.lang.reflect.Method method=DesignChrome.class.getDeclaredMethod("touchBounds",View.class);method.setAccessible(true);

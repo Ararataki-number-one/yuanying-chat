@@ -18,14 +18,14 @@ import capture_glass_navigation as capture
 import glass_ui_validation as validation
 
 
-def hierarchy(boxes, *, selected=None, extra=None):
+def hierarchy(boxes, *, selected=None, extra=None, labels=None):
     root = ET.Element('hierarchy', rotation='0')
     frame = ET.SubElement(root, 'node', {
         'package': capture.PACKAGE,
         'class': 'android.widget.FrameLayout',
         'bounds': f'[0,0][{capture.WIDTH},{capture.HEIGHT}]',
     })
-    for label, (left, top, right, bottom) in zip(capture.LABELS, boxes):
+    for label, (left, top, right, bottom) in zip(capture.LABELS if labels is None else labels, boxes):
         ET.SubElement(frame, 'node', {
             'package': capture.PACKAGE,
             'class': 'android.widget.Button',
@@ -47,6 +47,8 @@ class GlassNavigationGeometryTest(unittest.TestCase):
         capture.set_display(1236, 2676, 480)
         self.row = [(288, 2328, 508, 2520), (508, 2328, 728, 2520),
                     (728, 2328, 948, 2520), (984, 2328, 1176, 2520)]
+        self.workspace = [(78 + index * 216, 2328, 78 + (index + 1) * 216, 2520)
+                          for index in range(5)]
 
     def tearDown(self):
         capture.set_display(*self.display)
@@ -122,10 +124,63 @@ class GlassNavigationGeometryTest(unittest.TestCase):
         self.assertIsNone(capture.bounds(ET.Element('node', bounds='[0,0][1237,200]')))
 
     def test_navigation_selection_must_match_observed_route(self):
-        xml = hierarchy(self.row, selected='网络')
-        self.assertTrue(capture.selected_navigation(xml, '网络'))
+        for selected in ('环境', '下载', '网络', '设置'):
+            xml = hierarchy(self.workspace, labels=capture.WORKSPACE_LABELS, selected=selected)
+            with self.subTest(selected=selected):
+                self.assertTrue(capture.selected_navigation(xml, selected))
+                for wrong in capture.WORKSPACE_LABELS:
+                    if wrong != selected:
+                        self.assertFalse(capture.selected_navigation(xml, wrong))
+                self.assertIsNone(capture.navigation(xml))
+                result = capture.observed_navigation_geometry(xml)
+                self.assertEqual(result['layout'], 'workspace-five')
+                self.assertTrue(result['valid'])
+                self.assertEqual(result['groupLabels'], ['会话', '环境', '下载', '网络', '设置'])
+                self.assertNotIn('阅读', result['bounds'])
+
+    def test_only_unselected_compact_actions_identify_the_conversation(self):
+        xml = hierarchy(self.row)
+        self.assertIsNotNone(capture.navigation(xml))
+        result = capture.observed_navigation_geometry(xml)
+        self.assertEqual(result['layout'], 'conversation-split')
+        self.assertTrue(result['valid'])
+        for selected in capture.LABELS:
+            with self.subTest(selected=selected):
+                wrong = hierarchy(self.row, selected=selected)
+                self.assertIsNone(capture.navigation(wrong))
+                self.assertFalse(capture.selected_navigation(wrong, selected))
+                self.assertFalse(capture.selected_navigation(xml, selected))
+
+    def test_workspace_requires_one_selected_destination(self):
+        xml = hierarchy(self.workspace, labels=capture.WORKSPACE_LABELS)
+        for label in capture.WORKSPACE_LABELS:
+            self.assertFalse(capture.selected_navigation(xml, label))
+        root = ET.fromstring(hierarchy(self.workspace, labels=capture.WORKSPACE_LABELS, selected='环境'))
+        for node in root.iter('node'):
+            if node.get('text') == '网络':
+                node.set('selected', 'true')
+        xml = ET.tostring(root, encoding='unicode')
+        self.assertFalse(capture.selected_navigation(xml, '环境'))
+        self.assertFalse(capture.selected_navigation(xml, '网络'))
+
+    def test_native_workspace_cannot_retain_a_reading_action(self):
+        reading = {'package': capture.PACKAGE, 'class': 'android.widget.Button',
+                   'text': '阅读', 'clickable': 'true', 'enabled': 'true',
+                   'bounds': '[984,2088][1176,2280]'}
+        xml = hierarchy(self.workspace, labels=capture.WORKSPACE_LABELS, selected='网络', extra=reading)
+        result = capture.workspace_navigation_geometry(xml)
+        self.assertFalse(result['valid'])
+        self.assertFalse(result['checks']['readingAbsent'])
+        self.assertFalse(capture.selected_navigation(xml, '网络'))
+        self.assertIsNone(capture.observed_navigation_geometry(xml))
+
+    def test_unequal_native_columns_cannot_pass_route_admission(self):
+        self.workspace[2] = (510, 2328, 700, 2520)
+        xml = hierarchy(self.workspace, labels=capture.WORKSPACE_LABELS, selected='下载')
+        result = capture.observed_navigation_geometry(xml)
+        self.assertEqual(result['layout'], 'workspace-five')
+        self.assertFalse(result['checks']['equalColumns'])
         self.assertFalse(capture.selected_navigation(xml, '下载'))
-        self.assertIsNone(capture.navigation(xml))
 
 
 class GlassFrameObservationTest(unittest.TestCase):

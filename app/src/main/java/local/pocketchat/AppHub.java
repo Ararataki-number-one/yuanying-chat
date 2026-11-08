@@ -10,7 +10,7 @@ final class AppHub {
   static final int CHAT=0, DOWNLOADS=1, ENVIRONMENTS=2, SETTINGS=3, NETWORK=4;
   private static final int[] DESTINATIONS={ENVIRONMENTS,NETWORK,DOWNLOADS};
   final MainActivity a;
-  final LinearLayout root,bar,feedbackBar,footer;
+  final LinearLayout root,bar,conversationBar,workspaceBar,feedbackBar,footer;
   final TextView feedbackText;
   final View chat,divider;
   final FrameLayout workspace;
@@ -21,6 +21,7 @@ final class AppHub {
   private int markedPage=-1;private boolean markedFocus,markedDark,marked;
   private final WeakHashMap<ScrollView,ScrollPadding> scrollPadding=new WeakHashMap<>();
   final Button[] tabs=new Button[DesignUi.NAV.length];
+  final Button[] workspaceTabs=new Button[5];
   final NetworkWorkspaceUi networkWorkspace;
   DesignDownloads.Controller downloadController;
   View downloadScreen;
@@ -35,8 +36,8 @@ final class AppHub {
     footer=DesignUi.column(a);
     footer.setClipChildren(false);footer.setClipToPadding(false);
     workspace.addView(footer,new FrameLayout.LayoutParams(-1,-2,Gravity.BOTTOM));
-    // Chat keeps its original measured navigation slot. Only native pages put
-    // their content behind the same footer; controls never change their parent.
+    // Chat keeps its original measured navigation slot. Native pages put
+    // content behind their five-item bar; neither control group changes parent.
     root.addView(workspace,new LinearLayout.LayoutParams(-1,-2));
     feedbackBar=DesignUi.row(a);feedbackBar.setPadding(a.dp(14),a.dp(4),a.dp(14),a.dp(4));feedbackBar.setVisibility(View.GONE);
     // This opaque notice now overlays page content; its empty area must not
@@ -48,7 +49,11 @@ final class AppHub {
     LinearLayout.LayoutParams cp=new LinearLayout.LayoutParams(a.dp(48),a.dp(48));cp.leftMargin=a.dp(8);feedbackBar.addView(close,cp);
     footer.addView(feedbackBar,new LinearLayout.LayoutParams(-1,-2));
     divider=new View(a);footer.addView(divider,new LinearLayout.LayoutParams(-1,0));
-    bar=ReferenceUi.nav(a,-1,n->{if(n==WorkspaceNavigation.READING)a.setFocusReading(!a.focusActive());else select(DESTINATIONS[n]);},tabs);
+    bar=DesignUi.column(a);bar.setClipChildren(false);bar.setClipToPadding(false);
+    conversationBar=ReferenceUi.nav(a,-1,n->{if(n==WorkspaceNavigation.READING)a.setFocusReading(!a.focusActive());else select(DESTINATIONS[n]);},tabs);
+    workspaceBar=ReferenceUi.workspaceNav(a,CHAT,this::select,workspaceTabs);workspaceBar.setVisibility(View.GONE);
+    bar.addView(conversationBar,new LinearLayout.LayoutParams(-1,-2));
+    bar.addView(workspaceBar,new LinearLayout.LayoutParams(-1,-2));
     bar.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
     footer.addView(bar,new LinearLayout.LayoutParams(-1,-2));panel.bindControls(bar);
     footer.addOnLayoutChangeListener((v,l,t,r,b,ol,ot,or,ob)->{if(b-t!=ob-ot)updateNativeInsets();});
@@ -109,6 +114,8 @@ final class AppHub {
     boolean focused=page==CHAT&&a.focusActive(),dark=AppAppearance.dark();
     if(marked&&markedPage==page&&markedFocus==focused&&markedDark==dark)return;
     marked=true;markedPage=page;markedFocus=focused;markedDark=dark;
+    conversationBar.setVisibility(page==CHAT?View.VISIBLE:View.GONE);
+    workspaceBar.setVisibility(page==CHAT?View.GONE:View.VISIBLE);
     // Keep the native scroll edge consistent outside and inside the clear lens.
     // GlassBackdrop draws only this background, never the footer's controls.
     int surface=ReferenceUi.BG&0x00ffffff;
@@ -121,6 +128,7 @@ final class AppHub {
     int selected=-1;for(int i=0;i<DESTINATIONS.length;i++)if(DESTINATIONS[i]==page)selected=i;
     if(focused)selected=WorkspaceNavigation.READING;
     ReferenceUi.markNav(tabs,selected);
+    ReferenceUi.markWorkspaceNav(workspaceTabs,page);
     tabs[WorkspaceNavigation.READING].setContentDescription(focused?"退出专注阅读模式":"进入专注阅读模式");
   }
   LinearLayout layout(String title){

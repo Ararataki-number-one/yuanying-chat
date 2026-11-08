@@ -11,6 +11,7 @@ import tempfile
 import unittest
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'tools'))
 from gecko.check_interaction_transfer_evidence import verify_display_sampling, verify_read_model_freshness, READ_MODEL_CASES, verify_read_model_identity, READ_MODEL_IDENTITY_CASES, identity_projection_fixture
+from environment_workspace_workflow_source_compatibility import historical_workflow_text as environment_workspace_workflow_input
 
 def profile_workflow_history_manifest():
     raw=(Path(__file__).resolve().parent/'fixtures/profile-glass-host-workflow-deltas.json').read_bytes()
@@ -264,7 +265,7 @@ class DisplayGateTest(unittest.TestCase):
 
     def test_profile_history_depth_only_changes_the_host_contract_checkout(self):
         root=Path(__file__).resolve().parents[1]
-        source=(root/'.github/workflows/profile-upgrade-checks.yml').read_text()
+        source=environment_workspace_workflow_input((root/'.github/workflows/profile-upgrade-checks.yml').read_text())
         source=reverse_reviewed_glass_host_workflow_additions(source)
         before='  host-contracts:\n    runs-on: ubuntu-24.04\n    timeout-minutes: 15\n    steps:\n      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262\n        with:\n          ref: ${{ github.event.pull_request.head.sha || github.sha }}\n          persist-credentials: false\n'
         inserted='          fetch-depth: 16\n'
@@ -279,7 +280,7 @@ class DisplayGateTest(unittest.TestCase):
         import os
         import subprocess
         root=Path(__file__).resolve().parents[1]
-        source=(root/'.github/workflows/profile-upgrade-checks.yml').read_text()
+        source=environment_workspace_workflow_input((root/'.github/workflows/profile-upgrade-checks.yml').read_text())
         manifest=profile_workflow_history_manifest()
         restored=reverse_reviewed_glass_host_workflow_additions(source)
         committed=subprocess.check_output(['git','--no-replace-objects','show',manifest['baseCommit']+':'+manifest['path']],cwd=root,env=dict(os.environ,GIT_NO_LAZY_FETCH='1'))

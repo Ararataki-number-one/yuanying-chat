@@ -21,13 +21,21 @@ import org.json.JSONObject;
  */
 final class NavigationTypographyEvidence implements ViewTreeObserver.OnPreDrawListener, Runnable {
   static final String TAG="PocketNavType";
-  final Activity activity;final LinearLayout root;final Button[] buttons=new Button[DesignUi.NAV.length];
+  final Activity activity;final LinearLayout root;final Button[] buttons;
+  final String navigationMode;final String[] labels;
+  final int[] workspacePages={AppHub.CHAT,AppHub.ENVIRONMENTS,AppHub.DOWNLOADS,AppHub.NETWORK,AppHub.SETTINGS};
   final Handler handler=new Handler(Looper.getMainLooper());final JSONObject identity;
   final String nonce;final long started=SystemClock.uptimeMillis();
   int selected=WorkspaceNavigation.NONE,observations;boolean closed,allFit=true;String previous;
 
   NavigationTypographyEvidence(Activity activity)throws Exception{
     this.activity=activity;nonce=activity.getIntent().getStringExtra("visualNonce");
+    String requestedMode=activity.getIntent().getStringExtra("visualNavigationMode");
+    if(requestedMode!=null&&!"conversation".equals(requestedMode)&&!"workspace".equals(requestedMode))
+      throw new IllegalArgumentException("Known navigation mode required");
+    navigationMode="workspace".equals(requestedMode)?"workspace":"conversation";
+    labels="workspace".equals(navigationMode)?new String[]{"会话","环境","下载","网络","设置"}:DesignUi.NAV;
+    buttons=new Button[labels.length];
     if(nonce==null||!nonce.matches("[0-9a-f]{32}"))throw new IllegalArgumentException("Owned observation nonce required");
     identity=IntegrationBuildIdentity.read(activity);
     if(!identity.getString("sourceCommit").equals(activity.getIntent().getStringExtra("visualSourceCommit")))
@@ -38,7 +46,8 @@ final class NavigationTypographyEvidence implements ViewTreeObserver.OnPreDrawLi
     DesignUi.chrome(activity);if(Build.VERSION.SDK_INT>=30)activity.getWindow().setDecorFitsSystemWindows(false);
     root=DesignUi.column(activity);root.setBackgroundColor(ReferenceUi.CHAT_BG);
     root.addView(new View(activity),new LinearLayout.LayoutParams(-1,0,1));
-    root.addView(ReferenceUi.nav(activity,selected,n->{},buttons));
+    root.addView("workspace".equals(navigationMode)?ReferenceUi.workspaceNav(activity,selected,n->{},buttons)
+      :ReferenceUi.nav(activity,selected,n->{},buttons));
     activity.setContentView(root);ReferenceUi.insets(activity,root);AppAppearance.apply(root);
     root.getViewTreeObserver().addOnPreDrawListener(this);handler.postDelayed(this,12000);
   }
@@ -68,7 +77,7 @@ final class NavigationTypographyEvidence implements ViewTreeObserver.OnPreDrawLi
         boolean shown=b.getGlobalVisibleRect(visible)&&b.isShown();
         JSONObject checks=new JSONObject().put("layoutFits",layout.getHeight()<=bottom-top)
           .put("glyphFits",glyphTop>=top&&glyphBottom<=bottom)
-          .put("wholeLabel",DesignUi.NAV[i].equals(label)&&layout.getText().toString().equals(label)
+          .put("wholeLabel",labels[i].equals(label)&&layout.getText().toString().equals(label)
             &&layout.getLineCount()==1&&layout.getEllipsisCount(0)==0&&layout.getLineEnd(0)==label.length())
           .put("widthFits",layout.getLineWidth(0)<=b.getWidth()-b.getCompoundPaddingLeft()-b.getCompoundPaddingRight()+.5f)
           .put("viewVisible",shown&&visible.width()==b.getWidth()&&visible.height()==b.getHeight())
@@ -106,7 +115,11 @@ final class NavigationTypographyEvidence implements ViewTreeObserver.OnPreDrawLi
       }
       selected++;previous=null;
       // Exercise production selection updates; do not patch any measured view.
-      root.post(()->{if(!closed){ReferenceUi.markNav(buttons,selected);root.postInvalidateOnAnimation();}});
+      root.post(()->{if(!closed){
+        if("workspace".equals(navigationMode))ReferenceUi.markWorkspaceNav(buttons,workspacePages[selected]);
+        else ReferenceUi.markNav(buttons,selected);
+        root.postInvalidateOnAnimation();
+      }});
     }catch(Exception failure){failed(failure);}
     return true;
   }
@@ -115,8 +128,10 @@ final class NavigationTypographyEvidence implements ViewTreeObserver.OnPreDrawLi
     return new JSONObject().put("schema",1).put("kind",kind).put("nonce",nonce)
       .put("sourceCommit",identity.getString("sourceCommit")).put("sourceTree",identity.getString("sourceTree"))
       .put("apkSha256",identity.getString("apkSha256")).put("fontScale",activity.getResources().getConfiguration().fontScale)
+      .put("navigationMode",navigationMode)
       .put("density",activity.getResources().getDisplayMetrics().density).put("actualAndroidLayout",true)
-      .put("scope","Actual ReferenceUi.nav component fixture; not MainActivity or network acceptance")
+      .put("scope","Actual "+("workspace".equals(navigationMode)?"ReferenceUi.workspaceNav":"ReferenceUi.nav")
+        +" component fixture; not MainActivity or network acceptance")
       .put("startedUptimeMs",started).put("observedUptimeMs",SystemClock.uptimeMillis());
   }
   static void emit(JSONObject value)throws Exception{

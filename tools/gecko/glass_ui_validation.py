@@ -224,7 +224,7 @@ def capture_acceptance_suite(args, report, capture, adb, wait_for, tap, screensh
     package = api['PACKAGE']
     component = package + '/local.pocketchat.CompactChromeIntegrationActivity'
     sha, write, bounds, nodes, button = [api[key] for key in ('sha', 'write', 'bounds', 'nodes', 'button')]
-    nav, capsule, geometry = [api[key] for key in ('navigation', 'capsule', 'navigation_geometry')]
+    nav, capsule, geometry = [api[key] for key in ('navigation', 'capsule', 'observed_navigation_geometry')]
     identity = report['buildIdentity']
     observations = {}
     previous_overlays = {}
@@ -257,7 +257,10 @@ def capture_acceptance_suite(args, report, capture, adb, wait_for, tap, screensh
         return bool(nodes(xml, lambda node: node.get('text') == value))
 
     def chat(xml):
-        return nav(xml) is not None and capsule(xml) is not None and not text(xml, '打开网址') and not text(xml, '快速切换环境')
+        observed = geometry(xml)
+        return (observed is not None and observed['layout'] == 'conversation-split'
+                and nav(xml) is not None and capsule(xml) is not None
+                and not text(xml, '打开网址') and not text(xml, '快速切换环境'))
 
     def key(case, code, reason):
         report['inputs'].append(dict(action='keyevent', keyCode=code, phase=case['name'],
@@ -341,13 +344,19 @@ def capture_acceptance_suite(args, report, capture, adb, wait_for, tap, screensh
                 raise ValueError('Requested cutout and three-button safe-area overlays were not actually enabled')
             case['safeArea']['observedEnabledOverlays'] = sorted(enabled.intersection(SAFE_AREA_OVERLAYS))
 
-    def typography(case):
+    def typography(case, mode):
         """Measure native Chinese glyphs in this exact size/theme/font configuration."""
         nonce = secrets.token_hex(16)
+        expected_labels = api['LABELS'] if mode == 'conversation' else api['WORKSPACE_LABELS']
+        count = len(expected_labels)
+        observation_count = count * (count + 1)
+        field = 'typography' if mode == 'conversation' else 'workspaceTypography'
         adb('shell', 'am', 'start', '-W', '-n', api['COMPONENT'],
             '--es', 'visualAction', 'navigation-typography', '--es', 'visualNonce', nonce,
+            '--es', 'visualNavigationMode', mode,
             '--es', 'visualSourceCommit', identity['sourceCommit'], '--ef', 'visualFontScale', str(case['fontScale']))
-        path = args.out / (case['name'] + '-typography.log')
+        suffix = '-typography.log' if mode == 'conversation' else '-workspace-typography.log'
+        path = args.out / (case['name'] + suffix)
         deadline = time.monotonic() + 25
         records = []
         summaries = []
@@ -360,27 +369,30 @@ def capture_acceptance_suite(args, report, capture, adb, wait_for, tap, screensh
             if summaries:
                 break
             time.sleep(.2)
-        case['typography'] = dict(file=path.name, sha256=sha(path), nonce=nonce, records=records,
-            scope='Separate actual ReferenceUi.nav component; same Android size/theme/font, not MainActivity')
+        component = 'ReferenceUi.nav' if mode == 'conversation' else 'ReferenceUi.workspaceNav'
+        case[field] = dict(file=path.name, sha256=sha(path), nonce=nonce, records=records,
+            navigationMode=mode,
+            scope='Separate actual ' + component + ' component; same Android size/theme/font, not MainActivity')
         labels = [row for row in records if row.get('kind') == 'label']
-        expected = {(selected, index) for selected in range(-1, 4) for index in range(4)}
+        expected = {(selected, index) for selected in range(-1, count) for index in range(count)}
         keys = [(row.get('selectedIndex'), row.get('measurement', {}).get('buttonIndex')) for row in labels]
         if (len(summaries) != 1 or summaries[0].get('status') != 'verified'
-                or summaries[0].get('observationCount') != 20 or len(labels) != 20
-                or len(set(keys)) != 20 or set(keys) != expected):
+                or summaries[0].get('observationCount') != observation_count or len(labels) != observation_count
+                or len(set(keys)) != observation_count or set(keys) != expected):
             raise ValueError('The native Chinese navigation typography observation is incomplete or failed')
         for row in records:
             if (row.get('schema') != 1 or row.get('actualAndroidLayout') is not True
+                    or row.get('navigationMode') != mode
                     or any(row.get(key) != identity[key] for key in ('sourceCommit', 'sourceTree', 'apkSha256'))
                     or abs(row.get('fontScale', -1) - case['fontScale']) > .001):
                 raise ValueError('Typography source/APK/font identity differs from the current case')
         for row in labels:
             measured = row['measurement']
-            if (measured.get('label') != api['LABELS'][measured['buttonIndex']]
+            if (measured.get('label') != expected_labels[measured['buttonIndex']]
                     or measured.get('valid') is not True or not measured.get('checks')
                     or not all(value is True for value in measured['checks'].values())):
                 raise ValueError('A complete Chinese navigation label did not fit its native text region')
-        case['typography']['status'] = 'verified'
+        case[field]['status'] = 'verified'
         adb('shell', 'am', 'force-stop', package)
 
     def interactions(case):
@@ -464,7 +476,8 @@ def capture_acceptance_suite(args, report, capture, adb, wait_for, tap, screensh
                         else:
                             adb('shell', 'cmd', 'overlay', 'disable', '--user', '0', overlay)
                     adb('shell', 'settings', 'put', 'secure', 'show_ime_with_hard_keyboard', '1')
-                    typography(case)
+                    typography(case, 'conversation')
+                    typography(case, 'workspace')
                     observations[case['runNonce']] = EventTransfer(identity=identity, nonce=case['runNonce'],
                         slot=0, action='chromeCollapse', fetch=lambda uri: adb('exec-out', 'content', 'read', '--uri', uri))
                     adb('shell', 'am', 'start', '-W', '-n', component,

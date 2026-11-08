@@ -41,6 +41,10 @@ def main():
  if not a.before_ref:
   helpers=opening_helpers(source['EnvironmentOverviewUi.java'].decode())
  text=text.replace('/* OPENING_HELPERS */',helpers)
+ # Historical comparisons predate the five-page API. Preserve their original
+ # baseline cases without attempting to compile calls to that new API.
+ if a.before_ref and 'static void selectPage(' not in source['WorkspaceNavigation.java'].decode():
+  text=text.replace(member(text,'static void workspaceRouting('),'static void workspaceRouting(){}')
  with tempfile.TemporaryDirectory(prefix='default-environment-host-') as raw:
   tmp=pathlib.Path(raw);base=tmp/'local/pocketchat';base.mkdir(parents=True);(base/'DefaultEnvironmentHost.java').write_text(text);(base/'AppSettings.java').write_bytes(source['AppSettings.java']);(base/'WorkspaceNavigation.java').write_bytes(source['WorkspaceNavigation.java']);classes=tmp/'classes';files=[*base.glob('*.java'),*HERE.glob('stubs/**/*.java')]
   subprocess.run([str(a.java_home/'bin/javac'),'-encoding','UTF-8','-cp',str(a.json_jar),'-d',str(classes),*map(str,files)],check=True)

@@ -10,7 +10,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 FIXTURE = ROOT / 'tests/fixtures/glass-diagnostic-source-deltas.json'
-FIXTURE_SHA256 = 'e0eb8b2737c175436f1189afa060d4ac8404b3b744b6fa4cdb6a32c2a2c43ff2'
+FIXTURE_SHA256 = 'e1bdd324bc2ce87b02ac585f27d6d842c9ce92b3fd8b105058cba9d64d2c939f'
 DISPLAY = 'tests/profile_display_sampling_gate_test.py'
 NATIVE = 'tests/profile_native_setup_diagnostic11_test.py'
 PREVIOUS = {

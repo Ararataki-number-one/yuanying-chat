@@ -103,6 +103,7 @@ def main():
     input_paths.add(ROOT / "tests/fixtures/ui-checkpoint-source-deltas.json")
     input_paths.add(ROOT / "tests/fixtures/ui-navigation-source-deltas.json")
     input_paths.add(ROOT / "tests/fixtures/profile-glass-host-workflow-deltas.json")
+    input_paths.add(ROOT / "tests/fixtures/environment-workspace-workflow-source-deltas.json")
     input_paths.add(ROOT / "tests/fixtures/glass-diagnostic-source-deltas.json")
     input_paths.update(path for path in (ROOT / 'tests/gecko-event-journal-host').rglob('*')
                        if path.is_file() and path.suffix in ('.py', '.java', '.in', '.json', '.md'))
@@ -499,6 +500,9 @@ def main():
                   ROOT/'tests/profile_display_sampling_gate_test.py',ROOT/'tests/fixtures/profile-display-workflow-additions.json',
                   ROOT/'tests/ui_checkpoint_source_compatibility.py',ROOT/'tests/fixtures/ui-navigation-source-deltas.json',
                   ROOT/'tests/fixtures/profile-glass-host-workflow-deltas.json',
+                  ROOT/'tests/environment_workspace_workflow_source_compatibility.py',
+                  ROOT/'tests/profile_environment_workspace_workflow_source_compatibility_test.py',
+                  ROOT/'tests/fixtures/environment-workspace-workflow-source-deltas.json',
                   ROOT/'tests/glass_diagnostic_source_compatibility.py',ROOT/'tests/fixtures/glass-diagnostic-source-deltas.json',
                   ROOT/'tests/profile_native_setup_diagnostic11_test.py',ROOT/'tests/profile_editing_transport13_diagnostic_test.py',
                   ROOT/'tests/gecko/NetworkClientBindingIntegrationActivity.java',ROOT/'tests/gecko/run_network_client_binding.py',ROOT/'tests/gecko/AndroidManifest.xml'))

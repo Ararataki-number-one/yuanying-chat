@@ -35,7 +35,7 @@ final class ActionSearchUi {
         add(out,"reload","重新加载网页","先核对回复、附件和未发送的输入","刷新 重试 恢复 reload refresh",()->current.accept(m::requestReload));
       }
     }
-    add(out,"environments","管理全部环境","任务收件箱、环境配置和保存视图","账号 窗口 工作台 environment",()->a.startActivity(new Intent(a,WindowHomeActivity.class).addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)));
+    add(out,"environments","管理全部环境","切换环境、管理配置和独立账号","账号 窗口 工作台 environment",()->a.startActivity(new Intent(a,WindowHomeActivity.class).addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)));
     add(out,"downloads","下载中心","搜索文件、筛选环境和收集分享","文件 附件 保存 下载 download file",()->{if(a instanceof MainActivity&&((MainActivity)a).hub!=null)((MainActivity)a).hub.select(AppHub.DOWNLOADS);else a.startActivity(new Intent(a,DownloadCenterActivity.class).addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT));});
     add(out,"settings","应用设置","启动、外观与后台提醒","设置 主题 通知 黑夜 setting",()->{if(a instanceof MainActivity&&((MainActivity)a).hub!=null)((MainActivity)a).hub.select(AppHub.SETTINGS);else a.startActivity(new Intent(a,AppSettingsActivity.class).addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT));});
     add(out,"backup","环境配置备份","导出或恢复密码加密的环境配置","备份 迁移 导入 导出 backup",()->a.startActivity(new Intent(a,EnvironmentConfigBackupActivity.class)));

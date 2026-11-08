@@ -1,0 +1,52 @@
+{
+  "schema": 1,
+  "path": ".github/workflows/profile-upgrade-checks.yml",
+  "previousCommit": "7402ead321ca74b9fbefeab32a1aaffb32832011",
+  "previousTree": "2aaec06687b65d9511ace499528b6946dc1b8d53",
+  "previousBytes": 21727,
+  "previousSha256": "37ec53f065fa4572b8d59c7d4138dc170267f73911c46b5d4db0855dfe024699",
+  "reviewedBytes": 22500,
+  "reviewedSha256": "ef20f249093f667ab1bbeb594f9e5a9e7efcddb72c72be40ad9a1d6ea8b6d0c8",
+  "deltas": [
+    {
+      "previous": "      - name: State build verification scope\n        run: |\n          printf '%s\\n' 'Pinned upstream SDK verification, reviewed single-class source build, release/test APK compilation and lint passed. APKs remain unsigned or signed with an ephemeral synthetic key. No emulator/ARM execution, real ChatGPT login or WAN measurement is implied; no release is published.' >> \"$GITHUB_STEP_SUMMARY\"\n      # This branch needs one review screenshot of the real product. Keep it\n      # separate from the fixed UI acceptance workloads and their receipts.\n      - name: Retain the actual glass navigation integration APK\n        if: ${{ (github.head_ref || github.ref_name) == 'codex/compact-glass-reading' }}\n        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02\n        with:\n          name: glass-navigation-apk-${{ github.run_id }}-${{ github.run_attempt }}\n",
+      "current": "      - name: State build verification scope\n        run: |\n          printf '%s\\n' 'Pinned upstream SDK verification, reviewed single-class source build, release/test APK compilation and lint passed. APKs remain unsigned or signed with an ephemeral synthetic key. No emulator/ARM execution, real ChatGPT login or WAN measurement is implied; no release is published.' >> \"$GITHUB_STEP_SUMMARY\"\n      # These UI branches need review captures of the real product. Keep them\n      # separate from the fixed UI acceptance workloads and their receipts.\n      - name: Retain the actual glass navigation integration APK\n        if: ${{ contains(fromJSON('[\"codex/compact-glass-reading\",\"codex/environment-workspace-polish\"]'), github.head_ref || github.ref_name) }}\n        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02\n        with:\n          name: glass-navigation-apk-${{ github.run_id }}-${{ github.run_attempt }}\n",
+      "previousBytes": 878,
+      "previousSha256": "455f0b2c53f489a5e8253c8a83d406ad0925aac9f0e2247ecbf8c0b925647e78",
+      "currentBytes": 936,
+      "currentSha256": "4ad5d0ec3af502cbeaea12685ea0c59f4d662a16c00ccef9aacf8154d0a77714"
+    },
+    {
+      "previous": "          compression-level: 0\n          retention-days: 7\n      - name: Prepare a disposable emulator for the glass screenshot\n        if: ${{ (github.head_ref || github.ref_name) == 'codex/compact-glass-reading' }}\n        timeout-minutes: 12\n        shell: bash\n        run: |\n",
+      "current": "          compression-level: 0\n          retention-days: 7\n      - name: Prepare a disposable emulator for the glass screenshot\n        if: ${{ contains(fromJSON('[\"codex/compact-glass-reading\",\"codex/environment-workspace-polish\"]'), github.head_ref || github.ref_name) }}\n        timeout-minutes: 12\n        shell: bash\n        run: |\n",
+      "previousBytes": 280,
+      "previousSha256": "baa8f9a0ebc21d4cf460d926e14e4ff4a11df7e3d8cfa49d59268b4f91ef1147",
+      "currentBytes": 337,
+      "currentSha256": "6ad258651c765baddac5540a6c9231b682c42747d234a9297874f02759c25ca8"
+    },
+    {
+      "previous": "          done\n          test \"$task_glass_booted\" = true\n      - name: Capture the actual glass navigation screen\n        if: ${{ (github.head_ref || github.ref_name) == 'codex/compact-glass-reading' }}\n        timeout-minutes: 6\n        shell: bash\n        run: |\n          set -euo pipefail\n          task_glass_pid=$(cat work/glass-navigation/emulator.pid)\n          kill -0 \"$task_glass_pid\"\n          test ! -f work/glass-navigation/emulator-exit.txt\n          test \"$(timeout 5 \"$ANDROID_HOME/platform-tools/adb\" -s emulator-5554 get-state)\" = device\n          python3 tools/gecko/capture_glass_navigation.py \\\n            --root \"$PWD\" --apk app/build/outputs/apk/integration/app-x86_64-integration.apk \\\n            --build-work work/profile-build --adb \"$ANDROID_HOME/platform-tools/adb\" \\\n            --serial emulator-5554 --aapt2 \"$ANDROID_HOME/build-tools/37.0.0/aapt2\" \\\n            --apksigner \"$ANDROID_HOME/build-tools/37.0.0/apksigner\" \\\n            --out work/glass-navigation 2>&1 | tee work/glass-navigation/capture.log\n      - name: Keep screenshot diagnostics and stop the disposable emulator\n        if: ${{ always() && (github.head_ref || github.ref_name) == 'codex/compact-glass-reading' }}\n        shell: bash\n        run: |\n          if [ -f work/glass-navigation/host-resources.sh ]; then\n",
+      "current": "          done\n          test \"$task_glass_booted\" = true\n      - name: Capture the actual glass navigation screen\n        if: ${{ contains(fromJSON('[\"codex/compact-glass-reading\",\"codex/environment-workspace-polish\"]'), github.head_ref || github.ref_name) }}\n        timeout-minutes: 9\n        shell: bash\n        env:\n          TASK_CAPTURE_BRANCH: ${{ github.head_ref || github.ref_name }}\n        run: |\n          set -euo pipefail\n          task_glass_pid=$(cat work/glass-navigation/emulator.pid)\n          kill -0 \"$task_glass_pid\"\n          test ! -f work/glass-navigation/emulator-exit.txt\n          test \"$(timeout 5 \"$ANDROID_HOME/platform-tools/adb\" -s emulator-5554 get-state)\" = device\n          task_environment_capture_args=()\n          if [ \"$TASK_CAPTURE_BRANCH\" = 'codex/environment-workspace-polish' ]; then\n            task_environment_capture_args=(--environment-workspace)\n          fi\n          python3 tools/gecko/capture_glass_navigation.py \\\n            --root \"$PWD\" --apk app/build/outputs/apk/integration/app-x86_64-integration.apk \\\n            --build-work work/profile-build --adb \"$ANDROID_HOME/platform-tools/adb\" \\\n            --serial emulator-5554 --aapt2 \"$ANDROID_HOME/build-tools/37.0.0/aapt2\" \\\n            --apksigner \"$ANDROID_HOME/build-tools/37.0.0/apksigner\" \\\n            --out work/glass-navigation \"${task_environment_capture_args[@]}\" 2>&1 | tee work/glass-navigation/capture.log\n      - name: Keep screenshot diagnostics and stop the disposable emulator\n        if: ${{ always() && contains(fromJSON('[\"codex/compact-glass-reading\",\"codex/environment-workspace-polish\"]'), github.head_ref || github.ref_name) }}\n        shell: bash\n        run: |\n          if [ -f work/glass-navigation/host-resources.sh ]; then\n",
+      "previousBytes": 1319,
+      "previousSha256": "1f3535465f4dc44da85e8daa660d8931d35bf501da11e81c0654e52e1a0cb88b",
+      "currentBytes": 1766,
+      "currentSha256": "99e75c5be0a7104b96c2859761a7ddbe3f98515f3bd7e6c88560d308e46b6423"
+    },
+    {
+      "previous": "            done\n          fi\n      - name: Upload glass screenshots and source evidence\n        if: ${{ always() && (github.head_ref || github.ref_name) == 'codex/compact-glass-reading' }}\n        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02\n        with:\n          name: glass-navigation-screenshots-${{ github.run_id }}-${{ github.run_attempt }}\n",
+      "current": "            done\n          fi\n      - name: Upload glass screenshots and source evidence\n        if: ${{ always() && contains(fromJSON('[\"codex/compact-glass-reading\",\"codex/environment-workspace-polish\"]'), github.head_ref || github.ref_name) }}\n        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02\n        with:\n          name: glass-navigation-screenshots-${{ github.run_id }}-${{ github.run_attempt }}\n",
+      "previousBytes": 375,
+      "previousSha256": "4bb6d081c1d4dfd0bdddaafff41b55d0bded046b8362a5f044f7f40f395ebb5c",
+      "currentBytes": 432,
+      "currentSha256": "9e3274834bf9a23686fc8b7e81811386dc003ddff083db9ecc061ea3372d2748"
+    },
+    {
+      "previous": "          curl -fsSL --retry 3 https://services.gradle.org/distributions/gradle-9.8.0-bin.zip -o work/profile-build/gradle.zip\n          echo 'bafd5ce9cfaea0fbccfdc8439a1ac42fbd4cd9c89dc9a988228d8a2639a58e6c  work/profile-build/gradle.zip' | sha256sum -c -\n",
+      "current": "          if ! curl -fsSL --retry 3 https://services.gradle.org/distributions/gradle-9.8.0-bin.zip -o work/profile-build/gradle.zip; then\n            curl -fsSL --retry 3 https://downloads.gradle.org/distributions/gradle-9.8.0-bin.zip -o work/profile-build/gradle.zip\n          fi\n          echo 'bafd5ce9cfaea0fbccfdc8439a1ac42fbd4cd9c89dc9a988228d8a2639a58e6c  work/profile-build/gradle.zip' | sha256sum -c -\n",
+      "previousBytes": 257,
+      "previousSha256": "fc0e5935f71e5f7ae77bd55775ebe2992b04dd549b6723a04c1b817870bc18c8",
+      "currentBytes": 411,
+      "currentSha256": "94eee71a383dddb03c7ad29c77707bc760f5954a388e116e797af4f916352b5a"
+    }
+  ]
+}

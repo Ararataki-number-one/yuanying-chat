@@ -6,6 +6,7 @@ import android.app.*;import android.content.*;import android.graphics.*;import a
 class ThemedActivity extends Activity{}
 class Profiles{static Context global(Context c){return c;}static int slot(Context c){return 0;}static Class<? extends Activity> activity(int slot){return Activity.class;}}
 class MainActivity extends Activity{FileDownloads downloads;}
+class AppHub{static final int CHAT=0,DOWNLOADS=1,ENVIRONMENTS=2,SETTINGS=3,NETWORK=4;}
 class FileDownloads{DownloadTasks tasks;void taskActions(JSONObject row){}}
 class DownloadTasks{JSONArray rows;static String amount(long n){return "";}static String progress(JSONObject row){return "";}static String label(String state){return "";}static void put(JSONObject row,Object... entries){}}
 class AppAppearance{static AlertDialog.Builder dialog(Context c){return new AlertDialog.Builder(c);}static int color(int value){return value;}}
@@ -14,6 +15,7 @@ class DesignUi{
  static LinearLayout row(Context c){return new LinearLayout(c);}static LinearLayout column(Context c){return new LinearLayout(c);}static LinearLayout card(Context c){return column(c);}static LinearLayout screen(Context c){return column(c);}static LinearLayout body(Activity a,LinearLayout root,String title,Runnable back){return column(a);}
  static TextView text(Context c,String text,int size,int color){return new TextView(c);}static Button button(Context c,String text,boolean primary,Runnable action){return new Button(c);}static int actionWidth(Button b,int min){return min;}
  static LinearLayout tabs(Context c,String[] labels,int selected,IntConsumer choice){return row(c);}static EditText searchInput(LinearLayout parent,String hint){return new EditText(parent.getContext());}static View nav(Activity a,int index,IntConsumer select,Button[] buttons){return row(a);}
+ static View workspaceNav(Activity a,int page,IntConsumer select,Button[] buttons){return row(a);}
  static void note(LinearLayout box,String text){}static void empty(LinearLayout box,String title,String detail,String action,Runnable run){}static AlertDialog message(Activity a,String title,String message){return null;}static ImageView icon(Context c,String key,int color,int size){return new ImageView(c);}static Drawable surface(Context c,int color,int radius,int stroke){return null;}
 }
 class ReferenceUi{static TextView text(Context c,String text,int size,int color,boolean bold){return new TextView(c);}static Button more(Context c,Runnable run){return new Button(c);}}
@@ -28,4 +30,4 @@ class DownloadLibrary{static DownloadLibrary get(Context c){return new DownloadL
 class SealedFileIo{interface Action<T>{T run()throws Exception;}}
 class SavedFileDeletion{static <T>T lease(Context c,Uri uri,SealedFileIo.Action<T> action)throws Exception{return action.run();}static <T>T leaseAll(Context c,List<Uri> uris,SealedFileIo.Action<T> action)throws Exception{return action.run();}static void onMain(Handler main,Runnable action)throws Exception{action.run();}}
 class AppSettings{static int recentSlot(Context c){return 0;}}
-class WorkspaceNavigation{static void select(Activity a,int current,int next){}}
+class WorkspaceNavigation{static void select(Activity a,int current,int next){}static void selectPage(Activity a,int current,int next){}}
