@@ -1,0 +1,22 @@
+name: Verify pinned official Gradle asset transport
+on:
+  push:
+    branches: ['diagnostic/gradle-transport-20261108-1']
+permissions:
+  contents: read
+jobs:
+  fixed-gradle:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - name: Download the exact official asset through its public API
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p work/gradle-transport
+          curl -fLsS --retry 2 --max-time 240 -H 'Accept: application/octet-stream' -H 'X-GitHub-Api-Version: 2022-11-28' https://api.github.com/repos/gradle/gradle-distributions/releases/assets/586068844 -o work/gradle-transport/gradle.zip
+          test "$(stat -c %s work/gradle-transport/gradle.zip)" = 151611662
+          echo 'bafd5ce9cfaea0fbccfdc8439a1ac42fbd4cd9c89dc9a988228d8a2639a58e6c  work/gradle-transport/gradle.zip' | sha256sum -c -
+          unzip -tq work/gradle-transport/gradle.zip
+          unzip -q work/gradle-transport/gradle.zip -d work/gradle-transport
+          JAVA_HOME="$JAVA_HOME_17_X64" work/gradle-transport/gradle-9.8.0/bin/gradle --version
