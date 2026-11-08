@@ -1,4 +1,4 @@
-"""Selector/geometry checks only; these models are not Android execution evidence."""
+"""Selector/geometry and signature parsing checks; not Android execution evidence."""
 import importlib.util
 from pathlib import Path
 import sys
@@ -22,6 +22,76 @@ def hierarchy(labels,boxes,selected=None):
 
 
 def xml(root):return ET.tostring(root,encoding='unicode')
+
+
+class IntegrationSigningCertificateTest(unittest.TestCase):
+    certificate='e89c5ab997e20257d6399f7648e912e1af2124401f2bef324eae09d6d93f9080'
+    # Exact successful build-tools 37 output retained by the failed capture.
+    actual_output='''Verifies
+Verified using v1 scheme (JAR signing): false
+Verified using v2 scheme (APK Signature Scheme v2): true
+Verified using v3 scheme (APK Signature Scheme v3): false
+Verified using v3.1 scheme (APK Signature Scheme v3.1): false
+Verified using v3.2 scheme (APK Signature Scheme v3.2): false
+Verified using v4 scheme (APK Signature Scheme v4): false
+Verified for SourceStamp: false
+Number of signers: 1
+V2 Signer: certificate DN: CN=SyntheticIntegration
+V2 Signer: certificate SHA-256 digest: e89c5ab997e20257d6399f7648e912e1af2124401f2bef324eae09d6d93f9080
+V2 Signer: certificate SHA-1 digest: 1cf1f33462a1bf1a9cf8298af23745e3aeaa8555
+V2 Signer: certificate MD5 digest: 42ad4ada042029ec4d019f23a224a7e1
+V2 Signer: key algorithm: RSA
+V2 Signer: key size (bits): 2048
+V2 Signer: public key SHA-256 digest: 63e8972ea33a91b7c2373cd2c41fde42ebe1e5e0b6b14a122195de69c59a7d4f
+V2 Signer: public key SHA-1 digest: dcaa5c0a8496ec0788d1c8a43d8aff70849daaf3
+V2 Signer: public key MD5 digest: 361365e880936160d62fe9f7092e4a41
+'''
+
+    def parse(self,output):
+        return CAPTURE.integration_signing_certificate(output.encode())
+
+    def test_actual_build_tools_37_output_uses_certificate_not_public_key(self):
+        self.assertEqual(self.parse(self.actual_output),self.certificate)
+
+    def test_legacy_single_signer_format_remains_supported(self):
+        self.assertEqual(self.parse(self.actual_output.replace('V2 Signer:','Signer #1')),self.certificate)
+
+    def test_requires_one_exact_single_signer_declaration(self):
+        declared='Number of signers: 1\n'
+        for replacement in ('','Number of signers: 2\n',declared*2,
+                            declared+'Number of signers: 2\n','Number of signers: 01\n',
+                            'Number of signers: unknown\n','number of signers: 1\n'):
+            with self.subTest(declaration=replacement),self.assertRaises(ValueError):
+                self.parse(self.actual_output.replace(declared,replacement))
+
+    def test_missing_certificate_cannot_be_replaced_by_public_key_hash(self):
+        line='V2 Signer: certificate SHA-256 digest: '+self.certificate+'\n'
+        with self.assertRaises(ValueError):self.parse(self.actual_output.replace(line,''))
+
+    def test_duplicate_certificate_lines_never_deduplicate(self):
+        for prefix in ('V2 Signer:','Signer #1','Signer #2','V3 Signer:','Unknown signer:'):
+            for value in (self.certificate,'a'*64,'invalid'):
+                with self.subTest(prefix=prefix,digest=value),self.assertRaises(ValueError):
+                    self.parse(self.actual_output+prefix+' certificate SHA-256 digest: '+value+'\n')
+
+    def test_malformed_certificate_digests_fail_closed(self):
+        for value in ('',self.certificate[:-1],self.certificate+'0',self.certificate.upper(),'g'*64,
+                      self.certificate+' extra','0x'+self.certificate):
+            with self.subTest(digest=value),self.assertRaises(ValueError):
+                self.parse(self.actual_output.replace(self.certificate,value))
+
+    def test_only_actual_v2_and_legacy_first_signer_prefixes_are_accepted(self):
+        for prefix in ('Signer #2','Signer #01','Signer #1:','V2 Signer','V3 Signer:',
+                       'Unknown signer:','Warning: V2 Signer:',' V2 Signer:'):
+            with self.subTest(prefix=prefix),self.assertRaises(ValueError):
+                self.parse(self.actual_output.replace('V2 Signer:',prefix))
+
+    def test_malformed_second_certificate_line_is_not_ignored(self):
+        for second in ('Unknown: Certificate SHA-256 digest: '+'b'*64,
+                       'Unknown: certificate SHA256 digest: '+'b'*64,
+                       'Unknown: certificate SHA-256 fingerprint: '+'b'*64):
+            with self.subTest(second=second),self.assertRaises(ValueError):
+                self.parse(self.actual_output+second+'\n')
 
 
 class NavigationCaptureModesTest(unittest.TestCase):
