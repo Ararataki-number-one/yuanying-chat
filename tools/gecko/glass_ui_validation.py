@@ -41,6 +41,55 @@ SAFE_AREA_OVERLAYS = ('com.android.internal.display.cutout.emulation.tall',
                       'com.android.internal.systemui.navbar.threebutton')
 
 
+def android_runtime_crash_ownership(raw, package):
+    """Attribute complete brief AndroidRuntime fatal blocks without clearing logs.
+
+    A foreign application can crash in the disposable emulator. Its explicit
+    owner stays diagnostic; target and unbound/ambiguous fatal blocks fail closed.
+    Stack class names are never treated as process identity.
+    """
+    package_pattern = r'[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)+'
+    if type(raw) is not bytes or type(package) is not str or re.fullmatch(package_pattern, package) is None:
+        raise ValueError('Actual AndroidRuntime bytes and the current package are required')
+    lines = raw.decode('utf-8', 'strict').splitlines()
+    markers = [index for index, line in enumerate(lines) if 'FATAL EXCEPTION' in line]
+    owner_lines = {index for index, line in enumerate(lines) if re.search(r'(?:^|:\s*)Process:', line)}
+    bound_owner_lines = set()
+    crashes = []
+    for ordinal, index in enumerate(markers):
+        header = re.fullmatch(r'[EF]/AndroidRuntime\(\s*([1-9][0-9]*)\): FATAL EXCEPTION: (\S.*)', lines[index])
+        if header is None:
+            raise ValueError('AndroidRuntime fatal exception has no unambiguous brief PID header')
+        end = markers[ordinal + 1] if ordinal + 1 < len(markers) else len(lines)
+        owners = [(offset, line) for offset, line in enumerate(lines[index + 1:end], index + 1)
+                  if re.search(r'(?:^|:\s*)Process:', line)]
+        if len(owners) != 1:
+            raise ValueError('AndroidRuntime fatal exception needs exactly one actual Process owner')
+        owner_index, owner_line = owners[0]
+        owner = re.fullmatch(r'[EF]/AndroidRuntime\(\s*([1-9][0-9]*)\): Process: ('
+            + package_pattern + r'(?::[A-Za-z0-9_.-]+)?), PID: ([1-9][0-9]*)', owner_line)
+        if owner is None or not (header[1] == owner[1] == owner[3]):
+            raise ValueError('AndroidRuntime fatal Process owner or PID is malformed or inconsistent')
+        for line in lines[index:end]:
+            if re.match(r'^[^/\s]+/AndroidRuntime\b', line):
+                entry = re.fullmatch(r'[VDIWEF]/AndroidRuntime\(\s*([1-9][0-9]*)\): (.*)', line)
+                if entry is None or entry[1] != header[1]:
+                    raise ValueError('AndroidRuntime fatal block contains an ambiguous or inconsistent PID')
+        bound_owner_lines.add(owner_index)
+        process = owner[2]
+        target = process == package or process.startswith(package + ':')
+        crashes.append(dict(pid=int(header[1]), process=process, targetPackage=target,
+                            fatalLine=index + 1, processLine=owner_index + 1))
+    if bound_owner_lines != owner_lines:
+        raise ValueError('AndroidRuntime Process owner has no complete fatal exception block')
+    result = dict(schema=1, package=package, fatalBlockCount=len(crashes), crashes=crashes,
+                  rawBytes=len(raw), rawSha256=hashlib.sha256(raw).hexdigest(),
+                  scope='Actual whole-device AndroidRuntime diagnostics; explicit foreign owners are retained')
+    if any(crash['targetPackage'] for crash in crashes):
+        raise ValueError('The current Android application or its child process crashed')
+    return result
+
+
 def visible_ime_frame(raw, width, height):
     """Read current screen coordinates, never IME-local insets or a boot hint."""
     frames = set()
@@ -945,8 +994,7 @@ def capture_acceptance_suite(args, report, capture, adb, wait_for, tap, screensh
         while time.monotonic() < deadline:
             raw = adb('logcat', '-d', '-v', 'brief', '-s', 'PocketGeckoIntegration:I', 'AndroidRuntime:E', '*:S')
             (args.out / (case['name'] + '-events.log')).write_bytes(raw)
-            if b'FATAL EXCEPTION' in raw:
-                raise ValueError('Android crashed during the real UI sequence')
+            case['androidRuntimeCrashOwnership'] = android_runtime_crash_ownership(raw, package)
             for line in raw.decode('utf-8', 'replace').splitlines():
                 receipt = parse_receipt_line(line)
                 if receipt is None or receipt.get('runNonce') != case['runNonce']:
@@ -971,8 +1019,7 @@ def capture_acceptance_suite(args, report, capture, adb, wait_for, tap, screensh
                 raise TimeoutError('The bounded background-entry receipt deadline expired')
             raw = adb('logcat', '-d', '-v', 'brief', '-s', 'PocketGeckoIntegration:I', 'AndroidRuntime:E', '*:S', **options)
             (args.out / (case['name'] + '-events.log')).write_bytes(raw)
-            if b'FATAL EXCEPTION' in raw:
-                raise ValueError('Android crashed during native glass-owner observation')
+            case['androidRuntimeCrashOwnership'] = android_runtime_crash_ownership(raw, package)
             for line in raw.decode('utf-8', 'replace').splitlines():
                 receipt = parse_receipt_line(line)
                 if receipt is None or receipt.get('runNonce') != case['runNonce']:
