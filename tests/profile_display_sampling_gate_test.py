@@ -11,6 +11,31 @@ import tempfile
 import unittest
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'tools'))
 from gecko.check_interaction_transfer_evidence import verify_display_sampling, verify_read_model_freshness, READ_MODEL_CASES, verify_read_model_identity, READ_MODEL_IDENTITY_CASES, identity_projection_fixture
+from environment_workspace_workflow_source_compatibility import historical_workflow_text as environment_workspace_workflow_input
+
+def profile_workflow_history_manifest():
+    raw=(Path(__file__).resolve().parent/'fixtures/profile-glass-host-workflow-deltas.json').read_bytes()
+    assert len(raw)<=32768 and hashlib.sha256(raw).hexdigest()=='9e2ea4da3f1ab2faf5f4ad9b9434a2f565a3eac89765f67bbf86eaeeb5690ae7', 'Exact bounded glass/host workflow fixture required'
+    value=json.loads(raw)
+    assert value['schema']==1 and type(value['schema']) is int
+    assert value['baseCommit']=='e21b4fd6698074310ee36f85f980b16ad643c934' and value['baseTree']=='cee24c278512c18926edf3db5102c87958f6b699'
+    assert value['path']=='.github/workflows/profile-upgrade-checks.yml' and len(value['deltas'])==2
+    return value
+
+def reverse_reviewed_glass_host_workflow_additions(source):
+    """Historical comparison only; the actual workflow keeps both new blocks."""
+    assert type(source) is str, 'Complete workflow source text required'
+    value=profile_workflow_history_manifest()
+    raw=source.encode()
+    assert (len(raw),hashlib.sha256(raw).hexdigest())==(value['reviewedBytes'],value['reviewedSha256']), 'Unreviewed complete glass/host workflow'
+    for delta in reversed(value['deltas']):
+        current,previous=delta['current'].encode(),delta['previous'].encode()
+        for name,literal in (('current',current),('previous',previous)):
+            assert 0<len(literal)<=32768 and (len(literal),hashlib.sha256(literal).hexdigest())==(delta[name+'Bytes'],delta[name+'Sha256'])
+        assert raw.count(current)==1, 'Missing, duplicate or moved exact workflow addition'
+        raw=raw.replace(current,previous,1)
+    assert (len(raw),hashlib.sha256(raw).hexdigest())==(value['previousBytes'],value['previousSha256']), 'Entire original workflow did not restore'
+    return raw.decode()
 
 def reverse_reviewed_background_workflow_additions(case,source):
     # Exactly the reviewed three boot calls and one host control. This is a
@@ -240,7 +265,8 @@ class DisplayGateTest(unittest.TestCase):
 
     def test_profile_history_depth_only_changes_the_host_contract_checkout(self):
         root=Path(__file__).resolve().parents[1]
-        source=(root/'.github/workflows/profile-upgrade-checks.yml').read_text()
+        source=environment_workspace_workflow_input((root/'.github/workflows/profile-upgrade-checks.yml').read_text())
+        source=reverse_reviewed_glass_host_workflow_additions(source)
         before='  host-contracts:\n    runs-on: ubuntu-24.04\n    timeout-minutes: 15\n    steps:\n      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262\n        with:\n          ref: ${{ github.event.pull_request.head.sha || github.sha }}\n          persist-credentials: false\n'
         inserted='          fetch-depth: 16\n'
         after='      - name: Run source model, parser and protocol checks\n'
@@ -249,6 +275,32 @@ class DisplayGateTest(unittest.TestCase):
         self.assertEqual(source.count(literal),1)
         restored=source.replace(literal,before+after,1)
         self.assertEqual(hashlib.sha256(restored.encode()).hexdigest(),'2eb8bece4135ceb65b2c84aa847d34d34961ea655fe9718bb32aa87321993f6a')
+
+    def test_profile_glass_host_inverse_matches_real_history_and_rejects_current_drift(self):
+        import os
+        import subprocess
+        root=Path(__file__).resolve().parents[1]
+        source=environment_workspace_workflow_input((root/'.github/workflows/profile-upgrade-checks.yml').read_text())
+        manifest=profile_workflow_history_manifest()
+        restored=reverse_reviewed_glass_host_workflow_additions(source)
+        committed=subprocess.check_output(['git','--no-replace-objects','show',manifest['baseCommit']+':'+manifest['path']],cwd=root,env=dict(os.environ,GIT_NO_LAZY_FETCH='1'))
+        self.assertEqual(restored.encode(),committed)
+        for delta in manifest['deltas']:
+            self.assertEqual(restored.count(delta['previous']),1)
+            restored=restored.replace(delta['previous'],delta['current'],1)
+        self.assertEqual(restored,source)
+        changed=[source+'\n',source[:1024],source.replace('    timeout-minutes: 15\n','    timeout-minutes: 16\n',1),
+                 source.replace('python3 tools/gecko/run_profile_host_checks.py --json-jar work/profile-host/json.jar','python3 tools/gecko/run_profile_host_checks.py --json-jar work/profile-host/android-json.jar',1),
+                 source.replace('--source-commit ', '--source-commit-changed ',1),
+                 source.replace('-no-snapshot -no-boot-anim','-snapshot -no-boot-anim',1)]
+        for delta in manifest['deltas']:
+            current=delta['current']
+            remainder=source.replace(current,'',1)
+            changed.extend((remainder,source.replace(current,current*2,1),source.replace(current,current+' ',1),current+remainder))
+        for candidate in changed:
+            with self.subTest(sha256=hashlib.sha256(candidate.encode()).hexdigest()):
+                self.assertNotEqual(candidate,source)
+                with self.assertRaises(AssertionError):reverse_reviewed_glass_host_workflow_additions(candidate)
 
     def fixture(self):
         value=metadata()
