@@ -24,6 +24,10 @@ reading circle is always square, and each destination retains a 48 dp minimum
 touch target. The outer bar still participates in the existing keyboard and
 focus-reading visibility rules.
 
+The row explicitly returns false from `shouldDelayChildPressedState()`, matching
+[Android's guidance for a non-scrolling custom ViewGroup](https://developer.android.com/reference/android/view/ViewGroup#shouldDelayChildPressedState()).
+It does not add the base ViewGroup's compatibility delay to native touch feedback.
+
 The expanded environment control is centered, with a content-measured width from
 168 to 208 dp and a default height of 44 dp, fitting within narrower windows and
 growing vertically for larger text.

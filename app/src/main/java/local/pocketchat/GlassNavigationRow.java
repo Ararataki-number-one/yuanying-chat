@@ -21,6 +21,10 @@ final class GlassNavigationRow extends ViewGroup {
     addView(reading,new LayoutParams(controlHeight,controlHeight));
   }
 
+  // This row never scrolls. Preserve immediate native press feedback instead
+  // of ViewGroup's compatibility delay for possible scrolling gestures.
+  @Override public boolean shouldDelayChildPressedState(){return false;}
+
   @Override protected void onMeasure(int widthSpec,int heightSpec){
     int minimumAction=minTarget;
     int childHeight=Math.max(0,controlHeight-dock.getPaddingTop()-dock.getPaddingBottom());
