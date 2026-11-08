@@ -28,13 +28,18 @@ def clean_target(target):
     return target
 
 
-def install(archive, target, package_xml, revision):
+def install(archive, target, package_xml, archive_source_revision, source_properties_sha256):
     target = clean_target(target)
     target.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix='verified-image-', dir=target.parent) as stage:
         image = extract(archive, Path(stage), 'x86_64')
-        props = dict(line.split('=', 1) for line in (image / 'source.properties').read_text().splitlines() if '=' in line)
-        expected = {'Pkg.Revision': str(revision), 'AndroidVersion.ApiLevel': '32',
+        source_properties = image / 'source.properties'
+        if digest(source_properties, 'sha256') != source_properties_sha256:
+            raise ValueError('Extracted source.properties differs from the pinned official archive bytes')
+        props = dict(line.split('=', 1) for line in source_properties.read_text().splitlines() if '=' in line)
+        # The official r08 catalog package contains Pkg.Revision=4. Pin both
+        # identities independently; package.xml registers catalog revision 8.
+        expected = {'Pkg.Revision': str(archive_source_revision), 'AndroidVersion.ApiLevel': '32',
                     'SystemImage.TagId': 'google_apis', 'SystemImage.Abi': 'x86_64'}
         if any(props.get(key) != value for key, value in expected.items()):
             raise ValueError('Extracted image differs from the pinned Google API 32 x86_64 revision')
@@ -62,16 +67,17 @@ def main():
     args.cache.mkdir(parents=True, exist_ok=True)
     archive = args.cache / 'image-api32-verified.zip'
     attempts = download(pin, archive)
-    props = install(archive, target, PACKAGE, pin['revision'])
+    props = install(archive, target, PACKAGE, pin['archiveSourceRevision'], pin['sourcePropertiesSha256'])
     report = dict(status='passed', downloadAttempts=attempts, setupOnly=True,
                   actualAndroidExecution=False, workloadExecuted=False, package=pin['package'],
-                  revision=pin['revision'], url=pin['url'], bytes=archive.stat().st_size,
+                  catalogRevision=pin['revision'], archiveSourceRevision=pin['archiveSourceRevision'],
+                  sourcePropertiesSha256=digest(target / 'source.properties', 'sha256'), url=pin['url'], bytes=archive.stat().st_size,
                   sha1=digest(archive, 'sha1'), sha256=digest(archive, 'sha256'),
                   packageXmlSha256=digest(PACKAGE, 'sha256'), properties=props)
     args.report.parent.mkdir(parents=True, exist_ok=True)
     args.report.write_text(json.dumps(report, indent=2) + '\n')
     archive.unlink()
-    print(json.dumps({key: report[key] for key in ('status', 'setupOnly', 'revision', 'bytes', 'sha1', 'sha256')}), flush=True)
+    print(json.dumps({key: report[key] for key in ('status', 'setupOnly', 'catalogRevision', 'archiveSourceRevision', 'sourcePropertiesSha256', 'bytes', 'sha1', 'sha256')}), flush=True)
 
 
 if __name__ == '__main__':

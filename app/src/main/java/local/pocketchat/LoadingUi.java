@@ -13,6 +13,7 @@ final class LoadingUi {
   final MainActivity a;final LinearLayout band,cover,actions;final TextView bandText,title,hint;final ProgressBar wheel;final ImageView symbol;final Button retry,website;
   final PageLoadingWait wait=new PageLoadingWait();
   Dialog taskDialog;boolean taskRunning,coverShown=false,hintBound,networkFirst;String taskMessage="",lastTitle="",lastHint;
+  boolean actionLayoutKnown,actionsHorizontal,actionsLandscape;int actionsAvailable;float actionsFontScale;String actionsRetryLabel="",actionsWebsiteLabel="";
   LoadingUi(MainActivity activity){a=activity;
     band=new LinearLayout(a);band.setGravity(Gravity.CENTER_VERTICAL);band.setPadding(a.dp(22),a.dp(4),a.dp(22),a.dp(9));band.setVisibility(View.GONE);
     band.addView(spinner(16),new LinearLayout.LayoutParams(a.dp(16),a.dp(16)));bandText=a.label("",12,Ui.MUTED);bandText.setPadding(a.dp(10),0,0,0);band.addView(bandText);band.setOnClickListener(v->{if(taskRunning)showTask();else ReplyState.show(a);});band.setContentDescription("回复状态，点按检查或恢复连接");band.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
@@ -50,20 +51,21 @@ final class LoadingUi {
         int available=MeasureSpec.getMode(widthSpec)==MeasureSpec.UNSPECIFIED?a.dp(288):MeasureSpec.getSize(widthSpec);
         // Keep one compact primary action, but allow enlarged labels to use the
         // full content width and wrap vertically instead of being truncated.
-        int desired=Math.max(a.dp(168),Math.max(DesignUi.actionWidth(retry,48),DesignUi.actionWidth(website,48)));
+        int desired=actionsHorizontal?2*Math.max(DesignUi.actionWidth(retry,48),DesignUi.actionWidth(website,48))+a.dp(12):Math.max(a.dp(168),Math.max(DesignUi.actionWidth(retry,48),DesignUi.actionWidth(website,48)));
         super.onMeasure(MeasureSpec.makeMeasureSpec(Math.min(desired,available),MeasureSpec.EXACTLY),heightSpec);
       }
     };
     actions.setOrientation(LinearLayout.VERTICAL);actions.setGravity(Gravity.CENTER_HORIZONTAL);
     LinearLayout.LayoutParams actionBlock=new LinearLayout.LayoutParams(-2,-2);actionBlock.topMargin=a.dp(16);content.addView(actions,actionBlock);
     arrangeActions(false);
+    cover.addOnLayoutChangeListener((v,l,t,r,b,ol,ot,or,ob)->layoutActions());
     TextView guidance=a.label("点按顶部输入网址，长按切换环境",11,Ui.MUTED);guidance.setGravity(Gravity.CENTER);guidance.setIncludeFontPadding(true);
     if(Build.VERSION.SDK_INT>=28)guidance.setFallbackLineSpacing(true);
     LinearLayout.LayoutParams guide=new LinearLayout.LayoutParams(-1,-2);guide.topMargin=a.dp(24);content.addView(guidance,guide);
     title.setTypeface(Typeface.create("sans-serif-medium",Typeface.NORMAL));
   }
   private void arrangeActions(boolean checkNetworkFirst){
-    if(actions.getChildCount()>0&&networkFirst==checkNetworkFirst)return;
+    if(actions.getChildCount()>0&&networkFirst==checkNetworkFirst){layoutActions();return;}
     networkFirst=checkNetworkFirst;actions.removeAllViews();
     Button primary=checkNetworkFirst?website:retry,secondary=checkNetworkFirst?retry:website;
     primary.setTextColor(Color.WHITE);primary.setBackground(Ui.ripple(a,0xff1268ff,24));
@@ -72,6 +74,24 @@ final class LoadingUi {
     primary.setPadding(a.dp(20),a.dp(9),a.dp(20),a.dp(9));secondary.setPadding(a.dp(20),a.dp(9),a.dp(20),a.dp(9));
     actions.addView(primary,new LinearLayout.LayoutParams(-1,-2));
     LinearLayout.LayoutParams follow=new LinearLayout.LayoutParams(-2,-2);follow.topMargin=a.dp(4);actions.addView(secondary,follow);
+    actionLayoutKnown=false;layoutActions();
+  }
+  void layoutActions(){
+    boolean landscape=a.getResources().getConfiguration().orientation==android.content.res.Configuration.ORIENTATION_LANDSCAPE;
+    int available=cover.getWidth()>0?cover.getWidth()-cover.getPaddingLeft()-cover.getPaddingRight():a.getResources().getDisplayMetrics().widthPixels-a.dp(56);
+    available=Math.max(0,Math.min(a.dp(288),available));
+    float fontScale=a.getResources().getConfiguration().fontScale;
+    String retryLabel=retry.getText().toString(),websiteLabel=website.getText().toString();
+    if(actionLayoutKnown&&actionsLandscape==landscape&&actionsAvailable==available&&actionsFontScale==fontScale&&actionsRetryLabel.equals(retryLabel)&&actionsWebsiteLabel.equals(websiteLabel))return;
+    boolean horizontal=landscape&&2*Math.max(DesignUi.actionWidth(retry,48),DesignUi.actionWidth(website,48))+a.dp(12)<=available;
+    boolean layoutChanged=!actionLayoutKnown||horizontal!=actionsHorizontal;
+    boolean wasHorizontal=actionsHorizontal;
+    actionLayoutKnown=true;actionsLandscape=landscape;actionsAvailable=available;actionsFontScale=fontScale;actionsRetryLabel=retryLabel;actionsWebsiteLabel=websiteLabel;actionsHorizontal=horizontal;
+    if(!layoutChanged||!horizontal&&!wasHorizontal)return;
+    actions.setOrientation(horizontal?LinearLayout.HORIZONTAL:LinearLayout.VERTICAL);
+    int index=0;for(Button action:new Button[]{networkFirst?website:retry,networkFirst?retry:website}){
+      LinearLayout.LayoutParams p=(LinearLayout.LayoutParams)action.getLayoutParams();p.width=horizontal?0:index==0?-1:-2;p.weight=horizontal?1:0;p.topMargin=horizontal?a.dp(12):index==0?0:a.dp(4);p.leftMargin=horizontal&&index>0?a.dp(12):0;action.setLayoutParams(p);index++;
+    }
   }
   private void loadingSymbol(boolean spinning){MainActivity.chromeVisibility(wheel,spinning);MainActivity.chromeVisibility(symbol,!spinning);}
   ProgressBar spinner(int size){ProgressBar p=new ProgressBar(a);p.setIndeterminate(true);p.setIndeterminateTintList(ColorStateList.valueOf(DesignUi.BLUE));return p;}

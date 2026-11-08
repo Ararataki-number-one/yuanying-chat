@@ -29,12 +29,14 @@ final class FrameBindingHost {
     check(frames.queue.size()==1&&frames.posts==1,"1000 observer notifications retain one pending presentation frame");
     check(owner.paints==0&&owner.loading.updates==0&&owner.designChrome.updates==0&&owner.metrics==0,"Coalesced notifications perform no premature native rendering");
     check(owner.geckoAddress.updates==0,"Queued notifications do not refresh the address before their frame");
+    check(owner.session.reading.calls==0&&owner.readingLayouts==0,"Queued notifications do not invoke reading presentation before their frame");
     frames.runOne();
     check(owner.paints==1&&owner.last.conversation.equals("conversation-1000")&&owner.last.pending==owner.session.pending&&owner.last.entries==owner.session.entries,"One frame observes final conversation and object identities");
     check(owner.last.networkReady==owner.session.networkReady&&owner.last.submitting==owner.session.submitting&&owner.last.status.equals("status-1000"),"One frame observes final flags and status");
     check(owner.loading.updates==1&&owner.designChrome.updates==1&&owner.metrics==1,"Actual applySession invokes each presentation consumer once");
     check(owner.chatDownloadProgress.updates==1,"Session, download and periodic notifications share the same presentation frame");
     check(owner.geckoAddress.updates==1,"One coalesced frame refreshes the current address once");
+    check(owner.session.reading.calls==1&&owner.readingLayouts==1&&!owner.session.reading.keyboardVisible,"The actual reading helper invokes both presentation boundaries once per frame");
     check(owner.handler.delayed==1,"Periodic timer retains its one-second continuation");
     check(frames.queue.isEmpty()&&owner.sessionUi.pending==null,"Completed frame leaves no recurring presentation work");
     int statusPaints=owner.paints,progressPaints=owner.chatDownloadProgress.updates;
@@ -42,6 +44,7 @@ final class FrameBindingHost {
     check(frames.queue.size()==1,"Download-only notifications and the timer share one pending frame");frames.runOne();
     check(owner.paints==statusPaints&&owner.chatDownloadProgress.updates==progressPaints+1,"Download and timer presentation updates do not redisplay unchanged session status");
     check(owner.geckoAddress.updates==2,"The next presentation frame refreshes the address once without replaying the burst");
+    check(owner.session.reading.calls==2&&owner.readingLayouts==2,"Download and timer updates invoke the actual reading helper once in their shared frame");
 
     update(owner.session,1001);owner.requestSessionUi();Runnable paused=frames.peek();
     int paints=owner.paints,cancellations=frames.cancels;
@@ -57,10 +60,12 @@ final class FrameBindingHost {
 
     update(owner.session,1004);owner.requestSessionUi();Runnable destroyed=frames.peek();
     Object retainedPending=owner.pending,retainedEntries=owner.entries;String retainedConversation=owner.conversation;
+    int readingCalls=owner.session.reading.calls,readingLayouts=owner.readingLayouts;
     paints=owner.paints;cancellations=frames.cancels;owner.destroyed=true;owner.sessionUi.close();
     update(owner.session,1005);owner.requestSessionUi();owner.applySession();destroyed.run();
     check(frames.queue.isEmpty()&&frames.cancels==cancellations+1,"Destroy closes the presentation lane and cancels its callback");
     check(owner.paints==paints&&owner.pending==retainedPending&&owner.entries==retainedEntries&&owner.conversation.equals(retainedConversation),"Destroyed observer requests and direct applies neither mutate owner aliases nor paint");
+    check(owner.session.reading.calls==readingCalls&&owner.readingLayouts==readingLayouts,"Destroyed applies and stale frames do not invoke reading presentation");
 
     MainActivity early=new MainActivity();early.session=new Session();update(early.session,2000);early.requestSessionUi();mirrored(early,2000);
     check(early.paints==1&&early.last.conversation.equals("conversation-2000"),"Startup without an installed frame lane preserves the existing immediate apply path");
@@ -70,12 +75,21 @@ final class FrameBindingHost {
     check(idle.last.pending==replacement.pending&&idle.last.entries==replacement.entries&&idle.last.conversation.equals("conversation-3001"),"A queued frame uses the current session after owner session replacement");
     int before=idle.paints;idle.session=null;idle.requestSessionUi();idleFrames.runOne();
     check(idle.paints==before,"Missing session is safe and cannot render stale session data");
+    MainActivity reading=new MainActivity();reading.session=new Session();reading.keyboardVisible=true;
+    reading.updateReadingLayout();check(!reading.session.reading.keyboardVisible&&reading.readingLayouts==1,"A visible keyboard without a hub does not enable reading keyboard mode");
+    reading.hub=new AppHub();reading.hub.page=AppHub.CHAT;reading.updateReadingLayout();
+    check(reading.session.reading.keyboardVisible&&reading.session.reading.calls==2&&reading.readingLayouts==2,"The actual helper forwards visible keyboard state on the chat page");
+    reading.hub.page=AppHub.CHAT+1;reading.updateReadingLayout();check(!reading.session.reading.keyboardVisible,"A non-chat page clears reading keyboard mode");
+    reading.hub.page=AppHub.CHAT;reading.keyboardVisible=false;reading.updateReadingLayout();check(!reading.session.reading.keyboardVisible,"A hidden keyboard clears reading keyboard mode on chat");
+    reading.session=null;reading.updateReadingLayout();check(reading.readingLayouts==5,"The actual helper invokes the focus-layout boundary even without a session");
     System.out.println("{\"status\":\"passed\",\"passed\":"+checks+",\"total\":"+checks+",\"burstEvents\":1000,\"burstPendingFrames\":1,\"burstPaints\":1,\"immediateModelSnapshotsVerified\":"+immediateSnapshots+",\"actualAndroidExecution\":false}");
   }
 }
 
 final class MainActivity {
   boolean active=true;final HostHandler handler=new HostHandler();
+  boolean keyboardVisible;AppHub hub;int readingLayouts;
+  void applyFocusLayout(){readingLayouts++;}
   Session session;UiFrameScheduler sessionUi;boolean destroyed,networkReady,submitting,sessionStatusDirty=true;
   Object pending,entries;String conversation="";Loading loading;Chrome designChrome;Address geckoAddress;ChatDownloadProgressUi chatDownloadProgress;
   int paints,metrics;Paint last;
@@ -84,8 +98,11 @@ final class MainActivity {
   /* TICKER */
 }
 final class Session {
+  final Reading reading=new Reading();
   Object pending,entries;boolean networkReady,submitting;String conversation="",status="";
 }
+final class Reading {int calls;boolean keyboardVisible;void keyboard(boolean value){calls++;keyboardVisible=value;}}
+final class AppHub {static final int CHAT=0;int page;}
 final class Paint {
   final Object pending,entries;final String conversation,status;final boolean networkReady,submitting;
   Paint(Object pending,Object entries,String conversation,boolean ready,boolean submitting,String status){this.pending=pending;this.entries=entries;this.conversation=conversation;this.networkReady=ready;this.submitting=submitting;this.status=status;}
