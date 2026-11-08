@@ -1,8 +1,10 @@
 """Finite metadata views preserve immutable fixtures and actual source bytes."""
 import copy
+import ast
 import hashlib
 import json
 from pathlib import Path
+from types import SimpleNamespace
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -79,15 +81,64 @@ class NavigationMetadataControls(unittest.TestCase):
         cfg = metadata.manifest()
         # Only cloning/row composition is modeled. Actual original loaders and
         # factories run unchanged in their retained direct-consumer suites.
-        value = {'files': {metadata.DUAL: copy.deepcopy(cfg['rootDualBefore']), 'other': {'unchanged': True}}}
+        value = {'files': {metadata.DUAL: copy.deepcopy(cfg['rootDualBefore']),
+                           metadata.WORKER: copy.deepcopy(cfg['rootWorkerBefore']), 'other': {'unchanged': True}}}
         saved = copy.deepcopy(value)
         factory = metadata.wrap_root_factory(lambda loader: loader)
         result = factory(lambda: value)()
         self.assertEqual(value, saved)
         self.assertEqual(result['files']['other'], {'unchanged': True})
         self.assertEqual(result['files'][metadata.DUAL], cfg['rootDualAfter'])
+        self.assertEqual(result['files'][metadata.WORKER], cfg['rootWorkerAfter'])
         value['files'][metadata.DUAL]['reviewedBytes'] += 1
         with self.assertRaises(ValueError):factory(lambda: value)()
+
+    def test_worker_baseline_port_returns_original_rows_without_mutating_shared_dual(self):
+        original = json.loads((ROOT / 'tests/fixtures/dual-browser-source-deltas.json').read_bytes())
+        current = copy.deepcopy(dual.manifest())
+        view = metadata.fixture_baseline_dual_view(dual)
+        self.assertIs(view.source_input, dual.source_input)
+        self.assertIs(view.DELTA_PATH, dual.DELTA_PATH)
+        self.assertEqual(view.manifest(), original)
+        self.assertEqual(dual.manifest(), current)
+        result = view.manifest()
+        result['files'][metadata.JOURNAL]['reviewedBytes'] += 1
+        self.assertEqual(view.manifest(), original)
+        for path in current['files']:
+            mutated = copy.deepcopy(current)
+            mutated['files'][path]['reviewedBytes'] += 1
+            candidate = SimpleNamespace(**vars(dual))
+            candidate.manifest = lambda: mutated
+            with self.assertRaises(ValueError):metadata.fixture_baseline_dual_view(candidate).manifest()
+
+    def test_worker_port_whole_inverse_preserves_every_original_function_and_method(self):
+        current = (ROOT / metadata.WORKER).read_bytes()
+        before = metadata.source_input(current, metadata.WORKER)
+        self.assertEqual((len(before), SHA(before)), metadata.WORKER_BEFORE)
+        self.assertEqual((len(current), SHA(current)), metadata.WORKER_AFTER)
+        self.assertIs(metadata.source_input(before, metadata.WORKER), before)
+        old_tree, new_tree = ast.parse(before), ast.parse(current)
+        old_nodes = [n for n in ast.walk(old_tree) if isinstance(n, (ast.FunctionDef, ast.ClassDef))]
+        for old in old_nodes:
+            now = next(n for n in ast.walk(new_tree) if type(n) is type(old) and n.name == old.name)
+            self.assertEqual(ast.get_source_segment(current.decode(), now), ast.get_source_segment(before.decode(), old))
+        row = metadata.manifest()['rootWorkerAfter']
+        previous = current
+        for delta in reversed(row['deltas']):
+            self.assertEqual(previous.count(delta['current'].encode()), 1)
+            previous = previous.replace(delta['current'].encode(), delta['previous'].encode(), 1)
+        self.assertEqual((len(previous), SHA(previous)), (row['previousBytes'], row['previousSha256']))
+
+    def test_worker_port_missing_duplicate_relocated_mutated_or_other_source_bytes_reject(self):
+        raw = (ROOT / metadata.WORKER).read_bytes()
+        image = metadata.manifest()['sourceImages'][metadata.WORKER]
+        chunk = image['current'].encode()
+        removed = raw.replace(chunk, b'', 1)
+        for mutant in (removed, raw.replace(chunk, chunk * 2, 1), chunk + removed,
+                       raw.replace(chunk, chunk + b' ', 1), raw + b' ', raw[:100],
+                       raw.replace(b'for relative, row in dual.manifest()', b'for relative, row in changed.manifest()', 1)):
+            self.assertNotEqual(mutant, raw)
+            with self.assertRaises(ValueError):metadata.source_input(mutant, metadata.WORKER)
 
     def test_metadata_redirects_types_and_unknown_images_fail_closed(self):
         raw = (ROOT / metadata.DUAL).read_bytes()

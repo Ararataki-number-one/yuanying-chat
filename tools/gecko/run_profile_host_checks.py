@@ -251,6 +251,7 @@ def main():
         'tests/profile_navigation_metadata_source_compatibility_test.py',
         'tests/profile_network_sources_card_v2_test.py',
         'tests/profile_network_sources_inactive_label46_test.py',
+        'tests/profile_worker_timezone_source_compatibility_test.py',
         'tests/reading_zoom_trace_contract.py',
         'tests/ui_checkpoint_source_compatibility.py',
         'tools/browser/fingerprint_fixture_server.py',
