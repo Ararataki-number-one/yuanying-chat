@@ -6,30 +6,17 @@ from pathlib import Path
 import subprocess
 import unittest
 
+import yaml
+
 import environment_workspace_workflow_source_compatibility as workspace
 import profile_display_sampling_gate_test as display
+import gradle_transport_source_compatibility as transport
 
 ROOT = Path(__file__).resolve().parents[1]
 DISPLAY = 'tests/profile_display_sampling_gate_test.py'
 PORT_IMPORT = 'from environment_workspace_workflow_source_compatibility import historical_workflow_text as environment_workspace_workflow_input\n'
 PREVIOUS_READ = "source=(root/'.github/workflows/profile-upgrade-checks.yml').read_text()"
 CURRENT_READ = "source=environment_workspace_workflow_input((root/'.github/workflows/profile-upgrade-checks.yml').read_text())"
-GRADLE_FLAGS = '-fsSL --retry 5 --retry-delay 5 --connect-timeout 20 --max-time 180 --retry-max-time 240'
-GRADLE_URLS = (
-    'https://services.gradle.org/distributions/gradle-9.8.0-bin.zip',
-    'https://downloads.gradle.org/distributions/gradle-9.8.0-bin.zip',
-    'https://github.com/gradle/gradle-distributions/releases/download/v9.8.0/gradle-9.8.0-bin.zip',
-)
-GRADLE_CHECKSUM = "          echo 'bafd5ce9cfaea0fbccfdc8439a1ac42fbd4cd9c89dc9a988228d8a2639a58e6c  work/profile-build/gradle.zip' | sha256sum -c -\n"
-GRADLE_UNZIP = '          unzip -q work/profile-build/gradle.zip -d work/profile-build/gradle\n'
-
-
-def gradle_download_block():
-    return (f'          if ! curl {GRADLE_FLAGS} {GRADLE_URLS[0]} -o work/profile-build/gradle.zip; then\n'
-            f'            if ! curl {GRADLE_FLAGS} {GRADLE_URLS[1]} -o work/profile-build/gradle.zip; then\n'
-            f'              curl {GRADLE_FLAGS} {GRADLE_URLS[2]} -o work/profile-build/gradle.zip\n'
-            '            fi\n          fi\n' + GRADLE_CHECKSUM + GRADLE_UNZIP)
-
 
 def previous_blob(path):
     return subprocess.check_output(['git', '--no-replace-objects', 'show', workspace.PREVIOUS_COMMIT + ':' + path],
@@ -92,6 +79,54 @@ class EnvironmentWorkspaceWorkflowSourceTests(unittest.TestCase):
             with self.subTest(anchor=before):
                 self.assert_rejected_by_both_guards(raw.replace(before, after, 1), raw)
 
+    def test_environment_push_and_branch_concurrency_preserve_paths_and_event_identity(self):
+        raw = (ROOT / workspace.PATH).read_bytes()
+        current = yaml.load(raw, Loader=yaml.BaseLoader)
+        previous = yaml.load(previous_blob(workspace.PATH), Loader=yaml.BaseLoader)
+        self.assertEqual(current['on']['push']['branches'], previous['on']['push']['branches'] + ['codex/environment-workspace-polish'])
+        self.assertEqual(current['on']['push']['paths'], previous['on']['push']['paths'])
+        self.assertEqual(current['on']['pull_request'], previous['on']['pull_request'])
+        self.assertEqual(current['on']['workflow_dispatch'], previous['on']['workflow_dispatch'])
+        self.assertEqual(current['permissions'], previous['permissions'])
+        self.assertEqual(current['concurrency'], {'group': 'profile-upgrade-checks-${{ github.head_ref || github.ref_name }}', 'cancel-in-progress': 'true'})
+        for job in ('host-contracts', 'official-sdk-build'):
+            self.assertEqual(current['jobs'][job]['steps'][0], previous['jobs'][job]['steps'][0])
+
+    def test_push_scope_concurrency_and_checkout_identity_mutations_are_rejected(self):
+        raw = (ROOT / workspace.PATH).read_bytes()
+        mutations = (
+            (b"'release/gecko-*', 'codex/environment-workspace-polish']", b"'release/gecko-*', '*']"),
+            (b"'release/gecko-*', 'codex/environment-workspace-polish']", b"'release/gecko-*']"),
+            (b'group: profile-upgrade-checks-${{ github.head_ref || github.ref_name }}', b'group: profile-upgrade-checks-${{ github.ref }}'),
+            (b'group: profile-upgrade-checks-${{ github.head_ref || github.ref_name }}', b'group: profile-upgrade-checks-all-branches'),
+            (b'  cancel-in-progress: true', b'  cancel-in-progress: false'),
+            (b"    paths: ['app/**', 'tests/**'", b"    paths: ['**', 'tests/**'"),
+            (b'ref: ${{ github.event.pull_request.head.sha || github.sha }}', b'ref: ${{ github.sha }}'),
+            (b'permissions:\n  contents: read', b'permissions:\n  contents: write'),
+        )
+        for before, after in mutations:
+            self.assertIn(before, raw)
+            with self.subTest(anchor=before):
+                self.assert_rejected_by_both_guards(raw.replace(before, after, 1), raw)
+
+    def test_extra_history_owner_is_exact_and_keeps_the_original_twenty_one(self):
+        source = (ROOT / workspace.PATH).read_text()
+        prepare = "          python3 tools/gecko/prepare_profile_host_prerequisites.py --source-commit '${{ github.event.pull_request.head.sha || github.sha }}' --output work/profile-host/prerequisites.json\n"
+        fetch = '          git fetch --no-tags --depth=1 --no-write-fetch-head --no-filter origin 6ee06aced87581e52aa301431f8996ed46d666b8\n'
+        following = '          npm install --prefix work/resource-observer --ignore-scripts --no-audit --no-fund jsdom@26.1.0\n'
+        self.assertEqual(source.count(prepare + fetch + following), 1)
+        path = 'tests/baselines/public-source-history.json'
+        raw = (ROOT / path).read_bytes()
+        self.assertEqual(raw, previous_blob(path))
+        self.assertNotIn(b'6ee06aced87581e52aa301431f8996ed46d666b8', raw)
+        target = 'tests/profile_gradle_workflow_test_source_compatibility_test.py'
+        self.assertIn(b"git('show', '6ee06aced87581e52aa301431f8996ed46d666b8:' + inputs.FINAL)", previous_blob(target))
+        for changed in (fetch.replace('6ee06aced87581e52aa301431f8996ed46d666b8', 'unreviewed-ref'),
+                        fetch.replace('--no-filter ', ''), fetch.replace('--no-write-fetch-head ', ''),
+                        fetch.replace('--depth=1', '--depth=0')):
+            with self.subTest(command=changed):
+                self.assert_rejected_by_both_guards(source.replace(fetch, changed, 1).encode(), source.encode())
+
     def test_unrelated_steps_action_pins_and_existing_validation_cannot_change(self):
         raw = (ROOT / workspace.PATH).read_bytes()
         mutations = (
@@ -107,65 +142,43 @@ class EnvironmentWorkspaceWorkflowSourceTests(unittest.TestCase):
             with self.subTest(anchor=before):
                 self.assert_rejected_by_both_guards(raw.replace(before, after, 1), raw)
 
-    def test_gradle_fallback_preserves_original_version_destination_and_checksum(self):
+    def test_environment_inverse_preserves_the_exact_upstream_gradle_transport(self):
         raw = (ROOT / workspace.PATH).read_bytes()
-        self.assertEqual(raw.count(gradle_download_block().encode()), 1)
-        self.assertEqual(previous_blob(workspace.PATH).count(GRADLE_CHECKSUM.encode()), 1)
-        self.assertEqual(raw.count(GRADLE_FLAGS.encode()), 3)
-        for url in GRADLE_URLS:
-            self.assertEqual(raw.count(url.encode()), 1)
+        previous = previous_blob(workspace.PATH)
+        restored = workspace.source_input(raw, workspace.PATH)
+        self.assertEqual(restored, previous)
+        row = transport.manifest()['files'][workspace.PATH]
+        self.assertEqual(len(row['deltas']), 1)
+        current = row['deltas'][0]['current'].encode()
+        self.assertEqual(raw.count(current), 1)
+        self.assertEqual(previous.count(current), 1)
+        historical = subprocess.check_output(['git', '--no-replace-objects', 'show',
+            transport.manifest()['baseCommit'] + ':' + workspace.PATH], cwd=ROOT,
+            env=dict(os.environ, GIT_NO_LAZY_FETCH='1'))
+        self.assertEqual(transport.source_input(restored, workspace.PATH), historical)
+        for path in ('tests/fixtures/gradle-transport-source-deltas.json',
+                     'tests/fixtures/gradle-workflow-test-source-deltas.json'):
+            self.assertEqual((ROOT / path).read_bytes(), previous_blob(path))
 
-    def test_gradle_fallback_address_checksum_and_failure_behavior_cannot_drift(self):
+    def test_environment_adapter_cannot_hide_upstream_asset_size_or_checksum_changes(self):
         raw = (ROOT / workspace.PATH).read_bytes()
         mutations = (
-            (b'https://downloads.gradle.org/distributions/gradle-9.8.0-bin.zip', b'https://unreviewed.invalid/distributions/gradle-9.8.0-bin.zip'),
-            (b'https://downloads.gradle.org/distributions/gradle-9.8.0-bin.zip', b'http://downloads.gradle.org/distributions/gradle-9.8.0-bin.zip'),
-            (b'https://downloads.gradle.org/distributions/gradle-9.8.0-bin.zip', b'https://downloads.gradle.org/distributions/gradle-9.8.1-bin.zip'),
-            (GRADLE_URLS[2].encode(), b'https://github.com/unreviewed/gradle-distributions/releases/download/v9.8.0/gradle-9.8.0-bin.zip'),
-            (f'if ! curl {GRADLE_FLAGS} {GRADLE_URLS[0]}'.encode(), f'if curl {GRADLE_FLAGS} {GRADLE_URLS[0]}'.encode()),
-            (f'if ! curl {GRADLE_FLAGS} {GRADLE_URLS[1]}'.encode(), f'if curl {GRADLE_FLAGS} {GRADLE_URLS[1]}'.encode()),
-            ((GRADLE_URLS[2] + ' -o work/profile-build/gradle.zip').encode(), (GRADLE_URLS[2] + ' -o work/profile-build/other.zip').encode()),
-            ((GRADLE_URLS[2] + ' -o work/profile-build/gradle.zip\n').encode(), (GRADLE_URLS[2] + ' -o work/profile-build/gradle.zip || true\n').encode()),
+            (b'https://api.github.com/repos/gradle/gradle-distributions/releases/assets/586068844', b'https://api.github.com/repos/gradle/gradle-distributions/releases/assets/586068845'),
+            (b'151611662', b'151611663'),
             (b'bafd5ce9cfaea0fbccfdc8439a1ac42fbd4cd9c89dc9a988228d8a2639a58e6c', b'0' * 64),
+            (b"-H 'Accept: application/octet-stream' ", b''),
+            (b"-H 'X-GitHub-Api-Version: 2022-11-28' ", b''),
+            (b'--max-time 240', b'--max-time 241'),
+            (b'https://services.gradle.org/', b'https://unreviewed.invalid/'),
             (b"work/profile-build/gradle.zip' | sha256sum -c -\n", b"work/profile-build/gradle.zip' | sha256sum -c - || true\n"),
-            (f'curl {GRADLE_FLAGS} {GRADLE_URLS[2]}'.encode(), f'curl -fsSL --retry 3 {GRADLE_URLS[2]}'.encode()),
         )
         for before, after in mutations:
             self.assertEqual(raw.count(before), 1)
+            changed = raw.replace(before, after, 1)
             with self.subTest(anchor=before):
-                self.assert_rejected_by_both_guards(raw.replace(before, after, 1), raw)
-
-    def test_exact_download_shell_stops_after_success_and_fails_closed(self):
-        # Execute the actual selected shell block with controlled command return
-        # codes. No network, ZIP extraction or checksum verification is claimed.
-        source = (ROOT / workspace.PATH).read_text()
-        expected = gradle_download_block()
-        self.assertEqual(source.count(expected), 1)
-        start = source.index(expected)
-        block = source[start:start + len(expected)]
-        boundaries = '''
-TASK_TEST_CURL_CALLS=0
-curl() {
-  TASK_TEST_CURL_CALLS=$((TASK_TEST_CURL_CALLS + 1))
-  printf 'curl:%s\n' "$TASK_TEST_CURL_CALLS"
-  if [ "$TASK_TEST_CURL_CALLS" -eq "$TASK_TEST_SUCCESS_AT" ]; then return 0; fi
-  return 22
-}
-sha256sum() { cat >/dev/null; printf 'checksum\n'; return "$TASK_TEST_CHECKSUM_CODE"; }
-unzip() { printf 'unzip\n'; }
-'''
-        for success_at, checksum_code in ((1, 0), (2, 0), (3, 0), (0, 0), (3, 1)):
-            script = f'TASK_TEST_SUCCESS_AT={success_at}\nTASK_TEST_CHECKSUM_CODE={checksum_code}\n' + boundaries + block
-            run = subprocess.run(['bash', '-euo', 'pipefail'], input=script, capture_output=True, text=True, timeout=5)
-            calls = success_at or 3
-            expected_output = [f'curl:{number}' for number in range(1, calls + 1)]
-            if success_at:
-                expected_output.append('checksum')
-                if not checksum_code:
-                    expected_output.append('unzip')
-            with self.subTest(successAt=success_at, checksumCode=checksum_code):
-                self.assertEqual(run.stdout.splitlines(), expected_output)
-                self.assertEqual(run.returncode, 22 if not success_at else checksum_code)
+                self.assert_rejected_by_both_guards(changed, raw)
+                with self.assertRaises(AssertionError):
+                    transport.source_input(workspace.historical_workflow_text(changed.decode()).encode(), workspace.PATH)
 
     def test_types_paths_partial_and_unknown_sources_cannot_gain_acceptance(self):
         raw = (ROOT / workspace.PATH).read_bytes()
@@ -196,6 +209,16 @@ unzip() { printf 'unzip\n'; }
         self.assertEqual(raw.count(CURRENT_READ), 2)
         restored = raw.replace(PORT_IMPORT, '', 1).replace(CURRENT_READ, PREVIOUS_READ)
         self.assertEqual(restored.encode(), previous_blob(DISPLAY))
+
+    def test_gradle_transport_controls_only_add_two_owned_read_ports(self):
+        path = 'tests/profile_gradle_transport_source_compatibility_test.py'
+        source = (ROOT / path).read_text()
+        imported = 'from environment_workspace_workflow_source_compatibility import PATH as ENVIRONMENT_WORKFLOW_PATH, source_input as environment_workflow_source_input\n'
+        current = 'raw = environment_workflow_source_input((ROOT / path).read_bytes(), path) if path == ENVIRONMENT_WORKFLOW_PATH else (ROOT / path).read_bytes()'
+        previous = 'raw = (ROOT / path).read_bytes()'
+        self.assertEqual(source.count(imported), 1)
+        self.assertEqual(source.count(current), 2)
+        self.assertEqual(source.replace(imported, '', 1).replace(current, previous).encode(), previous_blob(path))
 
     def test_diagnostic_previous_bytes_and_all_original_delta_sides_stay_locked(self):
         path = 'tests/fixtures/glass-diagnostic-source-deltas.json'

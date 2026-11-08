@@ -105,6 +105,10 @@ def main():
     input_paths.add(ROOT / "tests/fixtures/profile-glass-host-workflow-deltas.json")
     input_paths.add(ROOT / "tests/fixtures/environment-workspace-workflow-source-deltas.json")
     input_paths.add(ROOT / "tests/fixtures/glass-diagnostic-source-deltas.json")
+    input_paths.add(ROOT / "tests/fixtures/gradle-transport-source-deltas.json")
+    input_paths.add(ROOT / "tests/fixtures/gradle-workflow-test-source-deltas.json")
+    input_paths.update(ROOT / path for path in ('.github/workflows/browser-2_1-acceptance.yml',
+        '.github/workflows/profile-upgrade-checks.yml', '.github/workflows/glass-release-validation.yml'))
     input_paths.update(path for path in (ROOT / 'tests/gecko-event-journal-host').rglob('*')
                        if path.is_file() and path.suffix in ('.py', '.java', '.in', '.json', '.md'))
     input_paths.update((ROOT / "tests/gecko/assets").glob("*.js"))
@@ -504,6 +508,14 @@ def main():
                   ROOT/'tests/profile_environment_workspace_workflow_source_compatibility_test.py',
                   ROOT/'tests/fixtures/environment-workspace-workflow-source-deltas.json',
                   ROOT/'tests/glass_diagnostic_source_compatibility.py',ROOT/'tests/fixtures/glass-diagnostic-source-deltas.json',
+                  ROOT/'tests/gradle_transport_source_compatibility.py',ROOT/'tests/fixtures/gradle-transport-source-deltas.json',
+                  ROOT/'tests/gradle_workflow_test_source_compatibility.py',ROOT/'tests/fixtures/gradle-workflow-test-source-deltas.json',
+                  ROOT/'tests/browser_acceptance_workflow_test.py',ROOT/'tests/final_browser_source_compatibility.py',
+                  ROOT/'tests/profile_final_browser_source_compatibility_test.py',ROOT/'tests/profile_fixture_root_source_compatibility.py',
+                  ROOT/'tests/resource_startup_source_compatibility.py',ROOT/'tests/profile_gradle_transport_source_compatibility_test.py',
+                  ROOT/'tests/profile_gradle_workflow_test_source_compatibility_test.py',
+                  ROOT/'.github/workflows/browser-2_1-acceptance.yml',ROOT/'.github/workflows/profile-upgrade-checks.yml',
+                  ROOT/'.github/workflows/glass-release-validation.yml',
                   ROOT/'tests/profile_native_setup_diagnostic11_test.py',ROOT/'tests/profile_editing_transport13_diagnostic_test.py',
                   ROOT/'tests/gecko/NetworkClientBindingIntegrationActivity.java',ROOT/'tests/gecko/run_network_client_binding.py',ROOT/'tests/gecko/AndroidManifest.xml'))
     if (subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip() != source_id

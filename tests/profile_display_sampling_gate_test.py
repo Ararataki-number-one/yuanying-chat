@@ -15,11 +15,11 @@ from environment_workspace_workflow_source_compatibility import historical_workf
 
 def profile_workflow_history_manifest():
     raw=(Path(__file__).resolve().parent/'fixtures/profile-glass-host-workflow-deltas.json').read_bytes()
-    assert len(raw)<=32768 and hashlib.sha256(raw).hexdigest()=='9e2ea4da3f1ab2faf5f4ad9b9434a2f565a3eac89765f67bbf86eaeeb5690ae7', 'Exact bounded glass/host workflow fixture required'
+    assert len(raw)<=32768 and hashlib.sha256(raw).hexdigest()=='f2b563999c2ac4a927763a31d564942408c44e036346fb99333763f18d9c3cbb', 'Exact bounded glass/host workflow fixture required'
     value=json.loads(raw)
     assert value['schema']==1 and type(value['schema']) is int
     assert value['baseCommit']=='e21b4fd6698074310ee36f85f980b16ad643c934' and value['baseTree']=='cee24c278512c18926edf3db5102c87958f6b699'
-    assert value['path']=='.github/workflows/profile-upgrade-checks.yml' and len(value['deltas'])==2
+    assert value['path']=='.github/workflows/profile-upgrade-checks.yml' and len(value['deltas'])==3
     return value
 
 def reverse_reviewed_glass_host_workflow_additions(source):

@@ -1298,5 +1298,10 @@ class FinalBrowserHistoricalSources(unittest.TestCase):
                         self.assertNotIn(entry.name.split('.')[-1], prohibited, str(path))
 
 
+# Source-input preparation only; the original literal and body-SHA oracle runs.
+from gradle_workflow_test_source_compatibility import wrap_build_budget_helper_before as _gradle_helper_before
+build_budget_helper_before = _gradle_helper_before(build_budget_helper_before)
+
+
 if __name__ == '__main__':
     unittest.main(verbosity=2)

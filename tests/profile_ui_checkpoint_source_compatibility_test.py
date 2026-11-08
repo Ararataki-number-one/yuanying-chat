@@ -58,7 +58,7 @@ class UiCheckpointSourceCompatibilityTests(unittest.TestCase):
                     and node.name != 'test_two_opt_in_insertions_inverse_entire_actual_runner_to_exact_before'}
         self.assertEqual(runtime_functions(actual), runtime_functions(previous))
         self.assertEqual(checkpoint.sha(checkpoint.checkpoint_runner_input(raw)), checkpoint.PREFERENCE_PREVIOUS_SHA256)
-        workflow = (ROOT / '.github/workflows/browser-2_1-acceptance.yml').read_bytes()
+        workflow = checkpoint.checkpoint_transport_input((ROOT / '.github/workflows/browser-2_1-acceptance.yml').read_bytes())
         before = checkpoint.checkpoint_workflow_input(workflow)
         self.assertEqual(checkpoint.sha(before), checkpoint.WORKFLOW_PREVIOUS_SHA256)
         self.assertEqual(before.replace(checkpoint.TLS_DOWNLOAD_PREVIOUS.encode(), checkpoint.TLS_DOWNLOAD_CURRENT.encode(), 1), workflow)

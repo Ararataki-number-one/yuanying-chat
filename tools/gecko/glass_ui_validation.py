@@ -20,6 +20,7 @@ import subprocess
 import threading
 import time
 import uuid
+import xml.etree.ElementTree as ET
 
 from integration_event_contract import EventTransfer, parse_receipt_line
 
@@ -44,6 +45,284 @@ def total_frames(raw):
     if len(values) != 1:
         raise ValueError('Expected one actual HWUI cumulative frame counter')
     return int(values[0])
+
+
+def system_bar_sources(raw):
+    """Read observed InsetsSource rectangles from API 32/35 window dumps."""
+    sources = {'statusBars': [], 'navigationBars': []}
+    aliases = {'statusBars': 'statusBars', 'navigationBars': 'navigationBars',
+               'ITYPE_STATUS_BAR': 'statusBars', 'ITYPE_NAVIGATION_BAR': 'navigationBars'}
+    for line in raw.splitlines():
+        if re.search(r'\bInsetsSource\b', line) is None:
+            continue  # InsetsSourceControl is a leash, not a visible bar frame.
+        kind = re.search(r'\b(?:mType|type)=(statusBars|navigationBars|ITYPE_STATUS_BAR|ITYPE_NAVIGATION_BAR)\b', line)
+        if kind is None:
+            continue
+        frame = re.search(r'\b(?:mFrame|frame)=\[\s*(-?\d+),\s*(-?\d+)\]\[\s*(-?\d+),\s*(-?\d+)\]', line)
+        visible = re.search(r'\b(?:mVisible|visible)=(true|false)\b', line)
+        if frame is None or visible is None:
+            raise ValueError('Observed system-bar InsetsSource lacks bounds or visibility')
+        rectangle = list(map(int, frame.groups()))
+        if rectangle[0] > rectangle[2] or rectangle[1] > rectangle[3]:
+            raise ValueError('Observed system-bar InsetsSource has reversed bounds')
+        source = dict(bounds=rectangle, visible=visible[1] == 'true')
+        values = sources[aliases[kind[1]]]
+        if source not in values:
+            values.append(source)
+    if not all(sources.values()):
+        raise ValueError('Both actual status-bar and navigation-bar InsetsSources are required')
+    return sources
+
+
+def loading_actions_geometry(xml, api, system_bar_frames=()):
+    """Check native loading actions and their visible ancestor/chrome bounds.
+
+    Accessibility preserves the complete labels and exposes touch rectangles;
+    the original PNG remains necessary to review actual glyph appearance.
+    """
+    root = ET.fromstring(xml)
+    parents = {child: parent for parent in root.iter() for child in parent}
+    labels = ('检查网络', '重新加载')
+    controls = []
+    for label in labels:
+        found = [node for node in root.iter('node') if node.get('package') == api['PACKAGE']
+                 and node.get('text') == label and node.get('class') == 'android.widget.Button'
+                 and node.get('clickable') == 'true' and node.get('enabled') == 'true'
+                 and node.get('visible-to-user') != 'false']
+        if len(found) != 1 or api['bounds'](found[0]) is None:
+            return None
+        controls.append(found[0])
+    boxes = [api['bounds'](node) for node in controls]
+    navigation = api['navigation_geometry'](xml)
+    capsule = api['capsule'](xml)
+    capsule_box = api['bounds'](capsule) if capsule is not None else None
+
+    def contains(outer, inner):
+        return outer[0] <= inner[0] < inner[2] <= outer[2] and outer[1] <= inner[1] < inner[3] <= outer[3]
+
+    def overlaps(left, right):
+        return max(left[0], right[0]) < min(left[2], right[2]) and max(left[1], right[1]) < min(left[3], right[3])
+
+    ancestor_rows = []
+    scrolls = []
+    ancestors_fit = True
+    for control, box in zip(controls, boxes):
+        rows, scrolling = [], set()
+        current = parents.get(control)
+        while current is not None and current.tag == 'node':
+            match = re.fullmatch(r'\[(-?\d+),(-?\d+)\]\[(-?\d+),(-?\d+)\]', current.get('bounds', ''))
+            if match is None:
+                ancestors_fit = False
+            else:
+                frame = list(map(int, match.groups()))
+                visible = current.get('visible-to-user') != 'false'
+                rows.append(dict(viewClass=current.get('class'), bounds=frame, visible=visible))
+                ancestors_fit &= visible and contains(frame, box)
+                if current.get('class') == 'android.widget.ScrollView':
+                    scrolling.add(current)
+            current = parents.get(current)
+        ancestor_rows.append(rows)
+        scrolls.append(scrolling)
+    minimum_touch = (48 * api['DENSITY'] + 159) // 160
+    same_row = abs(boxes[0][1] - boxes[1][1]) <= 1 and abs(boxes[0][3] - boxes[1][3]) <= 1
+    top_offset = None if capsule_box is None else (capsule_box[0] + capsule_box[2] - api['WIDTH']) / 2
+    nav_top = min(box[1] for box in navigation['bounds'].values()) if navigation is not None else None
+    checks = dict(
+        completeAccessibleLabels=all(control.get('text') == label for control, label in zip(controls, labels)),
+        minimumTouchTargets=all(box[2] - box[0] >= minimum_touch and box[3] - box[1] >= minimum_touch for box in boxes),
+        sameHorizontalRow=same_row,
+        actionsDoNotOverlap=not overlaps(*boxes),
+        visibleAncestorsContainActions=bool(ancestor_rows[0] and ancestor_rows[1]) and ancestors_fit,
+        sharedLoadingScroller=bool(scrolls[0].intersection(scrolls[1])),
+        navigationValid=navigation is not None and navigation['valid'],
+        topCapsuleCentered=top_offset is not None and abs(top_offset) <= 1,
+        belowTopCapsule=capsule_box is not None and all(box[1] >= capsule_box[3] for box in boxes),
+        aboveDock=nav_top is not None and all(box[3] <= nav_top for box in boxes),
+        systemBarsDoNotOverlap=all(not overlaps(box, bar) for box in boxes for bar in system_bar_frames))
+    return dict(coordinateSpace='native XML screen pixels', screenWidthPx=api['WIDTH'],
+        screenHeightPx=api['HEIGHT'], configuredDensityDpi=api['DENSITY'],
+        minimumTouchTargetDp=48, minimumTouchTargetPx=minimum_touch,
+        bounds={label: list(box) for label, box in zip(labels, boxes)},
+        leftToRightLabels=[label for label, box in sorted(zip(labels, boxes), key=lambda item: item[1][0])],
+        ancestors={label: rows for label, rows in zip(labels, ancestor_rows)},
+        topCapsuleBounds=list(capsule_box) if capsule_box is not None else None,
+        topCapsuleCenterOffsetPx=top_offset, navigation=navigation,
+        observedVisibleSystemBarFrames=[list(box) for box in system_bar_frames],
+        glyphAppearanceVerified=False, checks=checks, valid=all(checks.values()))
+
+
+def capture_loading_landscape(args, report, capture, adb, wait_for, screenshot, api):
+    """Photograph the unconfigured production loading page before local documents."""
+    identity = report['buildIdentity']
+    result = report['landscapeLoadingUi'] = dict(schema=1, status='started', required=True,
+        sourceCommit=identity['sourceCommit'], sourceTree=identity['sourceTree'],
+        apkSha256=report['installedApk']['sha256'], runNonce=report['runNonce'],
+        sdkReceiptSha256=identity['sdkReceiptSha256'],
+        integrationSigningCertificateSha256=identity['integrationSigningCertificateSha256'],
+        helperSha256=api['sha'](__file__),
+        observationNonce=secrets.token_hex(16), actualAndroidExecution=True,
+        testSignedIntegrationEvidence=True, releaseSignatureAcceptance=False,
+        physicalPhoneAcceptance=False, glyphAppearanceVerified=False,
+        requestedDisplay=dict(widthDp=892, heightDp=412, densityDpi=480, fontScale=1.0, night='no'),
+        scene='actual-MainActivity-unconfigured-loading-landscape',
+        fixture='existing UiVisualIntegrationActivity visualAction=chat',
+        sourceLoadingUiSha256=api['sha'](args.root / 'app/src/main/java/local/pocketchat/LoadingUi.java'),
+        fixtureSourceSha256=api['sha'](args.root / 'tests/gecko/UiVisualIntegrationActivity.java'),
+        firstInputIndex=len(report['inputs']), firstCommandIndex=len(report['commands']),
+        startedAtUnixNs=time.time_ns(), errors=[])
+    previous_display = (api['WIDTH'], api['HEIGHT'], api['DENSITY'])
+    package = api['PACKAGE']
+    stem = 'landscape-loading-native'
+    previous_font = '1.0'
+    previous_night = 'no'
+
+    def save():
+        api['write'](args.out / 'capture.json', report)
+
+    try:
+        previous_font = adb('shell', 'settings', 'get', 'system', 'font_scale').decode().strip()
+        if abs(float(previous_font) - 1.0) > .001:
+            raise ValueError('The required landscape observation must start after default-font restoration')
+        previous_config = adb('shell', 'am', 'get-config').decode().strip()
+        previous_night = 'yes' if 'night' in previous_config.splitlines()[0].split('-') else 'no'
+        api['set_display'](2676, 1236, 480)
+        adb('shell', 'am', 'force-stop', package)
+        adb('shell', 'wm', 'size', '2676x1236')
+        adb('shell', 'settings', 'put', 'system', 'font_scale', '1.0')
+        adb('shell', 'cmd', 'uimode', 'night', 'no')
+        adb('shell', 'am', 'start', '-W', '-n', api['COMPONENT'], '--es', 'visualAction', 'chat')
+        result['actualDisplay'] = dict(size=adb('shell', 'wm', 'size').decode().strip(),
+            density=adb('shell', 'wm', 'density').decode().strip(),
+            fontScale=adb('shell', 'settings', 'get', 'system', 'font_scale').decode().strip(),
+            configuration=adb('shell', 'am', 'get-config').decode().strip())
+        config_parts = result['actualDisplay']['configuration'].splitlines()[0].split('-')
+        if ('land' not in config_parts or 'notnight' not in config_parts
+                or abs(float(result['actualDisplay']['fontScale']) - 1.0) > .001):
+            raise ValueError('Actual Android configuration did not apply landscape/default-font/light')
+
+        def loading_scroller(xml):
+            root = ET.fromstring(xml)
+            parents = {child: parent for parent in root.iter() for child in parent}
+            found = set()
+            for node in root.iter('node'):
+                if (node.get('package') != package or node.get('visible-to-user') == 'false'
+                        or node.get('text') not in ('等待 VPN 连接', '网页暂时无法打开')):
+                    continue
+                current = parents.get(node)
+                while current is not None:
+                    if current.get('class') == 'android.widget.ScrollView' and api['bounds'](current) is not None:
+                        found.add(current)
+                        break
+                    current = parents.get(current)
+            return next(iter(found)) if len(found) == 1 else None
+
+        def native_loading(xml):
+            return api['navigation'](xml) is not None and api['capsule'](xml) is not None and loading_scroller(xml) is not None
+
+        initial_stem = stem + '-before-scroll'
+        xml = wait_for(capture, native_loading, initial_stem, seconds=30)
+        screenshot(initial_stem + '.png')
+        initial_geometry = loading_actions_geometry(xml, api)
+        result['initialObservation'] = dict(xml=initial_stem + '.xml',
+            xmlSha256=api['sha'](args.out / (initial_stem + '.xml')),
+            png=initial_stem + '.png', pngSha256=api['sha'](args.out / (initial_stem + '.png')),
+            geometry=initial_geometry)
+        # LoadingUi deliberately scrolls short windows. Reveal its real actions
+        # once if the initial viewport clips them; never press a network/reload
+        # action, change visibility, or relax the final complete-target checks.
+        need_scroll = initial_geometry is None or any(not initial_geometry['checks'][key]
+            for key in ('minimumTouchTargets', 'visibleAncestorsContainActions', 'aboveDock'))
+        result['scrollToRevealActions'] = dict(inputIssued=False)
+        if need_scroll:
+            box = api['bounds'](loading_scroller(xml))
+            nav_top = min(frame[1] for frame in api['navigation_geometry'](xml)['bounds'].values())
+            title_bottom = api['bounds'](api['capsule'](xml))[3]
+            edge = 8 * api['DENSITY'] // 160
+            top, bottom = max(box[1], title_bottom) + edge, min(box[3], nav_top) - edge
+            if bottom - top < 48 * api['DENSITY'] // 160:
+                raise ValueError('The observed loading scroller has no safe native swipe region')
+            x = (box[0] + box[2]) // 2
+            action = dict(action='swipe', phase='required-landscape-loading',
+                reason='Reveal original loading actions within the observed short-window ScrollView',
+                observedBounds=list(box), start=[x, bottom], end=[x, top], durationMillis=350,
+                hierarchySource=initial_stem + '.xml', atUnixNs=time.time_ns())
+            report['inputs'].append(action)
+            adb('shell', 'input', 'touchscreen', 'swipe', str(x), str(bottom), str(x), str(top), '350')
+            action['completedAtUnixNs'] = time.time_ns()
+            result['scrollToRevealActions'] = dict(inputIssued=True, input=action)
+
+        def actions_visible(value):
+            return (api['navigation'](value) is not None and api['capsule'](value) is not None
+                and all(api['button'](value, label) is not None for label in ('检查网络', '重新加载')))
+
+        xml = wait_for(capture, actions_visible, stem, seconds=30)
+        result['xml'] = dict(file=stem + '.xml', sha256=api['sha'](args.out / (stem + '.xml')))
+        # Capture before geometry assertions so a real regression retains its
+        # original screen rather than only a timeout or a host-side assertion.
+        time.sleep(.6)
+        screenshot(stem + '.png')
+        result['png'] = dict(file=stem + '.png', sha256=api['sha'](args.out / (stem + '.png')))
+        activity = adb('shell', 'dumpsys', 'activity', 'activities').decode('utf-8', 'replace')
+        path = args.out / (stem + '-activity.txt'); path.write_text(activity)
+        resumed = [line.strip() for line in activity.splitlines() if 'mResumedActivity' in line or 'topResumedActivity' in line]
+        result['activity'] = dict(file=path.name, sha256=api['sha'](path), resumed=resumed)
+        if not any(package + '/local.pocketchat.MainActivity' in line for line in resumed):
+            raise ValueError('The actual production MainActivity is not resumed on the loading page')
+        raw = adb('shell', 'dumpsys', 'window', 'displays').decode('utf-8', 'replace')
+        path = args.out / (stem + '-window-insets.txt'); path.write_text(raw)
+        sources = system_bar_sources(raw)
+        result['systemBars'] = dict(file=path.name, sha256=api['sha'](path), sources=sources)
+        visible_frames = [source['bounds'] for values in sources.values() for source in values
+                          if source['visible'] and source['bounds'][0] < source['bounds'][2]
+                          and source['bounds'][1] < source['bounds'][3]]
+        result['geometry'] = loading_actions_geometry(xml, api, visible_frames)
+        if result['geometry'] is None or not result['geometry']['valid']:
+            raise ValueError('Actual landscape loading actions are clipped, overlapping, or not in one horizontal row')
+        result['status'] = 'verified'
+    except Exception as error:
+        result['status'] = 'failed'
+        result['errors'].append(dict(stage='actual-loading-page', errorType=type(error).__name__, error=str(error)))
+        if 'png' not in result:
+            try:
+                screenshot(stem + '-failed.png')
+            except Exception as capture_error:
+                result['errors'].append(dict(stage='failure-screenshot', errorType=type(capture_error).__name__, error=str(capture_error)))
+    finally:
+        api['set_display'](*previous_display)
+        cleanup = [('shell', 'am', 'force-stop', package),
+                   ('shell', 'wm', 'size', str(previous_display[0]) + 'x' + str(previous_display[1])),
+                   ('shell', 'settings', 'put', 'system', 'font_scale', previous_font),
+                   ('shell', 'cmd', 'uimode', 'night', previous_night)]
+        cleanup_errors = []
+        for command in cleanup:
+            try:
+                adb(*command, timeout=6)
+            except Exception as error:
+                cleanup_errors.append(dict(stage='restore-before-controlled-document', command=list(command),
+                    errorType=type(error).__name__, error=str(error)))
+        try:
+            restored = result['restoredDisplay'] = dict(
+                size=adb('shell', 'wm', 'size').decode().strip(),
+                fontScale=adb('shell', 'settings', 'get', 'system', 'font_scale').decode().strip(),
+                configuration=adb('shell', 'am', 'get-config').decode().strip())
+            sizes = re.findall(r'(?:Physical|Override) size:\s*(\d+)x(\d+)', restored['size'])
+            config_parts = restored['configuration'].splitlines()[0].split('-')
+            expected_orientation = 'land' if previous_display[0] > previous_display[1] else 'port'
+            expected_night = 'night' if previous_night == 'yes' else 'notnight'
+            if (not sizes or tuple(map(int, sizes[-1])) != previous_display[:2]
+                    or abs(float(restored['fontScale']) - float(previous_font)) > .001
+                    or expected_orientation not in config_parts or expected_night not in config_parts):
+                raise ValueError('Actual Android display/font/theme was not restored before controlled documents')
+        except Exception as error:
+            cleanup_errors.append(dict(stage='observe-restored-display', errorType=type(error).__name__, error=str(error)))
+        result['errors'].extend(cleanup_errors)
+        result['restoredDisplayBeforeControlledDocument'] = not cleanup_errors
+        if cleanup_errors:
+            result['status'] = 'failed'
+        result.update(lastInputIndexExclusive=len(report['inputs']),
+                      lastCommandIndexExclusive=len(report['commands']), completedAtUnixNs=time.time_ns())
+        save()
+    return result
 
 
 @contextmanager
@@ -458,6 +737,11 @@ def capture_acceptance_suite(args, report, capture, adb, wait_for, tap, screensh
         for name in SAFE_AREA_OVERLAYS:
             if name not in previous_overlays:
                 raise ValueError('The disposable emulator lacks required safe-area overlay: ' + name)
+        loading = capture_loading_landscape(args, report, capture, adb, wait_for, screenshot, api)
+        if loading['status'] != 'verified':
+            result['errors'].append(dict(stage='required-landscape-loading',
+                error='The required actual unconfigured landscape loading observation failed',
+                reportKey='landscapeLoadingUi'))
         with controlled_document(args, adb, result, sha):
             for name, width, height, scale, night in CONFIGURATIONS:
                 case = dict(name=name, runNonce=secrets.token_hex(16), status='started',

@@ -204,3 +204,12 @@ def wrap_ast(original):
         original_runner_tree(tree)
         return original(tree)
     return checkpoint_tree
+
+
+# Only historical workflow comparisons reverse the exact reviewed transport.
+import importlib.util as _gradle_transport_import
+_gradle_transport_spec = _gradle_transport_import.spec_from_file_location('selected_gradle_transport_source_input', Path(__file__).with_name('gradle_transport_source_compatibility.py'))
+_gradle_transport_input = _gradle_transport_import.module_from_spec(_gradle_transport_spec)
+_gradle_transport_spec.loader.exec_module(_gradle_transport_input)
+checkpoint_transport_input = _gradle_transport_input.canonical_history_input
+checkpoint_workflow_input = _gradle_transport_input.wrap_checkpoint_workflow(checkpoint_workflow_input)

@@ -1,7 +1,7 @@
 name: Profile upgrade host and reviewed SDK build checks
 on:
   push:
-    branches: ['feature/profile-upgrades-1_6', 'feature/profile-upgrades-1_7', 'feature/profile-upgrades-1_7-final', 'feature/profile-upgrades-2_0', 'feature/android-engine-probe', 'codex/v1.6-network-environments', 'codex/v1.7-templates-audit', 'codex/v2.0-maintenance-capabilities', 'release/gecko-*']
+    branches: ['feature/profile-upgrades-1_6', 'feature/profile-upgrades-1_7', 'feature/profile-upgrades-1_7-final', 'feature/profile-upgrades-2_0', 'feature/android-engine-probe', 'codex/v1.6-network-environments', 'codex/v1.7-templates-audit', 'codex/v2.0-maintenance-capabilities', 'release/gecko-*', 'codex/environment-workspace-polish']
     paths: ['app/**', 'tests/**', 'tools/gecko/**', 'tools/export-profile-upgrades.py', 'third-party/sdk/**', 'third-party/patches/**', 'third-party/gecko/**', 'build.gradle', 'settings.gradle', 'gradle.properties', '.github/workflows/profile-upgrade-checks.yml', '.github/workflows/gecko-integration.yml']
   pull_request:
     paths: ['app/**', 'tests/**', 'tools/gecko/**', 'tools/export-profile-upgrades.py', 'third-party/sdk/**', 'third-party/patches/**', 'third-party/gecko/**', 'build.gradle', 'settings.gradle', 'gradle.properties', '.github/workflows/profile-upgrade-checks.yml', '.github/workflows/gecko-integration.yml']
@@ -9,7 +9,7 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: profile-upgrade-checks-${{ github.ref }}
+  group: profile-upgrade-checks-${{ github.head_ref || github.ref_name }}
   cancel-in-progress: true
 jobs:
   host-contracts:
@@ -41,6 +41,7 @@ jobs:
           curl -fsSL --retry 3 https://repo.maven.apache.org/maven2/org/json/json/20240303/json-20240303.jar -o work/gecko-integration/catalog-json.jar
           echo '3cf6cd6892e32e2b4c1c39e0f52f5248a2f5b37646fdfbb79a66b46b618414ed  work/gecko-integration/catalog-json.jar' | sha256sum -c -
           python3 tools/gecko/prepare_profile_host_prerequisites.py --source-commit '${{ github.event.pull_request.head.sha || github.sha }}' --output work/profile-host/prerequisites.json
+          git fetch --no-tags --depth=1 --no-write-fetch-head --no-filter origin 6ee06aced87581e52aa301431f8996ed46d666b8
           npm install --prefix work/resource-observer --ignore-scripts --no-audit --no-fund jsdom@26.1.0
           JSDOM_MODULE="$PWD/work/resource-observer/node_modules/jsdom" node --test tests/appearance_lifecycle_test.cjs
           git fetch --no-tags --depth=1 origin da5004111eaf3e20322ca1fca3f756db82f44c90
@@ -89,11 +90,10 @@ jobs:
           echo "$JAVA_HOME_17_X64/bin" >> "$GITHUB_PATH"
           mkdir -p work/profile-build
           "$JAVA_HOME_17_X64/bin/keytool" -genkeypair -keystore work/profile-build/integration-test.jks -alias androiddebugkey -storepass android -keypass android -dname CN=SyntheticIntegration -keyalg RSA -validity 2
-          if ! curl -fsSL --retry 5 --retry-delay 5 --connect-timeout 20 --max-time 180 --retry-max-time 240 https://services.gradle.org/distributions/gradle-9.8.0-bin.zip -o work/profile-build/gradle.zip; then
-            if ! curl -fsSL --retry 5 --retry-delay 5 --connect-timeout 20 --max-time 180 --retry-max-time 240 https://downloads.gradle.org/distributions/gradle-9.8.0-bin.zip -o work/profile-build/gradle.zip; then
-              curl -fsSL --retry 5 --retry-delay 5 --connect-timeout 20 --max-time 180 --retry-max-time 240 https://github.com/gradle/gradle-distributions/releases/download/v9.8.0/gradle-9.8.0-bin.zip -o work/profile-build/gradle.zip
-            fi
+          if ! curl -fsSL --retry 3 https://services.gradle.org/distributions/gradle-9.8.0-bin.zip -o work/profile-build/gradle.zip; then
+            curl -fLsS --retry 2 --max-time 240 -H 'Accept: application/octet-stream' -H 'X-GitHub-Api-Version: 2022-11-28' https://api.github.com/repos/gradle/gradle-distributions/releases/assets/586068844 -o work/profile-build/gradle.zip
           fi
+          test "$(stat -c %s work/profile-build/gradle.zip)" = 151611662
           echo 'bafd5ce9cfaea0fbccfdc8439a1ac42fbd4cd9c89dc9a988228d8a2639a58e6c  work/profile-build/gradle.zip' | sha256sum -c -
           unzip -q work/profile-build/gradle.zip -d work/profile-build/gradle
           task_sdk_url=https://maven.mozilla.org/maven2/org/mozilla/geckoview/geckoview/157.0.20261005135250/geckoview-157.0.20261005135250

@@ -95,7 +95,7 @@ class TextView extends View{CharSequence text="";int color;CharSequence getText(
 class TextUtils{static boolean equals(CharSequence left,CharSequence right){return Objects.equals(left==null?null:left.toString(),right==null?null:right.toString());}}
 class ReferenceUi{static final int TEXT=1;static TextView text(Context context,String text,int size,int color,boolean bold){TextView view=new TextView();view.setText(text);return view;}}
 class Ui{static final int MUTED=2;}
-class DesignUi{static class Stars{static void refresh(Context context){}}}
+class DesignUi{static int GLASS_INK=0xff172033;static class Stars{static void refresh(Context context){}}}
 class UiPerfStats{static int chrome,metrics;static void chromeUpdate(){chrome++;}static void metricsRefresh(){metrics++;}static void textChange(){}}
 class Profiles{static int slot(Context context){return 0;}static Context context(Context context,int slot){return context;}}
 class ProfileCatalog{static JSONObject value;static int heartbeats;static final ProfileCatalog instance=new ProfileCatalog();static ProfileCatalog get(Context context){return instance;}JSONObject item(int slot){return J.parse(value.toString());}void heartbeat(ChatSession session,boolean force){heartbeats++;}}

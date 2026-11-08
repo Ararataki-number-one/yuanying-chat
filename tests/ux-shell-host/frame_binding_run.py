@@ -32,7 +32,7 @@ def main():
     inputs=[source,scheduler,progress,HERE/'frame_binding_host.java',HERE/'focus_run.py',Path(__file__).resolve()]
     hashes={str(path.relative_to(ROOT)):digest(path.read_bytes()) for path in inputs}
     original=source.read_text()
-    selected={name:member(original,name) for name in ['void syncSessionReferences(','void requestSessionUi(','void requestPresentationUi(','void applySession(']}
+    selected={name:member(original,name) for name in ['void syncSessionReferences(','void requestSessionUi(','void requestPresentationUi(','void applySession(','void updateReadingLayout(']}
     ticker=member(original,'final Runnable ticker=')+';'
     observers=[line.strip() for line in progress.read_text().splitlines() if line.strip().startswith('observer=new ContentObserver(')]
     if len(observers)!=1:raise ValueError('Expected one actual download observer initialization')
@@ -54,7 +54,7 @@ def main():
         extractedMethods={name:digest(text.encode()) for name,text in selected.items()},
         tickerSha256=digest(ticker.encode()),downloadObserverSha256=digest(observers[0].encode()),
         generatedHarnessSha256=digest(generated.encode()),
-        scope='Verbatim MainActivity syncSessionReferences/requestSessionUi/applySession bodies, actual ticker and download observer initialization, complete production UiFrameScheduler. Deterministic session object-identity tokens, presentation consumers and frame queue adapters. Checks immediate model mirroring through1000 observer updates mixed with1000 download notifications and a timer tick, one latest-state presentation frame, null/startup fallback and pause/destroy callback cancellation. Metrics-to-chrome is an immediate boundary here; chrome frame coalescing has its own production-method tests. No actual Android layout, Activity lifecycle, renderer, FPS, wall-time speedup or Gecko execution.')
+        scope='Verbatim MainActivity syncSessionReferences/requestSessionUi/applySession/updateReadingLayout bodies, actual ticker and download observer initialization, complete production UiFrameScheduler. Deterministic session object-identity tokens, presentation consumers and frame queue adapters. Reading keyboard callbacks and focus-layout invocations are counted adapters; actual focus-layout behavior has a separate production-method host. Checks immediate model mirroring through1000 observer updates mixed with1000 download notifications and a timer tick, one latest-state presentation frame, null/startup fallback and pause/destroy callback cancellation. Metrics-to-chrome is an immediate boundary here; chrome frame coalescing has its own production-method tests. No actual Android layout, Activity lifecycle, renderer, FPS, wall-time speedup or Gecko execution.')
     if not stable:report['status']='source-changed'
     args.output.parent.mkdir(parents=True,exist_ok=True)
     args.output.write_text(json.dumps(report,ensure_ascii=False,indent=2)+'\n')

@@ -183,6 +183,151 @@ class GlassNavigationGeometryTest(unittest.TestCase):
         self.assertFalse(capture.selected_navigation(xml, '下载'))
 
 
+class GlassLoadingActionsGeometryTest(unittest.TestCase):
+    """Synthetic hierarchy cases for short-window clipping decisions only."""
+
+    def setUp(self):
+        self.display = capture.WIDTH, capture.HEIGHT, capture.DENSITY
+        capture.set_display(2676, 1236, 480)
+        self.actions = [('检查网络', (720, 624, 1320, 792)),
+                        ('重新加载', (1356, 624, 1956, 792))]
+        self.nav = [(1008, 924, 1228, 1116), (1228, 924, 1448, 1116),
+                    (1448, 924, 1668, 1116), (2424, 924, 2616, 1116)]
+
+    def tearDown(self):
+        capture.set_display(*self.display)
+
+    def xml(self, *, actions=None, cover=(0, 276, 2676, 900),
+            scroll=(84, 300, 2592, 864), capsule=(1050, 90, 1626, 246), nav=None):
+        actions = self.actions if actions is None else actions
+        nav = self.nav if nav is None else nav
+        root = ET.Element('hierarchy', rotation='0')
+
+        def view(parent, kind, box, **extra):
+            left, top, right, bottom = box
+            attrs = {'package': capture.PACKAGE, 'class': 'android.widget.' + kind,
+                     'bounds': f'[{left},{top}][{right},{bottom}]',
+                     'visible-to-user': 'true'}
+            attrs.update(extra)
+            return ET.SubElement(parent, 'node', attrs)
+
+        frame = view(root, 'FrameLayout', (0, 0, capture.WIDTH, capture.HEIGHT))
+        header = view(frame, 'LinearLayout', (0, 72, 2676, 276))
+        view(header, 'TextView', capsule, clickable='true', enabled='true',
+             **{'content-desc': '当前环境：日常会话，点按输入网址，长按切换环境'})
+        loading = view(frame, 'LinearLayout', cover, clickable='true')
+        overflow = view(loading, 'ScrollView', scroll, scrollable='true')
+        content = view(overflow, 'LinearLayout', (636, 324, 2040, 840))
+        view(content, 'TextView', (720, 324, 1956, 396), text='等待 VPN 连接')
+        view(content, 'TextView', (636, 420, 2040, 516), text='网页联网已暂停。')
+        boxes = [box for _, box in actions]
+        row_box = (min(box[0] for box in boxes), min(box[1] for box in boxes),
+                   max(box[2] for box in boxes), max(box[3] for box in boxes))
+        row = view(content, 'LinearLayout', row_box)
+        for label, box in actions:
+            view(row, 'Button', box, text=label, clickable='true', enabled='true')
+        view(content, 'TextView', (720, 810, 1956, 840), text='点按顶部输入网址，长按切换环境')
+        for label, box in zip(capture.LABELS, nav):
+            view(frame, 'Button', box, text=label, clickable='true', enabled='true', selected='false')
+        return ET.tostring(root, encoding='unicode')
+
+    def invalid(self, xml):
+        result = validation.loading_actions_geometry(xml, capture.__dict__)
+        self.assertIsNotNone(result)
+        self.assertFalse(result['valid'])
+
+    def test_horizontal_actions_fit_their_scroll_view_above_the_dock(self):
+        result = validation.loading_actions_geometry(self.xml(), capture.__dict__)
+        self.assertIsNotNone(result)
+        self.assertTrue(result['valid'])
+        self.assertIsInstance(result['checks'], dict)
+        self.assertIsInstance(result['bounds'], dict)
+
+    def test_full_screen_button_bounds_do_not_override_scroll_view_clipping(self):
+        self.invalid(self.xml(scroll=(84, 300, 1800, 864)))
+
+    def test_actions_must_fit_the_cover_as_well_as_the_scroll_view(self):
+        self.invalid(self.xml(cover=(0, 276, 2676, 760)))
+
+    def test_horizontal_actions_cannot_overlap(self):
+        self.invalid(self.xml(actions=[self.actions[0], ('重新加载', (1290, 624, 1890, 792))]))
+
+    def test_diagonally_crossing_buttons_cannot_pass_as_a_horizontal_row(self):
+        self.invalid(self.xml(actions=[self.actions[0], ('重新加载', (1290, 650, 1890, 818))]))
+
+    def test_stacked_buttons_are_rejected_even_when_both_fit_the_cover(self):
+        self.invalid(self.xml(actions=[('检查网络', (1038, 480, 1638, 648)),
+                                       ('重新加载', (1038, 672, 1638, 840))]))
+
+    def test_valid_navigation_cannot_cover_loading_actions(self):
+        nav = [(left, top - 204, right, bottom - 204) for left, top, right, bottom in self.nav]
+        self.assertTrue(capture.navigation_geometry(self.xml(nav=nav))['valid'])
+        self.invalid(self.xml(nav=nav))
+
+    def test_short_buttons_cannot_pass_from_other_valid_geometry(self):
+        actions = [(label, (left, top, right, top + 120))
+                   for label, (left, top, right, _) in self.actions]
+        self.invalid(self.xml(actions=actions))
+
+    def test_observed_system_bar_cannot_cover_loading_actions(self):
+        result = validation.loading_actions_geometry(self.xml(), capture.__dict__,
+                                                      [(0, 750, 2676, 850)])
+        self.assertIsNotNone(result)
+        self.assertFalse(result['valid'])
+
+    def test_exact_native_action_labels_are_required(self):
+        changed = [('检查线路', self.actions[0][1]), self.actions[1]]
+        self.assertIsNone(validation.loading_actions_geometry(self.xml(actions=changed), capture.__dict__))
+
+    def test_duplicate_native_action_is_not_an_unambiguous_observation(self):
+        duplicate = self.actions + [('检查网络', (720, 432, 1320, 600))]
+        self.assertIsNone(validation.loading_actions_geometry(self.xml(actions=duplicate), capture.__dict__))
+
+    def test_action_outside_the_logical_screen_cannot_be_accepted(self):
+        outside = [self.actions[0], ('重新加载', (2400, 624, 2800, 792))]
+        self.assertIsNone(validation.loading_actions_geometry(self.xml(actions=outside), capture.__dict__))
+
+    def test_top_capsule_cannot_cover_the_actions(self):
+        self.invalid(self.xml(capsule=(1050, 600, 1626, 756)))
+
+    def test_capsule_and_navigation_must_keep_their_independent_centers(self):
+        self.invalid(self.xml(capsule=(1110, 90, 1686, 246)))
+        shifted = [(left + 30, top, right + 30, bottom) for left, top, right, bottom in self.nav]
+        self.invalid(self.xml(nav=shifted))
+
+
+class GlassSystemBarSourcesTest(unittest.TestCase):
+    """Parse retained Android inset-source text without inventing absent bars."""
+
+    def test_reads_api32_itype_sources(self):
+        raw = ('  InsetsSourceControl: {mType=ITYPE_STATUS_BAR mLeash=Surface(name=StatusBar)}\n'
+               '  InsetsSource: {mType=ITYPE_STATUS_BAR mFrame=[0,0][2676,72] mVisible=true}\n'
+               '  InsetsSource: {mType=ITYPE_NAVIGATION_BAR mFrame=[0,1164][2676,1236] mVisible=true}\n')
+        result = validation.system_bar_sources(raw)
+        self.assertEqual(result['statusBars'], [{'bounds': [0, 0, 2676, 72], 'visible': True}])
+        self.assertEqual(result['navigationBars'], [{'bounds': [0, 1164, 2676, 1236], 'visible': True}])
+
+    def test_reads_api35_named_sources_and_preserves_hidden_bar_observation(self):
+        raw = ('  InsetsSource: {47d00001 type=statusBars frame=[0,0][2676,72] visible=true}\n'
+               '  InsetsSource: {47d00002 type=navigationBars frame=[0,1164][2676,1236] visible=false}\n')
+        result = validation.system_bar_sources(raw)
+        self.assertEqual(result['statusBars'], [{'bounds': [0, 0, 2676, 72], 'visible': True}])
+        self.assertEqual(result['navigationBars'], [{'bounds': [0, 1164, 2676, 1236], 'visible': False}])
+
+    def test_missing_source_type_frame_or_visibility_cannot_prove_safe_area(self):
+        status = 'InsetsSource: {type=statusBars frame=[0,0][2676,72] visible=true}\n'
+        incomplete = (
+            '',
+            status,
+            status + 'InsetsSource: {type=navigationBars frame=[0,1164][2676,1236]}\n',
+            status + 'InsetsSource: {type=navigationBars visible=true}\n',
+            'InsetsSource: {type=unrecognized frame=[0,0][2676,72] visible=true}\n',
+        )
+        for raw in incomplete:
+            with self.subTest(raw=raw), self.assertRaises(ValueError):
+                validation.system_bar_sources(raw)
+
+
 class GlassFrameObservationTest(unittest.TestCase):
     def test_reads_actual_cumulative_counter_without_fps_inference(self):
         raw = ('Applications Graphics Acceleration Info:\n'

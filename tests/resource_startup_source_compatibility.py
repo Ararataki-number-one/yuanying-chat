@@ -132,3 +132,8 @@ def root_manifest_input(value):
     result = copy.deepcopy(value)
     result["files"][FINAL] = copy.deepcopy(cfg["rootAfterRow"])
     return result
+
+
+# Exact after-image rows; original resource guards and forward contexts remain.
+from gradle_workflow_test_source_compatibility import wrap_resource_config as _gradle_resource_config
+config = _gradle_resource_config(config)
