@@ -216,8 +216,8 @@ public final class GeckoIpTimeZoneIntegrationActivity extends MainActivity {
     final String previous=lastPage.getJSONObject("page").getString("documentId");actualReconfirm();
     // The real address UI queues a new controlled document behind the failing
     // current native gate. Neither redirect nor invalid geo may open it.
-    geckoAddress.address.performClick();waitFor("actual negative target address",()->GeckoEnvironmentPolicyIntegrationActivity.window("打开")!=null,()->{
-      View editor=GeckoEnvironmentPolicyIntegrationActivity.window("打开");GeckoEnvironmentPolicyIntegrationActivity.first(editor,EditText.class).setText(ROOT+"gecko-restored");GeckoEnvironmentPolicyIntegrationActivity.button(editor,"打开").performClick();
+    geckoAddress.address.performClick();waitFor("actual negative target address",()->GeckoEnvironmentPolicyIntegrationActivity.CurrentAddressEditor.read(this)!=null,()->{
+      GeckoEnvironmentPolicyIntegrationActivity.CurrentAddressEditor editor=GeckoEnvironmentPolicyIntegrationActivity.CurrentAddressEditor.require(this);editor.input.setText(ROOT+"gecko-restored");editor.submit();
       waitFor("real geo failure remains closed",()->"failed".equals(remote.timeZoneStatus().optString("state"))&&!remote.timeZoneStatus().optBoolean("nativeSettingReadback"),()->page(value->{try{
         check(name+".no-new-page",previous.equals(value.getJSONObject("page").getString("documentId"))&&!remote.timeZoneStatus().optBoolean("ipMatched"));
         snapshot(host->{try{JSONObject proof=J.obj("oldDocumentId",previous,"remainingDocumentId",value.getJSONObject("page").getString("documentId"),"status",remote.timeZoneStatus(),"host",host,"actualAddressUiAttempt",true,"fallbackApplied",false);cases.put(name,proof);after.run();}catch(Throwable error){failed(error);}});

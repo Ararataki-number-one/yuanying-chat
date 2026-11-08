@@ -4,6 +4,7 @@ import android.app.*;
 import android.content.*;
 import android.content.res.*;
 import android.graphics.Color;
+import android.graphics.Rect;
 import android.graphics.drawable.*;
 import android.os.Build;
 import android.view.*;
@@ -60,6 +61,7 @@ final class AppAppearance {
   private static void palette(){
     DesignUi.BG=color(0xfff4f7fb);DesignUi.CARD=color(Color.WHITE);DesignUi.FIELD=color(0xfff8fafc);DesignUi.LINE=color(0xffe0e7f0);
     DesignUi.TEXT=color(0xff172033);DesignUi.MUTED=color(0xff64748b);DesignUi.BLUE=DesignUi.CYAN=DesignUi.PURPLE=color(0xff2468f2);DesignUi.GREEN=color(0xff16845b);DesignUi.RED=color(0xffc93747);
+    DesignUi.GLASS_INK=DesignUi.TEXT;DesignUi.GLASS_MUTED=(DesignUi.TEXT&0x00ffffff)|0xd6000000;
     ReferenceUi.BG=DesignUi.BG;ReferenceUi.CHAT_BG=color(0xfff9fbfe);ReferenceUi.WHITE=DesignUi.CARD;ReferenceUi.TEXT=DesignUi.TEXT;
     ReferenceUi.MUTED=DesignUi.MUTED;ReferenceUi.LINE=DesignUi.LINE;ReferenceUi.BLUE=DesignUi.BLUE;ReferenceUi.BLUE_SOFT=color(0xffedf4ff);ReferenceUi.GREEN=DesignUi.GREEN;ReferenceUi.ORANGE=color(0xffa96c0a);ReferenceUi.RED=DesignUi.RED;
     Ui.INK=color(0xff1e293b);Ui.MUTED=DesignUi.MUTED;Ui.PAPER=color(0xfff4f6fa);Ui.SOFT=color(0xffeaf1ff);
@@ -124,6 +126,7 @@ final class AppAppearance {
   }
   private static void drawable(Drawable d){
     if(d instanceof NativeControls.Field)((NativeControls.Field)d).refresh();
+    else if(d instanceof GlassRipple)((GlassRipple)d).refresh();
     else if(d instanceof Glass)((Glass)d).refresh();
     else if(d instanceof Surface)((Surface)d).refresh();
     else if(d instanceof ColorDrawable)((ColorDrawable)d).setColor(color(((ColorDrawable)d).getColor()));
@@ -137,13 +140,31 @@ final class AppAppearance {
     @Override public void setStroke(int width,int border){this.width=width;this.border=border;super.setStroke(width,color(border));}
     void refresh(){super.setColor(color(fill));super.setStroke(width,color(border));invalidateSelf();}
   }
-  /** A small tinted material, without a screen-wide blur or browser snapshot. */
-  static final class Glass extends GradientDrawable {
-    final int edge;
-    Glass(Context c,int radius){edge=Math.max(1,Math.round(c.getResources().getDisplayMetrics().density*.5f));setCornerRadius(Ui.dp(c,radius));setOrientation(Orientation.TOP_BOTTOM);refresh();}
-    void refresh(){
-      setColors(dark?new int[]{0xf036363b,0xe62a2a2f}:new int[]{0xfaffffff,0xe6eeeef3});
-      setStroke(edge,dark?0x386e6e77:0x99ffffff);invalidateSelf();
+  /** Keeps the shared material on the existing appearance/ripple path. */
+  static final class Glass extends LiquidGlassDrawable {
+    Glass(Context c,int radius){super(c,radius);}
+  }
+  /** Preserve native state/visibility dispatch; liquid content owns its visible feedback. */
+  static final class GlassRipple extends RippleDrawable {
+    private final LiquidGlassDrawable material;
+    private final Rect opticalDirtyBounds=new Rect();
+    GlassRipple(Drawable content,Drawable mask){
+      super(ColorStateList.valueOf(content instanceof LiquidGlassDrawable?Color.TRANSPARENT:ink()),content,mask);
+      material=content instanceof LiquidGlassDrawable?(LiquidGlassDrawable)content:null;
     }
+    @Override public Rect getDirtyBounds(){
+      if(material==null)return super.getDirtyBounds();
+      // RippleDrawable clips its content to its dirty bounds. Include the
+      // material's optical margin while keeping the touch mask unchanged.
+      opticalDirtyBounds.set(super.getDirtyBounds());
+      opticalDirtyBounds.union(material.getDirtyBounds());return opticalDirtyBounds;
+    }
+    @Override public void setHotspot(float x,float y){
+      super.setHotspot(x,y);
+      // RippleDrawable consumes hotspots instead of forwarding them to content.
+      if(material!=null)material.setHotspot(x,y);
+    }
+    private static int ink(){return dark()?0x24ffffff:0x18000000;}
+    void refresh(){setColor(ColorStateList.valueOf(material==null?ink():Color.TRANSPARENT));}
   }
 }

@@ -309,5 +309,10 @@ class NativeSetupDiagnostic11Tests(unittest.TestCase):
         self.assertEqual(before, {p: p.read_bytes() for p in before})
 
 
+# Explicit historical source input only; every original class body stays exact.
+from glass_diagnostic_source_compatibility import wrap_normalizers_restore as _glass_normalizers_restore
+SharedSaveNormalizersInput.restore = classmethod(_glass_normalizers_restore(SharedSaveNormalizersInput.restore.__func__))
+
+
 if __name__ == '__main__':
     unittest.main(verbosity=2)

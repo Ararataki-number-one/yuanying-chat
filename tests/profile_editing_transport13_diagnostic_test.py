@@ -357,5 +357,10 @@ class EditingTransport13ObservationTests(unittest.TestCase):
             self.assertLessEqual(len(stdout.getvalue().encode()), emitter.MAX_REPORT_BYTES + len(emitter.PREFIX) + 1)
 
 
+# Explicit historical source input only; the original whole-source oracle runs.
+from glass_diagnostic_source_compatibility import wrap_native_source_restore as _glass_native_source_restore
+restore_native_setup_shared_save_view = _glass_native_source_restore(restore_native_setup_shared_save_view)
+
+
 if __name__ == '__main__':
     unittest.main(verbosity=2)

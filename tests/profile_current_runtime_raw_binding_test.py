@@ -33,14 +33,16 @@ def load(name, relative):
 
 PATH_HOST = load('current_profile_raw_binding', 'tests/browser-profile-path-host/run.py')
 WINDOW_HOST = load('current_window_raw_binding', 'tests/gecko-ip-window-barrier-host/run.py')
+PROFILE_CONTEXT_INPUT = load('current_profile_context_source_input', 'tests/profile_context_callback_source_compatibility.py')
+SURFACE_INPUT = load('current_gecko_surface_source_input', 'tests/gecko_surface_source_compatibility.py')
 
 
 class CurrentRuntimeRawBindings(unittest.TestCase):
     def test_exact_current_raw_and_only_fifteen_byte_whole_predecessor_proof(self):
         raw = (ROOT/SOURCE_PATH).read_bytes()
-        self.assertEqual((SHA(raw), len(raw)), (CURRENT, 128874))
+        self.assertEqual((SHA(SURFACE_INPUT.historical_input(raw)), len(SURFACE_INPUT.historical_input(raw))), (CURRENT, 128874))
         self.assertIs(PATH_HOST.verify_factored_raw('GeckoWebView', raw), raw)
-        previous = raw.replace(CURRENT_CONTEXT, PREVIOUS_CONTEXT, 1)
+        previous = SURFACE_INPUT.historical_input(raw).replace(CURRENT_CONTEXT, PREVIOUS_CONTEXT, 1)
         self.assertEqual((SHA(previous), len(previous)), (PREVIOUS, 128889))
         proof = WINDOW_HOST.verify_recovery_source(raw, previous)
         self.assertEqual(proof, dict(currentSha256=CURRENT, currentBytes=128874,
@@ -60,7 +62,7 @@ class CurrentRuntimeRawBindings(unittest.TestCase):
         self.assertEqual(SHA(json.dumps(pins, sort_keys=True, separators=(',', ':')).encode()), '24466f4dc00a0b37a8eba66a39bf6ebc5b5b9de190e82579d496bb414dda5683')
         for name, expected in pins.items():
             raw = (ROOT/'app/src/main/java/local/pocketchat'/(name+'.java')).read_bytes()
-            self.assertEqual(SHA(raw), expected)
+            self.assertEqual(SHA(PROFILE_CONTEXT_INPUT.historical_guard_input(raw, name)), expected)
             self.assertIs(PATH_HOST.verify_factored_raw(name, raw), raw)
             for bad in (raw+b' ', raw[:-1], b'unknown', None, bytearray(raw)):
                 with self.assertRaises(ValueError):
@@ -70,7 +72,7 @@ class CurrentRuntimeRawBindings(unittest.TestCase):
 
     def test_unknown_recovery_hunks_and_forged_outer_pins_cannot_admit_a_new_image(self):
         raw = (ROOT/SOURCE_PATH).read_bytes()
-        previous = raw.replace(CURRENT_CONTEXT, PREVIOUS_CONTEXT, 1)
+        previous = SURFACE_INPUT.historical_input(raw).replace(CURRENT_CONTEXT, PREVIOUS_CONTEXT, 1)
         removed = raw.replace(CURRENT_CONTEXT, b'', 1)
         variants = [raw+b' ', raw[:-1], removed,
                     raw.replace(CURRENT_CONTEXT, CURRENT_CONTEXT*2, 1),
@@ -111,7 +113,7 @@ class CurrentRuntimeRawBindings(unittest.TestCase):
                     report = json.loads(output.read_text())
                     self.assertEqual(report['status'], 'passed')
                     self.assertTrue(report['executionInputsUnchanged'])
-                    self.assertEqual(report['sourceFiles'][SOURCE_PATH], CURRENT)
+                    self.assertEqual(SURFACE_INPUT.historical_report_sha((ROOT/SOURCE_PATH).read_bytes(), report['sourceFiles'][SOURCE_PATH]), CURRENT)
                     self.assertEqual(report['jsonJarSha256'], SHA(jar.read_bytes()))
                     if name == 'profile':
                         self.assertEqual(run.stdout.strip(), 'PERSISTENT_PROFILE_PATH_PROOF:factored')

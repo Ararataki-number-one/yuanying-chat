@@ -60,22 +60,26 @@ def main():
     results={}
     for label,before in [('before',True),('after',False)]:
         selected={name:(subprocess.check_output(['git','show',baseline_commit+':app/src/main/java/local/pocketchat/'+name],cwd=ROOT).decode() if before else (PRODUCTION/name).read_text()) for name in names}
-        needles=['void fitActions(','void update(']
+        responsive='void layoutActions(' in selected['LoadingUi.java']
+        needles=['void layoutActions(','private void arrangeActions(','private void loadingSymbol(','void update('] if responsive else ['void fitActions(','void update(']
         if 'void showCover(' in selected['LoadingUi.java']:
             needles+=['static void text(','void hint(','void showCover(','void hideCover(']
         methods={name:member(selected['LoadingUi.java'],name) for name in needles}
         readable=member(selected['DesignUi.java'],'static void readable(')
+        action_width=member(selected['DesignUi.java'],'static int actionWidth(') if responsive else ''
         visibility=member(selected['MainActivity.java'],'static void chromeVisibility(')
         constant=re.search(r'^  static final String DEFERRED_MESSAGE=.*;$',selected['ResourcePressureController.java'],re.M)
         if constant is None:raise ValueError('Missing actual deferred-message constant')
         generated=fixture.replace('/* PRODUCTION_METHODS */','\n'.join(methods.values())).replace('/* READABLE_METHOD */',readable).replace('/* CHROME_VISIBILITY */',visibility).replace('/* DEFERRED_CONSTANT */',constant.group())
+        generated=generated.replace('/* ACTION_WIDTH_METHOD */',action_width if responsive else 'static int actionWidth(Button button,int minimumDp){throw new AssertionError("Responsive action measurement is not a baseline API");}').replace('/* CURRENT_ACTIONS_ADAPTER */','void fitActions(){arrangeActions(false);}' if responsive else '')
         with tempfile.TemporaryDirectory(prefix='loading-performance-'+label+'-') as temporary:
             work=Path(temporary);java=work/'LoadingPerformanceHost.java';java.write_text(generated)
             wait=work/'PageLoadingWait.java';wait.write_text(selected['PageLoadingWait.java'])
             adapters={
                 'android/os/SystemClock.java':'package android.os;public final class SystemClock {public static long now;public static long elapsedRealtime(){return now;}}\n',
                 'android/animation/ValueAnimator.java':'package android.animation;public final class ValueAnimator {public static boolean enabled=true;public static boolean areAnimatorsEnabled(){return enabled;}}\n',
-                'android/content/res/Configuration.java':'package android.content.res;public final class Configuration {public static final int ORIENTATION_PORTRAIT=1,ORIENTATION_LANDSCAPE=2;public int orientation=ORIENTATION_PORTRAIT;}\n',
+                'android/content/res/Configuration.java':'package android.content.res;public final class Configuration {public static final int ORIENTATION_PORTRAIT=1,ORIENTATION_LANDSCAPE=2;public int orientation=ORIENTATION_PORTRAIT;public float fontScale=1f;}\n',
+                'android/util/DisplayMetrics.java':'package android.util;public final class DisplayMetrics {public int widthPixels=900;}\n',
                 'android/text/TextUtils.java':'package android.text;public final class TextUtils {public static boolean equals(CharSequence a,CharSequence b){return a==b||a!=null&&b!=null&&a.toString().contentEquals(b);}public static boolean isEmpty(CharSequence a){return a==null||a.length()==0;}}\n',
             }
             files=[java,wait]
@@ -90,6 +94,7 @@ def main():
         result.update(selectedSourceSha256={name:digest(text.encode()) for name,text in selected.items()},
             extractedMethods={name:digest(text.encode()) for name,text in methods.items()},
             readableMethodSha256=digest(readable.encode()),chromeVisibilityMethodSha256=digest(visibility.encode()),
+            actionWidthMethodSha256=digest(action_width.encode()) if responsive else None,
             deferredMessageSha256=digest(constant.group().encode()),generatedHarnessSha256=digest(generated.encode()))
         results[label]=result
     unchanged=all(path.is_file() and digest(path.read_bytes())==hashes[str(path.relative_to(ROOT))] for path in inputs)
@@ -97,7 +102,7 @@ def main():
     report=dict(status='passed' if unchanged else 'source-changed',passed=total,total=total,sourceCommit=commit,baselineCommit=baseline_commit,
         sourceFiles=hashes,executionInputsUnchanged=unchanged,before=results['before'],after=results['after'],
         actualAndroidExecution=False,actualGeckoExecution=False,actualDevicePerformanceMeasurement=False,
-        scope='Verbatim baseline/current LoadingUi update and fitActions, current text/hint/showCover/hideCover helpers when present, full production PageLoadingWait, and extracted DesignUi.readable/MainActivity.chromeVisibility/deferred message. Explicit counted native View/TextView/Animator/orientation, session and clock adapters. Same100-update live/empty/deferred workloads,20second thresholds, orientation, error details, readable copy and fade callback races. No Android layout, system animator, IME, Gecko, network or device frame-time execution.')
+        scope='Verbatim baseline LoadingUi update/fitActions and current update/layoutActions/arrangeActions/loadingSymbol, current text/hint/showCover/hideCover helpers when present, full production PageLoadingWait, and extracted DesignUi.readable/actionWidth/MainActivity.chromeVisibility/deferred message. The current host-only fitActions name invokes actual arrangeActions(false) for constructor initialization. Explicit counted native View/TextView/Animator/orientation/text-width, session and clock adapters. Same100-update live/empty/deferred workloads,20second thresholds, orientation, error details, readable copy and fade callback races, plus narrow/enlarged-label action layout and measurement-cache checks. No Android layout, system animator, IME, Gecko, network or device frame-time execution.')
     args.output.parent.mkdir(parents=True,exist_ok=True);args.output.write_text(json.dumps(report,ensure_ascii=False,indent=2)+'\n')
     print(json.dumps(dict(status=report['status'],passed=total,total=total,
         textAssignments={name:{label:results[label]['workloads'][name]['textAssignments'] for label in ['before','after']} for name in ['live100','empty100','deferred100']},

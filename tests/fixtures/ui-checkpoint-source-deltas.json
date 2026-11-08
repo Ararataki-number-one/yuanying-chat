@@ -7,8 +7,8 @@
       "previousCommit": "76d838cf697f86f9f4795b21d97d9c475271ea84",
       "previousBytes": 45804,
       "previousSha256": "65fb205cbb7a466858a0a1869cd4b5388f70026d4e09da078318827e92432f4f",
-      "reviewedBytes": 46016,
-      "reviewedSha256": "b85896aa5b94e33fb40bbada323d239a66f75c12a39bf9adb2a4ff3e3483e14d",
+      "reviewedBytes": 47025,
+      "reviewedSha256": "12d0f61c0f53efd5766f37cf34ae5526acadfa287a387eb81855dd2e5943783f",
       "deltas": [
         {
           "previous": "import sys\n\nroot=pathlib.Path(__file__).resolve().parents[2];out=root/'work/gecko-integration';shots=out/'ui-visuals';shots.mkdir(exist_ok=True)\np=argparse.ArgumentParser();p.add_argument('--adb',required=True);p.add_argument('--serial',required=True);args=p.parse_args()\nsource=subprocess.check_output(['git','rev-parse','HEAD'],cwd=root,text=True).strip()\npackage='local.pocketchat.test';records=[]\nsys.path.insert(0,str(root/'tools/gecko'))\n",
@@ -33,6 +33,62 @@
           "currentBytes": 540,
           "previousSha256": "96f8e4e38b5d2e15ea6bd79d17d0a9e630923ac450c1273db973198694b0e113",
           "currentSha256": "ed2fb6d13e9da95d9475af1c45e64c76bce6353eacd75e5f52c376b57715c626"
+        },
+        {
+          "previous": "#!/usr/bin/env python3\n\"\"\"Actual Android screenshots of production UI; never touches the formal app.\"\"\"\nimport argparse,json,pathlib,re,struct,subprocess,time,xml.etree.ElementTree as ET\nimport http.server,importlib.util,threading,uuid,os\nimport sys\n\n",
+          "current": "#!/usr/bin/env python3\n\"\"\"Actual Android screenshots of production UI; never touches the formal app.\"\"\"\nimport argparse,hashlib,json,pathlib,re,struct,subprocess,time,xml.etree.ElementTree as ET\nimport http.server,importlib.util,threading,uuid,os\nimport sys\n\n",
+          "previousBytes": 251,
+          "currentBytes": 259,
+          "previousSha256": "d1229b3813886bd47f8b0d640df5b79962e67549fbc30e4a7e56e9d0ec3b8e10",
+          "currentSha256": "528578891219678bb4fe779270349031b99135046d234d21cfc221d09dce1e93"
+        },
+        {
+          "previous": "package='local.pocketchat.test';records=[]\nsys.path.insert(0,str(root/'tools/gecko'))\nfrom ui_visual_capture import UiVisualCapture\nfrom diagnostic_capture_privacy import checked_text\nfrom ui_visual_contract import LIGHT_SCENES, LARGE_SCENES, DARK_SCENES, LANDSCAPE_SCENES, required_captures, verify_captures, verify_download_location\nscenes=LIGHT_SCENES\n",
+          "current": "package='local.pocketchat.test';records=[]\nsys.path.insert(0,str(root/'tools/gecko'))\nfrom ui_visual_capture import UiVisualCapture\nfrom native_navigation_v2 import protocol_for_variant,chat_ready,validate_chat,capture_native_fonts\nfrom diagnostic_capture_privacy import checked_text\nfrom ui_visual_contract import LIGHT_SCENES, LARGE_SCENES, DARK_SCENES, LANDSCAPE_SCENES, required_captures, verify_captures, verify_download_location\nscenes=LIGHT_SCENES\n",
+          "previousBytes": 355,
+          "currentBytes": 455,
+          "previousSha256": "eff66f1a5983546968d3cdaed6e8d89a03748da17e8822cbd8eaee63f3539fc6",
+          "currentSha256": "1092bbb684db1a2035e3f41f63e342ff6dcec9162e45f7e47405f2cad64680a5"
+        },
+        {
+          "previous": "    launch=['shell','am','start','-W','-n',package+'/local.pocketchat.UiVisualIntegrationActivity','--es','visualAction',scene]\n    if label_nonce:launch.extend(['--es','visualNonce',label_nonce])\n    adb(*launch)\n    required={'chat':'会话','environments':'环境管理','network':'固定测试出口','proxy':'代理地址','entries':'选择入口','browser':'基本信息','preferences':'基本信息','settings':'启动与界面','network-menu':'导入网络',\n      'environment-picker':'切换环境','downloads':'项目资料与界面设计说明.pdf','feedback':'一句话说明','appearance':'白天与黑夜','default-entry':'默认环境与启动入口',\n      'subscription-form':'订阅名称','exit-form':'SOCKS5 服务器','route-editor':'保存并应用','import':'选择分享文件','brand':'元婴期院士','templates':'选择模板','zoom':'网页缩放','update':'当前安装版本','audit':'环境自检与变更','file-preview':'双指缩放 · 拖动查看','delete-file':'删除文件','share-preview':'分享整条线路'}[scene]\n",
+          "current": "    launch=['shell','am','start','-W','-n',package+'/local.pocketchat.UiVisualIntegrationActivity','--es','visualAction',scene]\n    if label_nonce:launch.extend(['--es','visualNonce',label_nonce])\n    adb(*launch)\n    navigation_protocol=protocol_for_variant(variant)\n    required={'chat':'会话','environments':'环境管理','network':'固定测试出口','proxy':'代理地址','entries':'选择入口','browser':'基本信息','preferences':'基本信息','settings':'启动与界面','network-menu':'导入网络',\n      'environment-picker':'切换环境','downloads':'项目资料与界面设计说明.pdf','feedback':'一句话说明','appearance':'白天与黑夜','default-entry':'默认环境与启动入口',\n      'subscription-form':'订阅名称','exit-form':'SOCKS5 服务器','route-editor':'保存并应用','import':'选择分享文件','brand':'元婴期院士','templates':'选择模板','zoom':'网页缩放','update':'当前安装版本','audit':'环境自检与变更','file-preview':'双指缩放 · 拖动查看','delete-file':'删除文件','share-preview':'分享整条线路'}[scene]\n",
+          "previousBytes": 1060,
+          "currentBytes": 1114,
+          "previousSha256": "91e68698cb4bb7b2e2da7bb1d709ca5c6f25ff68ba48c89dba67d12d509f171b",
+          "currentSha256": "d82daf900cf3254328948eb61dfb0fad24c1be440aff2b19943cb68a47772f51"
+        },
+        {
+          "previous": "        xml=dump(deadline=deadline)\n        runtime=adb('logcat','-d','-s','AndroidRuntime:E','*:S')\n        if 'FATAL EXCEPTION' in runtime:raise AssertionError((variant,scene,'Android UI crashed',runtime[-5000:]))\n        if required in xml:break\n        if scene in ('exit-form','templates','downloads') and readiness_scrolls<8:\n            candidates=[n for n in ET.fromstring(xml).iter('node') if n.attrib.get('class')=='android.widget.ScrollView' and n.attrib.get('scrollable')=='true']\n            if candidates:\n",
+          "current": "        xml=dump(deadline=deadline)\n        runtime=adb('logcat','-d','-s','AndroidRuntime:E','*:S')\n        if 'FATAL EXCEPTION' in runtime:raise AssertionError((variant,scene,'Android UI crashed',runtime[-5000:]))\n        if scene=='chat' and navigation_protocol==2:\n            if chat_ready(xml,width*3,height*3,480):break\n        elif required in xml:break\n        if scene in ('exit-form','templates','downloads') and readiness_scrolls<8:\n            candidates=[n for n in ET.fromstring(xml).iter('node') if n.attrib.get('class')=='android.widget.ScrollView' and n.attrib.get('scrollable')=='true']\n            if candidates:\n",
+          "previousBytes": 520,
+          "currentBytes": 633,
+          "previousSha256": "04668c5de5da09c1e22c6f45d6e009c203e498b4a70e9c36dac7e783cd317a34",
+          "currentSha256": "34ed941695bf36b822f07734d749a57f5e84d82ccc6d5249cfea807d1ea08cb2"
+        },
+        {
+          "previous": "        assert seen==expected,(variant,scene,'Preference controls missing or unexpected',sorted(seen))\n        preference_check={'preferenceControls':sorted(seen),'removedNoticeControlsAbsent':True,'scrollFrames':len(collected),'tabScrolls':tab_scrolls}\n    if scene=='chat':\n        time.sleep(2.5);xml=dump();assert all(label in xml for label in ['会话','环境','下载','网络','设置'])\n        assert not any(n.attrib.get('text') in ['简洁','原网页'] for n in ET.fromstring(xml).iter('node')),xml\n        nodes=list(ET.fromstring(xml).iter('node'))\n        environment=[n for n in nodes if n.attrib.get('content-desc','').startswith('当前环境：')]\n        network=[n for n in nodes if n.attrib.get('content-desc','').startswith('当前环境网络：')]\n        assert len(environment)==len(network)==1,xml\n        assert environment[0].attrib.get('content-desc')=='当前环境：日常会话，点击展开环境工具栏' and environment[0].attrib.get('clickable')=='true',xml\n        assert network[0].attrib.get('clickable')=='false',xml\n        assert not any(n.attrib.get('content-desc') in ['管理环境','更多'] for n in nodes),xml\n        left,top,right,bottom=map(int,re.findall(r'\\d+',environment[0].attrib['bounds']))\n        nl,nt,nr,nb=map(int,re.findall(r'\\d+',network[0].attrib['bounds']))\n        assert 0<=left<right<=width*3 and 0<=nl<nr<=width*3 and top<bottom==nt<nb,xml\n        assert bottom-top<=(28 if scale==1 else 48)*3,xml\n    assert 'FATAL EXCEPTION' not in adb('logcat','-d','-s','AndroidRuntime:E','*:S')\n    if variant=='current' and scene=='entries':\n        choices=[n for n in ET.fromstring(xml).iter('node') if n.attrib.get('class') in ['android.widget.CheckBox','android.widget.RadioButton']]\n",
+          "current": "        assert seen==expected,(variant,scene,'Preference controls missing or unexpected',sorted(seen))\n        preference_check={'preferenceControls':sorted(seen),'removedNoticeControlsAbsent':True,'scrollFrames':len(collected),'tabScrolls':tab_scrolls}\n    if scene=='chat':\n        if navigation_protocol==1:\n            time.sleep(2.5);xml=dump();assert all(label in xml for label in ['会话','环境','下载','网络','设置'])\n            assert not any(n.attrib.get('text') in ['简洁','原网页'] for n in ET.fromstring(xml).iter('node')),xml\n            nodes=list(ET.fromstring(xml).iter('node'))\n            environment=[n for n in nodes if n.attrib.get('content-desc','').startswith('当前环境：')]\n            network=[n for n in nodes if n.attrib.get('content-desc','').startswith('当前环境网络：')]\n            assert len(environment)==len(network)==1,xml\n            assert environment[0].attrib.get('content-desc')=='当前环境：日常会话，点击展开环境工具栏' and environment[0].attrib.get('clickable')=='true',xml\n            assert network[0].attrib.get('clickable')=='false',xml\n            assert not any(n.attrib.get('content-desc') in ['管理环境','更多'] for n in nodes),xml\n            left,top,right,bottom=map(int,re.findall(r'\\d+',environment[0].attrib['bounds']))\n            nl,nt,nr,nb=map(int,re.findall(r'\\d+',network[0].attrib['bounds']))\n            assert 0<=left<right<=width*3 and 0<=nl<nr<=width*3 and top<bottom==nt<nb,xml\n            assert bottom-top<=(28 if scale==1 else 48)*3,xml\n        else:\n            time.sleep(2.5);xml=dump();native_navigation=validate_chat(xml,width*3,height*3,480)\n    assert 'FATAL EXCEPTION' not in adb('logcat','-d','-s','AndroidRuntime:E','*:S')\n    if variant=='current' and scene=='entries':\n        choices=[n for n in ET.fromstring(xml).iter('node') if n.attrib.get('class') in ['android.widget.CheckBox','android.widget.RadioButton']]\n",
+          "previousBytes": 1753,
+          "currentBytes": 1951,
+          "previousSha256": "dd9c15c98d0f4a8f71055e03facb657e63d604df789c7895165c7a13d3723462",
+          "currentSha256": "26f589a5bba353e833cf784b1759c9c7564e86f5f9bba32fbe519dc9b31eb92a"
+        },
+        {
+          "previous": "    density=int(re.findall(r'density: (\\d+)',adb('shell','wm','density'))[-1]);assert density==480,density\n    (shots/(stem+'.png')).write_bytes(raw)\n    record={'variant':variant,'theme':theme,'logicalViewport':f'{width}x{height}','actualPixels':list(pixels),'densityDpi':density,'fontScale':scale,'scene':scene,'image':stem+'.png','xml':stem+'.xml','readinessScrolls':readiness_scrolls}\n    if scene=='downloads':\n        # Small native payload from this exact Activity invocation; never infer\n        # drawn text completeness from accessibility XML's full text attribute.\n",
+          "current": "    density=int(re.findall(r'density: (\\d+)',adb('shell','wm','density'))[-1]);assert density==480,density\n    (shots/(stem+'.png')).write_bytes(raw)\n    record={'variant':variant,'theme':theme,'logicalViewport':f'{width}x{height}','actualPixels':list(pixels),'densityDpi':density,'fontScale':scale,'scene':scene,'image':stem+'.png','xml':stem+'.xml','readinessScrolls':readiness_scrolls}\n    if scene=='chat' and navigation_protocol==2:\n        identity=dict(sourceCommit=source,sourceTree=subprocess.check_output(['git','rev-parse','HEAD^{tree}'],cwd=root,text=True).strip(),\n                      apkSha256=hashlib.sha256((out/('ui-'+variant+'.apk')).read_bytes()).hexdigest())\n        record['nativeNavigationVersion']=2\n        record['nativeNavigation']=native_navigation\n        record['nativeNavigationFonts']=capture_native_fonts(adb_scene,identity=identity,font_scale=scale,density=480,out=shots,stem=stem)\n    if scene=='downloads':\n        # Small native payload from this exact Activity invocation; never infer\n        # drawn text completeness from accessibility XML's full text attribute.\n",
+          "previousBytes": 576,
+          "currentBytes": 1104,
+          "previousSha256": "b8d361a1b21f2b92f2a1080377be86ea1c084af5fc18f06422150a5800a6024b",
+          "currentSha256": "a7cb1215a8485cf6c4fc87d39588f3440f67b66609a439cdee9a1c508b1539cd"
+        },
+        {
+          "previous": "        # This partial file cannot replace compact-chrome-results or full UI acceptance.\n        (out/'ui-reload-confirmation.json').write_text(json.dumps(reload_confirmation,ensure_ascii=False,indent=2)+'\\n')\n        (out/'ui-reload-log.txt').write_text(checked_text(adb('logcat','-d'))[0])\n        from run_chrome_collapse import run as run_chrome_collapse\n        auto_collapse=run_chrome_collapse(adb,lambda *parts:subprocess.check_output([args.adb,'-s',args.serial,*parts],timeout=90),source,reload_loopback.TRACE,out,focus)\n    finally:\n        (out/'ui-collapse-server-trace.json').write_text(json.dumps({'sourceCommit':source,'diagnosticOnly':True,'releaseAcceptance':False,'events':reload_loopback.TRACE},ensure_ascii=False,indent=2)+'\\n')\n",
+          "current": "        # This partial file cannot replace compact-chrome-results or full UI acceptance.\n        (out/'ui-reload-confirmation.json').write_text(json.dumps(reload_confirmation,ensure_ascii=False,indent=2)+'\\n')\n        (out/'ui-reload-log.txt').write_text(checked_text(adb('logcat','-d'))[0])\n        from run_chrome_collapse import run_current as run_chrome_collapse\n        auto_collapse=run_chrome_collapse(adb,lambda *parts:subprocess.check_output([args.adb,'-s',args.serial,*parts],timeout=90),source,reload_loopback.TRACE,out,focus)\n    finally:\n        (out/'ui-collapse-server-trace.json').write_text(json.dumps({'sourceCommit':source,'diagnosticOnly':True,'releaseAcceptance':False,'events':reload_loopback.TRACE},ensure_ascii=False,indent=2)+'\\n')\n",
+          "previousBytes": 749,
+          "currentBytes": 757,
+          "previousSha256": "c1235258ef819301ca5d7ae08d361a6528bf268e7181fed7e62c69c807c25b77",
+          "currentSha256": "e1c9cf336ab3eae93285f0d3e0c1d149afbaac8126fe55d30d0f97f659afece6"
         }
       ]
     },
@@ -136,5 +192,271 @@
     },
     "checkpointReviewedSha256": "beff98f6b3c7e9bb3dee7548de829f94ed1e9c0f7109b44546a839b6b0799c46",
     "checkpointPreviousSha256": "57d58a5ee75695c7e54a44fbf3a0799022d02767dde3a617ae241ac33a852f3b"
+  },
+  "runnerNavigationV2": {
+    "kind": "historical-comparison-only",
+    "actualAndroidExecution": false,
+    "runtimeAcceptance": false,
+    "previousCommit": "06a802663075664b75aa9d19184d9c02b6bab7c9",
+    "previousBytes": 46016,
+    "previousSha256": "b85896aa5b94e33fb40bbada323d239a66f75c12a39bf9adb2a4ff3e3483e14d",
+    "reviewedBytes": 47025,
+    "reviewedSha256": "12d0f61c0f53efd5766f37cf34ae5526acadfa287a387eb81855dd2e5943783f",
+    "deltas": [
+      {
+        "previous": "#!/usr/bin/env python3\n\"\"\"Actual Android screenshots of production UI; never touches the formal app.\"\"\"\nimport argparse,json,pathlib,re,struct,subprocess,time,xml.etree.ElementTree as ET\nimport http.server,importlib.util,threading,uuid,os\nimport sys\n\n",
+        "current": "#!/usr/bin/env python3\n\"\"\"Actual Android screenshots of production UI; never touches the formal app.\"\"\"\nimport argparse,hashlib,json,pathlib,re,struct,subprocess,time,xml.etree.ElementTree as ET\nimport http.server,importlib.util,threading,uuid,os\nimport sys\n\n",
+        "previousBytes": 251,
+        "currentBytes": 259,
+        "previousSha256": "d1229b3813886bd47f8b0d640df5b79962e67549fbc30e4a7e56e9d0ec3b8e10",
+        "currentSha256": "528578891219678bb4fe779270349031b99135046d234d21cfc221d09dce1e93"
+      },
+      {
+        "previous": "package='local.pocketchat.test';records=[]\nsys.path.insert(0,str(root/'tools/gecko'))\nfrom ui_visual_capture import UiVisualCapture\nfrom diagnostic_capture_privacy import checked_text\nfrom ui_visual_contract import LIGHT_SCENES, LARGE_SCENES, DARK_SCENES, LANDSCAPE_SCENES, required_captures, verify_captures, verify_download_location\nscenes=LIGHT_SCENES\n",
+        "current": "package='local.pocketchat.test';records=[]\nsys.path.insert(0,str(root/'tools/gecko'))\nfrom ui_visual_capture import UiVisualCapture\nfrom native_navigation_v2 import protocol_for_variant,chat_ready,validate_chat,capture_native_fonts\nfrom diagnostic_capture_privacy import checked_text\nfrom ui_visual_contract import LIGHT_SCENES, LARGE_SCENES, DARK_SCENES, LANDSCAPE_SCENES, required_captures, verify_captures, verify_download_location\nscenes=LIGHT_SCENES\n",
+        "previousBytes": 355,
+        "currentBytes": 455,
+        "previousSha256": "eff66f1a5983546968d3cdaed6e8d89a03748da17e8822cbd8eaee63f3539fc6",
+        "currentSha256": "1092bbb684db1a2035e3f41f63e342ff6dcec9162e45f7e47405f2cad64680a5"
+      },
+      {
+        "previous": "    launch=['shell','am','start','-W','-n',package+'/local.pocketchat.UiVisualIntegrationActivity','--es','visualAction',scene]\n    if label_nonce:launch.extend(['--es','visualNonce',label_nonce])\n    adb(*launch)\n    required={'chat':'会话','environments':'环境管理','network':'固定测试出口','proxy':'代理地址','entries':'选择入口','browser':'基本信息','preferences':'基本信息','settings':'启动与界面','network-menu':'导入网络',\n      'environment-picker':'切换环境','downloads':'项目资料与界面设计说明.pdf','feedback':'一句话说明','appearance':'白天与黑夜','default-entry':'默认环境与启动入口',\n      'subscription-form':'订阅名称','exit-form':'SOCKS5 服务器','route-editor':'保存并应用','import':'选择分享文件','brand':'元婴期院士','templates':'选择模板','zoom':'网页缩放','update':'当前安装版本','audit':'环境自检与变更','file-preview':'双指缩放 · 拖动查看','delete-file':'删除文件','share-preview':'分享整条线路'}[scene]\n",
+        "current": "    launch=['shell','am','start','-W','-n',package+'/local.pocketchat.UiVisualIntegrationActivity','--es','visualAction',scene]\n    if label_nonce:launch.extend(['--es','visualNonce',label_nonce])\n    adb(*launch)\n    navigation_protocol=protocol_for_variant(variant)\n    required={'chat':'会话','environments':'环境管理','network':'固定测试出口','proxy':'代理地址','entries':'选择入口','browser':'基本信息','preferences':'基本信息','settings':'启动与界面','network-menu':'导入网络',\n      'environment-picker':'切换环境','downloads':'项目资料与界面设计说明.pdf','feedback':'一句话说明','appearance':'白天与黑夜','default-entry':'默认环境与启动入口',\n      'subscription-form':'订阅名称','exit-form':'SOCKS5 服务器','route-editor':'保存并应用','import':'选择分享文件','brand':'元婴期院士','templates':'选择模板','zoom':'网页缩放','update':'当前安装版本','audit':'环境自检与变更','file-preview':'双指缩放 · 拖动查看','delete-file':'删除文件','share-preview':'分享整条线路'}[scene]\n",
+        "previousBytes": 1060,
+        "currentBytes": 1114,
+        "previousSha256": "91e68698cb4bb7b2e2da7bb1d709ca5c6f25ff68ba48c89dba67d12d509f171b",
+        "currentSha256": "d82daf900cf3254328948eb61dfb0fad24c1be440aff2b19943cb68a47772f51"
+      },
+      {
+        "previous": "        xml=dump(deadline=deadline)\n        runtime=adb('logcat','-d','-s','AndroidRuntime:E','*:S')\n        if 'FATAL EXCEPTION' in runtime:raise AssertionError((variant,scene,'Android UI crashed',runtime[-5000:]))\n        if required in xml:break\n        if scene in ('exit-form','templates','downloads') and readiness_scrolls<8:\n            candidates=[n for n in ET.fromstring(xml).iter('node') if n.attrib.get('class')=='android.widget.ScrollView' and n.attrib.get('scrollable')=='true']\n            if candidates:\n",
+        "current": "        xml=dump(deadline=deadline)\n        runtime=adb('logcat','-d','-s','AndroidRuntime:E','*:S')\n        if 'FATAL EXCEPTION' in runtime:raise AssertionError((variant,scene,'Android UI crashed',runtime[-5000:]))\n        if scene=='chat' and navigation_protocol==2:\n            if chat_ready(xml,width*3,height*3,480):break\n        elif required in xml:break\n        if scene in ('exit-form','templates','downloads') and readiness_scrolls<8:\n            candidates=[n for n in ET.fromstring(xml).iter('node') if n.attrib.get('class')=='android.widget.ScrollView' and n.attrib.get('scrollable')=='true']\n            if candidates:\n",
+        "previousBytes": 520,
+        "currentBytes": 633,
+        "previousSha256": "04668c5de5da09c1e22c6f45d6e009c203e498b4a70e9c36dac7e783cd317a34",
+        "currentSha256": "34ed941695bf36b822f07734d749a57f5e84d82ccc6d5249cfea807d1ea08cb2"
+      },
+      {
+        "previous": "        assert seen==expected,(variant,scene,'Preference controls missing or unexpected',sorted(seen))\n        preference_check={'preferenceControls':sorted(seen),'removedNoticeControlsAbsent':True,'scrollFrames':len(collected),'tabScrolls':tab_scrolls}\n    if scene=='chat':\n        time.sleep(2.5);xml=dump();assert all(label in xml for label in ['会话','环境','下载','网络','设置'])\n        assert not any(n.attrib.get('text') in ['简洁','原网页'] for n in ET.fromstring(xml).iter('node')),xml\n        nodes=list(ET.fromstring(xml).iter('node'))\n        environment=[n for n in nodes if n.attrib.get('content-desc','').startswith('当前环境：')]\n        network=[n for n in nodes if n.attrib.get('content-desc','').startswith('当前环境网络：')]\n        assert len(environment)==len(network)==1,xml\n        assert environment[0].attrib.get('content-desc')=='当前环境：日常会话，点击展开环境工具栏' and environment[0].attrib.get('clickable')=='true',xml\n        assert network[0].attrib.get('clickable')=='false',xml\n        assert not any(n.attrib.get('content-desc') in ['管理环境','更多'] for n in nodes),xml\n        left,top,right,bottom=map(int,re.findall(r'\\d+',environment[0].attrib['bounds']))\n        nl,nt,nr,nb=map(int,re.findall(r'\\d+',network[0].attrib['bounds']))\n        assert 0<=left<right<=width*3 and 0<=nl<nr<=width*3 and top<bottom==nt<nb,xml\n        assert bottom-top<=(28 if scale==1 else 48)*3,xml\n    assert 'FATAL EXCEPTION' not in adb('logcat','-d','-s','AndroidRuntime:E','*:S')\n    if variant=='current' and scene=='entries':\n        choices=[n for n in ET.fromstring(xml).iter('node') if n.attrib.get('class') in ['android.widget.CheckBox','android.widget.RadioButton']]\n",
+        "current": "        assert seen==expected,(variant,scene,'Preference controls missing or unexpected',sorted(seen))\n        preference_check={'preferenceControls':sorted(seen),'removedNoticeControlsAbsent':True,'scrollFrames':len(collected),'tabScrolls':tab_scrolls}\n    if scene=='chat':\n        if navigation_protocol==1:\n            time.sleep(2.5);xml=dump();assert all(label in xml for label in ['会话','环境','下载','网络','设置'])\n            assert not any(n.attrib.get('text') in ['简洁','原网页'] for n in ET.fromstring(xml).iter('node')),xml\n            nodes=list(ET.fromstring(xml).iter('node'))\n            environment=[n for n in nodes if n.attrib.get('content-desc','').startswith('当前环境：')]\n            network=[n for n in nodes if n.attrib.get('content-desc','').startswith('当前环境网络：')]\n            assert len(environment)==len(network)==1,xml\n            assert environment[0].attrib.get('content-desc')=='当前环境：日常会话，点击展开环境工具栏' and environment[0].attrib.get('clickable')=='true',xml\n            assert network[0].attrib.get('clickable')=='false',xml\n            assert not any(n.attrib.get('content-desc') in ['管理环境','更多'] for n in nodes),xml\n            left,top,right,bottom=map(int,re.findall(r'\\d+',environment[0].attrib['bounds']))\n            nl,nt,nr,nb=map(int,re.findall(r'\\d+',network[0].attrib['bounds']))\n            assert 0<=left<right<=width*3 and 0<=nl<nr<=width*3 and top<bottom==nt<nb,xml\n            assert bottom-top<=(28 if scale==1 else 48)*3,xml\n        else:\n            time.sleep(2.5);xml=dump();native_navigation=validate_chat(xml,width*3,height*3,480)\n    assert 'FATAL EXCEPTION' not in adb('logcat','-d','-s','AndroidRuntime:E','*:S')\n    if variant=='current' and scene=='entries':\n        choices=[n for n in ET.fromstring(xml).iter('node') if n.attrib.get('class') in ['android.widget.CheckBox','android.widget.RadioButton']]\n",
+        "previousBytes": 1753,
+        "currentBytes": 1951,
+        "previousSha256": "dd9c15c98d0f4a8f71055e03facb657e63d604df789c7895165c7a13d3723462",
+        "currentSha256": "26f589a5bba353e833cf784b1759c9c7564e86f5f9bba32fbe519dc9b31eb92a"
+      },
+      {
+        "previous": "    density=int(re.findall(r'density: (\\d+)',adb('shell','wm','density'))[-1]);assert density==480,density\n    (shots/(stem+'.png')).write_bytes(raw)\n    record={'variant':variant,'theme':theme,'logicalViewport':f'{width}x{height}','actualPixels':list(pixels),'densityDpi':density,'fontScale':scale,'scene':scene,'image':stem+'.png','xml':stem+'.xml','readinessScrolls':readiness_scrolls}\n    if scene=='downloads':\n        # Small native payload from this exact Activity invocation; never infer\n        # drawn text completeness from accessibility XML's full text attribute.\n",
+        "current": "    density=int(re.findall(r'density: (\\d+)',adb('shell','wm','density'))[-1]);assert density==480,density\n    (shots/(stem+'.png')).write_bytes(raw)\n    record={'variant':variant,'theme':theme,'logicalViewport':f'{width}x{height}','actualPixels':list(pixels),'densityDpi':density,'fontScale':scale,'scene':scene,'image':stem+'.png','xml':stem+'.xml','readinessScrolls':readiness_scrolls}\n    if scene=='chat' and navigation_protocol==2:\n        identity=dict(sourceCommit=source,sourceTree=subprocess.check_output(['git','rev-parse','HEAD^{tree}'],cwd=root,text=True).strip(),\n                      apkSha256=hashlib.sha256((out/('ui-'+variant+'.apk')).read_bytes()).hexdigest())\n        record['nativeNavigationVersion']=2\n        record['nativeNavigation']=native_navigation\n        record['nativeNavigationFonts']=capture_native_fonts(adb_scene,identity=identity,font_scale=scale,density=480,out=shots,stem=stem)\n    if scene=='downloads':\n        # Small native payload from this exact Activity invocation; never infer\n        # drawn text completeness from accessibility XML's full text attribute.\n",
+        "previousBytes": 576,
+        "currentBytes": 1104,
+        "previousSha256": "b8d361a1b21f2b92f2a1080377be86ea1c084af5fc18f06422150a5800a6024b",
+        "currentSha256": "a7cb1215a8485cf6c4fc87d39588f3440f67b66609a439cdee9a1c508b1539cd"
+      },
+      {
+        "previous": "        # This partial file cannot replace compact-chrome-results or full UI acceptance.\n        (out/'ui-reload-confirmation.json').write_text(json.dumps(reload_confirmation,ensure_ascii=False,indent=2)+'\\n')\n        (out/'ui-reload-log.txt').write_text(checked_text(adb('logcat','-d'))[0])\n        from run_chrome_collapse import run as run_chrome_collapse\n        auto_collapse=run_chrome_collapse(adb,lambda *parts:subprocess.check_output([args.adb,'-s',args.serial,*parts],timeout=90),source,reload_loopback.TRACE,out,focus)\n    finally:\n        (out/'ui-collapse-server-trace.json').write_text(json.dumps({'sourceCommit':source,'diagnosticOnly':True,'releaseAcceptance':False,'events':reload_loopback.TRACE},ensure_ascii=False,indent=2)+'\\n')\n",
+        "current": "        # This partial file cannot replace compact-chrome-results or full UI acceptance.\n        (out/'ui-reload-confirmation.json').write_text(json.dumps(reload_confirmation,ensure_ascii=False,indent=2)+'\\n')\n        (out/'ui-reload-log.txt').write_text(checked_text(adb('logcat','-d'))[0])\n        from run_chrome_collapse import run_current as run_chrome_collapse\n        auto_collapse=run_chrome_collapse(adb,lambda *parts:subprocess.check_output([args.adb,'-s',args.serial,*parts],timeout=90),source,reload_loopback.TRACE,out,focus)\n    finally:\n        (out/'ui-collapse-server-trace.json').write_text(json.dumps({'sourceCommit':source,'diagnosticOnly':True,'releaseAcceptance':False,'events':reload_loopback.TRACE},ensure_ascii=False,indent=2)+'\\n')\n",
+        "previousBytes": 749,
+        "currentBytes": 757,
+        "previousSha256": "c1235258ef819301ca5d7ae08d361a6528bf268e7181fed7e62c69c807c25b77",
+        "currentSha256": "e1c9cf336ab3eae93285f0d3e0c1d149afbaac8126fe55d30d0f97f659afece6"
+      }
+    ],
+    "astPairs": {
+      "3e66c8780755fb73fe5b12ca0fdf319daa8e208a357c43adb7a8b70e2660abef": {
+        "previousAstSha256": "e4d4116f7bf22e5a791af482e4315446c3e521d5dec0a4d15543337650491220",
+        "operations": [
+          {
+            "path": [
+              "body"
+            ],
+            "currentStart": 1,
+            "currentEnd": 2,
+            "previousSource": "import argparse, json, pathlib, re, struct, subprocess, time, xml.etree.ElementTree as ET\n",
+            "currentSource": "import argparse, hashlib, json, pathlib, re, struct, subprocess, time, xml.etree.ElementTree as ET\n",
+            "previousAstSha256": "8f7a4542fe08b85c92346ae6534ab9254ba7dd824899ca6a78b214dc94b7e207",
+            "currentAstSha256": "a6d3c9899aa810e6e824fb00365e6c32c40e1cc2aadcf23972baa6219eb82ab5"
+          },
+          {
+            "path": [
+              "body"
+            ],
+            "currentStart": 18,
+            "currentEnd": 19,
+            "previousSource": "",
+            "currentSource": "from native_navigation_v2 import protocol_for_variant, chat_ready, validate_chat, capture_native_fonts\n",
+            "previousAstSha256": "3543b4693a36a1098850b8bc928887694ed59a6deb7d3dfd0339de01f55a77b6",
+            "currentAstSha256": "6898574ea5c2f984f04ab3c3ef31f840acc81aadba337849081d3ffbe2cda90e"
+          },
+          {
+            "path": [
+              "body",
+              36,
+              "body"
+            ],
+            "currentStart": 11,
+            "currentEnd": 12,
+            "previousSource": "",
+            "currentSource": "navigation_protocol = protocol_for_variant(variant)\n",
+            "previousAstSha256": "3543b4693a36a1098850b8bc928887694ed59a6deb7d3dfd0339de01f55a77b6",
+            "currentAstSha256": "c8943f32a0925fd560945da4195e289fdd53eb05679544f4676c2b0517000263"
+          },
+          {
+            "path": [
+              "body",
+              36,
+              "body",
+              16,
+              "body"
+            ],
+            "currentStart": 3,
+            "currentEnd": 4,
+            "previousSource": "if required in xml:\n    break\n",
+            "currentSource": "if scene == 'chat' and navigation_protocol == 2:\n    if chat_ready(xml, width * 3, height * 3, 480):\n        break\nelif required in xml:\n    break\n",
+            "previousAstSha256": "72bc2ef65b6db1b2302e32e5e8053ddd8289b731fba39cfac0a42945dbbd459f",
+            "currentAstSha256": "d9b9012a5f2cff9ccf4203383c1c936cee445dd38be3201fec149e6e01287864"
+          },
+          {
+            "path": [
+              "body",
+              36,
+              "body",
+              21,
+              "body"
+            ],
+            "currentStart": 0,
+            "currentEnd": 1,
+            "previousSource": "time.sleep(2.5)\nxml = dump()\nassert all((label in xml for label in ['会话', '环境', '下载', '网络', '设置']))\nassert not any((n.attrib.get('text') in ['简洁', '原网页'] for n in ET.fromstring(xml).iter('node'))), xml\nnodes = list(ET.fromstring(xml).iter('node'))\nenvironment = [n for n in nodes if n.attrib.get('content-desc', '').startswith('当前环境：')]\nnetwork = [n for n in nodes if n.attrib.get('content-desc', '').startswith('当前环境网络：')]\nassert len(environment) == len(network) == 1, xml\nassert environment[0].attrib.get('content-desc') == '当前环境：日常会话，点击展开环境工具栏' and environment[0].attrib.get('clickable') == 'true', xml\nassert network[0].attrib.get('clickable') == 'false', xml\nassert not any((n.attrib.get('content-desc') in ['管理环境', '更多'] for n in nodes)), xml\nleft, top, right, bottom = map(int, re.findall('\\\\d+', environment[0].attrib['bounds']))\nnl, nt, nr, nb = map(int, re.findall('\\\\d+', network[0].attrib['bounds']))\nassert 0 <= left < right <= width * 3 and 0 <= nl < nr <= width * 3 and (top < bottom == nt < nb), xml\nassert bottom - top <= (28 if scale == 1 else 48) * 3, xml\n",
+            "currentSource": "if navigation_protocol == 1:\n    time.sleep(2.5)\n    xml = dump()\n    assert all((label in xml for label in ['会话', '环境', '下载', '网络', '设置']))\n    assert not any((n.attrib.get('text') in ['简洁', '原网页'] for n in ET.fromstring(xml).iter('node'))), xml\n    nodes = list(ET.fromstring(xml).iter('node'))\n    environment = [n for n in nodes if n.attrib.get('content-desc', '').startswith('当前环境：')]\n    network = [n for n in nodes if n.attrib.get('content-desc', '').startswith('当前环境网络：')]\n    assert len(environment) == len(network) == 1, xml\n    assert environment[0].attrib.get('content-desc') == '当前环境：日常会话，点击展开环境工具栏' and environment[0].attrib.get('clickable') == 'true', xml\n    assert network[0].attrib.get('clickable') == 'false', xml\n    assert not any((n.attrib.get('content-desc') in ['管理环境', '更多'] for n in nodes)), xml\n    left, top, right, bottom = map(int, re.findall('\\\\d+', environment[0].attrib['bounds']))\n    nl, nt, nr, nb = map(int, re.findall('\\\\d+', network[0].attrib['bounds']))\n    assert 0 <= left < right <= width * 3 and 0 <= nl < nr <= width * 3 and (top < bottom == nt < nb), xml\n    assert bottom - top <= (28 if scale == 1 else 48) * 3, xml\nelse:\n    time.sleep(2.5)\n    xml = dump()\n    native_navigation = validate_chat(xml, width * 3, height * 3, 480)\n",
+            "previousAstSha256": "212fe678be25a00c1cfc5586d213110b6f9ab87a7ad78d8a7b695c93486bcb37",
+            "currentAstSha256": "7090a7ed936f35824286fdbc2c09d17ba0a28fe80530abfce39b040724cfd0a4"
+          },
+          {
+            "path": [
+              "body",
+              36,
+              "body"
+            ],
+            "currentStart": 33,
+            "currentEnd": 34,
+            "previousSource": "",
+            "currentSource": "if scene == 'chat' and navigation_protocol == 2:\n    identity = dict(sourceCommit=source, sourceTree=subprocess.check_output(['git', 'rev-parse', 'HEAD^{tree}'], cwd=root, text=True).strip(), apkSha256=hashlib.sha256((out / ('ui-' + variant + '.apk')).read_bytes()).hexdigest())\n    record['nativeNavigationVersion'] = 2\n    record['nativeNavigation'] = native_navigation\n    record['nativeNavigationFonts'] = capture_native_fonts(adb_scene, identity=identity, font_scale=scale, density=480, out=shots, stem=stem)\n",
+            "previousAstSha256": "3543b4693a36a1098850b8bc928887694ed59a6deb7d3dfd0339de01f55a77b6",
+            "currentAstSha256": "e55307c5b630175b37564524da80e0b683a35343690237c74e32f9cfddf4700a"
+          },
+          {
+            "path": [
+              "body",
+              37,
+              "body",
+              29,
+              "body"
+            ],
+            "currentStart": 33,
+            "currentEnd": 34,
+            "previousSource": "from run_chrome_collapse import run as run_chrome_collapse\n",
+            "currentSource": "from run_chrome_collapse import run_current as run_chrome_collapse\n",
+            "previousAstSha256": "895723ad93899489945c2ba068c169613609af3feeee40cd35e4fcd716174ab9",
+            "currentAstSha256": "7fe45e09f182383b8e15f7aabf7d368666ca18c7189b41ae7f926e26dc588ce7"
+          }
+        ]
+      },
+      "a6518b20f3d67163aedbf2fb2e2ead51b71cd9c5d9d93215d8ae422308723ca4": {
+        "previousAstSha256": "1e9931102c092304b30ea22c910f46737ddf34aa4879e7bf9cd93b8de5e5cbb3",
+        "operations": [
+          {
+            "path": [
+              "body"
+            ],
+            "currentStart": 1,
+            "currentEnd": 2,
+            "previousSource": "import argparse, json, pathlib, re, struct, subprocess, time, xml.etree.ElementTree as ET\n",
+            "currentSource": "import argparse, hashlib, json, pathlib, re, struct, subprocess, time, xml.etree.ElementTree as ET\n",
+            "previousAstSha256": "8f7a4542fe08b85c92346ae6534ab9254ba7dd824899ca6a78b214dc94b7e207",
+            "currentAstSha256": "a6d3c9899aa810e6e824fb00365e6c32c40e1cc2aadcf23972baa6219eb82ab5"
+          },
+          {
+            "path": [
+              "body"
+            ],
+            "currentStart": 18,
+            "currentEnd": 19,
+            "previousSource": "",
+            "currentSource": "from native_navigation_v2 import protocol_for_variant, chat_ready, validate_chat, capture_native_fonts\n",
+            "previousAstSha256": "3543b4693a36a1098850b8bc928887694ed59a6deb7d3dfd0339de01f55a77b6",
+            "currentAstSha256": "6898574ea5c2f984f04ab3c3ef31f840acc81aadba337849081d3ffbe2cda90e"
+          },
+          {
+            "path": [
+              "body",
+              34,
+              "body"
+            ],
+            "currentStart": 11,
+            "currentEnd": 12,
+            "previousSource": "",
+            "currentSource": "navigation_protocol = protocol_for_variant(variant)\n",
+            "previousAstSha256": "3543b4693a36a1098850b8bc928887694ed59a6deb7d3dfd0339de01f55a77b6",
+            "currentAstSha256": "c8943f32a0925fd560945da4195e289fdd53eb05679544f4676c2b0517000263"
+          },
+          {
+            "path": [
+              "body",
+              34,
+              "body",
+              16,
+              "body"
+            ],
+            "currentStart": 3,
+            "currentEnd": 4,
+            "previousSource": "if required in xml:\n    break\n",
+            "currentSource": "if scene == 'chat' and navigation_protocol == 2:\n    if chat_ready(xml, width * 3, height * 3, 480):\n        break\nelif required in xml:\n    break\n",
+            "previousAstSha256": "72bc2ef65b6db1b2302e32e5e8053ddd8289b731fba39cfac0a42945dbbd459f",
+            "currentAstSha256": "d9b9012a5f2cff9ccf4203383c1c936cee445dd38be3201fec149e6e01287864"
+          },
+          {
+            "path": [
+              "body",
+              34,
+              "body",
+              21,
+              "body"
+            ],
+            "currentStart": 0,
+            "currentEnd": 1,
+            "previousSource": "time.sleep(2.5)\nxml = dump()\nassert all((label in xml for label in ['会话', '环境', '下载', '网络', '设置']))\nassert not any((n.attrib.get('text') in ['简洁', '原网页'] for n in ET.fromstring(xml).iter('node'))), xml\nnodes = list(ET.fromstring(xml).iter('node'))\nenvironment = [n for n in nodes if n.attrib.get('content-desc', '').startswith('当前环境：')]\nnetwork = [n for n in nodes if n.attrib.get('content-desc', '').startswith('当前环境网络：')]\nassert len(environment) == len(network) == 1, xml\nassert environment[0].attrib.get('content-desc') == '当前环境：日常会话，点击展开环境工具栏' and environment[0].attrib.get('clickable') == 'true', xml\nassert network[0].attrib.get('clickable') == 'false', xml\nassert not any((n.attrib.get('content-desc') in ['管理环境', '更多'] for n in nodes)), xml\nleft, top, right, bottom = map(int, re.findall('\\\\d+', environment[0].attrib['bounds']))\nnl, nt, nr, nb = map(int, re.findall('\\\\d+', network[0].attrib['bounds']))\nassert 0 <= left < right <= width * 3 and 0 <= nl < nr <= width * 3 and (top < bottom == nt < nb), xml\nassert bottom - top <= (28 if scale == 1 else 48) * 3, xml\n",
+            "currentSource": "if navigation_protocol == 1:\n    time.sleep(2.5)\n    xml = dump()\n    assert all((label in xml for label in ['会话', '环境', '下载', '网络', '设置']))\n    assert not any((n.attrib.get('text') in ['简洁', '原网页'] for n in ET.fromstring(xml).iter('node'))), xml\n    nodes = list(ET.fromstring(xml).iter('node'))\n    environment = [n for n in nodes if n.attrib.get('content-desc', '').startswith('当前环境：')]\n    network = [n for n in nodes if n.attrib.get('content-desc', '').startswith('当前环境网络：')]\n    assert len(environment) == len(network) == 1, xml\n    assert environment[0].attrib.get('content-desc') == '当前环境：日常会话，点击展开环境工具栏' and environment[0].attrib.get('clickable') == 'true', xml\n    assert network[0].attrib.get('clickable') == 'false', xml\n    assert not any((n.attrib.get('content-desc') in ['管理环境', '更多'] for n in nodes)), xml\n    left, top, right, bottom = map(int, re.findall('\\\\d+', environment[0].attrib['bounds']))\n    nl, nt, nr, nb = map(int, re.findall('\\\\d+', network[0].attrib['bounds']))\n    assert 0 <= left < right <= width * 3 and 0 <= nl < nr <= width * 3 and (top < bottom == nt < nb), xml\n    assert bottom - top <= (28 if scale == 1 else 48) * 3, xml\nelse:\n    time.sleep(2.5)\n    xml = dump()\n    native_navigation = validate_chat(xml, width * 3, height * 3, 480)\n",
+            "previousAstSha256": "212fe678be25a00c1cfc5586d213110b6f9ab87a7ad78d8a7b695c93486bcb37",
+            "currentAstSha256": "7090a7ed936f35824286fdbc2c09d17ba0a28fe80530abfce39b040724cfd0a4"
+          },
+          {
+            "path": [
+              "body",
+              34,
+              "body"
+            ],
+            "currentStart": 33,
+            "currentEnd": 34,
+            "previousSource": "",
+            "currentSource": "if scene == 'chat' and navigation_protocol == 2:\n    identity = dict(sourceCommit=source, sourceTree=subprocess.check_output(['git', 'rev-parse', 'HEAD^{tree}'], cwd=root, text=True).strip(), apkSha256=hashlib.sha256((out / ('ui-' + variant + '.apk')).read_bytes()).hexdigest())\n    record['nativeNavigationVersion'] = 2\n    record['nativeNavigation'] = native_navigation\n    record['nativeNavigationFonts'] = capture_native_fonts(adb_scene, identity=identity, font_scale=scale, density=480, out=shots, stem=stem)\n",
+            "previousAstSha256": "3543b4693a36a1098850b8bc928887694ed59a6deb7d3dfd0339de01f55a77b6",
+            "currentAstSha256": "e55307c5b630175b37564524da80e0b683a35343690237c74e32f9cfddf4700a"
+          },
+          {
+            "path": [
+              "body",
+              35,
+              "body",
+              29,
+              "body"
+            ],
+            "currentStart": 33,
+            "currentEnd": 34,
+            "previousSource": "from run_chrome_collapse import run as run_chrome_collapse\n",
+            "currentSource": "from run_chrome_collapse import run_current as run_chrome_collapse\n",
+            "previousAstSha256": "895723ad93899489945c2ba068c169613609af3feeee40cd35e4fcd716174ab9",
+            "currentAstSha256": "7fe45e09f182383b8e15f7aabf7d368666ca18c7189b41ae7f926e26dc588ce7"
+          }
+        ]
+      }
+    }
   }
 }

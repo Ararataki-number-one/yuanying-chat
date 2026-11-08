@@ -117,6 +117,52 @@ public final class GeckoEnvironmentPolicyIntegrationActivity extends MainActivit
   static <T extends View>T first(View root,Class<T> type){if(type.isInstance(root))return type.cast(root);if(root instanceof ViewGroup)for(int i=0;i<((ViewGroup)root).getChildCount();i++){T found=first(((ViewGroup)root).getChildAt(i),type);if(found!=null)return found;}return null;}
   static Button button(View root,String text){if(root instanceof Button&&text.contentEquals(((Button)root).getText()))return (Button)root;if(root instanceof ViewGroup)for(int i=0;i<((ViewGroup)root).getChildCount();i++){Button found=button(((ViewGroup)root).getChildAt(i),text);if(found!=null)return found;}return null;}
   static View window(String text){for(View root:windows())if(root.isAttachedToWindow()&&root.isShown()&&button(root,text)!=null)return root;return null;}
+  /** Current native address contract; never use a webpage field or a legacy label. */
+  static final class CurrentAddressEditor {
+    static final int CONTRACT=2;
+    final MainActivity owner;final android.app.AlertDialog dialog;final EditText input;final Button forward;
+    private CurrentAddressEditor(MainActivity owner,android.app.AlertDialog dialog,EditText input,Button forward){this.owner=owner;this.dialog=dialog;this.input=input;this.forward=forward;}
+    static CurrentAddressEditor read(MainActivity owner)throws Exception{
+      if(owner==null||owner.geckoAddress==null||owner.geckoAddress.a!=owner)return null;
+      Field dialogField=GeckoAddressUi.class.getDeclaredField("dialog"),inputField=GeckoAddressUi.class.getDeclaredField("editor");dialogField.setAccessible(true);inputField.setAccessible(true);
+      Object currentDialog=dialogField.get(owner.geckoAddress),currentInput=inputField.get(owner.geckoAddress);
+      if(!(currentDialog instanceof android.app.AlertDialog)||!(currentInput instanceof EditText))return null;
+      android.app.AlertDialog dialog=(android.app.AlertDialog)currentDialog;EditText input=(EditText)currentInput;
+      Object context=dialog.getContext();for(int i=0;i<16&&context!=owner&&context instanceof android.content.ContextWrapper;i++)context=((android.content.ContextWrapper)context).getBaseContext();if(context!=owner)return null;
+      if(!dialog.isShowing()||dialog.getWindow()==null)return null;View root=dialog.getWindow().getDecorView();
+      if(!fullyVisible(root,root)||!root.hasWindowFocus()||!fullyVisible(input,root)||!input.isFocused()||input.getRootView()!=root)return null;
+      int textType=android.text.InputType.TYPE_MASK_CLASS|android.text.InputType.TYPE_MASK_VARIATION;
+      if((input.getInputType()&textType)!=(android.text.InputType.TYPE_CLASS_TEXT|android.text.InputType.TYPE_TEXT_VARIATION_URI))return null;
+      Button forward=dialog.getButton(android.app.AlertDialog.BUTTON_POSITIVE),home=dialog.getButton(android.app.AlertDialog.BUTTON_NEUTRAL),cancel=dialog.getButton(android.app.AlertDialog.BUTTON_NEGATIVE);
+      if(!buttonReady(forward,"前往",root)||!buttonReady(home,"主页",root)||!buttonReady(cancel,"取消",root))return null;
+      int[] counts=new int[5];if(!nativeTree(root,root,input,forward,home,cancel,counts)||!java.util.Arrays.equals(counts,new int[]{1,1,1,1,1}))return null;
+      return new CurrentAddressEditor(owner,dialog,input,forward);
+    }
+    static CurrentAddressEditor require(MainActivity owner)throws Exception{CurrentAddressEditor value=read(owner);if(value==null)throw new IOException("Current native address editor contract v2 unavailable");return value;}
+    void submit()throws Exception{
+      CurrentAddressEditor current=require(owner);
+      if(current.dialog!=dialog||current.input!=input||current.forward!=forward)throw new IOException("Current native address editor changed before submit");
+      if(!forward.performClick())throw new IOException("Current native address submit listener unavailable");
+    }
+    private static boolean buttonReady(Button button,String label,View root){return button!=null&&label.contentEquals(button.getText())&&button.isEnabled()&&button.isClickable()&&fullyVisible(button,root)&&button.getRootView()==root;}
+    private static boolean fullyVisible(View view,View root){
+      if(!view.isAttachedToWindow()||!view.isShown()||view.getWidth()<=0||view.getHeight()<=0)return false;
+      android.graphics.Rect actual=new android.graphics.Rect(),visible=new android.graphics.Rect();if(!view.getGlobalVisibleRect(actual)||actual.width()<view.getWidth()||actual.height()<view.getHeight())return false;
+      root.getWindowVisibleDisplayFrame(visible);int[] point=new int[2];view.getLocationOnScreen(point);
+      return visible.left<=point[0]&&visible.top<=point[1]&&point[0]+view.getWidth()<=visible.right&&point[1]+view.getHeight()<=visible.bottom;
+    }
+    private static boolean nativeTree(View view,View root,EditText input,Button forward,Button home,Button cancel,int[] counts){
+      if(view instanceof android.webkit.WebView||view instanceof GeckoWebView)return false;
+      for(Class<?> type=view.getClass();type!=null;type=type.getSuperclass())if("org.mozilla.geckoview.GeckoView".equals(type.getName()))return false;
+      if(view.isAttachedToWindow()&&view.isShown()){
+        if(view instanceof EditText){if(view!=input)return false;counts[0]++;}
+        else if(view instanceof Button){Button button=(Button)view;String label=button.getText().toString();if("前往".equals(label)){if(button!=forward)return false;counts[2]++;}else if("主页".equals(label)){if(button!=home)return false;counts[3]++;}else if("取消".equals(label)){if(button!=cancel)return false;counts[4]++;}}
+        else if(view instanceof TextView&&"打开网址".contentEquals(((TextView)view).getText())){if(!fullyVisible(view,root))return false;counts[1]++;}
+      }
+      if(view instanceof ViewGroup){ViewGroup group=(ViewGroup)view;for(int i=0;i<group.getChildCount();i++)if(!nativeTree(group.getChildAt(i),root,input,forward,home,cancel,counts))return false;}
+      return true;
+    }
+  }
   static void closeWindow(View root,String description){if(root==null)return;ArrayList<View> all=new ArrayList<>();all.add(root);while(!all.isEmpty()){View view=all.remove(all.size()-1);if(description.contentEquals(String.valueOf(view.getContentDescription()))){view.performClick();return;}if(view instanceof ViewGroup)for(int i=0;i<((ViewGroup)view).getChildCount();i++)all.add(((ViewGroup)view).getChildAt(i));}}
   void saveZone(String zone,Step after)throws Exception{
     next("ui-zone-"+(zone.isEmpty()?"system":zone));String previous=lastSample==null?"":lastSample.getJSONObject("page").getString("documentId");GeckoTimeZoneUi.show(this);
@@ -133,7 +179,7 @@ public final class GeckoEnvironmentPolicyIntegrationActivity extends MainActivit
   }
   void awaitZoneDocument(View editor,String previous,Step after){waitFor("fresh zone document",this::ready,()->page(value->{try{if(value.optJSONObject("page")==null||previous.equals(value.getJSONObject("page").optString("documentId"))){probe.postDelayed(()->awaitZoneDocument(editor,previous,after),75);return;}closeWindow(editor,"关闭此环境的独立时区");after.run();}catch(Throwable error){failed(error);}}));}
   void navigate(String host,String phase,Step after)throws Exception{
-    next("address-"+phase);geckoAddress.address.performClick();waitFor("actual address editor",()->window("打开")!=null,()->{View editor=window("打开");EditText input=first(editor,EditText.class);if(input==null)throw new IOException("Actual address field missing");input.setText("https://"+host+"/env-policy?phase="+phase);button(editor,"打开").performClick();waitFor("address committed",()->ready()&&remote.getUrl().equals(input.getText().toString()),after);});
+    next("address-"+phase);geckoAddress.address.performClick();waitFor("actual address editor",()->CurrentAddressEditor.read(this)!=null,()->{CurrentAddressEditor editor=CurrentAddressEditor.require(this);EditText input=editor.input;input.setText("https://"+host+"/env-policy?phase="+phase);editor.submit();waitFor("address committed",()->ready()&&remote.getUrl().equals(input.getText().toString()),after);});
   }
   void saveDisplay(boolean desktop,boolean rfp,Step after)throws Exception{
     next(rfp?"ui-rfp":desktop?"ui-desktop":"ui-mobile");String previous=lastSample.getJSONObject("page").getString("documentId");FingerprintTemplateUi.show(this);waitFor("actual template editor",()->window("保存模板")!=null,()->{

@@ -45,8 +45,14 @@ final class ChromeCollapseIntegration {
       "routeCalls",w.routeCalls,"fixtureRoutes",w.fixtureRoutes,"blockedRoutes",w.blockedRoutes,"otherRoutes",w.otherRoutes).toString());
   }
   JSONArray nativeTouches=new JSONArray();
+  final java.util.Set<String> glassObservationCommands=new java.util.HashSet<>();
   final BroadcastReceiver receiver=new BroadcastReceiver(){@Override public void onReceive(Context c,Intent intent){
     if(!nonce.equals(intent.getStringExtra("eventNonce")))return;
+    String glassCommand=intent.getStringExtra("glassObserveCommand");
+    if(glassCommand!=null){
+      if(glassCommand.matches("[a-zA-Z0-9_-]{1,80}")&&glassObservationCommands.size()<64&&glassObservationCommands.add(glassCommand))observeGlassOwners(glassCommand);
+      return;
+    }
     String readiness=intent.getStringExtra("collapseReadiness");
     if(readiness!=null){if(readiness.matches(nonce+"-[1-9][0-9]{0,2}"))inputReadiness(readiness);return;}
     String command=intent.getStringExtra("collapseCommand");
@@ -54,6 +60,78 @@ final class ChromeCollapseIntegration {
     if("clear".equals(command)){web().touchesObserved=new JSONArray();nativeTouches=new JSONArray();return;}
     a.handler.postDelayed(()->snapshot(command),150);
   }};
+  /** One synchronous read on the receiver's UI thread; no observer or UI mutation. */
+  void observeGlassOwners(String command){
+    JSONObject value=J.obj("schema",1,"command",command,"status","started",
+      "sourceCommit",events.buildIdentity.optString("sourceCommit"),"sourceTree",events.buildIdentity.optString("sourceTree"),
+      "apkSha256",events.buildIdentity.optString("apkSha256"),"runNonce",nonce,
+      "pid",android.os.Process.myPid(),"uid",android.os.Process.myUid(),"activityRef",System.identityHashCode(a),
+      "activityClass",a.getClass().getName(),"decorRef",System.identityHashCode(a.getWindow().getDecorView()),
+      "active",a.active,"windowFocus",a.hasWindowFocus(),"capturedAtElapsedRealtimeNanos",SystemClock.elapsedRealtimeNanos(),
+      "readOnly",true,"pausesObservers",false);
+    try{
+      if(!"local.pocketchat.test".equals(a.getPackageName())||a.hub==null)throw new IllegalStateException("Current test Activity glass roots unavailable");
+      value.put("owners",GlassOwnerObservation.read(a.toolbar,a.hub.bar,a.hub.panel)).put("status","observed");
+    }catch(Exception error){try{value.put("status","failed").put("errorClass",error.getClass().getName()).put("error",String.valueOf(error.getMessage()));}catch(Exception ignored){}}
+    // Unlike snapshot(), this path does not pause session observers or evaluate
+    // a browser script. The original process-frame threshold remains decisive.
+    try{events.emit("glassOwnerObservation",value);}catch(Exception error){events.failure(error);}
+  }
+
+  /** Reads only current native roots, including hidden descendants and coating layers. */
+  static final class GlassOwnerObservation {
+    static JSONObject read(View toolbar,View bar,GlassBackdrop panel)throws Exception{
+      if(toolbar==null||bar==null||panel==null)throw new IllegalStateException("Missing current native glass root");
+      JSONArray roots=new JSONArray(),materials=new JSONArray(),docks=new JSONArray();
+      roots.put(host(toolbar)).put(host(bar));
+      java.util.Set<View> seen=java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<>());
+      walk(toolbar,materials,docks,seen);walk(bar,materials,docks,seen);
+      JSONObject backdrop=J.obj("host",host(panel),"configuredActive",field(panel,GlassBackdrop.class,"glassActive"),"isGlassActive",panel.isGlassActive());
+      return J.obj("roots",roots,"materials",materials,"docks",docks,"backdrop",backdrop);
+    }
+    static JSONObject host(View view){
+      return J.obj("viewClass",view.getClass().getName(),"viewIdentity",System.identityHashCode(view),
+        "rootIdentity",System.identityHashCode(view.getRootView()),"attached",view.isAttachedToWindow(),
+        "shown",view.isShown(),"visibility",view.getVisibility(),"windowVisibility",view.getWindowVisibility(),
+        "windowFocus",view.hasWindowFocus(),"enabled",view.isEnabled(),"pressed",view.isPressed());
+    }
+    static Object field(Object object,Class<?> owner,String name)throws Exception{
+      java.lang.reflect.Field field=owner.getDeclaredField(name);field.setAccessible(true);return field.get(object);
+    }
+    static JSONObject animation(Object value)throws Exception{
+      if(value==null)return J.obj("present",false,"started",false,"running",false);
+      if(!(value instanceof android.animation.ValueAnimator))throw new IllegalStateException("Unexpected native animator field type");
+      android.animation.ValueAnimator animator=(android.animation.ValueAnimator)value;
+      return J.obj("present",true,"started",animator.isStarted(),"running",animator.isRunning(),
+        "durationMillis",animator.getDuration(),"currentPlayTimeMillis",animator.getCurrentPlayTime());
+    }
+    static void walk(View view,JSONArray materials,JSONArray docks,java.util.Set<View> seen)throws Exception{
+      if(!seen.add(view))return;
+      java.util.Set<android.graphics.drawable.Drawable> layers=java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<>());
+      drawable(view.getBackground(),view,materials,layers);
+      if(view instanceof GlassDock)docks.put(J.obj("host",host(view),
+        "transition",animation(field(view,GlassDock.class,"transition")),
+        "opacity",field(view,GlassDock.class,"opacity"),"flow",field(view,GlassDock.class,"flow")));
+      if(view instanceof ViewGroup){ViewGroup group=(ViewGroup)view;for(int i=0;i<group.getChildCount();i++)walk(group.getChildAt(i),materials,docks,seen);}
+    }
+    static void drawable(android.graphics.drawable.Drawable drawable,View view,JSONArray materials,java.util.Set<android.graphics.drawable.Drawable> seen)throws Exception{
+      if(drawable==null||!seen.add(drawable))return;
+      if(drawable instanceof LiquidGlassDrawable){
+        JSONArray states=new JSONArray();for(int state:drawable.getState())states.put(state);
+        materials.put(J.obj("host",host(view),"drawableIdentity",System.identityHashCode(drawable),
+          "drawableVisible",drawable.isVisible(),"drawableAlpha",drawable.getAlpha(),"drawableState",states,
+          "animation",animation(field(drawable,LiquidGlassDrawable.class,"animation")),
+          "pressed",field(drawable,LiquidGlassDrawable.class,"pressed"),
+          "strength",field(drawable,LiquidGlassDrawable.class,"strength"),"bend",field(drawable,LiquidGlassDrawable.class,"bend")));
+      }else if(drawable instanceof android.graphics.drawable.LayerDrawable){
+        android.graphics.drawable.LayerDrawable layers=(android.graphics.drawable.LayerDrawable)drawable;
+        for(int i=0;i<layers.getNumberOfLayers();i++)drawable(layers.getDrawable(i),view,materials,seen);
+      }else if(drawable instanceof android.graphics.drawable.InsetDrawable){
+        drawable(((android.graphics.drawable.InsetDrawable)drawable).getDrawable(),view,materials,seen);
+      }
+    }
+  }
+
   void inputReadiness(String request){
     if(!"local.pocketchat.test".equals(a.getPackageName())||!request.matches(nonce+"-[1-9][0-9]{0,2}")||inputReadinessSequence>=128)return;
     CollapseView w=web();View compact=a.designChrome.compact;android.graphics.Rect visible=new android.graphics.Rect();
@@ -172,7 +250,13 @@ final class ChromeCollapseIntegration {
   }
   CollapseView web(){return (CollapseView)a.remote;}
   void pauseObservers(){a.handler.removeCallbacks(a.ticker);a.session.remove(a.sessionObserver);a.session.handler.removeCallbacks(a.session.tick);}
+  Object visibleCenter(View view){return view!=null&&view.isShown()&&view.getWidth()>0&&view.getHeight()>0?a.center(view):JSONObject.NULL;}
   void start(){
+    // Keep the historical v1 evidence/runner intact. Its fixed six-tap path
+    // cannot exercise the URL dialog and four-action dock without a new contract.
+    if(a.getIntent().getIntExtra("chromeNavigationVersion",1)!=2){
+      emit("error",J.obj("navigationContract",2,"error","Chrome navigation contract v2 required: the v1 collapse runner targets removed Chat/Settings tabs and assumes capsule taps only expand. Version the address-dialog/menu/back workload before running this fixture."));return;
+    }
     web().diagnostic=this;diagnostic("start-before");a.handler.postDelayed(diagnosticTick,1000);
     pauseObservers();
     if(Build.VERSION.SDK_INT>=33)a.registerReceiver(receiver,new IntentFilter(ACTION),Context.RECEIVER_EXPORTED);else a.registerReceiver(receiver,new IntentFilter(ACTION));
@@ -200,14 +284,15 @@ final class ChromeCollapseIntegration {
       a.session.manualAttention=false;a.loading.update();web().tracking=true;a.handler.postDelayed(()->snapshot("ready"),300);
     });
   }
+  static final String READING_VIEWPORT="(()=>{const m=document.querySelector('main'),c=document.getElementById('composer'),v=window.visualViewport;const box=n=>{if(!n)return null;const r=n.getBoundingClientRect();return [r.left,r.top,r.right,r.bottom];};return {schema:1,coordinateSpace:'layout-viewport-css',document:document.documentElement.dataset.reloadDocument,layoutWidth:innerWidth,layoutHeight:innerHeight,visualBounds:v?[v.offsetLeft,v.offsetTop,v.offsetLeft+v.width,v.offsetTop+v.height]:null,mainBounds:box(m),composerBounds:box(c),composerTag:c?.tagName||'',composerId:c?.id||''};})()";
   void snapshot(String command){
     snapshotEvaluations++;diagnostic("snapshot-evaluate");pauseObservers();
-    a.remote.evaluateJavascript("(()=>{const t="+TELEMETRY+";return {draft:document.getElementById('prompt-textarea').value,cookie:document.cookie,sendCount:Number(document.getElementById('send-count').textContent),path:location.pathname,document:document.documentElement.dataset.reloadDocument,scrollY:scrollY,innerWidth:innerWidth,innerHeight:innerHeight,trusted:t?.events||[],fixtureInputTelemetry:t,telemetryReady:"+TELEMETRY_READY+"};})()",raw->{
+    a.remote.evaluateJavascript("(()=>{const t="+TELEMETRY+";return {draft:document.getElementById('prompt-textarea').value,cookie:document.cookie,sendCount:Number(document.getElementById('send-count').textContent),path:location.pathname,document:document.documentElement.dataset.reloadDocument,scrollY:scrollY,innerWidth:innerWidth,innerHeight:innerHeight,readingViewport:"+READING_VIEWPORT+",trusted:t?.events||[],fixtureInputTelemetry:t,telemetryReady:"+TELEMETRY_READY+"};})()",raw->{
       snapshotCallbacks++;diagnostic("snapshot-callback");JSONObject result=J.parse(raw);int[] location=new int[2];a.remote.getLocationOnScreen(location);
-      try{result.put("command",command).put("expanded",a.designChrome.expanded()).put("toolbarVisibility",a.toolbar.getVisibility()).put("toolbarHeight",a.toolbar.getHeight())
+      try{result.put("command",command).put("navigationContract",2).put("expanded",a.designChrome.expanded()).put("toolbarVisibility",a.toolbar.getVisibility()).put("toolbarHeight",a.toolbar.getHeight())
         .put("compactVisibility",a.designChrome.compact.getVisibility()).put("compactHeight",a.designChrome.compact.getHeight())
         .put("compactName",a.designChrome.compactTitle.getText().toString()).put("environmentName",Profiles.display(a,Profiles.slot(a)))
-        .put("compactTap",a.center(a.designChrome.compact)).put("topVisibility",a.designChrome.top.getVisibility()).put("networkVisibility",a.designChrome.networkRow.getVisibility())
+        .put("compactTap",visibleCenter(a.designChrome.compact)).put("topVisibility",a.designChrome.top.getVisibility()).put("networkVisibility",a.designChrome.networkRow.getVisibility())
         .put("webWidth",a.remote.getWidth()).put("webHeight",a.remote.getHeight()).put("webX",location[0]).put("webY",location[1])
         .put("surface",System.identityHashCode(a.remote)).put("sdkSession",System.identityHashCode(a.remote.current)).put("attachedSession",System.identityHashCode(a.remote.surface.getSession()))
         .put("loads",web().loads).put("stops",web().stops).put("documents",documents).put("page",a.hub.page).put("keyboard",a.keyboardVisible)
@@ -215,7 +300,16 @@ final class ChromeCollapseIntegration {
         .put("documentReadyEvidence",web().documentReadyEvidence)
         .put("pending",a.session.pending==null?JSONObject.NULL:new JSONObject(a.session.pending.toString())).put("pendingStored",a.session.prefs.getString("pending",""))
         .put("activityStarts",activityStarts).put("menuOpens",menuOpens).put("windowFocus",a.hasWindowFocus())
-        .put("touches",web().touchesObserved).put("nativeTouches",nativeTouches).put("toolbarBounds",a.bounds(a.toolbar)).put("chatTap",a.center(a.hub.tabs[0])).put("settingsTap",a.center(a.hub.tabs[4]));
+        .put("touches",web().touchesObserved).put("nativeTouches",nativeTouches).put("toolbarBounds",a.bounds(a.toolbar))
+        .put("environmentTap",visibleCenter(a.hub.tabs[WorkspaceNavigation.ENVIRONMENTS])).put("networkTap",visibleCenter(a.hub.tabs[WorkspaceNavigation.NETWORK]))
+        .put("downloadsTap",visibleCenter(a.hub.tabs[WorkspaceNavigation.DOWNLOADS])).put("readingTap",visibleCenter(a.hub.tabs[WorkspaceNavigation.READING]))
+        .put("addressTap",visibleCenter(a.designChrome.title)).put("moreTap",visibleCenter(a.designChrome.more))
+        .put("androidSdk",Build.VERSION.SDK_INT).put("activityClass",a.getClass().getName()).put("activityRef",System.identityHashCode(a))
+        .put("pid",android.os.Process.myPid()).put("uid",android.os.Process.myUid())
+        .put("nativeFontScale",a.getResources().getConfiguration().fontScale).put("nativeScreenWidthDp",a.getResources().getConfiguration().screenWidthDp)
+        .put("nativeDensityDpi",a.getResources().getDisplayMetrics().densityDpi).put("nativeDisplayWidth",a.getResources().getDisplayMetrics().widthPixels)
+        .put("readingRequested",a.focusReading).put("readingActive",a.focusActive()).put("navigationVisibility",a.hub.bar.getVisibility())
+        .put("exitVisibility",a.focusExit.getVisibility()).put("exitTap",visibleCenter(a.focusExit)).put("addressDialog",addressDialog());
         if(a.designChrome.expanded()){
           java.lang.reflect.Method method=DesignChrome.class.getDeclaredMethod("touchBounds",View.class);method.setAccessible(true);
           android.graphics.Rect target=(android.graphics.Rect)method.invoke(a.designChrome,a.designChrome.title);int[] origin=new int[2];a.toolbar.getLocationOnScreen(origin);target.offset(origin[0],origin[1]);
@@ -224,6 +318,18 @@ final class ChromeCollapseIntegration {
         emit("collapseSnapshot",result);if("ready".equals(command)){diagnosticReady=true;a.handler.removeCallbacks(diagnosticTick);}
       }catch(Exception failure){emit("error",J.obj("error",failure.toString()));}
     });
+  }
+  /** Test-only reads of the production dialog; never opens, dismisses or edits it. */
+  JSONObject addressDialog()throws Exception{
+    java.lang.reflect.Field field=GeckoAddressUi.class.getDeclaredField("dialog");field.setAccessible(true);
+    android.app.AlertDialog dialog=(android.app.AlertDialog)field.get(a.geckoAddress);
+    if(dialog==null||!dialog.isShowing())return J.obj("visible",false);
+    java.lang.reflect.Field editor=GeckoAddressUi.class.getDeclaredField("editor");editor.setAccessible(true);
+    android.widget.EditText input=(android.widget.EditText)editor.get(a.geckoAddress);
+    android.widget.Button cancel=dialog.getButton(android.app.AlertDialog.BUTTON_NEGATIVE);
+    return J.obj("visible",true,"windowFocus",dialog.getWindow().getDecorView().hasWindowFocus(),
+      "editorText",input.getText().toString(),"editorFocused",input.hasFocus(),"editorTap",visibleCenter(input),
+      "cancelTap",visibleCenter(cancel),"cancelBounds",a.bounds(cancel),"cancelText",cancel.getText().toString());
   }
   void emit(String kind,JSONObject result){diagnostic("emit-before");try{events.emit(kind,result);diagnostic("emit-queued");}catch(Exception failure){events.failure(failure);}}
   void nativeTouch(MotionEvent event){if(web().tracking&&nativeTouches.length()<256)nativeTouches.put(J.obj("action",event.getActionMasked(),"pointers",event.getPointerCount(),"height",a.remote.getHeight(),"expanded",a.designChrome.expanded()));}

@@ -5,7 +5,9 @@ import android.app.*;import android.content.*;import android.content.res.ColorSt
 /** Native design system. Website content and network/identity policies are not restyled here. */
 final class DesignUi {
   static int BG=0xfff4f7fb,CARD=0xffffffff,FIELD=0xfff8fafc,LINE=0xffe0e7f0,TEXT=0xff172033,MUTED=0xff64748b,BLUE=0xff2468f2,CYAN=0xff2468f2,PURPLE=0xff2468f2,GREEN=0xff16845b,RED=0xffc93747;
-  static final String[] NAV={"会话","环境","下载","网络","设置"},GLYPHS={"chat","window","download","globe","settings"};
+  // Glass controls need a near-black foreground above their bright rim.
+  static int GLASS_INK=TEXT,GLASS_MUTED=(TEXT&0x00ffffff)|0xd6000000;
+  static final String[] NAV={"环境","网络","下载","阅读"},GLYPHS={"window","globe","download","book"};
   static int dp(Context c,int n){return Ui.dp(c,n);}
   static TextView text(Context c,String value,int size,int color){TextView v=new TextView(c);v.setText(value);v.setTextSize(size);v.setTextColor(AppAppearance.text(color));v.setIncludeFontPadding(false);v.setLineSpacing(dp(c,3),1);return v;}
   /** Keep short action words intact in read-only copy; never alter editable values. */
@@ -22,7 +24,17 @@ final class DesignUi {
   }
   static GradientDrawable surface(Context c,int color,int radius,int stroke){GradientDrawable d=Ui.shape(c,color,radius);d.setStroke(dp(c,1),stroke);return d;}
   static GradientDrawable gradient(Context c){return surface(c,0xff1268ff,14,Color.TRANSPARENT);}
-  static Drawable glass(Context c,int radius){return new RippleDrawable(ColorStateList.valueOf(0x142468f2),new AppAppearance.Glass(c,radius),surface(c,Color.WHITE,radius,Color.TRANSPARENT));}
+  static Drawable glass(Context c,int radius){
+    // The mask only bounds touch feedback; it is never a backing plate. Match
+    // the optical body's inset so the ripple does not color its outer shadow.
+    GradientDrawable mask=new GradientDrawable();mask.setColor(Color.WHITE);
+    mask.setCornerRadius(dp(c,Math.max(0,radius-LiquidGlassDrawable.INSET_DP)));
+    InsetDrawable opticalMask=new InsetDrawable(mask,dp(c,LiquidGlassDrawable.INSET_DP)){
+      // The optical inset must not replace the view's existing content padding.
+      @Override public boolean getPadding(Rect padding){padding.setEmpty();return false;}
+    };
+    return new AppAppearance.GlassRipple(new AppAppearance.Glass(c,radius),opticalMask);
+  }
   static void chrome(Activity a){AppAppearance.window(a.getWindow());}
   static LinearLayout column(Context c){LinearLayout v=new LinearLayout(c);v.setOrientation(LinearLayout.VERTICAL);return v;}
   static LinearLayout row(Context c){LinearLayout v=new LinearLayout(c);v.setGravity(Gravity.CENTER_VERTICAL);return v;}
@@ -40,8 +52,49 @@ final class DesignUi {
   };}
   static void addCard(LinearLayout parent,View card){LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(-1,-2);p.topMargin=dp(parent.getContext(),10);parent.addView(card,p);}
   static final class ActionButton extends Button {
+    private View pressedSurface;
+    private float[] surfaceHotspot;
     ActionButton(Context c){super(c);}
     @Override public void setEnabled(boolean enabled){super.setEnabled(enabled);setAlpha(enabled?1f:.45f);}
+    /** Optional visual parent; ordinary buttons keep their existing behavior. */
+    void pressedSurface(View surface){
+      if(pressedSurface==surface)return;
+      View previous=pressedSurface;pressedSurface=surface;
+      if(previous!=null)previous.refreshDrawableState();
+      forwardPressedState();
+    }
+    boolean hasPressedSurface(View surface){return pressedSurface==surface;}
+    @Override protected void drawableStateChanged(){
+      super.drawableStateChanged();forwardPressedState();
+      // A delayed native release can arrive after the reading action hides the bar.
+      if(!isShown()||getWindowVisibility()!=VISIBLE){
+        GlassMotion.reset(this);resetHiddenSurface();
+      }
+    }
+    private void forwardPressedState(){
+      // The parent derives one material state from every bound child. A late
+      // release from one button cannot clear a different button's native press.
+      if(pressedSurface!=null)pressedSurface.refreshDrawableState();
+    }
+    @Override public void drawableHotspotChanged(float x,float y){
+      super.drawableHotspotChanged(x,y);
+      if(pressedSurface!=null&&getParent()==pressedSurface){
+        if(surfaceHotspot==null)surfaceHotspot=new float[2];
+        surfaceHotspot[0]=x;surfaceHotspot[1]=y;getMatrix().mapPoints(surfaceHotspot);
+        pressedSurface.drawableHotspotChanged(surfaceHotspot[0]+getLeft()-pressedSurface.getScrollX(),surfaceHotspot[1]+getTop()-pressedSurface.getScrollY());
+      }
+    }
+    @Override public void onVisibilityAggregated(boolean visible){
+      super.onVisibilityAggregated(visible);forwardPressedState();
+      if(!visible){GlassMotion.reset(this);resetHiddenSurface();}
+    }
+    private void resetHiddenSurface(){
+      if(pressedSurface!=null&&(!pressedSurface.isShown()||pressedSurface.getWindowVisibility()!=VISIBLE))GlassMotion.reset(pressedSurface);
+    }
+    @Override protected void onDetachedFromWindow(){
+      if(pressedSurface!=null)setPressed(false);
+      super.onDetachedFromWindow();forwardPressedState();
+    }
   }
   static int actionWidth(Button button,int minimumDp){return Math.max(dp(button.getContext(),minimumDp),(int)Math.ceil(button.getPaint().measureText(button.getText().toString()))+button.getCompoundPaddingLeft()+button.getCompoundPaddingRight()+dp(button.getContext(),2));}
   static Button button(Context c,String title,boolean primary,Runnable action){

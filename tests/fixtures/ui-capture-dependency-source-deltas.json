@@ -1,0 +1,80 @@
+{
+  "schema": 1,
+  "kind": "historical-capture-dependency-only",
+  "actualAndroidExecution": false,
+  "runtimeAcceptance": false,
+  "path": "tests/gecko_ui_visual_capture_test.py",
+  "previousCommit": "9a5a9eeb3ef44d10c44e6e4fe580b5347c197367",
+  "previousTree": "3724d45aabacf3af7c03e2ee8072bd32c3a516a3",
+  "checkpointFixtureSha256": "efaa8da45f2697d95a0d514be8cd404260eed1f59595dd4c08b5c2ee8f37d22e",
+  "previousBytes": 40357,
+  "previousSha256": "4ec6b7535d37119d6674afc5090b33d8c26af91abaa5d53ecb2a52488e911f6a",
+  "currentBytes": 41231,
+  "currentSha256": "c8d5197124da49526f18f25f1c0f8d40672898a693334b8edf4772cf4d7c2dd0",
+  "delta": {
+    "previous": "    tree = ast.parse(RUNNER.read_text())\n    functions = [copy.deepcopy(n) for n in tree.body if isinstance(n, ast.FunctionDef) and n.name in names]\n    assert {n.name for n in functions} == set(names)\n    return ast.Module(body=functions, type_ignores=[])\n\n\n",
+    "current": "    tree = ast.parse(RUNNER.read_text())\n    functions = [copy.deepcopy(n) for n in tree.body if isinstance(n, ast.FunctionDef) and n.name in names]\n    assert {n.name for n in functions} == set(names)\n    if 'capture' in names:\n        # The extracted current capture keeps its real protocol/readiness inputs.\n        # Load that dependency without running the device runner's top-level code.\n        dependency = ast.parse(\n            'import importlib.util as _capture_dependency_import\\n'\n            \"_capture_dependency_spec = _capture_dependency_import.spec_from_file_location('native_capture_readiness_dependency', \"\n            + repr(str(ROOT / 'tools/gecko/native_navigation_v2.py')) + ')\\n'\n            '_capture_dependency = _capture_dependency_import.module_from_spec(_capture_dependency_spec)\\n'\n            '_capture_dependency_spec.loader.exec_module(_capture_dependency)\\n'\n            'protocol_for_variant = _capture_dependency.protocol_for_variant\\n'\n            'chat_ready = _capture_dependency.chat_ready\\n')\n        functions.extend(dependency.body)\n    return ast.Module(body=functions, type_ignores=[])\n\n\n",
+    "previousBytes": 259,
+    "currentBytes": 1133,
+    "previousSha256": "cb57f76468724acbdc365dc0212aa7d5a76c0a636b1845f2c780a54877c52d80",
+    "currentSha256": "a1bda7f67f3f462ff6193737e114fb6af60cc9cd124ba42cfc241e6164799193"
+  },
+  "originalRow": {
+    "previousCommit": "4dd0f4434a40c010e060d9651a371a986b6bd2c4",
+    "previousBytes": 40245,
+    "previousSha256": "8ab2a6335b9f313e38cb52deb4b7265ee1be3e8fefc4009d5ef5c3825c40d0c6",
+    "reviewedBytes": 40357,
+    "reviewedSha256": "4ec6b7535d37119d6674afc5090b33d8c26af91abaa5d53ecb2a52488e911f6a",
+    "deltas": [
+      {
+        "previous": "\n    def test_original_capture_test_methods_and_screenshot_matrix_are_preserved(self):\n        import subprocess\n        base='03d0c4ace70942a3f6899daffac086cc6682885e'\n        path=Path(__file__).resolve().relative_to(ROOT).as_posix()\n        old=subprocess.check_output(['git','show',base+':'+path],cwd=ROOT,text=True)\n",
+        "current": "\n    def test_original_capture_test_methods_and_screenshot_matrix_are_preserved(self):\n        import subprocess\n        from ui_checkpoint_source_compatibility import require_current_runner\n        base='03d0c4ace70942a3f6899daffac086cc6682885e'\n        path=Path(__file__).resolve().relative_to(ROOT).as_posix()\n        old=subprocess.check_output(['git','show',base+':'+path],cwd=ROOT,text=True)\n",
+        "previousBytes": 321,
+        "currentBytes": 399,
+        "previousSha256": "a7ddf42e4fe49e7d6fff8338b307d0e43011d13ba7d02d340f33cd63c595b063",
+        "currentSha256": "c8391762aaadd3711a9a4ba15c60989e71aeeeaa214f248154f367bf6a6e9160"
+      },
+      {
+        "previous": "                    for node in ast.parse(source).body if isinstance(node,ast.ClassDef)}\n        before,after=methods(old),methods(Path(__file__).read_text())\n        for name,value in before.items():self.assertEqual(after[name],value)\n        old=subprocess.check_output(['git','show',base+':tests/gecko/run_ui_visuals.py'],cwd=ROOT,text=True);current=RUNNER.read_text()\n        def functions(source):return [ast.get_source_segment(source,node) for node in ast.walk(ast.parse(source)) if isinstance(node,ast.FunctionDef)]\n        before_functions,after_functions=functions(old),functions(current)\n        for function in before_functions:self.assertEqual(after_functions.count(function),before_functions.count(function))\n",
+        "current": "                    for node in ast.parse(source).body if isinstance(node,ast.ClassDef)}\n        before,after=methods(old),methods(Path(__file__).read_text())\n        for name,value in before.items():self.assertEqual(after[name],value)\n        old=subprocess.check_output(['git','show',base+':tests/gecko/run_ui_visuals.py'],cwd=ROOT,text=True);current=require_current_runner(RUNNER.read_bytes()).decode()\n        def functions(source):return [ast.get_source_segment(source,node) for node in ast.walk(ast.parse(source)) if isinstance(node,ast.FunctionDef)]\n        before_functions,after_functions=functions(old),functions(current)\n        for function in before_functions:self.assertEqual(after_functions.count(function),before_functions.count(function))\n",
+        "previousBytes": 722,
+        "currentBytes": 756,
+        "previousSha256": "26bfd7a3b0c71519aeeef6b4aeaf59f664f0929d906832e206bb2e22a67eb902",
+        "currentSha256": "89526d8d9d6be05ef4efe722882607b5afe941d616b1352b52eaaa23b0a96755"
+      }
+    ]
+  },
+  "currentRow": {
+    "previousCommit": "4dd0f4434a40c010e060d9651a371a986b6bd2c4",
+    "previousBytes": 40245,
+    "previousSha256": "8ab2a6335b9f313e38cb52deb4b7265ee1be3e8fefc4009d5ef5c3825c40d0c6",
+    "reviewedBytes": 41231,
+    "reviewedSha256": "c8d5197124da49526f18f25f1c0f8d40672898a693334b8edf4772cf4d7c2dd0",
+    "deltas": [
+      {
+        "previous": "\n    def test_original_capture_test_methods_and_screenshot_matrix_are_preserved(self):\n        import subprocess\n        base='03d0c4ace70942a3f6899daffac086cc6682885e'\n        path=Path(__file__).resolve().relative_to(ROOT).as_posix()\n        old=subprocess.check_output(['git','show',base+':'+path],cwd=ROOT,text=True)\n",
+        "current": "\n    def test_original_capture_test_methods_and_screenshot_matrix_are_preserved(self):\n        import subprocess\n        from ui_checkpoint_source_compatibility import require_current_runner\n        base='03d0c4ace70942a3f6899daffac086cc6682885e'\n        path=Path(__file__).resolve().relative_to(ROOT).as_posix()\n        old=subprocess.check_output(['git','show',base+':'+path],cwd=ROOT,text=True)\n",
+        "previousBytes": 321,
+        "currentBytes": 399,
+        "previousSha256": "a7ddf42e4fe49e7d6fff8338b307d0e43011d13ba7d02d340f33cd63c595b063",
+        "currentSha256": "c8391762aaadd3711a9a4ba15c60989e71aeeeaa214f248154f367bf6a6e9160"
+      },
+      {
+        "previous": "                    for node in ast.parse(source).body if isinstance(node,ast.ClassDef)}\n        before,after=methods(old),methods(Path(__file__).read_text())\n        for name,value in before.items():self.assertEqual(after[name],value)\n        old=subprocess.check_output(['git','show',base+':tests/gecko/run_ui_visuals.py'],cwd=ROOT,text=True);current=RUNNER.read_text()\n        def functions(source):return [ast.get_source_segment(source,node) for node in ast.walk(ast.parse(source)) if isinstance(node,ast.FunctionDef)]\n        before_functions,after_functions=functions(old),functions(current)\n        for function in before_functions:self.assertEqual(after_functions.count(function),before_functions.count(function))\n",
+        "current": "                    for node in ast.parse(source).body if isinstance(node,ast.ClassDef)}\n        before,after=methods(old),methods(Path(__file__).read_text())\n        for name,value in before.items():self.assertEqual(after[name],value)\n        old=subprocess.check_output(['git','show',base+':tests/gecko/run_ui_visuals.py'],cwd=ROOT,text=True);current=require_current_runner(RUNNER.read_bytes()).decode()\n        def functions(source):return [ast.get_source_segment(source,node) for node in ast.walk(ast.parse(source)) if isinstance(node,ast.FunctionDef)]\n        before_functions,after_functions=functions(old),functions(current)\n        for function in before_functions:self.assertEqual(after_functions.count(function),before_functions.count(function))\n",
+        "previousBytes": 722,
+        "currentBytes": 756,
+        "previousSha256": "26bfd7a3b0c71519aeeef6b4aeaf59f664f0929d906832e206bb2e22a67eb902",
+        "currentSha256": "89526d8d9d6be05ef4efe722882607b5afe941d616b1352b52eaaa23b0a96755"
+      },
+      {
+        "previous": "    tree = ast.parse(RUNNER.read_text())\n    functions = [copy.deepcopy(n) for n in tree.body if isinstance(n, ast.FunctionDef) and n.name in names]\n    assert {n.name for n in functions} == set(names)\n    return ast.Module(body=functions, type_ignores=[])\n\n\n",
+        "current": "    tree = ast.parse(RUNNER.read_text())\n    functions = [copy.deepcopy(n) for n in tree.body if isinstance(n, ast.FunctionDef) and n.name in names]\n    assert {n.name for n in functions} == set(names)\n    if 'capture' in names:\n        # The extracted current capture keeps its real protocol/readiness inputs.\n        # Load that dependency without running the device runner's top-level code.\n        dependency = ast.parse(\n            'import importlib.util as _capture_dependency_import\\n'\n            \"_capture_dependency_spec = _capture_dependency_import.spec_from_file_location('native_capture_readiness_dependency', \"\n            + repr(str(ROOT / 'tools/gecko/native_navigation_v2.py')) + ')\\n'\n            '_capture_dependency = _capture_dependency_import.module_from_spec(_capture_dependency_spec)\\n'\n            '_capture_dependency_spec.loader.exec_module(_capture_dependency)\\n'\n            'protocol_for_variant = _capture_dependency.protocol_for_variant\\n'\n            'chat_ready = _capture_dependency.chat_ready\\n')\n        functions.extend(dependency.body)\n    return ast.Module(body=functions, type_ignores=[])\n\n\n",
+        "previousBytes": 259,
+        "currentBytes": 1133,
+        "previousSha256": "cb57f76468724acbdc365dc0212aa7d5a76c0a636b1845f2c780a54877c52d80",
+        "currentSha256": "a1bda7f67f3f462ff6193737e114fb6af60cc9cd124ba42cfc241e6164799193"
+      }
+    ]
+  }
+}

@@ -11,9 +11,9 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 FIXTURE = ROOT / 'tests/fixtures/ui-checkpoint-source-deltas.json'
-FIXTURE_SHA256 = '91559ec13f9f31aeafdc5f87d16b54c9780fe80a341081c00e75ee1a99173480'
+FIXTURE_SHA256 = 'efaa8da45f2697d95a0d514be8cd404260eed1f59595dd4c08b5c2ee8f37d22e'
 RUNNER = 'tests/gecko/run_ui_visuals.py'
-RUNNER_CURRENT_SHA256 = 'b85896aa5b94e33fb40bbada323d239a66f75c12a39bf9adb2a4ff3e3483e14d'
+RUNNER_CURRENT_SHA256 = '12d0f61c0f53efd5766f37cf34ae5526acadfa287a387eb81855dd2e5943783f'
 PREFERENCE_PREVIOUS_SHA256 = 'be5c80463eb66171fc49a0056bbff3b5a8d47fc88d193b4647e37e301857a9b4'
 PREFERENCE_PREVIOUS = "expected={'保存本机输入草稿','恢复网页滚动位置','允许此环境的后台回复提醒','仅在 Wi-Fi 下载文件','自动清理 30 天以上的无引用中间文件'}"
 PREFERENCE_CURRENT = "expected={'保存本机输入草稿','恢复网页滚动位置','允许此环境的后台回复提醒','仅在 Wi-Fi 下载文件','自动清理 30 天以上的无引用中间文件','自动检测外部网络响应'}"
@@ -37,6 +37,11 @@ FORWARDED_PATHS = frozenset(PREVIOUS) | frozenset((
     'tests/profile_ui_observer_source_compatibility_test.py'))
 FLAG_DECLARATION = "p.add_argument('--no-checkpoint-publication',action='store_true',help='Disable checkpoint publication for nonqualifying diagnostics');"
 FLAG_RETURN = '    if args.no_checkpoint_publication:return\n'
+NAVIGATION_PATH = 'tests/gecko/UiVisualIntegrationActivity.java'
+NAVIGATION_FIXTURE = ROOT / 'tests/fixtures/ui-navigation-source-deltas.json'
+NAVIGATION_FIXTURE_SHA256 = '98c2c894fc4eda4adc28d06064943af7b68a99e9c4270b2ed32dafc21bf80775'
+NAVIGATION_CURRENT_SHA256 = '04f629d6053d1fc62bdddd590c4b405ddff2d564fd4dc3211332c849da0a4366'
+NAVIGATION_PREVIOUS_SHA256 = '29d641025853a52cf00dbffb9fccad54126e33d04805f8f4dfe483fafb3180a5'
 
 
 def sha(raw):
@@ -45,6 +50,41 @@ def sha(raw):
 
 def tree_sha(tree):
     return sha(ast.dump(tree, include_attributes=False).encode())
+
+
+def navigation_manifest():
+    raw = NAVIGATION_FIXTURE.read_bytes()
+    assert not NAVIGATION_FIXTURE.is_symlink() and len(raw) <= 32768 and sha(raw) == NAVIGATION_FIXTURE_SHA256, 'Exact bounded navigation source fixture required'
+    value = json.loads(raw)
+    assert type(value['schema']) is int and value['schema'] == 1 and value['path'] == NAVIGATION_PATH
+    assert value['previousCommit'] == '03d0c4ace70942a3f6899daffac086cc6682885e'
+    assert value['previousTree'] == 'bfd7bbcdf89ef947dd466dab795e94e83fc992c3'
+    assert value['reviewedCommit'] == '4363dbc04df80d5c82ba966248e47a3fd69cbcc8'
+    assert value['reviewedTree'] == '08189ae748eb1045ff21af4253369ef17d6bdad3'
+    assert (value['previousBytes'], value['previousSha256']) == (12855, NAVIGATION_PREVIOUS_SHA256)
+    assert (value['reviewedBytes'], value['reviewedSha256']) == (13373, NAVIGATION_CURRENT_SHA256)
+    assert len(value['deltas']) == 5, 'Only five reviewed navigation source hunks are owned'
+    return value
+
+
+def navigation_source_input(raw, path):
+    """Historical source assertions only; Android and host compilers read raw files.
+
+    Restore the actual Source7 Git blob before the unchanged observer inverse.
+    Whole-source pins reject moved context and every unreviewed byte before any
+    hunk is reversed. This function is never a producer or compiler input.
+    """
+    assert type(raw) is bytes and type(path) is str and path == NAVIGATION_PATH, 'Complete owned navigation source bytes required'
+    value = navigation_manifest()
+    assert len(raw) == value['reviewedBytes'] and sha(raw) == NAVIGATION_CURRENT_SHA256, 'Unreviewed complete navigation source'
+    for delta in reversed(value['deltas']):
+        current, previous = delta['current'].encode(), delta['previous'].encode()
+        assert 0 < len(current) <= 32768 and len(current) == delta['currentBytes'] and sha(current) == delta['currentSha256']
+        assert 0 < len(previous) <= 32768 and len(previous) == delta['previousBytes'] and sha(previous) == delta['previousSha256']
+        assert raw.count(current) == 1, 'Missing, repeated or moved exact navigation source hunk'
+        raw = raw.replace(current, previous, 1)
+    assert len(raw) == value['previousBytes'] and sha(raw) == NAVIGATION_PREVIOUS_SHA256, 'Entire actual Source7 Activity did not restore'
+    return raw
 
 
 def manifest():
@@ -73,12 +113,74 @@ def source_input(raw, path):
     return raw
 
 
+def navigation_v2_manifest():
+    """Finite source-assertion view; no capture or compiler reads this image."""
+    value = manifest()['runnerNavigationV2']
+    assert value['kind'] == 'historical-comparison-only'
+    assert value['actualAndroidExecution'] is False and value['runtimeAcceptance'] is False
+    assert (value['previousCommit'], value['previousBytes'], value['previousSha256']) == (
+        '06a802663075664b75aa9d19184d9c02b6bab7c9', 46016,
+        'b85896aa5b94e33fb40bbada323d239a66f75c12a39bf9adb2a4ff3e3483e14d')
+    assert (value['reviewedBytes'], value['reviewedSha256']) == (47025, RUNNER_CURRENT_SHA256)
+    assert len(value['deltas']) == 7 and len(value['astPairs']) == 2
+    return value
+
+
+def navigation_v2_runner_input(raw):
+    value = navigation_v2_manifest()
+    assert type(raw) is bytes and (len(raw), sha(raw)) == (value['reviewedBytes'], value['reviewedSha256']), 'Unreviewed complete navigation-v2 runner'
+    for delta in reversed(value['deltas']):
+        current, previous = delta['current'].encode(), delta['previous'].encode()
+        for name, literal in (('current', current), ('previous', previous)):
+            assert 0 < len(literal) <= 32768 and (len(literal), sha(literal)) == (delta[name+'Bytes'], delta[name+'Sha256'])
+        assert raw.count(current) == 1, 'Unique positioned navigation-v2 source context required'
+        raw = raw.replace(current, previous, 1)
+    assert (len(raw), sha(raw)) == (value['previousBytes'], value['previousSha256']), 'Entire original UI comparison input did not restore'
+    return raw
+
+
+def navigation_v2_tree_input(tree):
+    assert type(tree) is ast.Module, 'Complete navigation comparison module required'
+    assert len([node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == 'capture']) == 1, 'Complete navigation capture required'
+    assert len([node for node in tree.body if isinstance(node, ast.Try) and node.finalbody]) == 1, 'Complete navigation workload required, never an excerpt'
+    value = navigation_v2_manifest()
+    row = value['astPairs'].get(tree_sha(tree))
+    if row is None:
+        names = {'protocol_for_variant', 'chat_ready', 'validate_chat', 'capture_native_fonts', 'navigation_protocol', 'native_navigation'}
+        assert not any(isinstance(node, ast.Name) and node.id in names
+            or isinstance(node, ast.ImportFrom) and (node.module == 'native_navigation_v2'
+                or node.module == 'run_chrome_collapse' and any(alias.name == 'run_current' for alias in node.names))
+            for node in ast.walk(tree)), 'Unreviewed complete navigation-v2 comparison AST'
+        return tree
+    assert row['previousAstSha256'] in manifest()['runnerAst']['allowedModulePairs'] and len(row['operations']) == 7
+    for operation in reversed(row['operations']):
+        body = tree
+        for part in operation['path']:
+            if type(part) is int:
+                assert isinstance(body, list) and 0 <= part < len(body)
+                body = body[part]
+            else:
+                assert part in ('body', 'orelse', 'finalbody') and hasattr(body, part)
+                body = getattr(body, part)
+        start, end = operation['currentStart'], operation['currentEnd']
+        assert isinstance(body, list) and type(start) is int and type(end) is int and 0 <= start <= end <= len(body)
+        assert tree_sha(ast.Module(body=body[start:end], type_ignores=[])) == operation['currentAstSha256'], 'Changed positioned navigation-v2 AST context'
+        for name in ('previous', 'current'):
+            source = operation[name+'Source']
+            assert type(source) is str and len(source.encode()) <= 32768
+            assert tree_sha(ast.parse(source)) == operation[name+'AstSha256']
+        body[start:end] = ast.parse(operation['previousSource']).body
+    assert tree_sha(tree) == row['previousAstSha256'], 'Entire original UI comparison AST did not restore'
+    return tree
+
+
 def checkpoint_runner_input(raw):
     """Only the source-oracle LHS: restore the exact pre-sixth-label runner.
 
     Actual capture, parser and checkpoint hosts still compile current bytes.
     """
     assert type(raw) is bytes and sha(raw) == RUNNER_CURRENT_SHA256, 'Actual frozen six-control UI runner required'
+    raw = navigation_v2_runner_input(raw)
     current, previous = PREFERENCE_CURRENT.encode(), PREFERENCE_PREVIOUS.encode()
     assert raw.count(current) == 1, 'Exact Preferences literal required'
     restored = raw.replace(current, previous, 1)
@@ -104,12 +206,15 @@ def require_current_runner(raw):
 def history_input(raw, path):
     """Forward unknown inputs unchanged to the existing strict source guards."""
     assert type(raw) is bytes and type(path) is str and path in FORWARDED_PATHS
+    if path == NAVIGATION_PATH and sha(raw) == NAVIGATION_CURRENT_SHA256:
+        return navigation_source_input(raw, path)
     if path in PREVIOUS and sha(raw) == manifest()['files'][path]['reviewedSha256']:
         return source_input(raw, path)
     return raw
 
 
 def original_runner_tree(tree):
+    navigation_v2_tree_input(tree)
     assert type(tree) is ast.Module, 'Complete parsed UI module required'
     assert len([n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == 'capture']) == 1
     assert len([n for n in tree.body if isinstance(n, ast.Try) and n.finalbody]) == 1, 'Complete UI workload required, not an excerpt'
@@ -162,3 +267,43 @@ def wrap_ast(original):
         original_runner_tree(tree)
         return original(tree)
     return checkpoint_tree
+
+
+# Only historical workflow comparisons reverse the exact reviewed transport.
+import importlib.util as _gradle_transport_import
+_gradle_transport_spec = _gradle_transport_import.spec_from_file_location('selected_gradle_transport_source_input', Path(__file__).with_name('gradle_transport_source_compatibility.py'))
+_gradle_transport_input = _gradle_transport_import.module_from_spec(_gradle_transport_spec)
+_gradle_transport_spec.loader.exec_module(_gradle_transport_input)
+checkpoint_transport_input = _gradle_transport_input.canonical_history_input
+checkpoint_workflow_input = _gradle_transport_input.wrap_checkpoint_workflow(checkpoint_workflow_input)
+
+
+# Only historical Activity guards reverse the exact empty preparation route.
+import importlib.util as _preparation_import
+_preparation_spec = _preparation_import.spec_from_file_location('selected_ui_preparation_source_input', Path(__file__).with_name('ui_preparation_source_compatibility.py'))
+_preparation_input = _preparation_import.module_from_spec(_preparation_spec)
+_preparation_spec.loader.exec_module(_preparation_input)
+navigation_source_input = _preparation_input.wrap_source(navigation_source_input)
+history_input = _preparation_input.wrap_source(history_input)
+
+
+# Only historical capture-source comparisons use the exact dependency after-row.
+import importlib.util as _capture_dependency_import
+_capture_dependency_spec = _capture_dependency_import.spec_from_file_location('selected_ui_capture_dependency_view', Path(__file__).with_name('ui_capture_dependency_source_compatibility.py'))
+_capture_dependency_view = _capture_dependency_import.module_from_spec(_capture_dependency_spec)
+_capture_dependency_spec.loader.exec_module(_capture_dependency_view)
+manifest = _capture_dependency_view.wrap_checkpoint_manifest(manifest)
+
+
+# Explicit historical runner comparison ports; execution keeps current source.
+import importlib.util as _native_geometry_import
+_native_geometry_spec = _native_geometry_import.spec_from_file_location('selected_ui_native_geometry_history', Path(__file__).with_name('ui_native_geometry_source_compatibility.py'))
+_native_geometry_history = _native_geometry_import.module_from_spec(_native_geometry_spec)
+_native_geometry_spec.loader.exec_module(_native_geometry_history)
+source_input = _native_geometry_history.wrap_bytes(source_input)
+history_input = _native_geometry_history.wrap_bytes(history_input)
+navigation_v2_runner_input = _native_geometry_history.wrap_runner(navigation_v2_runner_input)
+checkpoint_runner_input = _native_geometry_history.wrap_runner(checkpoint_runner_input)
+require_current_runner = _native_geometry_history.wrap_runner(require_current_runner)
+navigation_v2_tree_input = _native_geometry_history.wrap_ast(navigation_v2_tree_input)
+original_runner_tree = _native_geometry_history.wrap_ast(original_runner_tree)

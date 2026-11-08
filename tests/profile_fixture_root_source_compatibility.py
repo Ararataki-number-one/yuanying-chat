@@ -115,3 +115,9 @@ def historical_input(raw, relative):
     """Only declared historical reads; other canonical bytes remain unmodified."""
     _path(raw, relative)
     return source_input(raw, relative) if relative in PATHS else raw
+
+
+# Exact after-image inputs; the original fixture-root guards and count remain.
+from gradle_workflow_test_source_compatibility import wrap_root_source_input as _gradle_root_source_input, wrap_root_manifest as _gradle_root_manifest
+source_input = _gradle_root_source_input(source_input)
+manifest = _gradle_root_manifest(manifest)

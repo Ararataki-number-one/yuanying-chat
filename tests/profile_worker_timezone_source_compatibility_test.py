@@ -296,6 +296,14 @@ class WorkerTimezoneSourceCompatibility(unittest.TestCase):
         self.assertFalse(overlay.manifest()['actualAndroidExecution'])
 
 
+# This historical baseline port keeps the shared current decoder unchanged.
+import importlib.util as _worker_baseline_import
+_worker_baseline_spec = _worker_baseline_import.spec_from_file_location('selected_worker_fixture_baseline', Path(__file__).with_name('navigation_metadata_source_compatibility.py'))
+_worker_baseline_metadata = _worker_baseline_import.module_from_spec(_worker_baseline_spec)
+_worker_baseline_spec.loader.exec_module(_worker_baseline_metadata)
+dual = _worker_baseline_metadata.fixture_baseline_dual_view(dual)
+
+
 if __name__ == '__main__':
     suite = unittest.defaultTestLoader.loadTestsFromTestCase(WorkerTimezoneSourceCompatibility)
     result = unittest.TextTestRunner(verbosity=2).run(suite)

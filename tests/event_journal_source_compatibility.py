@@ -107,3 +107,11 @@ def original_runner_tree(node):
     if hashlib.sha256(dump(restored).encode()).hexdigest() != row['previousSha256']:
         raise ValueError('Receipt journal AST inverse did not restore the complete original run AST')
     return restored
+
+
+# A separate exact after-image overlays only the historical comparison row.
+import importlib.util as _navigation_device_import
+_navigation_device_spec = _navigation_device_import.spec_from_file_location('selected_native_navigation_device_source_input', Path(__file__).with_name('native_navigation_device_source_compatibility.py'))
+_navigation_device_input = _navigation_device_import.module_from_spec(_navigation_device_spec)
+_navigation_device_spec.loader.exec_module(_navigation_device_input)
+manifest = _navigation_device_input.wrap_journal_manifest(manifest)

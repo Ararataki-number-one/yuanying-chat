@@ -131,7 +131,10 @@ jobs:
         echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
         mkdir -p work/gecko-integration
         "$JAVA_HOME_17_X64/bin/keytool" -genkeypair -keystore work/gecko-integration/integration-test.jks -alias androiddebugkey -storepass android -keypass android -dname CN=SyntheticIntegration -keyalg RSA -validity 2
-        curl -fsSL --retry 3 https://services.gradle.org/distributions/gradle-9.8.0-bin.zip -o work/gecko-integration/gradle.zip
+        if ! curl -fsSL --retry 3 https://services.gradle.org/distributions/gradle-9.8.0-bin.zip -o work/gecko-integration/gradle.zip; then
+          curl -fLsS --retry 2 --max-time 240 -H 'Accept: application/octet-stream' -H 'X-GitHub-Api-Version: 2022-11-28' https://api.github.com/repos/gradle/gradle-distributions/releases/assets/586068844 -o work/gecko-integration/gradle.zip
+        fi
+        test "$(stat -c %s work/gecko-integration/gradle.zip)" = 151611662
         echo 'bafd5ce9cfaea0fbccfdc8439a1ac42fbd4cd9c89dc9a988228d8a2639a58e6c  work/gecko-integration/gradle.zip' | sha256sum -c -
         unzip -q work/gecko-integration/gradle.zip -d work/gecko-integration/gradle
         curl -fsSL --retry 3 https://maven.mozilla.org/maven2/org/mozilla/geckoview/geckoview/157.0.20261005135250/geckoview-157.0.20261005135250.aar -o work/gecko-integration/geckoview.aar
@@ -360,6 +363,11 @@ jobs:
         for log in work/upload-state-host/*.stdout.txt work/upload-state-host/*.stderr.txt; do
           cp "$log" "work/gecko-integration/upload-state-$(basename "$log")"
         done
+    - name: Prepare fixed public history for profile host checks
+      shell: bash
+      run: |
+        set -euo pipefail
+        python3 tools/gecko/prepare_profile_host_prerequisites.py --source-commit "$GITHUB_SHA" --output work/gecko-integration/profile-host-prerequisites.json
     - name: Verify versioned environment models and authoritative intents
       run: |
         set -euo pipefail

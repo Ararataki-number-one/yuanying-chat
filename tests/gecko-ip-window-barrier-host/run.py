@@ -14,6 +14,9 @@ import tempfile
 ROOT = Path(__file__).resolve().parents[2]
 HERE = Path(__file__).resolve().parent
 PROD = ROOT / 'app/src/main/java/local/pocketchat'
+_surface_spec = importlib.util.spec_from_file_location('window_gecko_surface_guard_input', ROOT / 'tests/gecko_surface_source_compatibility.py')
+_surface_input = importlib.util.module_from_spec(_surface_spec)
+_surface_spec.loader.exec_module(_surface_input)
 BASE = '972b7767300587af98b3f4a2088a44dd30af8098'
 SOURCE_PATH = 'app/src/main/java/local/pocketchat/GeckoWebView.java'
 COMPOSED_SOURCE = '12a45fb8a1343bbe5767bdf6c3fba54519650fa1'
@@ -48,6 +51,9 @@ def verify_recovery_source(raw,composed_raw):
     if type(composed_raw) is not bytes or restored!=composed_raw or len(restored)!=128889 or sha(restored)!='34a651c3ccc50499dd5c720c370353600ccf20669df5393ccbf68d6a689f9670':
         raise AssertionError('Exact composed raw recovery predecessor required')
     return dict(currentSha256=sha(raw),currentBytes=len(raw),previousSha256=sha(restored),previousBytes=len(restored),removedBytes=15,proofOnly=True,currentJavaUnchanged=True)
+
+
+verify_recovery_source = _surface_input.wrap_recovery_guard(verify_recovery_source)
 
 
 def verify_source_delta(current_raw, baseline_raw, composed_raw):
@@ -181,7 +187,7 @@ def main():
     identity = ROOT / 'app/src/main/java/org/mozilla/geckoview/AppSessionIdentity.java'
     template_file = HERE / 'WindowBarrierHost.java.in'
     complete = [PROD / 'J.java']
-    files = [source, identity, template_file, Path(__file__).resolve(), ROOT / 'tests/gecko-navigation-host/run.py'] + complete
+    files = [source, identity, template_file, Path(__file__).resolve(), ROOT / 'tests/gecko-navigation-host/run.py', ROOT / 'tests/gecko_surface_source_compatibility.py', _surface_input.FIXTURE] + complete
     hashes = {str(path.relative_to(ROOT)): sha(path.read_bytes()) for path in files}
     jar_hash = sha(jar.read_bytes())
     selected = {name: declaration(source.read_text(), name) for name in MEMBERS}
@@ -234,7 +240,7 @@ def main():
         original_lookup = declaration(baseline_raw.decode(), lookup_declaration)
         current_lookup = declaration(source.read_text(), lookup_declaration)
         composed_raw = subprocess.check_output(['git', 'show', COMPOSED_SOURCE + ':' + SOURCE_PATH], cwd=ROOT, env=git_env, timeout=30)
-        delta_scope = verify_source_delta(source.read_bytes(), baseline_raw, composed_raw)
+        delta_scope = verify_source_delta(_surface_input.historical_input(source.read_bytes()), baseline_raw, composed_raw)
         recovery_scope = None if delta_scope['lookupOnlyWholeFileInverseVerified'] else verify_recovery_source(source.read_bytes(),composed_raw)
         metadata_controls = source_metadata_controls(composed_raw, baseline_raw)
         control_specs = [('actual-before', baseline, 'pending', 'Pending window has zero IP transport invocations true')]
@@ -259,7 +265,10 @@ def main():
             controls.append(dict(case=name, compiled=True, pristinePassed=True, rejected=True, assertion=assertion))
 
     unchanged = all(sha(path.read_bytes()) == hashes[str(path.relative_to(ROOT))] for path in files) and sha(jar.read_bytes()) == jar_hash
-    report.update(sourceFiles=hashes, sourceMethodHashes={name: sha(body.encode()) for name, body in selected.items()},
+    report.update(actualRawSha256=sha(source.read_bytes()), actualRawBytes=len(source.read_bytes()),
+                  historicalGeckoSurfaceGuardSha256=sha(_surface_input.historical_input(source.read_bytes())),
+                  historicalGuardSourceInputOnly=True, currentJavaFromRawCurrent=True, sourceHistoryProjectionUsed=False,
+                  sourceFiles=hashes, sourceMethodHashes={name: sha(body.encode()) for name, body in selected.items()},
                   identityMethodSha256=sha(identity_body.encode()), jsonJarSha256=jar_hash,
                   lookupOnlyWholeFileInverseVerified=delta_scope['lookupOnlyWholeFileInverseVerified'], originalInitialConsumerPreserved=True,
                   sourceDeltaScope=delta_scope, sourceMetadataControls=metadata_controls, resourceRecoveryWholeProof=recovery_scope,

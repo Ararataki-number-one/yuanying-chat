@@ -25,6 +25,7 @@ def module(name, path):
     return value
 
 
+HISTORY = module('network_sources_ui_runner_v2_history', ROOT / 'tests/gecko/network_sources_ui_history.py')
 SHIM = module('sources_ui46_exact_label_port', SHIM_PATH)
 ORIGINAL = module('sources_ui46_original_immutable', SHIM.ORIGINAL_PATH)
 
@@ -56,7 +57,7 @@ class NetworkSourcesInactiveLabel46(unittest.TestCase):
         self.assertEqual(current.count(SHIM.CURRENT_CONTEXT), 1)
         self.assertEqual(current.replace(SHIM.CURRENT_CONTEXT, SHIM.ORIGINAL_CONTEXT, 1), original)
         self.assertEqual(len(original), 6181)
-        runner = RUNNER.read_bytes()
+        runner = HISTORY.historical_runner_input(RUNNER.read_bytes())
         self.assertEqual(runner.count(NEW_IMPORT), 1)
         self.assertEqual(hashlib.sha256(runner.replace(NEW_IMPORT, OLD_IMPORT, 1)).hexdigest(),
                          '11668477263a1427bc7affe3311c252dbe1ac0c70a89ab1d9e2f4b48dd63b9cf')

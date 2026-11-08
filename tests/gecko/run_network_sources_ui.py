@@ -19,7 +19,7 @@ ARGS = PARSER.parse_args()
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / 'tools/gecko'))
 from network_ui_route_contract import reveal_modal_action, clipboard_overlay_present
-from network_inactive_label46 import visible_inactive_route
+from network_inactive_card_v2 import visible_inactive_route
 OUT = ROOT / "work/gecko-integration"
 OUT.mkdir(parents=True, exist_ok=True)
 PACKAGE = "local.pocketchat.test"

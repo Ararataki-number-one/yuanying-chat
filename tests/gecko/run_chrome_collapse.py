@@ -182,3 +182,12 @@ def run(adb,adb_bytes,source,trace,out,focus):
         check('All chrome interactions use one controlled actual document without navigation or send',len(requests)==1 and all(unchanged(initial,sample) and sample['networkVisibility']==0 for sample in observations.values()) and all(sample['sendCount']==0 for sample in observations.values()))
         cases.append({'viewport':width,'fontScale':scale,'runNonce':nonce,'sourceCommit':source,'actualAndroidExecution':True,'actualGeckoExecution':True,'actualAndroidTouchExecution':True,'checks':checks,'observations':observations,'actualAndroidInputs':inputs,'eventTransfer':{'runNonce':nonce,'fixtureAction':'chromeCollapse','processSlot':0,'events':transfer.records},'fixtureRequests':requests})
     return {'status':'passed','actualAndroidExecution':True,'actualGeckoExecution':True,'actualAndroidTouchExecution':True,'sourceCommit':source,'buildIdentity':identity,'cases':cases,'scope':'Actual production chrome and protected local Gecko document with synthetic login/draft/task; no real ChatGPT acceptance or phone performance claim.'}
+
+
+def run_current(adb,adb_bytes,source,trace,out,focus,*,navigation_version=2):
+    """Explicit current contract; run() above is the byte-preserved v1 path."""
+    if type(navigation_version) is not int or navigation_version not in (1,2):
+        raise ValueError('Unknown Chrome navigation workload version')
+    if navigation_version==1:return run(adb,adb_bytes,source,trace,out,focus)
+    from run_chrome_collapse_v2 import run as run_v2
+    return run_v2(adb,adb_bytes,source,trace,out,focus)

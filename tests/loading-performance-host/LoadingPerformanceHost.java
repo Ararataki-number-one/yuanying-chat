@@ -22,6 +22,7 @@ public final class LoadingPerformanceHost {
     check(name+" never invokes browser actions",ui.a.session.web.actions==actions);
     if(!baseline)check(name+" no unchanged presentation assignments",Metrics.presentationWrites()==0);
     check(name+" no redundant orientation/layout assignments",Metrics.layout==0&&Metrics.orientation==0);
+    if(!baseline)check(name+" no repeated action text measurements",Metrics.measures==0);
     return result;
   }
   public static void main(String[] args){
@@ -77,6 +78,21 @@ public final class LoadingPerformanceHost {
     check("Live document wins over deferred and failure state",!transition.coverShown&&transition.cover.visibility==View.GONE);
     MainActivity owner=transition.a;owner.session=null;Metrics.reset();transition.update();check("Missing session performs no presentation work",Metrics.presentationWrites()==0);
 
+    if(!baseline){
+      LoadingUi responsive=create(false,false);responsive.a.resources.configuration.orientation=android.content.res.Configuration.ORIENTATION_LANDSCAPE;
+      int required=2*Math.max(DesignUi.actionWidth(responsive.retry,48),DesignUi.actionWidth(responsive.website,48))+12;
+      responsive.cover.width=required+responsive.cover.paddingLeft+responsive.cover.paddingRight;responsive.update();
+      check("Equal-weight actions fit at the exact measured width boundary",responsive.actions.orientation==LinearLayout.HORIZONTAL&&responsive.retry.params.width==0&&responsive.website.params.weight==1);
+      responsive.cover.width--;responsive.update();check("One pixel below the measured boundary keeps both actions stacked",responsive.actions.orientation==LinearLayout.VERTICAL&&responsive.retry.params.width==-1&&responsive.website.params.width==-2&&responsive.website.params.topMargin==4);
+      responsive.cover.width=900;responsive.update();check("A wider same-orientation cover restores equal-weight actions",responsive.actions.orientation==LinearLayout.HORIZONTAL);
+      responsive.a.resources.configuration.fontScale=2f;responsive.update();check("Enlarged labels retain safe stacked actions within the content width cap",responsive.actions.orientation==LinearLayout.VERTICAL);
+      responsive.a.resources.configuration.fontScale=1f;responsive.update();check("Restoring label scale re-evaluates the measured action width",responsive.actions.orientation==LinearLayout.HORIZONTAL);
+      responsive.website.setText("检查当前环境网络");responsive.update();check("An unequal longer label must fit its own equal-weight half",responsive.actions.orientation==LinearLayout.VERTICAL);
+      responsive.website.setText("检查网络");responsive.update();check("Restoring a short label invalidates the width cache",responsive.actions.orientation==LinearLayout.HORIZONTAL);
+      android.os.SystemClock.now=21000;responsive.update();check("Network-first ordering retains the same native buttons and correct leading gap",responsive.actions.children.get(0)==responsive.website&&responsive.actions.children.get(1)==responsive.retry&&responsive.website.params.leftMargin==0&&responsive.retry.params.leftMargin==12);
+      Metrics.reset();for(int i=0;i<100;i++)responsive.update();check("Stable wide landscape updates do not remeasure or rewrite presentation",Metrics.measures==0&&Metrics.presentationWrites()==0);
+    }
+
     Map<String,Object> report=new LinkedHashMap<>();report.put("status","passed");report.put("passed",checks.size());report.put("total",checks.size());report.put("baseline",baseline);report.put("updatesPerWorkload",100);report.put("workloads",workloads);report.put("checks",checks);
     System.out.println(json(report));
   }
@@ -90,35 +106,45 @@ public final class LoadingPerformanceHost {
 
 final class LoadingUi {
   final MainActivity a;final LinearLayout band=new LinearLayout(),cover=new LinearLayout(),actions=new LinearLayout();
-  final TextView bandText=new TextView(),title=new TextView(),hint=new TextView();final ProgressBar wheel=new ProgressBar();final Button retry=new Button(),website=new Button();
+  final TextView bandText=new TextView(),title=new TextView(),hint=new TextView();final ProgressBar wheel=new ProgressBar();final ImageView symbol=new ImageView();final Button retry=new Button(),website=new Button();
   boolean actionLayoutKnown,actionsHorizontal;final PageLoadingWait wait=new PageLoadingWait();
+  boolean networkFirst,actionsLandscape;int actionsAvailable;float actionsFontScale;String actionsRetryLabel="",actionsWebsiteLabel="";
   boolean coverShown,hintBound;String lastTitle="",lastHint;
-  LoadingUi(MainActivity a){this.a=a;cover.visibility=View.GONE;band.visibility=View.GONE;retry.text="重新加载";website.text="检查网络";}
+  LoadingUi(MainActivity a){this.a=a;cover.visibility=View.GONE;band.visibility=View.GONE;retry.text="重新加载";website.text="检查网络";retry.owner=a;website.owner=a;cover.paddingLeft=cover.paddingRight=28;}
   /* PRODUCTION_METHODS */
+  /* CURRENT_ACTIONS_ADAPTER */
 }
 final class Metrics {
-  static int text,description,visibility,alpha,animationCancel,animationStart,animationAlpha,layout,orientation;
-  static void reset(){text=description=visibility=alpha=animationCancel=animationStart=animationAlpha=layout=orientation=0;}
+  static int text,description,visibility,alpha,animationCancel,animationStart,animationAlpha,layout,orientation,measures;
+  static void reset(){text=description=visibility=alpha=animationCancel=animationStart=animationAlpha=layout=orientation=measures=0;}
   static int presentationWrites(){return text+description+visibility+alpha+animationCancel+animationStart+animationAlpha+layout+orientation;}
   static Map<String,Object> snapshot(){Map<String,Object> out=new LinkedHashMap<>();out.put("textAssignments",text);out.put("contentDescriptionAssignments",description);out.put("visibilityAssignments",visibility);out.put("alphaAssignments",alpha);out.put("animationCancels",animationCancel);out.put("animationStarts",animationStart);out.put("animationAlphaAssignments",animationAlpha);out.put("layoutAssignments",layout);out.put("orientationAssignments",orientation);out.put("presentationWrites",presentationWrites());return out;}
 }
 class View {
-  static final int VISIBLE=0,GONE=8;int visibility=VISIBLE;float alpha=1;final Animator animator=new Animator(this);final LinearLayout.LayoutParams params=new LinearLayout.LayoutParams();
+  static final int VISIBLE=0,GONE=8;int visibility=VISIBLE,width=900,paddingLeft,paddingRight;float alpha=1;final Animator animator=new Animator(this);LinearLayout.LayoutParams params=new LinearLayout.LayoutParams();
+  int getWidth(){return width;}int getPaddingLeft(){return paddingLeft;}int getPaddingRight(){return paddingRight;}
+  void setPadding(int left,int top,int right,int bottom){Metrics.layout++;paddingLeft=left;paddingRight=right;}void setBackground(Object drawable){Metrics.layout++;}
   void setVisibility(int value){Metrics.visibility++;visibility=value;}int getVisibility(){return visibility;}
   void setAlpha(float value){Metrics.alpha++;alpha=value;}float getAlpha(){return alpha;}
   Animator animate(){return animator;}
-  Object getLayoutParams(){return params;}void setLayoutParams(LinearLayout.LayoutParams value){Metrics.layout++;}
+  Object getLayoutParams(){return params;}void setLayoutParams(LinearLayout.LayoutParams value){Metrics.layout++;params=value;}
 }
 class TextView extends View {
+  void setTextColor(int color){Metrics.layout++;}
   String text="",description="";void setText(String value){Metrics.text++;text=value;}String getText(){return text;}
   void setContentDescription(String value){Metrics.description++;description=value;}String getContentDescription(){return description;}
 }
 class EditText extends TextView {}
-final class Button extends TextView {}
+final class Button extends TextView {MainActivity owner;MainActivity getContext(){return owner;}Paint getPaint(){return new Paint(owner);}int getCompoundPaddingLeft(){return paddingLeft;}int getCompoundPaddingRight(){return paddingRight;}}
+final class Paint {final MainActivity owner;Paint(MainActivity owner){this.owner=owner;}float measureText(String text){Metrics.measures++;return text.length()*14*owner.resources.configuration.fontScale;}}
 final class ProgressBar extends View {}
+final class ImageView extends View {}
+final class Color {static final int WHITE=-1,TRANSPARENT=0;}
+final class Ui {static Object ripple(MainActivity owner,int color,int radius){return color;}}
 final class LinearLayout extends View {
+  final List<View> children=new ArrayList<>();int getChildCount(){return children.size();}void removeAllViews(){Metrics.layout++;children.clear();}void addView(View view,LayoutParams params){Metrics.layout++;view.params=params;children.add(view);}
   static final int HORIZONTAL=0,VERTICAL=1;int orientation=VERTICAL;void setOrientation(int value){Metrics.orientation++;orientation=value;}
-  static final class LayoutParams {int width=-1,height=-2,topMargin,leftMargin;float weight;}
+  static final class LayoutParams {LayoutParams(){}LayoutParams(int width,int height){this.width=width;this.height=height;}int width=-1,height=-2,topMargin,leftMargin;float weight;}
 }
 final class Animator {
   final View owner;long duration;Runnable endAction;float targetAlpha;
@@ -136,10 +162,10 @@ final class MainActivity {
   void applyFocusLayout(){focusCalls++;}Resources getResources(){return resources;}int dp(int value){return value;}
   /* CHROME_VISIBILITY */
 }
-final class Resources {final android.content.res.Configuration configuration=new android.content.res.Configuration();android.content.res.Configuration getConfiguration(){return configuration;}}
+final class Resources {final android.content.res.Configuration configuration=new android.content.res.Configuration();final android.util.DisplayMetrics metrics=new android.util.DisplayMetrics();android.content.res.Configuration getConfiguration(){return configuration;}android.util.DisplayMetrics getDisplayMetrics(){return metrics;}}
 final class ChatSession {
   final Browser web=new Browser();boolean navigationFailed,connecting=true,networkReady;String status="正在连接",pageError="",networkIssue="",connectionStage="";
 }
 final class Browser {boolean visible,resourceDeferred;int actions;boolean hasVisibleDocument(){return visible;}}
-final class DesignUi {/* READABLE_METHOD */}
+final class DesignUi {static final int BLUE=0xff2468f2;static int dp(MainActivity owner,int value){return owner.dp(value);}/* READABLE_METHOD *//* ACTION_WIDTH_METHOD */}
 final class ResourcePressureController {/* DEFERRED_CONSTANT */}

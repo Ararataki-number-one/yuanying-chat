@@ -30,6 +30,18 @@ def runner_functions(*names):
     tree = ast.parse(RUNNER.read_text())
     functions = [copy.deepcopy(n) for n in tree.body if isinstance(n, ast.FunctionDef) and n.name in names]
     assert {n.name for n in functions} == set(names)
+    if 'capture' in names:
+        # The extracted current capture keeps its real protocol/readiness inputs.
+        # Load that dependency without running the device runner's top-level code.
+        dependency = ast.parse(
+            'import importlib.util as _capture_dependency_import\n'
+            "_capture_dependency_spec = _capture_dependency_import.spec_from_file_location('native_capture_readiness_dependency', "
+            + repr(str(ROOT / 'tools/gecko/native_navigation_v2.py')) + ')\n'
+            '_capture_dependency = _capture_dependency_import.module_from_spec(_capture_dependency_spec)\n'
+            '_capture_dependency_spec.loader.exec_module(_capture_dependency)\n'
+            'protocol_for_variant = _capture_dependency.protocol_for_variant\n'
+            'chat_ready = _capture_dependency.chat_ready\n')
+        functions.extend(dependency.body)
     return ast.Module(body=functions, type_ignores=[])
 
 

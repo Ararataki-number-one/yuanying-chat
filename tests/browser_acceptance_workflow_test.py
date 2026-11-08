@@ -9,6 +9,7 @@ import tempfile
 import unittest
 import xml.etree.ElementTree as ET
 import yaml
+from gradle_transport_source_compatibility import historical_toolchain_step
 
 ROOT=Path(__file__).resolve().parents[1]
 
@@ -22,7 +23,7 @@ class BrowserWorkflowTests(unittest.TestCase):
             with self.subTest(job=name):
                 current=self.new['jobs'][name];position=0
                 for step in job['steps']:
-                    found=next((at for at in range(position,len(current['steps'])) if current['steps'][at]==step),None)
+                    found=next((at for at in range(position,len(current['steps'])) if historical_toolchain_step(current['steps'][at])==step),None)
                     self.assertIsNotNone(found,(name,step.get('name')));position=found+1
                 if name=='build':
                     self.assertIn('timeout-minutes',job)

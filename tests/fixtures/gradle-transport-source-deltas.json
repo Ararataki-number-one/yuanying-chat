@@ -1,0 +1,64 @@
+{
+  "schema": 1,
+  "baseCommit": "7402ead321ca74b9fbefeab32a1aaffb32832011",
+  "baseTree": "2aaec06687b65d9511ace499528b6946dc1b8d53",
+  "files": {
+    ".github/workflows/browser-2_1-acceptance.yml": {
+      "previousBytes": 92044,
+      "reviewedBytes": 92383,
+      "previousSha256": "a4ef3a60391eb6a9fc86dba2986fcd7f7fc053f9e32bc4818cc6e773d8c84435",
+      "reviewedSha256": "2629831d0afd9176b0ce4d92a4c03117b66a3f20c4912885b4c31b391160f83e",
+      "deltas": [
+        {
+          "previous": "        \"$JAVA_HOME_17_X64/bin/keytool\" -genkeypair -keystore work/gecko-integration/integration-test.jks -alias androiddebugkey -storepass android -keypass android -dname CN=SyntheticIntegration -keyalg RSA -validity 2\n        curl -fsSL --retry 3 https://services.gradle.org/distributions/gradle-9.8.0-bin.zip -o work/gecko-integration/gradle.zip\n        echo 'bafd5ce9cfaea0fbccfdc8439a1ac42fbd4cd9c89dc9a988228d8a2639a58e6c  work/gecko-integration/gradle.zip' | sha256sum -c -\n",
+          "current": "        \"$JAVA_HOME_17_X64/bin/keytool\" -genkeypair -keystore work/gecko-integration/integration-test.jks -alias androiddebugkey -storepass android -keypass android -dname CN=SyntheticIntegration -keyalg RSA -validity 2\n        if ! curl -fsSL --retry 3 https://services.gradle.org/distributions/gradle-9.8.0-bin.zip -o work/gecko-integration/gradle.zip; then\n          curl -fLsS --retry 2 --max-time 240 -H 'Accept: application/octet-stream' -H 'X-GitHub-Api-Version: 2022-11-28' https://api.github.com/repos/gradle/gradle-distributions/releases/assets/586068844 -o work/gecko-integration/gradle.zip\n        fi\n        test \"$(stat -c %s work/gecko-integration/gradle.zip)\" = 151611662\n        echo 'bafd5ce9cfaea0fbccfdc8439a1ac42fbd4cd9c89dc9a988228d8a2639a58e6c  work/gecko-integration/gradle.zip' | sha256sum -c -\n",
+          "previousBytes": 481,
+          "currentBytes": 820,
+          "previousSha256": "516a56077450a3f10f6b7d246028d71f54ddf5d4947fd49276a7291e4f9a746a",
+          "currentSha256": "850a7a24a2e4439b64d68ac2b6191196ccaa6a2c4da762c342492a1d0b7d8c9e"
+        }
+      ]
+    },
+    ".github/workflows/profile-upgrade-checks.yml": {
+      "previousBytes": 21727,
+      "reviewedBytes": 22064,
+      "previousSha256": "37ec53f065fa4572b8d59c7d4138dc170267f73911c46b5d4db0855dfe024699",
+      "reviewedSha256": "e916cce66ae0017ebcc54d071f7a7a46e70c245aeb0be8a64ab567b5da14cc6d",
+      "deltas": [
+        {
+          "previous": "          \"$JAVA_HOME_17_X64/bin/keytool\" -genkeypair -keystore work/profile-build/integration-test.jks -alias androiddebugkey -storepass android -keypass android -dname CN=SyntheticIntegration -keyalg RSA -validity 2\n          curl -fsSL --retry 3 https://services.gradle.org/distributions/gradle-9.8.0-bin.zip -o work/profile-build/gradle.zip\n          echo 'bafd5ce9cfaea0fbccfdc8439a1ac42fbd4cd9c89dc9a988228d8a2639a58e6c  work/profile-build/gradle.zip' | sha256sum -c -\n",
+          "current": "          \"$JAVA_HOME_17_X64/bin/keytool\" -genkeypair -keystore work/profile-build/integration-test.jks -alias androiddebugkey -storepass android -keypass android -dname CN=SyntheticIntegration -keyalg RSA -validity 2\n          if ! curl -fsSL --retry 3 https://services.gradle.org/distributions/gradle-9.8.0-bin.zip -o work/profile-build/gradle.zip; then\n            curl -fLsS --retry 2 --max-time 240 -H 'Accept: application/octet-stream' -H 'X-GitHub-Api-Version: 2022-11-28' https://api.github.com/repos/gradle/gradle-distributions/releases/assets/586068844 -o work/profile-build/gradle.zip\n          fi\n          test \"$(stat -c %s work/profile-build/gradle.zip)\" = 151611662\n          echo 'bafd5ce9cfaea0fbccfdc8439a1ac42fbd4cd9c89dc9a988228d8a2639a58e6c  work/profile-build/gradle.zip' | sha256sum -c -\n",
+          "previousBytes": 475,
+          "currentBytes": 812,
+          "previousSha256": "be46a99da6a4400dc153dca9e0510f0f15954c3f64e47dcf5aa83a07d4080642",
+          "currentSha256": "0164af7c6fd2b7afa313941b11965a1826e1c6e25097dadbbf128b7c24ea778e"
+        }
+      ]
+    },
+    ".github/workflows/glass-release-validation.yml": {
+      "previousBytes": 15292,
+      "reviewedBytes": 15629,
+      "previousSha256": "686928c3060c06808068f2f43f54276f64eb54136ee112709f1d61a8b8aa171b",
+      "reviewedSha256": "11cdccbdfeb5e5871acfb62e29ae34465f657c887d9d4e38beaa550c76857cf0",
+      "deltas": [
+        {
+          "previous": "          \"$JAVA_HOME_17_X64/bin/keytool\" -genkeypair -keystore work/profile-build/integration-test.jks -alias androiddebugkey -storepass android -keypass android -dname CN=SyntheticIntegration -keyalg RSA -validity 2\n          curl -fsSL --retry 3 https://services.gradle.org/distributions/gradle-9.8.0-bin.zip -o work/profile-build/gradle.zip\n          echo 'bafd5ce9cfaea0fbccfdc8439a1ac42fbd4cd9c89dc9a988228d8a2639a58e6c  work/profile-build/gradle.zip' | sha256sum -c -\n",
+          "current": "          \"$JAVA_HOME_17_X64/bin/keytool\" -genkeypair -keystore work/profile-build/integration-test.jks -alias androiddebugkey -storepass android -keypass android -dname CN=SyntheticIntegration -keyalg RSA -validity 2\n          if ! curl -fsSL --retry 3 https://services.gradle.org/distributions/gradle-9.8.0-bin.zip -o work/profile-build/gradle.zip; then\n            curl -fLsS --retry 2 --max-time 240 -H 'Accept: application/octet-stream' -H 'X-GitHub-Api-Version: 2022-11-28' https://api.github.com/repos/gradle/gradle-distributions/releases/assets/586068844 -o work/profile-build/gradle.zip\n          fi\n          test \"$(stat -c %s work/profile-build/gradle.zip)\" = 151611662\n          echo 'bafd5ce9cfaea0fbccfdc8439a1ac42fbd4cd9c89dc9a988228d8a2639a58e6c  work/profile-build/gradle.zip' | sha256sum -c -\n",
+          "previousBytes": 475,
+          "currentBytes": 812,
+          "previousSha256": "be46a99da6a4400dc153dca9e0510f0f15954c3f64e47dcf5aa83a07d4080642",
+          "currentSha256": "0164af7c6fd2b7afa313941b11965a1826e1c6e25097dadbbf128b7c24ea778e"
+        }
+      ]
+    }
+  },
+  "toolchainStep": {
+    "name": "Prepare locked toolchain",
+    "previousRunBytes": 2194,
+    "previousRunSha256": "b5eaf94cc247c8de417c65d57ea423c1214dbabedaf96107e012f632fc02cbd2",
+    "reviewedRunBytes": 2509,
+    "reviewedRunSha256": "701cd9c68402e32bfbc54c4bd910618b75f57a1eabed1bf3abe7430402901a25",
+    "current": "\"$JAVA_HOME_17_X64/bin/keytool\" -genkeypair -keystore work/gecko-integration/integration-test.jks -alias androiddebugkey -storepass android -keypass android -dname CN=SyntheticIntegration -keyalg RSA -validity 2\nif ! curl -fsSL --retry 3 https://services.gradle.org/distributions/gradle-9.8.0-bin.zip -o work/gecko-integration/gradle.zip; then\n  curl -fLsS --retry 2 --max-time 240 -H 'Accept: application/octet-stream' -H 'X-GitHub-Api-Version: 2022-11-28' https://api.github.com/repos/gradle/gradle-distributions/releases/assets/586068844 -o work/gecko-integration/gradle.zip\nfi\ntest \"$(stat -c %s work/gecko-integration/gradle.zip)\" = 151611662\necho 'bafd5ce9cfaea0fbccfdc8439a1ac42fbd4cd9c89dc9a988228d8a2639a58e6c  work/gecko-integration/gradle.zip' | sha256sum -c -\n",
+    "previous": "\"$JAVA_HOME_17_X64/bin/keytool\" -genkeypair -keystore work/gecko-integration/integration-test.jks -alias androiddebugkey -storepass android -keypass android -dname CN=SyntheticIntegration -keyalg RSA -validity 2\ncurl -fsSL --retry 3 https://services.gradle.org/distributions/gradle-9.8.0-bin.zip -o work/gecko-integration/gradle.zip\necho 'bafd5ce9cfaea0fbccfdc8439a1ac42fbd4cd9c89dc9a988228d8a2639a58e6c  work/gecko-integration/gradle.zip' | sha256sum -c -\n"
+  }
+}

@@ -31,7 +31,7 @@ public final class NetworkSourcesUiIntegrationActivity extends Activity {
     super.onCreate(saved);if(!getPackageName().equals("local.pocketchat.test"))throw new SecurityException("Synthetic UI fixture only");
     if(Build.VERSION.SDK_INT>=30)getWindow().setDecorFitsSystemWindows(false);
     LinearLayout root=DesignUi.column(this);ReferenceUi.insets(this,root);FrameLayout host=new FrameLayout(this);root.addView(host,new LinearLayout.LayoutParams(-1,0,1));
-    root.addView(ReferenceUi.nav(this,3,n->{},new android.widget.Button[5]));setContentView(root);ui=new NetworkWorkspaceUi(this,host);ui.layout();
+    root.addView(ReferenceUi.nav(this,WorkspaceNavigation.NETWORK,n->{},new android.widget.Button[DesignUi.NAV.length]));setContentView(root);ui=new NetworkWorkspaceUi(this,host);ui.layout();
     handler.post(tick);io.execute(()->{try{seed();}catch(Throwable failed){fail(failed);}});
   }
   byte[] provider(boolean exit){

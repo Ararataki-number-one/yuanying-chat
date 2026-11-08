@@ -1,0 +1,136 @@
+{
+  "schema": 1,
+  "kind": "historical-current-toolbar-source-only",
+  "actualAndroidExecution": false,
+  "runtimeAcceptance": false,
+  "baseCommit": "dea2d48a04facdc13e3245425f095be3f7d495ad",
+  "baseTree": "a3d612ccd509d3e84bf1e4efe49ea2ca07f5e485",
+  "files": {
+    "tests/gecko/run_ui_visuals.py": {
+      "previousBytes": 47025,
+      "previousSha256": "12d0f61c0f53efd5766f37cf34ae5526acadfa287a387eb81855dd2e5943783f",
+      "currentBytes": 47272,
+      "currentSha256": "6e1ace5e7fb823c650e2084f717e81aba75934c41f9db3df2e0a12188ba90989",
+      "deltas": [
+        {
+          "previous": "package='local.pocketchat.test';records=[]\nsys.path.insert(0,str(root/'tools/gecko'))\nfrom ui_visual_capture import UiVisualCapture\nfrom native_navigation_v2 import protocol_for_variant,chat_ready,validate_chat,capture_native_fonts\nfrom diagnostic_capture_privacy import checked_text\nfrom ui_visual_contract import LIGHT_SCENES, LARGE_SCENES, DARK_SCENES, LANDSCAPE_SCENES, required_captures, verify_captures, verify_download_location\nscenes=LIGHT_SCENES\n",
+          "current": "package='local.pocketchat.test';records=[]\nsys.path.insert(0,str(root/'tools/gecko'))\nfrom ui_visual_capture import UiVisualCapture\nfrom native_navigation_v2 import protocol_for_variant,chat_ready,validate_chat,capture_native_fonts,validate_compact_toolbar_v2\nfrom diagnostic_capture_privacy import checked_text\nfrom ui_visual_contract import LIGHT_SCENES, LARGE_SCENES, DARK_SCENES, LANDSCAPE_SCENES, required_captures, verify_captures, verify_download_location\nscenes=LIGHT_SCENES\n",
+          "previousBytes": 455,
+          "currentBytes": 483,
+          "previousSha256": "1092bbb684db1a2035e3f41f63e342ff6dcec9162e45f7e47405f2cad64680a5",
+          "currentSha256": "e043908386f5c326040f76c5ce372d4ac4ef93a4fdf874228e9d8feba51afda3"
+        },
+        {
+          "previous": "    # Production chrome at narrow/large-font sizes, including real taps in the\n    # expanded touch regions rather than only calling performClick().\n    compact=[]\n    component=package+'/local.pocketchat.CompactChromeIntegrationActivity'\n    def chrome_event(command,event):\n        deadline=time.monotonic()+20\n",
+          "current": "    # Production chrome at narrow/large-font sizes, including real taps in the\n    # expanded touch regions rather than only calling performClick().\n    compact=[]\n    compact_navigation_protocol=protocol_for_variant('current')\n    component=package+'/local.pocketchat.CompactChromeIntegrationActivity'\n    def chrome_event(command,event):\n        deadline=time.monotonic()+20\n",
+          "previousBytes": 313,
+          "currentBytes": 377,
+          "previousSha256": "f152695cf96ab33cecb8e7a7ea95db0327d982e36f590bc7fd9c8b10997f38fe",
+          "currentSha256": "3cf3c4530de4d2e8e5ad425b913eb91c176ebc3e16658a6f24ad95275c332c00"
+        },
+        {
+          "previous": "        assert [control['name'] for control in sample['controls']]==['drawer','environment','more'],sample\n        assert sample['latency']==sample['expectedLatency']=='42 ms（02:00）',sample\n        assert not sample['networkClickable'] and not sample['networkFocusable'] and sample['networkBackground']=='none' and '点击' not in sample['networkDescription'],sample\n        assert sample['toolbarHeightDp']<= (59 if scale==1 else 100),sample\n        assert sample['topHeightDp']>=40 and sample['networkHeightDp']>=18,sample\n        dot=sample['decorativeDot']\n        assert abs(dot['textSizeDp']-9)<.01 and dot['inkWidth']<=dot['contentWidth']+1 and dot['fontHeight']<=dot['contentHeight']+1,(sample,dot)\n",
+          "current": "        assert [control['name'] for control in sample['controls']]==['drawer','environment','more'],sample\n        assert sample['latency']==sample['expectedLatency']=='42 ms（02:00）',sample\n        assert not sample['networkClickable'] and not sample['networkFocusable'] and sample['networkBackground']=='none' and '点击' not in sample['networkDescription'],sample\n        if compact_navigation_protocol==1:\n            assert sample['toolbarHeightDp']<= (59 if scale==1 else 100),sample\n        else:\n            sample['nativeToolbarValidation']=validate_compact_toolbar_v2(sample,width,scale)\n        assert sample['topHeightDp']>=40 and sample['networkHeightDp']>=18,sample\n        dot=sample['decorativeDot']\n        assert abs(dot['textSizeDp']-9)<.01 and dot['inkWidth']<=dot['contentWidth']+1 and dot['fontHeight']<=dot['contentHeight']+1,(sample,dot)\n",
+          "previousBytes": 711,
+          "currentBytes": 866,
+          "previousSha256": "a906f30485170cc6cb1ee7316992c4f92a7886d41f84bfbea2981ef9ec3a9778",
+          "currentSha256": "75d2fd1b807fde7ad0bad16ba590f8bec4e51096490b2ffa4c9e8f7fc619bc7e"
+        }
+      ]
+    }
+  },
+  "runnerAstPairs": {
+    "cf223c0f32e600b46feb36ecbcfff9c6d0d893223990954412db6118dc48fb59": {
+      "previousAstSha256": "3e66c8780755fb73fe5b12ca0fdf319daa8e208a357c43adb7a8b70e2660abef",
+      "operations": [
+        {
+          "path": [
+            "body"
+          ],
+          "currentStart": 18,
+          "currentEnd": 19,
+          "previousSource": "from native_navigation_v2 import protocol_for_variant, chat_ready, validate_chat, capture_native_fonts\n",
+          "currentSource": "from native_navigation_v2 import protocol_for_variant, chat_ready, validate_chat, capture_native_fonts, validate_compact_toolbar_v2\n",
+          "previousAstSha256": "6898574ea5c2f984f04ab3c3ef31f840acc81aadba337849081d3ffbe2cda90e",
+          "currentAstSha256": "c1ec806398df621f2651183c100b4ac4b24b87a7457de3b2486408f8774f77fb"
+        },
+        {
+          "path": [
+            "body",
+            37,
+            "body"
+          ],
+          "currentStart": 8,
+          "currentEnd": 9,
+          "previousSource": "\n",
+          "currentSource": "compact_navigation_protocol = protocol_for_variant('current')\n",
+          "previousAstSha256": "3543b4693a36a1098850b8bc928887694ed59a6deb7d3dfd0339de01f55a77b6",
+          "currentAstSha256": "acfb0313dd2471fa273b288b2c44ceb00c63f16cda0c9db886241e1c3d2ca086"
+        },
+        {
+          "path": [
+            "body",
+            37,
+            "body",
+            14,
+            "body"
+          ],
+          "currentStart": 12,
+          "currentEnd": 13,
+          "previousSource": "assert sample['toolbarHeightDp'] <= (59 if scale == 1 else 100), sample\n",
+          "currentSource": "if compact_navigation_protocol == 1:\n    assert sample['toolbarHeightDp'] <= (59 if scale == 1 else 100), sample\nelse:\n    sample['nativeToolbarValidation'] = validate_compact_toolbar_v2(sample, width, scale)\n",
+          "previousAstSha256": "bbf93195ffa86691026c1e0c567447c05cdc9a1b99c750b02e2328c00bc3be8e",
+          "currentAstSha256": "86d43c0c583f7bafdb73ccbf809811ea06cf34d7ed57668b20203d2f0ca80658"
+        }
+      ]
+    },
+    "6101b826787b936746afa473ec487b77bbdf50111f8d60679d44a20ef5c705ac": {
+      "previousAstSha256": "a6518b20f3d67163aedbf2fb2e2ead51b71cd9c5d9d93215d8ae422308723ca4",
+      "operations": [
+        {
+          "path": [
+            "body"
+          ],
+          "currentStart": 18,
+          "currentEnd": 19,
+          "previousSource": "from native_navigation_v2 import protocol_for_variant, chat_ready, validate_chat, capture_native_fonts\n",
+          "currentSource": "from native_navigation_v2 import protocol_for_variant, chat_ready, validate_chat, capture_native_fonts, validate_compact_toolbar_v2\n",
+          "previousAstSha256": "6898574ea5c2f984f04ab3c3ef31f840acc81aadba337849081d3ffbe2cda90e",
+          "currentAstSha256": "c1ec806398df621f2651183c100b4ac4b24b87a7457de3b2486408f8774f77fb"
+        },
+        {
+          "path": [
+            "body",
+            35,
+            "body"
+          ],
+          "currentStart": 8,
+          "currentEnd": 9,
+          "previousSource": "\n",
+          "currentSource": "compact_navigation_protocol = protocol_for_variant('current')\n",
+          "previousAstSha256": "3543b4693a36a1098850b8bc928887694ed59a6deb7d3dfd0339de01f55a77b6",
+          "currentAstSha256": "acfb0313dd2471fa273b288b2c44ceb00c63f16cda0c9db886241e1c3d2ca086"
+        },
+        {
+          "path": [
+            "body",
+            35,
+            "body",
+            14,
+            "body"
+          ],
+          "currentStart": 12,
+          "currentEnd": 13,
+          "previousSource": "assert sample['toolbarHeightDp'] <= (59 if scale == 1 else 100), sample\n",
+          "currentSource": "if compact_navigation_protocol == 1:\n    assert sample['toolbarHeightDp'] <= (59 if scale == 1 else 100), sample\nelse:\n    sample['nativeToolbarValidation'] = validate_compact_toolbar_v2(sample, width, scale)\n",
+          "previousAstSha256": "bbf93195ffa86691026c1e0c567447c05cdc9a1b99c750b02e2328c00bc3be8e",
+          "currentAstSha256": "86d43c0c583f7bafdb73ccbf809811ea06cf34d7ed57668b20203d2f0ca80658"
+        }
+      ]
+    }
+  },
+  "previousRunnerAst": [
+    "3e66c8780755fb73fe5b12ca0fdf319daa8e208a357c43adb7a8b70e2660abef",
+    "a6518b20f3d67163aedbf2fb2e2ead51b71cd9c5d9d93215d8ae422308723ca4"
+  ]
+}

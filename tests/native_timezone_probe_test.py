@@ -16,6 +16,7 @@ import unittest
 from unittest.mock import patch
 from zipfile import ZipFile
 import yaml
+from gradle_transport_source_compatibility import historical_toolchain_step
 
 ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT/'tools/gecko'))
@@ -219,7 +220,7 @@ public static void main(String[] ignored){
         self.assertEqual(set(new['jobs']),{'build','native_timezone_probe'})
         self.assertEqual(new['jobs']['native_timezone_probe']['needs'],'build')
         build=new['jobs']['build']['steps'];steps=new['jobs']['native_timezone_probe']['steps']
-        self.assertEqual(build[:5],original['jobs']['build']['steps'][:5])
+        self.assertEqual(build[:5],[historical_toolchain_step(step) for step in original['jobs']['build']['steps'][:5]])
         self.assertNotIn('Compile release and native regression package',[s.get('name') for s in steps])
         self.assertNotIn('Boot real API35 for diagnostic native timezone observations',[s.get('name') for s in build])
         uploaded=next(s for s in build if s.get('name')=='Transfer exact same-run diagnostic APKs and SDK classpath')

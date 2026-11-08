@@ -49,6 +49,9 @@ def main():
  java=(HERE/'ChromeNetworkStateHost.java').read_text().replace('/* CHROME_METHODS */','\n'.join(member(chrome,needle) for needle in methods)).replace('/* INITIAL_METADATA */','\n'.join(initial)).replace('/* STATE_FIELDS */',fields).replace('/* STATE_CONSTRUCTOR */',member(state,'WindowNetworkState(Context c,')).replace('/* STATE_MAINLINE */',member(state,'String mainline(')).replace('/* DEVICE_READ_MODEL_METHOD */','\n'.join(member(device_fixture.read_text(),needle) for needle in ['void checkReadModel(', 'void readModelFreshnessChecks(']))
  java=java.replace('/* CATALOG_EXIT_ID */',member(selected['NetworkCatalog'],'static String exitId(')).replace('/* NATIVE_METHODS */','\n'.join(member(selected['NativeNetwork'],needle) for needle in ['static boolean subscribedExit(','static String exitIdentity(','static String hash(']))
  java=java.replace('/* STATE_IDENTITY */',member(state,'static boolean sameEnvironment(') if 'static boolean sameEnvironment(' in state else '')
+ # Host API field only; production GLASS_INK aliases TEXT=0xff172033.
+ assert java.count('class DesignUi{')==1, 'One controlled DesignUi adapter required'
+ java=java.replace('class DesignUi{','class DesignUi{static int GLASS_INK=0xff172033;',1)
  with tempfile.TemporaryDirectory(prefix='chrome-network-state-host-') as raw:
   temp=pathlib.Path(raw);src=temp/'src';src.mkdir();(src/'ChromeNetworkStateHost.java').write_text(java)
   for name in ['LatencyRefreshPolicy','LatencyProbePolicy','NetworkStatusPolicy','NetworkOptimizationPolicy','Sha256']:(src/(name+'.java')).write_text(selected[name])

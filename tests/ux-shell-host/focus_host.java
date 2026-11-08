@@ -24,7 +24,7 @@ final class FocusIntegrationHost {
     layout("Focused chat",a,View.GONE,View.GONE,View.VISIBLE);
     check("Focus cancels pending chrome gestures",a.designChrome.cancelled==1);
     check("Actual exit initialization exposes a descriptive accessible control",a.focusExit.description.equals("退出专注阅读，恢复应用工具栏和导航"));
-    check("Focus entry announces how to exit",a.focusExit.announcement.contains("返回键或退出专注按钮"));
+    check("Focus entry announces how to exit",a.focusExit.announcement.contains("返回键或退出阅读按钮"));
     noBrowserWork("Entering focus retains document without browser work",a);
     int layouts=a.hub.bar.transitions+a.hub.divider.transitions,visibilityWrites=a.hub.bar.writes+a.hub.divider.writes;
     for(int i=0;i<100;i++){a.updateReadingLayout();a.hub.keyboard();}
@@ -59,7 +59,9 @@ final class FocusIntegrationHost {
     layout("Empty document keeps recovery chrome",a,View.VISIBLE,View.VISIBLE,View.GONE);
     a.remote.visible=true;a.applyFocusLayout();
     layout("Visible document resumes focus",a,View.GONE,View.GONE,View.VISIBLE);
-    String[] blocked={"https://chatgpt.com/auth/login","https://accounts.google.com/","https://auth.openai.com/","https://example.com/","http://chatgpt.com/c/1","https://chatgpt.com.evil.example/c/1","https://chatgpt.com@evil.example/c/1","javascript:alert(1)"};
+    String[] readable={"https://example.com/article","http://example.com/article","https://chatgpt.com.evil.example/article"};
+    for(String url:readable){a.remote.url=url;a.applyFocusLayout();check("Public website supports native focus without ChatGPT scripts: "+url,a.focusActive());layout("Generic website focus: "+url,a,View.GONE,View.GONE,View.VISIBLE);}
+    String[] blocked={"https://chatgpt.com/auth/login","https://accounts.google.com/","https://auth.openai.com/","https://chatgpt.com@evil.example/c/1","javascript:alert(1)","file:///private/document","about:blank","http://127.0.0.1/"};
     for(String url:blocked){a.remote.url=url;a.applyFocusLayout();check("Suspends focus for "+url,!a.focusActive());layout("Recovery controls for "+url,a,View.VISIBLE,View.VISIBLE,View.GONE);}
     a.remote.url="https://chatgpt.com/c/retained";a.session.audit.diagnostic=true;a.applyFocusLayout();
     check("Identity diagnostic suspends focus without clearing preference",a.focusReading&&!a.focusActive());
@@ -124,12 +126,14 @@ final class DesignUi {
   static final int CARD=1,LINE=2;
   static Button button(MainActivity a,String label,boolean primary,Runnable click){Button button=new Button();button.click=click;return button;}
   static Object surface(MainActivity a,int color,int radius,int border){return new Object();}
+  static Object glass(MainActivity a,int radius){return new Object();}
 }
 final class AppHub {
   static final int CHAT=0,SETTINGS=3;
   final MainActivity a;final View bar=new View(),divider=new View();int page=CHAT,selections;
   AppHub(MainActivity a){this.a=a;}
   void select(int value){selections++;page=value;a.updateReadingLayout();}
+  void mark(){}
   /* HUB_KEYBOARD */
 }
 final class Browser {

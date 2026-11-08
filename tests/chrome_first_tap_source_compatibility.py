@@ -50,3 +50,11 @@ def source_input(raw, relative):
     if (hashlib.sha256(raw).hexdigest(), len(raw)) != (row['previousSha256'], row['previousBytes']):
         reject()
     return raw
+
+
+# Source comparisons only: preserve the original JSON and its strict loader.
+import importlib.util as _dispatch_import
+_dispatch_spec = _dispatch_import.spec_from_file_location('selected_chrome_dispatch_comparison', Path(__file__).with_name('chrome_dispatch_source_compatibility.py'))
+_dispatch_input = _dispatch_import.module_from_spec(_dispatch_spec)
+_dispatch_spec.loader.exec_module(_dispatch_input)
+manifest = _dispatch_input.wrap_manifest(manifest)

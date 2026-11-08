@@ -11,6 +11,7 @@ import unittest
 from unittest.mock import patch
 
 import resource_startup_source_compatibility as layer
+from gecko_surface_source_compatibility import historical_input as surface_historical_input
 
 ROOT = Path(__file__).resolve().parents[1]
 SHA = lambda raw: hashlib.sha256(raw).hexdigest()
@@ -22,11 +23,11 @@ class ResourceStartupHistoricalInputs(unittest.TestCase):
         previous = subprocess.check_output(['git', '--no-replace-objects', 'show',
             '12a45fb8a1343bbe5767bdf6c3fba54519650fa1:'+layer.GV], cwd=ROOT,
             env=dict(os.environ, GIT_NO_LAZY_FETCH='1'))
-        self.assertEqual(SHA(current), '55225a8da3ba67b3be724e243c9b442e635dbc5aa282a2ef0257653e8fb2b364')
+        self.assertEqual(SHA(surface_historical_input(current)), '55225a8da3ba67b3be724e243c9b442e635dbc5aa282a2ef0257653e8fb2b364')
         self.assertEqual(SHA(previous), '34a651c3ccc50499dd5c720c370353600ccf20669df5393ccbf68d6a689f9670')
         self.assertEqual(layer.source_input(current, layer.GV), previous)
         self.assertIs(layer.source_input(previous, layer.GV), previous)
-        self.assertEqual(len(previous)-len(current), len('&&runtime!=null'))
+        self.assertEqual(len(previous)-len(surface_historical_input(current)), len('&&runtime!=null'))
 
     def test_all_five_exact_images_have_unique_complete_forward_and_inverse(self):
         cfg = layer.config()

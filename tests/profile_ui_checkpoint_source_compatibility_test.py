@@ -7,6 +7,7 @@ import unittest
 import ui_checkpoint_source_compatibility as checkpoint
 import ui_quick_sheet_source_compatibility as quick
 import ui_visual_preservation_contract as original_ui
+from ui_native_geometry_source_compatibility import historical_input as historical_runner_input
 
 ROOT = Path(__file__).resolve().parents[1]
 PREPARATION = ("from ui_test_device import prepare_workflow as prepare_ui_test_device\n"
@@ -40,7 +41,7 @@ class UiCheckpointSourceCompatibilityTests(unittest.TestCase):
         self.assertIn("copy_gecko_tls_evidence(pathlib.Path('work/tls-acceptance'),destination,os.environ['GITHUB_SHA'],expected)", copy[0]['run'])
 
     def test_actual_current_runner_and_entire_two_snippet_inverse(self):
-        raw = (ROOT / checkpoint.RUNNER).read_bytes()
+        raw = historical_runner_input((ROOT / checkpoint.RUNNER).read_bytes(), checkpoint.RUNNER)
         old = checkpoint.require_current_runner(raw)
         self.assertEqual(checkpoint.sha(raw), checkpoint.RUNNER_CURRENT_SHA256)
         self.assertEqual(checkpoint.sha(old), '65fb205cbb7a466858a0a1869cd4b5388f70026d4e09da078318827e92432f4f')
@@ -58,7 +59,7 @@ class UiCheckpointSourceCompatibilityTests(unittest.TestCase):
                     and node.name != 'test_two_opt_in_insertions_inverse_entire_actual_runner_to_exact_before'}
         self.assertEqual(runtime_functions(actual), runtime_functions(previous))
         self.assertEqual(checkpoint.sha(checkpoint.checkpoint_runner_input(raw)), checkpoint.PREFERENCE_PREVIOUS_SHA256)
-        workflow = (ROOT / '.github/workflows/browser-2_1-acceptance.yml').read_bytes()
+        workflow = checkpoint.checkpoint_transport_input((ROOT / '.github/workflows/browser-2_1-acceptance.yml').read_bytes())
         before = checkpoint.checkpoint_workflow_input(workflow)
         self.assertEqual(checkpoint.sha(before), checkpoint.WORKFLOW_PREVIOUS_SHA256)
         self.assertEqual(before.replace(checkpoint.TLS_DOWNLOAD_PREVIOUS.encode(), checkpoint.TLS_DOWNLOAD_CURRENT.encode(), 1), workflow)
@@ -81,7 +82,7 @@ class UiCheckpointSourceCompatibilityTests(unittest.TestCase):
             self.assertEqual(current,methods)
         self.assertEqual(set(manifest['files']), set(checkpoint.PREVIOUS))
         for path, row in manifest['files'].items():
-            raw = (ROOT / path).read_bytes()
+            raw = historical_runner_input((ROOT / path).read_bytes(), path)
             old = checkpoint.source_input(raw, path)
             self.assertEqual(checkpoint.sha(old), checkpoint.PREVIOUS[path])
             for delta in row['deltas']:

@@ -18,6 +18,7 @@ import unittest
 from unittest.mock import patch
 from zipfile import ZipFile
 import yaml
+from gradle_transport_source_compatibility import historical_toolchain_step
 ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT/'tools/gecko'))
 sys.path.insert(0,str(ROOT/'tools/browser'))
@@ -376,7 +377,7 @@ process.stdout.write(JSON.stringify({hostAsset:true,actualAndroidExecution:false
         self.assertEqual(workflow['permissions'],{'contents':'read'});self.assertEqual(workflow['on']['push']['branches'],['diagnostics/gecko-cpu-*'])
         self.assertEqual(workflow['env'],original['env']);self.assertEqual(set(workflow['jobs']),{'build','gecko_cpu_acceptance'})
         build=workflow['jobs']['build'];diagnostic=workflow['jobs']['gecko_cpu_acceptance'];self.assertEqual(diagnostic['needs'],'build')
-        self.assertEqual(build['steps'][:5],original['jobs']['build']['steps'][:5])
+        self.assertEqual(build['steps'][:5],[historical_toolchain_step(step) for step in original['jobs']['build']['steps'][:5]])
         upload=next(s for s in build['steps'] if s.get('name')=='Transfer exact same-run diagnostic APKs and SDK classpath')
         download=next(s for s in diagnostic['steps'] if s.get('name')=='Download only this run and attempt diagnostic build')
         self.assertEqual(upload['with']['name'],download['with']['name']);self.assertIn('${{ github.run_attempt }}',upload['with']['name'])

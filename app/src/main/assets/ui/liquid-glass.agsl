@@ -1,0 +1,147 @@
+// Rounded SDF, bevel normals and a transparent optical coating.
+// Based on the public geometric techniques described in docs/ui/COMPACT-GLASS-READING.md.
+// Native workspace pixels enter only through the separate content RenderNode.
+uniform shader content;
+uniform float2 size;
+uniform float margin;
+uniform float density;
+uniform float radius;
+uniform float press;
+uniform float bend;
+uniform float2 light;
+uniform float2 bump;
+uniform float2 touch;
+uniform float darkTheme;
+uniform float hasBackdrop;
+uniform float opacity;
+
+float square(float value) { return value * value; }
+
+float roundedBox(float2 p, float2 b, float r) {
+    float2 q = abs(p) - b + r;
+    return length(max(q, float2(0.0))) + min(max(q.x, q.y), 0.0) - r;
+}
+
+float surfaceDistance(float2 p) {
+    float2 halfSize = size * 0.5 - float2(4.0 * density);
+    float d = roundedBox(p - size * 0.5, halfSize, radius);
+    float sigma = max(8.0 * density, min(halfSize.y * 1.15, 32.0 * density));
+    float2 near = (p - bump) / sigma;
+    float2 far = (p - (size - bump)) / sigma;
+    return d - bend * density * (3.6 * exp(-dot(near, near)) - 0.7 * exp(-dot(far, far)));
+}
+
+half4 main(float2 coord) {
+    float2 p = coord - float2(margin);
+    float2 halfSize = size * 0.5 - float2(4.0 * density);
+    float d = surfaceDistance(p);
+    float aa = max(0.7, density * 0.28);
+    float cover = 1.0 - smoothstep(-aa, aa, d);
+
+    // A light floating shadow separates the lens without making its clear
+    // center read as raised, opaque plastic. Both tails fit the 18 dp overscan.
+    float shadowD = surfaceDistance(p - float2(0.0, 1.0 * density));
+    float ambientD = roundedBox(p - size * 0.5 - float2(0.0, 2.5 * density), halfSize, radius);
+    float ambient = exp(-square(max(ambientD, 0.0) / (6.0 * density))) * 0.028 * (1.0 - darkTheme);
+    float contactShadow = exp(-max(shadowD, 0.0) / (mix(1.05, 1.8, darkTheme) * density))
+        * mix(0.014, 0.12, darkTheme);
+    float shadow = (ambient + contactShadow) * (1.0 - cover);
+    if (cover < 0.001) return half4(float3(0.0), shadow * opacity);
+
+    float e = max(0.6, density * 0.45);
+    float2 n = float2(surfaceDistance(p + float2(e, 0.0)) - surfaceDistance(p - float2(e, 0.0)),
+                      surfaceDistance(p + float2(0.0, e)) - surfaceDistance(p - float2(0.0, e)));
+    n = length(n) > 0.0001 ? normalize(n) : float2(0.0, -1.0);
+    float bevel = max(2.0 * density, min(mix(3.5, 6.5, darkTheme) * density, min(halfSize.x, halfSize.y) * 0.30));
+    float edge = clamp(1.0 + d / bevel, 0.0, 1.0);
+    float slope = pow(edge, 1.45) * 0.96;
+    float2 face = clamp((p - size * 0.5) / max(halfSize, float2(1.0)), float2(-1.0), float2(1.0));
+    float2 normalXY = n * slope + face * 0.035 * (1.0 - edge);
+    float normalZ = sqrt(max(1.0 - dot(normalXY, normalXY), 0.001));
+    float fresnel = 0.03 + 0.97 * pow(1.0 - normalZ, 5.0);
+
+    float2 lightAxis = normalize(light + float2(0.00001));
+    float key = pow(max(dot(n, lightAxis), 0.0), 5.0);
+    float returnLight = pow(max(dot(n, -lightAxis), 0.0), 5.0) * 0.58;
+    float2 sideAxis = float2(-lightAxis.y, lightAxis.x);
+    float side = pow(abs(dot(n, sideAxis)), 2.4);
+    // Fixed soft environment lighting supplies volume even on a plain page.
+    // This is reflection, not an opaque replacement for the page background.
+    float3 sideReflection = mix(float3(0.88, 0.91, 0.95), float3(0.63, 0.70, 0.80), darkTheme);
+    float3 reflected = mix(float3(0.99, 0.995, 1.0), sideReflection, side * 0.55);
+    reflected = mix(reflected, float3(1.0), clamp(key + returnLight * 0.8, 0.0, 1.0));
+    float reflectance = clamp(fresnel * 0.72 + pow(edge, 5.0) * (0.015 + side * 0.045), 0.0, 0.32);
+    float veil = mix(0.16, 0.15, darkTheme);
+    float3 tint = mix(float3(0.995, 0.998, 1.0), float3(0.12, 0.15, 0.20), darkTheme);
+    float a = reflectance + (1.0 - reflectance) * veil;
+    float3 premul = reflectance * reflected + (1.0 - reflectance) * veil * tint;
+
+    // A very narrow neutral return just inside the rim separates the bright
+    // edge from the clear face. It follows the normal, not a uniform gray ring.
+    float shoulder = exp(-square((d + 1.65 * density) / (1.0 * density)))
+        * (0.010 + side * 0.020 + returnLight * 0.050) * (1.0 - darkTheme);
+    premul = shoulder * float3(0.36, 0.43, 0.53) + (1.0 - shoulder) * premul;
+    a = shoulder + (1.0 - shoulder) * a;
+
+    // Keep a fine continuous edge, with stronger separated lighting lobes.
+    // The center carries almost no broad white highlight.
+    float rim = exp(-square((d + mix(0.55, 0.75, darkTheme) * density)
+        / (mix(0.55, 0.65, darkTheme) * density)));
+    float softLight = exp(-max(-d, 0.0) / (1.8 * density)) * pow(edge, 0.6);
+    float caustic = exp(-square((d + 2.2 * density) / (0.85 * density)));
+    float shine = clamp(rim * (mix(0.22, 0.0, darkTheme)
+        + key * mix(0.54, 0.68, darkTheme) + returnLight * 0.40)
+        + softLight * (mix(0.008, 0.0, darkTheme) + key * 0.07 + returnLight * 0.04)
+        + caustic * returnLight * 0.07, 0.0, 0.86);
+    // The environment light stays quiet. Touch adds a separate local light
+    // field, so pressing one end no longer relights the entire capsule.
+    float touchRadius = max(14.0 * density, min(halfSize.y * 1.35, 34.0 * density));
+    float2 local = (p - touch) / (touchRadius * (0.72 + press * 0.28));
+    float contact = exp(-dot(local, local));
+    float touchRim = contact * exp(-square((d + 1.1 * density) / (1.25 * density)));
+    // The crest follows the animated boundary point, including its release
+    // travel. A local cool reflection remains perceptible on an almost white
+    // page without tinting the resting face or adding a permanent dark rim.
+    float crestRadius = max(10.0 * density, min(halfSize.y * 0.70, 22.0 * density));
+    float2 crestLocal = (p - bump) / crestRadius;
+    float crestContact = exp(-dot(crestLocal, crestLocal));
+    float crest = crestContact * exp(-square((d + 0.8 * density) / (0.9 * density)));
+    float broad = exp(-square((face.x * 0.55 + face.y * 0.8 - lightAxis.x * 0.4) * 1.6));
+    shine = min(0.90, shine + broad * 0.004
+        + press * (contact * 0.085 + touchRim * 0.42 + crest * 0.42));
+    premul = float3(shine) + (1.0 - shine) * premul;
+    a = shine + (1.0 - shine) * a;
+    float cool = press * crestContact
+        * exp(-square((d + 2.7 * density) / (1.9 * density))) * mix(0.14, 0.12, darkTheme);
+    float3 coolReflection = mix(float3(0.50, 0.74, 1.0), float3(0.42, 0.68, 1.0), darkTheme);
+    premul = cool * coolReflection + (1.0 - cool) * premul;
+    a = cool + (1.0 - cool) * a;
+
+    if (hasBackdrop > 0.5) {
+        // Snell refraction. The source contains native workspace content only.
+        float3 ray = refract(float3(0.0, 0.0, -1.0), float3(normalXY, normalZ), 1.0 / 1.42);
+        float2 offset = ray.xy / max(-ray.z, 0.05) * (18.0 + press * 6.0) * density;
+        offset -= (p - size * 0.5) * 0.015;
+        float2 lo = float2(1.0);
+        float2 hi = size + float2(margin * 2.0 - 1.0);
+        float2 at = clamp(coord + offset, lo, hi);
+        float2 split = n * pow(edge, 2.8) * (0.20 * density);
+        float3 scene = float3(content.eval(clamp(at + split, lo, hi)).r,
+                              content.eval(at).g,
+                              content.eval(clamp(at - split, lo, hi)).b);
+        float luma = dot(scene, float3(0.2126, 0.7152, 0.0722));
+        scene = mix(float3(luma), scene, 1.035);
+        // Preserve background colour and lens detail. A small extra lift is
+        // local to darker source strokes instead of whitening the whole face.
+        // Conversation pixels never enter this branch.
+        float backing = (0.065 + 0.08 * square(1.0 - luma))
+            * (1.0 - edge * edge) * (1.0 - darkTheme);
+        scene = mix(scene, tint, backing);
+        premul += (1.0 - a) * scene;
+        a = 1.0;
+    }
+    float surfaceAlpha = a * cover;
+    float finalAlpha = surfaceAlpha + shadow * (1.0 - surfaceAlpha);
+    return half4(clamp(premul * cover, float3(0.0), float3(finalAlpha)) * opacity,
+                 finalAlpha * opacity);
+}

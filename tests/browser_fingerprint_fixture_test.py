@@ -23,7 +23,7 @@ class BrowserFingerprintFixtureTests(unittest.TestCase):
         self.assertIn('row.setVisibility(View.GONE)',source[:source.index('String target(')])
         for button in ('address','home'):self.assertIn(button+'.setSingleLine(true)',source)
         self.assertNotIn('setMinHeight(0)',source);self.assertNotIn('setMinimumHeight(0)',source)
-        self.assertIn('option(d,"打开网址或搜索 · Gecko",()->GeckoAddressUi.show(this));',main)
+        self.assertIn('option(d,"打开网址或搜索",()->GeckoAddressUi.show(this));',main)
         self.assertIn('if(geckoAddress!=null)geckoAddress.refresh();',parser.member_at(main,main.index('void applySession(')))
         show=parser.member_at(source,source.index('static void show('));self.assertNotIn('isShown(',show);self.assertNotIn('getVisibility(',show)
         self.assertIn('owner.refresh();',show);self.assertIn('if(a.geckoAddress!=null)a.geckoAddress.refresh();',parser.member_at(source,source.index('static void closeSites(')))

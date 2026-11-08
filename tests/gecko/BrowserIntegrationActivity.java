@@ -149,18 +149,21 @@ public final class BrowserIntegrationActivity extends BrowserActivity {
     double x=value.getDouble("x"),y=value.getDouble("y"),left=value.getDouble("visualOffsetLeft"),top=value.getDouble("visualOffsetTop"),width=value.getDouble("visualWidth"),height=value.getDouble("visualHeight");return id.equals(value.getString("id"))&&view.getUrl().equals(value.getString("url"))&&value.getBoolean("hitTarget")&&value.getDouble("right")>value.getDouble("left")&&value.getDouble("bottom")>value.getDouble("top")&&x>0&&x<value.getDouble("viewportWidth")&&y>0&&y<value.getDouble("viewportHeight")&&width>0&&height>0&&left>=0&&top>=0&&left+width<=value.getDouble("viewportWidth")+1&&top+height<=value.getDouble("viewportHeight")+1&&x>left&&x<left+width&&y>top&&y<top+height;
   }
   static boolean nativeVisualTargetReady(JSONObject frame,JSONObject dom)throws JSONException{return Math.abs(dom.getDouble("visualWidth")*frame.getDouble("nativeScale")-frame.getInt("width"))<=1&&Math.abs(dom.getDouble("visualHeight")*frame.getDouble("nativeScale")-frame.getInt("height"))<=1;}
+  static boolean focusedNativeTargetReady(JSONObject frame)throws JSONException{return nativeTargetReady(frame)&&Boolean.TRUE.equals(frame.opt("viewFocus"));}
+  static boolean focusedDomTargetReady(JSONObject dom){return Boolean.TRUE.equals(dom.opt("documentFocus"));}
   void targetFrame(WebView view,String id,long generation,Step next,JSONObject previousNative,JSONObject previousDom){
     if(!targetCurrent(view,generation))return;
     view.postOnAnimation(()->{try{
-      if(!targetCurrent(view,generation))return;JSONObject before=nativeTargetFrame(view);target=new JSONObject().put("id",id).put("ready",false).put("nativeFrame",before);
-      if(!nativeTargetReady(before)){targetFrame(view,id,generation,next,null,null);return;}
+      if(!targetCurrent(view,generation))return;if(!view.hasFocus())view.requestFocus();JSONObject before=nativeTargetFrame(view);target=new JSONObject().put("id",id).put("ready",false).put("nativeFrame",before);
+      if(!focusedNativeTargetReady(before)){targetFrame(view,id,generation,next,null,null);return;}
       view.postVisualStateCallback(++visualSequence,new WebView.VisualStateCallback(){@Override public void onComplete(long request){
         view.postOnAnimation(()->{try{
           if(!targetCurrent(view,generation))return;JSONObject nativeBefore=nativeTargetFrame(view);
-          if(!sameNativeTarget(before,nativeBefore)){targetFrame(view,id,generation,next,null,null);return;}
+          if(!focusedNativeTargetReady(nativeBefore)||!sameNativeTarget(before,nativeBefore)){targetFrame(view,id,generation,next,null,null);return;}
           js("("+TARGET_SAMPLE_SCRIPT+")("+JSONObject.quote(id)+")",dom->{try{
             if(!targetCurrent(view,generation))return;JSONObject nativeAfter=nativeTargetFrame(view);target=new JSONObject().put("id",id).put("ready",false).put("nativeFrame",nativeAfter).put("dom",dom);
-            if(!sameNativeTarget(nativeBefore,nativeAfter)){targetFrame(view,id,generation,next,null,null);return;}
+            if(!focusedNativeTargetReady(nativeAfter)||!sameNativeTarget(nativeBefore,nativeAfter)){targetFrame(view,id,generation,next,null,null);return;}
+            if(!focusedDomTargetReady(dom)){targetFrame(view,id,generation,next,null,null);return;}
             if(!domTargetReady(id,dom,view)){scrollTarget(view,id,generation,()->targetFrame(view,id,generation,next,null,null));return;}
             if(!nativeVisualTargetReady(nativeAfter,dom)){targetFrame(view,id,generation,next,null,null);return;}
             if(!sameNativeTarget(previousNative,nativeAfter)||!sameDomTarget(previousDom,dom)){targetFrame(view,id,generation,next,nativeAfter,dom);return;}
