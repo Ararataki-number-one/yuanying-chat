@@ -1,0 +1,24 @@
+{
+  "schema": 1,
+  "kind": "historical-profile-context-guard-input-only",
+  "baseCommit": "7402ead321ca74b9fbefeab32a1aaffb32832011",
+  "baseTree": "2aaec06687b65d9511ace499528b6946dc1b8d53",
+  "path": "app/src/main/java/local/pocketchat/ProfileContext.java",
+  "previousBlob": "2a705b04125af80d4e578c8145a00be9a9eb70e0",
+  "previousBytes": 2841,
+  "previousSha256": "2b72094396c21c235e77ce79fbd6a6eb134abf14a71bf4c8c0ae010aa2369178",
+  "reviewedBytes": 3265,
+  "reviewedSha256": "875da42368d4133143acd6d0b049642c17e622485079389d40f19a4411a7d9f0",
+  "actualAndroidExecution": false,
+  "runtimeAcceptance": false,
+  "deltas": [
+    {
+      "previous": "  final int slot;final boolean ownsProcess;\n  ProfileContext(Context base,int id){super(base instanceof ProfileContext?((ProfileContext)base).getBaseContext():base);if(id<0||id>=Profiles.MAX)throw new IllegalArgumentException();slot=id;String name=null;if(android.os.Build.VERSION.SDK_INT>=28)name=android.app.Application.getProcessName();else{android.app.ActivityManager manager=getBaseContext().getSystemService(android.app.ActivityManager.class);java.util.List<android.app.ActivityManager.RunningAppProcessInfo> all=manager==null?null:manager.getRunningAppProcesses();if(all!=null)for(android.app.ActivityManager.RunningAppProcessInfo process:all)if(process.pid==android.os.Process.myPid()){name=process.processName;break;}}ownsProcess=EnvironmentProcessPolicy.owns(getBaseContext().getPackageName(),name,id);}\n  String name(String value){if(slot==0)return value;if(value.contains(\"/\")||value.contains(\"\\\\\"))throw new IllegalArgumentException(\"Invalid profile storage name\");return \"env\"+slot+\"_\"+value;}\n  @Override public Context getApplicationContext(){Context app=super.getApplicationContext();if(app instanceof ProfileContext)app=((ProfileContext)app).getBaseContext();return app instanceof PocketApplication?((PocketApplication)app).profile(slot):new ProfileContext(app,slot);}\n  @Override public android.content.SharedPreferences getSharedPreferences(String name,int mode){return super.getSharedPreferences(name(name),mode|(ownsProcess?0:Context.MODE_MULTI_PROCESS));}\n",
+      "current": "  final int slot;final boolean ownsProcess;\n  private final Context callbackOwner;\n  ProfileContext(Context base,int id){super(base instanceof ProfileContext?((ProfileContext)base).getBaseContext():base);if(id<0||id>=Profiles.MAX)throw new IllegalArgumentException();slot=id;callbackOwner=Profiles.global(base);String name=null;if(android.os.Build.VERSION.SDK_INT>=28)name=android.app.Application.getProcessName();else{android.app.ActivityManager manager=getBaseContext().getSystemService(android.app.ActivityManager.class);java.util.List<android.app.ActivityManager.RunningAppProcessInfo> all=manager==null?null:manager.getRunningAppProcesses();if(all!=null)for(android.app.ActivityManager.RunningAppProcessInfo process:all)if(process.pid==android.os.Process.myPid()){name=process.processName;break;}}ownsProcess=EnvironmentProcessPolicy.owns(getBaseContext().getPackageName(),name,id);}\n  String name(String value){if(slot==0)return value;if(value.contains(\"/\")||value.contains(\"\\\\\"))throw new IllegalArgumentException(\"Invalid profile storage name\");return \"env\"+slot+\"_\"+value;}\n  @Override public Context getApplicationContext(){Context app=super.getApplicationContext();if(app instanceof ProfileContext)app=((ProfileContext)app).getBaseContext();return app instanceof PocketApplication?((PocketApplication)app).profile(slot):new ProfileContext(app,slot);}\n  // Component callbacks belong to the Application, not this isolated wrapper.\n  @Override public void registerComponentCallbacks(ComponentCallbacks callback){callbackOwner.registerComponentCallbacks(callback);}\n  @Override public void unregisterComponentCallbacks(ComponentCallbacks callback){callbackOwner.unregisterComponentCallbacks(callback);}\n  @Override public android.content.SharedPreferences getSharedPreferences(String name,int mode){return super.getSharedPreferences(name(name),mode|(ownsProcess?0:Context.MODE_MULTI_PROCESS));}\n",
+      "previousBytes": 1479,
+      "previousSha256": "4cd3c4b01f1365fc140f8d191bdb4fbec894714ab5d05755e33734283cd6d347",
+      "currentBytes": 1903,
+      "currentSha256": "05111174c46a7eb61d180a45866f84d6d23e4dbf25946f5fed1ee904be16cb02"
+    }
+  ]
+}

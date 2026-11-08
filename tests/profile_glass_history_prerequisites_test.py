@@ -28,6 +28,7 @@ PUBLIC_FILES = {
     'tests/fixtures/profile-fixture-root-source-deltas.json',
     'tests/fixtures/resource-startup-source-deltas.json',
     'tests/fixtures/final-browser-source-deltas.json',
+    'app/src/main/java/local/pocketchat/ProfileContext.java',
 }
 
 
@@ -116,7 +117,7 @@ class GlassHistoryPrerequisitesTests(unittest.TestCase):
             self.assertEqual((group['tree'], set(group['files'])), (tree, paths))
             observed = setup.history.verify_group(ROOT, group)
             self.assertEqual(len(observed['files']), len(paths))
-        self.assertEqual(sum(len(group['files']) for group in groups), 10)
+        self.assertEqual(sum(len(group['files']) for group in groups), 11)
         legacy = ROOT / setup.history.MANIFEST
         self.assertEqual(hashlib.sha256(legacy.read_bytes()).hexdigest(),
                          '52831c72831c3d1ed43ae040efeef9436fb9b71ba78aa5a8ec6f0b4e3be6e745')

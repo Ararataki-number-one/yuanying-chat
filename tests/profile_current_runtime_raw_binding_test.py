@@ -33,6 +33,7 @@ def load(name, relative):
 
 PATH_HOST = load('current_profile_raw_binding', 'tests/browser-profile-path-host/run.py')
 WINDOW_HOST = load('current_window_raw_binding', 'tests/gecko-ip-window-barrier-host/run.py')
+PROFILE_CONTEXT_INPUT = load('current_profile_context_source_input', 'tests/profile_context_callback_source_compatibility.py')
 
 
 class CurrentRuntimeRawBindings(unittest.TestCase):
@@ -60,7 +61,7 @@ class CurrentRuntimeRawBindings(unittest.TestCase):
         self.assertEqual(SHA(json.dumps(pins, sort_keys=True, separators=(',', ':')).encode()), '24466f4dc00a0b37a8eba66a39bf6ebc5b5b9de190e82579d496bb414dda5683')
         for name, expected in pins.items():
             raw = (ROOT/'app/src/main/java/local/pocketchat'/(name+'.java')).read_bytes()
-            self.assertEqual(SHA(raw), expected)
+            self.assertEqual(SHA(PROFILE_CONTEXT_INPUT.historical_guard_input(raw, name)), expected)
             self.assertIs(PATH_HOST.verify_factored_raw(name, raw), raw)
             for bad in (raw+b' ', raw[:-1], b'unknown', None, bytearray(raw)):
                 with self.assertRaises(ValueError):

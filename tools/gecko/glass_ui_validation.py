@@ -47,6 +47,88 @@ def total_frames(raw):
     return int(values[0])
 
 
+def gfxinfo_owner(raw, package):
+    """Bind a cumulative counter to its actual Android process and reset epoch."""
+    pids = re.findall(r'^\*\* Graphics info for pid (\d+) \[' + re.escape(package) + r'\] \*\*\s*$', raw, re.M)
+    epochs = re.findall(r'^Stats since:\s*(\d+)ns\s*$', raw, re.M)
+    clocks = re.findall(r'^Uptime:\s*\d+\s+Realtime:\s*(\d+)\s*$', raw, re.M)
+    if len(pids) != 1 or len(epochs) != 1 or len(clocks) != 1:
+        raise ValueError('One actual process/epoch/clock is required for the HWUI observation')
+    return dict(pid=int(pids[0]), statsSinceNs=int(epochs[0]), realtimeMillis=int(clocks[0]))
+
+
+def validate_glass_owner_window(before, after, samples, identity, nonce, commands):
+    """Validate read-only attribution; never substitute it for the HWUI limit."""
+    if len(samples) != 2 or samples[0]['pid'] != samples[1]['pid'] or samples[0]['statsSinceNs'] != samples[1]['statsSinceNs']:
+        raise ValueError('HWUI observation changed process or reset epoch')
+    counts = []
+    for observation, command in zip((before, after), commands):
+        if (type(observation.get('schema')) is not int or observation['schema'] != 1 or observation.get('status') != 'observed'
+                or observation.get('command') != command or observation.get('runNonce') != nonce
+                or observation.get('readOnly') is not True or observation.get('pausesObservers') is not False
+                or any(observation.get(key) != identity[key] for key in ('sourceCommit', 'sourceTree', 'apkSha256'))
+                or observation.get('pid') != samples[0]['pid']
+                or observation.get('activityClass') != 'local.pocketchat.CompactChromeIntegrationActivity'):
+            raise ValueError('Native glass-owner observation identity or read-only scope differs')
+        if any(type(observation.get(key)) is not int for key in ('pid', 'uid', 'activityRef', 'decorRef')):
+            raise ValueError('Native glass-owner process and Activity identities must be integers')
+        owners = observation['owners']
+        if len(owners.get('roots', [])) != 2 or not owners.get('materials') or not owners.get('docks'):
+            raise ValueError('Native glass-owner observation is incomplete')
+
+        def require_host(host):
+            if (type(host.get('rootIdentity')) is not int or host['rootIdentity'] != observation['decorRef']
+                    or any(type(host.get(flag)) is not bool for flag in ('shown', 'attached'))
+                    or any(type(host.get(flag)) is not int or host[flag] not in (0, 4, 8)
+                           for flag in ('visibility', 'windowVisibility'))):
+                raise ValueError('Native host visibility or current Activity root is not an observed typed value')
+
+        for host in owners['roots']:
+            require_host(host)
+        backdrop = owners.get('backdrop', {})
+        if any(type(backdrop.get(flag)) is not bool for flag in ('configuredActive', 'isGlassActive')):
+            raise ValueError('Native backdrop activity state is missing')
+        require_host(backdrop.get('host', {}))
+        hidden_active = 0
+        for owner, key in [(item, 'animation') for item in owners['materials']] + [(item, 'transition') for item in owners['docks']]:
+            host, animator = owner['host'], owner[key]
+            require_host(host)
+            if key == 'animation' and type(owner.get('drawableVisible')) is not bool:
+                raise ValueError('Native material visibility is not an observed boolean')
+            if any(type(animator.get(flag)) is not bool for flag in ('present', 'started', 'running')):
+                raise ValueError('Native animator state is missing, not an observed idle value')
+            if not animator['present'] and (animator['started'] or animator['running']):
+                raise ValueError('Absent native animator has an inconsistent live state')
+            hidden = not host['attached'] or not host['shown'] or host['windowVisibility'] != 0 or not owner.get('drawableVisible', True)
+            if hidden and (animator['started'] or animator['running']):
+                hidden_active += 1
+        counts.append(hidden_active)
+    if (before['activityRef'] != after['activityRef'] or before['decorRef'] != after['decorRef']
+            or before['uid'] != after['uid']):
+        raise ValueError('Native glass observation changed Activity/decor/UID')
+    start, end = before['capturedAtElapsedRealtimeNanos'], after['capturedAtElapsedRealtimeNanos']
+    if not (type(start) is int and type(end) is int and 0 <= start <= end
+            and start <= (samples[0]['realtimeMillis'] + 1) * 1_000_000
+            and end >= samples[1]['realtimeMillis'] * 1_000_000):
+        raise ValueError('Read-only native observations do not bracket the original HWUI window')
+    return dict(status='bound', before=before, after=after, hiddenActiveAnimatorCounts=counts,
+        scope='Current native glass owners; raw process HWUI threshold remains independently required')
+
+
+def quiet_window_check(samples, allowed_delta, owner_window):
+    delta = samples[1]['frames'] - samples[0]['frames']
+    process_valid = 0 <= delta <= allowed_delta
+    owner_bound = owner_window.get('status') == 'bound'
+    hidden_failure = owner_bound and any(count != 0 for count in owner_window['hiddenActiveAnimatorCounts'])
+    return dict(observations=samples, deltaFrames=delta, allowedDeltaFrames=allowed_delta,
+        windowSeconds=(samples[1]['atUnixNs'] - samples[0]['atUnixNs']) / 1e9,
+        requestedObservationSeconds=1.5, glassOwnerWindow=owner_window,
+        scope='Bounded HWUI process counter; owner attribution cannot override this threshold',
+        processDrawFailure=not process_valid, ownerBindingFailure=not owner_bound,
+        hiddenAnimatorFailure=hidden_failure,
+        valid=process_valid and owner_bound and not hidden_failure)
+
+
 def system_bar_sources(raw):
     """Read observed InsetsSource rectangles from API 32/35 window dumps."""
     sources = {'statusBars': [], 'navigationBars': []}
@@ -566,25 +648,62 @@ def capture_acceptance_suite(args, report, capture, adb, wait_for, tap, screensh
             time.sleep(.2)
         raise TimeoutError('No current, source/APK/SDK/nonce-bound document observation: ' + command)
 
+    def observed_glass_pair(case, commands):
+        deadline = time.monotonic() + 40
+        found = {}
+        while time.monotonic() < deadline:
+            raw = adb('logcat', '-d', '-v', 'brief', '-s', 'PocketGeckoIntegration:I', 'AndroidRuntime:E', '*:S')
+            (args.out / (case['name'] + '-events.log')).write_bytes(raw)
+            if b'FATAL EXCEPTION' in raw:
+                raise ValueError('Android crashed during native glass-owner observation')
+            for line in raw.decode('utf-8', 'replace').splitlines():
+                receipt = parse_receipt_line(line)
+                if receipt is None or receipt.get('runNonce') != case['runNonce']:
+                    continue
+                event = observations[case['runNonce']].read(receipt)
+                if event['kind'] == 'error':
+                    raise ValueError('Controlled document fixture failed during native owner observation')
+                if event['kind'] == 'glassOwnerObservation' and event['result'].get('command') in commands:
+                    found[event['result']['command']] = event['result']
+            if all(command in found for command in commands):
+                return [found[command] for command in commands]
+            time.sleep(.2)
+        raise TimeoutError('No source/SDK/APK/nonce-bound native glass-owner observation pair')
+
     def quiet(case, name, allowed_delta):
         time.sleep(1.1)  # Longer than every glass press/selection release.
         values = []
+        commands = [name + '-before', name + '-after']
         for index in range(2):
-            raw = adb('shell', 'dumpsys', 'gfxinfo', package).decode('utf-8', 'replace')
+            # Synchronous registered receiver reads only native state; the first
+            # read precedes the counter and the second follows it. No DOM or
+            # snapshot/pauseObservers call occurs inside this observation.
+            broadcast = shlex.join(['am', 'broadcast', '-a', package + '.CHROME_COLLAPSE', '-p', package,
+                '--es', 'eventNonce', case['runNonce'], '--es', 'glassObserveCommand', commands[index]])
+            counter = shlex.join(['dumpsys', 'gfxinfo', package])
+            sequence = broadcast + ' && ' + counter if index == 0 else counter + ' && ' + broadcast
+            raw = adb('shell', sequence).decode('utf-8', 'replace')
             path = args.out / (case['name'] + '-' + name + '-gfxinfo-' + str(index) + '.txt')
             path.write_text(raw)
             values.append(dict(file=path.name, sha256=sha(path), frames=total_frames(raw),
-                               atUnixNs=time.time_ns()))
+                               atUnixNs=time.time_ns(), **gfxinfo_owner(raw, package)))
             if index == 0:
                 time.sleep(1.5)
-        delta = values[1]['frames'] - values[0]['frames']
-        check = dict(observations=values, deltaFrames=delta, allowedDeltaFrames=allowed_delta,
-                     windowSeconds=(values[1]['atUnixNs'] - values[0]['atUnixNs']) / 1e9,
-                     scope='Bounded HWUI process counter; not per-drawable attribution or FPS',
-                     valid=0 <= delta <= allowed_delta)
+        owner_window = dict(status='failed')
+        try:
+            before, after = observed_glass_pair(case, commands)
+            owner_window.update(before=before, after=after)
+            owner_window = validate_glass_owner_window(before, after, values, identity, case['runNonce'], commands)
+        except Exception as error:
+            owner_window.update(errorType=type(error).__name__, error=str(error))
+        check = quiet_window_check(values, allowed_delta, owner_window)
         case.setdefault('idleObservations', {})[name] = check
-        if not check['valid']:
-            raise ValueError('UI continued drawing during bounded ' + name + ' observation: ' + str(delta))
+        if check['processDrawFailure']:
+            raise ValueError('UI continued drawing during bounded ' + name + ' observation: ' + str(check['deltaFrames']))
+        if check['ownerBindingFailure']:
+            raise ValueError('Native glass-owner attribution could not be bound to the required HWUI window')
+        if check['hiddenAnimatorFailure']:
+            raise ValueError('A hidden native glass owner retained a started or running animator')
 
     def renderer_observation(case):
         pids = adb('shell', 'pidof', package, timeout=5).decode().strip().split()

@@ -6,8 +6,13 @@ import java.util.concurrent.Executor;
 /** The official SDK's fixed child service names must not join another environment's runtime. */
 final class GeckoEnvironmentContext extends ContextWrapper {
   final int slot;
-  GeckoEnvironmentContext(Context context){super(context.getApplicationContext());slot=Profiles.slot(context);}
+  private final Context callbackOwner;
+  GeckoEnvironmentContext(Context context){super(context.getApplicationContext());slot=Profiles.slot(context);callbackOwner=Profiles.global(context);}
   @Override public Context getApplicationContext(){return this;}
+  // Older Android Context forwards these calls through getApplicationContext().
+  // Keep this runtime's isolated context while using the real Application owner.
+  @Override public void registerComponentCallbacks(ComponentCallbacks callback){callbackOwner.registerComponentCallbacks(callback);}
+  @Override public void unregisterComponentCallbacks(ComponentCallbacks callback){callbackOwner.unregisterComponentCallbacks(callback);}
   private Intent isolated(Intent intent){
     ComponentName name=intent.getComponent();
     String prefix="org.mozilla.gecko.process.GeckoChildProcessServices$";

@@ -45,8 +45,14 @@ final class ChromeCollapseIntegration {
       "routeCalls",w.routeCalls,"fixtureRoutes",w.fixtureRoutes,"blockedRoutes",w.blockedRoutes,"otherRoutes",w.otherRoutes).toString());
   }
   JSONArray nativeTouches=new JSONArray();
+  final java.util.Set<String> glassObservationCommands=new java.util.HashSet<>();
   final BroadcastReceiver receiver=new BroadcastReceiver(){@Override public void onReceive(Context c,Intent intent){
     if(!nonce.equals(intent.getStringExtra("eventNonce")))return;
+    String glassCommand=intent.getStringExtra("glassObserveCommand");
+    if(glassCommand!=null){
+      if(glassCommand.matches("[a-zA-Z0-9_-]{1,80}")&&glassObservationCommands.size()<64&&glassObservationCommands.add(glassCommand))observeGlassOwners(glassCommand);
+      return;
+    }
     String readiness=intent.getStringExtra("collapseReadiness");
     if(readiness!=null){if(readiness.matches(nonce+"-[1-9][0-9]{0,2}"))inputReadiness(readiness);return;}
     String command=intent.getStringExtra("collapseCommand");
@@ -54,6 +60,78 @@ final class ChromeCollapseIntegration {
     if("clear".equals(command)){web().touchesObserved=new JSONArray();nativeTouches=new JSONArray();return;}
     a.handler.postDelayed(()->snapshot(command),150);
   }};
+  /** One synchronous read on the receiver's UI thread; no observer or UI mutation. */
+  void observeGlassOwners(String command){
+    JSONObject value=J.obj("schema",1,"command",command,"status","started",
+      "sourceCommit",events.buildIdentity.optString("sourceCommit"),"sourceTree",events.buildIdentity.optString("sourceTree"),
+      "apkSha256",events.buildIdentity.optString("apkSha256"),"runNonce",nonce,
+      "pid",android.os.Process.myPid(),"uid",android.os.Process.myUid(),"activityRef",System.identityHashCode(a),
+      "activityClass",a.getClass().getName(),"decorRef",System.identityHashCode(a.getWindow().getDecorView()),
+      "active",a.active,"windowFocus",a.hasWindowFocus(),"capturedAtElapsedRealtimeNanos",SystemClock.elapsedRealtimeNanos(),
+      "readOnly",true,"pausesObservers",false);
+    try{
+      if(!"local.pocketchat.test".equals(a.getPackageName())||a.hub==null)throw new IllegalStateException("Current test Activity glass roots unavailable");
+      value.put("owners",GlassOwnerObservation.read(a.toolbar,a.hub.bar,a.hub.panel)).put("status","observed");
+    }catch(Exception error){try{value.put("status","failed").put("errorClass",error.getClass().getName()).put("error",String.valueOf(error.getMessage()));}catch(Exception ignored){}}
+    // Unlike snapshot(), this path does not pause session observers or evaluate
+    // a browser script. The original process-frame threshold remains decisive.
+    try{events.emit("glassOwnerObservation",value);}catch(Exception error){events.failure(error);}
+  }
+
+  /** Reads only current native roots, including hidden descendants and coating layers. */
+  static final class GlassOwnerObservation {
+    static JSONObject read(View toolbar,View bar,GlassBackdrop panel)throws Exception{
+      if(toolbar==null||bar==null||panel==null)throw new IllegalStateException("Missing current native glass root");
+      JSONArray roots=new JSONArray(),materials=new JSONArray(),docks=new JSONArray();
+      roots.put(host(toolbar)).put(host(bar));
+      java.util.Set<View> seen=java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<>());
+      walk(toolbar,materials,docks,seen);walk(bar,materials,docks,seen);
+      JSONObject backdrop=J.obj("host",host(panel),"configuredActive",field(panel,GlassBackdrop.class,"glassActive"),"isGlassActive",panel.isGlassActive());
+      return J.obj("roots",roots,"materials",materials,"docks",docks,"backdrop",backdrop);
+    }
+    static JSONObject host(View view){
+      return J.obj("viewClass",view.getClass().getName(),"viewIdentity",System.identityHashCode(view),
+        "rootIdentity",System.identityHashCode(view.getRootView()),"attached",view.isAttachedToWindow(),
+        "shown",view.isShown(),"visibility",view.getVisibility(),"windowVisibility",view.getWindowVisibility(),
+        "windowFocus",view.hasWindowFocus(),"enabled",view.isEnabled(),"pressed",view.isPressed());
+    }
+    static Object field(Object object,Class<?> owner,String name)throws Exception{
+      java.lang.reflect.Field field=owner.getDeclaredField(name);field.setAccessible(true);return field.get(object);
+    }
+    static JSONObject animation(Object value)throws Exception{
+      if(value==null)return J.obj("present",false,"started",false,"running",false);
+      if(!(value instanceof android.animation.ValueAnimator))throw new IllegalStateException("Unexpected native animator field type");
+      android.animation.ValueAnimator animator=(android.animation.ValueAnimator)value;
+      return J.obj("present",true,"started",animator.isStarted(),"running",animator.isRunning(),
+        "durationMillis",animator.getDuration(),"currentPlayTimeMillis",animator.getCurrentPlayTime());
+    }
+    static void walk(View view,JSONArray materials,JSONArray docks,java.util.Set<View> seen)throws Exception{
+      if(!seen.add(view))return;
+      java.util.Set<android.graphics.drawable.Drawable> layers=java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<>());
+      drawable(view.getBackground(),view,materials,layers);
+      if(view instanceof GlassDock)docks.put(J.obj("host",host(view),
+        "transition",animation(field(view,GlassDock.class,"transition")),
+        "opacity",field(view,GlassDock.class,"opacity"),"flow",field(view,GlassDock.class,"flow")));
+      if(view instanceof ViewGroup){ViewGroup group=(ViewGroup)view;for(int i=0;i<group.getChildCount();i++)walk(group.getChildAt(i),materials,docks,seen);}
+    }
+    static void drawable(android.graphics.drawable.Drawable drawable,View view,JSONArray materials,java.util.Set<android.graphics.drawable.Drawable> seen)throws Exception{
+      if(drawable==null||!seen.add(drawable))return;
+      if(drawable instanceof LiquidGlassDrawable){
+        JSONArray states=new JSONArray();for(int state:drawable.getState())states.put(state);
+        materials.put(J.obj("host",host(view),"drawableIdentity",System.identityHashCode(drawable),
+          "drawableVisible",drawable.isVisible(),"drawableAlpha",drawable.getAlpha(),"drawableState",states,
+          "animation",animation(field(drawable,LiquidGlassDrawable.class,"animation")),
+          "pressed",field(drawable,LiquidGlassDrawable.class,"pressed"),
+          "strength",field(drawable,LiquidGlassDrawable.class,"strength"),"bend",field(drawable,LiquidGlassDrawable.class,"bend")));
+      }else if(drawable instanceof android.graphics.drawable.LayerDrawable){
+        android.graphics.drawable.LayerDrawable layers=(android.graphics.drawable.LayerDrawable)drawable;
+        for(int i=0;i<layers.getNumberOfLayers();i++)drawable(layers.getDrawable(i),view,materials,seen);
+      }else if(drawable instanceof android.graphics.drawable.InsetDrawable){
+        drawable(((android.graphics.drawable.InsetDrawable)drawable).getDrawable(),view,materials,seen);
+      }
+    }
+  }
+
   void inputReadiness(String request){
     if(!"local.pocketchat.test".equals(a.getPackageName())||!request.matches(nonce+"-[1-9][0-9]{0,2}")||inputReadinessSequence>=128)return;
     CollapseView w=web();View compact=a.designChrome.compact;android.graphics.Rect visible=new android.graphics.Rect();

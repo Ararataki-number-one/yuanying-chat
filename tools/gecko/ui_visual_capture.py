@@ -9,6 +9,7 @@ import time
 import xml.etree.ElementTree as ET
 
 NULL_ROOT = 'ERROR: null root node returned by UiTestAutomationBridge.'
+IDLE_NOT_READY = 'ERROR: could not get idle state.'
 
 
 class CaptureNotReady(RuntimeError):
@@ -80,6 +81,8 @@ class UiVisualCapture:
             combined = (dumped.stdout + dumped.stderr).decode('utf-8', 'strict').strip()
             if dumped.returncode in (0, 1) and combined == NULL_ROOT:
                 raise CaptureNotReady(NULL_ROOT)
+            if dumped.returncode == 0 and not dumped.stdout and dumped.stderr.decode('utf-8', 'strict').strip() == IDLE_NOT_READY:
+                raise CaptureNotReady(IDLE_NOT_READY)
             if dumped.returncode != 0:
                 raise subprocess.CalledProcessError(dumped.returncode, record['commands'][-1]['parts'],
                                                    output=dumped.stdout, stderr=dumped.stderr)

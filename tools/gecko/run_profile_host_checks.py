@@ -106,11 +106,18 @@ def main():
     input_paths.add(ROOT / "tests/fixtures/glass-diagnostic-source-deltas.json")
     input_paths.add(ROOT / "tests/fixtures/gradle-transport-source-deltas.json")
     input_paths.add(ROOT / "tests/fixtures/gradle-workflow-test-source-deltas.json")
+    input_paths.add(ROOT / "tests/fixtures/profile-context-callback-source-deltas.json")
+    input_paths.update(ROOT / path for path in ('tests/browser-profile-path-host/Host.java.in',
+        'tests/browser-profile-path-host/README.md', 'tests/persistent-runtime-path-host/json-20240303.jar.b64',
+        'tests/persistent-runtime-path-host/LICENSE-JSON-java-20240303.txt'))
     input_paths.add(ROOT / "tests/baselines/glass-source-history.json")
     input_paths.add(ROOT / "tools/gecko/prepare_profile_host_prerequisites.py")
     input_paths.add(ROOT / "tools/gecko/capture_glass_navigation.py")
+    input_paths.add(ROOT / "tools/gecko/glass_ui_validation.py")
     input_paths.update(ROOT / path for path in ('.github/workflows/browser-2_1-acceptance.yml',
         '.github/workflows/profile-upgrade-checks.yml', '.github/workflows/glass-release-validation.yml'))
+    input_paths.update(ROOT / path for path in ('.github/workflows/gecko-cpu-acceptance.yml',
+        '.github/workflows/native-timezone-probe.yml'))
     input_paths.update(path for path in (ROOT / 'tests/gecko-event-journal-host').rglob('*')
                        if path.is_file() and path.suffix in ('.py', '.java', '.in', '.json', '.md'))
     input_paths.update((ROOT / "tests/gecko/assets").glob("*.js"))
@@ -512,6 +519,24 @@ def main():
                   ROOT/'tests/baselines/glass-source-history.json',ROOT/'tools/gecko/prepare_profile_host_prerequisites.py',
                   ROOT/'tools/gecko/capture_glass_navigation.py',ROOT/'tests/profile_glass_capture_signature_test.py',
                   ROOT/'tests/profile_glass_history_prerequisites_test.py',
+                  ROOT/'tests/gecko_cpu_acceptance_test.py',ROOT/'tests/native_timezone_probe_test.py',
+                  ROOT/'tests/profile_gradle_diagnostic_workflow_input_test.py',
+                  ROOT/'.github/workflows/gecko-cpu-acceptance.yml',ROOT/'.github/workflows/native-timezone-probe.yml',
+                  ROOT/'app/src/main/java/local/pocketchat/GeckoEnvironmentContext.java',
+                  ROOT/'app/src/main/java/local/pocketchat/ProfileContext.java',ROOT/'tests/profile_gecko_context_callbacks_test.py',
+                  ROOT/'tests/profile_glass_accessibility_idle_test.py',
+                  ROOT/'tests/profile_glass_owner_observation_test.py',ROOT/'tools/gecko/glass_ui_validation.py',
+                  ROOT/'tests/profile_glass_owner_window_test.py',
+                  ROOT/'app/src/main/java/local/pocketchat/LiquidGlassDrawable.java',ROOT/'app/src/main/java/local/pocketchat/GlassDock.java',
+                  ROOT/'app/src/main/java/local/pocketchat/GlassBackdrop.java',
+                  ROOT/'app/src/main/java/local/pocketchat/EnvironmentProcessPolicy.java',ROOT/'app/src/main/java/local/pocketchat/Profiles.java',
+                  ROOT/'app/src/main/java/local/pocketchat/PocketApplication.java',
+                  ROOT/'tests/profile_context_callback_source_compatibility.py',ROOT/'tests/fixtures/profile-context-callback-source-deltas.json',
+                  ROOT/'tests/profile_context_callback_source_input_test.py',ROOT/'tests/profile_current_runtime_raw_binding_test.py',
+                  ROOT/'tests/browser-profile-path-host/run.py',
+                  ROOT/'tests/browser-profile-path-host/Host.java.in',ROOT/'tests/browser-profile-path-host/README.md',
+                  ROOT/'tests/gecko-navigation-host/run.py',ROOT/'tests/persistent-runtime-path-host/json-20240303.jar.b64',
+                  ROOT/'tests/persistent-runtime-path-host/LICENSE-JSON-java-20240303.txt',
                   ROOT/'tests/browser_acceptance_workflow_test.py',ROOT/'tests/final_browser_source_compatibility.py',
                   ROOT/'tests/profile_final_browser_source_compatibility_test.py',ROOT/'tests/profile_fixture_root_source_compatibility.py',
                   ROOT/'tests/resource_startup_source_compatibility.py',ROOT/'tests/profile_gradle_transport_source_compatibility_test.py',
