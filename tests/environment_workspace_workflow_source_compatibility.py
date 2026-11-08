@@ -11,13 +11,13 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 PATH = '.github/workflows/profile-upgrade-checks.yml'
 FIXTURE = ROOT / 'tests/fixtures/environment-workspace-workflow-source-deltas.json'
-FIXTURE_SHA256 = 'ef9b2c5c4dd475d90b1be064328599834f2c1cdb807af1f512ca212b54f65700'
+FIXTURE_SHA256 = 'a168af5d6d4b1f9b8d2f26a524b61ffd6f8686598296175b5ea32d3774c4cfc6'
 PREVIOUS_COMMIT = '7402ead321ca74b9fbefeab32a1aaffb32832011'
 PREVIOUS_TREE = '2aaec06687b65d9511ace499528b6946dc1b8d53'
 PREVIOUS_BYTES = 21727
 PREVIOUS_SHA256 = '37ec53f065fa4572b8d59c7d4138dc170267f73911c46b5d4db0855dfe024699'
-CURRENT_BYTES = 22346
-CURRENT_SHA256 = 'f03e263af3d08713d9903da4835b787678c57ebe5673ea617bacbd722ab994f4'
+CURRENT_BYTES = 22500
+CURRENT_SHA256 = 'ef20f249093f667ab1bbeb594f9e5a9e7efcddb72c72be40ad9a1d6ea8b6d0c8'
 
 
 def sha(raw):
@@ -32,7 +32,7 @@ def manifest():
     assert (value['previousCommit'], value['previousTree']) == (PREVIOUS_COMMIT, PREVIOUS_TREE)
     assert (value['previousBytes'], value['previousSha256']) == (PREVIOUS_BYTES, PREVIOUS_SHA256)
     assert (value['reviewedBytes'], value['reviewedSha256']) == (CURRENT_BYTES, CURRENT_SHA256)
-    assert len(value['deltas']) == 4, 'Only four reviewed environment capture workflow hunks are owned'
+    assert len(value['deltas']) == 5, 'Only five reviewed environment capture and Gradle fallback workflow hunks are owned'
     return value
 
 

@@ -92,6 +92,34 @@ class EnvironmentWorkspaceWorkflowSourceTests(unittest.TestCase):
             with self.subTest(anchor=before):
                 self.assert_rejected_by_both_guards(raw.replace(before, after, 1), raw)
 
+    def test_gradle_fallback_preserves_original_version_destination_and_checksum(self):
+        raw = (ROOT / workspace.PATH).read_bytes()
+        primary = b'          if ! curl -fsSL --retry 3 https://services.gradle.org/distributions/gradle-9.8.0-bin.zip -o work/profile-build/gradle.zip; then\n'
+        fallback = b'            curl -fsSL --retry 3 https://downloads.gradle.org/distributions/gradle-9.8.0-bin.zip -o work/profile-build/gradle.zip\n'
+        checksum = b"          echo 'bafd5ce9cfaea0fbccfdc8439a1ac42fbd4cd9c89dc9a988228d8a2639a58e6c  work/profile-build/gradle.zip' | sha256sum -c -\n"
+        block = primary + fallback + b'          fi\n' + checksum + b'          unzip -q work/profile-build/gradle.zip -d work/profile-build/gradle\n'
+        self.assertEqual(raw.count(block), 1)
+        self.assertEqual(previous_blob(workspace.PATH).count(checksum), 1)
+        self.assertEqual(raw.count(b'https://services.gradle.org/distributions/gradle-9.8.0-bin.zip'), 1)
+        self.assertEqual(raw.count(b'https://downloads.gradle.org/distributions/gradle-9.8.0-bin.zip'), 1)
+
+    def test_gradle_fallback_address_checksum_and_failure_behavior_cannot_drift(self):
+        raw = (ROOT / workspace.PATH).read_bytes()
+        mutations = (
+            (b'https://downloads.gradle.org/distributions/gradle-9.8.0-bin.zip', b'https://unreviewed.invalid/distributions/gradle-9.8.0-bin.zip'),
+            (b'https://downloads.gradle.org/distributions/gradle-9.8.0-bin.zip', b'http://downloads.gradle.org/distributions/gradle-9.8.0-bin.zip'),
+            (b'https://downloads.gradle.org/distributions/gradle-9.8.0-bin.zip', b'https://downloads.gradle.org/distributions/gradle-9.8.1-bin.zip'),
+            (b'if ! curl -fsSL --retry 3 https://services.gradle.org/', b'if curl -fsSL --retry 3 https://services.gradle.org/'),
+            (b'https://downloads.gradle.org/distributions/gradle-9.8.0-bin.zip -o work/profile-build/gradle.zip', b'https://downloads.gradle.org/distributions/gradle-9.8.0-bin.zip -o work/profile-build/other.zip'),
+            (b'https://downloads.gradle.org/distributions/gradle-9.8.0-bin.zip -o work/profile-build/gradle.zip\n', b'https://downloads.gradle.org/distributions/gradle-9.8.0-bin.zip -o work/profile-build/gradle.zip || true\n'),
+            (b'bafd5ce9cfaea0fbccfdc8439a1ac42fbd4cd9c89dc9a988228d8a2639a58e6c', b'0' * 64),
+            (b"work/profile-build/gradle.zip' | sha256sum -c -\n", b"work/profile-build/gradle.zip' | sha256sum -c - || true\n"),
+        )
+        for before, after in mutations:
+            self.assertEqual(raw.count(before), 1)
+            with self.subTest(anchor=before):
+                self.assert_rejected_by_both_guards(raw.replace(before, after, 1), raw)
+
     def test_types_paths_partial_and_unknown_sources_cannot_gain_acceptance(self):
         raw = (ROOT / workspace.PATH).read_bytes()
         for changed in (None, raw.decode(), bytearray(raw), memoryview(raw), True, b'', raw[:1024], raw + b'\n'):
