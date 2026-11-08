@@ -3,9 +3,12 @@
 Android 12 DisplayPolicy reads qemu.hw.mainkeys at construction: 0 forces
 software navigation and 1 disables it. The workflow pins both the AVD hardware
 capability and that boot property, then preserves actual readback/Insets dumps.
+The pinned images may return an empty property even when navigation is visible;
+an empty value remains diagnostic data, not an invented successful readback.
 Only later real per-case Insets observations establish that both bars exist.
 """
 import ast
+import hashlib
 import os
 from pathlib import Path
 import re
@@ -127,14 +130,66 @@ class GlassEmulatorNavigation(unittest.TestCase):
         self.assertNotIn('setprop qemu.hw.mainkeys', run)
         booted = run.index('test "$task_glass_booted" = true')
         getprop = run.index('shell getprop qemu.hw.mainkeys > work/glass-navigation/navigation-mainkeys.txt')
-        strict = run.index('test "$(tr -d \'\\r\\n\' < work/glass-navigation/navigation-mainkeys.txt)" = 0')
         displays = run.index('shell dumpsys window displays > work/glass-navigation/navigation-boot-displays.txt')
         windows = run.index('shell dumpsys window windows > work/glass-navigation/navigation-boot-windows.txt')
         self.assertLess(run.index(startup[0]), booted)
         self.assertLess(booted, getprop)
-        self.assertLess(getprop, strict)
-        self.assertLess(strict, displays)
+        self.assertLess(getprop, displays)
         self.assertLess(displays, windows)
+
+    def test_actual_empty_readback_is_preserved_and_does_not_skip_the_real_insets_observers(self):
+        # Both APIs in real run42485197788/a1 returned exactly this byte, while
+        # the navigation-only probe42486920602 observed real API32 system bars.
+        # This executes the actual shell tail with a synthetic adb transport;
+        # it is not another emulator execution or an application acceptance.
+        observed = b'\n'
+        self.assertEqual(hashlib.sha256(observed).hexdigest(),
+            '01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b')
+        run = setup_step()[2]['run']
+        first = 'timeout 5 "$ANDROID_HOME/platform-tools/adb" -s emulator-5554 shell getprop qemu.hw.mainkeys'
+        tail = run[run.index(first):]
+        bad_check = 'test "$(tr -d \'\\r\\n\' < work/glass-navigation/navigation-mainkeys.txt)" = 0\n'
+        with tempfile.TemporaryDirectory(prefix='glass-mainkeys-readback-') as temporary:
+            root = Path(temporary)
+            sdk = root / 'sdk'
+            adb = sdk / 'platform-tools/adb'
+            adb.parent.mkdir(parents=True)
+            adb.write_text('#!/bin/sh\n'
+                'shift 2\n'
+                'printf "%s\\n" "$*" >> "$GLASS_COMMAND_LOG"\n'
+                'case "$*" in\n'
+                ' "shell getprop qemu.hw.mainkeys") printf "\\n" ;;\n'
+                ' "shell dumpsys window displays") printf "retained actual display transport\\n" ;;\n'
+                ' "shell dumpsys window windows") printf "retained actual window transport\\n" ;;\n'
+                ' *) exit 11 ;;\n'
+                'esac\n')
+            adb.chmod(0o700)
+            for name, script, expected in (
+                    ('current', tail, 0),
+                    ('old-invalid-zero-guard', tail.replace(
+                        'timeout 10 "$ANDROID_HOME/platform-tools/adb" -s emulator-5554 shell dumpsys window displays',
+                        bad_check + 'timeout 10 "$ANDROID_HOME/platform-tools/adb" -s emulator-5554 shell dumpsys window displays', 1), 1)):
+                with self.subTest(name=name):
+                    work = root / name
+                    folder = work / 'work/glass-navigation'
+                    folder.mkdir(parents=True)
+                    log = work / 'adb-commands.txt'
+                    result = subprocess.run(['bash', '-euo', 'pipefail', '-c', script], cwd=work,
+                        env=dict(os.environ, ANDROID_HOME=str(sdk), GLASS_COMMAND_LOG=str(log)),
+                        capture_output=True, text=True, timeout=15)
+                    self.assertEqual(result.returncode, expected, result.stderr)
+                    self.assertEqual((folder / 'navigation-mainkeys.txt').read_bytes(), observed)
+                    commands = log.read_text().splitlines()
+                    if name == 'current':
+                        self.assertEqual(commands, ['shell getprop qemu.hw.mainkeys',
+                            'shell dumpsys window displays', 'shell dumpsys window windows'])
+                        self.assertEqual((folder / 'navigation-boot-displays.txt').read_bytes(),
+                            b'retained actual display transport\n')
+                        self.assertEqual((folder / 'navigation-boot-windows.txt').read_bytes(),
+                            b'retained actual window transport\n')
+                    else:
+                        self.assertEqual(commands, ['shell getprop qemu.hw.mainkeys'])
+                        self.assertFalse((folder / 'navigation-boot-displays.txt').exists())
 
     def test_original_api_matrix_budgets_render_backend_and_artifact_preservation_remain(self):
         workflow, job, step = setup_step()

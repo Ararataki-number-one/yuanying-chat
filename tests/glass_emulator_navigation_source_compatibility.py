@@ -7,9 +7,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 PATH = '.github/workflows/glass-release-validation.yml'
 FIXTURE = ROOT / 'tests/fixtures/glass-emulator-navigation-source-deltas.json'
-FIXTURE_SHA256 = '36d554088558659a711d03f9eafdc5a05cddb0d567c33fb6605f3edff0fbd306'
+FIXTURE_SHA256 = 'd7d7d68225df4da458d4cb4fb31ec02d71bf4a99f3b528d65a6f17a0814762d4'
 PREVIOUS_SHA256 = '11cdccbdfeb5e5871acfb62e29ae34465f657c887d9d4e38beaa550c76857cf0'
-CURRENT_SHA256 = 'f5923379924340e1238797386f7e382300817e4838ad026a90147e6caa743a00'
+CURRENT_SHA256 = '561d19cafbf494077e6255ea496e5c0bf1b1387a1c39f6eb99cc71ce4c44be41'
 
 
 def sha(raw):
@@ -29,14 +29,14 @@ def manifest():
             and value['publicBaselineSha256'] == '686928c3060c06808068f2f43f54276f64eb54136ee112709f1d61a8b8aa171b'
             and value['previousDerivation'] == 'original-gradle-transport-fixture-forward-from-public-baseline'
             and (value['previousSha256'], value['previousBytes']) == (PREVIOUS_SHA256, 15629)
-            and (value['reviewedSha256'], value['reviewedBytes']) == (CURRENT_SHA256, 16587)
+            and (value['reviewedSha256'], value['reviewedBytes']) == (CURRENT_SHA256, 16509)
             and value['actualAndroidExecution'] is False and value['runtimeAcceptance'] is False
             and len(value['deltas']) == 2), 'Navigation workflow scope or reviewed identity differs'
     return value
 
 
 def source_before(raw):
-    assert type(raw) is bytes and (len(raw), sha(raw)) == (16587, CURRENT_SHA256), 'Unknown complete navigation workflow'
+    assert type(raw) is bytes and (len(raw), sha(raw)) == (16509, CURRENT_SHA256), 'Unknown complete navigation workflow'
     value = manifest()
     for delta in reversed(value['deltas']):
         current, previous = delta['current'].encode(), delta['previous'].encode()
@@ -49,7 +49,7 @@ def source_before(raw):
 
 
 def historical_input(raw, relative):
-    if type(raw) is bytes and type(relative) is str and relative == PATH and len(raw) == 16587 and sha(raw) == CURRENT_SHA256:
+    if type(raw) is bytes and type(relative) is str and relative == PATH and len(raw) == 16509 and sha(raw) == CURRENT_SHA256:
         return source_before(raw)
     return raw
 
@@ -65,7 +65,7 @@ def current_after_input(raw, relative):
         assert sha(previous) == delta['previousSha256'] and sha(current) == delta['currentSha256']
         assert raw.count(previous) == 1, 'Unique pre-navigation context required'
         raw = raw.replace(previous, current, 1)
-    assert (len(raw), sha(raw)) == (16587, CURRENT_SHA256), 'Complete actual navigation workflow did not restore'
+    assert (len(raw), sha(raw)) == (16509, CURRENT_SHA256), 'Complete actual navigation workflow did not restore'
     return raw
 
 

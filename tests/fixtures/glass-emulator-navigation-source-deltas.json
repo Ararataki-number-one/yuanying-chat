@@ -8,8 +8,8 @@
   "previousDerivation": "original-gradle-transport-fixture-forward-from-public-baseline",
   "previousSha256": "11cdccbdfeb5e5871acfb62e29ae34465f657c887d9d4e38beaa550c76857cf0",
   "previousBytes": 15629,
-  "reviewedSha256": "f5923379924340e1238797386f7e382300817e4838ad026a90147e6caa743a00",
-  "reviewedBytes": 16587,
+  "reviewedSha256": "561d19cafbf494077e6255ea496e5c0bf1b1387a1c39f6eb99cc71ce4c44be41",
+  "reviewedBytes": 16509,
   "actualAndroidExecution": false,
   "runtimeAcceptance": false,
   "deltas": [
@@ -25,11 +25,11 @@
     {
       "id": "context-01",
       "previous": "            sleep 1\n          done\n          test \"$task_glass_booted\" = true\n      - name: Run real glass rendering, input and layout acceptance\n        timeout-minutes: 20\n        shell: bash\n",
-      "current": "            sleep 1\n          done\n          test \"$task_glass_booted\" = true\n          # Android DisplayPolicy uses this emulator property to create the\n          # software navigation bar. The actual per-case Insets gates remain required.\n          timeout 5 \"$ANDROID_HOME/platform-tools/adb\" -s emulator-5554 shell getprop qemu.hw.mainkeys > work/glass-navigation/navigation-mainkeys.txt\n          test \"$(tr -d '\\r\\n' < work/glass-navigation/navigation-mainkeys.txt)\" = 0\n          timeout 10 \"$ANDROID_HOME/platform-tools/adb\" -s emulator-5554 shell dumpsys window displays > work/glass-navigation/navigation-boot-displays.txt\n          timeout 10 \"$ANDROID_HOME/platform-tools/adb\" -s emulator-5554 shell dumpsys window windows > work/glass-navigation/navigation-boot-windows.txt\n      - name: Run real glass rendering, input and layout acceptance\n        timeout-minutes: 20\n        shell: bash\n",
+      "current": "            sleep 1\n          done\n          test \"$task_glass_booted\" = true\n          # These pinned images can leave the emulator property unreadable.\n          # Preserve its raw value; the required per-case real Insets gates verify both bars.\n          timeout 5 \"$ANDROID_HOME/platform-tools/adb\" -s emulator-5554 shell getprop qemu.hw.mainkeys > work/glass-navigation/navigation-mainkeys.txt\n          timeout 10 \"$ANDROID_HOME/platform-tools/adb\" -s emulator-5554 shell dumpsys window displays > work/glass-navigation/navigation-boot-displays.txt\n          timeout 10 \"$ANDROID_HOME/platform-tools/adb\" -s emulator-5554 shell dumpsys window windows > work/glass-navigation/navigation-boot-windows.txt\n      - name: Run real glass rendering, input and layout acceptance\n        timeout-minutes: 20\n        shell: bash\n",
       "previousBytes": 194,
-      "currentBytes": 903,
+      "currentBytes": 825,
       "previousSha256": "c4349b35121aeffbf3ede7a5948bb7e021b5d97317d015ffda4eb5d8ac39b1fd",
-      "currentSha256": "4af7be64e60dd65e21f56acf22e9291df5c6ae8eaec032109eb7b4f2624549a5"
+      "currentSha256": "e331ecb1112107e566248dd9849fe184bf57e661ee30502768998754c7dc5958"
     }
   ]
 }

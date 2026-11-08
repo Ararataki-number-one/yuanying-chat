@@ -26,7 +26,7 @@ class EmulatorNavigationHistoricalInputs(unittest.TestCase):
         prior = public.replace(delta['previous'].encode(), delta['current'].encode(), 1)
         self.assertEqual((len(prior), navigation.sha(prior)), (15629, navigation.PREVIOUS_SHA256))
         raw = (ROOT / navigation.PATH).read_bytes()
-        self.assertEqual((len(raw), navigation.sha(raw)), (16587, navigation.CURRENT_SHA256))
+        self.assertEqual((len(raw), navigation.sha(raw)), (16509, navigation.CURRENT_SHA256))
         self.assertEqual(navigation.source_before(raw), prior)
         self.assertEqual(navigation.current_after_input(prior, navigation.PATH), raw)
         self.assertEqual(transport.source_input(raw, navigation.PATH), public)
