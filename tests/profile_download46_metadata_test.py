@@ -41,6 +41,6 @@ class Download46Behavior(unittest.TestCase):
             for measurement in report['measurements']:
                 for key in ['mainSqlCalls','mainProviderCalls','mainEnvironmentQueries']:self.assertEqual(measurement[key],0)
     def test_current_renderer_bounds_and_byte_labels(self):
-        for report in self.run_host('display.py'):self.assertEqual(report['total'],27)
+        for report in self.run_host('display.py'):self.assertEqual(report['total'],41)
 
 if __name__=='__main__':unittest.main()

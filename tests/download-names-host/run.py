@@ -46,6 +46,17 @@ def member(text,needle):
 
 def digest(raw):return hashlib.sha256(raw).hexdigest()
 
+def install_workspace_file_helpers(fixture,downloads,style):
+    """Keep filename classification real; only Android View factories are stubs."""
+    called=any('DownloadWorkspaceStyle.'+name+'(' in downloads for name in ('savedGlyph','savedColor'))
+    methods={needle:member(style,needle) for needle in ('static String savedGlyph(','static int savedColor(')} if called else {}
+    marker='/* WORKSPACE_FILE_HELPERS */'
+    assert fixture.count(marker)==1,'File-type helpers require one explicit host boundary'
+    fixture=fixture.replace(marker,'\n'.join(methods.values()),1)
+    compiled=member(fixture,'class DownloadWorkspaceStyle{')
+    assert all(member(compiled,needle)==body for needle,body in methods.items()),'Current filename classification must compile verbatim'
+    return fixture,methods
+
 def remove_reviewed_delete_identity(text):
     """Invert only the separately reviewed 2.0.31 additive deletion APIs.
 
@@ -82,6 +93,7 @@ def main():
     void apply(JSONArray data,int selected,long now){hostRows=data;hostSelected=selected;hostNow=now;preparedOwners=DownloadDisplaySnapshot.labels(a,data,selected);productionApply(new DownloadPageWindow(data,selected,hostAnchor).rows,selected,now);}
 '''
     host=(HERE/'DownloadNamesHost.java.in').read_text().replace('/* CATALOG */','\n'.join(catalog)).replace('/* PROFILES_DISPLAY */',extracts['display']).replace('/* DOWNLOAD_HELPERS */','\n'.join(helpers)).replace('/* CONTROLLER_APPLY */',render_apply).replace('/* ROW_BIND */',extracts['bind']).replace('/* ROW_TEXT */',extracts['text']).replace('/* ROW_VISIBLE */',extracts['visible'])
+    host,style_methods=install_workspace_file_helpers(host,text['DesignDownloads.java'],(ROOT/'app/src/main/java/local/pocketchat/DownloadWorkspaceStyle.java').read_text())
     owner_method=member((ROOT/'app/src/main/java/local/pocketchat/DownloadDisplaySnapshot.java').read_text(),'static Map<Integer,DownloadOwnerLabels.Owner> owners(')
     host+='\nclass DownloadDisplaySnapshot{'+owner_method+'''static Map<String,String> labels(Context c,JSONArray rows,int filter){Map<String,String> out=new HashMap<>();Map<Integer,DownloadOwnerLabels.Owner> owners=null;for(int i=0;i<rows.length();i++){JSONObject row=rows.optJSONObject(i);if(!DownloadListPolicy.matches(row,filter))continue;if(owners==null)owners=owners(c);out.put(DownloadListPolicy.key(row),DownloadOwnerLabels.label(row,owners));}return out;}}\n'''
     compiled_catalog=member(host,'class ProfileCatalog {');compiled_row=member(host,'static final class Row {');compiled_controller=member(host,'static final class Controller {')
@@ -128,7 +140,7 @@ def main():
             if workspace_ui:
                 approved=_workspace_ui.manifest()
                 result['reviewedWorkspaceUi']={'manifestSha256':_workspace_ui.MANIFEST_SHA,'provenance':{key:value for key,value in approved.items() if key in ('before','after')},'projectionUsedForExecution':False,'currentSelectedMethodsCompiledVerbatim':True,'currentMethodSha256':{needle:digest(member(text['DesignDownloads.java'],needle).encode()) for needle in protected},'historicalScopeMethodSha256':{needle:digest(member(reviewed_stage,needle).encode()) for needle in protected},'labelAdapter':'Compose only the actual status/stateLabel/progressText view outputs to retain the original owner, state and byte assertions.'}
-        result['compiledBehaviorMethodsVerbatim']=True;result['compiledBehaviorMethodSha256']={key:digest(body.encode()) for key,body in compiled_methods.items()};result['generatedHostSha256']=digest(host.encode());result['jsonJarSha256']=digest(args.json_jar.read_bytes())
+        result['compiledBehaviorMethodsVerbatim']=True;result['compiledBehaviorMethodSha256']={key:digest(body.encode()) for key,body in compiled_methods.items()};result['compiledFileTypeHelpersVerbatim']=True;result['compiledFileTypeHelperSha256']={key:digest(body.encode()) for key,body in style_methods.items()};result['generatedHostSha256']=digest(host.encode());result['jsonJarSha256']=digest(args.json_jar.read_bytes())
         result['executionInputsUnchanged']=all(digest((ROOT/p).read_bytes())==h for p,h in input_hashes.items()) and (bool(args.before_ref) or all(selected(n)==value for n,value in sources.items()))
         args.output.parent.mkdir(parents=True,exist_ok=True);args.output.write_text(json.dumps(result,ensure_ascii=False,indent=2)+'\n')
         print(json.dumps({'status':result['status'],'variant':result['variant'],'passed':result['passed'],'total':result['total'],'measurements':result['measurements'],'output':str(args.output),'sha256':digest(args.output.read_bytes()),'executionInputsUnchanged':result['executionInputsUnchanged']}))

@@ -9,6 +9,7 @@ def main():
  source=(HERE/'baseline/DesignDownloads.java.in') if a.before else a.before_source or PROD/'DesignDownloads.java';
  if a.before:assert sha(source.read_bytes())=='93843e642a78f2f82c169a75f261748f6bc91cd3acb50753e5259082b2b7ca51','Historical pre-performance snapshot bytes changed'
  text=source.read_text();pieces={'sync':member(text,'void syncCollection()'),'toggle':member(text,'void toggleCollection(JSONObject row)'),'row':member(text,'static final class Row {')};fixture=(HERE/'UiCases.java.in').read_text().replace('/* SYNC_COLLECTION */',pieces['sync']).replace('/* TOGGLE_COLLECTION */',pieces['toggle']).replace('/* ROW */',pieces['row'])
+ fixture,style_methods=adapter.install_workspace_file_helpers(fixture,text,(PROD/'DownloadWorkspaceStyle.java').read_text());pieces.update({'DownloadWorkspaceStyle.java:'+needle:body for needle,body in style_methods.items()})
  names=['DownloadCollection.java','DownloadCollectionSession.java','DownloadRowBinding.java','DownloadMetadataValues.java','DownloadTaskRevisions.java','DownloadListPolicy.java'];inputs=[PROD/n for n in names]+[source,PROD/'DownloadWorkspaceStyle.java',HERE/'UiCases.java.in',pathlib.Path(__file__).resolve(),NAMES/'run.py'];hashes={str(f):sha(f.read_bytes())for f in inputs}
  with tempfile.TemporaryDirectory(prefix='download-ui-perf-')as raw:
   temp=pathlib.Path(raw);pkg=temp/'local/pocketchat';pkg.mkdir(parents=True);(pkg/'DownloadUiPerformanceCases.java').write_text(fixture)

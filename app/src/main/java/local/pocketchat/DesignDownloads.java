@@ -62,8 +62,8 @@ final class DesignDownloads {
       preferences=Profiles.global(a).getSharedPreferences("download-discovery",0);
       query=new DownloadQuery(preferences.getString("query",""),preferences.getString("owner",""),preferences.getInt("kind",0),preferences.getInt("sort",0));
       tabs=DownloadWorkspaceStyle.tabs(a,filter,choose);box.addView(tabs);
-      LinearLayout searchRow=DesignUi.row(a),searchBox=DesignUi.column(a);searchRow.setPadding(0,DesignUi.dp(a,12),0,DesignUi.dp(a,4));
-      search=DesignUi.searchInput(searchBox,"搜索文件、类型或环境");search.setContentDescription("搜索全部下载记录");search.setFilters(new android.text.InputFilter[]{new android.text.InputFilter.LengthFilter(200)});search.setText(query.text);DownloadWorkspaceStyle.readable(search);
+      LinearLayout searchRow=DesignUi.row(a),searchBox=DesignUi.column(a);searchRow.setPadding(0,DesignUi.dp(a,8),0,0);
+      search=DesignUi.searchInput(searchBox,"搜索文件或环境");search.setContentDescription("搜索全部下载记录");search.setFilters(new android.text.InputFilter[]{new android.text.InputFilter.LengthFilter(200)});search.setText(query.text);DownloadWorkspaceStyle.search(search);
       searchRow.addView(searchBox,new LinearLayout.LayoutParams(0,-2,1));
       toolsButton=ReferenceUi.iconButton(a,"filter","展开下载工具",()->setToolsExpanded(!toolsExpanded));toolsButton.setBackground(DesignUi.glass(a,24));GlassMotion.press(toolsButton,true);
       LinearLayout.LayoutParams toolButtonParams=new LinearLayout.LayoutParams(DesignUi.dp(a,48),DesignUi.dp(a,48));toolButtonParams.leftMargin=DesignUi.dp(a,8);searchRow.addView(toolsButton,toolButtonParams);box.addView(searchRow);
@@ -74,8 +74,8 @@ final class DesignDownloads {
       int controlIndex=0;for(Button button:new Button[]{scopeButton,kindButton,sortButton}){button.setTextSize(12);DownloadWorkspaceStyle.readable(button);LinearLayout.LayoutParams params=new LinearLayout.LayoutParams(discoveryTools.getOrientation()==LinearLayout.VERTICAL?-1:0,-2,discoveryTools.getOrientation()==LinearLayout.VERTICAL?0:1);params.topMargin=DesignUi.dp(a,4);if(controlIndex++>0&&discoveryTools.getOrientation()!=LinearLayout.VERTICAL)params.leftMargin=DesignUi.dp(a,5);discoveryTools.addView(button,params);}toolsPanel.addView(discoveryTools);
       Button folder=ReferenceUi.link(a,"保存位置",()->folder(a));folder.setTextSize(12);DownloadWorkspaceStyle.readable(folder);LinearLayout.LayoutParams folderParams=new LinearLayout.LayoutParams(-2,-2);folderParams.gravity=Gravity.END;toolsPanel.addView(folder,folderParams);
       toolsExpanded=!query.owner.isEmpty()||query.kind!=0||query.sort!=0;toolsPanel.setVisibility(toolsExpanded?View.VISIBLE:View.GONE);LinearLayout.LayoutParams toolsParams=new LinearLayout.LayoutParams(-1,-2);toolsParams.topMargin=DesignUi.dp(a,6);box.addView(toolsPanel,toolsParams);
-      LinearLayout link=DesignUi.row(a);link.setPadding(DesignUi.dp(a,2),DesignUi.dp(a,7),0,0);boolean stackCollection=discoveryTools.getOrientation()==LinearLayout.VERTICAL;
-      sectionLabel=DownloadWorkspaceStyle.text(a,"全部文件",13,DesignUi.MUTED,true);sectionLabel.setMaxLines(1);sectionLabel.setEllipsize(android.text.TextUtils.TruncateAt.END);link.addView(sectionLabel,new LinearLayout.LayoutParams(0,-2,1));
+      LinearLayout link=DesignUi.row(a);link.setPadding(DesignUi.dp(a,2),DesignUi.dp(a,4),0,0);boolean stackCollection=discoveryTools.getOrientation()==LinearLayout.VERTICAL;
+      sectionLabel=DownloadWorkspaceStyle.text(a,"全部文件",12,DesignUi.MUTED,false);sectionLabel.setMaxLines(1);sectionLabel.setEllipsize(android.text.TextUtils.TruncateAt.END);link.addView(sectionLabel,new LinearLayout.LayoutParams(0,-2,1));
       LinearLayout collectionTools=DesignUi.row(a);if(stackCollection)collectionTools.setOrientation(LinearLayout.VERTICAL);
       collectButton=ReferenceUi.link(a,"收集文件",()->{collecting=!collecting;syncCollection();});collectButton.setTextSize(12);DownloadWorkspaceStyle.readable(collectButton);collectionTools.addView(collectButton);
       basketButton=ReferenceUi.link(a,"收集篮 · 0",this::showCollection);basketButton.setTextSize(12);DownloadWorkspaceStyle.readable(basketButton);LinearLayout.LayoutParams basketParams=new LinearLayout.LayoutParams(-2,-2);basketParams.leftMargin=DesignUi.dp(a,10);collectionTools.addView(basketButton,basketParams);link.addView(collectionTools);box.addView(link);
@@ -152,7 +152,7 @@ final class DesignDownloads {
         JSONObject value=data.optJSONObject(i);if(value==null||!matches(value,filter))continue;String key=key(value);if(!visible.add(key))continue;
         Row row=views.get(key);if(row==null){row=new Row(a,actions);row.card.setTag(key);views.put(key,row);}String environment=environmentLabels==null?DownloadOwnerLabels.UNKNOWN:environmentLabels.getOrDefault(key,DownloadOwnerLabels.UNKNOWN);
         row.value=value;if(preparedTimes!=null)row.binding.preparedTime(value,preparedTimes.get(key));DownloadRowBinding.Stamp next=row.binding.next(value,now,environment,frame);if(next!=null){row.bind(value,now,environment);row.binding.applied(next);rebound=true;}
-        if(index>=list.getChildCount()||list.getChildAt(index)!=row.card){structure=true;if(row.card.getParent()==list)list.removeView(row.card);LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(-1,-2);p.topMargin=DesignUi.dp(a,12);list.addView(row.card,index,p);}index++;
+        if(index>=list.getChildCount()||list.getChildAt(index)!=row.card){structure=true;if(row.card.getParent()==list)list.removeView(row.card);LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(-1,-2);p.topMargin=DesignUi.dp(a,10);list.addView(row.card,index,p);}index++;
       }
       for(Iterator<Map.Entry<String,Row>> it=views.entrySet().iterator();it.hasNext();){Map.Entry<String,Row> entry=it.next();if(!visible.contains(entry.getKey())){list.removeView(entry.getValue().card);it.remove();structure=true;}}
       if(index==0){if(empty.getChildCount()==0||changedFilter){empty.removeAllViews();String[] titles={"还没有下载文件","没有进行中的下载","还没有已完成的下载","没有失败的下载"};String[] details={"在会话中保存文件后，可在这里打开、分享或整理。","开始下载后，这里会显示实际进度。","文件保存完成后会自动出现在这里。","下载失败时，这里会显示原因和可用操作。"};DownloadWorkspaceStyle.empty(empty,titles[filter],details[filter],"查看全部下载",filter==0?null:()->choose.accept(0));}}else if(empty.getChildCount()>0)empty.removeAllViews();
@@ -163,7 +163,7 @@ final class DesignDownloads {
     final Activity a;final LinearLayout card;final ImageView icon;final TextView name,status,stateLabel,time,progressText,reason,stale,location,arrow;final Button menu;final ProgressBar progress;final CheckBox collected;boolean syncingSelection,selectionKnown,selectionVisible,selectionChecked,selectionEnabled;Controller selectionOwner;JSONObject value,selectionKeyRow;String appearance="",selectionLabel="",selectedKey="";
     final DownloadRowBinding binding=new DownloadRowBinding();
     Row(Activity a,SavedFileActions actions){
-      this.a=a;card=DesignUi.card(a);card.setPadding(DesignUi.dp(a,16),DesignUi.dp(a,14),DesignUi.dp(a,12),DesignUi.dp(a,14));card.setBackground(DownloadWorkspaceStyle.card(a));
+      this.a=a;card=DesignUi.card(a);card.setPadding(DesignUi.dp(a,16),DesignUi.dp(a,12),DesignUi.dp(a,12),DesignUi.dp(a,12));card.setBackground(DownloadWorkspaceStyle.card(a));
       LinearLayout top=DesignUi.row(a);collected=new CheckBox(a);collected.setVisibility(View.GONE);top.addView(collected,new LinearLayout.LayoutParams(DesignUi.dp(a,48),DesignUi.dp(a,48)));
       icon=DesignUi.icon(a,"download",DesignUi.GREEN,40);icon.setPadding(DesignUi.dp(a,9),DesignUi.dp(a,9),DesignUi.dp(a,9),DesignUi.dp(a,9));icon.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);top.addView(icon);
       LinearLayout labels=DesignUi.column(a);labels.setPadding(DesignUi.dp(a,12),0,DesignUi.dp(a,4),0);
@@ -171,9 +171,9 @@ final class DesignDownloads {
       status=DownloadWorkspaceStyle.text(a,"",11,DesignUi.MUTED,false);status.setMaxLines(2);status.setEllipsize(android.text.TextUtils.TruncateAt.END);status.setPadding(0,DesignUi.dp(a,4),0,0);labels.addView(status);top.addView(labels,new LinearLayout.LayoutParams(0,-2,1));
       menu=ReferenceUi.more(a,()->actions.show(value));top.addView(menu,new LinearLayout.LayoutParams(DesignUi.dp(a,48),DesignUi.dp(a,48)));
       arrow=DownloadWorkspaceStyle.text(a,"",22,DesignUi.MUTED,false);Ui.Icon disclosure=new Ui.Icon("chevron-right",DesignUi.MUTED);disclosure.setBounds(0,0,DesignUi.dp(a,18),DesignUi.dp(a,18));arrow.setCompoundDrawables(disclosure,null,null,null);arrow.setGravity(Gravity.CENTER);arrow.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);top.addView(arrow,new LinearLayout.LayoutParams(DesignUi.dp(a,48),DesignUi.dp(a,48)));card.addView(top);
-      LinearLayout date=DesignUi.row(a);date.setPadding(0,DesignUi.dp(a,9),DesignUi.dp(a,4),0);
+      LinearLayout date=DesignUi.row(a);date.setPadding(0,DesignUi.dp(a,6),DesignUi.dp(a,4),0);
       time=DownloadWorkspaceStyle.text(a,"",11,DesignUi.MUTED,false);time.setMaxLines(2);date.addView(time,new LinearLayout.LayoutParams(0,-2,1));
-      stateLabel=DownloadWorkspaceStyle.text(a,"",11,DesignUi.MUTED,false);stateLabel.setMaxLines(1);stateLabel.setPadding(DesignUi.dp(a,8),0,0,0);date.addView(stateLabel);card.addView(date);
+      stateLabel=DownloadWorkspaceStyle.text(a,"",10,DesignUi.MUTED,true);stateLabel.setMaxLines(1);stateLabel.setPadding(DesignUi.dp(a,8),DesignUi.dp(a,3),DesignUi.dp(a,8),DesignUi.dp(a,3));LinearLayout.LayoutParams stateParams=new LinearLayout.LayoutParams(-2,-2);stateParams.leftMargin=DesignUi.dp(a,8);date.addView(stateLabel,stateParams);card.addView(date);
       progress=new ProgressBar(a,null,android.R.attr.progressBarStyleHorizontal);progress.setMax(100);progress.setProgressTintList(android.content.res.ColorStateList.valueOf(DesignUi.BLUE));progress.setProgressBackgroundTintList(android.content.res.ColorStateList.valueOf(DesignUi.LINE));LinearLayout.LayoutParams pp=new LinearLayout.LayoutParams(-1,DesignUi.dp(a,4));pp.topMargin=DesignUi.dp(a,10);card.addView(progress,pp);
       progressText=DownloadWorkspaceStyle.text(a,"",12,DesignUi.MUTED,false);progressText.setPadding(0,DesignUi.dp(a,6),0,0);card.addView(progressText);
       reason=DownloadWorkspaceStyle.text(a,"",12,DesignUi.RED,false);reason.setPadding(0,DesignUi.dp(a,5),0,0);reason.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);card.addView(reason);
@@ -191,11 +191,12 @@ final class DesignDownloads {
       selectionKnown=true;syncingSelection=false;
     }
     void bind(JSONObject row,long now,String environmentName){
-      value=row;String state=row.optString("state");boolean saved="saved".equals(state);int color="failed".equals(state)?DesignUi.RED:saved?DesignUi.CYAN:"paused".equals(state)?DesignUi.MUTED:DesignUi.GREEN;
-      String glyph=saved?"file":"paused".equals(state)?"pause":"download";
-      int stateColor=saved?DesignUi.GREEN:color;String next=glyph+":"+color+":"+stateColor;if(!next.equals(appearance)){appearance=next;icon.setImageDrawable(new Ui.Icon(glyph,color));icon.setBackground(DesignUi.surface(a,(color&0xffffff)|0x0c000000,12,android.graphics.Color.TRANSPARENT));arrow.setTextColor(color);stateLabel.setTextColor(stateColor);}
+      value=row;String state=row.optString("state");boolean saved="saved".equals(state);int color="failed".equals(state)?DesignUi.RED:saved?DownloadWorkspaceStyle.savedColor(DownloadMetadataValues.name(row)):"paused".equals(state)?DesignUi.MUTED:DesignUi.GREEN;
+      String glyph=saved?DownloadWorkspaceStyle.savedGlyph(DownloadMetadataValues.name(row)):"paused".equals(state)?"pause":"failed".equals(state)?"info":"download";
+      int stateColor=saved?DesignUi.GREEN:color;String next=glyph+":"+color+":"+stateColor;if(!next.equals(appearance)){appearance=next;icon.setImageDrawable(new Ui.Icon(glyph,color));icon.setBackground(DesignUi.surface(a,(color&0xffffff)|0x0c000000,12,android.graphics.Color.TRANSPARENT));arrow.setTextColor(color);stateLabel.setTextColor(stateColor);stateLabel.setBackground(DesignUi.surface(a,(stateColor&0xffffff)|0x0c000000,10,android.graphics.Color.TRANSPARENT));}
       text(name,DownloadMetadataValues.name(row));text(status,environmentName+(saved?" · "+DownloadTasks.amount(DownloadMetadataValues.bytes(row)):""));text(stateLabel,DownloadTasks.label(state));text(time,binding.time(row,()->timeLabel(row)));String description="管理 "+DownloadMetadataValues.name(row);if(!android.text.TextUtils.equals(menu.getContentDescription(),description))menu.setContentDescription(description);visible(menu,saved);visible(arrow,!saved);
-      visible(progress,!saved);visible(progressText,!saved);visible(reason,!saved&&!row.optString("reason").isEmpty());visible(stale,!saved&&busy(state)&&row.optLong("updated")>0&&now-row.optLong("updated")>15000);visible(location,false);
+      boolean failed="failed".equals(state),hasReceived=row.optLong("received")>0;
+      visible(progress,!saved&&(!failed||(hasReceived&&row.optLong("total",-1)>0)));visible(progressText,!saved&&(!failed||hasReceived));visible(reason,!saved&&!row.optString("reason").isEmpty());visible(stale,!saved&&busy(state)&&row.optLong("updated")>0&&now-row.optLong("updated")>15000);visible(location,false);
       long total=row.optLong("total",-1),received=row.optLong("received");boolean indefinite=total<=0&&busy(state);if(progress.isIndeterminate()!=indefinite)progress.setIndeterminate(indefinite);int percent=total>0?(int)Math.min(100,received*100/total):0;if(progress.getProgress()!=percent)progress.setProgress(percent);text(progressText,DownloadTasks.progress(row));text(reason,row.optString("reason"));
     }
     static void text(TextView view,String value){if(!android.text.TextUtils.equals(view.getText(),value))view.setText(value);}

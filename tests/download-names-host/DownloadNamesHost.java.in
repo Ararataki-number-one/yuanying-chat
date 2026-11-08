@@ -31,10 +31,11 @@ public final class DownloadNamesHost {
     String text=row.status.getText().toString();if(!workspaceUi)return text;
     String state=row.stateLabel.getText().toString();
     if(row.progressText.getVisibility()==View.VISIBLE)return text+" · "+state+" · "+row.progressText.getText();
+    if(row.menu.getVisibility()!=View.VISIBLE)return text+" · "+state;
     int split=text.lastIndexOf(" · ");if(split<0)throw new AssertionError("Saved card lost its displayed size");
     return text.substring(0,split)+" · "+state+text.substring(split);
   }
-  static String label(DesignDownloads.Controller c,JSONObject r){if(reviewed46&&!c.views.containsKey(DownloadListPolicy.key(r))){c.hostAnchor=DownloadListPolicy.key(r);c.apply(c.hostRows,c.hostSelected,c.hostNow);c.hostAnchor="";}String text=renderedLabel(c.views.get(DownloadListPolicy.key(r)));return reviewed46?text.substring(0,text.lastIndexOf(" · ")):text;}
+  static String label(DesignDownloads.Controller c,JSONObject r){if(reviewed46&&!c.views.containsKey(DownloadListPolicy.key(r))){c.hostAnchor=DownloadListPolicy.key(r);c.apply(c.hostRows,c.hostSelected,c.hostNow);c.hostAnchor="";}DesignDownloads.Row view=c.views.get(DownloadListPolicy.key(r));String text=renderedLabel(view);return reviewed46&&(!workspaceUi||view.progressText.getVisibility()==View.VISIBLE||view.menu.getVisibility()==View.VISIBLE)?text.substring(0,text.lastIndexOf(" · ")):text;}
   static void counts()throws Exception{
     for(int n:new int[]{1,100,1000,10000}){
       ProfileCatalog p=setup();DesignDownloads.Controller c=new DesignDownloads.Controller();JSONArray data=rows(n);resetQueries(p);c.apply(data,0,1000);
@@ -109,7 +110,7 @@ class DesignDownloads {
 class Context{}class Activity extends Context{}class SavedFileActions{}
 class View {
   static final int VISIBLE=0,GONE=8;LinearLayout parent;int top,height=100,visibility=VISIBLE;String description="";
-  Object tag;void setTag(Object key){tag=key;}Object getTag(){return tag;}Object getParent(){return parent;}int getTop(){return top;}int getHeight(){return height;}int getVisibility(){return visibility;}void setVisibility(int value){visibility=value;}void setBackground(Object ignored){}void setContentDescription(String value){description=value;}CharSequence getContentDescription(){return description;}
+  Object tag,background;int backgroundWrites;void setTag(Object key){tag=key;}Object getTag(){return tag;}Object getParent(){return parent;}int getTop(){return top;}int getHeight(){return height;}int getVisibility(){return visibility;}void setVisibility(int value){visibility=value;}void setBackground(Object value){background=value;backgroundWrites++;}void setContentDescription(String value){description=value;}CharSequence getContentDescription(){return description;}
 }
 class LinearLayout extends View {
   final ArrayList<View> children=new ArrayList<>();static class LayoutParams{int topMargin;LayoutParams(int w,int h){}}
@@ -118,13 +119,14 @@ class LinearLayout extends View {
   void removeView(View view){if(children.remove(view)){view.parent=null;layout();}}void removeAllViews(){for(View v:children)v.parent=null;children.clear();}
 }
 class ScrollView extends LinearLayout{int y,posts;int getScrollY(){return y;}void scrollTo(int x,int value){y=value;}void post(Runnable task){posts++;task.run();}}
-class TextView extends View{String text="";CharSequence getText(){return text;}void setText(String value){text=value;}void setTextColor(int ignored){}}
-class Button extends TextView{}class ImageView extends View{void setImageDrawable(Object ignored){}}
+class TextView extends View{String text="";int textColor,colorWrites;CharSequence getText(){return text;}void setText(String value){text=value;}void setTextColor(int value){textColor=value;colorWrites++;}}
+class Button extends TextView{}class ImageView extends View{Object drawable;int imageWrites;void setImageDrawable(Object value){drawable=value;imageWrites++;}}
 class ProgressBar extends View{boolean indefinite;int percent;boolean isIndeterminate(){return indefinite;}void setIndeterminate(boolean value){indefinite=value;}int getProgress(){return percent;}void setProgress(int value){percent=value;}}
 class DesignUi{static final int RED=1,CYAN=2,GREEN=3;static final int MUTED=4;static LinearLayout tabs(Activity a,String[] labels,int selected,java.util.function.IntConsumer choose){return new LinearLayout();}static int dp(Activity a,int value){return value;}static Object surface(Activity a,int color,int radius,int border){return new Object();}static void empty(LinearLayout target,String title,String detail,String action,Runnable run){target.addView(new TextView());}}
+class ReferenceUi{static final int ORANGE=8;}
 // View factories remain explicit deterministic boundaries, not Android layout.
-class DownloadWorkspaceStyle{static LinearLayout tabs(Activity a,int selected,java.util.function.IntConsumer choose){return DesignUi.tabs(a,new String[]{"全部","进行中","已完成","失败"},selected,choose);}static void empty(LinearLayout target,String title,String detail,String action,Runnable run){DesignUi.empty(target,title,detail,action,run);}}
-class Ui{static final class Icon{Icon(String shape,int color){}}}
+class DownloadWorkspaceStyle{static LinearLayout tabs(Activity a,int selected,java.util.function.IntConsumer choose){return DesignUi.tabs(a,new String[]{"全部","进行中","已完成","失败"},selected,choose);}static void empty(LinearLayout target,String title,String detail,String action,Runnable run){DesignUi.empty(target,title,detail,action,run);}/* WORKSPACE_FILE_HELPERS */}
+class Ui{static final class Icon{final String shape;final int color;Icon(String shape,int color){this.shape=shape;this.color=color;}}}
 class DownloadTasks{static void put(JSONObject row,Object...pairs){try{for(int i=0;i<pairs.length;i+=2)row.put((String)pairs[i],pairs[i+1]);}catch(JSONException invalid){throw new IllegalStateException(invalid);}}static String amount(long n){return n<0?"大小未知":n+" B";}static String label(String state){return state;}static String progress(JSONObject value){return value.optLong("received")+"/"+value.optLong("total");}}
 class J{static JSONObject obj(Object...pairs){JSONObject out=new JSONObject();try{for(int i=0;i<pairs.length;i+=2)out.put((String)pairs[i],pairs[i+1]);}catch(JSONException invalid){throw new IllegalStateException(invalid);}return out;}}
 interface Cursor extends AutoCloseable{boolean moveToFirst();boolean moveToNext();int getColumnIndexOrThrow(String key);String getString(int index);int getInt(int index);long getLong(int index);void close();}

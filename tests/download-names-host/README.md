@@ -68,6 +68,19 @@ mutations to current methods, edited/duplicated UI blocks, tampered manifests
 and unknown source drift. Existing historical controls still run at their
 precisely identified stage, and the original inverse manifests are unchanged.
 
+The subsequent compact-card refinement remains within that exact workspace
+inverse. Its filename-derived icon and color helpers are extracted verbatim
+from the current `DownloadWorkspaceStyle` into each execution host; only
+Android material and View factories stay behind the documented boundaries.
+Reports record those helper hashes alongside the current bind/apply hashes.
+The actual renderer retains its original 27 checks and adds 14 controls for
+failed zero-byte and partial transfers, retry/paused transitions, complete
+failure reasons, name-derived decoration and unchanged byte-only appearance.
+The label adapter distinguishes a saved row using the actual action-menu
+visibility, so a failed task with deliberately hidden progress remains a
+failure row rather than being mistaken for a saved file. No hidden progress
+text is added back into the rendered-label assertions.
+
 This does **not** execute Android SQLite, Android layout, a phone or frame timing.
 The query-count result concerns the selected actual production method calls,
 not the total SQL or visible speed of the entire app. Existing original policy

@@ -50,6 +50,10 @@ class WorkspaceUiCompatibilityControls(unittest.TestCase):
         for needle in ('void bind(JSONObject row,', 'static void text(TextView', 'static void visible(View'):
             self.assertEqual(runner.member(row, needle), runner.member(self.current, needle))
         self.assertEqual(runner.member(host, 'static String timeLabel('), runner.member(self.current, 'static String timeLabel('))
+        style = runner.member(captured[0], 'class DownloadWorkspaceStyle{')
+        actual_style = (ROOT / 'app/src/main/java/local/pocketchat/DownloadWorkspaceStyle.java').read_text()
+        for needle in ('static String savedGlyph(', 'static int savedColor('):
+            self.assertEqual(runner.member(style, needle), runner.member(actual_style, needle))
         self.assertNotEqual(runner.member(row, 'void bind(JSONObject row,'), runner.member(runner.remove_workspace_ui(self.current), 'void bind(JSONObject row,'))
 
     def test_every_current_method_digest_is_verified_before_projection(self):
@@ -75,9 +79,9 @@ class WorkspaceUiCompatibilityControls(unittest.TestCase):
                     runner.remove_reviewed38(changed)
 
     def test_changed_ui_scaffold_is_rejected(self):
-        old = 'search=DesignUi.searchInput(searchBox,"搜索文件、类型或环境");'
+        old = 'search=DesignUi.searchInput(searchBox,"搜索文件或环境");'
         self.assertEqual(self.current.count(old), 1)
-        changed = self.current.replace(old, old.replace('搜索文件、类型或环境', 'unreviewed-scaffold'), 1)
+        changed = self.current.replace(old, old.replace('搜索文件或环境', 'unreviewed-scaffold'), 1)
         with self.assertRaisesRegex(AssertionError, 'workspace UI must occur exactly once'):
             runner.remove_reviewed38(changed)
 
