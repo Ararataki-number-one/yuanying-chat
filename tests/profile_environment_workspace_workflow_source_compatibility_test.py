@@ -14,6 +14,21 @@ DISPLAY = 'tests/profile_display_sampling_gate_test.py'
 PORT_IMPORT = 'from environment_workspace_workflow_source_compatibility import historical_workflow_text as environment_workspace_workflow_input\n'
 PREVIOUS_READ = "source=(root/'.github/workflows/profile-upgrade-checks.yml').read_text()"
 CURRENT_READ = "source=environment_workspace_workflow_input((root/'.github/workflows/profile-upgrade-checks.yml').read_text())"
+GRADLE_FLAGS = '-fsSL --retry 5 --retry-delay 5 --connect-timeout 20 --max-time 180 --retry-max-time 240'
+GRADLE_URLS = (
+    'https://services.gradle.org/distributions/gradle-9.8.0-bin.zip',
+    'https://downloads.gradle.org/distributions/gradle-9.8.0-bin.zip',
+    'https://github.com/gradle/gradle-distributions/releases/download/v9.8.0/gradle-9.8.0-bin.zip',
+)
+GRADLE_CHECKSUM = "          echo 'bafd5ce9cfaea0fbccfdc8439a1ac42fbd4cd9c89dc9a988228d8a2639a58e6c  work/profile-build/gradle.zip' | sha256sum -c -\n"
+GRADLE_UNZIP = '          unzip -q work/profile-build/gradle.zip -d work/profile-build/gradle\n'
+
+
+def gradle_download_block():
+    return (f'          if ! curl {GRADLE_FLAGS} {GRADLE_URLS[0]} -o work/profile-build/gradle.zip; then\n'
+            f'            if ! curl {GRADLE_FLAGS} {GRADLE_URLS[1]} -o work/profile-build/gradle.zip; then\n'
+            f'              curl {GRADLE_FLAGS} {GRADLE_URLS[2]} -o work/profile-build/gradle.zip\n'
+            '            fi\n          fi\n' + GRADLE_CHECKSUM + GRADLE_UNZIP)
 
 
 def previous_blob(path):
@@ -94,14 +109,11 @@ class EnvironmentWorkspaceWorkflowSourceTests(unittest.TestCase):
 
     def test_gradle_fallback_preserves_original_version_destination_and_checksum(self):
         raw = (ROOT / workspace.PATH).read_bytes()
-        primary = b'          if ! curl -fsSL --retry 3 https://services.gradle.org/distributions/gradle-9.8.0-bin.zip -o work/profile-build/gradle.zip; then\n'
-        fallback = b'            curl -fsSL --retry 3 https://downloads.gradle.org/distributions/gradle-9.8.0-bin.zip -o work/profile-build/gradle.zip\n'
-        checksum = b"          echo 'bafd5ce9cfaea0fbccfdc8439a1ac42fbd4cd9c89dc9a988228d8a2639a58e6c  work/profile-build/gradle.zip' | sha256sum -c -\n"
-        block = primary + fallback + b'          fi\n' + checksum + b'          unzip -q work/profile-build/gradle.zip -d work/profile-build/gradle\n'
-        self.assertEqual(raw.count(block), 1)
-        self.assertEqual(previous_blob(workspace.PATH).count(checksum), 1)
-        self.assertEqual(raw.count(b'https://services.gradle.org/distributions/gradle-9.8.0-bin.zip'), 1)
-        self.assertEqual(raw.count(b'https://downloads.gradle.org/distributions/gradle-9.8.0-bin.zip'), 1)
+        self.assertEqual(raw.count(gradle_download_block().encode()), 1)
+        self.assertEqual(previous_blob(workspace.PATH).count(GRADLE_CHECKSUM.encode()), 1)
+        self.assertEqual(raw.count(GRADLE_FLAGS.encode()), 3)
+        for url in GRADLE_URLS:
+            self.assertEqual(raw.count(url.encode()), 1)
 
     def test_gradle_fallback_address_checksum_and_failure_behavior_cannot_drift(self):
         raw = (ROOT / workspace.PATH).read_bytes()
@@ -109,16 +121,51 @@ class EnvironmentWorkspaceWorkflowSourceTests(unittest.TestCase):
             (b'https://downloads.gradle.org/distributions/gradle-9.8.0-bin.zip', b'https://unreviewed.invalid/distributions/gradle-9.8.0-bin.zip'),
             (b'https://downloads.gradle.org/distributions/gradle-9.8.0-bin.zip', b'http://downloads.gradle.org/distributions/gradle-9.8.0-bin.zip'),
             (b'https://downloads.gradle.org/distributions/gradle-9.8.0-bin.zip', b'https://downloads.gradle.org/distributions/gradle-9.8.1-bin.zip'),
-            (b'if ! curl -fsSL --retry 3 https://services.gradle.org/', b'if curl -fsSL --retry 3 https://services.gradle.org/'),
-            (b'https://downloads.gradle.org/distributions/gradle-9.8.0-bin.zip -o work/profile-build/gradle.zip', b'https://downloads.gradle.org/distributions/gradle-9.8.0-bin.zip -o work/profile-build/other.zip'),
-            (b'https://downloads.gradle.org/distributions/gradle-9.8.0-bin.zip -o work/profile-build/gradle.zip\n', b'https://downloads.gradle.org/distributions/gradle-9.8.0-bin.zip -o work/profile-build/gradle.zip || true\n'),
+            (GRADLE_URLS[2].encode(), b'https://github.com/unreviewed/gradle-distributions/releases/download/v9.8.0/gradle-9.8.0-bin.zip'),
+            (f'if ! curl {GRADLE_FLAGS} {GRADLE_URLS[0]}'.encode(), f'if curl {GRADLE_FLAGS} {GRADLE_URLS[0]}'.encode()),
+            (f'if ! curl {GRADLE_FLAGS} {GRADLE_URLS[1]}'.encode(), f'if curl {GRADLE_FLAGS} {GRADLE_URLS[1]}'.encode()),
+            ((GRADLE_URLS[2] + ' -o work/profile-build/gradle.zip').encode(), (GRADLE_URLS[2] + ' -o work/profile-build/other.zip').encode()),
+            ((GRADLE_URLS[2] + ' -o work/profile-build/gradle.zip\n').encode(), (GRADLE_URLS[2] + ' -o work/profile-build/gradle.zip || true\n').encode()),
             (b'bafd5ce9cfaea0fbccfdc8439a1ac42fbd4cd9c89dc9a988228d8a2639a58e6c', b'0' * 64),
             (b"work/profile-build/gradle.zip' | sha256sum -c -\n", b"work/profile-build/gradle.zip' | sha256sum -c - || true\n"),
+            (f'curl {GRADLE_FLAGS} {GRADLE_URLS[2]}'.encode(), f'curl -fsSL --retry 3 {GRADLE_URLS[2]}'.encode()),
         )
         for before, after in mutations:
             self.assertEqual(raw.count(before), 1)
             with self.subTest(anchor=before):
                 self.assert_rejected_by_both_guards(raw.replace(before, after, 1), raw)
+
+    def test_exact_download_shell_stops_after_success_and_fails_closed(self):
+        # Execute the actual selected shell block with controlled command return
+        # codes. No network, ZIP extraction or checksum verification is claimed.
+        source = (ROOT / workspace.PATH).read_text()
+        expected = gradle_download_block()
+        self.assertEqual(source.count(expected), 1)
+        start = source.index(expected)
+        block = source[start:start + len(expected)]
+        boundaries = '''
+TASK_TEST_CURL_CALLS=0
+curl() {
+  TASK_TEST_CURL_CALLS=$((TASK_TEST_CURL_CALLS + 1))
+  printf 'curl:%s\n' "$TASK_TEST_CURL_CALLS"
+  if [ "$TASK_TEST_CURL_CALLS" -eq "$TASK_TEST_SUCCESS_AT" ]; then return 0; fi
+  return 22
+}
+sha256sum() { cat >/dev/null; printf 'checksum\n'; return "$TASK_TEST_CHECKSUM_CODE"; }
+unzip() { printf 'unzip\n'; }
+'''
+        for success_at, checksum_code in ((1, 0), (2, 0), (3, 0), (0, 0), (3, 1)):
+            script = f'TASK_TEST_SUCCESS_AT={success_at}\nTASK_TEST_CHECKSUM_CODE={checksum_code}\n' + boundaries + block
+            run = subprocess.run(['bash', '-euo', 'pipefail'], input=script, capture_output=True, text=True, timeout=5)
+            calls = success_at or 3
+            expected_output = [f'curl:{number}' for number in range(1, calls + 1)]
+            if success_at:
+                expected_output.append('checksum')
+                if not checksum_code:
+                    expected_output.append('unzip')
+            with self.subTest(successAt=success_at, checksumCode=checksum_code):
+                self.assertEqual(run.stdout.splitlines(), expected_output)
+                self.assertEqual(run.returncode, 22 if not success_at else checksum_code)
 
     def test_types_paths_partial_and_unknown_sources_cannot_gain_acceptance(self):
         raw = (ROOT / workspace.PATH).read_bytes()

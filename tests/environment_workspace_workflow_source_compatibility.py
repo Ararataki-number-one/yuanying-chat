@@ -11,13 +11,13 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 PATH = '.github/workflows/profile-upgrade-checks.yml'
 FIXTURE = ROOT / 'tests/fixtures/environment-workspace-workflow-source-deltas.json'
-FIXTURE_SHA256 = 'a168af5d6d4b1f9b8d2f26a524b61ffd6f8686598296175b5ea32d3774c4cfc6'
+FIXTURE_SHA256 = '9de8ccbce4863b4d302ae45f4b7aff95474fb04e756efbf12158ac0a3f76eb37'
 PREVIOUS_COMMIT = '7402ead321ca74b9fbefeab32a1aaffb32832011'
 PREVIOUS_TREE = '2aaec06687b65d9511ace499528b6946dc1b8d53'
 PREVIOUS_BYTES = 21727
 PREVIOUS_SHA256 = '37ec53f065fa4572b8d59c7d4138dc170267f73911c46b5d4db0855dfe024699'
-CURRENT_BYTES = 22500
-CURRENT_SHA256 = 'ef20f249093f667ab1bbeb594f9e5a9e7efcddb72c72be40ad9a1d6ea8b6d0c8'
+CURRENT_BYTES = 22906
+CURRENT_SHA256 = 'b8cc066071862d11db66fd9064f11f824667e53b4af210a707715de90d4cc988'
 
 
 def sha(raw):

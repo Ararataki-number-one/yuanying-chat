@@ -89,8 +89,10 @@ jobs:
           echo "$JAVA_HOME_17_X64/bin" >> "$GITHUB_PATH"
           mkdir -p work/profile-build
           "$JAVA_HOME_17_X64/bin/keytool" -genkeypair -keystore work/profile-build/integration-test.jks -alias androiddebugkey -storepass android -keypass android -dname CN=SyntheticIntegration -keyalg RSA -validity 2
-          if ! curl -fsSL --retry 3 https://services.gradle.org/distributions/gradle-9.8.0-bin.zip -o work/profile-build/gradle.zip; then
-            curl -fsSL --retry 3 https://downloads.gradle.org/distributions/gradle-9.8.0-bin.zip -o work/profile-build/gradle.zip
+          if ! curl -fsSL --retry 5 --retry-delay 5 --connect-timeout 20 --max-time 180 --retry-max-time 240 https://services.gradle.org/distributions/gradle-9.8.0-bin.zip -o work/profile-build/gradle.zip; then
+            if ! curl -fsSL --retry 5 --retry-delay 5 --connect-timeout 20 --max-time 180 --retry-max-time 240 https://downloads.gradle.org/distributions/gradle-9.8.0-bin.zip -o work/profile-build/gradle.zip; then
+              curl -fsSL --retry 5 --retry-delay 5 --connect-timeout 20 --max-time 180 --retry-max-time 240 https://github.com/gradle/gradle-distributions/releases/download/v9.8.0/gradle-9.8.0-bin.zip -o work/profile-build/gradle.zip
+            fi
           fi
           echo 'bafd5ce9cfaea0fbccfdc8439a1ac42fbd4cd9c89dc9a988228d8a2639a58e6c  work/profile-build/gradle.zip' | sha256sum -c -
           unzip -q work/profile-build/gradle.zip -d work/profile-build/gradle

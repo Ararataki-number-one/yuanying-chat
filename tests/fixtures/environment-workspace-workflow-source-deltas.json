@@ -5,8 +5,8 @@
   "previousTree": "2aaec06687b65d9511ace499528b6946dc1b8d53",
   "previousBytes": 21727,
   "previousSha256": "37ec53f065fa4572b8d59c7d4138dc170267f73911c46b5d4db0855dfe024699",
-  "reviewedBytes": 22500,
-  "reviewedSha256": "ef20f249093f667ab1bbeb594f9e5a9e7efcddb72c72be40ad9a1d6ea8b6d0c8",
+  "reviewedBytes": 22906,
+  "reviewedSha256": "b8cc066071862d11db66fd9064f11f824667e53b4af210a707715de90d4cc988",
   "deltas": [
     {
       "previous": "      - name: State build verification scope\n        run: |\n          printf '%s\\n' 'Pinned upstream SDK verification, reviewed single-class source build, release/test APK compilation and lint passed. APKs remain unsigned or signed with an ephemeral synthetic key. No emulator/ARM execution, real ChatGPT login or WAN measurement is implied; no release is published.' >> \"$GITHUB_STEP_SUMMARY\"\n      # This branch needs one review screenshot of the real product. Keep it\n      # separate from the fixed UI acceptance workloads and their receipts.\n      - name: Retain the actual glass navigation integration APK\n        if: ${{ (github.head_ref || github.ref_name) == 'codex/compact-glass-reading' }}\n        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02\n        with:\n          name: glass-navigation-apk-${{ github.run_id }}-${{ github.run_attempt }}\n",
@@ -42,11 +42,11 @@
     },
     {
       "previous": "          curl -fsSL --retry 3 https://services.gradle.org/distributions/gradle-9.8.0-bin.zip -o work/profile-build/gradle.zip\n          echo 'bafd5ce9cfaea0fbccfdc8439a1ac42fbd4cd9c89dc9a988228d8a2639a58e6c  work/profile-build/gradle.zip' | sha256sum -c -\n",
-      "current": "          if ! curl -fsSL --retry 3 https://services.gradle.org/distributions/gradle-9.8.0-bin.zip -o work/profile-build/gradle.zip; then\n            curl -fsSL --retry 3 https://downloads.gradle.org/distributions/gradle-9.8.0-bin.zip -o work/profile-build/gradle.zip\n          fi\n          echo 'bafd5ce9cfaea0fbccfdc8439a1ac42fbd4cd9c89dc9a988228d8a2639a58e6c  work/profile-build/gradle.zip' | sha256sum -c -\n",
+      "current": "          if ! curl -fsSL --retry 5 --retry-delay 5 --connect-timeout 20 --max-time 180 --retry-max-time 240 https://services.gradle.org/distributions/gradle-9.8.0-bin.zip -o work/profile-build/gradle.zip; then\n            if ! curl -fsSL --retry 5 --retry-delay 5 --connect-timeout 20 --max-time 180 --retry-max-time 240 https://downloads.gradle.org/distributions/gradle-9.8.0-bin.zip -o work/profile-build/gradle.zip; then\n              curl -fsSL --retry 5 --retry-delay 5 --connect-timeout 20 --max-time 180 --retry-max-time 240 https://github.com/gradle/gradle-distributions/releases/download/v9.8.0/gradle-9.8.0-bin.zip -o work/profile-build/gradle.zip\n            fi\n          fi\n          echo 'bafd5ce9cfaea0fbccfdc8439a1ac42fbd4cd9c89dc9a988228d8a2639a58e6c  work/profile-build/gradle.zip' | sha256sum -c -\n",
       "previousBytes": 257,
       "previousSha256": "fc0e5935f71e5f7ae77bd55775ebe2992b04dd549b6723a04c1b817870bc18c8",
-      "currentBytes": 411,
-      "currentSha256": "94eee71a383dddb03c7ad29c77707bc760f5954a388e116e797af4f916352b5a"
+      "currentBytes": 817,
+      "currentSha256": "c7f4548c679821e539c2f8aee0db79654bf6e029dcb1f5e2cb004b59a3109df8"
     }
   ]
 }
