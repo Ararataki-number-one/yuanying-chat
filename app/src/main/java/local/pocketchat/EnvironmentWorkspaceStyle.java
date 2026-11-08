@@ -24,7 +24,7 @@ final class EnvironmentWorkspaceStyle {
   static Drawable card(Context context,boolean featured,boolean selected) {
     GradientDrawable mask=new GradientDrawable();
     mask.setColor(Color.WHITE);
-    mask.setCornerRadius(24f*context.getResources().getDisplayMetrics().density);
+    mask.setCornerRadius(22f*context.getResources().getDisplayMetrics().density);
     // This wrapper also supplies a theme-aware native ripple for non-glass
     // content. It does not add an optical layer to this opaque card surface.
     return new AppAppearance.GlassRipple(new CardSurface(context,featured,selected),mask);
@@ -32,6 +32,12 @@ final class EnvironmentWorkspaceStyle {
 
   static Drawable scrollEdge(Context context) {
     return new ScrollEdge();
+  }
+
+  static Drawable statusDot(Context context,int color) {
+    GradientDrawable dot=new AppAppearance.Surface(color);dot.setShape(GradientDrawable.OVAL);
+    int size=Math.max(1,Math.round(3f*context.getResources().getDisplayMetrics().density));
+    dot.setBounds(0,0,size,size);return dot;
   }
 
   /** Shared by the visible footer and its separately recorded native backdrop. */
@@ -49,8 +55,8 @@ final class EnvironmentWorkspaceStyle {
       if(bounds.isEmpty()){gradient=null;return;}
       int rgb=background&0x00ffffff;
       gradient=new LinearGradient(bounds.left,bounds.top,bounds.left,bounds.bottom,
-          new int[]{rgb,0x59000000|rgb,0xd9000000|rgb},
-          new float[]{0f,.52f,1f},Shader.TileMode.CLAMP);
+          new int[]{rgb,0x4f000000|rgb,0xd0000000|rgb},
+          new float[]{0f,.56f,1f},Shader.TileMode.CLAMP);
     }
 
     @Override public void draw(Canvas canvas) {
@@ -86,7 +92,7 @@ final class EnvironmentWorkspaceStyle {
 
     @Override protected void onBoundsChange(Rect bounds) {
       face.set(bounds);
-      radius=Math.min(24f*density,Math.min(face.width(),face.height())*.5f);
+      radius=Math.min(22f*density,Math.min(face.width(),face.height())*.5f);
       edge.set(face);edge.inset(.5f*density,.5f*density);
       clip.rewind();
       if(!face.isEmpty())clip.addRoundRect(face,radius,radius,Path.Direction.CW);
@@ -102,7 +108,7 @@ final class EnvironmentWorkspaceStyle {
       blueWash=new RadialGradient(face.right-face.width()*.08f,face.top-face.height()*.12f,
           spread,dark?0x204f83cc:0x185f9fea,0x005f9fea,Shader.TileMode.CLAMP);
       mintWash=new RadialGradient(face.right+face.width()*.04f,face.bottom+face.height()*.14f,
-          spread*.83f,dark?0x183b9688:0x163bb59f,0x003bb59f,Shader.TileMode.CLAMP);
+          spread*.83f,dark?0x143b9688:0x0c3bb59f,0x003bb59f,Shader.TileMode.CLAMP);
     }
 
     @Override public void draw(Canvas canvas) {
@@ -110,7 +116,7 @@ final class EnvironmentWorkspaceStyle {
       boolean next=AppAppearance.dark();
       if(next!=dark){dark=next;prepareWashes();}
       paint.setShader(null);paint.setStyle(Paint.Style.FILL);
-      paint.setColor(withAlpha(selected?(dark?0xff202f46:0xfff0f6ff)
+      paint.setColor(withAlpha(selected?(dark?0xff202f46:0xfff3f7ff)
           :dark?(featured?0xff202226:0xff1c1c1e):Color.WHITE,alpha));
       canvas.drawRoundRect(face,radius,radius,paint);
       if(featured){
@@ -121,9 +127,9 @@ final class EnvironmentWorkspaceStyle {
         paint.setShader(null);canvas.restoreToCount(save);
       }
       paint.setStyle(Paint.Style.STROKE);
-      paint.setStrokeWidth((selected?1f:.65f)*density);
-      int rim=selected?(dark?0x9989b5ff:0x660067d8)
-          :featured?(dark?0x18ffffff:0xe6ffffff):(dark?0x08ffffff:0x070d263f);
+      paint.setStrokeWidth((selected?.85f:.5f)*density);
+      int rim=selected?(dark?0x9989b5ff:0x440067d8)
+          :featured?(dark?0x18ffffff:0xb8ffffff):(dark?0x08ffffff:0x080d263f);
       paint.setColor(withAlpha(rim,alpha));
       float edgeRadius=Math.max(0f,radius-.5f*density);
       canvas.drawRoundRect(edge,edgeRadius,edgeRadius,paint);
@@ -170,13 +176,13 @@ final class EnvironmentWorkspaceStyle {
     }
 
     @Override protected void onMeasure(int widthSpec,int heightSpec) {
-      int desired=Math.round((large?56f:44f)*density);
+      int desired=Math.round((large?56f:40f)*density);
       setMeasuredDimension(resolveSize(desired,widthSpec),resolveSize(desired,heightSpec));
     }
 
     @Override protected void onSizeChanged(int width,int height,int oldWidth,int oldHeight) {
       body.set(0,0,width,height);edge.set(body);edge.inset(.5f*density,.5f*density);
-      int size=Math.round(Math.min(Math.min(width,height)*.56f,(large?29f:24f)*density));
+      int size=Math.round(Math.min(Math.min(width,height)*.56f,(large?29f:21f)*density));
       int left=(width-size)/2,top=Math.round((height-size)*.5f-.65f*density);
       icon.setBounds(left,top,left+size,top+size);
     }
@@ -184,12 +190,12 @@ final class EnvironmentWorkspaceStyle {
     @Override protected void onDraw(Canvas canvas) {
       super.onDraw(canvas);
       boolean dark=AppAppearance.dark();int accent=(dark?DARK:LIGHT)[slot];
-      float radius=Math.min((large?17f:14f)*density,Math.min(body.width(),body.height())*.5f);
+      float radius=Math.min((large?17f:12f)*density,Math.min(body.width(),body.height())*.5f);
       paint.setStyle(Paint.Style.FILL);
-      paint.setColor(mix(dark?0xff202226:Color.WHITE,accent,dark?.12f:large?.095f:.075f));
+      paint.setColor(mix(dark?0xff202226:Color.WHITE,accent,dark?.10f:large?.075f:.045f));
       canvas.drawRoundRect(body,radius,radius,paint);
-      paint.setStyle(Paint.Style.STROKE);paint.setStrokeWidth(.6f*density);
-      paint.setColor((accent&0x00ffffff)|(dark?0x15000000:0x10000000));
+      paint.setStyle(Paint.Style.STROKE);paint.setStrokeWidth(.5f*density);
+      paint.setColor((accent&0x00ffffff)|(dark?0x10000000:0x09000000));
       float edgeRadius=Math.max(0f,radius-.5f*density);
       canvas.drawRoundRect(edge,edgeRadius,edgeRadius,paint);
       paint.setStyle(Paint.Style.FILL);icon.color=accent;icon.draw(canvas);

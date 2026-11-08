@@ -103,7 +103,7 @@ final class ReferenceUi {
     LinearLayout bar=DesignUi.column(a);bar.setPadding(dp(a,12),dp(a,10),dp(a,12),dp(a,12));
     bar.setClipChildren(false);bar.setClipToPadding(false);
     int heightDp=navHeightDp(a),radius=(heightDp+1)/2;
-    GlassDock dock=new GlassDock(a);dock.setPadding(dp(a,5),dp(a,2),dp(a,5),dp(a,2));
+    GlassDock dock=new GlassDock(a,true);dock.setPadding(dp(a,5),dp(a,2),dp(a,5),dp(a,2));
     dock.setBackground(DesignUi.glass(a,radius));GlassMotion.press(dock,false);
     for(int i=0;i<WORKSPACE_PAGES.length;i++){
       final int destination=WORKSPACE_PAGES[i];

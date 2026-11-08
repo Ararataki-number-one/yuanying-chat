@@ -26,6 +26,7 @@ final class GlassDock extends LinearLayout {
   private final Matrix sheenMatrix=new Matrix();
   private final int inset;
   private final float radius,stretchLimit,density;
+  private final boolean workspaceSelection;
   private final PathInterpolator travelEase=new PathInterpolator(.2f,0f,0f,1f);
   private View selected;
   private ValueAnimator transition;
@@ -33,8 +34,11 @@ final class GlassDock extends LinearLayout {
   private int layoutWidth=-1,layoutHeight=-1;
   private int[] childBounds=new int[0];
 
-  GlassDock(Context context){
+  GlassDock(Context context){this(context,false);}
+
+  GlassDock(Context context,boolean workspaceSelection){
     super(context);setOrientation(HORIZONTAL);setGravity(Gravity.CENTER_VERTICAL);
+    this.workspaceSelection=workspaceSelection;
     density=context.getResources().getDisplayMetrics().density;
     inset=Ui.dp(context,LiquidGlassDrawable.INSET_DP+1);radius=Ui.dp(context,31);stretchLimit=Ui.dp(context,22);
   }
@@ -133,8 +137,16 @@ final class GlassDock extends LinearLayout {
     if(opacity>0f&&!highlight.isEmpty()){
       // Read the live palette so an appearance change never restarts the motion.
       paint.setStyle(Paint.Style.FILL);paint.setShader(null);
-      paint.setColor(DesignUi.BLUE);paint.setAlpha(Math.round((16f+6f*flow)*opacity));
+      boolean dark=AppAppearance.dark();
       float corner=Math.min(radius,Math.min(highlight.width(),highlight.height())/2f);
+      if(workspaceSelection){
+        // A faint neutral reflection keeps the native five-item selector clear.
+        // Its geometry and spring remain identical to the conversation dock.
+        paint.setColor(Color.WHITE);paint.setAlpha(Math.round((dark?10f:42f)*opacity));
+        canvas.drawRoundRect(highlight,corner,corner,paint);
+      }
+      float tint=workspaceSelection?(dark?14f:8f):16f;
+      paint.setColor(DesignUi.BLUE);paint.setAlpha(Math.round((tint+6f*flow)*opacity));
       canvas.drawRoundRect(highlight,corner,corner,paint);
       if(flow>0f){
         // One broad reflection crosses the travelling lens; it stops completely
@@ -148,7 +160,8 @@ final class GlassDock extends LinearLayout {
       float stroke=.65f*density;
       rim.set(highlight);rim.inset(stroke*.5f,stroke*.5f);
       paint.setStyle(Paint.Style.STROKE);paint.setStrokeWidth(stroke);paint.setColor(Color.WHITE);
-      paint.setAlpha(Math.round((AppAppearance.dark()?16f+26f*flow:42f+104f*flow)*opacity));
+      float restingRim=workspaceSelection?(dark?24f:88f):(dark?16f:42f);
+      paint.setAlpha(Math.round((restingRim+(dark?26f:104f)*flow)*opacity));
       canvas.drawRoundRect(rim,Math.max(0f,corner-stroke*.5f),Math.max(0f,corner-stroke*.5f),paint);
       paint.setStyle(Paint.Style.FILL);
     }

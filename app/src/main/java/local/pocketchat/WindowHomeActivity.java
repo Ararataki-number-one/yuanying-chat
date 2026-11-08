@@ -253,18 +253,18 @@ public class WindowHomeActivity extends ThemedActivity {
     final LinearLayout root=DesignUi.column(WindowHomeActivity.this),card=DesignUi.card(WindowHomeActivity.this),head=DesignUi.row(WindowHomeActivity.this),details=DesignUi.row(WindowHomeActivity.this);
     final View separator=new View(WindowHomeActivity.this);final CheckBox check=new CheckBox(WindowHomeActivity.this);
     final EnvironmentWorkspaceStyle.Emblem emblem=new EnvironmentWorkspaceStyle.Emblem(WindowHomeActivity.this,false);
-    final TextView name=workspaceText("",17,DesignUi.TEXT,true),sub=workspaceText("",11,DesignUi.MUTED,false),badge=workspaceText("",11,DesignUi.MUTED,false),network=workspaceText("",12,DesignUi.MUTED,false);
+    final TextView name=workspaceText("",17,DesignUi.TEXT,false),sub=workspaceText("",11,DesignUi.MUTED,false),badge=workspaceText("",11,DesignUi.MUTED,false),network=workspaceText("",11,DesignUi.MUTED,false);
     JSONObject value;boolean syncing;
     final Button more=ReferenceUi.more(WindowHomeActivity.this,()->{if(value!=null)menu(value.optInt("slot"));});
     final EnvironmentPresentation.Binding binding=new EnvironmentPresentation.Binding();
     EnvironmentRow(){
-      root.addView(separator,new LinearLayout.LayoutParams(-1,dp(10)));root.addView(card);card.setPadding(dp(16),dp(12),dp(12),dp(12));
+      root.addView(separator,new LinearLayout.LayoutParams(-1,dp(12)));root.addView(card);card.setPadding(dp(16),dp(13),dp(12),dp(13));
       card.setClickable(true);card.setFocusable(true);card.setOnClickListener(v->{if(value!=null){if(selecting)toggleSelection(value.optInt("slot"));else openExpected(value,"chat",true);}});card.setOnLongClickListener(v->{if(value!=null)toggleSelection(value.optInt("slot"));return true;});
-      check.setOnCheckedChangeListener((button,selected)->{if(!syncing&&value!=null)toggleSelection(value.optInt("slot"));});head.addView(check,new LinearLayout.LayoutParams(dp(48),dp(48)));head.addView(emblem,new LinearLayout.LayoutParams(dp(44),dp(44)));
-      LinearLayout titles=DesignUi.column(WindowHomeActivity.this);titles.setPadding(dp(12),0,dp(4),0);name.setMaxLines(2);name.setEllipsize(TextUtils.TruncateAt.END);sub.setMaxLines(1);sub.setEllipsize(TextUtils.TruncateAt.END);sub.setPadding(0,dp(2),0,0);titles.addView(name);titles.addView(sub);head.addView(titles,new LinearLayout.LayoutParams(0,-2,1));head.addView(more,new LinearLayout.LayoutParams(dp(48),dp(48)));card.addView(head);
+      check.setOnCheckedChangeListener((button,selected)->{if(!syncing&&value!=null)toggleSelection(value.optInt("slot"));});head.addView(check,new LinearLayout.LayoutParams(dp(48),dp(48)));head.addView(emblem,new LinearLayout.LayoutParams(dp(40),dp(40)));
+      LinearLayout titles=DesignUi.column(WindowHomeActivity.this);titles.setPadding(dp(12),0,dp(4),0);name.setMaxLines(2);name.setEllipsize(TextUtils.TruncateAt.END);sub.setMaxLines(1);sub.setEllipsize(TextUtils.TruncateAt.END);sub.setPadding(0,dp(4),0,0);sub.setCompoundDrawablePadding(dp(4));titles.addView(name);titles.addView(sub);head.addView(titles,new LinearLayout.LayoutParams(0,-2,1));head.addView(more,new LinearLayout.LayoutParams(dp(48),dp(48)));card.addView(head);
       details.setPadding(0,dp(8),0,0);
-      network.setMaxLines(1);network.setEllipsize(TextUtils.TruncateAt.END);network.setPadding(0,0,dp(8),0);Ui.Icon globe=new Ui.Icon("globe",DesignUi.MUTED);globe.setBounds(0,0,dp(14),dp(14));network.setCompoundDrawables(globe,null,null,null);network.setCompoundDrawablePadding(dp(6));details.addView(network,new LinearLayout.LayoutParams(0,-2,1));
-      badge.setPadding(dp(7),dp(3),dp(7),dp(3));badge.setGravity(Gravity.CENTER);details.addView(badge);card.addView(details);
+      network.setMaxLines(1);network.setEllipsize(TextUtils.TruncateAt.END);network.setPadding(0,0,dp(8),0);Ui.Icon globe=new Ui.Icon("globe",DesignUi.MUTED);globe.setBounds(0,0,dp(12),dp(12));network.setCompoundDrawables(globe,null,null,null);network.setCompoundDrawablePadding(dp(5));details.addView(network,new LinearLayout.LayoutParams(0,-2,1));
+      badge.setPadding(dp(7),dp(3),dp(7),dp(3));badge.setCompoundDrawablePadding(dp(5));badge.setGravity(Gravity.CENTER);details.addView(badge);card.addView(details);
     }
     void bind(JSONObject row,Set<Integer> running,long now,int defaultSlot){
       if(!binding.changed(EnvironmentPresentation.stamp(row,running,now,defaultSlot,selecting,selectedIds.contains(row.optInt("slot")))))return;
@@ -272,13 +272,18 @@ public class WindowHomeActivity extends ThemedActivity {
       card.setBackground(EnvironmentWorkspaceStyle.card(WindowHomeActivity.this,id==defaultSlot,selecting&&selectedIds.contains(id)));
       syncing=true;check.setChecked(selectedIds.contains(id));syncing=false;check.setVisibility(selecting?View.VISIBLE:View.GONE);emblem.setVisibility(selecting?View.GONE:View.VISIBLE);emblem.bind(id);
       check.setContentDescription("选择环境 "+String.format(Locale.ROOT,"%02d",id+1)+" "+row.optString("name"));
-      setText(name,(row.optBoolean("favorite")?"★ ":"")+row.optString("name"));String group=row.optString("group");
+      setText(name,row.optString("name"));String group=row.optString("group");
+      Ui.Icon favorite=row.optBoolean("favorite")?new Ui.Icon("star",ReferenceUi.ORANGE):null;
+      if(favorite!=null)favorite.setBounds(0,0,dp(11),dp(11));
+      sub.setCompoundDrawables(favorite,null,null,null);
       setText(sub,String.format(Locale.ROOT,"%02d",id+1)+(group.isEmpty()?"":" · "+group)+(id==defaultSlot?" · 默认":"")+(row.optBoolean("desktopSite")?" · 电脑版":"")+(!row.optString("draft").isEmpty()?" · 草稿":""));
       int color=problem?DesignUi.RED:active?DesignUi.GREEN:DesignUi.MUTED;
-      setText(badge,"• "+EnvironmentPresentation.status(row,active,fresh));badge.setTextColor(color);badge.setBackground(DesignUi.surface(WindowHomeActivity.this,(color&0x00ffffff)|0x11000000,12,android.graphics.Color.TRANSPARENT));
+      setText(badge,EnvironmentPresentation.status(row,active,fresh));badge.setTextColor(color);
+      badge.setCompoundDrawables(EnvironmentWorkspaceStyle.statusDot(WindowHomeActivity.this,color),null,null,null);
+      badge.setBackground(DesignUi.surface(WindowHomeActivity.this,active||problem?(color&0x00ffffff)|0x11000000:android.graphics.Color.TRANSPARENT,12,android.graphics.Color.TRANSPARENT));
       setText(network,networkStatus(row,active,fresh));network.setTextColor(DesignUi.MUTED);
       more.setVisibility(selecting?View.GONE:View.VISIBLE);more.setContentDescription("更多操作 "+row.optString("name"));
-      card.setContentDescription((selecting?"选择环境：":"打开环境：")+row.optString("name")+"，"+sub.getText()+"，"+network.getText()+"，"+badge.getText());
+      card.setContentDescription((selecting?"选择环境：":"打开环境：")+row.optString("name")+(row.optBoolean("favorite")?"，已收藏":"")+"，"+sub.getText()+"，"+network.getText()+"，"+badge.getText());
     }
   }
   void openExpected(JSONObject expected,String action,boolean overview){
