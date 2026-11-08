@@ -36,7 +36,7 @@ final class GlassDock extends LinearLayout {
   GlassDock(Context context){
     super(context);setOrientation(HORIZONTAL);setGravity(Gravity.CENTER_VERTICAL);
     density=context.getResources().getDisplayMetrics().density;
-    inset=Ui.dp(context,LiquidGlassDrawable.INSET_DP+1);radius=Ui.dp(context,23);stretchLimit=Ui.dp(context,22);
+    inset=Ui.dp(context,LiquidGlassDrawable.INSET_DP+1);radius=Ui.dp(context,31);stretchLimit=Ui.dp(context,22);
   }
 
   @Override protected int[] onCreateDrawableState(int extraSpace){return GlassMotion.childState(this,super.onCreateDrawableState(extraSpace+1));}

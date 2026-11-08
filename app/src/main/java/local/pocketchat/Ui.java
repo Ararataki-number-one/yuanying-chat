@@ -58,7 +58,9 @@ final class Ui {
   static final class IconButton extends Button {
     final Icon icon;final boolean filled;
     IconButton(Context c,String glyph,String label,boolean filled){super(c);this.filled=filled;icon=new Icon(glyph,filled?Color.WHITE:INK);setText("");setContentDescription(label);setPadding(0,0,0,0);setMinWidth(0);setMinHeight(0);setMinimumWidth(0);setMinimumHeight(0);setGravity(Gravity.CENTER);setStateListAnimator(null);setElevation(0);setBackground(ripple(c,filled?0xff1268ff:Color.TRANSPARENT,14));setTooltipText(label);}
-    @Override protected void onDraw(Canvas c){super.onDraw(c);int size=dp(getContext(),21);icon.setBounds((getWidth()-size)/2,(getHeight()-size)/2,(getWidth()+size)/2,(getHeight()+size)/2);icon.color=filled?Color.WHITE:MUTED;icon.draw(c);}
+    @Override protected void onDraw(Canvas c){super.onDraw(c);int size=dp(getContext(),21);icon.setBounds((getWidth()-size)/2,(getHeight()-size)/2,(getWidth()+size)/2,(getHeight()+size)/2);
+      // Read the current glass role on every draw, including appearance changes.
+      icon.color=filled?Color.WHITE:getBackground() instanceof AppAppearance.GlassRipple?DesignUi.GLASS_INK:MUTED;icon.draw(c);}
     @Override public void setEnabled(boolean enabled){super.setEnabled(enabled);setAlpha(enabled?1f:.35f);}
   }
 }

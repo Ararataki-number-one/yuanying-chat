@@ -10,17 +10,21 @@ final class GlassMaterialRaster {
   static Bitmap create(int width,int height,float density,float radius,boolean dark,
       float lightX,float lightY,float bumpX,float bumpY,float touchX,float touchY,float pressure,float bend){
     float scale=Math.min(1f,2f/density);
-    int w=Math.max(1,(int)Math.ceil(width*scale)),h=Math.max(1,(int)Math.ceil(height*scale));
+    int margin=(int)Math.ceil(LiquidGlassDrawable.RENDER_MARGIN_DP*density);
+    int w=Math.max(1,(int)Math.ceil((width+2*margin)*scale)),h=Math.max(1,(int)Math.ceil((height+2*margin)*scale));
     int[] colors=new int[w*h];
+    // The caller draws this padded bitmap into the matching expanded bounds.
+    // Keep the material and touch coordinates in the original control space.
+    double sampleX=(width+2d*margin)/w,sampleY=(height+2d*margin)/h;
     double bx=width*.5-4*density,by=height*.5-4*density;
     double bevel=Math.max(2*density,Math.min((dark?6.5:4.5)*density,Math.min(bx,by)*.30));
     double sigma=Math.max(8*density,Math.min(by*1.15,32*density)),sigma2=sigma*sigma;
     double ll=Math.hypot(lightX,lightY),lx=lightX/ll,ly=lightY/ll;
-    double veil=dark?.15:.04,shadowStrength=dark?.12:.026,shadowFalloff=dark?1.8:1.25;
-    double tr=dark?.12:.98,tg=dark?.15:.99,tb=dark?.20:1;
+    double veil=dark?.15:.38,shadowStrength=dark?.12:.022,shadowFalloff=dark?1.8:1.25;
+    double tr=dark?.12:.995,tg=dark?.15:.998,tb=dark?.20:1;
     double aa=Math.max(.7,density*.28);
     for(int y=0;y<h;y++)for(int x=0;x<w;x++){
-      double px=(x+.5)/scale,py=(y+.5)/scale,dx=px-width*.5,dy=py-height*.5;
+      double px=(x+.5)*sampleX-margin,py=(y+.5)*sampleY-margin,dx=px-width*.5,dy=py-height*.5;
       double qx=Math.abs(dx)-bx+radius,qy=Math.abs(dy)-by+radius;
       double ox=Math.max(qx,0),oy=Math.max(qy,0),length=Math.hypot(ox,oy);
       double d=length+Math.min(Math.max(qx,qy),0)-radius;
@@ -40,7 +44,13 @@ final class GlassMaterialRaster {
       double cover=1-smooth(-aa,aa,d);
       // First-order shadow offset is sufficient for the static cached fallback.
       double shadowD=d-ny*density;
-      double shadow=Math.exp(-Math.max(shadowD,0)/(shadowFalloff*density))*shadowStrength*(1-cover);
+      double ambient=0;
+      if(!dark){
+        double ambientQy=Math.abs(dy-3*density)-by+radius;
+        double ambientD=Math.hypot(ox,Math.max(ambientQy,0))+Math.min(Math.max(qx,ambientQy),0)-radius;
+        ambient=Math.exp(-square(Math.max(ambientD,0)/(8*density)))*.060;
+      }
+      double shadow=(ambient+Math.exp(-Math.max(shadowD,0)/(shadowFalloff*density))*shadowStrength)*(1-cover);
       if(cover<.001){colors[y*w+x]=byteValue(shadow)<<24;continue;}
       double edge=clamp(1+d/bevel,0,1),slope=Math.pow(edge,1.45)*.96;
       double fx=clamp(dx/Math.max(bx,1),-1,1),fy=clamp(dy/Math.max(by,1),-1,1);
@@ -50,16 +60,17 @@ final class GlassMaterialRaster {
       double dot=nx*lx+ny*ly,key=Math.pow(Math.max(dot,0),5),back=Math.pow(Math.max(-dot,0),5)*.58;
       double side=Math.pow(Math.abs(nx*-ly+ny*lx),2.4),sideMix=side*.55;
       double lit=clamp(key+back*.8,0,1);
-      double er=mix(mix(.99,.63,sideMix),1,lit),eg=mix(mix(.995,.70,sideMix),1,lit),eb=mix(mix(1,.80,sideMix),1,lit);
+      double er=mix(mix(.99,dark?.63:.88,sideMix),1,lit),eg=mix(mix(.995,dark?.70:.91,sideMix),1,lit),eb=mix(mix(1,dark?.80:.95,sideMix),1,lit);
       double reflection=clamp(fresnel*.72+Math.pow(edge,5)*(.015+side*.045),0,.32);
       double a=reflection+(1-reflection)*veil;
       double r=reflection*er+(1-reflection)*veil*tr;
       double g=reflection*eg+(1-reflection)*veil*tg;
       double b=reflection*eb+(1-reflection)*veil*tb;
-      double rim=Math.exp(-square((d+.75*density)/(.65*density)));
+      double rim=Math.exp(-square((d+.75*density)/((dark?.65:.85)*density)));
       double soft=Math.exp(-Math.max(-d,0)/(1.8*density))*Math.pow(edge,.6);
       double caustic=Math.exp(-square((d+2.2*density)/(.85*density)));
-      double shine=clamp(rim*(key*.68+back*.40)+soft*(key*.07+back*.04)+caustic*back*.07,0,.86);
+      double shine=clamp(rim*((dark?0:.50)+key*(dark?.68:.30)+back*(dark?.40:.32))
+        +soft*((dark?0:.025)+key*.07+back*.04)+caustic*back*.07,0,.86);
       double broad=Math.exp(-square((fx*.55+fy*.8-lx*.4)*1.6));
       double touchRadius=Math.max(14*density,Math.min(by*1.35,34*density))*(.72+pressure*.28);
       double touchDx=(px-touchX)/touchRadius,touchDy=(py-touchY)/touchRadius;
@@ -69,7 +80,7 @@ final class GlassMaterialRaster {
       double crestDx=(px-bumpX)/crestRadius,crestDy=(py-bumpY)/crestRadius;
       double crestContact=Math.exp(-(crestDx*crestDx+crestDy*crestDy));
       double crest=crestContact*Math.exp(-square((d+.8*density)/(.9*density)));
-      shine=Math.min(.90,shine+broad*.004+pressure*(contact*.085+touchRim*.42+crest*.42));
+      shine=Math.min(.90,shine+broad*(dark?.004:.024)+pressure*(contact*.085+touchRim*.42+crest*.42));
       r=shine+(1-shine)*r;g=shine+(1-shine)*g;b=shine+(1-shine)*b;
       a=shine+(1-shine)*a;
       double cool=pressure*crestContact*Math.exp(-square((d+2.7*density)/(1.9*density)))*(dark?.12:.14);

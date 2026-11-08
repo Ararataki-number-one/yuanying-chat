@@ -5,7 +5,8 @@ import android.app.*;import android.content.*;import android.content.res.ColorSt
 /** Native design system. Website content and network/identity policies are not restyled here. */
 final class DesignUi {
   static int BG=0xfff4f7fb,CARD=0xffffffff,FIELD=0xfff8fafc,LINE=0xffe0e7f0,TEXT=0xff172033,MUTED=0xff64748b,BLUE=0xff2468f2,CYAN=0xff2468f2,PURPLE=0xff2468f2,GREEN=0xff16845b,RED=0xffc93747;
-  static int GLASS_INK=TEXT,GLASS_MUTED=MUTED;
+  // Glass controls need a near-black foreground above their bright rim.
+  static int GLASS_INK=TEXT,GLASS_MUTED=(TEXT&0x00ffffff)|0xd6000000;
   static final String[] NAV={"环境","网络","下载","阅读"},GLYPHS={"window","globe","download","book"};
   static int dp(Context c,int n){return Ui.dp(c,n);}
   static TextView text(Context c,String value,int size,int color){TextView v=new TextView(c);v.setText(value);v.setTextSize(size);v.setTextColor(AppAppearance.text(color));v.setIncludeFontPadding(false);v.setLineSpacing(dp(c,3),1);return v;}

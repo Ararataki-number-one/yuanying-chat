@@ -53,17 +53,17 @@ final class ReferenceUi {
   }
   static LinearLayout nav(Activity a,int selected,java.util.function.IntConsumer action,Button[] buttons){
     if(buttons==null)buttons=new Button[DesignUi.NAV.length];
-    LinearLayout bar=DesignUi.column(a);bar.setPadding(dp(a,16),dp(a,10),dp(a,16),dp(a,12));bar.setGravity(Gravity.CENTER_HORIZONTAL);
+    LinearLayout bar=DesignUi.column(a);bar.setPadding(dp(a,12),dp(a,10),dp(a,12),dp(a,12));bar.setGravity(Gravity.CENTER_HORIZONTAL);
     bar.setClipChildren(false);bar.setClipToPadding(false);
     int heightDp=navHeightDp(a),height=dp(a,heightDp),radius=(heightDp+1)/2;
     GlassDock dock=new GlassDock(a);dock.setPadding(dp(a,5),dp(a,2),dp(a,5),dp(a,2));
-    dock.setBackground(DesignUi.glass(a,radius));dock.setElevation(dp(a,3));GlassMotion.press(dock,false);
+    dock.setBackground(DesignUi.glass(a,radius));GlassMotion.press(dock,false);
     // Destinations share one pill; reading stays an independent mode control.
     FrameLayout reading=new FrameLayout(a){
       @Override protected int[] onCreateDrawableState(int extraSpace){return GlassMotion.childState(this,super.onCreateDrawableState(extraSpace+1));}
       @Override public void onVisibilityAggregated(boolean visible){super.onVisibilityAggregated(visible);if(!visible)GlassMotion.reset(this);}
     };
-    reading.setBackground(DesignUi.glass(a,radius));reading.setElevation(dp(a,3));GlassMotion.press(reading,true);
+    reading.setBackground(DesignUi.glass(a,radius));GlassMotion.press(reading,true);
     for(int i=0;i<DesignUi.NAV.length;i++){
       final int n=i;Button b=link(a,DesignUi.NAV[i],()->action.accept(n));b.setTextSize(12);b.setGravity(Gravity.CENTER);
       // Fixed labels use their real content width, not TextView's VERY_WIDE
@@ -93,7 +93,7 @@ final class ReferenceUi {
     GlassNavigationRow row=new GlassNavigationRow(a,dock,reading,height);
     bar.addView(row,new LinearLayout.LayoutParams(-1,-2));markNav(buttons,selected);return bar;
   }
-  private static int navHeightDp(Context c){return Math.max(56,(int)Math.ceil(34+22*c.getResources().getConfiguration().fontScale));}
+  private static int navHeightDp(Context c){return Math.max(72,(int)Math.ceil(50+22*c.getResources().getConfiguration().fontScale));}
   private static Drawable navFeedback(Context context,boolean reading,int readingRadius){
     int radius=reading?readingRadius:23;
     Drawable content;

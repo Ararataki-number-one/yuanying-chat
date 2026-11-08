@@ -25,10 +25,13 @@ import java.lang.ref.WeakReference;
 /** Curved optical coating. Only the material moves; native labels and hit areas stay fixed. */
 class LiquidGlassDrawable extends Drawable {
   static final int INSET_DP=4;
+  static final int RENDER_MARGIN_DP=18;
   private static final int SAMPLES=128;
   private final Context context;
   private final Paint paint=new Paint(Paint.ANTI_ALIAS_FLAG|Paint.FILTER_BITMAP_FLAG);
   private final RectF body=new RectF();
+  private final RectF rasterBounds=new RectF();
+  private final Rect dirtyBounds=new Rect();
   private final Path outlinePath=new Path();
   private final PathMeasure rim=new PathMeasure();
   private final float[] baseX=new float[SAMPLES],baseY=new float[SAMPLES],point=new float[2];
@@ -240,15 +243,21 @@ class LiquidGlassDrawable extends Drawable {
     if(strength>0f&&(pressedRaster==null||rasterDeformed!=deform)){
       pressedRaster=GlassMaterialRaster.create(bounds.width(),bounds.height(),density,radius,dark,lightX,lightY,bumpX-bounds.left,bumpY-bounds.top,touchX-bounds.left,touchY-bounds.top,1f,deform?1f:0f);rasterDeformed=deform;
     }
+    int margin=(int)Math.ceil(RENDER_MARGIN_DP*density);
+    rasterBounds.set(bounds.left-margin,bounds.top-margin,bounds.right+margin,bounds.bottom+margin);
     paint.setColorFilter(colorFilter);paint.setAlpha(Math.round(alpha*(1-strength)));
-    if(paint.getAlpha()>0)canvas.drawBitmap(restingRaster,null,bounds,paint);
-    if(pressedRaster!=null&&strength>0){paint.setAlpha(Math.round(alpha*strength));canvas.drawBitmap(pressedRaster,null,bounds,paint);}
+    if(paint.getAlpha()>0)canvas.drawBitmap(restingRaster,null,rasterBounds,paint);
+    if(pressedRaster!=null&&strength>0){paint.setAlpha(Math.round(alpha*strength));canvas.drawBitmap(pressedRaster,null,rasterBounds,paint);}
     paint.setAlpha(alpha);
   }
 
   @Override public void getOutline(Outline outline){
     Rect bounds=getBounds();if(bounds.isEmpty()){outline.setEmpty();return;}
     outline.setRoundRect(bounds,Math.min(requestedRadius,Math.min(bounds.width(),bounds.height())/2f));outline.setAlpha(0f);
+  }
+  @Override public Rect getDirtyBounds(){
+    dirtyBounds.set(getBounds());int margin=(int)Math.ceil(RENDER_MARGIN_DP*density);
+    dirtyBounds.inset(-margin,-margin);return dirtyBounds;
   }
   @Override public void setAlpha(int value){int next=Math.max(0,Math.min(255,value));if(alpha!=next){alpha=next;invalidateSelf();}}
   @Override public int getAlpha(){return alpha;}

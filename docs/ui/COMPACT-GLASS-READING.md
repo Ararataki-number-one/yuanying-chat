@@ -5,19 +5,21 @@
 This change follows the requested four-action layout: **环境 / 网络 / 下载 / 阅读**.
 The three destinations share a floating glass capsule. Reading uses a separate
 circular glass button on its right, with a book icon and the short label 阅读;
-its accessibility label is 进入专注阅读模式. Both containers are 56 dp high at the
+its accessibility label is 进入专注阅读模式. Both containers are 72 dp high at the
 default font size. The three-destination capsule itself is centered on the usable
 screen axis; reading sits independently at the trailing edge. The outer bar has
-16 dp horizontal margins, and the capsule prefers 228 dp with at least 8 dp
+12 dp horizontal margins, and the capsule prefers 228 dp with at least 8 dp
 between it and reading. At 412 dp screen width, the capsule center is 206 dp,
-its width is 228 dp, and the gap is 20 dp. This replaces centering the combined
+its width is 228 dp, and the gap is 8 dp. The 4 dp optical inset gives the
+containers a 64 dp visible height, matching the fuller proportions of the
+user-supplied photo-app toolbar reference. This replaces centering the combined
 3+1 row, which placed the three-destination capsule 34 dp left of the screen axis.
 
 `GlassNavigationRow` reserves equal side space around the capsule, with reading
 occupying the trailing space. It measures the real native labels and chooses
 equal action widths that retain their natural size and 48 dp touch targets.
-The capsule narrows to fit smaller windows (200 dp on a 360 dp window and 160 dp
-on a 320 dp window at default text size). If a single row cannot fit the controls,
+The capsule narrows to fit smaller windows (176 dp on a 360 dp window at default
+text size). If a single row cannot fit the controls, as on a 320 dp window,
 reading moves to a second row at the trailing edge while the capsule stays
 centered. Width and height also grow for larger text. The
 reading circle is always square, and each destination retains a 48 dp minimum
@@ -29,7 +31,7 @@ The row explicitly returns false from `shouldDelayChildPressedState()`, matching
 It does not add the base ViewGroup's compatibility delay to native touch feedback.
 
 The expanded environment control is centered, with a content-measured width from
-160 to 192 dp and a default height of 44 dp, fitting within narrower windows and
+160 to 192 dp and a default height of 52 dp, fitting within narrower windows and
 growing vertically for larger text.
 Both compact and expanded forms use a globe icon and retain a 48 dp minimum
 touch height through their existing host/delegate. The compact visual pill stays
@@ -37,9 +39,11 @@ smaller inside that touch area. Long environment names remain single-line and
 ellipsized; the full name and both actions are exposed to accessibility services.
 The globe and name form one centered group with an 8 dp gap in the expanded
 control. Medium-weight text is 15 sp there and 13 sp in the compact control.
-The compact visual pill is at least 36 dp high and no wider than 184 dp.
-The expanded menu and more controls use matching 44 dp glass circles in equal
-48 dp side frames, keeping the middle capsule on the independent screen axis.
+The compact visual pill is at least 40 dp high and no wider than 184 dp.
+The expanded menu and more controls use matching 52 dp glass circles in equal
+56 dp side frames, giving each circle a 44 dp visible diameter and keeping the
+middle capsule on the independent screen axis. Hosts allow the bounded optical
+shadow to draw beyond their child bounds without changing touch dispatch.
 Changing the name first clears its previous centering padding, so compact
 wrap-content measurement does not accumulate whitespace.
 
@@ -49,8 +53,9 @@ The next refinement responds to the request to learn from well-designed GitHub
 applications. It uses [Read You's list typography](https://github.com/ReadYouApp/ReadYou/tree/main/fastlane/metadata/android/zh-CN/images/phoneScreenshots)
 and [Readest's documented surface and action hierarchy](https://github.com/readest/readest/blob/main/apps/readest-app/DESIGN.md)
 as visual references. Their frameworks, icons and source code are not imported.
-The glass renderer is retained; the work here gives the surrounding content a
-clearer hierarchy instead of increasing the material's opacity or shadow.
+Those earlier changes established the surrounding content hierarchy. The
+subsequent photo-app reference refinement changes the top and bottom glass
+material and control proportions while retaining the middle-page content.
 
 - The shorter environment capsule makes its name the focus. Auxiliary toolbar
   icons use one 21 dp visual size, preserving their existing hit regions.
@@ -62,7 +67,7 @@ clearer hierarchy instead of increasing the material's opacity or shadow.
   Unknown latency remains explicit. The plain state word avoids a second
   filled badge. The strip switches to two rows based on actual text width, including narrow
   windows, rather than relying only on a fixed font-scale threshold.
-- The 3+1 dock uses 56 dp controls and a centered 228 dp preferred capsule, with
+- The 3+1 dock uses 72 dp controls and a centered 228 dp preferred capsule, with
   reading independently at the trailing edge and a minimum 8 dp gap. The globe, download and
   reading glyphs are 22 dp; the cube's larger optical footprint remains 20 dp.
   Labels use 12 sp. The cube has a 4 dp drawable gap and the other icons 2 dp,
@@ -119,8 +124,9 @@ and [font padding behavior](https://developer.android.com/reference/android/widg
 The existing layout listener also recenters the content after a selected-state
 typeface change. It waits for a real Layout and updates padding only when needed.
 Buttons, labels, accessibility semantics, click handlers and hotspot forwarding
-remain native. The default 56 dp controls and independently centered 228 dp
-capsule are retained rather than enlarging the whole dock to mask a text problem.
+remain native. The font-metric correction stays independent of the fuller
+72 dp controls and independently centered 228 dp capsule used by the reference
+refinement; extra surrounding space is not used as a substitute for glyph layout.
 These fixed labels use one maximum line with horizontal scrolling disabled.
 This avoids the oversized internal Layout created by TextView's scrolling
 single-line mode. The observation checks actual line and glyph bounds after
@@ -181,20 +187,34 @@ native views. No effect is installed on the control's full View tree.
 - The curved bevel occupies up to 4.5 dp inside the light-mode edge (6.5 dp in
   dark mode), capped at 15% of the shorter visible side. Additional side reflection follows the fifth power of the
   edge profile, concentrating it near the boundary instead of a wide gray face.
-- The center is a transparent coating with about 4% white veil in light mode.
+- The center is a transparent coating with a 38% neutral white veil in light mode.
   Reflection uses a soft fixed environment-light model, not a captured wallpaper
   or an opaque white background. Its opacity varies with the surface normal.
-- A pair of directional white glints and a weaker inner caustic emphasize the
-  continuous bevel. There is no painted cyan band or complete second ring.
-- Light-mode exterior shadow is capped at 2.6%, with a 1 dp vertical offset and
-  a 1.25 dp decay; dark mode retains 12% and 1.8 dp. The thinner light bevel and
-  shorter shadow reduce the raised-pad appearance on a plain page while keeping
-  the existing clear face and touch light. Shadow is composed outside the material face. The platform outline
-  has zero shadow alpha, avoiding a second filled platform shadow.
+- A continuous white rim has a 0.85 dp profile width and a 50% baseline in
+  light mode. Directional peaks and a weaker inner caustic add a rounded edge.
+  Side reflection is a light neutral silver; no fixed pastel background or
+  colored wallpaper is painted into the glass.
+- A 6% ambient exterior shadow uses an 8 dp Gaussian falloff and a 3 dp downward
+  offset. A separate 2.2% contact shadow retains a 1 dp offset and 1.25 dp decay.
+  Both are composed outside the face. Dark mode retains its 12% narrow shadow
+  without the added light-mode ambient layer. The platform outline has zero
+  shadow alpha, avoiding a second filled platform shadow.
+- Glass-only secondary foreground uses 84% of the live main text color;
+  the two top glass circle icons use the full main text color. Other text and
+  icon roles, selected blue states and middle-page content are unchanged.
 - `RuntimeShader` output is premultiplied. The API 26–32 / software fallback uses
   the same coating model in `GlassMaterialRaster`, writing straight ARGB pixels
-  for `Bitmap.setPixels`. Geometry/theme caches and a per-press cache are reused;
+  for `Bitmap.setPixels`. Both paths reserve 18 dp of optical margin; the cached
+  software bitmap is padded and drawn into the corresponding expanded bounds,
+  so its broad shadow is not cropped to the control rectangle. Geometry/theme
+  caches and a per-press cache are reused;
   no bitmap is built by an animation frame. The fallback does not sample content.
+- The existing `GlassRipple` wrapper unions the material's dirty bounds with
+  its own before drawing. This is needed because Android's bounded
+  [RippleDrawable implementation](https://android.googlesource.com/platform/frameworks/base/+/master/graphics/java/android/graphics/drawable/RippleDrawable.java)
+  clips its content to that region. Top hosts, the navigation row, footer and
+  workspace permit bounded optical overflow; the original touch mask and
+  event routing remain unchanged.
 
 ### Native content behind the floating dock
 
@@ -215,19 +235,20 @@ and invalidates weakly registered glass controls; there is no pre-draw loop or
 idle timer. Capture and notification have re-entry guards. Recordings are
 bounded to the glass region plus 18 dp overscan and cached by source, revision,
 relative host position, size and appearance. Sampling coordinates are clamped
-inside that recorded area. Native pixels pass through a 3 dp blur and a Snell
+inside that recorded area. Native pixels pass through an 8 dp blur and a Snell
 refraction model (glass-like index 1.42), with very small edge color separation.
 Only the light native material adds a 6.5% soft white backing at its center,
 plus up to 8% over darker source strokes, falling to zero at the curved edge.
-This replaces the previous uniform 28% backing and 6.5 dp blur, preserving more
-background color while the curved edge supplies the visible lens detail.
+This local backing remains separate from the updated 38% surface coating.
+Native background colors remain visible with softer details, as in the user's
+photo-app reference, while the continuous rim defines the lens.
 There is no full-surface dimming or automatic pure-white-to-gray transform.
 
-Earlier actual API 35 captures confirmed the AGSL and native recording paths,
-but the material still read as a soft raised control on white and overly milky
-over native content. This revision reduces the central white layers, narrows
-the side reflection and separates fixed environment light from local touch
-light. The first clear-material capture (`70571f94`) exposed dark blurred text
+Earlier actual API 35 captures confirmed the AGSL and native recording paths.
+The clear-material iteration reduced central white layers and separated fixed
+environment light from local touch light. The later photo-app reference asks
+for a more readable resting rim and a wider floating shadow. The first
+clear-material capture (`70571f94`) exposed dark blurred text
 inside the lens where the surrounding footer had already faded that same text.
 Sampling the existing fade with the native panel fixes that mismatch while
 retaining the clearer coating and touch response. Final images and runtime evidence must

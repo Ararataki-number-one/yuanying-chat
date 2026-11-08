@@ -29,9 +29,11 @@ final class AppHub {
   AppHub(MainActivity a,LinearLayout root,View chat){
     this.a=a;this.root=root;this.chat=chat;
     workspace=new FrameLayout(a);
+    workspace.setClipChildren(false);workspace.setClipToPadding(false);
     panel=new GlassBackdrop(a);panel.setVisibility(View.GONE);
     workspace.addView(panel,new FrameLayout.LayoutParams(-1,-1));
     footer=DesignUi.column(a);
+    footer.setClipChildren(false);footer.setClipToPadding(false);
     workspace.addView(footer,new FrameLayout.LayoutParams(-1,-2,Gravity.BOTTOM));
     // Chat keeps its original measured navigation slot. Only native pages put
     // their content behind the same footer; controls never change their parent.

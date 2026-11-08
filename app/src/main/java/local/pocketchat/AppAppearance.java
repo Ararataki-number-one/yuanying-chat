@@ -4,6 +4,7 @@ import android.app.*;
 import android.content.*;
 import android.content.res.*;
 import android.graphics.Color;
+import android.graphics.Rect;
 import android.graphics.drawable.*;
 import android.os.Build;
 import android.view.*;
@@ -60,7 +61,7 @@ final class AppAppearance {
   private static void palette(){
     DesignUi.BG=color(0xfff4f7fb);DesignUi.CARD=color(Color.WHITE);DesignUi.FIELD=color(0xfff8fafc);DesignUi.LINE=color(0xffe0e7f0);
     DesignUi.TEXT=color(0xff172033);DesignUi.MUTED=color(0xff64748b);DesignUi.BLUE=DesignUi.CYAN=DesignUi.PURPLE=color(0xff2468f2);DesignUi.GREEN=color(0xff16845b);DesignUi.RED=color(0xffc93747);
-    DesignUi.GLASS_INK=DesignUi.TEXT;DesignUi.GLASS_MUTED=DesignUi.MUTED;
+    DesignUi.GLASS_INK=DesignUi.TEXT;DesignUi.GLASS_MUTED=(DesignUi.TEXT&0x00ffffff)|0xd6000000;
     ReferenceUi.BG=DesignUi.BG;ReferenceUi.CHAT_BG=color(0xfff9fbfe);ReferenceUi.WHITE=DesignUi.CARD;ReferenceUi.TEXT=DesignUi.TEXT;
     ReferenceUi.MUTED=DesignUi.MUTED;ReferenceUi.LINE=DesignUi.LINE;ReferenceUi.BLUE=DesignUi.BLUE;ReferenceUi.BLUE_SOFT=color(0xffedf4ff);ReferenceUi.GREEN=DesignUi.GREEN;ReferenceUi.ORANGE=color(0xffa96c0a);ReferenceUi.RED=DesignUi.RED;
     Ui.INK=color(0xff1e293b);Ui.MUTED=DesignUi.MUTED;Ui.PAPER=color(0xfff4f6fa);Ui.SOFT=color(0xffeaf1ff);
@@ -146,9 +147,17 @@ final class AppAppearance {
   /** Preserve native state/visibility dispatch; liquid content owns its visible feedback. */
   static final class GlassRipple extends RippleDrawable {
     private final LiquidGlassDrawable material;
+    private final Rect opticalDirtyBounds=new Rect();
     GlassRipple(Drawable content,Drawable mask){
       super(ColorStateList.valueOf(content instanceof LiquidGlassDrawable?Color.TRANSPARENT:ink()),content,mask);
       material=content instanceof LiquidGlassDrawable?(LiquidGlassDrawable)content:null;
+    }
+    @Override public Rect getDirtyBounds(){
+      if(material==null)return super.getDirtyBounds();
+      // RippleDrawable clips its content to its dirty bounds. Include the
+      // material's optical margin while keeping the touch mask unchanged.
+      opticalDirtyBounds.set(super.getDirtyBounds());
+      opticalDirtyBounds.union(material.getDirtyBounds());return opticalDirtyBounds;
     }
     @Override public void setHotspot(float x,float y){
       super.setHotspot(x,y);

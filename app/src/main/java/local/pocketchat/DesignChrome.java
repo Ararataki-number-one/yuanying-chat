@@ -41,6 +41,7 @@ final class DesignChrome {
     a.toolbar.setVisibility(View.VISIBLE);
     a.toolbar.setBackgroundColor(ReferenceUi.CHAT_BG);
     a.toolbar.setPadding(a.dp(16),0,a.dp(16),0);
+    a.toolbar.setClipChildren(false);a.toolbar.setClipToPadding(false);
     compact=new FrameLayout(a){
       @Override public void drawableHotspotChanged(float x,float y){
         super.drawableHotspotChanged(x,y);
@@ -48,6 +49,7 @@ final class DesignChrome {
           compactTitle.getBackground().setHotspot(x-compactTitle.getLeft(),y-compactTitle.getTop());
       }
     };
+    compact.setClipChildren(false);compact.setClipToPadding(false);
     profileRow=ProfileCatalog.get(a).item(Profiles.slot(a));
     compactTitle=ReferenceUi.text(a,profileLabel(profileRow,Profiles.slot(a)),13,DesignUi.GLASS_INK,true);
     ReferenceUi.single(compactTitle);
@@ -55,11 +57,11 @@ final class DesignChrome {
     Ui.Icon disclosure=new Ui.Icon("globe",DesignUi.GLASS_MUTED);disclosure.setBounds(0,0,a.dp(14),a.dp(14));
     compactTitle.setCompoundDrawables(disclosure,null,null,null);compactTitle.setCompoundDrawablePadding(a.dp(7));
     centerCapsuleContents(compactTitle,14);
-    compactTitle.setBackground(DesignUi.glass(a,18));
+    compactTitle.setBackground(DesignUi.glass(a,20));
     compactTitle.setDuplicateParentStateEnabled(true);
     compactTitle.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
     GlassMotion.press(compactTitle,false);
-    FrameLayout.LayoutParams compactLabel=new FrameLayout.LayoutParams(-2,Math.max(a.dp(36),textHeight(compactTitle)+a.dp(8)),Gravity.CENTER);
+    FrameLayout.LayoutParams compactLabel=new FrameLayout.LayoutParams(-2,Math.max(a.dp(40),textHeight(compactTitle)+a.dp(8)),Gravity.CENTER);
     compactLabel.leftMargin=a.dp(16);compactLabel.rightMargin=a.dp(16);
     compact.addView(compactTitle,compactLabel);
     compact.setFocusable(true);
@@ -78,23 +80,24 @@ final class DesignChrome {
     Ui.Icon addressIcon=new Ui.Icon("globe",DesignUi.GLASS_MUTED);addressIcon.setBounds(0,0,a.dp(16),a.dp(16));
     title.setCompoundDrawables(addressIcon,null,null,null);title.setCompoundDrawablePadding(a.dp(8));
     centerCapsuleContents(title,16);
-    title.setBackground(DesignUi.glass(a,22));
+    title.setBackground(DesignUi.glass(a,26));
     GlassMotion.press(title,false);
     title.setContentDescription("当前环境："+profileName+"，点按输入网址，长按切换环境");
     addressCapsule(title);
 
     more=ReferenceUi.more(a,()->a.moreSheet());
-    int capsuleHeight=Math.max(a.dp(44),textHeight(title)+a.dp(12));
-    int topHeight=Math.max(a.dp(48),capsuleHeight+a.dp(4));
+    int capsuleHeight=Math.max(a.dp(52),textHeight(title)+a.dp(12));
+    int topHeight=Math.max(a.dp(56),capsuleHeight+a.dp(4));
     top.setClipChildren(false);top.setClipToPadding(false);
-    top.addView(headerAction(a.navigation),new LinearLayout.LayoutParams(a.dp(48),topHeight));
+    top.addView(headerAction(a.navigation),new LinearLayout.LayoutParams(a.dp(56),topHeight));
     // The visual capsule stays compact while its existing touch delegate keeps
     // a 48 dp action. AT_MOST child measurement also fits narrow windows.
     FrameLayout capsuleHost=new FrameLayout(a);
+    capsuleHost.setClipChildren(false);capsuleHost.setClipToPadding(false);
     capsuleHost.setPadding(a.dp(4),0,a.dp(4),0);
     capsuleHost.addView(title,new FrameLayout.LayoutParams(-2,capsuleHeight,Gravity.CENTER));
     top.addView(capsuleHost,new LinearLayout.LayoutParams(0,topHeight,1));
-    top.addView(headerAction(more),new LinearLayout.LayoutParams(a.dp(48),topHeight));
+    top.addView(headerAction(more),new LinearLayout.LayoutParams(a.dp(56),topHeight));
     a.toolbar.addView(top,new LinearLayout.LayoutParams(-1,topHeight));
     a.geckoAddress=new GeckoAddressUi(a);a.toolbar.addView(a.geckoAddress.row,new LinearLayout.LayoutParams(-1,-2));
 
@@ -133,11 +136,11 @@ final class DesignChrome {
   private FrameLayout headerAction(Button button){
     button.setMinHeight(0);button.setMinimumHeight(0);
     button.setPadding(0,0,0,0);
-    button.setBackground(DesignUi.glass(a,22));
+    button.setBackground(DesignUi.glass(a,26));
     GlassMotion.press(button,false);
     FrameLayout frame=new FrameLayout(a);
     frame.setClipChildren(false);frame.setClipToPadding(false);
-    frame.addView(button,new FrameLayout.LayoutParams(a.dp(44),a.dp(44),Gravity.CENTER));
+    frame.addView(button,new FrameLayout.LayoutParams(a.dp(52),a.dp(52),Gravity.CENTER));
     return frame;
   }
 
