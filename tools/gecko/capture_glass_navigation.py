@@ -56,6 +56,28 @@ def write(path, value):
     Path(path).write_text(json.dumps(value, ensure_ascii=False, indent=2) + '\n')
 
 
+def parse_single_signing_certificate(output):
+    """Read one certificate after the caller's checked apksigner verification.
+
+    Build-tools 37 labels its v2 record ``V2 Signer:``; earlier output used
+    ``Signer #1``. Require the verifier summary and exactly one complete record,
+    rather than choosing a first digest or collapsing duplicate records.
+    """
+    lines = output.decode('utf-8', 'strict').splitlines()
+    counts = [re.fullmatch(r'Number of signers: (\d+)\s*', line)
+              for line in lines if line.startswith('Number of signers:')]
+    if (sum(line.rstrip() == 'Verifies' for line in lines) != 1 or len(counts) != 1
+            or counts[0] is None or counts[0][1] != '1'):
+        raise ValueError('Exactly one verified integration APK signer is required')
+    records = [line for line in lines if re.search(r'\bcertificate\s+SHA-256\s+digest\b', line)]
+    if len(records) != 1:
+        raise ValueError('Exactly one integration APK signing certificate is required')
+    match = re.fullmatch(r'(?:Signer #1|V2 Signer:) certificate SHA-256 digest: ([0-9a-f]{64})\s*', records[0])
+    if match is None:
+        raise ValueError('Unrecognized integration APK signing certificate record')
+    return match[1]
+
+
 def bounds(node):
     match = re.fullmatch(r'\[(\d+),(\d+)\]\[(\d+),(\d+)\]', node.get('bounds', ''))
     if match is None:
@@ -948,17 +970,14 @@ def main():
             raise ValueError('Compiled APK and reviewed SDK receipts differ')
         signature = command([args.apksigner, 'verify', '--verbose', '--print-certs', str(args.apk)])
         (args.out / 'integration-apk-signature.txt').write_bytes(signature)
-        certificates = re.findall(r'^Signer #\d+ certificate SHA-256 digest: ([0-9a-f]{64})\s*$',
-                                  signature.decode('utf-8', 'strict'), re.M)
-        if len(certificates) != 1:
-            raise ValueError('Exactly one integration APK signing certificate is required')
+        certificate = parse_single_signing_certificate(signature)
         badging = command([args.aapt2, 'dump', 'badging', str(args.apk)]).decode()
         if (not badging.startswith(f"package: name='{PACKAGE}' versionCode='{code}' versionName='{version}'")
                 or 'application-debuggable' in badging or "native-code: 'x86_64'" not in badging):
             raise ValueError('Unexpected package, version, debuggability or ABI')
         report['buildIdentity'] = dict(identity, runnerSha256=sha(__file__),
             sdkReceiptSha256=sha(native / 'sdk-build-receipt.json'),
-            integrationSigningCertificateSha256=certificates[0],
+            integrationSigningCertificateSha256=certificate,
             releaseSignatureAcceptance=False)
 
         if (adb('shell', 'getprop', 'ro.kernel.qemu').strip() != b'1'

@@ -106,6 +106,9 @@ def main():
     input_paths.add(ROOT / "tests/fixtures/glass-diagnostic-source-deltas.json")
     input_paths.add(ROOT / "tests/fixtures/gradle-transport-source-deltas.json")
     input_paths.add(ROOT / "tests/fixtures/gradle-workflow-test-source-deltas.json")
+    input_paths.add(ROOT / "tests/baselines/glass-source-history.json")
+    input_paths.add(ROOT / "tools/gecko/prepare_profile_host_prerequisites.py")
+    input_paths.add(ROOT / "tools/gecko/capture_glass_navigation.py")
     input_paths.update(ROOT / path for path in ('.github/workflows/browser-2_1-acceptance.yml',
         '.github/workflows/profile-upgrade-checks.yml', '.github/workflows/glass-release-validation.yml'))
     input_paths.update(path for path in (ROOT / 'tests/gecko-event-journal-host').rglob('*')
@@ -506,6 +509,9 @@ def main():
                   ROOT/'tests/glass_diagnostic_source_compatibility.py',ROOT/'tests/fixtures/glass-diagnostic-source-deltas.json',
                   ROOT/'tests/gradle_transport_source_compatibility.py',ROOT/'tests/fixtures/gradle-transport-source-deltas.json',
                   ROOT/'tests/gradle_workflow_test_source_compatibility.py',ROOT/'tests/fixtures/gradle-workflow-test-source-deltas.json',
+                  ROOT/'tests/baselines/glass-source-history.json',ROOT/'tools/gecko/prepare_profile_host_prerequisites.py',
+                  ROOT/'tools/gecko/capture_glass_navigation.py',ROOT/'tests/profile_glass_capture_signature_test.py',
+                  ROOT/'tests/profile_glass_history_prerequisites_test.py',
                   ROOT/'tests/browser_acceptance_workflow_test.py',ROOT/'tests/final_browser_source_compatibility.py',
                   ROOT/'tests/profile_final_browser_source_compatibility_test.py',ROOT/'tests/profile_fixture_root_source_compatibility.py',
                   ROOT/'tests/resource_startup_source_compatibility.py',ROOT/'tests/profile_gradle_transport_source_compatibility_test.py',
