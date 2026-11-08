@@ -1,0 +1,159 @@
+name: Glass navigation bootstrap diagnostic
+on:
+  push:
+    branches: ['probe/glass-navigation-bootstrap-20261108']
+permissions:
+  contents: read
+jobs:
+  navigation-bootstrap:
+    name: Navigation bootstrap (API ${{ matrix.device-api }}, ${{ matrix.avd-profile }})
+    strategy:
+      fail-fast: false
+      matrix:
+        device-api: [32, 35]
+        avd-profile: [default, pixel_6]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 18
+    env:
+      ANDROID_AVD_HOME: ${{ github.workspace }}/work/navigation-probe/avd
+      ANDROID_USER_HOME: ${{ github.workspace }}/work/navigation-probe/android-user
+      ANDROID_EMULATOR_HOME: ${{ github.workspace }}/work/navigation-probe/emulator-home
+      PROBE_API: ${{ matrix.device-api }}
+      PROBE_PROFILE: ${{ matrix.avd-profile }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 2
+          persist-credentials: false
+      - name: Prepare and boot the unchanged pinned Android toolchain
+        id: boot
+        timeout-minutes: 12
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p work/navigation-probe/public-diagnostics
+          exec > >(tee work/navigation-probe/public-diagnostics/setup.log) 2>&1
+          test "$(git rev-parse HEAD^)" = 44b5514a49ec02aa873ffdf7cffda907c17804e7
+          test "$(git diff --name-only HEAD^ HEAD)" = .github/workflows/glass-navigation-bootstrap-probe.yml
+          export JAVA_HOME="$JAVA_HOME_17_X64"
+          test -c /dev/kvm
+          sudo chmod a+rw /dev/kvm
+          python3 tools/gecko/prepare_android_image.py --component emulator --sdk-root "$ANDROID_HOME" --cache work/navigation-probe/packages --report work/navigation-probe/public-diagnostics/emulator-package.json
+          if [ "$PROBE_API" = 32 ]; then
+            python3 tools/gecko/prepare_android32_image.py --sdk-root "$ANDROID_HOME" --cache work/navigation-probe/packages --report work/navigation-probe/public-diagnostics/system-image.json
+          else
+            python3 tools/gecko/prepare_android_image.py --sdk-root "$ANDROID_HOME" --cache work/navigation-probe/packages --report work/navigation-probe/public-diagnostics/system-image.json
+          fi
+          python3 tools/gecko/prepare_platform_tools.py --sdk-root "$ANDROID_HOME" --cache work/navigation-probe/packages --report work/navigation-probe/public-diagnostics/platform-tools.json
+          mkdir -p "$ANDROID_AVD_HOME" "$ANDROID_USER_HOME" "$ANDROID_EMULATOR_HOME"
+          "$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager" list device > work/navigation-probe/public-diagnostics/device-profiles.txt
+          task_probe_device=()
+          if [ "$PROBE_PROFILE" = pixel_6 ]; then task_probe_device=(--device pixel_6); fi
+          echo no | "$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager" create avd --force -n glassnavigation -p "$ANDROID_AVD_HOME/glassnavigation.avd" -k "system-images;android-$PROBE_API;google_apis;x86_64" "${task_probe_device[@]}"
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+          path=Path(os.environ['ANDROID_AVD_HOME'])/'glassnavigation.avd/config.ini'
+          values={'hw.lcd.width':'1236','hw.lcd.height':'2676','hw.lcd.density':'480',
+                  'hw.initialOrientation':'Portrait','skin.name':'1236x2676','skin.path':'_no_skin',
+                  'showDeviceFrame':'no','hw.mainKeys':'no'}
+          lines=[line for line in path.read_text().splitlines() if line.split('=',1)[0].strip() not in values]
+          path.write_text('\n'.join(lines+[key+'='+value for key,value in values.items()])+'\n')
+          PY
+          cp "$ANDROID_AVD_HOME/glassnavigation.avd/config.ini" work/navigation-probe/public-diagnostics/config.ini
+          "$ANDROID_HOME/emulator/emulator" -avd glassnavigation -no-window -no-audio -no-snapshot -no-boot-anim -no-metrics -accel on -port 5554 -gpu swangle -feature -Vulkan -memory 3072 -cores 2 -prop qemu.hw.mainkeys=0 < /dev/null > work/navigation-probe/emulator-private.log 2>&1 &
+          task_probe_pid=$!
+          printf '%s\n' "$task_probe_pid" > work/navigation-probe/emulator.pid
+          kill -0 "$task_probe_pid"
+          timeout 60 "$ANDROID_HOME/platform-tools/adb" -s emulator-5554 wait-for-device
+          task_probe_booted=false
+          for task_probe_attempt in $(seq 1 120); do
+            kill -0 "$task_probe_pid"
+            if [ "$(timeout 5 "$ANDROID_HOME/platform-tools/adb" -s emulator-5554 shell getprop sys.boot_completed | tr -d '\r')" = 1 ]; then task_probe_booted=true; break; fi
+            sleep 1
+          done
+          test "$task_probe_booted" = true
+          test "$(timeout 5 "$ANDROID_HOME/platform-tools/adb" -s emulator-5554 shell getprop ro.build.version.sdk | tr -d '\r')" = "$PROBE_API"
+          timeout 5 "$ANDROID_HOME/platform-tools/adb" -s emulator-5554 shell input keyevent 82
+          timeout 5 "$ANDROID_HOME/platform-tools/adb" -s emulator-5554 shell input keyevent 3
+      - name: Retain actual navigation state without asserting the property value
+        if: always()
+        env:
+          PROBE_BOOT_OUTCOME: ${{ steps.boot.outcome }}
+        shell: bash
+        run: |
+          mkdir -p work/navigation-probe/public-diagnostics
+          task_probe_out=work/navigation-probe/public-diagnostics
+          for task_probe_config in config.ini hardware-qemu.ini; do
+            if [ -f "$ANDROID_AVD_HOME/glassnavigation.avd/$task_probe_config" ]; then cp "$ANDROID_AVD_HOME/glassnavigation.avd/$task_probe_config" "$task_probe_out/$task_probe_config"; fi
+          done
+          for task_probe_property in sys.boot_completed ro.kernel.qemu ro.boot.qemu ro.build.version.sdk ro.build.fingerprint ro.product.model ro.hardware qemu.hw.mainkeys ro.boot.qemu.hw.mainkeys ro.sf.lcd_density; do
+            timeout 5 "$ANDROID_HOME/platform-tools/adb" -s emulator-5554 shell getprop "$task_probe_property" > "$task_probe_out/getprop-$task_probe_property.txt" 2> "$task_probe_out/getprop-$task_probe_property.stderr.txt" || true
+          done
+          timeout 10 "$ANDROID_HOME/platform-tools/adb" -s emulator-5554 shell dumpsys window displays > "$task_probe_out/window-displays.txt" 2> "$task_probe_out/window-displays.stderr.txt" || true
+          timeout 10 "$ANDROID_HOME/platform-tools/adb" -s emulator-5554 shell dumpsys window windows > "$task_probe_out/window-windows.txt" 2> "$task_probe_out/window-windows.stderr.txt" || true
+          timeout 10 "$ANDROID_HOME/platform-tools/adb" -s emulator-5554 shell dumpsys activity activities > "$task_probe_out/activity.txt" 2> "$task_probe_out/activity.stderr.txt" || true
+          timeout 10 "$ANDROID_HOME/platform-tools/adb" -s emulator-5554 shell cmd overlay list --user 0 > "$task_probe_out/overlays.txt" 2> "$task_probe_out/overlays.stderr.txt" || true
+          timeout 10 "$ANDROID_HOME/platform-tools/adb" -s emulator-5554 exec-out screencap -p > "$task_probe_out/screen.png" 2> "$task_probe_out/screen.stderr.txt" || true
+          python3 - <<'PY'
+          import hashlib,json,os,re,struct,subprocess
+          from pathlib import Path
+          out=Path('work/navigation-probe/public-diagnostics')
+          private=Path('work/navigation-probe/emulator-private.log')
+          if private.exists():
+              lines=private.read_text(errors='replace').splitlines()
+              (out/'emulator.log').write_text('\n'.join(line for line in lines if not any(key in line.lower() for key in ('adb public key','adb.pubkey')))+'\n')
+          png=(out/'screen.png').read_bytes() if (out/'screen.png').exists() else b''
+          size=struct.unpack('>II',png[16:24]) if len(png)>=24 and png[:8]==b'\x89PNG\r\n\x1a\n' and png[12:16]==b'IHDR' else None
+          def bars(name):
+              rows={'statusBars':[],'navigationBars':[]};errors=[]
+              for line in (out/name).read_text(errors='replace').splitlines():
+                  if re.search(r'\bInsetsSource\b',line) is None:continue
+                  kind=re.search(r'\b(?:mType|type)=(statusBars|navigationBars|ITYPE_STATUS_BAR|ITYPE_NAVIGATION_BAR)\b',line)
+                  if kind is None:continue
+                  frame=re.search(r'\b(?:mFrame|frame)=\[\s*(-?\d+),\s*(-?\d+)\]\[\s*(-?\d+),\s*(-?\d+)\]',line)
+                  visible=re.search(r'\b(?:mVisible|visible)=(true|false)\b',line)
+                  if frame is None or visible is None:errors.append(line);continue
+                  box=list(map(int,frame.groups()));key='statusBars' if kind[1] in ('statusBars','ITYPE_STATUS_BAR') else 'navigationBars'
+                  row={'bounds':box,'visible':visible[1]=='true','positiveBounds':box[0]<box[2] and box[1]<box[3],
+                       'insidePng':size is not None and 0<=box[0]<box[2]<=size[0] and 0<=box[1]<box[3]<=size[1]}
+                  if row not in rows[key]:rows[key].append(row)
+              return {'sources':rows,'parseErrors':errors,'actualBothBarsPositive':not errors and all(any(row['positiveBounds'] and row['insidePng'] for row in values) for values in rows.values())}
+          git=lambda *args:subprocess.check_output(['git',*args],text=True).strip()
+          properties={p.name.removeprefix('getprop-').removesuffix('.txt'):p.read_text(errors='replace') for p in out.glob('getprop-*.txt') if not p.name.endswith('.stderr.txt')}
+          selected=['tools/gecko/prepare_android_image.py','tools/gecko/prepare_android32_image.py','tools/gecko/prepare_platform_tools.py',
+                    'tools/gecko/android-emulator.json','tools/gecko/android-system-image.json','tools/gecko/android-32-system-image.json','tools/gecko/android-platform-tools.json']
+          report={'schema':1,'scope':'Navigation bootstrap diagnostic only; no app, Gecko, APK, signing or release acceptance.',
+                  'sourceCommit':git('rev-parse','HEAD'),'sourceTree':git('rev-parse','HEAD^{tree}'),'baseSourceCommit':git('rev-parse','HEAD^'),
+                  'runId':os.environ['GITHUB_RUN_ID'],'runAttempt':os.environ['GITHUB_RUN_ATTEMPT'],'api':int(os.environ['PROBE_API']),
+                  'avdProfile':os.environ['PROBE_PROFILE'],'bootStepOutcome':os.environ['PROBE_BOOT_OUTCOME'],
+                  'selectedPropertiesRaw':properties,'propertyValueRequiredForDiagnostic':False,'pngLogicalSize':size,
+                  'displayBars':bars('window-displays.txt'),'windowBars':bars('window-windows.txt'),
+                  'hardwareConfigPresent':(out/'hardware-qemu.ini').is_file(),'avdConfigPresent':(out/'config.ini').is_file(),
+                  'sourcePinsSha256':{name:hashlib.sha256(Path(name).read_bytes()).hexdigest() for name in selected},
+                  'applicationAcceptance':False,'releaseQualification':False,'physicalPhoneAcceptance':False,
+                  'emulatorLogExcludesAdbPublicKeyLines':True}
+          report['files']={p.name:{'bytes':p.stat().st_size,'sha256':hashlib.sha256(p.read_bytes()).hexdigest()} for p in sorted(out.iterdir()) if p.is_file()}
+          (out/'report.json').write_text(json.dumps(report,indent=2)+'\n')
+          print(json.dumps({key:report[key] for key in ('scope','api','avdProfile','bootStepOutcome','pngLogicalSize','displayBars','hardwareConfigPresent')}))
+          PY
+      - name: Stop only the owned disposable emulator
+        if: always()
+        shell: bash
+        run: |
+          if [ -f work/navigation-probe/emulator.pid ]; then
+            task_probe_pid=$(cat work/navigation-probe/emulator.pid)
+            if [[ "$task_probe_pid" =~ ^[0-9]+$ ]] && kill -0 "$task_probe_pid" 2>/dev/null; then
+              timeout 10 "$ANDROID_HOME/platform-tools/adb" -s emulator-5554 emu kill > work/navigation-probe/public-diagnostics/emulator-stop.txt 2>&1 || true
+              if kill -0 "$task_probe_pid" 2>/dev/null; then kill "$task_probe_pid" 2>/dev/null || true; fi
+            fi
+          fi
+      - name: Upload only public navigation diagnostics
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: glass-navigation-bootstrap-api${{ matrix.device-api }}-${{ matrix.avd-profile }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: work/navigation-probe/public-diagnostics/
+          if-no-files-found: error
+          retention-days: 7
