@@ -66,21 +66,50 @@ def button(xml, label):
     return found[0] if len(found) == 1 else None
 
 
-def navigation(xml):
+def navigation_geometry(xml):
+    """Measure the actual default-screen touch views, independent of selection.
+
+    The first three buttons have symmetric padding within their shared capsule.
+    Their union therefore measures that group's horizontal screen alignment;
+    reading is deliberately excluded from the centered group.
+    """
     controls = [button(xml, label) for label in LABELS]
     if any(node is None for node in controls):
         return None
     boxes = [bounds(node) for node in controls]
-    if any(node.get('selected') == 'true' for node in controls):
-        return None  # The ordinary conversation is not one of the four actions.
-    if any(right - left < 144 or bottom - top < 144 for left, top, right, bottom in boxes):
-        return None
-    if any(boxes[i][2] > boxes[i + 1][0] for i in range(3)) or boxes[2][2] >= boxes[3][0]:
-        return None
+    group = (min(box[0] for box in boxes[:3]), min(box[1] for box in boxes[:3]),
+             max(box[2] for box in boxes[:3]), max(box[3] for box in boxes[:3]))
     reading = boxes[-1]
-    if abs((reading[2] - reading[0]) - (reading[3] - reading[1])) > 3:
+    group_center = [(group[0] + group[2]) / 2, (group[1] + group[3]) / 2]
+    offset = group_center[0] - WIDTH / 2
+    minimum_touch_px = (48 * DENSITY + 159) // 160
+    checks = dict(
+        threeItemGroupCentered=abs(offset) <= 1,
+        leftToRightOrder=all(boxes[i][2] <= boxes[i + 1][0] for i in range(3)),
+        readingSeparateToRight=group[2] < reading[0],
+        readingIsSquare=abs((reading[2] - reading[0]) - (reading[3] - reading[1])) <= 3,
+        minimumTouchTargets=all(right - left >= minimum_touch_px and bottom - top >= minimum_touch_px
+                                for left, top, right, bottom in boxes))
+    return dict(coordinateSpace='native XML screen pixels', screenWidthPx=WIDTH,
+                configuredDensityDpi=DENSITY, screenCenterX=WIDTH / 2,
+                groupLabels=list(LABELS[:3]), threeItemGroupBounds=list(group),
+                threeItemGroupCenter=group_center, horizontalCenterOffsetPx=offset,
+                allowedCenterOffsetPx=1, readingBounds=list(reading),
+                readingGapPx=reading[0] - group[2],
+                leftToRightLabels=[label for label, box in sorted(zip(LABELS, boxes), key=lambda item: item[1][0])],
+                minimumTouchTargetDp=48, minimumTouchTargetPx=minimum_touch_px,
+                bounds={label: list(box) for label, box in zip(LABELS, boxes)},
+                selected={label: node.get('selected') for label, node in zip(LABELS, controls)},
+                checks=checks, valid=all(checks.values()))
+
+
+def navigation(xml):
+    geometry = navigation_geometry(xml)
+    if geometry is None or not geometry['valid']:
         return None
-    return {label: list(box) for label, box in zip(LABELS, boxes)}
+    if any(value == 'true' for value in geometry['selected'].values()):
+        return None  # The ordinary conversation is not one of the four actions.
+    return geometry['bounds']
 
 
 def capsule(xml):
@@ -102,16 +131,11 @@ def native_root_bounds(xml):
 
 def selected_navigation(xml, expected):
     """A separate diagnostic observation; the static chat assertions stay intact."""
-    controls = [button(xml, label) for label in LABELS]
-    if any(node is None for node in controls):
+    geometry = navigation_geometry(xml)
+    if geometry is None or not geometry['valid']:
         return False
-    boxes = [bounds(node) for node in controls]
-    return (all(node.get('selected') == ('true' if label == expected else 'false')
-                for label, node in zip(LABELS, controls))
-            and all(right - left >= 144 and bottom - top >= 144
-                    for left, top, right, bottom in boxes)
-            and all(boxes[i][2] <= boxes[i + 1][0] for i in range(3))
-            and boxes[2][2] < boxes[3][0])
+    return all(geometry['selected'][label] == ('true' if label == expected else 'false')
+               for label in LABELS)
 
 
 def mp4_metadata(path):
@@ -246,7 +270,7 @@ def capture_motion(args, report, capture, adb, wait_for):
             selectedNavigation=[label for label in LABELS
                                 if button(xml, label) is not None and button(xml, label).get('selected') == 'true'],
             bounds={label: list(bounds(button(xml, label))) for label in LABELS
-                    if button(xml, label) is not None}))
+                    if button(xml, label) is not None}, geometry=navigation_geometry(xml)))
         save()
         return xml
 
@@ -586,7 +610,8 @@ def capture_native_backdrop_preview(args, report, capture, adb, wait_for, tap, s
                 refreshedHierarchySource='native-network-glass.xml',
                 refreshedHierarchySha256=sha(args.out / 'native-network-glass.xml'))
         preview['hierarchy'] = dict(file='native-network-glass.xml', sha256=sha(args.out / 'native-network-glass.xml'),
-            selectedNavigation='网络', bounds={label: list(bounds(button(xml, label))) for label in LABELS})
+            selectedNavigation='网络', bounds={label: list(bounds(button(xml, label))) for label in LABELS},
+            geometry=navigation_geometry(xml))
         screenshot('native-network-glass.png')
         preview['screenshot'] = dict(report['screenshots'][-1])
         if (preview['screenshot']['width'], preview['screenshot']['height']) != (WIDTH, HEIGHT):
@@ -732,6 +757,13 @@ def main():
         while time.monotonic() < deadline:
             xml = capture.read(deadline=deadline)
             (args.out / (name + '.xml')).write_text(xml)
+            geometry = navigation_geometry(xml)
+            # Keep the latest real geometry, including a failing/incomplete
+            # layout, without accepting its route predicate. Null geometry also
+            # prevents an earlier observation from referring to a replaced XML.
+            report.setdefault('navigationGeometryObservations', {})[name] = dict(
+                file=name + '.xml', sha256=sha(args.out / (name + '.xml')),
+                observedAtUnixNs=time.time_ns(), geometry=geometry)
             if predicate(xml):
                 return xml
             time.sleep(.25)
@@ -814,6 +846,7 @@ def main():
             raise ValueError('The actual production MainActivity is not resumed')
         report['resumedActivity'] = resumed
         report['nativeControls'] = dict(navigation=navigation(xml),
+            geometry=navigation_geometry(xml),
             capsuleBounds=list(bounds(capsule(xml))), capsuleDescription=capsule(xml).get('content-desc'),
             rootBounds=native_root_bounds(xml),
             expandedHeader=True, readingIsSeparateSquareControl=True,

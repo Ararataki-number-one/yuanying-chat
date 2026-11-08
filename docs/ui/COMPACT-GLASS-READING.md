@@ -6,9 +6,20 @@ This change follows the requested four-action layout: **环境 / 网络 / 下载
 The three destinations share a floating glass capsule. Reading uses a separate
 circular glass button on its right, with a book icon and the short label 阅读;
 its accessibility label is 进入专注阅读模式. Both containers are 56 dp high at the
-default font size, separated by 12 dp. The complete row is centered and capped at
-320 dp at the default font size, rather than filling the screen. Its width and
-height grow for larger text, and its width is constrained by the available window. The
+default font size. The three-destination capsule itself is centered on the usable
+screen axis; reading sits independently at the trailing edge. The outer bar has
+16 dp horizontal margins, and the capsule prefers 228 dp with at least 8 dp
+between it and reading. At 412 dp screen width, the capsule center is 206 dp,
+its width is 228 dp, and the gap is 20 dp. This replaces centering the combined
+3+1 row, which placed the three-destination capsule 34 dp left of the screen axis.
+
+`GlassNavigationRow` reserves equal side space around the capsule, with reading
+occupying the trailing space. It measures the real native labels and chooses
+equal action widths that retain their natural size and 48 dp touch targets.
+The capsule narrows to fit smaller windows (200 dp on a 360 dp window and 160 dp
+on a 320 dp window at default text size). If a single row cannot fit the controls,
+reading moves to a second row at the trailing edge while the capsule stays
+centered. Width and height also grow for larger text. The
 reading circle is always square, and each destination retains a 48 dp minimum
 touch target. The outer bar still participates in the existing keyboard and
 focus-reading visibility rules.
@@ -41,9 +52,12 @@ clearer hierarchy instead of increasing the material's opacity or shadow.
   state badge; complete values remain in accessibility descriptions and the
   existing network detail UI. Connected, stale and failed readings still come
   from the same WindowNetworkState instance.
-- The 3+1 dock keeps its 56 dp controls and 12 dp gap. The globe, download and
+- The 3+1 dock uses 56 dp controls and a centered 228 dp preferred capsule, with
+  reading independently at the trailing edge and a minimum 8 dp gap. The globe, download and
   reading glyphs are 22 dp; the cube's larger optical footprint remains 20 dp.
-  Current-destination/reading labels use medium weight. Outer spacing is 10 dp
+  Only the current destination uses blue ink and medium weight. Reading has
+  neutral ink and a clear face at rest, so it does not look selected or pull the
+  visual emphasis away from the centered navigation. Outer spacing is 10 dp
   above and 12 dp below, with unchanged keyboard/focus visibility rules.
 - Native workspaces fade content beneath the full footer toward the page
   background. This prevents sharp row actions from appearing between the pill
@@ -69,6 +83,15 @@ The final hierarchy is observed after the still's settling delay. If exactly one
 real feedback close button is present then, the capture can dismiss it once and
 record its bounds and the refreshed hierarchy before the PNG. A recurring notice
 is retained; this does not change connection state or suppress application errors.
+
+The default API 35 capture now measures the actual XML button bounds on every
+observed conversation and native navigation layout. It requires the first three
+buttons' union to be centered within 1 physical pixel of the 1236 px screen axis,
+reading to remain a separate square to their right, and all four targets to be
+at least 48 dp. Group bounds, center, offset and reading bounds are retained in
+the report; the ordinary chat still has no falsely selected destination. These
+default-size observations do not claim device coverage for the large-text or
+narrow-window fallback.
 
 ## Curved glass material and native backdrop
 
@@ -216,8 +239,8 @@ and light respond to the touch. There is no idle floating or repeating highlight
   buttons share their parent's press state, while reading has a separate source.
 - The actual selected destination moves over 280 ms with a 5.5% blue wash that
   stretches by at most 12 dp along the path, then gathers under the destination.
-  Conversation has no falsely selected destination; reading's
-  3.5% accent identifies the action without asserting that it is active.
+  Conversation has no falsely selected destination; reading uses the same
+  neutral resting ink and only an actual selected state receives a blue accent.
 
 Disabled system animations use direct optical state without deformation.
 Visibility, detach, disabled state, appearance and geometry changes end finite
