@@ -88,7 +88,12 @@ final class AppHub {
   }
 
   private void updateNativeInsets(){
-    if(page!=CHAT)insetScrollViews(panel,Math.max(0,footer.getHeight()));
+    if(page==CHAT)return;
+    int footerHeight=Math.max(0,footer.getHeight());
+    if(page==NETWORK&&networkWorkspace.root!=null&&networkWorkspace.root.getParent()==panel){
+      networkWorkspace.setBottomInset(footerHeight);return;
+    }
+    insetScrollViews(panel,footerHeight);
   }
 
   private void insetScrollViews(View view,int footerHeight){

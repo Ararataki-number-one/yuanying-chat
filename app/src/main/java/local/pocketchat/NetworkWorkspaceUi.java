@@ -33,6 +33,14 @@ final class NetworkWorkspaceUi {
     scroll=new ScrollView(a);scroll.setFillViewport(false);scroll.setClipToPadding(false);box=DesignUi.column(a);box.setPadding(dp(20),0,dp(20),dp(18));
     scroll.addView(box);root.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));host.removeAllViews();host.addView(root,new FrameLayout.LayoutParams(-1,-1));render();
   }
+  void setBottomInset(int footerHeight){
+    if(box==null||scroll==null)return;
+    // Make the dock's safe end part of the measured child. ScrollView's touch
+    // interception can reject short content whose range is only outer padding.
+    int bottom=dp(18)+Math.max(0,footerHeight);
+    if(box.getPaddingBottom()!=bottom)box.setPadding(box.getPaddingLeft(),box.getPaddingTop(),box.getPaddingRight(),bottom);
+    if(scroll.getPaddingBottom()!=0)scroll.setPadding(scroll.getPaddingLeft(),scroll.getPaddingTop(),scroll.getPaddingRight(),0);
+  }
   void networkMore(){ReferenceUi.Modal d=new ReferenceUi.Modal(a,"网络").asSheet();if(tab==0)ReferenceUi.menuAction(d,"筛选环境",()->{d.dismiss();filters();});ReferenceUi.menuAction(d,"导入网络",()->{d.dismiss();a.startActivity(new Intent(a,NetworkImportActivity.class));});d.buttons("关闭",d::dismiss,"",()->{});d.show();}
   void select(int next){tab=next;if(a instanceof MainActivity)((MainActivity)a).hub.networkTab=next;filter=0;scroll.scrollTo(0,0);render();}
   /** Runs on the metadata reader. UI callbacks consume this captured identity only. */
