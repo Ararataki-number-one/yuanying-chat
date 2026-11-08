@@ -59,6 +59,8 @@ clearer hierarchy instead of increasing the material's opacity or shadow.
 - The 3+1 dock uses 56 dp controls and a centered 228 dp preferred capsule, with
   reading independently at the trailing edge and a minimum 8 dp gap. The globe, download and
   reading glyphs are 22 dp; the cube's larger optical footprint remains 20 dp.
+  Labels use 12 sp. The cube has a 4 dp drawable gap and the other icons 2 dp,
+  giving every icon-plus-gap slot the same 24 dp height and aligning labels.
   Only the current destination uses blue ink and medium weight. Reading has
   neutral ink and a clear face at rest, so it does not look selected or pull the
   visual emphasis away from the centered navigation. Outer spacing is 10 dp
@@ -97,6 +99,36 @@ the report; the ordinary chat still has no falsely selected destination. These
 default-size observations do not claim device coverage for the large-text or
 narrow-window fallback.
 
+### Full-height Chinese navigation labels
+
+The navigation buttons opt into `includeFontPadding`, and on API 28+ explicitly
+retain fallback font line spacing. Their icon/label block is centered from the
+actual `Layout.getHeight()` after native text layout, including fallback glyph
+metrics and first/last-line padding. The previous use of `getLineHeight()` gave
+the text only a standard line's space: increasing the outer control height
+would merely increase the surrounding padding and could leave the same clipping.
+
+This follows Android's [TextView metrics guidance](https://developer.android.com/reference/android/widget/TextView#getLineHeight())
+and [font padding behavior](https://developer.android.com/reference/android/widget/TextView#setIncludeFontPadding(boolean)).
+The existing layout listener also recenters the content after a selected-state
+typeface change. It waits for a real Layout and updates padding only when needed.
+Buttons, labels, accessibility semantics, click handlers and hotspot forwarding
+remain native. The default 56 dp controls and independently centered 228 dp
+capsule are retained rather than enlarging the whole dock to mask a text problem.
+
+The integration-only typography observation creates this real shared component
+at font scales 1.0 and 1.3, without seeding a page or route. It records the four
+labels at rest and in each selected state: actual Layout height, standard line
+height, available text region, baseline and measured glyph bounds. Two matching
+laid-out frames are required before a record is accepted. Each record is bound
+to its nonce, clean source/tree, installed APK bytes and actual font scale;
+the capture script independently checks the dimensions and all 20 records per
+scale. This component measurement is separate from the actual MainActivity
+captures. A separate enlarged-font MainActivity PNG follows it, and a finally
+block restores font scale 1.0 and the ordinary conversation. The original
+four-input recording and its budgets are unchanged. Results for the current
+commit must be read from the resulting capture report and screenshots.
+
 ## Curved glass material and native backdrop
 
 The earlier translucent fill, hairline boundary and travelling path highlights
@@ -109,16 +141,18 @@ On API 33+, `GlassLensRenderer` runs `assets/ui/liquid-glass.agsl` through a
 material-only RenderNode. Text and icons are drawn afterwards by their existing
 native views. No effect is installed on the control's full View tree.
 
-- The curved bevel occupies up to 6.5 dp inside the edge (15% of the shorter
-  visible side). Additional side reflection follows the fifth power of the
+- The curved bevel occupies up to 4.5 dp inside the light-mode edge (6.5 dp in
+  dark mode), capped at 15% of the shorter visible side. Additional side reflection follows the fifth power of the
   edge profile, concentrating it near the boundary instead of a wide gray face.
 - The center is a transparent coating with about 4% white veil in light mode.
   Reflection uses a soft fixed environment-light model, not a captured wallpaper
   or an opaque white background. Its opacity varies with the surface normal.
 - A pair of directional white glints and a weaker inner caustic emphasize the
   continuous bevel. There is no painted cyan band or complete second ring.
-- Light-mode exterior shadow is capped at 3.5%, with a 1 dp vertical offset and
-  a 1.8 dp decay. It is composed outside the material face. The platform outline
+- Light-mode exterior shadow is capped at 2.6%, with a 1 dp vertical offset and
+  a 1.25 dp decay; dark mode retains 12% and 1.8 dp. The thinner light bevel and
+  shorter shadow reduce the raised-pad appearance on a plain page while keeping
+  the existing clear face and touch light. Shadow is composed outside the material face. The platform outline
   has zero shadow alpha, avoiding a second filled platform shadow.
 - `RuntimeShader` output is premultiplied. The API 26–32 / software fallback uses
   the same coating model in `GlassMaterialRaster`, writing straight ARGB pixels

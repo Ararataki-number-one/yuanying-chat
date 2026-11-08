@@ -7,6 +7,8 @@ with the existing local, unconfigured visual fixture. No website, account, WAN
 connection, physical phone or performance acceptance is claimed.
 The optional recording is a visual-review artifact, not animation acceptance.
 An additional native-network screenshot runs after recording, with its own status.
+Navigation typography is measured separately at default and enlarged font scales;
+its component fixture is never presented as the actual MainActivity screenshot.
 """
 import argparse
 import hashlib
@@ -673,6 +675,122 @@ def collect_glass_lens_logs(args, report, adb):
         diagnostic['completedAtUnixNs'] = time.time_ns()
 
 
+def capture_navigation_typography(args, report, capture, adb, wait_for, screenshot):
+    """Bounded component measurements after the original screenshots and movie."""
+    result = report['navigationTypography']
+    result.update(status='started', startedAtUnixNs=time.time_ns(), runNonce=report['runNonce'],
+        sourceCommit=report['buildIdentity']['sourceCommit'], apkSha256=report['buildIdentity']['apkSha256'],
+        scope='Actual ReferenceUi.nav component fixture at font scales 1.0 and 1.3; MainActivity PNG is separate.',
+        cases=[], errors=[], restoredDefaultFont=False, returnedToOrdinaryChat=False,
+        firstCommandIndex=len(report['commands']))
+    identity = report['buildIdentity']
+
+    def failure(error, phase):
+        result['errors'].append(dict(phase=phase, errorType=type(error).__name__, error=str(error)))
+
+    def main_activity(name):
+        adb('shell', 'am', 'force-stop', PACKAGE)
+        adb('shell', 'am', 'start', '-W', '-n', COMPONENT, '--es', 'visualAction', 'chat')
+        xml = wait_for(capture, lambda value: navigation(value) is not None and capsule(value) is not None,
+                       name, seconds=30)
+        raw = adb('shell', 'dumpsys', 'activity', 'activities').decode('utf-8', 'replace')
+        (args.out / (name + '-activity.txt')).write_text(raw)
+        resumed = [line.strip() for line in raw.splitlines()
+                   if 'mResumedActivity' in line or 'topResumedActivity' in line]
+        if not any(PACKAGE + '/local.pocketchat.MainActivity' in line for line in resumed):
+            raise ValueError('The production MainActivity is not resumed after typography observation')
+        return dict(file=name + '.xml', sha256=sha(args.out / (name + '.xml')),
+                    geometry=navigation_geometry(xml), resumedActivity=resumed)
+
+    try:
+        for scale in (1.0, 1.3):
+            nonce = secrets.token_hex(16)
+            case = dict(requestedFontScale=scale, nonce=nonce, status='started', startedAtUnixNs=time.time_ns())
+            result['cases'].append(case)
+            adb('shell', 'am', 'force-stop', PACKAGE)
+            adb('shell', 'settings', 'put', 'system', 'font_scale', str(scale))
+            adb('shell', 'am', 'start', '-W', '-n', COMPONENT,
+                '--es', 'visualAction', 'navigation-typography', '--es', 'visualNonce', nonce,
+                '--es', 'visualSourceCommit', identity['sourceCommit'], '--ef', 'visualFontScale', str(scale))
+            deadline = time.monotonic() + 25
+            path = args.out / ('navigation-typography-font-' + str(scale) + '.log')
+            records, summaries = [], []
+            while time.monotonic() < deadline:
+                raw = adb('logcat', '-d', '-v', 'raw', '-s', 'PocketNavType:I', '*:S',
+                          timeout=min(10, max(.1, deadline-time.monotonic())))
+                path.write_bytes(raw)
+                records = []
+                for line in raw.decode('utf-8', 'replace').splitlines():
+                    if not line.startswith('{'):
+                        continue
+                    value = json.loads(line)
+                    if value.get('nonce') == nonce:
+                        records.append(value)
+                summaries = [row for row in records if row.get('kind') == 'summary']
+                if summaries:
+                    break
+                time.sleep(min(.2, max(0, deadline-time.monotonic())))
+            case.update(logFile=path.name, logSha256=sha(path), observedRecords=records)
+            if len(summaries) != 1 or summaries[0].get('status') != 'verified':
+                raise ValueError('Native typography fixture did not verify: ' + str(summaries))
+            labels = [row for row in records if row.get('kind') == 'label']
+            expected = {(selected, index) for selected in range(-1, 4) for index in range(4)}
+            keys = [(row.get('selectedIndex'), row.get('measurement', {}).get('buttonIndex')) for row in labels]
+            if len(labels) != 20 or len(set(keys)) != 20 or set(keys) != expected or summaries[0].get('observationCount') != 20:
+                raise ValueError('Typography observation phases or labels are incomplete')
+            for row in records:
+                if (row.get('schema') != 1 or not row.get('actualAndroidLayout')
+                        or any(row.get(key) != identity[key] for key in ('sourceCommit', 'sourceTree', 'apkSha256'))
+                        or abs(row.get('fontScale', -1) - scale) > .001):
+                    raise ValueError('Typography record identity or actual font scale differs')
+            for row in labels:
+                measured = row['measurement']
+                top = measured['compoundPaddingTop']
+                bottom = measured['height'] - measured['compoundPaddingBottom']
+                glyph = measured['glyphBounds']
+                glyph_top = measured['baseline'] + glyph[1] - measured['scrollY']
+                glyph_bottom = measured['baseline'] + glyph[3] - measured['scrollY']
+                if (measured['label'] != LABELS[measured['buttonIndex']]
+                        or not measured['valid'] or not all(measured['checks'].values())
+                        or measured['contentHeight'] != bottom-top or measured['layoutHeight'] > bottom-top
+                        or measured['glyphTop'] != glyph_top or measured['glyphBottom'] != glyph_bottom
+                        or glyph_top < top or glyph_bottom > bottom):
+                    raise ValueError('Actual navigation label does not fit its native text region')
+            case.update(status='verified', labelObservationCount=len(labels), completedAtUnixNs=time.time_ns())
+            case_path = args.out / ('navigation-typography-font-' + str(scale) + '.json')
+            write(case_path, case)
+            case.update(file=case_path.name, sha256=sha(case_path))
+
+        # This is a separate screenshot of the real MainActivity, not the empty
+        # component fixture above, and never replaces the original 1.0 capture.
+        hierarchy = main_activity('large-font-navigation')
+        scale = float(adb('shell', 'settings', 'get', 'system', 'font_scale').decode().strip())
+        if abs(scale-1.3) > .001:
+            raise ValueError('Enlarged-font MainActivity is not at the requested system scale')
+        screenshot('large-font-navigation.png')
+        result['largeFontMainActivity'] = dict(status='captured', fontScale=scale,
+            actualProductionMainActivity=True, hierarchy=hierarchy, screenshot=dict(report['screenshots'][-1]),
+            scope='Actual MainActivity at enlarged system font; local unconfigured environment, no live website')
+    except Exception as error:
+        failure(error, 'typography-observation')
+    finally:
+        try:
+            adb('shell', 'settings', 'put', 'system', 'font_scale', '1.0')
+            result['restoredChatHierarchy'] = main_activity('typography-returned-chat')
+            scale = float(adb('shell', 'settings', 'get', 'system', 'font_scale').decode().strip())
+            result['restoredFontScale'] = scale
+            if abs(scale-1.0) > .001:
+                raise ValueError('Default font scale was not restored')
+            result.update(restoredDefaultFont=True, returnedToOrdinaryChat=True)
+        except Exception as error:
+            failure(error, 'restore-default-font-and-chat')
+        result['status'] = ('verified' if len(result['cases']) == 2
+            and all(case['status'] == 'verified' for case in result['cases'])
+            and result['restoredDefaultFont'] and result['returnedToOrdinaryChat'] and not result['errors'] else 'failed')
+        result.update(lastCommandIndexExclusive=len(report['commands']), completedAtUnixNs=time.time_ns())
+        write(args.out / 'capture.json', report)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--root', type=Path, default=Path(__file__).resolve().parents[2])
@@ -700,6 +818,8 @@ def main():
                   nativeBackdropPreview=dict(status='not-attempted', optional=True,
                                              applicationAcceptance=False, physicalPhoneAcceptance=False,
                                              wanAcceptance=False, gpuRenderingVerified=False),
+                  navigationTypography=dict(status='not-attempted', optional=True,
+                                            applicationAcceptance=False, physicalPhoneAcceptance=False),
                   glassLensDiagnostics=dict(status='not-attempted', gpuRenderingVerified=False))
 
     def command(parts, timeout=45, check=True):
@@ -871,10 +991,18 @@ def main():
             capture_native_backdrop_preview(args, report, capture, adb, wait_for, tap, screenshot)
         except Exception as error:
             report['nativeBackdropPreview'].update(status='failed', errorType=type(error).__name__, error=str(error))
+        # Preserve messages from the same process as the original still/movie
+        # before the separate font diagnostic deliberately starts fresh views.
+        collect_glass_lens_logs(args, report, adb)
+        try:
+            capture_navigation_typography(args, report, capture, adb, wait_for, screenshot)
+        except Exception as error:
+            report['navigationTypography'].update(status='failed', errorType=type(error).__name__, error=str(error))
         print(json.dumps(dict(status='captured', sourceCommit=source,
             apkSha256=installed_sha, image='glass-navigation.png',
             motionStatus=report['motionReport']['status'],
             nativeBackdropStatus=report['nativeBackdropPreview']['status'],
+            typographyStatus=report['navigationTypography']['status'],
             scope='Actual Android MainActivity; local unconfigured environment, no live website'), ensure_ascii=False))
     except Exception as error:
         report.update(status='failed', staticScreenshotStatus='failed', errorType=type(error).__name__, error=str(error))
@@ -885,7 +1013,7 @@ def main():
                 report['failureScreenshotError'] = str(capture_error)
         raise
     finally:
-        if device_ready:
+        if device_ready and report['glassLensDiagnostics']['status'] == 'not-attempted':
             collect_glass_lens_logs(args, report, adb)
         report['completedAtUnixNs'] = time.time_ns()
         write(args.out / 'capture.json', report)

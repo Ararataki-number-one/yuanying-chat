@@ -13,10 +13,10 @@ final class GlassMaterialRaster {
     int w=Math.max(1,(int)Math.ceil(width*scale)),h=Math.max(1,(int)Math.ceil(height*scale));
     int[] colors=new int[w*h];
     double bx=width*.5-4*density,by=height*.5-4*density;
-    double bevel=Math.max(2*density,Math.min(6.5*density,Math.min(bx,by)*.30));
+    double bevel=Math.max(2*density,Math.min((dark?6.5:4.5)*density,Math.min(bx,by)*.30));
     double sigma=Math.max(8*density,Math.min(by*1.15,32*density)),sigma2=sigma*sigma;
     double ll=Math.hypot(lightX,lightY),lx=lightX/ll,ly=lightY/ll;
-    double veil=dark?.15:.04,shadowStrength=dark?.12:.035;
+    double veil=dark?.15:.04,shadowStrength=dark?.12:.026,shadowFalloff=dark?1.8:1.25;
     double tr=dark?.12:.98,tg=dark?.15:.99,tb=dark?.20:1;
     double aa=Math.max(.7,density*.28);
     for(int y=0;y<h;y++)for(int x=0;x<w;x++){
@@ -40,7 +40,7 @@ final class GlassMaterialRaster {
       double cover=1-smooth(-aa,aa,d);
       // First-order shadow offset is sufficient for the static cached fallback.
       double shadowD=d-ny*density;
-      double shadow=Math.exp(-Math.max(shadowD,0)/(1.8*density))*shadowStrength*(1-cover);
+      double shadow=Math.exp(-Math.max(shadowD,0)/(shadowFalloff*density))*shadowStrength*(1-cover);
       if(cover<.001){colors[y*w+x]=byteValue(shadow)<<24;continue;}
       double edge=clamp(1+d/bevel,0,1),slope=Math.pow(edge,1.45)*.96;
       double fx=clamp(dx/Math.max(bx,1),-1,1),fy=clamp(dy/Math.max(by,1),-1,1);

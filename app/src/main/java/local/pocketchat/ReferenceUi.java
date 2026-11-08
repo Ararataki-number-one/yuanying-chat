@@ -6,6 +6,7 @@ import android.content.res.ColorStateList;
 import android.graphics.*;
 import android.graphics.drawable.*;
 import android.os.Build;
+import android.text.Layout;
 import android.text.TextUtils;
 import android.view.*;
 import android.widget.*;
@@ -64,14 +65,17 @@ final class ReferenceUi {
     };
     reading.setBackground(DesignUi.glass(a,radius));reading.setElevation(dp(a,3));GlassMotion.press(reading,true);
     for(int i=0;i<DesignUi.NAV.length;i++){
-      final int n=i;Button b=link(a,DesignUi.NAV[i],()->action.accept(n));b.setTextSize(11);b.setSingleLine(true);b.setGravity(Gravity.CENTER);
+      final int n=i;Button b=link(a,DesignUi.NAV[i],()->action.accept(n));b.setTextSize(12);b.setSingleLine(true);b.setGravity(Gravity.CENTER);
+      // Short Chinese labels still need their fallback font's full vertical metrics.
+      b.setIncludeFontPadding(true);if(Build.VERSION.SDK_INT>=28)b.setFallbackLineSpacing(true);
       b.setTypeface(Typeface.create("sans-serif",Typeface.NORMAL));
       b.setMinWidth(dp(a,48));b.setMinimumWidth(dp(a,48));
       b.setPadding(dp(a,2),dp(a,8),dp(a,2),dp(a,8));
       b.setContentDescription(i==WorkspaceNavigation.READING?"进入专注阅读模式":DesignUi.NAV[i]);
-      int iconSize=dp(a,i==0?20:22);
+      int iconDp=i==0?20:22,iconSize=dp(a,iconDp);
       Ui.Icon icon=new Ui.Icon(DesignUi.GLYPHS[i],DesignUi.GLASS_MUTED);icon.setBounds(0,0,iconSize,iconSize);
-      b.setCompoundDrawables(null,icon,null,null);b.setCompoundDrawablePadding(dp(a,3));
+      // Equal icon-plus-gap slots align every label while preserving optical icon sizes.
+      b.setCompoundDrawables(null,icon,null,null);b.setCompoundDrawablePadding(dp(a,24-iconDp));
       b.addOnLayoutChangeListener((v,l,t,r,bottom,ol,ot,or,ob)->centerDockContents((Button)v));
       b.setBackground(navFeedback(a,i==WorkspaceNavigation.READING,radius));
       if(i==WorkspaceNavigation.READING){
@@ -101,12 +105,13 @@ final class ReferenceUi {
     };
   }
   private static void centerDockContents(Button b){
-    Drawable icon=b.getCompoundDrawables()[1];if(icon==null||b.getHeight()==0)return;
+    Drawable icon=b.getCompoundDrawables()[1];Layout label=b.getLayout();
+    if(icon==null||label==null||b.getHeight()==0)return;
     // TextView pins a top compound drawable to its padding. Center the complete
-    // icon/label block explicitly so the book does not cling to the circle's rim.
-    int block=icon.getBounds().height()+b.getCompoundDrawablePadding()+b.getLineHeight();
-    int top=Math.max(dp(b.getContext(),4),(b.getHeight()-block)/2);
-    int bottom=Math.max(dp(b.getContext(),4),b.getHeight()-block-top);
+    // icon/label block using the laid-out fallback glyphs and font padding.
+    // getLineHeight() is only standard line spacing and can truncate this Layout.
+    int block=icon.getBounds().height()+b.getCompoundDrawablePadding()+label.getHeight();
+    int spare=Math.max(0,b.getHeight()-block),top=spare/2,bottom=spare-top;
     if(b.getPaddingTop()!=top||b.getPaddingBottom()!=bottom)b.setPadding(dp(b.getContext(),2),top,dp(b.getContext(),2),bottom);
   }
   static void markNav(Button[] tabs,int selected){

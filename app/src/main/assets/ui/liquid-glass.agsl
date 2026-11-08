@@ -40,15 +40,15 @@ half4 main(float2 coord) {
 
     // A soft, low-opacity contact shadow. It never darkens the glass face.
     float shadowD = surfaceDistance(p - float2(0.0, 1.0 * density));
-    float shadow = exp(-max(shadowD, 0.0) / (1.8 * density))
-        * mix(0.035, 0.12, darkTheme) * (1.0 - cover);
+    float shadow = exp(-max(shadowD, 0.0) / (mix(1.25, 1.8, darkTheme) * density))
+        * mix(0.026, 0.12, darkTheme) * (1.0 - cover);
     if (cover < 0.001) return half4(float3(0.0), shadow * opacity);
 
     float e = max(0.6, density * 0.45);
     float2 n = float2(surfaceDistance(p + float2(e, 0.0)) - surfaceDistance(p - float2(e, 0.0)),
                       surfaceDistance(p + float2(0.0, e)) - surfaceDistance(p - float2(0.0, e)));
     n = length(n) > 0.0001 ? normalize(n) : float2(0.0, -1.0);
-    float bevel = max(2.0 * density, min(6.5 * density, min(halfSize.x, halfSize.y) * 0.30));
+    float bevel = max(2.0 * density, min(mix(4.5, 6.5, darkTheme) * density, min(halfSize.x, halfSize.y) * 0.30));
     float edge = clamp(1.0 + d / bevel, 0.0, 1.0);
     float slope = pow(edge, 1.45) * 0.96;
     float2 face = clamp((p - size * 0.5) / max(halfSize, float2(1.0)), float2(-1.0), float2(1.0));

@@ -12,10 +12,16 @@ public final class UiVisualIntegrationActivity extends Activity {
   NetworkWorkspaceUi workspace;
   SavedFileActions savedActions;
   DownloadLocationLayoutEvidence downloadLocationEvidence;
+  NavigationTypographyEvidence navigationTypographyEvidence;
   final java.util.Set<String> downloadObservationNonces=new java.util.HashSet<>();
   final Handler handler=new Handler(Looper.getMainLooper());
   @Override public void onCreate(Bundle state){
     super.onCreate(state);String action=getIntent().getStringExtra("visualAction");
+    if("navigation-typography".equals(action)){
+      try{navigationTypographyEvidence=new NavigationTypographyEvidence(this);}
+      catch(Exception error){NavigationTypographyEvidence.rejected(this,error);finish();}
+      return;
+    }
     try{seed();}catch(Exception e){Log.e("PocketUiVisual","fixture setup failed",e);finish();return;}
     if("environment-picker".equals(action)||"templates".equals(action)||"zoom".equals(action)||"audit".equals(action)){startActivity(new Intent(this,UiDetailsIntegrationActivity.class).putExtra("detailScene",action));finish();return;}
     if("update".equals(action)){startActivity(new Intent(this,AppUpdateActivity.class));finish();return;}
@@ -138,5 +144,5 @@ public final class UiVisualIntegrationActivity extends Activity {
     }
     AppSettings.put(this,"nativeUiSeedV2","true");
   }
-  @Override protected void onDestroy(){if(downloadLocationEvidence!=null)downloadLocationEvidence.close();if(workspace!=null)workspace.close();if(savedActions!=null)savedActions.close();handler.removeCallbacksAndMessages(null);super.onDestroy();}
+  @Override protected void onDestroy(){if(downloadLocationEvidence!=null)downloadLocationEvidence.close();if(navigationTypographyEvidence!=null)navigationTypographyEvidence.close();if(workspace!=null)workspace.close();if(savedActions!=null)savedActions.close();handler.removeCallbacksAndMessages(null);super.onDestroy();}
 }
