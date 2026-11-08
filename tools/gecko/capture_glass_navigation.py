@@ -10,8 +10,10 @@ An additional native-network screenshot runs after recording, with its own statu
 Navigation typography is measured separately at default and enlarged font scales;
 its component fixture is never presented as the actual MainActivity screenshot.
 An explicit environment-workspace option appends separate production
-WindowHomeActivity and DownloadCenterActivity captures and interactions using
-local synthetic fixtures. Download examples include actual readable local files;
+WindowHomeActivity, MainActivity network and DownloadCenterActivity captures
+using local synthetic fixtures. The network stills reuse five unconfigured
+environments without injecting runtime or requesting network operations.
+Download examples include actual readable local files;
 paused and failed task metadata does not represent an actual network transfer.
 --acceptance-suite adds required, separately reported native input/layout cases
 using the existing controlled Gecko document fixture; those remain explicitly
@@ -928,7 +930,7 @@ def main():
     parser.add_argument('--apksigner', required=True)
     parser.add_argument('--out', type=Path, required=True)
     parser.add_argument('--environment-workspace', action='store_true',
-                        help='Append required real environment/download workspace screenshots and recordings')
+                        help='Append required real environment/network/download workspace captures')
     parser.add_argument('--acceptance-suite', action='store_true',
                         help='Capture additional real input/configuration cases; fail if any required case fails')
     parser.add_argument('--device-api', type=int, choices=(32, 35), default=35,
@@ -953,6 +955,9 @@ def main():
                   navigationTypography=dict(status='not-attempted', optional=not args.environment_workspace,
                                             applicationAcceptance=False, physicalPhoneAcceptance=False),
                   environmentWorkspacePreview=dict(status='not-attempted', requested=args.environment_workspace,
+                      applicationAcceptance=False, physicalPhoneAcceptance=False, wanAcceptance=False,
+                      performanceMeasurement=False),
+                  networkWorkspacePreview=dict(status='not-attempted', requested=args.environment_workspace,
                       applicationAcceptance=False, physicalPhoneAcceptance=False, wanAcceptance=False,
                       performanceMeasurement=False),
                   downloadsWorkspacePreview=dict(status='not-attempted', requested=args.environment_workspace,
@@ -1149,6 +1154,12 @@ def main():
             except Exception as error:
                 report['environmentWorkspacePreview'].update(status='failed', errorType=type(error).__name__, error=str(error))
             try:
+                from capture_network_workspace import capture_network_workspace
+                capture_network_workspace(args, report, capture, adb, screenshot,
+                    navigation_geometry=workspace_navigation_geometry)
+            except Exception as error:
+                report['networkWorkspacePreview'].update(status='failed', errorType=type(error).__name__, error=str(error))
+            try:
                 from capture_download_workspace import capture_download_workspace
                 capture_download_workspace(args, report, capture, adb, screenshot,
                     navigation_geometry=workspace_navigation_geometry, mp4_metadata=mp4_metadata)
@@ -1156,7 +1167,7 @@ def main():
                 report['downloadsWorkspacePreview'].update(status='failed', errorType=type(error).__name__, error=str(error))
             required = {'motionReport':'captured', 'nativeBackdropPreview':'captured',
                         'navigationTypography':'verified', 'environmentWorkspacePreview':'captured',
-                        'downloadsWorkspacePreview':'captured'}
+                        'networkWorkspacePreview':'captured', 'downloadsWorkspacePreview':'captured'}
             incomplete = [name for name,status in required.items() if report[name]['status'] != status]
             if incomplete:
                 report['status'] = 'partial'
@@ -1170,6 +1181,7 @@ def main():
             nativeBackdropStatus=report['nativeBackdropPreview']['status'],
             typographyStatus=report['navigationTypography']['status'],
             environmentWorkspaceStatus=report['environmentWorkspacePreview']['status'],
+            networkWorkspaceStatus=report['networkWorkspacePreview']['status'],
             downloadsWorkspaceStatus=report['downloadsWorkspacePreview']['status'],
             uiAcceptanceStatus=report.get('glassUiAcceptance', {}).get('status', 'not-requested'),
             scope='Actual Android native screens; local unconfigured environments and explicit local fixtures, no live website'), ensure_ascii=False))

@@ -430,7 +430,7 @@ def main():
     record_action("inspect-inactive-window-route", environment="UI Window", actualRouteApplication=False,
                   scope="Saved source configuration and UI layout only; no running core", runningSummary="absent")
     check("Saved-only window card does not claim a running entrance-to-exit route", visible_inactive_route(tree, "UI Window"))
-    check("Only the three requested network tabs are visible", all(matching(tree, text=text) for text in ("窗口网络", "入口", "出口")) and not matching(tree, text="订阅"))
+    check("Only the three requested network tabs are visible", all(matching(tree, text=text) for text in ("环境网络", "入口", "出口")) and not matching(tree, text="订阅"))
     command("open-window-details")
     centered("窗口详情 · UI Window")
     for _ in range(4):

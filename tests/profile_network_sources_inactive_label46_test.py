@@ -16,6 +16,28 @@ ACTUAL_XML = ROOT / 'tests/fixtures/network-sources-ui46-actual-inactive.xml'
 RUNNER = ROOT / 'tests/gecko/run_network_sources_ui.py'
 OLD_IMPORT = b'from network_ui_route_contract import visible_inactive_route, reveal_modal_action, clipboard_overlay_present\n'
 NEW_IMPORT = b'from network_ui_route_contract import reveal_modal_action, clipboard_overlay_present\nfrom network_inactive_label46 import visible_inactive_route\n'
+OLD_TAB_ASSERTION = '    check("Only the three requested network tabs are visible", all(matching(tree, text=text) for text in ("窗口网络", "入口", "出口")) and not matching(tree, text="订阅"))\n'.encode()
+NEW_TAB_ASSERTION = OLD_TAB_ASSERTION.replace('"窗口网络"'.encode(), '"环境网络"'.encode(), 1)
+
+
+def runner_tab_label_inverse(raw):
+    """Recover the historical runner after one exact current tab-label change.
+
+    This source-input port is used only by the old byte oracle. The Android
+    runner executes its current label assertion against unmodified device XML.
+    The original import inverse and whole-source identity remain required.
+    """
+    if type(raw) is not bytes or raw.count(NEW_TAB_ASSERTION) != 1 or OLD_TAB_ASSERTION in raw:
+        raise ValueError('Expected the unique complete current network-tab assertion')
+    previous = raw.replace(NEW_TAB_ASSERTION, OLD_TAB_ASSERTION, 1)
+    if previous.replace(OLD_TAB_ASSERTION, NEW_TAB_ASSERTION, 1) != raw:
+        raise ValueError('The complete network-tab assertion inverse differs')
+    if previous.count(NEW_IMPORT) != 1 or OLD_IMPORT in previous:
+        raise ValueError('The historical runner import context differs')
+    original = previous.replace(NEW_IMPORT, OLD_IMPORT, 1)
+    if hashlib.sha256(original).hexdigest() != '11668477263a1427bc7affe3311c252dbe1ac0c70a89ab1d9e2f4b48dd63b9cf':
+        raise ValueError('The historical whole runner was not recovered exactly')
+    return previous
 
 
 def module(name, path):
@@ -56,10 +78,26 @@ class NetworkSourcesInactiveLabel46(unittest.TestCase):
         self.assertEqual(current.count(SHIM.CURRENT_CONTEXT), 1)
         self.assertEqual(current.replace(SHIM.CURRENT_CONTEXT, SHIM.ORIGINAL_CONTEXT, 1), original)
         self.assertEqual(len(original), 6181)
-        runner = RUNNER.read_bytes()
+        runner = runner_tab_label_inverse(RUNNER.read_bytes())
         self.assertEqual(runner.count(NEW_IMPORT), 1)
         self.assertEqual(hashlib.sha256(runner.replace(NEW_IMPORT, OLD_IMPORT, 1)).hexdigest(),
                          '11668477263a1427bc7affe3311c252dbe1ac0c70a89ab1d9e2f4b48dd63b9cf')
+
+    def test_runner_tab_label_inverse_rejects_missing_duplicate_moved_and_other_drift(self):
+        raw = RUNNER.read_bytes()
+        previous = runner_tab_label_inverse(raw)
+        self.assertEqual(previous.count(OLD_TAB_ASSERTION), 1)
+        self.assertEqual(previous.replace(OLD_TAB_ASSERTION, NEW_TAB_ASSERTION, 1), raw)
+        variants = [raw.replace(NEW_TAB_ASSERTION, b'', 1),
+                    raw.replace(NEW_TAB_ASSERTION, NEW_TAB_ASSERTION * 2, 1),
+                    raw.replace(NEW_TAB_ASSERTION, b'', 1) + NEW_TAB_ASSERTION,
+                    raw + b'\n', previous,
+                    raw.replace(b'visible_inactive_route(tree, "UI Window")', b'True', 1),
+                    raw.replace(NEW_IMPORT, OLD_IMPORT, 1),
+                    b'unknown source', bytearray(raw)]
+        for value in variants:
+            with self.subTest(identity=hashlib.sha256(value).hexdigest()), self.assertRaises(ValueError):
+                runner_tab_label_inverse(value)
 
     def test_exact_failed_cohort_xml_passes_new_label_without_mutation(self):
         self.assertEqual(len(self.raw), 16105)
