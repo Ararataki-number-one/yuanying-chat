@@ -363,6 +363,11 @@ jobs:
         for log in work/upload-state-host/*.stdout.txt work/upload-state-host/*.stderr.txt; do
           cp "$log" "work/gecko-integration/upload-state-$(basename "$log")"
         done
+    - name: Prepare fixed public history for profile host checks
+      shell: bash
+      run: |
+        set -euo pipefail
+        python3 tools/gecko/prepare_profile_host_prerequisites.py --source-commit "$GITHUB_SHA" --output work/gecko-integration/profile-host-prerequisites.json
     - name: Verify versioned environment models and authoritative intents
       run: |
         set -euo pipefail

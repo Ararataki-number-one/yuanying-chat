@@ -13,6 +13,8 @@ import gradle_transport_source_compatibility as transport
 import ui_checkpoint_source_compatibility as checkpoint
 from glass_emulator_navigation_source_compatibility import current_after_input
 
+current_after_input = transport.wrap_canonical_current_after(current_after_input)
+
 ROOT = Path(__file__).resolve().parents[1]
 ASSET = b'https://api.github.com/repos/gradle/gradle-distributions/releases/assets/586068844'
 CHECKSUM = b'bafd5ce9cfaea0fbccfdc8439a1ac42fbd4cd9c89dc9a988228d8a2639a58e6c'

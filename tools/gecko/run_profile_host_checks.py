@@ -110,6 +110,7 @@ def main():
     input_paths.add(ROOT / "tests/fixtures/gradle-workflow-test-source-deltas.json")
     input_paths.add(ROOT / "tests/fixtures/profile-context-callback-source-deltas.json")
     input_paths.add(ROOT / "tests/fixtures/gecko-surface-source-deltas.json")
+    input_paths.add(ROOT / "tests/fixtures/canonical-profile-prerequisites-source-deltas.json")
     input_paths.update(ROOT / path for path in ('tests/fixtures/ui-preparation-source-deltas.json',
         'tests/fixtures/glass-emulator-navigation-source-deltas.json', 'tests/fixtures/glass-document-viewports.json'))
     input_paths.update(ROOT / path for path in ('tests/browser-profile-path-host/Host.java.in',
@@ -570,6 +571,7 @@ def main():
                   ROOT/'tests/browser_acceptance_workflow_test.py',ROOT/'tests/final_browser_source_compatibility.py',
                   ROOT/'tests/profile_final_browser_source_compatibility_test.py',ROOT/'tests/profile_fixture_root_source_compatibility.py',
                   ROOT/'tests/resource_startup_source_compatibility.py',ROOT/'tests/profile_gradle_transport_source_compatibility_test.py',
+                  ROOT/'tests/fixtures/canonical-profile-prerequisites-source-deltas.json',ROOT/'tests/profile_canonical_profile_prerequisites_test.py',
                   ROOT/'tests/profile_gradle_workflow_test_source_compatibility_test.py',
                   ROOT/'.github/workflows/browser-2_1-acceptance.yml',ROOT/'.github/workflows/profile-upgrade-checks.yml',
                   ROOT/'.github/workflows/glass-release-validation.yml',

@@ -275,7 +275,10 @@ def capture_loading_landscape(args, report, capture, adb, wait_for, screenshot, 
         display.configure(2676, 1236, 480, 1.0, 'no')
         result['displayPreparation']['configuredDisplay'] = display.require(
             2676, 1236, 480, 1.0, 'no', stem + '-prepared')
-        adb('shell', 'am', 'start', '-W', '-n', api['COMPONENT'], '--es', 'visualAction', 'chat')
+        # CLEAR_TOP recreates this standard Activity instead of delivering the
+        # scene intent to the existing empty display-preparation instance.
+        adb('shell', 'am', 'start', '-W', '-n', api['COMPONENT'],
+            '--activity-clear-top', '--es', 'visualAction', 'chat')
         result['actualDisplay'] = display.require(2676, 1236, 480, 1.0, 'no', stem)
 
         def loading_scroller(xml):
@@ -734,7 +737,7 @@ def capture_acceptance_suite(args, report, capture, adb, wait_for, tap, screensh
         """Measure native Chinese glyphs in this exact size/theme/font configuration."""
         nonce = secrets.token_hex(16)
         adb('shell', 'am', 'start', '-W', '-n', api['COMPONENT'],
-            '--es', 'visualAction', 'navigation-typography', '--es', 'visualNonce', nonce,
+            '--activity-clear-top', '--es', 'visualAction', 'navigation-typography', '--es', 'visualNonce', nonce,
             '--es', 'visualSourceCommit', identity['sourceCommit'], '--ef', 'visualFontScale', str(case['fontScale']))
         path = args.out / (case['name'] + '-typography.log')
         deadline = time.monotonic() + 25

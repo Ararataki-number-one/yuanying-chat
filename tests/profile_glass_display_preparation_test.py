@@ -6,12 +6,16 @@ The model below exercises that observed ordering; it does not simulate app
 rendering, glyph observations, network behavior, or physical-device smoothness.
 """
 import ast
+import copy
 import hashlib
+import json
 from pathlib import Path
 import re
 import sys
 import tempfile
+from types import SimpleNamespace
 import unittest
+import xml.etree.ElementTree as ET
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'tools/gecko'))
@@ -229,6 +233,216 @@ class GlassDisplayPreparationRegressionTest(unittest.TestCase):
                 typography = next(n.lineno for n in ast.walk(method) if isinstance(n, ast.Call)
                     and isinstance(n.func, ast.Name) and n.func.id == 'typography')
                 self.assertLess(required, typography)
+
+
+class StandardRootSceneModel(NoSensorReversionModel):
+    """Explicit host Activity/task transport model, never native layout evidence.
+
+    AOSP android-15.0.0_r1 Intent.FLAG_ACTIVITY_CLEAR_TOP and
+    Task.performClearTop/ActivityStarter document the standard/non-singleTop
+    finish/recreate branch. ActivityManagerShellCommand adds NEW_TASK to am
+    start. Without CLEAR_TOP an existing root receives onNewIntent; this real
+    fixture's download-only handler does not dispatch a different visualAction.
+    Synthetic typography rows below exercise the unchanged Python verifier;
+    they make no glyph, viewport, rendering, or Android execution claim.
+    """
+    def __init__(self):
+        super().__init__()
+        self.instance = 0
+        self.scene = None
+        self.delivered_intents = []
+        self.records = []
+        self.identity = dict(sourceCommit='1' * 40, sourceTree='2' * 40, apkSha256='3' * 64)
+        self.bad_nonce = False
+        self.bad_glyph = False
+
+    def typography_rows(self, nonce):
+        rows = []
+        for selected in range(-1, 4):
+            for index, label in enumerate(('环境', '网络', '下载', '阅读')):
+                rows.append(dict(schema=1, kind='label', nonce=nonce,
+                    actualAndroidLayout=True, **self.identity,
+                    fontScale=float(self.settings['font_scale']), selectedIndex=selected,
+                    measurement=dict(buttonIndex=index, label=label,
+                        valid=not self.bad_glyph, checks=dict(wholeLabel=not self.bad_glyph))))
+        rows.append(dict(schema=1, kind='summary', nonce=nonce,
+            actualAndroidLayout=True, **self.identity,
+            fontScale=float(self.settings['font_scale']), status='verified', observationCount=20))
+        return rows
+
+    def __call__(self, *parts, **kwargs):
+        if parts[:5] == ('shell', 'am', 'start', '-W', '-n'):
+            action = next((parts[i + 1] for i, value in enumerate(parts[:-1])
+                           if value == 'visualAction'), None)
+            clear = '--activity-clear-top' in parts
+            single_top = '--activity-single-top' in parts
+            if self.foreground == parts[5] and self.scene is not None and (not clear or single_top):
+                self.calls.append(parts)
+                self.delivered_intents.append(action)
+                return b'Warning: Activity not started, intent delivered to current instance.\n'
+            raw = super().__call__(*parts, **kwargs)
+            self.instance += 1
+            self.scene = action
+            if action == 'navigation-typography':
+                nonce = parts[parts.index('visualNonce') + 1]
+                self.records.extend(self.typography_rows('0' * 32 if self.bad_nonce else nonce))
+            elif action == 'chat':
+                self.foreground = 'local.pocketchat.test/local.pocketchat.MainActivity'
+                self.scene = 'actual-main-loading'
+            return raw
+        if parts[:3] == ('logcat', '-d', '-v'):
+            self.calls.append(parts)
+            return ('\n'.join(json.dumps(row) for row in self.records) + '\n').encode()
+        if parts[:3] == ('shell', 'am', 'force-stop'):
+            self.calls.append(parts)
+            self.foreground = LAUNCHER
+            self.scene = None
+            return b''
+        return super().__call__(*parts, **kwargs)
+
+
+class GlassPreparedSceneLaunchRegressionTest(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.out = Path(self.temp.name)
+        self.android = StandardRootSceneModel()
+        self.display = GlassDisplay(self.android, self.out,
+            lambda p: hashlib.sha256(Path(p).read_bytes()).hexdigest())
+        self.tree = ast.parse((ROOT / 'tools/gecko/glass_ui_validation.py').read_text())
+
+    def tearDown(self):
+        self.temp.cleanup()
+
+    def prepare(self, width=1236, height=2676, font=1.0, night='no'):
+        self.display.prepare(COMPONENT, 'neutral')
+        self.display.configure(width, height, 480, font, night)
+        self.display.require(width, height, 480, font, night, 'configured')
+        self.assertEqual(self.android.scene, 'glass-display-preparation')
+
+    def typography(self, *, remove_clear=False, single_top=False, font=1.0,
+                   width=412, height=892, night='no'):
+        suite = next(n for n in self.tree.body if isinstance(n, ast.FunctionDef)
+                     and n.name == 'capture_acceptance_suite')
+        method = copy.deepcopy(next(n for n in suite.body if isinstance(n, ast.FunctionDef)
+                                   and n.name == 'typography'))
+        for call in ast.walk(method):
+            if isinstance(call, ast.Call) and isinstance(call.func, ast.Name) and call.func.id == 'adb':
+                if any(isinstance(a, ast.Constant) and a.value == 'navigation-typography' for a in call.args):
+                    if remove_clear:
+                        call.args = [a for a in call.args if not isinstance(a, ast.Constant)
+                                     or a.value != '--activity-clear-top']
+                    if single_top:
+                        call.args.insert(6, ast.Constant('--activity-single-top'))
+        clock = SimpleNamespace(now=0.0)
+        def sleep(delay):
+            clock.now += delay
+        env = dict(adb=self.android, api=dict(COMPONENT=COMPONENT,
+            LABELS=('环境', '网络', '下载', '阅读')), identity=self.android.identity,
+            args=SimpleNamespace(out=self.out), display=self.display, package='local.pocketchat.test',
+            time=SimpleNamespace(monotonic=lambda: clock.now, sleep=sleep),
+            secrets=SimpleNamespace(token_hex=lambda size: 'a' * 32), json=json,
+            sha=lambda p: hashlib.sha256(Path(p).read_bytes()).hexdigest())
+        exec(compile(ast.fix_missing_locations(ast.Module(body=[method], type_ignores=[])),
+                     'actual-glass-typography-function', 'exec'), env)
+        case = dict(name='host-scene', widthDp=width, heightDp=height, fontScale=font, requestedNight=night)
+        env['typography'](case)
+        return case
+
+    def loading_launch(self, remove_clear=False, single_top=False):
+        method = next(n for n in self.tree.body if isinstance(n, ast.FunctionDef)
+                      and n.name == 'capture_loading_landscape')
+        call = copy.deepcopy(next(n for n in ast.walk(method) if isinstance(n, ast.Call)
+            and isinstance(n.func, ast.Name) and n.func.id == 'adb'
+            and any(isinstance(a, ast.Constant) and a.value == 'chat' for a in n.args)))
+        if remove_clear:
+            call.args = [a for a in call.args if not isinstance(a, ast.Constant)
+                         or a.value != '--activity-clear-top']
+        if single_top:
+            call.args.insert(6, ast.Constant('--activity-single-top'))
+        eval(compile(ast.fix_missing_locations(ast.Expression(body=call)), 'actual-loading-launch', 'eval'),
+             dict(adb=self.android, api=dict(COMPONENT=COMPONENT)))
+
+    def test_actual_fixture_is_standard_and_new_intent_cannot_dispatch_these_scenes(self):
+        manifest = ET.fromstring((ROOT / 'tests/gecko/AndroidManifest.xml').read_bytes())
+        android = '{http://schemas.android.com/apk/res/android}'
+        matches = [a for a in manifest.iter('activity') if a.get(android + 'name') ==
+                   'local.pocketchat.UiVisualIntegrationActivity']
+        self.assertEqual(len(matches), 1)
+        self.assertEqual(matches[0].get(android + 'launchMode', 'standard'), 'standard')
+        source = (ROOT / 'tests/gecko/UiVisualIntegrationActivity.java').read_text()
+        handler = source.split('@Override protected void onNewIntent(Intent request){', 1)[1].split(
+            '\n  String downloadObservationRejection', 1)[0]
+        self.assertNotIn('navigation-typography', handler)
+        self.assertNotIn('"chat"', handler)
+        self.assertIn('downloadObservationRejection(request)', handler)
+
+    def test_old_launch_reuses_empty_root_and_cannot_borrow_baseline_glyph_nonce(self):
+        self.android.records.extend(self.android.typography_rows('b' * 32))
+        self.prepare()
+        with self.assertRaisesRegex(ValueError, 'typography observation is incomplete or failed'):
+            self.typography(remove_clear=True)
+        self.assertEqual(self.android.instance, 1)
+        self.assertEqual(self.android.scene, 'glass-display-preparation')
+        self.assertEqual(self.android.delivered_intents, ['navigation-typography'])
+        self.assertFalse(any(r['nonce'] == 'a' * 32 for r in self.android.records))
+
+    def test_fresh_standard_instance_runs_actual_typography_verifier_for_all_seven_cases(self):
+        node = next(n.value for n in self.tree.body if isinstance(n, ast.Assign)
+                    and any(isinstance(t, ast.Name) and t.id == 'CONFIGURATIONS' for t in n.targets))
+        for name, width, height, font, night in ast.literal_eval(node):
+            with self.subTest(name=name):
+                self.android = StandardRootSceneModel()
+                self.display = GlassDisplay(self.android, self.out,
+                    lambda p: hashlib.sha256(Path(p).read_bytes()).hexdigest())
+                self.prepare(width * 3, height * 3, font, night)
+                case = self.typography(font=font, width=width, height=height, night=night)
+                self.assertEqual(self.android.instance, 2)
+                self.assertEqual(self.android.delivered_intents, [])
+                labels = [r for r in case['typography']['records'] if r['kind'] == 'label']
+                self.assertEqual(len(labels), 20)
+                self.assertEqual(len({(r['selectedIndex'], r['measurement']['buttonIndex']) for r in labels}), 20)
+                self.assertEqual({r['nonce'] for r in labels}, {'a' * 32})
+                self.assertEqual(case['typography']['status'], 'verified')
+                self.assertEqual(case['typography']['display']['logical']['rotation'], int(width > height))
+
+    def test_loading_launch_recreates_empty_root_then_reaches_main_without_launcher(self):
+        self.prepare(2676, 1236)
+        before = len(self.android.calls)
+        self.loading_launch()
+        self.assertEqual(self.android.instance, 2)
+        self.assertEqual(self.android.scene, 'actual-main-loading')
+        self.assertEqual(self.android.foreground, 'local.pocketchat.test/local.pocketchat.MainActivity')
+        self.display.require(2676, 1236, 480, 1.0, 'no', 'actual-loading')
+        launches = self.android.calls[before:]
+        self.assertFalse(any(c[:3] == ('shell', 'am', 'force-stop') or c[:3] == ('shell', 'input', 'keyevent') for c in launches))
+
+    def test_old_loading_launch_and_single_top_still_leave_preparation_empty(self):
+        for options in (dict(remove_clear=True), dict(single_top=True)):
+            with self.subTest(options=options):
+                self.android = StandardRootSceneModel()
+                self.display = GlassDisplay(self.android, self.out, lambda p: '0' * 64)
+                self.prepare(2676, 1236)
+                self.loading_launch(**options)
+                self.assertEqual(self.android.instance, 1)
+                self.assertEqual(self.android.scene, 'glass-display-preparation')
+                self.assertNotIn('MainActivity', self.android.foreground)
+
+    def test_single_top_cannot_fake_fresh_typography_scene(self):
+        self.prepare()
+        with self.assertRaisesRegex(ValueError, 'typography observation is incomplete or failed'):
+            self.typography(single_top=True)
+        self.assertEqual(self.android.instance, 1)
+
+    def test_fresh_scene_must_still_pass_current_nonce_and_all_glyph_checks(self):
+        for invalid in ('bad_nonce', 'bad_glyph'):
+            with self.subTest(invalid=invalid):
+                self.android = StandardRootSceneModel()
+                self.display = GlassDisplay(self.android, self.out, lambda p: '0' * 64)
+                setattr(self.android, invalid, True)
+                self.prepare()
+                with self.assertRaises(ValueError):
+                    self.typography()
+                self.assertEqual(self.android.instance, 2)
 
 
 if __name__ == '__main__':
