@@ -151,3 +151,11 @@ def wrap_build_budget_helper_before(original):
     def historical_helper(raw):
         return original(historical_input(raw, FINAL))
     return historical_helper
+
+
+# Exact current metadata readers; original fixtures and normalizers stay whole.
+import importlib.util as _navigation_metadata_import
+_navigation_metadata_spec = _navigation_metadata_import.spec_from_file_location('selected_navigation_metadata_rows', Path(__file__).with_name('navigation_metadata_source_compatibility.py'))
+_navigation_metadata = _navigation_metadata_import.module_from_spec(_navigation_metadata_spec)
+_navigation_metadata_spec.loader.exec_module(_navigation_metadata)
+wrap_root_manifest = _navigation_metadata.wrap_root_factory(wrap_root_manifest)

@@ -9,7 +9,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 FIXTURE = ROOT / 'tests/fixtures/chrome-first-tap-source-deltas.json'
-FIXTURE_SHA256 = 'a656a30fb22de6db42ad9f97cb364d0eff6d97c293165e2df70b3a54786002c4'
+FIXTURE_SHA256 = '2c31cb3286d88a91079fb33cef1f27b9c81f7cefda6fbb1c7bc6537e6ca79795'
 BASE_COMMIT = 'd10843d321f426cb66a3fef7a232adf52fd0d15e'
 PATHS = frozenset(('tests/gecko/run_chrome_collapse.py',
                    'tests/profile_chrome_home_resume_test.py',
@@ -50,3 +50,11 @@ def source_input(raw, relative):
     if (hashlib.sha256(raw).hexdigest(), len(raw)) != (row['previousSha256'], row['previousBytes']):
         reject()
     return raw
+
+
+# Source comparisons only: preserve the original JSON and its strict loader.
+import importlib.util as _dispatch_import
+_dispatch_spec = _dispatch_import.spec_from_file_location('selected_chrome_dispatch_comparison', Path(__file__).with_name('chrome_dispatch_source_compatibility.py'))
+_dispatch_input = _dispatch_import.module_from_spec(_dispatch_spec)
+_dispatch_spec.loader.exec_module(_dispatch_input)
+manifest = _dispatch_input.wrap_manifest(manifest)

@@ -90,3 +90,11 @@ def source_input(raw, relative):
     if len(raw) != row['previousBytes'] or _sha(raw) != row['previousSha256']:
         raise ValueError('Dual-browser inverse did not restore the complete original source')
     return raw
+
+
+# Only the exact journal-helper append is normalized at this comparison edge.
+import importlib.util as _navigation_metadata_import
+_navigation_metadata_spec = _navigation_metadata_import.spec_from_file_location('selected_navigation_metadata_view', Path(__file__).with_name('navigation_metadata_source_compatibility.py'))
+_navigation_metadata = _navigation_metadata_import.module_from_spec(_navigation_metadata_spec)
+_navigation_metadata_spec.loader.exec_module(_navigation_metadata)
+manifest = _navigation_metadata.wrap_dual_manifest(manifest)

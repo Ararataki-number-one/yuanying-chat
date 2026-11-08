@@ -302,8 +302,9 @@ class Fixture(fixture.Fixture):
 def main():
     parser=argparse.ArgumentParser();parser.add_argument('--adb',required=True);parser.add_argument('--serial',default='emulator-5554');parser.add_argument('--apk',type=pathlib.Path,default=ROOT/'app/build/outputs/apk/integration/app-x86_64-integration.apk')
     parser.add_argument('--reading-zoom-trace',action='store_true',help='Opt-in numeric reading zoom diagnostics only; does not change acceptance')
+    modes=parser.add_mutually_exclusive_group();modes.add_argument('--reading-only',action='store_true',help='Diagnostic reading/zoom/input subset; cannot replace full device acceptance');modes.add_argument('--update-transfers-only',action='store_true',help='Diagnostic real 28-case transfer subset; cannot replace full device acceptance');
     parser.add_argument('--native-navigation-version',type=int,choices=(1,2),default=2,help='Explicit native navigation protocol; v1 retains the original five-tab oracle')
-    modes=parser.add_mutually_exclusive_group();modes.add_argument('--reading-only',action='store_true',help='Diagnostic reading/zoom/input subset; cannot replace full device acceptance');modes.add_argument('--update-transfers-only',action='store_true',help='Diagnostic real 28-case transfer subset; cannot replace full device acceptance');args=parser.parse_args()
+    args=parser.parse_args()
     diagnostic='reading' if args.reading_only else 'update-transfers' if args.update_transfers_only else ''
     device_report_name='diagnostic-reading-results.json' if args.reading_only else 'diagnostic-update-device-results.json' if args.update_transfers_only else 'device-results.json'
     update_report_name='diagnostic-update-transfers-results.json' if diagnostic else 'update-transfer-results.json'
