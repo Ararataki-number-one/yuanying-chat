@@ -73,8 +73,12 @@ public class WindowHomeActivity extends ThemedActivity {
     root.addView(heading,new LinearLayout.LayoutParams(-1,-2));
 
     FrameLayout workspace=new FrameLayout(this);workspace.setClipChildren(false);workspace.setClipToPadding(false);
+    // Clip the scrolling source, not the floating controls. Stars fills the
+    // canvas clip; an unbounded source would paint over the fixed page heading.
+    FrameLayout viewport=new FrameLayout(this);viewport.setClipChildren(true);viewport.setClipToPadding(true);
+    workspace.addView(viewport,new FrameLayout.LayoutParams(-1,-1));
     backdrop=new GlassBackdrop(this);backdrop.setBackground(new DesignUi.Stars(this));
-    workspace.addView(backdrop,new FrameLayout.LayoutParams(-1,-1));
+    viewport.addView(backdrop,new FrameLayout.LayoutParams(-1,-1));
     workspaceScroll=new ScrollView(this);workspaceScroll.setFillViewport(true);workspaceScroll.setClipToPadding(false);
     LinearLayout box=DesignUi.column(this);box.setPadding(dp(20),dp(4),dp(20),dp(20));
     workspaceScroll.addView(box,new ScrollView.LayoutParams(-1,-2));backdrop.addView(workspaceScroll,new FrameLayout.LayoutParams(-1,-1));
@@ -126,7 +130,7 @@ public class WindowHomeActivity extends ThemedActivity {
     workspace.addView(workspaceFooter,new FrameLayout.LayoutParams(-1,-2,Gravity.BOTTOM));
     selectionBar=DesignUi.column(this);
     selectionBar.setPadding(dp(14),dp(8),dp(14),dp(10));
-    selectionBar.setBackground(DesignUi.surface(this,DesignUi.CARD,0,DesignUi.LINE));
+    selectionBar.setBackground(EnvironmentWorkspaceStyle.card(this,false,false));
     LinearLayout selectionTools=DesignUi.row(this);
     selectionCount=DesignUi.text(this,"",13,DesignUi.TEXT);
     selectionCount.setIncludeFontPadding(true);
@@ -151,7 +155,9 @@ public class WindowHomeActivity extends ThemedActivity {
     }
     if(largeText){HorizontalScrollView batchScroll=new HorizontalScrollView(this);batchScroll.setHorizontalScrollBarEnabled(false);batchScroll.addView(batchActions);selectionBar.addView(batchScroll,new LinearLayout.LayoutParams(-1,-2));}
     else selectionBar.addView(batchActions);
-    selectionBar.setVisibility(View.GONE);selectionBar.setClickable(true);workspaceFooter.addView(selectionBar);
+    selectionBar.setVisibility(View.GONE);selectionBar.setClickable(true);
+    LinearLayout.LayoutParams selectionParams=new LinearLayout.LayoutParams(-1,-2);
+    selectionParams.setMargins(dp(20),dp(6),dp(20),dp(6));workspaceFooter.addView(selectionBar,selectionParams);
     navigationBar=DesignUi.nav(this,WorkspaceNavigation.ENVIRONMENTS,n->WorkspaceNavigation.select(this,WorkspaceNavigation.ENVIRONMENTS,n),null);
     navigationBar.setBackground(EnvironmentWorkspaceStyle.scrollEdge(this));navigationBar.setClickable(true);navigationBar.setFocusable(false);
     workspaceFooter.addView(navigationBar,new LinearLayout.LayoutParams(-1,-2));
@@ -185,20 +191,22 @@ public class WindowHomeActivity extends ThemedActivity {
     if(workspaceScroll.getPaddingBottom()!=bottom)workspaceScroll.setPadding(0,0,0,bottom);
   }
   int windowTop(View view){int[] point=new int[2];view.getLocationInWindow(point);return point[1];}
+  int environmentContentTop(View row,ScrollView scroll){return windowTop(row)-windowTop(scroll)+scroll.getScrollY();}
   View visibleEnvironmentAnchor(){
     if(workspaceScroll==null||workspaceScroll.getScrollY()==0)return null;
     int top=windowTop(workspaceScroll),bottom=top+workspaceScroll.getHeight()-workspaceFooter.getHeight();
     for(int i=0;i<environmentList.getChildCount();i++){View row=environmentList.getChildAt(i);if(row.getVisibility()!=View.VISIBLE)continue;int y=windowTop(row);if(y+row.getHeight()>top&&y<bottom)return row;}
     return null;
   }
-  void restoreEnvironmentPosition(ScrollView scroll,View anchor,int anchorTop,int oldY,Object token){
+  void restoreEnvironmentPosition(ScrollView scroll,View anchor,int anchorTop,Object token){
     scroll.getViewTreeObserver().addOnPreDrawListener(new ViewTreeObserver.OnPreDrawListener(){
       @Override public boolean onPreDraw(){
         if(scroll.getViewTreeObserver().isAlive())scroll.getViewTreeObserver().removeOnPreDrawListener(this);
         if(!workspaceVisible||renderPositionToken!=token)return true;
         if(anchor!=null&&anchor.getParent()==environmentList&&anchor.getVisibility()==View.VISIBLE)
-          scroll.scrollBy(0,windowTop(anchor)-anchorTop);
-        else scroll.scrollTo(0,oldY);
+          // Content coordinates cancel any drag/fling since the snapshot. Only
+          // the actual row-layout delta belongs in this compensation.
+          scroll.scrollBy(0,environmentContentTop(anchor,scroll)-anchorTop);
         return true;
       }
     });
@@ -310,7 +318,7 @@ public class WindowHomeActivity extends ThemedActivity {
   void refresh(){requestSnapshot();renderCached();}
   void renderSnapshot(EnvironmentHomeSnapshot value){
     if(cards==null||selectionBar==null)return;
-    View anchor=visibleEnvironmentAnchor();int anchorTop=anchor==null?0:windowTop(anchor);
+    View anchor=visibleEnvironmentAnchor();int anchorTop=anchor==null?0:environmentContentTop(anchor,workspaceScroll);
     int previousHero=recentEnvironment.card.getVisibility(),previousInbox=inbox.getVisibility();
     Object positionToken=new Object();renderPositionToken=positionToken;
     JSONArray rows=value.rows;Set<Integer> running=value.running,created=new HashSet<>();long now=System.currentTimeMillis();
@@ -323,12 +331,22 @@ public class WindowHomeActivity extends ThemedActivity {
     boolean filtered=selectedGroup!=null||sort!=0;filterOptions.setSelected(filtered);filterOptions.setContentDescription("筛选与排序，当前分组："+(selectedGroup==null?"全部":selectedGroup.isEmpty()?"未分组":selectedGroup)+"，"+new String[]{"编号排序","最近使用","名称排序"}[sort]);
     if(filterOptions.getTag()==null||!Boolean.valueOf(filtered).equals(filterOptions.getTag())){filterOptions.setTag(filtered);filterOptions.setBackground(Ui.ripple(this,filtered?0xffeaf1ff:DesignUi.CARD,18));}
     String[] labels={"全部","收藏","运行中","等待回复","需处理"};
-    for(int i=0;i<filterButtons.length;i++){Button button=filterButtons[i];setText(button,labels[i]+" "+counts[i]);boolean chosen=i==filter;if(button.isSelected()!=chosen||button.getTag()==null){button.setTag(Boolean.TRUE);button.setSelected(chosen);button.setTextColor(chosen?DesignUi.BLUE:DesignUi.MUTED);button.setTypeface(android.graphics.Typeface.create(chosen?"sans-serif-medium":"sans-serif",android.graphics.Typeface.NORMAL));button.setBackground(new android.graphics.drawable.InsetDrawable(Ui.ripple(this,chosen?0xffeaf1ff:android.graphics.Color.TRANSPARENT,20),0,dp(5),0,dp(5)));}int width=DesignUi.actionWidth(button,64);if(button.getLayoutParams().width!=width){button.getLayoutParams().width=width;button.requestLayout();}}
+    for(int i=0;i<filterButtons.length;i++){
+      Button button=filterButtons[i];setText(button,labels[i]+" "+counts[i]);boolean chosen=i==filter;
+      if(button.isSelected()!=chosen||button.getTag()==null){
+        button.setTag(Boolean.TRUE);button.setSelected(chosen);button.setTextColor(chosen?DesignUi.BLUE:DesignUi.MUTED);
+        button.setTypeface(android.graphics.Typeface.create(chosen?"sans-serif-medium":"sans-serif",android.graphics.Typeface.NORMAL));
+        button.setBackground(new android.graphics.drawable.InsetDrawable(Ui.ripple(this,chosen?0xffeaf1ff:android.graphics.Color.TRANSPARENT,20),0,dp(5),0,dp(5)));
+        // InsetDrawable supplies padding; restore breathing room before measuring.
+        button.setPadding(dp(13),dp(4),dp(13),dp(4));
+      }
+      int width=DesignUi.actionWidth(button,64);if(button.getLayoutParams().width!=width){button.getLayoutParams().width=width;button.requestLayout();}
+    }
     if(sort==1)ordered.sort((l,r)->Long.compare(r.optLong("opened"),l.optLong("opened")));if(sort==2)ordered.sort((l,r)->l.optString("name").compareToIgnoreCase(r.optString("name")));
     renderMaintenance(rows);visibleIds.clear();Set<String> retained=new HashSet<>();int index=0;
     ScrollView scroll=cards.getParent() instanceof ScrollView?(ScrollView)cards.getParent():null; // body owns scroll; locate below when needed.
     View parent=cards;while(parent.getParent() instanceof View&&!(parent.getParent() instanceof ScrollView))parent=(View)parent.getParent();if(parent.getParent() instanceof ScrollView)scroll=(ScrollView)parent.getParent();
-    final ScrollView scrolling=scroll;int oldY=scrolling==null?0:scrolling.getScrollY();boolean structure=previousHero!=recentEnvironment.card.getVisibility()||previousInbox!=inbox.getVisibility();
+    final ScrollView scrolling=scroll;boolean structure=previousHero!=recentEnvironment.card.getVisibility()||previousInbox!=inbox.getVisibility();
     for(JSONObject row:ordered){String key=EnvironmentPresentation.key(row);retained.add(key);EnvironmentRow holder=rowViews.get(key);if(holder==null){holder=new EnvironmentRow();rowViews.put(key,holder);structure=true;}holder.value=row;
       boolean show=EnvironmentPresentation.visible(row,running,filter,"",selectedGroup)&&value.search.matches(row,searchTokens);if(show)visibleIds.add(row.optInt("slot"));
       if(holder.root.getVisibility()!=(show?View.VISIBLE:View.GONE)){holder.root.setVisibility(show?View.VISIBLE:View.GONE);structure=true;}
@@ -341,7 +359,12 @@ public class WindowHomeActivity extends ThemedActivity {
     int maintenance=0;for(int i=0;i<rows.length();i++){JSONObject row=rows.optJSONObject(i);if(row.optBoolean("resetting")||row.optBoolean("deleting"))maintenance++;}
     setText(count,counts[0]==0&&maintenance>0?maintenance+" 个环境待完成维护":visibleIds.size()==counts[0]?counts[0]+" 个环境":"显示 "+visibleIds.size()+" / "+counts[0]);
     String empty=visibleIds.isEmpty()?(counts[0]==0&&maintenance>0?"maintenance":"filtered"):"";if(!empty.equals(emptySignature)){emptySignature=empty;emptyRows.removeAllViews();if("maintenance".equals(empty))DesignUi.note(emptyRows,"有环境等待完成维护，请点击上方继续重置或清理。");else if("filtered".equals(empty))DesignUi.empty(emptyRows,"没有匹配的环境","试试其他关键词，或重置分组与状态筛选。","重置筛选",()->{filter=0;selectedGroup=null;search.setText("");renderCached();});}
-    updateSelectionBar(rows);if((structure||anchor!=null)&&scrolling!=null)restoreEnvironmentPosition(scrolling,anchor,anchorTop,oldY,positionToken);
+    updateSelectionBar(rows);
+    // A heartbeat with unchanged layout must not arm a deferred scroll write.
+    if(anchor!=null&&scrolling!=null&&(structure||environmentList.isLayoutRequested()
+        ||recentEnvironment.card.getVisibility()==View.VISIBLE&&recentEnvironment.card.isLayoutRequested()
+        ||selectionBar.getVisibility()==View.VISIBLE&&selectionBar.isLayoutRequested()))
+      restoreEnvironmentPosition(scrolling,anchor,anchorTop,positionToken);
   }
   static void setText(TextView view,String text){if(!android.text.TextUtils.equals(view.getText(),text))view.setText(text);}
   void renderMaintenance(JSONArray rows){
