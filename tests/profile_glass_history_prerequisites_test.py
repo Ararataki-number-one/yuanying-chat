@@ -224,12 +224,15 @@ class GlassHistoryPrerequisitesTests(unittest.TestCase):
                 '--root', str(self.root), '--output', str(output)]
         with patch.object(setup, 'prepare_history', side_effect=prepare_original), \
                 patch.object(setup, 'prepare_additional_history', side_effect=prepare_additional), \
+                patch.object(setup, 'prepare_ui_history', return_value=dict(
+                    schema=1, status='passed', groups=[dict(commit='4363dbc04df80d5c82ba966248e47a3fd69cbcc8')],
+                    fetchedCommits=[], checkoutUnchanged=True, testsExecuted=False, actualAndroidExecution=False)), \
                 patch.object(sys, 'argv', argv):
             setup.main()
         value = json.loads(output.read_bytes())
         self.assertEqual(calls, ['original21', 'additional2'])
         self.assertEqual(value['additionalHistory'], additional)
-        self.assertEqual({key: item for key, item in value.items() if key != 'additionalHistory'}, original)
+        self.assertEqual({key: item for key, item in value.items() if key not in ('additionalHistory', 'uiActivityHistory')}, original)
         self.assertEqual(len(value['groups']), 21)
         self.assertEqual(len(value['additionalHistory']['groups']), 2)
 

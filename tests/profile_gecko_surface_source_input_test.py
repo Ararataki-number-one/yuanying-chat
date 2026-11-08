@@ -39,7 +39,7 @@ class GeckoSurfaceHistoricalSourceInputs(unittest.TestCase):
         self.assertEqual(git('rev-parse', value['baseCommit'] + ':' + inputs.GV).decode().strip(), value['previousBlob'])
         previous = git('show', value['baseCommit'] + ':' + inputs.GV)
         raw = (ROOT / inputs.GV).read_bytes()
-        self.assertEqual((len(raw), inputs.sha(raw)), (128871, '3e20d18790110422acb9c622bf3dfd508d893c4a7f87a663b600a36bccc1e12a'))
+        self.assertEqual((len(inputs.retained_reviewed_input(raw)), inputs.sha(inputs.retained_reviewed_input(raw))), (128871, '3e20d18790110422acb9c622bf3dfd508d893c4a7f87a663b600a36bccc1e12a'))
         self.assertEqual((len(previous), inputs.sha(previous)), (128874, '55225a8da3ba67b3be724e243c9b442e635dbc5aa282a2ef0257653e8fb2b364'))
         self.assertEqual(inputs.source_input(raw, inputs.GV), previous)
         self.assertIs(inputs.historical_input(previous), previous)
@@ -65,9 +65,9 @@ class GeckoSurfaceHistoricalSourceInputs(unittest.TestCase):
             if moved == raw:moved = current + remaining
             changed.extend((remaining, raw.replace(current, current * 2, 1), moved,
                             raw.replace(current, current + b' ', 1)))
-        for before, after in ((b'surface.setViewBackend(GeckoView.BACKEND_SURFACE_VIEW);', b''),
-                              (b'BACKEND_SURFACE_VIEW', b'BACKEND_TEXTURE_VIEW'),
-                              (b'BACKEND_SURFACE_VIEW', b'BACKEND_SURFACE_VIEW_BACKEND_SURFACE_VIEW'),
+        for before, after in ((b'surface.coverUntilFirstPaint(ReferenceUi.CHAT_BG);', b'surface.setViewBackend(GeckoView.BACKEND_SURFACE_VIEW);surface.coverUntilFirstPaint(ReferenceUi.CHAT_BG);'),
+                              (b'surface=new GeckoView(displayContext);', b'surface=new GeckoView(displayContext);surface.setViewBackend(GeckoView.BACKEND_TEXTURE_VIEW);'),
+                              (b'surface=new GeckoView(displayContext);', b'surface=new GeckoView(displayContext);surface=new GeckoView(displayContext);'),
                               (b'initialize();if(!resourceDeferred&&!failed){if(!target.isEmpty())owner.beginNavigation',
                                b'initialize();if(!failed){if(!target.isEmpty())owner.beginNavigation'),
                               (b'if(!ready||!current()){fail.accept(new IOException("\xe5\x87\xba\xe5\x8f\xa3\xe6\x97\xb6\xe5\x8c\xba\xe6\x9f\xa5\xe8\xaf\xa2\xe4\xb8\x8a\xe4\xb8\x8b\xe6\x96\x87\xe5\xb7\xb2\xe5\x8f\x98\xe5\x8c\x96"))',
@@ -85,6 +85,23 @@ class GeckoSurfaceHistoricalSourceInputs(unittest.TestCase):
             with self.assertRaises(ValueError):inputs.source_input(candidate, inputs.GV)
         for relative in (None, Path(inputs.GV), '/' + inputs.GV, '../' + inputs.GV, 'app/GeckoWebView.java'):
             with self.assertRaises(ValueError):inputs.source_input(raw, relative)
+
+    def test_default_constructor_and_retained_bad_backend_image_have_distinct_admission(self):
+        raw = (ROOT / inputs.GV).read_bytes()
+        self.assertEqual((len(raw), inputs.sha(raw)), (128826, 'c9fb300c0611d48e99b51256435beef0d4e99680a64818eea49202afd67595aa'))
+        self.assertEqual(raw.count(b'surface.setViewBackend('), 0)
+        retained = inputs.retained_reviewed_input(raw)
+        self.assertEqual((len(retained), inputs.sha(retained)), (128871, '3e20d18790110422acb9c622bf3dfd508d893c4a7f87a663b600a36bccc1e12a'))
+        self.assertEqual(retained.count(b'surface.setViewBackend(GeckoView.BACKEND_SURFACE_VIEW);'), 1)
+        self.assertIs(inputs.historical_input(retained), retained)
+        with self.assertRaises(ValueError):inputs.source_input(retained, inputs.GV)
+        with self.assertRaises(ValueError):path_host.verify_factored_raw('GeckoWebView', retained)
+        previous = inputs.historical_input(raw).replace(
+            b'initialize();if(!resourceDeferred&&!failed){if(!target.isEmpty())owner.beginNavigation',
+            b'initialize();if(!resourceDeferred&&!failed&&runtime!=null){if(!target.isEmpty())owner.beginNavigation', 1)
+        with self.assertRaises(AssertionError):window_host.verify_recovery_source(retained, previous)
+        self.assertIs(path_host.verify_factored_raw('GeckoWebView', raw), raw)
+        self.assertEqual((ROOT / inputs.GV).read_bytes(), raw)
 
     def test_original_guard_bodies_pins_and_report_identity_are_independent(self):
         raw = (ROOT / inputs.GV).read_bytes()

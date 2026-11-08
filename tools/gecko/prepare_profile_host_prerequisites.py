@@ -16,6 +16,8 @@ ADDITIONAL_MANIFEST = 'tests/baselines/glass-source-history.json'
 ADDITIONAL_MANIFEST_SHA256 = 'af35f288a24a95da70d86559903fed6659c7fc7b8a283e1bc807732f964d5920'
 ADDITIONAL_COMMITS = ('6ee06aced87581e52aa301431f8996ed46d666b8',
                       '7402ead321ca74b9fbefeab32a1aaffb32832011')
+UI_MANIFEST = 'tests/baselines/ui-preparation-source-history.json'
+UI_MANIFEST_SHA256 = 'a267fa95edd75fc29832cb3aa284815f3d8e870d0ca86f84df59cd46c1e7198f'
 
 
 def require(condition, message):
@@ -175,6 +177,61 @@ def prepare_additional_history(root=ROOT, *, source_commit, environment=None):
                 checkoutUnchanged=True, testsExecuted=False, actualAndroidExecution=False)
 
 
+def ui_manifest(root):
+    """One independent fixed UI owner; the original inventories stay whole."""
+    path = Path(root) / UI_MANIFEST
+    require(path.is_file() and not path.is_symlink(), 'fixed UI history manifest required')
+    raw = path.read_bytes()
+    require(0 < len(raw) <= 4096 and hashlib.sha256(raw).hexdigest() == UI_MANIFEST_SHA256,
+            'fixed UI history manifest bytes differ')
+    value = json.loads(raw)
+    require(type(value) is dict and set(value) == {'schema', 'repository', 'scope', 'groups'}
+            and type(value['schema']) is int and value['schema'] == 1
+            and value['repository'] == history.REPOSITORY
+            and value['scope'] == 'additional-ui-preparation-source-history',
+            'fixed UI history manifest shape differs')
+    expected = {'commit': '4363dbc04df80d5c82ba966248e47a3fd69cbcc8',
+                'tree': '08189ae748eb1045ff21af4253369ef17d6bdad3',
+                'files': {'tests/gecko/UiVisualIntegrationActivity.java': {
+                    'mode': '100644', 'blob': 'be0704e74cc2f106dc1c765c909cf17c33e6f0dc',
+                    'bytes': 13373, 'sha256': '04f629d6053d1fc62bdddd590c4b405ddff2d564fd4dc3211332c849da0a4366'}}}
+    require(type(value['groups']) is list and value['groups'] == [expected],
+            'one fixed UI commit, tree and complete Activity blob required')
+    return value['groups']
+
+
+def prepare_ui_history(root=ROOT, *, source_commit, environment=None):
+    """Use the same strict object checks and explicit fetch for the UI before."""
+    root = Path(root).resolve()
+    environment = os.environ if environment is None else environment
+    require(type(source_commit) is str and re.fullmatch('[0-9a-f]{40}', source_commit),
+            'exact checkout source commit required')
+    groups = ui_manifest(root)
+    require(len(groups) == 1, 'one separate UI history group required')
+    before = history.checkout_state(root)
+    require(before['sourceCommit'] == source_commit, 'requested source differs from actual checkout')
+    missing = []
+    for group in groups:
+        try:
+            history.verify_group(root, group)
+        except history.MissingHistoricalObject:
+            missing.append(group['commit'])
+    if missing:
+        authorize_fetch(root, source_commit, environment)
+        require(history.checkout_state(root) == before, 'checkout changed before UI history fetch')
+        try:
+            history.checked(root, 'fetch', '--no-tags', '--depth=1', '--no-write-fetch-head',
+                            '--no-filter', 'origin', *missing)
+        finally:
+            require(history.checkout_state(root) == before,
+                    'UI history fetch changed HEAD, tree, index or tracked bytes')
+    observed = [history.verify_group(root, group) for group in groups]
+    require(history.checkout_state(root) == before, 'UI history verification changed checkout')
+    return dict(schema=1, status='passed', sourceCommit=source_commit, sourceTree=before['sourceTree'],
+                manifestSha256=UI_MANIFEST_SHA256, groups=observed, fetchedCommits=missing,
+                checkoutUnchanged=True, testsExecuted=False, actualAndroidExecution=False)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--source-commit', required=True)
@@ -183,6 +240,7 @@ def main():
     args = parser.parse_args()
     value = prepare_history(args.root, source_commit=args.source_commit)
     value['additionalHistory'] = prepare_additional_history(args.root, source_commit=args.source_commit)
+    value['uiActivityHistory'] = prepare_ui_history(args.root, source_commit=args.source_commit)
     raw = json.dumps(value, sort_keys=True, indent=2) + '\n'
     if args.output:
         args.output.parent.mkdir(parents=True, exist_ok=True)

@@ -213,3 +213,12 @@ _gradle_transport_input = _gradle_transport_import.module_from_spec(_gradle_tran
 _gradle_transport_spec.loader.exec_module(_gradle_transport_input)
 checkpoint_transport_input = _gradle_transport_input.canonical_history_input
 checkpoint_workflow_input = _gradle_transport_input.wrap_checkpoint_workflow(checkpoint_workflow_input)
+
+
+# Only historical Activity guards reverse the exact empty preparation route.
+import importlib.util as _preparation_import
+_preparation_spec = _preparation_import.spec_from_file_location('selected_ui_preparation_source_input', Path(__file__).with_name('ui_preparation_source_compatibility.py'))
+_preparation_input = _preparation_import.module_from_spec(_preparation_spec)
+_preparation_spec.loader.exec_module(_preparation_input)
+navigation_source_input = _preparation_input.wrap_source(navigation_source_input)
+history_input = _preparation_input.wrap_source(history_input)

@@ -71,7 +71,12 @@ class GeckoSurfaceBackend(unittest.TestCase):
         self.assertIn('AssertionError', result.stderr)
 
     def test_texture_backend_regression_is_rejected_by_call_trace(self):
-        self.rejected('GeckoView.BACKEND_SURFACE_VIEW', 'GeckoView.BACKEND_TEXTURE_VIEW')
+        self.rejected('surface.coverUntilFirstPaint(',
+                      'surface.setViewBackend(GeckoView.BACKEND_TEXTURE_VIEW);surface.coverUntilFirstPaint(')
+
+    def test_reselecting_default_backend_and_losing_its_holder_listener_is_rejected(self):
+        self.rejected('surface.coverUntilFirstPaint(',
+                      'surface.setViewBackend(GeckoView.BACKEND_SURFACE_VIEW);surface.coverUntilFirstPaint(')
 
     def test_recreating_a_retained_surface_is_rejected(self):
         self.rejected('if(surface==null)', 'if(true)')
@@ -79,10 +84,10 @@ class GeckoSurfaceBackend(unittest.TestCase):
     def test_live_backend_selection_after_session_attachment_is_rejected(self):
         method = actual_open()
         call = 'surface.setViewBackend(GeckoView.BACKEND_SURFACE_VIEW);'
-        self.assertEqual(method.count(call), 1)
+        self.assertEqual(method.count('setViewBackend('), 0)
         self.assertEqual(method.count('surface.setSession(primary);'), 1)
-        changed = method.replace(call, '', 1).replace('surface.setSession(primary);',
-                                                     'surface.setSession(primary);' + call, 1)
+        changed = method.replace('surface.setSession(primary);',
+                                 'surface.setSession(primary);' + call, 1)
         result = execute_model(changed)
         self.assertNotEqual(result.returncode, 0)
         self.assertIn('AssertionError', result.stderr)
@@ -91,8 +96,43 @@ class GeckoSurfaceBackend(unittest.TestCase):
         self.rejected('if(!enabled||destroyed)return;', 'if(!enabled)return;')
 
 
+
+def execute_actual_sdk_callbacks(sdk_jar, java, javac):
+    """Execute unmodified SDK callback wiring with explicit Android boundaries.
+
+    This does not instantiate a Gecko runtime or render a surface. Android
+    boundary holders only count registrations and dispatch the standard callback;
+    the wrapper, its listener and MagnifiableSurfaceView are the real SDK classes.
+    """
+    with tempfile.TemporaryDirectory(prefix='gecko-real-sdk-holder-') as temporary:
+        base = Path(temporary)
+        sources = []
+        for name, raw in SDK_CALLBACK_ANDROID_BOUNDARIES.items():
+            path = base / 'src' / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(raw)
+            sources.append(str(path))
+        source = base / 'src/SurfaceCallbackProbe.java'
+        source.write_text(SDK_CALLBACK_PROBE)
+        sources.append(str(source))
+        classes = base / 'classes'
+        built = subprocess.run([str(javac), '-encoding', 'UTF-8', '--release', '17',
+                                '-classpath', str(sdk_jar), '-d', str(classes), *sources],
+                               capture_output=True, text=True, timeout=45)
+        if built.returncode:
+            raise AssertionError(built.stdout + built.stderr)
+        ran = subprocess.run([str(java), '-cp', str(classes) + os.pathsep + str(sdk_jar),
+                              'SurfaceCallbackProbe'], capture_output=True, text=True, timeout=15)
+        if ran.returncode:
+            raise AssertionError(ran.stdout + ran.stderr)
+        result = json.loads(ran.stdout)
+        if Path(result['actualSdkCodeSource']).resolve() != sdk_jar.resolve():
+            raise AssertionError('Callback probe did not execute the receipt-bound real SDK')
+        return result
+
+
 def compile_actual_api(args):
-    _, javac = java_tools(args.java_home)
+    java, javac = java_tools(args.java_home)
     receipt = json.loads(args.sdk_receipt.read_text())
     inputs = [SOURCE, Path(__file__), args.sdk_jar, args.sdk_receipt, args.android_jar]
     before = {str(path.resolve()): SHA(path.read_bytes()) for path in inputs}
@@ -109,6 +149,9 @@ def compile_actual_api(args):
     if (constants['BACKEND_SURFACE_VIEW'], constants['BACKEND_TEXTURE_VIEW']) != (1, 2):
         raise AssertionError('Review the actual SDK backend constants')
     method = actual_open()
+    if 'setViewBackend(' in method:
+        raise AssertionError('Do not replace the SDK constructor holder or its listener')
+    callback_proof = execute_actual_sdk_callbacks(args.sdk_jar, java, javac)
     with tempfile.TemporaryDirectory(prefix='gecko-surface-real-api-') as temporary:
         base = Path(temporary)
         source = base / 'GeckoWebView.java'
@@ -127,9 +170,11 @@ def compile_actual_api(args):
                   currentOpenSha256=SHA(method.encode()), sdkJarSha256=receipt['sdkClassesJarSha256'],
                   actualGeckoViewClassSha256=SHA(view_class), backendConstants=dict(surface=1, texture=2),
                   androidJarSha256=before[str(args.android_jar.resolve())], inputSha256=before,
-                  actualSdkApiCompilation=True, syntheticSdk=False, syntheticAndroidApi=False,
+                  actualSdkApiCompilation=True, actualSdkCallbackProof=callback_proof,
+                  actualSdkCallbackExecution=True, syntheticAndroidCallbackTransport=True,
+                  syntheticSdk=False, syntheticAndroidApi=False,
                   executionInputsUnchanged=True, actualAndroidExecution=False, actualGeckoExecution=False,
-                  scope='Verbatim current production open() compiled against receipt-bound real GeckoView/GeckoSession/GeckoRuntime and pinned Android35. Other app methods are explicit compile-only boundaries; no Gecko instance, rendering, transform, IME, overlay or idle-frame runtime acceptance.')
+                  scope='Verbatim current production open() compiled against receipt-bound real GeckoView/GeckoSession/GeckoRuntime and pinned Android35. The unmodified real SDK SurfaceViewWrapper, listener and MagnifiableSurfaceView also execute with counted synthetic Android callback transport, proving constructor registration and the same-backend replacement negative control. Other app methods are explicit compile-only boundaries; no native Gecko runtime, device rendering, transform, IME, overlay or idle-frame runtime acceptance.')
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(report, indent=2) + '\n')
     print(json.dumps(report))
@@ -143,7 +188,7 @@ public final class BackendCases {
  public static void main(String[] args){
   GeckoWebView owner=new GeckoWebView();owner.desktop=true;owner.queued="https://example.test/retained";
   owner.invoke();
-  check(Events.values.equals(Arrays.asList("view","backend:1","cover","attach","new-session","open-session","set-session","privacy","configure","load")),"Actual initialization order");
+  check(Events.values.equals(Arrays.asList("view","cover","attach","new-session","open-session","set-session","privacy","configure","load")),"Actual initialization order retains the SDK constructor's holder listener");
   check(owner.surface.backend==GeckoView.BACKEND_SURFACE_VIEW,"Native surface backend selected");
   check(owner.ready&&owner.primary==owner.current&&owner.surface.session==owner.primary,"Same opened session is attached and ready");
   check(owner.surface.cover==ReferenceUi.CHAT_BG,"Original first-paint cover retained");
@@ -152,7 +197,7 @@ public final class BackendCases {
   GeckoView retained=owner.surface;Events.values.clear();owner.invoke();
   check(owner.surface==retained,"Retained surface is not reconstructed");
   check(Events.values.equals(Arrays.asList("new-session","open-session","set-session","privacy","configure")),"Retained surface does not reselect a live backend or reattach");
-  check(owner.surface.backendSelections==1,"Backend selected exactly once over surface lifetime");
+  check(owner.surface.backendSelections==0,"Constructor's surface is never replaced with a listener-free holder");
   check(owner.surface.session==owner.current&&owner.current==owner.primary,"New session uses the retained surface");
   Events.values.clear();GeckoWebView disabled=new GeckoWebView();disabled.enabled=false;disabled.invoke();
   check(Events.values.isEmpty(),"Disabled owner performs no SDK calls");
@@ -161,7 +206,7 @@ public final class BackendCases {
   check(Events.values.isEmpty(),"Destroyed owner performs no SDK calls");
   check(destroyed.surface==null&&!destroyed.ready&&destroyed.current==null,"Destroyed owner state retained");
   check(retained.backend==1,"Guard cases do not alter the retained backend");
-  check(retained.backendSelections==1,"Guard cases do not schedule backend reselection");
+  check(retained.backendSelections==0,"Guard cases do not schedule backend reselection");
   System.out.println("{\\"status\\":\\"passed\\",\\"checks\\":"+checks+",\\"actualAndroidExecution\\":false}");
  }
 }
@@ -207,6 +252,57 @@ final class Owner {Privacy privacy;}
 final class Privacy {int level(){throw new UnsupportedOperationException("compile-only app boundary");}}
 final class ReferenceUi {static int CHAT_BG;}
 '''
+
+
+SDK_CALLBACK_ANDROID_BOUNDARIES = {'android/content/Context.java': 'package android.content; public class Context {}\n',
+ 'android/graphics/Rect.java': 'package android.graphics; public class Rect { public int '
+                               'right,bottom; public Rect(int w,int h){right=w;bottom=h;} }\n',
+ 'android/graphics/SurfaceTexture.java': 'package android.graphics; public class SurfaceTexture '
+                                         '{}\n',
+ 'android/os/Build.java': 'package android.os; public class Build { public static class VERSION { '
+                          'public static int SDK_INT=35; } }\n',
+ 'android/util/Log.java': 'package android.util; public class Log { public static int e(String '
+                          'a,String b){return 0;} }\n',
+ 'android/view/Surface.java': 'package android.view; public class Surface { public Surface(){} '
+                              'public Surface(android.graphics.SurfaceTexture t){} }\n',
+ 'android/view/SurfaceControl.java': 'package android.view; public class SurfaceControl {}\n',
+ 'android/view/SurfaceHolder.java': 'package android.view; public interface SurfaceHolder { void '
+                                    'setFormat(int f); void addCallback(Callback c); Surface '
+                                    'getSurface(); android.graphics.Rect getSurfaceFrame(); '
+                                    'interface Callback { void surfaceCreated(SurfaceHolder h); '
+                                    'void surfaceChanged(SurfaceHolder h,int f,int w,int z); void '
+                                    'surfaceDestroyed(SurfaceHolder h); } }\n',
+ 'android/view/SurfaceView.java': 'package android.view; public class SurfaceView extends View { '
+                                  'public final Holder holder=new Holder(); public '
+                                  'SurfaceView(android.content.Context c){super(c);} public '
+                                  'SurfaceHolder getHolder(){return holder;} public SurfaceControl '
+                                  'getSurfaceControl(){return new SurfaceControl();} public static '
+                                  'class Holder implements SurfaceHolder { public final '
+                                  'java.util.List<Callback> callbacks=new java.util.ArrayList<>(); '
+                                  'public void setFormat(int f){} public void addCallback(Callback '
+                                  'c){callbacks.add(c);} public Surface getSurface(){return new '
+                                  'Surface();} public android.graphics.Rect '
+                                  'getSurfaceFrame(){return new android.graphics.Rect(2676,594);} '
+                                  'public void dispatch(){for(Callback '
+                                  'c:callbacks)c.surfaceChanged(this,-2,2676,594);} } }\n',
+ 'android/view/TextureView.java': 'package android.view; public class TextureView extends View { '
+                                  'public TextureView(android.content.Context c){super(c);} public '
+                                  'android.graphics.SurfaceTexture getSurfaceTexture(){return new '
+                                  'android.graphics.SurfaceTexture();} public void '
+                                  'setSurfaceTextureListener(SurfaceTextureListener l){} public '
+                                  'interface SurfaceTextureListener { void '
+                                  'onSurfaceTextureAvailable(android.graphics.SurfaceTexture t,int '
+                                  'w,int h); void '
+                                  'onSurfaceTextureSizeChanged(android.graphics.SurfaceTexture '
+                                  't,int w,int h); boolean '
+                                  'onSurfaceTextureDestroyed(android.graphics.SurfaceTexture t); '
+                                  'void onSurfaceTextureUpdated(android.graphics.SurfaceTexture '
+                                  't); } }\n',
+ 'android/view/View.java': 'package android.view; public class View { public '
+                           'View(android.content.Context c){} public void setBackgroundColor(int '
+                           'c){} }\n'}
+
+SDK_CALLBACK_PROBE = 'import org.mozilla.gecko.SurfaceViewWrapper;\nimport android.view.*;\npublic final class SurfaceCallbackProbe {\n static final class Listener implements SurfaceViewWrapper.Listener {\n  int changed;\n  public void onSurfaceChanged(Surface surface,SurfaceControl control,int width,int height){\n   if(width!=2676||height!=594)throw new AssertionError("Actual SDK callback geometry changed");\n   changed++;\n  }\n  public void onSurfaceDestroyed(){}\n }\n public static void main(String[] args) throws Exception {\n  android.content.Context context=new android.content.Context();\n  SurfaceViewWrapper wrapper=new SurfaceViewWrapper(context);\n  Listener listener=new Listener();wrapper.setListener(listener);\n  SurfaceView initial=(SurfaceView)wrapper.getView();\n  int initialCallbacks=initial.holder.callbacks.size();\n  initial.holder.dispatch();int initialEvents=listener.changed;\n  if(initialCallbacks!=1||initialEvents!=1)throw new AssertionError("SDK constructor listener was not wired");\n  wrapper.useSurfaceView(context);\n  SurfaceView replacement=(SurfaceView)wrapper.getView();\n  int replacementCallbacks=replacement.holder.callbacks.size();\n  replacement.holder.dispatch();int replacementEvents=listener.changed-initialEvents;\n  if(initial==replacement||replacementCallbacks!=0||replacementEvents!=0)\n   throw new AssertionError("Review the actual SDK same-backend replacement behavior");\n  wrapper.setListener(listener);replacement.holder.dispatch();\n  if(replacement.holder.callbacks.size()!=1||listener.changed!=initialEvents+1)\n   throw new AssertionError("Synthetic callback transport did not preserve real SDK listener dispatch");\n  String codeSource=new java.io.File(SurfaceViewWrapper.class.getProtectionDomain().getCodeSource().getLocation().toURI()).getAbsolutePath();\n  System.out.println("{\\"status\\":\\"passed\\",\\"actualSdkCodeSource\\":\\""+codeSource+"\\",\\"defaultHolderCallbacks\\":"+initialCallbacks+",\\"defaultSurfaceEventsDelivered\\":"+initialEvents+",\\"replacementHolderCallbacks\\":"+replacementCallbacks+",\\"replacementSurfaceEventsDelivered\\":"+replacementEvents+",\\"reboundHolderCallbacks\\":"+replacement.holder.callbacks.size()+",\\"reboundSurfaceEventsDelivered\\":"+(listener.changed-initialEvents)+",\\"actualAndroidExecution\\":false}");\n }\n}\n'
 
 
 if __name__ == '__main__':

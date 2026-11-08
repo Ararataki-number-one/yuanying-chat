@@ -6,6 +6,7 @@ import subprocess
 import unittest
 
 import ui_checkpoint_source_compatibility as navigation
+import ui_preparation_source_compatibility as preparation
 import ui_observer_source_compatibility as observer
 import ui_visual_preservation_contract as original_ui
 
@@ -22,7 +23,7 @@ class NavigationSourceCompatibilityTests(unittest.TestCase):
         self.assertEqual(git('rev-parse', value['reviewedCommit'] + '^{tree}').decode().strip(), value['reviewedTree'])
         previous = git('show', value['previousCommit'] + ':' + navigation.NAVIGATION_PATH)
         current = git('show', value['reviewedCommit'] + ':' + navigation.NAVIGATION_PATH)
-        self.assertEqual((ROOT / navigation.NAVIGATION_PATH).read_bytes(), current)
+        self.assertEqual(preparation.historical_input((ROOT / navigation.NAVIGATION_PATH).read_bytes()), current)
         self.assertEqual(navigation.navigation_source_input(current, navigation.NAVIGATION_PATH), previous)
         self.assertEqual(navigation.history_input(current, navigation.NAVIGATION_PATH), previous)
         restored = previous
@@ -35,7 +36,7 @@ class NavigationSourceCompatibilityTests(unittest.TestCase):
     def test_actual_navigation_anchors_cannot_be_missing_duplicated_moved_or_changed(self):
         raw = (ROOT / navigation.NAVIGATION_PATH).read_bytes()
         for delta in navigation.navigation_manifest()['deltas']:
-            current = delta['current'].encode()
+            current = preparation.actual_navigation_context(raw, delta['current'].encode())
             self.assertEqual(raw.count(current), 1)
             remaining = raw.replace(current, b'', 1)
             moved = current + remaining
@@ -82,7 +83,7 @@ class NavigationSourceCompatibilityTests(unittest.TestCase):
         path = ROOT / navigation.NAVIGATION_PATH
         raw = path.read_bytes()
         receipt = original_ui.verify_download_visual_fixture_source(raw)
-        self.assertEqual(receipt['selectedFixtureSha256'], navigation.NAVIGATION_CURRENT_SHA256)
+        self.assertEqual(preparation.historical_report_sha(raw, receipt['selectedFixtureSha256']), navigation.NAVIGATION_CURRENT_SHA256)
         self.assertEqual(receipt['originalFixtureSha256'], original_ui.PRE_DOWNLOAD_ISOLATION_FIXTURE_SHA256)
         self.assertFalse(receipt['actualAndroidExecution'])
         self.assertEqual(path.read_bytes(), raw)

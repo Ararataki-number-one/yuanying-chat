@@ -24,6 +24,7 @@ import xml.etree.ElementTree as ET
 
 from integration_event_contract import EventTransfer, parse_receipt_line
 from glass_display import GlassDisplay, verify_png
+from glass_document_viewport import require_document_viewport
 
 
 CONFIGURATIONS = (
@@ -270,7 +271,10 @@ def capture_loading_landscape(args, report, capture, adb, wait_for, screenshot, 
             raise ValueError('The required landscape observation must start after default-font restoration')
         api['set_display'](2676, 1236, 480)
         adb('shell', 'am', 'force-stop', package)
+        result['displayPreparation'] = display.prepare(api['COMPONENT'], stem + '-preparation')
         display.configure(2676, 1236, 480, 1.0, 'no')
+        result['displayPreparation']['configuredDisplay'] = display.require(
+            2676, 1236, 480, 1.0, 'no', stem + '-prepared')
         adb('shell', 'am', 'start', '-W', '-n', api['COMPONENT'], '--es', 'visualAction', 'chat')
         result['actualDisplay'] = display.require(2676, 1236, 480, 1.0, 'no', stem)
 
@@ -629,6 +633,7 @@ def capture_acceptance_suite(args, report, capture, adb, wait_for, tap, screensh
                 if value['kind'] == 'error':
                     raise ValueError('Controlled document fixture failed: ' + str(value))
                 if value['kind'] == 'collapseSnapshot' and value['result'].get('command') == command:
+                    case.setdefault('documentViewportObservations', {})[command] = require_document_viewport(value['result'])
                     case.setdefault('documentObservations', {})[command] = value['result']
                     return value['result']
             time.sleep(.2)
@@ -848,6 +853,7 @@ def capture_acceptance_suite(args, report, capture, adb, wait_for, tap, screensh
                 try:
                     api['set_display'](width * 3, height * 3, 480)
                     adb('shell', 'am', 'force-stop', package)
+                    case['displayPreparation'] = display.prepare(api['COMPONENT'], name + '-preparation')
                     display.configure(width * 3, height * 3, 480, scale, night)
                     for overlay in SAFE_AREA_OVERLAYS:
                         if name == 'safearea-light':
@@ -855,6 +861,8 @@ def capture_acceptance_suite(args, report, capture, adb, wait_for, tap, screensh
                         else:
                             adb('shell', 'cmd', 'overlay', 'disable', '--user', '0', overlay)
                     adb('shell', 'settings', 'put', 'secure', 'show_ime_with_hard_keyboard', '1')
+                    case['displayPreparation']['configuredDisplay'] = display.require(
+                        width * 3, height * 3, 480, scale, night, name + '-prepared')
                     typography(case)
                     observations[case['runNonce']] = EventTransfer(identity=identity, nonce=case['runNonce'],
                         slot=0, action='chromeCollapse', fetch=lambda uri: adb('exec-out', 'content', 'read', '--uri', uri))

@@ -11,6 +11,7 @@ import yaml
 import browser_acceptance_workflow_test as browser_workflow
 import gradle_transport_source_compatibility as transport
 import ui_checkpoint_source_compatibility as checkpoint
+from glass_emulator_navigation_source_compatibility import current_after_input
 
 ROOT = Path(__file__).resolve().parents[1]
 ASSET = b'https://api.github.com/repos/gradle/gradle-distributions/releases/assets/586068844'
@@ -29,7 +30,7 @@ class GradleTransportSourceCompatibilityTests(unittest.TestCase):
             self.assertEqual(transport.source_input(raw, path), before)
             delta = row['deltas'][0]
             self.assertEqual(before.count(delta['previous'].encode()), 1)
-            self.assertEqual(before.replace(delta['previous'].encode(), delta['current'].encode(), 1), raw)
+            self.assertEqual(current_after_input(before.replace(delta['previous'].encode(), delta['current'].encode(), 1), path), raw)
             self.assertEqual(raw.count(ASSET), 1)
             self.assertEqual(raw.count(b'151611662'), 1)
             self.assertEqual(raw.count(CHECKSUM), 1)

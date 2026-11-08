@@ -12,9 +12,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 GV = 'app/src/main/java/local/pocketchat/GeckoWebView.java'
 FIXTURE = ROOT / 'tests/fixtures/gecko-surface-source-deltas.json'
-FIXTURE_SHA256 = '21f15180afcc45b9ffaac194cf035419ddd75a050e6b689e198c28559fe2df10'
+FIXTURE_SHA256 = 'acb9f3e5ade4c877ca8b89171124fcf5c45e56a47affb10b1e19668f08504ee1'
 PREVIOUS_SHA256 = '55225a8da3ba67b3be724e243c9b442e635dbc5aa282a2ef0257653e8fb2b364'
-CURRENT_SHA256 = '3e20d18790110422acb9c622bf3dfd508d893c4a7f87a663b600a36bccc1e12a'
+CURRENT_SHA256 = 'c9fb300c0611d48e99b51256435beef0d4e99680a64818eea49202afd67595aa'
 RESOURCE_CONFIG_SHA256 = 'e7ab39b1772d153f8babe5e734354583c44aea9fda5e726a6a8517eedd37d7a4'
 
 
@@ -50,21 +50,22 @@ def manifest():
             'previousBlob', 'previousSha256', 'previousBytes', 'reviewedSha256', 'reviewedBytes',
             'actualAndroidExecution', 'runtimeAcceptance', 'deltas', 'resourcePreviousRow',
             'resourceCurrentRow', 'finalPreviousRow', 'finalCurrentRow',
-            'finalManifestPreviousSha256', 'finalManifestCurrentSha256'}
+            'finalManifestPreviousSha256', 'finalManifestCurrentSha256', 'retainedReviewedSource'}
             or type(value['schema']) is not int or value['schema'] != 1
             or value['kind'] != 'historical-gecko-surface-source-input-only'
             or value['baseCommit'] != '7402ead321ca74b9fbefeab32a1aaffb32832011'
             or value['baseTree'] != '2aaec06687b65d9511ace499528b6946dc1b8d53'
             or value['path'] != GV or value['previousBlob'] != 'bbf8242a8b7d1d3cb8a6dbe17e64b076b8eea412'
             or (value['previousSha256'], value['previousBytes']) != (PREVIOUS_SHA256, 128874)
-            or (value['reviewedSha256'], value['reviewedBytes']) != (CURRENT_SHA256, 128871)
+            or (value['reviewedSha256'], value['reviewedBytes']) != (CURRENT_SHA256, 128826)
             or value['actualAndroidExecution'] is not False or value['runtimeAcceptance'] is not False
+            or (value['retainedReviewedSource']['sha256'], value['retainedReviewedSource']['bytes']) != ('3e20d18790110422acb9c622bf3dfd508d893c4a7f87a663b600a36bccc1e12a', 128871)
             or len(value['deltas']) != 1 or len(value['finalPreviousRow']['deltas']) != 9
             or len(value['finalCurrentRow']['deltas']) != 9
             or (value['resourcePreviousRow']['currentSha256'], value['resourcePreviousRow']['currentBytes']) != (PREVIOUS_SHA256, 128874)
-            or (value['resourceCurrentRow']['currentSha256'], value['resourceCurrentRow']['currentBytes']) != (CURRENT_SHA256, 128871)
+            or (value['resourceCurrentRow']['currentSha256'], value['resourceCurrentRow']['currentBytes']) != (CURRENT_SHA256, 128826)
             or (value['finalPreviousRow']['reviewedSha256'], value['finalPreviousRow']['reviewedBytes']) != (PREVIOUS_SHA256, 128874)
-            or (value['finalCurrentRow']['reviewedSha256'], value['finalCurrentRow']['reviewedBytes']) != (CURRENT_SHA256, 128871)
+            or (value['finalCurrentRow']['reviewedSha256'], value['finalCurrentRow']['reviewedBytes']) != (CURRENT_SHA256, 128826)
             or value['resourceCurrentRow']['previousSha256'] != value['resourcePreviousRow']['previousSha256']
             or value['finalCurrentRow']['previousSha256'] != value['finalPreviousRow']['previousSha256']):
         raise ValueError('Native-surface guard scope or public predecessor differs')
@@ -94,9 +95,28 @@ def source_input(raw, relative):
 def historical_input(raw, relative=GV):
     """Only a complete known successor changes; original guards see all else."""
     if (type(raw) is bytes and type(relative) is str and relative == GV
-            and len(raw) == 128871 and sha(raw) == CURRENT_SHA256):
+            and len(raw) == 128826 and sha(raw) == CURRENT_SHA256):
         return source_input(raw, relative)
     return raw
+
+
+def retained_reviewed_input(raw):
+    """One exact old after-image for its retained literal comparison only."""
+    value = manifest()
+    if type(raw) is not bytes or (len(raw), sha(raw)) != (value['reviewedBytes'], CURRENT_SHA256):
+        raise ValueError('Complete current constructor-preserving source required')
+    current = value['deltas'][0]['current'].encode()
+    row = value['retainedReviewedSource']
+    retained = row['context'].encode()
+    if (not 0 < len(current) <= 32768
+            or (len(current), sha(current)) != (value['deltas'][0]['currentBytes'], value['deltas'][0]['currentSha256'])
+            or not 0 < len(retained) <= 32768 or (len(retained), sha(retained)) != (row['contextBytes'], row['contextSha256'])
+            or raw.count(current) != 1):
+        raise ValueError('Exact retained surface comparison context required')
+    restored = raw.replace(current, retained, 1)
+    if (len(restored), sha(restored)) != (row['bytes'], row['sha256']):
+        raise ValueError('Complete retained surface after-image did not restore')
+    return restored
 
 
 def historical_report_sha(raw, reported_sha):

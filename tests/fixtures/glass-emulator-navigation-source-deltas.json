@@ -1,0 +1,35 @@
+{
+  "schema": 1,
+  "kind": "historical-emulator-navigation-input-only",
+  "path": ".github/workflows/glass-release-validation.yml",
+  "publicBaselineCommit": "7402ead321ca74b9fbefeab32a1aaffb32832011",
+  "publicBaselineTree": "2aaec06687b65d9511ace499528b6946dc1b8d53",
+  "publicBaselineSha256": "686928c3060c06808068f2f43f54276f64eb54136ee112709f1d61a8b8aa171b",
+  "previousDerivation": "original-gradle-transport-fixture-forward-from-public-baseline",
+  "previousSha256": "11cdccbdfeb5e5871acfb62e29ae34465f657c887d9d4e38beaa550c76857cf0",
+  "previousBytes": 15629,
+  "reviewedSha256": "f5923379924340e1238797386f7e382300817e4838ad026a90147e6caa743a00",
+  "reviewedBytes": 16587,
+  "actualAndroidExecution": false,
+  "runtimeAcceptance": false,
+  "deltas": [
+    {
+      "id": "context-00",
+      "previous": "          import os\n          from pathlib import Path\n          path = Path(os.environ['ANDROID_AVD_HOME']) / 'glassnavigation.avd/config.ini'\n          display = {'hw.lcd.width': '1236', 'hw.lcd.height': '2676', 'hw.lcd.density': '480',\n                     'hw.initialOrientation': 'Portrait', 'skin.name': '1236x2676',\n                     'skin.path': '_no_skin', 'showDeviceFrame': 'no'}\n          lines = [line for line in path.read_text().splitlines() if line.split('=', 1)[0] not in display]\n          path.write_text('\\n'.join(lines + [key + '=' + value for key, value in display.items()]) + '\\n')\n          PY\n          cat > work/glass-navigation/emulator-supervisor.sh <<'SH'\n          set -uo pipefail\n          # ANGLE supplies GLES to Android HWUI. API 32 exercises the app's\n          # CPU fallback; software GLES on API 35 is still the HWUI glass path.\n          \"$ANDROID_HOME/emulator/emulator\" -avd glassnavigation -no-window -no-audio -no-snapshot -no-boot-anim -no-metrics -accel on -port 5554 -gpu swangle -feature -Vulkan -memory 3072 -cores 2 < /dev/null > work/glass-navigation/emulator.log 2>&1 &\n          task_glass_pid=$!\n          printf '%s\\n' \"$task_glass_pid\" > work/glass-navigation/emulator.pid\n          printf 'emulator_pid=%s\\n' \"$task_glass_pid\"\n",
+      "current": "          import os\n          from pathlib import Path\n          path = Path(os.environ['ANDROID_AVD_HOME']) / 'glassnavigation.avd/config.ini'\n          if not path.is_file() or any(item.is_symlink() for item in (path, *path.parents)):\n              raise ValueError('The disposable AVD requires an ordinary config file and directories')\n          display = {'hw.lcd.width': '1236', 'hw.lcd.height': '2676', 'hw.lcd.density': '480',\n                     'hw.initialOrientation': 'Portrait', 'skin.name': '1236x2676',\n                     'skin.path': '_no_skin', 'showDeviceFrame': 'no', 'hw.mainKeys': 'no'}\n          lines = [line for line in path.read_text().splitlines() if line.split('=', 1)[0].strip() not in display]\n          path.write_text('\\n'.join(lines + [key + '=' + value for key, value in display.items()]) + '\\n')\n          PY\n          cat > work/glass-navigation/emulator-supervisor.sh <<'SH'\n          set -uo pipefail\n          # ANGLE supplies GLES to Android HWUI. API 32 exercises the app's\n          # CPU fallback; software GLES on API 35 is still the HWUI glass path.\n          \"$ANDROID_HOME/emulator/emulator\" -avd glassnavigation -no-window -no-audio -no-snapshot -no-boot-anim -no-metrics -accel on -port 5554 -gpu swangle -feature -Vulkan -memory 3072 -cores 2 -prop qemu.hw.mainkeys=0 < /dev/null > work/glass-navigation/emulator.log 2>&1 &\n          task_glass_pid=$!\n          printf '%s\\n' \"$task_glass_pid\" > work/glass-navigation/emulator.pid\n          printf 'emulator_pid=%s\\n' \"$task_glass_pid\"\n",
+      "previousBytes": 1288,
+      "currentBytes": 1537,
+      "previousSha256": "9784488ecc345c282e565aec267f200c4a316fdf8ea7365d1fecb8b02c7d0fed",
+      "currentSha256": "2945afc3da515b9e835417752543bc1a2f63664eaf7bdf00ff220cb70c2ce3f9"
+    },
+    {
+      "id": "context-01",
+      "previous": "            sleep 1\n          done\n          test \"$task_glass_booted\" = true\n      - name: Run real glass rendering, input and layout acceptance\n        timeout-minutes: 20\n        shell: bash\n",
+      "current": "            sleep 1\n          done\n          test \"$task_glass_booted\" = true\n          # Android DisplayPolicy uses this emulator property to create the\n          # software navigation bar. The actual per-case Insets gates remain required.\n          timeout 5 \"$ANDROID_HOME/platform-tools/adb\" -s emulator-5554 shell getprop qemu.hw.mainkeys > work/glass-navigation/navigation-mainkeys.txt\n          test \"$(tr -d '\\r\\n' < work/glass-navigation/navigation-mainkeys.txt)\" = 0\n          timeout 10 \"$ANDROID_HOME/platform-tools/adb\" -s emulator-5554 shell dumpsys window displays > work/glass-navigation/navigation-boot-displays.txt\n          timeout 10 \"$ANDROID_HOME/platform-tools/adb\" -s emulator-5554 shell dumpsys window windows > work/glass-navigation/navigation-boot-windows.txt\n      - name: Run real glass rendering, input and layout acceptance\n        timeout-minutes: 20\n        shell: bash\n",
+      "previousBytes": 194,
+      "currentBytes": 903,
+      "previousSha256": "c4349b35121aeffbf3ede7a5948bb7e021b5d97317d015ffda4eb5d8ac39b1fd",
+      "currentSha256": "4af7be64e60dd65e21f56acf22e9291df5c6ae8eaec032109eb7b4f2624549a5"
+    }
+  ]
+}

@@ -96,6 +96,7 @@ def main():
     input_paths.add(ROOT / "tests/network-internal-admission-host/InternalAdmissionHost.java.in")
     input_paths.add(ROOT / "tests/resource-recovery-host/ResourceRecoveryHost.java.in")
     input_paths.add(ROOT / "tests/gecko-ip-window-barrier-host/WindowBarrierHost.java.in")
+    input_paths.add(ROOT / "tests/gecko-ui-download-observer-host/ObserverCases.java.in")
     input_paths.add(ROOT / "tests/tls-fixture-update-cause-host/Host.java.in")
     input_paths.add(ROOT / "tests/tls-fixture-update-cause-host/IsolationHost.java.in")
     input_paths.add(ROOT / "tests/automatic-latency-host/AutomaticLatencyHost.java.in")
@@ -109,14 +110,20 @@ def main():
     input_paths.add(ROOT / "tests/fixtures/gradle-workflow-test-source-deltas.json")
     input_paths.add(ROOT / "tests/fixtures/profile-context-callback-source-deltas.json")
     input_paths.add(ROOT / "tests/fixtures/gecko-surface-source-deltas.json")
+    input_paths.update(ROOT / path for path in ('tests/fixtures/ui-preparation-source-deltas.json',
+        'tests/fixtures/glass-emulator-navigation-source-deltas.json', 'tests/fixtures/glass-document-viewports.json'))
     input_paths.update(ROOT / path for path in ('tests/browser-profile-path-host/Host.java.in',
         'tests/browser-profile-path-host/README.md', 'tests/persistent-runtime-path-host/json-20240303.jar.b64',
         'tests/persistent-runtime-path-host/LICENSE-JSON-java-20240303.txt'))
     input_paths.add(ROOT / "tests/baselines/glass-source-history.json")
+    input_paths.add(ROOT / "tests/baselines/ui-preparation-source-history.json")
+    input_paths.add(ROOT / "tests/baselines/public-source-history.json")
+    input_paths.add(ROOT / "tools/browser/source_history.py")
     input_paths.add(ROOT / "tools/gecko/prepare_profile_host_prerequisites.py")
     input_paths.add(ROOT / "tools/gecko/capture_glass_navigation.py")
     input_paths.add(ROOT / "tools/gecko/glass_ui_validation.py")
     input_paths.add(ROOT / "tools/gecko/glass_display.py")
+    input_paths.add(ROOT / "tools/gecko/glass_document_viewport.py")
     input_paths.update(ROOT / path for path in ('.github/workflows/browser-2_1-acceptance.yml',
         '.github/workflows/profile-upgrade-checks.yml', '.github/workflows/glass-release-validation.yml'))
     input_paths.update(ROOT / path for path in ('.github/workflows/gecko-cpu-acceptance.yml',
@@ -520,6 +527,8 @@ def main():
                   ROOT/'tests/gradle_transport_source_compatibility.py',ROOT/'tests/fixtures/gradle-transport-source-deltas.json',
                   ROOT/'tests/gradle_workflow_test_source_compatibility.py',ROOT/'tests/fixtures/gradle-workflow-test-source-deltas.json',
                   ROOT/'tests/baselines/glass-source-history.json',ROOT/'tools/gecko/prepare_profile_host_prerequisites.py',
+                  ROOT/'tests/baselines/ui-preparation-source-history.json',ROOT/'tests/baselines/public-source-history.json',
+                  ROOT/'tools/browser/source_history.py',ROOT/'tests/profile_ui_preparation_history_prerequisites_test.py',
                   ROOT/'tools/gecko/capture_glass_navigation.py',ROOT/'tests/profile_glass_capture_signature_test.py',
                   ROOT/'tests/profile_glass_history_prerequisites_test.py',
                   ROOT/'tests/gecko_cpu_acceptance_test.py',ROOT/'tests/native_timezone_probe_test.py',
@@ -530,6 +539,18 @@ def main():
                   ROOT/'tests/profile_glass_accessibility_idle_test.py',
                   ROOT/'tests/profile_glass_owner_observation_test.py',ROOT/'tools/gecko/glass_ui_validation.py',
                   ROOT/'tests/profile_glass_display_test.py',ROOT/'tools/gecko/glass_display.py',
+                  ROOT/'tests/profile_glass_display_preparation_test.py',
+                  ROOT/'tools/gecko/glass_document_viewport.py',ROOT/'tests/fixtures/glass-document-viewports.json',
+                  ROOT/'tests/profile_glass_document_viewport_test.py',ROOT/'tests/profile_glass_emulator_navigation_test.py',
+                  ROOT/'tests/glass_emulator_navigation_source_compatibility.py',ROOT/'tests/fixtures/glass-emulator-navigation-source-deltas.json',
+                  ROOT/'tests/profile_glass_emulator_navigation_source_input_test.py',
+                  ROOT/'tests/ui_preparation_source_compatibility.py',ROOT/'tests/fixtures/ui-preparation-source-deltas.json',
+                  ROOT/'tests/profile_ui_preparation_source_compatibility_test.py',ROOT/'tests/profile_ui_navigation_source_compatibility_test.py',
+                  ROOT/'tests/gecko/UiVisualIntegrationActivity.java',ROOT/'tests/gecko/DownloadLocationLayoutEvidence.java',
+                  ROOT/'tests/gecko-ui-download-observer-host/run.py',ROOT/'tests/gecko-ui-download-observer-host/ObserverCases.java.in',
+                  ROOT/'tests/chrome-network-state-host/run.py',ROOT/'tests/compact-chrome-capture-host/CompactChromeCaptureHost.java',
+                  ROOT/'tests/compact-chrome-capture-host/run.py',
+                  ROOT/'tests/profile_compact_chrome_label_contract_test.py',ROOT/'app/src/main/java/local/pocketchat/DesignChrome.java',
                   ROOT/'tests/profile_glass_owner_window_test.py',
                   ROOT/'app/src/main/java/local/pocketchat/LiquidGlassDrawable.java',ROOT/'app/src/main/java/local/pocketchat/GlassDock.java',
                   ROOT/'app/src/main/java/local/pocketchat/GlassBackdrop.java',

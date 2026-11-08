@@ -5,6 +5,27 @@ ROOT=pathlib.Path(__file__).resolve().parents[2];HERE=pathlib.Path(__file__).res
 # Exact 62a0ff6e44ba08e4bbf28149a11d3f47a4f6a642 source receipts. Normal CI
 # checkouts are shallow: preserve the original assertions without git history.
 ORIGINAL_REPORT_SHA256='200192382212fee9889cd9905b837d551a27c75fcc4b777acdab3dd9982e63b7'
+APPROVED_GLASS_BASELINE='4363dbc04df80d5c82ba966248e47a3fd69cbcc8'
+APPROVED_CHROME_SHA256='9a923e78a2fea39f55a50da3a37ac5bf42c35fa2b26b0fa6a7397b4dcc7533da'
+APPROVED_REAL_LATENCY='延迟未测'
+LEGACY_REAL_LATENCY='延迟未测（等待连接）'
+LEGACY_CHROME_SOURCES={
+ '5b682f613f26c48be896f4623599ae38f7369a35e58aa0709bff45c75e2115f1':'62a0ff6e44ba08e4bbf28149a11d3f47a4f6a642',
+ '1ee7c2762c3b077166db3cbea363bd4481e527fc33c2b2491b8db7bffcf9ae43':'4644e90b0f00507f15da9b223b808cf19d345e58',
+}
+
+def label_contract(chrome):
+ """Select one exact presentation oracle; never rewrite production or getter output."""
+ digest=hashlib.sha256(chrome.encode('utf-8')).hexdigest()
+ if digest==APPROVED_CHROME_SHA256:
+  mode,expected,owner='approved-glass',APPROVED_REAL_LATENCY,APPROVED_GLASS_BASELINE
+ elif digest in LEGACY_CHROME_SOURCES:
+  mode,expected,owner='legacy',LEGACY_REAL_LATENCY,LEGACY_CHROME_SOURCES[digest]
+ else:raise ValueError('Unreviewed DesignChrome source cannot select a capture label contract: '+digest)
+ return dict(schema=1,mode=mode,selectedDesignChromeSha256=digest,sourceOwner=owner,
+             expectedRealLatency=expected,legacyExpectedRealLatency=LEGACY_REAL_LATENCY,
+             approvedBaseline=APPROVED_GLASS_BASELINE,approvedDesignChromeSha256=APPROVED_CHROME_SHA256,
+             scope='Strict source-selected presentation labels only. Actual raw production and displayed text are not projected.')
 contract_path=ROOT/'tests/ui_visual_preservation_contract.py'
 contract_spec=importlib.util.spec_from_file_location('ui_visual_preservation_contract',contract_path);contract=importlib.util.module_from_spec(contract_spec);contract_spec.loader.exec_module(contract)
 spec=importlib.util.spec_from_file_location('chrome_production_extractor',ROOT/'tests/chrome-network-state-host/run.py');extract=importlib.util.module_from_spec(spec);spec.loader.exec_module(extract);member=extract.member
@@ -18,6 +39,7 @@ def main():
  inputs=[ROOT/path for path in paths]+[helper,HERE/'CompactChromeCaptureHost.java',pathlib.Path(__file__).resolve(),ROOT/'tests/chrome-network-state-host/run.py',contract_path]
  hashes={str(path.relative_to(ROOT)):hashlib.sha256(path.read_bytes()).hexdigest() for path in inputs}
  chrome=selected[PROD+'DesignChrome.java'];state=selected[PROD+'WindowNetworkState.java'];fixture=selected['tests/gecko/CompactChromeIntegrationActivity.java'];current='void capturePresentation(' in fixture
+ presentation_contract=label_contract(chrome)
  methods=['void update(','private void renderLatest(','private void refreshMetadata(','private static void text(','private static void color(','private static void description(','void showNetwork(']
  if 'void updateMetrics(' in chrome:methods+=['void updateMetrics(','void cancelUpdates(']
  initial=[]
@@ -42,11 +64,12 @@ def main():
   stubs={'android/content/Context.java':'package android.content; public class Context{public SharedPreferences getSharedPreferences(String name,int mode){return new SharedPreferences();}}','android/content/SharedPreferences.java':'package android.content; public class SharedPreferences{public String getString(String key,String fallback){return fallback;}public boolean getBoolean(String key,boolean fallback){return fallback;}}','android/content/Intent.java':'package android.content; public class Intent{public String command="new-command",action="";public String getStringExtra(String key){return key.equals("compactCommand")?command:action;}}','android/os/SystemClock.java':'package android.os; public class SystemClock{public static long now;public static long elapsedRealtime(){return now;}}','android/text/TextUtils.java':'package android.text; public class TextUtils{public static boolean equals(CharSequence a,CharSequence b){if(a==b)return true;int length;if(a!=null&&b!=null&&(length=a.length())==b.length()){if(a instanceof String&&b instanceof String)return a.equals(b);for(int i=0;i<length;i++)if(a.charAt(i)!=b.charAt(i))return false;return true;}return false;}}'}
   for name,text in stubs.items():path=src/name;path.parent.mkdir(parents=True,exist_ok=True);path.write_text(text)
   classes=temp/'classes';subprocess.run([str(a.java_home/'bin/javac'),'-encoding','UTF-8','-cp',str(a.json_jar),'-d',str(classes),*map(str,src.rglob('*.java'))],check=True)
-  run=subprocess.run([str(a.java_home/'bin/java'),'-Dbefore='+str(not current).lower(),'-cp',str(classes)+':'+str(a.json_jar),'local.pocketchat.CompactChromeCaptureHost'],text=True,capture_output=True)
+  run=subprocess.run([str(a.java_home/'bin/java'),'-Dbefore='+str(not current).lower(),'-Dcompact.captureLabel='+presentation_contract['mode'],'-cp',str(classes)+':'+str(a.json_jar),'local.pocketchat.CompactChromeCaptureHost'],text=True,capture_output=True)
   if not run.stdout:raise RuntimeError(run.stderr)
   report=json.loads(run.stdout)
  report.update(sourceCommit=subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip(),sourceDirty=bool(subprocess.check_output(['git','status','--porcelain'],cwd=ROOT,text=True)),selectedProductionRef=a.before_ref or 'working-tree',selectedSourceSha256={name:hashlib.sha256(text.encode()).hexdigest() for name,text in selected.items()},sourceFiles=hashes,executionInputsUnchanged=all(hashlib.sha256((ROOT/path).read_bytes()).hexdigest()==digest for path,digest in hashes.items()),jsonJarSha256=hashlib.sha256(a.json_jar.read_bytes()).hexdigest(),actualAndroidExecution=False,actualLatencyMeasurement=False,originalGeometryReportPreserved=True,originalAndroidRunnerPreserved=True,original42Ms120SecondSamplePreserved=True,originalPreparationIntervalsPreserved=True,extractedFixtureMethods=fixture_methods,extractedChromeMethods=methods,scope='Actual complete fixture snapshot/capture/presentation/lifecycle methods, complete test-only capture helper, actual production chrome render/showNetwork/metadata methods and network-state constructor. Controlled Handler/View/ViewTreeObserver/layout/catalogue/runtime adapters. The geometry report callback records displayed values; the full geometry body is byte-checked and the Android runner preserves the original complete AST after strict normalization of the reviewed downloads-only label addition. Neither source check executes the Android runner. Metrics-maintenance and persistence references are controlled unused boundaries here; the separate chat-chrome-performance-host suite executes those production methods. No real Android frame, Gecko, native network or latency execution.')
  report['androidRunnerSourceContract']=runner_contract
+ report['presentationLabelContract']=presentation_contract
  if not report['executionInputsUnchanged']:report['status']='source-changed'
  a.output.parent.mkdir(parents=True,exist_ok=True);a.output.write_text(json.dumps(report,ensure_ascii=False,indent=2)+'\n');print(json.dumps({'status':report['status'],'passed':report['passed'],'total':report['total'],'output':str(a.output)}))
  if run.returncode or report['status']!='passed':raise SystemExit(1)

@@ -17,6 +17,11 @@ public final class UiVisualIntegrationActivity extends Activity {
   final Handler handler=new Handler(Looper.getMainLooper());
   @Override public void onCreate(Bundle state){
     super.onCreate(state);String action=getIntent().getStringExtra("visualAction");
+    if("glass-display-preparation".equals(action)){
+      // Leave a NOSENSOR launcher before configuring the disposable display.
+      // This empty test-only screen neither seeds data nor observes glyphs.
+      setContentView(new FrameLayout(this));return;
+    }
     if("navigation-typography".equals(action)){
       try{navigationTypographyEvidence=new NavigationTypographyEvidence(this);}
       catch(Exception error){NavigationTypographyEvidence.rejected(this,error);finish();}

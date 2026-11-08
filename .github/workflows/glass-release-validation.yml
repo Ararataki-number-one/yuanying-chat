@@ -135,17 +135,19 @@ jobs:
           import os
           from pathlib import Path
           path = Path(os.environ['ANDROID_AVD_HOME']) / 'glassnavigation.avd/config.ini'
+          if not path.is_file() or any(item.is_symlink() for item in (path, *path.parents)):
+              raise ValueError('The disposable AVD requires an ordinary config file and directories')
           display = {'hw.lcd.width': '1236', 'hw.lcd.height': '2676', 'hw.lcd.density': '480',
                      'hw.initialOrientation': 'Portrait', 'skin.name': '1236x2676',
-                     'skin.path': '_no_skin', 'showDeviceFrame': 'no'}
-          lines = [line for line in path.read_text().splitlines() if line.split('=', 1)[0] not in display]
+                     'skin.path': '_no_skin', 'showDeviceFrame': 'no', 'hw.mainKeys': 'no'}
+          lines = [line for line in path.read_text().splitlines() if line.split('=', 1)[0].strip() not in display]
           path.write_text('\n'.join(lines + [key + '=' + value for key, value in display.items()]) + '\n')
           PY
           cat > work/glass-navigation/emulator-supervisor.sh <<'SH'
           set -uo pipefail
           # ANGLE supplies GLES to Android HWUI. API 32 exercises the app's
           # CPU fallback; software GLES on API 35 is still the HWUI glass path.
-          "$ANDROID_HOME/emulator/emulator" -avd glassnavigation -no-window -no-audio -no-snapshot -no-boot-anim -no-metrics -accel on -port 5554 -gpu swangle -feature -Vulkan -memory 3072 -cores 2 < /dev/null > work/glass-navigation/emulator.log 2>&1 &
+          "$ANDROID_HOME/emulator/emulator" -avd glassnavigation -no-window -no-audio -no-snapshot -no-boot-anim -no-metrics -accel on -port 5554 -gpu swangle -feature -Vulkan -memory 3072 -cores 2 -prop qemu.hw.mainkeys=0 < /dev/null > work/glass-navigation/emulator.log 2>&1 &
           task_glass_pid=$!
           printf '%s\n' "$task_glass_pid" > work/glass-navigation/emulator.pid
           printf 'emulator_pid=%s\n' "$task_glass_pid"
@@ -171,6 +173,12 @@ jobs:
             sleep 1
           done
           test "$task_glass_booted" = true
+          # Android DisplayPolicy uses this emulator property to create the
+          # software navigation bar. The actual per-case Insets gates remain required.
+          timeout 5 "$ANDROID_HOME/platform-tools/adb" -s emulator-5554 shell getprop qemu.hw.mainkeys > work/glass-navigation/navigation-mainkeys.txt
+          test "$(tr -d '\r\n' < work/glass-navigation/navigation-mainkeys.txt)" = 0
+          timeout 10 "$ANDROID_HOME/platform-tools/adb" -s emulator-5554 shell dumpsys window displays > work/glass-navigation/navigation-boot-displays.txt
+          timeout 10 "$ANDROID_HOME/platform-tools/adb" -s emulator-5554 shell dumpsys window windows > work/glass-navigation/navigation-boot-windows.txt
       - name: Run real glass rendering, input and layout acceptance
         timeout-minutes: 20
         shell: bash

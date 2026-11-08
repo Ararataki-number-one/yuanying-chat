@@ -85,6 +85,34 @@ class GlassDisplay:
     def __init__(self, adb, out, sha):
         self.adb, self.out, self.sha = adb, Path(out), sha
 
+    def prepare(self, component, stem):
+        """Leave launcher orientation overrides before changing display settings.
+
+        Android may restore an earlier user rotation when its NOSENSOR home
+        Activity loses the foreground. The explicit empty test-only Activity
+        must already own the resumed/focused window before configure() runs.
+        No glyph, document, or release acceptance observation occurs here.
+        """
+        if component != 'local.pocketchat.test/local.pocketchat.UiVisualIntegrationActivity':
+            raise ValueError('The empty glass display preparation Activity is required')
+        self.adb('shell', 'am', 'start', '-W', '-n', component,
+                 '--es', 'visualAction', 'glass-display-preparation')
+        raw = self.adb('shell', 'dumpsys', 'activity', 'activities').decode('utf-8', 'strict')
+        path = self.out / (stem + '-activity.txt')
+        path.write_text(raw)
+        resumed = [line.strip() for line in raw.splitlines()
+                   if re.search(r'\b(?:mResumedActivity|topResumedActivity)\s*[:=]', line)]
+        if not resumed or any(re.search(re.escape(component) + r'(?=\s|})', line) is None for line in resumed):
+            raise ValueError('The empty display preparation Activity is not actually resumed')
+        state = self.observe(stem)
+        window = (self.out / state['window']['file']).read_text()
+        focused = re.findall(r'^\s*mCurrentFocus=Window\{[^\n]*\}\s*$', window, re.M)
+        if len(focused) != 1 or re.search(re.escape(component) + r'(?=\s|})', focused[0]) is None:
+            raise ValueError('The empty display preparation Activity does not own the focused window')
+        return dict(component=component, action='glass-display-preparation',
+                    activity=dict(file=path.name, sha256=self.sha(path), resumed=resumed),
+                    beforeConfiguration=state, noGlyphOrDocumentObservation=True)
+
     def observe(self, stem):
         read = lambda *parts: self.adb('shell', *parts).decode('utf-8', 'strict').strip()
         state = dict(size=read('wm', 'size'), density=read('wm', 'density'),

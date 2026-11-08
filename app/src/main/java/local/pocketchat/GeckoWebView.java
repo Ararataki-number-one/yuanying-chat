@@ -693,9 +693,9 @@ class GeckoWebView extends FrameLayout {
   }
   private void open(){
     if(!enabled||destroyed)return;
-    // Choose the official native-surface backend once. Changing a live SDK
-    // surface backend can leave its surface callback detached (157.0 SDK).
-    if(surface==null){surface=new GeckoView(displayContext);surface.setViewBackend(GeckoView.BACKEND_SURFACE_VIEW);surface.coverUntilFirstPaint(ReferenceUi.CHAT_BG);addView(surface,new FrameLayout.LayoutParams(-1,-1));}
+    // Keep the SDK constructor's native SurfaceView and its holder callback.
+    // Reselecting even this same backend replaces the holder without its listener.
+    if(surface==null){surface=new GeckoView(displayContext);surface.coverUntilFirstPaint(ReferenceUi.CHAT_BG);addView(surface,new FrameLayout.LayoutParams(-1,-1));}
     primary=newSession();current=primary;primary.open(runtime);surface.setSession(primary);configure(desktop,owner.privacy.level());ready=true;
     if(!queued.isEmpty()){String target=queued;queued="";loadUrl(target);}
   }

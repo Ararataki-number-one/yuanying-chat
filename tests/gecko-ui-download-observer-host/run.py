@@ -200,6 +200,14 @@ def main():
     parser.add_argument('--output', type=Path, default=ROOT / 'work/ui-download-observer-host/results.json')
     args = parser.parse_args()
     sources = {'observer': OBSERVER.read_bytes(), 'activity': ACTIVITY.read_bytes()}
+    files = [OBSERVER, ACTIVITY, Path(__file__).resolve(), HERE / 'ObserverCases.java.in',
+             ROOT / 'app/src/main/java/local/pocketchat/J.java', ROOT / 'tests/ui_checkpoint_source_compatibility.py',
+             _history_input.NAVIGATION_FIXTURE, ROOT / 'tests/ui_preparation_source_compatibility.py',
+             _history_input._preparation_input.FIXTURE, ROOT / 'tests/gradle_transport_source_compatibility.py',
+             ROOT / 'tests/glass_emulator_navigation_source_compatibility.py',
+             ROOT / 'tests/fixtures/glass-emulator-navigation-source-deltas.json']
+    hashes = {str(path.relative_to(ROOT)): digest(path.read_bytes()) for path in files}
+    hashes.update({str(OBSERVER.relative_to(ROOT)): digest(sources['observer']), str(ACTIVITY.relative_to(ROOT)): digest(sources['activity'])})
     # Only this retained whole-source oracle sees the exact reviewed inverse.
     # Method extraction and JVM compilation below always receive current bytes.
     guarded = dict(sources, activity=_history_input.navigation_source_input(sources['activity'], 'tests/gecko/UiVisualIntegrationActivity.java'))
@@ -218,6 +226,7 @@ def main():
     assert 'version "17.' in version, 'Use the CI JDK 17 toolchain'
     jar = args.json_jar.resolve()
     assert jar.is_file(), 'Real JSON dependency required'
+    jar_sha256 = digest(jar.read_bytes())
     with tempfile.TemporaryDirectory(prefix='ui-download-observer-') as directory:
         base = Path(directory)
         values = dict(STUBS)
@@ -234,6 +243,8 @@ def main():
         subprocess.run([tool('javac'), '--release', '17', '-encoding', 'UTF-8', '-cp', str(jar), '-d', str(classes), *paths], check=True)
         output = subprocess.check_output([tool('java'), '-cp', str(classes) + os.pathsep + str(jar), 'local.pocketchat.ObserverCases']).decode()
     result = json.loads(output)
+    stable = all(digest((ROOT / name).read_bytes()) == value for name, value in hashes.items()) and digest(jar.read_bytes()) == jar_sha256
+    result.update(executionInputsUnchanged=stable, sourceFiles=hashes, actualJavaFromRawCurrent=True, sourceHistoryProjectionUsed=False)
     result.update(sourceCommit=subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT).decode().strip(),
                   sourceSha256={key: digest(value) for key, value in sources.items()}, historicalSourceGuardSha256=PINS,
                   methodSha256={key: digest(value.encode()) for key, value in zip(needles, methods)},
@@ -243,6 +254,7 @@ def main():
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(result, ensure_ascii=False, indent=2) + '\n')
     print(json.dumps(result, ensure_ascii=False))
+    assert stable, 'Actual observer execution inputs changed'
 
 
 if __name__ == '__main__':

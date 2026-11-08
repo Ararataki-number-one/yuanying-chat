@@ -79,3 +79,11 @@ def wrap_checkpoint_workflow(original):
     def historical_workflow(raw):
         return original(canonical_history_input(raw))
     return historical_workflow
+
+
+# The runtime workflow retains its current emulator setup and strict readback.
+import importlib.util as _navigation_import
+_navigation_spec = _navigation_import.spec_from_file_location('glass_emulator_navigation_history', Path(__file__).with_name('glass_emulator_navigation_source_compatibility.py'))
+_navigation_module = _navigation_import.module_from_spec(_navigation_spec)
+_navigation_spec.loader.exec_module(_navigation_module)
+source_input = _navigation_module.wrap_source_input(source_input)
