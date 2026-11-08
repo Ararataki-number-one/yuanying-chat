@@ -298,22 +298,32 @@ instead of choosing an arbitrary slot.
 Text, icons, layout and hit regions stay fixed while the material's curvature
 and light respond to the touch. There is no idle floating or repeating highlight.
 
-- A short press immediately supplies a small optical response, gathering the
-  remaining response over 90 ms. Pointer movement retargets the existing run without
-  resetting its animation clock, using an 85 ms follow response thereafter.
-- A local 3.2 dp outward bend and 0.7 dp opposite response stay inside the 4 dp
+- A short press immediately supplies a visible partial optical response,
+  gathering the remaining response over 120 ms. Pointer movement retargets the
+  existing run without resetting its animation clock, using a 110 ms follow
+  response thereafter.
+- A local 3.6 dp outward bend and 0.7 dp opposite response stay inside the 4 dp
   optical inset. The SDF, normal field, caustic and sampled pixels all use it.
 - The finger's position drives a separate local light field. The environment
   light receives only a small directional bias, so pressing one end does not
   relight the entire capsule. Touch and edge-deformation positions are smoothed
   independently; a new press during release continues from the current pose.
-- On release the optical focus travels up to 18 dp along the perimeter and
-  settles over 320 ms, with one small reverse bend and a smooth light fade.
+- A narrow white crest and a faint blue reflection follow the animated boundary
+  point. They appear only during the response, making its travel visible on a
+  near-white page without darkening the resting material.
+- On release the optical focus travels up to 28 dp along the perimeter and
+  settles over 480 ms, with one small reverse bend and a smooth light fade.
+  A quick tap carries a bounded remaining impulse through the release, starting
+  from its current pose instead of losing the response before it becomes visible.
 - Gray system ripple remains transparent on these material surfaces. Actual
   hotspots propagate through the RippleDrawable wrapper; three destination
   buttons share their parent's press state, while reading has a separate source.
-- The actual selected destination moves over 280 ms with a 5.5% blue wash that
-  stretches by at most 12 dp along the path, then gathers under the destination.
+- The actual selected destination moves over 440 ms. Its leading edge leaves
+  first and the trailing edge follows; a damped curve gives a small rebound.
+  The blue wash is about 6.3% at rest and up to 8.6% in motion, extending by at
+  most 22 dp and contracting vertically by at most 1.8 dp. A broad reflection
+  crosses it during travel; a thin white rim remains at rest. Rapid reselection
+  continues from the current drawn shape, light position and opacity.
   Conversation has no falsely selected destination; reading uses the same
   neutral resting ink and only an actual selected state receives a blue accent.
 
@@ -336,7 +346,9 @@ new pipeline.
 
 The movie retains four actual inputs: download, network, Back, and a reading
 press released outside its control. Each must finish while the owned recorder
-is running. Hierarchy reads have 20-second absolute budgets; the recorder has
+is running. The reading gesture lasts 900 ms and requires the observed reading
+node to explicitly report `long-clickable="false"`; that original property is
+retained with the input evidence. Hierarchy reads have 20-second absolute budgets; the recorder has
 a 60-second hard cap. After the reading gesture it retains at least 1.2 seconds
 of release motion and a 20-second recording wall-time floor, then verifies the
 owned nonce/PID before stopping. The encoded duration is reported separately,

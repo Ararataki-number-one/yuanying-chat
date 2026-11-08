@@ -284,16 +284,20 @@ def capture_motion(args, report, capture, adb, wait_for):
         x, y = (box[0] + box[2]) // 2, (box[1] + box[3]) // 2
         end_x, end_y, duration = x, y, 140
         if cancel:
+            if node.get('long-clickable') != 'false':
+                raise ValueError('The observed reading button must explicitly disable long clicks')
             # Trace the material hotspot from 25% to 80% of the observed width,
             # releasing 16 dp above the button to cancel its reading action.
             width = box[2] - box[0]
             x, end_x = box[0] + width // 4, box[0] + width * 4 // 5
-            end_y, duration = max(0, box[1] - DENSITY // 10), 400
+            end_y, duration = max(0, box[1] - DENSITY // 10), 900
         if cancel and end_y >= box[1]:
             raise ValueError('No safe point outside the observed reading button')
         action = dict(action='swipe-to-cancel' if cancel else 'short-press', reason=reason,
                       start=[x, y], end=[end_x, end_y], durationMillis=duration,
                       observedBounds=list(box), atUnixNs=time.time_ns())
+        if cancel:
+            action['observedLongClickable'] = node.get('long-clickable')
         report['inputs'].append(action)
         gesture_in_flight = True
         adb('shell', 'input', 'touchscreen', 'swipe', str(x), str(y), str(end_x), str(end_y),

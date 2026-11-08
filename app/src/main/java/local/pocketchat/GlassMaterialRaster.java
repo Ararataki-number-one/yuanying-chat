@@ -32,9 +32,9 @@ final class GlassMaterialRaster {
         double nearX=px-bumpX,nearY=py-bumpY,farX=px-(width-bumpX),farY=py-(height-bumpY);
         double near=Math.exp(-(nearX*nearX+nearY*nearY)/sigma2);
         double far=Math.exp(-(farX*farX+farY*farY)/sigma2);
-        d-=bend*density*(3.2*near-.7*far);
-        nx-=bend*density*(-6.4*nearX*near+1.4*farX*far)/sigma2;
-        ny-=bend*density*(-6.4*nearY*near+1.4*farY*far)/sigma2;
+        d-=bend*density*(3.6*near-.7*far);
+        nx-=bend*density*(-7.2*nearX*near+1.4*farX*far)/sigma2;
+        ny-=bend*density*(-7.2*nearY*near+1.4*farY*far)/sigma2;
         double normalLength=Math.hypot(nx,ny);nx/=normalLength;ny/=normalLength;
       }
       double cover=1-smooth(-aa,aa,d);
@@ -65,9 +65,16 @@ final class GlassMaterialRaster {
       double touchDx=(px-touchX)/touchRadius,touchDy=(py-touchY)/touchRadius;
       double contact=Math.exp(-(touchDx*touchDx+touchDy*touchDy));
       double touchRim=contact*Math.exp(-square((d+1.1*density)/(1.25*density)));
-      shine=Math.min(.90,shine+broad*.004+pressure*(contact*.055+touchRim*.34));
+      double crestRadius=Math.max(10*density,Math.min(by*.70,22*density));
+      double crestDx=(px-bumpX)/crestRadius,crestDy=(py-bumpY)/crestRadius;
+      double crestContact=Math.exp(-(crestDx*crestDx+crestDy*crestDy));
+      double crest=crestContact*Math.exp(-square((d+.8*density)/(.9*density)));
+      shine=Math.min(.90,shine+broad*.004+pressure*(contact*.085+touchRim*.42+crest*.42));
       r=shine+(1-shine)*r;g=shine+(1-shine)*g;b=shine+(1-shine)*b;
       a=shine+(1-shine)*a;
+      double cool=pressure*crestContact*Math.exp(-square((d+2.7*density)/(1.9*density)))*(dark?.12:.14);
+      r=cool*(dark?.42:.50)+(1-cool)*r;g=cool*(dark?.68:.74)+(1-cool)*g;b=cool+(1-cool)*b;
+      a=cool+(1-cool)*a;
       double surfaceAlpha=a*cover,alpha=surfaceAlpha+shadow*(1-surfaceAlpha);
       // setPixels accepts straight ARGB; the shader equivalent uses premultiplied P.
       colors[y*w+x]=alpha<.00001?0:(byteValue(alpha)<<24)

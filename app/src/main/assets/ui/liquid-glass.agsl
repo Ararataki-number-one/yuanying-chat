@@ -28,7 +28,7 @@ float surfaceDistance(float2 p) {
     float sigma = max(8.0 * density, min(halfSize.y * 1.15, 32.0 * density));
     float2 near = (p - bump) / sigma;
     float2 far = (p - (size - bump)) / sigma;
-    return d - bend * density * (3.2 * exp(-dot(near, near)) - 0.7 * exp(-dot(far, far)));
+    return d - bend * density * (3.6 * exp(-dot(near, near)) - 0.7 * exp(-dot(far, far)));
 }
 
 half4 main(float2 coord) {
@@ -84,11 +84,23 @@ half4 main(float2 coord) {
     float2 local = (p - touch) / (touchRadius * (0.72 + press * 0.28));
     float contact = exp(-dot(local, local));
     float touchRim = contact * exp(-square((d + 1.1 * density) / (1.25 * density)));
+    // The crest follows the animated boundary point, including its release
+    // travel. A local cool reflection remains perceptible on an almost white
+    // page without tinting the resting face or adding a permanent dark rim.
+    float crestRadius = max(10.0 * density, min(halfSize.y * 0.70, 22.0 * density));
+    float2 crestLocal = (p - bump) / crestRadius;
+    float crestContact = exp(-dot(crestLocal, crestLocal));
+    float crest = crestContact * exp(-square((d + 0.8 * density) / (0.9 * density)));
     float broad = exp(-square((face.x * 0.55 + face.y * 0.8 - lightAxis.x * 0.4) * 1.6));
     shine = min(0.90, shine + broad * 0.004
-        + press * (contact * 0.055 + touchRim * 0.34));
+        + press * (contact * 0.085 + touchRim * 0.42 + crest * 0.42));
     premul = float3(shine) + (1.0 - shine) * premul;
     a = shine + (1.0 - shine) * a;
+    float cool = press * crestContact
+        * exp(-square((d + 2.7 * density) / (1.9 * density))) * mix(0.14, 0.12, darkTheme);
+    float3 coolReflection = mix(float3(0.50, 0.74, 1.0), float3(0.42, 0.68, 1.0), darkTheme);
+    premul = cool * coolReflection + (1.0 - cool) * premul;
+    a = cool + (1.0 - cool) * a;
 
     if (hasBackdrop > 0.5) {
         // Snell refraction. The source contains native workspace content only.

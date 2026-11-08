@@ -97,10 +97,11 @@ class LiquidGlassDrawable extends Drawable {
       pressedRaster=null;targetPhase=lightPhase();
       if(strength==0f){
         phase=targetPhase;touchX=hotspotX;touchY=hotspotY;
-        // The first frame responds immediately, without jumping to a full bulge.
-        strength=.16f;bend=.10f;
+        // A visible first response matters on a near-white page; the rest of
+        // the press still gathers from this pose without moving native labels.
+        strength=.38f;bend=.34f;
       }
-      updateOptics();invalidateSelf();gather(90);
+      updateOptics();invalidateSelf();gather(120);
     }else release();
     return true;
   }
@@ -114,7 +115,7 @@ class LiquidGlassDrawable extends Drawable {
     if(Math.abs(delta)>.4f*density)travelDirection=delta<0f?-1f:1f;
     targetPhase=next;
     // Retarget a live animation instead of resetting its clock on every MOVE.
-    if(animation==null||!ValueAnimator.areAnimatorsEnabled())gather(85);
+    if(animation==null||!ValueAnimator.areAnimatorsEnabled())gather(110);
   }
 
   private float lightPhase(){
@@ -155,17 +156,25 @@ class LiquidGlassDrawable extends Drawable {
   private void release(){
     stopAnimation();if(strength==0f||!ValueAnimator.areAnimatorsEnabled()){resetMotion();return;}
     final float startPhase=phase,startStrength=strength,startBend=bend;
-    final float travel=travelDirection*Math.min(18f*density,perimeter*.10f);
+    final float travel=travelDirection*Math.min(28f*density,perimeter*.16f);
+    // A short native tap can release before the gather completes. Carry its
+    // remaining impulse through a bounded pulse rather than dropping the
+    // material immediately back to an almost invisible resting surface.
+    final float tapImpulse=Math.max(0f,.85f-startBend);
     ValueAnimator run=ValueAnimator.ofFloat(0f,1f);animation=run;
-    run.setDuration(320);run.setInterpolator(new LinearInterpolator());
+    run.setDuration(480);run.setInterpolator(new LinearInterpolator());
     run.addUpdateListener(value->{
       if(animation!=value)return;
       if(!isVisible()||getCallback()==null||!ValueAnimator.areAnimatorsEnabled()){resetMotion();return;}
       float t=(float)value.getAnimatedValue(),remaining=1f-t;
       phase=startPhase+travel*(1f-remaining*remaining*remaining);
-      strength=startStrength*(1f-t*t*(3f-2f*t));
-      // One small undershoot, then rest. A new press can take over this pose.
-      bend=startBend*remaining*remaining*(float)Math.cos(Math.PI*1.35f*t);
+      float pulse=(float)Math.sin(Math.PI*Math.min(1f,t/.38f));
+      strength=clamp(startStrength*(1f-t*t*(3f-2f*t))
+        +(1f-startStrength)*.55f*pulse*remaining,0f,1f);
+      // One damped rebound and an exact rest. The quick-tap impulse starts at
+      // zero, preserving continuity when release interrupts the initial gather.
+      bend=clamp(remaining*remaining*(startBend*(float)Math.cos(Math.PI*2f*t)
+        +tapImpulse*pulse),-1f,1f);
       updateOptics();invalidateSelf();
     });
     run.addListener(new AnimatorListenerAdapter(){
