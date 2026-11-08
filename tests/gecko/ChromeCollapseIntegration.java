@@ -302,7 +302,13 @@ final class ChromeCollapseIntegration {
         .put("touches",web().touchesObserved).put("nativeTouches",nativeTouches).put("toolbarBounds",a.bounds(a.toolbar))
         .put("environmentTap",visibleCenter(a.hub.tabs[WorkspaceNavigation.ENVIRONMENTS])).put("networkTap",visibleCenter(a.hub.tabs[WorkspaceNavigation.NETWORK]))
         .put("downloadsTap",visibleCenter(a.hub.tabs[WorkspaceNavigation.DOWNLOADS])).put("readingTap",visibleCenter(a.hub.tabs[WorkspaceNavigation.READING]))
-        .put("addressTap",visibleCenter(a.designChrome.title)).put("moreTap",visibleCenter(a.designChrome.more));
+        .put("addressTap",visibleCenter(a.designChrome.title)).put("moreTap",visibleCenter(a.designChrome.more))
+        .put("androidSdk",Build.VERSION.SDK_INT).put("activityClass",a.getClass().getName()).put("activityRef",System.identityHashCode(a))
+        .put("pid",android.os.Process.myPid()).put("uid",android.os.Process.myUid())
+        .put("nativeFontScale",a.getResources().getConfiguration().fontScale).put("nativeScreenWidthDp",a.getResources().getConfiguration().screenWidthDp)
+        .put("nativeDensityDpi",a.getResources().getDisplayMetrics().densityDpi).put("nativeDisplayWidth",a.getResources().getDisplayMetrics().widthPixels)
+        .put("readingRequested",a.focusReading).put("readingActive",a.focusActive()).put("navigationVisibility",a.hub.bar.getVisibility())
+        .put("exitVisibility",a.focusExit.getVisibility()).put("exitTap",visibleCenter(a.focusExit)).put("addressDialog",addressDialog());
         if(a.designChrome.expanded()){
           java.lang.reflect.Method method=DesignChrome.class.getDeclaredMethod("touchBounds",View.class);method.setAccessible(true);
           android.graphics.Rect target=(android.graphics.Rect)method.invoke(a.designChrome,a.designChrome.title);int[] origin=new int[2];a.toolbar.getLocationOnScreen(origin);target.offset(origin[0],origin[1]);
@@ -311,6 +317,18 @@ final class ChromeCollapseIntegration {
         emit("collapseSnapshot",result);if("ready".equals(command)){diagnosticReady=true;a.handler.removeCallbacks(diagnosticTick);}
       }catch(Exception failure){emit("error",J.obj("error",failure.toString()));}
     });
+  }
+  /** Test-only reads of the production dialog; never opens, dismisses or edits it. */
+  JSONObject addressDialog()throws Exception{
+    java.lang.reflect.Field field=GeckoAddressUi.class.getDeclaredField("dialog");field.setAccessible(true);
+    android.app.AlertDialog dialog=(android.app.AlertDialog)field.get(a.geckoAddress);
+    if(dialog==null||!dialog.isShowing())return J.obj("visible",false);
+    java.lang.reflect.Field editor=GeckoAddressUi.class.getDeclaredField("editor");editor.setAccessible(true);
+    android.widget.EditText input=(android.widget.EditText)editor.get(a.geckoAddress);
+    android.widget.Button cancel=dialog.getButton(android.app.AlertDialog.BUTTON_NEGATIVE);
+    return J.obj("visible",true,"windowFocus",dialog.getWindow().getDecorView().hasWindowFocus(),
+      "editorText",input.getText().toString(),"editorFocused",input.hasFocus(),"editorTap",visibleCenter(input),
+      "cancelTap",visibleCenter(cancel),"cancelBounds",a.bounds(cancel),"cancelText",cancel.getText().toString());
   }
   void emit(String kind,JSONObject result){diagnostic("emit-before");try{events.emit(kind,result);diagnostic("emit-queued");}catch(Exception failure){events.failure(failure);}}
   void nativeTouch(MotionEvent event){if(web().tracking&&nativeTouches.length()<256)nativeTouches.put(J.obj("action",event.getActionMasked(),"pointers",event.getPointerCount(),"height",a.remote.getHeight(),"expanded",a.designChrome.expanded()));}

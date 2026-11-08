@@ -116,10 +116,17 @@ def run(adb,binary,source,out,dump):
     finally:
         adb('shell','cmd','uimode','night','no');adb('shell','settings','put','system','font_scale','1')
 
+def run_current(adb,binary,source,out,dump,*,navigation_version=2):
+    if navigation_version==1:return run(adb,binary,source,out,dump)
+    if navigation_version!=2:raise ValueError('Unknown native navigation protocol')
+    from native_navigation_v2 import run_dashboard_v2
+    return run_dashboard_v2(adb,binary,source,out,dump)
+
+
 def main():
     import argparse,subprocess,sys,os
     root=pathlib.Path(__file__).resolve().parents[2];out=root/'work/gecko-integration'
-    parser=argparse.ArgumentParser();parser.add_argument('--adb',required=True);parser.add_argument('--serial',required=True);args=parser.parse_args()
+    parser=argparse.ArgumentParser();parser.add_argument('--adb',required=True);parser.add_argument('--serial',required=True);parser.add_argument('--native-navigation-version',type=int,choices=(1,2),default=2);args=parser.parse_args()
     source=subprocess.check_output(['git','rev-parse','HEAD'],cwd=root,text=True).strip()
     def binary(*parts):return subprocess.check_output([args.adb,'-s',args.serial,*parts],timeout=90)
     def adb(*parts):return binary(*parts).decode(errors='replace')
@@ -136,7 +143,7 @@ def main():
     lease=prepare_workflow(adb,serial=args.serial,environment=os.environ,root=root,source=source,record_path=out/'dashboard-settings-services-isolation.json')
     report={'status':'failed','sourceCommit':source,'physicalPhoneAcceptance':False}
     try:
-        report=run(adb,binary,source,out,capture.read)
+        report=run_current(adb,binary,source,out,capture.read,navigation_version=args.native_navigation_version)
         print(json.dumps({'status':report['status'],'sourceCommit':source,'actualAndroidExecution':True,'dashboardCaptures':len(report['captures']),'physicalPhoneAcceptance':False}))
     finally:
         finish_workflow(lease,report)

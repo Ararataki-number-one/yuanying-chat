@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Actual Android screenshots of production UI; never touches the formal app."""
-import argparse,json,pathlib,re,struct,subprocess,time,xml.etree.ElementTree as ET
+import argparse,hashlib,json,pathlib,re,struct,subprocess,time,xml.etree.ElementTree as ET
 import http.server,importlib.util,threading,uuid,os
 import sys
 
@@ -10,6 +10,7 @@ source=subprocess.check_output(['git','rev-parse','HEAD'],cwd=root,text=True).st
 package='local.pocketchat.test';records=[]
 sys.path.insert(0,str(root/'tools/gecko'))
 from ui_visual_capture import UiVisualCapture
+from native_navigation_v2 import protocol_for_variant,chat_ready,validate_chat,capture_native_fonts
 from diagnostic_capture_privacy import checked_text
 from ui_visual_contract import LIGHT_SCENES, LARGE_SCENES, DARK_SCENES, LANDSCAPE_SCENES, required_captures, verify_captures, verify_download_location
 scenes=LIGHT_SCENES
@@ -94,6 +95,7 @@ def capture(variant,width,height,scale,scene,theme='light'):
     launch=['shell','am','start','-W','-n',package+'/local.pocketchat.UiVisualIntegrationActivity','--es','visualAction',scene]
     if label_nonce:launch.extend(['--es','visualNonce',label_nonce])
     adb(*launch)
+    navigation_protocol=protocol_for_variant(variant)
     required={'chat':'会话','environments':'环境管理','network':'固定测试出口','proxy':'代理地址','entries':'选择入口','browser':'基本信息','preferences':'基本信息','settings':'启动与界面','network-menu':'导入网络',
       'environment-picker':'切换环境','downloads':'项目资料与界面设计说明.pdf','feedback':'一句话说明','appearance':'白天与黑夜','default-entry':'默认环境与启动入口',
       'subscription-form':'订阅名称','exit-form':'SOCKS5 服务器','route-editor':'保存并应用','import':'选择分享文件','brand':'元婴期院士','templates':'选择模板','zoom':'网页缩放','update':'当前安装版本','audit':'环境自检与变更','file-preview':'双指缩放 · 拖动查看','delete-file':'删除文件','share-preview':'分享整条线路'}[scene]
@@ -102,7 +104,9 @@ def capture(variant,width,height,scale,scene,theme='light'):
         xml=dump(deadline=deadline)
         runtime=adb('logcat','-d','-s','AndroidRuntime:E','*:S')
         if 'FATAL EXCEPTION' in runtime:raise AssertionError((variant,scene,'Android UI crashed',runtime[-5000:]))
-        if required in xml:break
+        if scene=='chat' and navigation_protocol==2:
+            if chat_ready(xml,width*3,height*3,480):break
+        elif required in xml:break
         if scene in ('exit-form','templates','downloads') and readiness_scrolls<8:
             candidates=[n for n in ET.fromstring(xml).iter('node') if n.attrib.get('class')=='android.widget.ScrollView' and n.attrib.get('scrollable')=='true']
             if candidates:
@@ -143,19 +147,22 @@ def capture(variant,width,height,scale,scene,theme='light'):
         assert seen==expected,(variant,scene,'Preference controls missing or unexpected',sorted(seen))
         preference_check={'preferenceControls':sorted(seen),'removedNoticeControlsAbsent':True,'scrollFrames':len(collected),'tabScrolls':tab_scrolls}
     if scene=='chat':
-        time.sleep(2.5);xml=dump();assert all(label in xml for label in ['会话','环境','下载','网络','设置'])
-        assert not any(n.attrib.get('text') in ['简洁','原网页'] for n in ET.fromstring(xml).iter('node')),xml
-        nodes=list(ET.fromstring(xml).iter('node'))
-        environment=[n for n in nodes if n.attrib.get('content-desc','').startswith('当前环境：')]
-        network=[n for n in nodes if n.attrib.get('content-desc','').startswith('当前环境网络：')]
-        assert len(environment)==len(network)==1,xml
-        assert environment[0].attrib.get('content-desc')=='当前环境：日常会话，点击展开环境工具栏' and environment[0].attrib.get('clickable')=='true',xml
-        assert network[0].attrib.get('clickable')=='false',xml
-        assert not any(n.attrib.get('content-desc') in ['管理环境','更多'] for n in nodes),xml
-        left,top,right,bottom=map(int,re.findall(r'\d+',environment[0].attrib['bounds']))
-        nl,nt,nr,nb=map(int,re.findall(r'\d+',network[0].attrib['bounds']))
-        assert 0<=left<right<=width*3 and 0<=nl<nr<=width*3 and top<bottom==nt<nb,xml
-        assert bottom-top<=(28 if scale==1 else 48)*3,xml
+        if navigation_protocol==1:
+            time.sleep(2.5);xml=dump();assert all(label in xml for label in ['会话','环境','下载','网络','设置'])
+            assert not any(n.attrib.get('text') in ['简洁','原网页'] for n in ET.fromstring(xml).iter('node')),xml
+            nodes=list(ET.fromstring(xml).iter('node'))
+            environment=[n for n in nodes if n.attrib.get('content-desc','').startswith('当前环境：')]
+            network=[n for n in nodes if n.attrib.get('content-desc','').startswith('当前环境网络：')]
+            assert len(environment)==len(network)==1,xml
+            assert environment[0].attrib.get('content-desc')=='当前环境：日常会话，点击展开环境工具栏' and environment[0].attrib.get('clickable')=='true',xml
+            assert network[0].attrib.get('clickable')=='false',xml
+            assert not any(n.attrib.get('content-desc') in ['管理环境','更多'] for n in nodes),xml
+            left,top,right,bottom=map(int,re.findall(r'\d+',environment[0].attrib['bounds']))
+            nl,nt,nr,nb=map(int,re.findall(r'\d+',network[0].attrib['bounds']))
+            assert 0<=left<right<=width*3 and 0<=nl<nr<=width*3 and top<bottom==nt<nb,xml
+            assert bottom-top<=(28 if scale==1 else 48)*3,xml
+        else:
+            time.sleep(2.5);xml=dump();native_navigation=validate_chat(xml,width*3,height*3,480)
     assert 'FATAL EXCEPTION' not in adb('logcat','-d','-s','AndroidRuntime:E','*:S')
     if variant=='current' and scene=='entries':
         choices=[n for n in ET.fromstring(xml).iter('node') if n.attrib.get('class') in ['android.widget.CheckBox','android.widget.RadioButton']]
@@ -169,6 +176,12 @@ def capture(variant,width,height,scale,scene,theme='light'):
     density=int(re.findall(r'density: (\d+)',adb('shell','wm','density'))[-1]);assert density==480,density
     (shots/(stem+'.png')).write_bytes(raw)
     record={'variant':variant,'theme':theme,'logicalViewport':f'{width}x{height}','actualPixels':list(pixels),'densityDpi':density,'fontScale':scale,'scene':scene,'image':stem+'.png','xml':stem+'.xml','readinessScrolls':readiness_scrolls}
+    if scene=='chat' and navigation_protocol==2:
+        identity=dict(sourceCommit=source,sourceTree=subprocess.check_output(['git','rev-parse','HEAD^{tree}'],cwd=root,text=True).strip(),
+                      apkSha256=hashlib.sha256((out/('ui-'+variant+'.apk')).read_bytes()).hexdigest())
+        record['nativeNavigationVersion']=2
+        record['nativeNavigation']=native_navigation
+        record['nativeNavigationFonts']=capture_native_fonts(adb_scene,identity=identity,font_scale=scale,density=480,out=shots,stem=stem)
     if scene=='downloads':
         # Small native payload from this exact Activity invocation; never infer
         # drawn text completeness from accessibility XML's full text attribute.
@@ -468,7 +481,7 @@ try:
         # This partial file cannot replace compact-chrome-results or full UI acceptance.
         (out/'ui-reload-confirmation.json').write_text(json.dumps(reload_confirmation,ensure_ascii=False,indent=2)+'\n')
         (out/'ui-reload-log.txt').write_text(checked_text(adb('logcat','-d'))[0])
-        from run_chrome_collapse import run as run_chrome_collapse
+        from run_chrome_collapse import run_current as run_chrome_collapse
         auto_collapse=run_chrome_collapse(adb,lambda *parts:subprocess.check_output([args.adb,'-s',args.serial,*parts],timeout=90),source,reload_loopback.TRACE,out,focus)
     finally:
         (out/'ui-collapse-server-trace.json').write_text(json.dumps({'sourceCommit':source,'diagnosticOnly':True,'releaseAcceptance':False,'events':reload_loopback.TRACE},ensure_ascii=False,indent=2)+'\n')

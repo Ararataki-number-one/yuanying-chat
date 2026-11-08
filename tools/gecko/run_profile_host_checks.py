@@ -111,6 +111,14 @@ def main():
     input_paths.add(ROOT / "tests/fixtures/profile-context-callback-source-deltas.json")
     input_paths.add(ROOT / "tests/fixtures/gecko-surface-source-deltas.json")
     input_paths.add(ROOT / "tests/fixtures/canonical-profile-prerequisites-source-deltas.json")
+    input_paths.update(ROOT / path for path in ('tests/fixtures/glass-keyboard-narrow-before.xml',
+        'tests/fixtures/glass-keyboard-narrow-after.xml', 'tests/fixtures/glass-keyboard-landscape-before.xml',
+        'tests/fixtures/glass-keyboard-landscape-after.xml', 'tests/fixtures/glass-keyboard-observations.json'))
+    input_paths.update(ROOT / path for path in ('tests/fixtures/network-sources-card-v2-06-actual.xml',
+        'tests/fixtures/network-sources-card-v2-06-state.json', 'tests/fixtures/network-sources-card-v2-06.provenance.json',
+        'tests/gecko-address-dialog-host/api35-landscape-before-ime-resize.xml',
+        'tests/gecko-address-dialog-host/api35-landscape-ime-clipped.xml',
+        'tests/gecko-address-dialog-host/retained-navigation-handlers.json'))
     input_paths.update(ROOT / path for path in ('tests/fixtures/ui-preparation-source-deltas.json',
         'tests/fixtures/glass-emulator-navigation-source-deltas.json', 'tests/fixtures/glass-document-viewports.json'))
     input_paths.update(ROOT / path for path in ('tests/browser-profile-path-host/Host.java.in',
@@ -120,11 +128,18 @@ def main():
     input_paths.add(ROOT / "tests/baselines/ui-preparation-source-history.json")
     input_paths.add(ROOT / "tests/baselines/public-source-history.json")
     input_paths.add(ROOT / "tools/browser/source_history.py")
+    input_paths.update(ROOT / path for path in ('tools/browser/run_integration.py',
+        'tools/browser/fingerprint_fixture_server.py', 'tests/fixtures/browser-focused-target-06.json'))
     input_paths.add(ROOT / "tools/gecko/prepare_profile_host_prerequisites.py")
     input_paths.add(ROOT / "tools/gecko/capture_glass_navigation.py")
     input_paths.add(ROOT / "tools/gecko/glass_ui_validation.py")
     input_paths.add(ROOT / "tools/gecko/glass_display.py")
     input_paths.add(ROOT / "tools/gecko/glass_document_viewport.py")
+    input_paths.add(ROOT / "tools/gecko/chrome_collapse_contract_v2.py")
+    input_paths.update(ROOT / path for path in ('tools/gecko/native_navigation_v2.py',
+        'tests/fixtures/native-navigation-v2/canonical06-ui-chat.xml',
+        'tests/fixtures/native-navigation-v2/canonical06-production-ui.xml',
+        'tests/fixtures/native-navigation-v2/provenance.json'))
     input_paths.update(ROOT / path for path in ('.github/workflows/browser-2_1-acceptance.yml',
         '.github/workflows/profile-upgrade-checks.yml', '.github/workflows/glass-release-validation.yml'))
     input_paths.update(ROOT / path for path in ('.github/workflows/gecko-cpu-acceptance.yml',
@@ -172,6 +187,66 @@ def main():
         input_paths.add(proxy_script)
     input_paths.add(ROOT / "tools/gecko/run_resource_host_checks.py")
     input_paths.update((ROOT / "app/src/main/assets/gecko").glob("*.js"))
+    glass_navigation_inputs = {ROOT / path for path in (
+        'app/src/main/java/local/pocketchat/GeckoAddressUi.java',
+        'tests/browser_targeting_test.py',
+        'tests/chrome_first_tap_source_compatibility.py',
+        'tests/fixtures/browser-focused-target-06.json',
+        'tests/fixtures/chrome-first-tap-source-deltas.json',
+        'tests/fixtures/glass-keyboard-landscape-after.xml',
+        'tests/fixtures/glass-keyboard-landscape-before.xml',
+        'tests/fixtures/glass-keyboard-narrow-after.xml',
+        'tests/fixtures/glass-keyboard-narrow-before.xml',
+        'tests/fixtures/glass-keyboard-observations.json',
+        'tests/fixtures/native-navigation-v2/canonical06-production-ui.xml',
+        'tests/fixtures/native-navigation-v2/canonical06-ui-chat.xml',
+        'tests/fixtures/native-navigation-v2/provenance.json',
+        'tests/fixtures/network-sources-card-v2-06-actual.xml',
+        'tests/fixtures/network-sources-card-v2-06-state.json',
+        'tests/fixtures/network-sources-card-v2-06.provenance.json',
+        'tests/fixtures/ui-checkpoint-source-deltas.json',
+        'tests/gecko-address-dialog-host/AddressDialogLayoutHost.java',
+        'tests/gecko-address-dialog-host/api35-landscape-before-ime-resize.xml',
+        'tests/gecko-address-dialog-host/api35-landscape-ime-clipped.xml',
+        'tests/gecko-address-dialog-host/retained-navigation-handlers.json',
+        'tests/gecko/BrowserIntegrationActivity.java',
+        'tests/gecko/ChromeCollapseIntegration.java',
+        'tests/gecko/GeckoEnvironmentPolicyIntegrationActivity.java',
+        'tests/gecko/GeckoIpTimeZoneIntegrationActivity.java',
+        'tests/gecko/network_inactive_card_v2.py',
+        'tests/gecko/network_sources_ui_history.py',
+        'tests/gecko/run_chrome_collapse.py',
+        'tests/gecko/run_chrome_collapse_diagnostic.py',
+        'tests/gecko/run_chrome_collapse_v2.py',
+        'tests/gecko/run_device.py',
+        'tests/gecko/run_environment_dashboard.py',
+        'tests/gecko/run_network_sources_ui.py',
+        'tests/gecko/run_ui_visuals.py',
+        'tests/gecko_chrome_diagnostic_test.py',
+        'tests/profile_android_user_ca_transport_test.py',
+        'tests/profile_browser_trusted_focus_test.py',
+        'tests/profile_chrome_collapse_v2_driver_test.py',
+        'tests/profile_chrome_collapse_v2_test.py',
+        'tests/profile_chrome_navigation_v2_source_compatibility_test.py',
+        'tests/profile_chrome_stage_module_closure_test.py',
+        'tests/profile_gecko_address_editor_fixture_test.py',
+        'tests/profile_gecko_address_layout_test.py',
+        'tests/profile_glass_background_entry_test.py',
+        'tests/profile_glass_keyboard_geometry_test.py',
+        'tests/profile_native_navigation_v2_test.py',
+        'tests/profile_network_sources_card_v2_test.py',
+        'tests/profile_network_sources_inactive_label46_test.py',
+        'tests/ui_checkpoint_source_compatibility.py',
+        'tools/browser/fingerprint_fixture_server.py',
+        'tools/browser/run_integration.py',
+        'tools/gecko/chrome_collapse_contract.py',
+        'tools/gecko/chrome_collapse_contract_v2.py',
+        'tools/gecko/glass_ui_validation.py',
+        'tools/gecko/native_navigation_v2.py',
+        'tools/gecko/run_profile_host_checks.py',
+        'tools/publish-gecko-release.py',
+    )}
+    input_paths.update(glass_navigation_inputs)
     before_hashes = {path: hashlib.sha256(path.read_bytes()).hexdigest() for path in input_paths}
     java = os.environ.get("PROFILE_JAVA") or shutil.which("java")
     if not java:
@@ -577,6 +652,7 @@ def main():
                   ROOT/'.github/workflows/glass-release-validation.yml',
                   ROOT/'tests/profile_native_setup_diagnostic11_test.py',ROOT/'tests/profile_editing_transport13_diagnostic_test.py',
                   ROOT/'tests/gecko/NetworkClientBindingIntegrationActivity.java',ROOT/'tests/gecko/run_network_client_binding.py',ROOT/'tests/gecko/AndroidManifest.xml'))
+    files.update(glass_navigation_inputs)
     if (subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip() != source_id
             or subprocess.check_output(["git", "status", "--porcelain"], cwd=ROOT, text=True) != source_status
             or any(not path.is_file() or hashlib.sha256(path.read_bytes()).hexdigest() != digest

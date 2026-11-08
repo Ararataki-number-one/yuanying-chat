@@ -41,6 +41,315 @@ SAFE_AREA_OVERLAYS = ('com.android.internal.display.cutout.emulation.tall',
                       'com.android.internal.systemui.navbar.threebutton')
 
 
+def visible_ime_frame(raw, width, height):
+    """Read current screen coordinates, never IME-local insets or a boot hint."""
+    frames = set()
+    for line in raw.splitlines():
+        if (re.search(r'\bInsetsSource\b', line) is None
+                or re.search(r'\b(?:mType|type)=(?:ime|ITYPE_IME)\b', line) is None):
+            continue
+        frame = re.search(r'\b(?:mFrame|frame)=\[\s*(-?\d+),\s*(-?\d+)\]\[\s*(-?\d+),\s*(-?\d+)\]', line)
+        visible = re.search(r'\b(?:mVisible|visible)=(true|false)\b', line)
+        if frame is None or visible is None:
+            raise ValueError('A complete actual IME InsetsSource is required')
+        if visible[1] == 'true':
+            frames.add(tuple(map(int, frame.groups())))
+    if len(frames) != 1:
+        raise ValueError('One currently visible screen-space IME frame is required')
+    frame = frames.pop()
+    if not (0 <= frame[0] < frame[2] <= width and 0 <= frame[1] < frame[3] <= height):
+        raise ValueError('The actual IME frame must be positive and inside the current display')
+    return list(frame)
+
+
+def url_editor_keyboard_geometry(xml, ime_frame, width, height, density, package='local.pocketchat.test'):
+    """Reject a keyboard-ready editor whose real native input is clipped away."""
+    if (any(type(v) is not int or v <= 0 for v in (width, height, density))
+            or type(ime_frame) not in (list, tuple) or len(ime_frame) != 4
+            or any(type(v) is not int for v in ime_frame)
+            or not (0 <= ime_frame[0] < ime_frame[2] <= width
+                    and 0 <= ime_frame[1] < ime_frame[3] <= height)):
+        raise ValueError('Explicit display geometry and a positive actual IME frame are required')
+    tree = ET.fromstring(xml)
+    if tree.tag != 'hierarchy':
+        raise ValueError('A native hierarchy is required for the keyboard editor')
+    parents = {child: parent for parent in tree.iter() for child in parent}
+    minimum = (48 * density + 159) // 160
+
+    def box(node):
+        match = re.fullmatch(r'\[(\d+),(\d+)\]\[(\d+),(\d+)\]', node.get('bounds', ''))
+        if match is None:
+            raise ValueError('The keyboard editor needs complete native bounds')
+        value = list(map(int, match.groups()))
+        if not (0 <= value[0] < value[2] <= width and 0 <= value[1] < value[3] <= height):
+            raise ValueError('The keyboard editor control is clipped outside the display')
+        return value
+
+    def fully_visible(node):
+        value = box(node)
+        current = node
+        while current is not None and current.tag == 'node':
+            if current.get('visible-to-user') == 'false':
+                raise ValueError('The keyboard editor control or its ancestor is hidden')
+            outer = box(current)
+            if not (outer[0] <= value[0] < value[2] <= outer[2]
+                    and outer[1] <= value[1] < value[3] <= outer[3]):
+                raise ValueError('The keyboard editor control is clipped by its native parent')
+            current = parents.get(current)
+        if value[3] > ime_frame[1]:
+            raise ValueError('The keyboard editor control is covered by the actual IME')
+        return value
+
+    native = [node for node in tree.iter('node') if node.get('package') == package
+              and node.get('visible-to-user') != 'false']
+    edits = [node for node in native if node.get('class') == 'android.widget.EditText']
+    if len(edits) != 1 or edits[0].get('enabled') != 'true' or edits[0].get('focused') != 'true':
+        raise ValueError('One enabled and focused actual native URL EditText is required')
+    edit = fully_visible(edits[0])
+    if edit[2] - edit[0] < minimum or edit[3] - edit[1] < minimum:
+        raise ValueError('The actual URL input must retain a complete 48dp native region')
+    buttons = {}
+    for label in ('主页', '取消', '前往'):
+        found = [node for node in native if node.get('class') == 'android.widget.Button'
+                 and node.get('text') == label and node.get('enabled') == 'true'
+                 and node.get('clickable') == 'true']
+        if len(found) != 1:
+            raise ValueError('Each complete native URL action is required exactly once')
+        value = fully_visible(found[0])
+        if value[2] - value[0] < minimum or value[3] - value[1] < minimum:
+            raise ValueError('Every native URL action needs a complete 48dp touch region')
+        buttons[label] = value
+    labels = [fully_visible(node) for node in native
+              if node.get('class') == 'android.widget.TextView' and node.get('text') == '网址或搜索']
+    if len(labels) > 1:
+        raise ValueError('The native URL label is ambiguous')
+    return dict(valid=True, editBounds=edit, cancelBounds=buttons['取消'], buttonBounds=buttons,
+                labelBounds=labels[0] if labels else None, imeBounds=list(ime_frame), minimumTouchTargetPx=minimum,
+                checks=dict(nativeInputVisible=True, nativeInputAtLeast48Dp=True,
+                            threeCompleteActions=True, actionTouchTargetsAtLeast48Dp=True,
+                            controlsAboveActualIme=True, nativeAncestorClippingAbsent=True))
+
+
+def cancel_keyboard_editor(*, capture, adb, tap, out, stem, width, height, density, sha,
+                           predicate, deadline, package='local.pocketchat.test', evidence=None):
+    """Read fresh stable bounds after the real IME, then inject exactly one tap.
+
+    The caller shares the original URL scene deadline. Repeated acquisition is
+    read-only; no Cancel input is retried and no document or observer is changed.
+    """
+    out = Path(out)
+    attempts, previous = [], None
+    evidence = {} if evidence is None else evidence
+    evidence.update(status='started', attempts=attempts, originalSceneDeadline=deadline)
+
+    def remaining():
+        value = deadline - time.monotonic()
+        if value <= 0:
+            raise TimeoutError('The original URL keyboard scene deadline expired before its single Cancel input')
+        return value
+
+    while remaining() > 0:
+        index = len(attempts) + 1
+        row = dict(index=index, startedAtUnixNs=time.time_ns())
+        attempts.append(row)
+        raw = adb('shell', 'dumpsys', 'input_method', timeout=remaining())
+        path = out / (stem + '-keyboard-' + str(index) + '.txt'); path.write_bytes(raw)
+        row['inputMethod'] = dict(file=path.name, sha256=sha(path))
+        shown = re.findall(r'\bmInputShown=(true|false)\b', raw.decode('utf-8', 'strict'))
+        row['shown'] = shown == ['true']
+        ready = None
+        try:
+            if not row['shown']:
+                raise ValueError('The real Android IME is not yet shown')
+            raw_window = adb('shell', 'dumpsys', 'window', 'displays', timeout=remaining())
+            window = out / (stem + '-keyboard-window-' + str(index) + '.txt'); window.write_bytes(raw_window)
+            row['window'] = dict(file=window.name, sha256=sha(window))
+            frame = visible_ime_frame(raw_window.decode('utf-8', 'strict'), width, height)
+            xml = capture.read(deadline=deadline)
+            xml_path = out / (stem + '-keyboard-fresh-' + str(index) + '.xml'); xml_path.write_text(xml)
+            row['hierarchy'] = dict(file=xml_path.name, sha256=sha(xml_path))
+            if not predicate(xml):
+                raise ValueError('The original native URL editor predicate is not satisfied')
+            geometry = url_editor_keyboard_geometry(xml, frame, width, height, density, package)
+            row.update(geometry=geometry, status='ready')
+            if geometry == previous:
+                final = out / (stem + '.xml'); final.write_text(xml)
+                tree = ET.fromstring(xml)
+                selected = [node for node in tree.iter('node') if node.get('package') == package
+                    and node.get('class') == 'android.widget.Button' and node.get('text') == '取消'
+                    and node.get('visible-to-user') != 'false' and node.get('enabled') == 'true'
+                    and node.get('clickable') == 'true' and node.get('bounds') == '[%d,%d][%d,%d]' % tuple(geometry['cancelBounds'])]
+                if len(selected) != 1:
+                    raise ValueError('One visible Cancel matching the verified fresh bounds is required')
+                ready = selected[0]
+            previous = geometry
+        except ValueError as error:
+            row.update(status='not-ready', error=str(error))
+            previous = None
+        if ready is not None:
+            # Input is outside the read-only retry block. Even an exception
+            # after injection propagates; Cancel is never replayed.
+            remaining()
+            tap(ready, 'Cancel native URL editing without navigating')
+            evidence.update(status='verified', file=path.name, sha256=sha(path), shown=True,
+                window=row['window'], hierarchy=dict(file=final.name, sha256=sha(final)),
+                geometry=geometry, singleCancelInput=True, completedAtUnixNs=time.time_ns())
+            return dict(evidence, xml=xml)
+        time.sleep(min(.2, remaining()))
+
+
+def background_activity_state(raw, package):
+    """Require the unique real target Activity's stop/visibility state.
+
+    A home Activity at RESUMED and a task's visible=false are insufficient:
+    the target Hist record can still be PAUSED with a visible client window.
+    """
+    if (type(raw) is not str or not raw.strip() or type(package) is not str
+            or re.fullmatch(r'[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)+', package) is None):
+        raise ValueError('An actual activity dump and explicit package are required')
+    component = package + '/local.pocketchat.CompactChromeIntegrationActivity'
+    lines = raw.splitlines()
+    records = []
+    for index, line in enumerate(lines):
+        if re.match(r'^\s*\*\s+Hist\b', line) is None:
+            continue
+        header = re.fullmatch(r'([ \t]*)\*\s+Hist\s+#\d+:\s+ActivityRecord\{'
+                              r'[0-9a-f]+\s+u\d+\s+([^\s{}]+)\s+[^{}\n]+\}\s*', line)
+        if header is None:
+            raise ValueError('An activity history record is malformed')
+        indent = len(header[1].expandtabs(8))
+        body = []
+        for following in lines[index + 1:]:
+            if following.strip() and len(following.expandtabs(8)) - len(following.expandtabs(8).lstrip()) <= indent:
+                break
+            body.append(following)
+        records.append((header[2], '\n'.join(body)))
+    targets = [body for name, body in records if name == component]
+    if len(targets) != 1:
+        raise ValueError('One actual CompactChrome history record is required')
+    body = targets[0]
+
+    def field(name, pattern, optional=False):
+        values = re.findall(r'\b' + re.escape(name) + r'=(' + pattern + r')(?=\s|$)', body)
+        occurrences = re.findall(r'\b' + re.escape(name) + r'=', body)
+        if optional and not occurrences:
+            return None
+        if len(values) != 1 or len(occurrences) != 1:
+            raise ValueError('One typed target Activity field is required: ' + name)
+        return values[0]
+
+    if field('mActivityComponent', r'[^\s]+') != component or field('packageName', r'[^\s]+') != package:
+        raise ValueError('The target Activity body belongs to another component or package')
+    state = field('state', r'[A-Z][A-Z_]*')
+    visibility = {name: field(name, r'true|false') == 'true' for name in
+                  ('mVisibleRequested', 'mVisible', 'mClientVisible', 'reportedVisible', 'nowVisible')}
+    finishing = field('finishing', r'true|false') == 'true'
+    stopped = field('stopped', r'true|false', optional=True)
+    own_resumed = False
+    for line in lines:
+        current = re.search(r'\b(?:topResumedActivity|mResumedActivity|ResumedActivity|Resumed)\s*[:=]\s*(.*)', line)
+        if current is None or current[1].strip() == 'null':
+            continue
+        record = re.fullmatch(r'ActivityRecord\{[0-9a-f]+\s+u\d+\s+([^\s{}]+)\s+[^{}\n]+\}\s*', current[1])
+        if record is None:
+            raise ValueError('A resumed Activity reference is malformed')
+        own_resumed = own_resumed or record[1].startswith(package + '/')
+    for name, other in records:
+        if name.startswith(package + '/'):
+            states = re.findall(r'\bstate=([A-Z][A-Z_]*)(?=\s|$)', other)
+            if len(states) != 1 or len(re.findall(r'\bstate=', other)) != 1:
+                raise ValueError('An own-package Activity state is missing or ambiguous')
+            own_resumed = own_resumed or states[0] == 'RESUMED'
+    fully_stopped = (state == 'STOPPED' and not finishing and stopped in (None, 'true')
+                     and not own_resumed and not any(visibility.values()))
+    return dict(status='stopped' if fully_stopped else 'waiting', component=component,
+                state=state, visibleFields=visibility, fullyStopped=fully_stopped)
+
+
+def background_owner_hidden(observation, identity, nonce, command):
+    """Read only host/window hiding; animator values never decide entry readiness."""
+    if (type(observation) is not dict or type(identity) is not dict
+            or type(nonce) is not str or re.fullmatch(r'[0-9a-f]{32}', nonce) is None
+            or type(command) is not str or not 1 <= len(command) <= 80):
+        raise ValueError('An explicit source-bound owner observation is required')
+    for name, size in (('sourceCommit', 40), ('sourceTree', 40), ('apkSha256', 64)):
+        expected = identity.get(name)
+        if (type(expected) is not str or re.fullmatch('[0-9a-f]{' + str(size) + '}', expected) is None
+                or observation.get(name) != expected):
+            raise ValueError('Background owner source/APK identity differs')
+    if (type(observation.get('schema')) is not int or observation['schema'] != 1
+            or observation.get('status') != 'observed' or observation.get('command') != command
+            or observation.get('runNonce') != nonce or observation.get('readOnly') is not True
+            or observation.get('pausesObservers') is not False
+            or observation.get('activityClass') != 'local.pocketchat.CompactChromeIntegrationActivity'
+            or any(type(observation.get(key)) is not int or observation[key] < 0 for key in
+                   ('pid', 'uid', 'activityRef', 'decorRef', 'capturedAtElapsedRealtimeNanos'))
+            or observation['pid'] == 0
+            or any(type(observation.get(key)) is not bool for key in ('active', 'windowFocus'))):
+        raise ValueError('Background owner Activity/nonce/read-only binding is invalid')
+    owners = observation.get('owners')
+    if (type(owners) is not dict or type(owners.get('roots')) is not list or len(owners['roots']) != 2
+            or type(owners.get('materials')) is not list or not owners['materials']
+            or type(owners.get('docks')) is not list or not owners['docks']):
+        raise ValueError('The current native owner hierarchy is incomplete')
+    backdrop = owners.get('backdrop')
+    if (type(backdrop) is not dict
+            or any(type(backdrop.get(key)) is not bool for key in ('configuredActive', 'isGlassActive'))):
+        raise ValueError('The native backdrop observation is incomplete')
+    hosts = list(owners['roots']) + [backdrop.get('host')]
+    for entry in owners['materials'] + owners['docks']:
+        if type(entry) is not dict:
+            raise ValueError('The native owner host entry is malformed')
+        hosts.append(entry.get('host'))
+    hidden = observation['active'] is False and observation['windowFocus'] is False
+    for host in hosts:
+        if (type(host) is not dict or type(host.get('rootIdentity')) is not int
+                or host['rootIdentity'] != observation['decorRef']
+                or any(type(host.get(key)) is not bool for key in ('attached', 'shown', 'windowFocus'))
+                or any(type(host.get(key)) is not int or host[key] not in (0, 4, 8)
+                       for key in ('visibility', 'windowVisibility'))):
+            raise ValueError('The native owner visibility/root is not an exact observed value')
+        hidden = hidden and host['shown'] is False and host['windowVisibility'] in (4, 8) and host['windowFocus'] is False
+    return bool(hidden)
+
+
+def wait_for_background_entry(*, case, adb, observe_owner, out, sha, identity, package, deadline):
+    """Confirm actual stop/hidden state before starting the unchanged quiet window."""
+    evidence = case['backgroundEntry'] = dict(status='started', deadline=deadline, maximumOwnerReads=20,
+        sourceCommit=identity['sourceCommit'], sourceTree=identity['sourceTree'], apkSha256=identity['apkSha256'],
+        runNonce=case['runNonce'], attempts=[], startedAtUnixNs=time.time_ns(), readOnly=True,
+        waitsForAnimatorIdle=False, scope='Actual stop/window hiding precondition only; not a frame-counter pass')
+
+    def remaining():
+        value = deadline - time.monotonic()
+        if value <= 0:
+            raise TimeoutError('The bounded actual stopped/hidden background entry deadline expired')
+        return value
+
+    for index in range(1, 21):
+        row = dict(index=index, startedAtUnixNs=time.time_ns())
+        evidence['attempts'].append(row)
+        raw = adb('shell', 'dumpsys', 'activity', 'activities', timeout=remaining())
+        path = Path(out) / (case['name'] + '-background-entry-' + str(index) + '-activity.txt')
+        path.write_bytes(raw)
+        row['activity'] = dict(file=path.name, sha256=sha(path))
+        row['activityState'] = background_activity_state(raw.decode('utf-8', 'strict'), package)
+        command = 'background-entry-' + str(index)
+        row['command'] = command
+        adb('shell', 'am', 'broadcast', '-a', package + '.CHROME_COLLAPSE', '-p', package,
+            '--es', 'eventNonce', case['runNonce'], '--es', 'glassObserveCommand', command, timeout=remaining())
+        row['owner'] = observe_owner(command, deadline)
+        row['ownerHidden'] = background_owner_hidden(row['owner'], identity, case['runNonce'], command)
+        row['completedAtUnixNs'] = time.time_ns()
+        remaining()
+        if row['activityState']['fullyStopped'] and row['ownerHidden']:
+            evidence.update(status='verified', completedAtUnixNs=time.time_ns(),
+                            acceptedCommand=command, actualActivityState='STOPPED', allObservedHostsHidden=True)
+            return evidence
+        time.sleep(min(.2, remaining()))
+    raise TimeoutError('The actual background entry did not stop and hide within 20 read-only observations')
+
+
 def total_frames(raw):
     """Read cumulative HWUI counters; no FPS or animation-smoothness inference."""
     values = re.findall(r'^\s*Total frames rendered:\s*(\d+)\s*$', raw, re.M)
@@ -585,9 +894,15 @@ def capture_acceptance_suite(args, report, capture, adb, wait_for, tap, screensh
     def save():
         write(args.out / 'capture.json', report)
 
-    def artifact(case, suffix, predicate, *, photograph=True):
+    def artifact(case, suffix, predicate, *, photograph=True, deadline=None):
         stem = case['name'] + '-' + suffix
-        xml = wait_for(capture, predicate, stem, seconds=30)
+        if deadline is None:
+            xml = wait_for(capture, predicate, stem, seconds=30)
+        else:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise TimeoutError('The original URL keyboard scene deadline expired')
+            xml = wait_for(capture, predicate, stem, seconds=min(30, remaining))
         item = dict(xml=stem + '.xml', xmlSha256=sha(args.out / (stem + '.xml')),
                     geometry=geometry(xml), observedAtUnixNs=time.time_ns())
         title = capsule(xml)
@@ -603,6 +918,8 @@ def capture_acceptance_suite(args, report, capture, adb, wait_for, tap, screensh
             screenshot(stem + '.png')
             item.update(png=stem + '.png', pngSha256=sha(args.out / (stem + '.png')))
             item['pngDimensions'] = verify_png(args.out / (stem + '.png'), api['WIDTH'], api['HEIGHT'])
+        if deadline is not None and time.monotonic() >= deadline:
+            raise TimeoutError('The original URL keyboard scene deadline expired during its original screenshot')
         case['observations'][suffix] = item
         save()
         return xml
@@ -642,11 +959,15 @@ def capture_acceptance_suite(args, report, capture, adb, wait_for, tap, screensh
             time.sleep(.2)
         raise TimeoutError('No current, source/APK/SDK/nonce-bound document observation: ' + command)
 
-    def observed_glass_pair(case, commands):
-        deadline = time.monotonic() + 40
+    def observed_glass_pair(case, commands, *, deadline=None):
+        bounded_entry = deadline is not None
+        deadline = time.monotonic() + 40 if deadline is None else deadline
         found = {}
         while time.monotonic() < deadline:
-            raw = adb('logcat', '-d', '-v', 'brief', '-s', 'PocketGeckoIntegration:I', 'AndroidRuntime:E', '*:S')
+            options = dict(timeout=deadline - time.monotonic()) if bounded_entry else {}
+            if bounded_entry and options['timeout'] <= 0:
+                raise TimeoutError('The bounded background-entry receipt deadline expired')
+            raw = adb('logcat', '-d', '-v', 'brief', '-s', 'PocketGeckoIntegration:I', 'AndroidRuntime:E', '*:S', **options)
             (args.out / (case['name'] + '-events.log')).write_bytes(raw)
             if b'FATAL EXCEPTION' in raw:
                 raise ValueError('Android crashed during native glass-owner observation')
@@ -661,7 +982,7 @@ def capture_acceptance_suite(args, report, capture, adb, wait_for, tap, screensh
                     found[event['result']['command']] = event['result']
             if all(command in found for command in commands):
                 return [found[command] for command in commands]
-            time.sleep(.2)
+            time.sleep(min(.2, max(0, deadline - time.monotonic())) if bounded_entry else .2)
         raise TimeoutError('No source/SDK/APK/nonce-bound native glass-owner observation pair')
 
     def quiet(case, name, allowed_delta):
@@ -783,16 +1104,21 @@ def capture_acceptance_suite(args, report, capture, adb, wait_for, tap, screensh
         if initial.get('visibleDocument') is not True or initial.get('loadingCoverVisibility') != 8:
             raise ValueError('The actual production callback did not reveal the controlled Gecko document')
         tap(capsule(xml), 'Tap the observed environment capsule to open only the native URL editor')
+        keyboard_deadline = time.monotonic() + 30
         xml = artifact(case, 'url-keyboard', lambda value: text(value, '打开网址')
-                       and button(value, '取消') is not None and not text(value, '快速切换环境'))
-        ime = adb('shell', 'dumpsys', 'input_method').decode('utf-8', 'replace')
-        path = args.out / (case['name'] + '-keyboard.txt')
-        path.write_text(ime)
-        case['keyboard'] = dict(file=path.name, sha256=sha(path),
-            shown=bool(re.search(r'(?:mInputShown|mIsInputViewShown|isInputViewShown)=true\b', ime)))
-        if not case['keyboard']['shown']:
-            raise ValueError('The actual native URL keyboard was not observed')
-        tap(button(xml, '取消'), 'Cancel native URL editing without navigating')
+                       and button(value, '取消') is not None and not text(value, '快速切换环境'),
+                       deadline=keyboard_deadline)
+        case['keyboard'] = dict(sourceCommit=identity['sourceCommit'], sourceTree=identity['sourceTree'],
+                                apkSha256=identity['apkSha256'], runNonce=case['runNonce'])
+        keyboard = cancel_keyboard_editor(capture=capture, adb=adb, tap=tap, out=args.out,
+            stem=case['name'] + '-url-keyboard', width=api['WIDTH'], height=api['HEIGHT'], density=api['DENSITY'],
+            sha=sha, predicate=lambda value: text(value, '打开网址') and button(value, '取消') is not None
+                and not text(value, '快速切换环境'), deadline=keyboard_deadline, package=package,
+            evidence=case['keyboard'])
+        xml = keyboard.pop('xml')
+        case['observations']['url-keyboard'].update(xmlSha256=sha(args.out / (case['name'] + '-url-keyboard.xml')),
+                                                   geometry=geometry(xml))
+        save()
         xml = artifact(case, 'url-cancelled', chat, photograph=False)
         box = bounds(capsule(xml)); x, y = (box[0] + box[2]) // 2, (box[1] + box[3]) // 2
         report['inputs'].append(dict(action='long-press', phase=case['name'], observedBounds=list(box),
@@ -898,6 +1224,26 @@ def capture_acceptance_suite(args, report, capture, adb, wait_for, tap, screensh
                     resumed = [line for line in activity.splitlines() if 'mResumedActivity' in line or 'topResumedActivity' in line]
                     if not resumed or any(package + '/' in line for line in resumed):
                         raise ValueError('The application did not actually leave the resumed state')
+                    def background_owner(command, deadline):
+                        transfer = observations[case['runNonce']]
+                        original_fetch = transfer.fetch
+
+                        def bounded_fetch(uri):
+                            remaining = deadline - time.monotonic()
+                            if remaining <= 0:
+                                raise TimeoutError('The bounded background-entry event transfer deadline expired')
+                            return adb('exec-out', 'content', 'read', '--uri', uri, timeout=remaining)
+
+                        try:
+                            # Limit only this client's content-read timeout.
+                            # The native observer and existing quiet reads are unchanged.
+                            transfer.fetch = bounded_fetch
+                            return observed_glass_pair(case, [command], deadline=deadline)[0]
+                        finally:
+                            transfer.fetch = original_fetch
+
+                    wait_for_background_entry(case=case, adb=adb, observe_owner=background_owner, out=args.out,
+                        sha=sha, identity=identity, package=package, deadline=time.monotonic() + 30)
                     quiet(case, 'background', 0)
                     case['status'] = 'verified'
                 except Exception as error:

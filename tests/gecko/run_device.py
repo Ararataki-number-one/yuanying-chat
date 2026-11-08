@@ -302,6 +302,7 @@ class Fixture(fixture.Fixture):
 def main():
     parser=argparse.ArgumentParser();parser.add_argument('--adb',required=True);parser.add_argument('--serial',default='emulator-5554');parser.add_argument('--apk',type=pathlib.Path,default=ROOT/'app/build/outputs/apk/integration/app-x86_64-integration.apk')
     parser.add_argument('--reading-zoom-trace',action='store_true',help='Opt-in numeric reading zoom diagnostics only; does not change acceptance')
+    parser.add_argument('--native-navigation-version',type=int,choices=(1,2),default=2,help='Explicit native navigation protocol; v1 retains the original five-tab oracle')
     modes=parser.add_mutually_exclusive_group();modes.add_argument('--reading-only',action='store_true',help='Diagnostic reading/zoom/input subset; cannot replace full device acceptance');modes.add_argument('--update-transfers-only',action='store_true',help='Diagnostic real 28-case transfer subset; cannot replace full device acceptance');args=parser.parse_args()
     diagnostic='reading' if args.reading_only else 'update-transfers' if args.update_transfers_only else ''
     device_report_name='diagnostic-reading-results.json' if args.reading_only else 'diagnostic-update-device-results.json' if args.update_transfers_only else 'device-results.json'
@@ -797,7 +798,13 @@ def main():
         adb('shell','uiautomator','dump','/sdcard/gecko-production.xml')
         hierarchy=adb('shell','cat','/sdcard/gecko-production.xml')
         (OUT/'production-ui.xml').write_text(hierarchy)
-        for label in ['会话','环境','下载','网络','设置']:assert label in hierarchy,(label,hierarchy)
+        if args.native_navigation_version==1:
+            for label in ['会话','环境','下载','网络','设置']:assert label in hierarchy,(label,hierarchy)
+        else:
+            from native_navigation_v2 import validate_chat
+            from glass_display import window_geometry
+            native_display=window_geometry(adb('shell','dumpsys','window','displays'))
+            report['productionNavigation']=validate_chat(hierarchy,native_display['width'],native_display['height'],native_display['density'])
         assert not any(node.attrib.get('text') in ['简洁','原网页'] for node in ET.fromstring(hierarchy).iter('node')),hierarchy
         assert 'FATAL EXCEPTION' not in adb('logcat','-d','-s','AndroidRuntime:E','*:S')
         update_checks=[]

@@ -43,6 +43,7 @@ class BrowserTargetingTests(unittest.TestCase):
                     'visibleLeft': 0, 'visibleTop': 215,
                     'visibleRight': 324, 'visibleBottom': 568,
                     'nativeScale': 1.0,
+                    'viewFocus': True,
                     'shown': True, 'windowFocus': True, 'foreground': True,
                     'layoutRequested': False,
                 },
@@ -50,6 +51,7 @@ class BrowserTargetingTests(unittest.TestCase):
                     'id': identifier, 'x': 162.0, 'y': 165.0,
                     'left': 8.0, 'top': 140.0, 'right': 316.0,
                     'bottom': 190.0, 'viewportWidth': 324.0,
+                    'documentFocus': True,
                     'viewportHeight': 353.0, 'hitTarget': True,
                     'hitId': identifier,
                     'hitTag': 'A' if identifier == 'download' else 'INPUT',
@@ -653,6 +655,8 @@ public final class ActualStartupReadyHost {
                 output = json.dumps(latest if latest is not None and report_reads > 1 else current).encode()
             elif parts == ['shell', 'dumpsys', 'activity', 'activities']:
                 output = resumed.encode()
+            elif parts == ['shell', 'dumpsys', 'window', 'windows']:
+                output = b'mCurrentFocus=Window{controlled host input window; not Android evidence}\n'
             elif parts[:4] == ['shell', 'settings', 'get', 'system']:
                 output = b'null\n'
             elif parts[:4] in (['shell', 'settings', 'put', 'system'],

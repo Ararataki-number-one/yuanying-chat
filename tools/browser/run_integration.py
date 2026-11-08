@@ -49,6 +49,34 @@ def validate_tap_target(current):
     return point_x,point_y
 
 
+def validate_focused_tap_target(current):
+    """Require actual WebView/document focus before its single trusted input."""
+    point=validate_tap_target(current)
+    target=current['tapTarget']
+    if (target['nativeFrame'].get('viewFocus') is not True
+            or target['dom'].get('documentFocus') is not True):
+        raise AssertionError('Trusted target WebView and document do not both have focus')
+    return point
+
+
+def capture_tap_window(adb,output,current):
+    """Retain the real input-window/overlay dump; it grants no input approval."""
+    stage=current['stage']
+    if stage not in ('file-picker-1','file-picker-2','download-click'):
+        raise AssertionError('Unexpected trusted target window observation')
+    row=dict(stage=stage,sourceCommit=current['sourceCommit'],runNonce=current['runNonce'],
+             startedAtUnixNs=time.time_ns(),scope='Read-only actual Android windows before the single tap; not an overlay or picker acceptance.')
+    raw=adb('shell','dumpsys','window','windows',check=False,timeout=5)
+    path=output/(stage+'-tap-windows.txt');path.write_bytes(raw.stdout)
+    errors=output/(stage+'-tap-windows.stderr.txt');errors.write_bytes(raw.stderr)
+    row.update(file=path.name,sha256=hashlib.sha256(raw.stdout).hexdigest(),
+        stderrFile=errors.name,stderrSha256=hashlib.sha256(raw.stderr).hexdigest(),
+        exitCode=raw.returncode,completedAtUnixNs=time.time_ns())
+    if raw.returncode!=0:
+        raise subprocess.CalledProcessError(raw.returncode,['dumpsys','window','windows'],output=raw.stdout,stderr=raw.stderr)
+    return row
+
+
 def brief(value,limit=512):
     return str(value).encode('utf-8','replace')[:limit].decode('utf-8','ignore')
 
@@ -191,8 +219,9 @@ def main():
             last_validated_report=current
             stage=current.get('stage','')
             if stage.startswith('file-picker-') and stage not in handled:
-                x,y=validate_tap_target(current)
-                adb('shell','input','tap',str(x),str(y));actions.append(dict(kind='tap',stage=stage,x=x,y=y,targetProof=current['tapTarget']))
+                x,y=validate_focused_tap_target(current)
+                windows=capture_tap_window(adb,args.output,current)
+                adb('shell','input','tap',str(x),str(y));actions.append(dict(kind='tap',stage=stage,x=x,y=y,targetProof=current['tapTarget'],windowObservation=windows))
                 chooser_until=time.monotonic()+20;chooser=False
                 while time.monotonic()<chooser_until:
                     top=adb('shell','dumpsys','activity','activities').stdout.decode(errors='replace')
@@ -203,7 +232,7 @@ def main():
                 if not chooser:raise AssertionError('The trusted tap did not open Android DocumentsUI: '+stage)
                 adb('shell','input','keyevent','KEYCODE_BACK');actions.append(dict(kind='back',stage=stage,actualDocumentsUiObserved=True));handled.add(stage)
             elif stage=='download-click' and stage not in handled:
-                x,y=validate_tap_target(current);adb('shell','input','tap',str(x),str(y));actions.append(dict(kind='tap',stage=stage,x=x,y=y,targetProof=current['tapTarget']));handled.add(stage)
+                x,y=validate_focused_tap_target(current);windows=capture_tap_window(adb,args.output,current);adb('shell','input','tap',str(x),str(y));actions.append(dict(kind='tap',stage=stage,x=x,y=y,targetProof=current['tapTarget'],windowObservation=windows));handled.add(stage)
             elif stage in ('rotate-landscape','rotate-portrait') and stage not in handled:
                 rotation='1' if stage=='rotate-landscape' else '0';adb('shell','settings','put','system','user_rotation',rotation);actions.append(dict(kind='rotation',stage=stage,value=int(rotation)));handled.add(stage)
             elif stage=='switch-to-gecko' and 'engine-roundtrip' not in handled:

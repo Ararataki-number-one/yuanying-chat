@@ -188,8 +188,25 @@ class AndroidUserCa:
     """Only PUBLIC CA bytes cross adb; no system/APEX writes or permissive TLS."""
     def __init__(self,adb,certificates):self.adb=adb;self.certificates=certificates;self.path=None;self.receipt={};self.root_requested=False
     def set_root(self,root):
-        self.adb('root' if root else 'unroot');self.adb('wait-for-device',timeout=60)
-        uid=self.adb('shell','id','-u').stdout.decode().strip()
+        # A preceding adbd transition can leave the serial temporarily offline.
+        # Observe transport readiness before the single privilege request too;
+        # retain strict command success and the original exact shell UID gate.
+        deadline=time.monotonic()+60
+        def call(stage,*parts):
+            remaining=deadline-time.monotonic()
+            if remaining<=0:raise TimeoutError('Synthetic TLS fixture: adbd setup deadline at '+stage)
+            try:
+                result=self.adb(*parts,timeout=min(60 if parts==('wait-for-device',) else 30,remaining))
+            except (subprocess.CalledProcessError,subprocess.TimeoutExpired) as error:
+                if hasattr(error,'add_note'):
+                    error.add_note('Synthetic TLS adbd stage '+stage+'; stdout='+repr((error.stdout or b'')[-1000:])+'; stderr='+repr((error.stderr or b'')[-1000:]))
+                raise
+            if time.monotonic()>deadline:raise TimeoutError('Synthetic TLS fixture: adbd setup deadline after '+stage)
+            return result
+        call('transport-before-change','wait-for-device')
+        call('privilege-change','root' if root else 'unroot')
+        call('transport-after-change','wait-for-device')
+        uid=call('verify-shell-uid','shell','id','-u').stdout.decode().strip()
         require(uid==('0' if root else '2000'),'adb root unavailable' if root else 'shell evidence UID 2000 unavailable')
         return int(uid)
     def install(self):

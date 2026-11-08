@@ -11,9 +11,9 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 FIXTURE = ROOT / 'tests/fixtures/ui-checkpoint-source-deltas.json'
-FIXTURE_SHA256 = '91559ec13f9f31aeafdc5f87d16b54c9780fe80a341081c00e75ee1a99173480'
+FIXTURE_SHA256 = 'efaa8da45f2697d95a0d514be8cd404260eed1f59595dd4c08b5c2ee8f37d22e'
 RUNNER = 'tests/gecko/run_ui_visuals.py'
-RUNNER_CURRENT_SHA256 = 'b85896aa5b94e33fb40bbada323d239a66f75c12a39bf9adb2a4ff3e3483e14d'
+RUNNER_CURRENT_SHA256 = '12d0f61c0f53efd5766f37cf34ae5526acadfa287a387eb81855dd2e5943783f'
 PREFERENCE_PREVIOUS_SHA256 = 'be5c80463eb66171fc49a0056bbff3b5a8d47fc88d193b4647e37e301857a9b4'
 PREFERENCE_PREVIOUS = "expected={'保存本机输入草稿','恢复网页滚动位置','允许此环境的后台回复提醒','仅在 Wi-Fi 下载文件','自动清理 30 天以上的无引用中间文件'}"
 PREFERENCE_CURRENT = "expected={'保存本机输入草稿','恢复网页滚动位置','允许此环境的后台回复提醒','仅在 Wi-Fi 下载文件','自动清理 30 天以上的无引用中间文件','自动检测外部网络响应'}"
@@ -113,12 +113,74 @@ def source_input(raw, path):
     return raw
 
 
+def navigation_v2_manifest():
+    """Finite source-assertion view; no capture or compiler reads this image."""
+    value = manifest()['runnerNavigationV2']
+    assert value['kind'] == 'historical-comparison-only'
+    assert value['actualAndroidExecution'] is False and value['runtimeAcceptance'] is False
+    assert (value['previousCommit'], value['previousBytes'], value['previousSha256']) == (
+        '06a802663075664b75aa9d19184d9c02b6bab7c9', 46016,
+        'b85896aa5b94e33fb40bbada323d239a66f75c12a39bf9adb2a4ff3e3483e14d')
+    assert (value['reviewedBytes'], value['reviewedSha256']) == (47025, RUNNER_CURRENT_SHA256)
+    assert len(value['deltas']) == 7 and len(value['astPairs']) == 2
+    return value
+
+
+def navigation_v2_runner_input(raw):
+    value = navigation_v2_manifest()
+    assert type(raw) is bytes and (len(raw), sha(raw)) == (value['reviewedBytes'], value['reviewedSha256']), 'Unreviewed complete navigation-v2 runner'
+    for delta in reversed(value['deltas']):
+        current, previous = delta['current'].encode(), delta['previous'].encode()
+        for name, literal in (('current', current), ('previous', previous)):
+            assert 0 < len(literal) <= 32768 and (len(literal), sha(literal)) == (delta[name+'Bytes'], delta[name+'Sha256'])
+        assert raw.count(current) == 1, 'Unique positioned navigation-v2 source context required'
+        raw = raw.replace(current, previous, 1)
+    assert (len(raw), sha(raw)) == (value['previousBytes'], value['previousSha256']), 'Entire original UI comparison input did not restore'
+    return raw
+
+
+def navigation_v2_tree_input(tree):
+    assert type(tree) is ast.Module, 'Complete navigation comparison module required'
+    assert len([node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == 'capture']) == 1, 'Complete navigation capture required'
+    assert len([node for node in tree.body if isinstance(node, ast.Try) and node.finalbody]) == 1, 'Complete navigation workload required, never an excerpt'
+    value = navigation_v2_manifest()
+    row = value['astPairs'].get(tree_sha(tree))
+    if row is None:
+        names = {'protocol_for_variant', 'chat_ready', 'validate_chat', 'capture_native_fonts', 'navigation_protocol', 'native_navigation'}
+        assert not any(isinstance(node, ast.Name) and node.id in names
+            or isinstance(node, ast.ImportFrom) and (node.module == 'native_navigation_v2'
+                or node.module == 'run_chrome_collapse' and any(alias.name == 'run_current' for alias in node.names))
+            for node in ast.walk(tree)), 'Unreviewed complete navigation-v2 comparison AST'
+        return tree
+    assert row['previousAstSha256'] in manifest()['runnerAst']['allowedModulePairs'] and len(row['operations']) == 7
+    for operation in reversed(row['operations']):
+        body = tree
+        for part in operation['path']:
+            if type(part) is int:
+                assert isinstance(body, list) and 0 <= part < len(body)
+                body = body[part]
+            else:
+                assert part in ('body', 'orelse', 'finalbody') and hasattr(body, part)
+                body = getattr(body, part)
+        start, end = operation['currentStart'], operation['currentEnd']
+        assert isinstance(body, list) and type(start) is int and type(end) is int and 0 <= start <= end <= len(body)
+        assert tree_sha(ast.Module(body=body[start:end], type_ignores=[])) == operation['currentAstSha256'], 'Changed positioned navigation-v2 AST context'
+        for name in ('previous', 'current'):
+            source = operation[name+'Source']
+            assert type(source) is str and len(source.encode()) <= 32768
+            assert tree_sha(ast.parse(source)) == operation[name+'AstSha256']
+        body[start:end] = ast.parse(operation['previousSource']).body
+    assert tree_sha(tree) == row['previousAstSha256'], 'Entire original UI comparison AST did not restore'
+    return tree
+
+
 def checkpoint_runner_input(raw):
     """Only the source-oracle LHS: restore the exact pre-sixth-label runner.
 
     Actual capture, parser and checkpoint hosts still compile current bytes.
     """
     assert type(raw) is bytes and sha(raw) == RUNNER_CURRENT_SHA256, 'Actual frozen six-control UI runner required'
+    raw = navigation_v2_runner_input(raw)
     current, previous = PREFERENCE_CURRENT.encode(), PREFERENCE_PREVIOUS.encode()
     assert raw.count(current) == 1, 'Exact Preferences literal required'
     restored = raw.replace(current, previous, 1)
@@ -152,6 +214,7 @@ def history_input(raw, path):
 
 
 def original_runner_tree(tree):
+    navigation_v2_tree_input(tree)
     assert type(tree) is ast.Module, 'Complete parsed UI module required'
     assert len([n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == 'capture']) == 1
     assert len([n for n in tree.body if isinstance(n, ast.Try) and n.finalbody]) == 1, 'Complete UI workload required, not an excerpt'

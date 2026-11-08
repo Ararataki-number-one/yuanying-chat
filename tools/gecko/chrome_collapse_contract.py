@@ -87,3 +87,24 @@ def verify_auto_collapse(report,source,apk_sha):
         gestures=case['actualAndroidInputs'];assert len(gestures)==14 and all(g['actualAndroidInput'] is True for g in gestures)
         assert [g['kind'] for g in gestures].count('swipe')==8 and [g['kind'] for g in gestures].count('tap')==6
     return {'cases':3,'actualAndroidExecution':True,'actualGeckoExecution':True,'checks':sum(len(c['checks']) for c in report['cases'])}
+
+
+# Preserve the complete historical oracle for its original v1 evidence.
+verify_auto_collapse_v1=verify_auto_collapse
+
+def verify_auto_collapse(report,source,apk_sha):
+    version=report.get('navigationContract',1)
+    if type(version) is not int or version not in (1,2):
+        raise ValueError('Unknown Chrome navigation evidence contract')
+    if version==1:
+        if __package__:
+            from .chrome_collapse_contract_v2 import selected_contract_version
+        else:
+            from chrome_collapse_contract_v2 import selected_contract_version
+        if selected_contract_version(source)!=1:raise ValueError('Selected source requires Chrome navigation contract 2')
+        return verify_auto_collapse_v1(report,source,apk_sha)
+    if __package__:
+        from .chrome_collapse_contract_v2 import verify_auto_collapse_v2
+    else:
+        from chrome_collapse_contract_v2 import verify_auto_collapse_v2
+    return verify_auto_collapse_v2(report,source,apk_sha)

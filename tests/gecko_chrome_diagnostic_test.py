@@ -76,6 +76,7 @@ class FocusedMainExecutionTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root=Path(directory)/'source';out=Path(directory)/'diagnostic'
             inputs=('tests/gecko/run_ui_visuals.py','tests/gecko/run_chrome_collapse.py',
+                    'tests/gecko/run_chrome_collapse_v2.py','tools/gecko/chrome_collapse_contract_v2.py',
                     'tests/gecko/run_chrome_collapse_diagnostic.py',
                     'tests/gecko/ChromeCollapseIntegration.java','tools/gecko/chrome_collapse_contract.py','app/build.gradle',
                     'tests/gecko/CompactChromeIntegrationActivity.java','tests/gecko/ReloadWindowCallbackObservation.java',
@@ -164,7 +165,7 @@ class FocusedMainExecutionTest(unittest.TestCase):
                 self.assertIs(actual_trace,trace);self.assertEqual(actual_out,integration)
                 focus('local.pocketchat.CompactChromeIntegrationActivity');collapse.append(True)
                 return {'hostOnly':True}
-            runner.run=run_collapse
+            runner.run=run_collapse;runner.run_current=run_collapse
             contract=types.ModuleType('chrome_collapse_contract');contract.verify_auto_collapse=lambda *args:{'hostOnly':True}
             clock=types.SimpleNamespace(monotonic=lambda:1,monotonic_ns=itertools.count(100).__next__,
                 sleep=lambda _:self.fail('Controlled successful events must not require a retry'))
@@ -209,6 +210,7 @@ class FocusedDevicePreparationTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root=Path(directory)/'source';out=Path(directory)/'diagnostic';order=[];record_path=None
             inputs=('tests/gecko/run_ui_visuals.py','tests/gecko/run_chrome_collapse.py',
+                'tests/gecko/run_chrome_collapse_v2.py','tools/gecko/chrome_collapse_contract_v2.py',
                 'tests/gecko/run_chrome_collapse_diagnostic.py','tests/gecko/ChromeCollapseIntegration.java',
                 'tools/gecko/chrome_collapse_contract.py','tests/gecko/CompactChromeIntegrationActivity.java',
                 'tests/gecko/ReloadWindowCallbackObservation.java','tools/gecko/ui_test_device.py',
