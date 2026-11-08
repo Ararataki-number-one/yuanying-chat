@@ -30,7 +30,7 @@ public class WindowHomeActivity extends ThemedActivity {
   LinearLayout environmentList,maintenanceRows,emptyRows;
   GlassBackdrop backdrop;
   ScrollView workspaceScroll;
-  LinearLayout workspaceFooter,navigationBar;
+  LinearLayout workspaceContent,workspaceFooter,navigationBar;
   Object renderPositionToken;
   final Map<String,EnvironmentRow> rowViews=new LinkedHashMap<>();
   final Runnable update=new Runnable(){public void run(){if(!workspaceVisible)return;if(snapshotQueue!=null)snapshotQueue.request();handler.postDelayed(this,3000);}};
@@ -69,7 +69,7 @@ public class WindowHomeActivity extends ThemedActivity {
     backdrop=new GlassBackdrop(this);backdrop.setBackground(new DesignUi.Stars(this));
     viewport.addView(backdrop,new FrameLayout.LayoutParams(-1,-1));
     workspaceScroll=new ScrollView(this);workspaceScroll.setFillViewport(true);workspaceScroll.setClipToPadding(false);
-    LinearLayout box=DesignUi.column(this);box.setPadding(dp(20),dp(4),dp(20),dp(20));
+    LinearLayout box=workspaceContent=DesignUi.column(this);box.setPadding(dp(20),dp(4),dp(20),dp(20));
     workspaceScroll.addView(box,new ScrollView.LayoutParams(-1,-2));backdrop.addView(workspaceScroll,new FrameLayout.LayoutParams(-1,-1));
     root.addView(workspace,new LinearLayout.LayoutParams(-1,0,1));
     preparation=DesignUi.progress(this,"正在创建环境…","完成后会打开新环境，请稍候。");
@@ -138,9 +138,13 @@ public class WindowHomeActivity extends ThemedActivity {
     return text;
   }
   void updateWorkspaceInsets(){
-    if(workspaceScroll==null||workspaceFooter==null)return;
-    int bottom=workspaceFooter.getHeight();
-    if(workspaceScroll.getPaddingBottom()!=bottom)workspaceScroll.setPadding(0,0,0,bottom);
+    if(workspaceContent==null||workspaceFooter==null)return;
+    // Keep dock clearance inside the scrolling child. On Android 12, padding
+    // on ScrollView alone can advertise accessibility overflow while its
+    // touch interceptor still sees a child shorter than the outer viewport.
+    int bottom=dp(20)+workspaceFooter.getHeight();
+    if(workspaceContent.getPaddingBottom()!=bottom)
+      workspaceContent.setPadding(dp(20),dp(4),dp(20),bottom);
   }
   int windowTop(View view){int[] point=new int[2];view.getLocationInWindow(point);return point[1];}
   int environmentContentTop(View row,ScrollView scroll){return windowTop(row)-windowTop(scroll)+scroll.getScrollY();}
