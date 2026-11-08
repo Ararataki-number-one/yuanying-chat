@@ -19,7 +19,10 @@ class Reviewed210ScaffoldControls(unittest.TestCase):
     def setUpClass(cls):
         historical.DownloadNamesCatalogCompatibilityTest.setUpClass()
         cls.legacy=historical.DownloadNamesCatalogCompatibilityTest('test_exact_addition_retains_all_four_original_guards')
-        cls.current=(ROOT/'app/src/main/java/local/pocketchat/DesignDownloads.java').read_text()
+        cls.raw_current=(ROOT/'app/src/main/java/local/pocketchat/DesignDownloads.java').read_text()
+        # These historical negative controls run at the exact reviewed210 stage.
+        # The workspace UI adapter has separate current-source negative controls.
+        cls.current=runner.remove_workspace_ui(cls.raw_current)
         cls.manifest=runner._review46.scaffold_manifest()
 
     def guards(self,source):

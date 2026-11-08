@@ -7,7 +7,7 @@ import java.text.DateFormat;
 /** Exact selected production methods with counted SQL and deterministic View adapters. */
 public final class DownloadNamesHost {
   static final JSONArray checks=new JSONArray(),measurements=new JSONArray();
-  static boolean before=Boolean.getBoolean("before"),reviewed46=Boolean.getBoolean("reviewed46");
+  static boolean before=Boolean.getBoolean("before"),reviewed46=Boolean.getBoolean("reviewed46"),workspaceUi=Boolean.getBoolean("workspaceUi");
   static void check(String name,boolean pass){checks.put(J.obj("name",name,"pass",pass));}
   static ProfileCatalog setup(){
     ProfileCatalog c=new ProfileCatalog();ProfileCatalog.instance=c;
@@ -25,7 +25,16 @@ public final class DownloadNamesHost {
   static JSONArray rows(int n){JSONArray out=new JSONArray();for(int i=0;i<n;i++)out.put(row("task"+i,i%8,"saved"));return out;}
   static void resetQueries(ProfileCatalog c){c.db.queries.clear();UiPerfStats.reads=0;}
   static boolean projection(ProfileCatalog c){return before?c.db.queries.stream().allMatch(q->q.columns==null):c.db.queries.stream().allMatch(q->Arrays.equals(q.columns,reviewed46?new String[]{"slot","name","environment_id","generation","created","deleting","resetting"}:new String[]{"slot","name"})&&q.where==null&&q.order==null);}
-  static String label(DesignDownloads.Controller c,JSONObject r){if(reviewed46&&!c.views.containsKey(DownloadListPolicy.key(r))){c.hostAnchor=DownloadListPolicy.key(r);c.apply(c.hostRows,c.hostSelected,c.hostNow);c.hostAnchor="";}String text=c.views.get(DownloadListPolicy.key(r)).status.getText().toString();return reviewed46?text.substring(0,text.lastIndexOf(" · ")):text;}
+  // Normalize only actual rendered view outputs; never reconstruct labels from
+  // the input JSON or an owner lookup, which could conceal a bad current bind.
+  static String renderedLabel(DesignDownloads.Row row){
+    String text=row.status.getText().toString();if(!workspaceUi)return text;
+    String state=row.stateLabel.getText().toString();
+    if(row.progressText.getVisibility()==View.VISIBLE)return text+" · "+state+" · "+row.progressText.getText();
+    int split=text.lastIndexOf(" · ");if(split<0)throw new AssertionError("Saved card lost its displayed size");
+    return text.substring(0,split)+" · "+state+text.substring(split);
+  }
+  static String label(DesignDownloads.Controller c,JSONObject r){if(reviewed46&&!c.views.containsKey(DownloadListPolicy.key(r))){c.hostAnchor=DownloadListPolicy.key(r);c.apply(c.hostRows,c.hostSelected,c.hostNow);c.hostAnchor="";}String text=renderedLabel(c.views.get(DownloadListPolicy.key(r)));return reviewed46?text.substring(0,text.lastIndexOf(" · ")):text;}
   static void counts()throws Exception{
     for(int n:new int[]{1,100,1000,10000}){
       ProfileCatalog p=setup();DesignDownloads.Controller c=new DesignDownloads.Controller();JSONArray data=rows(n);resetQueries(p);c.apply(data,0,1000);
@@ -90,7 +99,7 @@ class DesignDownloads {
     /* CONTROLLER_APPLY */
   }
   static final class Row {
-    static int created;final Activity a;final LinearLayout card=new LinearLayout();final ImageView icon=new ImageView();final TextView name=new TextView(),status=new TextView(),time=new TextView(),progressText=new TextView(),reason=new TextView(),stale=new TextView(),location=new TextView(),arrow=new TextView();final Button menu=new Button();final ProgressBar progress=new ProgressBar();JSONObject value;String appearance="";final DownloadRowBinding binding=new DownloadRowBinding();
+    static int created;final Activity a;final LinearLayout card=new LinearLayout();final ImageView icon=new ImageView();final TextView name=new TextView(),status=new TextView(),stateLabel=new TextView(),time=new TextView(),progressText=new TextView(),reason=new TextView(),stale=new TextView(),location=new TextView(),arrow=new TextView();final Button menu=new Button();final ProgressBar progress=new ProgressBar();JSONObject value;String appearance="";final DownloadRowBinding binding=new DownloadRowBinding();
     Row(Activity a,SavedFileActions ignored){this.a=a;created++;}
     /* ROW_BIND */
     /* ROW_TEXT */
@@ -112,7 +121,9 @@ class ScrollView extends LinearLayout{int y,posts;int getScrollY(){return y;}voi
 class TextView extends View{String text="";CharSequence getText(){return text;}void setText(String value){text=value;}void setTextColor(int ignored){}}
 class Button extends TextView{}class ImageView extends View{void setImageDrawable(Object ignored){}}
 class ProgressBar extends View{boolean indefinite;int percent;boolean isIndeterminate(){return indefinite;}void setIndeterminate(boolean value){indefinite=value;}int getProgress(){return percent;}void setProgress(int value){percent=value;}}
-class DesignUi{static final int RED=1,CYAN=2,GREEN=3;static LinearLayout tabs(Activity a,String[] labels,int selected,java.util.function.IntConsumer choose){return new LinearLayout();}static int dp(Activity a,int value){return value;}static Object surface(Activity a,int color,int radius,int border){return new Object();}static void empty(LinearLayout target,String title,String detail,String action,Runnable run){target.addView(new TextView());}}
+class DesignUi{static final int RED=1,CYAN=2,GREEN=3;static final int MUTED=4;static LinearLayout tabs(Activity a,String[] labels,int selected,java.util.function.IntConsumer choose){return new LinearLayout();}static int dp(Activity a,int value){return value;}static Object surface(Activity a,int color,int radius,int border){return new Object();}static void empty(LinearLayout target,String title,String detail,String action,Runnable run){target.addView(new TextView());}}
+// View factories remain explicit deterministic boundaries, not Android layout.
+class DownloadWorkspaceStyle{static LinearLayout tabs(Activity a,int selected,java.util.function.IntConsumer choose){return DesignUi.tabs(a,new String[]{"全部","进行中","已完成","失败"},selected,choose);}static void empty(LinearLayout target,String title,String detail,String action,Runnable run){DesignUi.empty(target,title,detail,action,run);}}
 class Ui{static final class Icon{Icon(String shape,int color){}}}
 class DownloadTasks{static void put(JSONObject row,Object...pairs){try{for(int i=0;i<pairs.length;i+=2)row.put((String)pairs[i],pairs[i+1]);}catch(JSONException invalid){throw new IllegalStateException(invalid);}}static String amount(long n){return n<0?"大小未知":n+" B";}static String label(String state){return state;}static String progress(JSONObject value){return value.optLong("received")+"/"+value.optLong("total");}}
 class J{static JSONObject obj(Object...pairs){JSONObject out=new JSONObject();try{for(int i=0;i<pairs.length;i+=2)out.put((String)pairs[i],pairs[i+1]);}catch(JSONException invalid){throw new IllegalStateException(invalid);}return out;}}

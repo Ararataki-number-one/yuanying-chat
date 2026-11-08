@@ -1,5 +1,5 @@
   static String rendered(DesignDownloads.Controller controller){
-    JSONArray values=new JSONArray();for(DesignDownloads.Row row:controller.views.values())values.put(new JSONArray().put(row.name.getText()).put(row.status.getText()).put(row.time.getText()).put(row.progressText.getText()).put(row.reason.getText()).put(row.location.getText()).put(row.stale.getVisibility()).put(row.menu.getContentDescription()).put(row.menu.getVisibility()).put(row.arrow.getVisibility()).put(row.progress.getProgress()).put(row.progress.isIndeterminate()));
+    JSONArray values=new JSONArray();for(DesignDownloads.Row row:controller.views.values())values.put(new JSONArray().put(row.name.getText()).put(row.status.getText()).put(row.stateLabel.getText()).put(row.time.getText()).put(row.progressText.getText()).put(row.reason.getText()).put(row.location.getText()).put(row.stale.getVisibility()).put(row.menu.getContentDescription()).put(row.menu.getVisibility()).put(row.arrow.getVisibility()).put(row.progress.getProgress()).put(row.progress.isIndeterminate()));
     try{byte[] bytes=java.security.MessageDigest.getInstance("SHA-256").digest(values.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8));StringBuilder out=new StringBuilder();for(byte b:bytes)out.append(String.format(Locale.ROOT,"%02x",b));return out.toString();}catch(Exception impossible){throw new AssertionError(impossible);}
   }
   static void incremental(){
@@ -18,7 +18,7 @@
         check(n+" "+phase+" description setter count",Meter.descriptions==(phase.equals("initial")||baseline?(reviewed46?40:n+1):0));
         check(n+" "+phase+" names read remains one",p.db.queries.size()==1);
         check(n+" "+phase+" rows/cards remain identical",same&&c.list.getChildCount()==(reviewed46?40:n+1)&&(phase.equals("initial")||c.createdRows()==created));
-        check(n+" "+phase+" text updates stay exact",phase.equals("initial")||Meter.textWrites==(phase.equals("unchanged")?0:reviewed46?2:1));
+        check(n+" "+phase+" text updates stay exact",phase.equals("initial")||Meter.textWrites==(phase.equals("unchanged")?0:workspaceUi?1:reviewed46?2:1));
         measurements.put(J.obj("savedHistory",n,"phase",phase,"bindCalls",Meter.binds,"timeLabelCalls",Meter.timeLabels,"descriptionSetters",Meter.descriptions,"textSetters",Meter.textWrites,"nameQueries",p.db.queries.size(),"newRows",c.createdRows()-created,"attachedCards",c.list.getChildCount(),"renderedSha256",rendered(c)));
       }
     }

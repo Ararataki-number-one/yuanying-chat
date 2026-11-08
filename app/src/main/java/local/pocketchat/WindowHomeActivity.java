@@ -253,7 +253,7 @@ public class WindowHomeActivity extends ThemedActivity {
     final LinearLayout root=DesignUi.column(WindowHomeActivity.this),card=DesignUi.card(WindowHomeActivity.this),head=DesignUi.row(WindowHomeActivity.this),details=DesignUi.row(WindowHomeActivity.this);
     final View separator=new View(WindowHomeActivity.this);final CheckBox check=new CheckBox(WindowHomeActivity.this);
     final EnvironmentWorkspaceStyle.Emblem emblem=new EnvironmentWorkspaceStyle.Emblem(WindowHomeActivity.this,false);
-    final TextView name=workspaceText("",17,DesignUi.TEXT,false),sub=workspaceText("",11,DesignUi.MUTED,false),badge=workspaceText("",11,DesignUi.MUTED,false),network=workspaceText("",11,DesignUi.MUTED,false);
+    final TextView name=workspaceText("",17,DesignUi.TEXT,true),sub=workspaceText("",11,DesignUi.MUTED,false),badge=workspaceText("",11,DesignUi.MUTED,false),network=workspaceText("",11,DesignUi.MUTED,false);
     JSONObject value;boolean syncing;
     final Button more=ReferenceUi.more(WindowHomeActivity.this,()->{if(value!=null)menu(value.optInt("slot"));});
     final EnvironmentPresentation.Binding binding=new EnvironmentPresentation.Binding();

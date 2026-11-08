@@ -16,7 +16,10 @@ _review_spec=importlib.util.spec_from_file_location('reviewed_download38_inverse
 _review=importlib.util.module_from_spec(_review_spec);_review_spec.loader.exec_module(_review)
 _review46_spec=importlib.util.spec_from_file_location('reviewed_download46_inverse',HERE/'reviewed46.py')
 _review46=importlib.util.module_from_spec(_review46_spec);_review46_spec.loader.exec_module(_review46)
-def remove_reviewed46(text,name='DesignDownloads.java'):return _review46.invert(text,name,member)
+_workspace_spec=importlib.util.spec_from_file_location('reviewed_download_workspace_ui_inverse',HERE/'reviewed_workspace_ui.py')
+_workspace_ui=importlib.util.module_from_spec(_workspace_spec);_workspace_spec.loader.exec_module(_workspace_ui)
+def remove_workspace_ui(text,name='DesignDownloads.java'):return _workspace_ui.invert(text,name,member)
+def remove_reviewed46(text,name='DesignDownloads.java'):return _review46.invert(remove_workspace_ui(text,name),name,member)
 def remove_reviewed38(text):return _review.invert(remove_reviewed46(text))
 
 def member(text,needle):
@@ -105,21 +108,26 @@ def main():
         stripped=remove_reviewed_delete_identity(stripped)
         unchanged['allExistingCatalogBytes']=stripped==baseline_catalog
         assert all(unchanged.values()),unchanged
-    inputs=[Path(__file__).resolve(),HERE/'DownloadNamesHost.java.in',HERE/'reviewed38.py',HERE/'reviewed38-inverse.json',HERE/'reviewed46.py',HERE/'reviewed46-inverse.json',HERE/'reviewed210-scaffold-inverse.json',ROOT/'app/src/main/java/local/pocketchat/DownloadDisplaySnapshot.java',*[ROOT/'app/src/main/java/local/pocketchat'/name for name in ['DownloadMetadataValues.java','DownloadTaskRevisions.java','DownloadPageWindow.java','DownloadOwnerLabels.java']],ROOT/'app/src/main/java/local/pocketchat/DownloadRowBinding.java',*HERE.glob('stubs/**/*.java')];input_hashes={str(p.relative_to(ROOT)):digest(p.read_bytes()) for p in inputs}
+    workspace_ui=_workspace_ui.present(text['DesignDownloads.java'])
+    inputs=[Path(__file__).resolve(),HERE/'DownloadNamesHost.java.in',HERE/'reviewed38.py',HERE/'reviewed38-inverse.json',HERE/'reviewed46.py',HERE/'reviewed46-inverse.json',HERE/'reviewed210-scaffold-inverse.json',HERE/'reviewed_workspace_ui.py',HERE/'reviewed-workspace-ui-inverse.json',ROOT/'app/src/main/java/local/pocketchat/DownloadDisplaySnapshot.java',ROOT/'app/src/main/java/local/pocketchat/DownloadWorkspaceStyle.java',*[ROOT/'app/src/main/java/local/pocketchat'/name for name in ['DownloadMetadataValues.java','DownloadTaskRevisions.java','DownloadPageWindow.java','DownloadOwnerLabels.java']],ROOT/'app/src/main/java/local/pocketchat/DownloadRowBinding.java',*HERE.glob('stubs/**/*.java')];input_hashes={str(p.relative_to(ROOT)):digest(p.read_bytes()) for p in inputs}
     with tempfile.TemporaryDirectory(prefix='download-names-host-') as raw:
         temp=Path(raw);package=temp/'local/pocketchat';package.mkdir(parents=True);java=package/'DownloadNamesHost.java';java.write_text(host);policy=package/'DownloadListPolicy.java';policy.write_bytes(sources['DownloadListPolicy.java']);binding=package/'DownloadRowBinding.java';binding.write_bytes(selected('DownloadRowBinding.java'));extras=[]
         for name in ['DownloadMetadataValues.java','DownloadTaskRevisions.java','DownloadPageWindow.java','DownloadOwnerLabels.java']:
             extra=package/name;extra.write_bytes(selected(name));extras.append(str(extra))
         classes=temp/'classes'
         subprocess.run([str(args.java_home/'bin/javac'),'-encoding','UTF-8','-cp',str(args.json_jar),'-d',str(classes),str(java),str(policy),str(binding),*extras,*map(str,HERE.glob('stubs/**/*.java'))],check=True)
-        run=subprocess.run([str(args.java_home/'bin/java'),'-Dbefore='+str(before).lower(),'-Dreviewed46='+str(reviewed46).lower(),'-cp',str(classes)+':'+str(args.json_jar),'local.pocketchat.DownloadNamesHost'],text=True,capture_output=True)
+        run=subprocess.run([str(args.java_home/'bin/java'),'-Dbefore='+str(before).lower(),'-Dreviewed46='+str(reviewed46).lower(),'-DworkspaceUi='+str(workspace_ui).lower(),'-cp',str(classes)+':'+str(args.json_jar),'local.pocketchat.DownloadNamesHost'],text=True,capture_output=True)
         if not run.stdout:raise RuntimeError(run.stderr)
         result=json.loads(run.stdout);result.update(sourceHead=subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip(),selectedProductionRef=args.before_ref or 'working-tree',selectedProductionSha256={n:digest(raw)for n,raw in sources.items()},extractedMethodSha256={k:digest(v.encode())for k,v in extracts.items()},testSourceSha256=input_hashes,unchangedSourceSections=unchanged,actualAndroidExecution=False,actualSqliteExecution=False,actualPhoneFrameMeasurement=False,applicationSpeedupClaim=False,reviewed46=reviewed46,scope='46 uses a controlled names/page worker boundary before exact current production apply/bind; names remain checked for first/last records and all original fallback/anchor cases. Actual source-bound async worker and all-page equivalence run separately in download46-host. Exact production ProfileCatalog.item/row/name, new projected names/displayName, Profiles.display, DesignDownloads.Controller.apply and Row.bind/text/visible plus complete DownloadListPolicy. Explicit SQL cursor/count and deterministic widget adapters; no Android database/layout/frame performance claim.')
         if not before:
-            scaffold=_review46.remove_scaffold(text['DesignDownloads.java'],'DesignDownloads.java',member)
+            reviewed_stage=remove_workspace_ui(text['DesignDownloads.java'])
+            scaffold=_review46.remove_scaffold(reviewed_stage,'DesignDownloads.java',member)
             protected=_review46.scaffold_manifest()['testedMethodSha256']
-            assert all(member(text['DesignDownloads.java'],needle)==member(scaffold,needle) for needle in protected),'Reviewed scaffold cannot replace current tested method bodies'
-            result['reviewed210Scaffold']={'manifestSha256':_review46.SCAFFOLD_MANIFEST_SHA,'provenance':{key:value for key,value in _review46.scaffold_manifest().items() if key in ('before','after')},'currentBehaviorMethodsVerbatim':True,'methodSha256':{needle:digest(member(text['DesignDownloads.java'],needle).encode()) for needle in protected}}
+            assert all(member(reviewed_stage,needle)==member(scaffold,needle) for needle in protected),'Reviewed scaffold cannot replace its tested method bodies'
+            result['reviewed210Scaffold']={'manifestSha256':_review46.SCAFFOLD_MANIFEST_SHA,'provenance':{key:value for key,value in _review46.scaffold_manifest().items() if key in ('before','after')},'reviewedStageBehaviorMethodsVerbatim':True,'currentBehaviorMethodsVerbatim':all(member(text['DesignDownloads.java'],needle)==member(scaffold,needle) for needle in protected),'methodSha256':{needle:digest(member(reviewed_stage,needle).encode()) for needle in protected}}
+            if workspace_ui:
+                approved=_workspace_ui.manifest()
+                result['reviewedWorkspaceUi']={'manifestSha256':_workspace_ui.MANIFEST_SHA,'provenance':{key:value for key,value in approved.items() if key in ('before','after')},'projectionUsedForExecution':False,'currentSelectedMethodsCompiledVerbatim':True,'currentMethodSha256':{needle:digest(member(text['DesignDownloads.java'],needle).encode()) for needle in protected},'historicalScopeMethodSha256':{needle:digest(member(reviewed_stage,needle).encode()) for needle in protected},'labelAdapter':'Compose only the actual status/stateLabel/progressText view outputs to retain the original owner, state and byte assertions.'}
         result['compiledBehaviorMethodsVerbatim']=True;result['compiledBehaviorMethodSha256']={key:digest(body.encode()) for key,body in compiled_methods.items()};result['generatedHostSha256']=digest(host.encode());result['jsonJarSha256']=digest(args.json_jar.read_bytes())
         result['executionInputsUnchanged']=all(digest((ROOT/p).read_bytes())==h for p,h in input_hashes.items()) and (bool(args.before_ref) or all(selected(n)==value for n,value in sources.items()))
         args.output.parent.mkdir(parents=True,exist_ok=True);args.output.write_text(json.dumps(result,ensure_ascii=False,indent=2)+'\n')

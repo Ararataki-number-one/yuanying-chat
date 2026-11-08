@@ -49,6 +49,25 @@ for checked exceptions; failures still fail the checks. The paired 44/44
 baseline/current audit retains one projected owner-label query for 1/100/1000/
 10000 current records, versus the original per-row historical queries.
 
+The environment/download workspace UI refinement adds a separate exact
+`reviewed-workspace-ui-inverse.json` stage. It maps the new presentation back
+to the `f274364` source before the unchanged reviewed210/46/38 comparisons.
+The inverse is used only for the historical scope checks. The real current
+`apply`, `bind`, text/visibility and time-label methods are still extracted
+and compiled verbatim; current refresh and collection methods are likewise
+executed by their existing dedicated hosts. Reports distinguish those current
+method hashes from the historical scope-projection hashes.
+
+The new cards split status, ownership/size and transfer progress into separate
+views. The counted widget adapter composes only those actual view outputs for
+the existing owner/state/byte assertions; it never regenerates a displayed
+label from input JSON or a catalogue lookup. The incremental-display check now
+requires exactly one text write for a byte-only progress change, while older
+selected source retains its original expectation. New negative controls reject
+mutations to current methods, edited/duplicated UI blocks, tampered manifests
+and unknown source drift. Existing historical controls still run at their
+precisely identified stage, and the original inverse manifests are unchanged.
+
 This does **not** execute Android SQLite, Android layout, a phone or frame timing.
 The query-count result concerns the selected actual production method calls,
 not the total SQL or visible speed of the entire app. Existing original policy
