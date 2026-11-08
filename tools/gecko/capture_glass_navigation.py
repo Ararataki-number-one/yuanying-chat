@@ -9,6 +9,8 @@ The optional recording is a visual-review artifact, not animation acceptance.
 An additional native-network screenshot runs after recording, with its own status.
 Navigation typography is measured separately at default and enlarged font scales;
 its component fixture is never presented as the actual MainActivity screenshot.
+An explicit environment-workspace option appends separate production
+WindowHomeActivity captures and interactions using the local synthetic fixture.
 """
 import argparse
 import hashlib
@@ -818,6 +820,8 @@ def main():
     parser.add_argument('--aapt2', required=True)
     parser.add_argument('--apksigner', required=True)
     parser.add_argument('--out', type=Path, required=True)
+    parser.add_argument('--environment-workspace', action='store_true',
+                        help='Append required real environment-page screenshots and interaction recording')
     args = parser.parse_args()
     args.root, args.apk, args.build_work, args.out = (
         path.resolve() for path in (args.root, args.apk, args.build_work, args.out))
@@ -837,6 +841,9 @@ def main():
                                              wanAcceptance=False, gpuRenderingVerified=False),
                   navigationTypography=dict(status='not-attempted', optional=True,
                                             applicationAcceptance=False, physicalPhoneAcceptance=False),
+                  environmentWorkspacePreview=dict(status='not-attempted', requested=args.environment_workspace,
+                      applicationAcceptance=False, physicalPhoneAcceptance=False, wanAcceptance=False,
+                      performanceMeasurement=False),
                   glassLensDiagnostics=dict(status='not-attempted', gpuRenderingVerified=False))
 
     def command(parts, timeout=45, check=True):
@@ -1015,12 +1022,26 @@ def main():
             capture_navigation_typography(args, report, capture, adb, wait_for, screenshot)
         except Exception as error:
             report['navigationTypography'].update(status='failed', errorType=type(error).__name__, error=str(error))
-        print(json.dumps(dict(status='captured', sourceCommit=source,
+        if args.environment_workspace:
+            try:
+                from capture_environment_workspace import capture_environment_workspace
+                capture_environment_workspace(args, report, capture, adb, screenshot,
+                    navigation_geometry=navigation_geometry, mp4_metadata=mp4_metadata)
+            except Exception as error:
+                report['environmentWorkspacePreview'].update(status='failed', errorType=type(error).__name__, error=str(error))
+            if report['environmentWorkspacePreview']['status'] != 'captured':
+                report['status'] = 'partial'
+        print(json.dumps(dict(status=report['status'], sourceCommit=source,
             apkSha256=installed_sha, image='glass-navigation.png',
             motionStatus=report['motionReport']['status'],
             nativeBackdropStatus=report['nativeBackdropPreview']['status'],
             typographyStatus=report['navigationTypography']['status'],
+            environmentWorkspaceStatus=report['environmentWorkspacePreview']['status'],
             scope='Actual Android MainActivity; local unconfigured environment, no live website'), ensure_ascii=False))
+        if args.environment_workspace and report['environmentWorkspacePreview']['status'] != 'captured':
+            # Retain successful earlier stills, but never report a green required
+            # environment diagnostic when its captures or actual inputs failed.
+            raise SystemExit('Required environment workspace diagnostic did not complete; see capture.json')
     except Exception as error:
         report.update(status='failed', staticScreenshotStatus='failed', errorType=type(error).__name__, error=str(error))
         if device_ready:

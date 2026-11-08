@@ -133,10 +133,10 @@ jobs:
       - name: State build verification scope
         run: |
           printf '%s\n' 'Pinned upstream SDK verification, reviewed single-class source build, release/test APK compilation and lint passed. APKs remain unsigned or signed with an ephemeral synthetic key. No emulator/ARM execution, real ChatGPT login or WAN measurement is implied; no release is published.' >> "$GITHUB_STEP_SUMMARY"
-      # This branch needs one review screenshot of the real product. Keep it
+      # These UI branches need review captures of the real product. Keep them
       # separate from the fixed UI acceptance workloads and their receipts.
       - name: Retain the actual glass navigation integration APK
-        if: ${{ (github.head_ref || github.ref_name) == 'codex/compact-glass-reading' }}
+        if: ${{ contains(fromJSON('["codex/compact-glass-reading","codex/environment-workspace-polish"]'), github.head_ref || github.ref_name) }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: glass-navigation-apk-${{ github.run_id }}-${{ github.run_attempt }}
@@ -145,7 +145,7 @@ jobs:
           compression-level: 0
           retention-days: 7
       - name: Prepare a disposable emulator for the glass screenshot
-        if: ${{ (github.head_ref || github.ref_name) == 'codex/compact-glass-reading' }}
+        if: ${{ contains(fromJSON('["codex/compact-glass-reading","codex/environment-workspace-polish"]'), github.head_ref || github.ref_name) }}
         timeout-minutes: 12
         shell: bash
         run: |
@@ -222,23 +222,29 @@ jobs:
           done
           test "$task_glass_booted" = true
       - name: Capture the actual glass navigation screen
-        if: ${{ (github.head_ref || github.ref_name) == 'codex/compact-glass-reading' }}
-        timeout-minutes: 6
+        if: ${{ contains(fromJSON('["codex/compact-glass-reading","codex/environment-workspace-polish"]'), github.head_ref || github.ref_name) }}
+        timeout-minutes: 9
         shell: bash
+        env:
+          TASK_CAPTURE_BRANCH: ${{ github.head_ref || github.ref_name }}
         run: |
           set -euo pipefail
           task_glass_pid=$(cat work/glass-navigation/emulator.pid)
           kill -0 "$task_glass_pid"
           test ! -f work/glass-navigation/emulator-exit.txt
           test "$(timeout 5 "$ANDROID_HOME/platform-tools/adb" -s emulator-5554 get-state)" = device
+          task_environment_capture_args=()
+          if [ "$TASK_CAPTURE_BRANCH" = 'codex/environment-workspace-polish' ]; then
+            task_environment_capture_args=(--environment-workspace)
+          fi
           python3 tools/gecko/capture_glass_navigation.py \
             --root "$PWD" --apk app/build/outputs/apk/integration/app-x86_64-integration.apk \
             --build-work work/profile-build --adb "$ANDROID_HOME/platform-tools/adb" \
             --serial emulator-5554 --aapt2 "$ANDROID_HOME/build-tools/37.0.0/aapt2" \
             --apksigner "$ANDROID_HOME/build-tools/37.0.0/apksigner" \
-            --out work/glass-navigation 2>&1 | tee work/glass-navigation/capture.log
+            --out work/glass-navigation "${task_environment_capture_args[@]}" 2>&1 | tee work/glass-navigation/capture.log
       - name: Keep screenshot diagnostics and stop the disposable emulator
-        if: ${{ always() && (github.head_ref || github.ref_name) == 'codex/compact-glass-reading' }}
+        if: ${{ always() && contains(fromJSON('["codex/compact-glass-reading","codex/environment-workspace-polish"]'), github.head_ref || github.ref_name) }}
         shell: bash
         run: |
           if [ -f work/glass-navigation/host-resources.sh ]; then
@@ -259,7 +265,7 @@ jobs:
             done
           fi
       - name: Upload glass screenshots and source evidence
-        if: ${{ always() && (github.head_ref || github.ref_name) == 'codex/compact-glass-reading' }}
+        if: ${{ always() && contains(fromJSON('["codex/compact-glass-reading","codex/environment-workspace-polish"]'), github.head_ref || github.ref_name) }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: glass-navigation-screenshots-${{ github.run_id }}-${{ github.run_attempt }}

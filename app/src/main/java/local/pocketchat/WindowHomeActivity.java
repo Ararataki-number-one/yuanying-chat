@@ -34,6 +34,11 @@ public class WindowHomeActivity extends ThemedActivity {
   EnvironmentRefreshQueue<EnvironmentHomeSnapshot> snapshotQueue;
   final java.util.concurrent.ExecutorService snapshotWorker=java.util.concurrent.Executors.newSingleThreadExecutor(r->{Thread thread=new Thread(r,"environment-workspace-read");thread.setDaemon(true);return thread;});
   LinearLayout environmentList,maintenanceRows,emptyRows;
+  GlassBackdrop backdrop;
+  ScrollView workspaceScroll;
+  LinearLayout workspaceFooter,navigationBar;
+  RecentEnvironment recentEnvironment;
+  Object renderPositionToken;
   final Map<String,EnvironmentRow> rowViews=new LinkedHashMap<>();
   final Button[] filterButtons=new Button[5];
   final Runnable update=new Runnable(){public void run(){if(!workspaceVisible)return;if(snapshotQueue!=null)snapshotQueue.request();handler.postDelayed(this,3000);}};
@@ -48,36 +53,44 @@ public class WindowHomeActivity extends ThemedActivity {
 
   @Override public void onCreate(Bundle state){
     super.onCreate(state);
+    if(Build.VERSION.SDK_INT>=30)getWindow().setDecorFitsSystemWindows(false);
     root=DesignUi.screen(this);
-    LinearLayout box=DesignUi.body(this,root,"环境管理",null);
-    LinearLayout tools=DesignUi.row(this);
-    count=DesignUi.text(this,"",13,DesignUi.MUTED);
+    root.setClipChildren(false);root.setClipToPadding(false);
     boolean largeText=getResources().getConfiguration().fontScale>=1.4f;
-    if(largeText){LinearLayout.LayoutParams cp=new LinearLayout.LayoutParams(-1,-2);cp.bottomMargin=dp(6);box.addView(count,cp);tools.setGravity(Gravity.END|Gravity.CENTER_VERTICAL);}
-    else tools.addView(count,new LinearLayout.LayoutParams(0,-2,1));
-    Button actionSearch=ReferenceUi.iconButton(this,"search","搜索操作",()->ActionSearchUi.show(this));if(!largeText)tools.addView(actionSearch,new LinearLayout.LayoutParams(dp(48),dp(48)));
-    selectionButton=DesignUi.button(this,"多选",false,()->setSelecting(!selecting));
-    tools.addView(selectionButton,new LinearLayout.LayoutParams(DesignUi.actionWidth(selectionButton,64),dp(48)));
-    LinearLayout.LayoutParams createParams=new LinearLayout.LayoutParams(dp(112),dp(48));
-    createParams.leftMargin=dp(8);
-    createButton=DesignUi.button(this,"＋ 新建环境",true,()->createWindow());createParams.width=DesignUi.actionWidth(createButton,112);tools.addView(createButton,createParams);
-    box.addView(tools);
-    LinearLayout shortcuts=DesignUi.row(this);
-    Button switcher=DesignUi.button(this,"快速切换环境",false,()->EnvironmentSwitcherUi.show(this));
-    viewsButton=DesignUi.button(this,"工作视图",false,this::chooseView);
-    Button commands=DesignUi.button(this,"搜索操作",false,()->ActionSearchUi.show(this));
-    for(Button action:largeText?new Button[]{switcher,viewsButton,commands}:new Button[]{switcher,viewsButton}){LinearLayout.LayoutParams shortcut=new LinearLayout.LayoutParams(largeText?-1:0,-2,largeText?0:1);if(shortcuts.getChildCount()>0){if(largeText)shortcut.topMargin=dp(6);else shortcut.leftMargin=dp(8);}shortcuts.addView(action,shortcut);}
-    if(largeText)shortcuts.setOrientation(LinearLayout.VERTICAL);
-    box.addView(shortcuts);
-    inbox=DesignUi.column(this);box.addView(inbox);
+    LinearLayout heading=DesignUi.row(this);heading.setClipChildren(false);heading.setClipToPadding(false);heading.setPadding(dp(22),dp(14),dp(18),dp(14));
+    LinearLayout headingCopy=DesignUi.column(this);
+    TextView title=workspaceText("环境",30,DesignUi.TEXT,true);title.setContentDescription("环境管理");
+    if(Build.VERSION.SDK_INT>=28)title.setAccessibilityHeading(true);
+    headingCopy.addView(title);
+    TextView subtitle=workspaceText("账号、会话与网络独立",12,DesignUi.MUTED,false);subtitle.setPadding(0,dp(3),dp(6),0);headingCopy.addView(subtitle);
+    heading.addView(headingCopy,new LinearLayout.LayoutParams(0,-2,1));
+    createButton=ReferenceUi.iconButton(this,"plus","新建环境",this::createWindow);
+    createButton.setBackground(DesignUi.glass(this,25));GlassMotion.press(createButton,true);
+    heading.addView(createButton,new LinearLayout.LayoutParams(dp(50),dp(50)));
+    Button workspaceMenu=ReferenceUi.iconButton(this,"more","环境管理操作",this::showWorkspaceActions);
+    workspaceMenu.setBackground(DesignUi.glass(this,25));GlassMotion.press(workspaceMenu,true);
+    LinearLayout.LayoutParams menuParams=new LinearLayout.LayoutParams(dp(50),dp(50));menuParams.leftMargin=dp(8);heading.addView(workspaceMenu,menuParams);
+    root.addView(heading,new LinearLayout.LayoutParams(-1,-2));
+
+    FrameLayout workspace=new FrameLayout(this);workspace.setClipChildren(false);workspace.setClipToPadding(false);
+    backdrop=new GlassBackdrop(this);backdrop.setBackground(new DesignUi.Stars(this));
+    workspace.addView(backdrop,new FrameLayout.LayoutParams(-1,-1));
+    workspaceScroll=new ScrollView(this);workspaceScroll.setFillViewport(true);workspaceScroll.setClipToPadding(false);
+    LinearLayout box=DesignUi.column(this);box.setPadding(dp(20),dp(4),dp(20),dp(20));
+    workspaceScroll.addView(box,new ScrollView.LayoutParams(-1,-2));backdrop.addView(workspaceScroll,new FrameLayout.LayoutParams(-1,-1));
+    root.addView(workspace,new LinearLayout.LayoutParams(-1,0,1));
+    recentEnvironment=new RecentEnvironment();box.addView(recentEnvironment.card,new LinearLayout.LayoutParams(-1,-2));
+    inbox=DesignUi.column(this);inbox.setVisibility(View.GONE);box.addView(inbox);
     preparation=DesignUi.progress(this,"正在创建环境…","完成后会打开新环境，请稍候。");
     preparation.setVisibility(View.GONE);DesignUi.addCard(box,preparation);
     LinearLayout searchRow=DesignUi.row(this),searchBox=DesignUi.column(this);
-    search=DesignUi.searchInput(searchBox,largeText?"搜索环境":"搜索名称、分组或备注");
+    search=DesignUi.searchInput(searchBox,largeText?"搜索环境":"搜索环境、分组或备注");
+    search.setTextSize(14);search.setIncludeFontPadding(true);if(Build.VERSION.SDK_INT>=28)search.setFallbackLineSpacing(true);
     search.setFilters(new InputFilter[]{new InputFilter.LengthFilter(120)});
     search.setContentDescription("搜索环境");searchRow.addView(searchBox,new LinearLayout.LayoutParams(0,-2,1));
-    filterOptions=DesignUi.button(this,"筛选",false,this::chooseFilters);LinearLayout.LayoutParams op=new LinearLayout.LayoutParams(DesignUi.actionWidth(filterOptions,72),dp(48));op.leftMargin=dp(8);searchRow.addView(filterOptions,op);
-    LinearLayout.LayoutParams sp=new LinearLayout.LayoutParams(-1,-2);sp.topMargin=dp(8);box.addView(searchRow,sp);
+    filterOptions=ReferenceUi.iconButton(this,"settings","筛选与排序",this::chooseFilters);
+    filterOptions.setBackground(Ui.ripple(this,DesignUi.CARD,18));LinearLayout.LayoutParams op=new LinearLayout.LayoutParams(dp(50),dp(50));op.leftMargin=dp(10);searchRow.addView(filterOptions,op);
+    LinearLayout.LayoutParams sp=new LinearLayout.LayoutParams(-1,-2);sp.topMargin=dp(16);box.addView(searchRow,sp);
     search.addTextChangedListener(new TextWatcher(){
       public void beforeTextChanged(CharSequence s,int x,int c,int f){}
       public void onTextChanged(CharSequence s,int x,int b,int c){scheduleSearch();}
@@ -90,26 +103,38 @@ public class WindowHomeActivity extends ThemedActivity {
     filterScroll.setHorizontalFadingEdgeEnabled(true);filterScroll.setFadingEdgeLength(dp(12));
     filters=DesignUi.row(this);filterScroll.addView(filters);
     String[] filterNames={"全部","收藏","运行中","等待回复","需处理"};
-    for(int i=0;i<filterButtons.length;i++){final int target=i;Button button=ReferenceUi.link(this,filterNames[i]+" 0",()->{filter=target;renderCached();});button.setTextSize(12);button.setSingleLine(true);filterButtons[i]=button;LinearLayout.LayoutParams params=new LinearLayout.LayoutParams(DesignUi.actionWidth(button,i==3?100:88),dp(48));params.rightMargin=dp(6);filters.addView(button,params);}
+    for(int i=0;i<filterButtons.length;i++){final int target=i;Button button=ReferenceUi.link(this,filterNames[i]+" 0",()->{filter=target;renderCached();});button.setTextSize(13);button.setSingleLine(true);button.setIncludeFontPadding(true);button.setPadding(dp(13),dp(4),dp(13),dp(4));filterButtons[i]=button;LinearLayout.LayoutParams params=new LinearLayout.LayoutParams(DesignUi.actionWidth(button,64),dp(48));params.rightMargin=dp(2);filters.addView(button,params);}
 
     LinearLayout.LayoutParams fp=new LinearLayout.LayoutParams(-1,dp(48));
     fp.topMargin=dp(8);box.addView(filterScroll,fp);
+    LinearLayout listHeading=DesignUi.row(this);listHeading.setPadding(dp(2),dp(7),0,dp(2));
+    viewsButton=ReferenceUi.link(this,"全部环境",this::chooseView);viewsButton.setTextColor(DesignUi.TEXT);viewsButton.setTextSize(18);viewsButton.setGravity(Gravity.START|Gravity.CENTER_VERTICAL);viewsButton.setSingleLine(true);viewsButton.setEllipsize(TextUtils.TruncateAt.END);viewsButton.setIncludeFontPadding(true);
+    Ui.Icon viewsArrow=new Ui.Icon("chevron",DesignUi.MUTED);viewsArrow.setBounds(0,0,dp(14),dp(14));viewsButton.setCompoundDrawables(null,null,viewsArrow,null);viewsButton.setCompoundDrawablePadding(dp(7));
+    listHeading.addView(viewsButton,new LinearLayout.LayoutParams(0,-2,1));
+    count=workspaceText("",12,DesignUi.MUTED,false);count.setGravity(Gravity.END|Gravity.CENTER_VERTICAL);
+    if(!largeText){LinearLayout.LayoutParams cp=new LinearLayout.LayoutParams(-2,-2);cp.leftMargin=dp(6);cp.rightMargin=dp(6);listHeading.addView(count,cp);}
+    selectionButton=ReferenceUi.link(this,"多选",()->setSelecting(!selecting));selectionButton.setTextSize(13);selectionButton.setIncludeFontPadding(true);
+    listHeading.addView(selectionButton,new LinearLayout.LayoutParams(DesignUi.actionWidth(selectionButton,54),-2));box.addView(listHeading);
+    if(largeText){count.setGravity(Gravity.START);count.setPadding(dp(4),0,0,dp(8));box.addView(count);}
     problem=DesignUi.text(this,"",13,DesignUi.RED);problem.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);problem.setVisibility(View.GONE);box.addView(problem);
     cards=DesignUi.column(this);box.addView(cards);
     maintenanceRows=DesignUi.column(this);cards.addView(maintenanceRows);
-    environmentList=DesignUi.group(this);DesignUi.addCard(cards,environmentList);
+    environmentList=DesignUi.column(this);DesignUi.addCard(cards,environmentList);
     emptyRows=DesignUi.column(this);cards.addView(emptyRows);
 
+    workspaceFooter=DesignUi.column(this);workspaceFooter.setClipChildren(false);workspaceFooter.setClipToPadding(false);workspaceFooter.setClickable(true);
+    workspace.addView(workspaceFooter,new FrameLayout.LayoutParams(-1,-2,Gravity.BOTTOM));
     selectionBar=DesignUi.column(this);
     selectionBar.setPadding(dp(14),dp(8),dp(14),dp(10));
     selectionBar.setBackground(DesignUi.surface(this,DesignUi.CARD,0,DesignUi.LINE));
     LinearLayout selectionTools=DesignUi.row(this);
     selectionCount=DesignUi.text(this,"",13,DesignUi.TEXT);
-    if(largeText)selectionTools.setOrientation(LinearLayout.VERTICAL);
-    selectionTools.addView(selectionCount,new LinearLayout.LayoutParams(largeText?-1:0,-2,largeText?0:1));
+    selectionCount.setIncludeFontPadding(true);
+    selectionTools.addView(selectionCount,new LinearLayout.LayoutParams(0,-2,1));
     visibleSelectionButton=DesignUi.button(this,"全选当前结果",false,()->selectVisible());
-    visibleSelectionButton.setTextSize(12);
-    LinearLayout.LayoutParams visibleParams=new LinearLayout.LayoutParams(largeText?-1:dp(128),-2);if(largeText)visibleParams.topMargin=dp(6);
+    visibleSelectionButton.setTextSize(12);visibleSelectionButton.setIncludeFontPadding(true);
+    visibleSelectionButton.setMaxWidth(dp(Math.max(150,(int)((getResources().getConfiguration().screenWidthDp-28)*.64f))));
+    LinearLayout.LayoutParams visibleParams=new LinearLayout.LayoutParams(-2,-2);visibleParams.leftMargin=dp(8);
     selectionTools.addView(visibleSelectionButton,visibleParams);
     selectionBar.addView(selectionTools);
     LinearLayout batchActions=DesignUi.row(this);
@@ -118,16 +143,23 @@ public class WindowHomeActivity extends ThemedActivity {
     favoriteSelectedButton=DesignUi.button(this,"收藏",false,()->batchFavorite(true));
     unfavoriteSelectedButton=DesignUi.button(this,"取消收藏",false,()->batchFavorite(false));
     Button[] actions={batchGroupButton,favoriteSelectedButton,unfavoriteSelectedButton};
-    if(largeText)batchActions.setOrientation(LinearLayout.VERTICAL);
     for(int i=0;i<actions.length;i++){
-      actions[i].setTextSize(13);
-      LinearLayout.LayoutParams params=new LinearLayout.LayoutParams(largeText?-1:0,-2,largeText?0:1);
-      if(i>0){if(largeText)params.topMargin=dp(6);else params.leftMargin=dp(6);}
+      actions[i].setTextSize(13);actions[i].setIncludeFontPadding(true);
+      LinearLayout.LayoutParams params=new LinearLayout.LayoutParams(largeText?DesignUi.actionWidth(actions[i],64):0,-2,largeText?0:1);
+      if(i>0)params.leftMargin=dp(6);
       batchActions.addView(actions[i],params);
     }
-    selectionBar.addView(batchActions);root.addView(selectionBar);
-    root.addView(DesignUi.nav(this,WorkspaceNavigation.ENVIRONMENTS,n->WorkspaceNavigation.select(this,WorkspaceNavigation.ENVIRONMENTS,n),null));
+    if(largeText){HorizontalScrollView batchScroll=new HorizontalScrollView(this);batchScroll.setHorizontalScrollBarEnabled(false);batchScroll.addView(batchActions);selectionBar.addView(batchScroll,new LinearLayout.LayoutParams(-1,-2));}
+    else selectionBar.addView(batchActions);
+    selectionBar.setVisibility(View.GONE);selectionBar.setClickable(true);workspaceFooter.addView(selectionBar);
+    navigationBar=DesignUi.nav(this,WorkspaceNavigation.ENVIRONMENTS,n->WorkspaceNavigation.select(this,WorkspaceNavigation.ENVIRONMENTS,n),null);
+    navigationBar.setBackground(EnvironmentWorkspaceStyle.scrollEdge(this));navigationBar.setClickable(true);navigationBar.setFocusable(false);
+    workspaceFooter.addView(navigationBar,new LinearLayout.LayoutParams(-1,-2));
+    backdrop.bindControls(navigationBar);backdrop.setScrollEdge(navigationBar);
+    workspaceFooter.addOnLayoutChangeListener((v,l,t,r,b,ol,ot,or,ob)->{if(b-t!=ob-ot)updateWorkspaceInsets();});
     setContentView(root);
+    if(Build.VERSION.SDK_INT>=30)root.setFitsSystemWindows(false);
+    ReferenceUi.insets(this,root,keyboard->{navigationBar.setVisibility(keyboard?View.GONE:View.VISIBLE);updateWorkspaceInsets();});
     Context workspaceContext=Profiles.global(this);
     snapshotQueue=new EnvironmentRefreshQueue<>(snapshotWorker,task->handler.post(task),()->EnvironmentHomeSnapshot.read(workspaceContext),this::acceptSnapshot,error->{if(workspaceVisible)showProblem(SNAPSHOT_READ_PROBLEM);});
 
@@ -142,14 +174,89 @@ public class WindowHomeActivity extends ThemedActivity {
     }
     refresh();
   }
+  TextView workspaceText(String value,int size,int color,boolean strong){
+    TextView text=ReferenceUi.text(this,value,size,color,strong);text.setIncludeFontPadding(true);
+    if(Build.VERSION.SDK_INT>=28)text.setFallbackLineSpacing(true);
+    return text;
+  }
+  void updateWorkspaceInsets(){
+    if(workspaceScroll==null||workspaceFooter==null)return;
+    int bottom=workspaceFooter.getHeight();
+    if(workspaceScroll.getPaddingBottom()!=bottom)workspaceScroll.setPadding(0,0,0,bottom);
+  }
+  int windowTop(View view){int[] point=new int[2];view.getLocationInWindow(point);return point[1];}
+  View visibleEnvironmentAnchor(){
+    if(workspaceScroll==null||workspaceScroll.getScrollY()==0)return null;
+    int top=windowTop(workspaceScroll),bottom=top+workspaceScroll.getHeight()-workspaceFooter.getHeight();
+    for(int i=0;i<environmentList.getChildCount();i++){View row=environmentList.getChildAt(i);if(row.getVisibility()!=View.VISIBLE)continue;int y=windowTop(row);if(y+row.getHeight()>top&&y<bottom)return row;}
+    return null;
+  }
+  void restoreEnvironmentPosition(ScrollView scroll,View anchor,int anchorTop,int oldY,Object token){
+    scroll.getViewTreeObserver().addOnPreDrawListener(new ViewTreeObserver.OnPreDrawListener(){
+      @Override public boolean onPreDraw(){
+        if(scroll.getViewTreeObserver().isAlive())scroll.getViewTreeObserver().removeOnPreDrawListener(this);
+        if(!workspaceVisible||renderPositionToken!=token)return true;
+        if(anchor!=null&&anchor.getParent()==environmentList&&anchor.getVisibility()==View.VISIBLE)
+          scroll.scrollBy(0,windowTop(anchor)-anchorTop);
+        else scroll.scrollTo(0,oldY);
+        return true;
+      }
+    });
+  }
+  void showWorkspaceActions(){
+    ReferenceUi.Modal panel=new ReferenceUi.Modal(this,"环境管理").asSheet();
+    ReferenceUi.menuAction(panel,"快速切换环境",()->{panel.dismiss();EnvironmentSwitcherUi.show(this);});
+    ReferenceUi.menuAction(panel,"工作视图",()->{panel.dismiss();chooseView();});
+    ReferenceUi.menuAction(panel,selecting?"完成多选":"多选环境",()->{panel.dismiss();setSelecting(!selecting);});
+    ReferenceUi.menuAction(panel,"搜索操作",()->{panel.dismiss();ActionSearchUi.show(this);});
+    panel.show();
+  }
+  final class RecentEnvironment {
+    final LinearLayout card=DesignUi.column(WindowHomeActivity.this);
+    final TextView eyebrow=workspaceText("最近使用",12,DesignUi.MUTED,true),name=workspaceText("",22,DesignUi.TEXT,true),detail=workspaceText("",12,DesignUi.MUTED,false),state=workspaceText("",12,DesignUi.MUTED,false);
+    final EnvironmentWorkspaceStyle.Emblem emblem=new EnvironmentWorkspaceStyle.Emblem(WindowHomeActivity.this,true);
+    JSONObject value;String stamp="";
+    RecentEnvironment(){
+      card.setVisibility(View.GONE);card.setPadding(dp(18),dp(8),dp(18),dp(18));card.setBackground(EnvironmentWorkspaceStyle.card(WindowHomeActivity.this,true,false));
+      card.setClickable(true);card.setFocusable(true);card.setOnClickListener(v->resume());
+      LinearLayout top=DesignUi.row(WindowHomeActivity.this);top.addView(eyebrow,new LinearLayout.LayoutParams(0,-2,1));
+      Button resume=ReferenceUi.link(WindowHomeActivity.this,"继续会话",this::resume);resume.setTextSize(13);resume.setIncludeFontPadding(true);
+      Ui.Icon arrow=new Ui.Icon("chevron-right",DesignUi.BLUE);arrow.setBounds(0,0,dp(14),dp(14));resume.setCompoundDrawables(null,null,arrow,null);resume.setCompoundDrawablePadding(dp(5));
+      top.addView(resume,new LinearLayout.LayoutParams(-2,-2));card.addView(top);
+      LinearLayout identity=DesignUi.row(WindowHomeActivity.this);identity.addView(emblem,new LinearLayout.LayoutParams(dp(56),dp(56)));
+      LinearLayout labels=DesignUi.column(WindowHomeActivity.this);labels.setPadding(dp(14),0,0,0);name.setMaxLines(2);name.setEllipsize(TextUtils.TruncateAt.END);labels.addView(name);
+      detail.setMaxLines(2);detail.setEllipsize(TextUtils.TruncateAt.END);detail.setPadding(0,dp(2),0,0);labels.addView(detail);
+      state.setPadding(0,dp(4),0,0);state.setMaxLines(2);state.setEllipsize(TextUtils.TruncateAt.END);labels.addView(state);
+      identity.addView(labels,new LinearLayout.LayoutParams(0,-2,1));card.addView(identity);
+    }
+    void resume(){if(value!=null)openExpected(value,"chat",false);}
+    void bind(EnvironmentHomeSnapshot source,long now,boolean visible){
+      JSONObject recent=null,fallback=null;
+      for(int i=0;i<source.rows.length();i++){JSONObject row=source.rows.optJSONObject(i);if(!EnvironmentWorkspacePolicy.eligible(row))continue;
+        if(row.optInt("slot")==source.defaultSlot)fallback=row;
+        if(row.optLong("opened")>0&&(recent==null||row.optLong("opened")>recent.optLong("opened")))recent=row;
+      }
+      value=recent==null?fallback:recent;card.setVisibility(visible&&value!=null?View.VISIBLE:View.GONE);
+      if(value==null)return;
+      String next=EnvironmentPresentation.stamp(value,source.running,now,source.defaultSlot,false,false);
+      if(next.equals(stamp))return;stamp=next;
+      boolean active=EnvironmentPresentation.active(value,source.running),fresh=EnvironmentPresentation.fresh(value,now),issue=!value.optString("problem").isEmpty();
+      setText(eyebrow,recent==null?"默认环境":"最近使用");setText(name,value.optString("name"));emblem.bind(value.optInt("slot"));
+      String group=value.optString("group"),identity=group.isEmpty()?"独立环境":group;
+      setText(detail,identity+(value.optInt("slot")==source.defaultSlot&&recent!=null?" · 默认启动":"")+(value.optBoolean("desktopSite")?" · 电脑版":""));
+      setText(state,EnvironmentPresentation.status(value,active,fresh)+(recent==null?"":" · "+recentUse(value.optLong("opened"),now)));
+      state.setTextColor(issue?DesignUi.RED:active?DesignUi.GREEN:DesignUi.MUTED);
+      card.setContentDescription("继续会话："+value.optString("name")+"，"+detail.getText()+"，"+state.getText());
+    }
+  }
   @Override protected void onSaveInstanceState(Bundle state){
     super.onSaveInstanceState(state);
     state.putInt("filter",filter);state.putInt("sort",sort);state.putString("group",selectedGroup);state.putString("activeView",activeView);
     state.putString("query",search.getText().toString());state.putBoolean("selecting",selecting);
     state.putIntArray("selectedIds",selectedIds.stream().mapToInt(Integer::intValue).toArray());
   }
-  @Override protected void onResume(){super.onResume();workspaceVisible=true;renderCached();if(snapshotQueue!=null)snapshotQueue.visible(true);handler.removeCallbacks(update);handler.postDelayed(update,3000);}
-  @Override protected void onPause(){workspaceVisible=false;handler.removeCallbacks(update);handler.removeCallbacks(searchRender);if(snapshotQueue!=null)snapshotQueue.visible(false);if(search!=null)savedViews.remember(this,currentView(activeView));super.onPause();}
+  @Override protected void onResume(){super.onResume();workspaceVisible=true;if(backdrop!=null)backdrop.setGlassActive(true);renderCached();if(snapshotQueue!=null)snapshotQueue.visible(true);handler.removeCallbacks(update);handler.postDelayed(update,3000);}
+  @Override protected void onPause(){workspaceVisible=false;if(backdrop!=null)backdrop.setGlassActive(false);handler.removeCallbacks(update);handler.removeCallbacks(searchRender);if(snapshotQueue!=null)snapshotQueue.visible(false);if(search!=null)savedViews.remember(this,currentView(activeView));super.onPause();}
   @Override protected void onDestroy(){workspaceVisible=false;handler.removeCallbacksAndMessages(null);if(snapshotQueue!=null)snapshotQueue.close();snapshotWorker.shutdown();super.onDestroy();}
   @Override protected void onNewIntent(Intent intent){super.onNewIntent(intent);setIntent(intent);refresh();}
   @Override public void onBackPressed(){if(selecting){setSelecting(false);return;}super.onBackPressed();}
@@ -203,21 +310,25 @@ public class WindowHomeActivity extends ThemedActivity {
   void refresh(){requestSnapshot();renderCached();}
   void renderSnapshot(EnvironmentHomeSnapshot value){
     if(cards==null||selectionBar==null)return;
+    View anchor=visibleEnvironmentAnchor();int anchorTop=anchor==null?0:windowTop(anchor);
+    int previousHero=recentEnvironment.card.getVisibility(),previousInbox=inbox.getVisibility();
+    Object positionToken=new Object();renderPositionToken=positionToken;
     JSONArray rows=value.rows;Set<Integer> running=value.running,created=new HashSet<>();long now=System.currentTimeMillis();
     int[] counts=new int[5];List<JSONObject> ordered=new ArrayList<>();
     for(int i=0;i<rows.length();i++){JSONObject row=rows.optJSONObject(i);if(!EnvironmentWorkspacePolicy.eligible(row))continue;ordered.add(row);created.add(row.optInt("slot"));counts[0]++;boolean active=EnvironmentPresentation.active(row,running);if(row.optBoolean("favorite"))counts[1]++;if(active)counts[2]++;if(row.optBoolean("waiting")&&active)counts[3]++;if(!row.optString("problem").isEmpty())counts[4]++;}
     selectedIds.retainAll(created);String query=search.getText().toString().trim();String[] searchTokens=EnvironmentSearchIndex.tokens(query);
+    recentEnvironment.bind(value,now,!selecting&&query.isEmpty()&&filter==0&&selectedGroup==null);
     renderInbox(rows,running,now);updateViewLabel();
     setText(groupButton,(selectedGroup==null?"全部分组":selectedGroup.isEmpty()?"未分组":selectedGroup)+" ▾");setText(sortButton,new String[]{"编号排序 ▾","最近使用 ▾","名称排序 ▾"}[sort]);
-    setText(filterOptions,selectedGroup!=null||sort!=0?"筛选 ●":"筛选");filterOptions.setContentDescription("筛选与排序，当前分组："+(selectedGroup==null?"全部":selectedGroup.isEmpty()?"未分组":selectedGroup));
-    int filterWidth=DesignUi.actionWidth(filterOptions,72);if(filterOptions.getLayoutParams().width!=filterWidth){filterOptions.getLayoutParams().width=filterWidth;filterOptions.requestLayout();}
+    boolean filtered=selectedGroup!=null||sort!=0;filterOptions.setSelected(filtered);filterOptions.setContentDescription("筛选与排序，当前分组："+(selectedGroup==null?"全部":selectedGroup.isEmpty()?"未分组":selectedGroup)+"，"+new String[]{"编号排序","最近使用","名称排序"}[sort]);
+    if(filterOptions.getTag()==null||!Boolean.valueOf(filtered).equals(filterOptions.getTag())){filterOptions.setTag(filtered);filterOptions.setBackground(Ui.ripple(this,filtered?0xffeaf1ff:DesignUi.CARD,18));}
     String[] labels={"全部","收藏","运行中","等待回复","需处理"};
-    for(int i=0;i<filterButtons.length;i++){Button button=filterButtons[i];setText(button,labels[i]+" "+counts[i]);boolean chosen=i==filter;if(button.isSelected()!=chosen||button.getTag()==null){button.setTag(Boolean.TRUE);button.setSelected(chosen);button.setTextColor(chosen?DesignUi.BLUE:DesignUi.MUTED);button.setBackground(chosen?DesignUi.surface(this,0xffeaf1ff,8,0xffb6cdfa):Ui.ripple(this,android.graphics.Color.TRANSPARENT,9));}int width=DesignUi.actionWidth(button,i==3?100:88);if(button.getLayoutParams().width!=width){button.getLayoutParams().width=width;button.requestLayout();}}
+    for(int i=0;i<filterButtons.length;i++){Button button=filterButtons[i];setText(button,labels[i]+" "+counts[i]);boolean chosen=i==filter;if(button.isSelected()!=chosen||button.getTag()==null){button.setTag(Boolean.TRUE);button.setSelected(chosen);button.setTextColor(chosen?DesignUi.BLUE:DesignUi.MUTED);button.setTypeface(android.graphics.Typeface.create(chosen?"sans-serif-medium":"sans-serif",android.graphics.Typeface.NORMAL));button.setBackground(new android.graphics.drawable.InsetDrawable(Ui.ripple(this,chosen?0xffeaf1ff:android.graphics.Color.TRANSPARENT,20),0,dp(5),0,dp(5)));}int width=DesignUi.actionWidth(button,64);if(button.getLayoutParams().width!=width){button.getLayoutParams().width=width;button.requestLayout();}}
     if(sort==1)ordered.sort((l,r)->Long.compare(r.optLong("opened"),l.optLong("opened")));if(sort==2)ordered.sort((l,r)->l.optString("name").compareToIgnoreCase(r.optString("name")));
     renderMaintenance(rows);visibleIds.clear();Set<String> retained=new HashSet<>();int index=0;
     ScrollView scroll=cards.getParent() instanceof ScrollView?(ScrollView)cards.getParent():null; // body owns scroll; locate below when needed.
     View parent=cards;while(parent.getParent() instanceof View&&!(parent.getParent() instanceof ScrollView))parent=(View)parent.getParent();if(parent.getParent() instanceof ScrollView)scroll=(ScrollView)parent.getParent();
-    final ScrollView scrolling=scroll;int oldY=scrolling==null?0:scrolling.getScrollY();boolean structure=false;
+    final ScrollView scrolling=scroll;int oldY=scrolling==null?0:scrolling.getScrollY();boolean structure=previousHero!=recentEnvironment.card.getVisibility()||previousInbox!=inbox.getVisibility();
     for(JSONObject row:ordered){String key=EnvironmentPresentation.key(row);retained.add(key);EnvironmentRow holder=rowViews.get(key);if(holder==null){holder=new EnvironmentRow();rowViews.put(key,holder);structure=true;}holder.value=row;
       boolean show=EnvironmentPresentation.visible(row,running,filter,"",selectedGroup)&&value.search.matches(row,searchTokens);if(show)visibleIds.add(row.optInt("slot"));
       if(holder.root.getVisibility()!=(show?View.VISIBLE:View.GONE)){holder.root.setVisibility(show?View.VISIBLE:View.GONE);structure=true;}
@@ -230,7 +341,7 @@ public class WindowHomeActivity extends ThemedActivity {
     int maintenance=0;for(int i=0;i<rows.length();i++){JSONObject row=rows.optJSONObject(i);if(row.optBoolean("resetting")||row.optBoolean("deleting"))maintenance++;}
     setText(count,counts[0]==0&&maintenance>0?maintenance+" 个环境待完成维护":visibleIds.size()==counts[0]?counts[0]+" 个环境":"显示 "+visibleIds.size()+" / "+counts[0]);
     String empty=visibleIds.isEmpty()?(counts[0]==0&&maintenance>0?"maintenance":"filtered"):"";if(!empty.equals(emptySignature)){emptySignature=empty;emptyRows.removeAllViews();if("maintenance".equals(empty))DesignUi.note(emptyRows,"有环境等待完成维护，请点击上方继续重置或清理。");else if("filtered".equals(empty))DesignUi.empty(emptyRows,"没有匹配的环境","试试其他关键词，或重置分组与状态筛选。","重置筛选",()->{filter=0;selectedGroup=null;search.setText("");renderCached();});}
-    updateSelectionBar(rows);if(structure&&scrolling!=null)scrolling.post(()->{if(workspaceVisible)scrolling.scrollTo(0,oldY);});
+    updateSelectionBar(rows);if((structure||anchor!=null)&&scrolling!=null)restoreEnvironmentPosition(scrolling,anchor,anchorTop,oldY,positionToken);
   }
   static void setText(TextView view,String text){if(!android.text.TextUtils.equals(view.getText(),text))view.setText(text);}
   void renderMaintenance(JSONArray rows){
@@ -241,22 +352,25 @@ public class WindowHomeActivity extends ThemedActivity {
   final class EnvironmentRow {
     final LinearLayout root=DesignUi.column(WindowHomeActivity.this),card=DesignUi.card(WindowHomeActivity.this),head=DesignUi.row(WindowHomeActivity.this),actions=DesignUi.row(WindowHomeActivity.this);
     final View separator=new View(WindowHomeActivity.this);final CheckBox check=new CheckBox(WindowHomeActivity.this);
-    final TextView number=DesignUi.text(WindowHomeActivity.this,"",12,DesignUi.MUTED),name=DesignUi.text(WindowHomeActivity.this,"",16,DesignUi.TEXT),sub=DesignUi.text(WindowHomeActivity.this,"",12,DesignUi.MUTED),badge=DesignUi.badge(WindowHomeActivity.this,"",DesignUi.MUTED),network=DesignUi.text(WindowHomeActivity.this,"",12,DesignUi.MUTED),recent=DesignUi.text(WindowHomeActivity.this,"",12,DesignUi.MUTED);
+    final EnvironmentWorkspaceStyle.Emblem emblem=new EnvironmentWorkspaceStyle.Emblem(WindowHomeActivity.this,false);
+    final TextView name=workspaceText("",17,DesignUi.TEXT,true),sub=workspaceText("",12,DesignUi.MUTED,false),badge=workspaceText("",11,DesignUi.MUTED,false),network=workspaceText("",12,DesignUi.MUTED,false),recent=workspaceText("",11,DesignUi.MUTED,false);
     JSONObject value;boolean syncing;
-    final Button open=ReferenceUi.small(WindowHomeActivity.this,"打开环境",true,()->openExpected(value,"chat",true)),more=ReferenceUi.more(WindowHomeActivity.this,()->{if(value!=null)menu(value.optInt("slot"));});
+    final Button open=ReferenceUi.iconButton(WindowHomeActivity.this,"chevron-right","打开环境",()->openExpected(value,"chat",true)),more=ReferenceUi.more(WindowHomeActivity.this,()->{if(value!=null)menu(value.optInt("slot"));});
     final EnvironmentPresentation.Binding binding=new EnvironmentPresentation.Binding();
     EnvironmentRow(){
-      separator.setBackgroundColor(DesignUi.LINE);LinearLayout.LayoutParams line=new LinearLayout.LayoutParams(-1,Math.max(1,dp(1)/2));line.leftMargin=dp(60);line.rightMargin=dp(16);root.addView(separator,line);root.addView(card);
+      root.addView(separator,new LinearLayout.LayoutParams(-1,dp(10)));root.addView(card);card.setPadding(dp(16),dp(14),dp(10),dp(6));
       card.setClickable(true);card.setFocusable(true);card.setOnClickListener(v->{if(value!=null){if(selecting)toggleSelection(value.optInt("slot"));else openExpected(value,"chat",true);}});card.setOnLongClickListener(v->{if(value!=null)toggleSelection(value.optInt("slot"));return true;});
-      check.setOnCheckedChangeListener((button,selected)->{if(!syncing&&value!=null)toggleSelection(value.optInt("slot"));});head.addView(check,new LinearLayout.LayoutParams(dp(48),dp(48)));number.setSingleLine(true);number.setGravity(Gravity.CENTER);head.addView(number,new LinearLayout.LayoutParams(dp(28),-2));
-      LinearLayout titles=DesignUi.column(WindowHomeActivity.this);titles.setPadding(dp(10),0,dp(6),0);name.setTypeface(android.graphics.Typeface.create("sans-serif-medium",android.graphics.Typeface.NORMAL));name.setSingleLine();name.setEllipsize(TextUtils.TruncateAt.END);sub.setSingleLine();sub.setEllipsize(TextUtils.TruncateAt.END);titles.addView(name);titles.addView(sub);head.addView(titles,new LinearLayout.LayoutParams(0,-2,1));head.addView(badge);card.addView(head);network.setMaxLines(2);network.setEllipsize(TextUtils.TruncateAt.END);network.setPadding(0,dp(8),0,dp(4));card.addView(network);
-      actions.setPadding(0,dp(4),0,0);actions.addView(recent,new LinearLayout.LayoutParams(0,-2,1));open.setTextSize(13);open.setSingleLine(true);open.setPadding(dp(4),0,dp(4),0);actions.addView(open,new LinearLayout.LayoutParams(DesignUi.actionWidth(open,96),dp(48)));LinearLayout.LayoutParams extra=new LinearLayout.LayoutParams(dp(48),dp(48));extra.leftMargin=dp(6);actions.addView(more,extra);card.addView(actions);
+      check.setOnCheckedChangeListener((button,selected)->{if(!syncing&&value!=null)toggleSelection(value.optInt("slot"));});head.addView(check,new LinearLayout.LayoutParams(dp(48),dp(48)));head.addView(emblem,new LinearLayout.LayoutParams(dp(44),dp(44)));
+      LinearLayout titles=DesignUi.column(WindowHomeActivity.this);titles.setPadding(dp(12),0,dp(4),0);name.setMaxLines(2);name.setEllipsize(TextUtils.TruncateAt.END);sub.setMaxLines(2);sub.setEllipsize(TextUtils.TruncateAt.END);sub.setPadding(0,dp(3),0,0);titles.addView(name);titles.addView(sub);head.addView(titles,new LinearLayout.LayoutParams(0,-2,1));head.addView(more,new LinearLayout.LayoutParams(dp(48),dp(48)));card.addView(head);
+      network.setMaxLines(2);network.setEllipsize(TextUtils.TruncateAt.END);network.setPadding(0,dp(10),dp(6),0);Ui.Icon globe=new Ui.Icon("globe",DesignUi.MUTED);globe.setBounds(0,0,dp(14),dp(14));network.setCompoundDrawables(globe,null,null,null);network.setCompoundDrawablePadding(dp(7));card.addView(network);
+      badge.setPadding(dp(8),dp(4),dp(8),dp(4));badge.setGravity(Gravity.CENTER);actions.addView(badge);
+      recent.setSingleLine(true);recent.setEllipsize(TextUtils.TruncateAt.END);recent.setGravity(Gravity.END|Gravity.CENTER_VERTICAL);recent.setPadding(dp(8),0,0,0);actions.addView(recent,new LinearLayout.LayoutParams(0,-2,1));actions.addView(open,new LinearLayout.LayoutParams(dp(48),dp(48)));card.addView(actions);
     }
     void bind(JSONObject row,Set<Integer> running,long now,int defaultSlot){
       if(!binding.changed(EnvironmentPresentation.stamp(row,running,now,defaultSlot,selecting,selectedIds.contains(row.optInt("slot")))))return;
       int id=row.optInt("slot");boolean active=EnvironmentPresentation.active(row,running),fresh=EnvironmentPresentation.fresh(row,now),problem=!row.optString("problem").isEmpty();
-      card.setContentDescription((selecting?"选择环境：":"打开环境：")+row.optString("name"));card.setBackground(Ui.ripple(WindowHomeActivity.this,selecting&&selectedIds.contains(id)?0xfff0f5ff:DesignUi.CARD,0));syncing=true;check.setChecked(selectedIds.contains(id));syncing=false;check.setVisibility(selecting?View.VISIBLE:View.GONE);number.setVisibility(selecting?View.GONE:View.VISIBLE);check.setContentDescription("选择环境 "+String.format(Locale.ROOT,"%02d",id+1)+" "+row.optString("name"));setText(number,String.format(Locale.ROOT,"%02d",id+1));setText(name,(row.optBoolean("favorite")?"★ ":"")+row.optString("name"));String group=row.optString("group").isEmpty()?"未分组":row.optString("group");setText(sub,(selecting?String.format(Locale.ROOT,"%02d",id+1)+" · ":"")+(row.optBoolean("desktopSite")?"电脑版 · ":"")+group+(id==defaultSlot?" · 默认":"")+(!row.optString("draft").isEmpty()?" · 草稿":""));
-      int color=problem?DesignUi.RED:active?DesignUi.GREEN:DesignUi.MUTED;setText(badge,EnvironmentPresentation.status(row,active,fresh));badge.setTextColor(color);badge.setBackground(DesignUi.surface(WindowHomeActivity.this,(color&0x00ffffff)|0x11000000,7,android.graphics.Color.TRANSPARENT));setText(network,networkStatus(row,active,fresh));network.setTextColor(problem?DesignUi.RED:DesignUi.MUTED);setText(recent,row.optLong("opened")<=0?"":"最近 "+recentUse(row.optLong("opened"),now));open.setVisibility(selecting?View.GONE:View.VISIBLE);more.setVisibility(selecting?View.GONE:View.VISIBLE);actions.setVisibility(selecting&&row.optLong("opened")<=0?View.GONE:View.VISIBLE);open.setContentDescription("打开环境 "+row.optString("name"));more.setContentDescription("更多操作 "+row.optString("name"));
+      card.setContentDescription((selecting?"选择环境：":"打开环境：")+row.optString("name"));card.setBackground(EnvironmentWorkspaceStyle.card(WindowHomeActivity.this,false,selecting&&selectedIds.contains(id)));syncing=true;check.setChecked(selectedIds.contains(id));syncing=false;check.setVisibility(selecting?View.VISIBLE:View.GONE);emblem.setVisibility(selecting?View.GONE:View.VISIBLE);emblem.bind(id);check.setContentDescription("选择环境 "+String.format(Locale.ROOT,"%02d",id+1)+" "+row.optString("name"));setText(name,(row.optBoolean("favorite")?"★ ":"")+row.optString("name"));String group=row.optString("group").isEmpty()?"未分组":row.optString("group");setText(sub,String.format(Locale.ROOT,"%02d",id+1)+" · "+group+(row.optBoolean("desktopSite")?" · 电脑版":"")+(id==defaultSlot?" · 默认":"")+(!row.optString("draft").isEmpty()?" · 草稿":""));
+      int color=problem?DesignUi.RED:active?DesignUi.GREEN:DesignUi.MUTED;setText(badge,"• "+EnvironmentPresentation.status(row,active,fresh));badge.setTextColor(color);badge.setBackground(DesignUi.surface(WindowHomeActivity.this,(color&0x00ffffff)|0x11000000,12,android.graphics.Color.TRANSPARENT));setText(network,networkStatus(row,active,fresh));network.setTextColor(problem?DesignUi.RED:DesignUi.MUTED);setText(recent,row.optLong("opened")<=0?"尚未打开":"最近 "+recentUse(row.optLong("opened"),now));open.setVisibility(selecting?View.GONE:View.VISIBLE);more.setVisibility(selecting?View.GONE:View.VISIBLE);actions.setMinimumHeight(dp(48));open.setContentDescription("打开环境 "+row.optString("name"));more.setContentDescription("更多操作 "+row.optString("name"));
     }
   }
   JSONObject currentView(String name){return EnvironmentSavedViews.view(name,search.getText().toString(),selectedGroup,filter,sort);}
@@ -268,7 +382,8 @@ public class WindowHomeActivity extends ThemedActivity {
   void updateViewLabel(){
     JSONObject saved=savedViews.find(this,activeView);
     boolean matches=saved!=null&&EnvironmentSavedViews.sameSettings(saved,currentView(activeView));
-    setText(viewsButton,matches?"视图："+activeView:"工作视图"+(saved==null?"":" · 已修改"));
+    String heading=search.getText().toString().trim().isEmpty()?(filter==0&&selectedGroup==null?"全部环境":"筛选结果"):"搜索结果";
+    setText(viewsButton,matches?activeView:saved==null?heading:activeView+" · 已修改");
     viewsButton.setContentDescription(matches?"当前工作视图："+activeView+"，点按切换":"切换或保存工作视图");
   }
   void chooseView(){
@@ -306,11 +421,13 @@ public class WindowHomeActivity extends ThemedActivity {
     List<JSONObject> tasks=EnvironmentWorkspacePolicy.actionable(rows,running,now);
     int issues=0,drafts=0,waiting=0;for(JSONObject row:tasks){if(!row.optString("problem").isEmpty())issues++;if(!row.optString("draft").isEmpty())drafts++;if(row.optBoolean("waiting")&&EnvironmentWorkspacePolicy.running(row,running,now))waiting++;}
     String next=selecting+":"+tasks.size()+":"+issues+":"+drafts+":"+waiting;if(next.equals(inboxSignature))return;inboxSignature=next;
-    inbox.removeAllViews();if(selecting){inbox.setVisibility(View.GONE);return;}inbox.setVisibility(View.VISIBLE);
-    if(tasks.isEmpty())return;
-    LinearLayout card=DesignUi.card(this);TextView title=ReferenceUi.text(this,"全部环境任务 · "+tasks.size()+" 个环境",16,DesignUi.TEXT,true);card.addView(title);
-    DesignUi.note(card,(issues>0?issues+" 个连接需处理  ":"")+(drafts>0?drafts+" 个配置草稿  ":"")+(waiting>0?waiting+" 个正在等待回复":""));
-    DesignUi.action(card,"查看并继续任务",true,this::showInbox);DesignUi.addCard(inbox,card);
+    inbox.removeAllViews();if(selecting||tasks.isEmpty()){inbox.setVisibility(View.GONE);return;}inbox.setVisibility(View.VISIBLE);
+    LinearLayout notice=DesignUi.row(this);notice.setPadding(dp(14),dp(12),dp(14),dp(12));notice.setBackground(EnvironmentWorkspaceStyle.card(this,false,false));
+    ImageView icon=DesignUi.icon(this,issues>0?"info":"chat",issues>0?DesignUi.RED:DesignUi.BLUE,32);notice.addView(icon);
+    LinearLayout labels=DesignUi.column(this);labels.setPadding(dp(10),0,dp(8),0);labels.addView(workspaceText(tasks.size()+" 个环境有待办",13,DesignUi.TEXT,true));
+    TextView summary=workspaceText((issues>0?issues+" 个连接需处理  ":"")+(drafts>0?drafts+" 个配置草稿  ":"")+(waiting>0?waiting+" 个等待回复":""),12,DesignUi.MUTED,false);summary.setMaxLines(2);summary.setEllipsize(TextUtils.TruncateAt.END);summary.setPadding(0,dp(2),0,0);labels.addView(summary);notice.addView(labels,new LinearLayout.LayoutParams(0,-2,1));
+    ImageView arrow=new ImageView(this);arrow.setImageDrawable(new Ui.Icon("chevron-right",DesignUi.MUTED));notice.addView(arrow,new LinearLayout.LayoutParams(dp(16),dp(20)));
+    notice.setMinimumHeight(dp(64));notice.setClickable(true);notice.setFocusable(true);notice.setContentDescription("查看并继续任务，"+tasks.size()+" 个环境有待办");notice.setOnClickListener(v->showInbox());DesignUi.addCard(inbox,notice);
   }
   void showInbox(){
     ReferenceUi.Modal panel=new ReferenceUi.Modal(this,"环境任务收件箱").asSheet();
