@@ -6,6 +6,7 @@ No production code is changed, and no UI acceptance gate is replaced by this tes
 """
 import argparse
 import hashlib
+import importlib.util
 import json
 import os
 from pathlib import Path
@@ -15,6 +16,9 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parents[2]
 HERE = Path(__file__).resolve().parent
+_history_spec = importlib.util.spec_from_file_location('ui_checkpoint_source_compatibility', ROOT / 'tests/ui_checkpoint_source_compatibility.py')
+_history_input = importlib.util.module_from_spec(_history_spec)
+_history_spec.loader.exec_module(_history_input)
 OBSERVER = ROOT / 'tests/gecko/DownloadLocationLayoutEvidence.java'
 ACTIVITY = ROOT / 'tests/gecko/UiVisualIntegrationActivity.java'
 PINS = {
@@ -196,7 +200,10 @@ def main():
     parser.add_argument('--output', type=Path, default=ROOT / 'work/ui-download-observer-host/results.json')
     args = parser.parse_args()
     sources = {'observer': OBSERVER.read_bytes(), 'activity': ACTIVITY.read_bytes()}
-    assert {key: digest(value) for key, value in sources.items()} == PINS, 'Unreviewed complete observer/activity source'
+    # Only this retained whole-source oracle sees the exact reviewed inverse.
+    # Method extraction and JVM compilation below always receive current bytes.
+    guarded = dict(sources, activity=_history_input.navigation_source_input(sources['activity'], 'tests/gecko/UiVisualIntegrationActivity.java'))
+    assert {key: digest(value) for key, value in guarded.items()} == PINS, 'Unreviewed complete observer/activity source'
     activity = sources['activity'].decode('utf-8')
     needles = ('@Override protected void onNewIntent(Intent request)',
                'String downloadObservationRejection(Intent request)',
@@ -228,7 +235,8 @@ def main():
         output = subprocess.check_output([tool('java'), '-cp', str(classes) + os.pathsep + str(jar), 'local.pocketchat.ObserverCases']).decode()
     result = json.loads(output)
     result.update(sourceCommit=subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT).decode().strip(),
-                  sourceSha256=PINS, methodSha256={key: digest(value.encode()) for key, value in zip(needles, methods)},
+                  sourceSha256={key: digest(value) for key, value in sources.items()}, historicalSourceGuardSha256=PINS,
+                  methodSha256={key: digest(value.encode()) for key, value in zip(needles, methods)},
                   adapterSha256=digest(Path(__file__).read_bytes()), caseTemplateSha256=digest((HERE / 'ObserverCases.java.in').read_bytes()),
                   jsonJarSha256=digest(jar.read_bytes()), javaVersion=version.splitlines()[0], actualAndroidExecution=False,
                   boundary='Explicit synthetic Android View/Layout/Activity/Intent/Handler/assets adapters; complete actual observer and verbatim Activity methods')

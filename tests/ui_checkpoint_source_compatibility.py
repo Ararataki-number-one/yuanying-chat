@@ -37,6 +37,11 @@ FORWARDED_PATHS = frozenset(PREVIOUS) | frozenset((
     'tests/profile_ui_observer_source_compatibility_test.py'))
 FLAG_DECLARATION = "p.add_argument('--no-checkpoint-publication',action='store_true',help='Disable checkpoint publication for nonqualifying diagnostics');"
 FLAG_RETURN = '    if args.no_checkpoint_publication:return\n'
+NAVIGATION_PATH = 'tests/gecko/UiVisualIntegrationActivity.java'
+NAVIGATION_FIXTURE = ROOT / 'tests/fixtures/ui-navigation-source-deltas.json'
+NAVIGATION_FIXTURE_SHA256 = '98c2c894fc4eda4adc28d06064943af7b68a99e9c4270b2ed32dafc21bf80775'
+NAVIGATION_CURRENT_SHA256 = '04f629d6053d1fc62bdddd590c4b405ddff2d564fd4dc3211332c849da0a4366'
+NAVIGATION_PREVIOUS_SHA256 = '29d641025853a52cf00dbffb9fccad54126e33d04805f8f4dfe483fafb3180a5'
 
 
 def sha(raw):
@@ -45,6 +50,41 @@ def sha(raw):
 
 def tree_sha(tree):
     return sha(ast.dump(tree, include_attributes=False).encode())
+
+
+def navigation_manifest():
+    raw = NAVIGATION_FIXTURE.read_bytes()
+    assert not NAVIGATION_FIXTURE.is_symlink() and len(raw) <= 32768 and sha(raw) == NAVIGATION_FIXTURE_SHA256, 'Exact bounded navigation source fixture required'
+    value = json.loads(raw)
+    assert type(value['schema']) is int and value['schema'] == 1 and value['path'] == NAVIGATION_PATH
+    assert value['previousCommit'] == '03d0c4ace70942a3f6899daffac086cc6682885e'
+    assert value['previousTree'] == 'bfd7bbcdf89ef947dd466dab795e94e83fc992c3'
+    assert value['reviewedCommit'] == '4363dbc04df80d5c82ba966248e47a3fd69cbcc8'
+    assert value['reviewedTree'] == '08189ae748eb1045ff21af4253369ef17d6bdad3'
+    assert (value['previousBytes'], value['previousSha256']) == (12855, NAVIGATION_PREVIOUS_SHA256)
+    assert (value['reviewedBytes'], value['reviewedSha256']) == (13373, NAVIGATION_CURRENT_SHA256)
+    assert len(value['deltas']) == 5, 'Only five reviewed navigation source hunks are owned'
+    return value
+
+
+def navigation_source_input(raw, path):
+    """Historical source assertions only; Android and host compilers read raw files.
+
+    Restore the actual Source7 Git blob before the unchanged observer inverse.
+    Whole-source pins reject moved context and every unreviewed byte before any
+    hunk is reversed. This function is never a producer or compiler input.
+    """
+    assert type(raw) is bytes and type(path) is str and path == NAVIGATION_PATH, 'Complete owned navigation source bytes required'
+    value = navigation_manifest()
+    assert len(raw) == value['reviewedBytes'] and sha(raw) == NAVIGATION_CURRENT_SHA256, 'Unreviewed complete navigation source'
+    for delta in reversed(value['deltas']):
+        current, previous = delta['current'].encode(), delta['previous'].encode()
+        assert 0 < len(current) <= 32768 and len(current) == delta['currentBytes'] and sha(current) == delta['currentSha256']
+        assert 0 < len(previous) <= 32768 and len(previous) == delta['previousBytes'] and sha(previous) == delta['previousSha256']
+        assert raw.count(current) == 1, 'Missing, repeated or moved exact navigation source hunk'
+        raw = raw.replace(current, previous, 1)
+    assert len(raw) == value['previousBytes'] and sha(raw) == NAVIGATION_PREVIOUS_SHA256, 'Entire actual Source7 Activity did not restore'
+    return raw
 
 
 def manifest():
@@ -104,6 +144,8 @@ def require_current_runner(raw):
 def history_input(raw, path):
     """Forward unknown inputs unchanged to the existing strict source guards."""
     assert type(raw) is bytes and type(path) is str and path in FORWARDED_PATHS
+    if path == NAVIGATION_PATH and sha(raw) == NAVIGATION_CURRENT_SHA256:
+        return navigation_source_input(raw, path)
     if path in PREVIOUS and sha(raw) == manifest()['files'][path]['reviewedSha256']:
         return source_input(raw, path)
     return raw

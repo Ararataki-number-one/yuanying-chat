@@ -9,6 +9,9 @@ The optional recording is a visual-review artifact, not animation acceptance.
 An additional native-network screenshot runs after recording, with its own status.
 Navigation typography is measured separately at default and enlarged font scales;
 its component fixture is never presented as the actual MainActivity screenshot.
+--acceptance-suite adds required, separately reported native input/layout cases
+using the existing controlled Gecko document fixture; those remain explicitly
+test-signed integration evidence with original device pixels for visual review.
 """
 import argparse
 import hashlib
@@ -31,6 +34,14 @@ LABELS = ('环境', '网络', '下载', '阅读')
 MOTION_WIDTH, MOTION_HEIGHT, MOTION_BIT_RATE, MOTION_SECONDS = 618, 1338, 3500000, 60
 MOTION_MIN_WALL_SECONDS, MOTION_OBSERVATION_SECONDS, MOTION_RELEASE_SETTLE_SECONDS = 20, 20, 1.2
 MOTION_REVIEW_MIN_SECONDS = 12
+
+
+def set_display(width, height, density=DENSITY):
+    """Keep hierarchy coordinates tied to the current Android logical display."""
+    global WIDTH, HEIGHT, DENSITY
+    if any(type(value) is not int or value <= 0 for value in (width, height, density)):
+        raise ValueError('Positive integral logical display geometry required')
+    WIDTH, HEIGHT, DENSITY = width, height, density
 
 
 def sha(path):
@@ -85,10 +96,15 @@ def navigation_geometry(xml):
     group_center = [(group[0] + group[2]) / 2, (group[1] + group[3]) / 2]
     offset = group_center[0] - WIDTH / 2
     minimum_touch_px = (48 * DENSITY + 159) // 160
+    same_row = group[2] < reading[0] and max(group[1], reading[1]) < min(group[3], reading[3])
+    stacked = (reading[1] > group[3] and reading[0] >= group_center[0]
+               and reading[2] > group[2])
     checks = dict(
         threeItemGroupCentered=abs(offset) <= 1,
-        leftToRightOrder=all(boxes[i][2] <= boxes[i + 1][0] for i in range(3)),
-        readingSeparateToRight=group[2] < reading[0],
+        leftToRightOrder=all(boxes[i][2] <= boxes[i + 1][0] for i in range(2)),
+        threeItemsShareRow=all(abs(box[1] - boxes[0][1]) <= 1
+                              and abs(box[3] - boxes[0][3]) <= 1 for box in boxes[:3]),
+        readingSeparateToRight=same_row or stacked,
         readingIsSquare=abs((reading[2] - reading[0]) - (reading[3] - reading[1])) <= 3,
         minimumTouchTargets=all(right - left >= minimum_touch_px and bottom - top >= minimum_touch_px
                                 for left, top, right, bottom in boxes))
@@ -98,6 +114,7 @@ def navigation_geometry(xml):
                 threeItemGroupCenter=group_center, horizontalCenterOffsetPx=offset,
                 allowedCenterOffsetPx=1, readingBounds=list(reading),
                 readingGapPx=reading[0] - group[2],
+                readingLayout='same-row' if same_row else 'stacked-right' if stacked else 'overlap-or-misplaced',
                 leftToRightLabels=[label for label, box in sorted(zip(LABELS, boxes), key=lambda item: item[1][0])],
                 minimumTouchTargetDp=48, minimumTouchTargetPx=minimum_touch_px,
                 bounds={label: list(box) for label, box in zip(LABELS, boxes)},
@@ -818,6 +835,10 @@ def main():
     parser.add_argument('--aapt2', required=True)
     parser.add_argument('--apksigner', required=True)
     parser.add_argument('--out', type=Path, required=True)
+    parser.add_argument('--acceptance-suite', action='store_true',
+                        help='Capture additional real input/configuration cases; fail if any required case fails')
+    parser.add_argument('--device-api', type=int, choices=(32, 35), default=35,
+                        help='Disposable emulator API; API 32 exercises the actual pre-AGSL CPU fallback')
     args = parser.parse_args()
     args.root, args.apk, args.build_work, args.out = (
         path.resolve() for path in (args.root, args.apk, args.build_work, args.out))
@@ -925,17 +946,24 @@ def main():
                                   args.root, args.build_work / 'geckoview.aar')
         if audit_apk(args.apk)['embeddedBuildIdentity'] != embedded_identity(sdk, native / 'sdk-build-receipt.json'):
             raise ValueError('Compiled APK and reviewed SDK receipts differ')
-        command([args.apksigner, 'verify', '--verbose', str(args.apk)])
+        signature = command([args.apksigner, 'verify', '--verbose', '--print-certs', str(args.apk)])
+        (args.out / 'integration-apk-signature.txt').write_bytes(signature)
+        certificates = re.findall(r'^Signer #\d+ certificate SHA-256 digest: ([0-9a-f]{64})\s*$',
+                                  signature.decode('utf-8', 'strict'), re.M)
+        if len(certificates) != 1:
+            raise ValueError('Exactly one integration APK signing certificate is required')
         badging = command([args.aapt2, 'dump', 'badging', str(args.apk)]).decode()
         if (not badging.startswith(f"package: name='{PACKAGE}' versionCode='{code}' versionName='{version}'")
                 or 'application-debuggable' in badging or "native-code: 'x86_64'" not in badging):
             raise ValueError('Unexpected package, version, debuggability or ABI')
         report['buildIdentity'] = dict(identity, runnerSha256=sha(__file__),
-            sdkReceiptSha256=sha(native / 'sdk-build-receipt.json'))
+            sdkReceiptSha256=sha(native / 'sdk-build-receipt.json'),
+            integrationSigningCertificateSha256=certificates[0],
+            releaseSignatureAcceptance=False)
 
         if (adb('shell', 'getprop', 'ro.kernel.qemu').strip() != b'1'
-                or adb('shell', 'getprop', 'ro.build.version.sdk').strip() != b'35'):
-            raise ValueError('Only the disposable API 35 emulator is supported')
+                or adb('shell', 'getprop', 'ro.build.version.sdk').strip() != str(args.device_api).encode()):
+            raise ValueError('The selected disposable emulator API does not match --device-api')
         device_ready = True
         report['actualAndroidExecution'] = True
         report['device'] = {key: adb('shell', 'getprop', key).decode().strip() for key in
@@ -1015,14 +1043,21 @@ def main():
             capture_navigation_typography(args, report, capture, adb, wait_for, screenshot)
         except Exception as error:
             report['navigationTypography'].update(status='failed', errorType=type(error).__name__, error=str(error))
+        if args.acceptance_suite:
+            from glass_ui_validation import capture_acceptance_suite
+            capture_acceptance_suite(args, report, capture, adb, wait_for, tap, screenshot,
+                                     globals())
         print(json.dumps(dict(status='captured', sourceCommit=source,
             apkSha256=installed_sha, image='glass-navigation.png',
             motionStatus=report['motionReport']['status'],
             nativeBackdropStatus=report['nativeBackdropPreview']['status'],
             typographyStatus=report['navigationTypography']['status'],
+            uiAcceptanceStatus=report.get('glassUiAcceptance', {}).get('status', 'not-requested'),
             scope='Actual Android MainActivity; local unconfigured environment, no live website'), ensure_ascii=False))
     except Exception as error:
-        report.update(status='failed', staticScreenshotStatus='failed', errorType=type(error).__name__, error=str(error))
+        report.update(status='failed', errorType=type(error).__name__, error=str(error))
+        if report['staticScreenshotStatus'] != 'captured':
+            report['staticScreenshotStatus'] = 'failed'
         if device_ready:
             try:
                 screenshot('blocked-screen.png')
