@@ -1,0 +1,33 @@
+name: Locked Android 35 platform dependency probe
+on:
+  push:
+    branches: ['diagnostic/android35-platform-20261108-1']
+permissions:
+  contents: read
+jobs:
+  platform-probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Check the exact preinstalled Android 35 API jar
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PYCODE'
+          import hashlib,json,os
+          from pathlib import Path
+          wanted='4566663c3876e022b4fa4ced8c8697c4ab1688267f090114fd92d027b32e619b'
+          paths=[]
+          for root in (os.environ.get('ANDROID_HOME'),os.environ.get('ANDROID_SDK_ROOT'),'/usr/local/lib/android/sdk','/opt/android-sdk'):
+              if root:
+                  path=Path(root)/'platforms/android-35/android.jar'
+                  if str(path) not in paths:paths.append(str(path))
+          rows=[]
+          for name in paths:
+              path=Path(name)
+              row={'path':name,'exists':path.is_file()}
+              if path.is_file():row.update(bytes=path.stat().st_size,sha256=hashlib.sha256(path.read_bytes()).hexdigest())
+              rows.append(row)
+          print(json.dumps({'scope':'Only the actual hosted dependency; no application build, Android execution, signing or release qualification','expectedSha256':wanted,'candidates':rows},indent=2))
+          assert any(row.get('sha256')==wanted for row in rows),'The exact pinned Android 35 dependency is not preinstalled'
+          PYCODE
