@@ -18,6 +18,8 @@ final class AppHub {
   int page,settingsTab,networkTab,downloadFilter;
   long navigation;
   String rendered="";
+  private boolean feedbackError;
+  private final boolean feedbackFallbackLineSpacing;
   private int markedPage=-1;private boolean markedFocus,markedDark,marked;
   private final WeakHashMap<ScrollView,ScrollPadding> scrollPadding=new WeakHashMap<>();
   final Button[] tabs=new Button[DesignUi.NAV.length];
@@ -40,10 +42,11 @@ final class AppHub {
     // content behind their five-item bar; neither control group changes parent.
     root.addView(workspace,new LinearLayout.LayoutParams(-1,-2));
     feedbackBar=DesignUi.row(a);feedbackBar.setPadding(a.dp(14),a.dp(4),a.dp(14),a.dp(4));feedbackBar.setVisibility(View.GONE);
-    // This opaque notice now overlays page content; its empty area must not
+    // Footer-based pages overlay content; the notice's empty area must not
     // activate an obscured row beneath it. The close button keeps its action.
     feedbackBar.setClickable(true);feedbackBar.setFocusable(false);
     feedbackText=DesignUi.text(a,"",13,DesignUi.TEXT);feedbackText.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
+    feedbackFallbackLineSpacing=android.os.Build.VERSION.SDK_INT>=28&&feedbackText.isFallbackLineSpacing();
     feedbackBar.addView(feedbackText,new LinearLayout.LayoutParams(0,-2,1));
     Button close=DesignUi.button(a,"×",false,()->feedbackBar.setVisibility(View.GONE));close.setTextSize(20);close.setContentDescription("关闭提示");
     LinearLayout.LayoutParams cp=new LinearLayout.LayoutParams(a.dp(48),a.dp(48));cp.leftMargin=a.dp(8);feedbackBar.addView(close,cp);
@@ -69,7 +72,7 @@ final class AppHub {
   }
   void show(int target){
     if(target!=page||target==CHAT)feedbackBar.setVisibility(View.GONE);
-    page=target;downloadsVisible(a.active);chat.setVisibility(page==CHAT?View.VISIBLE:View.GONE);if(page!=CHAT)a.designChrome.cancelWebGesture();
+    page=target;placeFeedback();downloadsVisible(a.active);chat.setVisibility(page==CHAT?View.VISIBLE:View.GONE);if(page!=CHAT)a.designChrome.cancelWebGesture();
     if(a.chatDownloadProgress!=null)a.chatDownloadProgress.update();
     a.status.setVisibility(View.GONE);workspaceMode();
     a.session.foreground(a.active);mark();a.updateReadingLayout();a.handler.removeCallbacks(tick);
@@ -136,16 +139,39 @@ final class AppHub {
     if(identity.equals(rendered)&&panel.getChildCount()>0){ViewGroup old=(ViewGroup)panel.getChildAt(0);if(old.getChildCount()>1&&old.getChildAt(1) instanceof ScrollView)oldY=old.getChildAt(1).getScrollY();}
     rendered=identity;final int restoreY=oldY;LinearLayout screen=DesignUi.screen(a),box=DesignUi.body(a,screen,title,()->select(CHAT));
     panel.removeAllViews();panel.addView(screen,new FrameLayout.LayoutParams(-1,-1));
-    updateNativeInsets();
+    placeFeedback();updateNativeInsets();
     if(screen.getChildCount()>1&&screen.getChildAt(1) instanceof ScrollView){ScrollView scroll=(ScrollView)screen.getChildAt(1);scroll.post(()->scroll.scrollTo(0,restoreY));}return box;
   }
   void action(LinearLayout box,String label,Runnable run){DesignUi.action(box,label,false,run);}
   void note(LinearLayout box,String text){DesignUi.note(box,text);}
-  void feedback(String message,boolean error){
-    if(page==CHAT)return;feedbackText.setText(message);feedbackText.setTextColor(error?DesignUi.RED:DesignUi.TEXT);
-    feedbackBar.setBackgroundColor(AppAppearance.color(error?0xfffff1f2:0xffedf5ff));feedbackBar.setVisibility(View.VISIBLE);
+  private void placeFeedback(){
+    // Only a currently attached network screen may own the existing notice.
+    // Other workspaces retain the original footer and the same close action.
+    boolean inline=page==NETWORK&&networkWorkspace.feedbackHost!=null
+      &&networkWorkspace.root!=null&&networkWorkspace.root.getParent()==panel;
+    LinearLayout target=inline?networkWorkspace.feedbackHost:footer;
+    if(feedbackBar.getParent()==target)return;
+    if(feedbackBar.getParent() instanceof ViewGroup)((ViewGroup)feedbackBar.getParent()).removeView(feedbackBar);
+    LinearLayout.LayoutParams notice=new LinearLayout.LayoutParams(-1,-2);
+    if(inline){notice.leftMargin=a.dp(20);notice.rightMargin=a.dp(20);notice.bottomMargin=a.dp(12);}
+    target.addView(feedbackBar,0,notice);styleFeedback();
   }
-  void refresh(){if(page==DOWNLOADS)downloads();if(page==SETTINGS)settings();if(page==NETWORK)networkWorkspace.show(networkTab);updateNativeInsets();}
+  private void styleFeedback(){
+    boolean inline=feedbackBar.getParent()!=footer;
+    feedbackBar.setContentDescription(inline?"网络连接提示":null);
+    feedbackBar.setPadding(a.dp(14),a.dp(inline?10:4),a.dp(inline?10:14),a.dp(inline?10:4));
+    feedbackText.setIncludeFontPadding(inline);
+    if(android.os.Build.VERSION.SDK_INT>=28)feedbackText.setFallbackLineSpacing(inline||feedbackFallbackLineSpacing);
+    feedbackText.setTextColor(inline?DesignUi.TEXT:feedbackError?DesignUi.RED:DesignUi.TEXT);
+    if(inline)feedbackBar.setBackground(DesignUi.surface(a,DesignUi.CARD,20,
+        feedbackError?(DesignUi.RED&0x00ffffff)|0x22000000:DesignUi.LINE));
+    else feedbackBar.setBackgroundColor(AppAppearance.color(feedbackError?0xfffff1f2:0xffedf5ff));
+  }
+  void feedback(String message,boolean error){
+    if(page==CHAT)return;feedbackError=error;feedbackText.setText(message);
+    placeFeedback();styleFeedback();feedbackBar.setVisibility(View.VISIBLE);
+  }
+  void refresh(){if(page==DOWNLOADS)downloads();if(page==SETTINGS)settings();if(page==NETWORK)networkWorkspace.show(networkTab);placeFeedback();updateNativeInsets();}
   void downloadsVisible(boolean foreground){if(downloadController!=null)downloadController.setVisible(foreground&&page==DOWNLOADS);}
   void downloads(){
     if(downloadController==null||panel.getChildCount()==0||panel.getChildAt(0)!=downloadScreen){

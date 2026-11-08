@@ -5,7 +5,7 @@ parser=argparse.ArgumentParser();parser.add_argument('--java-home',required=True
 root=pathlib.Path(__file__).resolve().parents[2];work=root/'work/network-settings-ui-host';work.mkdir(parents=True,exist_ok=True)
 spec=importlib.util.spec_from_file_location('extract',root/'tools/gecko/run_network_core_host.py'); extract=importlib.util.module_from_spec(spec); spec.loader.exec_module(extract)
 source=root/'app/src/main/java/local/pocketchat/NetworkWorkspaceUi.java'; text=source.read_text()
-names=['entryModeLabel','runningConfiguration','displayEntry','displayExit','externalName','metadata','version','metadataSummary','pendingSummary','pendingCandidateId','nodeName','editingContext','operationResult','operationText']
+names=['entryModeLabel','setupOnly','runningConfiguration','displayEntry','displayExit','externalName','metadata','version','metadataSummary','pendingSummary','pendingCandidateId','nodeName','editingContext','operationResult','operationText']
 methods=[]
 for name in names:
  import re
@@ -17,7 +17,7 @@ public class UiSnapshotTest {
  static class NativeNetwork {static String hash(String s){return Sha256.hash(s);}}
  static int passed;static void check(boolean ok,String name){if(!ok)throw new AssertionError(name);passed++;}
  static JSONObject obj(Object... values){JSONObject result=new JSONObject();try{for(int i=0;i<values.length;i+=2)result.put((String)values[i],values[i+1]);return result;}catch(Exception failed){throw new RuntimeException(failed);}}
- static class WindowNetworkState{JSONObject runtime;long now=100000,environmentGeneration=2;String environmentId="scope-a";WindowNetworkState(JSONObject runtime){this.runtime=runtime;}}
+ static class WindowNetworkState{JSONObject runtime;long now=100000,environmentGeneration=2;String environmentId="scope-a",state="未配置",ip="",region="",latency="延迟未测";boolean connected;WindowNetworkState(JSONObject runtime){this.runtime=runtime;}}
  METHODS
  public static void main(String[] ignored)throws Exception{
   check(entryModeLabel("latency").equals("自动优选"),"latency mode has one user-facing label");
@@ -62,6 +62,33 @@ public class UiSnapshotTest {
   check(legacyId.equals("legacy:"+Sha256.hash(legacy.toString())),"legacy UI candidate guard matches backend snapshot identity");
   legacy.put("savedAt",1);check(!legacyId.equals(pendingCandidateId(legacy,null)),"legacy guard changes with a replacement saved receipt");
   check(pendingCandidateId(legacy,obj("id","stable-candidate")).equals("stable-candidate"),"modern pending keeps its intent identity");
+
+  // Empty setup hints may replace placeholders, never observations or pending work.
+  WindowNetworkState setup=new WindowNetworkState(new JSONObject());
+  JSONObject setupMeta=obj("available",true,"environmentId","scope-a","generation",2);
+  JSONObject setupItem=obj("uiMetadata",setupMeta);
+  check(setupOnly(setup,setupItem),"known unconfigured environment with no observations may show setup hint");
+  setup.ip="203.0.113.9";check(!setupOnly(setup,setupItem),"historical IP keeps network details");setup.ip="";
+  setup.region="日本";check(!setupOnly(setup,setupItem),"known exit region keeps network details");setup.region="";
+  for(String observedLatency:new String[]{"122 ms","122 ms（上次）","探测未通过"}){
+   setup.latency=observedLatency;check(!setupOnly(setup,setupItem),"latency observation keeps details: "+observedLatency);
+  }
+  setup.latency="延迟未测";
+  setup.connected=true;check(!setupOnly(setup,setupItem),"connected observation cannot become an empty setup hint");setup.connected=false;
+  for(String observedState:new String[]{"连接中","未运行"}){
+   setup.state=observedState;check(!setupOnly(setup,setupItem),"existing connection state keeps details: "+observedState);
+  }
+  setup.state="未配置";
+  setupItem.put("pendingNetwork",true);check(!setupOnly(setup,setupItem),"pending application keeps network details");setupItem.remove("pendingNetwork");
+  check(!setupOnly(setup,new JSONObject()),"missing metadata cannot establish empty setup state");
+  setupMeta.put("available",false);check(!setupOnly(setup,setupItem),"unreadable metadata keeps network details");setupMeta.put("available",true);
+  setupMeta.put("environmentId","scope-b");check(!setupOnly(setup,setupItem),"another environment's metadata cannot hide details");setupMeta.put("environmentId","scope-a");
+  setupMeta.put("generation",3);check(!setupOnly(setup,setupItem),"another generation's metadata cannot hide details");setupMeta.put("generation",2);
+  setupMeta.remove("generation");check(!setupOnly(setup,setupItem),"unscoped metadata keeps network details");setupMeta.put("generation",2);
+  setup.environmentId="";check(!setupOnly(setup,setupItem),"missing environment identity keeps network details");setup.environmentId="scope-a";
+  check(setupOnly(setup,setupItem),"cleared observations and matching readable metadata restore setup hint");
+  setup.runtime=obj("uiLive",true,"at",100000,"runningConfiguration",running);
+  check(runningConfiguration(setup)==running&&!setupOnly(setup,setupItem),"fresh actual running configuration keeps route details");
 
   System.out.println(obj("passed",passed,"total",passed,"scope","Extracted production UI formatting and identity helpers; no Android execution"));
  }

@@ -76,6 +76,13 @@ final class NetworkWorkspaceStyle {
     button.setPadding(DesignUi.dp(context,12),DesignUi.dp(context,8),DesignUi.dp(context,12),DesignUi.dp(context,8));return button;
   }
 
+  static Button rowAction(Context context,String label,Runnable action){
+    Button button=smallAction(context,label,action);
+    button.setBackground(new RippleDrawable(ColorStateList.valueOf(0x140067d8),
+        new InsetDrawable(DesignUi.surface(context,ReferenceUi.BLUE_SOFT,16,Color.TRANSPARENT),0,DesignUi.dp(context,8),0,DesignUi.dp(context,8)),null));
+    return button;
+  }
+
   static LinearLayout sourceCard(Context context){
     LinearLayout card=DesignUi.column(context);
     card.setPadding(DesignUi.dp(context,16),DesignUi.dp(context,8),DesignUi.dp(context,12),DesignUi.dp(context,14));

@@ -38,6 +38,33 @@ def xml(root):
     return ET.tostring(root, encoding='unicode')
 
 
+def last_card_hierarchy(*, notice='above', card_top=1950, action='配置'):
+    root = hierarchy()
+    def node(parent, text, box, *, description='', kind='android.widget.TextView', clickable=False):
+        return ET.SubElement(parent, 'node', {'package':capture.PACKAGE, 'class':kind, 'text':text,
+            'content-desc':description, 'bounds':'[{},{}][{},{}]'.format(*box),
+            'visible-to-user':'true', 'enabled':'true', 'clickable':str(clickable).lower()})
+    nav = node(root, '', (36,2331,1200,2568), kind='android.widget.LinearLayout')
+    for child in list(root)[:5]:
+        root.remove(child); nav.append(child)
+    scroll = next(n for n in root if n.get('class') == 'android.widget.ScrollView')
+    scroll.set('bounds', '[0,650][1236,2604]'); scroll.set('scrollable', 'true')
+    card = node(scroll, '', (60,card_top,1176,card_top+320), kind='android.widget.LinearLayout',
+        description=capture.LAST_ENVIRONMENT+'，未配置，查看窗口详情')
+    node(card, capture.LAST_ENVIRONMENT, (108,card_top+20,936,card_top+90))
+    node(card, '未配置', (960,card_top+20,1140,card_top+90), description='网络状态：未配置')
+    node(card, '选择连接方式', (108,card_top+110,816,card_top+180))
+    node(card, action, (840,card_top+120,996,card_top+264), description='编辑网络 · '+capture.LAST_ENVIRONMENT,
+         kind='android.widget.Button', clickable=True)
+    node(card, '', (996,card_top+120,1140,card_top+264), description=capture.LAST_ENVIRONMENT+'的更多网络操作',
+         kind='android.widget.Button', clickable=True)
+    if notice:
+        box = (60,450,1176,630) if notice == 'above' else (0,2120,1236,2301)
+        feedback = node(root, '', box, description='网络连接提示', kind='android.widget.LinearLayout')
+        node(feedback, '手机 VPN 未连接，已暂停网页联网', (box[0]+12,box[1]+12,box[2]-160,box[3]-12))
+    return root
+
+
 class NetworkHierarchyTests(unittest.TestCase):
     def observe(self, root, tab='环境网络'):
         return capture.network_observation(xml(root), tab, glass.workspace_navigation_geometry)
@@ -90,6 +117,57 @@ class NetworkHierarchyTests(unittest.TestCase):
         self.assertIsNone(self.observe(root))
 
 
+class NetworkLastCardTests(unittest.TestCase):
+    def layout(self, root):
+        return capture.last_card_layout(xml(root), glass.workspace_navigation_geometry)
+
+    def test_inline_notice_does_not_shrink_the_bottom_safe_viewport(self):
+        value = self.layout(last_card_hierarchy())
+        self.assertEqual(value['feedback']['placement'], 'above-scroll')
+        self.assertEqual(value['safeViewportBounds'], [24,674,1212,2307])
+        self.assertTrue(value['fullyVisible'])
+        self.assertIsNone(capture.scroll_plan(value))
+        self.assertEqual(value['lastCard']['actions']['edit'][0]['text'], '配置')
+
+    def test_bottom_notice_restricts_the_real_viewport_and_needs_a_bounded_upward_swipe(self):
+        value = self.layout(last_card_hierarchy(notice='bottom'))
+        self.assertFalse(value['fullyVisible'])
+        self.assertEqual(value['feedback']['placement'], 'overlaps-scroll-bottom')
+        self.assertEqual(value['safeViewportBounds'][3], 2096)
+        plan = capture.scroll_plan(value)
+        self.assertGreater(plan['start'][1], plan['end'][1])
+        for x, y in (plan['start'], plan['end']):
+            self.assertTrue(value['safeViewportBounds'][0] < x < value['safeViewportBounds'][2])
+            self.assertTrue(value['safeViewportBounds'][1] < y < value['safeViewportBounds'][3])
+        self.assertEqual(plan['durationMillis'], 420)
+
+    def test_actual_row_coordinates_move_before_last_card_is_declared_visible(self):
+        before = self.layout(last_card_hierarchy(notice='bottom'))
+        after = self.layout(last_card_hierarchy(notice='bottom', card_top=1700))
+        self.assertTrue(capture.rows_moved_up(before, after))
+        self.assertTrue(after['fullyVisible'])
+        clock_only = copy.deepcopy(before)
+        clock_only['feedback']['texts'] = ['状态文字发生变化']
+        self.assertFalse(capture.rows_moved_up(before, clock_only))
+
+    def test_missing_details_or_clipped_action_cannot_pass_as_full_visibility(self):
+        for broken in ('detail', 'action', 'small-target'):
+            with self.subTest(broken=broken):
+                root = last_card_hierarchy()
+                card = next(n for n in root.iter('node') if n.get('content-desc','').startswith(capture.LAST_ENVIRONMENT+'，'))
+                if broken == 'detail': card.remove(next(n for n in card if n.get('text') == '选择连接方式'))
+                elif broken == 'action': card.remove(next(n for n in card if n.get('content-desc','').startswith('编辑网络 ·')))
+                else: next(n for n in card if n.get('content-desc','').startswith('编辑网络 ·')).set('bounds','[840,2070][996,2200]')
+                value = self.layout(root)
+                self.assertFalse(value['fullyVisible'])
+                with self.assertRaises(ValueError): capture.scroll_plan(value)
+
+    def test_unscrollable_obscured_card_is_rejected_without_fake_movement(self):
+        root = last_card_hierarchy(notice='bottom')
+        next(n for n in root.iter('node') if n.get('class') == 'android.widget.ScrollView').set('scrollable','false')
+        with self.assertRaises(ValueError): capture.scroll_plan(self.layout(root))
+
+
 class NetworkFixtureAndCompletionTests(unittest.TestCase):
     def report(self):
         identity = dict(sourceCommit='a'*40, sourceTree='b'*40, apkSha256='c'*64)
@@ -114,10 +192,12 @@ class NetworkFixtureAndCompletionTests(unittest.TestCase):
 
     def result(self):
         return dict(errors=[], restoredDefaultFont=True, returnedToNetwork=True,
+            lastCardPreview=dict(status='captured', fullyVisible=True, feedbackDismissalsDuringScroll=0,
+                inputCount=1, scrollRequired=True, observedRowsMovedUp=True),
             scenes=[dict(name=name, selectedTab=tab, fontScale=scale)
                     for name, (tab, scale) in capture.SCENES.items()])
 
-    def test_only_four_distinct_correct_scenes_with_restored_font_complete(self):
+    def test_only_all_required_distinct_scenes_with_restored_font_complete(self):
         self.assertTrue(capture.complete(self.result()))
         for change in ('missing', 'duplicate', 'wrong-font', 'wrong-tab', 'error', 'font', 'route'):
             with self.subTest(change=change):
@@ -130,6 +210,17 @@ class NetworkFixtureAndCompletionTests(unittest.TestCase):
                 elif change == 'font': result['restoredDefaultFont'] = False
                 else: result['returnedToNetwork'] = False
                 self.assertFalse(capture.complete(result))
+
+    def test_final_card_scene_requires_actual_visibility_without_extra_notice_dismissal(self):
+        for key, value in (('fullyVisible',False),('feedbackDismissalsDuringScroll',1),('inputCount',4),
+                           ('observedRowsMovedUp',False),('status','failed')):
+            with self.subTest(field=key):
+                result = self.result(); result['lastCardPreview'][key] = value
+                self.assertFalse(capture.complete(result))
+        result = self.result()
+        result['lastCardPreview'].update(inputCount=0, scrollRequired=False, observedRowsMovedUp=False,
+            skipReason='The actual final card already fits')
+        self.assertTrue(capture.complete(result))
 
 
 if __name__ == '__main__':
