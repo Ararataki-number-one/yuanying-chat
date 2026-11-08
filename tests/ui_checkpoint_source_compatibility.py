@@ -285,3 +285,11 @@ _preparation_input = _preparation_import.module_from_spec(_preparation_spec)
 _preparation_spec.loader.exec_module(_preparation_input)
 navigation_source_input = _preparation_input.wrap_source(navigation_source_input)
 history_input = _preparation_input.wrap_source(history_input)
+
+
+# Only historical capture-source comparisons use the exact dependency after-row.
+import importlib.util as _capture_dependency_import
+_capture_dependency_spec = _capture_dependency_import.spec_from_file_location('selected_ui_capture_dependency_view', Path(__file__).with_name('ui_capture_dependency_source_compatibility.py'))
+_capture_dependency_view = _capture_dependency_import.module_from_spec(_capture_dependency_spec)
+_capture_dependency_spec.loader.exec_module(_capture_dependency_view)
+manifest = _capture_dependency_view.wrap_checkpoint_manifest(manifest)

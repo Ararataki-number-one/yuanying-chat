@@ -173,7 +173,9 @@ def cancel_keyboard_editor(*, capture, adb, tap, out, stem, width, height, densi
             geometry = url_editor_keyboard_geometry(xml, frame, width, height, density, package)
             row.update(geometry=geometry, status='ready')
             if geometry == previous:
-                final = out / (stem + '.xml'); final.write_text(xml)
+                # Keep the original scene hierarchy and its recorded digest.
+                # The stable post-IME hierarchy already has a unique raw file.
+                final = xml_path
                 tree = ET.fromstring(xml)
                 selected = [node for node in tree.iter('node') if node.get('package') == package
                     and node.get('class') == 'android.widget.Button' and node.get('text') == '取消'
@@ -1116,8 +1118,6 @@ def capture_acceptance_suite(args, report, capture, adb, wait_for, tap, screensh
                 and not text(value, '快速切换环境'), deadline=keyboard_deadline, package=package,
             evidence=case['keyboard'])
         xml = keyboard.pop('xml')
-        case['observations']['url-keyboard'].update(xmlSha256=sha(args.out / (case['name'] + '-url-keyboard.xml')),
-                                                   geometry=geometry(xml))
         save()
         xml = artifact(case, 'url-cancelled', chat, photograph=False)
         box = bounds(capsule(xml)); x, y = (box[0] + box[2]) // 2, (box[1] + box[3]) // 2
