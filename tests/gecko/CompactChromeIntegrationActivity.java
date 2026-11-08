@@ -449,6 +449,34 @@ public final class CompactChromeIntegrationActivity extends MainActivity {
     presentation=null;presentationObserver=null;presentationListener=null;presentationExpiry=null;
   }
 
+  JSONObject nativeToolbarNode(View view){
+    return J.obj("identity",System.identityHashCode(view),"rootIdentity",System.identityHashCode(view.getRootView()),
+      "parentIdentity",System.identityHashCode(view.getParent()),"bounds",bounds(view),"shown",view.isShown(),
+      "visibility",view.getVisibility(),"padding",J.arr(view.getPaddingLeft(),view.getPaddingTop(),view.getPaddingRight(),view.getPaddingBottom()),
+      "minimumHeight",view.getMinimumHeight());
+  }
+
+  JSONObject nativeToolbarLayout(View top)throws Exception{
+    JSONArray children=new JSONArray(),rows=new JSONArray();
+    for(int i=0;i<toolbar.getChildCount();i++){View child=toolbar.getChildAt(i);if(child.getVisibility()==View.VISIBLE)children.put(nativeToolbarNode(child));}
+    LinearLayout status=designChrome.networkRow;
+    for(int i=0;i<status.getChildCount();i++){
+      View row=status.getChildAt(i);int natural=0;
+      if(row instanceof ViewGroup){ViewGroup group=(ViewGroup)row;
+        for(int j=0;j<group.getChildCount();j++){View child=group.getChildAt(j);if(child.getVisibility()!=View.VISIBLE)continue;
+          int height=child.getMeasuredHeight();ViewGroup.LayoutParams params=child.getLayoutParams();
+          if(params instanceof ViewGroup.MarginLayoutParams){ViewGroup.MarginLayoutParams margins=(ViewGroup.MarginLayoutParams)params;height+=margins.topMargin+margins.bottomMargin;}
+          natural=Math.max(natural,height);
+        }
+      }
+      rows.put(nativeToolbarNode(row).put("naturalContentHeight",natural+row.getPaddingTop()+row.getPaddingBottom()));
+    }
+    return J.obj("schema",1,"package",getPackageName(),"activityClass",getClass().getName(),
+      "pid",android.os.Process.myPid(),"uid",android.os.Process.myUid(),"applicationUid",getApplicationInfo().uid,"density",density(),
+      "toolbar",nativeToolbarNode(toolbar),"top",nativeToolbarNode(top),
+      "network",nativeToolbarNode(status).put("orientation",status.getOrientation()).put("rows",rows),"visibleToolbarChildren",children);
+  }
+
   void report(String event,WindowNetworkState network){
     try{
       TextView latency=(TextView)field("latencyWord");
@@ -474,7 +502,7 @@ public final class CompactChromeIntegrationActivity extends MainActivity {
       TextView dot=designChrome.dot;
       Paint.FontMetrics dotFont=dot.getPaint().getFontMetrics();
       JSONObject decorativeDot=J.obj("textSizeDp",dot.getTextSize()/density(),"inkWidth",dot.getPaint().measureText(dot.getText().toString()),"contentWidth",dot.getWidth()-dot.getPaddingLeft()-dot.getPaddingRight(),"fontHeight",dotFont.bottom-dotFont.top,"contentHeight",dot.getHeight()-dot.getPaddingTop()-dot.getPaddingBottom());
-      Log.i("PocketCompactChrome",J.obj("command",command,"event",event,"syntheticPresentation",true,"actualLatencyMeasurement",false,"actions",actionCount,"page",hub.page,"pageMode",pageMode,"geckoOnly",remote.enabled,"noNativeChat",noNativeChat(),"systemWebViews",systemWebViews(getWindow().getDecorView()),"viewportDp",getResources().getDisplayMetrics().widthPixels/density(),"fontScale",getResources().getConfiguration().fontScale,"toolbar",rect(toolbarBounds),"toolbarHeightDp",toolbar.getHeight()/density(),"topHeightDp",top.getHeight()/density(),"networkHeightDp",designChrome.networkRow.getHeight()/density(),"networkBounds",rect(networkBounds),"networkTap",J.arr(networkBounds.centerX(),networkBounds.centerY()),"stateTap",center(designChrome.stateWord),"networkClickable",designChrome.networkRow.isClickable(),"networkFocusable",designChrome.networkRow.isFocusable(),"networkBackground",designChrome.networkRow.getBackground()==null?"none":designChrome.networkRow.getBackground().getClass().getName(),"networkDescription",String.valueOf(designChrome.networkRow.getContentDescription()),"latency",latency.getText().toString(),"expectedLatency",network.latency+network.latencyTimer,"controls",controls,"texts",texts,"decorativeDot",decorativeDot).toString());
+      Log.i("PocketCompactChrome",J.obj("command",command,"event",event,"syntheticPresentation",true,"actualLatencyMeasurement",false,"actions",actionCount,"page",hub.page,"pageMode",pageMode,"geckoOnly",remote.enabled,"noNativeChat",noNativeChat(),"systemWebViews",systemWebViews(getWindow().getDecorView()),"viewportDp",getResources().getDisplayMetrics().widthPixels/density(),"fontScale",getResources().getConfiguration().fontScale,"toolbar",rect(toolbarBounds),"toolbarHeightDp",toolbar.getHeight()/density(),"topHeightDp",top.getHeight()/density(),"networkHeightDp",designChrome.networkRow.getHeight()/density(),"networkBounds",rect(networkBounds),"networkTap",J.arr(networkBounds.centerX(),networkBounds.centerY()),"stateTap",center(designChrome.stateWord),"networkClickable",designChrome.networkRow.isClickable(),"networkFocusable",designChrome.networkRow.isFocusable(),"networkBackground",designChrome.networkRow.getBackground()==null?"none":designChrome.networkRow.getBackground().getClass().getName(),"networkDescription",String.valueOf(designChrome.networkRow.getContentDescription()),"latency",latency.getText().toString(),"expectedLatency",network.latency+network.latencyTimer,"controls",controls,"texts",texts,"decorativeDot",decorativeDot).put("nativeToolbarLayout",nativeToolbarLayout(top)).toString());
     }catch(Exception error){Log.i("PocketCompactChrome",J.obj("command",command,"event",event,"error",error.toString()).toString());}
   }
 

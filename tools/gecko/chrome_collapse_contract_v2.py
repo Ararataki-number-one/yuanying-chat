@@ -4,6 +4,7 @@ The legacy 14-check/16-snapshot oracle remains in chrome_collapse_contract.py.
 This verifier reopens every complete provider event and recomputes the v2 claims.
 """
 import hashlib
+import math
 import pathlib
 import re
 import subprocess
@@ -60,6 +61,68 @@ def need(value,reason):
 def point(value):
     need(isinstance(value,list) and len(value)==2 and all(type(x) is int for x in value),'actual native point')
     return value
+
+def _reading_rect(value,name):
+    need(type(value) is list and len(value)==4,'observed CSS rectangle '+name)
+    need(all(type(v) in (int,float) and math.isfinite(v) for v in value),'finite CSS rectangle '+name)
+    need(value[0]<value[2] and value[1]<value[3],'positive CSS rectangle '+name)
+    return value
+
+def reading_swipe_points(sample,direction):
+    """Map the current unobscured main document to actual native input pixels.
+
+    Client rectangles and visualViewport offsets share layout-viewport CSS
+    coordinates. The measured web size supplies both scale factors; neither
+    density nor visualViewport.scale is multiplied into the mapping again.
+    """
+    need(direction in ('up','down','horizontal','short'),'declared reading direction')
+    need(sample['keyboard'] is False and sample['visibleDocument'] is True
+         and sample['loadingCoverVisibility']==8 and sample['page']==0,'uncovered reading document without IME')
+    region=sample['readingViewport']
+    need(type(region['schema']) is int and region['schema']==1
+         and region['coordinateSpace']=='layout-viewport-css'
+         and region['document']==sample['document']
+         and region['composerTag']=='FORM' and region['composerId']=='composer','current complete composer observation')
+    need(all(type(region[k]) in (int,float) and math.isfinite(region[k]) and region[k]>0
+             for k in ('layoutWidth','layoutHeight')),'positive actual layout viewport')
+    need(region['layoutWidth']==sample['innerWidth'] and region['layoutHeight']==sample['innerHeight'],'same snapshot layout viewport')
+    visual=_reading_rect(region['visualBounds'],'visualViewport')
+    main=_reading_rect(region['mainBounds'],'main')
+    composer=_reading_rect(region['composerBounds'],'complete composer form')
+    need(all(type(sample[k]) is int for k in ('webX','webY','webWidth','webHeight','nativeDensityDpi'))
+         and sample['webWidth']>0 and sample['webHeight']>0 and sample['nativeDensityDpi']>0,'actual native web viewport')
+    sx=sample['webWidth']/(visual[2]-visual[0]);sy=sample['webHeight']/(visual[3]-visual[1])
+    need(math.isfinite(sx) and math.isfinite(sy) and sx>0 and sy>0
+         and abs((visual[2]-visual[0])*sy-sample['webWidth'])<=2
+         and abs((visual[3]-visual[1])*sx-sample['webHeight'])<=2,'CSS/native viewport proportions')
+    left,top=max(visual[0],main[0]),max(visual[1],main[1])
+    right,bottom=min(visual[2],main[2]),min(visual[3],main[3])
+    # Exclude the whole form across its occupied row, never use its side gutter.
+    if max(left,composer[0])<min(right,composer[2]) and max(top,composer[1])<min(bottom,composer[3]):
+        bottom=min(bottom,composer[1])
+    need(left<right and top<bottom,'visible main reading strip above the complete composer')
+    native_x=lambda x:sample['webX']+(x-visual[0])*sx
+    native_y=lambda y:sample['webY']+(y-visual[1])*sy
+    nl,nr=math.ceil(native_x(left))+1,math.floor(native_x(right))-1
+    nt,nb=math.ceil(native_y(top))+1,math.floor(native_y(bottom))-1
+    need(nl<nr and nt<nb,'positive reading strip after native rounding')
+    x=(nl+nr)//2;margin=max(1,(nb-nt)//8)
+    upper,lower=nt+margin,nb-margin
+    if direction in ('up','down'):
+        need(lower-upper>=40*sample['nativeDensityDpi']/160,'safe native reading swipe still reaches the original 40dp threshold')
+        start,end=([x,lower],[x,upper]) if direction=='up' else ([x,upper],[x,lower])
+    elif direction=='horizontal':
+        y=(upper+lower)//2;start,end=[nl+(nr-nl)//4,y],[nl+(nr-nl)*3//4,y]
+        need(start[0]<end[0],'positive native horizontal reading swipe')
+    else:
+        start,end=[x,lower],[x,lower-12]
+    need(all(nl<=p[0]<=nr and nt<=p[1]<=nb and sample['webX']<=p[0]<sample['webX']+sample['webWidth']
+             and sample['webY']<=p[1]<sample['webY']+sample['webHeight'] for p in (start,end)),'rounded endpoints remain inside the actual safe reading strip')
+    cl,ct,cr,cb=native_x(composer[0]),native_y(composer[1]),native_x(composer[2]),native_y(composer[3])
+    collision=(cl<=start[0]<=cr and max(min(start[1],end[1]),ct)<=min(max(start[1],end[1]),cb)) if start[0]==end[0] else (
+        ct<=start[1]<=cb and max(min(start[0],end[0]),cl)<=min(max(start[0],end[0]),cr))
+    need(not collision,'entire native swipe excludes the complete composer form')
+    return start,end
 
 def telemetry(sample):
     t=sample['fixtureInputTelemetry']
@@ -172,10 +235,7 @@ def verify_case(case,identity,android_sdk,*,verify_claims=True):
     swipes={g['label']:g for g in inputs if g['kind']=='swipe'}
     for label,phase,direction in [('up','initial','up'),('down','up','down'),('horizontal','compactReturn','horizontal'),
             ('short','horizontal','short'),('upBeforeLongPress','short','up'),('upBeforeNetwork','environmentReturn','up'),('upBeforeResume','readingReturn','up')]:
-        before=s[phase];x=before['webX']+before['webWidth']//2;top=before['webY']+before['webHeight']//4;bottom=before['webY']+before['webHeight']*2//3
-        start,end=([x,bottom],[x,top]) if direction=='up' else ([x,top],[x,bottom])
-        if direction=='horizontal':start=[before['webX']+before['webWidth']//4,(top+bottom)//2];end=[before['webX']+before['webWidth']*3//4,(top+bottom)//2]
-        if direction=='short':start=[x,bottom];end=[x,bottom-12]
+        start,end=reading_swipe_points(s[phase],direction)
         need(swipes[label]['from']==start and swipes[label]['to']==end,'original swipe coordinates '+label)
     need(swipes['headerUp']['from']==s['resumeReturn']['headerSwipeFrom'] and swipes['headerUp']['to']==s['resumeReturn']['headerSwipeTo'],'actual header coordinates')
     need(len([g for g in inputs if g['kind']=='swipe'])==8 and all(g['durationMs']==320 for g in inputs if g['kind']=='swipe'),'original eight real swipes')

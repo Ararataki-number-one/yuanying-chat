@@ -284,9 +284,10 @@ final class ChromeCollapseIntegration {
       a.session.manualAttention=false;a.loading.update();web().tracking=true;a.handler.postDelayed(()->snapshot("ready"),300);
     });
   }
+  static final String READING_VIEWPORT="(()=>{const m=document.querySelector('main'),c=document.getElementById('composer'),v=window.visualViewport;const box=n=>{if(!n)return null;const r=n.getBoundingClientRect();return [r.left,r.top,r.right,r.bottom];};return {schema:1,coordinateSpace:'layout-viewport-css',document:document.documentElement.dataset.reloadDocument,layoutWidth:innerWidth,layoutHeight:innerHeight,visualBounds:v?[v.offsetLeft,v.offsetTop,v.offsetLeft+v.width,v.offsetTop+v.height]:null,mainBounds:box(m),composerBounds:box(c),composerTag:c?.tagName||'',composerId:c?.id||''};})()";
   void snapshot(String command){
     snapshotEvaluations++;diagnostic("snapshot-evaluate");pauseObservers();
-    a.remote.evaluateJavascript("(()=>{const t="+TELEMETRY+";return {draft:document.getElementById('prompt-textarea').value,cookie:document.cookie,sendCount:Number(document.getElementById('send-count').textContent),path:location.pathname,document:document.documentElement.dataset.reloadDocument,scrollY:scrollY,innerWidth:innerWidth,innerHeight:innerHeight,trusted:t?.events||[],fixtureInputTelemetry:t,telemetryReady:"+TELEMETRY_READY+"};})()",raw->{
+    a.remote.evaluateJavascript("(()=>{const t="+TELEMETRY+";return {draft:document.getElementById('prompt-textarea').value,cookie:document.cookie,sendCount:Number(document.getElementById('send-count').textContent),path:location.pathname,document:document.documentElement.dataset.reloadDocument,scrollY:scrollY,innerWidth:innerWidth,innerHeight:innerHeight,readingViewport:"+READING_VIEWPORT+",trusted:t?.events||[],fixtureInputTelemetry:t,telemetryReady:"+TELEMETRY_READY+"};})()",raw->{
       snapshotCallbacks++;diagnostic("snapshot-callback");JSONObject result=J.parse(raw);int[] location=new int[2];a.remote.getLocationOnScreen(location);
       try{result.put("command",command).put("navigationContract",2).put("expanded",a.designChrome.expanded()).put("toolbarVisibility",a.toolbar.getVisibility()).put("toolbarHeight",a.toolbar.getHeight())
         .put("compactVisibility",a.designChrome.compact.getVisibility()).put("compactHeight",a.designChrome.compact.getHeight())

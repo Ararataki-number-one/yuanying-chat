@@ -10,7 +10,7 @@ source=subprocess.check_output(['git','rev-parse','HEAD'],cwd=root,text=True).st
 package='local.pocketchat.test';records=[]
 sys.path.insert(0,str(root/'tools/gecko'))
 from ui_visual_capture import UiVisualCapture
-from native_navigation_v2 import protocol_for_variant,chat_ready,validate_chat,capture_native_fonts
+from native_navigation_v2 import protocol_for_variant,chat_ready,validate_chat,capture_native_fonts,validate_compact_toolbar_v2
 from diagnostic_capture_privacy import checked_text
 from ui_visual_contract import LIGHT_SCENES, LARGE_SCENES, DARK_SCENES, LANDSCAPE_SCENES, required_captures, verify_captures, verify_download_location
 scenes=LIGHT_SCENES
@@ -279,6 +279,7 @@ try:
     # Production chrome at narrow/large-font sizes, including real taps in the
     # expanded touch regions rather than only calling performClick().
     compact=[]
+    compact_navigation_protocol=protocol_for_variant('current')
     component=package+'/local.pocketchat.CompactChromeIntegrationActivity'
     def chrome_event(command,event):
         deadline=time.monotonic()+20
@@ -336,7 +337,10 @@ try:
         assert [control['name'] for control in sample['controls']]==['drawer','environment','more'],sample
         assert sample['latency']==sample['expectedLatency']=='42 ms（02:00）',sample
         assert not sample['networkClickable'] and not sample['networkFocusable'] and sample['networkBackground']=='none' and '点击' not in sample['networkDescription'],sample
-        assert sample['toolbarHeightDp']<= (59 if scale==1 else 100),sample
+        if compact_navigation_protocol==1:
+            assert sample['toolbarHeightDp']<= (59 if scale==1 else 100),sample
+        else:
+            sample['nativeToolbarValidation']=validate_compact_toolbar_v2(sample,width,scale)
         assert sample['topHeightDp']>=40 and sample['networkHeightDp']>=18,sample
         dot=sample['decorativeDot']
         assert abs(dot['textSizeDp']-9)<.01 and dot['inkWidth']<=dot['contentWidth']+1 and dot['fontHeight']<=dot['contentHeight']+1,(sample,dot)

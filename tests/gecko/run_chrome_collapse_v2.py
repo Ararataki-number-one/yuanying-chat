@@ -4,7 +4,7 @@ import hashlib,json,pathlib,re,subprocess,sys,time,uuid
 
 ROOT=pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0,str(ROOT/'tools/gecko'))
-from chrome_collapse_contract_v2 import NAMES,PHASES,INPUT_PATHS,verify_case,verify_auto_collapse_v2
+from chrome_collapse_contract_v2 import NAMES,PHASES,INPUT_PATHS,reading_swipe_points,verify_case,verify_auto_collapse_v2
 from integration_event_contract import EventTransfer,parse_receipt_line
 from profile_invocation_contract import expected_build,verify_installed
 from run_chrome_collapse import current_resumed,component_name,resume_transport
@@ -114,10 +114,8 @@ def run(adb,adb_bytes,source,trace,out,focus):
             assert returned['addressDialog']=={'visible':False} and not returned['keyboard'],returned
             return returned
         def swipe(before,label,direction):
-            send('clear');x=before['webX']+before['webWidth']//2;top=before['webY']+before['webHeight']//4;bottom=before['webY']+before['webHeight']*2//3
-            x1=x2=x;y1,y2=(bottom,top) if direction=='up' else (top,bottom)
-            if direction=='horizontal':x1=before['webX']+before['webWidth']//4;x2=before['webX']+before['webWidth']*3//4;y1=y2=(top+bottom)//2
-            if direction=='short':y1=bottom;y2=bottom-12
+            start,end=reading_swipe_points(before,direction);x1,y1=start;x2,y2=end
+            send('clear')
             adb('shell','input','swipe',str(x1),str(y1),str(x2),str(y2),'320')
             inputs.append(dict(kind='swipe',label=label,actualAndroidInput=True,**{'from':[x1,y1],'to':[x2,y2]},durationMs=320))
             return snapshot(label)
@@ -131,6 +129,8 @@ def run(adb,adb_bytes,source,trace,out,focus):
         expanded=address(down,'compactAddressOpen','compactReturn','compactAddressCancel')
         horizontal=swipe(expanded,'horizontal','horizontal');short=swipe(horizontal,'short','short')
         collapsed=swipe(short,'upBeforeLongPress','up');point=collapsed['compactTap']
+        if collapsed['expanded'] is not False or type(point) is not list or len(point)!=2 or any(type(v) is not int for v in point):
+            raise AssertionError('Released reading swipe did not expose an actual compact capsule; no long press emitted')
         adb('shell','input','swipe',str(point[0]),str(point[1]),str(point[0]),str(point[1]),'750')
         inputs.append(dict(kind='longpress',label='environmentMenu',point=point,durationMs=750,actualAndroidInput=True))
         native('environmentMenu',('快速切换环境','搜索要切换的环境'));snapshot('environmentMenu')

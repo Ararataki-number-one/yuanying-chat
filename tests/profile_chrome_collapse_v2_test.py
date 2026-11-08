@@ -24,6 +24,7 @@ def native(labels,component=COMPONENT,*,ime=False):
 def bind_events(case):
     rows=[]
     for sequence,(phase,sample) in enumerate(case['observations'].items(),1):
+        if 'readingViewport' in sample:sample['readingViewport']['document']=sample['document']
         event=dict(kind='collapseSnapshot',result=copy.deepcopy(sample),nativeContext='environment-1',processSlot=0)
         envelope=dict(schema=1,sourceCommit=SOURCE,buildIdentity=identity(),runNonce=case['runNonce'],fixtureAction='chromeCollapse',command=1,sequence=sequence,nativeContext='environment-1',processSlot=0,event=event)
         raw=json.dumps(envelope,separators=(',',':'))+'\n'
@@ -54,6 +55,12 @@ def make_case(width,scale,nonce):
         events=[dict(type='touchend',trusted=True)] if phase=='up' else []
         value['trusted']=events;value['telemetryReady']=True;value['fixtureInputTelemetry']=dict(schema=1,realm='page-main-world',document=value['document'],listenerTypes=['touchend'],events=events,count=len(events),dropped=0)
         if phase=='up':value['scrollY']=200
+        value['innerWidth']=width;value['innerHeight']=value['webHeight']/3
+        value['readingViewport']=dict(schema=1,coordinateSpace='layout-viewport-css',document=value['document'],
+            layoutWidth=width,layoutHeight=value['innerHeight'],visualBounds=[0,0,width,value['innerHeight']],
+            mainBounds=[8,-value['scrollY'],width-8,12000-value['scrollY']],
+            composerBounds=[8,value['innerHeight']-100,8+(width-16)*.9,value['innerHeight']],
+            composerTag='FORM',composerId='composer')
         observations[phase]=value
     for before,after in [('initial','up'),('up','down'),('compactReturn','horizontal'),('horizontal','short'),('short','upBeforeLongPress'),('environmentReturn','upBeforeNetwork'),('readingReturn','upBeforeResume')]:
         b=observations[before];observations[after]['touches']=[dict(action=a,pointers=1,width=b['webWidth'],height=b['webHeight'],expanded=b['expanded']) for a in (0,2,1)]
@@ -72,9 +79,7 @@ def make_case(width,scale,nonce):
         elif kind=='swipe':
             if label=='headerUp':start,end=base['headerSwipeFrom'],base['headerSwipeTo']
             else:
-                phase,direction=gestures[label];v=observations[phase];x=v['webX']+v['webWidth']//2;top=v['webY']+v['webHeight']//4;bottom=v['webY']+v['webHeight']*2//3;start,end=([x,bottom],[x,top]) if direction=='up' else ([x,top],[x,bottom])
-                if direction=='horizontal':start=[v['webX']+v['webWidth']//4,(top+bottom)//2];end=[v['webX']+v['webWidth']*3//4,(top+bottom)//2]
-                if direction=='short':start=[x,bottom];end=[x,bottom-12]
+                phase,direction=gestures[label];start,end=contract.reading_swipe_points(observations[phase],direction)
             item.update({'from':start,'to':end,'durationMs':320})
         elif kind=='longpress':item.update(point=observations['upBeforeLongPress']['compactTap'],durationMs=750)
         elif kind=='key':item['key']='KEYCODE_HOME' if label=='home' else 'KEYCODE_BACK'

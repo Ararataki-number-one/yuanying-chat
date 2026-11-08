@@ -293,3 +293,17 @@ _capture_dependency_spec = _capture_dependency_import.spec_from_file_location('s
 _capture_dependency_view = _capture_dependency_import.module_from_spec(_capture_dependency_spec)
 _capture_dependency_spec.loader.exec_module(_capture_dependency_view)
 manifest = _capture_dependency_view.wrap_checkpoint_manifest(manifest)
+
+
+# Explicit historical runner comparison ports; execution keeps current source.
+import importlib.util as _native_geometry_import
+_native_geometry_spec = _native_geometry_import.spec_from_file_location('selected_ui_native_geometry_history', Path(__file__).with_name('ui_native_geometry_source_compatibility.py'))
+_native_geometry_history = _native_geometry_import.module_from_spec(_native_geometry_spec)
+_native_geometry_spec.loader.exec_module(_native_geometry_history)
+source_input = _native_geometry_history.wrap_bytes(source_input)
+history_input = _native_geometry_history.wrap_bytes(history_input)
+navigation_v2_runner_input = _native_geometry_history.wrap_runner(navigation_v2_runner_input)
+checkpoint_runner_input = _native_geometry_history.wrap_runner(checkpoint_runner_input)
+require_current_runner = _native_geometry_history.wrap_runner(require_current_runner)
+navigation_v2_tree_input = _native_geometry_history.wrap_ast(navigation_v2_tree_input)
+original_runner_tree = _native_geometry_history.wrap_ast(original_runner_tree)

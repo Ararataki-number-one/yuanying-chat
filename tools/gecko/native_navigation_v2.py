@@ -152,6 +152,159 @@ def reveal_environment_entry(adb, dump, name, width, height, density, *, seconds
     raise TimeoutError('The complete real environment entry did not become visible: ' + name)
 
 
+def manager_command_entry(xml, width, height, density):
+    root = ET.fromstring(xml)
+    if root.tag != 'hierarchy':
+        raise ValueError('An actual native manager hierarchy is required')
+    parents = {child: parent for parent in root.iter() for child in parent}
+    nodes = [n for n in root.iter('node') if n.get('package') == PACKAGE and n.get('visible-to-user') != 'false']
+    if not any(n.get('text') == '环境管理' for n in nodes):
+        raise ValueError('The actual environment manager heading is required')
+    targets = [n for n in nodes if n.get('class') == 'android.widget.Button'
+               and n.get('content-desc') == '搜索操作']
+    if not targets:
+        return None
+    if len(targets) != 1:
+        raise ValueError('The actual manager command action is ambiguous')
+    node = targets[0]
+    if node.get('enabled') != 'true' or node.get('clickable') != 'true':
+        raise ValueError('The actual manager command action is not enabled and clickable')
+    box = _bounds(node, width, height)
+    minimum = (48 * density + 159) // 160
+    if box[2] - box[0] < minimum or box[3] - box[1] < minimum:
+        raise ValueError('The actual manager command action is below 48dp')
+    parent = node
+    while parent in parents:
+        parent = parents[parent]
+        if parent.get('visible-to-user') == 'false':
+            raise ValueError('The manager command action has a hidden native ancestor')
+        if parent.tag == 'node':
+            container = _bounds(parent, width, height)
+            if not (container[0] <= box[0] < box[2] <= container[2]
+                    and container[1] <= box[1] < box[3] <= container[3]):
+                raise ValueError('The manager command action is clipped by its native ancestor')
+    return node
+
+
+def reveal_manager_command_entry(adb, dump, width, height, density, *, deadline):
+    """Reveal the real retained-scroll manager action within the original scene."""
+    if type(deadline) not in (int, float) or not math.isfinite(deadline):
+        raise ValueError('The existing finite manager command deadline is required')
+    swipes = 0
+    while time.monotonic() < deadline:
+        xml = dump(deadline=deadline)
+        if time.monotonic() >= deadline:
+            raise TimeoutError('The original manager command deadline expired during fresh hierarchy acquisition')
+        if manager_command_entry(xml, width, height, density) is not None:
+            return xml
+        scrolls = [n for n in _native(xml) if n.get('class') == 'android.widget.ScrollView'
+                   and n.get('scrollable') == 'true']
+        if len(scrolls) != 1:
+            raise ValueError('One actual manager ScrollView is required to reveal its command action')
+        if swipes >= 5:
+            raise ValueError('The real manager command action stayed absent after bounded scroll reveal')
+        left, top, right, bottom = _bounds(scrolls[0], width, height)
+        x = (left + right) // 2
+        adb('shell', 'input', 'swipe', str(x), str(top + (bottom - top) // 5),
+            str(x), str(top + (bottom - top) * 4 // 5), '300')
+        swipes += 1
+    raise TimeoutError('The original manager command deadline expired during scroll reveal')
+
+
+def validate_compact_toolbar_v2(sample, width, scale):
+    """Keep the original top-control budget and bind the additional status row."""
+    observed = sample['nativeToolbarLayout']
+    def number(value):
+        if type(value) not in (int, float) or not math.isfinite(value):
+            raise ValueError('A finite actual native toolbar measurement is required')
+        return value
+    def integer(value):
+        if type(value) is not int or value <= 0:
+            raise ValueError('An actual native owner identity is required')
+        return value
+    def rectangle(value):
+        if (type(value) is not list or len(value) != 4 or any(type(v) is not int for v in value)
+                or not (0 <= value[0] < value[2] <= width * 3 and 0 <= value[1] < value[3])):
+            raise ValueError('Complete actual native toolbar bounds are required')
+        return value
+    def node(value, parent=None):
+        integer(value['identity']);integer(value['rootIdentity'])
+        if value['shown'] is not True or type(value['visibility']) is not int or value['visibility'] != 0:
+            raise ValueError('The actual native toolbar component must be visible')
+        if parent is not None and (integer(value['parentIdentity']) != parent['identity']
+                                  or value['rootIdentity'] != parent['rootIdentity']):
+            raise ValueError('The actual toolbar parent or decor owner differs')
+        return rectangle(value['bounds'])
+    if (type(observed['schema']) is not int or observed['schema'] != 1
+            or observed['package'] != PACKAGE or observed['activityClass'] != 'local.pocketchat.CompactChromeIntegrationActivity'
+            or integer(observed['uid']) != integer(observed['applicationUid'])
+            or integer(observed['pid']) <= 0 or number(observed['density']) != 3
+            or number(sample['fontScale']) != scale or number(sample['viewportDp']) != width):
+        raise ValueError('The current native toolbar package, process, font or density differs')
+    toolbar, top, network = (observed[k] for k in ('toolbar', 'top', 'network'))
+    outer, controls, status = node(toolbar), node(top, toolbar), node(network, toolbar)
+    if len({toolbar['identity'], top['identity'], network['identity']}) != 3:
+        raise ValueError('The current native toolbar component owners are ambiguous')
+    density = observed['density']
+    if (sample['networkClickable'] is not False or sample['networkFocusable'] is not False
+            or sample['networkBackground'] != 'none' or '点击' in sample['networkDescription']
+            or [c['name'] for c in sample['controls']] != ['drawer', 'environment', 'more']):
+        raise ValueError('The actual network row must remain passive beside the original three header controls')
+    if (outer != sample['toolbar'] or status != sample['networkBounds']
+            or (outer[3] - outer[1]) / density != number(sample['toolbarHeightDp'])
+            or (controls[3] - controls[1]) / density != number(sample['topHeightDp'])
+            or (status[3] - status[1]) / density != number(sample['networkHeightDp'])
+            or not 40 <= sample['topHeightDp'] <= (59 if scale == 1 else 100)
+            or sample['networkHeightDp'] < 18):
+        raise ValueError('The actual top-control budget or independent native row dimensions failed')
+    padding = toolbar['padding']
+    if (type(padding) is not list or len(padding) != 4 or any(type(v) is not int or v < 0 for v in padding)
+            or controls[:3:2] != status[:3:2]
+            or controls[0] != outer[0] + padding[0] or controls[2] != outer[2] - padding[2]
+            or controls[1] != outer[1] + padding[1] or controls[3] != status[1]
+            or status[3] + padding[3] != outer[3]
+            or [n['identity'] for n in observed['visibleToolbarChildren']] != [top['identity'], network['identity']]
+            or any(node(n, toolbar) != box for n, box in zip(observed['visibleToolbarChildren'], (controls, status)))):
+        raise ValueError('The actual top/status native child rows do not compose their toolbar')
+    for control in sample['controls']:
+        for key in ('visible', 'touch'):
+            box = rectangle(control[key])
+            if not (controls[0] <= box[0] < box[2] <= controls[2]
+                    and controls[1] <= box[1] < box[3] <= controls[3]):
+                raise ValueError('An actual native header control extends outside its bounded top row')
+        hit = control['touch']
+        if hit[2] - hit[0] < 48 * density or hit[3] - hit[1] < 48 * density:
+            raise ValueError('An actual native header touch target is below 48dp')
+    rows = network['rows']
+    if len(rows) != 2 or type(network['orientation']) is not int or network['orientation'] not in (0, 1):
+        raise ValueError('Both actual native network subrows are required')
+    heights = []
+    boxes = []
+    for row in rows:
+        box = node(row, network);boxes.append(box);heights.append(box[3] - box[1])
+        if not (status[0] <= box[0] < box[2] <= status[2] and status[1] <= box[1] < box[3] <= status[3]):
+            raise ValueError('An actual network subrow is clipped outside its own row')
+        if heights[-1] != max(integer(row['minimumHeight']), integer(row['naturalContentHeight'])):
+            raise ValueError('The passive network subrow contains unmeasured extra vertical space')
+    padding = network['padding']
+    if (type(padding) is not list or len(padding) != 4 or any(type(v) is not int or v < 0 for v in padding)
+            or status[3] - status[1] != padding[1] + padding[3]
+                + (sum(heights) if network['orientation'] == 1 else max(heights))):
+        raise ValueError('The independent passive network row exceeds its real native subrow composition')
+    left, top_edge, right, bottom = status[0] + padding[0], status[1] + padding[1], status[2] - padding[2], status[3] - padding[3]
+    if network['orientation'] == 1:
+        joined = (boxes[0][0] == boxes[1][0] == left and boxes[0][2] == boxes[1][2] == right
+                  and boxes[0][1] == top_edge and boxes[0][3] == boxes[1][1] and boxes[1][3] == bottom)
+    else:
+        joined = (boxes[0][0] == left and boxes[0][2] == boxes[1][0] and boxes[1][2] == right
+                  and all(abs(box[1] + box[3] - top_edge - bottom) <= 1 for box in boxes))
+    if not joined:
+        raise ValueError('The actual passive network subrows do not join inside their own native content bounds')
+    return dict(protocolVersion=2, topControlLimitDp=59 if scale == 1 else 100,
+                actualToolbarHeightDp=sample['toolbarHeightDp'], actualTopHeightDp=sample['topHeightDp'],
+                actualNetworkHeightDp=sample['networkHeightDp'], nativeOwnerAndCompositionVerified=True)
+
+
 def validate_native_font_records(raw, nonce, identity, font_scale, density):
     if (type(nonce) is not str or re.fullmatch('[0-9a-f]{32}', nonce) is None
             or type(font_scale) not in (int, float) or not math.isfinite(font_scale) or font_scale <= 0
@@ -305,7 +458,7 @@ def run_dashboard_v2(adb,binary,source,out,dump):
             # previously unmarked native navigation route.
             adb('shell','am','start','-W','-n',PACKAGE+'/local.pocketchat.WindowHomeActivity')
             command_deadline=time.monotonic()+35
-            xml=wait(lambda x:'环境管理' in x and '搜索操作' in x,'manager command entry',deadline=command_deadline)
+            xml=reveal_manager_command_entry(adb,dump,width*3,height*3,480,deadline=command_deadline)
             click(xml,description='搜索操作')
             xml=wait(lambda x:'搜索应用操作' in x,'actual native command search',deadline=command_deadline)
             # The real palette focuses its EditText and exposes the command's

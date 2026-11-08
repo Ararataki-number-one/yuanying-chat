@@ -157,7 +157,7 @@ class NativeNavigationV2Test(unittest.TestCase):
             for text in texts:ET.SubElement(root,'node',{'text':text})
             if search is not None:ET.SubElement(root,'node',{'class':'android.widget.EditText','text':search,'content-desc':'搜索应用操作'})
             return ET.tostring(root,encoding='unicode')
-        state={'xml':xml('环境管理','搜索操作')};commands=[];snapshots=[]
+        state={'xml':(self.fixtures/'canonical-a9-manager-top.xml').read_text()};commands=[];snapshots=[]
         def wait(predicate,label,**options):
             self.assertEqual(options.get('deadline',135),135)
             self.assertTrue(predicate(state['xml']),label)
@@ -174,11 +174,31 @@ class NativeNavigationV2Test(unittest.TestCase):
         env=dict(time=SimpleNamespace(monotonic=lambda:100),wait=wait,click=click,adb=adb,
                  tree=lambda value:list(ET.fromstring(value).iter('node')),validate_navigation=nav.validate_navigation,
                  chat_ready=nav.chat_ready,dashboard=lambda value:False,width=360,height=640,
+                 reveal_manager_command_entry=nav.reveal_manager_command_entry,
+                 dump=lambda *,deadline:state['xml'],
                  snapshot=lambda name,value,**metadata:snapshots.append((name,nav.validate_chat(value,1080,1920,480),metadata)))
-        exec(program,env)
+        with patch.object(nav.time,'monotonic',return_value=100):
+            exec(program,env)
         self.assertEqual(commands,[('shell','input','text','setting'),('shell','input','keyevent','66')])
         self.assertEqual(snapshots[0][0],'workspace-chat')
         self.assertFalse(snapshots[0][2]['dashboard_required'])
+
+    def test_current_settings_route_missing_actual_reveal_dependency_cannot_emit_input(self):
+        tree=ast.parse((ROOT/'tools/gecko/native_navigation_v2.py').read_text())
+        method=next(node for node in tree.body if isinstance(node,ast.FunctionDef) and node.name=='run_dashboard_v2')
+        loop=next(node for node in method.body if isinstance(node,ast.Try)).body[0]
+        start=next(index for index,node in enumerate(loop.body) if isinstance(node,ast.Assign)
+                   and any(isinstance(target,ast.Name) and target.id=='command_deadline' for target in node.targets))
+        program=compile(ast.fix_missing_locations(ast.Module(body=copy.deepcopy(loop.body[start:start+3]),type_ignores=[])),
+                        'actual-current-settings-route-without-reveal','exec')
+        emitted=[]
+        environment=dict(time=SimpleNamespace(monotonic=lambda:100),width=360,height=640,
+                         adb=lambda *parts:emitted.append(('adb',parts)),
+                         dump=lambda **options:self.ui,
+                         click=lambda *parts,**options:emitted.append(('click',parts,options)))
+        with self.assertRaisesRegex(NameError,'reveal_manager_command_entry'):
+            exec(program,environment)
+        self.assertEqual(emitted,[])
 
     def test_full_original_dashboard_run_and_all_its_case_identifiers_are_retained(self):
         path='tests/gecko/run_environment_dashboard.py'

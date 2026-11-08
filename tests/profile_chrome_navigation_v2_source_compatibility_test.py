@@ -8,6 +8,7 @@ from unittest.mock import patch
 
 import chrome_first_tap_source_compatibility as first
 import ui_checkpoint_source_compatibility as checkpoint
+from ui_native_geometry_source_compatibility import historical_input as historical_runner_input
 import ui_visual_preservation_contract as original
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -46,7 +47,7 @@ class ChromeNavigationV2HistoricalControls(unittest.TestCase):
                 first.source_input(mutant, CHROME)
 
     def test_current_whole_ui_inverse_keeps_the_original_checkpoint_golden(self):
-        raw = (ROOT / UI).read_bytes()
+        raw = historical_runner_input((ROOT / UI).read_bytes(), UI)
         self.assertEqual((len(raw), SHA(raw)), (47025, '12d0f61c0f53efd5766f37cf34ae5526acadfa287a387eb81855dd2e5943783f'))
         before = checkpoint.navigation_v2_runner_input(raw)
         self.assertEqual((len(before), SHA(before)), (46016, 'b85896aa5b94e33fb40bbada323d239a66f75c12a39bf9adb2a4ff3e3483e14d'))
@@ -62,7 +63,7 @@ class ChromeNavigationV2HistoricalControls(unittest.TestCase):
             checkpoint.require_current_runner(before)
 
     def test_each_new_whole_source_hunk_rejects_missing_duplicate_moved_or_changed_bytes(self):
-        raw = (ROOT / UI).read_bytes()
+        raw = historical_runner_input((ROOT / UI).read_bytes(), UI)
         count = 0
         for delta in checkpoint.navigation_v2_manifest()['deltas']:
             chunk = delta['current'].encode()
@@ -82,7 +83,7 @@ class ChromeNavigationV2HistoricalControls(unittest.TestCase):
         self.assertEqual(count, 28)
 
     def test_complete_ast_variants_restore_only_the_two_original_allowed_modules(self):
-        raw = (ROOT / UI).read_text()
+        raw = historical_runner_input((ROOT / UI).read_bytes(), UI).decode()
         manifest = checkpoint.navigation_v2_manifest()
         old_pairs = checkpoint.manifest()['runnerAst']['allowedModulePairs']
         self.assertEqual(len(old_pairs), 2)
