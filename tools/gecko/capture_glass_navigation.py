@@ -750,11 +750,24 @@ def capture_navigation_typography(args, report, capture, adb, wait_for, screensh
                 glyph = measured['glyphBounds']
                 glyph_top = measured['baseline'] + glyph[1] - measured['scrollY']
                 glyph_bottom = measured['baseline'] + glyph[3] - measured['scrollY']
+                left = measured['compoundPaddingLeft']
+                right = measured['width'] - measured['compoundPaddingRight']
+                draw_x = left + measured['primaryHorizontal'] - measured['scrollX']
+                line_left = left + measured['lineLeft'] - measured['scrollX']
+                line_right = left + measured['lineRight'] - measured['scrollX']
+                glyph_left, glyph_right = draw_x + glyph[0], draw_x + glyph[2]
                 if (measured['label'] != LABELS[measured['buttonIndex']]
                         or not measured['valid'] or not all(measured['checks'].values())
                         or measured['contentHeight'] != bottom-top or measured['layoutHeight'] > bottom-top
                         or measured['glyphTop'] != glyph_top or measured['glyphBottom'] != glyph_bottom
-                        or glyph_top < top or glyph_bottom > bottom):
+                        or glyph_top < top or glyph_bottom > bottom or measured['scrollY'] != 0
+                        or measured['paragraphDirection'] != 1 or measured['contentWidth'] != right-left
+                        or abs(measured['textDrawX'] - draw_x) > .001
+                        or abs(measured['lineLeftInButton'] - line_left) > .001
+                        or abs(measured['lineRightInButton'] - line_right) > .001
+                        or abs(measured['glyphLeft'] - glyph_left) > .001 or abs(measured['glyphRight'] - glyph_right) > .001
+                        or line_left < left-.5 or line_right > right+.5
+                        or glyph_left < left-.5 or glyph_right > right+.5):
                     raise ValueError('Actual navigation label does not fit its native text region')
             case.update(status='verified', labelObservationCount=len(labels), completedAtUnixNs=time.time_ns())
             case_path = args.out / ('navigation-typography-font-' + str(scale) + '.json')

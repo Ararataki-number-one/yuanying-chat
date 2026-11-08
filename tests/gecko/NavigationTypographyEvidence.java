@@ -57,6 +57,14 @@ final class NavigationTypographyEvidence implements ViewTreeObserver.OnPreDrawLi
         b.getPaint().getTextBounds(label,0,label.length(),glyph);
         int top=b.getCompoundPaddingTop(),bottom=b.getHeight()-b.getCompoundPaddingBottom();
         int glyphTop=b.getBaseline()+glyph.top-b.getScrollY(),glyphBottom=b.getBaseline()+glyph.bottom-b.getScrollY();
+        int left=b.getCompoundPaddingLeft(),right=b.getWidth()-b.getCompoundPaddingRight();
+        float primary=layout.getPrimaryHorizontal(layout.getLineStart(0));
+        // For these plain LTR Chinese labels the native line-start caret is
+        // the draw origin. A single-line centered Layout can have a legitimate
+        // nonzero scrollX; compare final view coordinates, not that offset alone.
+        float drawX=left+primary-b.getScrollX();
+        float lineLeft=left+layout.getLineLeft(0)-b.getScrollX(),lineRight=left+layout.getLineRight(0)-b.getScrollX();
+        float glyphLeft=drawX+glyph.left,glyphRight=drawX+glyph.right;
         boolean shown=b.getGlobalVisibleRect(visible)&&b.isShown();
         JSONObject checks=new JSONObject().put("layoutFits",layout.getHeight()<=bottom-top)
           .put("glyphFits",glyphTop>=top&&glyphBottom<=bottom)
@@ -64,11 +72,18 @@ final class NavigationTypographyEvidence implements ViewTreeObserver.OnPreDrawLi
             &&layout.getLineCount()==1&&layout.getEllipsisCount(0)==0&&layout.getLineEnd(0)==label.length())
           .put("widthFits",layout.getLineWidth(0)<=b.getWidth()-b.getCompoundPaddingLeft()-b.getCompoundPaddingRight()+.5f)
           .put("viewVisible",shown&&visible.width()==b.getWidth()&&visible.height()==b.getHeight())
-          .put("unscrolled",b.getScrollX()==0&&b.getScrollY()==0)
+          .put("horizontalLineFits",lineLeft>=left-.5f&&lineRight<=right+.5f)
+          .put("horizontalGlyphFits",layout.getParagraphDirection(0)==1&&glyphLeft>=left-.5f&&glyphRight<=right+.5f)
+          .put("verticalUnscrolled",b.getScrollY()==0)
           .put("selectionMatches",b.isSelected()==(i==selected));
         boolean valid=true;java.util.Iterator<String> keys=checks.keys();while(keys.hasNext())valid&=checks.getBoolean(keys.next());
         rows.put(new JSONObject().put("buttonIndex",i).put("label",label).put("selected",b.isSelected())
           .put("width",b.getWidth()).put("height",b.getHeight()).put("layoutHeight",layout.getHeight())
+          .put("layoutWidth",layout.getWidth()).put("compoundPaddingLeft",left).put("compoundPaddingRight",b.getCompoundPaddingRight())
+          .put("contentWidth",right-left).put("scrollX",b.getScrollX()).put("primaryHorizontal",primary)
+          .put("lineLeft",layout.getLineLeft(0)).put("lineRight",layout.getLineRight(0)).put("paragraphDirection",layout.getParagraphDirection(0))
+          .put("textDrawX",drawX).put("lineLeftInButton",lineLeft).put("lineRightInButton",lineRight)
+          .put("glyphLeft",glyphLeft).put("glyphRight",glyphRight)
           .put("standardLineHeight",b.getLineHeight()).put("layoutClass",layout.getClass().getName())
           .put("compoundPaddingTop",top).put("compoundPaddingBottom",b.getCompoundPaddingBottom())
           .put("contentHeight",bottom-top).put("baseline",b.getBaseline()).put("scrollY",b.getScrollY())

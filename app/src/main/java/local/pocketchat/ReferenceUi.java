@@ -65,7 +65,10 @@ final class ReferenceUi {
     };
     reading.setBackground(DesignUi.glass(a,radius));reading.setElevation(dp(a,3));GlassMotion.press(reading,true);
     for(int i=0;i<DesignUi.NAV.length;i++){
-      final int n=i;Button b=link(a,DesignUi.NAV[i],()->action.accept(n));b.setTextSize(12);b.setSingleLine(true);b.setGravity(Gravity.CENTER);
+      final int n=i;Button b=link(a,DesignUi.NAV[i],()->action.accept(n));b.setTextSize(12);b.setGravity(Gravity.CENTER);
+      // Fixed labels use their real content width, not TextView's VERY_WIDE
+      // single-line scrolling layout and its compensating horizontal offset.
+      b.setSingleLine(false);b.setMaxLines(1);b.setHorizontallyScrolling(false);b.setEllipsize(null);
       // Short Chinese labels still need their fallback font's full vertical metrics.
       b.setIncludeFontPadding(true);if(Build.VERSION.SDK_INT>=28)b.setFallbackLineSpacing(true);
       b.setTypeface(Typeface.create("sans-serif",Typeface.NORMAL));

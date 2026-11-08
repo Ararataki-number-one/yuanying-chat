@@ -115,6 +115,11 @@ typeface change. It waits for a real Layout and updates padding only when needed
 Buttons, labels, accessibility semantics, click handlers and hotspot forwarding
 remain native. The default 56 dp controls and independently centered 228 dp
 capsule are retained rather than enlarging the whole dock to mask a text problem.
+These fixed labels use one maximum line with horizontal scrolling disabled.
+This avoids the oversized internal Layout created by TextView's scrolling
+single-line mode. The observation checks actual line and glyph bounds after
+applying the native scroll offset; a nonzero horizontal alignment offset alone
+is not treated as evidence of clipping.
 
 The integration-only typography observation creates this real shared component
 at font scales 1.0 and 1.3, without seeding a page or route. It records the four
