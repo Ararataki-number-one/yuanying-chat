@@ -29,14 +29,17 @@ The row explicitly returns false from `shouldDelayChildPressedState()`, matching
 It does not add the base ViewGroup's compatibility delay to native touch feedback.
 
 The expanded environment control is centered, with a content-measured width from
-168 to 208 dp and a default height of 44 dp, fitting within narrower windows and
+160 to 192 dp and a default height of 44 dp, fitting within narrower windows and
 growing vertically for larger text.
 Both compact and expanded forms use a globe icon and retain a 48 dp minimum
 touch height through their existing host/delegate. The compact visual pill stays
 smaller inside that touch area. Long environment names remain single-line and
 ellipsized; the full name and both actions are exposed to accessibility services.
 The globe and name form one centered group with an 8 dp gap in the expanded
-control. Medium-weight text is 15 sp there and 12 sp in the compact control.
+control. Medium-weight text is 15 sp there and 13 sp in the compact control.
+The compact visual pill is at least 36 dp high and no wider than 184 dp.
+The expanded menu and more controls use matching 44 dp glass circles in equal
+48 dp side frames, keeping the middle capsule on the independent screen axis.
 Changing the name first clears its previous centering padding, so compact
 wrap-content measurement does not accumulate whitespace.
 
@@ -56,6 +59,9 @@ clearer hierarchy instead of increasing the material's opacity or shadow.
   state badge; complete values remain in accessibility descriptions and the
   existing network detail UI. Connected, stale and failed readings still come
   from the same WindowNetworkState instance.
+  Unknown latency remains explicit. The plain state word avoids a second
+  filled badge. The strip switches to two rows based on actual text width, including narrow
+  windows, rather than relying only on a fixed font-scale threshold.
 - The 3+1 dock uses 56 dp controls and a centered 228 dp preferred capsule, with
   reading independently at the trailing edge and a minimum 8 dp gap. The globe, download and
   reading glyphs are 22 dp; the cube's larger optical footprint remains 20 dp.
@@ -120,6 +126,32 @@ This avoids the oversized internal Layout created by TextView's scrolling
 single-line mode. The observation checks actual line and glyph bounds after
 applying the native scroll offset; a nonzero horizontal alignment offset alone
 is not treated as evidence of clipping.
+
+### Whole conversation page refinement
+
+The conversation shell now treats the top controls, real connection state and
+empty-page recovery as one layout. Glass stays in the functional navigation
+layer; the page explanation remains plain and readable, following the material
+hierarchy described in [Apple's Materials guidance](https://developer.apple.com/design/human-interface-guidelines/materials).
+The bottom three-destination capsule remains independently centered, with the
+separate reading control and the full-height Chinese labels described above.
+
+The real empty-page content is capped at 288 dp. Its status emblem is 48 dp with
+a 24 dp symbol/spinner, followed by an 18 sp medium heading and a 13 sp explanation.
+The default recovery action is a 168 dp capsule with a minimum 48 dp touch height;
+large labels can expand and wrap. The secondary action retains its own 48 dp
+target. The existing scroll container handles short windows and enlarged text.
+A quiet instruction explains that tapping the top capsule opens the address
+editor and holding it switches environments.
+
+Only the exact current VPN-blocked production error together with its matching
+connection stage gets a short VPN-specific explanation and network-check-first
+action order. Matching the stage alone would hide later browser-policy errors
+when that stage is stale. Other errors retain their diagnostic text. The same
+native retry and network buttons, callbacks and network guard remain in use;
+this is presentation ordering, not an alternate recovery or connection path.
+An already visible document still dismisses the cover before any of these empty
+states are considered.
 
 The integration-only typography observation creates this real shared component
 at font scales 1.0 and 1.3, without seeding a page or route. It records the four

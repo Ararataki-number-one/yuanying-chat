@@ -49,17 +49,17 @@ final class DesignChrome {
       }
     };
     profileRow=ProfileCatalog.get(a).item(Profiles.slot(a));
-    compactTitle=ReferenceUi.text(a,profileLabel(profileRow,Profiles.slot(a)),12,DesignUi.GLASS_INK,true);
+    compactTitle=ReferenceUi.text(a,profileLabel(profileRow,Profiles.slot(a)),13,DesignUi.GLASS_INK,true);
     ReferenceUi.single(compactTitle);
-    compactTitle.setMinWidth(a.dp(112));compactTitle.setMaxWidth(a.dp(196));
-    Ui.Icon disclosure=new Ui.Icon("globe",DesignUi.GLASS_MUTED);disclosure.setBounds(0,0,a.dp(12),a.dp(12));
+    compactTitle.setMinWidth(a.dp(112));compactTitle.setMaxWidth(a.dp(184));
+    Ui.Icon disclosure=new Ui.Icon("globe",DesignUi.GLASS_MUTED);disclosure.setBounds(0,0,a.dp(14),a.dp(14));
     compactTitle.setCompoundDrawables(disclosure,null,null,null);compactTitle.setCompoundDrawablePadding(a.dp(7));
     centerCapsuleContents(compactTitle,14);
-    compactTitle.setBackground(DesignUi.glass(a,16));
+    compactTitle.setBackground(DesignUi.glass(a,18));
     compactTitle.setDuplicateParentStateEnabled(true);
     compactTitle.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
     GlassMotion.press(compactTitle,false);
-    FrameLayout.LayoutParams compactLabel=new FrameLayout.LayoutParams(-2,Math.max(a.dp(32),textHeight(compactTitle)+a.dp(8)),Gravity.CENTER);
+    FrameLayout.LayoutParams compactLabel=new FrameLayout.LayoutParams(-2,Math.max(a.dp(36),textHeight(compactTitle)+a.dp(8)),Gravity.CENTER);
     compactLabel.leftMargin=a.dp(16);compactLabel.rightMargin=a.dp(16);
     compact.addView(compactTitle,compactLabel);
     compact.setFocusable(true);
@@ -74,70 +74,50 @@ final class DesignChrome {
     title=ReferenceUi.text(a,compactTitle.getText().toString(),15,DesignUi.GLASS_INK,true);
     profileName=title.getText().toString();
     ReferenceUi.single(title);
-    title.setMinWidth(a.dp(168));title.setMaxWidth(a.dp(208));
-    Ui.Icon addressIcon=new Ui.Icon("globe",DesignUi.GLASS_MUTED);addressIcon.setBounds(0,0,a.dp(14),a.dp(14));
+    title.setMinWidth(a.dp(160));title.setMaxWidth(a.dp(192));
+    Ui.Icon addressIcon=new Ui.Icon("globe",DesignUi.GLASS_MUTED);addressIcon.setBounds(0,0,a.dp(16),a.dp(16));
     title.setCompoundDrawables(addressIcon,null,null,null);title.setCompoundDrawablePadding(a.dp(8));
     centerCapsuleContents(title,16);
-    title.setBackground(DesignUi.glass(a,22));title.setElevation(a.dp(2));
+    title.setBackground(DesignUi.glass(a,22));
     GlassMotion.press(title,false);
     title.setContentDescription("当前环境："+profileName+"，点按输入网址，长按切换环境");
     addressCapsule(title);
 
     more=ReferenceUi.more(a,()->a.moreSheet());
-    // The shared button style reserves 48 dp; this compact shell expands touch separately.
-    more.setMinHeight(0);
-    more.setMinimumHeight(0);
-    more.setPadding(a.dp(4),0,a.dp(4),0);
     int capsuleHeight=Math.max(a.dp(44),textHeight(title)+a.dp(12));
     int topHeight=Math.max(a.dp(48),capsuleHeight+a.dp(4));
     top.setClipChildren(false);top.setClipToPadding(false);
-    top.addView(a.navigation,new LinearLayout.LayoutParams(a.dp(44),topHeight));
+    top.addView(headerAction(a.navigation),new LinearLayout.LayoutParams(a.dp(48),topHeight));
     // The visual capsule stays compact while its existing touch delegate keeps
     // a 48 dp action. AT_MOST child measurement also fits narrow windows.
     FrameLayout capsuleHost=new FrameLayout(a);
+    capsuleHost.setPadding(a.dp(4),0,a.dp(4),0);
     capsuleHost.addView(title,new FrameLayout.LayoutParams(-2,capsuleHeight,Gravity.CENTER));
     top.addView(capsuleHost,new LinearLayout.LayoutParams(0,topHeight,1));
-    top.addView(more,new LinearLayout.LayoutParams(a.dp(44),topHeight));
+    top.addView(headerAction(more),new LinearLayout.LayoutParams(a.dp(48),topHeight));
     a.toolbar.addView(top,new LinearLayout.LayoutParams(-1,topHeight));
     a.geckoAddress=new GeckoAddressUi(a);a.toolbar.addView(a.geckoAddress.row,new LinearLayout.LayoutParams(-1,-2));
 
-    networkRow=DesignUi.row(a);
-    networkRow.setPadding(a.dp(6),0,a.dp(6),a.dp(4));
-    // This is a read-only status line. Network navigation remains in the bottom bar.
-    networkRow.setClickable(false);
-    networkRow.setFocusable(false);
     dot=ReferenceUi.text(a,"●",9,ReferenceUi.MUTED,false);
     dot.setTextSize(android.util.TypedValue.COMPLEX_UNIT_DIP,9);
     a.networkLine=ReferenceUi.text(a,"连接状态待确认",11,ReferenceUi.MUTED,false);
     latencyWord=ReferenceUi.text(a,"延迟未测",11,ReferenceUi.MUTED,false);
     stateWord=ReferenceUi.text(a,"未连接",11,ReferenceUi.MUTED,true);
-    ReferenceUi.single(a.networkLine);
-    ReferenceUi.single(latencyWord);
+    a.networkLine.setMaxLines(2);a.networkLine.setEllipsize(TextUtils.TruncateAt.END);
+    latencyWord.setMaxLines(2);latencyWord.setEllipsize(TextUtils.TruncateAt.END);
     ReferenceUi.single(stateWord);
     a.networkLine.setGravity(Gravity.CENTER_VERTICAL);
     latencyWord.setGravity(Gravity.CENTER_VERTICAL);
     latencyWord.setPadding(a.dp(6),0,a.dp(6),0);
     stateWord.setGravity(Gravity.CENTER_VERTICAL);
-    stateWord.setPadding(a.dp(7),0,a.dp(7),0);
-    stateWord.setBackground(ReferenceUi.surface(a,0xfff0f2f6,8,Color.TRANSPARENT));
-    boolean largeFont=a.getResources().getConfiguration().fontScale>=1.4f;
+    stateWord.setPadding(a.dp(6),0,0,0);
     int lineHeight=a.dp(20);
-    for(TextView text:new TextView[]{dot,a.networkLine,latencyWord,stateWord})lineHeight=Math.max(lineHeight,textHeight(text)+a.dp(largeFont?0:2));
-    if(largeFont){
-      networkRow.setOrientation(LinearLayout.VERTICAL);
-      LinearLayout address=DesignUi.row(a),metrics=DesignUi.row(a);
-      address.addView(dot,new LinearLayout.LayoutParams(a.dp(12),lineHeight));
-      address.addView(a.networkLine,new LinearLayout.LayoutParams(0,lineHeight,1));
-      metrics.addView(new View(a),new LinearLayout.LayoutParams(0,1,1));
-      metrics.addView(latencyWord,new LinearLayout.LayoutParams(-2,lineHeight));
-      metrics.addView(stateWord,new LinearLayout.LayoutParams(-2,lineHeight));
-      networkRow.addView(address,new LinearLayout.LayoutParams(-1,lineHeight));networkRow.addView(metrics,new LinearLayout.LayoutParams(-1,lineHeight));
-    }else{
-      networkRow.addView(dot,new LinearLayout.LayoutParams(a.dp(12),lineHeight));
-      networkRow.addView(a.networkLine,new LinearLayout.LayoutParams(0,lineHeight,1));
-      networkRow.addView(latencyWord,new LinearLayout.LayoutParams(-2,lineHeight));
-      networkRow.addView(stateWord,new LinearLayout.LayoutParams(-2,lineHeight));
-    }
+    for(TextView text:new TextView[]{dot,a.networkLine,latencyWord,stateWord})lineHeight=Math.max(lineHeight,textHeight(text)+a.dp(2));
+    networkRow=new NetworkStatusRow(lineHeight);
+    networkRow.setPadding(a.dp(6),0,a.dp(6),a.dp(4));
+    // This is a read-only status line. Network navigation remains in the bottom bar.
+    networkRow.setClickable(false);
+    networkRow.setFocusable(false);
     a.toolbar.addView(networkRow,new LinearLayout.LayoutParams(-1,-2));
     diagnosticRow=DesignUi.row(a);diagnosticBack=new Button(a);diagnosticBack.setText("返回原聊天");diagnosticResults=new Button(a);diagnosticResults.setText("查看自检结果");
     diagnosticBack.setOnClickListener(v->{if(!a.session.audit.returnRequestIdentity())EnvironmentAuditUi.show(a);});diagnosticResults.setOnClickListener(v->EnvironmentAuditUi.show(a));
@@ -147,6 +127,52 @@ final class DesignChrome {
     actions=new View[]{a.navigation,title,more};
     a.toolbar.addOnLayoutChangeListener((v,l,t,r,b,ol,ot,or,ob)->layoutTouchTargets());
     a.toolbar.post(this::layoutTouchTargets);
+  }
+
+  /** Equal side frames keep the independent address capsule on the screen centre. */
+  private FrameLayout headerAction(Button button){
+    button.setMinHeight(0);button.setMinimumHeight(0);
+    button.setPadding(0,0,0,0);
+    button.setBackground(DesignUi.glass(a,22));
+    GlassMotion.press(button,false);
+    FrameLayout frame=new FrameLayout(a);
+    frame.setClipChildren(false);frame.setClipToPadding(false);
+    frame.addView(button,new FrameLayout.LayoutParams(a.dp(44),a.dp(44),Gravity.CENTER));
+    return frame;
+  }
+
+  /** Wrap at the measured width, including split-screen and enlarged native text. */
+  private final class NetworkStatusRow extends LinearLayout {
+    final LinearLayout address,metrics;
+    boolean stacked;
+    NetworkStatusRow(int lineHeight){
+      super(a);setGravity(Gravity.CENTER_VERTICAL);
+      address=DesignUi.row(a);metrics=DesignUi.row(a);
+      address.setMinimumHeight(lineHeight);metrics.setMinimumHeight(lineHeight);
+      metrics.setGravity(Gravity.END|Gravity.CENTER_VERTICAL);
+      address.addView(dot,new LinearLayout.LayoutParams(a.dp(12),lineHeight));
+      address.addView(a.networkLine,new LinearLayout.LayoutParams(0,-2,1));
+      metrics.addView(latencyWord,new LinearLayout.LayoutParams(-2,-2));
+      metrics.addView(stateWord,new LinearLayout.LayoutParams(-2,-2));
+      addView(address,new LinearLayout.LayoutParams(0,-2,1));
+      addView(metrics,new LinearLayout.LayoutParams(-2,-2));
+    }
+    @Override protected void onMeasure(int widthMeasureSpec,int heightMeasureSpec){
+      int available=MeasureSpec.getSize(widthMeasureSpec)-getPaddingLeft()-getPaddingRight();
+      int required=a.dp(12)+textWidth(a.networkLine)+textWidth(latencyWord)+textWidth(stateWord);
+      boolean wrap=MeasureSpec.getMode(widthMeasureSpec)!=MeasureSpec.UNSPECIFIED&&required>available;
+      if(wrap!=stacked){
+        stacked=wrap;setOrientation(wrap?VERTICAL:HORIZONTAL);
+        address.setLayoutParams(new LinearLayout.LayoutParams(wrap?-1:0,-2,wrap?0:1));
+        metrics.setLayoutParams(new LinearLayout.LayoutParams(wrap?-1:-2,-2));
+        latencyWord.setLayoutParams(new LinearLayout.LayoutParams(wrap?0:-2,-2,wrap?1:0));
+        latencyWord.setGravity((wrap?Gravity.END:Gravity.START)|Gravity.CENTER_VERTICAL);
+      }
+      super.onMeasure(widthMeasureSpec,heightMeasureSpec);
+    }
+    private int textWidth(TextView view){
+      return view.getVisibility()==View.GONE?0:(int)Math.ceil(view.getPaint().measureText(view.getText().toString()))+view.getCompoundPaddingLeft()+view.getCompoundPaddingRight();
+    }
   }
 
   boolean expanded(){return !collapsed;}
@@ -215,6 +241,8 @@ final class DesignChrome {
       if(!visible){
         if(title!=null)GlassMotion.reset(title);
         if(compactTitle!=null)GlassMotion.reset(compactTitle);
+        if(a.navigation!=null)GlassMotion.reset(a.navigation);
+        if(more!=null)GlassMotion.reset(more);
       }
     }
     @Override public boolean dispatchTouchEvent(MotionEvent event){
@@ -232,6 +260,7 @@ final class DesignChrome {
   private void setCollapsed(boolean value){
     if(collapsed==value)return;collapsed=value;
     GlassMotion.reset(title);GlassMotion.reset(compactTitle);
+    GlassMotion.reset(a.navigation);GlassMotion.reset(more);
     // Never leave hidden expanded controls' touch delegates over the compact label.
     touchTargets=null;a.toolbar.setTouchDelegate(null);
     compact.setVisibility(value?View.VISIBLE:View.GONE);
