@@ -153,7 +153,7 @@ final class DesignChrome {
     NetworkStatusRow(int lineHeight){
       super(a);setGravity(Gravity.CENTER_VERTICAL);
       address=DesignUi.row(a);metrics=DesignUi.row(a);
-      address.setMinimumHeight(lineHeight);metrics.setMinimumHeight(lineHeight);
+      address.setMinimumHeight(lineHeight);metrics.setMinimumHeight(a.dp(20));
       metrics.setGravity(Gravity.END|Gravity.CENTER_VERTICAL);
       address.addView(dot,new LinearLayout.LayoutParams(a.dp(12),lineHeight));
       address.addView(a.networkLine,new LinearLayout.LayoutParams(0,-2,1));
