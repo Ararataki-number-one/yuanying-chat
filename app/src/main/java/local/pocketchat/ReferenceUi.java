@@ -172,9 +172,9 @@ final class ReferenceUi {
     Drawable content;
     if(reading){
       GradientDrawable wash=new GradientDrawable();wash.setCornerRadius(dp(context,radius));
-      int selectedWash=(DesignUi.GLASS_INK&0x00ffffff)|(AppAppearance.dark()?0x16000000:0x08000000);
+      int selectedWash=(DesignUi.BLUE&0x00ffffff)|(AppAppearance.dark()?0x16000000:0x0e000000);
       wash.setColor(new ColorStateList(new int[][]{{android.R.attr.state_selected},{}},new int[]{selectedWash,Color.TRANSPARENT}));
-      // Reading is quiet at rest; its selected state uses the same neutral wash.
+      // Reading shares the requested light-blue selected wash with the dock.
       content=wash;
     }else content=new ColorDrawable(Color.TRANSPARENT);
     return new InsetDrawable(content,dp(context,LiquidGlassDrawable.INSET_DP+1)){

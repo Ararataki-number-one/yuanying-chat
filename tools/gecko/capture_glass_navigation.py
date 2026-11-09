@@ -714,14 +714,22 @@ def capture_native_backdrop_preview(args, report, capture, adb, wait_for, tap, s
         # Exercise the restored settings destination and the conversation tab
         # outside the movie's fixed interaction/time budget.
         tap(button(xml, '设置'), 'Open settings through the actual five-destination workspace navigation')
-        xml = wait_for(capture, lambda value: selected_navigation(value, '设置'),
+        from capture_settings_workspace import settings_observation, activity_observation, MAIN_ACTIVITY
+        settings_ready = (lambda value: settings_observation(value, workspace_navigation_geometry)) if args.environment_workspace else (lambda value: selected_navigation(value, '设置'))
+        xml = wait_for(capture, settings_ready,
                        'native-settings-navigation', seconds=15)
         settings_geometry = workspace_navigation_geometry(xml)
+        settings_activity = adb('shell', 'dumpsys', 'activity', 'activities', timeout=10)
+        settings_activity_path = args.out / 'native-settings-activity.txt'
+        settings_activity_path.write_bytes(settings_activity)
+        settings_owner = dict(file=settings_activity_path.name, sha256=sha(settings_activity_path),
+            **activity_observation(settings_activity, MAIN_ACTIVITY))
         screenshot('native-settings-navigation.png')
         preview['settingsNavigation'] = dict(
             hierarchy=dict(file='native-settings-navigation.xml',
                 sha256=sha(args.out / 'native-settings-navigation.xml'), geometry=settings_geometry),
-            screenshot=dict(report['screenshots'][-1]), selectedNavigation='设置')
+            screenshot=dict(report['screenshots'][-1]), selectedNavigation='设置', activity=settings_owner,
+            settingsObservation=settings_observation(xml, workspace_navigation_geometry))
         tap(button(xml, '会话'), 'Return through the actual conversation destination and restore the split reading bar')
         wait_for(capture, chat, 'native-backdrop-returned-chat', seconds=15)
         preview['returnedViaConversationTab'] = True
@@ -930,7 +938,7 @@ def main():
     parser.add_argument('--apksigner', required=True)
     parser.add_argument('--out', type=Path, required=True)
     parser.add_argument('--environment-workspace', action='store_true',
-                        help='Append required real environment/network/download workspace captures')
+                        help='Append required real environment/network/settings/download workspace captures')
     parser.add_argument('--acceptance-suite', action='store_true',
                         help='Capture additional real input/configuration cases; fail if any required case fails')
     parser.add_argument('--device-api', type=int, choices=(32, 35), default=35,
@@ -958,6 +966,9 @@ def main():
                       applicationAcceptance=False, physicalPhoneAcceptance=False, wanAcceptance=False,
                       performanceMeasurement=False),
                   networkWorkspacePreview=dict(status='not-attempted', requested=args.environment_workspace,
+                      applicationAcceptance=False, physicalPhoneAcceptance=False, wanAcceptance=False,
+                      performanceMeasurement=False),
+                  settingsWorkspacePreview=dict(status='not-attempted', requested=args.environment_workspace,
                       applicationAcceptance=False, physicalPhoneAcceptance=False, wanAcceptance=False,
                       performanceMeasurement=False),
                   downloadsWorkspacePreview=dict(status='not-attempted', requested=args.environment_workspace,
@@ -1168,6 +1179,14 @@ def main():
             except Exception as error:
                 report['configuredNetworkSyntheticPreview']=dict(status='failed',syntheticPresentationOnly=True,
                     actualNetworkEvidence=False,errorType=type(error).__name__,error=str(error))
+            # Settings uses the same owned environment records; downloads below
+            # clears this disposable package, so settings must run before it.
+            try:
+                from capture_settings_workspace import capture_settings_workspace
+                capture_settings_workspace(args, report, capture, adb, screenshot,
+                    navigation_geometry=workspace_navigation_geometry)
+            except Exception as error:
+                report['settingsWorkspacePreview'].update(status='failed', errorType=type(error).__name__, error=str(error))
             try:
                 from capture_download_workspace import capture_download_workspace
                 capture_download_workspace(args, report, capture, adb, screenshot,
@@ -1176,7 +1195,8 @@ def main():
                 report['downloadsWorkspacePreview'].update(status='failed', errorType=type(error).__name__, error=str(error))
             required = {'motionReport':'captured', 'nativeBackdropPreview':'captured',
                         'navigationTypography':'verified', 'environmentWorkspacePreview':'captured',
-                        'networkWorkspacePreview':'captured', 'downloadsWorkspacePreview':'captured'}
+                        'networkWorkspacePreview':'captured', 'settingsWorkspacePreview':'captured',
+                        'downloadsWorkspacePreview':'captured'}
             incomplete = [name for name,status in required.items() if report[name]['status'] != status]
             if incomplete:
                 report['status'] = 'partial'
@@ -1191,6 +1211,7 @@ def main():
             typographyStatus=report['navigationTypography']['status'],
             environmentWorkspaceStatus=report['environmentWorkspacePreview']['status'],
             networkWorkspaceStatus=report['networkWorkspacePreview']['status'],
+            settingsWorkspaceStatus=report['settingsWorkspacePreview']['status'],
             downloadsWorkspaceStatus=report['downloadsWorkspacePreview']['status'],
             uiAcceptanceStatus=report.get('glassUiAcceptance', {}).get('status', 'not-requested'),
             scope='Actual Android native screens; local unconfigured environments and explicit local fixtures, no live website'), ensure_ascii=False))

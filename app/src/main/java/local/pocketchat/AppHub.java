@@ -25,6 +25,7 @@ final class AppHub {
   final Button[] tabs=new Button[DesignUi.NAV.length];
   final Button[] workspaceTabs=new Button[5];
   final NetworkWorkspaceUi networkWorkspace;
+  final SettingsWorkspaceUi settingsWorkspace;
   DesignDownloads.Controller downloadController;
   View downloadScreen;
   final Runnable tick=this::updateTick;
@@ -60,7 +61,7 @@ final class AppHub {
     bar.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
     footer.addView(bar,new LinearLayout.LayoutParams(-1,-2));panel.bindControls(bar);
     footer.addOnLayoutChangeListener((v,l,t,r,b,ol,ot,or,ob)->{if(b-t!=ob-ot)updateNativeInsets();});
-    networkWorkspace=new NetworkWorkspaceUi(a,panel);mark();
+    networkWorkspace=new NetworkWorkspaceUi(a,panel);settingsWorkspace=new SettingsWorkspaceUi(a,panel);mark();
   }
   void updateTick(){if(!a.active||a.destroyed||page==CHAT)return;if(page==DOWNLOADS||page==NETWORK)refresh();a.handler.postDelayed(tick,2500);}
   void select(int target){
@@ -92,6 +93,9 @@ final class AppHub {
     int footerHeight=Math.max(0,footer.getHeight());
     if(page==NETWORK&&networkWorkspace.root!=null&&networkWorkspace.root.getParent()==panel){
       networkWorkspace.setBottomInset(footerHeight);return;
+    }
+    if(page==SETTINGS&&settingsWorkspace.root!=null&&settingsWorkspace.root.getParent()==panel){
+      settingsWorkspace.setBottomInset(footerHeight);return;
     }
     insetScrollViews(panel,footerHeight);
   }
@@ -159,11 +163,14 @@ final class AppHub {
   void action(LinearLayout box,String label,Runnable run){DesignUi.action(box,label,false,run);}
   void note(LinearLayout box,String text){DesignUi.note(box,text);}
   private void placeFeedback(){
-    // Only a currently attached network screen may own the existing notice.
-    // Other workspaces retain the original footer and the same close action.
-    boolean inline=page==NETWORK&&networkWorkspace.feedbackHost!=null
+    // Attached network/settings pages keep the existing notice beneath their
+    // heading, with the original text and close action.
+    boolean networkInline=page==NETWORK&&networkWorkspace.feedbackHost!=null
       &&networkWorkspace.root!=null&&networkWorkspace.root.getParent()==panel;
-    LinearLayout target=inline?networkWorkspace.feedbackHost:footer;
+    boolean settingsInline=page==SETTINGS&&settingsWorkspace.feedbackHost!=null
+      &&settingsWorkspace.root!=null&&settingsWorkspace.root.getParent()==panel;
+    boolean inline=networkInline||settingsInline;
+    LinearLayout target=networkInline?networkWorkspace.feedbackHost:settingsInline?settingsWorkspace.feedbackHost:footer;
     if(feedbackBar.getParent()==target)return;
     if(feedbackBar.getParent() instanceof ViewGroup)((ViewGroup)feedbackBar.getParent()).removeView(feedbackBar);
     LinearLayout.LayoutParams notice=new LinearLayout.LayoutParams(-1,-2);
@@ -172,7 +179,7 @@ final class AppHub {
   }
   private void styleFeedback(){
     boolean inline=feedbackBar.getParent()!=footer;
-    feedbackBar.setContentDescription(inline?"网络连接提示":null);
+    feedbackBar.setContentDescription(inline?(page==SETTINGS?"应用提示":"网络连接提示"):null);
     feedbackBar.setPadding(a.dp(14),a.dp(inline?10:4),a.dp(inline?10:14),a.dp(inline?10:4));
     feedbackText.setIncludeFontPadding(inline);
     if(android.os.Build.VERSION.SDK_INT>=28)feedbackText.setFallbackLineSpacing(inline||feedbackFallbackLineSpacing);
@@ -195,7 +202,7 @@ final class AppHub {
     }else downloadController.refresh(downloadFilter);
     downloadsVisible(a.active);
   }
-  void settings(){DesignSettingsUi.render(a,layout("应用设置"),settingsTab);}
+  void settings(){rendered="settings-workspace";settingsWorkspace.show();}
   void network(){show(NETWORK);}
   void networkFor(int slot){networkTab=0;networkWorkspace.focus(slot);select(NETWORK);}
   void text(String title,String value){DesignUi.message(a,title,value);}

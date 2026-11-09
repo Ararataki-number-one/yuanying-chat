@@ -25,6 +25,12 @@ final class WorkspaceGlyphs {
       case "file-archive":clear(outline,ink);document(outline);archive(outline,ink);return true;
       case "node":clear(outline,ink);node(outline,ink);return true;
       case "source":clear(outline,ink);source(outline,ink);return true;
+      case "browser":clear(outline,ink);browser(outline,ink);return true;
+      case "appearance":clear(outline,ink);appearance(outline);return true;
+      case "bell":clear(outline,ink);bell(outline,ink);return true;
+      case "battery":clear(outline,ink);battery(outline,ink);return true;
+      case "backup":clear(outline,ink);backup(outline,ink);return true;
+      case "feedback":clear(outline,ink);feedback(outline);return true;
       default:return false;
     }
   }
@@ -159,5 +165,66 @@ final class WorkspaceGlyphs {
     ink.addCircle(6.8f,15.8f,.85f,Path.Direction.CW);
     outline.moveTo(9.6f,10.9f);outline.lineTo(14.2f,10.9f);
     outline.moveTo(9.6f,15.8f);outline.lineTo(14.2f,15.8f);
+  }
+
+  /** A browser frame and compass keep this distinct from the environment stack. */
+  private static void browser(Path outline,Path ink) {
+    outline.addRoundRect(new RectF(3.5f,4f,20.5f,20.5f),2.5f,2.5f,Path.Direction.CW);
+    outline.moveTo(3.7f,8.1f);outline.lineTo(20.3f,8.1f);
+    ink.addCircle(6.1f,6.05f,.65f,Path.Direction.CW);
+    outline.addCircle(12f,14.2f,3.7f,Path.Direction.CW);
+    ink.moveTo(13.8f,12.4f);ink.lineTo(12.65f,14.85f);
+    ink.lineTo(10.2f,16f);ink.lineTo(11.35f,13.55f);ink.close();
+  }
+
+  private static void appearance(Path outline) {
+    outline.moveTo(12.1f,3.5f);
+    outline.cubicTo(7.35f,3.45f,3.5f,7.25f,3.5f,12f);
+    outline.cubicTo(3.5f,16.7f,7.3f,20.5f,12f,20.5f);
+    outline.cubicTo(15.9f,20.5f,19.2f,17.85f,20.2f,14.3f);
+    outline.cubicTo(17.65f,15.6f,14.5f,15.05f,12.5f,13.05f);
+    outline.cubicTo(9.95f,10.5f,9.8f,6.35f,12.1f,3.5f);outline.close();
+  }
+
+  private static void bell(Path outline,Path ink) {
+    outline.moveTo(12f,4.5f);
+    outline.cubicTo(8.7f,4.5f,6.4f,7.05f,6.4f,10.5f);
+    outline.lineTo(6.4f,12.4f);outline.quadTo(6.4f,15.1f,4.8f,17f);
+    outline.quadTo(4.25f,17.8f,5.3f,17.8f);outline.lineTo(18.7f,17.8f);
+    outline.quadTo(19.75f,17.8f,19.2f,17f);outline.quadTo(17.6f,15.1f,17.6f,12.4f);
+    outline.lineTo(17.6f,10.5f);outline.cubicTo(17.6f,7.05f,15.3f,4.5f,12f,4.5f);outline.close();
+    ink.addRoundRect(new RectF(10.95f,2.5f,13.05f,5.1f),1.05f,1.05f,Path.Direction.CW);
+    outline.moveTo(10.2f,20.1f);outline.quadTo(12f,21.8f,13.8f,20.1f);
+  }
+
+  private static void battery(Path outline,Path ink) {
+    outline.addRoundRect(new RectF(3.25f,6.5f,18.9f,17.5f),2f,2f,Path.Direction.CW);
+    outline.moveTo(21.2f,10f);outline.lineTo(21.2f,14f);
+    ink.moveTo(11.4f,8.7f);ink.lineTo(7.8f,12.65f);ink.lineTo(10.7f,12.65f);
+    ink.lineTo(9.8f,15.3f);ink.lineTo(14.1f,11.2f);ink.lineTo(11.2f,11.2f);ink.close();
+  }
+
+  private static void backup(Path outline,Path ink) {
+    outline.moveTo(7.3f,9.6f);outline.lineTo(5.4f,9.6f);outline.lineTo(3.5f,12.4f);
+    outline.lineTo(3.5f,18.4f);outline.quadTo(3.5f,20.5f,5.6f,20.5f);
+    outline.lineTo(18.4f,20.5f);outline.quadTo(20.5f,20.5f,20.5f,18.4f);
+    outline.lineTo(20.5f,12.4f);outline.lineTo(18.6f,9.6f);outline.lineTo(16.7f,9.6f);
+    outline.moveTo(3.8f,12.4f);outline.lineTo(7.6f,12.4f);
+    outline.moveTo(16.4f,12.4f);outline.lineTo(20.2f,12.4f);
+    outline.moveTo(12f,14f);outline.lineTo(12f,3.5f);
+    outline.moveTo(8.7f,6.8f);outline.lineTo(12f,3.5f);outline.lineTo(15.3f,6.8f);
+    ink.addRoundRect(new RectF(9.5f,16.7f,14.5f,18.1f),.7f,.7f,Path.Direction.CW);
+  }
+
+  private static void feedback(Path outline) {
+    outline.moveTo(6.1f,3.5f);outline.lineTo(17.9f,3.5f);
+    outline.quadTo(20.5f,3.5f,20.5f,6.1f);outline.lineTo(20.5f,14.8f);
+    outline.quadTo(20.5f,17.4f,17.9f,17.4f);outline.lineTo(9f,17.4f);
+    outline.lineTo(4.8f,20.5f);outline.lineTo(5.35f,17.3f);
+    outline.quadTo(3.5f,16.85f,3.5f,14.8f);outline.lineTo(3.5f,6.1f);
+    outline.quadTo(3.5f,3.5f,6.1f,3.5f);outline.close();
+    outline.moveTo(8.3f,13.5f);outline.lineTo(9f,10.8f);outline.lineTo(13.7f,6.1f);
+    outline.lineTo(16f,8.4f);outline.lineTo(11.3f,13.1f);outline.close();
+    outline.moveTo(12.45f,7.35f);outline.lineTo(14.75f,9.65f);
   }
 }

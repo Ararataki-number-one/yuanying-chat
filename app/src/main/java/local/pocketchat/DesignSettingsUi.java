@@ -9,29 +9,30 @@ import java.util.*;
 final class DesignSettingsUi {
   static void render(MainActivity a,LinearLayout box,int selected){render(a,box,()->a.hub.settings());}
   static void render(Activity a,LinearLayout box,Runnable refresh){
-    DesignUi.action(box,"搜索操作",false,()->ActionSearchUi.show(a));
-    DesignUi.section(box,"启动与界面","");
-    LinearLayout appearance=DesignUi.group(a);box.addView(appearance);
+    SettingsWorkspaceStyle.section(box,"启动与外观","全局");
+    LinearLayout appearance=SettingsWorkspaceStyle.group(a);box.addView(appearance);
     int defaultSlot=AppSettings.defaultSlot(a);
     group(a,appearance,"默认环境与启动入口","默认："+(defaultSlot<0?"暂不可用":Profiles.display(a,defaultSlot)),"window",()->defaultEntry(a,refresh));
-    group(a,appearance,"此环境的浏览器与启动",Profiles.display(a,Profiles.slot(a))+" · "+(BrowserPreferences.startBrowser(a)?"Chromium 指纹浏览器":"Gecko 指纹浏览器"),"window",()->BrowserSettingsUi.show(a,refresh));
-    group(a,appearance,"白天与黑夜",AppAppearance.label()+" · 应用与网页外观","brand",()->appearance(a,refresh));
-    DesignUi.section(box,"提醒与后台", "");
-    LinearLayout background=DesignUi.group(a);box.addView(background);
+    group(a,appearance,"白天与黑夜",AppAppearance.label()+" · 应用与网页外观","appearance",()->appearance(a,refresh));
+    SettingsWorkspaceStyle.section(box,"当前环境","仅当前环境");
+    LinearLayout environment=SettingsWorkspaceStyle.group(a);box.addView(environment);
+    group(a,environment,"此环境的浏览器与启动",Profiles.display(a,Profiles.slot(a))+" · "+(BrowserPreferences.startBrowser(a)?"Chromium 指纹浏览器":"Gecko 指纹浏览器"),"browser",()->BrowserSettingsUi.show(a,refresh));
+    SettingsWorkspaceStyle.section(box,"提醒与后台","全局");
+    LinearLayout background=SettingsWorkspaceStyle.group(a);box.addView(background);
     group(a,background,"后台回复检测",BackgroundReplySettingsUi.summary(a),"chat",()->BackgroundReplySettingsUi.open(a,refresh));
-    group(a,background,"后台完成提醒",AppSettings.backgroundCompletionNotice(a)?"离开应用后提醒回复和下载完成":"已关闭 · 使用时保持安静","chat",()->completionReminders(a,refresh));
-    group(a,background,"通知与电池设置","通知提醒与后台运行权限","chat",()->FeatureDialogs.backgroundSettings(a));
-    DesignUi.section(box,"配置备份","");
-    LinearLayout backup=DesignUi.group(a);box.addView(backup);
-    group(a,backup,"环境配置备份","密码加密模板与偏好 · 恢复为新环境","window",()->a.startActivity(new android.content.Intent(a,EnvironmentConfigBackupActivity.class)));
-    DesignUi.section(box,"帮助与能力","");
-    LinearLayout help=DesignUi.group(a);box.addView(help);
-    group(a,help,"问题与建议","提交反馈 · 查看处理进度","chat",()->FeedbackUi.open(a));
+    group(a,background,"后台完成提醒",AppSettings.backgroundCompletionNotice(a)?"离开应用后提醒回复和下载完成":"已关闭 · 使用时保持安静","bell",()->completionReminders(a,refresh));
+    group(a,background,"通知与电池设置","通知提醒与后台运行权限","battery",()->FeatureDialogs.backgroundSettings(a));
+    SettingsWorkspaceStyle.section(box,"配置备份","");
+    LinearLayout backup=SettingsWorkspaceStyle.group(a);box.addView(backup);
+    group(a,backup,"环境配置备份","密码加密模板与偏好 · 恢复为新环境","backup",()->a.startActivity(new android.content.Intent(a,EnvironmentConfigBackupActivity.class)));
+    SettingsWorkspaceStyle.section(box,"帮助与应用","");
+    LinearLayout help=SettingsWorkspaceStyle.group(a);box.addView(help);
+    group(a,help,"问题与建议","提交反馈 · 查看处理进度","feedback",()->FeedbackUi.open(a));
     group(a,help,"应用更新",AppSettings.get(a,"updateLabel","当前版本 "+AppVersion.name(a)),"download",()->AppUpdates.open(a));
     group(a,help,"关于与使用帮助","版本与使用说明","info",()->about(a));
     group(a,help,"功能支持范围","查看支持的功能","shield",()->capabilities(a));
   }
-  static void group(Activity a,LinearLayout box,String title,String detail,String icon,Runnable click){DesignUi.groupedRow(box,DesignUi.setting(a,icon,title,detail,"",click));}
+  static void group(Activity a,LinearLayout box,String title,String detail,String icon,Runnable click){SettingsWorkspaceStyle.row(a,box,title,detail,icon,click);}
   static void about(Activity a){DesignUi.message(a,"元婴期院士 · "+AppVersion.name(a),"Android 双内核指纹浏览器\n\nGecko 与 Chromium 都能输入网址或搜索，默认网站仍为 https://chatgpt.com/。Gecko 在 ChatGPT 网页额外提供草稿救援、回复检测和离线会话检索。\n\n每个环境分别保存登录、网络和指纹配置；两个内核的 Cookie 与指纹配置独立。Gecko 使用原生隐私模板，Chromium 使用原生 UA / UA-CH 和文档开始时的指纹保护，具体范围可分别查看设置与自检。\n\nChromium 基于 Android System WebView，提供多标签、收藏与历史、页内查找和文件上传下载。可选择每个环境的启动内核和两个内核共用的默认网站。\n\n后台完成提醒默认关闭，可在应用设置中开启。登录数据保存在本机，网络凭据及 Chromium 指纹配置由 Android Keystore 加密。第三方许可随源码提供。");}
   static void capabilities(Activity a){DesignUi.message(a,"功能支持范围","• 两个内核：切换网址、搜索、独立登录、环境指纹配置与自检\n• Gecko：原生隐私模板；在 ChatGPT 网页提供草稿救援、离线会话检索与回复检测\n• Chromium：原生 UA / UA-CH 设置，页面及框架的 Canvas、WebGL 调试显卡标识、音频复制读出和 WebRTC 构造器保护\n• Chromium 浏览：多标签、收藏与历史、页内查找、手机版／电脑版、文件上传下载\n• 最多 8 个独立环境，支持分组、备注、收藏和删除\n\nChromium 的 Worker、Service Worker、OffscreenCanvas、独立时区、字体、硬件及网络协议指纹未覆盖。Chrome 扩展尚不支持。请在各内核的设置中查看实际支持和确认状态；设置回读不代表完整指纹已验证。\n\nChromium 可按当前 HTTPS 网站的请求逐次授权相机、麦克风和大致位置，不保存网站的长期允许记录。页面 WebRTC 限制不覆盖 Worker；HTTP 代理不能代替设备 VPN。应用不会自动开启 VPN。\n\nGecko 原生模板的范围：\n\n"+NativeCapabilityManifest.officialGecko().unsupportedSummary()+"\n\n后台完成提醒需主动开启。多环境同时运行容量尚未测量。");}
   static void completionReminders(Activity a,Runnable refresh){
