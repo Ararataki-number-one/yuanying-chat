@@ -5,6 +5,40 @@ ROOT=pathlib.Path(__file__).resolve().parents[2];HERE=pathlib.Path(__file__).res
 # Exact 62a0ff6e44ba08e4bbf28149a11d3f47a4f6a642 source receipts. Normal CI
 # checkouts are shallow: preserve the original assertions without git history.
 ORIGINAL_REPORT_SHA256='200192382212fee9889cd9905b837d551a27c75fcc4b777acdab3dd9982e63b7'
+# Exact report() members from c244835 (the existing synthetic presentation
+# declaration) and a193ca8 (five read-only v2 observation additions). Only the
+# historical body comparison uses this inverse; Java extraction keeps fixture.
+PRESENTATION_REPORT_BYTES=3507
+PRESENTATION_REPORT_SHA256='8de01adca0ba191e634a90aa8dc125fbe91e22172f4894ad32d0590ca9af8fd0'
+V2_REPORT_BYTES=3982
+V2_REPORT_SHA256='4cfa806c09c40ad3dcac9f3217b744f6d9d88b6acb0611e506f24939cc6b2e39'
+V2_REPORT_INSERTIONS=(
+ ('      JSONArray texts=new JSONArray();','int[] textRoles={16,12,12,11};int textRole=0;','\n      for(TextView text:new TextView[]{designChrome.title,networkLine,latency,designChrome.stateWord}){'),
+ ('"clickable",text.isClickable()',',"lineCount",text.getLayout()==null?0:text.getLayout().getLineCount(),"layoutHeight",text.getLayout()==null?0:text.getLayout().getHeight(),"maxLines",text.getMaxLines(),"textSizePx",text.getTextSize(),"expectedTextSizePx",android.util.TypedValue.applyDimension(android.util.TypedValue.COMPLEX_UNIT_SP,textRoles[textRole++],getResources().getDisplayMetrics())','));\n      }\n      Rect networkBounds=screenBounds(designChrome.networkRow);'),
+ ('"contentHeight",dot.getHeight()-dot.getPaddingTop()-dot.getPaddingBottom()',',"height",dot.getHeight()',');\n      Log.i("PocketCompactChrome",J.obj('),
+ ('"fontScale",getResources().getConfiguration().fontScale,','"navigationContract",2,','"toolbar",rect(toolbarBounds),'),
+ ('"toolbar",rect(toolbarBounds),','"topBounds",bounds(top),','"toolbarHeightDp",toolbar.getHeight()/density(),'),
+)
+
+def report_pin(text):
+ assert type(text) is str,'Report source must be text'
+ raw=text.encode('utf-8')
+ return len(raw),hashlib.sha256(raw).hexdigest()
+
+def restore_v2_report_body(text):
+ assert report_pin(text)==(V2_REPORT_BYTES,V2_REPORT_SHA256),'Unknown v2 geometry report body'
+ restored=text
+ for left,addition,right in V2_REPORT_INSERTIONS:
+  context=left+addition+right
+  assert restored.count(context)==1,'V2 report addition is missing, duplicated or moved'
+  restored=restored.replace(context,left+right,1)
+ assert report_pin(restored)==(PRESENTATION_REPORT_BYTES,PRESENTATION_REPORT_SHA256),'Original presentation report body changed'
+ return restored
+
+def historical_report_body(text):
+ if report_pin(text) in ((3445,ORIGINAL_REPORT_SHA256),(PRESENTATION_REPORT_BYTES,PRESENTATION_REPORT_SHA256)):return text
+ return restore_v2_report_body(text)
+
 contract_path=ROOT/'tests/ui_visual_preservation_contract.py'
 contract_spec=importlib.util.spec_from_file_location('ui_visual_preservation_contract',contract_path);contract=importlib.util.module_from_spec(contract_spec);contract_spec.loader.exec_module(contract)
 spec=importlib.util.spec_from_file_location('chrome_production_extractor',ROOT/'tests/chrome-network-state-host/run.py');extract=importlib.util.module_from_spec(spec);spec.loader.exec_module(extract);member=extract.member
@@ -31,7 +65,7 @@ def main():
  java=(HERE/'CompactChromeCaptureHost.java').read_text().replace('/* CHROME_METHODS */','\n'.join(member(chrome,n) for n in methods)).replace('/* INITIAL_METADATA */','\n'.join(initial)).replace('/* STATE_FIELDS */',fields).replace('/* STATE_METHODS */','\n'.join(member(state,n) for n in ['WindowNetworkState(Context c,','int color(','String mainline(','String strip('])).replace('/* FIXTURE_METHODS */','\n'.join(member(fixture,n) for n in fixture_methods))
  java=java.replace('/* CATALOG_EXIT_ID */',member(selected[PROD+'NetworkCatalog.java'],'static String exitId(')).replace('/* NATIVE_METHODS */','\n'.join(member(selected[PROD+'NativeNetwork.java'],n) for n in ['static boolean subscribedExit(','static String exitIdentity(','static String hash(']))
  java=java.replace('/* STATE_IDENTITY */',member(state,'static boolean sameEnvironment(') if 'static boolean sameEnvironment(' in state else '')
- final_report=member(fixture,'void report(String event,').replace('"syntheticPresentation",true,"actualLatencyMeasurement",false,','')
+ final_report=historical_report_body(member(fixture,'void report(String event,')).replace('"syntheticPresentation",true,"actualLatencyMeasurement",false,','')
  assert hashlib.sha256(final_report.encode()).hexdigest()==ORIGINAL_REPORT_SHA256,'Original geometry/touch/text report body changed'
  runner_contract=contract.verify_shared_ui_source(selected['tests/gecko/run_ui_visuals.py'])
  snapshot=member(fixture,'void snapshot(');assert '"delay",42,"delayAt",now' in snapshot and '"latencyRemaining",120000' in snapshot
