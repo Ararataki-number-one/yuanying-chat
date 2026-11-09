@@ -101,7 +101,7 @@ final class NetworkWorkspaceUi {
       actions.addView(edit,new LinearLayout.LayoutParams(DesignUi.actionWidth(edit,64),-2));
       Button more=ReferenceUi.more(a,()->more(item));more.setContentDescription(s.name+"的更多网络操作");
       actions.addView(more,new LinearLayout.LayoutParams(dp(48),dp(48)));
-      WindowRow row=new WindowRow(name,status,details,actions);
+      LinearLayout row=setup?new SetupRow(name,status,details,actions,s.slot):new WindowRow(name,status,details,actions);
       JSONObject running=runningConfiguration(s);
       if(running!=null&&"internal".equals(running.optString("mode")))runningRoute(row,running);
       if(item.optBoolean("pendingNetwork")){
@@ -138,15 +138,49 @@ final class NetworkWorkspaceUi {
     return (state.region.isEmpty()?"":state.region+" · ")+address+" · "+latency;
   }
   void runningRoute(LinearLayout row,JSONObject running){
-    LinearLayout route=DesignUi.column(a);route.setPadding(dp(12),dp(8),dp(12),dp(8));route.setBackground(DesignUi.surface(a,DesignUi.FIELD,14,Color.TRANSPARENT));
+    LinearLayout route=DesignUi.column(a);route.setPadding(0,dp(8),0,dp(2));
+    View divider=new View(a);divider.setBackgroundColor(AppAppearance.color(DesignUi.LINE));
+    LinearLayout.LayoutParams rule=new LinearLayout.LayoutParams(-1,Math.max(1,dp(1)/2));rule.bottomMargin=dp(7);route.addView(divider,rule);
     String[] labels={"入口","固定出口","目的地"},values={displayEntry(running),displayExit(running),"ChatGPT"};
     for(int i=0;i<labels.length;i++){
-      LinearLayout stage=DesignUi.row(a);stage.setGravity(Gravity.TOP);stage.setPadding(0,dp(2),0,dp(2));
+      LinearLayout stage=DesignUi.row(a);stage.setGravity(Gravity.TOP);stage.setMinimumHeight(dp(26));
+      View marker=NetworkWorkspaceStyle.routeMark(a,i,i==labels.length-1);stage.addView(marker,new LinearLayout.LayoutParams(dp(20),-1));
       TextView label=NetworkWorkspaceStyle.text(a,labels[i],11,ReferenceUi.MUTED,false);label.setSingleLine(true);
+      label.setPadding(0,dp(2),0,dp(4));
       int labelWidth=Math.max(dp(58),(int)Math.ceil(label.getPaint().measureText(labels[i]))+dp(8));stage.addView(label,new LinearLayout.LayoutParams(labelWidth,-2));
-      TextView value=NetworkWorkspaceStyle.text(a,values[i],12,ReferenceUi.TEXT,false);value.setLineSpacing(dp(2),1);stage.addView(value,new LinearLayout.LayoutParams(0,-2,1));route.addView(stage);
+      TextView value=NetworkWorkspaceStyle.text(a,values[i],12,ReferenceUi.TEXT,false);value.setLineSpacing(dp(2),1);value.setPadding(0,dp(1),0,dp(4));stage.addView(value,new LinearLayout.LayoutParams(0,-2,1));route.addView(stage);
     }
-    LinearLayout.LayoutParams steps=new LinearLayout.LayoutParams(-1,-2);steps.topMargin=dp(8);row.addView(route,steps);
+    LinearLayout.LayoutParams steps=new LinearLayout.LayoutParams(-1,-2);steps.topMargin=dp(4);row.addView(route,steps);
+  }
+  /** Empty configurations need one readable identity row, not a full telemetry card. */
+  final class SetupRow extends LinearLayout {
+    final LinearLayout identity,actions;final TextView name;Boolean stacked;
+    SetupRow(TextView name,TextView status,LinearLayout details,LinearLayout actions,int slot){
+      super(a);this.name=name;this.actions=actions;setGravity(Gravity.CENTER_VERTICAL);
+      setPadding(dp(16),dp(14),dp(8),dp(14));
+      identity=DesignUi.row(a);identity.setGravity(Gravity.CENTER_VERTICAL);
+      EnvironmentWorkspaceStyle.Emblem emblem=new EnvironmentWorkspaceStyle.Emblem(a,false);emblem.bind(slot);
+      identity.addView(emblem,new LinearLayout.LayoutParams(dp(34),dp(34)));
+      LinearLayout copy=DesignUi.column(a);copy.addView(name,new LinearLayout.LayoutParams(-1,-2));
+      LinearLayout meta=DesignUi.row(a);meta.setGravity(Gravity.CENTER_VERTICAL);meta.addView(status,new LinearLayout.LayoutParams(-2,-2));
+      TextView separator=NetworkWorkspaceStyle.text(a,"·",11,ReferenceUi.MUTED,false);separator.setPadding(dp(5),0,dp(5),0);separator.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);meta.addView(separator);
+      for(int i=0;i<details.getChildCount();i++)if(details.getChildAt(i) instanceof TextView)((TextView)details.getChildAt(i)).setTextSize(11);
+      meta.addView(details,new LinearLayout.LayoutParams(0,-2,1));
+      LinearLayout.LayoutParams metadata=new LinearLayout.LayoutParams(-1,-2);metadata.topMargin=dp(4);copy.addView(meta,metadata);
+      LinearLayout.LayoutParams label=new LinearLayout.LayoutParams(0,-2,1);label.leftMargin=dp(8);identity.addView(copy,label);
+      addView(identity,new LinearLayout.LayoutParams(0,-2,1));addView(actions,new LinearLayout.LayoutParams(-2,-2));
+    }
+    @Override protected void onMeasure(int widthSpec,int heightSpec){
+      int available=MeasureSpec.getMode(widthSpec)==MeasureSpec.UNSPECIFIED?Integer.MAX_VALUE:MeasureSpec.getSize(widthSpec)-getPaddingLeft()-getPaddingRight();
+      boolean narrow=available<=dp(304)||getResources().getConfiguration().fontScale>=1.35f;
+      if(stacked==null||stacked!=narrow){
+        stacked=narrow;setOrientation(narrow?VERTICAL:HORIZONTAL);
+        identity.setLayoutParams(new LinearLayout.LayoutParams(narrow?-1:0,-2,narrow?0:1));name.setMaxLines(narrow?3:2);
+        LinearLayout.LayoutParams buttons=new LinearLayout.LayoutParams(-2,-2);buttons.gravity=Gravity.END;
+        if(narrow)buttons.topMargin=dp(3);else buttons.leftMargin=dp(4);actions.setLayoutParams(buttons);
+      }
+      super.onMeasure(widthSpec,heightSpec);
+    }
   }
   /** Compact at normal widths; full-width details and separate actions at large font sizes. */
   final class WindowRow extends LinearLayout {

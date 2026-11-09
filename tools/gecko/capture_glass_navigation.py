@@ -1171,6 +1171,15 @@ def main():
             incomplete = [name for name,status in required.items() if report[name]['status'] != status]
             if incomplete:
                 report['status'] = 'partial'
+            # Separate, visibly labelled component examples. Never replace the
+            # unconfigured MainActivity evidence or change its existing gates.
+            try:
+                from capture_configured_network_preview import capture_configured_network_preview
+                capture_configured_network_preview(args, report, capture, adb, screenshot,
+                    navigation_geometry=workspace_navigation_geometry)
+            except Exception as error:
+                report['configuredNetworkSyntheticPreview']=dict(status='failed',syntheticPresentationOnly=True,
+                    actualNetworkEvidence=False,errorType=type(error).__name__,error=str(error))
         if args.acceptance_suite:
             from glass_ui_validation import capture_acceptance_suite
             capture_acceptance_suite(args, report, capture, adb, wait_for, tap, screenshot,
