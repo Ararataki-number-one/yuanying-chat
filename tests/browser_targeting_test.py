@@ -653,6 +653,20 @@ public final class ActualStartupReadyHost {
                 output = json.dumps(latest if latest is not None and report_reads > 1 else current).encode()
             elif parts == ['shell', 'dumpsys', 'activity', 'activities']:
                 output = resumed.encode()
+            elif parts == ['shell', 'dumpsys', '-t', '1', 'window', 'windows']:
+                output = (b'mTopFocusedDisplayId=0\n'
+                          b'mCurrentFocus=Window{abc u0 local.pocketchat.test/local.pocketchat.BrowserIntegrationActivity}\n')
+            elif parts == ['shell', 'dumpsys', '-t', '1', 'input']:
+                output = (b'DispatchEnabled: true\nDispatchFrozen: false\n'
+                          b"name='abc local.pocketchat.test/local.pocketchat.BrowserIntegrationActivity' displayId=0 ownerPid=123 ownerUid=10001\n")
+            elif parts[:2] == ['shell', 'getprop'] and len(parts) == 3 and parts[2] in (
+                    'ro.build.version.sdk', 'ro.build.version.release', 'ro.build.fingerprint'):
+                output = {'ro.build.version.sdk': b'35\n',
+                          'ro.build.version.release': b'15\n',
+                          'ro.build.fingerprint': b'synthetic-host-boundary-no-device-proof\n'}[parts[2]]
+            elif parts == ['logcat', '-d', '-b', 'main', '-b', 'system', '-v', 'threadtime',
+                           '-t', '200', 'InputDispatcher:I', 'WindowManager:I', '*:S']:
+                output = b'Controlled host boundary; no actual Android log observed\n'
             elif parts[:4] == ['shell', 'settings', 'get', 'system']:
                 output = b'null\n'
             elif parts[:4] in (['shell', 'settings', 'put', 'system'],
@@ -1005,6 +1019,14 @@ sequence.dom.window.close();navigation.dom.window.close();wrongStart.dom.window.
         self.assertLess(current.index('awaitRendererCancellation('), current.index('js("({files:'))
         self.assertIn('if(picker++==1)preparePicker();else prepareDownload();', current)
         self.assertIn('deadline-SystemClock.elapsedRealtime()', current)
+
+
+def load_tests(loader, tests, pattern):
+    # The existing CI command runs every original test plus the independent
+    # diagnostic negative controls. No device outcome is supplied by this suite.
+    from browser_input_delivery_diagnostics_test import InputDeliveryDiagnosticsTests
+    tests.addTests(loader.loadTestsFromTestCase(InputDeliveryDiagnosticsTests))
+    return tests
 
 
 if __name__ == '__main__':

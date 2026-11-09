@@ -145,6 +145,118 @@ class V2DiagnosticOriginalsTest(unittest.TestCase):
         self.assertIn('collect_v2_diagnostics(integration, args.out, source, identity)',body)
 
 
+class V2DiagnosticEventIdentityTest(unittest.TestCase):
+    """The native descriptive scope is not a replacement for APK identity."""
+    SCOPE='Installed synthetic integration APK bytes and embedded source stamp only'
+
+    def fixture(self,directory):
+        from gecko_chrome_collapse_v2_test import identity as original_identity
+        integration,out,_,_,path,value=V2DiagnosticOriginalsTest().fixture(directory)
+        identity=original_identity()
+        source=identity['sourceCommit']
+        value.update(sourceCommit=source,sourceTree=identity['sourceTree'],buildIdentity=identity)
+        capture=integration/value['captureFile']['name']
+        data=json.loads(capture.read_bytes());data['sourceCommit']=source
+        raw=(json.dumps(data)+'\n').encode();capture.write_bytes(raw)
+        value['captureFile'].update(bytes=len(raw),sha256=hashlib.sha256(raw).hexdigest())
+        envelope=dict(schema=1,sourceCommit=source,buildIdentity=dict(identity,scope=self.SCOPE),
+            runNonce=value['runNonce'],fixtureAction='chromeCollapse',command=1,sequence=1,
+            nativeContext='environment-1',processSlot=0,
+            event=dict(kind='collapseSnapshot',nativeContext='environment-1',processSlot=0,
+                       result=dict(command='ready',actualAndroidExecution=False,hostOnly=True)))
+        return integration,out,source,identity,path,value,envelope
+
+    def event(self,path,value,envelope,receipt_changes=None,raw_transform=None):
+        raw=(json.dumps(envelope,ensure_ascii=False,separators=(',',':'))+'\n').encode()
+        if raw_transform is not None:raw=raw_transform(raw)
+        receipt={key:envelope[key] for key in ('schema','runNonce','fixtureAction','command','sequence','nativeContext','processSlot')}
+        receipt.update(kind='eventReceipt',eventKind=envelope['event']['kind'],
+                       payloadBytes=len(raw),payloadSha256=hashlib.sha256(raw).hexdigest())
+        receipt.update(receipt_changes or {})
+        value['eventTransfer']['events']=[dict(receipt=receipt,rawUtf8=raw.decode('utf-8'))]
+        path.write_text(json.dumps(value,ensure_ascii=False,indent=2)+'\n')
+        return raw
+
+    def collect(self,integration,out,source,identity):
+        # This existing legacy host identity declares no derived SDK manifest.
+        # Exercise the complete original identity reader with that explicit
+        # missing local-file boundary, and fail on every other subprocess call.
+        # In particular a hypothetical fetch, curl, ADB or network call cannot
+        # escape this test. No identity or hash validation function is mocked.
+        from integration_event_contract import _sdk
+        def historical_manifest(command,**kwargs):
+            expected=[['git','show',owner+':'+_sdk.DERIVED_MANIFEST]
+                      for owner in (source,'6'*40)]
+            self.assertIn(command,expected,'Unexpected external command in offline host control')
+            raise subprocess.CalledProcessError(128,command,stderr=b'declared host-only historical source has no manifest')
+        with mock.patch.object(subprocess,'check_output',side_effect=historical_manifest):
+            return module.collect_v2_diagnostics(integration,out,source,identity)
+
+    def test_native_scope_and_complete_installed_identity_preserve_original_payload(self):
+        java=(ROOT/'tests/gecko/IntegrationBuildIdentity.java').read_text()
+        self.assertIn('value.put("scope","'+self.SCOPE+'");',java)
+        with tempfile.TemporaryDirectory() as directory:
+            integration,out,source,identity,path,value,envelope=self.fixture(directory)
+            payload=self.event(path,value,envelope)
+            originals={p.name:p.read_bytes() for p in integration.iterdir()}
+            records=self.collect(integration,out,source,identity)
+            self.assertEqual(len(records),4)
+            self.assertEqual({p.name:p.read_bytes() for p in out.iterdir()},originals)
+            restored=json.loads((out/path.name).read_bytes())
+            self.assertEqual(restored['eventTransfer']['events'][0]['rawUtf8'].encode(),payload)
+            self.assertFalse(restored['caseCompleted']);self.assertFalse(restored['releaseAcceptance'])
+            self.assertNotIn('scope',identity)
+            self.assertEqual(json.loads(payload)['buildIdentity']['scope'],self.SCOPE)
+
+    def test_descriptive_scope_cannot_hide_changed_installed_build_fields(self):
+        mutations=(('schema',2),('package','other.application'),('sourceCommit','6'*40),
+            ('sourceTree','6'*40),('dirtySource',True),('version','2.1.5'),('versionCode',107),
+            ('sdkCoordinate','foreign:sdk:1'),('apkSha256','6'*64),('apkBytes',124),
+            ('buildStampSha256','6'*64),('sdkBuildIdentity',{}))
+        for key,replacement in mutations:
+            with self.subTest(key=key),tempfile.TemporaryDirectory() as directory:
+                integration,out,source,identity,path,value,envelope=self.fixture(directory)
+                envelope['buildIdentity'][key]=replacement
+                self.event(path,value,envelope)
+                originals={p.name:p.read_bytes() for p in integration.iterdir()}
+                with self.assertRaises(ValueError):self.collect(integration,out,source,identity)
+                self.assertEqual(list(out.iterdir()),[])
+                self.assertEqual({p.name:p.read_bytes() for p in integration.iterdir()},originals)
+
+    def test_full_receipt_identity_types_and_payload_digests_remain_required(self):
+        mutations=(('schema',2),('runNonce','6'*32),('fixtureAction','otherAction'),
+            ('command',2),('sequence',2),('nativeContext','environment-2'),('processSlot',1),
+            ('processSlot',False),('kind','otherReceipt'),('eventKind','otherEvent'),
+            ('payloadBytes',1),('payloadSha256','6'*64))
+        for key,replacement in mutations:
+            with self.subTest(key=key),tempfile.TemporaryDirectory() as directory:
+                integration,out,source,identity,path,value,envelope=self.fixture(directory)
+                self.event(path,value,envelope,{key:replacement})
+                with self.assertRaises(ValueError):self.collect(integration,out,source,identity)
+                self.assertEqual(list(out.iterdir()),[])
+
+    def test_changed_envelope_or_nested_owner_is_rejected_even_with_matching_hash(self):
+        changes=(('schema',2),('sourceCommit','6'*40),('runNonce','6'*32),
+            ('fixtureAction','otherAction'),('processSlot',1),('nativeContext','environment-2'),
+            ('command',True),('sequence',False),('event',dict(kind='collapseSnapshot',
+                nativeContext='environment-2',processSlot=1,result={'hostOnly':True})))
+        for key,replacement in changes:
+            with self.subTest(key=key),tempfile.TemporaryDirectory() as directory:
+                integration,out,source,identity,path,value,envelope=self.fixture(directory)
+                envelope[key]=replacement
+                self.event(path,value,envelope)
+                with self.assertRaises(ValueError):self.collect(integration,out,source,identity)
+                self.assertEqual(list(out.iterdir()),[])
+
+    def test_duplicate_json_fields_are_rejected_after_bytes_and_hash_match(self):
+        with tempfile.TemporaryDirectory() as directory:
+            integration,out,source,identity,path,value,envelope=self.fixture(directory)
+            self.event(path,value,envelope,raw_transform=lambda raw:b'{"schema":1,'+raw[1:])
+            with self.assertRaisesRegex(ValueError,'duplicate JSON field'):
+                self.collect(integration,out,source,identity)
+            self.assertEqual(list(out.iterdir()),[])
+
+
 class FocusedMainExecutionTest(unittest.TestCase):
     """Run the real main and selected statements with host-only external edges.
 

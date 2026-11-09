@@ -52,10 +52,59 @@ def navigation(xml, package, *, conversation, selected=None):
                        and n.attrib.get('class') == 'android.widget.Button'
                        and n.attrib.get('text') == n.attrib.get('content-desc')
                        and n.attrib.get('text') in ('会话', '设置') for n in tree.iter('node'))
-    for a, b in zip(controls, controls[1:]):
+    ordered = controls[:-1] if conversation else controls
+    for a, b in zip(ordered, ordered[1:]):
         assert a['bounds'][2] <= b['bounds'][0], 'Native navigation touch areas overlap or reorder'
         assert max(a['bounds'][1], b['bounds'][1]) < min(a['bounds'][3], b['bounds'][3]), 'Native navigation labels do not share a row'
+    if conversation:
+        conversation_layout(nodes, parents, package)
     return dict(navigationContract=VERSION, conversation=conversation, controls=controls)
+
+
+def conversation_layout(nodes, parents, package):
+    """Read the two exact layouts produced by native GlassNavigationRow.
+
+    Its three destinations stay on one centered dock. The independent square
+    reading control either shares that row or occupies the trailing position
+    below it when the native labels cannot fit beside that control.
+    """
+    dock, reading = parents[nodes[0]], parents[nodes[-1]]
+    row = parents.get(dock)
+    assert row is not None and parents.get(reading) is row, 'Reading and dock must share their actual native row'
+    assert list(row) == [dock, reading] and list(dock) == nodes[:-1] and list(reading) == nodes[-1:], 'Unexpected native navigation children'
+    for element, kind in ((row, 'android.view.ViewGroup'), (dock, 'android.widget.LinearLayout'),
+                          (reading, 'android.widget.FrameLayout')):
+        assert element.attrib.get('package') == package and element.attrib.get('class') == kind, 'Navigation container belongs to another native view'
+    rl, rt, rr, rb = bounds(row)
+    dl, dt, dr, db = bounds(dock)
+    left, top, right, bottom = bounds(reading)
+    assert bounds(nodes[-1]) == [left, top, right, bottom], 'Reading must fill its own native mode surface'
+    assert 0 <= rl + rr - dl - dr <= 1, 'Destination dock must remain centered on its native row'
+    assert dt == rt and right == rr, 'Native dock or reading alignment differs'
+    height = db - dt
+    assert right - left == bottom - top == height, 'Reading must retain the native square touch surface'
+    for node in nodes[:-1]:
+        l, t, r, b = bounds(node)
+        assert dl <= l < r <= dr and dt <= t < b <= db, 'Destination is clipped by its native dock'
+    assert len({(bounds(node)[1], bounds(node)[3]) for node in nodes[:-1]}) == 1, 'Destination labels must keep the same native row'
+    # Check real ancestor bounds as well as the explicit viewport/48 dp checks
+    # kept by the caller; a second row cannot authorize an offscreen control.
+    for child in (dock, reading):
+        cl, ct, cr, cb = bounds(child)
+        assert rl <= cl < cr <= rr and rt <= ct < cb <= rb, 'Navigation surface is clipped by its native row'
+    ancestor = row
+    while parents.get(ancestor) is not None and parents[ancestor].tag == 'node':
+        ancestor = parents[ancestor]
+        assert ancestor.attrib.get('package') == package, 'Navigation row has a foreign owner'
+        al, at, ar, ab = bounds(ancestor)
+        assert al <= rl < rr <= ar and at <= rt < rb <= ab, 'Navigation row is outside the actual window'
+    if top == dt:
+        assert left > dr and bottom == db == rb, 'Inline reading must be separate and share the destination row'
+        return 'inline'
+    gap = top - db
+    assert gap > 0 and bottom == rb and rb - rt == 2 * height + gap, 'Stacked reading must be the distinct second native row'
+    assert dr - dl > rr - rl - 2 * (height + gap), 'Reading cannot be stacked while the destination dock fits inline'
+    return 'stacked'
 
 
 def conversation_header(xml, package, width, height, scale, environment):

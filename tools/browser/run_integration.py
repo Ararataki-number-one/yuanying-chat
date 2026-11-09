@@ -14,6 +14,8 @@ import uuid
 ROOT=Path(__file__).resolve().parents[2]
 sys.path.insert(0,str(ROOT/'tools/gecko'))
 from profile_invocation_contract import expected_build,verify_installed
+sys.path.insert(0,str(ROOT/'tools/browser'))
+from input_delivery_diagnostics import InputDeliveryDiagnostics
 
 NATIVE_TARGET_FIELDS=('screenX','screenY','width','height','visibleLeft','visibleTop','visibleRight','visibleBottom')
 DOM_TARGET_FIELDS=('x','y','left','top','right','bottom','viewportWidth','viewportHeight','scrollX','scrollY','devicePixelRatio','visualScale','visualWidth','visualHeight','visualOffsetLeft','visualOffsetTop')
@@ -167,10 +169,11 @@ def main():
     settings=(ROOT/'app/build.gradle').read_text()
     apk=ROOT/'app/build/outputs/apk/integration/app-x86_64-integration.apk'
     identity=expected_build(apk,source,tree,re.search(r"versionName '([^']+)'",settings).group(1),int(re.search(r'versionCode (\d+)',settings).group(1)))
-    paths=[Path(__file__).resolve(),ROOT/'tests/gecko/BrowserIntegrationActivity.java',ROOT/'tests/gecko/BrowserEvidenceProvider.java',ROOT/'tests/gecko/AndroidManifest.xml',ROOT/'.github/workflows/browser-2_1-acceptance.yml']
+    paths=[Path(__file__).resolve(),ROOT/'tools/browser/input_delivery_diagnostics.py',ROOT/'tests/gecko/BrowserIntegrationActivity.java',ROOT/'tests/gecko/BrowserEvidenceProvider.java',ROOT/'tests/gecko/AndroidManifest.xml',ROOT/'.github/workflows/browser-2_1-acceptance.yml']
     paths+=list((ROOT/'app/src/main/java/local/pocketchat').glob('*.java'))
     hashes={str(p.relative_to(ROOT)):hashlib.sha256(p.read_bytes()).hexdigest() for p in paths}
     nonce=uuid.uuid4().hex;actions=[];handled=set();result=None;error=None;browser_task=None;original_settings={};last_validated_report=None;last_resumed=[]
+    input_diagnostics=InputDeliveryDiagnostics(adb=adb,output=args.output,source=source,tree=tree,nonce=nonce,identity=identity)
     report=dict(status='running',sourceCommit=source,sourceTree=tree,runNonce=nonce,expectedBuildIdentity=identity,actualAndroidExecution=False,actualAndroidWebViewExecution=False,actualDesktopChromiumExecution=False,actualPublicWebsiteExecution=False,actualDevicePerformanceMeasurement=False)
     try:
         if adb('shell','getprop','ro.kernel.qemu').stdout.decode().strip()!='1':raise ValueError('A real controlled Android emulator is required')
@@ -192,7 +195,7 @@ def main():
             stage=current.get('stage','')
             if stage.startswith('file-picker-') and stage not in handled:
                 x,y=validate_tap_target(current)
-                adb('shell','input','tap',str(x),str(y));actions.append(dict(kind='tap',stage=stage,x=x,y=y,targetProof=current['tapTarget']))
+                input_diagnostics.tap(stage,x,y,current,verified_identity=current['buildIdentity']);actions.append(dict(kind='tap',stage=stage,x=x,y=y,targetProof=current['tapTarget']))
                 chooser_until=time.monotonic()+20;chooser=False
                 while time.monotonic()<chooser_until:
                     top=adb('shell','dumpsys','activity','activities').stdout.decode(errors='replace')
@@ -203,7 +206,7 @@ def main():
                 if not chooser:raise AssertionError('The trusted tap did not open Android DocumentsUI: '+stage)
                 adb('shell','input','keyevent','KEYCODE_BACK');actions.append(dict(kind='back',stage=stage,actualDocumentsUiObserved=True));handled.add(stage)
             elif stage=='download-click' and stage not in handled:
-                x,y=validate_tap_target(current);adb('shell','input','tap',str(x),str(y));actions.append(dict(kind='tap',stage=stage,x=x,y=y,targetProof=current['tapTarget']));handled.add(stage)
+                x,y=validate_tap_target(current);input_diagnostics.tap(stage,x,y,current,verified_identity=current['buildIdentity']);actions.append(dict(kind='tap',stage=stage,x=x,y=y,targetProof=current['tapTarget']));handled.add(stage)
             elif stage in ('rotate-landscape','rotate-portrait') and stage not in handled:
                 rotation='1' if stage=='rotate-landscape' else '0';adb('shell','settings','put','system','user_rotation',rotation);actions.append(dict(kind='rotation',stage=stage,value=int(rotation)));handled.add(stage)
             elif stage=='switch-to-gecko' and 'engine-roundtrip' not in handled:
@@ -246,6 +249,7 @@ def main():
         except Exception:pass
         diagnostic=diagnostic_failure(last_validated_report,report['error'],last_resumed,actions);report['failureDiagnostic']=diagnostic
         print('BROWSER_ACCEPTANCE_FAILURE '+json.dumps(diagnostic,ensure_ascii=False,separators=(',',':')),flush=True)
+        input_diagnostics.failure()
     finally:
         unchanged=all(p.is_file() and hashlib.sha256(p.read_bytes()).hexdigest()==hashes[str(p.relative_to(ROOT))] for p in paths)
         report.update(sourceFiles=hashes,executionInputsUnchanged=unchanged,result=result,lastValidatedReport=last_validated_report,trustedAndroidActions=actions,actualAndroidTaps=sum(a['kind']=='tap' for a in actions),scope='Real Android emulator and production browser classes with controlled proxy-origin HTML, real Android DocumentsUI cancellation and native file publication. Installed integration APK/source/SDK identity is checked. No desktop-as-WebView, public website, physical phone or frame-time acceptance.')
@@ -258,6 +262,7 @@ def main():
             try:adb('shell','settings','delete','system',key) if value=='null' else adb('shell','settings','put','system',key,value)
             except Exception:pass
         (args.output/'results.json').write_text(json.dumps(report,ensure_ascii=False,indent=2)+'\n')
+        input_diagnostics.finish(report['status'])
         print(json.dumps(dict(status=report['status'],actualAndroidExecution=report['actualAndroidExecution'],actualAndroidWebViewExecution=report['actualAndroidWebViewExecution'],actualAndroidTaps=report['actualAndroidTaps'],output=str(args.output/'results.json'))))
     if error:raise error
 

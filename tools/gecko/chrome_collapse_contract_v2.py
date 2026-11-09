@@ -261,7 +261,7 @@ def verify_case(case, identity):
         if phase not in ADDRESS_PHASES:
             assert dialog['dialogRef'] == dialog['editorRef'] == 0
         if phase not in ADDRESS_PHASES + ('environmentPicker', 'more'):
-            assert sample['windowFocus'] is True
+            assert sample['windowFocus'] is True, ('Native collapse window focus', phase)
     # Same complete gesture geometry and trusted document input as v1.
     for before_key, after_key, expanded in (('initialChat', 'up', False), ('up', 'down', False), ('compactExpand', 'horizontal', True)):
         gesture(samples[before_key], samples[after_key]); assert samples[after_key]['expanded'] is expanded

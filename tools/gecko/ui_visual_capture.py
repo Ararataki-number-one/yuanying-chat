@@ -1,5 +1,6 @@
 """Read-only UI hierarchy acquisition within the caller's existing deadline."""
 import hashlib
+import importlib.util
 import json
 import math
 from pathlib import Path
@@ -9,6 +10,9 @@ import time
 import xml.etree.ElementTree as ET
 
 NULL_ROOT = 'ERROR: null root node returned by UiTestAutomationBridge.'
+_anr_spec = importlib.util.spec_from_file_location('ui_capture_anr_diagnostic', Path(__file__).with_name('ui_anr_diagnostic.py'))
+_anr = importlib.util.module_from_spec(_anr_spec)
+_anr_spec.loader.exec_module(_anr)
 
 
 class CaptureNotReady(RuntimeError):
@@ -21,6 +25,7 @@ class UiVisualCapture:
         self.diagnostics = Path(diagnostics)
         self.nonce = secrets.token_hex(16)
         self.count, self.records = 0, []
+        self.anr_diagnostic_attempted = False
         self.report = dict(schema=1, sourceCommit=source, runNonce=self.nonce, serial=serial,
             scope='Read-only accessibility acquisition; no input, Activity restart, layout change or UI acceptance.',
             attemptCount=0, droppedAttempts=0, attempts=self.records)
@@ -108,6 +113,16 @@ class UiVisualCapture:
             raise
         except Exception as error:
             record.update(status='failed', errorType=type(error).__name__, error=str(error))
+            if not self.anr_diagnostic_attempted:
+                try:
+                    observation = _anr.observed_dialog(self.records)
+                    if observation is not None:
+                        self.anr_diagnostic_attempted = True
+                        self.report['anrDiagnostic'] = _anr.collect(adb=self.adb, serial=self.serial,
+                            source=self.report['sourceCommit'], nonce=self.nonce,
+                            directory=self.diagnostics.parent, observation=observation)
+                except Exception as secondary:
+                    self.report['anrDiagnosticCollectionError'] = type(secondary).__name__
             raise
         finally:
             record['completedAtMonotonicNanos'] = time.monotonic_ns()

@@ -25,10 +25,26 @@ def node(parent, text='', description='', kind='Button', bounds='[0,0][144,144]'
     return ET.SubElement(parent,'node',attrs)
 
 
-def screen(conversation=True):
+def screen(conversation=True, stacked=False):
     root=ET.Element('hierarchy');host=node(root,kind='FrameLayout',bounds='[0,0][1080,1920]')
     capsule=node(host,description='当前环境：日常会话，点按输入网址，长按切换环境',bounds='[42,72][1038,216]',**{'long-clickable':'true'})
     node(host,description='当前环境网络：未配置',kind='LinearLayout',bounds='[42,216][1038,288]',clickable='false',focusable='false')
+    if conversation:
+        # Declared host geometry follows the production 360 dp native row:
+        # three equally weighted destinations, centered dock, square reading.
+        row_bounds='[36,1224][1044,1812]' if stacked else '[36,1596][1044,1812]'
+        dock_bounds='[144,1224][936,1506]' if stacked else '[276,1596][804,1812]'
+        reading_bounds='[762,1530][1044,1812]' if stacked else '[828,1596][1044,1812]'
+        row=node(host,kind='LinearLayout',bounds=row_bounds);row.set('class','android.view.ViewGroup')
+        dock=node(row,kind='LinearLayout',bounds=dock_bounds)
+        left,width,top,bottom=(159,254,1230,1500) if stacked else (291,166,1602,1806)
+        for i,label in enumerate(('环境','网络','下载')):
+            x=left+width*i
+            node(dock,text=label,description=label,bounds=f'[{x},{top}][{x+width},{bottom}]')
+        reading=node(row,kind='FrameLayout',bounds=reading_bounds)
+        node(reading,text='阅读',description='进入专注阅读模式',bounds=reading_bounds)
+        return root
+    assert not stacked
     row=node(host,kind='LinearLayout',bounds='[36,1640][1044,1856]')
     dock=node(row,kind='LinearLayout',bounds='[40,1640][820,1856]')
     labels=('环境','网络','下载') if conversation else ('会话','环境','下载','网络','设置')
@@ -103,13 +119,101 @@ class NavigationV2Tests(unittest.TestCase):
             return frames.pop(0) if parts[:2]==('shell','cat') else ''
         result=exercise_workspace_roundtrip(adb,xml(screen()),lambda name,value:saved.append((name,value)),PACKAGE)
         taps=[c for c in commands if c[:3]==('shell','input','tap')]
-        self.assertEqual(taps[:2],[('shell','input','tap','125','1748')]*2)
+        self.assertEqual(taps[:2],[('shell','input','tap','374','1704'),('shell','input','tap','125','1748')])
         self.assertEqual(taps[2:], [('shell','input','tap','540','1757')])
         self.assertEqual([c[:3] for c in commands].count(('shell','input','tap')),3)
         self.assertEqual(len(saved),3);self.assertEqual(result['actualAndroidTaps'],3)
         self.assertEqual([name for name,_ in saved],['production-navigation-environments.xml','production-navigation-dashboard.xml','production-navigation-chat.xml'])
         self.assertEqual(result['observations'][1]['dashboardEntry']['actualAndroidTap'],dict(label='进入聊天',point=[540,1757],bounds=[47,1694,1033,1820]))
         self.assertTrue(result['returnedToSameEnvironment'])
+
+
+class AdaptiveConversationNavigationTests(unittest.TestCase):
+    def parts(self,tree):
+        parents={child:parent for parent in tree.iter() for child in parent}
+        targets=[next(n for n in tree.iter('node') if n.get('text')==name) for name in ('环境','网络','下载','阅读')]
+        dock,reading=parents[targets[0]],parents[targets[-1]]
+        return targets,dock,reading,parents[dock]
+
+    def test_inline_and_stacked_keep_three_destinations_and_independent_reading(self):
+        for stacked in (False,True):
+            tree=screen(stacked=stacked)
+            value=conversation_header(xml(tree),PACKAGE,360,640,2 if stacked else 1,'日常会话')
+            self.assertEqual([row['label'] for row in value['controls']],['环境','网络','下载','阅读'])
+            parents={child:parent for parent in tree.iter() for child in parent}
+            targets,*_=self.parts(tree)
+            self.assertEqual(navigation_contract.conversation_layout(targets,parents,PACKAGE),'stacked' if stacked else 'inline')
+            self.assertTrue(all(not row['selected'] for row in value['controls']))
+
+    def test_three_destinations_never_overlap_reorder_or_use_different_rows(self):
+        for stacked in (False,True):
+            for mutation in ('overlap','reorder','different-row'):
+                tree=screen(stacked=stacked);targets,dock,reading,row=self.parts(tree)
+                rectangle=navigation_contract.bounds(targets[1])
+                if mutation=='overlap':rectangle[0]=navigation_contract.bounds(targets[0])[0]
+                elif mutation=='reorder':dock.remove(targets[1]);dock.insert(0,targets[1])
+                else:rectangle[1]+=1
+                targets[1].set('bounds',f'[{rectangle[0]},{rectangle[1]}][{rectangle[2]},{rectangle[3]}]')
+                with self.subTest(stacked=stacked,mutation=mutation),self.assertRaises(AssertionError):
+                    navigation(xml(tree),PACKAGE,conversation=True)
+
+    def test_native_containers_require_exact_owner_parentage_and_children(self):
+        for stacked in (False,True):
+            for mutation in ('owner','class','other-parent','extra-child','reading-in-dock'):
+                tree=screen(stacked=stacked);targets,dock,reading,row=self.parts(tree)
+                if mutation=='owner':row.set('package','foreign.application')
+                elif mutation=='class':row.set('class','android.widget.ScrollView')
+                elif mutation=='other-parent':row.remove(reading);list(tree)[0].append(reading)
+                elif mutation=='extra-child':node(row,kind='TextView',text='unowned extra')
+                else:reading.remove(targets[-1]);dock.append(targets[-1])
+                with self.subTest(stacked=stacked,mutation=mutation),self.assertRaises(AssertionError):
+                    navigation(xml(tree),PACKAGE,conversation=True)
+
+    def test_reading_must_fill_its_square_and_stay_inside_the_actual_row(self):
+        for stacked in (False,True):
+            for mutation in ('button-clipped','not-square','wrong-edge','outside-row','outside-window'):
+                tree=screen(stacked=stacked);targets,dock,reading,row=self.parts(tree)
+                l,t,r,b=navigation_contract.bounds(reading)
+                if mutation=='button-clipped':targets[-1].set('bounds',f'[{l+1},{t}][{r},{b}]')
+                elif mutation=='outside-window':list(tree)[0].set('bounds','[0,0][1080,1800]')
+                else:
+                    if mutation=='not-square':l+=1
+                    elif mutation=='wrong-edge':l-=1;r-=1
+                    else:l+=20;r+=20
+                    for target in (reading,targets[-1]):target.set('bounds',f'[{l},{t}][{r},{b}]')
+                with self.subTest(stacked=stacked,mutation=mutation),self.assertRaises(AssertionError):
+                    navigation(xml(tree),PACKAGE,conversation=True)
+
+    def test_destination_dock_cannot_shift_off_the_native_center(self):
+        for stacked in (False,True):
+            tree=screen(stacked=stacked);targets,dock,reading,row=self.parts(tree)
+            for target in [dock]+targets[:-1]:
+                l,t,r,b=navigation_contract.bounds(target);target.set('bounds',f'[{l+2},{t}][{r+2},{b}]')
+            with self.subTest(stacked=stacked),self.assertRaisesRegex(AssertionError,'centered'):
+                navigation(xml(tree),PACKAGE,conversation=True)
+
+    def test_stacked_is_a_distinct_second_row_and_requires_insufficient_inline_room(self):
+        for mutation in ('overlap','floating','unnecessary-wrap'):
+            tree=screen(stacked=True);targets,dock,reading,row=self.parts(tree)
+            l,t,r,b=navigation_contract.bounds(reading)
+            if mutation=='overlap':t-=30;b-=30
+            elif mutation=='floating':t+=1;b+=1
+            else:
+                row.set('bounds','[36,1224][1044,1812]')
+                dock.set('bounds','[390,1224][690,1506]')
+                for i,target in enumerate(targets[:-1]):target.set('bounds',f'[{395+98*i},1230][{493+98*i},1500]')
+            if mutation!='unnecessary-wrap':
+                for target in (reading,targets[-1]):target.set('bounds',f'[{l},{t}][{r},{b}]')
+            with self.subTest(mutation=mutation),self.assertRaises(AssertionError):navigation(xml(tree),PACKAGE,conversation=True)
+
+    def test_original_touch_size_and_explicit_viewport_bounds_still_reject_small_targets(self):
+        for stacked in (False,True):
+            tree=screen(stacked=stacked);targets,*_=self.parts(tree)
+            l,t,r,b=navigation_contract.bounds(targets[0]);targets[0].set('bounds',f'[{l},{t}][{l+143},{b}]')
+            with self.subTest(stacked=stacked),self.assertRaises(AssertionError):
+                conversation_header(xml(tree),PACKAGE,360,640,2 if stacked else 1,'日常会话')
+            with self.subTest(stacked=stacked,viewport='too-small'),self.assertRaises(AssertionError):
+                conversation_header(xml(screen(stacked=stacked)),PACKAGE,340,640,2 if stacked else 1,'日常会话')
 
 
 class RoundtripDashboardTests(unittest.TestCase):

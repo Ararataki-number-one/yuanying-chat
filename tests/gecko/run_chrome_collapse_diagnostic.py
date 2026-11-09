@@ -60,6 +60,7 @@ def collect_v2_diagnostics(integration,destination,source,identity):
     candidates={path.name:path for path in integration.glob('chrome-v2-*')}
     if not candidates:return []
     from chrome_collapse_contract_v2 import UI_PHASES
+    from integration_event_contract import decode_event
     phases='(?:'+'|'.join(sorted(UI_PHASES))+')'
     partials=[path for name,path in candidates.items() if re.fullmatch(r'chrome-v2-[0-9a-f]{32}-partial\.json',name)]
     if not 1<=len(partials)<=3:raise ValueError('Missing or excessive owned v2 diagnostic cases')
@@ -90,11 +91,12 @@ def collect_v2_diagnostics(integration,destination,source,identity):
         if value['eventTransfer']['runNonce']!=nonce or value['eventTransfer']['fixtureAction']!='chromeCollapse' or type(value['eventTransfer']['processSlot']) is not int or value['eventTransfer']['processSlot']!=0:
             raise ValueError('V2 partial events belong to another invocation')
         for row in value['eventTransfer']['events']:
-            receipt=row['receipt'];payload=row['rawUtf8'].encode('utf-8');envelope=json.loads(payload)
-            if (receipt['runNonce']!=nonce or receipt['fixtureAction']!='chromeCollapse' or receipt['processSlot']!=0
-                or envelope['runNonce']!=nonce or envelope['sourceCommit']!=source or envelope['buildIdentity']!=identity
-                or len(payload)!=receipt['payloadBytes'] or hashlib.sha256(payload).hexdigest()!=receipt['payloadSha256']):
-                raise ValueError('V2 original event payload belongs to another invocation or changed bytes')
+            # The installed identity also contains its native explanatory scope.
+            # Use the original complete transport reader: it binds every build,
+            # receipt, owner and byte digest field without comparing metadata
+            # dictionaries that intentionally have different descriptive keys.
+            decode_event(row['receipt'],row['rawUtf8'].encode('utf-8'),
+                         identity=identity,nonce=nonce,slot=0,action='chromeCollapse')
         if any(item['runNonce']!=nonce or item['sourceCommit']!=source for item in value['nativeUi'].values()):
             raise ValueError('V2 native UI belongs to another invocation')
         if not re.fullmatch('[0-9a-f]{32}',value['captureRunNonce']):raise ValueError('Missing v2 acquisition nonce')

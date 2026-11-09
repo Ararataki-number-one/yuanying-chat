@@ -39,7 +39,21 @@ def node(parent, kind, text='', description='', rectangle=(10, 10, 100, 60), **v
     return ET.SubElement(parent, 'node', attrs)
 
 
-def xml_for(phase):
+def navigation_geometry(width=360, scale=1):
+    # Host-only native geometry for the three declared viewport/font cohorts.
+    height=max(72,50+22*scale)*3;gap=24
+    row_width=width*3-72;stacked=scale==2
+    dock_width=792 if stacked else min(684,row_width-2*(height+gap))
+    top=1812-(height*2+gap if stacked else height)
+    left=36+(row_width-dock_width)//2
+    dock=[left,top,left+dock_width,top+height]
+    reading_top=top+height+gap if stacked else top
+    reading=[width*3-36-height,reading_top,width*3-36,reading_top+height]
+    controls=[[left+15+(dock_width-30)*i//3,top+6,left+15+(dock_width-30)*(i+1)//3,top+height-6] for i in range(3)]
+    return dict(row=[36,top,width*3-36,1812],dock=dock,reading=reading,controls=controls+[reading])
+
+
+def xml_for(phase,width=360,scale=1):
     root = ET.Element('hierarchy', rotation='0')
     if phase in v2.ADDRESS_PHASES:
         node(root, 'TextView', '打开网址')
@@ -61,11 +75,18 @@ def xml_for(phase):
         conversation = phase in v2.NORMAL_UI_PHASES
         labels = ('环境', '网络', '下载', '阅读') if conversation else ('会话', '环境', '下载', '网络', '设置')
         chosen = {'environment': '环境', 'drawer': '环境', 'network': '网络', 'downloads': '下载'}.get(phase)
-        dock = node(root, 'LinearLayout')
+        geometry=navigation_geometry(width,scale)
+        if conversation:
+            host=node(root,'FrameLayout',rectangle=(0,0,width*3,1920))
+            row=node(host,'LinearLayout',rectangle=geometry['row']);row.set('class','android.view.ViewGroup')
+            dock=node(row,'LinearLayout',rectangle=geometry['dock'])
+            reading=node(row,'FrameLayout',rectangle=geometry['reading'])
+        else:dock=node(root,'LinearLayout')
         for index, label in enumerate(labels):
-            parent = node(root, 'LinearLayout') if conversation and label == '阅读' else dock
+            parent = reading if conversation and label == '阅读' else dock
             description = '进入专注阅读模式' if conversation and label == '阅读' else label
-            node(parent, 'Button', label, description, (index*210, 1730, index*210+200, 1880),
+            rectangle=geometry['controls'][index] if conversation else (index*210,1730,index*210+200,1880)
+            node(parent, 'Button', label, description, rectangle,
                  selected='true' if label == chosen else 'false')
     return ET.tostring(root, encoding='unicode')
 
@@ -91,6 +112,8 @@ def reseal(report):
 
 
 def case_fixture(width, scale, nonce):
+    nav=navigation_geometry(width,scale)['controls']
+    nav_points=[[(l+r)//2,(t+b)//2] for l,t,r,b in nav]
     document = 'f'*32
     message = dict(kind='documentReady', url='http://127.0.0.1:8765/c/reload-collapse', appearanceDocument='g'*32)
     ready = dict(rawMessage=message, normalizedMessage=dict(message, url=v2.TARGET), senderUrl=message['url'],
@@ -108,7 +131,7 @@ def case_fixture(width, scale, nonce):
         documentReadyEvidence=ready, activityStarts=0, menuOpens=0, windowFocus=True,
         touches=[], nativeTouches=[], toolbarBounds=[0, 30, width*3, 270],
         compactTap=[width*3//2, 90], addressTap=[width*3//2, 210], moreTap=[width*3-70, 210], drawerTap=[70, 210],
-        environmentTap=[100, 1805], networkTap=[310, 1805], downloadsTap=[520, 1805], readingTap=[730, 1805],
+        environmentTap=nav_points[0], networkTap=nav_points[1], downloadsTap=nav_points[2], readingTap=nav_points[3],
         readingExitTap=[925, 172], readingRequested=False, readingActive=False, readingExitVisibility=8,
         navigationVisibility=0, navigationHeight=180, workspaceHeight=180,
         headerSwipeFrom=[width*3//2, 258], headerSwipeTo=[width*3//2, 31], headerButtonTouch=[180, 160, width*3-180, 260],
@@ -146,7 +169,7 @@ def case_fixture(width, scale, nonce):
     observations['headerUp']['nativeTouches'] = [dict(action=a, pointers=1, height=1400, expanded=True) for a in (0, 2, 1)]
     native_ui = {}
     for phase in v2.UI_PHASES:
-        raw = xml_for(phase)
+        raw = xml_for(phase,width,scale)
         component = v2.ENVIRONMENT_ACTIVITY if phase in ('environment', 'drawer') else v2.ACTIVITY
         activity = 'topResumedActivity=ActivityRecord{abc u0 '+component+' t8}\n'
         native_ui[phase] = dict(phase=phase, runNonce=nonce, sourceCommit='a'*40, rawXml=raw,
