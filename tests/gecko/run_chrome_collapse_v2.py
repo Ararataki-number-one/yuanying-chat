@@ -20,7 +20,8 @@ from integration_event_contract import EventTransfer, parse_receipt_line
 from profile_invocation_contract import expected_build, verify_installed
 from ui_visual_capture import UiVisualCapture
 from chrome_collapse_contract_v2 import (ACTIVITY, ENVIRONMENT_ACTIVITY, PACKAGE, PHASES, NAMES,
-                                         LEGACY_BEHAVIOR_MAP, address_cancel, inspect_ui, resumed, verify_case)
+                                         LEGACY_BEHAVIOR_MAP, address_cancel, inspect_ui, resumed, verify_case,
+                                         make_short_target_proof, verify_short_target)
 from run_chrome_collapse import resume_after_home, resume_transport
 
 
@@ -34,6 +35,64 @@ def cancel_address_once(*, observe, snapshot, tap, opened, returned):
     if time.monotonic() >= deadline:
         raise TimeoutError(('Native v2 observation deadline before cancel input', opened))
     tap(opened, returned, 'cancel', point=cancel['point'], bounds=cancel['bounds'])
+
+
+def short_swipe_once(*, capture, prefix, identity, nonce, android_user, before, diagnostic=None):
+    """Choose a non-editable target from fresh bytes before one original input.
+
+    Accessibility and Activity observations share the first twenty seconds of
+    the original ninety-second adb action budget. No input is retried, and the
+    unchanged caller owns the single subsequent thirty-second snapshot.
+    """
+    started_ns = time.monotonic_ns()
+    diagnostic = {} if diagnostic is None else diagnostic
+    diagnostic.update(schema=1, sourceCommit=identity['sourceCommit'], runNonce=nonce,
+        diagnosticOnly=True, releaseAcceptance=False, status='preparing', inputInvocations=0,
+        originalActionBudgetMs=90000, preparationBudgetMs=20000, actionStartedMonotonicNanos=started_ns)
+    preparation_deadline = (started_ns + 20_000_000_000) / 1_000_000_000
+    action_deadline = (started_ns + 90_000_000_000) / 1_000_000_000
+    xml = capture.read(deadline=preparation_deadline)
+    assert capture.diagnostics.is_file() and not capture.diagnostics.is_symlink()
+    original = json.loads(capture.diagnostics.read_bytes())
+    assert original['schema'] == 1 and original['sourceCommit'] == identity['sourceCommit']
+    assert original['runNonce'] == capture.nonce and original['attemptCount'] == capture.count
+    captured = original['attempts'][-1]
+    assert captured['index'] == capture.count and captured['status'] == 'captured'
+    remaining = preparation_deadline - time.monotonic()
+    if remaining <= 0:
+        raise TimeoutError('Original short-swipe preparation budget expired before Activity observation')
+    activity_started_ns = time.monotonic_ns()
+    activity = subprocess.check_output(prefix + ['shell', 'dumpsys', 'activity', 'activities'],
+                                       timeout=min(90, remaining)).decode('utf-8', 'strict')
+    activity_completed_ns = time.monotonic_ns()
+    proof = make_short_target_proof(raw_xml=xml, activity_state=activity, identity=identity,
+        nonce=nonce, android_user=android_user, before=before, capture_nonce=capture.nonce,
+        capture_record=captured, action_started_ns=started_ns,
+        activity_started_ns=activity_started_ns, activity_completed_ns=activity_completed_ns,
+        prepared_ns=time.monotonic_ns())
+    geometry = verify_short_target(proof, identity=identity, nonce=nonce,
+                                   android_user=android_user, before=before)
+    diagnostic.update(status='prepared', targetProof=proof)
+    if time.monotonic() >= preparation_deadline:
+        raise TimeoutError('Original short-swipe preparation budget expired before input')
+    remaining = action_deadline - time.monotonic()
+    if remaining <= 0:
+        raise TimeoutError('Original short-swipe action budget expired before input')
+    command = prefix + ['shell', 'input', 'swipe', *map(str, geometry['from'] + geometry['to']), '320']
+    diagnostic.update(status='input-command-started', inputInvocations=1, command=command,
+        inputStartedMonotonicNanos=time.monotonic_ns(), inputTimeoutSeconds=min(90, remaining))
+    try:
+        output = subprocess.check_output(command, timeout=min(90, remaining))
+    except Exception as error:
+        diagnostic.update(status='input-command-failed', errorType=type(error).__name__,
+            deliveryStatus='not-established', inputCompletedMonotonicNanos=time.monotonic_ns())
+        raise
+    diagnostic.update(status='input-command-returned', returnCode=0,
+        stdoutBytes=len(output), stdoutSha256=hashlib.sha256(output).hexdigest(),
+        inputCompletedMonotonicNanos=time.monotonic_ns())
+    if time.monotonic() >= action_deadline:
+        raise TimeoutError('Original short-swipe action budget expired during input')
+    return geometry, proof
 
 
 def run_v2(adb, adb_bytes, source, trace, out, focus):
@@ -54,8 +113,8 @@ def run_v2(adb, adb_bytes, source, trace, out, focus):
         user = int(user_text); nonce = uuid.uuid4().hex
         transfer = EventTransfer(identity=identity, nonce=nonce, slot=0, action='chromeCollapse',
                                  fetch=lambda uri: adb_bytes('exec-out', 'content', 'read', '--uri', uri))
-        observations, inputs, native_ui, ui_attempts, raw_files = {}, [], {}, [], []
-        first_readiness = None; header_readiness = None
+        observations, inputs, native_ui, ui_attempts, raw_files, short_attempts = {}, [], {}, [], [], []
+        first_readiness = None; header_readiness = None; resume_readiness = None
         capture = UiVisualCapture(adb=prefix[0], serial=prefix[2], source=source,
                                   diagnostics=out/('chrome-v2-ui-capture-'+nonce+'.json'))
         action = 'local.pocketchat.test.CHROME_COLLAPSE'
@@ -85,7 +144,8 @@ def run_v2(adb, adb_bytes, source, trace, out, focus):
                 captureStatus=capture_status, captureAttemptCount=capture.count,
                 observations=observations, actualAndroidInputs=inputs, nativeUi=native_ui,
                 firstTapReadiness=first_readiness, headerReadiness=header_readiness,
-                uiAttempts=ui_attempts, rawFiles=raw_files,
+                resumeReadiness=resume_readiness,
+                uiAttempts=ui_attempts, rawFiles=raw_files, shortAttempts=short_attempts,
                 eventTransfer=dict(runNonce=nonce, fixtureAction='chromeCollapse', processSlot=0, events=transfer.records))
             if capture_error is not None: value['captureError'] = capture_error
             if failure is not None: value['error'] = repr(failure)
@@ -178,9 +238,16 @@ def run_v2(adb, adb_bytes, source, trace, out, focus):
             x = s['webX']+s['webWidth']//2; top = s['webY']+s['webHeight']//4; bottom = s['webY']+s['webHeight']*2//3
             start, end = ([x, bottom], [x, top]) if direction == 'up' else ([x, top], [x, bottom])
             if direction == 'horizontal': start, end = [s['webX']+s['webWidth']//4, (top+bottom)//2], [s['webX']+s['webWidth']*3//4, (top+bottom)//2]
-            if direction == 'short': start, end = [x, bottom], [x, bottom-12]
-            adb('shell', 'input', 'swipe', *map(str, start+end), '320')
-            record('swipe', label, before, **{'from': start, 'to': end, 'durationMs': 320})
+            extra = {}
+            if direction == 'short':
+                attempt = {}; short_attempts.append(attempt)
+                geometry, proof = short_swipe_once(capture=capture, prefix=prefix, identity=identity,
+                    nonce=nonce, android_user=user, before=s, diagnostic=attempt)
+                start, end = geometry['from'], geometry['to']
+                extra['shortTargetProof'] = proof
+            else:
+                adb('shell', 'input', 'swipe', *map(str, start+end), '320')
+            record('swipe', label, before, **{'from': start, 'to': end, 'durationMs': 320}, **extra)
             return snapshot(label)
 
         def back(before, label):
@@ -203,7 +270,14 @@ def run_v2(adb, adb_bytes, source, trace, out, focus):
             tap('upBeforeNative', 'network', 'networkTap'); ui('network'); snapshot('network')
             back('network', 'nativeReturn')
             swipe('nativeReturn', 'upBeforeResume', 'up')
+            resume_deadline = time.monotonic()+20
             resume_after_home(ACTIVITY)
+            from chrome_resume_readiness import wait_resume_focus
+            resume_readiness = wait_resume_focus(argv=sys.argv[1:], source=source, identity=identity,
+                before=observations['upBeforeResume'], nonce=nonce, first_readiness=first_readiness,
+                deadline=resume_deadline, out=out)
+            if time.monotonic() >= resume_deadline:
+                raise TimeoutError('Original HOME roundtrip budget expired after focus observation')
             record('homeRoundtrip', 'activityResume', 'upBeforeResume', component=ACTIVITY, originalBudgetMs=20000)
             snapshot('activityResume')
             address('activityResume', 'resumeAddress', 'resumeChat')
@@ -243,6 +317,7 @@ def run_v2(adb, adb_bytes, source, trace, out, focus):
                         legacyBehaviorMap=[list(row) for row in LEGACY_BEHAVIOR_MAP],
                         observations=observations, actualAndroidInputs=inputs, nativeUi=native_ui,
                         firstTapReadiness=first_readiness, headerReadiness=header_readiness,
+                        resumeReadiness=resume_readiness,
                         eventTransfer=dict(runNonce=nonce, fixtureAction='chromeCollapse', processSlot=0, events=transfer.records),
                         fixtureRequests=requests)
             verify_case(case, identity)

@@ -6,6 +6,8 @@ replaced by explicit current-address and Network roundtrips. New destinations,
 reading, environment long-press, More and Drawer have additional real inputs.
 """
 import hashlib
+import json
+import math
 import re
 import xml.etree.ElementTree as ET
 
@@ -114,6 +116,182 @@ def resumed(raw):
         user, package, activity = match.groups()
         result.add((int(user), package + '/' + (package + activity if activity.startswith('.') else activity)))
     return result
+
+
+def short_target_geometry(raw_xml, before):
+    """Select one original 12 px short gesture outside actual editable controls.
+
+    Only the short gesture may use this explicit target contract. The original
+    center point wins whenever its complete segment has 24 px clearance. If it
+    intersects an actionable descendant, choose a deterministic free segment
+    in the same owned WebView, preferring its original vertical position.
+    """
+    assert type(raw_xml) is str and 0 < len(raw_xml.encode('utf-8')) <= 1024*1024
+    assert before['command'] == 'horizontal' and before['expanded'] is True
+    assert before['keyboard'] is False and before['windowFocus'] is True
+    assert type(before['page']) is int and before['page'] == 0 and before['addressDialog']['showing'] is False
+    for key in ('webX', 'webY', 'webWidth', 'webHeight'):
+        assert type(before[key]) is int and before[key] >= 0
+    expected = [before['webX'], before['webY'], before['webX']+before['webWidth'],
+                before['webY']+before['webHeight']]
+    left, top, right, bottom = rect(expected)
+    tree = ET.fromstring(raw_xml)
+    assert tree.tag == 'hierarchy'
+    nodes = list(tree.iter('node')); assert 0 < len(nodes) <= 4096
+    webs = [n for n in nodes if n.attrib.get('class') == 'android.webkit.WebView']
+    assert len(webs) == 1, 'Short target needs one unambiguous native WebView'
+    web = webs[0]
+    assert web.attrib.get('package') == PACKAGE and web.attrib.get('enabled') == 'true'
+    assert bounds(web) == expected, 'Short target WebView moved after horizontal snapshot'
+    parents = {child: parent for parent in tree.iter() for child in parent}
+    ancestor = web
+    while parents.get(ancestor) is not None and parents[ancestor].tag == 'node':
+        ancestor = parents[ancestor]
+        assert ancestor.attrib.get('package') == PACKAGE, 'Short target has a foreign native ancestor'
+        al, at, ar, ab = bounds(ancestor)
+        assert al <= left < right <= ar and at <= top < bottom <= ab
+    descendants = list(web.iter('node'))[1:]
+    controls = []
+    for node in descendants:
+        assert node.attrib.get('package') == PACKAGE, 'Short target has a foreign WebView descendant'
+        flags = ('clickable', 'long-clickable', 'focusable', 'checkable')
+        assert all(node.attrib.get(key) in ('true', 'false') for key in flags)
+        actionable = node.attrib.get('class') == 'android.widget.EditText' or any(node.attrib[key] == 'true' for key in flags)
+        if actionable:
+            rectangle = bounds(node)
+            if max(left, rectangle[0]) < min(right, rectangle[2]) and max(top, rectangle[1]) < min(bottom, rectangle[3]):
+                controls.append(rectangle)
+    # An overlapping native control or foreign window cannot become a blank
+    # area merely because it is outside the WebView's accessibility subtree.
+    descendants_set = set(descendants)
+    ancestors = set(); ancestor = web
+    while parents.get(ancestor) is not None:
+        ancestor = parents[ancestor]; ancestors.add(ancestor)
+    for node in nodes:
+        if node is web or node in descendants_set or node in ancestors: continue
+        rectangle = bounds(node)
+        if max(left, rectangle[0]) >= min(right, rectangle[2]) or max(top, rectangle[1]) >= min(bottom, rectangle[3]): continue
+        assert node.attrib.get('package') == PACKAGE, 'Short target overlaps a foreign native window'
+        if node.attrib.get('class') == 'android.widget.EditText' or any(node.attrib.get(key) == 'true' for key in ('clickable', 'long-clickable', 'focusable', 'checkable')):
+            controls.append(rectangle)
+    controls = [list(value) for value in sorted(set(map(tuple, controls)))]
+    assert len(controls) <= 512
+    margin, distance = 24, 12
+    original = [left+(right-left)//2, top+(bottom-top)*2//3]
+    xl, xr, yt, yb = left+margin, right-margin, top+margin+distance, bottom-margin
+    assert xl < xr and yt < yb, 'No sufficiently inset WebView short target'
+    blocked = [(max(xl, l-margin), max(yt, t-margin), min(xr, r+margin), min(yb, b+margin+distance))
+               for l, t, r, b in controls]
+    blocked = [row for row in blocked if row[0] < row[2] and row[1] < row[3]]
+    def safe(point):
+        x, y = point
+        return xl <= x < xr and yt <= y < yb and not any(l <= x < r and t <= y < b for l, t, r, b in blocked)
+    selected = original
+    if not safe(selected):
+        # Sweep only rectangle boundaries, never an unbounded pixel grid.
+        boundaries = sorted({yt, yb, *(n for row in blocked for n in (row[1], row[3]))})
+        ys = {max(yt, min(yb-1, original[1]))}
+        ys.update((a+b-1)//2 for a, b in zip(boundaries, boundaries[1:]) if a < b)
+        candidates = []
+        for y in sorted(ys):
+            intervals = sorted((l, r) for l, t, r, b in blocked if t <= y < b)
+            edge = xl
+            for l, r in intervals + [(xr, xr)]:
+                if edge < l:
+                    x = original[0] if edge <= original[0] < l else (edge+l-1)//2
+                    candidates.append([x, y])
+                edge = max(edge, r)
+        assert candidates, 'No editable-safe short gesture segment remains'
+        selected = min(candidates, key=lambda p:(abs(p[1]-original[1]), abs(p[0]-original[0]), p[1], p[0]))
+    assert safe(selected)
+    return dict(targetContract=1, webBounds=expected, excludedBounds=controls, marginPx=margin,
+                originalFrom=original, originalTo=[original[0], original[1]-distance],
+                **{'from': selected, 'to': [selected[0], selected[1]-distance], 'durationMs': 320})
+
+
+def make_short_target_proof(*, raw_xml, activity_state, identity, nonce, android_user, before,
+                            capture_nonce, capture_record, action_started_ns, activity_started_ns,
+                            activity_completed_ns, prepared_ns):
+    """Bind a fresh read-only capture to one pre-emission short target.
+
+    Host monotonic times describe the real acquisition order, not Android event
+    timestamps. This is input preparation inside the original 90 s command
+    budget; it is never a replacement snapshot or a passing application result.
+    """
+    assert type(raw_xml) is str and 0 < len(raw_xml.encode('utf-8')) <= 1024*1024
+    assert re.fullmatch('[0-9a-f]{40}', identity['sourceCommit']) and re.fullmatch('[0-9a-f]{40}', identity['sourceTree'])
+    assert re.fullmatch('[0-9a-f]{64}', identity['apkSha256'])
+    assert re.fullmatch('[0-9a-f]{32}', nonce) and re.fullmatch('[0-9a-f]{32}', capture_nonce)
+    assert type(android_user) is int and android_user >= 0
+    assert type(activity_state) is str and 0 < len(activity_state.encode('utf-8')) <= 1024*1024
+    assert resumed(activity_state) == {(android_user, ACTIVITY)}
+    for value in (action_started_ns, activity_started_ns, activity_completed_ns, prepared_ns):
+        assert type(value) is int and value > 0
+    preparation_deadline = action_started_ns+20_000_000_000
+    assert action_started_ns <= activity_started_ns <= activity_completed_ns <= prepared_ns < preparation_deadline
+    record = json.loads(json.dumps(capture_record, ensure_ascii=False, allow_nan=False))
+    assert set(record) == set(('index remotePath commands startedAtMonotonicNanos existingSceneDeadline status xmlBytes xmlSha256 completedAtMonotonicNanos').split())
+    assert type(record['index']) is int and record['index'] > 0 and record['status'] == 'captured'
+    remote = '/sdcard/pocketchat-ui-visual-'+capture_nonce+'-'+str(record['index'])+'.xml'
+    assert record['remotePath'] == remote
+    deadline = record['existingSceneDeadline']
+    assert type(deadline) in (int, float) and math.isfinite(deadline) and abs(deadline*1_000_000_000-preparation_deadline) <= 1024
+    for key in ('startedAtMonotonicNanos', 'completedAtMonotonicNanos'):
+        assert type(record[key]) is int
+    assert action_started_ns <= record['startedAtMonotonicNanos'] <= record['completedAtMonotonicNanos'] <= activity_started_ns
+    raw = raw_xml.encode('utf-8'); digest = hashlib.sha256(raw).hexdigest()
+    assert type(record['xmlBytes']) is int and record['xmlBytes'] == len(raw) and record['xmlSha256'] == digest
+    commands = record['commands']; assert type(commands) is list and len(commands) == 2
+    previous = record['startedAtMonotonicNanos']
+    for index, command in enumerate(commands):
+        assert set(command) == set(('parts startedAtWallTimeMillis startedAtMonotonicNanos timeoutSeconds exitCode stdout stderr completedAtMonotonicNanos completedAtWallTimeMillis').split())
+        assert command['parts'] == (['shell', 'uiautomator', 'dump', remote] if index == 0 else ['shell', 'cat', remote])
+        assert type(command['exitCode']) is int and command['exitCode'] == 0
+        for key in ('startedAtWallTimeMillis', 'completedAtWallTimeMillis', 'startedAtMonotonicNanos', 'completedAtMonotonicNanos'):
+            assert type(command[key]) is int and command[key] > 0
+        assert previous <= command['startedAtMonotonicNanos'] <= command['completedAtMonotonicNanos'] <= record['completedAtMonotonicNanos']
+        assert command['startedAtWallTimeMillis'] <= command['completedAtWallTimeMillis']
+        remaining = (preparation_deadline-command['startedAtMonotonicNanos'])/1_000_000_000
+        timeout = command['timeoutSeconds']
+        assert type(timeout) in (int, float) and math.isfinite(timeout) and 0 < timeout <= 20 and timeout <= remaining+.002
+        previous = command['completedAtMonotonicNanos']
+        def output(value, expected):
+            assert set(value) == {'bytes', 'sha256', 'text', 'truncated'}
+            assert type(value['bytes']) is int and value['bytes'] == len(expected)
+            assert value['sha256'] == hashlib.sha256(expected).hexdigest()
+            assert value['text'] == expected[:8192].decode('utf-8', 'replace')
+            assert value['truncated'] is (len(expected) > 8192)
+        output(command['stderr'], b'')
+        if index == 0:
+            stdout = command['stdout']['text'].encode('utf-8')
+            assert stdout.decode().strip() in ('', 'UI hierchary dumped to: '+remote, 'UI hierarchy dumped to: '+remote)
+            output(command['stdout'], stdout)
+        else: output(command['stdout'], raw)
+    geometry = short_target_geometry(raw_xml, before)
+    activity = activity_state.encode('utf-8')
+    return dict(schema=1, kind='shortSwipeTarget', phase='horizontal', preEmitOnly=True,
+        applicationAcceptance=False, sourceCommit=identity['sourceCommit'], sourceTree=identity['sourceTree'],
+        apkSha256=identity['apkSha256'], runNonce=nonce, androidUser=android_user,
+        beforeSnapshotSha256=hashlib.sha256(json.dumps(before, ensure_ascii=False, sort_keys=True, separators=(',', ':'), allow_nan=False).encode()).hexdigest(),
+        rawXml=raw_xml, xmlBytes=len(raw), xmlSha256=digest,
+        activityState=activity_state, activityBytes=len(activity), activitySha256=hashlib.sha256(activity).hexdigest(),
+        captureRunNonce=capture_nonce, captureRecord=record, actionStartedAtMonotonicNanos=action_started_ns,
+        activityStartedAtMonotonicNanos=activity_started_ns, activityCompletedAtMonotonicNanos=activity_completed_ns,
+        preparedAtMonotonicNanos=prepared_ns, originalActionBudgetMs=90000, preparationBudgetMs=20000, geometry=geometry)
+
+
+def verify_short_target(proof, *, identity, nonce, android_user, before):
+    """Recompute every target field from the original bytes; never trust a point."""
+    expected = make_short_target_proof(raw_xml=proof['rawXml'], activity_state=proof['activityState'],
+        identity=identity, nonce=nonce, android_user=android_user, before=before,
+        capture_nonce=proof['captureRunNonce'], capture_record=proof['captureRecord'],
+        action_started_ns=proof['actionStartedAtMonotonicNanos'], activity_started_ns=proof['activityStartedAtMonotonicNanos'],
+        activity_completed_ns=proof['activityCompletedAtMonotonicNanos'], prepared_ns=proof['preparedAtMonotonicNanos'])
+    assert json.dumps(proof, sort_keys=True, allow_nan=False) == json.dumps(expected, sort_keys=True, allow_nan=False), 'Short target proof differs from its original read-only observations'
+    assert type(proof['schema']) is int and type(proof['geometry']['targetContract']) is int
+    assert type(proof['androidUser']) is int and type(proof['xmlBytes']) is type(proof['activityBytes']) is int
+    assert type(proof['originalActionBudgetMs']) is type(proof['preparationBudgetMs']) is int
+    return expected['geometry']
 
 
 def modal(xml, kind, environment):
@@ -309,6 +487,7 @@ def verify_case(case, identity):
     inputs = case['actualAndroidInputs']; assert len(inputs) == len(INPUTS)
     for row, (label, kind, previous, target) in zip(inputs, INPUTS):
         assert row['label'] == label and row['kind'] == kind and row['before'] == previous and row['actualAndroidInput'] is True
+        assert 'shortTargetProof' not in row or (kind == 'swipe' and target == 'short' and previous == 'horizontal')
         if kind == 'tap':
             if target == 'cancel':
                 wanted = interpreted[previous]['controls'][0]; assert row['bounds'] == wanted['bounds']
@@ -325,6 +504,10 @@ def verify_case(case, identity):
             start, end = ([x, bottom], [x, top]) if target == 'up' else ([x, top], [x, bottom])
             if target == 'horizontal': start, end = [s['webX']+s['webWidth']//4, (top+bottom)//2], [s['webX']+s['webWidth']*3//4, (top+bottom)//2]
             if target == 'short': start, end = [x, bottom], [x, bottom-12]
+            if target == 'short' and 'shortTargetProof' in row:
+                geometry = verify_short_target(row['shortTargetProof'], identity=identity,
+                    nonce=case['runNonce'], android_user=case['androidUser'], before=s)
+                start, end = geometry['from'], geometry['to']
             if target == 'header': start, end = s['headerSwipeFrom'], s['headerSwipeTo']
             assert row['from'] == start and row['to'] == end
         elif kind == 'longPress':
