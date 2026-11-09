@@ -8,6 +8,7 @@ import unittest
 from unittest.mock import patch
 
 import chrome_first_tap_source_compatibility as compat
+from chrome_navigation_v2_source_compatibility import source_input as before_navigation
 from profile_chrome_home_resume_test import original_header_runner
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -20,7 +21,7 @@ class FirstTapHistoricalSourceControls(unittest.TestCase):
     def test_two_whole_sources_inverse_and_forward_equal_real_committed_bytes(self):
         for relative, row in compat.manifest()['files'].items():
             previous = subprocess.check_output(['git', 'show', compat.BASE_COMMIT + ':' + relative], cwd=ROOT)
-            current = (ROOT / relative).read_bytes()
+            current = before_navigation((ROOT / relative).read_bytes(), relative)
             with self.subTest(path=relative):
                 self.assertEqual((SHA(previous), len(previous)), (row['previousSha256'], row['previousBytes']))
                 self.assertEqual((SHA(current), len(current)), (row['reviewedSha256'], row['reviewedBytes']))

@@ -186,12 +186,34 @@ class FingerprintServer:
 
 class AndroidUserCa:
     """Only PUBLIC CA bytes cross adb; no system/APEX writes or permissive TLS."""
-    def __init__(self,adb,certificates):self.adb=adb;self.certificates=certificates;self.path=None;self.receipt={};self.root_requested=False
+    def __init__(self,adb,certificates):self.adb=adb;self.certificates=certificates;self.path=None;self.receipt={};self.root_requested=False;self.adbd_transitions=[]
+    @staticmethod
+    def transition_failure(error):
+        def text(value):return value.decode('utf-8','backslashreplace') if isinstance(value,bytes) else value or ''
+        return dict(errorType=type(error).__name__,error=str(error),returncode=getattr(error,'returncode',None),stdout=text(getattr(error,'stdout',None)),stderr=text(getattr(error,'stderr',None)))
     def set_root(self,root):
-        self.adb('root' if root else 'unroot');self.adb('wait-for-device',timeout=60)
-        uid=self.adb('shell','id','-u').stdout.decode().strip()
-        require(uid==('0' if root else '2000'),'adb root unavailable' if root else 'shell evidence UID 2000 unavailable')
-        return int(uid)
+        command='root' if root else 'unroot';expected='0' if root else '2000'
+        transition=dict(command=command,targetUid=int(expected),status='running',retried=False,attempts=[]);self.adbd_transitions.append(transition)
+        # root/unroot restarts adbd. A failed host request may have changed the
+        # daemon already; reconnect before one bounded, identical request.
+        # Never accept its nonzero exit or infer the UID from that request.
+        for number in (1,2):
+            attempt=dict(number=number,phase='request');transition['attempts'].append(attempt)
+            try:
+                result=self.adb(command,check=True,timeout=30);attempt['returncode']=result.returncode;attempt['requestReturncode']=result.returncode
+                attempt['phase']='reconnect';self.adb('wait-for-device',timeout=60)
+                attempt['phase']='uid';uid=self.adb('shell','id','-u').stdout.decode().strip();attempt['observedUid']=uid
+                require(uid==expected,'adb root unavailable' if root else 'shell evidence UID 2000 unavailable')
+            except Exception as error:
+                attempt.update(status='failed',**self.transition_failure(error));transition.setdefault('firstError',dict(attempt))
+                if number!=1 or attempt['phase']!='request' or not isinstance(error,subprocess.CalledProcessError):
+                    transition['status']='failed';raise
+                try:self.adb('wait-for-device',timeout=60)
+                except Exception as reconnect_error:
+                    transition.update(status='failed',retryReconnect=dict(status='failed',**self.transition_failure(reconnect_error)));raise
+                transition['retryReconnect']=dict(status='passed');transition['retried']=True
+                continue
+            attempt['status']='passed';transition['status']='passed';return int(uid)
     def install(self):
         a=self.adb;c=self.certificates
         require(a('shell','getprop','ro.kernel.qemu').stdout.decode().strip()=='1','controlled emulator required')
@@ -209,7 +231,7 @@ class AndroidUserCa:
         require(not a('shell','restorecon','-n','-v',path).stdout.strip(),'CA SELinux label not restored')
         a('shell','am','force-stop','local.pocketchat.test')
         evidence_uid=self.set_root(False)
-        self.receipt=dict(method='domain-scoped-user-ca',androidUser=0,adbRoot=True,selinuxEnforcing=True,installedPublicCaBytesMatch=True,ownerAndMode=mode,selinuxContext=label,storePath=path,subjectHashOld=c.subject_hash,appForceStoppedAfterInstall=True,publicCaPemSha256=c.ca_sha,expectedLeafDerSha256=c.leaf_sha,evidenceShellUid=evidence_uid,shellRestoredAfterInstall=True,removedAfterExecution=False)
+        self.receipt=dict(method='domain-scoped-user-ca',androidUser=0,adbRoot=True,selinuxEnforcing=True,installedPublicCaBytesMatch=True,ownerAndMode=mode,selinuxContext=label,storePath=path,subjectHashOld=c.subject_hash,appForceStoppedAfterInstall=True,publicCaPemSha256=c.ca_sha,expectedLeafDerSha256=c.leaf_sha,evidenceShellUid=evidence_uid,shellRestoredAfterInstall=True,removedAfterExecution=False,adbdTransitions=self.adbd_transitions)
         return self.receipt
 
     def remove(self):

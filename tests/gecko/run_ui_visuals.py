@@ -12,6 +12,10 @@ sys.path.insert(0,str(root/'tools/gecko'))
 from ui_visual_capture import UiVisualCapture
 from diagnostic_capture_privacy import checked_text
 from ui_visual_contract import LIGHT_SCENES, LARGE_SCENES, DARK_SCENES, LANDSCAPE_SCENES, required_captures, verify_captures, verify_download_location
+from workspace_navigation_contract import conversation_header
+from compact_chrome_v2 import run_case as capture_compact_v2
+from workspace_ui_v2 import capture_selection as capture_environment_selection
+UI_NAVIGATION_CONTRACT=2
 scenes=LIGHT_SCENES
 last_geometry=None
 ui_capture=UiVisualCapture(adb=args.adb,serial=args.serial,source=source,diagnostics=out/'ui-visual-capture-attempts.json')
@@ -97,6 +101,7 @@ def capture(variant,width,height,scale,scene,theme='light'):
     required={'chat':'会话','environments':'环境管理','network':'固定测试出口','proxy':'代理地址','entries':'选择入口','browser':'基本信息','preferences':'基本信息','settings':'启动与界面','network-menu':'导入网络',
       'environment-picker':'切换环境','downloads':'项目资料与界面设计说明.pdf','feedback':'一句话说明','appearance':'白天与黑夜','default-entry':'默认环境与启动入口',
       'subscription-form':'订阅名称','exit-form':'SOCKS5 服务器','route-editor':'保存并应用','import':'选择分享文件','brand':'元婴期院士','templates':'选择模板','zoom':'网页缩放','update':'当前安装版本','audit':'环境自检与变更','file-preview':'双指缩放 · 拖动查看','delete-file':'删除文件','share-preview':'分享整条线路'}[scene]
+    if UI_NAVIGATION_CONTRACT==2:required={'chat':'当前环境：日常会话','settings':'启动与外观'}.get(scene,required)
     deadline=time.monotonic()+35;readiness_scrolls=0;download_observation_history=None
     while True:
         xml=dump(deadline=deadline)
@@ -142,7 +147,10 @@ def capture(variant,width,height,scale,scene,theme='light'):
             adb('shell','input','swipe',str(x),str(top+(bottom-top)*4//5),str(x),str(top+(bottom-top)//5),'350')
         assert seen==expected,(variant,scene,'Preference controls missing or unexpected',sorted(seen))
         preference_check={'preferenceControls':sorted(seen),'removedNoticeControlsAbsent':True,'scrollFrames':len(collected),'tabScrolls':tab_scrolls}
-    if scene=='chat':
+    if scene=='chat' and UI_NAVIGATION_CONTRACT==2:
+        time.sleep(2.5);xml=dump()
+        conversation_header(xml,package,width,height,scale,'日常会话')
+    elif scene=='chat':
         time.sleep(2.5);xml=dump();assert all(label in xml for label in ['会话','环境','下载','网络','设置'])
         assert not any(n.attrib.get('text') in ['简洁','原网页'] for n in ET.fromstring(xml).iter('node')),xml
         nodes=list(ET.fromstring(xml).iter('node'))
@@ -189,7 +197,9 @@ def capture(variant,width,height,scale,scene,theme='light'):
         (shots/(stem+'-download-location.json')).write_text(payloads[0]+'\n')
         verify_download_location(record,source)
     if scene=='preferences':record.update(preference_check)
-    if scene=='environments':
+    if scene=='environments' and UI_NAVIGATION_CONTRACT==2:
+        capture_environment_selection(adb,lambda *parts:subprocess.check_output([args.adb,'-s',args.serial,*parts],timeout=90),dump,xml,package,width,height,shots,stem,record)
+    elif scene=='environments':
         # Exercise the real multi-select footer, including doubled accessibility text.
         count=next(n for n in ET.fromstring(xml).iter('node') if n.attrib.get('text')=='8 个环境')
         bounds=list(map(int,re.findall(r'\d+',count.attrib['bounds'])))
@@ -314,6 +324,9 @@ try:
         return {'title':'快速切换环境','searchDescription':'搜索要切换的环境','closeDescription':'关闭快速切换环境','currentSlot':slot,
                 'titleBounds':bounds(title[0]),'searchBounds':bounds(search[0]),'currentBounds':bounds(current[0]),'closeBounds':bounds(close[0])}
     for width,scale in [(360,1),(412,1),(360,2)]:
+        if UI_NAVIGATION_CONTRACT==2:
+            compact.append(capture_compact_v2(adb,lambda *parts:subprocess.check_output([args.adb,'-s',args.serial,*parts],timeout=90),dump,chrome_event,focus,visible,quick_environment_sheet,shots,package,width,scale))
+            continue
         adb('shell','am','force-stop',package);adb('logcat','-c')
         adb('shell','wm','size',f'{width*3}x1920');adb('shell','wm','density','480');adb('shell','settings','put','system','font_scale',str(scale))
         command=f'compact-{width}-{scale}'
@@ -468,8 +481,8 @@ try:
         # This partial file cannot replace compact-chrome-results or full UI acceptance.
         (out/'ui-reload-confirmation.json').write_text(json.dumps(reload_confirmation,ensure_ascii=False,indent=2)+'\n')
         (out/'ui-reload-log.txt').write_text(checked_text(adb('logcat','-d'))[0])
-        from run_chrome_collapse import run as run_chrome_collapse
-        auto_collapse=run_chrome_collapse(adb,lambda *parts:subprocess.check_output([args.adb,'-s',args.serial,*parts],timeout=90),source,reload_loopback.TRACE,out,focus)
+        from run_chrome_collapse import run_versioned as run_chrome_collapse
+        auto_collapse=run_chrome_collapse(adb,lambda *parts:subprocess.check_output([args.adb,'-s',args.serial,*parts],timeout=90),source,reload_loopback.TRACE,out,focus,navigation_contract=2)
     finally:
         (out/'ui-collapse-server-trace.json').write_text(json.dumps({'sourceCommit':source,'diagnosticOnly':True,'releaseAcceptance':False,'events':reload_loopback.TRACE},ensure_ascii=False,indent=2)+'\n')
         reload_http.shutdown();reload_socks.shutdown()

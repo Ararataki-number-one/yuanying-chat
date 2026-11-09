@@ -22,6 +22,15 @@ NAMES={
 }
 
 def verify_auto_collapse(report,source,apk_sha):
+    if 'navigationContract' in report:
+        version=report['navigationContract']
+        assert type(version) is int and version in (1,2), 'Unknown Chrome navigation contract'
+        if version==2:
+            if __package__:
+                from .chrome_collapse_contract_v2 import verify_auto_collapse_v2
+            else:
+                from chrome_collapse_contract_v2 import verify_auto_collapse_v2
+            return verify_auto_collapse_v2(report,source,apk_sha)
     assert report['status']=='passed' and report['sourceCommit']==source
     assert all(report[k] is True for k in ['actualAndroidExecution','actualGeckoExecution','actualAndroidTouchExecution'])
     identity=report['buildIdentity'];assert identity['sourceCommit']==source and identity['apkSha256']==apk_sha

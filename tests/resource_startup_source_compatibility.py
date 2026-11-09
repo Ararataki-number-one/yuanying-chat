@@ -137,3 +137,7 @@ def root_manifest_input(value):
 # Exact after-image rows; original resource guards and forward contexts remain.
 from gradle_workflow_test_source_compatibility import wrap_resource_config as _gradle_resource_config
 config = _gradle_resource_config(config)
+
+# Exact workspace-navigation source view for historical metadata only.
+from workspace_runner_source_compatibility import wrap_input as _workspace_source_input
+source_input = _workspace_source_input(source_input)

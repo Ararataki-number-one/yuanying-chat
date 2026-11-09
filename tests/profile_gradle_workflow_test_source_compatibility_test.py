@@ -8,6 +8,7 @@ import unittest
 
 import final_browser_source_compatibility as final
 import gradle_workflow_test_source_compatibility as inputs
+from workspace_runner_source_compatibility import historical_input as workspace_source_input
 import profile_fixture_root_source_compatibility_test as root_controls
 import profile_resource_startup_source_compatibility_test as resource_controls
 
@@ -29,7 +30,7 @@ class GradleWorkflowTestSourceCompatibilityTests(unittest.TestCase):
         value = inputs.manifest()
         self.assertEqual(git('rev-parse', value['baseCommit'] + '^{tree}').decode().strip(), value['baseTree'])
         for path, row in value['files'].items():
-            raw = (ROOT / path).read_bytes()
+            raw = workspace_source_input((ROOT / path).read_bytes(), path)
             before = git('show', value['baseCommit'] + ':' + path)
             self.assertEqual(inputs.source_input(raw, path), before)
             self.assertEqual((inputs.sha(before), len(before)), (row['previousSha256'], row['previousBytes']))
@@ -44,7 +45,7 @@ class GradleWorkflowTestSourceCompatibilityTests(unittest.TestCase):
 
     def test_actual_after_context_mutations_still_face_original_guards(self):
         for path, row in inputs.manifest()['files'].items():
-            raw = (ROOT / path).read_bytes()
+            raw = workspace_source_input((ROOT / path).read_bytes(), path)
             candidates = [raw + b' ', raw[:1000], b'unknown source']
             for delta in row['deltas']:
                 current = delta['current'].encode()

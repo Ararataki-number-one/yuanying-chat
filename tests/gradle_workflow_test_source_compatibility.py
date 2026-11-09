@@ -151,3 +151,9 @@ def wrap_build_budget_helper_before(original):
     def historical_helper(raw):
         return original(historical_input(raw, FINAL))
     return historical_helper
+
+
+# Exact workspace-navigation source view for historical metadata only.
+from workspace_runner_source_compatibility import wrap_input as _workspace_source_input
+source_input = _workspace_source_input(source_input)
+historical_input = _workspace_source_input(historical_input)

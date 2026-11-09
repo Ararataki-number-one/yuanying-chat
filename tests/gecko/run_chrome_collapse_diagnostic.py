@@ -75,6 +75,8 @@ def main():
     if not apk.is_file():raise ValueError('Restored selected-source UI APK is missing')
     original=ROOT/'tests/gecko/run_ui_visuals.py';program=selected_program(original.read_text(),args.scenario)
     inputs=['tests/gecko/run_ui_visuals.py','tests/gecko/run_chrome_collapse.py','tests/gecko/run_chrome_collapse_diagnostic.py','tests/gecko/ChromeCollapseIntegration.java','tools/gecko/chrome_collapse_contract.py',
+        'tests/gecko/run_chrome_collapse_v2.py','tools/gecko/chrome_collapse_contract_v2.py',
+        'tools/gecko/workspace_navigation_contract.py','tools/gecko/compact_chrome_layout_v2.py','tools/gecko/ui_visual_capture.py',
         'tests/gecko/CompactChromeIntegrationActivity.java','tests/gecko/ReloadWindowCallbackObservation.java',
         'tools/gecko/ui_test_device.py','tests/gecko/ui_settings_services_device11.py']
     hashes={p:hashlib.sha256((ROOT/p).read_bytes()).hexdigest() for p in inputs}

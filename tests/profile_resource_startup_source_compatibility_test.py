@@ -11,6 +11,7 @@ import unittest
 from unittest.mock import patch
 
 import resource_startup_source_compatibility as layer
+from workspace_runner_source_compatibility import historical_input as workspace_source_input
 
 ROOT = Path(__file__).resolve().parents[1]
 SHA = lambda raw: hashlib.sha256(raw).hexdigest()
@@ -33,7 +34,7 @@ class ResourceStartupHistoricalInputs(unittest.TestCase):
         self.assertEqual(set(cfg['sources']), set(layer.SOURCE_PATHS))
         for relative, row in cfg['sources'].items():
             with self.subTest(path=relative):
-                current = (ROOT/relative).read_bytes()
+                current = workspace_source_input((ROOT/relative).read_bytes(), relative)
                 previous = layer.source_input(current, relative)
                 self.assertEqual((SHA(previous), len(previous)), (row['previousSha256'], row['previousBytes']))
                 forward = previous
@@ -85,7 +86,7 @@ class ResourceStartupHistoricalInputs(unittest.TestCase):
     def test_each_missing_duplicate_changed_moved_unknown_and_foreign_image_rejects(self):
         rejected = 0
         for path, row in layer.config()['sources'].items():
-            current = (ROOT/path).read_bytes()
+            current = workspace_source_input((ROOT/path).read_bytes(), path)
             for delta in row['edits']:
                 chunk = delta['current'].encode()
                 remainder = current.replace(chunk, b'', 1)

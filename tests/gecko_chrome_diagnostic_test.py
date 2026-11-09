@@ -65,6 +65,9 @@ class FocusedDiagnosticTest(unittest.TestCase):
             self.assertEqual(len([n for n in ast.walk(selected) if isinstance(n,ast.ImportFrom) and n.module=='run_chrome_collapse']),1)
 
 
+from gecko_chrome_collapse_v2_test import ChromeCollapseV2Controls
+
+
 class FocusedMainExecutionTest(unittest.TestCase):
     """Run the real main and selected statements with host-only external edges.
 
@@ -77,6 +80,8 @@ class FocusedMainExecutionTest(unittest.TestCase):
             root=Path(directory)/'source';out=Path(directory)/'diagnostic'
             inputs=('tests/gecko/run_ui_visuals.py','tests/gecko/run_chrome_collapse.py',
                     'tests/gecko/run_chrome_collapse_diagnostic.py',
+                    'tests/gecko/run_chrome_collapse_v2.py','tools/gecko/chrome_collapse_contract_v2.py',
+                    'tools/gecko/workspace_navigation_contract.py','tools/gecko/compact_chrome_layout_v2.py','tools/gecko/ui_visual_capture.py',
                     'tests/gecko/ChromeCollapseIntegration.java','tools/gecko/chrome_collapse_contract.py','app/build.gradle',
                     'tests/gecko/CompactChromeIntegrationActivity.java','tests/gecko/ReloadWindowCallbackObservation.java',
                     'tools/gecko/ui_test_device.py','tests/gecko/ui_settings_services_device11.py',
@@ -160,11 +165,12 @@ class FocusedMainExecutionTest(unittest.TestCase):
             build.expected_build=lambda *args:identity
             build.verify_installed=lambda actual,expected:self.assertEqual(actual,expected)
             runner=types.ModuleType('run_chrome_collapse')
-            def run_collapse(adb_text,adb_bytes,source,actual_trace,actual_out,focus):
+            def run_collapse(adb_text,adb_bytes,source,actual_trace,actual_out,focus,*,navigation_contract):
+                self.assertEqual(type(navigation_contract),int);self.assertEqual(navigation_contract,2)
                 self.assertIs(actual_trace,trace);self.assertEqual(actual_out,integration)
                 focus('local.pocketchat.CompactChromeIntegrationActivity');collapse.append(True)
                 return {'hostOnly':True}
-            runner.run=run_collapse
+            runner.run_versioned=run_collapse
             contract=types.ModuleType('chrome_collapse_contract');contract.verify_auto_collapse=lambda *args:{'hostOnly':True}
             clock=types.SimpleNamespace(monotonic=lambda:1,monotonic_ns=itertools.count(100).__next__,
                 sleep=lambda _:self.fail('Controlled successful events must not require a retry'))
@@ -210,6 +216,8 @@ class FocusedDevicePreparationTest(unittest.TestCase):
             root=Path(directory)/'source';out=Path(directory)/'diagnostic';order=[];record_path=None
             inputs=('tests/gecko/run_ui_visuals.py','tests/gecko/run_chrome_collapse.py',
                 'tests/gecko/run_chrome_collapse_diagnostic.py','tests/gecko/ChromeCollapseIntegration.java',
+                'tests/gecko/run_chrome_collapse_v2.py','tools/gecko/chrome_collapse_contract_v2.py',
+                'tools/gecko/workspace_navigation_contract.py','tools/gecko/compact_chrome_layout_v2.py','tools/gecko/ui_visual_capture.py',
                 'tools/gecko/chrome_collapse_contract.py','tests/gecko/CompactChromeIntegrationActivity.java',
                 'tests/gecko/ReloadWindowCallbackObservation.java','tools/gecko/ui_test_device.py',
                 'tests/gecko/ui_settings_services_device11.py','app/build.gradle')

@@ -9,6 +9,7 @@ from unittest.mock import patch
 
 import event_journal_source_compatibility as journal
 import experience46_source_compatibility as experience
+from workspace_runner_source_compatibility import historical_input as workspace_source_input
 
 ROOT = Path(__file__).resolve().parents[1]
 RUNNER = 'tests/gecko/run_device.py'
@@ -20,7 +21,7 @@ class ReceiptJournalSourceCompatibility(unittest.TestCase):
         for relative, row in journal.manifest()['files'].items():
             with self.subTest(path=relative):
                 previous = subprocess.check_output(['git', 'show', journal.BASE_COMMIT + ':' + relative], cwd=ROOT)
-                current = (ROOT / relative).read_bytes()
+                current = workspace_source_input((ROOT / relative).read_bytes(), relative)
                 if relative in ('tests/experience46_source_compatibility.py', 'tests/profile_experience46_source_compatibility_test.py'):
                     from dual_browser_source_compatibility import source_input
                     current = source_input(current, relative)
@@ -39,7 +40,7 @@ class ReceiptJournalSourceCompatibility(unittest.TestCase):
     def test_missing_duplicate_changed_relocated_and_unknown_bytes_are_rejected(self):
         rejected = 0
         for relative, row in journal.manifest()['files'].items():
-            current = (ROOT / relative).read_bytes()
+            current = workspace_source_input((ROOT / relative).read_bytes(), relative)
             if relative in ('tests/experience46_source_compatibility.py', 'tests/profile_experience46_source_compatibility_test.py'):
                 from dual_browser_source_compatibility import source_input
                 current = source_input(current, relative)

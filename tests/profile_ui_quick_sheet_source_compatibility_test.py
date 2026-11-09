@@ -9,6 +9,7 @@ import ui_quick_sheet_source_compatibility as quick
 import ui_visual_preservation_contract as original_ui
 import ui_runner14_source_contract as runner14
 import ui_checkpoint_source_compatibility as checkpoint_input
+from ui_workspace_v2_source_compatibility import historical_input as workspace_input
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -38,7 +39,7 @@ class QuickSheetSourceCompatibilityTests(unittest.TestCase):
 
     def test_unknown_missing_duplicate_moved_or_altered_hunks_rejected(self):
         for path, row in quick.manifest()['files'].items():
-            raw = (ROOT / path).read_bytes()
+            raw = workspace_input((ROOT / path).read_bytes(), path)
             for delta in row['deltas']:
                 addition = delta['current'].encode()
                 remaining = raw.replace(addition, b'', 1)

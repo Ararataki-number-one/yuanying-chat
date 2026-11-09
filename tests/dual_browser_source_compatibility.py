@@ -90,3 +90,8 @@ def source_input(raw, relative):
     if len(raw) != row['previousBytes'] or _sha(raw) != row['previousSha256']:
         raise ValueError('Dual-browser inverse did not restore the complete original source')
     return raw
+
+
+# Exact workspace-navigation source view for historical metadata only.
+from workspace_runner_source_compatibility import wrap_input as _workspace_source_input
+source_input = _workspace_source_input(source_input)

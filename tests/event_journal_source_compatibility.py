@@ -107,3 +107,8 @@ def original_runner_tree(node):
     if hashlib.sha256(dump(restored).encode()).hexdigest() != row['previousSha256']:
         raise ValueError('Receipt journal AST inverse did not restore the complete original run AST')
     return restored
+
+
+# Exact workspace-navigation source view for historical metadata only.
+from workspace_runner_source_compatibility import wrap_input as _workspace_source_input
+source_input = _workspace_source_input(source_input)

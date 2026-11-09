@@ -8,10 +8,11 @@ import types
 import unittest
 from unittest.mock import patch
 from ui_visual_preservation_contract import verify_shared_ui_source
+from chrome_navigation_v2_source_compatibility import historical_ui_path
 
 ROOT=pathlib.Path(__file__).resolve().parents[1]
 RUNNER=ROOT/'tests/gecko/run_chrome_collapse.py'
-SHARED=ROOT/'tests/gecko/run_ui_visuals.py'
+SHARED=historical_ui_path(ROOT/'tests/gecko/run_ui_visuals.py')
 spec=importlib.util.spec_from_file_location('tested_chrome_resume',RUNNER)
 resume=importlib.util.module_from_spec(spec);spec.loader.exec_module(resume)
 TARGET='local.pocketchat.test/local.pocketchat.CompactChromeIntegrationActivity'

@@ -213,3 +213,15 @@ _gradle_transport_input = _gradle_transport_import.module_from_spec(_gradle_tran
 _gradle_transport_spec.loader.exec_module(_gradle_transport_input)
 checkpoint_transport_input = _gradle_transport_input.canonical_history_input
 checkpoint_workflow_input = _gradle_transport_input.wrap_checkpoint_workflow(checkpoint_workflow_input)
+
+
+# The actual v2 runner stays current. Only complete historical source inputs
+# reverse its reviewed presentation wiring before all unchanged old guards.
+_workspace_spec = _gradle_transport_import.spec_from_file_location('selected_ui_workspace_v2_source_input', Path(__file__).with_name('ui_workspace_v2_source_compatibility.py'))
+_workspace_input = _gradle_transport_import.module_from_spec(_workspace_spec)
+_workspace_spec.loader.exec_module(_workspace_input)
+source_input = _workspace_input.wrap_bytes(source_input)
+history_input = _workspace_input.wrap_bytes(history_input)
+checkpoint_runner_input = _workspace_input.wrap_runner_bytes(checkpoint_runner_input)
+require_current_runner = _workspace_input.wrap_runner_bytes(require_current_runner)
+original_runner_tree = _workspace_input.wrap_ast(original_runner_tree)

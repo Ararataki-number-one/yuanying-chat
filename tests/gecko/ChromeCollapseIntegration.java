@@ -180,6 +180,29 @@ final class ChromeCollapseIntegration {
     // Reading exists only on the conversation dock; absent or hidden targets stay null.
     return index<0||index>=buttons.length?JSONObject.NULL:visibleCenter(buttons[index]);
   }
+  /** Observe the production-owned dialog; no dialog, focus, text or navigation is created here. */
+  JSONObject addressDialog()throws ReflectiveOperationException {
+    GeckoAddressUi owner=a.geckoAddress;
+    java.lang.reflect.Field dialogField=GeckoAddressUi.class.getDeclaredField("dialog"),editorField=GeckoAddressUi.class.getDeclaredField("editor");
+    dialogField.setAccessible(true);editorField.setAccessible(true);
+    android.app.AlertDialog dialog=owner==null?null:(android.app.AlertDialog)dialogField.get(owner);
+    android.widget.EditText editor=owner==null?null:(android.widget.EditText)editorField.get(owner);
+    boolean showing=dialog!=null&&dialog.isShowing();
+    JSONObject value=J.obj("schema",1,"ownerActivity",owner!=null&&owner.a==a,"showing",showing,
+      "dialogRef",System.identityHashCode(dialog),"editorRef",System.identityHashCode(editor));
+    if(!showing)return value;
+    View decor=dialog.getWindow().getDecorView();android.widget.Button cancel=dialog.getButton(android.app.AlertDialog.BUTTON_NEGATIVE);
+    if(editor==null||cancel==null)throw new IllegalStateException("Shown production address dialog lacks native controls");
+    try{return value.put("dialogClass",dialog.getClass().getName()).put("editorClass",editor.getClass().getName())
+      .put("decorAttached",decor.isAttachedToWindow()).put("decorShown",decor.isShown()).put("decorFocus",decor.hasWindowFocus())
+      .put("editorShown",editor.isShown()).put("editorFocused",editor.isFocused()).put("editorWindowFocus",editor.hasWindowFocus())
+      .put("sameWindow",editor.getWindowToken()!=null&&editor.getWindowToken()==decor.getWindowToken())
+      .put("editorDescription",String.valueOf(editor.getContentDescription())).put("editorText",editor.getText().toString())
+      .put("editorInputType",editor.getInputType()).put("editorMaxLines",editor.getMaxLines())
+      .put("decorBounds",a.bounds(decor)).put("editorBounds",a.bounds(editor)).put("cancelBounds",a.bounds(cancel))
+      .put("cancelText",cancel.getText().toString()).put("cancelShown",cancel.isShown()).put("cancelEnabled",cancel.isEnabled()).put("cancelClickable",cancel.isClickable());
+    }catch(JSONException failure){throw new IllegalStateException(failure);}
+  }
   void start(){
     // Keep the historical v1 evidence/runner intact. Its fixed six-tap path
     // cannot exercise the URL dialog and four-action dock without a new contract.
@@ -231,7 +254,11 @@ final class ChromeCollapseIntegration {
         .put("touches",web().touchesObserved).put("nativeTouches",nativeTouches).put("toolbarBounds",a.bounds(a.toolbar))
         .put("environmentTap",navigationCenter(WorkspaceNavigation.ENVIRONMENTS,1)).put("networkTap",navigationCenter(WorkspaceNavigation.NETWORK,3))
         .put("downloadsTap",navigationCenter(WorkspaceNavigation.DOWNLOADS,2)).put("readingTap",navigationCenter(WorkspaceNavigation.READING,-1))
-        .put("addressTap",visibleCenter(a.designChrome.title)).put("moreTap",visibleCenter(a.designChrome.more));
+        .put("addressTap",visibleCenter(a.designChrome.title)).put("moreTap",visibleCenter(a.designChrome.more))
+        .put("drawerTap",visibleCenter(a.navigation)).put("readingExitTap",visibleCenter(a.focusExit))
+        .put("readingRequested",a.focusReading).put("readingActive",a.focusActive()).put("readingExitVisibility",a.focusExit.getVisibility())
+        .put("navigationVisibility",a.hub.bar.getVisibility()).put("navigationHeight",a.hub.bar.getHeight())
+        .put("workspaceHeight",a.hub.workspace.getHeight()).put("addressDialog",addressDialog());
         if(a.designChrome.expanded()){
           java.lang.reflect.Method method=DesignChrome.class.getDeclaredMethod("touchBounds",View.class);method.setAccessible(true);
           android.graphics.Rect target=(android.graphics.Rect)method.invoke(a.designChrome,a.designChrome.title);int[] origin=new int[2];a.toolbar.getLocationOnScreen(origin);target.offset(origin[0],origin[1]);

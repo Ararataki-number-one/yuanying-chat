@@ -7,6 +7,7 @@ import unittest
 import ui_checkpoint_source_compatibility as checkpoint
 import ui_quick_sheet_source_compatibility as quick
 import ui_visual_preservation_contract as original_ui
+from ui_workspace_v2_source_compatibility import historical_input as workspace_input
 
 ROOT = Path(__file__).resolve().parents[1]
 PREPARATION = ("from ui_test_device import prepare_workflow as prepare_ui_test_device\n"
@@ -40,7 +41,7 @@ class UiCheckpointSourceCompatibilityTests(unittest.TestCase):
         self.assertIn("copy_gecko_tls_evidence(pathlib.Path('work/tls-acceptance'),destination,os.environ['GITHUB_SHA'],expected)", copy[0]['run'])
 
     def test_actual_current_runner_and_entire_two_snippet_inverse(self):
-        raw = (ROOT / checkpoint.RUNNER).read_bytes()
+        raw = workspace_input((ROOT / checkpoint.RUNNER).read_bytes(), checkpoint.RUNNER)
         old = checkpoint.require_current_runner(raw)
         self.assertEqual(checkpoint.sha(raw), checkpoint.RUNNER_CURRENT_SHA256)
         self.assertEqual(checkpoint.sha(old), '65fb205cbb7a466858a0a1869cd4b5388f70026d4e09da078318827e92432f4f')
@@ -81,7 +82,7 @@ class UiCheckpointSourceCompatibilityTests(unittest.TestCase):
             self.assertEqual(current,methods)
         self.assertEqual(set(manifest['files']), set(checkpoint.PREVIOUS))
         for path, row in manifest['files'].items():
-            raw = (ROOT / path).read_bytes()
+            raw = workspace_input((ROOT / path).read_bytes(), path)
             old = checkpoint.source_input(raw, path)
             self.assertEqual(checkpoint.sha(old), checkpoint.PREVIOUS[path])
             for delta in row['deltas']:
@@ -146,6 +147,12 @@ class UiCheckpointSourceCompatibilityTests(unittest.TestCase):
         capture = next(n for n in ast.parse(raw).body if isinstance(n, ast.FunctionDef) and n.name == 'capture')
         for tree in (None, ast.Module(body=[], type_ignores=[]), ast.Module(body=[capture], type_ignores=[])):
             with self.assertRaises(AssertionError):checkpoint.original_runner_tree(tree)
+
+
+def load_tests(loader, tests, pattern):
+    import ui_workspace_v2_source_controls
+    tests.addTests(loader.loadTestsFromModule(ui_workspace_v2_source_controls))
+    return tests
 
 
 if __name__ == '__main__':

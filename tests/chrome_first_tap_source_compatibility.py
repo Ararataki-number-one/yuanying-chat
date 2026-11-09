@@ -35,6 +35,8 @@ def source_input(raw, relative):
     if type(raw) is not bytes or type(relative) is not str or relative not in PATHS:
         reject()
     row = manifest()['files'][relative]
+    from chrome_navigation_v2_source_compatibility import source_input as before_navigation
+    raw = before_navigation(raw, relative)
     current = (hashlib.sha256(raw).hexdigest(), len(raw))
     if current == (row['previousSha256'], row['previousBytes']):
         return raw

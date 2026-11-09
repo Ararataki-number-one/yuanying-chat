@@ -1,0 +1,192 @@
+{
+  "schema": 1,
+  "kind": "ui-workspace-v2-historical-source-input-only",
+  "baseCommit": "c244835a4c1e3629909b2b1ce132ca5987a97d9a",
+  "baseTree": "13f8feea716e7ceebd71fb46b21966292c920681",
+  "actualAndroidExecution": false,
+  "runtimeAcceptance": false,
+  "files": {
+    "tests/gecko/run_ui_visuals.py": {
+      "previousBytes": 46016,
+      "previousSha256": "b85896aa5b94e33fb40bbada323d239a66f75c12a39bf9adb2a4ff3e3483e14d",
+      "previousGitBlob": "fed65f826a7821002908d7b37d86647c58381943",
+      "reviewedBytes": 47085,
+      "reviewedSha256": "075279cecd6cadb4fa51b6f866b0779618cf78125dc6b30a7c1149e13408c5a9",
+      "contextLines": 3,
+      "deltas": [
+        {
+          "id": "context-00",
+          "previous": "from ui_visual_capture import UiVisualCapture\nfrom diagnostic_capture_privacy import checked_text\nfrom ui_visual_contract import LIGHT_SCENES, LARGE_SCENES, DARK_SCENES, LANDSCAPE_SCENES, required_captures, verify_captures, verify_download_location\nscenes=LIGHT_SCENES\nlast_geometry=None\nui_capture=UiVisualCapture(adb=args.adb,serial=args.serial,source=source,diagnostics=out/'ui-visual-capture-attempts.json')\n",
+          "current": "from ui_visual_capture import UiVisualCapture\nfrom diagnostic_capture_privacy import checked_text\nfrom ui_visual_contract import LIGHT_SCENES, LARGE_SCENES, DARK_SCENES, LANDSCAPE_SCENES, required_captures, verify_captures, verify_download_location\nfrom workspace_navigation_contract import conversation_header\nfrom compact_chrome_v2 import run_case as capture_compact_v2\nfrom workspace_ui_v2 import capture_selection as capture_environment_selection\nUI_NAVIGATION_CONTRACT=2\nscenes=LIGHT_SCENES\nlast_geometry=None\nui_capture=UiVisualCapture(adb=args.adb,serial=args.serial,source=source,diagnostics=out/'ui-visual-capture-attempts.json')\n",
+          "previousBytes": 412,
+          "currentBytes": 639,
+          "previousSha256": "b6490f39860728fd94955c57e8a103e1f7492eb406cfe520ba2df6494bfbb2a7",
+          "currentSha256": "796fd23ce5502b2adfc431a9aa3e03d2e1a7b7feeebfffacd099e8116805b590"
+        },
+        {
+          "id": "context-01",
+          "previous": "    required={'chat':'会话','environments':'环境管理','network':'固定测试出口','proxy':'代理地址','entries':'选择入口','browser':'基本信息','preferences':'基本信息','settings':'启动与界面','network-menu':'导入网络',\n      'environment-picker':'切换环境','downloads':'项目资料与界面设计说明.pdf','feedback':'一句话说明','appearance':'白天与黑夜','default-entry':'默认环境与启动入口',\n      'subscription-form':'订阅名称','exit-form':'SOCKS5 服务器','route-editor':'保存并应用','import':'选择分享文件','brand':'元婴期院士','templates':'选择模板','zoom':'网页缩放','update':'当前安装版本','audit':'环境自检与变更','file-preview':'双指缩放 · 拖动查看','delete-file':'删除文件','share-preview':'分享整条线路'}[scene]\n    deadline=time.monotonic()+35;readiness_scrolls=0;download_observation_history=None\n    while True:\n        xml=dump(deadline=deadline)\n",
+          "current": "    required={'chat':'会话','environments':'环境管理','network':'固定测试出口','proxy':'代理地址','entries':'选择入口','browser':'基本信息','preferences':'基本信息','settings':'启动与界面','network-menu':'导入网络',\n      'environment-picker':'切换环境','downloads':'项目资料与界面设计说明.pdf','feedback':'一句话说明','appearance':'白天与黑夜','default-entry':'默认环境与启动入口',\n      'subscription-form':'订阅名称','exit-form':'SOCKS5 服务器','route-editor':'保存并应用','import':'选择分享文件','brand':'元婴期院士','templates':'选择模板','zoom':'网页缩放','update':'当前安装版本','audit':'环境自检与变更','file-preview':'双指缩放 · 拖动查看','delete-file':'删除文件','share-preview':'分享整条线路'}[scene]\n    if UI_NAVIGATION_CONTRACT==2:required={'chat':'当前环境：日常会话','settings':'启动与外观'}.get(scene,required)\n    deadline=time.monotonic()+35;readiness_scrolls=0;download_observation_history=None\n    while True:\n        xml=dump(deadline=deadline)\n",
+          "previousBytes": 985,
+          "currentBytes": 1115,
+          "previousSha256": "ed7a46d0dd470b92f49a2ce65acad9b5579edbbb01d6b160d0e74ddb89d303c3",
+          "currentSha256": "3165b4f56fe46cba7b57ba88fcb5bf24e527a98baaf5e4e93b040fc44a17e677"
+        },
+        {
+          "id": "context-02",
+          "previous": "            adb('shell','input','swipe',str(x),str(top+(bottom-top)*4//5),str(x),str(top+(bottom-top)//5),'350')\n        assert seen==expected,(variant,scene,'Preference controls missing or unexpected',sorted(seen))\n        preference_check={'preferenceControls':sorted(seen),'removedNoticeControlsAbsent':True,'scrollFrames':len(collected),'tabScrolls':tab_scrolls}\n    if scene=='chat':\n        time.sleep(2.5);xml=dump();assert all(label in xml for label in ['会话','环境','下载','网络','设置'])\n        assert not any(n.attrib.get('text') in ['简洁','原网页'] for n in ET.fromstring(xml).iter('node')),xml\n        nodes=list(ET.fromstring(xml).iter('node'))\n",
+          "current": "            adb('shell','input','swipe',str(x),str(top+(bottom-top)*4//5),str(x),str(top+(bottom-top)//5),'350')\n        assert seen==expected,(variant,scene,'Preference controls missing or unexpected',sorted(seen))\n        preference_check={'preferenceControls':sorted(seen),'removedNoticeControlsAbsent':True,'scrollFrames':len(collected),'tabScrolls':tab_scrolls}\n    if scene=='chat' and UI_NAVIGATION_CONTRACT==2:\n        time.sleep(2.5);xml=dump()\n        conversation_header(xml,package,width,height,scale,'日常会话')\n    elif scene=='chat':\n        time.sleep(2.5);xml=dump();assert all(label in xml for label in ['会话','环境','下载','网络','设置'])\n        assert not any(n.attrib.get('text') in ['简洁','原网页'] for n in ET.fromstring(xml).iter('node')),xml\n        nodes=list(ET.fromstring(xml).iter('node'))\n",
+          "previousBytes": 677,
+          "currentBytes": 841,
+          "previousSha256": "ca8fba09b4b00dfa4d131d86aa4dba44a549874f394bf89f1b036134a7d75e82",
+          "currentSha256": "ed491383df53602c6f440ceb2b8f2655380c8ab44ff33199de245c9106c1b5f7"
+        },
+        {
+          "id": "context-03",
+          "previous": "        (shots/(stem+'-download-location.json')).write_text(payloads[0]+'\\n')\n        verify_download_location(record,source)\n    if scene=='preferences':record.update(preference_check)\n    if scene=='environments':\n        # Exercise the real multi-select footer, including doubled accessibility text.\n        count=next(n for n in ET.fromstring(xml).iter('node') if n.attrib.get('text')=='8 个环境')\n        bounds=list(map(int,re.findall(r'\\d+',count.attrib['bounds'])))\n",
+          "current": "        (shots/(stem+'-download-location.json')).write_text(payloads[0]+'\\n')\n        verify_download_location(record,source)\n    if scene=='preferences':record.update(preference_check)\n    if scene=='environments' and UI_NAVIGATION_CONTRACT==2:\n        capture_environment_selection(adb,lambda *parts:subprocess.check_output([args.adb,'-s',args.serial,*parts],timeout=90),dump,xml,package,width,height,shots,stem,record)\n    elif scene=='environments':\n        # Exercise the real multi-select footer, including doubled accessibility text.\n        count=next(n for n in ET.fromstring(xml).iter('node') if n.attrib.get('text')=='8 个环境')\n        bounds=list(map(int,re.findall(r'\\d+',count.attrib['bounds'])))\n",
+          "previousBytes": 477,
+          "currentBytes": 715,
+          "previousSha256": "c5ba8e595b01cc44a612151200ccff5c50f10a06bf32cd4952c8a85cf228b21f",
+          "currentSha256": "5f1fcae3d77fccdf56efaddcc0069fde8a65992e0b67fc2c07c9f932014b5162"
+        },
+        {
+          "id": "context-04",
+          "previous": "        return {'title':'快速切换环境','searchDescription':'搜索要切换的环境','closeDescription':'关闭快速切换环境','currentSlot':slot,\n                'titleBounds':bounds(title[0]),'searchBounds':bounds(search[0]),'currentBounds':bounds(current[0]),'closeBounds':bounds(close[0])}\n    for width,scale in [(360,1),(412,1),(360,2)]:\n        adb('shell','am','force-stop',package);adb('logcat','-c')\n        adb('shell','wm','size',f'{width*3}x1920');adb('shell','wm','density','480');adb('shell','settings','put','system','font_scale',str(scale))\n        command=f'compact-{width}-{scale}'\n",
+          "current": "        return {'title':'快速切换环境','searchDescription':'搜索要切换的环境','closeDescription':'关闭快速切换环境','currentSlot':slot,\n                'titleBounds':bounds(title[0]),'searchBounds':bounds(search[0]),'currentBounds':bounds(current[0]),'closeBounds':bounds(close[0])}\n    for width,scale in [(360,1),(412,1),(360,2)]:\n        if UI_NAVIGATION_CONTRACT==2:\n            compact.append(capture_compact_v2(adb,lambda *parts:subprocess.check_output([args.adb,'-s',args.serial,*parts],timeout=90),dump,chrome_event,focus,visible,quick_environment_sheet,shots,package,width,scale))\n            continue\n        adb('shell','am','force-stop',package);adb('logcat','-c')\n        adb('shell','wm','size',f'{width*3}x1920');adb('shell','wm','density','480');adb('shell','settings','put','system','font_scale',str(scale))\n        command=f'compact-{width}-{scale}'\n",
+          "previousBytes": 612,
+          "currentBytes": 890,
+          "previousSha256": "3992265d34fa52975fb54caf78d53ff913eed78b37152630deda6aed7347ee28",
+          "currentSha256": "bdb3c92747430cf9a5cca59286ba3ba730652d28291ddfcd49e32515a0ee1038"
+        },
+        {
+          "id": "context-05",
+          "previous": "        # This partial file cannot replace compact-chrome-results or full UI acceptance.\n        (out/'ui-reload-confirmation.json').write_text(json.dumps(reload_confirmation,ensure_ascii=False,indent=2)+'\\n')\n        (out/'ui-reload-log.txt').write_text(checked_text(adb('logcat','-d'))[0])\n        from run_chrome_collapse import run as run_chrome_collapse\n        auto_collapse=run_chrome_collapse(adb,lambda *parts:subprocess.check_output([args.adb,'-s',args.serial,*parts],timeout=90),source,reload_loopback.TRACE,out,focus)\n    finally:\n        (out/'ui-collapse-server-trace.json').write_text(json.dumps({'sourceCommit':source,'diagnosticOnly':True,'releaseAcceptance':False,'events':reload_loopback.TRACE},ensure_ascii=False,indent=2)+'\\n')\n        reload_http.shutdown();reload_socks.shutdown()\n",
+          "current": "        # This partial file cannot replace compact-chrome-results or full UI acceptance.\n        (out/'ui-reload-confirmation.json').write_text(json.dumps(reload_confirmation,ensure_ascii=False,indent=2)+'\\n')\n        (out/'ui-reload-log.txt').write_text(checked_text(adb('logcat','-d'))[0])\n        from run_chrome_collapse import run_versioned as run_chrome_collapse\n        auto_collapse=run_chrome_collapse(adb,lambda *parts:subprocess.check_output([args.adb,'-s',args.serial,*parts],timeout=90),source,reload_loopback.TRACE,out,focus,navigation_contract=2)\n    finally:\n        (out/'ui-collapse-server-trace.json').write_text(json.dumps({'sourceCommit':source,'diagnosticOnly':True,'releaseAcceptance':False,'events':reload_loopback.TRACE},ensure_ascii=False,indent=2)+'\\n')\n        reload_http.shutdown();reload_socks.shutdown()\n",
+          "previousBytes": 804,
+          "currentBytes": 836,
+          "previousSha256": "41e9204ca335f62062e35bd38e650194bcdecc012920d4902580b0adc4487830",
+          "currentSha256": "dcba1a94c74f284b45b295afbbe7284a185b9a36a16585903ae173baa283c811"
+        }
+      ]
+    },
+    "tests/gecko_ui_visual_capture_test.py": {
+      "previousBytes": 40357,
+      "previousSha256": "4ec6b7535d37119d6674afc5090b33d8c26af91abaa5d53ecb2a52488e911f6a",
+      "previousGitBlob": "8999248d15abe71c72d747c49e5525206b39186c",
+      "reviewedBytes": 40714,
+      "reviewedSha256": "7c7918b3f0457c54df0cbb9e219931c5add087b8babef34611fa972ed273e0c4",
+      "contextLines": 3,
+      "deltas": [
+        {
+          "id": "context-00",
+          "previous": "    tree = ast.parse(RUNNER.read_text())\n    functions = [copy.deepcopy(n) for n in tree.body if isinstance(n, ast.FunctionDef) and n.name in names]\n    assert {n.name for n in functions} == set(names)\n    return ast.Module(body=functions, type_ignores=[])\n\n\n",
+          "current": "    tree = ast.parse(RUNNER.read_text())\n    functions = [copy.deepcopy(n) for n in tree.body if isinstance(n, ast.FunctionDef) and n.name in names]\n    assert {n.name for n in functions} == set(names)\n    if 'capture' in names:\n        declarations = [n for n in tree.body if isinstance(n, ast.Assign)\n                        and any(isinstance(t, ast.Name) and t.id == 'UI_NAVIGATION_CONTRACT' for t in n.targets)]\n        assert len(declarations) == 1, 'Actual capture navigation declaration required'\n        functions.extend(copy.deepcopy(declarations))\n    return ast.Module(body=functions, type_ignores=[])\n\n\n",
+          "previousBytes": 259,
+          "currentBytes": 616,
+          "previousSha256": "cb57f76468724acbdc365dc0212aa7d5a76c0a636b1845f2c780a54877c52d80",
+          "currentSha256": "57d63ff16833e53ca3d5fb8e428f47c47142ca75570df1f19c20b773ead00c43"
+        }
+      ]
+    },
+    "tests/profile_ui_quick_sheet_source_compatibility_test.py": {
+      "previousBytes": 10058,
+      "previousSha256": "140727717d2211ede38c86d54661dac1f66748f011faaddfe50e10fb40b9c5af",
+      "previousGitBlob": "fb933716758cd2467331bc4d153f339fc52a3285",
+      "reviewedBytes": 10166,
+      "reviewedSha256": "44ad29a3fe25b0fb6311f37611fde020ec22a9155de4780c813ea05c3f157a3a",
+      "contextLines": 3,
+      "deltas": [
+        {
+          "id": "context-00",
+          "previous": "import ui_visual_preservation_contract as original_ui\nimport ui_runner14_source_contract as runner14\nimport ui_checkpoint_source_compatibility as checkpoint_input\n\nROOT = Path(__file__).resolve().parents[1]\n\n",
+          "current": "import ui_visual_preservation_contract as original_ui\nimport ui_runner14_source_contract as runner14\nimport ui_checkpoint_source_compatibility as checkpoint_input\nfrom ui_workspace_v2_source_compatibility import historical_input as workspace_input\n\nROOT = Path(__file__).resolve().parents[1]\n\n",
+          "previousBytes": 208,
+          "currentBytes": 293,
+          "previousSha256": "428186c15acd61a9d36dc56b8991136abf3e1270c7f0d5b6855a984367e11cb7",
+          "currentSha256": "f919e7227017e963f36e9ec3c641382551b36d5b01d4f4cfaf0e9ec0cd123051"
+        },
+        {
+          "id": "context-01",
+          "previous": "\n    def test_unknown_missing_duplicate_moved_or_altered_hunks_rejected(self):\n        for path, row in quick.manifest()['files'].items():\n            raw = (ROOT / path).read_bytes()\n            for delta in row['deltas']:\n                addition = delta['current'].encode()\n                remaining = raw.replace(addition, b'', 1)\n",
+          "current": "\n    def test_unknown_missing_duplicate_moved_or_altered_hunks_rejected(self):\n        for path, row in quick.manifest()['files'].items():\n            raw = workspace_input((ROOT / path).read_bytes(), path)\n            for delta in row['deltas']:\n                addition = delta['current'].encode()\n                remaining = raw.replace(addition, b'', 1)\n",
+          "previousBytes": 335,
+          "currentBytes": 358,
+          "previousSha256": "dfec60766c9e1cb49fffceac5b470cc65e51672e851978cbee341e86ffb0f57e",
+          "currentSha256": "18347564f500ff3106e6b889bdbf037ac60cd34c2b30640285416b8dbe8f40f9"
+        }
+      ]
+    }
+  },
+  "runnerAst": {
+    "allowedModulePairs": {
+      "5fbe79ffe0f0cfd37397814adb19efa27328d9cc41ab61d4b9493d41b19a062e": "e4d4116f7bf22e5a791af482e4315446c3e521d5dec0a4d15543337650491220",
+      "ca3d9bbe87f4645d9f25f6286b9ced0a2984bb05d7ec8013e7bfc2cff0b60dd2": "1e9931102c092304b30ea22c910f46737ddf34aa4879e7bf9cd93b8de5e5cbb3"
+    },
+    "edits": [
+      {
+        "id": "explicit-v2-imports-and-version",
+        "previousSource": "",
+        "currentSource": "from workspace_navigation_contract import conversation_header\nfrom compact_chrome_v2 import run_case as capture_compact_v2\nfrom workspace_ui_v2 import capture_selection as capture_environment_selection\nUI_NAVIGATION_CONTRACT = 2\n",
+        "previousAstSha256": "3543b4693a36a1098850b8bc928887694ed59a6deb7d3dfd0339de01f55a77b6",
+        "currentAstSha256": "fbae32b5e0420cc5d9d10a880feeae23ee47f71f87f6620356f61a69d8414fdf",
+        "previousNodes": 0,
+        "currentNodes": 4
+      },
+      {
+        "id": "current-page-readiness",
+        "previousSource": "",
+        "currentSource": "if UI_NAVIGATION_CONTRACT == 2:\n    required = {'chat': '当前环境：日常会话', 'settings': '启动与外观'}.get(scene, required)\n",
+        "previousAstSha256": "3543b4693a36a1098850b8bc928887694ed59a6deb7d3dfd0339de01f55a77b6",
+        "currentAstSha256": "8ed832f470bf4721f5cd5f34bfb9fa72d23c84fd3475e8c7f27890c9bc8a35d0",
+        "previousNodes": 0,
+        "currentNodes": 1
+      },
+      {
+        "id": "actual-chat-presentation",
+        "previousSource": "if scene == 'chat':\n    time.sleep(2.5)\n    xml = dump()\n    assert all((label in xml for label in ['会话', '环境', '下载', '网络', '设置']))\n    assert not any((n.attrib.get('text') in ['简洁', '原网页'] for n in ET.fromstring(xml).iter('node'))), xml\n    nodes = list(ET.fromstring(xml).iter('node'))\n    environment = [n for n in nodes if n.attrib.get('content-desc', '').startswith('当前环境：')]\n    network = [n for n in nodes if n.attrib.get('content-desc', '').startswith('当前环境网络：')]\n    assert len(environment) == len(network) == 1, xml\n    assert environment[0].attrib.get('content-desc') == '当前环境：日常会话，点击展开环境工具栏' and environment[0].attrib.get('clickable') == 'true', xml\n    assert network[0].attrib.get('clickable') == 'false', xml\n    assert not any((n.attrib.get('content-desc') in ['管理环境', '更多'] for n in nodes)), xml\n    left, top, right, bottom = map(int, re.findall('\\\\d+', environment[0].attrib['bounds']))\n    nl, nt, nr, nb = map(int, re.findall('\\\\d+', network[0].attrib['bounds']))\n    assert 0 <= left < right <= width * 3 and 0 <= nl < nr <= width * 3 and (top < bottom == nt < nb), xml\n    assert bottom - top <= (28 if scale == 1 else 48) * 3, xml\n",
+        "currentSource": "if scene == 'chat' and UI_NAVIGATION_CONTRACT == 2:\n    time.sleep(2.5)\n    xml = dump()\n    conversation_header(xml, package, width, height, scale, '日常会话')\nelif scene == 'chat':\n    time.sleep(2.5)\n    xml = dump()\n    assert all((label in xml for label in ['会话', '环境', '下载', '网络', '设置']))\n    assert not any((n.attrib.get('text') in ['简洁', '原网页'] for n in ET.fromstring(xml).iter('node'))), xml\n    nodes = list(ET.fromstring(xml).iter('node'))\n    environment = [n for n in nodes if n.attrib.get('content-desc', '').startswith('当前环境：')]\n    network = [n for n in nodes if n.attrib.get('content-desc', '').startswith('当前环境网络：')]\n    assert len(environment) == len(network) == 1, xml\n    assert environment[0].attrib.get('content-desc') == '当前环境：日常会话，点击展开环境工具栏' and environment[0].attrib.get('clickable') == 'true', xml\n    assert network[0].attrib.get('clickable') == 'false', xml\n    assert not any((n.attrib.get('content-desc') in ['管理环境', '更多'] for n in nodes)), xml\n    left, top, right, bottom = map(int, re.findall('\\\\d+', environment[0].attrib['bounds']))\n    nl, nt, nr, nb = map(int, re.findall('\\\\d+', network[0].attrib['bounds']))\n    assert 0 <= left < right <= width * 3 and 0 <= nl < nr <= width * 3 and (top < bottom == nt < nb), xml\n    assert bottom - top <= (28 if scale == 1 else 48) * 3, xml\n",
+        "previousAstSha256": "aba34b689f2be6bd91f665062f0915e795ddcdfe117ddee7a3ae356e965c4af5",
+        "currentAstSha256": "01dde3f462ac587c3faa13ed6cd5dd72e9fe541e497664b750c6cede88c9a42d",
+        "previousNodes": 1,
+        "currentNodes": 1
+      },
+      {
+        "id": "actual-environments-presentation",
+        "previousSource": "if scene == 'environments':\n    count = next((n for n in ET.fromstring(xml).iter('node') if n.attrib.get('text') == '8 个环境'))\n    bounds = list(map(int, re.findall('\\\\d+', count.attrib['bounds'])))\n    assert bounds[3] - bounds[1] <= 48 * 3, (variant, scene, 'Environment count wraps awkwardly', bounds)\n    click(xml, '多选')\n    xml = dump()\n    click(xml, '全选当前结果')\n    xml = dump()\n    assert '已选 8 个' in xml, (variant, scene, 'Actual select-all did not select the visible environments')\n    for label in ('取消当前结果选中', '批量分组', '收藏', '取消收藏'):\n        action = next((n for n in ET.fromstring(xml).iter('node') if n.attrib.get('text') == label and n.attrib.get('class') == 'android.widget.Button'), None)\n        assert action is not None and action.attrib.get('enabled') == 'true', (variant, scene, 'Selection action unavailable', label)\n        left, top, right, bottom = map(int, re.findall('\\\\d+', action.attrib['bounds']))\n        assert bottom - top >= 48 * 3 and 0 <= left < right <= width * 3 and (0 <= top < bottom <= height * 3), (variant, scene, 'Selection action clipped', label, action.attrib['bounds'])\n    selected_stem = stem + '-selection'\n    (shots / (selected_stem + '.xml')).write_text(xml)\n    (shots / (selected_stem + '.png')).write_bytes(subprocess.check_output([args.adb, '-s', args.serial, 'exec-out', 'screencap', '-p'], timeout=30))\n    record['selectionCheck'] = {'actualAndroidTaps': 2, 'actualAndroidBack': True, 'selectedCount': 8, 'allFourFooterActionsVisible': True, 'image': selected_stem + '.png'}\n    adb('shell', 'input', 'keyevent', '4')\n    assert '批量分组' not in dump()\n",
+        "currentSource": "if scene == 'environments' and UI_NAVIGATION_CONTRACT == 2:\n    capture_environment_selection(adb, lambda *parts: subprocess.check_output([args.adb, '-s', args.serial, *parts], timeout=90), dump, xml, package, width, height, shots, stem, record)\nelif scene == 'environments':\n    count = next((n for n in ET.fromstring(xml).iter('node') if n.attrib.get('text') == '8 个环境'))\n    bounds = list(map(int, re.findall('\\\\d+', count.attrib['bounds'])))\n    assert bounds[3] - bounds[1] <= 48 * 3, (variant, scene, 'Environment count wraps awkwardly', bounds)\n    click(xml, '多选')\n    xml = dump()\n    click(xml, '全选当前结果')\n    xml = dump()\n    assert '已选 8 个' in xml, (variant, scene, 'Actual select-all did not select the visible environments')\n    for label in ('取消当前结果选中', '批量分组', '收藏', '取消收藏'):\n        action = next((n for n in ET.fromstring(xml).iter('node') if n.attrib.get('text') == label and n.attrib.get('class') == 'android.widget.Button'), None)\n        assert action is not None and action.attrib.get('enabled') == 'true', (variant, scene, 'Selection action unavailable', label)\n        left, top, right, bottom = map(int, re.findall('\\\\d+', action.attrib['bounds']))\n        assert bottom - top >= 48 * 3 and 0 <= left < right <= width * 3 and (0 <= top < bottom <= height * 3), (variant, scene, 'Selection action clipped', label, action.attrib['bounds'])\n    selected_stem = stem + '-selection'\n    (shots / (selected_stem + '.xml')).write_text(xml)\n    (shots / (selected_stem + '.png')).write_bytes(subprocess.check_output([args.adb, '-s', args.serial, 'exec-out', 'screencap', '-p'], timeout=30))\n    record['selectionCheck'] = {'actualAndroidTaps': 2, 'actualAndroidBack': True, 'selectedCount': 8, 'allFourFooterActionsVisible': True, 'image': selected_stem + '.png'}\n    adb('shell', 'input', 'keyevent', '4')\n    assert '批量分组' not in dump()\n",
+        "previousAstSha256": "2e630f16957e64180862048a18072e21a0bbc70817dd35c8d888dda53931a2b8",
+        "currentAstSha256": "036f1ea975d0c48fc2aceeced46e9cd20a69150d4908f943f42f3fc2b002535f",
+        "previousNodes": 1,
+        "currentNodes": 1
+      },
+      {
+        "id": "actual-v2-compact-dispatch",
+        "previousSource": "",
+        "currentSource": "if UI_NAVIGATION_CONTRACT == 2:\n    compact.append(capture_compact_v2(adb, lambda *parts: subprocess.check_output([args.adb, '-s', args.serial, *parts], timeout=90), dump, chrome_event, focus, visible, quick_environment_sheet, shots, package, width, scale))\n    continue\n",
+        "previousAstSha256": "3543b4693a36a1098850b8bc928887694ed59a6deb7d3dfd0339de01f55a77b6",
+        "currentAstSha256": "7d5cc8ac9033cc6cdbe9d291f7c2f248bb971030da8a2d1e52fd439ae09c70ef",
+        "previousNodes": 0,
+        "currentNodes": 1
+      },
+      {
+        "id": "versioned-collapse-import",
+        "previousSource": "from run_chrome_collapse import run as run_chrome_collapse\n",
+        "currentSource": "from run_chrome_collapse import run_versioned as run_chrome_collapse\n",
+        "previousAstSha256": "895723ad93899489945c2ba068c169613609af3feeee40cd35e4fcd716174ab9",
+        "currentAstSha256": "bf3deb742b6b3a5dad82d8ea333eb97bcead16015f552aea71e26702106e9a6e",
+        "previousNodes": 1,
+        "currentNodes": 1
+      },
+      {
+        "id": "explicit-collapse-version",
+        "previousSource": "auto_collapse = run_chrome_collapse(adb, lambda *parts: subprocess.check_output([args.adb, '-s', args.serial, *parts], timeout=90), source, reload_loopback.TRACE, out, focus)\n",
+        "currentSource": "auto_collapse = run_chrome_collapse(adb, lambda *parts: subprocess.check_output([args.adb, '-s', args.serial, *parts], timeout=90), source, reload_loopback.TRACE, out, focus, navigation_contract=2)\n",
+        "previousAstSha256": "22a99b692cfabc6b36e19f8d2aa3f89cd96f746ffdfb0a6148d5a153da867e5e",
+        "currentAstSha256": "db319897765953edd3c03c4db7ba1a3dcec64f71abfc63e5b1fb9258ea5168c9",
+        "previousNodes": 1,
+        "currentNodes": 1
+      }
+    ]
+  }
+}

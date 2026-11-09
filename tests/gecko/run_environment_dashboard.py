@@ -8,6 +8,41 @@ import hashlib,json,pathlib,re,struct,time,xml.etree.ElementTree as ET
 
 PACKAGE='local.pocketchat.test'
 
+def environment_action_description(xml,environment):
+    """Find the real named environment card without rewriting captured XML."""
+    nodes=list(ET.fromstring(xml).iter('node'))
+    prefix='打开环境：'+environment+'，'
+    cards=[n for n in nodes if n.get('package')==PACKAGE and n.get('content-desc','').startswith(prefix)]
+    assert len(cards)<=1,('ambiguous environment card',environment)
+    if not cards:return None
+    card=cards[0]
+    assert card.get('class')=='android.widget.LinearLayout' and card.get('enabled')==card.get('clickable')=='true',('inactive environment action',environment,card.attrib)
+    assert card.get('visible-to-user')!='false',('hidden environment action',environment)
+    match=re.fullmatch(r'\[(\d+),(\d+)\]\[(\d+),(\d+)\]',card.get('bounds',''))
+    assert match is not None,('missing environment card bounds',environment)
+    l,t,r,b=map(int,match.groups());assert r>l and b>t,('empty environment card bounds',environment)
+    names=[n for n in card.iter('node') if n.get('text')==environment]
+    assert len(names)==1,('environment name missing or ambiguous in its card',environment)
+    name=names[0]
+    assert name.get('class')=='android.widget.TextView' and name.get('package')==PACKAGE and name.get('enabled')=='true',('environment card title differs',environment)
+    title_bounds=re.fullmatch(r'\[(\d+),(\d+)\]\[(\d+),(\d+)\]',name.get('bounds',''))
+    assert title_bounds is not None and name.get('visible-to-user')!='false',('environment card title hidden',environment)
+    nl,nt,nr,nb=map(int,title_bounds.groups())
+    assert l<=nl<nr<=r and t<=nt<nb<=b,('environment card title outside its action',environment)
+    return card.get('content-desc')
+
+def settings_workspace(xml):
+    """Observe the actual settings identity, current section and chat action."""
+    nodes=[n for n in ET.fromstring(xml).iter('node') if n.get('package')==PACKAGE]
+    titles=[n for n in nodes if n.get('content-desc')=='应用设置' and n.get('text')=='设置']
+    sections=[n for n in nodes if n.get('text')=='启动与外观']
+    chats=[n for n in nodes if n.get('content-desc')==n.get('text')=='会话']
+    if not titles or not sections or not chats:return False
+    assert len(titles)==len(sections)==len(chats)==1,'ambiguous settings workspace identity'
+    assert titles[0].get('class')==sections[0].get('class')=='android.widget.TextView','settings identity is not native text'
+    assert chats[0].get('class')=='android.widget.Button' and chats[0].get('enabled')==chats[0].get('clickable')=='true','settings chat action is not available'
+    return True
+
 def run(adb,binary,source,out,dump):
     records=[];events=[];taps=[];directory=out/'ui-visuals/environment-dashboard';directory.mkdir(parents=True,exist_ok=True)
     def tree(xml):return list(ET.fromstring(xml).iter('node'))
@@ -83,26 +118,26 @@ def run(adb,binary,source,out,dump):
             # Real list button, same existing environment/Activity instance.
             entry_taps=len(taps)
             adb('shell','am','start','-W','-n',PACKAGE+'/local.pocketchat.WindowHomeActivity')
-            xml=wait(lambda x:'打开环境 日常会话' in x,'environment list button')
-            click(xml,description='打开环境 日常会话');xml=wait(dashboard,'warm list opens dashboard');snapshot('warm-list',xml)
+            xml=wait(lambda x:environment_action_description(x,'日常会话') is not None,'environment list button')
+            click(xml,description=environment_action_description(xml,'日常会话'));xml=wait(dashboard,'warm list opens dashboard');snapshot('warm-list',xml)
             click(xml,'进入聊天');wait(lambda x:not dashboard(x),'warm explicit entry')
             # Match the reported second-environment case in its actual separate
             # Android profile process, using the real list's native button.
             adb('shell','am','start','-W','-n',PACKAGE+'/local.pocketchat.WindowHomeActivity')
-            xml=wait(lambda x:'打开环境 日常会话' in x,'list for second environment')
+            xml=wait(lambda x:environment_action_description(x,'日常会话') is not None,'list for second environment')
             for _ in range(5):
-                if '打开环境 资料整理' in xml:break
+                if environment_action_description(xml,'资料整理') is not None:break
                 scroll=next(n for n in tree(xml) if n.get('class')=='android.widget.ScrollView' and n.get('scrollable')=='true')
                 l,t,r,b=map(int,re.findall(r'\d+',scroll.get('bounds')));x=(l+r)//2
                 adb('shell','input','swipe',str(x),str(t+(b-t)*4//5),str(x),str(t+(b-t)//5),'300');xml=dump()
-            click(xml,description='打开环境 资料整理');xml=wait(lambda x:dashboard(x) and '资料整理' in x,'separate process second environment');snapshot('second-environment',xml,profileProcess='profile1',slot=1)
+            click(xml,description=environment_action_description(xml,'资料整理'));xml=wait(lambda x:dashboard(x) and '资料整理' in x,'separate process second environment');snapshot('second-environment',xml,profileProcess='profile1',slot=1)
             click(xml,'进入聊天');wait(lambda x:not dashboard(x),'second environment explicit entry')
             # Settings workspace -> real bottom chat tab exercises the other
             # previously unmarked native navigation route.
             adb('shell','am','start','-W','-n',PACKAGE+'/local.pocketchat.WindowHomeActivity')
             xml=wait(lambda x:'环境管理' in x and '设置' in x,'manager settings entry')
             click(xml,'设置')
-            xml=wait(lambda x:'启动与界面' in x and '会话' in x,'settings workspace')
+            xml=wait(settings_workspace,'settings workspace')
             click(xml,'会话');xml=wait(dashboard,'workspace chat opens dashboard');snapshot('workspace-chat',xml)
             events.append(dict(name='warm-list-second-process-and-settings-chat-entry',actualAndroidTaps=len(taps)-entry_taps,passed=True))
         result=dict(schema=1,status='passed',sourceCommit=source,actualAndroidExecution=True,actualNativeDashboardRendering=True,physicalPhoneAcceptance=False,actualPublicSiteExecution=False,scope=__doc__.strip(),captures=records,events=events,actualAndroidTaps=taps)

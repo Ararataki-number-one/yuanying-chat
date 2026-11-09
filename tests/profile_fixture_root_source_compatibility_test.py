@@ -13,6 +13,7 @@ import unittest
 from unittest.mock import patch
 
 import profile_fixture_root_source_compatibility as layer
+from workspace_runner_source_compatibility import historical_input as workspace_source_input
 
 ROOT = Path(__file__).resolve().parents[1]
 SHA = lambda raw: hashlib.sha256(raw).hexdigest()
@@ -39,7 +40,7 @@ class FixtureRootHistoricalInputs(unittest.TestCase):
         self.assertEqual(set(BEFORE), layer.PATHS)
         self.assertEqual(sum(len(r['deltas']) for r in value['files'].values()), 7)
         for relative, row in value['files'].items():
-            current = (ROOT/relative).read_bytes()
+            current = workspace_source_input((ROOT/relative).read_bytes(), relative)
             previous = layer.source_input(current, relative)
             self.assertEqual((SHA(previous), len(previous)), BEFORE[relative])
             self.assertEqual((SHA(current), len(current)), (row['reviewedSha256'], row['reviewedBytes']))
@@ -55,7 +56,7 @@ class FixtureRootHistoricalInputs(unittest.TestCase):
     def test_missing_duplicate_changed_moved_truncated_and_unknown_owned_images_reject(self):
         rejected = 0
         for relative, row in layer.manifest()['files'].items():
-            raw = (ROOT/relative).read_bytes()
+            raw = workspace_source_input((ROOT/relative).read_bytes(), relative)
             for delta in row['deltas']:
                 chunk = delta['current'].encode()
                 self.assertEqual(raw.count(chunk), 1)

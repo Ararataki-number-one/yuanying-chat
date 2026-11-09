@@ -797,7 +797,8 @@ def main():
         adb('shell','uiautomator','dump','/sdcard/gecko-production.xml')
         hierarchy=adb('shell','cat','/sdcard/gecko-production.xml')
         (OUT/'production-ui.xml').write_text(hierarchy)
-        for label in ['会话','环境','下载','网络','设置']:assert label in hierarchy,(label,hierarchy)
+        from workspace_navigation_contract import exercise_workspace_roundtrip
+        report['productionNavigation']=exercise_workspace_roundtrip(adb,hierarchy,lambda name,xml:(OUT/name).write_text(xml),package)
         assert not any(node.attrib.get('text') in ['简洁','原网页'] for node in ET.fromstring(hierarchy).iter('node')),hierarchy
         assert 'FATAL EXCEPTION' not in adb('logcat','-d','-s','AndroidRuntime:E','*:S')
         update_checks=[]

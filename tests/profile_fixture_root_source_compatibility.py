@@ -121,3 +121,8 @@ def historical_input(raw, relative):
 from gradle_workflow_test_source_compatibility import wrap_root_source_input as _gradle_root_source_input, wrap_root_manifest as _gradle_root_manifest
 source_input = _gradle_root_source_input(source_input)
 manifest = _gradle_root_manifest(manifest)
+
+# Exact workspace-navigation source view for historical metadata only.
+from workspace_runner_source_compatibility import wrap_input as _workspace_source_input
+source_input = _workspace_source_input(source_input)
+historical_input = _workspace_source_input(historical_input)

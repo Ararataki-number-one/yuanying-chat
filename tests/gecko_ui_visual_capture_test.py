@@ -30,6 +30,11 @@ def runner_functions(*names):
     tree = ast.parse(RUNNER.read_text())
     functions = [copy.deepcopy(n) for n in tree.body if isinstance(n, ast.FunctionDef) and n.name in names]
     assert {n.name for n in functions} == set(names)
+    if 'capture' in names:
+        declarations = [n for n in tree.body if isinstance(n, ast.Assign)
+                        and any(isinstance(t, ast.Name) and t.id == 'UI_NAVIGATION_CONTRACT' for t in n.targets)]
+        assert len(declarations) == 1, 'Actual capture navigation declaration required'
+        functions.extend(copy.deepcopy(declarations))
     return ast.Module(body=functions, type_ignores=[])
 
 

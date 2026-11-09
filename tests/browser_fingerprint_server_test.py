@@ -169,6 +169,96 @@ class UserCaInstallationBoundaryTests(unittest.TestCase):
         self.assertEqual(adb.uid,0);installer.remove();self.assertEqual(adb.uid,2000);self.assertFalse(adb.present)
 
 
+class RestartingAdb(ControlledAdb):
+    """Model request loss separately from the daemon's actual UID transition."""
+    def __init__(self,certificates):super().__init__(certificates);self.failures={}
+    def __call__(self,*args,check=True,timeout=30):
+        pending=self.failures.get(args,[])
+        if not pending:return super().__call__(*args,check=check,timeout=timeout)
+        effect=pending.pop(0)
+        if effect=='after':super().__call__(*args,check=check,timeout=timeout)
+        else:self.calls.append(args)
+        if effect=='no-effect':return SimpleNamespace(returncode=0,stdout=b'',stderr=b'')
+        if effect=='timeout':raise subprocess.TimeoutExpired(args,timeout,output=b'',stderr=b'controlled reconnect timeout')
+        raise subprocess.CalledProcessError(1,args,output=b'controlled request output\n',stderr=('controlled '+effect+' transport failure\n').encode())
+
+
+class AdbdRestartRecoveryTests(unittest.TestCase):
+    setUp=UserCaInstallationBoundaryTests.setUp
+    def installed(self):
+        adb=RestartingAdb(self.certificates);installer=host.AndroidUserCa(adb,self.certificates);receipt=installer.install()
+        return adb,installer,receipt
+    def cleanup_transition(self,receipt,command):return [x for x in receipt['adbdTransitions'][2:] if x['command']==command][-1]
+
+    def test_lost_root_or_unroot_reply_requires_reconnect_and_successful_identical_request(self):
+        for command,uid in [('root',0),('unroot',2000)]:
+            with self.subTest(command=command):
+                adb,installer,receipt=self.installed();offset=len(adb.calls);adb.failures[(command,)]=['after'];installer.remove()
+                self.assertFalse(adb.present);self.assertEqual(adb.uid,2000);self.assertTrue(receipt['removedAfterExecution']);self.assertTrue(receipt['shellRestoredAfterCleanup'])
+                item=self.cleanup_transition(receipt,command);self.assertTrue(item['retried']);self.assertEqual(item['status'],'passed');self.assertEqual(len(item['attempts']),2)
+                self.assertEqual(item['firstError']['returncode'],1);self.assertEqual(item['firstError']['stdout'],'controlled request output\n');self.assertEqual(item['firstError']['stderr'],'controlled after transport failure\n')
+                self.assertEqual(item['attempts'][1]['returncode'],0);self.assertEqual(item['attempts'][1]['observedUid'],str(uid))
+                calls=adb.calls[offset:];start=calls.index((command,));self.assertEqual(calls[start:start+5],[(command,),('wait-for-device',),(command,),('wait-for-device',),('shell','id','-u')])
+                self.assertEqual(len([x for x in adb.calls if x[0]=='push']),1)
+                self.assertEqual(adb('exec-out','content','read','--uri','content://local.pocketchat.test.evidence/build-identity').returncode,0)
+
+    def test_failure_before_daemon_transition_is_reissued_only_after_reconnect(self):
+        adb,installer,receipt=self.installed();adb.failures[('root',)]=['before'];installer.remove()
+        item=self.cleanup_transition(receipt,'root');self.assertEqual(item['retryReconnect'],{'status':'passed'});self.assertEqual(len(item['attempts']),2)
+        self.assertEqual(receipt['cleanupRootUid'],0);self.assertEqual(receipt['cleanupShellUid'],2000);self.assertFalse(adb.present)
+
+    def test_permanent_root_failure_keeps_first_error_and_certificate_and_restores_shell(self):
+        adb,installer,receipt=self.installed();adb.failures[('root',)]=['before','after']
+        with self.assertRaises(subprocess.CalledProcessError):installer.remove()
+        item=self.cleanup_transition(receipt,'root');self.assertEqual(item['status'],'failed');self.assertEqual(len(item['attempts']),2)
+        self.assertEqual(item['firstError']['stderr'],'controlled before transport failure\n');self.assertEqual(item['attempts'][1]['stderr'],'controlled after transport failure\n')
+        self.assertTrue(adb.present);self.assertFalse(receipt['removedAfterExecution']);self.assertFalse(any(x[:2]==('shell','rm') for x in adb.calls));self.assertEqual(adb.uid,2000)
+
+    def test_permanent_unroot_error_cannot_pass_even_when_daemon_already_has_shell_uid(self):
+        adb,installer,receipt=self.installed();adb.failures[('unroot',)]=['after','after']
+        with self.assertRaises(subprocess.CalledProcessError):installer.remove()
+        self.assertEqual(adb.uid,2000);self.assertFalse(adb.present);self.assertTrue(receipt['removedAfterExecution']);self.assertNotIn('cleanupShellUid',receipt);self.assertNotIn('shellRestoredAfterCleanup',receipt)
+        item=self.cleanup_transition(receipt,'unroot');self.assertEqual(item['status'],'failed');self.assertEqual(len(item['attempts']),2)
+
+    def test_failed_root_and_shell_restoration_keep_both_errors_without_cleanup_claim(self):
+        adb,installer,receipt=self.installed();adb.failures[('root',)]=['after','before'];adb.failures[('unroot',)]=['before','before']
+        with self.assertRaises(subprocess.CalledProcessError):installer.remove()
+        root=self.cleanup_transition(receipt,'root');shell=self.cleanup_transition(receipt,'unroot')
+        self.assertEqual(root['firstError']['stderr'],'controlled after transport failure\n');self.assertEqual(shell['firstError']['stderr'],'controlled before transport failure\n')
+        self.assertEqual(root['status'],'failed');self.assertEqual(shell['status'],'failed');self.assertTrue(adb.present);self.assertFalse(receipt['removedAfterExecution']);self.assertNotIn('shellRestoredAfterCleanup',receipt)
+
+    def test_reconnect_failure_prevents_second_request_and_preserves_original_error(self):
+        adb,installer,receipt=self.installed();adb.failures[('root',)]=['after'];adb.failures[('wait-for-device',)]=['timeout']
+        with self.assertRaises(subprocess.TimeoutExpired):installer.remove()
+        item=self.cleanup_transition(receipt,'root');self.assertEqual(item['status'],'failed');self.assertFalse(item['retried']);self.assertEqual(len(item['attempts']),1)
+        self.assertEqual(item['firstError']['stderr'],'controlled after transport failure\n');self.assertEqual(item['retryReconnect']['errorType'],'TimeoutExpired')
+        self.assertTrue(adb.present);self.assertFalse(receipt['removedAfterExecution']);self.assertEqual(adb.uid,2000)
+
+    def test_successful_request_with_wrong_uid_is_not_retried_or_used_to_delete_ca(self):
+        adb,installer,receipt=self.installed();adb.fault='cleanup-root'
+        with self.assertRaises(ValueError):installer.remove()
+        item=self.cleanup_transition(receipt,'root');self.assertEqual(item['status'],'failed');self.assertFalse(item['retried']);self.assertEqual(len(item['attempts']),1)
+        self.assertEqual(item['firstError']['phase'],'uid');self.assertEqual(item['firstError']['observedUid'],'2000');self.assertTrue(adb.present);self.assertEqual(adb.uid,2000)
+
+    def test_recovered_root_still_refuses_changed_certificate_or_unproved_removal(self):
+        for fault in ('changed','not-removed'):
+            with self.subTest(fault=fault):
+                adb,installer,receipt=self.installed();adb.failures[('root',)]=['after']
+                if fault=='changed':adb.fault='bytes'
+                else:adb.failures[('shell','rm',installer.path)]=['no-effect']
+                with self.assertRaises(ValueError):installer.remove()
+                self.assertTrue(adb.present);self.assertFalse(receipt['removedAfterExecution']);self.assertEqual(adb.uid,2000)
+                if fault=='changed':self.assertFalse(any(x[:2]==('shell','rm') for x in adb.calls))
+
+    def test_command_timeout_and_failed_postrequest_wait_are_not_request_retries(self):
+        for command in [('root',),('wait-for-device',)]:
+            with self.subTest(command=command):
+                adb,installer,receipt=self.installed();adb.failures[command]=['timeout']
+                with self.assertRaises(subprocess.TimeoutExpired):installer.remove()
+                item=self.cleanup_transition(receipt,'root');self.assertFalse(item['retried']);self.assertEqual(len(item['attempts']),1);self.assertEqual(item['status'],'failed')
+                self.assertTrue(adb.present);self.assertFalse(receipt['removedAfterExecution']);self.assertEqual(adb.uid,2000)
+
+
 class DeviceShellSerializationTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
