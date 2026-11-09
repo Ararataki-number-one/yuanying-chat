@@ -108,7 +108,7 @@ class TextUtils{static boolean equals(CharSequence a,CharSequence b){return Obje
 class ReferenceUi{static final int TEXT=1;static TextView text(Context a,String value,int size,int color,boolean bold){TextView view=new TextView();view.setText(value);return view;}}
 class ProfileCatalog{static JSONObject value;static boolean failure;static int reads;static final ProfileCatalog instance=new ProfileCatalog();static ProfileCatalog get(Context c){return instance;}JSONObject item(int slot){reads++;if(failure)throw new IllegalStateException("controlled catalogue read failure");return ChromeNetworkStateHost.copy(value);}String name(int slot){return item(slot).optString("name");}}
 class Profiles{static Context context(Context c,int slot){return c;}static int slot(Context c){return 0;}static String display(Context c,int slot){return ProfileCatalog.get(c).name(slot);}}
-class DesignUi{static class Stars{static boolean fail;static int refreshes;static void refresh(Context c){refreshes++;if(fail)throw new IllegalStateException("controlled appearance refresh failure");}}}
+class DesignUi{static int GLASS_INK=0xff172033;static class Stars{static boolean fail;static int refreshes;static void refresh(Context c){refreshes++;if(fail)throw new IllegalStateException("controlled appearance refresh failure");}}}
 class UiPerfStats{static void chromeUpdate(){}static void textChange(){}}
 class NetworkRegion{static String region(Context c,String ip){return "";}}
 class NetworkCatalog{/* CATALOG_EXIT_ID */static String subscriptionName(JSONObject c){return "controlled subscription";}}

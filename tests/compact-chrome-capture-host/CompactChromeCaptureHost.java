@@ -6,7 +6,7 @@ public final class CompactChromeCaptureHost {
   static void check(String name,boolean value){checks.put(J.obj("name",name,"pass",value));}
   static CompactChromeIntegrationActivity setup(){Scheduler.current=new Scheduler();View.views.clear();Log.values.clear();DesignChrome.metadataReader.clear();ProfileCatalog.value=J.obj("slot",0,"name","Controlled title","environmentId","scope-a","generation",2,"created",true);return new CompactChromeIntegrationActivity();}
   static void realRender(CompactChromeIntegrationActivity a){a.designChrome.update();a.handler.runTo(a.handler.now);a.handler.animationFrame();a.handler.runTo(a.handler.now);}
-  static boolean realState(CompactChromeIntegrationActivity a){return a.designChrome.latencyWord.getText().equals("延迟未测（等待连接）")&&a.designChrome.stateWord.getText().equals("未配置");}
+  static boolean realState(CompactChromeIntegrationActivity a){return a.designChrome.latencyWord.getText().equals("延迟未测")&&a.designChrome.latencyWord.getContentDescription().equals("延迟未测（等待连接）")&&a.designChrome.stateWord.getText().equals("未配置");}
   static boolean syntheticState(CompactChromeIntegrationActivity a){return a.designChrome.latencyWord.getText().equals("42 ms（02:00）")&&a.designChrome.stateWord.getText().equals("已连接");}
   static boolean released(CompactChromeIntegrationActivity a){return a.presentation==null&&a.presentationListener==null&&a.presentationExpiry==null&&a.toolbar.observer.listeners.isEmpty()&&a.handler.delayedCount()==0;}
   static boolean frame(CompactChromeIntegrationActivity a){for(View v:new ArrayList<>(View.views))v.layout();return a.toolbar.observer.dispatch();}
@@ -88,7 +88,7 @@ class TextLayout{final CharSequence text;TextLayout(CharSequence value){text=val
 class ReferenceUi{static final int TEXT=1,GREEN=2,RED=3,ORANGE=4,MUTED=5;static TextView text(Context a,String value,int size,int color,boolean bold){TextView v=new TextView();v.setText(value);return v;}}
 class ProfileCatalog{static JSONObject value;static final ProfileCatalog instance=new ProfileCatalog();static ProfileCatalog get(Context c){return instance;}JSONObject item(int slot){try{return new JSONObject(value.toString());}catch(Exception e){throw new RuntimeException(e);}}String name(int slot){return item(slot).optString("name");}}
 class Profiles{static Context context(Context c,int slot){return c;}static int slot(Context c){return 0;}static String display(Context c,int slot){return ProfileCatalog.get(c).name(slot);}}
-class DesignUi{static class Stars{static void refresh(Context c){}}}
+class DesignUi{static int GLASS_INK=0xff172033;static class Stars{static void refresh(Context c){}}}
 class UiPerfStats{static void chromeUpdate(){}static void textChange(){}}
 class NetworkRegion{static String region(Context c,String ip){return "";}}
 class NetworkCatalog{/* CATALOG_EXIT_ID */static String subscriptionName(JSONObject c){return "controlled subscription";}}
