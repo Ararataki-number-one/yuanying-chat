@@ -1,1 +1,0 @@
-package android.os;public class Looper{static final Thread MAIN=Thread.currentThread();static final Looper VALUE=new Looper();public static Looper getMainLooper(){return VALUE;}public static Looper myLooper(){return Thread.currentThread()==MAIN?VALUE:null;}}
