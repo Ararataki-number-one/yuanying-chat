@@ -90,6 +90,7 @@ final class NavigationTypographyEvidence implements ViewTreeObserver.OnPreDrawLi
         Rect buttonBounds=new Rect(b.getLeft(),b.getTop(),b.getRight(),b.getBottom());
         if(initialButtonBounds[i]==null){initialButtonBounds[i]=new Rect(buttonBounds);initialIconBounds[i]=new Rect(iconBounds);}
         boolean expectedSelected=i==selected;int expectedInk=expectedSelected?DesignUi.GLASS_INK:DesignUi.GLASS_MUTED;
+        int expectedIconInk=expectedSelected?DesignUi.BLUE:DesignUi.GLASS_MUTED;
         JSONObject rendered=iconRendering(icon);
         JSONObject checks=new JSONObject().put("layoutFits",layout.getHeight()<=bottom-top)
           .put("glyphFits",glyphTop>=top&&glyphBottom<=bottom)
@@ -102,7 +103,7 @@ final class NavigationTypographyEvidence implements ViewTreeObserver.OnPreDrawLi
           .put("verticalUnscrolled",b.getScrollY()==0)
           .put("selectionMatches",b.isSelected()==expectedSelected)
           .put("iconSolidMatchesSelection",icon!=null&&icon.solid==expectedSelected)
-          .put("iconInkMatchesSelection",icon!=null&&icon.color==expectedInk)
+          .put("iconInkMatchesSelection",icon!=null&&icon.color==expectedIconInk)
           .put("labelInkMatchesSelection",b.getCurrentTextColor()==expectedInk)
           .put("buttonIdentityStable",b==initialButtons[i])
           .put("buttonBoundsStable",buttonBounds.equals(initialButtonBounds[i]))
@@ -127,7 +128,7 @@ final class NavigationTypographyEvidence implements ViewTreeObserver.OnPreDrawLi
           .put("includeFontPadding",b.getIncludeFontPadding()).put("fallbackLineSpacing",Build.VERSION.SDK_INT>=28&&b.isFallbackLineSpacing())
           .put("icon",new JSONObject().put("name",icon==null?JSONObject.NULL:icon.name)
             .put("solid",icon==null?JSONObject.NULL:icon.solid).put("color",icon==null?JSONObject.NULL:icon.color)
-            .put("expectedColor",expectedInk).put("bounds",new JSONArray(new int[]{iconBounds.left,iconBounds.top,iconBounds.right,iconBounds.bottom})))
+            .put("expectedColor",expectedIconInk).put("bounds",new JSONArray(new int[]{iconBounds.left,iconBounds.top,iconBounds.right,iconBounds.bottom})))
           .put("buttonBounds",new JSONArray(new int[]{buttonBounds.left,buttonBounds.top,buttonBounds.right,buttonBounds.bottom}))
           .put("iconRendering",rendered)
           .put("checks",checks).put("valid",valid));

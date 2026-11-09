@@ -199,7 +199,7 @@ final class ReferenceUi {
       int ink=active?DesignUi.GLASS_INK:DesignUi.GLASS_MUTED;
       b.setSelected(active);b.setTextColor(ink);
       b.setTypeface(Typeface.create(active?"sans-serif-medium":"sans-serif",Typeface.NORMAL));
-      Drawable icon=b.getCompoundDrawables()[1];if(icon instanceof Ui.Icon){((Ui.Icon)icon).color=ink;((Ui.Icon)icon).solid=active;}b.invalidate();
+      Drawable icon=b.getCompoundDrawables()[1];if(icon instanceof Ui.Icon){((Ui.Icon)icon).color=active?DesignUi.BLUE:DesignUi.GLASS_MUTED;((Ui.Icon)icon).solid=active;}b.invalidate();
       if(b.getParent() instanceof GlassDock)dock=(GlassDock)b.getParent();
     }
     if(dock!=null)dock.selectionChanged();
