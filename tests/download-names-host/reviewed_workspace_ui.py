@@ -3,7 +3,7 @@ import hashlib
 import json
 from pathlib import Path
 
-MANIFEST_SHA = 'a067db8775d8e8564f8a2b0ec75a17c250fb8174eee1f41afb929178d244cfa7'
+MANIFEST_SHA = '8e2b8426314f2677702546d9918d959f108d89109532c9ec4702365d74a3a4a4'
 
 
 def manifest():

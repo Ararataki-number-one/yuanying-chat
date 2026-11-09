@@ -19,8 +19,21 @@ final class ReferenceUi {
   // Page identities deliberately differ from visual positions in this bar.
   private static final int[] WORKSPACE_PAGES={AppHub.CHAT,AppHub.ENVIRONMENTS,AppHub.DOWNLOADS,AppHub.NETWORK,AppHub.SETTINGS};
   private static final String[] WORKSPACE_LABELS={"会话","环境","下载","网络","设置"},WORKSPACE_GLYPHS={"chat","window","download","globe","settings"};
+  // Shared roles keep the four native surfaces in step without changing the
+  // conversation's compact controls into a management-page header.
+  static final int PAGE_TITLE_SIZE=30,CARD_TITLE_SIZE=16,EMPTY_TITLE_SIZE=18,
+    BODY_SIZE=14,SECONDARY_SIZE=12,STATUS_SIZE=11,ACTION_SIZE=13,TAB_SIZE=14;
   static int dp(Context c,int n){return Ui.dp(c,n);}
   static TextView text(Context c,String value,int size,int color,boolean strong){TextView v=DesignUi.text(c,value,size,color);if(strong)v.setTypeface(Typeface.create("sans-serif-medium",Typeface.NORMAL));return v;}
+  static TextView workspaceText(Context c,String value,int size,int color,boolean strong){
+    TextView view=text(c,value,size,color,strong);readable(view);return view;
+  }
+  /** Include the actual CJK fallback metrics, including on enlarged labels. */
+  static void readable(TextView view){
+    view.setIncludeFontPadding(true);
+    if(Build.VERSION.SDK_INT>=28)view.setFallbackLineSpacing(true);
+    view.setLineSpacing(dp(view.getContext(),2),1f);
+  }
   static void single(TextView v){v.setSingleLine(true);v.setEllipsize(TextUtils.TruncateAt.END);}
   static Drawable surface(Context c,int color,int radius,int border){return DesignUi.surface(c,color,radius,border);}
   static Button button(Context c,String label,boolean primary,Runnable run){return DesignUi.button(c,label,primary,run);}
@@ -39,6 +52,32 @@ final class ReferenceUi {
   static LinearLayout card(Context c){return DesignUi.card(c);}
   static void add(LinearLayout box,View card){LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(-1,-2);p.bottomMargin=dp(box.getContext(),10);box.addView(card,p);}
   static TextView secondary(Context c,String value){TextView t=text(c,value,13,MUTED,false);t.setMaxLines(3);t.setEllipsize(TextUtils.TruncateAt.END);t.setPadding(0,dp(c,5),0,0);return t;}
+  /** Downloads and network use the same type, selection surface and touch area. */
+  static LinearLayout workspaceTabs(Context c,String[] labels,int selected,java.util.function.IntConsumer choose){
+    LinearLayout bar=DesignUi.row(c);bar.setBackgroundColor(Color.TRANSPARENT);
+    boolean overflow=c.getResources().getConfiguration().fontScale>=1.4f
+        ||c.getResources().getConfiguration().screenWidthDp<360;
+    for(int i=0;i<labels.length;i++){
+      final int index=i;boolean active=i==selected;
+      Button tab=link(c,labels[i],()->choose.accept(index));
+      tab.setTextSize(TAB_SIZE);tab.setTextColor(active?BLUE:MUTED);
+      tab.setTypeface(Typeface.create("sans-serif-medium",Typeface.NORMAL));
+      tab.setSelected(active);tab.setContentDescription(labels[i]);readable(tab);
+      tab.setSingleLine(false);tab.setMaxLines(1);tab.setHorizontallyScrolling(false);tab.setEllipsize(null);
+      tab.setMinWidth(0);tab.setMinimumWidth(0);tab.setMinHeight(dp(c,48));tab.setMinimumHeight(dp(c,48));
+      Drawable face=surface(c,active?BLUE_SOFT:Color.TRANSPARENT,18,Color.TRANSPARENT);
+      if(active)face.setAlpha(150);
+      tab.setBackground(new RippleDrawable(ColorStateList.valueOf(AppAppearance.dark()?0x227faeff:0x140067d8),
+          new InsetDrawable(face,dp(c,2),dp(c,6),dp(c,2),dp(c,6)),null));
+      tab.setPadding(dp(c,overflow?18:4),dp(c,8),dp(c,overflow?18:4),dp(c,8));
+      LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(overflow?-2:0,-2,overflow?0:1);
+      if(i>0)p.leftMargin=dp(c,4);bar.addView(tab,p);
+    }
+    if(!overflow)return bar;
+    HorizontalScrollView scroll=new HorizontalScrollView(c);scroll.setHorizontalScrollBarEnabled(false);scroll.addView(bar);
+    scroll.post(()->scroll.smoothScrollTo(Math.max(0,bar.getChildAt(selected).getLeft()-dp(c,12)),0));
+    LinearLayout host=DesignUi.column(c);host.addView(scroll,new LinearLayout.LayoutParams(-1,-2));return host;
+  }
   static LinearLayout tabs(Context c,String[] labels,int selected,java.util.function.IntConsumer click){
     LinearLayout bar=DesignUi.row(c);bar.setPadding(dp(c,4),0,dp(c,4),0);bar.setBackground(surface(c,0xfff0f2f6,13,Color.TRANSPARENT));
     boolean large=c.getResources().getConfiguration().fontScale>=1.4f;

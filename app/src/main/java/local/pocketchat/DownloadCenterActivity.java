@@ -13,15 +13,8 @@ public class DownloadCenterActivity extends ThemedActivity {
     actions=new SavedFileActions(this);
     if(Build.VERSION.SDK_INT>=30)getWindow().setDecorFitsSystemWindows(false);
     root=DesignUi.screen(this);root.setClipChildren(false);root.setClipToPadding(false);
-    LinearLayout heading=DesignUi.row(this);heading.setPadding(dp(22),dp(14),dp(18),dp(14));heading.setClipChildren(false);heading.setClipToPadding(false);
-    LinearLayout copy=DesignUi.column(this);
-    TextView title=DownloadWorkspaceStyle.text(this,"下载",30,DesignUi.TEXT,true);title.setContentDescription("下载中心");
-    if(Build.VERSION.SDK_INT>=28)title.setAccessibilityHeading(true);copy.addView(title);
-    TextView subtitle=DownloadWorkspaceStyle.text(this,"文件与下载任务",12,DesignUi.MUTED,false);subtitle.setPadding(0,dp(3),dp(6),0);copy.addView(subtitle);
-    heading.addView(copy,new LinearLayout.LayoutParams(0,-2,1));
-    Button folder=ReferenceUi.iconButton(this,"tray","保存位置",()->DesignDownloads.folder(this));folder.setBackground(DesignUi.glass(this,25));GlassMotion.press(folder,true);
-    heading.addView(folder,new LinearLayout.LayoutParams(dp(50),dp(50)));root.addView(heading,new LinearLayout.LayoutParams(-1,-2));
-    problem=DownloadWorkspaceStyle.text(this,"",13,DesignUi.RED,false);problem.setPadding(dp(20),dp(6),dp(20),dp(6));problem.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);problem.setVisibility(View.GONE);root.addView(problem,new LinearLayout.LayoutParams(-1,-2));
+    root.addView(DesignDownloads.header(this),new LinearLayout.LayoutParams(-1,-2));
+    problem=DownloadWorkspaceStyle.text(this,"",ReferenceUi.BODY_SIZE,DesignUi.RED,false);problem.setPadding(dp(20),dp(6),dp(20),dp(6));problem.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);problem.setVisibility(View.GONE);root.addView(problem,new LinearLayout.LayoutParams(-1,-2));
     FrameLayout workspace=new FrameLayout(this);workspace.setClipChildren(false);workspace.setClipToPadding(false);
     FrameLayout viewport=new FrameLayout(this);workspace.addView(viewport,new FrameLayout.LayoutParams(-1,-1));
     backdrop=new GlassBackdrop(this);backdrop.setBackground(new DesignUi.Stars(this));viewport.addView(backdrop,new FrameLayout.LayoutParams(-1,-1));

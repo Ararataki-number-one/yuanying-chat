@@ -52,6 +52,7 @@ final class DesignChrome {
     compact.setClipChildren(false);compact.setClipToPadding(false);
     profileRow=ProfileCatalog.get(a).item(Profiles.slot(a));
     compactTitle=ReferenceUi.text(a,profileLabel(profileRow,Profiles.slot(a)),13,DesignUi.GLASS_INK,true);
+    ReferenceUi.readable(compactTitle);
     ReferenceUi.single(compactTitle);
     compactTitle.setMinWidth(a.dp(112));compactTitle.setMaxWidth(a.dp(184));
     Ui.Icon disclosure=new Ui.Icon("globe",DesignUi.GLASS_MUTED);disclosure.setBounds(0,0,a.dp(14),a.dp(14));
@@ -73,7 +74,8 @@ final class DesignChrome {
     top=DesignUi.row(a);
     a.navigation=new Ui.IconButton(a,"hamburger","管理环境",false);
     a.navigation.setOnClickListener(v->a.showDrawer());
-    title=ReferenceUi.text(a,compactTitle.getText().toString(),15,DesignUi.GLASS_INK,true);
+    title=ReferenceUi.text(a,compactTitle.getText().toString(),16,DesignUi.GLASS_INK,true);
+    ReferenceUi.readable(title);
     profileName=title.getText().toString();
     ReferenceUi.single(title);
     title.setMinWidth(a.dp(160));title.setMaxWidth(a.dp(192));
@@ -103,9 +105,9 @@ final class DesignChrome {
 
     dot=ReferenceUi.text(a,"●",9,ReferenceUi.MUTED,false);
     dot.setTextSize(android.util.TypedValue.COMPLEX_UNIT_DIP,9);
-    a.networkLine=ReferenceUi.text(a,"连接状态待确认",11,ReferenceUi.MUTED,false);
-    latencyWord=ReferenceUi.text(a,"延迟未测",11,ReferenceUi.MUTED,false);
-    stateWord=ReferenceUi.text(a,"未连接",11,ReferenceUi.MUTED,true);
+    a.networkLine=ReferenceUi.workspaceText(a,"连接状态待确认",ReferenceUi.SECONDARY_SIZE,ReferenceUi.MUTED,false);
+    latencyWord=ReferenceUi.workspaceText(a,"延迟未测",ReferenceUi.SECONDARY_SIZE,ReferenceUi.MUTED,false);
+    stateWord=ReferenceUi.workspaceText(a,"未连接",ReferenceUi.STATUS_SIZE,ReferenceUi.MUTED,false);
     a.networkLine.setMaxLines(2);a.networkLine.setEllipsize(TextUtils.TruncateAt.END);
     latencyWord.setMaxLines(2);latencyWord.setEllipsize(TextUtils.TruncateAt.END);
     ReferenceUi.single(stateWord);
@@ -277,8 +279,11 @@ final class DesignChrome {
   }
 
   private static int textHeight(TextView text){
-    Paint.FontMetrics metrics=text.getPaint().getFontMetrics();
-    return (int)Math.ceil(metrics.bottom-metrics.top);
+    // TextView includes fallback fonts in its own layout; the primary Latin
+    // font's FontMetrics alone can underestimate a mixed Chinese label.
+    int unspecified=View.MeasureSpec.makeMeasureSpec(0,View.MeasureSpec.UNSPECIFIED);
+    text.measure(unspecified,unspecified);
+    return text.getMeasuredHeight();
   }
 
   /** Center the icon and label together, rather than pinning the icon to the rim. */

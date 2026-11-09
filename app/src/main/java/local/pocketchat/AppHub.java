@@ -140,9 +140,18 @@ final class AppHub {
     tabs[WorkspaceNavigation.READING].setContentDescription(focused?"退出专注阅读模式":"进入专注阅读模式");
   }
   LinearLayout layout(String title){
+    return layout(title,false);
+  }
+  LinearLayout layout(String title,boolean downloadsPage){
     String identity=page+"|"+settingsTab+"|"+networkTab+"|"+downloadFilter+"|"+title;int oldY=0;
     if(identity.equals(rendered)&&panel.getChildCount()>0){ViewGroup old=(ViewGroup)panel.getChildAt(0);if(old.getChildCount()>1&&old.getChildAt(1) instanceof ScrollView)oldY=old.getChildAt(1).getScrollY();}
-    rendered=identity;final int restoreY=oldY;LinearLayout screen=DesignUi.screen(a),box=DesignUi.body(a,screen,title,()->select(CHAT));
+    rendered=identity;final int restoreY=oldY;LinearLayout screen=DesignUi.screen(a),box;
+    if(downloadsPage){
+      screen.addView(DesignDownloads.header(a),new LinearLayout.LayoutParams(-1,-2));
+      box=DesignUi.column(a);box.setPadding(a.dp(20),a.dp(4),a.dp(20),a.dp(20));
+      ScrollView scroll=new ScrollView(a);scroll.setFillViewport(true);scroll.setClipToPadding(false);
+      scroll.addView(box,new ScrollView.LayoutParams(-1,-2));screen.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));
+    }else box=DesignUi.body(a,screen,title,()->select(CHAT));
     panel.removeAllViews();panel.addView(screen,new FrameLayout.LayoutParams(-1,-1));
     placeFeedback();updateNativeInsets();
     if(screen.getChildCount()>1&&screen.getChildAt(1) instanceof ScrollView){ScrollView scroll=(ScrollView)screen.getChildAt(1);scroll.post(()->scroll.scrollTo(0,restoreY));}return box;
@@ -180,7 +189,7 @@ final class AppHub {
   void downloadsVisible(boolean foreground){if(downloadController!=null)downloadController.setVisible(foreground&&page==DOWNLOADS);}
   void downloads(){
     if(downloadController==null||panel.getChildCount()==0||panel.getChildAt(0)!=downloadScreen){
-      LinearLayout box=layout("下载中心");downloadScreen=panel.getChildAt(0);
+      LinearLayout box=layout("下载",true);downloadScreen=panel.getChildAt(0);
       downloadController=new DesignDownloads.Controller(a,box,downloadFilter,n->{downloadFilter=n;downloads();},a.downloads.savedActions);
       if(a.downloadUiState!=null){downloadController.restoreState(a.downloadUiState);a.downloadUiState=null;}
     }else downloadController.refresh(downloadFilter);

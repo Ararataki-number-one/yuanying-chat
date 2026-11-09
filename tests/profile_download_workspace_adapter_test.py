@@ -1,5 +1,6 @@
 """Current download UI executes verbatim; exact inverse feeds historical guards."""
 import hashlib
+import json
 from pathlib import Path
 import unittest
 from unittest import mock
@@ -116,6 +117,36 @@ class WorkspaceUiCompatibilityControls(unittest.TestCase):
         }
         for name, digest in expected.items():
             self.assertEqual(hashlib.sha256((NAMES / name).read_bytes()).hexdigest(), digest)
+
+    def test_typography_extension_preserves_original_edits_and_behavior_digests(self):
+        canonical = lambda value: json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(',', ':'))
+        self.assertEqual(len(self.manifest['edits']), 12)
+        self.assertEqual(sha(canonical(self.manifest['edits'][:7])),
+                         'b6fbe7bda4897c1f4ee3593652f458085235cf2f5f505ea422d89d423fb9b13b')
+        protected = {key:self.manifest[key] for key in ('currentMethodSha256', 'priorMethodSha256')}
+        self.assertEqual(sha(canonical(protected)),
+                         'e7ba7b6a8e21b07df1f23aaa3b69ac609cd25074a7118c3369559624bc6e09e0')
+        prior = self.current
+        for edit in reversed(self.manifest['edits'][7:]):
+            self.assertEqual(prior.count(edit['after']), 1)
+            prior = prior.replace(edit['after'], edit['before'], 1)
+        self.assertEqual(sha(prior), '0cbb2073619217bf585b2352387c39688b3ac231164020f4593f062c838a8f19')
+        restored = prior
+        for edit in self.manifest['edits'][7:]:
+            self.assertEqual(restored.count(edit['before']), 1)
+            restored = restored.replace(edit['before'], edit['after'], 1)
+        self.assertEqual(restored, self.current)
+
+    def test_missing_duplicated_or_changed_typography_hunks_are_rejected(self):
+        for edit in self.manifest['edits'][7:]:
+            current = edit['after']
+            self.assertEqual(self.current.count(current), 1)
+            changed = current.replace('ReferenceUi.', 'UnreviewedUi.', 1)
+            self.assertNotEqual(changed, current)
+            for replacement in ('', current + current, changed):
+                with self.subTest(afterSha256=edit['afterSha256'], replacementBytes=len(replacement)):
+                    with self.assertRaises(AssertionError):
+                        runner.remove_reviewed38(self.current.replace(current, replacement, 1))
 
 
 if __name__ == '__main__':

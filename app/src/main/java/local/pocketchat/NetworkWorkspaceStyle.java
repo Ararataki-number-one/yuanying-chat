@@ -5,11 +5,9 @@ import android.content.res.ColorStateList;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
-import android.graphics.Typeface;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.InsetDrawable;
 import android.graphics.drawable.RippleDrawable;
-import android.os.Build;
 import android.view.Gravity;
 import android.view.View;
 import android.widget.*;
@@ -19,12 +17,11 @@ final class NetworkWorkspaceStyle {
   private NetworkWorkspaceStyle(){}
 
   static TextView text(Context context,String value,int size,int color,boolean strong){
-    TextView view=ReferenceUi.text(context,value,size,color,strong);readable(view);return view;
+    return ReferenceUi.workspaceText(context,value,size,color,strong);
   }
 
   static void readable(TextView view){
-    view.setIncludeFontPadding(true);
-    if(Build.VERSION.SDK_INT>=28)view.setFallbackLineSpacing(true);
+    ReferenceUi.readable(view);
   }
 
   static Drawable card(Context context,boolean focused){
@@ -39,37 +36,11 @@ final class NetworkWorkspaceStyle {
   }
 
   static LinearLayout tabs(Context context,int selected,java.util.function.IntConsumer choose){
-    LinearLayout bar=DesignUi.row(context);
-    bar.setPadding(0,0,0,0);
-    bar.setBackgroundColor(Color.TRANSPARENT);
-    boolean overflow=context.getResources().getConfiguration().fontScale>=1.4f
-        ||context.getResources().getConfiguration().screenWidthDp<360;
-    String[] labels={"环境网络","入口","出口"};
-    for(int i=0;i<labels.length;i++){
-      final int index=i;boolean active=i==selected;
-      Button button=ReferenceUi.link(context,labels[i],()->choose.accept(index));
-      button.setTextSize(14);button.setTextColor(active?DesignUi.BLUE:DesignUi.MUTED);
-      button.setTypeface(Typeface.create("sans-serif-medium",Typeface.NORMAL));
-      button.setSelected(active);button.setContentDescription(labels[i]);readable(button);
-      button.setSingleLine(false);button.setMaxLines(1);button.setHorizontallyScrolling(false);button.setEllipsize(null);
-      button.setMinWidth(0);button.setMinimumWidth(0);
-      button.setMinHeight(DesignUi.dp(context,48));button.setMinimumHeight(DesignUi.dp(context,48));
-      Drawable face=DesignUi.surface(context,active?ReferenceUi.BLUE_SOFT:Color.TRANSPARENT,18,Color.TRANSPARENT);
-      if(active)face.setAlpha(150);
-      button.setBackground(new RippleDrawable(ColorStateList.valueOf(0x140067d8),
-          new InsetDrawable(face,DesignUi.dp(context,2),DesignUi.dp(context,6),DesignUi.dp(context,2),DesignUi.dp(context,6)),null));
-      button.setPadding(DesignUi.dp(context,overflow?18:4),DesignUi.dp(context,8),DesignUi.dp(context,overflow?18:4),DesignUi.dp(context,8));
-      LinearLayout.LayoutParams params=new LinearLayout.LayoutParams(overflow?-2:0,-2,overflow?0:1);
-      if(i>0)params.leftMargin=DesignUi.dp(context,4);bar.addView(button,params);
-    }
-    if(!overflow)return bar;
-    HorizontalScrollView scroll=new HorizontalScrollView(context);scroll.setHorizontalScrollBarEnabled(false);scroll.addView(bar);
-    scroll.post(()->scroll.smoothScrollTo(Math.max(0,bar.getChildAt(selected).getLeft()-DesignUi.dp(context,12)),0));
-    LinearLayout host=DesignUi.column(context);host.addView(scroll,new LinearLayout.LayoutParams(-1,-2));return host;
+    return ReferenceUi.workspaceTabs(context,new String[]{"环境网络","入口","出口"},selected,choose);
   }
 
   static TextView status(Context context,String label,int color){
-    TextView view=text(context,label,11,color,false);view.setGravity(Gravity.CENTER_VERTICAL);
+    TextView view=text(context,label,ReferenceUi.STATUS_SIZE,color,false);view.setGravity(Gravity.CENTER_VERTICAL);
     view.setCompoundDrawablesRelative(EnvironmentWorkspaceStyle.statusDot(context,color),null,null,null);
     view.setCompoundDrawablePadding(DesignUi.dp(context,6));
     view.setPadding(0,DesignUi.dp(context,3),0,DesignUi.dp(context,3));
@@ -78,14 +49,14 @@ final class NetworkWorkspaceStyle {
   }
 
   static Button smallAction(Context context,String label,Runnable action){
-    Button button=ReferenceUi.link(context,label,action);button.setTextSize(13);readable(button);
+    Button button=ReferenceUi.link(context,label,action);button.setTextSize(ReferenceUi.ACTION_SIZE);readable(button);
     button.setBackground(new RippleDrawable(ColorStateList.valueOf(0x140067d8),
         new InsetDrawable(DesignUi.surface(context,ReferenceUi.BLUE_SOFT,16,Color.TRANSPARENT),0,DesignUi.dp(context,6),0,DesignUi.dp(context,6)),null));
     button.setPadding(DesignUi.dp(context,12),DesignUi.dp(context,8),DesignUi.dp(context,12),DesignUi.dp(context,8));return button;
   }
 
   static Button rowAction(Context context,String label,Runnable action){
-    Button button=ReferenceUi.link(context,label,action);button.setTextSize(13);readable(button);
+    Button button=ReferenceUi.link(context,label,action);button.setTextSize(ReferenceUi.ACTION_SIZE);readable(button);
     button.setTextColor(DesignUi.BLUE);button.setContentDescription(label);
     button.setMinWidth(DesignUi.dp(context,48));button.setMinimumWidth(DesignUi.dp(context,48));
     button.setMinHeight(DesignUi.dp(context,48));button.setMinimumHeight(DesignUi.dp(context,48));
@@ -134,8 +105,8 @@ final class NetworkWorkspaceStyle {
   }
 
   static TextView secondary(Context context,String value){
-    TextView view=text(context,value,12,DesignUi.MUTED,false);
-    view.setLineSpacing(DesignUi.dp(context,2),1);view.setPadding(0,DesignUi.dp(context,3),DesignUi.dp(context,4),0);return view;
+    TextView view=text(context,value,ReferenceUi.SECONDARY_SIZE,DesignUi.MUTED,false);
+    view.setPadding(0,DesignUi.dp(context,3),DesignUi.dp(context,4),0);return view;
   }
 
   static void empty(LinearLayout box,String title,String detail){
@@ -148,7 +119,7 @@ final class NetworkWorkspaceStyle {
     symbol.setBackground(iconFace);
     symbol.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);state.addView(symbol);
     LinearLayout copy=DesignUi.column(context);
-    copy.addView(text(context,title,15,DesignUi.TEXT,true));
+    copy.addView(text(context,title,ReferenceUi.EMPTY_TITLE_SIZE,DesignUi.TEXT,true));
     TextView explanation=secondary(context,detail);explanation.setPadding(0,DesignUi.dp(context,5),0,0);copy.addView(explanation);
     LinearLayout.LayoutParams params=new LinearLayout.LayoutParams(0,-2,1);params.leftMargin=DesignUi.dp(context,12);state.addView(copy,params);
     ReferenceUi.add(box,state);

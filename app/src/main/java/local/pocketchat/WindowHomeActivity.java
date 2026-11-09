@@ -49,12 +49,12 @@ public class WindowHomeActivity extends ThemedActivity {
     boolean largeText=getResources().getConfiguration().fontScale>=1.4f;
     LinearLayout heading=DesignUi.row(this);heading.setClipChildren(false);heading.setClipToPadding(false);heading.setPadding(dp(22),dp(14),dp(18),dp(14));
     LinearLayout headingCopy=DesignUi.column(this);
-    TextView title=workspaceText("环境",30,DesignUi.TEXT,true);title.setContentDescription("环境管理");
+    TextView title=workspaceText("环境",ReferenceUi.PAGE_TITLE_SIZE,DesignUi.TEXT,true);title.setContentDescription("环境管理");
     if(Build.VERSION.SDK_INT>=28)title.setAccessibilityHeading(true);
     headingCopy.addView(title);
-    count=workspaceText("",12,DesignUi.MUTED,false);count.setPadding(0,dp(3),dp(6),0);headingCopy.addView(count);
+    count=workspaceText("",ReferenceUi.SECONDARY_SIZE,DesignUi.MUTED,false);count.setPadding(0,dp(3),dp(6),0);headingCopy.addView(count);
     heading.addView(headingCopy,new LinearLayout.LayoutParams(0,-2,1));
-    selectionButton=ReferenceUi.link(this,"多选",()->setSelecting(!selecting));selectionButton.setTextSize(13);selectionButton.setIncludeFontPadding(true);
+    selectionButton=ReferenceUi.link(this,"多选",()->setSelecting(!selecting));selectionButton.setTextSize(ReferenceUi.ACTION_SIZE);ReferenceUi.readable(selectionButton);
     LinearLayout.LayoutParams selectionAction=new LinearLayout.LayoutParams(DesignUi.actionWidth(selectionButton,54),dp(50));selectionAction.rightMargin=dp(7);heading.addView(selectionButton,selectionAction);
     createButton=ReferenceUi.iconButton(this,"plus","新建环境",this::createWindow);
     createButton.setBackground(DesignUi.glass(this,25));GlassMotion.press(createButton,true);
@@ -74,7 +74,7 @@ public class WindowHomeActivity extends ThemedActivity {
     root.addView(workspace,new LinearLayout.LayoutParams(-1,0,1));
     preparation=DesignUi.progress(this,"正在创建环境…","完成后会打开新环境，请稍候。");
     preparation.setVisibility(View.GONE);DesignUi.addCard(box,preparation);
-    problem=DesignUi.text(this,"",13,DesignUi.RED);problem.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);problem.setVisibility(View.GONE);box.addView(problem);
+    problem=workspaceText("",ReferenceUi.BODY_SIZE,DesignUi.RED,false);problem.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);problem.setVisibility(View.GONE);box.addView(problem);
     cards=DesignUi.column(this);box.addView(cards);
     maintenanceRows=DesignUi.column(this);cards.addView(maintenanceRows);
     environmentList=DesignUi.column(this);cards.addView(environmentList,new LinearLayout.LayoutParams(-1,-2));
@@ -86,11 +86,10 @@ public class WindowHomeActivity extends ThemedActivity {
     selectionBar.setPadding(dp(14),dp(8),dp(14),dp(10));
     selectionBar.setBackground(EnvironmentWorkspaceStyle.card(this,false,false));
     LinearLayout selectionTools=DesignUi.row(this);
-    selectionCount=DesignUi.text(this,"",13,DesignUi.TEXT);
-    selectionCount.setIncludeFontPadding(true);
+    selectionCount=workspaceText("",ReferenceUi.SECONDARY_SIZE,DesignUi.TEXT,false);
     selectionTools.addView(selectionCount,new LinearLayout.LayoutParams(0,-2,1));
     visibleSelectionButton=DesignUi.button(this,"全选",false,()->selectVisible());
-    visibleSelectionButton.setTextSize(12);visibleSelectionButton.setIncludeFontPadding(true);
+    visibleSelectionButton.setTextSize(ReferenceUi.ACTION_SIZE);ReferenceUi.readable(visibleSelectionButton);
     visibleSelectionButton.setMaxWidth(dp(Math.max(150,(int)((getResources().getConfiguration().screenWidthDp-28)*.64f))));
     LinearLayout.LayoutParams visibleParams=new LinearLayout.LayoutParams(-2,-2);visibleParams.leftMargin=dp(8);
     selectionTools.addView(visibleSelectionButton,visibleParams);
@@ -102,7 +101,7 @@ public class WindowHomeActivity extends ThemedActivity {
     unfavoriteSelectedButton=DesignUi.button(this,"取消收藏",false,()->batchFavorite(false));
     Button[] actions={batchGroupButton,favoriteSelectedButton,unfavoriteSelectedButton};
     for(int i=0;i<actions.length;i++){
-      actions[i].setTextSize(13);actions[i].setIncludeFontPadding(true);
+      actions[i].setTextSize(ReferenceUi.ACTION_SIZE);ReferenceUi.readable(actions[i]);
       LinearLayout.LayoutParams params=new LinearLayout.LayoutParams(largeText?DesignUi.actionWidth(actions[i],64):0,-2,largeText?0:1);
       if(i>0)params.leftMargin=dp(6);
       batchActions.addView(actions[i],params);
@@ -133,9 +132,7 @@ public class WindowHomeActivity extends ThemedActivity {
     refresh();
   }
   TextView workspaceText(String value,int size,int color,boolean strong){
-    TextView text=ReferenceUi.text(this,value,size,color,strong);text.setIncludeFontPadding(true);
-    if(Build.VERSION.SDK_INT>=28)text.setFallbackLineSpacing(true);
-    return text;
+    return ReferenceUi.workspaceText(this,value,size,color,strong);
   }
   void updateWorkspaceInsets(){
     if(workspaceContent==null||workspaceFooter==null)return;
@@ -253,12 +250,12 @@ public class WindowHomeActivity extends ThemedActivity {
     final LinearLayout root=DesignUi.column(WindowHomeActivity.this),card=DesignUi.card(WindowHomeActivity.this),head=DesignUi.row(WindowHomeActivity.this),details=DesignUi.row(WindowHomeActivity.this);
     final View separator=new View(WindowHomeActivity.this);final CheckBox check=new CheckBox(WindowHomeActivity.this);
     final EnvironmentWorkspaceStyle.Emblem emblem=new EnvironmentWorkspaceStyle.Emblem(WindowHomeActivity.this,false);
-    final TextView name=workspaceText("",17,DesignUi.TEXT,true),sub=workspaceText("",11,DesignUi.MUTED,false),badge=workspaceText("",11,DesignUi.MUTED,false),network=workspaceText("",11,DesignUi.MUTED,false);
+    final TextView name=workspaceText("",ReferenceUi.CARD_TITLE_SIZE,DesignUi.TEXT,true),sub=workspaceText("",ReferenceUi.SECONDARY_SIZE,DesignUi.MUTED,false),badge=workspaceText("",ReferenceUi.STATUS_SIZE,DesignUi.MUTED,false),network=workspaceText("",ReferenceUi.SECONDARY_SIZE,DesignUi.MUTED,false);
     JSONObject value;boolean syncing;
     final Button more=ReferenceUi.more(WindowHomeActivity.this,()->{if(value!=null)menu(value.optInt("slot"));});
     final EnvironmentPresentation.Binding binding=new EnvironmentPresentation.Binding();
     EnvironmentRow(){
-      root.addView(separator,new LinearLayout.LayoutParams(-1,dp(12)));root.addView(card);card.setPadding(dp(16),dp(13),dp(12),dp(13));
+      root.addView(separator,new LinearLayout.LayoutParams(-1,dp(10)));root.addView(card);card.setPadding(dp(16),dp(13),dp(12),dp(13));
       card.setClickable(true);card.setFocusable(true);card.setOnClickListener(v->{if(value!=null){if(selecting)toggleSelection(value.optInt("slot"));else openExpected(value,"chat",true);}});card.setOnLongClickListener(v->{if(value!=null)toggleSelection(value.optInt("slot"));return true;});
       check.setOnCheckedChangeListener((button,selected)->{if(!syncing&&value!=null)toggleSelection(value.optInt("slot"));});head.addView(check,new LinearLayout.LayoutParams(dp(48),dp(48)));head.addView(emblem,new LinearLayout.LayoutParams(dp(40),dp(40)));
       LinearLayout titles=DesignUi.column(WindowHomeActivity.this);titles.setPadding(dp(12),0,dp(4),0);name.setMaxLines(2);name.setEllipsize(TextUtils.TruncateAt.END);sub.setMaxLines(1);sub.setEllipsize(TextUtils.TruncateAt.END);sub.setPadding(0,dp(4),0,0);sub.setCompoundDrawablePadding(dp(4));titles.addView(name);titles.addView(sub);head.addView(titles,new LinearLayout.LayoutParams(0,-2,1));head.addView(more,new LinearLayout.LayoutParams(dp(48),dp(48)));card.addView(head);

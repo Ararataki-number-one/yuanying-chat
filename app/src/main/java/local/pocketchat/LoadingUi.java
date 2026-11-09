@@ -3,8 +3,6 @@ package local.pocketchat;
 import android.app.*;
 import android.content.res.ColorStateList;
 import android.graphics.Color;
-import android.graphics.Typeface;
-import android.os.Build;
 import android.view.*;
 import android.widget.*;
 
@@ -33,17 +31,14 @@ final class LoadingUi {
     symbol=new ImageView(a);symbol.setImageDrawable(new Ui.Icon("globe",DesignUi.BLUE));symbol.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);symbol.setVisibility(View.GONE);
     emblem.addView(symbol,new FrameLayout.LayoutParams(a.dp(24),a.dp(24),Gravity.CENTER));
     wheel=spinner(24);wheel.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);emblem.addView(wheel,new FrameLayout.LayoutParams(a.dp(24),a.dp(24),Gravity.CENTER));
-    title=a.label("",18,Ui.INK);title.setGravity(Gravity.CENTER);title.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
-    title.setIncludeFontPadding(true);if(Build.VERSION.SDK_INT>=28)title.setFallbackLineSpacing(true);
+    title=ReferenceUi.workspaceText(a,"",ReferenceUi.EMPTY_TITLE_SIZE,Ui.INK,true);title.setGravity(Gravity.CENTER);title.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
     LinearLayout.LayoutParams heading=new LinearLayout.LayoutParams(-1,-2);heading.topMargin=a.dp(14);heading.bottomMargin=a.dp(6);content.addView(title,heading);
-    hint=a.label("",13,Ui.MUTED);hint.setGravity(Gravity.CENTER);hint.setLineSpacing(a.dp(4),1f);hint.setIncludeFontPadding(true);
-    if(Build.VERSION.SDK_INT>=28)hint.setFallbackLineSpacing(true);
+    hint=ReferenceUi.workspaceText(a,"",ReferenceUi.SECONDARY_SIZE,Ui.MUTED,false);hint.setGravity(Gravity.CENTER);
     content.addView(hint,new LinearLayout.LayoutParams(-1,-2));
     retry=DesignUi.button(a,"重新加载",true,()->a.session.retryCurrent());retry.setPadding(a.dp(16),a.dp(8),a.dp(16),a.dp(8));
     website=ReferenceUi.link(a,"检查网络",()->NetworkStatusUi.show(a));website.setTextSize(13);website.setPadding(a.dp(16),a.dp(8),a.dp(16),a.dp(8));
     for(Button action:new Button[]{retry,website}){
-      action.setSingleLine(false);action.setEllipsize(null);action.setTextSize(14);action.setIncludeFontPadding(true);
-      if(Build.VERSION.SDK_INT>=28)action.setFallbackLineSpacing(true);
+      action.setSingleLine(false);action.setEllipsize(null);action.setTextSize(ReferenceUi.BODY_SIZE);ReferenceUi.readable(action);
       action.setMinHeight(a.dp(48));action.setMinimumHeight(a.dp(48));action.setPadding(a.dp(20),a.dp(9),a.dp(20),a.dp(9));
     }
     actions=new LinearLayout(a){
@@ -59,10 +54,8 @@ final class LoadingUi {
     LinearLayout.LayoutParams actionBlock=new LinearLayout.LayoutParams(-2,-2);actionBlock.topMargin=a.dp(16);content.addView(actions,actionBlock);
     arrangeActions(false);
     cover.addOnLayoutChangeListener((v,l,t,r,b,ol,ot,or,ob)->layoutActions());
-    TextView guidance=a.label("点按顶部输入网址，长按切换环境",11,Ui.MUTED);guidance.setGravity(Gravity.CENTER);guidance.setIncludeFontPadding(true);
-    if(Build.VERSION.SDK_INT>=28)guidance.setFallbackLineSpacing(true);
+    TextView guidance=ReferenceUi.workspaceText(a,"点按顶部输入网址，长按切换环境",ReferenceUi.SECONDARY_SIZE,Ui.MUTED,false);guidance.setGravity(Gravity.CENTER);
     LinearLayout.LayoutParams guide=new LinearLayout.LayoutParams(-1,-2);guide.topMargin=a.dp(24);content.addView(guidance,guide);
-    title.setTypeface(Typeface.create("sans-serif-medium",Typeface.NORMAL));
   }
   private void arrangeActions(boolean checkNetworkFirst){
     if(actions.getChildCount()>0&&networkFirst==checkNetworkFirst){layoutActions();return;}
