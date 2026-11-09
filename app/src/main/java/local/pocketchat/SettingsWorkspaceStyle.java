@@ -62,13 +62,13 @@ final class SettingsWorkspaceStyle {
     LinearLayout labels=DesignUi.column(context);
     labels.setPadding(DesignUi.dp(context,16),0,DesignUi.dp(context,12),0);
     TextView name=text(context,title,ReferenceUi.CARD_TITLE_SIZE,DesignUi.TEXT,true);
-    name.setBreakStrategy(android.text.Layout.BREAK_STRATEGY_BALANCED);
+    name.setBreakStrategy(android.graphics.text.LineBreaker.BREAK_STRATEGY_BALANCED);
     labels.addView(name);
     if(!detail.isEmpty()){
       String display=context.getResources().getConfiguration().fontScale>=1.4f?detail.replace(" · ","\n"):detail;
       TextView summary=text(context,display,ReferenceUi.SECONDARY_SIZE,DesignUi.MUTED,false);
       summary.setContentDescription(detail);
-      summary.setBreakStrategy(android.text.Layout.BREAK_STRATEGY_BALANCED);
+      summary.setBreakStrategy(android.graphics.text.LineBreaker.BREAK_STRATEGY_BALANCED);
       summary.setPadding(0,DesignUi.dp(context,2),0,0);labels.addView(summary);
     }
     row.addView(labels,new LinearLayout.LayoutParams(0,-2,1));
