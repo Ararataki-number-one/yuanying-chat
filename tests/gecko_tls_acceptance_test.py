@@ -30,6 +30,115 @@ from fingerprint_fixture_server import EphemeralCertificates
 NEGATIVE_CONTROLS=[]
 SEMANTIC_MUTANTS=[]
 
+_UI_MANIFEST_CURRENT_BYTES = 13363
+_UI_MANIFEST_CURRENT_SHA256 = '244192ec3ed4ec15d107e19c6d0967cc250c06f9c1884d5851362ec69cbcea79'
+_UI_MANIFEST_PREVIOUS_BYTES = 13049
+_UI_MANIFEST_PREVIOUS_SHA256 = '19125eb41e2c8658158a5e535e0b1e20ac23e121e2ecc27acf7fda5205691c60'
+_UI_MANIFEST_PREVIOUS_CONTEXT = (
+    b'    <activity android:name="local.pocketchat.UiVisualIntegrationActivity" android:exported="true" />\n'
+    b'    <activity android:name="local.pocketchat.UiDetailsIntegrationActivity" android:exported="true" />\n')
+_UI_MANIFEST_CURRENT_CONTEXT = (
+    b'    <activity android:name="local.pocketchat.UiVisualIntegrationActivity" android:exported="true" />\n'
+    b'    <activity android:name="local.pocketchat.ConfiguredNetworkVisualActivity" android:exported="true" />\n'
+    b'    <activity android:name="local.pocketchat.FiveEnvironmentVisualActivity" android:exported="true" />\n'
+    b'    <activity android:name="local.pocketchat.DownloadsWorkspaceVisualActivity" android:exported="true" />\n'
+    b'    <activity android:name="local.pocketchat.UiDetailsIntegrationActivity" android:exported="true" />\n')
+
+
+def manifest_before_reviewed_ui_additions(raw):
+    """Restore one exact historical comparison input, never a runtime manifest.
+
+    The three reviewed UI preview registrations remain in the actual build and
+    evidence inputs. Only the retained manifest equality below uses this inverse.
+    """
+    if type(raw) is not bytes:
+        raise ValueError('Complete UI manifest bytes required')
+    if (len(raw), hashlib.sha256(raw).hexdigest()) != (_UI_MANIFEST_CURRENT_BYTES, _UI_MANIFEST_CURRENT_SHA256):
+        raise ValueError('Exact reviewed current UI manifest required')
+    if raw.count(_UI_MANIFEST_CURRENT_CONTEXT) != 1:
+        raise ValueError('Unique reviewed UI manifest context required')
+    restored = raw.replace(_UI_MANIFEST_CURRENT_CONTEXT, _UI_MANIFEST_PREVIOUS_CONTEXT, 1)
+    if (len(restored), hashlib.sha256(restored).hexdigest()) != (_UI_MANIFEST_PREVIOUS_BYTES, _UI_MANIFEST_PREVIOUS_SHA256):
+        raise ValueError('Entire pre-UI manifest did not restore')
+    return restored
+
+
+class ReviewedUiManifestControls(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.current = (ROOT/'tests/gecko/AndroidManifest.xml').read_bytes()
+
+    def reject(self, variants):
+        for label, raw in variants:
+            with self.subTest(label=label), self.assertRaises(ValueError):
+                manifest_before_reviewed_ui_additions(raw)
+            NEGATIVE_CONTROLS.append('reviewed UI manifest '+label)
+
+    def test_complete_current_manifest_roundtrips_without_rewriting_actual_input(self):
+        restored = manifest_before_reviewed_ui_additions(self.current)
+        self.assertEqual((len(restored), hashlib.sha256(restored).hexdigest()),
+                         (_UI_MANIFEST_PREVIOUS_BYTES, _UI_MANIFEST_PREVIOUS_SHA256))
+        self.assertEqual(restored.count(_UI_MANIFEST_PREVIOUS_CONTEXT), 1)
+        self.assertEqual(restored.replace(_UI_MANIFEST_PREVIOUS_CONTEXT, _UI_MANIFEST_CURRENT_CONTEXT, 1), self.current)
+        self.assertEqual((ROOT/'tests/gecko/AndroidManifest.xml').read_bytes(), self.current)
+
+    def test_unknown_additions_deletions_and_attribute_changes_are_rejected(self):
+        unrelated = b'    <activity android:name="local.pocketchat.NetworkSourcesIntegrationActivity" android:exported="true" />\n'
+        registration = _UI_MANIFEST_CURRENT_CONTEXT.splitlines(keepends=True)[1]
+        self.assertEqual(self.current.count(unrelated), 1)
+        self.reject([
+            ('unknown-component', self.current.replace(b'</application>', b'<activity android:name="local.pocketchat.UnknownVisualActivity" android:exported="true" /></application>', 1)),
+            ('unrelated-deletion', self.current.replace(unrelated, b'', 1)),
+            ('unrelated-attribute', self.current.replace(unrelated, unrelated.replace(b'"true"', b'"false"'), 1)),
+            ('reviewed-attribute', self.current.replace(registration, registration.replace(b'"true"', b'"false"'), 1)),
+            ('reviewed-process', self.current.replace(registration, registration.replace(b' />', b' android:process=":unknown" />'), 1)),
+            ('reviewed-name', self.current.replace(b'ConfiguredNetworkVisualActivity', b'AnotherNetworkVisualActivity', 1)),
+            ('unrelated-byte', self.current.replace(b'xmlns:tools=', b'xmlns:toolx=', 1)),
+        ])
+
+    def test_missing_duplicate_moved_context_and_anchor_drift_are_rejected(self):
+        registrations = b''.join(_UI_MANIFEST_CURRENT_CONTEXT.splitlines(keepends=True)[1:4])
+        without = self.current.replace(_UI_MANIFEST_CURRENT_CONTEXT, _UI_MANIFEST_PREVIOUS_CONTEXT, 1)
+        self.reject([
+            ('missing-registrations', without),
+            ('duplicate-context', self.current.replace(_UI_MANIFEST_CURRENT_CONTEXT, _UI_MANIFEST_CURRENT_CONTEXT*2, 1)),
+            ('duplicate-registration', self.current.replace(registrations, registrations+registrations.splitlines(keepends=True)[0], 1)),
+            ('moved-registrations', without.replace(b'</application>', registrations+b'</application>', 1)),
+            ('before-anchor', self.current.replace(b'local.pocketchat.UiVisualIntegrationActivity"', b'local.pocketchat.UiVisualIntegrationActivityChanged"', 1)),
+            ('after-anchor', self.current.replace(b'local.pocketchat.UiDetailsIntegrationActivity"', b'local.pocketchat.UiDetailsIntegrationActivityChanged"', 1)),
+            ('context-whitespace', self.current.replace(_UI_MANIFEST_CURRENT_CONTEXT, b' '+_UI_MANIFEST_CURRENT_CONTEXT, 1)),
+            ('other-whitespace', self.current+b' '),
+        ])
+
+    def test_context_and_restored_identity_remain_independent_guards(self):
+        variants = [
+            ('missing-context-after-current-pin', self.current.replace(_UI_MANIFEST_CURRENT_CONTEXT, _UI_MANIFEST_PREVIOUS_CONTEXT, 1), 'Unique reviewed UI manifest context required'),
+            ('duplicate-context-after-current-pin', self.current.replace(_UI_MANIFEST_CURRENT_CONTEXT, _UI_MANIFEST_CURRENT_CONTEXT*2, 1), 'Unique reviewed UI manifest context required'),
+            ('restored-length-after-current-pin', self.current+b' ', 'Entire pre-UI manifest did not restore'),
+            ('restored-hash-after-current-pin', self.current.replace(b'xmlns:tools=', b'xmlns:toolx=', 1), 'Entire pre-UI manifest did not restore'),
+        ]
+        for label, raw, reason in variants:
+            # Synthetic in-memory pin mutations prove the later guards still
+            # reject drift; no fixture, manifest or source file is rewritten.
+            with self.subTest(label=label), patch.dict(globals(), {
+                    '_UI_MANIFEST_CURRENT_BYTES': len(raw),
+                    '_UI_MANIFEST_CURRENT_SHA256': hashlib.sha256(raw).hexdigest()}):
+                with self.assertRaisesRegex(ValueError, reason):
+                    manifest_before_reviewed_ui_additions(raw)
+            NEGATIVE_CONTROLS.append('reviewed UI manifest '+label)
+
+    def test_wrong_types_and_restored_previous_input_are_rejected(self):
+        class ByteSubclass(bytes):
+            pass
+        restored = manifest_before_reviewed_ui_additions(self.current)
+        self.reject([
+            ('none', None), ('text', self.current.decode()), ('bytearray', bytearray(self.current)),
+            ('memoryview', memoryview(self.current)), ('list', list(self.current)), ('mapping', {}),
+            ('integer', len(self.current)), ('boolean', True), ('bytes-subclass', ByteSubclass(self.current)),
+            ('empty', b''), ('truncated', self.current[:-1]), ('previous-is-not-current', restored),
+        ])
+
+
 class ProductTlsControls(unittest.TestCase):
     @classmethod
     def setUpClass(cls):cls.evidence=HostModelEvidence()
@@ -437,7 +546,8 @@ class ProducerBoundaryControls(unittest.TestCase):
         stop=java[java.index('public void onPageStop'):java.index('public void onProgressChange')];self.assertNotIn('terminal=true',stop);self.assertNotIn('titleMatched=true',stop)
         self.assertIn('Binder.getCallingUid()!=2000',provider);self.assertIn('Files.isSymbolicLink',provider)
         original=subprocess.check_output(['git','show','e4a20469326f16dc8ff8cfabd4fe67bf3d0148de:tests/gecko/AndroidManifest.xml'],cwd=ROOT,text=True)
-        current=(ROOT/'tests/gecko/AndroidManifest.xml').read_text();filtered='\n'.join(line for line in current.split('\n') if not any(name in line for name in ('GeckoTlsAcceptance','NativeTlsProbe','GeckoTlsCpuIpCombo')))
+        current=manifest_before_reviewed_ui_additions((ROOT/'tests/gecko/AndroidManifest.xml').read_bytes()).decode('utf-8')
+        filtered='\n'.join(line for line in current.split('\n') if not any(name in line for name in ('GeckoTlsAcceptance','NativeTlsProbe','GeckoTlsCpuIpCombo')))
         self.assertEqual(filtered,original)
         for name in ('tls-acceptance-page.js','tls-acceptance-worker.js'):
             text=(ROOT/'tests/gecko/assets'/name).read_text()
