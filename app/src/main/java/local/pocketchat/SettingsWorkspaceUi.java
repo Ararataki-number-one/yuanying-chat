@@ -48,10 +48,14 @@ final class SettingsWorkspaceUi {
     heading.addView(search,new LinearLayout.LayoutParams(dp(50),dp(50)));
     root.addView(heading,new LinearLayout.LayoutParams(-1,-2));
     feedbackHost=DesignUi.column(activity);root.addView(feedbackHost,new LinearLayout.LayoutParams(-1,-2));
+    // Keep the header's glass shadows free while the whole scrolling subtree
+    // remains clipped below the heading and any current feedback notice.
+    FrameLayout viewport=new FrameLayout(activity);viewport.setClipChildren(true);viewport.setClipToPadding(true);
     scroll=new ScrollView(activity);scroll.setFillViewport(true);scroll.setClipToPadding(false);
     box=DesignUi.column(activity);box.setPadding(dp(20),dp(4),dp(20),dp(20));
     scroll.addView(box,new ScrollView.LayoutParams(-1,-2));
-    root.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));
+    viewport.addView(scroll,new FrameLayout.LayoutParams(-1,-1));
+    root.addView(viewport,new LinearLayout.LayoutParams(-1,0,1));
   }
 
   void refresh(){
