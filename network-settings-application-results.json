@@ -1,0 +1,933 @@
+{
+  "status": "passed",
+  "checks": [
+    {
+      "name": "Packaged native ELF exposes its actual ABI, streamed SHA and controller version",
+      "pass": true
+    },
+    {
+      "name": "Real native parser returns entry fingerprint",
+      "pass": true
+    },
+    {
+      "name": "Real native parser returns exit fingerprint",
+      "pass": true
+    },
+    {
+      "name": "Public test CA database prepared in the isolated profile before Gecko runtime",
+      "pass": true
+    },
+    {
+      "name": "Controlled ChatGPT certificate has the exact valid CA signed SAN and server chain",
+      "pass": true
+    },
+    {
+      "name": "Official Gecko security callback trusts the controlled ChatGPT origin without an exception",
+      "pass": true
+    },
+    {
+      "name": "Production observer uses the actual controlled HTTPS origin",
+      "pass": true
+    },
+    {
+      "name": "Only the test origin is proxied",
+      "pass": true
+    },
+    {
+      "name": "Fixture browser-only update preserves the migrated stale network",
+      "pass": true
+    },
+    {
+      "name": "Fixture reconciliation aligns desired network without acknowledging application",
+      "pass": true
+    },
+    {
+      "name": "Fixture bootstrap is acknowledged only by the production reconnect",
+      "pass": true
+    },
+    {
+      "name": "Application fixture starts with production external route and model acknowledgement",
+      "pass": true
+    },
+    {
+      "name": "pending-while-web-busy: result belongs to the exact environment and candidate",
+      "pass": true
+    },
+    {
+      "name": "pending-while-web-busy: saved and applied states remain distinct",
+      "pass": true
+    },
+    {
+      "name": "Busy save retains the exact pending intent and current document",
+      "pass": true
+    },
+    {
+      "name": "applied-after-safe-idle: result belongs to the exact environment and candidate",
+      "pass": true
+    },
+    {
+      "name": "applied-after-safe-idle: saved and applied states remain distinct",
+      "pass": true
+    },
+    {
+      "name": "Applied result matches the actual accepted browser and external route",
+      "pass": true
+    },
+    {
+      "name": "Same-proxy application preserves the document draft and unsent question",
+      "pass": true
+    },
+    {
+      "name": "Completed internal application leaves the original pending receipt immutable",
+      "pass": true
+    },
+    {
+      "name": "Same-URL retained reconnect rebuilds authenticated task guard 1",
+      "pass": true
+    },
+    {
+      "name": "saved-receipt-read-failure: result belongs to the exact environment and candidate",
+      "pass": true
+    },
+    {
+      "name": "saved-receipt-read-failure: saved and applied states remain distinct",
+      "pass": true
+    },
+    {
+      "name": "Receipt-read fault preserves the genuinely saved ready intent",
+      "pass": true
+    },
+    {
+      "name": "Same-URL retained reconnect rebuilds authenticated task guard 2",
+      "pass": true
+    },
+    {
+      "name": "newer-desired-revision: result belongs to the exact environment and candidate",
+      "pass": true
+    },
+    {
+      "name": "newer-desired-revision: saved and applied states remain distinct",
+      "pass": true
+    },
+    {
+      "name": "newer-desired-revision: an old application callback cannot claim success",
+      "pass": true
+    },
+    {
+      "name": "Same-URL retained reconnect rebuilds authenticated task guard 3",
+      "pass": true
+    },
+    {
+      "name": "newer-candidate: result belongs to the exact environment and candidate",
+      "pass": true
+    },
+    {
+      "name": "newer-candidate: saved and applied states remain distinct",
+      "pass": true
+    },
+    {
+      "name": "newer-candidate: an old application callback cannot claim success",
+      "pass": true
+    },
+    {
+      "name": "Newer candidate survives the old completion cleanup",
+      "pass": true
+    },
+    {
+      "name": "Same-URL retained reconnect rebuilds authenticated task guard 4",
+      "pass": true
+    },
+    {
+      "name": "old-connection-epoch: result belongs to the exact environment and candidate",
+      "pass": true
+    },
+    {
+      "name": "old-connection-epoch: saved and applied states remain distinct",
+      "pass": true
+    },
+    {
+      "name": "old-connection-epoch: an old application callback cannot claim success",
+      "pass": true
+    },
+    {
+      "name": "Same-URL retained reconnect rebuilds authenticated task guard 5",
+      "pass": true
+    },
+    {
+      "name": "retired-session: result belongs to the exact environment and candidate",
+      "pass": true
+    },
+    {
+      "name": "retired-session: saved and applied states remain distinct",
+      "pass": true
+    },
+    {
+      "name": "retired-session: an old application callback cannot claim success",
+      "pass": true
+    },
+    {
+      "name": "old-environment-generation: stale environment request is rejected before saving",
+      "pass": true
+    },
+    {
+      "name": "old-environment-generation: direct queued request also preserves encrypted model pending and active state",
+      "pass": true
+    },
+    {
+      "name": "wrong-environment-uuid: stale environment request is rejected before saving",
+      "pass": true
+    },
+    {
+      "name": "wrong-environment-uuid: direct queued request also preserves encrypted model pending and active state",
+      "pass": true
+    },
+    {
+      "name": "Same-URL retained reconnect rebuilds authenticated task guard 6",
+      "pass": true
+    },
+    {
+      "name": "no-session: result belongs to the exact environment and candidate",
+      "pass": true
+    },
+    {
+      "name": "no-session: saved and applied states remain distinct",
+      "pass": true
+    },
+    {
+      "name": "No session can report a setting as actually applied",
+      "pass": true
+    }
+  ],
+  "checkCount": 49,
+  "applicationCases": [
+    {
+      "name": "pending-while-web-busy",
+      "expected": {
+        "environmentId": "5e9b7e4f-84eb-4714-8e0e-caf2b8a3aa75",
+        "generation": 0,
+        "candidateId": "e6770551d87e4eb484bb0a099f4a8285",
+        "savedRevision": 3
+      },
+      "result": {
+        "done": true,
+        "ok": true,
+        "message": "网络设置已保存，等待回复和文件操作结束后自动应用",
+        "finishedAt": 768347,
+        "operationResult": {
+          "environmentId": "5e9b7e4f-84eb-4714-8e0e-caf2b8a3aa75",
+          "generation": 0,
+          "candidateId": "e6770551d87e4eb484bb0a099f4a8285",
+          "savedRevision": 3,
+          "appliedRevision": 0,
+          "saveState": "saved",
+          "applicationState": "pending",
+          "scope": "session",
+          "message": "网络设置已保存，等待回复和文件操作结束后自动应用"
+        },
+        "recoveryRequired": false
+      },
+      "pendingSnapshotHash": "323381e3c0e3a75ce38a27a3bd4ae4ee6809d6b22a20694637f8bf1703c03a3b",
+      "actualDomBusy": true
+    },
+    {
+      "name": "applied-after-safe-idle",
+      "expected": {
+        "environmentId": "5e9b7e4f-84eb-4714-8e0e-caf2b8a3aa75",
+        "generation": 0,
+        "candidateId": "e6770551d87e4eb484bb0a099f4a8285",
+        "savedRevision": 3
+      },
+      "result": {
+        "done": true,
+        "ok": true,
+        "operationResult": {
+          "environmentId": "5e9b7e4f-84eb-4714-8e0e-caf2b8a3aa75",
+          "generation": 0,
+          "candidateId": "e6770551d87e4eb484bb0a099f4a8285",
+          "savedRevision": 3,
+          "appliedRevision": 3,
+          "saveState": "saved",
+          "applicationState": "applied",
+          "scope": "session",
+          "message": "配置已保存并由当前会话应用"
+        }
+      },
+      "actualModelDesiredRevision": 3,
+      "actualModelAppliedRevision": 3,
+      "modelEngineVersion": "GeckoView 157.0.1 · 输入同步修正",
+      "runtimeEngineVersion": "GeckoView 157.0.1 · 输入同步修正",
+      "actualConfigurationHash": "ea4e6d969ac006055be5a51829e6d07b9d4f3db7b7d5149eb0085c9ae173c29a",
+      "modelDesiredHash": "ea4e6d969ac006055be5a51829e6d07b9d4f3db7b7d5149eb0085c9ae173c29a",
+      "modelAppliedHash": "ea4e6d969ac006055be5a51829e6d07b9d4f3db7b7d5149eb0085c9ae173c29a",
+      "documentBefore": "619104cc-043b-4e79-9c71-d12be22a0025",
+      "documentAfter": "619104cc-043b-4e79-9c71-d12be22a0025",
+      "actualConfigurationMatches": true,
+      "acceptedPolicy": true,
+      "loadsBefore": 3,
+      "loadsAfter": 3,
+      "draftRetained": true,
+      "documentRetained": true,
+      "reconnectObserved": true,
+      "sameCandidateAsPending": true
+    },
+    {
+      "name": "saved-receipt-read-failure",
+      "expected": {
+        "environmentId": "5e9b7e4f-84eb-4714-8e0e-caf2b8a3aa75",
+        "generation": 0,
+        "candidateId": "28f2ab6ff15f44c6bf84b6ca9b0447d6",
+        "savedRevision": 3
+      },
+      "result": {
+        "done": true,
+        "ok": false,
+        "message": "配置已保存，但版本回执暂时无法读取；可在网络面板重新检查",
+        "finishedAt": 770364,
+        "operationResult": {
+          "environmentId": "5e9b7e4f-84eb-4714-8e0e-caf2b8a3aa75",
+          "generation": 0,
+          "candidateId": "28f2ab6ff15f44c6bf84b6ca9b0447d6",
+          "savedRevision": 0,
+          "appliedRevision": 0,
+          "saveState": "saved",
+          "applicationState": "saved-unconfirmed",
+          "scope": "session",
+          "message": "配置已保存，但版本回执暂时无法读取；可在网络面板重新检查"
+        },
+        "recoveryRequired": false
+      },
+      "faultHits": 1,
+      "actualReadyIntentRetained": true,
+      "injection": "captureSaved throws once after production saveNetworkIntent returned"
+    },
+    {
+      "name": "newer-desired-revision",
+      "expected": {
+        "environmentId": "5e9b7e4f-84eb-4714-8e0e-caf2b8a3aa75",
+        "generation": 0,
+        "candidateId": "7f16900b9dd54927bd0dc9cd05031b8c",
+        "savedRevision": 3
+      },
+      "result": {
+        "done": true,
+        "ok": false,
+        "message": "配置已保存，实际应用回执尚未确认；当前网页保持打开",
+        "finishedAt": 777128,
+        "operationResult": {
+          "environmentId": "5e9b7e4f-84eb-4714-8e0e-caf2b8a3aa75",
+          "generation": 0,
+          "candidateId": "7f16900b9dd54927bd0dc9cd05031b8c",
+          "savedRevision": 3,
+          "appliedRevision": 0,
+          "saveState": "saved",
+          "applicationState": "saved-unconfirmed",
+          "scope": "session",
+          "message": "配置已保存，实际应用回执尚未确认；当前网页保持打开"
+        },
+        "recoveryRequired": false
+      },
+      "attemptCapturedBeforeInjection": true,
+      "capturedConnection": 8,
+      "observedConnection": 8,
+      "modelDesiredRevisionAtPoll": 4,
+      "sessionAbsentAtPoll": false,
+      "newerPendingRetained": false,
+      "injection": "newer-desired-revision"
+    },
+    {
+      "name": "newer-candidate",
+      "expected": {
+        "environmentId": "5e9b7e4f-84eb-4714-8e0e-caf2b8a3aa75",
+        "generation": 0,
+        "candidateId": "437972f5e7a84dfe920d809e5414359e",
+        "savedRevision": 5
+      },
+      "result": {
+        "done": true,
+        "ok": false,
+        "message": "配置已保存，实际应用回执尚未确认；当前网页保持打开",
+        "finishedAt": 783380,
+        "operationResult": {
+          "environmentId": "5e9b7e4f-84eb-4714-8e0e-caf2b8a3aa75",
+          "generation": 0,
+          "candidateId": "437972f5e7a84dfe920d809e5414359e",
+          "savedRevision": 5,
+          "appliedRevision": 0,
+          "saveState": "saved",
+          "applicationState": "saved-unconfirmed",
+          "scope": "session",
+          "message": "配置已保存，实际应用回执尚未确认；当前网页保持打开"
+        },
+        "recoveryRequired": false
+      },
+      "attemptCapturedBeforeInjection": true,
+      "capturedConnection": 11,
+      "observedConnection": 11,
+      "modelDesiredRevisionAtPoll": 5,
+      "sessionAbsentAtPoll": false,
+      "newerPendingRetained": true,
+      "injection": "newer-candidate"
+    },
+    {
+      "name": "old-connection-epoch",
+      "expected": {
+        "environmentId": "5e9b7e4f-84eb-4714-8e0e-caf2b8a3aa75",
+        "generation": 0,
+        "candidateId": "ff1a45aae3a34c7fac959055083076ee",
+        "savedRevision": 5
+      },
+      "result": {
+        "done": true,
+        "ok": false,
+        "message": "配置已保存；当前会话或配置已变化，应用结果尚未确认",
+        "finishedAt": 784581,
+        "operationResult": {
+          "environmentId": "5e9b7e4f-84eb-4714-8e0e-caf2b8a3aa75",
+          "generation": 0,
+          "candidateId": "ff1a45aae3a34c7fac959055083076ee",
+          "savedRevision": 5,
+          "appliedRevision": 0,
+          "saveState": "saved",
+          "applicationState": "saved-unconfirmed",
+          "scope": "session",
+          "message": "配置已保存；当前会话或配置已变化，应用结果尚未确认"
+        },
+        "recoveryRequired": false
+      },
+      "attemptCapturedBeforeInjection": true,
+      "capturedConnection": 14,
+      "observedConnection": 15,
+      "modelDesiredRevisionAtPoll": 5,
+      "sessionAbsentAtPoll": false,
+      "newerPendingRetained": false,
+      "injection": "old-connection-epoch"
+    },
+    {
+      "name": "retired-session",
+      "expected": {
+        "environmentId": "5e9b7e4f-84eb-4714-8e0e-caf2b8a3aa75",
+        "generation": 0,
+        "candidateId": "5f9386b72886478d8dc6c9cdd9e1e87f",
+        "savedRevision": 5
+      },
+      "result": {
+        "done": true,
+        "ok": false,
+        "message": "配置已保存；当前会话或配置已变化，应用结果尚未确认",
+        "finishedAt": 785783,
+        "operationResult": {
+          "environmentId": "5e9b7e4f-84eb-4714-8e0e-caf2b8a3aa75",
+          "generation": 0,
+          "candidateId": "5f9386b72886478d8dc6c9cdd9e1e87f",
+          "savedRevision": 5,
+          "appliedRevision": 0,
+          "saveState": "saved",
+          "applicationState": "saved-unconfirmed",
+          "scope": "session",
+          "message": "配置已保存；当前会话或配置已变化，应用结果尚未确认"
+        },
+        "recoveryRequired": false
+      },
+      "attemptCapturedBeforeInjection": true,
+      "capturedConnection": 18,
+      "observedConnection": 18,
+      "modelDesiredRevisionAtPoll": 5,
+      "sessionAbsentAtPoll": true,
+      "newerPendingRetained": false,
+      "injection": "retired-session"
+    },
+    {
+      "name": "old-environment-generation",
+      "result": {
+        "done": true,
+        "ok": false,
+        "message": "此环境已改变，请重新打开网络设置"
+      },
+      "directRequestResult": {
+        "done": true,
+        "ok": false,
+        "message": "环境已删除或重新创建，旧操作未应用",
+        "finishedAt": 785878,
+        "operationResult": {},
+        "recoveryRequired": false
+      },
+      "expectedIdentity": {
+        "slot": 0,
+        "generation": 0,
+        "environmentId": "5e9b7e4f-84eb-4714-8e0e-caf2b8a3aa75"
+      },
+      "submittedIdentity": {
+        "slot": 0,
+        "generation": 1,
+        "environmentId": "5e9b7e4f-84eb-4714-8e0e-caf2b8a3aa75"
+      },
+      "rejectedBeforeSave": true,
+      "encryptedStorageBefore": "379dd9862f227d91c04728788db4977cf85c1a1baefc6e3a02f9622a26703765",
+      "encryptedStorageAfter": "379dd9862f227d91c04728788db4977cf85c1a1baefc6e3a02f9622a26703765",
+      "directRequestRejected": true
+    },
+    {
+      "name": "wrong-environment-uuid",
+      "result": {
+        "done": true,
+        "ok": false,
+        "message": "此环境已改变，请重新打开网络设置"
+      },
+      "directRequestResult": {
+        "done": true,
+        "ok": false,
+        "message": "环境已删除或重新创建，旧操作未应用",
+        "finishedAt": 785905,
+        "operationResult": {},
+        "recoveryRequired": false
+      },
+      "expectedIdentity": {
+        "slot": 0,
+        "generation": 0,
+        "environmentId": "5e9b7e4f-84eb-4714-8e0e-caf2b8a3aa75"
+      },
+      "submittedIdentity": {
+        "slot": 0,
+        "generation": 0,
+        "environmentId": "5286acc2-304a-4915-ac95-bfaa660ce093"
+      },
+      "rejectedBeforeSave": true,
+      "encryptedStorageBefore": "379dd9862f227d91c04728788db4977cf85c1a1baefc6e3a02f9622a26703765",
+      "encryptedStorageAfter": "379dd9862f227d91c04728788db4977cf85c1a1baefc6e3a02f9622a26703765",
+      "directRequestRejected": true
+    },
+    {
+      "name": "no-session",
+      "expected": {
+        "environmentId": "5e9b7e4f-84eb-4714-8e0e-caf2b8a3aa75",
+        "generation": 0,
+        "candidateId": "37564a2ebc2241f0ba61a5bf9049d982",
+        "savedRevision": 5,
+        "snapshotHash": "fa1197bf119d8f71e5243c824a6331eee085078f4b2c8d990ef90e1762d04d06"
+      },
+      "result": {
+        "done": true,
+        "ok": true,
+        "message": "网络方式已保存，等待系统网络",
+        "finishedAt": 786031,
+        "operationResult": {
+          "environmentId": "5e9b7e4f-84eb-4714-8e0e-caf2b8a3aa75",
+          "generation": 0,
+          "candidateId": "37564a2ebc2241f0ba61a5bf9049d982",
+          "savedRevision": 5,
+          "appliedRevision": 0,
+          "saveState": "saved",
+          "applicationState": "saved-unconfirmed",
+          "scope": "next-session",
+          "message": "网络方式已保存，等待系统网络与网页保护确认"
+        },
+        "recoveryRequired": false
+      },
+      "sessionAbsent": true,
+      "injection": "Integration-only retirement of the static session registry; provider sees no current session"
+    }
+  ],
+  "applicationResults": [
+    {
+      "id": "8829330c-31a9-46cf-ba72-fa969c5a59ff",
+      "ok": true,
+      "internal": false,
+      "operationResult": {
+        "environmentId": "5e9b7e4f-84eb-4714-8e0e-caf2b8a3aa75",
+        "generation": 0,
+        "candidateId": "e6770551d87e4eb484bb0a099f4a8285",
+        "savedRevision": 3,
+        "appliedRevision": 0,
+        "saveState": "saved",
+        "applicationState": "pending",
+        "scope": "session",
+        "message": "网络设置已保存，等待回复和文件操作结束后自动应用"
+      }
+    },
+    {
+      "id": "internal:b75524d5-ccf7-4c08-9683-3635f1a6d715",
+      "ok": true,
+      "internal": true,
+      "operationResult": {
+        "environmentId": "5e9b7e4f-84eb-4714-8e0e-caf2b8a3aa75",
+        "generation": 0,
+        "candidateId": "e6770551d87e4eb484bb0a099f4a8285",
+        "savedRevision": 3,
+        "appliedRevision": 3,
+        "saveState": "saved",
+        "applicationState": "applied",
+        "scope": "session",
+        "message": "配置已保存并由当前会话应用"
+      }
+    },
+    {
+      "id": "60c0a379-e354-4309-bfc0-84f523caa955",
+      "ok": false,
+      "internal": false,
+      "operationResult": {
+        "environmentId": "5e9b7e4f-84eb-4714-8e0e-caf2b8a3aa75",
+        "generation": 0,
+        "candidateId": "28f2ab6ff15f44c6bf84b6ca9b0447d6",
+        "savedRevision": 0,
+        "appliedRevision": 0,
+        "saveState": "saved",
+        "applicationState": "saved-unconfirmed",
+        "scope": "session",
+        "message": "配置已保存，但版本回执暂时无法读取；可在网络面板重新检查"
+      }
+    },
+    {
+      "id": "2c35086a-be3e-4c97-897a-5a29b5573a83",
+      "ok": false,
+      "internal": false,
+      "operationResult": {
+        "environmentId": "5e9b7e4f-84eb-4714-8e0e-caf2b8a3aa75",
+        "generation": 0,
+        "candidateId": "7f16900b9dd54927bd0dc9cd05031b8c",
+        "savedRevision": 3,
+        "appliedRevision": 0,
+        "saveState": "saved",
+        "applicationState": "saved-unconfirmed",
+        "scope": "session",
+        "message": "配置已保存，实际应用回执尚未确认；当前网页保持打开"
+      }
+    },
+    {
+      "id": "internal:7a939117-34c1-4460-bb41-eb9ce2d62474",
+      "ok": true,
+      "internal": true,
+      "operationResult": {
+        "environmentId": "5e9b7e4f-84eb-4714-8e0e-caf2b8a3aa75",
+        "generation": 0,
+        "candidateId": "7f16900b9dd54927bd0dc9cd05031b8c",
+        "savedRevision": 5,
+        "appliedRevision": 0,
+        "saveState": "saved",
+        "applicationState": "saved-unconfirmed",
+        "scope": "session",
+        "message": "取消结果尚未确认，请重新检查待应用设置"
+      }
+    },
+    {
+      "id": "3251c4a2-a244-42ea-9c97-6773886f6609",
+      "ok": false,
+      "internal": false,
+      "operationResult": {
+        "environmentId": "5e9b7e4f-84eb-4714-8e0e-caf2b8a3aa75",
+        "generation": 0,
+        "candidateId": "437972f5e7a84dfe920d809e5414359e",
+        "savedRevision": 5,
+        "appliedRevision": 0,
+        "saveState": "saved",
+        "applicationState": "saved-unconfirmed",
+        "scope": "session",
+        "message": "配置已保存，实际应用回执尚未确认；当前网页保持打开"
+      }
+    },
+    {
+      "id": "a62543cd-e691-4691-b277-73f024670d92",
+      "ok": false,
+      "internal": false,
+      "operationResult": {
+        "environmentId": "5e9b7e4f-84eb-4714-8e0e-caf2b8a3aa75",
+        "generation": 0,
+        "candidateId": "ff1a45aae3a34c7fac959055083076ee",
+        "savedRevision": 5,
+        "appliedRevision": 0,
+        "saveState": "saved",
+        "applicationState": "saved-unconfirmed",
+        "scope": "session",
+        "message": "配置已保存；当前会话或配置已变化，应用结果尚未确认"
+      }
+    },
+    {
+      "id": "internal:f9dd6ccf-1922-4520-a2d6-047cc773a5de",
+      "ok": true,
+      "internal": true,
+      "operationResult": {
+        "environmentId": "5e9b7e4f-84eb-4714-8e0e-caf2b8a3aa75",
+        "generation": 0,
+        "candidateId": "ff1a45aae3a34c7fac959055083076ee",
+        "savedRevision": 5,
+        "appliedRevision": 0,
+        "saveState": "saved",
+        "applicationState": "cancelled",
+        "scope": "session",
+        "message": "待应用设置已取消，当前连接保持不变"
+      }
+    },
+    {
+      "id": "b12df854-915b-455e-adc6-bb7bbd440dd1",
+      "ok": false,
+      "internal": false,
+      "operationResult": {
+        "environmentId": "5e9b7e4f-84eb-4714-8e0e-caf2b8a3aa75",
+        "generation": 0,
+        "candidateId": "5f9386b72886478d8dc6c9cdd9e1e87f",
+        "savedRevision": 5,
+        "appliedRevision": 0,
+        "saveState": "saved",
+        "applicationState": "saved-unconfirmed",
+        "scope": "session",
+        "message": "配置已保存；当前会话或配置已变化，应用结果尚未确认"
+      }
+    },
+    {
+      "id": "internal:59fb8825-3407-48e2-8ef6-6a13086daa24",
+      "ok": true,
+      "internal": true,
+      "operationResult": {
+        "environmentId": "5e9b7e4f-84eb-4714-8e0e-caf2b8a3aa75",
+        "generation": 0,
+        "candidateId": "5f9386b72886478d8dc6c9cdd9e1e87f",
+        "savedRevision": 5,
+        "appliedRevision": 0,
+        "saveState": "saved",
+        "applicationState": "pending",
+        "scope": "session",
+        "message": "网络设置已保存，等待回复和文件操作结束后自动应用"
+      }
+    },
+    {
+      "id": "6d7e9d49-e616-4f27-8018-06bd5799a9ac",
+      "ok": true,
+      "internal": false,
+      "operationResult": {
+        "environmentId": "5e9b7e4f-84eb-4714-8e0e-caf2b8a3aa75",
+        "generation": 0,
+        "candidateId": "37564a2ebc2241f0ba61a5bf9049d982",
+        "savedRevision": 5,
+        "appliedRevision": 0,
+        "saveState": "saved",
+        "applicationState": "saved-unconfirmed",
+        "scope": "next-session",
+        "message": "网络方式已保存，等待系统网络与网页保护确认"
+      }
+    },
+    {
+      "id": "internal:f3db4bb6-9556-4760-b801-1f0e8824af9f",
+      "ok": true,
+      "internal": true,
+      "operationResult": {
+        "environmentId": "5e9b7e4f-84eb-4714-8e0e-caf2b8a3aa75",
+        "generation": 0,
+        "candidateId": "37564a2ebc2241f0ba61a5bf9049d982",
+        "savedRevision": 5,
+        "appliedRevision": 0,
+        "saveState": "saved",
+        "applicationState": "pending",
+        "scope": "session",
+        "message": "网络设置已保存，等待回复和文件操作结束后自动应用"
+      }
+    }
+  ],
+  "applicationBootstrap": {
+    "schema": 1,
+    "observations": [
+      {
+        "phase": "browser-only",
+        "identity": {
+          "slot": 0,
+          "generation": 0,
+          "environmentId": "5e9b7e4f-84eb-4714-8e0e-caf2b8a3aa75"
+        },
+        "desiredRevision": 2,
+        "appliedRevision": 0,
+        "observedRevision": 0,
+        "desiredHash": "5e4871ae86087e9ab7c8a82b682e397a2ba78fec091f6aece950f5d681e9467d",
+        "appliedHash": "",
+        "actualHash": "ea4e6d969ac006055be5a51829e6d07b9d4f3db7b7d5149eb0085c9ae173c29a",
+        "browserMatchesAccepted": true,
+        "networkMatchesActual": false,
+        "pendingIntent": false,
+        "mode": "external",
+        "connection": 0,
+        "policyAcknowledged": true,
+        "networkReady": true,
+        "guardAllowed": true,
+        "appliedIdentityCurrent": false,
+        "engineVersion": "",
+        "runtimeEngineVersion": "GeckoView 157.0.1 · 输入同步修正"
+      },
+      {
+        "phase": "reconciled",
+        "identity": {
+          "slot": 0,
+          "generation": 0,
+          "environmentId": "5e9b7e4f-84eb-4714-8e0e-caf2b8a3aa75"
+        },
+        "desiredRevision": 3,
+        "appliedRevision": 0,
+        "observedRevision": 0,
+        "desiredHash": "ea4e6d969ac006055be5a51829e6d07b9d4f3db7b7d5149eb0085c9ae173c29a",
+        "appliedHash": "",
+        "actualHash": "ea4e6d969ac006055be5a51829e6d07b9d4f3db7b7d5149eb0085c9ae173c29a",
+        "browserMatchesAccepted": true,
+        "networkMatchesActual": true,
+        "pendingIntent": false,
+        "mode": "external",
+        "connection": 0,
+        "policyAcknowledged": true,
+        "networkReady": true,
+        "guardAllowed": true,
+        "appliedIdentityCurrent": false,
+        "engineVersion": "",
+        "runtimeEngineVersion": "GeckoView 157.0.1 · 输入同步修正"
+      },
+      {
+        "phase": "acknowledged",
+        "identity": {
+          "slot": 0,
+          "generation": 0,
+          "environmentId": "5e9b7e4f-84eb-4714-8e0e-caf2b8a3aa75"
+        },
+        "desiredRevision": 3,
+        "appliedRevision": 3,
+        "observedRevision": 0,
+        "desiredHash": "ea4e6d969ac006055be5a51829e6d07b9d4f3db7b7d5149eb0085c9ae173c29a",
+        "appliedHash": "ea4e6d969ac006055be5a51829e6d07b9d4f3db7b7d5149eb0085c9ae173c29a",
+        "actualHash": "ea4e6d969ac006055be5a51829e6d07b9d4f3db7b7d5149eb0085c9ae173c29a",
+        "browserMatchesAccepted": true,
+        "networkMatchesActual": true,
+        "pendingIntent": false,
+        "mode": "external",
+        "connection": 2,
+        "policyAcknowledged": true,
+        "networkReady": true,
+        "guardAllowed": true,
+        "appliedIdentityCurrent": true,
+        "engineVersion": "GeckoView 157.0.1 · 输入同步修正",
+        "runtimeEngineVersion": "GeckoView 157.0.1 · 输入同步修正"
+      }
+    ],
+    "migrationBeforeFixturePreferences": true,
+    "migrationIdentity": {
+      "slot": 0,
+      "generation": 0,
+      "environmentId": "5e9b7e4f-84eb-4714-8e0e-caf2b8a3aa75"
+    },
+    "automaticDrainHeldUntilReconnect": true,
+    "productionReconciliationInvoked": true,
+    "automaticDrainResumePosted": true
+  },
+  "actualAndroidExecution": true,
+  "actualGeckoExecution": true,
+  "actualKeystoreEncryption": true,
+  "actualExternalRouteApplication": true,
+  "actualInternalCoreApplication": false,
+  "actualPublicWebsite": false,
+  "actualTrustedGestures": false,
+  "productionRequestInvoked": true,
+  "productionDrainInvoked": true,
+  "productionModelAcknowledgement": true,
+  "certificateExceptions": 0,
+  "securityEvents": [
+    {
+      "callback": "GeckoSession.ProgressDelegate.onSecurityChange",
+      "isSecure": true,
+      "isException": false,
+      "host": "chatgpt.com",
+      "origin": "https://chatgpt.com",
+      "certificateSha256": "66c659c8f20a9ea7d132d66e4020897be19fab099aa3cc17fa870a967c16266c",
+      "testCaSha256": "794f38936cb5ebc28b6d0f681f9d5b00a2431f48ced181137f4f3bf45fe67226",
+      "certificateSignedByTestCa": true,
+      "certificateValidityChecked": true,
+      "certificateHostnameSanMatches": true,
+      "certificateMatchesPackagedLeaf": true,
+      "accepted": true,
+      "verificationError": ""
+    },
+    {
+      "callback": "GeckoSession.ProgressDelegate.onSecurityChange",
+      "isSecure": true,
+      "isException": false,
+      "host": "chatgpt.com",
+      "origin": "https://chatgpt.com",
+      "certificateSha256": "66c659c8f20a9ea7d132d66e4020897be19fab099aa3cc17fa870a967c16266c",
+      "testCaSha256": "794f38936cb5ebc28b6d0f681f9d5b00a2431f48ced181137f4f3bf45fe67226",
+      "certificateSignedByTestCa": true,
+      "certificateValidityChecked": true,
+      "certificateHostnameSanMatches": true,
+      "certificateMatchesPackagedLeaf": true,
+      "accepted": true,
+      "verificationError": ""
+    }
+  ],
+  "testTrust": {
+    "schema": 1,
+    "method": "NSS SQL public-root profile preload",
+    "assetDirectory": "network-safe-idle-trust/",
+    "hostname": "chatgpt.com",
+    "testCaSha256": "794f38936cb5ebc28b6d0f681f9d5b00a2431f48ced181137f4f3bf45fe67226",
+    "testLeafSha256": "66c659c8f20a9ea7d132d66e4020897be19fab099aa3cc17fa870a967c16266c",
+    "profileDbSha256": "a3114642d39ee1f3bc23c4428b08035abeb101de367547dcfe32680af6286023",
+    "profilePath": "/data/data/local.pocketchat.test/no_backup/gecko-browser",
+    "preparedBeforeRuntime": true,
+    "databaseCopyShaVerified": true,
+    "serverChainShaVerified": true,
+    "certificateValidityChecked": true,
+    "certificateHostnameSanMatches": true,
+    "productionTrustChanged": false,
+    "certificateExceptionUsed": false
+  },
+  "fixtureProviderControl": {
+    "schema": 1,
+    "registeredProviderIdentity": 63330798,
+    "profilePath": "/data/data/local.pocketchat.test/no_backup",
+    "removeCallbacksCalled": true,
+    "drainRevisionBefore": 0,
+    "drainRevisionAfter": 1,
+    "automaticDrainSuspended": true,
+    "restored": false,
+    "controlledProviderIdentity": 44451195
+  },
+  "buildIdentity": {
+    "schema": 1,
+    "sourceCommit": "505e2072c24e803d85695d2516d3e0dea8a815f8",
+    "sourceTree": "544c59cf5e7b4b6eb29b118942c6431f67aa3d77",
+    "dirtySource": false,
+    "version": "2.1.4",
+    "versionCode": 106,
+    "sdkCoordinate": "org.mozilla.geckoview:geckoview:157.0.20261005135250",
+    "sdkBuildKind": "source-derived-java",
+    "sdkInputCoordinate": "org.mozilla.geckoview:geckoview:157.0.20261005135250",
+    "sdkRuntimeCoordinate": "local.pocketchat.sdk:geckoview-caret:157.0.20261005135250-pocket3",
+    "sdkInputAarSha256": "15f1edf3c58abcdaf2783f299b8c19c3a36272d348969106a9009671fef8d268",
+    "sdkAarSha256": "f9fad20c02e554b00da51b72c8cd2643e121b4a81bc656dd5cf03de21ded2e72",
+    "sdkClassesJarSha256": "237fd669f196b6efc6882a3e806a31e7de5b95b4ad1bef3e22233c6b41de684f",
+    "sdkGeckoEditableClassSha256": "02e386e366fc7bad29eb4f5f92d5f762618eb97609c236cf5e0d42604e58fb00",
+    "sdkManifestSha256": "e17c26595f25a7d87b250a92bd1359607e0ec859369f4ade312a129d2fe98902",
+    "sdkBuildReceiptSha256": "f2de0249bd932761845b6c0e662d99745a308c9bfcbdd763c0b1604ca65ce056",
+    "sdkBuildSource": "505e2072c24e803d85695d2516d3e0dea8a815f8",
+    "sdkBuildIdentity": {
+      "sdkBuildKind": "source-derived-java",
+      "sdkCoordinate": "org.mozilla.geckoview:geckoview:157.0.20261005135250",
+      "sdkRuntimeCoordinate": "local.pocketchat.sdk:geckoview-caret:157.0.20261005135250-pocket3",
+      "sdkInputCoordinate": "org.mozilla.geckoview:geckoview:157.0.20261005135250",
+      "sdkInputAarSha256": "15f1edf3c58abcdaf2783f299b8c19c3a36272d348969106a9009671fef8d268",
+      "sdkAarSha256": "f9fad20c02e554b00da51b72c8cd2643e121b4a81bc656dd5cf03de21ded2e72",
+      "sdkClassesJarSha256": "237fd669f196b6efc6882a3e806a31e7de5b95b4ad1bef3e22233c6b41de684f",
+      "sdkGeckoEditableClassSha256": "02e386e366fc7bad29eb4f5f92d5f762618eb97609c236cf5e0d42604e58fb00",
+      "sdkManifestSha256": "e17c26595f25a7d87b250a92bd1359607e0ec859369f4ade312a129d2fe98902",
+      "sdkBuildReceiptSha256": "f2de0249bd932761845b6c0e662d99745a308c9bfcbdd763c0b1604ca65ce056",
+      "sdkBuildSource": "505e2072c24e803d85695d2516d3e0dea8a815f8",
+      "schema": 1,
+      "sourceCommit": "505e2072c24e803d85695d2516d3e0dea8a815f8",
+      "sourceTree": "544c59cf5e7b4b6eb29b118942c6431f67aa3d77",
+      "runId": "42668782569",
+      "runAttempt": "1"
+    },
+    "package": "local.pocketchat.test",
+    "apkBytes": 127316596,
+    "apkSha256": "58747380d66580a21ac400b175cac189aef189831355d7c6487d719957bf191d",
+    "buildStampSha256": "5bc5fdab07bf48936b73119cc624031cb1ff8ca2997caeb9412fea5eec9c0955",
+    "scope": "Installed synthetic integration APK bytes and embedded source stamp only"
+  },
+  "sourceCommit": "505e2072c24e803d85695d2516d3e0dea8a815f8",
+  "runNonce": "4dc8c68e66054118874dca7f15531245",
+  "scope": "Actual production provider requests, persistent intents, Gecko policy and external loopback-proxy application. Busy DOM and stale callback/model/registry states are explicit controlled injections. Native parsing in setup does not validate internal-core application or fresh core IPC. No live ChatGPT, public exit, WAN latency or trusted user gestures claimed.",
+  "installedPackage": "local.pocketchat.test",
+  "installedApkSha256": "58747380d66580a21ac400b175cac189aef189831355d7c6487d719957bf191d",
+  "runnerOneAttempt": true,
+  "runnerSha256": "f9af1cb434960b5a23c0e20e224fe9817a4cbc7ab0ea6dc9fa8e9b09569851a8"
+}
