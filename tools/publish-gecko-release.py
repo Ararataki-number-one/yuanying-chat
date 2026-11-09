@@ -30,6 +30,24 @@ def existing_release_preflight(manifest, repository):
     verify_existing_release_identity(manifest,previous,target,size,digest.hexdigest())
 
 
+def verify_compact_touch_evidence(chrome, source):
+    """Keep the original touch gate, with explicit current navigation semantics."""
+    message='Compact chrome and real Android touch regression is required.'
+    assert chrome['status']=='passed' and chrome['actualAndroidExecution'] and chrome['sourceCommit']==source and len(chrome['cases'])==3,message
+    cases=chrome['cases']
+    versions=[case.get('navigationContract',1) for case in cases]
+    assert all(type(version) is int and version in (1,2) for version in versions),message
+    assert len(set(versions))==1,'Compact chrome cannot mix navigation contract versions.'
+    if versions[0]==2:
+        assert chrome['actualAndroidExecution'] is True,message
+        from gecko.compact_chrome_layout_v2 import verify_case
+        assert {(case['viewport'],case['fontScale']) for case in cases}=={(360,1),(412,1),(360,2)},message
+        for case in cases:verify_case(case)
+    else:
+        assert all(case['readOnlyStatus'] and len(case['actualAndroidTaps'])==3 for case in cases),message
+    return True
+
+
 def verify_derived_release_evidence(evidence, source, report, build, receipt, apk):
     """Add source-derived checks without replacing any original release gate."""
     from gecko.check_sdk_build_evidence import verify_sdk_build_evidence
@@ -126,7 +144,7 @@ if version_code>=42:
     quiet=json.loads((args.evidence/'quiet-notification-results.json').read_text())
     chrome=json.loads((args.evidence/'compact-chrome-results.json').read_text())
     assert quiet['status']=='passed' and quiet['actualAndroidExecution'] and quiet['sourceCommit']==args.source and quiet['checkCount']>=24 and all(c['pass'] for c in quiet['checks']),'Quiet service and completion reminder regression is required.'
-    assert chrome['status']=='passed' and chrome['actualAndroidExecution'] and chrome['sourceCommit']==args.source and len(chrome['cases'])==3 and all(c['readOnlyStatus'] and len(c['actualAndroidTaps'])==3 for c in chrome['cases']),'Compact chrome and real Android touch regression is required.'
+    verify_compact_touch_evidence(chrome,args.source)
     if version_code>=68:
         from gecko.check_interaction_transfer_evidence import verify_display_sampling
         verify_display_sampling(network)
@@ -280,6 +298,8 @@ if version_code>=43:
     shutil.copy2(root/'tools/gecko/check_performance_evidence.py',stage/'tools/gecko/check_performance_evidence.py')
     shutil.copy2(root/'tools/gecko/ui_visual_contract.py',stage/'tools/gecko/ui_visual_contract.py')
     if (root/'tools/gecko/chrome_collapse_contract.py').is_file():shutil.copy2(root/'tools/gecko/chrome_collapse_contract.py',stage/'tools/gecko/chrome_collapse_contract.py')
+    for name in ('compact_chrome_layout_v2.py','chrome_collapse_contract_v2.py','workspace_navigation_contract.py'):
+        shutil.copy2(root/'tools/gecko'/name,stage/'tools/gecko'/name)
 shutil.copy2(root/'tools/gecko/release_channel_contract.py',stage/'tools/gecko/release_channel_contract.py')
 shutil.copy2(root/'tools/gecko/network_scope_artifacts.py',stage/'tools/gecko/network_scope_artifacts.py')
 shutil.copy2(root/'tools/gecko/release_channel_contract_test.py',stage/'tools/gecko/release_channel_contract_test.py')
