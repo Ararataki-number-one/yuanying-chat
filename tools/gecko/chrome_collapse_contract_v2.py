@@ -181,6 +181,28 @@ def gesture(before, after):
                t['expanded'] is before['expanded'] for t in touches)
 
 
+def address_cancel(sample, interpreted):
+    """Bind the real owned dialog's cancel geometry to a fresh native XML read.
+
+    The workload uses this same full reader before emitting a cancel input, not
+    only after the complete case. A keyboard relocation can never authorize a
+    tap using the preceding, pre-IME XML bounds.
+    """
+    d = sample['addressDialog']
+    assert sample['expanded'] is True and sample['windowFocus'] is False
+    assert type(d['schema']) is int and d['schema'] == 1 and d['ownerActivity'] is d['showing'] is True
+    assert type(d['dialogRef']) is int and d['dialogRef'] > 0 and type(d['editorRef']) is int and d['editorRef'] > 0
+    assert d['dialogClass'] == 'android.app.AlertDialog' and d['editorClass'] == 'android.widget.EditText'
+    assert all(d[k] is True for k in ('decorAttached', 'decorShown', 'decorFocus', 'editorShown', 'editorFocused', 'editorWindowFocus', 'sameWindow', 'cancelShown', 'cancelEnabled', 'cancelClickable'))
+    assert d['editorDescription'] == '网址或搜索' and d['editorText'] == TARGET and d['editorInputType'] == 17 and d['editorMaxLines'] == 1 and d['cancelText'] == '取消'
+    for key in ('decorBounds', 'editorBounds', 'cancelBounds'): rect(d[key])
+    cancel = interpreted['controls'][0]
+    assert cancel['label'] == '取消' and d['cancelBounds'] == cancel['bounds'], 'Native address cancel geometry moved before input'
+    assert cancel['point'] == center(cancel['bounds'])
+    inside(cancel['point'], cancel['bounds'])
+    return cancel
+
+
 def verify_case(case, identity):
     source = identity['sourceCommit']
     assert type(case.get('navigationContract')) is int and case['navigationContract'] == 2
@@ -278,14 +300,7 @@ def verify_case(case, identity):
         assert resumed(value['activityState']) == {(case['androidUser'], expected_activity)}
         interpreted[phase] = inspect_ui(value['rawXml'], phase, initial['environmentName'])
         if phase in ADDRESS_PHASES:
-            s = samples[phase]; d = s['addressDialog']; assert s['expanded'] is True and s['windowFocus'] is False
-            assert type(d['dialogRef']) is int and d['dialogRef'] > 0 and type(d['editorRef']) is int and d['editorRef'] > 0
-            assert d['dialogClass'] == 'android.app.AlertDialog' and d['editorClass'] == 'android.widget.EditText'
-            assert all(d[k] is True for k in ('decorAttached', 'decorShown', 'decorFocus', 'editorShown', 'editorFocused', 'editorWindowFocus', 'sameWindow', 'cancelShown', 'cancelEnabled', 'cancelClickable'))
-            assert d['editorDescription'] == '网址或搜索' and d['editorText'] == TARGET and d['editorInputType'] == 17 and d['editorMaxLines'] == 1 and d['cancelText'] == '取消'
-            for key in ('decorBounds', 'editorBounds', 'cancelBounds'): rect(d[key])
-            cancel = interpreted[phase]['controls'][0]
-            assert d['cancelBounds'] == cancel['bounds']
+            address_cancel(samples[phase], interpreted[phase])
         elif phase in ('environmentPicker', 'more'):
             assert samples[phase]['windowFocus'] is False and samples[phase]['addressDialog']['showing'] is False
         elif phase in ('reading', 'readingBackMode'):

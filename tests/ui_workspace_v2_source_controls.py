@@ -12,9 +12,10 @@ import unittest
 from unittest.mock import patch
 
 import ui_workspace_v2_source_compatibility as current
+from ui_download_workspace_v2_source_compatibility import historical_root
 
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = historical_root(Path(__file__).resolve().parents[1], (current.RUNNER, current.HOST))
 PREPARATION = ("from ui_test_device import prepare_workflow as prepare_ui_test_device\n"
                "(out/'ui-test-device-isolation.json').write_text(json.dumps(prepare_ui_test_device(adb,serial=args.serial,environment=os.environ),sort_keys=True,indent=2)+'\\n')\n")
 LOAD_TESTS = """def load_tests(loader, tests, pattern):

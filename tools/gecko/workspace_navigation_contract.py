@@ -89,12 +89,61 @@ def conversation_header(xml, package, width, height, scale, environment):
     return result
 
 
+def dashboard_entry(xml, package, environment):
+    """Read the actual dashboard header and its sole native entry button."""
+    assert type(package) is str and package.endswith('.test')
+    assert type(environment) is str and environment
+    tree = ET.fromstring(xml)
+    dashboards = [n for n in tree.iter('node')
+                  if n.attrib.get('content-desc') == '环境仪表盘']
+    assert len(dashboards) == 1, 'One native environment dashboard is required'
+
+    def owner(node, kind):
+        assert node.attrib.get('package') == package, 'Dashboard belongs to another package'
+        assert node.attrib.get('class') == 'android.widget.' + kind, node.attrib
+        return node
+
+    dashboard = owner(dashboards[0], 'LinearLayout')
+    children = list(dashboard)
+    assert len(children) == 2, 'Dashboard must retain its scroll body and entry footer'
+    scroll, footer = owner(children[0], 'ScrollView'), owner(children[1], 'LinearLayout')
+    assert len(scroll) == 1
+    centered = owner(scroll[0], 'FrameLayout')
+    assert len(centered) == 1
+    body = owner(centered[0], 'LinearLayout')
+    assert len(body) > 0
+    header = owner(body[0], 'LinearLayout')
+    assert len(header) == 2, 'Dashboard header must contain its slot badge and name'
+    badge, title = owner(header[0], 'TextView'), owner(header[1], 'TextView')
+    assert re.fullmatch(r'[0-9]{2,}', badge.attrib.get('text', ''))
+    assert int(badge.attrib['text']) > 0
+    assert title.attrib.get('text') == environment, 'Dashboard opened another environment'
+    entries = [n for n in tree.iter('node') if n.attrib.get('text') == '进入聊天']
+    assert len(entries) == len(footer) == 1 and entries[0] is footer[0], 'One actual footer entry is required'
+    button = owner(entries[0], 'Button')
+    assert button.attrib.get('content-desc', '') == ''
+    assert button.attrib.get('enabled') == button.attrib.get('clickable') == 'true', button.attrib
+    dl, dt, dr, db = bounds(dashboard)
+    for node in (header, title, footer, button):
+        l, t, r, b = bounds(node)
+        assert dl <= l < r <= dr and dt <= t < b <= db, 'Dashboard control is clipped'
+    l, t, r, b = bounds(button)
+    fl, ft, fr, fb = bounds(footer)
+    assert fl <= l < r <= fr and ft <= t < b <= fb, 'Entry must remain inside its native footer'
+    return dict(environment=environment, environmentBadge=badge.attrib['text'],
+                dashboardBounds=[dl, dt, dr, db], headerBounds=bounds(title),
+                buttonBounds=[l, t, r, b], point=[(l+r)//2, (t+b)//2])
+
+
 def exercise_workspace_roundtrip(adb, initial_xml, save, package):
-    """Two genuine taps expose all five destinations, then return to conversation."""
+    """Open management, its chat dashboard, then enter the same conversation."""
     initial = navigation(initial_xml, package, conversation=True)
     original_capsule = [n.attrib['content-desc'] for n in ET.fromstring(initial_xml).iter('node')
                         if n.attrib.get('content-desc', '').startswith('当前环境：')]
     assert len(original_capsule) == 1
+    capsule = re.fullmatch(r'当前环境：(.+)，点按输入网址，长按切换环境', original_capsule[0])
+    assert capsule is not None, 'Current environment identity is required'
+    environment = capsule.group(1)
     observed = []
     for label, conversation, selected in (('环境', False, '环境'), ('会话', True, None)):
         before = initial if not observed else observed[-1]
@@ -103,9 +152,30 @@ def exercise_workspace_roundtrip(adb, initial_xml, save, package):
         point = [(l+r)//2, (t+b)//2]
         adb('shell', 'input', 'tap', *map(str, point))
         deadline = time.monotonic()+20
-        while True:
+
+        def read_frame():
+            assert time.monotonic() < deadline, 'Native navigation exceeded its original 20 second budget'
             adb('shell', 'uiautomator', 'dump', '/sdcard/gecko-navigation-v2.xml')
             xml = adb('shell', 'cat', '/sdcard/gecko-navigation-v2.xml')
+            assert time.monotonic() < deadline, 'Native navigation exceeded its original 20 second budget'
+            return xml
+
+        entry = None
+        if conversation:
+            while True:
+                xml = read_frame()
+                if any(n.attrib.get('content-desc') == '环境仪表盘'
+                       for n in ET.fromstring(xml).iter('node')):
+                    entry = dashboard_entry(xml, package, environment)
+                    break
+                time.sleep(.2)
+            save('production-navigation-dashboard.xml', xml)
+            assert time.monotonic() < deadline, 'Dashboard entry exceeded its original 20 second budget'
+            adb('shell', 'input', 'tap', *map(str, entry['point']))
+            entry['actualAndroidTap'] = dict(label='进入聊天', point=entry['point'], bounds=entry['buttonBounds'])
+            # The dashboard and final conversation share the original chat deadline.
+        while True:
+            xml = read_frame()
             try:
                 value = navigation(xml, package, conversation=conversation, selected=selected)
                 break
@@ -118,7 +188,9 @@ def exercise_workspace_roundtrip(adb, initial_xml, save, package):
             assert [n.attrib['content-desc'] for n in ET.fromstring(xml).iter('node')
                     if n.attrib.get('content-desc', '').startswith('当前环境：')] == original_capsule
         value.update(actualAndroidTap=dict(label=label, point=point, bounds=target['bounds']))
+        if entry is not None:
+            value['dashboardEntry'] = entry
         observed.append(value)
-    return dict(navigationContract=VERSION, actualAndroidTaps=2, initial=initial,
+    return dict(navigationContract=VERSION, actualAndroidTaps=3, initial=initial,
                 observations=observed, allFiveWorkspaceDestinationsVisible=True,
                 returnedToSameEnvironment=True)

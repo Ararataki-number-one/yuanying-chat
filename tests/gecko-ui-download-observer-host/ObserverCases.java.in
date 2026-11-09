@@ -201,6 +201,10 @@ public final class ObserverCases {
 
 final class HostActivity extends Activity {
   DownloadLocationLayoutEvidence downloadLocationEvidence;
+  // Explicit inactive v2 collaborator for the retained v1 host scenarios.
+  // The full current onNewIntent is compiled below; this field stays null.
+  interface DownloadWorkspaceBoundary { void observe(Intent request); }
+  DownloadWorkspaceBoundary downloadWorkspace;
   final java.util.Set<String> downloadObservationNonces=new java.util.HashSet<>();
   final Handler handler=new Handler(Looper.getMainLooper());
   /* ACTUAL_ACTIVITY_MEMBERS */

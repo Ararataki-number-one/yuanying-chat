@@ -32,9 +32,9 @@ final class NetworkCountryIcon extends Drawable {
     String original=view.getText().toString(),shown=displayLabel(original,code);if(!shown.equals(original))view.setText(shown);
     view.setCompoundDrawablesRelative(drawable(view.getContext(),code,fallback,sizeDp),null,null,null);
     view.setCompoundDrawablePadding(DesignUi.dp(view.getContext(),6));
-    String country=NetworkCountryHint.country(code);
-    if(!country.isEmpty())view.setTooltipText(country+" · 节点地区标注");
-    else view.setTooltipText(null);
+    // Android tooltips consume touch even on non-clickable labels. Keep taps on
+    // this decorative child available to its row, including after recycling.
+    view.setTooltipText(null);
   }
 
   static String labeled(String value,String code){

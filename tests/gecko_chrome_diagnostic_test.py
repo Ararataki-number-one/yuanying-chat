@@ -1,6 +1,7 @@
 """Guard selected-source diagnostic reuse; no counterfeit Android success."""
 import ast
 import copy
+import hashlib
 import importlib.machinery
 import importlib.util
 import itertools
@@ -66,6 +67,82 @@ class FocusedDiagnosticTest(unittest.TestCase):
 
 
 from gecko_chrome_collapse_v2_test import ChromeCollapseV2Controls
+
+
+class V2DiagnosticOriginalsTest(unittest.TestCase):
+    """Synthetic transport controls only; no Android result is manufactured."""
+    def fixture(self, directory):
+        base=Path(directory);integration=base/'integration';out=base/'diagnostic'
+        integration.mkdir();out.mkdir()
+        source='1'*40;nonce='2'*32;capture_nonce='3'*32
+        identity=dict(sourceCommit=source,sourceTree='4'*40,apkSha256='5'*64)
+        def save(name,raw):
+            (integration/name).write_bytes(raw)
+            return dict(name=name,bytes=len(raw),sha256=hashlib.sha256(raw).hexdigest())
+        capture=save('chrome-v2-ui-capture-'+nonce+'.json',json.dumps(dict(sourceCommit=source,runNonce=capture_nonce,attemptCount=2)).encode()+b'\n')
+        xml=save('chrome-v2-'+nonce+'-initialAddress-attempt-1.xml',b'<hierarchy><node text="controlled host XML" /></hierarchy>\r\n')
+        activity=save('chrome-v2-'+nonce+'-initialAddress-attempt-1.activity.txt',b'controlled host activity bytes\r\n')
+        path=integration/('chrome-v2-'+nonce+'-partial.json')
+        value=dict(schema=1,navigationContract=2,diagnosticOnly=True,releaseAcceptance=False,caseCompleted=False,
+            sourceCommit=source,sourceTree=identity['sourceTree'],buildIdentity=identity,runNonce=nonce,
+            viewport=360,fontScale=1,captureRunNonce=capture_nonce,captureFile=capture,captureStatus='available',captureAttemptCount=2,
+            rawFiles=[xml,activity],observations={},actualAndroidInputs=[],nativeUi={},uiAttempts=[],
+            eventTransfer=dict(runNonce=nonce,fixtureAction='chromeCollapse',processSlot=0,events=[]),
+            error="TimeoutError('controlled host-only failure')")
+        path.write_text(json.dumps(value,ensure_ascii=False,indent=2)+'\n')
+        return integration,out,source,identity,path,value
+
+    def test_incomplete_case_preserves_every_original_byte_and_never_becomes_acceptance(self):
+        with tempfile.TemporaryDirectory() as directory:
+            integration,out,source,identity,path,value=self.fixture(directory)
+            originals={p.name:p.read_bytes() for p in integration.iterdir()}
+            records=module.collect_v2_diagnostics(integration,out,source,identity)
+            self.assertEqual(len(records),4);self.assertEqual({r['name'] for r in records},set(originals))
+            for record in records:
+                self.assertEqual((out/record['name']).read_bytes(),originals[record['name']])
+                self.assertEqual(record['sha256'],hashlib.sha256(originals[record['name']]).hexdigest())
+                self.assertEqual(record['bytes'],len(originals[record['name']]))
+            restored=json.loads((out/path.name).read_bytes())
+            self.assertFalse(restored['caseCompleted']);self.assertFalse(restored['releaseAcceptance'])
+            self.assertEqual(restored['error'],value['error']);self.assertNotIn('status',restored)
+            self.assertEqual({p.name:p.read_bytes() for p in integration.iterdir()},originals)
+
+    def test_other_source_nonce_apk_capture_and_unowned_paths_are_rejected_before_any_copy(self):
+        for mutation in ('source','tree','apk','nonce','capture','bytes','traversal','duplicate','extra','missing-partial','symlink','destination','event-owner','ui-owner'):
+            with self.subTest(mutation=mutation),tempfile.TemporaryDirectory() as directory:
+                integration,out,source,identity,path,value=self.fixture(directory)
+                if mutation=='source':value['sourceCommit']='6'*40
+                elif mutation=='tree':value['sourceTree']='6'*40
+                elif mutation=='apk':value['buildIdentity']=dict(identity,apkSha256='6'*64)
+                elif mutation=='nonce':value['runNonce']='6'*32
+                elif mutation=='capture':value['captureRunNonce']='6'*32
+                elif mutation=='bytes':(integration/value['rawFiles'][0]['name']).write_bytes(b'changed original')
+                elif mutation=='traversal':value['rawFiles'][0]['name']='../outside.xml'
+                elif mutation=='duplicate':value['rawFiles'].append(copy.deepcopy(value['rawFiles'][0]))
+                elif mutation=='extra':(integration/'chrome-v2-foreign.json').write_bytes(b'{}')
+                elif mutation=='symlink':
+                    raw=integration/value['rawFiles'][0]['name'];data=raw.read_bytes();raw.unlink()
+                    external=Path(directory)/'outside.xml';external.write_bytes(data);raw.symlink_to(external)
+                elif mutation=='destination':(out/path.name).write_bytes(b'previous invocation')
+                elif mutation=='event-owner':
+                    envelope=dict(runNonce='6'*32,sourceCommit=source,buildIdentity=identity)
+                    raw=json.dumps(envelope).encode()
+                    value['eventTransfer']['events']=[dict(receipt=dict(runNonce=value['runNonce'],fixtureAction='chromeCollapse',processSlot=0,
+                        payloadBytes=len(raw),payloadSha256=hashlib.sha256(raw).hexdigest()),rawUtf8=raw.decode())]
+                elif mutation=='ui-owner':value['nativeUi']['initialAddress']=dict(runNonce='6'*32,sourceCommit=source)
+                path.write_text(json.dumps(value)+'\n')
+                if mutation=='missing-partial':path.unlink()
+                before={p.name:p.read_bytes() for p in out.iterdir()}
+                with self.assertRaises(ValueError):module.collect_v2_diagnostics(integration,out,source,identity)
+                self.assertEqual({p.name:p.read_bytes() for p in out.iterdir()},before)
+
+    def test_actual_main_refuses_existing_v2_files_before_starting_selected_workload(self):
+        tree=ast.parse(path.read_text())
+        main=named(tree,'main');body=ast.unparse(main)
+        self.assertLess(body.index("if any(integration.glob('chrome-v2-*'))"),body.index('v2_started = True'))
+        self.assertLess(body.index('v2_started = True'),body.index('exec(compile(program'))
+        self.assertIn('if v2_started:',body)
+        self.assertIn('collect_v2_diagnostics(integration, args.out, source, identity)',body)
 
 
 class FocusedMainExecutionTest(unittest.TestCase):

@@ -20,8 +20,20 @@ from integration_event_contract import EventTransfer, parse_receipt_line
 from profile_invocation_contract import expected_build, verify_installed
 from ui_visual_capture import UiVisualCapture
 from chrome_collapse_contract_v2 import (ACTIVITY, ENVIRONMENT_ACTIVITY, PACKAGE, PHASES, NAMES,
-                                         LEGACY_BEHAVIOR_MAP, inspect_ui, resumed, verify_case)
+                                         LEGACY_BEHAVIOR_MAP, address_cancel, inspect_ui, resumed, verify_case)
 from run_chrome_collapse import resume_after_home, resume_transport
+
+
+def cancel_address_once(*, observe, snapshot, tap, opened, returned):
+    """Reobserve after the original snapshot within one original UI budget."""
+    deadline = time.monotonic()+20
+    observe(opened, deadline=deadline)
+    sample = snapshot(opened)
+    dialog = observe(opened, deadline=deadline, address_sample=sample)
+    cancel = address_cancel(sample, dialog)
+    if time.monotonic() >= deadline:
+        raise TimeoutError(('Native v2 observation deadline before cancel input', opened))
+    tap(opened, returned, 'cancel', point=cancel['point'], bounds=cancel['bounds'])
 
 
 def run_v2(adb, adb_bytes, source, trace, out, focus):
@@ -42,10 +54,43 @@ def run_v2(adb, adb_bytes, source, trace, out, focus):
         user = int(user_text); nonce = uuid.uuid4().hex
         transfer = EventTransfer(identity=identity, nonce=nonce, slot=0, action='chromeCollapse',
                                  fetch=lambda uri: adb_bytes('exec-out', 'content', 'read', '--uri', uri))
-        observations, inputs, native_ui = {}, [], {}
+        observations, inputs, native_ui, ui_attempts, raw_files = {}, [], {}, [], []
+        first_readiness = None; header_readiness = None
         capture = UiVisualCapture(adb=prefix[0], serial=prefix[2], source=source,
                                   diagnostics=out/('chrome-v2-ui-capture-'+nonce+'.json'))
         action = 'local.pocketchat.test.CHROME_COLLAPSE'
+
+        def raw_file(name, raw):
+            path = out/name
+            with path.open('xb') as stream: stream.write(raw)
+            value = dict(name=name, bytes=len(raw), sha256=hashlib.sha256(raw).hexdigest())
+            raw_files.append(value)
+            return value
+
+        def partial(completed, failure):
+            # These are original observed bytes and validated event payloads,
+            # never a replacement passing case or a replay of device input.
+            capture_file = None; capture_error = None
+            try:
+                raw = capture.diagnostics.read_bytes()
+                capture_file = dict(name=capture.diagnostics.name, bytes=len(raw), sha256=hashlib.sha256(raw).hexdigest())
+                capture_status = 'available'
+            except FileNotFoundError as error:
+                capture_status = 'not-started' if capture.count == 0 else 'missing'
+                capture_error = repr(error)
+            value = dict(schema=1, navigationContract=2, diagnosticOnly=True, releaseAcceptance=False,
+                caseCompleted=completed, sourceCommit=source, sourceTree=tree, buildIdentity=identity,
+                runNonce=nonce, viewport=width, fontScale=scale, androidUser=user,
+                captureRunNonce=capture.nonce, captureFile=capture_file,
+                captureStatus=capture_status, captureAttemptCount=capture.count,
+                observations=observations, actualAndroidInputs=inputs, nativeUi=native_ui,
+                firstTapReadiness=first_readiness, headerReadiness=header_readiness,
+                uiAttempts=ui_attempts, rawFiles=raw_files,
+                eventTransfer=dict(runNonce=nonce, fixtureAction='chromeCollapse', processSlot=0, events=transfer.records))
+            if capture_error is not None: value['captureError'] = capture_error
+            if failure is not None: value['error'] = repr(failure)
+            with (out/('chrome-v2-'+nonce+'-partial.json')).open('x', encoding='utf-8') as stream:
+                stream.write(json.dumps(value, ensure_ascii=False, indent=2)+'\n')
 
         def event(command):
             deadline = time.monotonic()+30
@@ -74,27 +119,34 @@ def run_v2(adb, adb_bytes, source, trace, out, focus):
             send(command)
             return event(command)
 
-        def ui(phase):
+        def ui(phase, *, deadline=None, address_sample=None):
             # Poll only observations; an input is never retried to make it pass.
-            deadline = time.monotonic()+20
+            if deadline is None: deadline = time.monotonic()+20
             wanted = ENVIRONMENT_ACTIVITY if phase in ('environment', 'drawer') else ACTIVITY
             while time.monotonic() < deadline:
                 xml = capture.read(deadline=deadline)
+                raw = xml.encode('utf-8')
+                attempt = dict(phase=phase, index=len(ui_attempts)+1, existingSceneDeadline=deadline,
+                    xml=raw_file('chrome-v2-'+nonce+'-'+phase+'-attempt-'+str(len(ui_attempts)+1)+'.xml', raw))
+                ui_attempts.append(attempt)
                 remaining = deadline-time.monotonic()
                 if remaining <= 0: raise TimeoutError(('Native v2 observation deadline', phase))
                 state = subprocess.check_output(prefix+['shell', 'dumpsys', 'activity', 'activities'], timeout=min(90, remaining)).decode('utf-8', 'strict')
+                activity = state.encode('utf-8')
+                attempt['activity'] = raw_file('chrome-v2-'+nonce+'-'+phase+'-attempt-'+str(attempt['index'])+'.activity.txt', activity)
                 try:
                     assert resumed(state) == {(user, wanted)}
                     parsed = inspect_ui(xml, phase, observations['ready']['environmentName'])
-                except AssertionError:
+                    if address_sample is not None: address_cancel(address_sample, parsed)
+                except AssertionError as error:
+                    attempt.update(status='not-ready', error=repr(error))
                     if time.monotonic() >= deadline: raise
                     time.sleep(min(.2, max(0, deadline-time.monotonic())))
                     continue
-                raw, activity = xml.encode('utf-8'), state.encode('utf-8')
+                attempt['status'] = 'observed'
                 native_ui[phase] = dict(phase=phase, sourceCommit=source, runNonce=nonce,
                     rawXml=xml, xmlBytes=len(raw), xmlSha256=hashlib.sha256(raw).hexdigest(),
                     activityState=state, activityBytes=len(activity), activitySha256=hashlib.sha256(activity).hexdigest())
-                (out/('chrome-v2-'+nonce+'-'+phase+'.xml')).write_bytes(raw)
                 return parsed
             raise TimeoutError(('Native v2 observation deadline', phase))
 
@@ -117,10 +169,7 @@ def run_v2(adb, adb_bytes, source, trace, out, focus):
                                                 before=observations[before], nonce=nonce, out=out)
                 record('tap', opened, before, point=first_readiness['point'])
             else: tap(before, opened, 'compactTap')
-            dialog = ui(opened); snapshot(opened)
-            cancel = dialog['controls'][0]
-            assert cancel['label'] == '取消'
-            tap(opened, returned, 'cancel', point=cancel['point'], bounds=cancel['bounds'])
+            cancel_address_once(observe=ui, snapshot=snapshot, tap=tap, opened=opened, returned=returned)
             ui(returned)
             return snapshot(returned)
 
@@ -139,63 +188,74 @@ def run_v2(adb, adb_bytes, source, trace, out, focus):
             ui(label)
             return snapshot(label)
 
-        adb('shell', 'am', 'start', '-W', '-n', ACTIVITY, '--es', 'compactAction', 'collapseStart',
-            '--es', 'eventNonce', nonce, '--ei', 'chromeNavigationVersion', '2')
-        event('ready'); first_readiness = None
-        address('ready', 'initialAddress', 'initialChat', first=True)
-        swipe('initialChat', 'up', 'up'); swipe('up', 'down', 'down')
-        address('down', 'compactAddress', 'compactExpand')
-        swipe('compactExpand', 'horizontal', 'horizontal'); swipe('horizontal', 'short', 'short')
-        swipe('short', 'upBeforeChat', 'up')
-        address('upBeforeChat', 'selectedAddress', 'selectedChat')
-        swipe('selectedChat', 'upBeforeNative', 'up')
-        tap('upBeforeNative', 'network', 'networkTap'); ui('network'); snapshot('network')
-        back('network', 'nativeReturn')
-        swipe('nativeReturn', 'upBeforeResume', 'up')
-        resume_after_home(ACTIVITY)
-        record('homeRoundtrip', 'activityResume', 'upBeforeResume', component=ACTIVITY, originalBudgetMs=20000)
-        snapshot('activityResume')
-        address('activityResume', 'resumeAddress', 'resumeChat')
-        send('clear'); before = observations['resumeChat']
-        from chrome_header_readiness import header_up_once
-        header_readiness = header_up_once(argv=sys.argv[1:], source=source, identity=identity,
-                                          start=before['headerSwipeFrom'], end=before['headerSwipeTo'], nonce=nonce, out=out)
-        record('swipe', 'headerUp', 'resumeChat', **{'from': before['headerSwipeFrom'], 'to': before['headerSwipeTo'], 'durationMs': 320})
-        snapshot('headerUp'); focus('local.pocketchat.CompactChromeIntegrationActivity')
-        # Additional current-UI contracts occur after the original zero-menu,
-        # zero-Activity header protection has already been observed.
-        address('headerUp', 'extrasAddress', 'extrasExpanded')
-        tap('extrasExpanded', 'environment', 'environmentTap'); ui('environment')
-        back('environment', 'environmentReturn')
-        tap('environmentReturn', 'downloads', 'downloadsTap'); ui('downloads'); snapshot('downloads')
-        back('downloads', 'downloadsReturn')
-        tap('downloadsReturn', 'reading', 'readingTap'); ui('reading'); snapshot('reading')
-        tap('reading', 'readingExit', 'readingExitTap'); ui('readingExit'); snapshot('readingExit')
-        tap('readingExit', 'readingBackMode', 'readingTap'); ui('readingBackMode'); snapshot('readingBackMode')
-        back('readingBackMode', 'readingBack')
-        point = observations['readingBack']['addressTap']
-        adb('shell', 'input', 'swipe', *map(str, point+point), '700')
-        record('longPress', 'environmentPicker', 'readingBack', point=point, durationMs=700)
-        picker = ui('environmentPicker'); snapshot('environmentPicker')
-        tap('environmentPicker', 'pickerReturn', 'closePicker', point=picker['closePoint'], bounds=picker['closeBounds'])
-        ui('pickerReturn'); snapshot('pickerReturn')
-        tap('pickerReturn', 'more', 'moreTap'); ui('more'); snapshot('more')
-        back('more', 'moreReturn')
-        tap('moreReturn', 'drawer', 'drawerTap'); ui('drawer')
-        back('drawer', 'drawerReturn')
-        initial = observations['initialChat']
-        requests = [r for r in trace if r['kind'] == 'http' and r['path'] == '/c/reload-collapse' and r['documentMarker'] == initial['document']]
-        case = dict(navigationContract=2, viewport=width, fontScale=scale, androidUser=user,
-                    runNonce=nonce, sourceCommit=source, actualAndroidExecution=True,
-                    actualGeckoExecution=True, actualAndroidTouchExecution=True,
-                    checks=[{'name': name, 'pass': True} for name in NAMES],
-                    legacyBehaviorMap=[list(row) for row in LEGACY_BEHAVIOR_MAP],
-                    observations=observations, actualAndroidInputs=inputs, nativeUi=native_ui,
-                    firstTapReadiness=first_readiness, headerReadiness=header_readiness,
-                    eventTransfer=dict(runNonce=nonce, fixtureAction='chromeCollapse', processSlot=0, events=transfer.records),
-                    fixtureRequests=requests)
-        verify_case(case, identity)
-        cases.append(case)
+        completed = False; failure = None
+        try:
+            adb('shell', 'am', 'start', '-W', '-n', ACTIVITY, '--es', 'compactAction', 'collapseStart',
+                '--es', 'eventNonce', nonce, '--ei', 'chromeNavigationVersion', '2')
+            event('ready')
+            address('ready', 'initialAddress', 'initialChat', first=True)
+            swipe('initialChat', 'up', 'up'); swipe('up', 'down', 'down')
+            address('down', 'compactAddress', 'compactExpand')
+            swipe('compactExpand', 'horizontal', 'horizontal'); swipe('horizontal', 'short', 'short')
+            swipe('short', 'upBeforeChat', 'up')
+            address('upBeforeChat', 'selectedAddress', 'selectedChat')
+            swipe('selectedChat', 'upBeforeNative', 'up')
+            tap('upBeforeNative', 'network', 'networkTap'); ui('network'); snapshot('network')
+            back('network', 'nativeReturn')
+            swipe('nativeReturn', 'upBeforeResume', 'up')
+            resume_after_home(ACTIVITY)
+            record('homeRoundtrip', 'activityResume', 'upBeforeResume', component=ACTIVITY, originalBudgetMs=20000)
+            snapshot('activityResume')
+            address('activityResume', 'resumeAddress', 'resumeChat')
+            send('clear'); before = observations['resumeChat']
+            from chrome_header_readiness import header_up_once
+            header_readiness = header_up_once(argv=sys.argv[1:], source=source, identity=identity,
+                                              start=before['headerSwipeFrom'], end=before['headerSwipeTo'], nonce=nonce, out=out)
+            record('swipe', 'headerUp', 'resumeChat', **{'from': before['headerSwipeFrom'], 'to': before['headerSwipeTo'], 'durationMs': 320})
+            snapshot('headerUp'); focus('local.pocketchat.CompactChromeIntegrationActivity')
+            # Additional current-UI contracts occur after the original zero-menu,
+            # zero-Activity header protection has already been observed.
+            address('headerUp', 'extrasAddress', 'extrasExpanded')
+            tap('extrasExpanded', 'environment', 'environmentTap'); ui('environment')
+            back('environment', 'environmentReturn')
+            tap('environmentReturn', 'downloads', 'downloadsTap'); ui('downloads'); snapshot('downloads')
+            back('downloads', 'downloadsReturn')
+            tap('downloadsReturn', 'reading', 'readingTap'); ui('reading'); snapshot('reading')
+            tap('reading', 'readingExit', 'readingExitTap'); ui('readingExit'); snapshot('readingExit')
+            tap('readingExit', 'readingBackMode', 'readingTap'); ui('readingBackMode'); snapshot('readingBackMode')
+            back('readingBackMode', 'readingBack')
+            point = observations['readingBack']['addressTap']
+            adb('shell', 'input', 'swipe', *map(str, point+point), '700')
+            record('longPress', 'environmentPicker', 'readingBack', point=point, durationMs=700)
+            picker = ui('environmentPicker'); snapshot('environmentPicker')
+            tap('environmentPicker', 'pickerReturn', 'closePicker', point=picker['closePoint'], bounds=picker['closeBounds'])
+            ui('pickerReturn'); snapshot('pickerReturn')
+            tap('pickerReturn', 'more', 'moreTap'); ui('more'); snapshot('more')
+            back('more', 'moreReturn')
+            tap('moreReturn', 'drawer', 'drawerTap'); ui('drawer')
+            back('drawer', 'drawerReturn')
+            initial = observations['initialChat']
+            requests = [r for r in trace if r['kind'] == 'http' and r['path'] == '/c/reload-collapse' and r['documentMarker'] == initial['document']]
+            case = dict(navigationContract=2, viewport=width, fontScale=scale, androidUser=user,
+                        runNonce=nonce, sourceCommit=source, actualAndroidExecution=True,
+                        actualGeckoExecution=True, actualAndroidTouchExecution=True,
+                        checks=[{'name': name, 'pass': True} for name in NAMES],
+                        legacyBehaviorMap=[list(row) for row in LEGACY_BEHAVIOR_MAP],
+                        observations=observations, actualAndroidInputs=inputs, nativeUi=native_ui,
+                        firstTapReadiness=first_readiness, headerReadiness=header_readiness,
+                        eventTransfer=dict(runNonce=nonce, fixtureAction='chromeCollapse', processSlot=0, events=transfer.records),
+                        fixtureRequests=requests)
+            verify_case(case, identity)
+            cases.append(case)
+            completed = True
+        except Exception as error:
+            failure = error
+            raise
+        finally:
+            try: partial(completed, failure)
+            except Exception as error:
+                if failure is None: raise
+                print('V2 diagnostic collection failed: '+repr(error), file=sys.stderr)
     return dict(navigationContract=2, status='passed', actualAndroidExecution=True,
                 actualGeckoExecution=True, actualAndroidTouchExecution=True, sourceCommit=source,
                 buildIdentity=identity, cases=cases,

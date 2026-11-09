@@ -4,11 +4,13 @@ from pathlib import Path
 import sys
 import tempfile
 import unittest
+from unittest import mock
 import xml.etree.ElementTree as ET
 
 ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT/'tools/gecko'))
-from workspace_navigation_contract import navigation, conversation_header, exercise_workspace_roundtrip
+import workspace_navigation_contract as navigation_contract
+from workspace_navigation_contract import navigation, conversation_header, dashboard_entry, exercise_workspace_roundtrip
 from compact_chrome_layout_v2 import address_dialog, verify_layout, verify_case
 sys.path.insert(0,str(ROOT/'tests/gecko'))
 from workspace_ui_v2 import capture_selection
@@ -41,6 +43,20 @@ def screen(conversation=True):
 
 
 def xml(tree):return ET.tostring(tree,encoding='unicode')
+
+
+def dashboard_screen(environment='日常会话'):
+    root=ET.Element('hierarchy')
+    surface=node(root,description='环境仪表盘',kind='LinearLayout',bounds='[0,63][1080,1857]')
+    scroll=node(surface,kind='ScrollView',bounds='[0,63][1080,1673]')
+    centered=node(scroll,kind='FrameLayout',bounds='[0,63][1080,1673]')
+    body=node(centered,kind='LinearLayout',bounds='[0,63][1080,1673]')
+    header=node(body,kind='LinearLayout',bounds='[47,116][1033,185]')
+    node(header,text='01',kind='TextView',bounds='[47,120][121,180]',clickable='false')
+    node(header,text=environment,kind='TextView',bounds='[121,116][1033,185]',clickable='false')
+    footer=node(surface,kind='LinearLayout',bounds='[0,1673][1080,1857]')
+    node(footer,text='进入聊天',bounds='[47,1694][1033,1820]')
+    return root
 
 
 class NavigationV2Tests(unittest.TestCase):
@@ -80,15 +96,92 @@ class NavigationV2Tests(unittest.TestCase):
             tree=screen();next(n for n in tree.iter('node') if n.get('content-desc','').startswith(which)).set(key,value)
             with self.subTest(key=key),self.assertRaises(AssertionError):conversation_header(xml(tree),PACKAGE,360,640,1,'日常会话')
 
-    def test_roundtrip_uses_two_actual_tap_commands_and_reads_each_result(self):
-        commands=[];saved=[];frames=[xml(screen(False)),xml(screen(True))]
+    def test_roundtrip_uses_three_actual_tap_commands_and_reads_each_result(self):
+        commands=[];saved=[];frames=[xml(screen(False)),xml(dashboard_screen()),xml(screen(True))]
         def adb(*parts):
             commands.append(parts)
             return frames.pop(0) if parts[:2]==('shell','cat') else ''
         result=exercise_workspace_roundtrip(adb,xml(screen()),lambda name,value:saved.append((name,value)),PACKAGE)
-        self.assertEqual([c[:3] for c in commands].count(('shell','input','tap')),2)
-        self.assertEqual(len(saved),2);self.assertEqual(result['actualAndroidTaps'],2)
+        taps=[c for c in commands if c[:3]==('shell','input','tap')]
+        self.assertEqual(taps[:2],[('shell','input','tap','125','1748')]*2)
+        self.assertEqual(taps[2:], [('shell','input','tap','540','1757')])
+        self.assertEqual([c[:3] for c in commands].count(('shell','input','tap')),3)
+        self.assertEqual(len(saved),3);self.assertEqual(result['actualAndroidTaps'],3)
+        self.assertEqual([name for name,_ in saved],['production-navigation-environments.xml','production-navigation-dashboard.xml','production-navigation-chat.xml'])
+        self.assertEqual(result['observations'][1]['dashboardEntry']['actualAndroidTap'],dict(label='进入聊天',point=[540,1757],bounds=[47,1694,1033,1820]))
         self.assertTrue(result['returnedToSameEnvironment'])
+
+
+class RoundtripDashboardTests(unittest.TestCase):
+    def exercise(self, frames, durations=None, entry_seconds=0):
+        self.commands=[];self.saved=[];clock=[0.0];reads=[0]
+        durations=durations or [0.0]*len(frames)
+        def adb(*parts):
+            self.commands.append(parts)
+            if parts[:3]==('shell','input','tap'):
+                if sum(c[:3]==('shell','input','tap') for c in self.commands)==3:
+                    clock[0]+=entry_seconds
+            if parts[:2]==('shell','cat'):
+                index=reads[0];reads[0]+=1
+                clock[0]+=durations[min(index,len(durations)-1)]
+                return xml(frames[min(index,len(frames)-1)])
+            return ''
+        def sleep(seconds):clock[0]+=seconds
+        with mock.patch.object(navigation_contract.time,'monotonic',lambda:clock[0]),mock.patch.object(navigation_contract.time,'sleep',sleep):
+            return exercise_workspace_roundtrip(adb,xml(screen()),lambda name,value:self.saved.append((name,value)),PACKAGE)
+
+    def test_dashboard_requires_its_own_unique_native_surface_and_header(self):
+        for mutation in ('owner','duplicate','missing-header','wrong-header-owner'):
+            tree=dashboard_screen();surface=list(tree)[0]
+            header=surface[0][0][0][0]
+            if mutation=='owner':surface.set('package','foreign.application')
+            elif mutation=='duplicate':tree.append(copy.deepcopy(surface))
+            elif mutation=='missing-header':header.remove(header[1])
+            else:header[1].set('package','foreign.application')
+            with self.subTest(mutation=mutation),self.assertRaises(AssertionError):
+                dashboard_entry(xml(tree),PACKAGE,'日常会话')
+
+    def test_wrong_environment_cannot_be_hidden_by_matching_body_text(self):
+        tree=dashboard_screen('另一环境');body=list(tree)[0][0][0][0]
+        node(body,text='日常会话',kind='TextView',bounds='[80,500][900,560]')
+        with self.assertRaisesRegex(AssertionError,'another environment'):
+            self.exercise([screen(False),tree,screen()])
+        self.assertEqual(sum(c[:3]==('shell','input','tap') for c in self.commands),2)
+
+    def test_entry_requires_one_enabled_native_button_inside_its_footer(self):
+        changes=(('package','foreign.application'),('class','android.widget.TextView'),
+                 ('enabled','false'),('clickable','false'),('content-desc','删除环境'),
+                 ('bounds','[47,1694][47,1820]'),('bounds','[47,1694][1100,1820]'))
+        for key,value in changes:
+            tree=dashboard_screen();list(tree)[0][1][0].set(key,value)
+            with self.subTest(key=key,value=value),self.assertRaises(AssertionError):
+                dashboard_entry(xml(tree),PACKAGE,'日常会话')
+        for mutation in ('duplicate','outside-footer'):
+            tree=dashboard_screen();surface=list(tree)[0];footer=surface[1];button=footer[0]
+            if mutation=='duplicate':footer.append(copy.deepcopy(button))
+            else:footer.remove(button);surface[0][0][0].append(button)
+            with self.subTest(mutation=mutation),self.assertRaises(AssertionError):
+                dashboard_entry(xml(tree),PACKAGE,'日常会话')
+
+    def test_disabled_entry_never_causes_a_third_input(self):
+        tree=dashboard_screen();list(tree)[0][1][0].set('enabled','false')
+        with self.assertRaises(AssertionError):self.exercise([screen(False),tree,screen()])
+        self.assertEqual(sum(c[:3]==('shell','input','tap') for c in self.commands),2)
+
+    def test_dashboard_and_final_chat_share_the_original_twenty_second_budget(self):
+        cases=(('no-dashboard',[screen(False),screen()],[0,10],0,2),
+               ('late-dashboard',[screen(False),dashboard_screen(),screen()],[0,20.1,0],0,2),
+               ('late-chat',[screen(False),dashboard_screen(),screen()],[0,19.8,.3],0,3),
+               ('late-entry-command',[screen(False),dashboard_screen(),screen()],[0,19.8,0],.3,3))
+        for name,frames,durations,entry_seconds,inputs in cases:
+            with self.subTest(case=name),self.assertRaisesRegex(AssertionError,'20 second budget'):
+                self.exercise(frames,durations,entry_seconds)
+            self.assertEqual(sum(c[:3]==('shell','input','tap') for c in self.commands),inputs)
+
+    def test_same_environment_capsule_remains_required_after_dashboard_entry(self):
+        final=screen();next(n for n in final.iter('node') if n.get('content-desc','').startswith('当前环境：')).set('content-desc','当前环境：另一环境，点按输入网址，长按切换环境')
+        with self.assertRaises(AssertionError):self.exercise([screen(False),dashboard_screen(),final])
+        self.assertEqual(sum(c[:3]==('shell','input','tap') for c in self.commands),3)
 
 
 def layout():

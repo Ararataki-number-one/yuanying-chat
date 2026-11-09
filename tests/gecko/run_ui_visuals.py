@@ -15,6 +15,7 @@ from ui_visual_contract import LIGHT_SCENES, LARGE_SCENES, DARK_SCENES, LANDSCAP
 from workspace_navigation_contract import conversation_header
 from compact_chrome_v2 import run_case as capture_compact_v2
 from workspace_ui_v2 import capture_selection as capture_environment_selection
+from download_workspace_v2 import capture as capture_download_workspace
 UI_NAVIGATION_CONTRACT=2
 scenes=LIGHT_SCENES
 last_geometry=None
@@ -97,6 +98,7 @@ def capture(variant,width,height,scale,scene,theme='light'):
     label_nonce=uuid.uuid4().hex if scene=='downloads' else None
     launch=['shell','am','start','-W','-n',package+'/local.pocketchat.UiVisualIntegrationActivity','--es','visualAction',scene]
     if label_nonce:launch.extend(['--es','visualNonce',label_nonce])
+    if label_nonce and UI_NAVIGATION_CONTRACT==2:launch.extend(['--ei','visualDownloadContract','2'])
     adb(*launch)
     required={'chat':'会话','environments':'环境管理','network':'固定测试出口','proxy':'代理地址','entries':'选择入口','browser':'基本信息','preferences':'基本信息','settings':'启动与界面','network-menu':'导入网络',
       'environment-picker':'切换环境','downloads':'项目资料与界面设计说明.pdf','feedback':'一句话说明','appearance':'白天与黑夜','default-entry':'默认环境与启动入口',
@@ -115,7 +117,7 @@ def capture(variant,width,height,scale,scene,theme='light'):
                 adb('shell','input','swipe',str(x),str(top+(bottom-top)*4//5),str(x),str(top+(bottom-top)//5),'350');readiness_scrolls+=1
         if time.monotonic()>deadline:raise AssertionError((variant,scene,'screen did not appear',xml[-2000:]))
         time.sleep(.5)
-    if scene=='downloads' and readiness_scrolls:
+    if scene=='downloads' and readiness_scrolls and UI_NAVIGATION_CONTRACT!=2:
         # The file cards share a real ScrollView with the discovery controls.
         # Retain the first clipped native observation; after actual user input,
         # request a fresh read of the same laid-out button without rebuilding UI.
@@ -177,7 +179,9 @@ def capture(variant,width,height,scale,scene,theme='light'):
     density=int(re.findall(r'density: (\d+)',adb('shell','wm','density'))[-1]);assert density==480,density
     (shots/(stem+'.png')).write_bytes(raw)
     record={'variant':variant,'theme':theme,'logicalViewport':f'{width}x{height}','actualPixels':list(pixels),'densityDpi':density,'fontScale':scale,'scene':scene,'image':stem+'.png','xml':stem+'.xml','readinessScrolls':readiness_scrolls}
-    if scene=='downloads':
+    if scene=='downloads' and UI_NAVIGATION_CONTRACT==2:
+        capture_download_workspace(adb_scene,dump,lambda limit:subprocess.check_output([args.adb,'-s',args.serial,'exec-out','screencap','-p'],timeout=min(30,limit-time.monotonic())),source,label_nonce,shots,stem,record)
+    elif scene=='downloads':
         # Small native payload from this exact Activity invocation; never infer
         # drawn text completeness from accessibility XML's full text attribute.
         remaining=deadline-time.monotonic()

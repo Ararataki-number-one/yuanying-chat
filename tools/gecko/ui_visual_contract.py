@@ -36,6 +36,16 @@ def verify_captures(records, source=None):
     for item in downloads:
         verify_download_location(item, source)
     assert len({item['downloadLocationNonce'] for item in downloads}) == len(downloads), 'Download label captures reused an invocation'
+    versions = [item.get('downloadWorkspaceContract', 1) for item in downloads]
+    assert all(type(value) is int and value in (1, 2) for value in versions) and len(set(versions)) == 1, 'Mixed or unknown download workspace contracts'
+    if versions[0] == 2:
+        try:
+            from .download_workspace_contract_v2 import verify_download_workspace
+        except ImportError:
+            from download_workspace_contract_v2 import verify_download_workspace
+        for item in downloads:
+            verify_download_workspace(item, source)
+        assert len({item['downloadWorkspace']['invocationNonce'] for item in downloads}) == len(downloads), 'Download workspaces reused an Activity invocation'
 
 
 def verify_download_location(record, source=None):

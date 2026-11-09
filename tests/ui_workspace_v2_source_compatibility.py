@@ -167,3 +167,15 @@ def wrap_ast(original):
     def historical_runner(tree):
         return original(historical_tree(tree))
     return historical_runner
+
+
+# Only retained historical oracles see the exact download-workspace inverse.
+# Android execution and capture hosts continue to read the current raw files.
+import importlib.util as _download_import
+_download_spec = _download_import.spec_from_file_location('selected_ui_download_workspace_source_input', Path(__file__).with_name('ui_download_workspace_v2_source_compatibility.py'))
+_download_input = _download_import.module_from_spec(_download_spec)
+_download_spec.loader.exec_module(_download_input)
+source_input = _download_input.wrap_bytes(source_input)
+historical_input = _download_input.wrap_bytes(historical_input)
+original_runner_tree = _download_input.wrap_ast(original_runner_tree)
+historical_tree = _download_input.wrap_ast(historical_tree)

@@ -225,3 +225,8 @@ history_input = _workspace_input.wrap_bytes(history_input)
 checkpoint_runner_input = _workspace_input.wrap_runner_bytes(checkpoint_runner_input)
 require_current_runner = _workspace_input.wrap_runner_bytes(require_current_runner)
 original_runner_tree = _workspace_input.wrap_ast(original_runner_tree)
+
+
+# The observer host calls this port directly before compiling current methods.
+# Keep all five old navigation hunks and their original complete-file pins.
+navigation_source_input = _workspace_input._download_input.wrap_bytes(navigation_source_input)

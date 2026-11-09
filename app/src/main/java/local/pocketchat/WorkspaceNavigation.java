@@ -37,7 +37,7 @@ final class WorkspaceNavigation {
     else if(target==AppHub.SETTINGS)intent=new Intent(a,AppSettingsActivity.class);
     else{
       int slot=AppSettings.recentSlot(a);
-      intent=slot<0?new Intent(a,WindowHomeActivity.class):new Intent(a,Profiles.activity(slot)).putExtra("openWindowAction",target==AppHub.NETWORK?"network":"chat");
+      intent=slot<0?new Intent(a,WindowHomeActivity.class):target==AppHub.CHAT?EnvironmentOverviewUi.opening(a,slot):new Intent(a,Profiles.activity(slot)).putExtra("openWindowAction","network");
       intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
     }
     a.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT));

@@ -20,6 +20,7 @@ sys.path[:0] = [str(ROOT/'tools/gecko'), str(ROOT/'tests')]
 import caret_ime_guard as G
 import gecko_caret_ime_guard_test as HOST
 import source_route_report_privacy as ROUTE_PRIVACY
+from dashboard_capture_source_compatibility import historical_bundle_source
 
 MARKER = '[REDACTED_SERVICE_API_KEY]'
 GBOARD = 'AIza' + 'g'*35
@@ -151,6 +152,7 @@ ROUTE_URL_PUBLISHER_ADDITIONS = (
 
 
 def verify_accepted_bundle_source(source):
+    source=historical_bundle_source(source)
     current=functions(source)
     for name in ('allowed','restore'):
         if digest(current[name]) != ACCEPTED_BUNDLE_FUNCTION_SHA256[name]:

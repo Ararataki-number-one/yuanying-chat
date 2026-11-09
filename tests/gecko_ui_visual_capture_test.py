@@ -632,4 +632,13 @@ class CompactQuickEnvironmentContractTest(unittest.TestCase):
         self.assertIn("for width,scale in [(360,1),(412,1),(360,2)]",current)
 
 
+# This original v1 fixture executes the actual retained elif from the current
+# capture AST. Only its explicit protocol input is fixed; no code is rewritten.
+_download_v1_setup = DownloadFreshObservationRunnerTest.setUp
+def _configure_download_v1_fixture(self):
+    _download_v1_setup(self)
+    self.namespace['UI_NAVIGATION_CONTRACT'] = 1
+DownloadFreshObservationRunnerTest.setUp = _configure_download_v1_fixture
+
+
 if __name__=='__main__':unittest.main()

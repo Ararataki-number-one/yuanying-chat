@@ -67,18 +67,32 @@ public final class DefaultEnvironmentHost{
   for(int target:new int[]{AppHub.CHAT,AppHub.NETWORK}){
    downloads=new DownloadCenterActivity();WorkspaceNavigation.selectPage(downloads,AppHub.DOWNLOADS,target);
    check("Five-item page "+target+" uses the valid default when no recent environment exists",Profiles.lastActivity==2&&downloads.launched!=null&&(target==AppHub.CHAT?"chat":"network").equals(downloads.launched.extras.get("openWindowAction"))&&downloads.finished&&c.identity(2).equals(kept));
+   if(target==AppHub.CHAT)overview("Standalone chat default carries the exact one-shot dashboard identity",downloads.launched,kept);
+   else check("Standalone network default does not request a chat dashboard",!downloads.launched.extras.containsKey("manualEnvironmentOverview"));
   }
   c.db.rows.get(1).put("opened",999L);EnvironmentSpec.Identity recent=c.identity(1);
   for(int target:new int[]{AppHub.CHAT,AppHub.NETWORK}){
    downloads=new DownloadCenterActivity();WorkspaceNavigation.selectPage(downloads,AppHub.DOWNLOADS,target);
    check("Five-item page "+target+" preserves the most recent available environment identity",Profiles.lastActivity==1&&downloads.launched!=null&&(target==AppHub.CHAT?"chat":"network").equals(downloads.launched.extras.get("openWindowAction"))&&c.identity(1).equals(recent));
+   if(target==AppHub.CHAT)overview("Standalone chat recent route carries profile 1 dashboard identity",downloads.launched,recent);
+   else check("Standalone network recent route does not request a chat dashboard",!downloads.launched.extras.containsKey("manualEnvironmentOverview"));
   }
+  settings=new AppSettingsActivity();WorkspaceNavigation.selectPage(settings,AppHub.SETTINGS,AppHub.CHAT);
+  overview("Settings chat opens the actual recently selected profile 1 dashboard",settings.launched,recent);
+  check("Settings chat launches profile 1 once and finishes only its standalone screen",Profiles.lastActivity==1&&settings.finished&&c.identity(1).equals(recent));
+  Object firstNonce=settings.launched.extras.get("manualEnvironmentOverview");
+  settings=new AppSettingsActivity();WorkspaceNavigation.selectPage(settings,AppHub.SETTINGS,AppHub.CHAT);
+  overview("A later settings chat opening carries a fresh current dashboard identity",settings.launched,recent);
+  check("Separate explicit chat openings never replay the same dashboard nonce",firstNonce!=null&&!firstNonce.equals(settings.launched.extras.get("manualEnvironmentOverview")));
   home=new WindowHomeActivity();WorkspaceNavigation.selectPage(home,AppHub.ENVIRONMENTS,AppHub.CHAT);
   overview("Five-item chat entry preserves the environment manager's one-shot opening contract",home.launched,recent);
   check("Five-item chat entry retains the environment manager",!home.finished);
   c.db.rows.get(1).put("resetting",1);
   downloads=new DownloadCenterActivity();WorkspaceNavigation.selectPage(downloads,AppHub.DOWNLOADS,AppHub.NETWORK);
   check("Five-item network excludes an unavailable recent environment",Profiles.lastActivity==2&&"network".equals(downloads.launched.extras.get("openWindowAction")));
+  settings=new AppSettingsActivity();WorkspaceNavigation.selectPage(settings,AppHub.SETTINGS,AppHub.CHAT);
+  overview("Settings chat excludes a resetting recent profile and marks the actual fallback",settings.launched,kept);
+  check("Unavailable profile 1 cannot receive a dashboard nonce for profile 2",Profiles.lastActivity==2&&Integer.valueOf(2).equals(settings.launched.extras.get("overviewSlot")));
   for(int target:new int[]{AppHub.CHAT,AppHub.NETWORK}){
    c=setup(7);downloads=new DownloadCenterActivity();WorkspaceNavigation.selectPage(downloads,AppHub.DOWNLOADS,target);
    check("Five-item page "+target+" without an environment returns to the manager",downloads.launched!=null&&downloads.launched.target==WindowHomeActivity.class&&Profiles.lastActivity==-1&&downloads.finished);

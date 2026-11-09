@@ -8,8 +8,9 @@ import unittest
 import ui_checkpoint_source_compatibility as navigation
 import ui_observer_source_compatibility as observer
 import ui_visual_preservation_contract as original_ui
+from ui_download_workspace_v2_source_compatibility import historical_root
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = historical_root(Path(__file__).resolve().parents[1], (navigation.NAVIGATION_PATH,))
 
 
 class NavigationSourceCompatibilityTests(unittest.TestCase):

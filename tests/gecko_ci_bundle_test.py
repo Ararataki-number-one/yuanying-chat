@@ -135,6 +135,62 @@ class CiBundleTest(unittest.TestCase):
         self.assertFalse(BUNDLE.allowed(str(BUNDLE.OUT/name),'build'))
         self.assertFalse(BUNDLE.allowed(str(BUNDLE.OUT/'nested'/name),'phase'))
 
+    def test_only_declared_dashboard_png_xml_files_enter_the_phase_namespace(self):
+        expected={name+suffix for name in ('light','light-fingerprint','home-return','warm-list',
+            'second-environment','workspace-chat','large-font','large-font-fingerprint',
+            'landscape','landscape-fingerprint','dark','dark-fingerprint','failure') for suffix in ('.png','.xml')}
+        self.assertEqual(BUNDLE.DASHBOARD_CAPTURE_FILES,expected)
+        for name in expected:
+            self.assertTrue(BUNDLE.allowed(str(BUNDLE.DASHBOARD_CAPTURE_DIR/name),'phase'))
+            self.assertFalse(BUNDLE.allowed(str(BUNDLE.DASHBOARD_CAPTURE_DIR/name),'build'))
+        for name in ('results.json','private.txt','private.png','light.jpg','nested/light.png',
+                     '../light.png','light.pem','failure.xml.jks'):
+            self.assertFalse(BUNDLE.allowed(str(BUNDLE.DASHBOARD_CAPTURE_DIR/name),'phase'))
+        for directory in ('environment-dashboard-copy','foreign/environment-dashboard'):
+            self.assertFalse(BUNDLE.allowed(str(BUNDLE.OUT/'ui-visuals'/directory/'light.png'),'phase'))
+
+    def test_dashboard_success_and_failure_originals_survive_phase_roundtrip_byte_for_byte(self):
+        files={}
+        for name in BUNDLE.DASHBOARD_CAPTURE_FILES:
+            # Deliberate host-only bytes: this test claims transport, not images.
+            files['ui-visuals/environment-dashboard/'+name]=(b'\x89PNG\r\n\x1a\n\x00\xff'+name.encode()
+                if name.endswith('.png') else b'<hierarchy source="host-only">'+name.encode()+b'</hierarchy>\r\n')
+        excluded={'ui-visuals/environment-dashboard/results.json':b'{"hostOnly":true}',
+                  'ui-visuals/environment-dashboard/private.png':b'undeclared',
+                  'ui-visuals/environment-dashboard/nested/light.png':b'not scanned',
+                  'ui-visuals/other-dashboard/light.xml':b'not scanned'}
+        archive=self.phase('ui',{**files,**excluded})
+        consumer=self.clone('dashboard-consumer');BUNDLE.restore(consumer,self.build,'build')
+        manifest=BUNDLE.restore(consumer,archive,'phase','ui')
+        names={row['path'] for row in manifest['files']}
+        self.assertEqual(names,{str(BUNDLE.OUT/name) for name in files})
+        for name,raw in files.items():self.assertEqual((consumer/BUNDLE.OUT/name).read_bytes(),raw)
+        for name in excluded:self.assertFalse((consumer/BUNDLE.OUT/name).exists())
+
+    def test_dashboard_directory_redirection_rejects_before_any_phase_restore(self):
+        archive=self.phase('ui',{'ui-visuals/environment-dashboard/light.xml':b'<hierarchy/>',
+                                 'ui-visual-results.json':b'{"hostOnly":true}'})
+        for relative in (BUNDLE.DASHBOARD_CAPTURE_DIR.parent,BUNDLE.DASHBOARD_CAPTURE_DIR):
+            with self.subTest(parent=str(relative)):
+                consumer=self.clone('dashboard-'+relative.name);BUNDLE.restore(consumer,self.build,'build')
+                outside=self.base/('outside-'+relative.name);outside.mkdir()
+                parent=consumer/relative;parent.parent.mkdir(parents=True,exist_ok=True);parent.symlink_to(outside,target_is_directory=True)
+                with self.assertRaises(AssertionError):BUNDLE.restore(consumer,archive,'phase','ui')
+                self.assertFalse((consumer/BUNDLE.OUT/'ui-visual-results.json').exists())
+                self.assertEqual(list(outside.iterdir()),[])
+                # A redirected parent with no dashboard directory yields no
+                # candidate. Put the declared test file there to exercise pack.
+                redirected=consumer/BUNDLE.DASHBOARD_CAPTURE_DIR
+                redirected.mkdir(parents=True,exist_ok=True)
+                (redirected/'light.xml').write_bytes(b'<hierarchy source="host-only"/>')
+                with self.assertRaises(AssertionError):BUNDLE.pack(consumer,self.base/(relative.name+'-bad.tar.gz'),'phase','ui')
+
+    def test_dashboard_xml_still_runs_the_original_service_key_capture_filter(self):
+        # Synthetic shape recognized by the unchanged known-service-keys-v1 gate.
+        private=b'<hierarchy><node text="'+b'AIza'+b'Q'*35+b'"/></hierarchy>'
+        with self.assertRaises((AssertionError,ValueError)):
+            self.phase('ui',{'ui-visuals/environment-dashboard/failure.xml':private})
+
     def test_input_driver_and_failed_raw_events_keep_exact_bytes_without_keys(self):
         target=self.clone('input-consumer');BUNDLE.restore(target,self.build,'build')
         for name in BUNDLE.INPUT_DRIVER_EVIDENCE:

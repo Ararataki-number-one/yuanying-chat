@@ -55,6 +55,77 @@ def selected_program(source,scenario):
     return ast.fix_missing_locations(ast.Module(body=nodes,type_ignores=[]))
 
 
+def collect_v2_diagnostics(integration,destination,source,identity):
+    """Copy only this invocation's nonce-bound originals, never a passed oracle."""
+    candidates={path.name:path for path in integration.glob('chrome-v2-*')}
+    if not candidates:return []
+    from chrome_collapse_contract_v2 import UI_PHASES
+    phases='(?:'+'|'.join(sorted(UI_PHASES))+')'
+    partials=[path for name,path in candidates.items() if re.fullmatch(r'chrome-v2-[0-9a-f]{32}-partial\.json',name)]
+    if not 1<=len(partials)<=3:raise ValueError('Missing or excessive owned v2 diagnostic cases')
+    selected={};cohorts=set()
+    def original(path):
+        if path.is_symlink() or not path.is_file():raise ValueError('V2 diagnostic must be a regular original file')
+        return path.read_bytes()
+    def include(metadata,pattern):
+        name=metadata['name']
+        if type(name) is not str or re.fullmatch(pattern,name) is None:
+            raise ValueError('Unowned v2 diagnostic path')
+        if name in selected or name not in candidates:raise ValueError('Duplicate or missing v2 diagnostic file')
+        raw=original(candidates[name])
+        if type(metadata['bytes']) is not int or metadata['bytes']!=len(raw) or metadata['sha256']!=hashlib.sha256(raw).hexdigest():
+            raise ValueError('V2 diagnostic original bytes changed')
+        selected[name]=raw
+        return raw
+    for path in sorted(partials):
+        raw=original(path);value=json.loads(raw);nonce=path.name[len('chrome-v2-'):-len('-partial.json')]
+        if (type(value.get('schema')) is not int or value['schema']!=1 or type(value.get('navigationContract')) is not int or value['navigationContract']!=2
+            or value.get('runNonce')!=nonce or value.get('sourceCommit')!=source or value.get('sourceTree')!=identity['sourceTree']
+            or value.get('buildIdentity')!=identity or value.get('diagnosticOnly') is not True or value.get('releaseAcceptance') is not False
+            or type(value.get('caseCompleted')) is not bool):
+            raise ValueError('V2 diagnostic belongs to another source, APK or invocation')
+        cohort=(value.get('viewport'),value.get('fontScale'))
+        if any(type(n) is not int for n in cohort) or cohort not in ((360,1),(412,1),(360,2)) or cohort in cohorts:raise ValueError('Duplicate or undeclared v2 diagnostic cohort')
+        cohorts.add(cohort)
+        if value['eventTransfer']['runNonce']!=nonce or value['eventTransfer']['fixtureAction']!='chromeCollapse' or type(value['eventTransfer']['processSlot']) is not int or value['eventTransfer']['processSlot']!=0:
+            raise ValueError('V2 partial events belong to another invocation')
+        for row in value['eventTransfer']['events']:
+            receipt=row['receipt'];payload=row['rawUtf8'].encode('utf-8');envelope=json.loads(payload)
+            if (receipt['runNonce']!=nonce or receipt['fixtureAction']!='chromeCollapse' or receipt['processSlot']!=0
+                or envelope['runNonce']!=nonce or envelope['sourceCommit']!=source or envelope['buildIdentity']!=identity
+                or len(payload)!=receipt['payloadBytes'] or hashlib.sha256(payload).hexdigest()!=receipt['payloadSha256']):
+                raise ValueError('V2 original event payload belongs to another invocation or changed bytes')
+        if any(item['runNonce']!=nonce or item['sourceCommit']!=source for item in value['nativeUi'].values()):
+            raise ValueError('V2 native UI belongs to another invocation')
+        if not re.fullmatch('[0-9a-f]{32}',value['captureRunNonce']):raise ValueError('Missing v2 acquisition nonce')
+        if type(value['captureAttemptCount']) is not int or value['captureAttemptCount']<0:raise ValueError('Missing actual v2 acquisition count')
+        if value['captureFile'] is None:
+            if ('chrome-v2-ui-capture-'+nonce+'.json') in candidates or not isinstance(value.get('captureError'),str) or not value['captureError']:
+                raise ValueError('Missing v2 capture must retain its actual absence')
+            if value['captureStatus']=='not-started':
+                if value['captureAttemptCount']!=0 or value['uiAttempts'] or value['rawFiles'] or value['nativeUi'] or value['caseCompleted']:
+                    raise ValueError('V2 acquisition was already started')
+            elif value['captureStatus']!='missing' or value['captureAttemptCount']==0:
+                raise ValueError('Unrecognized missing v2 capture')
+        else:
+            if value['captureStatus']!='available':raise ValueError('V2 original capture availability differs')
+            capture=include(value['captureFile'],'chrome-v2-ui-capture-'+nonce+r'\.json')
+            capture_value=json.loads(capture)
+            if capture_value['sourceCommit']!=source or capture_value['runNonce']!=value['captureRunNonce'] or capture_value['attemptCount']!=value['captureAttemptCount']:
+                raise ValueError('V2 capture belongs to another source or acquisition')
+        for metadata in value['rawFiles']:
+            include(metadata,'chrome-v2-'+nonce+'-'+phases+r'-attempt-[1-9][0-9]*\.(?:xml|activity\.txt)')
+        selected[path.name]=raw
+    if set(selected)!=set(candidates):raise ValueError('Unexpected or unowned v2 diagnostic files')
+    if any((destination/name).exists() or (destination/name).is_symlink() for name in selected):
+        raise ValueError('Pre-existing v2 destination cannot be overwritten')
+    records=[]
+    for name,raw in sorted(selected.items()):
+        with (destination/name).open('xb') as stream:stream.write(raw)
+        records.append(dict(name=name,bytes=len(raw),sha256=hashlib.sha256(raw).hexdigest()))
+    return records
+
+
 def main():
     parser=argparse.ArgumentParser()
     parser.add_argument('--adb',required=True);parser.add_argument('--serial',required=True)
@@ -85,10 +156,11 @@ def main():
         actualAndroidExecution=False,sourceCommit=source,sourceTree=tree,sourceFiles=hashes,scenario=args.scenario,
         earlierUiPreludeReplayed=False,originalReloadSequenceRequested=args.scenario=='after-reload',
         attempts=1,oracleChanged=False,deadlinesChanged=False,rootCauseEstablished=False,sourceInputsUnchanged=False)
-    failure=None;settings_services_device11=None
+    failure=None;settings_services_device11=None;v2_started=False
     try:
         partials=('ui-reload-confirmation.json','ui-reload-log.txt','ui-collapse-server-trace.json')
         if any((integration/name).exists() for name in partials):raise ValueError('Pre-existing partial UI evidence cannot join a new diagnostic invocation')
+        if any(integration.glob('chrome-v2-*')):raise ValueError('Pre-existing v2 evidence cannot join a new diagnostic invocation')
         # Validate installed source/APK/SDK before either selected workload starts.
         from profile_invocation_contract import expected_build,verify_installed
         gradle=(ROOT/'app/build.gradle').read_text()
@@ -102,6 +174,7 @@ def main():
         (args.out/'ui-test-device-isolation.json').write_text(json.dumps(report['deviceIsolation'],sort_keys=True,indent=2)+'\n')
         from ui_settings_services_device11 import prepare_workflow as prepare_settings_services_device11, finish_workflow as finish_settings_services_device11
         settings_services_device11=prepare_settings_services_device11(adb,serial=args.serial,environment=os.environ,root=ROOT,source=source,record_path=args.out/'ui-settings-services-isolation.json')
+        v2_started=True
         exec(compile(program,str(original)+':focused-unmodified-sections','exec'),namespace)
         from chrome_collapse_contract import verify_auto_collapse
         report['autoCollapse']=namespace['auto_collapse']
@@ -124,6 +197,11 @@ def main():
                 produced=('reload_confirmation' in namespace if name.startswith('ui-reload-') else 'reload_loopback' in namespace)
                 if produced and path.is_file():
                     (args.out/name).write_bytes(path.read_bytes())
+            if v2_started:
+                try:report['v2DiagnosticFiles']=collect_v2_diagnostics(integration,args.out,source,identity)
+                except Exception as error:
+                    report.update(status='failed',v2DiagnosticCollectionError=repr(error))
+                    if failure is None:failure=error;report['error']=repr(error)
             try:(args.out/'native-log.txt').write_text(checked_text(adb('logcat','-d'))[0])
             except Exception as error:report['nativeLogError']=type(error).__name__
             try:(args.out/'screen.png').write_bytes(subprocess.check_output([args.adb,'-s',args.serial,'exec-out','screencap','-p'],timeout=30))

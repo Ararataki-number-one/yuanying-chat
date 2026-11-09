@@ -12,6 +12,7 @@ public final class UiVisualIntegrationActivity extends Activity {
   NetworkWorkspaceUi workspace;
   SavedFileActions savedActions;
   DownloadLocationLayoutEvidence downloadLocationEvidence;
+  DownloadWorkspaceVisuals downloadWorkspace;
   NavigationTypographyEvidence navigationTypographyEvidence;
   final java.util.Set<String> downloadObservationNonces=new java.util.HashSet<>();
   final Handler handler=new Handler(Looper.getMainLooper());
@@ -30,7 +31,7 @@ public final class UiVisualIntegrationActivity extends Activity {
     if("import".equals(action)){startActivity(new Intent(this,NetworkImportActivity.class));finish();return;}
     if("settings".equals(action)||"appearance".equals(action)||"default-entry".equals(action)||"feedback".equals(action)||"downloads".equals(action)||"delete-file".equals(action)){
       boolean downloads="downloads".equals(action)||"delete-file".equals(action);
-      LinearLayout root=DesignUi.screen(this),box=DesignUi.body(this,root,downloads?"下载中心":"应用设置",this::finish);
+      LinearLayout root=DesignUi.screen(this),box=downloads&&DownloadWorkspaceVisuals.requested(getIntent())?DownloadWorkspaceVisuals.body(this,root):DesignUi.body(this,root,downloads?"下载中心":"应用设置",this::finish);
       if(downloads){
         savedActions=new SavedFileActions(this);DesignDownloads.Controller controller=new DesignDownloads.Controller(this,box,0,n->{},savedActions);
         // Synthetic visual rows must not be replaced by an unrelated real-library callback.
@@ -46,7 +47,7 @@ public final class UiVisualIntegrationActivity extends Activity {
         try{controller.apply(data,0,now);}finally{controller.preparedOwners=null;}
       }else DesignSettingsUi.render(this,box,()->{});
       root.addView(ReferenceUi.nav(this,downloads?WorkspaceNavigation.DOWNLOADS:WorkspaceNavigation.NONE,n->{},new Button[DesignUi.NAV.length]));setContentView(root);AppAppearance.apply(root);
-      if("downloads".equals(action)){String nonce=getIntent().getStringExtra("visualNonce");downloadObservationNonces.add(nonce);downloadLocationEvidence=new DownloadLocationLayoutEvidence(this,root,nonce);}
+      if("downloads".equals(action)){String nonce=getIntent().getStringExtra("visualNonce");if(DownloadWorkspaceVisuals.requested(getIntent()))downloadWorkspace=new DownloadWorkspaceVisuals(this,root,nonce);else{downloadObservationNonces.add(nonce);downloadLocationEvidence=new DownloadLocationLayoutEvidence(this,root,nonce);}}
       if("appearance".equals(action))DesignSettingsUi.appearance(this,()->{});
       if("default-entry".equals(action))DesignSettingsUi.defaultEntry(this,()->{});
       if("feedback".equals(action))FeedbackUi.open(this);
@@ -93,6 +94,7 @@ public final class UiVisualIntegrationActivity extends Activity {
   }
   @Override protected void onNewIntent(Intent request){
     super.onNewIntent(request);
+    if(downloadWorkspace!=null){downloadWorkspace.observe(request);return;}
     String nonce=null;
     try{
       nonce=request==null?null:request.getStringExtra("visualObserveNonce");
@@ -144,5 +146,5 @@ public final class UiVisualIntegrationActivity extends Activity {
     }
     AppSettings.put(this,"nativeUiSeedV2","true");
   }
-  @Override protected void onDestroy(){if(downloadLocationEvidence!=null)downloadLocationEvidence.close();if(navigationTypographyEvidence!=null)navigationTypographyEvidence.close();if(workspace!=null)workspace.close();if(savedActions!=null)savedActions.close();handler.removeCallbacksAndMessages(null);super.onDestroy();}
+  @Override protected void onDestroy(){if(downloadWorkspace!=null)downloadWorkspace.close();if(downloadLocationEvidence!=null)downloadLocationEvidence.close();if(navigationTypographyEvidence!=null)navigationTypographyEvidence.close();if(workspace!=null)workspace.close();if(savedActions!=null)savedActions.close();handler.removeCallbacksAndMessages(null);super.onDestroy();}
 }

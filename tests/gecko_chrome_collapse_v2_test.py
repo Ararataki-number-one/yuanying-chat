@@ -8,6 +8,7 @@ import os
 from pathlib import Path
 import subprocess
 import sys
+import tempfile
 import types
 import unittest
 from unittest.mock import patch
@@ -19,6 +20,7 @@ import chrome_collapse_contract as reader
 import chrome_collapse_contract_v2 as v2
 import integration_event_contract as transport
 import run_chrome_collapse as runner
+import run_chrome_collapse_v2 as current_runner
 
 
 def identity():
@@ -336,6 +338,154 @@ class ChromeCollapseV2Controls(unittest.TestCase):
         fake=types.ModuleType('run_chrome_collapse_v2'); fake.run_v2=lambda *a:('v2', a)
         with patch.dict(sys.modules, {'run_chrome_collapse_v2': fake}), patch.object(runner, 'run', side_effect=AssertionError('legacy dispatch')):
             self.assertEqual(runner.run_versioned(*args, navigation_contract=2), ('v2', args))
+
+    def test_cancel_uses_only_the_fresh_post_snapshot_geometry_with_one_original_budget(self):
+        sample = self.report['cases'][0]['observations']['initialAddress']
+        fresh = v2.inspect_ui(xml_for('initialAddress'), 'initialAddress', sample['environmentName'])
+        stale = copy.deepcopy(fresh)
+        stale['controls'][0].update(bounds=[100, 1100, 300, 1230], point=[200, 1165])
+        order, emissions, deadlines = [], [], []
+        def observe(phase, **kwargs):
+            order.append('fresh' if 'address_sample' in kwargs else 'initial')
+            self.assertEqual(phase, 'initialAddress'); deadlines.append(kwargs['deadline'])
+            if 'address_sample' in kwargs:
+                self.assertIs(kwargs['address_sample'], sample)
+                return fresh
+            return stale
+        def snapshot(phase):
+            order.append('snapshot'); self.assertEqual(phase, 'initialAddress')
+            return sample
+        def tap(*args, **kwargs):
+            order.append('tap'); emissions.append((args, kwargs))
+        with patch.object(current_runner.time, 'monotonic', side_effect=(10, 17)):
+            current_runner.cancel_address_once(observe=observe, snapshot=snapshot, tap=tap,
+                                               opened='initialAddress', returned='initialChat')
+        self.assertEqual(order, ['initial', 'snapshot', 'fresh', 'tap'])
+        self.assertEqual(deadlines, [30, 30])
+        self.assertEqual(emissions, [(('initialAddress', 'initialChat', 'cancel'),
+                                     dict(point=[200, 665], bounds=[100, 600, 300, 730]))])
+
+    def test_cancel_refuses_stale_xml_expired_budget_and_non_owned_native_dialog_before_input(self):
+        original = self.report['cases'][0]['observations']['initialAddress']
+        fresh = v2.inspect_ui(xml_for('initialAddress'), 'initialAddress', original['environmentName'])
+        for mutation in ('stale-geometry', 'expired-budget', 'owner', 'hidden', 'editor-focus', 'window-token', 'text', 'disabled'):
+            sample = copy.deepcopy(original); parsed = copy.deepcopy(fresh); emissions = []
+            if mutation == 'stale-geometry': parsed['controls'][0].update(bounds=[100, 1100, 300, 1230], point=[200, 1165])
+            fields = {'owner': ('ownerActivity', False), 'hidden': ('showing', False),
+                      'editor-focus': ('editorFocused', False), 'window-token': ('sameWindow', False),
+                      'text': ('editorText', 'y'), 'disabled': ('cancelEnabled', False)}
+            if mutation in fields:
+                field, value = fields[mutation]; sample['addressDialog'][field] = value
+            calls = []
+            def observe(phase, **kwargs):
+                calls.append(kwargs['deadline'])
+                return parsed
+            with self.subTest(mutation=mutation), patch.object(current_runner.time, 'monotonic', side_effect=(10, 31)), self.assertRaises((AssertionError, TimeoutError)):
+                current_runner.cancel_address_once(observe=observe, snapshot=lambda phase: sample,
+                    tap=lambda *a, **k: emissions.append((a, k)), opened='initialAddress', returned='initialChat')
+            self.assertEqual(emissions, []); self.assertEqual(calls, [30, 30])
+
+    def test_workload_runs_shared_reader_before_cancel_and_always_keeps_partial_originals(self):
+        source = (ROOT/'tests/gecko/run_chrome_collapse_v2.py').read_text()
+        tree = ast.parse(source)
+        functions = {n.name: n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef)}
+        address = ast.unparse(functions['address'])
+        self.assertEqual(address.count('cancel_address_once('), 1)
+        self.assertNotIn("dialog['controls']", address)
+        observation = ast.unparse(functions['ui'])
+        self.assertIn('if deadline is None:', observation)
+        self.assertIn('address_cancel(address_sample, parsed)', observation)
+        self.assertIn('xml = capture.read(deadline=deadline)', observation)
+        self.assertIn("attempt.update(status='not-ready', error=repr(error))", observation)
+        self.assertIn("raw_file('chrome-v2-'", observation)
+        guarded = [n for n in ast.walk(functions['run_v2']) if isinstance(n, ast.Try)
+                   and any(isinstance(child, ast.Call) and isinstance(child.func, ast.Name) and child.func.id == 'partial'
+                           for statement in n.finalbody for child in ast.walk(statement))]
+        self.assertEqual(len(guarded), 1)
+        actual = ast.unparse(guarded[0])
+        self.assertLess(actual.index("event('ready')"), actual.index("address('ready'"))
+        self.assertIn('events=transfer.records', ast.unparse(functions['partial']))
+        self.assertIn('releaseAcceptance=False', ast.unparse(functions['partial']))
+        self.assertIn('actualAndroidInputs=inputs', ast.unparse(functions['partial']))
+
+    def failed_driver(self, early=False):
+        """Actual Python flow, declared fake device edges; never Android evidence."""
+        case=self.report['cases'][0];build=self.report['buildIdentity'];nonce=case['runNonce']
+        rows=case['eventTransfer']['events'][:2]
+        payloads={transport.event_uri(row['receipt']):row['rawUtf8'].encode() for row in rows}
+        original_output=subprocess.check_output;commands=[];published=1
+        stale=xml_for('initialAddress').replace('[100,600][300,730]','[100,1100][300,1230]')
+        state='topResumedActivity=ActivityRecord{abc u0 '+v2.ACTIVITY+' t8}\n'
+        class Capture:
+            def __init__(self,**kwargs):
+                self.diagnostics=kwargs['diagnostics'];self.nonce='f'*32;self.count=0
+                if not early:self.save()
+            def save(self):
+                self.diagnostics.write_text(json.dumps(dict(sourceCommit=build['sourceCommit'],runNonce=self.nonce,attemptCount=self.count))+'\n')
+            def read(self,deadline):
+                self.count+=1
+                self.save()
+                if self.count==1:return stale
+                raise TimeoutError('controlled fresh native observation failure')
+        def output(command,**kwargs):
+            if command==['git','rev-parse','HEAD^{tree}']:return build['sourceTree']+'\n'
+            if command==['host-only-adb','-s','host-only-serial','shell','dumpsys','activity','activities']:return state.encode()
+            return original_output(command,**kwargs)
+        def adb(*parts):
+            nonlocal published
+            commands.append(parts)
+            if parts[:3]==('exec-out','content','read'):return json.dumps(build)
+            if parts==('shell','am','get-current-user'):return '0\n'
+            if parts[:3]==('shell','am','broadcast'):
+                self.assertEqual(parts[-1],'initialAddress');published=2
+            if parts[:2]==('logcat','-d'):return '\n'.join(json.dumps(row['receipt']) for row in rows[:published])
+            return ''
+        first=types.ModuleType('chrome_first_tap_readiness')
+        def first_tap(**kwargs):
+            if early:raise TimeoutError('controlled first tap readiness failure')
+            return dict(point=case['observations']['ready']['compactTap'],hostOnly=True)
+        first.first_tap_once=first_tap
+        with tempfile.TemporaryDirectory() as directory:
+            out=Path(directory)
+            with patch.object(current_runner,'expected_build',return_value=build),\
+                 patch.object(current_runner,'verify_installed',side_effect=lambda actual,expected:self.assertEqual(actual,expected)),\
+                 patch.object(current_runner,'resume_transport',return_value=['host-only-adb','-s','host-only-serial']),\
+                 patch.object(current_runner,'UiVisualCapture',Capture),\
+                 patch.object(current_runner.uuid,'uuid4',return_value=types.SimpleNamespace(hex=nonce)),\
+                 patch.object(subprocess,'check_output',side_effect=output),patch.dict(sys.modules,{'chrome_first_tap_readiness':first}),\
+                 self.assertRaisesRegex(TimeoutError,'controlled first tap readiness failure' if early else 'controlled fresh native observation failure'):
+                current_runner.run_v2(adb,lambda *parts:payloads[parts[-1]],build['sourceCommit'],[],out,lambda component:None)
+            partial=json.loads((out/('chrome-v2-'+nonce+'-partial.json')).read_bytes())
+            self.assertFalse(partial['caseCompleted']);self.assertFalse(partial['releaseAcceptance'])
+            self.assertEqual(partial['eventTransfer']['events'],rows[:1] if early else rows)
+            self.assertEqual(list(partial['observations']),['ready'] if early else ['ready','initialAddress'])
+            self.assertEqual([row['label'] for row in partial['actualAndroidInputs']],[] if early else ['initialAddress'])
+            self.assertFalse(any(parts[:3]==('shell','input','tap') for parts in commands))
+            if early:
+                self.assertIsNone(partial['captureFile']);self.assertEqual(partial['captureStatus'],'not-started')
+                self.assertEqual(partial['captureAttemptCount'],0);self.assertIsNone(partial['firstTapReadiness'])
+                self.assertIn('FileNotFoundError',partial['captureError']);self.assertEqual(partial['uiAttempts'],[])
+                self.assertEqual(list(out.glob('chrome-v2-ui-capture-*')),[])
+                import run_chrome_collapse_diagnostic as diagnostic
+                destination=out/'diagnostic';destination.mkdir()
+                copied=diagnostic.collect_v2_diagnostics(out,destination,build['sourceCommit'],build)
+                self.assertEqual(len(copied),1)
+                self.assertEqual((destination/copied[0]['name']).read_bytes(),(out/copied[0]['name']).read_bytes())
+            else:
+                self.assertEqual(partial['firstTapReadiness']['point'],case['observations']['ready']['compactTap'])
+                self.assertEqual(partial['captureStatus'],'available');self.assertEqual(partial['captureAttemptCount'],2)
+                self.assertEqual((out/partial['uiAttempts'][0]['xml']['name']).read_bytes(),stale.encode())
+            self.assertEqual(len(partial['rawFiles']),0 if early else 2)
+            for record in partial['rawFiles']:
+                raw=(out/record['name']).read_bytes()
+                self.assertEqual((record['bytes'],record['sha256']),(len(raw),hashlib.sha256(raw).hexdigest()))
+            self.assertIn('controlled first tap readiness failure' if early else 'controlled fresh native observation failure',partial['error'])
+
+    def test_actual_runner_failure_keeps_owned_event_bytes_and_emitted_input_prefix_without_cancel(self):
+        self.failed_driver()
+
+    def test_actual_runner_failure_before_capture_keeps_original_ready_event_without_inventing_capture_file(self):
+        self.failed_driver(early=True)
 
 
 if __name__ == '__main__': unittest.main()

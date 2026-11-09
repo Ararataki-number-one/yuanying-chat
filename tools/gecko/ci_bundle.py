@@ -43,6 +43,12 @@ EVENT_SEQUENCE_FAILURE_FILES = frozenset((
     'device-event-sequence-current.stdout.log',
     'device-event-sequence-current.stderr.log',
 ))
+DASHBOARD_CAPTURE_DIR = OUT / 'ui-visuals' / 'environment-dashboard'
+DASHBOARD_CAPTURE_FILES = frozenset(name + suffix for name in (
+    'light', 'light-fingerprint', 'home-return', 'warm-list', 'second-environment',
+    'workspace-chat', 'large-font', 'large-font-fingerprint', 'landscape',
+    'landscape-fingerprint', 'dark', 'dark-fingerprint', 'failure',
+) for suffix in ('.png', '.xml'))
 
 # Script and importlib consumers use the exact sibling pure collector, without
 # importing either publisher's executable top level.
@@ -95,6 +101,8 @@ def allowed(name, kind):
         return False
     if path.suffix.lower() in ('.jks', '.p12', '.keystore', '.pem'):
         return False
+    if path.parent == PurePosixPath(str(DASHBOARD_CAPTURE_DIR)):
+        return kind == 'phase' and path.name in DASHBOARD_CAPTURE_FILES
     if path.parent.parent == PurePosixPath(str(OUT)) and path.parent.name in NETWORK_IDENTITY_RAW_DIRS:
         return path.name in NETWORK_IDENTITY_RAW_FILES
     # Only these failed-invocation diagnostics are public; do not widen this
@@ -139,6 +147,12 @@ def pack(root, target, kind, phase=None):
     else:
         for directory in ('caret-compat', 'ui-visuals'):
             candidates += [p for p in (root / OUT / directory).glob('*') if p.is_file()]
+        directory = root / DASHBOARD_CAPTURE_DIR
+        if directory.exists() or directory.is_symlink():
+            assert directory.is_dir() and all(not path.is_symlink() for path in (
+                root, root/'work', root/OUT, directory.parent, directory)), 'CI bundle refuses redirected dashboard evidence directory'
+            candidates += [directory / name for name in sorted(DASHBOARD_CAPTURE_FILES)
+                           if (directory / name).exists() or (directory / name).is_symlink()]
     files = []
     public_overrides = {}
     for path in sorted(set(candidates)):
@@ -204,6 +218,10 @@ def restore(root, bundle, kind, phase=None):
         # Validate every entry before writing any destination.
         for row in files:
             assert allowed(row['path'], kind), 'CI archive path outside the exact input/evidence roots'
+            if Path(row['path']).parent == DASHBOARD_CAPTURE_DIR:
+                assert all(not path.is_symlink() for path in (
+                    root, root/'work', root/OUT, root/DASHBOARD_CAPTURE_DIR.parent,
+                    root/DASHBOARD_CAPTURE_DIR)), 'CI restore refuses redirected dashboard evidence directory'
             member = archive.getmember(row['path'])
             assert type(row['bytes']) is int and member.size == row['bytes'] and 0 <= member.size <= 1024 ** 3
             value = hashlib.sha256()
