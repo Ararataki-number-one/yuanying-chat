@@ -87,7 +87,19 @@ def main():
     source_id = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip()
     source_tree = subprocess.check_output(["git", "rev-parse", "HEAD^{tree}"], cwd=ROOT, text=True).strip()
     source_status = subprocess.check_output(["git", "status", "--porcelain"], cwd=ROOT, text=True)
+    # Complete explicit setup before hashing inputs or executing any host test.
+    subprocess.run([sys.executable, str(ROOT / 'tools/gecko/prepare_profile_host_prerequisites.py'),
+                    '--source-commit', source_id, '--root', str(ROOT),
+                    '--output', str(ROOT / 'work/profile-host/prerequisites.json')], cwd=ROOT, check=True)
+    if (subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip() != source_id
+            or subprocess.check_output(["git", "rev-parse", "HEAD^{tree}"], cwd=ROOT, text=True).strip() != source_tree
+            or subprocess.check_output(["git", "status", "--porcelain"], cwd=ROOT, text=True) != source_status):
+        raise ValueError("Profile prerequisite setup changed source checkout")
+    prerequisite_inputs = {ROOT / path for path in ('tools/gecko/prepare_profile_host_prerequisites.py',
+        'tools/browser/source_history.py', 'tests/baselines/public-source-history.json',
+        'tests/fixtures/profile-fixture-root-source-deltas.json')}
     input_paths = set((ROOT / "app/src/main/java").rglob("*.java"))
+    input_paths.update(prerequisite_inputs)
     input_paths.update((ROOT / "tests").rglob("*.java"))
     input_paths.update((ROOT / "tests").rglob("*.py"))
     input_paths.update((ROOT / "tests").rglob("*.cjs"))
@@ -518,6 +530,7 @@ def main():
                   ROOT/'.github/workflows/glass-release-validation.yml',
                   ROOT/'tests/profile_native_setup_diagnostic11_test.py',ROOT/'tests/profile_editing_transport13_diagnostic_test.py',
                   ROOT/'tests/gecko/NetworkClientBindingIntegrationActivity.java',ROOT/'tests/gecko/run_network_client_binding.py',ROOT/'tests/gecko/AndroidManifest.xml'))
+    files.update(prerequisite_inputs)
     if (subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip() != source_id
             or subprocess.check_output(["git", "status", "--porcelain"], cwd=ROOT, text=True) != source_status
             or any(not path.is_file() or hashlib.sha256(path.read_bytes()).hexdigest() != digest

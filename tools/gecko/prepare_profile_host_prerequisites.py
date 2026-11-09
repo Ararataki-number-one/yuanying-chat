@@ -235,6 +235,114 @@ def prepare_compatibility_history(root=ROOT, *, source_commit, environment=None)
                 scope='Setup-only exact declared compatibility owners and linked blobs; no test/source projection or ref update.')
 
 
+FIXTURE_ROOT_DECLARATION = 'tests/fixtures/profile-fixture-root-source-deltas.json'
+FIXTURE_ROOT_DECLARATION_SHA256 = 'edad6886ab8867e8d76249de55f9ed23d1b664f830039eaf8e04caf9f9f19e1a'
+FIXTURE_ROOT_OWNER = '6ee06aced87581e52aa301431f8996ed46d666b8'
+FIXTURE_ROOT_TREE = '19b74a878d2c238cdb209dd51d2fb66076057963'
+FIXTURE_ROOT_PATHS = frozenset((
+    'tests/gecko/FingerprintFollowupIntegrationActivity.java',
+    'tests/dual_browser_source_compatibility.py',
+    'tests/profile_dual_browser_source_compatibility_test.py',
+    'tests/profile_worker_timezone_source_compatibility_test.py',
+    'tests/final_browser_source_compatibility.py',
+))
+# Original environment-workflow tests read these eight additional paths from
+# this exact owner. Keep them separate from the original three-owner/15-file
+# compatibility inventory, including when that inventory is already present.
+ENVIRONMENT_WORKFLOW_OWNER = '4e99ab57a4d58a2ce7ab4d7d8d0c3362da41cd2e'
+ENVIRONMENT_WORKFLOW_TREE = '5af60118121ccdc5bff9410dc13e20b05af9b391'
+ENVIRONMENT_WORKFLOW_DIRECT_READS = (
+    ('tests/baselines/public-source-history.json', '00d2d1da28b99e4df5a3ff68a84213f0ec81daa0', 72888,
+     '52831c72831c3d1ed43ae040efeef9436fb9b71ba78aa5a8ec6f0b4e3be6e745'),
+    ('tests/profile_gradle_workflow_test_source_compatibility_test.py', '9cccb334856513cff2ae1bcffb9d1e2c0945604c', 6740,
+     '7546f7a434ed3df4aff2cd33be578ad789a05b8025f16955c8485cfa602799c2'),
+    ('tests/fixtures/gradle-transport-source-deltas.json', 'e2b42f0ca4e8424d8dadff454fca102311e0ee31', 7634,
+     '0e34228b10f4ecb511c584f5fc071e06ffd87e6981caddd80b0510897fbcc793'),
+    ('tests/fixtures/gradle-workflow-test-source-deltas.json', 'a0bf8faaa0ca7c04ddc22a311810c3a5b51ae23e', 57151,
+     '5d1f33ee4997b73e4c8785fbac39e831311247b5cae7c6d3e8c6182a8350a6ee'),
+    ('tests/fixtures/profile-glass-host-workflow-deltas.json', '386dad6063e94adba8b001e0c217441ae7261c2d', 13489,
+     'f2b563999c2ac4a927763a31d564942408c44e036346fb99333763f18d9c3cbb'),
+    ('tests/profile_display_sampling_gate_test.py', '054c9f1bd7dfe5bdc18f6c2be0f84b9f1b0ba86e', 54881,
+     'd612567c69b17922129bd8f3076b55a440e24c4b2d55f44472f60c7f92fa5a1e'),
+    ('tests/profile_gradle_transport_source_compatibility_test.py', '36ab997a7821ca9f26fe9e1a0975615f1770be5b', 7276,
+     '7dc62f3fbef23332d7a44cc6db0da0bcf2cc463862d79d3c1d6c413202c967de'),
+    ('tests/fixtures/glass-diagnostic-source-deltas.json', 'd527bc8d298a517d3fda168a939ab0fb8a9af9cc', 7772,
+     '7c08ced00a0b0ab77306037360f158694b84d3fb4a61e7322122d633e3b21721'),
+)
+
+
+def fixture_root_group(root):
+    """Read the existing five whole-byte pins without extending either inventory."""
+    path = Path(root) / FIXTURE_ROOT_DECLARATION
+    require(path.is_file() and not path.is_symlink() and path.resolve() == path.absolute()
+            and 0 < path.stat().st_size <= 65536, 'ordinary bounded fixture-root declaration required')
+    raw = path.read_bytes()
+    require(hashlib.sha256(raw).hexdigest() == FIXTURE_ROOT_DECLARATION_SHA256,
+            'existing fixture-root declaration bytes differ')
+    value = json.loads(raw)
+    require(value['baseCommit'] == FIXTURE_ROOT_OWNER and value['baseTree'] == FIXTURE_ROOT_TREE
+            and set(value['files']) == FIXTURE_ROOT_PATHS, 'fixed fixture-root owner/tree/paths required')
+    group = dict(commit=FIXTURE_ROOT_OWNER, tree=FIXTURE_ROOT_TREE, files={})
+    for relative in sorted(FIXTURE_ROOT_PATHS):
+        row = value['files'][relative]
+        pin = dict(bytes=row['previousBytes'], sha256=row['previousSha256'])
+        require(type(pin['bytes']) is int and 0 < pin['bytes'] <= 4 * 1024 * 1024
+                and re.fullmatch('[0-9a-f]{64}', pin['sha256']), 'bounded fixture-root source pin required')
+        group['files'][relative] = pin
+    declaration = dict(path=FIXTURE_ROOT_DECLARATION, bytes=len(raw), sha256=FIXTURE_ROOT_DECLARATION_SHA256,
+                       commit=FIXTURE_ROOT_OWNER, tree=FIXTURE_ROOT_TREE, sourceView='previous')
+    return group, declaration
+
+
+def supplemental_groups(root):
+    fixture_group, declaration = fixture_root_group(root)
+    environment_group = dict(commit=ENVIRONMENT_WORKFLOW_OWNER, tree=ENVIRONMENT_WORKFLOW_TREE,
+        files={path: dict(blob=blob, bytes=size, sha256=digest)
+               for path, blob, size, digest in ENVIRONMENT_WORKFLOW_DIRECT_READS})
+    return [fixture_group, environment_group], [declaration]
+
+
+def verify_supplemental_group(root, group):
+    observed = verify_compatibility_group(root, group)
+    for row in observed['files']:
+        pin = group['files'][row['path']]
+        if 'blob' in pin:
+            require(row['blob'] == pin['blob'], 'supplemental historical blob identity differs')
+    return observed
+
+
+def prepare_supplemental_history(root=ROOT, *, source_commit, environment=None):
+    """Prepare the remaining original reads before any host test is executed."""
+    root = Path(root).resolve()
+    environment = os.environ if environment is None else environment
+    require(type(source_commit) is str and re.fullmatch('[0-9a-f]{40}', source_commit),
+            'exact supplemental checkout source required')
+    groups, declarations = supplemental_groups(root)
+    before = history.checkout_state(root)
+    require(before['sourceCommit'] == source_commit, 'supplemental source differs from actual checkout')
+    missing = []
+    for group in groups:
+        try:
+            verify_supplemental_group(root, group)
+        except history.MissingHistoricalObject:
+            missing.append(group['commit'])
+    if missing:
+        authorize_fetch(root, source_commit, environment)
+        require(history.checkout_state(root) == before, 'checkout changed before supplemental fetch')
+        try:
+            history.checked(root, 'fetch', '--no-tags', '--depth=1', '--no-write-fetch-head',
+                            '--no-filter', 'origin', *missing)
+        finally:
+            require(history.checkout_state(root) == before,
+                    'supplemental fetch changed HEAD, tree, index or tracked bytes')
+    observed = [verify_supplemental_group(root, group) for group in groups]
+    require(history.checkout_state(root) == before, 'supplemental verification changed checkout')
+    return dict(schema=1, status='passed', sourceCommit=source_commit, sourceTree=before['sourceTree'],
+                declarations=declarations, groups=observed, fetchedCommits=missing, checkoutUnchanged=True,
+                testsExecuted=False, actualAndroidExecution=False,
+                scope='Setup-only five original fixture-root blobs and eight original environment-workflow direct reads; no test/source projection or ref update.')
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--source-commit', required=True)
@@ -243,6 +351,7 @@ def main():
     args = parser.parse_args()
     value = prepare_history(args.root, source_commit=args.source_commit)
     value['compatibilityHistory'] = prepare_compatibility_history(args.root, source_commit=args.source_commit)
+    value['supplementalHistory'] = prepare_supplemental_history(args.root, source_commit=args.source_commit)
     raw = json.dumps(value, sort_keys=True, indent=2) + '\n'
     if args.output:
         args.output.parent.mkdir(parents=True, exist_ok=True)
