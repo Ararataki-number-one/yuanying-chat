@@ -1,1 +1,0 @@
-package android.os;public final class Looper {static final Looper MAIN=new Looper();static final ThreadLocal<Boolean> IS_MAIN=new ThreadLocal<>();public static Looper getMainLooper(){return MAIN;}public static Looper myLooper(){return Boolean.TRUE.equals(IS_MAIN.get())?MAIN:null;}}
