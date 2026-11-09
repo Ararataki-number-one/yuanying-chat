@@ -172,8 +172,9 @@ final class ReferenceUi {
     Drawable content;
     if(reading){
       GradientDrawable wash=new GradientDrawable();wash.setCornerRadius(dp(context,radius));
-      wash.setColor(new ColorStateList(new int[][]{{android.R.attr.state_selected},{}},new int[]{0x0e2468f2,Color.TRANSPARENT}));
-      // Reading is quiet at rest; only its actual selected state gets an accent.
+      int selectedWash=(DesignUi.GLASS_INK&0x00ffffff)|(AppAppearance.dark()?0x16000000:0x08000000);
+      wash.setColor(new ColorStateList(new int[][]{{android.R.attr.state_selected},{}},new int[]{selectedWash,Color.TRANSPARENT}));
+      // Reading is quiet at rest; its selected state uses the same neutral wash.
       content=wash;
     }else content=new ColorDrawable(Color.TRANSPARENT);
     return new InsetDrawable(content,dp(context,LiquidGlassDrawable.INSET_DP+1)){
@@ -195,10 +196,10 @@ final class ReferenceUi {
     GlassDock dock=null;
     for(int i=0;i<tabs.length;i++){
       Button b=tabs[i];if(b==null)continue;boolean active=i==selected;
-      int ink=active?DesignUi.BLUE:DesignUi.GLASS_MUTED;
+      int ink=active?DesignUi.GLASS_INK:DesignUi.GLASS_MUTED;
       b.setSelected(active);b.setTextColor(ink);
       b.setTypeface(Typeface.create(active?"sans-serif-medium":"sans-serif",Typeface.NORMAL));
-      Drawable icon=b.getCompoundDrawables()[1];if(icon instanceof Ui.Icon)((Ui.Icon)icon).color=ink;b.invalidate();
+      Drawable icon=b.getCompoundDrawables()[1];if(icon instanceof Ui.Icon){((Ui.Icon)icon).color=ink;((Ui.Icon)icon).solid=active;}b.invalidate();
       if(b.getParent() instanceof GlassDock)dock=(GlassDock)b.getParent();
     }
     if(dock!=null)dock.selectionChanged();

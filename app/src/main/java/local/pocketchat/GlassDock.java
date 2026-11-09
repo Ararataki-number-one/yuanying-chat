@@ -145,8 +145,8 @@ final class GlassDock extends LinearLayout {
         paint.setColor(Color.WHITE);paint.setAlpha(Math.round((dark?10f:42f)*opacity));
         canvas.drawRoundRect(highlight,corner,corner,paint);
       }
-      float tint=workspaceSelection?(dark?14f:8f):16f;
-      paint.setColor(DesignUi.BLUE);paint.setAlpha(Math.round((tint+6f*flow)*opacity));
+      float tint=workspaceSelection?(dark?10f:5f):(dark?12f:6f);
+      paint.setColor(DesignUi.GLASS_INK);paint.setAlpha(Math.round((tint+6f*flow)*opacity));
       canvas.drawRoundRect(highlight,corner,corner,paint);
       if(flow>0f){
         // One broad reflection crosses the travelling lens; it stops completely

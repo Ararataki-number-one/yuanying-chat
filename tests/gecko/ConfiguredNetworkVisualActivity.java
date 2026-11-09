@@ -28,6 +28,8 @@ public final class ConfiguredNetworkVisualActivity extends Activity {
           ||!DownloadLocationLayoutEvidence.cleanSource(this).equals(getIntent().getStringExtra("visualSourceCommit"))
           ||!AppSettings.bool(this,"nativeUiFiveEnvironmentSeedV1",false))
         throw new SecurityException("Source-bound disposable integration fixture required");
+      int previewTab=getIntent().getIntExtra("visualNetworkTab",0);
+      if(previewTab<0||previewTab>2)throw new SecurityException("Unknown presentation tab");
       if(Build.VERSION.SDK_INT>=30)getWindow().setDecorFitsSystemWindows(false);
       LinearLayout root=DesignUi.column(this);root.setBackgroundColor(DesignUi.BG);
       LinearLayout notice=DesignUi.column(this);notice.setPadding(dp(22),dp(8),dp(22),dp(8));
@@ -43,8 +45,10 @@ public final class ConfiguredNetworkVisualActivity extends Activity {
       // This catalogue reads only the already-owned disposable test fixture.
       // Do not call show/fetch: no service IPC or observed snapshot is requested.
       workspace.catalog=new NetworkCatalog(this);
+      JSONObject library=libraryPresentation(System.currentTimeMillis());
+      for(String key:new String[]{"subscriptions","exitSubscriptions","exits"})NetworkCatalog.put(workspace.catalog.data,key,library.optJSONArray(key));
       workspace.windows=presentation(System.currentTimeMillis());
-      workspace.closed=true;workspace.layout();
+      workspace.tab=previewTab;workspace.closed=true;workspace.layout();
       dock.addOnLayoutChangeListener((v,l,t,r,b,ol,ot,or,ob)->workspace.setBottomInset(dock.getHeight()));
       dock.post(()->workspace.setBottomInset(dock.getHeight()));
       inertActions(root);AppAppearance.apply(root);
@@ -56,6 +60,33 @@ public final class ConfiguredNetworkVisualActivity extends Activity {
   static void inertActions(View view){
     if(view.isClickable())view.setOnClickListener(v->{});
     if(view instanceof ViewGroup){ViewGroup group=(ViewGroup)view;for(int i=0;i<group.getChildCount();i++)inertActions(group.getChildAt(i));}
+  }
+
+  /** These arrays replace only this Activity's in-memory display catalogue. */
+  static JSONObject libraryPresentation(long now){
+    JSONArray entries=new JSONArray(),exits=new JSONArray(),manual=new JSONArray();
+    entries.put(source(NetworkCatalog.ENTRY,"visual-entry-japan","日本入口（示例）",new String[]{"Entry|日本东京 01（示例）","Entry|日本大阪 03（示例）"},now));
+    entries.put(source(NetworkCatalog.ENTRY,"visual-entry-mixed","多地区入口（示例）",new String[]{"Entry|日本 02（示例）","Entry|美国 01（示例）","Entry|未标注节点（示例）"},now));
+    exits.put(source(NetworkCatalog.EXIT,"visual-exit-singapore","新加坡出口订阅（示例）",new String[]{"Exit|新加坡 01（示例）"},now));
+    // Exercise display-only removal of a duplicate flag; the saved label stays intact.
+    exits.put(source(NetworkCatalog.EXIT,"visual-exit-hong-kong","🇭🇰 香港出口订阅（示例）",new String[]{"Exit|🇭🇰 香港 01（示例）"},now));
+    manual.put(manualExit("新加坡固定出口（示例）","新加坡","192.0.2.18"));
+    manual.put(manualExit("未标注地区出口（示例）","","192.0.2.80"));
+    return J.obj("subscriptions",entries,"exitSubscriptions",exits,"exits",manual);
+  }
+
+  static JSONObject source(String role,String id,String name,String[] labels,long now){
+    JSONArray names=new JSONArray(),details=new JSONArray();
+    for(String label:labels){names.put(label);details.put(J.obj("name",label,"type","socks5","server","192.0.2.10",
+        "configFingerprint",NativeNetwork.hash(id+"|"+label),"configFingerprintVersion",1));}
+    String url="https://network-preview.test/"+id;
+    return J.obj("id",id,"role",role,"name",name,"url",url,"urlHash",NativeNetwork.hash(url),"nodes",names,"nodeDetails",details,
+        "revision",1,"addressRevision",1,"cacheAddressRevision",1,"stale",false,"updating",false,"lastSuccessAt",now);
+  }
+
+  static JSONObject manualExit(String name,String region,String host){
+    String id=NetworkCatalog.exitId(J.obj("exitHost",host,"exitPort",1080));
+    return J.obj("id",id,"name",name,"region",region,"host",host,"port",1080,"user","","password","","revision",1);
   }
 
   /** RFC 5737 documentation addresses and local labels; never network evidence. */

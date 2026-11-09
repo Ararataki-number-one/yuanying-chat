@@ -158,7 +158,7 @@ final class EnvironmentWorkspaceStyle {
         0xffdfa8c0,0xffa4bfce,0xffaac8b1,0xffadb8ec};
     private final Paint paint=new Paint(Paint.ANTI_ALIAS_FLAG);
     private final RectF body=new RectF(),edge=new RectF();
-    private final Ui.Icon icon=new Ui.Icon("window",LIGHT[0]);
+    private Ui.Icon icon=new Ui.Icon(EnvironmentPresentation.glyph(0),LIGHT[0]);
     private final float density;
     private final boolean large;
     private int slot;
@@ -172,7 +172,10 @@ final class EnvironmentWorkspaceStyle {
 
     void bind(int value) {
       int next=Math.max(0,Math.min(LIGHT.length-1,value));
-      if(slot!=next){slot=next;invalidate();}
+      if(slot!=next){
+        slot=next;Ui.Icon replacement=new Ui.Icon(EnvironmentPresentation.glyph(slot),LIGHT[slot]);
+        replacement.setBounds(icon.getBounds());icon=replacement;invalidate();
+      }
     }
 
     @Override protected void onMeasure(int widthSpec,int heightSpec) {

@@ -104,6 +104,19 @@ final class NetworkWorkspaceStyle {
     card.setBackground(card(context,false));return card;
   }
 
+  static void sourceIdentity(Context context,LinearLayout head,TextView name,String country,String fallback){
+    name.setText(NetworkCountryIcon.displayLabel(name.getText().toString(),country));
+    ImageView icon=new ImageView(context);icon.setImageDrawable(NetworkCountryIcon.drawable(context,country,fallback,22));
+    icon.setScaleType(ImageView.ScaleType.CENTER);icon.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+    Drawable face=DesignUi.surface(context,ReferenceUi.BLUE_SOFT,10,Color.TRANSPARENT);face.setAlpha(150);icon.setBackground(face);
+    LinearLayout.LayoutParams tile=new LinearLayout.LayoutParams(DesignUi.dp(context,34),DesignUi.dp(context,34));
+    tile.rightMargin=DesignUi.dp(context,10);head.addView(icon,tile);head.addView(name,new LinearLayout.LayoutParams(0,-2,1));
+  }
+
+  static String countrySummary(String summary,String country){
+    String name=NetworkCountryHint.country(country);return name.isEmpty()?summary:name+" · "+summary;
+  }
+
   static TextView secondary(Context context,String value){
     TextView view=text(context,value,ReferenceUi.SECONDARY_SIZE,DesignUi.MUTED,false);
     view.setPadding(0,DesignUi.dp(context,3),DesignUi.dp(context,4),0);return view;

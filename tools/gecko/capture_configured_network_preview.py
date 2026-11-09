@@ -15,16 +15,25 @@ COMPONENT = PACKAGE + '/local.pocketchat.ConfiguredNetworkVisualActivity'
 BANNER = '示例配置 · 非真实连接'
 EXPLANATION = 'IP、延迟与连接状态均为演示数据'
 SUMMARY = '3 个环境 · 2 个已连接'
+TAB_PREVIEWS = (
+    (1, 'network-configured-synthetic-entry', '2 个入口订阅',
+     ('日本入口（示例）', '多地区入口（示例）')),
+    (2, 'network-configured-synthetic-exit', '2 个出口订阅 · 2 个固定出口',
+     ('新加坡出口订阅（示例）', '香港出口订阅（示例）', '新加坡固定出口（示例）', '未标注地区出口（示例）')),
+)
 
 
-def preview_observation(xml, navigation_geometry):
+def preview_observation(xml, navigation_geometry, *, tab=0, summary=SUMMARY, required=()):
     geometry = navigation_geometry(xml)
+    selected_tab = named(xml, ('环境网络', '入口', '出口')[tab], button=True)
     if (geometry is None or not geometry['valid'] or not all(
             geometry['selected'][label] == ('true' if label == '网络' else 'false') for label in LABELS)
             or named(xml, BANNER) is None or named(xml, EXPLANATION) is None
-            or named(xml, SUMMARY) is None):
+            or named(xml, summary) is None or selected_tab is None or selected_tab.get('selected') != 'true'
+            or any(named(xml, label) is None for label in required)):
         return None
     return dict(geometry=geometry, syntheticNoticeVisible=True,
+                networkTab=tab, expectedLabelsVisible=list(required),
                 visibleStatuses=[node.get('content-desc') for node in visible_nodes(xml)
                                  if node.get('content-desc', '').startswith('网络状态：')])
 
@@ -45,12 +54,12 @@ def capture_configured_network_preview(args, report, capture, adb, screenshot, *
     def save():
         (args.out/'capture.json').write_text(json.dumps(report, ensure_ascii=False, indent=2)+'\n')
 
-    def observe(name, *, last=False):
+    def observe(name, *, last=False, tab=0, summary=SUMMARY, required=()):
         deadline = time.monotonic()+20
         path = args.out/(name+'.xml')
         while time.monotonic()<deadline:
             xml = capture.read(deadline=deadline);path.write_text(xml)
-            value = preview_observation(xml, navigation_geometry)
+            value = preview_observation(xml, navigation_geometry, tab=tab, summary=summary, required=required)
             if value:
                 if last:
                     value['lastCardLayout'] = last_card_layout(xml, navigation_geometry)
@@ -60,7 +69,7 @@ def capture_configured_network_preview(args, report, capture, adb, screenshot, *
             time.sleep(.15)
         raise TimeoutError('Explicit synthetic component did not become ready: '+name)
 
-    def scene(name, scale, *, last=False):
+    def scene(name, scale, *, last=False, tab=0, summary=SUMMARY, required=()):
         actual_scale = float(adb('shell', 'settings', 'get', 'system', 'font_scale', timeout=5).decode().strip())
         if abs(actual_scale-scale)>.001:
             raise ValueError('Synthetic preview font scale differs')
@@ -71,13 +80,13 @@ def capture_configured_network_preview(args, report, capture, adb, screenshot, *
         if not any(COMPONENT in line for line in resumed):
             raise ValueError('The separate synthetic Activity must own this image')
         result['actualAndroidExecution'] = True
-        xml, evidence = observe(name, last=last)
+        xml, evidence = observe(name, last=last, tab=tab, summary=summary, required=required)
         if last and not evidence['lastCardLayout']['fullyVisible']:
             raise ValueError('Final configured example is clipped')
         screenshot(name+'.png');image = dict(report['screenshots'][-1])
         if (image['width'],image['height'])!=(WIDTH,HEIGHT):
             raise ValueError('Unexpected actual screenshot dimensions')
-        result['scenes'].append(dict(name=name, fontScale=scale, syntheticPresentationOnly=True,
+        result['scenes'].append(dict(name=name, fontScale=scale, networkTab=tab, syntheticPresentationOnly=True,
             actualNetworkEvidence=False, hierarchy=evidence, screenshot=image,
             activity=dict(file=owner.name, sha256=sha(owner), resumedActivity=resumed)))
         save()
@@ -118,6 +127,14 @@ def capture_configured_network_preview(args, report, capture, adb, screenshot, *
         scene('network-configured-synthetic-large-font-scrolled',1.3,last=True)
         result['lastCardPreview']=dict(fullyVisible=True,inputCount=scrolls,
             skipReason='Final card already fits' if scrolls==0 else '')
+        # Each list is an inert, in-memory component fixture, not a request to
+        # import a subscription, select a route or perform a network lookup.
+        for tab, name, summary, required in TAB_PREVIEWS:
+            adb('shell','am','force-stop',PACKAGE)
+            adb('shell','settings','put','system','font_scale','1.0')
+            adb('shell','am','start','-W','-n',COMPONENT,'--es','visualNonce',report['runNonce'],
+                '--es','visualSourceCommit',identity['sourceCommit'],'--ei','visualNetworkTab',str(tab))
+            scene(name,1.0,tab=tab,summary=summary,required=required)
     except Exception as error:
         result['errors'].append(dict(errorType=type(error).__name__,error=str(error)))
     finally:
@@ -135,7 +152,7 @@ def capture_configured_network_preview(args, report, capture, adb, screenshot, *
                     time.sleep(.15)
             except Exception as error:
                 result['errors'].append(dict(phase='restore',errorType=type(error).__name__,error=str(error)))
-        result['status']='captured' if (not result['errors'] and len(result['scenes'])==3
+        result['status']='captured' if (not result['errors'] and len(result['scenes'])==3+len(TAB_PREVIEWS)
             and result.get('lastCardPreview',{}).get('fullyVisible') is True
             and result['restoredDefaultFont'] and result['returnedToEnvironment']) else 'failed'
         result.update(lastCommandIndexExclusive=len(report['commands']),

@@ -106,6 +106,7 @@ final class NetworkWorkspaceUi {
       if(running!=null&&"internal".equals(running.optString("mode")))runningRoute(row,running);
       if(item.optBoolean("pendingNetwork")){
         TextView pending=NetworkWorkspaceStyle.text(a,"等待应用 · "+pendingSummary(item),ReferenceUi.SECONDARY_SIZE,ReferenceUi.ORANGE,false);
+        pending.setText(pendingPresentation(item));pending.setContentDescription("等待应用 · "+pendingSummary(item));
         pending.setPadding(dp(10),dp(8),dp(10),dp(8));
         pending.setBackground(DesignUi.surface(a,(ReferenceUi.ORANGE&0x00ffffff)|0x10000000,12,Color.TRANSPARENT));
         LinearLayout.LayoutParams saved=new LinearLayout.LayoutParams(-1,-2);saved.topMargin=dp(8);row.addView(pending,saved);
@@ -142,13 +143,16 @@ final class NetworkWorkspaceUi {
     View divider=new View(a);divider.setBackgroundColor(AppAppearance.color(DesignUi.LINE));
     LinearLayout.LayoutParams rule=new LinearLayout.LayoutParams(-1,Math.max(1,dp(1)/2));rule.bottomMargin=dp(7);route.addView(divider,rule);
     String[] labels={"入口","固定出口","目的地"},values={displayEntry(running),displayExit(running),"ChatGPT"};
+    String[] countries={NetworkCountryHint.code(running.optString("entry")),exitCountry(running),""};
     for(int i=0;i<labels.length;i++){
       LinearLayout stage=DesignUi.row(a);stage.setGravity(Gravity.TOP);stage.setMinimumHeight(dp(26));
       View marker=NetworkWorkspaceStyle.routeMark(a,i,i==labels.length-1);stage.addView(marker,new LinearLayout.LayoutParams(dp(20),-1));
       TextView label=NetworkWorkspaceStyle.text(a,labels[i],11,ReferenceUi.MUTED,false);label.setSingleLine(true);
       label.setPadding(0,dp(2),0,dp(4));
       int labelWidth=Math.max(dp(58),(int)Math.ceil(label.getPaint().measureText(labels[i]))+dp(8));stage.addView(label,new LinearLayout.LayoutParams(labelWidth,-2));
-      TextView value=NetworkWorkspaceStyle.text(a,values[i],ReferenceUi.SECONDARY_SIZE,ReferenceUi.TEXT,false);value.setPadding(0,dp(1),0,dp(4));stage.addView(value,new LinearLayout.LayoutParams(0,-2,1));route.addView(stage);
+      TextView value=NetworkWorkspaceStyle.text(a,NetworkCountryIcon.labeled(values[i],countries[i]),ReferenceUi.SECONDARY_SIZE,ReferenceUi.TEXT,false);
+      NetworkCountryIcon.bind(value,countries[i],i==labels.length-1?"globe":"node");
+      value.setPadding(0,dp(1),0,dp(4));stage.addView(value,new LinearLayout.LayoutParams(0,-2,1));route.addView(stage);
     }
     LinearLayout.LayoutParams steps=new LinearLayout.LayoutParams(-1,-2);steps.topMargin=dp(4);row.addView(route,steps);
   }
@@ -227,6 +231,20 @@ final class NetworkWorkspaceUi {
   static String metadataSummary(JSONObject item){JSONObject meta=metadata(item);if(!meta.optBoolean("available"))return "配置版本暂时无法读取";return "已保存 "+version(meta.optLong("desiredRevision"))+" · 网页配置已确认 "+version(meta.optLong("appliedRevision"));}
   static String pendingCandidateId(JSONObject pending,JSONObject marker){return marker==null?pending.length()==0?"":"legacy:"+NativeNetwork.hash(pending.toString()):marker.optString("id");}
   static String pendingSummary(JSONObject item){JSONObject config=item.optJSONObject("pendingConfig");if(!metadata(item).optBoolean("pendingReady",true))return "保存状态待恢复";if(config==null)return "配置待确认";return "external".equals(item.optString("pendingAction"))?externalName(config):entryModeLabel(config.optString("entryMode"))+" · "+displayEntry(config)+" → "+displayExit(config);}
+  CharSequence pendingPresentation(JSONObject item){
+    JSONObject config=item.optJSONObject("pendingConfig");
+    if(!metadata(item).optBoolean("pendingReady",true)||config==null||"external".equals(item.optString("pendingAction")))return "等待应用 · "+pendingSummary(item);
+    android.text.SpannableStringBuilder text=new android.text.SpannableStringBuilder("等待应用 · "+entryModeLabel(config.optString("entryMode"))+" · ");
+    NetworkCountryIcon.append(text,a,displayEntry(config),NetworkCountryHint.code(config.optString("entry")));text.append(" → ");
+    NetworkCountryIcon.append(text,a,displayExit(config),exitCountry(config));return text;
+  }
+  static String exitCountry(JSONObject config){
+    String name="subscription".equals(config.optString("exitSource"))?config.optString("exitNodeName",config.optString("exitName")):config.optString("exitName");
+    return NetworkCountryHint.code(name,config.optString("exitRegion"));
+  }
+  static String sourceCountry(JSONObject source){
+    return source==null||source.optBoolean("stale")?"":NetworkCountryHint.commonCode(NetworkSourceSelection.names(source));
+  }
   JSONObject windowItem(int slot){for(int i=0;i<windows.length();i++){JSONObject item=windows.optJSONObject(i);if(item!=null&&item.optJSONObject("row").optInt("slot",-1)==slot)return item;}return null;}
   boolean matches(WindowNetworkState s){return filter==0||filter==1&&s.connected||filter==2&&!s.connected;}
   void filters(){ReferenceUi.Modal d=new ReferenceUi.Modal(a,"筛选环境").asSheet();String[] choices={"全部环境","已连接","待连接 / 未配置"};for(int i=0;i<choices.length;i++){final int n=i;choice(d,choices[i],"",filter==i,()->{filter=n;focus=-1;d.dismiss();scroll.scrollTo(0,0);render();});}d.show();}
@@ -239,8 +257,9 @@ final class NetworkWorkspaceUi {
     JSONArray all=catalog.exits();
     for(int i=0;i<all.length();i++){
       JSONObject e=all.optJSONObject(i);LinearLayout row=NetworkWorkspaceStyle.sourceCard(a);
-      TextView name=NetworkWorkspaceStyle.text(a,e.optString("name"),ReferenceUi.CARD_TITLE_SIZE,ReferenceUi.TEXT,true);name.setMaxLines(2);name.setEllipsize(android.text.TextUtils.TruncateAt.END);LinearLayout head=DesignUi.row(a);head.addView(name,new LinearLayout.LayoutParams(0,-2,1));Button more=ReferenceUi.more(a,()->exitDetail(e));more.setContentDescription(e.optString("name")+"的固定出口详情");head.addView(more,new LinearLayout.LayoutParams(dp(48),dp(48)));row.addView(head);
-      String ip=e.optString("verifiedIp");row.addView(NetworkWorkspaceStyle.secondary(a,ip.isEmpty()?"IP 待核验":ip));
+      String country=NetworkCountryHint.code(e.optString("name"),e.optString("region"));
+      TextView name=NetworkWorkspaceStyle.text(a,e.optString("name"),ReferenceUi.CARD_TITLE_SIZE,ReferenceUi.TEXT,true);name.setMaxLines(2);name.setEllipsize(android.text.TextUtils.TruncateAt.END);LinearLayout head=DesignUi.row(a);NetworkWorkspaceStyle.sourceIdentity(a,head,name,country,"node");Button more=ReferenceUi.more(a,()->exitDetail(e));more.setContentDescription(e.optString("name")+"的固定出口详情");head.addView(more,new LinearLayout.LayoutParams(dp(48),dp(48)));row.addView(head);
+      String ip=e.optString("verifiedIp");row.addView(NetworkWorkspaceStyle.secondary(a,NetworkWorkspaceStyle.countrySummary(ip.isEmpty()?"IP 待核验":ip,country)));
       row.addView(NetworkWorkspaceStyle.secondary(a,(ip.isEmpty()?"待核验":"上次已核验")+" · "+uses(e.optString("id"))+" 个窗口使用"));
       libraryCard(row,()->exitDetail(e),e.optString("name")+"，查看固定出口详情");ReferenceUi.add(box,row);
     }
@@ -252,9 +271,9 @@ final class NetworkWorkspaceUi {
     for(int i=0;i<all.length();i++){
       JSONObject source=all.optJSONObject(i);LinearLayout card=NetworkWorkspaceStyle.sourceCard(a);LinearLayout head=DesignUi.row(a);
       TextView name=NetworkWorkspaceStyle.text(a,source.optString("name"),ReferenceUi.CARD_TITLE_SIZE,ReferenceUi.TEXT,true);name.setMaxLines(2);name.setEllipsize(android.text.TextUtils.TruncateAt.END);
-      head.addView(name,new LinearLayout.LayoutParams(0,-2,1));
+      String country=sourceCountry(source);NetworkWorkspaceStyle.sourceIdentity(a,head,name,country,"source");
       Button more=ReferenceUi.more(a,()->subscriptionDetail(source));more.setContentDescription(source.optString("name")+"的"+roleName(role)+"详情");head.addView(more,new LinearLayout.LayoutParams(dp(48),dp(48)));card.addView(head);
-      card.addView(NetworkWorkspaceStyle.secondary(a,sourceSummary(source,role)));
+      card.addView(NetworkWorkspaceStyle.secondary(a,NetworkWorkspaceStyle.countrySummary(sourceSummary(source,role),country)));
       card.addView(NetworkWorkspaceStyle.secondary(a,"更新于 "+updated(source.optLong("lastSuccessAt",source.optLong("updatedAt")))));
       libraryCard(card,()->subscriptionDetail(source),source.optString("name")+"，查看"+roleName(role)+(NetworkCatalog.local(source)?"本地节点":"订阅详情"));ReferenceUi.add(box,card);
     }
@@ -331,8 +350,21 @@ final class NetworkWorkspaceUi {
     }return false;
   }
   void field(ReferenceUi.Modal d,String name,String value){DesignUi.field(d.body,name,value);}
-  void choice(ReferenceUi.Modal d,String name,String detail,boolean selected,Runnable run){LinearLayout row=DesignUi.row(a);row.setPadding(dp(12),dp(9),dp(12),dp(9));row.setMinimumHeight(dp(58));row.setBackground(ReferenceUi.surface(a,selected?0xfff7faff:ReferenceUi.WHITE,14,selected?0xff94b8ff:ReferenceUi.LINE));TextView mark=ReferenceUi.text(a,selected?"◉":"○",20,selected?ReferenceUi.BLUE:ReferenceUi.MUTED,false);row.addView(mark,new LinearLayout.LayoutParams(dp(30),-2));LinearLayout labels=DesignUi.column(a);TextView title=ReferenceUi.text(a,name,15,ReferenceUi.TEXT,true);title.setMaxLines(3);labels.addView(title);if(!detail.isEmpty()){TextView explanation=ReferenceUi.secondary(a,detail);explanation.setSingleLine(false);labels.addView(explanation);}row.addView(labels,new LinearLayout.LayoutParams(0,-2,1));row.setOnClickListener(v->run.run());row.setFocusable(true);row.setContentDescription(name+(selected?"，已选择":""));ReferenceUi.add(d.body,row);}
-  void routeRow(ReferenceUi.Modal d,String key,String value,Runnable select){LinearLayout row=DesignUi.row(a);row.setMinimumHeight(dp(66));LinearLayout labels=DesignUi.column(a);labels.addView(ReferenceUi.text(a,key,13,ReferenceUi.MUTED,false));TextView title=ReferenceUi.text(a,value,15,ReferenceUi.TEXT,true);title.setMaxLines(3);title.setPadding(0,dp(4),0,0);labels.addView(title);row.addView(labels,new LinearLayout.LayoutParams(0,-2,1));ImageView arrow=new ImageView(a);arrow.setImageDrawable(new Ui.Icon("chevron-right",ReferenceUi.MUTED));row.addView(arrow,new LinearLayout.LayoutParams(dp(18),dp(22)));row.setOnClickListener(v->select.run());row.setFocusable(true);row.setBackground(Ui.ripple(a,Color.TRANSPARENT,0));d.body.addView(row);View line=new View(a);line.setBackgroundColor(0xffeef2f7);d.body.addView(line,new LinearLayout.LayoutParams(-1,dp(1)));}
+  void choice(ReferenceUi.Modal d,String name,String detail,boolean selected,Runnable run){countryChoice(d,name,detail,"",null,selected,run);}
+  void countryChoice(ReferenceUi.Modal d,String name,String detail,String country,String glyph,boolean selected,Runnable run){
+    LinearLayout row=DesignUi.row(a);row.setPadding(dp(12),dp(9),dp(12),dp(9));row.setMinimumHeight(dp(58));row.setBackground(ReferenceUi.surface(a,selected?0xfff7faff:ReferenceUi.WHITE,14,selected?0xff94b8ff:ReferenceUi.LINE));
+    TextView mark=ReferenceUi.text(a,selected?"◉":"○",20,selected?ReferenceUi.BLUE:ReferenceUi.MUTED,false);row.addView(mark,new LinearLayout.LayoutParams(dp(30),-2));
+    LinearLayout labels=DesignUi.column(a);TextView title=ReferenceUi.text(a,name,15,ReferenceUi.TEXT,true);title.setMaxLines(3);if(glyph!=null)NetworkCountryIcon.bind(title,country,glyph);labels.addView(title);
+    String summary=NetworkWorkspaceStyle.countrySummary(detail,country);
+    if(!summary.isEmpty()){TextView explanation=ReferenceUi.secondary(a,summary);explanation.setSingleLine(false);labels.addView(explanation);}
+    row.addView(labels,new LinearLayout.LayoutParams(0,-2,1));row.setOnClickListener(v->run.run());row.setFocusable(true);row.setContentDescription(name+(selected?"，已选择":""));ReferenceUi.add(d.body,row);
+  }
+  void routeRow(ReferenceUi.Modal d,String key,String value,String country,String glyph,Runnable select){
+    LinearLayout row=DesignUi.row(a);row.setMinimumHeight(dp(66));LinearLayout labels=DesignUi.column(a);
+    String region=NetworkCountryHint.country(country);labels.addView(ReferenceUi.text(a,key+(region.isEmpty()?"":" · "+region),13,ReferenceUi.MUTED,false));
+    TextView title=ReferenceUi.text(a,value,15,ReferenceUi.TEXT,true);title.setMaxLines(3);title.setPadding(0,dp(4),0,0);NetworkCountryIcon.bind(title,country,glyph);labels.addView(title);
+    row.addView(labels,new LinearLayout.LayoutParams(0,-2,1));ImageView arrow=new ImageView(a);arrow.setImageDrawable(new Ui.Icon("chevron-right",ReferenceUi.MUTED));row.addView(arrow,new LinearLayout.LayoutParams(dp(18),dp(22)));row.setOnClickListener(v->select.run());row.setFocusable(true);row.setBackground(Ui.ripple(a,Color.TRANSPARENT,0));d.body.addView(row);View line=new View(a);line.setBackgroundColor(0xffeef2f7);d.body.addView(line,new LinearLayout.LayoutParams(-1,dp(1)));
+  }
   static final class EditorSession {final ReferenceUi.Modal dialog;final NetworkDraft draft;final Runnable refresh;JSONObject operationResult;boolean completed;EditorSession(ReferenceUi.Modal dialog,NetworkDraft draft,Runnable refresh){this.dialog=dialog;this.draft=draft;this.refresh=refresh;}}
   boolean editorReady(JSONObject item){JSONObject meta=metadata(item),row=item==null?null:item.optJSONObject("row");boolean identity=row!=null&&!row.optString("environmentId").isEmpty()&&row.optString("environmentId").equals(meta.optString("environmentId"))&&row.optLong("generation")==meta.optLong("generation",-1);if(identity&&meta.optBoolean("available")&&meta.optBoolean("pendingReady",true)&&!meta.optString("baseline").isEmpty()&&diagnosticWindowCurrent(state(item)))return true;ReferenceUi.Modal d=new ReferenceUi.Modal(a,"网络设置暂不可编辑");d.note(identity&&meta.optBoolean("available")?"上次保存尚待恢复，请刷新状态后再试。":"配置暂时无法读取或环境已变化，请刷新状态后再试。");d.buttons("关闭",d::dismiss,"刷新状态",()->{d.dismiss();if(row!=null)refreshEditor(state(item));else reload();});d.show();return false;}
   void refreshEditor(WindowNetworkState expected){afterRead=()->{if(!active()||!diagnosticWindowCurrent(expected))return;JSONObject fresh=windowItem(expected.slot);if(fresh!=null)edit(fresh);};reload();}
@@ -385,11 +417,12 @@ final class NetworkWorkspaceUi {
     EditorSession editor=new EditorSession(d,draft,()->render[0].run());TextView error=ReferenceUi.text(a,"",12,ReferenceUi.RED,false);error.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);TextView context=ReferenceUi.secondary(a,editingContext(item,"apply".equals(pending.optString("action"))));context.setSingleLine(false);
     render[0]=()->{
       draft.normalize(catalog);d.body.removeAllViews();d.body.addView(context);JSONObject source=catalog.subscription(NetworkCatalog.ENTRY,draft.subscriptionId),manual=catalog.exit(draft.exitId),exitSource=catalog.subscription(NetworkCatalog.EXIT,draft.exitSubscriptionId);
-      routeRow(d,"入口订阅",source==null?"请选择订阅":source.optString("name"),()->{if(!saving[0]&&!preparing[0])selectSubscription(draft,render[0]);});
+      routeRow(d,"入口订阅",source==null?"请选择订阅":source.optString("name"),sourceCountry(source),"source",()->{if(!saving[0]&&!preparing[0])selectSubscription(draft,render[0]);});
       String entrance=entryModeLabel(draft.mode)+(draft.entry.isEmpty()?("latency".equals(draft.mode)?" · 连接后优选":" · 待选择"):" · "+nodeName(draft.entry));
-      routeRow(d,"入口选择",entrance,()->{if(!saving[0]&&!preparing[0])selectEntry(draft,render[0]);});
+      routeRow(d,"入口选择",entrance,NetworkCountryHint.code(draft.entry),"node",()->{if(!saving[0]&&!preparing[0])selectEntry(draft,render[0]);});
       String exit=!draft.exitSubscriptionId.isEmpty()?(exitSource==null?"出口订阅已删除":exitSource.optString("name")+" · "+(draft.exitNodeName.isEmpty()?"请选择节点":nodeName(draft.exitNodeName))):(manual==null?"请选择固定出口":manual.optString("name"));
-      routeRow(d,"固定出口",exit,()->{if(!saving[0]&&!preparing[0])selectExit(draft,render[0]);});d.body.addView(error);d.resize();
+      String country=!draft.exitSubscriptionId.isEmpty()?NetworkCountryHint.code(draft.exitNodeName):manual==null?"":NetworkCountryHint.code(manual.optString("name"),manual.optString("region"));
+      routeRow(d,"固定出口",exit,country,"node",()->{if(!saving[0]&&!preparing[0])selectExit(draft,render[0]);});d.body.addView(error);d.resize();
     };
     d.buttons("取消",d::dismiss,"保存并应用",()->{
       if(saving[0]||preparing[0])return;final JSONObject candidate;
@@ -431,7 +464,7 @@ final class NetworkWorkspaceUi {
     ReferenceUi.Modal d=new ReferenceUi.Modal(a,"选择入口订阅");JSONArray all=catalog.subscriptions(NetworkCatalog.ENTRY);
     for(int i=0;i<all.length();i++){
       JSONObject source=all.optJSONObject(i);String id=source.optString("id");
-      choice(d,source.optString("name"),sourceSummary(source,NetworkCatalog.ENTRY),id.equals(draft.subscriptionId),()->{
+      countryChoice(d,source.optString("name"),sourceSummary(source,NetworkCatalog.ENTRY),sourceCountry(source),"source",id.equals(draft.subscriptionId),()->{
         d.dismiss();Runnable choose=()->{
           JSONObject current=catalog.subscription(NetworkCatalog.ENTRY,id);if(current==null)return;
           boolean different=!current.optString("id").equals(draft.subscriptionId);draft.subscription(current.optString("id"),catalog);
@@ -449,7 +482,7 @@ final class NetworkWorkspaceUi {
     if(sources.length()>0)d.note("出口订阅");
     for(int i=0;i<sources.length();i++){
       JSONObject source=sources.optJSONObject(i);String id=source.optString("id");
-      choice(d,source.optString("name"),sourceSummary(source,NetworkCatalog.EXIT),id.equals(draft.exitSubscriptionId),()->{
+      countryChoice(d,source.optString("name"),sourceSummary(source,NetworkCatalog.EXIT),sourceCountry(source),"source",id.equals(draft.exitSubscriptionId),()->{
         d.dismiss();Runnable choose=()->{JSONObject current=catalog.subscription(NetworkCatalog.EXIT,id);if(current!=null)selectExitNode(draft,current,changed);};
         if(sourceNeedsRead(source))loadPool(NetworkCatalog.EXIT,source,false,choose);else choose.run();
       });
@@ -457,7 +490,7 @@ final class NetworkWorkspaceUi {
     if(manual.length()>0)d.note("手动出口");
     for(int i=0;i<manual.length();i++){
       JSONObject e=manual.optJSONObject(i);String ip=e.optString("verifiedIp");
-      choice(d,e.optString("name"),ip.isEmpty()?"SOCKS5 · IP 待核验":ip,e.optString("id").equals(draft.exitId),()->{draft.manualExit(e.optString("id"),catalog);d.dismiss();changed.run();});
+      countryChoice(d,e.optString("name"),ip.isEmpty()?"SOCKS5 · IP 待核验":ip,NetworkCountryHint.code(e.optString("name"),e.optString("region")),"node",e.optString("id").equals(draft.exitId),()->{draft.manualExit(e.optString("id"),catalog);d.dismiss();changed.run();});
     }
     if(sources.length()==0&&manual.length()==0)d.note("添加出口订阅或手动 SOCKS5 出口，再为当前窗口指定一个固定出口。");
     d.buttons("取消",d::dismiss,"添加出口",()->{d.dismiss();addExitSource(()->selectExit(draft,changed));});d.show();return d;

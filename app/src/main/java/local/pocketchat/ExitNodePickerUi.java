@@ -83,6 +83,7 @@ final class ExitNodePickerUi {
       boolean chosen=callback!=null&&!key.isEmpty()&&key.equals(selectedKey)&&name.equals(selectedName);
       TextView mark=(TextView)row.getChildAt(0);mark.setVisibility(callback==null?View.GONE:View.VISIBLE);mark.setText(chosen?"◉":"○");mark.setTextColor(supported?ReferenceUi.BLUE:ReferenceUi.MUTED);
       LinearLayout labels=(LinearLayout)row.getChildAt(1);((TextView)labels.getChildAt(0)).setText(NetworkWorkspaceUi.nodeName(name));
+      NetworkCountryIcon.bind((TextView)labels.getChildAt(0),NetworkCountryHint.code(name),"node",16);
       String type=node==null?"协议未识别":node.optString("type");((TextView)labels.getChildAt(1)).setText(type+(callback!=null&&!supported?" · 暂不能作为固定出口":""));
       row.setBackground(ReferenceUi.surface(a,chosen?0xfff7faff:ReferenceUi.WHITE,10,chosen?0xff94b8ff:ReferenceUi.LINE));
       row.setSelected(chosen);row.setAlpha(callback!=null&&!supported?.6f:1f);row.setFocusable(callback!=null);

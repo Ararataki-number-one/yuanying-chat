@@ -40,7 +40,13 @@ final class DownloadWorkspaceStyle {
   static String savedGlyph(String name){
     String lower=name.toLowerCase(Locale.ROOT);int dot=lower.lastIndexOf('.');
     String extension=dot<0?"":lower.substring(dot+1);
-    switch(extension){case "png":case "jpg":case "jpeg":case "gif":case "webp":case "heic":case "heif":case "bmp":case "svg":case "avif":return "image";default:return "file";}
+    switch(extension){
+      case "png":case "jpg":case "jpeg":case "gif":case "webp":case "heic":case "heif":case "bmp":case "svg":case "avif":return "image";
+      case "pdf":return "file-pdf";
+      case "txt":case "md":case "markdown":case "log":case "csv":case "tsv":case "json":case "jsonl":case "xml":case "yaml":case "yml":return "file-text";
+      case "zip":case "7z":case "rar":case "tar":case "gz":case "tgz":case "bz2":case "xz":return "file-archive";
+      default:return "file";
+    }
   }
 
   static int savedColor(String name){

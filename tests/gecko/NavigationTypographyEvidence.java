@@ -1,7 +1,10 @@
 package local.pocketchat;
 
 import android.app.Activity;
+import android.graphics.Bitmap;
+import android.graphics.Canvas;
 import android.graphics.Rect;
+import android.graphics.drawable.Drawable;
 import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
@@ -13,6 +16,10 @@ import android.view.ViewTreeObserver;
 import android.widget.Button;
 import android.widget.LinearLayout;
 import java.nio.charset.StandardCharsets;
+import java.nio.ByteBuffer;
+import java.security.MessageDigest;
+import java.util.HashMap;
+import java.util.Map;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
@@ -22,6 +29,8 @@ import org.json.JSONObject;
 final class NavigationTypographyEvidence implements ViewTreeObserver.OnPreDrawListener, Runnable {
   static final String TAG="PocketNavType";
   final Activity activity;final LinearLayout root;final Button[] buttons;
+  final Button[] initialButtons;final Rect[] initialButtonBounds,initialIconBounds;
+  final Map<String,JSONObject> iconRenderings=new HashMap<>();
   final String navigationMode;final String[] labels;
   final int[] workspacePages={AppHub.CHAT,AppHub.ENVIRONMENTS,AppHub.DOWNLOADS,AppHub.NETWORK,AppHub.SETTINGS};
   final Handler handler=new Handler(Looper.getMainLooper());final JSONObject identity;
@@ -48,6 +57,7 @@ final class NavigationTypographyEvidence implements ViewTreeObserver.OnPreDrawLi
     root.addView(new View(activity),new LinearLayout.LayoutParams(-1,0,1));
     root.addView("workspace".equals(navigationMode)?ReferenceUi.workspaceNav(activity,selected,n->{},buttons)
       :ReferenceUi.nav(activity,selected,n->{},buttons));
+    initialButtons=buttons.clone();initialButtonBounds=new Rect[buttons.length];initialIconBounds=new Rect[buttons.length];
     activity.setContentView(root);ReferenceUi.insets(activity,root);AppAppearance.apply(root);
     root.getViewTreeObserver().addOnPreDrawListener(this);handler.postDelayed(this,12000);
   }
@@ -75,6 +85,12 @@ final class NavigationTypographyEvidence implements ViewTreeObserver.OnPreDrawLi
         float lineLeft=left+layout.getLineLeft(0)-b.getScrollX(),lineRight=left+layout.getLineRight(0)-b.getScrollX();
         float glyphLeft=drawX+glyph.left,glyphRight=drawX+glyph.right;
         boolean shown=b.getGlobalVisibleRect(visible)&&b.isShown();
+        Drawable drawable=b.getCompoundDrawables()[1];Ui.Icon icon=drawable instanceof Ui.Icon?(Ui.Icon)drawable:null;
+        Rect iconBounds=drawable==null?new Rect():new Rect(drawable.getBounds());
+        Rect buttonBounds=new Rect(b.getLeft(),b.getTop(),b.getRight(),b.getBottom());
+        if(initialButtonBounds[i]==null){initialButtonBounds[i]=new Rect(buttonBounds);initialIconBounds[i]=new Rect(iconBounds);}
+        boolean expectedSelected=i==selected;int expectedInk=expectedSelected?DesignUi.GLASS_INK:DesignUi.GLASS_MUTED;
+        JSONObject rendered=iconRendering(icon);
         JSONObject checks=new JSONObject().put("layoutFits",layout.getHeight()<=bottom-top)
           .put("glyphFits",glyphTop>=top&&glyphBottom<=bottom)
           .put("wholeLabel",labels[i].equals(label)&&layout.getText().toString().equals(label)
@@ -84,7 +100,17 @@ final class NavigationTypographyEvidence implements ViewTreeObserver.OnPreDrawLi
           .put("horizontalLineFits",lineLeft>=left-.5f&&lineRight<=right+.5f)
           .put("horizontalGlyphFits",layout.getParagraphDirection(0)==1&&glyphLeft>=left-.5f&&glyphRight<=right+.5f)
           .put("verticalUnscrolled",b.getScrollY()==0)
-          .put("selectionMatches",b.isSelected()==(i==selected));
+          .put("selectionMatches",b.isSelected()==expectedSelected)
+          .put("iconSolidMatchesSelection",icon!=null&&icon.solid==expectedSelected)
+          .put("iconInkMatchesSelection",icon!=null&&icon.color==expectedInk)
+          .put("labelInkMatchesSelection",b.getCurrentTextColor()==expectedInk)
+          .put("buttonIdentityStable",b==initialButtons[i])
+          .put("buttonBoundsStable",buttonBounds.equals(initialButtonBounds[i]))
+          .put("iconBoundsStable",iconBounds.width()>0&&iconBounds.height()>0&&iconBounds.equals(initialIconBounds[i]))
+          .put("iconStatesRenderNonempty",rendered.optBoolean("bothNonempty"))
+          .put("iconStatesRenderDifferently",rendered.optBoolean("imagesDiffer"))
+          .put("iconRenderStateRestored",rendered.optBoolean("stateRestored"))
+          .put("minimumTouchTarget",b.getWidth()>=ReferenceUi.dp(activity,48)&&b.getHeight()>=ReferenceUi.dp(activity,48));
         boolean valid=true;java.util.Iterator<String> keys=checks.keys();while(keys.hasNext())valid&=checks.getBoolean(keys.next());
         rows.put(new JSONObject().put("buttonIndex",i).put("label",label).put("selected",b.isSelected())
           .put("width",b.getWidth()).put("height",b.getHeight()).put("layoutHeight",layout.getHeight())
@@ -99,6 +125,11 @@ final class NavigationTypographyEvidence implements ViewTreeObserver.OnPreDrawLi
           .put("glyphBounds",new JSONArray(new int[]{glyph.left,glyph.top,glyph.right,glyph.bottom}))
           .put("glyphTop",glyphTop).put("glyphBottom",glyphBottom).put("textSizePx",b.getTextSize())
           .put("includeFontPadding",b.getIncludeFontPadding()).put("fallbackLineSpacing",Build.VERSION.SDK_INT>=28&&b.isFallbackLineSpacing())
+          .put("icon",new JSONObject().put("name",icon==null?JSONObject.NULL:icon.name)
+            .put("solid",icon==null?JSONObject.NULL:icon.solid).put("color",icon==null?JSONObject.NULL:icon.color)
+            .put("expectedColor",expectedInk).put("bounds",new JSONArray(new int[]{iconBounds.left,iconBounds.top,iconBounds.right,iconBounds.bottom})))
+          .put("buttonBounds",new JSONArray(new int[]{buttonBounds.left,buttonBounds.top,buttonBounds.right,buttonBounds.bottom}))
+          .put("iconRendering",rendered)
           .put("checks",checks).put("valid",valid));
       }
       String snapshot=rows.toString();
@@ -122,6 +153,38 @@ final class NavigationTypographyEvidence implements ViewTreeObserver.OnPreDrawLi
       }});
     }catch(Exception failure){failed(failure);}
     return true;
+  }
+
+  /** Render the real drawable off-screen once per glyph/size; restore its live state. */
+  JSONObject iconRendering(Ui.Icon icon)throws Exception{
+    if(icon==null)return new JSONObject();
+    Rect savedBounds=new Rect(icon.getBounds());int width=savedBounds.width(),height=savedBounds.height();
+    if(width<=0||height<=0)return new JSONObject();
+    String key=icon.name+":"+width+"x"+height;JSONObject cached=iconRenderings.get(key);if(cached!=null)return cached;
+    boolean savedSolid=icon.solid;int savedColor=icon.color;
+    Bitmap bitmap=Bitmap.createBitmap(width,height,Bitmap.Config.ARGB_8888);
+    int[] outline=new int[width*height],solid=new int[width*height];
+    try{
+      icon.setBounds(0,0,width,height);icon.solid=false;icon.draw(new Canvas(bitmap));
+      bitmap.getPixels(outline,0,width,0,0,width,height);
+      bitmap.eraseColor(0);icon.solid=true;icon.draw(new Canvas(bitmap));
+      bitmap.getPixels(solid,0,width,0,0,width,height);
+    }finally{icon.solid=savedSolid;icon.color=savedColor;icon.setBounds(savedBounds);bitmap.recycle();}
+    JSONObject outlined=pixels(outline),filled=pixels(solid);
+    JSONObject result=new JSONObject().put("actualAndroidBitmapRendering",true)
+      .put("width",width).put("height",height).put("sampleColor",savedColor)
+      .put("outline",outlined).put("solid",filled)
+      .put("bothNonempty",outlined.getInt("nonTransparentPixels")>0&&filled.getInt("nonTransparentPixels")>0)
+      .put("imagesDiffer",!java.util.Arrays.equals(outline,solid))
+      .put("stateRestored",icon.solid==savedSolid&&icon.color==savedColor&&icon.getBounds().equals(savedBounds));
+    iconRenderings.put(key,result);return result;
+  }
+  static JSONObject pixels(int[] pixels)throws Exception{
+    int nonTransparent=0;long alphaSum=0;ByteBuffer bytes=ByteBuffer.allocate(pixels.length*4);
+    for(int pixel:pixels){int alpha= pixel>>>24;if(alpha>0)nonTransparent++;alphaSum+=alpha;bytes.putInt(pixel);}
+    byte[] digest=MessageDigest.getInstance("SHA-256").digest(bytes.array());StringBuilder hex=new StringBuilder();
+    for(byte value:digest){hex.append(Character.forDigit((value>>>4)&15,16));hex.append(Character.forDigit(value&15,16));}
+    return new JSONObject().put("nonTransparentPixels",nonTransparent).put("alphaSum",alphaSum).put("argbSha256",hex.toString());
   }
 
   JSONObject base(String kind)throws Exception{

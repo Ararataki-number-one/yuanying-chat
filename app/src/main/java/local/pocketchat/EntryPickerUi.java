@@ -45,6 +45,7 @@ final class EntryPickerUi {
     public View getView(int position,View recycled,ViewGroup parent){
       boolean random=NetworkOptimizationPolicy.pooled(mode);CompoundButton button=random?(recycled instanceof CheckBox?(CheckBox)recycled:new CheckBox(a)):(recycled instanceof RadioButton?(RadioButton)recycled:new RadioButton(a));String node=getItem(position);boolean selected=random?pool.contains(node):node.equals(entry);
       button.setText(NodeRegion.label(NativeNetwork.display(node)));button.setTextSize(14);button.setTextColor(ReferenceUi.TEXT);button.setButtonTintList(ColorStateList.valueOf(ReferenceUi.BLUE));button.setChecked(selected);button.setSingleLine(true);button.setEllipsize(android.text.TextUtils.TruncateAt.END);button.setContentDescription(NodeRegion.label(NativeNetwork.display(node))+"，地区来自节点名称");button.setBackground(ReferenceUi.surface(a,selected?0xfff7faff:ReferenceUi.WHITE,12,selected?0xff8fb4ff:ReferenceUi.LINE));button.setPadding(dp(7),0,dp(7),0);button.setMinHeight(dp(48));button.setMinimumHeight(dp(48));
+      NetworkCountryIcon.bind(button,NetworkCountryHint.code(node),"node",16);
       button.setOnClickListener(v->{if(checking){notifyDataSetChanged();return;}if(random){if(button.isChecked())pool.add(node);else pool.remove(node);if(!pool.contains(entry))entry="";updateResult();}else entry=node;notifyDataSetChanged();});return button;
     }
   }

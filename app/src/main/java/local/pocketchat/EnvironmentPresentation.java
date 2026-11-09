@@ -5,6 +5,10 @@ import org.json.*;
 
 /** Display-only values exclude heartbeat timestamps and hidden draft/configuration payloads. */
 final class EnvironmentPresentation {
+  private static final String[] GLYPHS={"env-orbit","env-grid","env-layers","env-diamond",
+      "env-flower","env-rings","env-hex","env-arc"};
+  /** Stable visual identity only; renames and runtime state never choose an icon. */
+  static String glyph(int slot){return GLYPHS[Math.max(0,Math.min(GLYPHS.length-1,slot))];}
   static String key(JSONObject row){return new JSONArray().put(row.optInt("slot")).put(row.optInt("generation")).put(row.optString("environmentId")).toString();}
   static boolean active(JSONObject row,Set<Integer> running){return running.contains(row.optInt("pid"));}
   static boolean fresh(JSONObject row,long now){long seen=row.optLong("seen");return seen>0&&now>=seen&&now-seen<60000;}
