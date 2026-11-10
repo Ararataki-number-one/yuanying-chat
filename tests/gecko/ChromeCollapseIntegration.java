@@ -12,6 +12,24 @@ final class ChromeCollapseIntegration {
   static final String TARGET=MainActivity.ORIGIN+"c/reload-collapse";
   static final String TELEMETRY="JSON.parse(document.documentElement.dataset.chromeInputEvidence||'null')";
   static final String TELEMETRY_READY="t?.schema===1&&t.realm==='page-main-world'&&t.document===document.documentElement.dataset.reloadDocument&&Array.isArray(t.events)&&t.listenerTypes?.includes('touchend')";
+  // The retained synthetic task keeps generating. Activity/native-page returns
+  // legitimately restart production reply polling after pauseObservers(); a
+  // permanently unchanged Stop-button fixture would become stalled after 120 s.
+  // Prepare only that paragraph in monospace before the first snapshot. Subsequent
+  // equal-length real text progress then keeps its line breaks and chrome geometry.
+  static final String REPLY_PROGRESS_SCRIPT=
+    "(expected)=>{const root=document.documentElement;const target='http://127.0.0.1:8765/c/reload-collapse';"
+    +"const user=document.querySelector('[data-user-message-bubble]');const reply=document.querySelector('[data-message-id=\"reload-reply\"] .markdown p');"
+    +"let trace;try{trace=JSON.parse(root.dataset.chromeInputEvidence||'null');}catch(e){return {installed:false};}"
+    +"if(location.href!==target||!/^[0-9a-f]{32}$/.test(expected)||root.dataset.reloadDocument!==expected||trace?.schema!==1||trace.realm!=='page-main-world'||trace.document!==expected||!user||user.textContent!=='already sent fixture question'||!reply||!document.querySelector('[data-testid=\"stop-button\"]'))return {installed:false};"
+    +"const prior=window.__chromeCollapseReplyProgress;if(prior)return {installed:prior.document===expected&&prior.reply===reply&&prior.active,document:expected};"
+    +"if(reply.textContent!=='Preserved controlled reply body.')return {installed:false};"
+    +"reply.style.fontFamily='monospace';"
+    +"const state={document:expected,reply,active:true,count:0,last:reply.textContent,timer:0};"
+    +"const stop=()=>{state.active=false;clearInterval(state.timer);};"
+    +"state.timer=setInterval(()=>{if(document.documentElement!==root||root.dataset.reloadDocument!==expected||location.href!==target||!reply.isConnected||reply.textContent!==state.last||!document.querySelector('[data-testid=\"stop-button\"]')){stop();return;}"
+    +"state.count=(state.count+1)%10000;state.last='Preserved controlled reply '+String(state.count).padStart(4,'0')+'.';reply.textContent=state.last;},30000);"
+    +"window.addEventListener('pagehide',stop,{once:true});window.__chromeCollapseReplyProgress=state;return {installed:true,document:expected};}";
   final CompactChromeIntegrationActivity a;
   final String nonce;
   final IntegrationEventStore events;
@@ -225,15 +243,20 @@ final class ChromeCollapseIntegration {
   }
   void ready(long deadline){
     readyEvaluations++;if(readyEvaluations==1)diagnostic("ready-evaluate");
-    a.remote.evaluateJavascript("(()=>{const t="+TELEMETRY+";return {ready:!!document.getElementById('prompt-textarea')&&!!document.documentElement.dataset.reloadDocument,telemetryReady:"+TELEMETRY_READY+"};})()",raw->{
+    a.remote.evaluateJavascript("(()=>{const t="+TELEMETRY+";return {ready:!!document.getElementById('prompt-textarea')&&!!document.documentElement.dataset.reloadDocument,fixtureDocument:document.documentElement.dataset.reloadDocument,telemetryReady:"+TELEMETRY_READY+"};})()",raw->{
       readyCallbacks++;if(readyCallbacks==1)diagnostic("ready-callback");
       if(!J.parse(raw).optBoolean("ready")||!J.parse(raw).optBoolean("telemetryReady")||!a.remote.hasVisibleDocument()){if(SystemClock.elapsedRealtime()>deadline){emit("error",J.obj("error","Controlled chrome document or shared-DOM telemetry timeout"));return;}a.handler.postDelayed(()->ready(deadline),100);return;}
+      final String fixtureDocument=J.parse(raw).optString("fixtureDocument");
+      a.remote.evaluateJavascript("("+REPLY_PROGRESS_SCRIPT+")("+JSONObject.quote(fixtureDocument)+")",progressRaw->{
+      JSONObject progress=J.parse(progressRaw);
+      if(SystemClock.elapsedRealtime()>deadline||!progress.optBoolean("installed")||!fixtureDocument.equals(progress.optString("document"))){emit("error",J.obj("error","Owned controlled reply progress setup failed"));return;}
       task=a.session.deliveries.begin(TARGET,"already sent fixture question",new JSONArray(),"web",null);
       // This owned task measures retention, not the independent reply worker.
       a.session.pending=J.obj("id",task,"kind","web","engine","gecko","confirmed",true,"webSuspended",true,"userKey","id:reload-user","prompt","already sent fixture question","confirmedUrl",TARGET,"expectedUrl",TARGET);
       a.session.conversation=TARGET;a.session.prefs.edit().putString("pending",a.session.pending.toString()).putString("conversation",TARGET).commit();
       // Only the actual usable SDK document dismisses the production loading cover.
       a.session.manualAttention=false;a.loading.update();web().tracking=true;a.handler.postDelayed(()->snapshot("ready"),300);
+      });
     });
   }
   void snapshot(String command){

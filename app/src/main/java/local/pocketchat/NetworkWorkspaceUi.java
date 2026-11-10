@@ -14,17 +14,20 @@ final class NetworkWorkspaceUi {
   void layout(){
     lastRendered="";root=DesignUi.column(a);root.setBackgroundColor(ReferenceUi.BG);
     root.setClipChildren(false);root.setClipToPadding(false);
-    LinearLayout head=DesignUi.row(a);head.setPadding(dp(22),dp(14),dp(18),dp(14));head.setClipChildren(false);head.setClipToPadding(false);
+    LinearLayout head=DesignUi.column(a);head.setPadding(dp(22),dp(14),dp(18),dp(14));head.setClipChildren(false);head.setClipToPadding(false);
+    LinearLayout headRow=DesignUi.row(a);headRow.setClipChildren(false);headRow.setClipToPadding(false);
     LinearLayout heading=DesignUi.column(a);heading.setGravity(Gravity.CENTER_VERTICAL);
     TextView title=NetworkWorkspaceStyle.text(a,"网络",ReferenceUi.PAGE_TITLE_SIZE,ReferenceUi.TEXT,true);
     if(Build.VERSION.SDK_INT>=28)title.setAccessibilityHeading(true);heading.addView(title);
     pageSummary=NetworkWorkspaceStyle.text(a,"正在读取网络信息",ReferenceUi.SECONDARY_SIZE,ReferenceUi.MUTED,false);
-    pageSummary.setPadding(0,dp(3),dp(6),0);pageSummary.setMaxLines(2);pageSummary.setEllipsize(android.text.TextUtils.TruncateAt.END);heading.addView(pageSummary);
-    head.addView(heading,new LinearLayout.LayoutParams(0,-2,1));
+    pageSummary.setPadding(0,dp(3),dp(6),0);pageSummary.setMaxLines(2);pageSummary.setEllipsize(android.text.TextUtils.TruncateAt.END);
+    headRow.addView(heading,new LinearLayout.LayoutParams(0,-2,1));
     Button refresh=NetworkWorkspaceStyle.glassAction(a,"refresh","刷新网络状态",()->{lastRead=0;fetch();});
-    head.addView(refresh,new LinearLayout.LayoutParams(dp(50),dp(50)));
+    headRow.addView(refresh,new LinearLayout.LayoutParams(dp(50),dp(50)));
     Button more=NetworkWorkspaceStyle.glassAction(a,"more","网络更多操作",this::networkMore);
-    LinearLayout.LayoutParams menu=new LinearLayout.LayoutParams(dp(50),dp(50));menu.leftMargin=dp(8);head.addView(more,menu);root.addView(head);
+    LinearLayout.LayoutParams menu=new LinearLayout.LayoutParams(dp(50),dp(50));menu.leftMargin=dp(8);headRow.addView(more,menu);head.addView(headRow);
+    // Let the summary use the full header width when accessibility fonts expand.
+    head.addView(pageSummary,new LinearLayout.LayoutParams(-1,-2));root.addView(head);
     tabHost=DesignUi.column(a);tabHost.setPadding(dp(20),0,dp(20),dp(14));root.addView(tabHost);
     filterButton=NetworkWorkspaceStyle.smallAction(a,"",()->{filter=0;focus=-1;scroll.scrollTo(0,0);render();});
     filterButton.setContentDescription("清除网络筛选");filterButton.setVisibility(View.GONE);
