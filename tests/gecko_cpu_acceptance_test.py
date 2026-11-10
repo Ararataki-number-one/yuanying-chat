@@ -18,6 +18,7 @@ import unittest
 from unittest.mock import patch
 from zipfile import ZipFile
 import yaml
+from cellular_workflow_source_compatibility import historical_workflow_text as cellular_workflow_history_input
 ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT/'tools/gecko'))
 sys.path.insert(0,str(ROOT/'tools/browser'))
@@ -372,7 +373,7 @@ process.stdout.write(JSON.stringify({hostAsset:true,actualAndroidExecution:false
                 self.assertNotIn(token,asset)
     def test_workflow_exact_source_same_run_restore_fixed_four_cpu_and_readonly_permissions(self):
         workflow=yaml.safe_load((ROOT/'.github/workflows/gecko-cpu-acceptance.yml').read_text())
-        original=yaml.safe_load((ROOT/'.github/workflows/browser-2_1-acceptance.yml').read_text())
+        original=yaml.safe_load(cellular_workflow_history_input((ROOT/'.github/workflows/browser-2_1-acceptance.yml').read_text()))
         self.assertEqual(workflow['permissions'],{'contents':'read'});self.assertEqual(workflow['on']['push']['branches'],['diagnostics/gecko-cpu-*'])
         self.assertEqual(workflow['env'],original['env']);self.assertEqual(set(workflow['jobs']),{'build','gecko_cpu_acceptance'})
         build=workflow['jobs']['build'];diagnostic=workflow['jobs']['gecko_cpu_acceptance'];self.assertEqual(diagnostic['needs'],'build')

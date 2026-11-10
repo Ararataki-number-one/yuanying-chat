@@ -12,6 +12,7 @@ import browser_acceptance_workflow_test as browser_workflow
 import gradle_transport_source_compatibility as transport
 import ui_checkpoint_source_compatibility as checkpoint
 from environment_workspace_workflow_source_compatibility import PATH as ENVIRONMENT_WORKFLOW_PATH, source_input as environment_workflow_source_input
+from cellular_workflow_source_compatibility import historical_input as cellular_workflow_source_input
 
 ROOT = Path(__file__).resolve().parents[1]
 ASSET = b'https://api.github.com/repos/gradle/gradle-distributions/releases/assets/586068844'
@@ -26,6 +27,7 @@ class GradleTransportSourceCompatibilityTests(unittest.TestCase):
         self.assertEqual(tree, value['baseTree'])
         for path, row in value['files'].items():
             raw = environment_workflow_source_input((ROOT / path).read_bytes(), path) if path == ENVIRONMENT_WORKFLOW_PATH else (ROOT / path).read_bytes()
+            raw = cellular_workflow_source_input(raw, path)
             before = subprocess.check_output(['git', '--no-replace-objects', 'show', value['baseCommit'] + ':' + path], cwd=ROOT, env=environment)
             self.assertEqual(transport.source_input(raw, path), before)
             delta = row['deltas'][0]
@@ -41,6 +43,7 @@ class GradleTransportSourceCompatibilityTests(unittest.TestCase):
     def test_fixed_asset_size_checksum_and_unknown_missing_moved_hunks_fail_closed(self):
         for path, row in transport.manifest()['files'].items():
             raw = environment_workflow_source_input((ROOT / path).read_bytes(), path) if path == ENVIRONMENT_WORKFLOW_PATH else (ROOT / path).read_bytes()
+            raw = cellular_workflow_source_input(raw, path)
             current = row['deltas'][0]['current'].encode()
             remaining = raw.replace(current, b'', 1)
             changes = [raw + b'\n', raw[:1024], remaining,

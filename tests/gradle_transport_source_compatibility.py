@@ -79,3 +79,14 @@ def wrap_checkpoint_workflow(original):
     def historical_workflow(raw):
         return original(canonical_history_input(raw))
     return historical_workflow
+
+
+# Only exact reviewed preparation inputs are reversed for historical oracles.
+# Current execution and current YAML checks keep the complete actual workflow.
+import importlib.util as _cellular_import
+_cellular_spec = _cellular_import.spec_from_file_location('selected_cellular_workflow_source_input', Path(__file__).with_name('cellular_workflow_source_compatibility.py'))
+_cellular_input = _cellular_import.module_from_spec(_cellular_spec)
+_cellular_spec.loader.exec_module(_cellular_input)
+source_input = _cellular_input.wrap_bytes(source_input)
+canonical_history_input = _cellular_input.wrap_workflow(canonical_history_input)
+historical_toolchain_step = _cellular_input.wrap_step(historical_toolchain_step)

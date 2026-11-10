@@ -122,6 +122,12 @@ jobs:
         python3 tests/gecko_source_route_logcat_test.py
         python3 -m unittest discover -s tests -p 'gecko_experience*_test.py'
         python3 tools/build-mihomo.py --verify
+    - name: Verify strict cellular emulator preparation controls
+      shell: bash
+      run: |
+        set -euo pipefail
+        python3 tests/gecko_cellular_bootstrap_test.py
+        python3 tests/profile_cellular_workflow_source_compatibility_test.py
     - name: Prepare locked toolchain
       shell: bash
       run: |
@@ -559,9 +565,9 @@ jobs:
         timeout 300 bash -c 'until [ "$(adb -s emulator-5556 shell getprop sys.boot_completed | tr -d "\r")" = "1" ]; do sleep 2; done'
         adb -s emulator-5556 shell input keyevent 82
         adb -s emulator-5556 install app/build/outputs/apk/integration/app-x86_64-integration.apk
-        python3 tools/gecko/prepare_native_adb.py --adb "$(command -v adb)" --apk app/build/outputs/apk/integration/app-x86_64-integration.apk --monitor "$PWD/work/gecko-integration/qemu-monitor.sock"
+        python3 tools/gecko/prepare_cellular_adb.py --phase native --adb "$(command -v adb)" --apk app/build/outputs/apk/integration/app-x86_64-integration.apk --monitor "$PWD/work/gecko-integration/qemu-monitor.sock"
         echo "ANDROID_SERIAL=emulator-5554" >> "$GITHUB_ENV"
-        python3 tools/gecko/prepare_emulator.py --adb "$(command -v adb)" --serial emulator-5554 --apk app/build/outputs/apk/integration/app-x86_64-integration.apk
+        python3 tools/gecko/prepare_cellular_adb.py --phase normal --adb "$(command -v adb)" --serial emulator-5554 --apk app/build/outputs/apk/integration/app-x86_64-integration.apk
         python3 tools/gecko/isolate_emulator_background.py --adb "$(command -v adb)" --serial emulator-5554 --apk app/build/outputs/apk/integration/app-x86_64-integration.apk
         python3 -c "$ANDROID_CAPACITY_PREFLIGHT" guest '${{ matrix.scenario }}'
     - name: Diagnose original chrome collapse flow only
@@ -667,9 +673,9 @@ jobs:
         timeout 300 bash -c 'until [ "$(adb -s emulator-5556 shell getprop sys.boot_completed | tr -d "\r")" = "1" ]; do sleep 2; done'
         adb -s emulator-5556 shell input keyevent 82
         adb -s emulator-5556 install app/build/outputs/apk/integration/app-x86_64-integration.apk
-        python3 tools/gecko/prepare_native_adb.py --adb "$(command -v adb)" --apk app/build/outputs/apk/integration/app-x86_64-integration.apk --monitor "$PWD/work/gecko-integration/qemu-monitor.sock"
+        python3 tools/gecko/prepare_cellular_adb.py --phase native --adb "$(command -v adb)" --apk app/build/outputs/apk/integration/app-x86_64-integration.apk --monitor "$PWD/work/gecko-integration/qemu-monitor.sock"
         echo "ANDROID_SERIAL=emulator-5554" >> "$GITHUB_ENV"
-        python3 tools/gecko/prepare_emulator.py --adb "$(command -v adb)" --serial emulator-5554 --apk app/build/outputs/apk/integration/app-x86_64-integration.apk
+        python3 tools/gecko/prepare_cellular_adb.py --phase normal --adb "$(command -v adb)" --serial emulator-5554 --apk app/build/outputs/apk/integration/app-x86_64-integration.apk
         python3 tools/gecko/isolate_emulator_background.py --adb "$(command -v adb)" --serial emulator-5554 --apk app/build/outputs/apk/integration/app-x86_64-integration.apk
         python3 -c "$ANDROID_CAPACITY_PREFLIGHT" guest '${{ matrix.phase }}'
     - name: Record bounded native setup endpoint diagnostics
@@ -939,9 +945,9 @@ jobs:
         timeout 300 bash -c 'until [ "$(adb -s emulator-5556 shell getprop sys.boot_completed | tr -d "\r")" = "1" ]; do sleep 2; done'
         adb -s emulator-5556 shell input keyevent 82
         adb -s emulator-5556 install app/build/outputs/apk/integration/app-x86_64-integration.apk
-        python3 tools/gecko/prepare_native_adb.py --adb "$(command -v adb)" --apk app/build/outputs/apk/integration/app-x86_64-integration.apk --monitor "$PWD/work/gecko-integration/qemu-monitor.sock"
+        python3 tools/gecko/prepare_cellular_adb.py --phase native --adb "$(command -v adb)" --apk app/build/outputs/apk/integration/app-x86_64-integration.apk --monitor "$PWD/work/gecko-integration/qemu-monitor.sock"
         echo "ANDROID_SERIAL=emulator-5554" >> "$GITHUB_ENV"
-        python3 tools/gecko/prepare_emulator.py --adb "$(command -v adb)" --serial emulator-5554 --apk app/build/outputs/apk/integration/app-x86_64-integration.apk
+        python3 tools/gecko/prepare_cellular_adb.py --phase normal --adb "$(command -v adb)" --serial emulator-5554 --apk app/build/outputs/apk/integration/app-x86_64-integration.apk
         python3 tools/gecko/isolate_emulator_background.py --adb "$(command -v adb)" --serial emulator-5554 --apk app/build/outputs/apk/integration/app-x86_64-integration.apk
         python3 -c "$ANDROID_CAPACITY_PREFLIGHT" guest '${{ matrix.sample }}'
     - name: Run one original workload on this independent Android device
@@ -1172,7 +1178,7 @@ jobs:
         timeout 300 bash -c 'until [ "$(adb -s emulator-5554 shell getprop sys.boot_completed | tr -d "\r")" = "1" ]; do sleep 2; done'
         adb -s emulator-5554 shell input keyevent 82
         adb -s emulator-5554 install -r app/build/outputs/apk/integration/app-x86_64-integration.apk
-        python3 tools/gecko/prepare_emulator.py --adb "$(command -v adb)" --serial emulator-5554 --apk app/build/outputs/apk/integration/app-x86_64-integration.apk
+        python3 tools/gecko/prepare_cellular_adb.py --phase normal --adb "$(command -v adb)" --serial emulator-5554 --apk app/build/outputs/apk/integration/app-x86_64-integration.apk
         python3 tools/gecko/isolate_emulator_background.py --adb "$(command -v adb)" --serial emulator-5554 --apk app/build/outputs/apk/integration/app-x86_64-integration.apk
     - name: Execute real WebView, file picker, native download and engine-task roundtrip checks
       run: python3 tools/browser/run_integration.py --adb "$(command -v adb)" --serial emulator-5554 --output work/browser-acceptance
@@ -1306,7 +1312,7 @@ jobs:
 
         adb -s emulator-5554 install -r app/build/outputs/apk/integration/app-x86_64-integration.apk
 
-        python3 tools/gecko/prepare_emulator.py --adb "$(command -v adb)" --serial emulator-5554
+        python3 tools/gecko/prepare_cellular_adb.py --phase normal --adb "$(command -v adb)" --serial emulator-5554
         --apk app/build/outputs/apk/integration/app-x86_64-integration.apk
 
         python3 tools/gecko/isolate_emulator_background.py --adb "$(command -v adb)"
