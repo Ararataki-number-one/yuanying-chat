@@ -29,10 +29,13 @@ final class GeckoAddressUi {
   static void show(MainActivity a){
     if(!available(a))return;GeckoAddressUi owner=a.geckoAddress;if(owner==null)return;if(owner.dialog!=null&&owner.dialog.isShowing()){owner.focusEditor(false);return;}
     LinearLayout box=DesignUi.column(a);box.setPadding(a.dp(18),a.dp(8),a.dp(18),a.dp(12));
-    EditText input=DesignUi.input(box,"网址或搜索",owner.current(),"输入网址或搜索内容");input.setInputType(InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_URI);input.setSingleLine(true);input.setImeOptions(EditorInfo.IME_ACTION_GO|EditorInfo.IME_FLAG_NO_EXTRACT_UI);
-    TextView notice=DesignUi.text(a,"",13,DesignUi.RED);notice.setAccessibilityLiveRegion(android.view.View.ACCESSIBILITY_LIVE_REGION_POLITE);box.addView(notice);
+    EditText input=DesignUi.input(box,"",owner.current(),"输入网址或搜索内容");input.setContentDescription("网址或搜索");input.setInputType(InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_URI);input.setSingleLine(true);input.setImeOptions(EditorInfo.IME_ACTION_GO|EditorInfo.IME_FLAG_NO_EXTRACT_UI);
+    TextView notice=DesignUi.text(a,"",13,DesignUi.RED);notice.setVisibility(View.GONE);notice.setAccessibilityLiveRegion(android.view.View.ACCESSIBILITY_LIVE_REGION_POLITE);box.addView(notice);
     AlertDialog dialog=AppAppearance.dialog(a).setTitle("打开网址").setView(box).setPositiveButton("前往",null).setNeutralButton("主页",null).setNegativeButton("取消",null).create();owner.dialog=dialog;owner.editor=input;
-    Runnable submit=()->{if(!available(a)||owner.dialog!=dialog||!dialog.isShowing())return;try{String raw=input.getText().toString();String url=raw.trim().isEmpty()?BrowserPreferences.home(a):GeckoNavigationPolicy.normalizeInput(raw);long before=a.session.navigationEpoch;a.session.browse(url,"正在打开网页…");if(a.session.navigationEpoch!=before&&a.session.navigating&&url.equals(a.session.navigationTarget)){dialog.dismiss();a.showPage(true);owner.refresh();}else notice.setText(a.session.status);}catch(IllegalArgumentException invalid){notice.setText(invalid.getMessage());input.setError(invalid.getMessage());}};
+    Runnable submit=()->{if(!available(a)||owner.dialog!=dialog||!dialog.isShowing())return;try{String raw=input.getText().toString();String url=raw.trim().isEmpty()?BrowserPreferences.home(a):GeckoNavigationPolicy.normalizeInput(raw);long before=a.session.navigationEpoch;a.session.browse(url,"正在打开网页…");if(a.session.navigationEpoch!=before&&a.session.navigating&&url.equals(a.session.navigationTarget)){dialog.dismiss();a.showPage(true);owner.refresh();}else{notice.setText(a.session.status);notice.setVisibility(View.VISIBLE);}}catch(IllegalArgumentException invalid){notice.setText(invalid.getMessage());notice.setVisibility(View.VISIBLE);input.setError(invalid.getMessage());}};
+    // Keep the compact address form anchored while the keyboard changes the
+    // available height; repeated headings and an empty error row waste that space.
+    dialog.getWindow().setGravity(android.view.Gravity.TOP|android.view.Gravity.CENTER_HORIZONTAL);
     dialog.getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE|WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_VISIBLE);
     dialog.show();
     // The shared form styling runs on attachment and changes a final field to DONE.

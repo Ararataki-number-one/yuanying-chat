@@ -11,12 +11,14 @@
 完整发布流程显式选择新的 `prepare_cellular_adb.py` 入口，仅准备本次全新合成模拟器已有的移动数据网络：
 
 1. 读取固定目标的真实 QEMU 标志、原有输入设置及带新 nonce 的实际 CM 观察；核验本次源码、SDK 与安装 APK 身份。初始 CM 必须有稳定的 `INTERNET` 网络，允许是初始 Wi-Fi；不通过启用 Wi-Fi、修改 mobile data 或切换飞行模式补救。
-2. 完成原 SDK 设置包的停用和读回后，必须观察到真实、稳定、仅含 `cellular` transport 的默认网络。随后最多一次关闭 Wi-Fi，读回关闭状态与 `wlan0` IPv4 撤销，并使用另一新 nonce 确认同一个 cellular 网络仍有 `INTERNET`。缺少该前提就停止，不能回退 Wi-Fi 后继续。
+2. 完成原 SDK 设置包的停用和读回后，必须观察到真实、稳定、仅含 `cellular` transport 的默认网络。SDK 包停用后的切换期可以暂时没有默认网络：仅在本次停用已经确认、原身份/JSON/nonce 校验全部成功、前后网络 ID 及 capabilities 都为空、全部能力和可用性布尔值均为 `false`、transport 精确为空列表时，允许在原准备截止时间内继续只读观察。每次使用新 nonce，原空状态保留为不可用，不能计作通过；非空 Wi-Fi/VPN/混合 transport、格式/身份错误、命令失败或超时立即停止。首次真实 cellular 网络就绪后最多一次关闭 Wi-Fi，读回关闭状态与 `wlan0` IPv4 撤销，并使用另一新 nonce 直接确认同一个 cellular 网络仍有 `INTERNET`；该最终确认不等待或重试。缺少两次相邻的严格 cellular 证明就停止，不能回退 Wi-Fi 后继续。
 3. 对需要原生 TCP 的三类作业，在 `emulator-5556` 启动通道上核验实际 `eth0` 地址 `10.0.2.15`，读取 `ip -4 route get 10.0.2.2 from 10.0.2.15`，并核验真实 QEMU `mynet` user backend。创建唯一的 `127.0.0.1:5555 → 10.0.2.15:5555` 转发；已有冲突转发直接拒绝。
 4. 只调用一次 `tcpip`，保留原 CNXN header 探测、单向注册通知和真实 `emulator-5554 get-state` 就绪检查。切换后不再向启动通道发命令。浏览器与 TLS 作业保留原来的 `-port 5554` 启动和 ADB 通道，仅选择同一严格 cellular 前置检查。
 5. 所有正式用例仍针对 `emulator-5554`，继续运行原来的 APK 字节、ZIP/DEX、SDK、源码、IME、启动器和输入断言。新准备器复用原有身份与 CM 读取、有限命令执行及原生协议检查，不运行会重新启用 Wi-Fi 的旧准备分支。
 
 新入口不延长原准备预算：native 准备为 45 秒，源地址返回路由最多 30 秒，普通命令最多 8 秒；CNXN endpoint 检查为 8 秒，native device 就绪最多 30 秒。normal 准备仍为总计 45 秒，其中保留原 12 秒诊断时间。工作负载中的输入、断言、reader、时限与采样次数保持不变。
+
+在 [42800077619 / attempt 1](https://github.com/Ararataki-number-one/yuanying-chat/actions/runs/42800077619) 中，profiles 与 files 的原始准备记录都显示：最初是可用 Wi-Fi；SDK 包确认停用后第一次实际 CM 读取返回完整合法的空默认网络，ADB 命令成功、身份正确，但网络尚不可用。两项作业因此在调用任何应用工作负载之前失败。当时原准备预算仍各剩约 39 秒。这些失败只支持在既有预算内等待严格验证过的空网络切换，不能证明网络后来一定恢复，也不为该构建授予发布资格。
 
 `host:emulator` 是单向注册通知，不返回普通服务的 `OKAY`。实现依照 [AOSP 的通知测试](https://github.com/mirror/platform_packages_modules_adb/blob/1cf2f017d312f73b3dc53bda85ef2610e35a80e9/test_adb.py) 发送帧后关闭，再用真实 `get-state` 确认设备就绪。先前误加的 `OKAY` 判断使 eb927 构建的七个设备在启动阶段停止，未运行输入用例；该失败保留为失败，后续使用新源码重新构建。
 

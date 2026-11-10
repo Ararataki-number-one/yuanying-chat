@@ -50,6 +50,12 @@ def observation(nonce):
                 internetCapability=True, stableDuringRead=True, usable=True, transports=['cellular'])
 
 
+def empty_default(value):
+    value.update(activeNetwork='', activeNetworkAfter='', capabilitiesPresent=False,
+                 internetCapability=False, stableDuringRead=False, usable=False,
+                 transports=[], capabilities='')
+
+
 def record():
     return dict(sourceCommit='a' * 40, sourceTree='b' * 40, networkMode='cellular',
                 commands=[], networkObservations=[], initialInputSettings={},
@@ -122,6 +128,7 @@ class DeviceIO:
         self.wifi = wifi
         self.edits = edits or {}
         self.observations = 0
+        self.package_present = True
         self.package_disabled = False
         self.properties = {'ro.kernel.qemu': '1', 'ro.build.version.sdk': '35',
                            'ro.product.cpu.abi': 'x86_64', 'ro.hardware': 'ranchu',
@@ -158,7 +165,8 @@ class DeviceIO:
         elif parts[:4] == ('shell', 'settings', 'get', 'secure'):
             stdout = 'synthetic-read-only-input-setting'
         elif parts[:4] == ('shell', 'pm', 'list', 'packages'):
-            stdout = 'package:' + setup.normal.PACKAGE if '-d' not in parts or self.package_disabled else ''
+            stdout = ('package:' + setup.normal.PACKAGE
+                      if self.package_present and ('-d' not in parts or self.package_disabled) else '')
         elif parts == ('shell', 'am', 'force-stop', setup.normal.PACKAGE): pass
         elif parts == ('shell', 'pm', 'disable-user', '--user', '0', setup.normal.PACKAGE):
             self.package_disabled = True
@@ -259,6 +267,101 @@ class CellularPreparationControls(unittest.TestCase):
         self.assertEqual(receipt['cellularPreparation']['deadlineMonotonic'], 33)
         self.assertTrue(all(c[0][2] == 'emulator-5554' for c in device.calls))
         self.assert_no_network_policy_rewrite(device)
+
+    def test_empty_handover_reads_are_not_promoted_and_two_cellular_proofs_still_required(self):
+        for normal, budget in ((False, 45), (True, 33)):
+            with self.subTest(normal=normal):
+                device = DeviceIO(edits={1: empty_default, 2: empty_default})
+                receipt = record()
+                with device.installed(): device.prepare(receipt, normal=normal, budget=budget)
+                stage, rows = receipt['cellularPreparation'], receipt['networkObservations']
+                self.assertEqual(stage['status'], 'passed')
+                self.assertEqual(stage['deadlineMonotonic'], budget)
+                self.assertEqual(stage['emptyDefaultNetworkObservationIndices'], [1, 2])
+                self.assertEqual(stage['firstCellularObservationIndex'], 3)
+                self.assertEqual(stage['confirmationCellularObservationIndex'], 4)
+                self.assertEqual(len({row['runNonce'] for row in rows}), 5)
+                for row in rows[1:3]:
+                    self.assertIs(row['value']['usable'], False)
+                    self.assertEqual(row['value']['transports'], [])
+                for row in rows[3:]:
+                    self.assertIs(row['value']['usable'], True)
+                    self.assertEqual(row['value']['transports'], ['cellular'])
+                self.assertEqual(rows[3]['value']['activeNetwork'], rows[4]['value']['activeNetwork'])
+                self.assertEqual(stage['wifiDisableAttempts'], 1)
+                self.assertFalse(stage['originalWorkloadInvoked'])
+                self.assert_no_network_policy_rewrite(device)
+
+    def test_no_cellular_network_exhausts_existing_budget_without_mutation_or_fallback(self):
+        device, receipt = DeviceIO(edits={i: empty_default for i in range(1, 100)}), record()
+        with device.installed(), self.assertRaises(TimeoutError): device.prepare(receipt, budget=3)
+        stage = receipt['cellularPreparation']
+        self.assertEqual(stage['status'], 'failed')
+        self.assertEqual(stage['deadlineMonotonic'], 3)
+        self.assertLessEqual(device.clock.now(), 3)
+        self.assertGreater(len(stage['emptyDefaultNetworkObservationIndices']), 1)
+        self.assertNotIn('firstCellularObservationIndex', stage)
+        self.assertEqual(stage['wifiDisableAttempts'], 0)
+        self.assertTrue(all(timeout <= 3 for _, timeout in device.calls))
+        self.assert_no_network_policy_rewrite(device)
+
+    def test_only_exact_empty_default_can_wait_after_confirmed_sdk_teardown(self):
+        edits = [lambda v: v.pop('capabilities'), lambda v: v.update(capabilities=None),
+                 lambda v: v.update(capabilities='unknown'), lambda v: v.pop('transports'),
+                 lambda v: v.update(transports=['wifi']), lambda v: v.update(transports=['vpn']),
+                 lambda v: v.update(transports=['cellular', 'wifi']),
+                 lambda v: v.update(activeNetworkAfter='102'), lambda v: v.update(activeNetwork='101'),
+                 lambda v: v.update(androidSdk=36), lambda v: v.update(schema=True),
+                 lambda v: v.update(usable=0), lambda v: v.update(stableDuringRead=0),
+                 lambda v: v.update(internetCapability=0), lambda v: v.update(capabilitiesPresent=0)]
+        for number, edit in enumerate(edits):
+            def changed(value):
+                empty_default(value)
+                edit(value)
+            with self.subTest(mutation=number):
+                device, receipt = DeviceIO(edits={1: changed}), record()
+                with device.installed(), self.assertRaises(ValueError): device.prepare(receipt)
+                self.assertEqual(device.observations, 2)
+                self.assertEqual(receipt['cellularPreparation']['wifiDisableAttempts'], 0)
+                self.assertNotIn('emptyDefaultNetworkObservationIndices', receipt['cellularPreparation'])
+        device, receipt = DeviceIO(edits={1: empty_default}), record()
+        device.package_present = False
+        with device.installed(), self.assertRaises(ValueError): device.prepare(receipt)
+        self.assertFalse(receipt['disabledStateConfirmed'])
+        self.assertEqual(device.observations, 2)
+
+    def test_wait_does_not_swallow_later_invalid_identity_json_or_command_timeout(self):
+        for failure in ('source', 'apk', 'scope', 'json', 'timeout'):
+            with self.subTest(failure=failure):
+                device, receipt = DeviceIO(edits={1: empty_default}), record()
+                if failure == 'source': device.edits[2] = lambda v: v.update(sourceCommit='f' * 40)
+                elif failure == 'apk': device.edits[2] = lambda v: v['buildIdentity'].update(apkSha256='f' * 64)
+                elif failure == 'scope': device.edits[2] = lambda v: v.update(applicationAcceptance=True)
+                elif failure == 'json': device.provider_raw_at[2] = '{"unfinished":'
+                else: device.provider_timeout_at = 2
+                with device.installed(), self.assertRaises((ValueError, subprocess.TimeoutExpired)):
+                    device.prepare(receipt)
+                self.assertEqual(device.observations, 3)
+                self.assertEqual(receipt['cellularPreparation']['wifiDisableAttempts'], 0)
+                self.assertEqual(receipt['cellularPreparation']['emptyDefaultNetworkObservationIndices'], [1])
+
+    def test_empty_default_at_initial_or_final_observation_is_not_retried(self):
+        for index in (0, 2):
+            with self.subTest(index=index):
+                device, receipt = DeviceIO(edits={index: empty_default}), record()
+                with device.installed(), self.assertRaises(ValueError): device.prepare(receipt)
+                self.assertEqual(device.observations, index + 1)
+                self.assertNotIn('emptyDefaultNetworkObservationIndices', receipt['cellularPreparation'])
+
+    def test_duplicate_nonce_during_handover_stops_before_another_read(self):
+        for letters in (('e', 'e'), ('e', 'f', 'f'), ('e', 'f', 'e')):
+            with self.subTest(letters=letters):
+                device, receipt = DeviceIO(edits={1: empty_default, 2: empty_default}), record()
+                values = [SimpleNamespace(hex=x * 32) for x in letters]
+                with device.installed(), patch.object(setup.normal.uuid, 'uuid4', side_effect=values), self.assertRaises(ValueError):
+                    device.prepare(receipt)
+                self.assertEqual(device.observations, len(letters))
+                self.assertEqual(receipt['cellularPreparation']['wifiDisableAttempts'], 0)
 
     def test_async_wifi_teardown_repeats_reads_but_only_one_disable(self):
         device, receipt = DeviceIO(), record()

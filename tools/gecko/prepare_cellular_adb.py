@@ -35,6 +35,42 @@ def cellular_observation(commands, record, identity, phase):
     return index, row
 
 
+def cellular_after_setup(commands, record, identity):
+    """Wait only for a validated empty-default handover within the same budget.
+
+    SDK setup teardown can remove its Wi-Fi default before Android selects the
+    already enabled cellular network. An empty observation is retained as
+    unusable; it can never satisfy either of the two final cellular proofs.
+    """
+    while True:
+        index = len(record['networkObservations'])
+        usable = normal.network_observation(commands, record, identity,
+                                             'after-setup-package-handling-cellular')
+        rows = record['networkObservations']
+        require(len({row['runNonce'] for row in rows}) == len(rows),
+                'Every preparation network observation requires a fresh nonce')
+        row, value = rows[index], rows[index]['value']
+        if (usable and type(value.get('transports')) is list
+                and value['transports'] == ['cellular'] and value['androidSdk'] == 35):
+            return index, row
+        require(record.get('packagePresent') is True
+                and record.get('disabledStateConfirmed') is True
+                and type(value) is dict and type(value.get('schema')) is int and value['schema'] == 1
+                and type(value.get('androidSdk')) is int and value['androidSdk'] == 35
+                and usable is False
+                and value.get('activeNetwork') == '' and value.get('activeNetworkAfter') == ''
+                and all(value.get(key) is False for key in
+                        ('capabilitiesPresent', 'internetCapability', 'stableDuringRead', 'usable'))
+                and type(value.get('transports')) is list and value['transports'] == []
+                and type(value.get('capabilities')) is str and value['capabilities'] == '',
+                'Only an exact validated empty default network may await cellular handover')
+        record['cellularPreparation'].setdefault('emptyDefaultNetworkObservationIndices', []).append(index)
+        remaining = commands.deadline - time.monotonic()
+        if remaining <= 0:
+            raise TimeoutError('Cellular handover did not finish within the original preparation budget')
+        time.sleep(min(.25, remaining))
+
+
 def wifi_state(commands, stage):
     index = len(commands.record['commands'])
     raw = commands.run('shell', 'cmd', 'wifi', 'status')
@@ -86,8 +122,7 @@ def cellular_preflight(commands, record, identity):
             disabled = commands.run('shell', 'pm', 'list', 'packages', '-d', normal.PACKAGE).splitlines()
             require('package:' + normal.PACKAGE in disabled, 'Setup-package disabled state was not confirmed')
             record['disabledStateConfirmed'] = True
-        first_index, first = cellular_observation(commands, record, identity,
-                                                   'after-setup-package-handling-cellular')
+        first_index, first = cellular_after_setup(commands, record, identity)
         stage['firstCellularObservationIndex'] = first_index
         state = wifi_state(commands, stage)
         stage['wifiInitiallyDisabled'] = state == 'disabled'
@@ -117,7 +152,8 @@ def cellular_preflight(commands, record, identity):
                                                      'disabled-wifi-cellular-confirmation')
         stage['confirmationCellularObservationIndex'] = second_index
         require(second_index == first_index + 1
-                and len({initial_row['runNonce'], first['runNonce'], second['runNonce']}) == 3
+                and len({row['runNonce'] for row in record['networkObservations']})
+                    == len(record['networkObservations'])
                 and first['value']['activeNetwork'] == second['value']['activeNetwork'],
                 'Two fresh consecutive cellular observations must retain the same default-network identity')
         require(time.monotonic() < commands.deadline, 'Cellular confirmation exceeded the original preparation budget')
