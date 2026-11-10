@@ -1,0 +1,37 @@
+Loading local repository...                                                     [=========                              ] 25% Loading local repository...       [=========                              ] 25% Fetch remote repository...        [=======================================] 100% Fetch remote repository...       
+Auto-selecting single ABI x86_64
+Do you wish to create a custom hardware profile? [no] cannot connect to daemon at tcp:5037: Connection refused
+{"status": "passed", "setupOnly": true, "applicationAcceptance": false, "actualAndroidExecution": false, "workloadExecuted": false, "package": "platform-tools", "revision": "35.0.2", "url": "https://dl.google.com/android/repository/platform-tools_r35.0.2-linux.zip", "bytes": 7472902, "sha256": "acfdcccb123a8718c46c46c059b2f621140194e5ec1ac9d81715be3d6ab6cd0a", "ambientAdbSha256": "a902be8f45c6c62e76c9efaf6947a0fa747c9cabd89a2ac8e0d16ecb30b3ed01", "installedAdbSha256": "c46d072d4b4ba6d2f961ef6d0f01ffc35ed8093f1c263296659ebf56bccfc777", "actualVersion": "Android Debug Bridge version 1.0.41\nVersion 35.0.2-12147458\nInstalled as /usr/local/lib/android/sdk/platform-tools/adb\nRunning on Linux 7.0.0-1017-azure (x86_64)\n", "properties": {"Pkg.UserSrc": "false", "Pkg.Revision": "35.0.2"}}
+* daemon not running; starting now at tcp:5037
+* daemon started successfully
+ANDROID_CAPACITY_PREFLIGHT {"host": {"affinityCpus": [0, 1, 2, 3], "capacityScope": "Visible affinity/nproc/cgroup limits only; not idle CPUs or invisible outer quotas", "cgroup2Mount": "37 31 0:31 / /sys/fs/cgroup rw,nosuid,nodev,noexec,relatime shared:8 - cgroup2 cgroup2 rw,nsdelegate,memory_recursiveprot", "cgroup2Mounts": ["37 31 0:31 / /sys/fs/cgroup rw,nosuid,nodev,noexec,relatime shared:8 - cgroup2 cgroup2 rw,nsdelegate,memory_recursiveprot"], "cpuMax": [{"path": "/sys/fs/cgroup/system.slice/hosted-compute-agent.service/cpu.max", "raw": "max 100000"}, {"path": "/sys/fs/cgroup/system.slice/cpu.max", "raw": "max 100000"}, {"interfacePresent": false, "path": "/sys/fs/cgroup/cpu.max", "raw": null}], "nproc": 4, "observedAtMonotonicNs": 104324628405, "unifiedCgroup": "/system.slice/hosted-compute-agent.service", "unifiedCgroups": ["/system.slice/hosted-compute-agent.service"], "visibleCapacityCeilingDenominator": 1, "visibleCapacityCeilingNumerator": 4}, "job": "android", "mode": "host", "requestedGuestCpus": 4, "runAttempt": "1", "runId": "42820185018", "schema": 1, "scope": "files", "sourceCommit": "b87f5f047e4f66aa8906dcab6acca983823e543d", "sourceTree": "73476382618d2ad299be0856b9840a5ef95325d3", "status": "passed"}
+Performing Streamed Install
+Success
+Traceback (most recent call last):
+  File "/home/runner/work/yuanying-chat/yuanying-chat/tools/gecko/prepare_cellular_adb.py", line 429, in <module>
+    main()
+  File "/home/runner/work/yuanying-chat/yuanying-chat/tools/gecko/prepare_cellular_adb.py", line 405, in main
+    cellular_preflight(commands, record, identity)
+  File "/home/runner/work/yuanying-chat/yuanying-chat/tools/gecko/prepare_cellular_adb.py", line 149, in cellular_preflight
+    first_index, first = cellular_after_setup(commands, record, identity)
+                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/runner/work/yuanying-chat/yuanying-chat/tools/gecko/prepare_cellular_adb.py", line 59, in cellular_after_setup
+    usable = normal.network_observation(commands, record, identity,
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/runner/work/yuanying-chat/yuanying-chat/tools/gecko/prepare_emulator.py", line 98, in network_observation
+    raw = commands.run('exec-out', 'content', 'read', '--uri',
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/runner/work/yuanying-chat/yuanying-chat/tools/gecko/prepare_emulator.py", line 75, in run
+    result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/subprocess.py", line 550, in run
+    stdout, stderr = process.communicate(input, timeout=timeout)
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/subprocess.py", line 1209, in communicate
+    stdout, stderr = self._communicate(input, endtime, timeout)
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/subprocess.py", line 2116, in _communicate
+    self._check_timeout(endtime, orig_timeout, stdout, stderr)
+  File "/usr/lib/python3.12/subprocess.py", line 1253, in _check_timeout
+    raise TimeoutExpired(
+subprocess.TimeoutExpired: Command '['/usr/local/lib/android/sdk/platform-tools/adb', '-s', 'emulator-5556', 'exec-out', 'content', 'read', '--uri', 'content://local.pocketchat.test.network-preflight/default-network?runNonce=c024b7d67e0248128c3b8b75dd4ff54c']' timed out after 1.0854881850000027 seconds
