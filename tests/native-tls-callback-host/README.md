@@ -1,7 +1,0 @@
-# Native TLS diagnostic callback ownership
-
-Run `run.py --java-home <JDK17> --json-jar <real-json.jar> --output <report.json>` on each configured JSON library. The suite compiles the current complete `TrialNavigation` member and current terminal `callback` method extracted verbatim from `NativeTlsProbeActivity`. Exact native delegate call sites are checked; they must use these current members.
-
-SDK stop callbacks carry no URL. Blank initialization stops, late stops after target start, successful stops and failed stops never prove target completion or strict TLS1.2 success. A positive native trial needs its exact session/trial, target start/location, verified TLS leaf and controlled trial/nonce title. Strict rejection instead requires an exact target error URL and the actual pinned SDK SSL category/code. The independent original ClientHello, negotiated protocol, nonce HTTP request or real protocol alert remain separate required evidence.
-
-Tests cover blank/late/stale callback sequences, opaque session and trial identity, terminal/restore retirement, native URL/title/certificate/error negatives, valid targets with no stop callback, and seven separately compiled semantic mutants. Session object identity, liveness and callback events are explicit host inputs. There is no Android, Gecko, SDK API or native TLS execution claim; the actual pinned-SDK source compilation and four-peer Android diagnostic provide those separate checks.
