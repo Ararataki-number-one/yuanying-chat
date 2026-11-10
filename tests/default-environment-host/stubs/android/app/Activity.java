@@ -1,1 +1,0 @@
-package android.app;public class Activity extends android.content.Context{public android.content.Intent launched;public boolean finished;public void startActivity(android.content.Intent intent){launched=intent;}public void finish(){finished=true;}}
