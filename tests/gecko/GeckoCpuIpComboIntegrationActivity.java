@@ -55,14 +55,14 @@ public final class GeckoCpuIpComboIntegrationActivity extends MainActivity {
     final ThreadLocal<String[]> admissionCall=new ThreadLocal<>();
     Observed(android.content.Context context,ChatSession owner){super(context,owner);}
     @Override protected boolean allowedUrl(String target){
-      String role=remoteSettingsRole(target);String[] observed=admissionCall.get();
+      String role=sdkStartupRole(target);String[] observed=admissionCall.get();
       if(observed!=null&&observed[1].isEmpty())return super.allowedUrl(target);
       if(observed!=null&&!role.isEmpty())observed[0]=role;
       return role.isEmpty()&&super.allowedUrl(target);
     }
     @Override JSONObject protectedNetworkRoute(String target){
-      String[] previous=admissionCall.get(),observed={"",remoteSettingsRole(target)};admissionCall.set(observed);
-      try{JSONObject actual=super.protectedNetworkRoute(target);String role=remoteSettingsRole(target);
+      String[] previous=admissionCall.get(),observed={"",sdkStartupRole(target)};admissionCall.set(observed);
+      try{JSONObject actual=super.protectedNetworkRoute(target);String role=sdkStartupRole(target);
         if(!role.isEmpty())recordNativeRefusal(this,role,actual,role.equals(observed[0]));
         return actual;
       }finally{if(previous==null)admissionCall.remove();else admissionCall.set(previous);}
@@ -84,17 +84,20 @@ public final class GeckoCpuIpComboIntegrationActivity extends MainActivity {
       });return sdk;
     }
   }
-  // This integration fixture is a closed world. These two actual SDK startup
+  // This integration fixture is a closed world. These exact SDK startup
   // targets are refused by the original virtual admission gate, never sent to
   // the controlled proxy. All other inputs, including unknown hosts and close
   // variants, retain the production admission and original strict proxy guard.
-  static String remoteSettingsRole(String target){
+  // The third host is the pinned Gecko ContentBlocking SafeBrowsingProvider
+  // default service. Production Safe Browsing settings remain unchanged.
+  static String sdkStartupRole(String target){
     if(target==null||target.length()>16384)return "";
     try{java.net.URI uri=new java.net.URI(target);if(!"https".equals(uri.getScheme())||uri.getRawUserInfo()!=null)return "";
       String authority=uri.getRawAuthority();String host=uri.getHost();int port=uri.getPort();
       if(host==null||!(port==-1||port==443)||!(host.equals(authority)||(host+":443").equals(authority)))return "";
       if("firefox.settings.services.mozilla.com".equals(host))return "remote-settings";
       if("firefox-settings-attachments.cdn.mozilla.net".equals(host))return "remote-settings-attachments";
+      if("safebrowsing.googleapis.com".equals(host))return "safe-browsing-google";
     }catch(java.net.URISyntaxException invalid){}return "";
   }
   static boolean closedNativeRefusal(JSONObject actual){
@@ -104,11 +107,14 @@ public final class GeckoCpuIpComboIntegrationActivity extends MainActivity {
   }
   void recordNativeRefusal(Observed source,String role,JSONObject actual,boolean predicateObserved){
     try{
-      if(!"remote-settings".equals(role)&&!"remote-settings-attachments".equals(role))throw new SecurityException("Unknown native admission role");
+      String hostHash;
+      if("remote-settings".equals(role))hostHash="3a89382624c14be6f9b46ba27222e537fa59f5a36c63aacd6cd762965f1aff0d";
+      else if("remote-settings-attachments".equals(role))hostHash="329ef95339e0fd70cc2fa20c8ea4b30288dc5ad57c8c96dc860d4479a61c9b79";
+      else if("safe-browsing-google".equals(role))hostHash="6b3357bd9a4a410a4a9fec1bb0d2a8e609232c33b98d92051e89e1616693ab5c";
+      else throw new SecurityException("Unknown native admission role");
       boolean closed=closedNativeRefusal(actual);
       synchronized(nativeRefusals){nativeRefusalCount++;
-        if(nativeRefusals.length()<128)nativeRefusals.put(J.obj("sequence",nativeRefusalCount,"role",role,"hostSha256",
-          "remote-settings".equals(role)?"3a89382624c14be6f9b46ba27222e537fa59f5a36c63aacd6cd762965f1aff0d":"329ef95339e0fd70cc2fa20c8ea4b30288dc5ad57c8c96dc860d4479a61c9b79",
+        if(nativeRefusals.length()<128)nativeRefusals.put(J.obj("sequence",nativeRefusalCount,"role",role,"hostSha256",hostHash,
           "runtimeInstance",System.identityHashCode(source.runtime),"viewInstance",System.identityHashCode(source),
           "sessionId",source.current==null?"":AppSessionIdentity.id(source.current),"admissionPredicateObserved",predicateObserved,"closedRoute",closed,"superRoute",closed?new JSONObject(actual.toString()):JSONObject.NULL));
       }
@@ -127,7 +133,7 @@ public final class GeckoCpuIpComboIntegrationActivity extends MainActivity {
       JSONObject value;long revision;
       synchronized(nativeRefusals){revision=admissionRevision;value=J.obj("schema",1,"kind","gecko-cpu-ip-combo-native-admission-v1","sourceCommit",build.getString("sourceCommit"),"sourceTree",build.getString("sourceTree"),"runNonce",nonce,"buildIdentity",build,
         "process",J.obj("pid",android.os.Process.myPid(),"uid",android.os.Process.myUid(),"name",android.app.Application.getProcessName()),
-        "scope","integration-only-exact-remote-settings-https-admission","automaticLatencyChecks",AppPrefs.enabled(this,"automaticLatencyChecks"),
+        "scope","integration-only-exact-sdk-startup-https-admission","automaticLatencyChecks",AppPrefs.enabled(this,"automaticLatencyChecks"),
         "eventLimit",128,"totalRefusals",nativeRefusalCount,"droppedEvents",nativeRefusalCount-nativeRefusals.length(),"events",new JSONArray(nativeRefusals.toString()),
         "snapshotScope","persisted-async-snapshot-before-force-stop-later-events-not-covered","diagnosticOnly",true,"qualificationEvidence",false);}
       byte[] raw=(value.toString()+"\n").getBytes(StandardCharsets.UTF_8);if(raw.length>262144)throw new IOException("Bounded native admission report exceeded");

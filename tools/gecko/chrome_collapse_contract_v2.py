@@ -123,8 +123,10 @@ def short_target_geometry(raw_xml, before):
 
     Only the short gesture may use this explicit target contract. The original
     center point wins whenever its complete segment has 24 px clearance. If it
-    intersects an actionable descendant, choose a deterministic free segment
-    in the same owned WebView, preferring its original vertical position.
+    intersects an actionable descendant, use the center of the largest
+    full-width blank vertical band in the same owned WebView. A narrow gutter
+    beside a control is not a replacement target: Gecko can adjust a short
+    touch into the nearby editor even when the native coordinates miss it.
     """
     assert type(raw_xml) is str and 0 < len(raw_xml.encode('utf-8')) <= 1024*1024
     assert before['command'] == 'horizontal' and before['expanded'] is True
@@ -188,21 +190,20 @@ def short_target_geometry(raw_xml, before):
         return xl <= x < xr and yt <= y < yb and not any(l <= x < r and t <= y < b for l, t, r, b in blocked)
     selected = original
     if not safe(selected):
-        # Sweep only rectangle boundaries, never an unbounded pixel grid.
-        boundaries = sorted({yt, yb, *(n for row in blocked for n in (row[1], row[3]))})
-        ys = {max(yt, min(yb-1, original[1]))}
-        ys.update((a+b-1)//2 for a, b in zip(boundaries, boundaries[1:]) if a < b)
-        candidates = []
-        for y in sorted(ys):
-            intervals = sorted((l, r) for l, t, r, b in blocked if t <= y < b)
-            edge = xl
-            for l, r in intervals + [(xr, xr)]:
-                if edge < l:
-                    x = original[0] if edge <= original[0] < l else (edge+l-1)//2
-                    candidates.append([x, y])
-                edge = max(edge, r)
-        assert candidates, 'No editable-safe short gesture segment remains'
-        selected = min(candidates, key=lambda p:(abs(p[1]-original[1]), abs(p[0]-original[0]), p[1], p[0]))
+        # Project every actionable rectangle across the WebView width. Sweep
+        # only its vertical boundaries, then use a gap's middle rather than a
+        # control-adjacent edge. This changes only pre-emission preparation.
+        intervals = sorted((t, b) for l, t, r, b in blocked)
+        gaps = []
+        edge = yt
+        for t, b in intervals + [(yb, yb)]:
+            if edge < t:
+                gaps.append((edge, t))
+            edge = max(edge, b)
+        assert gaps, 'No full-width editable-safe short gesture segment remains'
+        start, end = min(gaps, key=lambda gap: (-(gap[1]-gap[0]),
+            abs((gap[0]+gap[1]-1)//2-original[1]), gap[0]))
+        selected = [original[0], (start+end-1)//2]
     assert safe(selected)
     return dict(targetContract=1, webBounds=expected, excludedBounds=controls, marginPx=margin,
                 originalFrom=original, originalTo=[original[0], original[1]-distance],

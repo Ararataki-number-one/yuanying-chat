@@ -49,7 +49,7 @@ class ComboRunnerTests(unittest.TestCase):
         # actual SDK route execution is covered by its separate Java host.
         admission_identity=copy.deepcopy(expected);admission_identity['scope']='Installed synthetic integration APK bytes and embedded source stamp only'
         admission=dict(schema=1,kind='gecko-cpu-ip-combo-native-admission-v1',sourceCommit=modeled.SOURCE,sourceTree=modeled.TREE,runNonce=modeled.NONCE,buildIdentity=admission_identity,
-            process=copy.deepcopy(activity['process']),scope='integration-only-exact-remote-settings-https-admission',automaticLatencyChecks=False,eventLimit=128,totalRefusals=0,droppedEvents=0,events=[],
+            process=copy.deepcopy(activity['process']),scope='integration-only-exact-sdk-startup-https-admission',automaticLatencyChecks=False,eventLimit=128,totalRefusals=0,droppedEvents=0,events=[],
             snapshotScope='persisted-async-snapshot-before-force-stop-later-events-not-covered',diagnosticOnly=True,qualificationEvidence=False)
         device_raw=(json.dumps(activity,indent=2)+'\n').encode();actions=[];verification=[];temporary=tempfile.TemporaryDirectory();self.addCleanup(temporary.cleanup);base=Path(temporary.name);apk=base/'integration.apk';apk.write_bytes(b'EXPLICIT MODELED APK BOUNDARY');out=base/'out'
         class Certificates:

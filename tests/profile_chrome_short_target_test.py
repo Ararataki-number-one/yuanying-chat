@@ -96,12 +96,26 @@ class ChromeShortTargetTests(unittest.TestCase):
         self.assertEqual(geometry['originalFrom'], [540,955])
         self.assertEqual(geometry['originalTo'], [540,943])
         self.assertIn([24,881,971,1115], geometry['excludedBounds'])
-        self.assertEqual(geometry['from'], [1025,955])
-        self.assertEqual(geometry['to'], [1025,943]); self.assertEqual(geometry['durationMs'],320)
+        self.assertEqual(geometry['from'], [540,684])
+        self.assertEqual(geometry['to'], [540,672]); self.assertEqual(geometry['durationMs'],320)
         self.assertEqual(geometry['marginPx'],24)
         for left, top, right, bottom in geometry['excludedBounds']:
             x,y=geometry['from']
-            self.assertFalse(left-24 <= x < right+24 and top-24 <= y < bottom+24+12)
+            self.assertFalse(top-24 <= y < bottom+24+12)
+
+    def test_replacement_uses_largest_vertical_blank_instead_of_nearer_control_edge(self):
+        xml=host_xml().replace('[24,881][971,1115]', '[24,900][971,990]')
+        geometry=reader.short_target_geometry(xml,before())
+        # A second gap below the editor is closer to the original Y, but the
+        # broad empty region above it keeps the entire gesture farther away.
+        self.assertEqual(geometry['from'],[540,694])
+        self.assertEqual(geometry['to'],[540,682])
+        self.assertEqual(geometry['durationMs'],320)
+
+    def test_only_side_gutters_remaining_cannot_supply_a_safe_target(self):
+        xml=host_xml().replace('[24,881][971,1115]', '[24,477][971,1194]')
+        with self.assertRaisesRegex(AssertionError,'No full-width editable-safe'):
+            reader.short_target_geometry(xml,before())
 
     def test_safe_original_point_is_preserved_without_retargeting(self):
         xml=host_xml().replace('[24,881][971,1115]', '[24,1080][971,1115]')
@@ -117,14 +131,15 @@ class ChromeShortTargetTests(unittest.TestCase):
             editor.set('class' if selected=='class' else selected,'android.widget.EditText' if selected=='class' else 'true')
             with self.subTest(selected=selected):
                 actual=reader.short_target_geometry(ET.tostring(tree,encoding='unicode'),before())
-                self.assertIn([24,881,971,1115],actual['excludedBounds']);self.assertEqual(actual['from'],[1025,955])
+                self.assertIn([24,881,971,1115],actual['excludedBounds']);self.assertEqual(actual['from'],[540,684])
 
     def test_overlapping_native_control_is_also_excluded(self):
         tree=ET.fromstring(host_xml())
         ET.SubElement(tree,'node',{'class':'android.widget.Button','package':reader.PACKAGE,
             'clickable':'true','bounds':'[995,700][1080,1150]'})
         actual=reader.short_target_geometry(ET.tostring(tree,encoding='unicode'),before())
-        self.assertNotEqual(actual['from'],[1025,955]);self.assertEqual(actual['from'][1]-actual['to'][1],12)
+        self.assertEqual(actual['from'][0],540);self.assertLess(actual['from'][1],700-24)
+        self.assertEqual(actual['from'][1]-actual['to'][1],12)
 
     def test_no_safe_segment_foreign_ownership_and_stale_geometry_reject(self):
         for mutation in ('covered','foreign-web','foreign-child','foreign-ancestor','duplicate-web','web-bounds','child-bounds','flags'):
@@ -148,7 +163,7 @@ class ChromeShortTargetTests(unittest.TestCase):
         value=proof();geometry=verify(value)
         self.assertEqual(value['xmlSha256'],hashlib.sha256(host_xml().encode()).hexdigest())
         self.assertEqual(value['captureRecord']['commands'][1]['stdout'],output(host_xml().encode()))
-        self.assertEqual(geometry['from'],[1025,955]);self.assertEqual(geometry['durationMs'],320)
+        self.assertEqual(geometry['from'],[540,684]);self.assertEqual(geometry['durationMs'],320)
         self.assertFalse(value['applicationAcceptance']);self.assertTrue(value['preEmitOnly'])
         self.assertEqual((value['originalActionBudgetMs'],value['preparationBudgetMs']),(90000,20000))
 
@@ -205,6 +220,7 @@ class ChromeShortDriverTests(unittest.TestCase):
                 reads.append(deadline)
                 if failure=='capture':raise OSError('controlled capture failure')
                 raw=xml.replace('package="local.pocketchat.test"','package="foreign.test"') if failure=='xml' else xml
+                if failure=='gutter':raw=raw.replace('[24,881][971,1115]','[24,477][971,1194]')
                 value=dict(schema=1,sourceCommit='a'*40,runNonce=capture.nonce,attemptCount=7,
                     attempts=[capture_record(raw)])
                 if failure=='identity':value['sourceCommit']='f'*40
@@ -239,7 +255,7 @@ class ChromeShortDriverTests(unittest.TestCase):
         self.assertEqual(reads,[120.0]);self.assertEqual(len(commands),2)
         self.assertEqual(commands[0][0][3:],['shell','dumpsys','activity','activities'])
         self.assertEqual(commands[0][1]['timeout'],15.5)
-        self.assertEqual(commands[1][0][3:],['shell','input','swipe','1025','955','1025','943','320'])
+        self.assertEqual(commands[1][0][3:],['shell','input','swipe','540','684','540','672','320'])
         self.assertEqual(commands[1][1]['timeout'],82.75)
         self.assertEqual(verify(receipt),geometry)
         self.assertEqual(diagnostic['inputInvocations'],1)
@@ -248,7 +264,7 @@ class ChromeShortDriverTests(unittest.TestCase):
         self.assertEqual(diagnostic['targetProof'],receipt)
 
     def test_failed_preparation_never_emits_and_original_input_failure_is_not_retried(self):
-        for failure in ('capture','identity','capture-nonce','index','xml','deadline','prepared','activity','owner','input','late-input'):
+        for failure in ('capture','identity','capture-nonce','index','xml','gutter','deadline','prepared','activity','owner','input','late-input'):
             with self.subTest(failure=failure):
                 result,error,reads,commands,diagnostic=self.invoke(failure)
                 self.assertIsNone(result);self.assertIsNotNone(error);self.assertEqual(reads,[120.0])
@@ -260,7 +276,7 @@ class ChromeShortDriverTests(unittest.TestCase):
                     self.assertEqual(diagnostic['inputInvocations'],1)
                     self.assertEqual(diagnostic['status'],'input-command-failed')
                     self.assertEqual(diagnostic['deliveryStatus'],'not-established')
-                    self.assertEqual(verify(diagnostic['targetProof'])['from'],[1025,955])
+                    self.assertEqual(verify(diagnostic['targetProof'])['from'],[540,684])
 
 
 class ChromeShortFullCaseTests(unittest.TestCase):

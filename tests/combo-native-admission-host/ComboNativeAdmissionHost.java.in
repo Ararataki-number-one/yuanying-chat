@@ -12,6 +12,7 @@ import org.json.*;
 public final class ComboNativeAdmissionHost {
   static final String RS="https://firefox.settings.services.mozilla.com/v2/";
   static final String ATTACHMENTS="https://firefox-settings-attachments.cdn.mozilla.net/attachments/";
+  static final String SAFE_BROWSING="https://safebrowsing.googleapis.com/v4/threatListUpdates:fetch";
   static final JSONArray checks=new JSONArray();static String focus;
   static void check(String name,boolean value){checks.put(J.obj("name",name,"pass",value));if(!value)throw new AssertionError(name);}
   static void run(String name,Throwing test)throws Exception{if(focus==null||focus.equals(name))test.run();}
@@ -24,10 +25,11 @@ public final class ComboNativeAdmissionHost {
   static FixtureBoundary fresh()throws Exception{AtomicFileBoundary.writes=0;AtomicFileBoundary.beforeWrite=null;AtomicFileBoundary.writeFailure=null;return new FixtureBoundary();}
   static void exactTargets()throws Exception{
     FixtureBoundary f=fresh();FixtureBoundary.Observed view=f.new Observed(new OwnerBoundary());
-    String[] targets={RS,ATTACHMENTS,"https://firefox.settings.services.mozilla.com:443/v2/private?token=PRIVATE_URL_TOKEN#fragment","https://firefox-settings-attachments.cdn.mozilla.net:443/"};
+    String[] targets={RS,ATTACHMENTS,"https://firefox.settings.services.mozilla.com:443/v2/private?token=PRIVATE_URL_TOKEN#fragment","https://firefox-settings-attachments.cdn.mozilla.net:443/",SAFE_BROWSING,"https://safebrowsing.googleapis.com:443/v5/hashes:search?token=PRIVATE_URL_TOKEN"};
     for(int i=0;i<targets.length;i++){
-      JSONObject route=view.protectedNetworkRoute(targets[i]);JSONObject event=f.nativeRefusals.getJSONObject(i);
+      JSONObject route=view.protectedNetworkRoute(targets[i]);
       check("Exact HTTPS targets use the original closed native route "+i,FixtureBoundary.closedNativeRefusal(route)&&same(route,new WebBoundary(new OwnerBoundary()).blocked()));
+      JSONObject event=f.nativeRefusals.getJSONObject(i);
       check("An exact target records its actual virtual admission predicate "+i,event.optBoolean("admissionPredicateObserved")&&event.optBoolean("closedRoute")&&FixtureBoundary.closedNativeRefusal(event.getJSONObject("superRoute")));
       check("An exact target restores its thread-local admission owner "+i,view.admissionCall.get()==null);
     }
@@ -46,12 +48,19 @@ public final class ComboNativeAdmissionHost {
       "ws://firefox-settings-attachments.cdn.mozilla.net/socket", "https://%66irefox.settings.services.mozilla.com/",
       "https://firefox-settings-attachments.cdn.mozilla.net./", "https://FIREFOX-SETTINGS-ATTACHMENTS.CDN.MOZILLA.NET/",
       "https://user@firefox-settings-attachments.cdn.mozilla.net/", "https://firefox-settings-attachments.cdn.mozilla.net:444/",
+      "https://sub.safebrowsing.googleapis.com/", "https://safebrowsing.googleapis.com.invalid/",
+      "https://SAFEBROWSING.GOOGLEAPIS.COM/", "https://safebrowsing.googleapis.com./",
+      "https://safebrowsing.googleapis.com:444/", "https://safebrowsing.googleapis.com:0443/",
+      "https://user@safebrowsing.googleapis.com/", "https://safebrowsing.googleapis.com@other.invalid/",
+      "http://safebrowsing.googleapis.com/", "HTTPS://safebrowsing.googleapis.com/",
+      "wss://safebrowsing.googleapis.com/socket", "ws://safebrowsing.googleapis.com/socket",
+      "https://%73afebrowsing.googleapis.com/", "https://other.invalid/?url=https://safebrowsing.googleapis.com/",
       "https://other.invalid/?url=https://firefox.settings.services.mozilla.com/", "not a URI", "", null,
       "https://firefox.settings.services.mozilla.com/"+"x".repeat(16384)
     };
     FixtureBoundary f=fresh();OwnerBoundary owner=new OwnerBoundary();FixtureBoundary.Observed observed=f.new Observed(owner);WebBoundary original=new WebBoundary(owner);
     for(int i=0;i<variants.length;i++){
-      String target=variants[i];check("A close or unknown variant is outside the exact fixture classifier "+i,FixtureBoundary.remoteSettingsRole(target).isEmpty());
+      String target=variants[i];check("A close or unknown variant is outside the exact fixture classifier "+i,FixtureBoundary.sdkStartupRole(target).isEmpty());
       JSONObject expected=null,actual=null;Class<?> expectedFailure=null,actualFailure=null;
       try{expected=original.protectedNetworkRoute(target);}catch(RuntimeException failure){expectedFailure=failure.getClass();}
       try{actual=observed.protectedNetworkRoute(target);}catch(RuntimeException failure){actualFailure=failure.getClass();}
@@ -67,7 +76,7 @@ public final class ComboNativeAdmissionHost {
       JSONObject route=observed.protectedNetworkRoute(targets[i]);
       check("The three controlled main targets keep the actual production SOCKS route "+i,same(route,original.protectedNetworkRoute(targets[i]))&&"socks".equals(route.opt("type"))&&route.optInt("port")==18766&&Boolean.TRUE.equals(route.opt("proxyDNS")));
     }
-    check("Main target traffic creates no Remote Settings refusal row",f.nativeRefusalCount==0&&f.writer.tasks.isEmpty()&&f.failures==0);
+    check("Main target traffic creates no SDK startup refusal row",f.nativeRefusalCount==0&&f.writer.tasks.isEmpty()&&f.failures==0);
   }
   static void strictProof()throws Exception{
     WebBoundary original=new WebBoundary(new OwnerBoundary());JSONObject exact=original.blocked();
@@ -98,11 +107,11 @@ public final class ComboNativeAdmissionHost {
   static void bindingAndCap()throws Exception{
     FixtureBoundary f=fresh();FixtureBoundary.Observed first=f.new Observed(new OwnerBoundary());FixtureBoundary.Observed second=f.new Observed(new OwnerBoundary());
     first.current=new NativeSessionBoundary("session-a");second.current=new NativeSessionBoundary("session-b");
-    first.protectedNetworkRoute(RS);second.protectedNetworkRoute(ATTACHMENTS);
-    JSONObject firstRow=f.nativeRefusals.getJSONObject(0),secondRow=f.nativeRefusals.getJSONObject(1);
+    first.protectedNetworkRoute(RS);second.protectedNetworkRoute(ATTACHMENTS);first.protectedNetworkRoute(SAFE_BROWSING);
+    JSONObject firstRow=f.nativeRefusals.getJSONObject(0),secondRow=f.nativeRefusals.getJSONObject(1),thirdRow=f.nativeRefusals.getJSONObject(2);
     check("Recorded identities belong to each actual source boundary",firstRow.optInt("viewInstance")==System.identityHashCode(first)&&firstRow.optInt("runtimeInstance")==System.identityHashCode(first.runtime)&&"session-a".equals(firstRow.optString("sessionId"))&&secondRow.optInt("viewInstance")==System.identityHashCode(second)&&"session-b".equals(secondRow.optString("sessionId")));
-    check("Fixed role hashes match the exact observed public host bytes",hash("firefox.settings.services.mozilla.com").equals(firstRow.optString("hostSha256"))&&hash("firefox-settings-attachments.cdn.mozilla.net").equals(secondRow.optString("hostSha256")));
-    for(int i=2;i<131;i++)first.protectedNetworkRoute(i%2==0?RS:ATTACHMENTS);
+    check("Fixed role hashes match the exact observed public host bytes",hash("firefox.settings.services.mozilla.com").equals(firstRow.optString("hostSha256"))&&hash("firefox-settings-attachments.cdn.mozilla.net").equals(secondRow.optString("hostSha256"))&&"safe-browsing-google".equals(thirdRow.optString("role"))&&hash("safebrowsing.googleapis.com").equals(thirdRow.optString("hostSha256")));
+    String[] targets={RS,ATTACHMENTS,SAFE_BROWSING};for(int i=3;i<131;i++)first.protectedNetworkRoute(targets[i%targets.length]);
     check("The actual recorder caps rows while preserving the refusal total",f.nativeRefusalCount==131&&f.nativeRefusals.length()==128&&f.writer.tasks.size()==1&&AtomicFileBoundary.writes==0);
     f.writer.drain();f.probe.drain();JSONObject report=f.report();
     check("The published diagnostic binds the current source build and nonce",report.getString("sourceCommit").equals(f.build.getString("sourceCommit"))&&report.getString("sourceTree").equals(f.build.getString("sourceTree"))&&report.getString("runNonce").equals(f.nonce)&&same(report.getJSONObject("buildIdentity"),f.build));

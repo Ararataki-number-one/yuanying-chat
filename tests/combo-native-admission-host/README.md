@@ -12,10 +12,11 @@ python3 tests/combo-native-admission-host/run.py \
 
 Run with actual JDK 17 and each supported JSON jar. Inputs, generated sources,
 commands, compile/run logs, and bounded publisher outputs are source-bound.
-Twelve separately compiled semantic mutations must fail precise behavioral
+Fifteen separately compiled semantic mutations must fail precise behavioral
 assertions after the pristine focused controls pass.
 
-Cases cover the two exact original HTTPS authorities, their explicit 443 form,
+Cases cover the three exact SDK startup HTTPS authorities (Remote Settings,
+its attachments, and the pinned Google Safe Browsing provider), their explicit 443 form,
 unknown/case/subdomain/trailing-dot/userinfo/port/scheme variants, original
 WebSocket normalization, unchanged main fixture targets, strict JSON types and
 keys, earlier guards without a false causal claim, role/hash and view/runtime/

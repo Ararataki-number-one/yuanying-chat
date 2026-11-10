@@ -35,7 +35,8 @@ MAX_ACTIVITY_BYTES=524288
 TRANSPORT_DIAGNOSTIC_NAME='gecko-cpu-ip-combo-transport-diagnostic.json'
 NATIVE_ADMISSION_NAME='gecko-cpu-ip-combo-native-admission.json'
 NATIVE_ADMISSION_HASHES={'remote-settings':'3a89382624c14be6f9b46ba27222e537fa59f5a36c63aacd6cd762965f1aff0d',
-    'remote-settings-attachments':'329ef95339e0fd70cc2fa20c8ea4b30288dc5ad57c8c96dc860d4479a61c9b79'}
+    'remote-settings-attachments':'329ef95339e0fd70cc2fa20c8ea4b30288dc5ad57c8c96dc860d4479a61c9b79',
+    'safe-browsing-google':'6b3357bd9a4a410a4a9fec1bb0d2a8e609232c33b98d92051e89e1616693ab5c'}
 
 
 def require(value,message):
@@ -134,7 +135,7 @@ def validate_native_admission(raw,source,nonce,expected):
         and value['buildIdentity']['scope']=='Installed synthetic integration APK bytes and embedded source stamp only'
         and all(_typed_equal(value['buildIdentity'][key],expected[key]) for key in expected),'native admission installed identity differs')
     verify_installed(value['buildIdentity'],expected)
-    require(value['scope']=='integration-only-exact-remote-settings-https-admission'
+    require(value['scope']=='integration-only-exact-sdk-startup-https-admission'
         and value['snapshotScope']=='persisted-async-snapshot-before-force-stop-later-events-not-covered'
         and value['automaticLatencyChecks'] is False and value['diagnosticOnly'] is True and value['qualificationEvidence'] is False,'native admission scope differs')
     process=value['process'];require(type(process) is dict and set(process)=={'pid','uid','name'} and type(process['pid']) is int and process['pid']>0

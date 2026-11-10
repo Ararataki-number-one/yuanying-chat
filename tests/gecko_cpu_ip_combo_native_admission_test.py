@@ -19,6 +19,7 @@ runner = previous.runner
 HASHES = {
     'remote-settings': '3a89382624c14be6f9b46ba27222e537fa59f5a36c63aacd6cd762965f1aff0d',
     'remote-settings-attachments': '329ef95339e0fd70cc2fa20c8ea4b30288dc5ad57c8c96dc860d4479a61c9b79',
+    'safe-browsing-google': '6b3357bd9a4a410a4a9fec1bb0d2a8e609232c33b98d92051e89e1616693ab5c',
 }
 CLOSED = dict(type='socks', host='127.0.0.1', port=9, proxyDNS=True, failoverTimeout=1)
 
@@ -28,15 +29,15 @@ def fixture(count=2):
     identity = copy.deepcopy(expected)
     identity['scope'] = 'Installed synthetic integration APK bytes and embedded source stamp only'
     roles = tuple(HASHES)
-    events = [dict(sequence=index + 1, role=roles[index % 2],
-                   hostSha256=HASHES[roles[index % 2]], runtimeInstance=1234,
+    events = [dict(sequence=index + 1, role=roles[index % len(roles)],
+                   hostSha256=HASHES[roles[index % len(roles)]], runtimeInstance=1234,
                    viewInstance=-5678, sessionId='' if index == 0 else 'sdk-session:1',
                    admissionPredicateObserved=True, closedRoute=True,
                    superRoute=copy.deepcopy(CLOSED)) for index in range(min(count, 128))]
     return dict(schema=1, kind='gecko-cpu-ip-combo-native-admission-v1',
                 sourceCommit=modeled.SOURCE, sourceTree=expected['sourceTree'], runNonce=modeled.NONCE,
                 buildIdentity=identity, process=copy.deepcopy(report['activity']['process']),
-                scope='integration-only-exact-remote-settings-https-admission',
+                scope='integration-only-exact-sdk-startup-https-admission',
                 automaticLatencyChecks=False, eventLimit=128, totalRefusals=count,
                 droppedEvents=count - len(events), events=events,
                 snapshotScope='persisted-async-snapshot-before-force-stop-later-events-not-covered',
@@ -77,7 +78,7 @@ class NativeAdmissionTests(unittest.TestCase):
         return read
 
     def test_exact_identity_roles_and_routes_round_trip_without_mutation(self):
-        value, expected = fixture()
+        value, expected = fixture(3)
         original = copy.deepcopy(value)
         self.assertEqual(runner.NATIVE_ADMISSION_HASHES, HASHES)
         self.assertEqual(self.validate(value, expected), original)
@@ -85,8 +86,22 @@ class NativeAdmissionTests(unittest.TestCase):
         self.assertFalse(value['qualificationEvidence'])
         self.assertFalse(value['automaticLatencyChecks'])
 
+    def test_each_exact_role_is_bound_to_its_own_public_host_hash(self):
+        value, expected = fixture(3)
+        hosts = ('firefox.settings.services.mozilla.com',
+                 'firefox-settings-attachments.cdn.mozilla.net',
+                 'safebrowsing.googleapis.com')
+        for index, host in enumerate(hosts):
+            with self.subTest(host=host):
+                self.assertEqual(value['events'][index]['hostSha256'],
+                                 hashlib.sha256(host.encode('ascii')).hexdigest())
+                changed = copy.deepcopy(value)
+                changed['events'][index]['hostSha256'] = value['events'][(index + 1) % len(hosts)]['hostSha256']
+                with self.assertRaises(ValueError):
+                    self.validate(changed, expected)
+
     def test_zero_events_and_bounded_overflow_are_observations_not_success(self):
-        for count in (0, 1, 2, 128, 145):
+        for count in (0, 1, 2, 3, 128, 145):
             with self.subTest(count=count):
                 value, expected = fixture(count)
                 result = self.validate(value, expected)
@@ -173,6 +188,7 @@ class NativeAdmissionTests(unittest.TestCase):
             lambda v: v.update(sourceTree='f' * 40), lambda v: v.update(runNonce='f' * 32),
             lambda v: v.update(sourceCommit=True), lambda v: v.update(runNonce=1),
             lambda v: v.update(scope='production'), lambda v: v.update(snapshotScope='complete-all-events'),
+            lambda v: v.update(scope='integration-only-exact-remote-settings-https-admission'),
             lambda v: v.update(automaticLatencyChecks=True), lambda v: v.update(automaticLatencyChecks=0),
             lambda v: v.update(diagnosticOnly=1), lambda v: v.update(diagnosticOnly=False),
             lambda v: v.update(qualificationEvidence=0), lambda v: v.update(qualificationEvidence=True),

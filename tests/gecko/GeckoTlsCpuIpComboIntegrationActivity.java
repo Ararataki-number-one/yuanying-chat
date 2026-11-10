@@ -62,13 +62,14 @@ public final class GeckoTlsCpuIpComboIntegrationActivity extends MainActivity {
 
   // Match the existing closed-world CPU/IP fixture. Unknown inputs retain the
   // original production route, including native wss-to-https normalization.
-static String remoteSettingsRole(String target){
+static String sdkStartupRole(String target){
     if(target==null||target.length()>16384)return "";
     try{java.net.URI uri=new java.net.URI(target);if(!"https".equals(uri.getScheme())||uri.getRawUserInfo()!=null)return "";
       String authority=uri.getRawAuthority();String host=uri.getHost();int port=uri.getPort();
       if(host==null||!(port==-1||port==443)||!(host.equals(authority)||(host+":443").equals(authority)))return "";
       if("firefox.settings.services.mozilla.com".equals(host))return "remote-settings";
       if("firefox-settings-attachments.cdn.mozilla.net".equals(host))return "remote-settings-attachments";
+      if("safebrowsing.googleapis.com".equals(host))return "safe-browsing-google";
     }catch(java.net.URISyntaxException invalid){}return "";
   }
   static boolean closedNativeRefusal(JSONObject actual){
@@ -81,14 +82,14 @@ static String remoteSettingsRole(String target){
     final ThreadLocal<String[]> admissionCall=new ThreadLocal<>();
     Observed(android.content.Context context,ChatSession owner){super(context,owner);}
     @Override protected boolean allowedUrl(String target){
-      String role=remoteSettingsRole(target);String[] observed=admissionCall.get();
+      String role=sdkStartupRole(target);String[] observed=admissionCall.get();
       if(observed!=null&&observed[1].isEmpty())return super.allowedUrl(target);
       if(observed!=null&&!role.isEmpty())observed[0]=role;
       return role.isEmpty()&&super.allowedUrl(target);
     }
     @Override JSONObject protectedNetworkRoute(String target){
-      String[] previous=admissionCall.get(),observed={"",remoteSettingsRole(target)};admissionCall.set(observed);
-      try{JSONObject actual=super.protectedNetworkRoute(target);String role=remoteSettingsRole(target);
+      String[] previous=admissionCall.get(),observed={"",sdkStartupRole(target)};admissionCall.set(observed);
+      try{JSONObject actual=super.protectedNetworkRoute(target);String role=sdkStartupRole(target);
         if(!role.isEmpty()&&!closedNativeRefusal(actual)){
           if(terminal&&failure.isEmpty())terminal=false;
           failed(new SecurityException("Native fixture refusal did not use the closed route"));
