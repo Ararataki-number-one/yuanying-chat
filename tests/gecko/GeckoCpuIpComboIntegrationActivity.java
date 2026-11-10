@@ -88,8 +88,8 @@ public final class GeckoCpuIpComboIntegrationActivity extends MainActivity {
   // targets are refused by the original virtual admission gate, never sent to
   // the controlled proxy. All other inputs, including unknown hosts and close
   // variants, retain the production admission and original strict proxy guard.
-  // The third host is the pinned Gecko ContentBlocking SafeBrowsingProvider
-  // default service. Production Safe Browsing settings remain unchanged.
+  // The Safe Browsing provider and content-signature chain host are pinned SDK
+  // services. Production Safe Browsing and signature checks remain unchanged.
   static String sdkStartupRole(String target){
     if(target==null||target.length()>16384)return "";
     try{java.net.URI uri=new java.net.URI(target);if(!"https".equals(uri.getScheme())||uri.getRawUserInfo()!=null)return "";
@@ -98,6 +98,7 @@ public final class GeckoCpuIpComboIntegrationActivity extends MainActivity {
       if("firefox.settings.services.mozilla.com".equals(host))return "remote-settings";
       if("firefox-settings-attachments.cdn.mozilla.net".equals(host))return "remote-settings-attachments";
       if("safebrowsing.googleapis.com".equals(host))return "safe-browsing-google";
+      if("content-signature-2.cdn.mozilla.net".equals(host))return "content-signature-chain";
     }catch(java.net.URISyntaxException invalid){}return "";
   }
   static boolean closedNativeRefusal(JSONObject actual){
@@ -111,6 +112,7 @@ public final class GeckoCpuIpComboIntegrationActivity extends MainActivity {
       if("remote-settings".equals(role))hostHash="3a89382624c14be6f9b46ba27222e537fa59f5a36c63aacd6cd762965f1aff0d";
       else if("remote-settings-attachments".equals(role))hostHash="329ef95339e0fd70cc2fa20c8ea4b30288dc5ad57c8c96dc860d4479a61c9b79";
       else if("safe-browsing-google".equals(role))hostHash="6b3357bd9a4a410a4a9fec1bb0d2a8e609232c33b98d92051e89e1616693ab5c";
+      else if("content-signature-chain".equals(role))hostHash="f0fa75029afb166605b17fa3f9f08cc543673f75203345e7f127d3031119c199";
       else throw new SecurityException("Unknown native admission role");
       boolean closed=closedNativeRefusal(actual);
       synchronized(nativeRefusals){nativeRefusalCount++;

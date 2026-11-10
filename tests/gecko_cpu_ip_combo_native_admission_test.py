@@ -20,6 +20,7 @@ HASHES = {
     'remote-settings': '3a89382624c14be6f9b46ba27222e537fa59f5a36c63aacd6cd762965f1aff0d',
     'remote-settings-attachments': '329ef95339e0fd70cc2fa20c8ea4b30288dc5ad57c8c96dc860d4479a61c9b79',
     'safe-browsing-google': '6b3357bd9a4a410a4a9fec1bb0d2a8e609232c33b98d92051e89e1616693ab5c',
+    'content-signature-chain': 'f0fa75029afb166605b17fa3f9f08cc543673f75203345e7f127d3031119c199',
 }
 CLOSED = dict(type='socks', host='127.0.0.1', port=9, proxyDNS=True, failoverTimeout=1)
 
@@ -78,7 +79,7 @@ class NativeAdmissionTests(unittest.TestCase):
         return read
 
     def test_exact_identity_roles_and_routes_round_trip_without_mutation(self):
-        value, expected = fixture(3)
+        value, expected = fixture(4)
         original = copy.deepcopy(value)
         self.assertEqual(runner.NATIVE_ADMISSION_HASHES, HASHES)
         self.assertEqual(self.validate(value, expected), original)
@@ -87,10 +88,11 @@ class NativeAdmissionTests(unittest.TestCase):
         self.assertFalse(value['automaticLatencyChecks'])
 
     def test_each_exact_role_is_bound_to_its_own_public_host_hash(self):
-        value, expected = fixture(3)
+        value, expected = fixture(4)
         hosts = ('firefox.settings.services.mozilla.com',
                  'firefox-settings-attachments.cdn.mozilla.net',
-                 'safebrowsing.googleapis.com')
+                 'safebrowsing.googleapis.com',
+                 'content-signature-2.cdn.mozilla.net')
         for index, host in enumerate(hosts):
             with self.subTest(host=host):
                 self.assertEqual(value['events'][index]['hostSha256'],
@@ -101,7 +103,7 @@ class NativeAdmissionTests(unittest.TestCase):
                     self.validate(changed, expected)
 
     def test_zero_events_and_bounded_overflow_are_observations_not_success(self):
-        for count in (0, 1, 2, 3, 128, 145):
+        for count in (0, 1, 2, 3, 4, 128, 145):
             with self.subTest(count=count):
                 value, expected = fixture(count)
                 result = self.validate(value, expected)

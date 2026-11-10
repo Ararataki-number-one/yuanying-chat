@@ -349,6 +349,58 @@ def native_transport(adb, monitor_path, record):
     native.wait_native(adb, record)
 
 
+def native_failure_diagnostics(commands, record):
+    """Read the confirmed bootstrap target only after its original failure.
+
+    This separate twelve-second collection cannot extend the preparation
+    instance, create a CM observation, repair a network, or resume acceptance.
+    A tcpip attempt permanently excludes the old bootstrap channel.
+    """
+    if (commands is None or not isinstance(commands, native.BootstrapCommands)
+            or commands.record is not record or commands.serial != native.BOOTSTRAP
+            or record.get('serial') != native.BOOTSTRAP or record.get('phase') != 'native'
+            or record.get('status') != 'failed' or record.get('confirmedQemu') is not True
+            or 'failureObservedAt' not in record or 'failureType' not in record
+            or 'tcpipCommand' in record or 'nativeFailureDiagnostics' in record):
+        return
+    started = time.monotonic()
+    capture = dict(status='collecting', startedAt=started, budgetSeconds=12,
+                   deadlineMonotonic=started + 12, commandStartIndex=len(record['commands']),
+                   preparationDeadlineMonotonic=commands.deadline,
+                   applicationAcceptance=False, originalWorkloadInvoked=False,
+                   scope='Read-only diagnostics after the original native preparation failure')
+    record['nativeFailureDiagnostics'] = capture
+    diagnostic_commands = native.BootstrapCommands(commands.executable, native.BOOTSTRAP,
+                                                   record, capture['deadlineMonotonic'])
+    operations = [('mobile-data-setting', ('shell', 'settings', 'get', 'global', 'mobile_data')),
+                  ('device-provisioned-setting', ('shell', 'settings', 'get', 'global', 'device_provisioned')),
+                  ('device-provisioning-mobile-data-setting',
+                   ('shell', 'settings', 'get', 'global', 'device_provisioning_mobile_data')),
+                  ('provisioning-mobile-data-property', ('shell', 'getprop', 'ro.com.android.prov_mobiledata')),
+                  ('airplane-setting', ('shell', 'settings', 'get', 'global', 'airplane_mode_on')),
+                  ('telephony-registry', ('shell', 'dumpsys', 'telephony.registry')),
+                  ('connectivity', ('shell', 'dumpsys', 'connectivity')),
+                  ('wifi', ('shell', 'dumpsys', 'wifi')),
+                  ('routes', ('shell', 'ip', 'route', 'show', 'table', 'all')),
+                  ('setup-package', ('shell', 'dumpsys', 'package', normal.PACKAGE))]
+    try:
+        for index, (name, parts) in enumerate(operations):
+            if time.monotonic() >= diagnostic_commands.deadline:
+                capture.update(status='budget-exhausted',
+                               unattempted=[item[0] for item in operations[index:]])
+                return
+            try:
+                record['diagnostics'][name] = diagnostic_commands.run(*parts, check=False, diagnostic=True)
+            except (OSError, subprocess.SubprocessError) as failure:
+                record['diagnostics'][name] = dict(failureType=type(failure).__name__, reason=str(failure))
+        capture['status'] = 'collected'
+    except BaseException:
+        capture['status'] = 'interrupted'
+        raise
+    finally:
+        capture.update(completedAt=time.monotonic(), commandEndIndex=len(record['commands']))
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--phase', required=True, choices=['native', 'normal'])
@@ -409,7 +461,14 @@ def main():
     except BaseException as error:
         record.update(status='failed', failureType=type(error).__name__, reason=str(error),
                       failureClassification='emulator-environment-precondition')
-        if not is_native and commands is not None and record['confirmedQemu']:
+        if is_native:
+            record['failureObservedAt'] = time.monotonic()
+            try:
+                native_failure_diagnostics(commands, record)
+            except BaseException as diagnostic_error:
+                record['diagnosticsFailure'] = dict(failureType=type(diagnostic_error).__name__,
+                                                    reason=str(diagnostic_error))
+        elif commands is not None and record['confirmedQemu']:
             commands.deadline = deadline
             try:
                 normal.diagnostics(commands, record)

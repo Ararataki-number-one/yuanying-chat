@@ -70,6 +70,7 @@ static String sdkStartupRole(String target){
       if("firefox.settings.services.mozilla.com".equals(host))return "remote-settings";
       if("firefox-settings-attachments.cdn.mozilla.net".equals(host))return "remote-settings-attachments";
       if("safebrowsing.googleapis.com".equals(host))return "safe-browsing-google";
+      if("content-signature-2.cdn.mozilla.net".equals(host))return "content-signature-chain";
     }catch(java.net.URISyntaxException invalid){}return "";
   }
   static boolean closedNativeRefusal(JSONObject actual){

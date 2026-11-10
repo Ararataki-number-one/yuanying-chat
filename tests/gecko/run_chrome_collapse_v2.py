@@ -19,6 +19,7 @@ sys.path.insert(0, str(ROOT/'tools/gecko'))
 from integration_event_contract import EventTransfer, parse_receipt_line
 from profile_invocation_contract import expected_build, verify_installed
 from ui_visual_capture import UiVisualCapture
+from chrome_parser_preparation import prepare_parser
 from chrome_collapse_contract_v2 import (ACTIVITY, ENVIRONMENT_ACTIVITY, PACKAGE, PHASES, NAMES,
                                          LEGACY_BEHAVIOR_MAP, address_cancel, inspect_ui, resumed, verify_case,
                                          make_short_target_proof, verify_short_target)
@@ -102,6 +103,7 @@ def run_v2(adb, adb_bytes, source, trace, out, focus):
                               re.search(r"versionName '([^']+)'", gradle).group(1),
                               int(re.search(r'versionCode (\d+)', gradle).group(1)))
     verify_installed(json.loads(adb('exec-out', 'content', 'read', '--uri', 'content://'+PACKAGE+'.evidence/build-identity')), identity)
+    prepare_parser(root=ROOT, source=source, identity=identity)
     prefix = resume_transport(sys.argv[1:])
     cases = []
     for width, scale in ((360, 1), (412, 1), (360, 2)):

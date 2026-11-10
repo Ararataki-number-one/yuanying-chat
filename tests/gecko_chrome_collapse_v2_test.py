@@ -471,6 +471,7 @@ class ChromeCollapseV2Controls(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             out=Path(directory)
             with patch.object(current_runner,'expected_build',return_value=build),\
+                 patch.object(current_runner,'prepare_parser',return_value={'setupOnly':True,'hostOnly':True}),\
                  patch.object(current_runner,'verify_installed',side_effect=lambda actual,expected:self.assertEqual(actual,expected)),\
                  patch.object(current_runner,'resume_transport',return_value=['host-only-adb','-s','host-only-serial']),\
                  patch.object(current_runner,'UiVisualCapture',Capture),\

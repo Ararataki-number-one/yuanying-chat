@@ -5,7 +5,7 @@ Only subprocess/socket boundaries and elapsed time are substituted. No Android,
 network reachability, application workload or release acceptance is claimed.
 Run with the workflow's GIT_NO_LAZY_FETCH=1 environment.
 """
-from contextlib import ExitStack, contextmanager, redirect_stderr
+from contextlib import ExitStack, contextmanager, redirect_stderr, redirect_stdout
 import importlib.util
 import io
 import json
@@ -13,10 +13,12 @@ from pathlib import Path
 import struct
 import subprocess
 import sys
+import tempfile
 from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 from urllib.parse import parse_qs, urlsplit
+from zipfile import ZipFile
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'tools/gecko'))
@@ -762,6 +764,261 @@ class CellularNativeProtocolControls(unittest.TestCase):
                 with self.assertRaises(SystemExit) as error: setup.main()
                 self.assertEqual(error.exception.code, 2)
                 command.assert_not_called()
+
+
+DIAGNOSTIC_READS = [
+    ('shell', 'settings', 'get', 'global', 'mobile_data'),
+    ('shell', 'settings', 'get', 'global', 'device_provisioned'),
+    ('shell', 'settings', 'get', 'global', 'device_provisioning_mobile_data'),
+    ('shell', 'getprop', 'ro.com.android.prov_mobiledata'),
+    ('shell', 'settings', 'get', 'global', 'airplane_mode_on'),
+    ('shell', 'dumpsys', 'telephony.registry'),
+    ('shell', 'dumpsys', 'connectivity'),
+    ('shell', 'dumpsys', 'wifi'),
+    ('shell', 'ip', 'route', 'show', 'table', 'all'),
+    ('shell', 'dumpsys', 'package', setup.normal.PACKAGE),
+]
+REAL_CHECK_OUTPUT = subprocess.check_output
+
+
+class DiagnosticDeviceIO(DeviceIO):
+    """Read-only diagnostic bytes, plus a real temporary APK for main()."""
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.diagnostic_delay = .01
+        self.diagnostic_exit = 0
+        self.diagnostic_error = None
+        self.diagnostic_calls = []
+        self.expected_identity = None
+        self.original_error = None
+
+    def run(self, command, **kwargs):
+        parts = tuple(command[3:])
+        if command[:3] == ['adb', '-s', 'emulator-5556'] and parts in DIAGNOSTIC_READS:
+            self.calls.append((list(command), kwargs['timeout']))
+            self.diagnostic_calls.append((parts, self.clock.now(), kwargs['timeout']))
+            self.events.append(('adb', parts))
+            self.clock.value += min(self.diagnostic_delay, kwargs['timeout'])
+            if self.diagnostic_error is not None:
+                raise self.diagnostic_error
+            # Deliberately misleading diagnostic text must never become a CM
+            # observation or turn the already-failed preparation into success.
+            stdout = '{"status":"passed","usable":true,"transports":["cellular"]}'
+            if self.diagnostic_delay > kwargs['timeout']:
+                raise subprocess.TimeoutExpired(command, kwargs['timeout'], output=stdout)
+            return subprocess.CompletedProcess(command, self.diagnostic_exit, stdout=stdout,
+                                               stderr='synthetic diagnostic stderr' if self.diagnostic_exit else '')
+        try:
+            result = super().run(command, **kwargs)
+        except BaseException as error:
+            self.original_error = error
+            raise
+        if parts[:4] == ('exec-out', 'content', 'read', '--uri') and self.expected_identity is not None:
+            value = json.loads(result.stdout)
+            value['buildIdentity'] = self.expected_identity
+            result.stdout = json.dumps(value)
+        return result
+
+
+class CellularFailureDiagnosticControls(unittest.TestCase):
+    @contextmanager
+    def main_fixture(self, device, *, invalid_apk=False):
+        with tempfile.TemporaryDirectory(prefix='cellular-failed-native-') as directory:
+            root = Path(directory)
+            (root / 'app').mkdir()
+            (root / 'app/build.gradle').write_text("versionName '1.6.0'\nversionCode 51\n")
+            apk = root / 'synthetic.apk'
+            stamp = {key: value for key, value in identity().items()
+                     if key not in ('package', 'apkSha256', 'apkBytes', 'buildStampSha256')}
+            with ZipFile(apk, 'w') as archive:
+                archive.writestr('assets/pocketchat-integration-build.json', json.dumps(stamp))
+            device.expected_identity = setup.normal.expected_build(apk, 'a' * 40, 'b' * 40, '1.6.0', 51)
+            if invalid_apk:
+                apk.write_bytes(b'not an APK')
+            def source_reads(command, **kwargs):
+                if command == ['git', 'status', '--porcelain', '--untracked-files=normal']:
+                    return ''
+                if command == ['git', 'rev-parse', 'HEAD']:
+                    return 'a' * 40 + '\n'
+                if command == ['git', 'rev-parse', 'HEAD^{tree}']:
+                    return 'b' * 40 + '\n'
+                return REAL_CHECK_OUTPUT(command, **kwargs)
+            argv = ['prepare_cellular_adb.py', '--phase', 'native', '--adb', 'adb',
+                    '--apk', str(apk), '--monitor', '/synthetic/qemu.sock']
+            with ExitStack() as stack:
+                stack.enter_context(device.installed())
+                stack.enter_context(patch.object(setup, 'ROOT', root))
+                stack.enter_context(patch.object(sys, 'argv', argv))
+                stack.enter_context(patch.object(setup.subprocess, 'check_output', side_effect=source_reads))
+                stack.enter_context(patch.dict(setup.os.environ, {'GITHUB_RUN_ID': '7', 'GITHUB_RUN_ATTEMPT': '1'}))
+                stack.enter_context(redirect_stdout(io.StringIO()))
+                yield root / 'work/gecko-integration/native-adb-setup-results.json'
+
+    def failed_record(self):
+        receipt = record()
+        receipt.update(status='failed', phase='native', serial='emulator-5556', confirmedQemu=True,
+                       failureType='TimeoutError', reason='original preparation failure', failureObservedAt=45.0,
+                       preparationBudgetSeconds=45, preparationDeadlineMonotonic=45.0, diagnostics={})
+        return receipt
+
+    def test_failed_native_main_preserves_45_seconds_and_only_appends_read_only_diagnostics(self):
+        device = DiagnosticDeviceIO(edits={0: initial_wifi, **{i: empty_default for i in range(1, 100)}})
+        device.command_delay = 1
+        with self.main_fixture(device) as output:
+            with self.assertRaises((TimeoutError, subprocess.TimeoutExpired)) as failure:
+                setup.main()
+            receipt = json.loads(output.read_text())
+        capture = receipt['nativeFailureDiagnostics']
+        self.assertEqual(receipt['status'], 'failed')
+        self.assertEqual(receipt['failureType'], type(failure.exception).__name__)
+        self.assertEqual(receipt['reason'], str(failure.exception))
+        self.assertEqual(receipt['preparationBudgetSeconds'], 45)
+        self.assertEqual(receipt['preparationDeadlineMonotonic'], 45)
+        self.assertEqual(receipt['cellularPreparation']['deadlineMonotonic'], 45)
+        self.assertEqual(receipt['cellularPreparation']['completedAt'], 45)
+        self.assertEqual(receipt['failureObservedAt'], 45)
+        self.assertEqual(capture['startedAt'], 45)
+        self.assertEqual(capture['deadlineMonotonic'], 57)
+        self.assertEqual(capture['preparationDeadlineMonotonic'], 45)
+        self.assertEqual(capture['status'], 'collected')
+        self.assertEqual([row[0] for row in device.diagnostic_calls], DIAGNOSTIC_READS)
+        rows = receipt['commands'][capture['commandStartIndex']:capture['commandEndIndex']]
+        self.assertEqual([tuple(row['command'][3:]) for row in rows], DIAGNOSTIC_READS)
+        self.assertTrue(all(row['command'][:3] == ['adb', '-s', 'emulator-5556']
+                            and row['timeoutSeconds'] <= 2 and row['deadlineMonotonic'] == 57 for row in rows))
+        self.assertTrue(all(row['receivedAt'] <= 45 for row in receipt['networkObservations']))
+        self.assertTrue(all(row['value']['usable'] is False for row in receipt['networkObservations'][1:]))
+        self.assertNotIn('tcpipCommand', receipt)
+        self.assertFalse(receipt['applicationAcceptance'] or receipt['originalWorkloadInvoked'])
+        self.assertFalse(device.headers or device.announcements)
+
+    def test_native_success_and_post_tcpip_failure_have_no_bootstrap_diagnostics(self):
+        for timed_out in (False, True):
+            with self.subTest(tcpip_timeout=timed_out):
+                device = DiagnosticDeviceIO()
+                device.tcpip_timeout = timed_out
+                with self.main_fixture(device) as output:
+                    if timed_out:
+                        with self.assertRaises(subprocess.TimeoutExpired) as failure:
+                            setup.main()
+                        self.assertIs(failure.exception, device.original_error)
+                    else:
+                        setup.main()
+                    receipt = json.loads(output.read_text())
+                self.assertEqual(receipt['status'], 'failed' if timed_out else 'passed')
+                self.assertNotIn('nativeFailureDiagnostics', receipt)
+                self.assertEqual(device.diagnostic_calls, [])
+                transition = next(i for i, (command, _) in enumerate(device.calls) if command[-2:] == ['tcpip', '5555'])
+                self.assertTrue(all(command[2] == 'emulator-5554' for command, _ in device.calls[transition + 1:]))
+
+    def test_missing_commands_or_unconfirmed_qemu_main_failure_has_no_diagnostic_io(self):
+        for invalid_apk in (False, True):
+            with self.subTest(invalid_apk=invalid_apk):
+                device = DiagnosticDeviceIO()
+                if not invalid_apk:
+                    device.properties['ro.kernel.qemu'] = '0'
+                with self.main_fixture(device, invalid_apk=invalid_apk) as output:
+                    with self.assertRaises(Exception):
+                        setup.main()
+                    receipt = json.loads(output.read_text())
+                self.assertEqual(receipt['status'], 'failed')
+                self.assertFalse(receipt['confirmedQemu'])
+                self.assertNotIn('nativeFailureDiagnostics', receipt)
+                self.assertEqual(device.diagnostic_calls, [])
+                self.assertTrue(all(command[3:5] == ['shell', 'getprop'] for command, _ in device.calls))
+
+    def test_helper_requires_original_failure_native_target_and_one_collection_only(self):
+        cases = [lambda r, c: r.update(status='passed'), lambda r, c: r.update(phase='normal'),
+                 lambda r, c: r.update(confirmedQemu=False), lambda r, c: r.update(confirmedQemu=1),
+                 lambda r, c: r.update(serial='emulator-5554'), lambda r, c: r.pop('failureObservedAt'),
+                 lambda r, c: r.pop('failureType'), lambda r, c: r.update(tcpipCommand=None),
+                 lambda r, c: setattr(c, 'serial', 'emulator-5554'),
+                 lambda r, c: setattr(c, 'record', record())]
+        for number, mutate in enumerate(cases):
+            with self.subTest(case=number):
+                device, receipt = DiagnosticDeviceIO(), self.failed_record()
+                commands = setup.native.BootstrapCommands('adb', 'emulator-5556', receipt, 45)
+                mutate(receipt, commands)
+                with device.installed():
+                    setup.native_failure_diagnostics(commands, receipt)
+                self.assertEqual(device.calls, [])
+                self.assertNotIn('nativeFailureDiagnostics', receipt)
+        device, receipt = DiagnosticDeviceIO(), self.failed_record()
+        with device.installed():
+            setup.native_failure_diagnostics(None, receipt)
+            setup.native_failure_diagnostics(setup.normal.Commands('adb', 'emulator-5554', receipt, 45), receipt)
+        self.assertEqual(device.calls, [])
+        commands = setup.native.BootstrapCommands('adb', 'emulator-5556', receipt, 45)
+        device.clock.value = 45
+        with device.installed():
+            setup.native_failure_diagnostics(commands, receipt)
+            first = json.dumps(receipt, sort_keys=True)
+            setup.native_failure_diagnostics(commands, receipt)
+        self.assertEqual(json.dumps(receipt, sort_keys=True), first)
+        self.assertEqual(len(device.diagnostic_calls), len(DIAGNOSTIC_READS))
+        self.assertEqual(commands.deadline, 45)
+
+    def test_diagnostic_timeouts_share_12_seconds_and_do_not_change_qualification(self):
+        device, receipt = DiagnosticDeviceIO(), self.failed_record()
+        receipt['networkObservations'] = [dict(original='unchanged failed observation')]
+        original_observations = json.dumps(receipt['networkObservations'])
+        device.clock.value, device.diagnostic_delay = 45, 3
+        commands = setup.native.BootstrapCommands('adb', 'emulator-5556', receipt, 45)
+        with device.installed():
+            setup.native_failure_diagnostics(commands, receipt)
+        capture = receipt['nativeFailureDiagnostics']
+        self.assertEqual(device.clock.now(), 57)
+        self.assertEqual(commands.deadline, 45)
+        self.assertEqual(receipt['preparationDeadlineMonotonic'], 45)
+        self.assertEqual(capture['status'], 'budget-exhausted')
+        self.assertEqual(capture['unattempted'], ['connectivity', 'wifi', 'routes', 'setup-package'])
+        self.assertEqual([row[0] for row in device.diagnostic_calls], DIAGNOSTIC_READS[:6])
+        self.assertTrue(all(row[2] == 2 for row in device.diagnostic_calls))
+        self.assertTrue(all(row['timedOut'] is True and row['exitCode'] is None for row in receipt['commands']))
+        self.assertEqual(json.dumps(receipt['networkObservations']), original_observations)
+        self.assertEqual(receipt['status'], 'failed')
+        self.assertEqual(receipt['failureType'], 'TimeoutError')
+        self.assertEqual(receipt['reason'], 'original preparation failure')
+
+    def test_nonzero_diagnostic_commands_remain_raw_and_never_stop_original_failure(self):
+        device = DiagnosticDeviceIO()
+        device.provider_timeout_at, device.diagnostic_exit = 1, 9
+        with self.main_fixture(device) as output:
+            with self.assertRaises(subprocess.TimeoutExpired) as failure:
+                setup.main()
+            receipt = json.loads(output.read_text())
+        self.assertIs(failure.exception, device.original_error)
+        capture = receipt['nativeFailureDiagnostics']
+        self.assertEqual([row[0] for row in device.diagnostic_calls], DIAGNOSTIC_READS)
+        self.assertTrue(all(row['exitCode'] == 9 for row in receipt['commands'][capture['commandStartIndex']:]))
+        self.assertEqual(receipt['status'], 'failed')
+        self.assertEqual(len(receipt['networkObservations']), 1)
+        self.assertNotIn('firstCellularObservationIndex', receipt['cellularPreparation'])
+
+    def test_diagnostic_exceptions_cannot_replace_original_error_or_resume_work(self):
+        for diagnostic_error in (OSError('unavailable diagnostic'), RuntimeError('unexpected diagnostic'),
+                                 KeyboardInterrupt('interrupted diagnostic')):
+            with self.subTest(error=type(diagnostic_error).__name__):
+                device = DiagnosticDeviceIO()
+                device.provider_timeout_at, device.diagnostic_error = 1, diagnostic_error
+                with self.main_fixture(device) as output:
+                    with self.assertRaises(subprocess.TimeoutExpired) as failure:
+                        setup.main()
+                    receipt = json.loads(output.read_text())
+                self.assertIs(failure.exception, device.original_error)
+                self.assertEqual(receipt['status'], 'failed')
+                self.assertEqual(receipt['failureType'], 'TimeoutExpired')
+                self.assertEqual(receipt['reason'], str(failure.exception))
+                self.assertEqual(len(receipt['networkObservations']), 1)
+                self.assertNotIn('tcpipCommand', receipt)
+                self.assertFalse(device.headers or device.announcements)
+                if isinstance(diagnostic_error, OSError):
+                    self.assertEqual(len(device.diagnostic_calls), len(DIAGNOSTIC_READS))
+                    self.assertTrue(all(row['failureType'] == 'OSError' for row in receipt['diagnostics'].values()))
+                else:
+                    self.assertEqual(len(device.diagnostic_calls), 1)
+                    self.assertEqual(receipt['nativeFailureDiagnostics']['status'], 'interrupted')
+                    self.assertEqual(receipt['diagnosticsFailure']['failureType'], type(diagnostic_error).__name__)
 
 
 if __name__ == '__main__':
