@@ -201,6 +201,7 @@ def source_input(raw, path):
 
 def historical_input(raw, path):
     """Recognize only the complete after-image; all else faces its old oracle."""
+    raw = _ui_job_budget.historical_workflow_input(raw, path)
     if (type(raw) is bytes and type(path) is str and path == PATH
             and len(raw) == CURRENT_BYTES and sha(raw) == CURRENT_SHA256):
         return source_input(raw, path)
@@ -250,9 +251,9 @@ def historical_step_input(step):
             'Boot a fresh real Android emulator with its actual WebView provider')):
         return step
     path = ROOT / PATH
+    raw = _ui_job_budget.workflow_read_input(path)
     assert (path.is_file() and not path.is_symlink() and path.resolve() == path.absolute()
-            and path.stat().st_size == CURRENT_BYTES), 'Ordinary exact current workflow required'
-    raw = path.read_bytes()
+            and len(raw) == CURRENT_BYTES), 'Ordinary exact current workflow required'
     assert (len(raw), sha(raw)) == (CURRENT_BYTES, CURRENT_SHA256), 'Actual cellular workflow is unreviewed'
     try:
         encoded = _encoded_step(step)
@@ -283,3 +284,10 @@ def wrap_step(original):
     def previous_step(step):
         return original(historical_step_input(step))
     return previous_step
+
+
+# A single reviewed UI job envelope may feed these unchanged historical pins.
+import importlib.util as _ui_job_budget_import
+_ui_job_budget_spec = _ui_job_budget_import.spec_from_file_location('selected_ui_job_budget_source_input', Path(__file__).with_name('ui_job_budget_source_compatibility.py'))
+_ui_job_budget = _ui_job_budget_import.module_from_spec(_ui_job_budget_spec)
+_ui_job_budget_spec.loader.exec_module(_ui_job_budget)

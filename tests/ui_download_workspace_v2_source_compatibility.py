@@ -226,3 +226,15 @@ def historical_root(root, selected):
     assert isinstance(root, Path) and root == ROOT and not root.is_symlink()
     assert type(selected) is tuple and selected in ((RUNNER, HOST), (ACTIVITY,))
     return _HistoricalRoot(root, selected)
+
+
+# Only historical readers invert the two final JSON whitespace choices.
+# Actual capture execution and complete publication scans keep current bytes.
+import importlib.util as _report_import
+_report_spec = _report_import.spec_from_file_location('selected_ui_report_json_input', Path(__file__).with_name('ui_report_json_source_compatibility.py'))
+_report_input = _report_import.module_from_spec(_report_spec)
+_report_spec.loader.exec_module(_report_input)
+source_input = _report_input.wrap_bytes(source_input)
+historical_input = _report_input.wrap_bytes(historical_input)
+original_runner_tree = _report_input.wrap_ast(original_runner_tree)
+historical_tree = _report_input.wrap_ast(historical_tree)

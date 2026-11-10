@@ -9,6 +9,7 @@ import unittest
 import final_browser_source_compatibility as final
 import gradle_workflow_test_source_compatibility as inputs
 from workspace_runner_source_compatibility import historical_input as workspace_source_input
+from ui_job_budget_source_compatibility import historical_source_input as ui_job_budget_source_input
 import profile_fixture_root_source_compatibility_test as root_controls
 import profile_resource_startup_source_compatibility_test as resource_controls
 
@@ -63,7 +64,7 @@ class GradleWorkflowTestSourceCompatibilityTests(unittest.TestCase):
                     with self.assertRaises(ValueError):resource.source_input(candidate, path)
                     if path == inputs.FINAL:
                         with self.assertRaises(ValueError):root_inputs.source_input(candidate, path)
-        raw = (ROOT / final.BUILD_BUDGET_PATH).read_bytes()
+        raw = ui_job_budget_source_input((ROOT / final.BUILD_BUDGET_PATH).read_bytes(), final.BUILD_BUDGET_PATH)
         self.assertEqual(raw.count(final.BUILD_BUDGET_CURRENT), 1)
         changed = raw.replace(b'historical_toolchain_step(current[\'steps\'][at])==step', b'True', 1)
         self.assertNotEqual(changed, raw)
@@ -80,7 +81,7 @@ class GradleWorkflowTestSourceCompatibilityTests(unittest.TestCase):
             self.assertLessEqual(max(len(delta['previous'].encode()), len(delta['current'].encode())), 32768)
             self.assertEqual(before.count(delta['previous'].encode()), 1)
             before = before.replace(delta['previous'].encode(), delta['current'].encode(), 1)
-        self.assertEqual(before, (ROOT / inputs.FINAL).read_bytes())
+        self.assertEqual(before, ui_job_budget_source_input((ROOT / inputs.FINAL).read_bytes(), inputs.FINAL))
         old_config = json.loads(resource.CONFIG.read_bytes())
         current_config = resource.config()
         self.assertEqual(set(current_config['sources']), set(old_config['sources']))
@@ -103,7 +104,7 @@ class GradleWorkflowTestSourceCompatibilityTests(unittest.TestCase):
         for path in ('tests/profile_final_browser_source_compatibility_test.py',
                      'tests/profile_fixture_root_source_compatibility.py',
                      'tests/resource_startup_source_compatibility.py'):
-            self.assertEqual(bodies((ROOT / path).read_bytes()), bodies(git('show', value['baseCommit'] + ':' + path)))
+            self.assertEqual(bodies(ui_job_budget_source_input((ROOT / path).read_bytes(), path)), bodies(git('show', value['baseCommit'] + ':' + path)))
         for path in inputs.PREVIOUS:
             for raw in (None, bytearray(b'unknown'), b'', memoryview(b'unknown')):
                 with self.assertRaises(ValueError):inputs.source_input(raw, path)

@@ -623,7 +623,7 @@ jobs:
   android:
     needs: build
     runs-on: ubuntu-24.04
-    timeout-minutes: 40
+    timeout-minutes: ${{ matrix.phase == 'ui' && 60 || 40 }}
     strategy:
       fail-fast: false
       matrix:

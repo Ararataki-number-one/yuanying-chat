@@ -11,6 +11,7 @@ import yaml
 import cellular_workflow_source_compatibility as cellular
 import gradle_transport_source_compatibility as gradle
 import ui_checkpoint_source_compatibility as checkpoint
+import ui_job_budget_source_compatibility as ui_job_budget
 
 ROOT = Path(__file__).resolve().parents[1]
 CURRENT = (92783, 'e077be03328741ac49c8043d17af707287c8fff664c0486eb91dbeff6ce0f0e8')
@@ -45,7 +46,7 @@ def forward(previous, deltas):
 
 class CellularWorkflowSourceCompatibilityTests(unittest.TestCase):
     def workflow(self):
-        return (ROOT / cellular.PATH).read_bytes()
+        return ui_job_budget.historical_workflow_input((ROOT / cellular.PATH).read_bytes(), cellular.PATH)
 
     def reject_workflow(self, candidate, actual):
         self.assertNotEqual(candidate, actual)
@@ -201,10 +202,10 @@ class CellularWorkflowSourceCompatibilityTests(unittest.TestCase):
         self.assertEqual(gradle.FIXTURE_SHA256, '0e34228b10f4ecb511c584f5fc071e06ffd87e6981caddd80b0510897fbcc793')
         cls = workflow.BrowserWorkflowTests
         cls.setUpClass()
-        self.assertEqual(cls.new, yaml.safe_load(raw))
+        self.assertEqual(ui_job_budget.historical_yaml_input(cls.new), yaml.safe_load(raw))
         cls('test_original_checks_retained_in_order').test_original_checks_retained_in_order()
         cls('test_single_pipeline_shares_actual_apk_and_gates_browser').test_single_pipeline_shares_actual_apk_and_gates_browser()
-        self.assertEqual(cls.new, yaml.safe_load(raw))
+        self.assertEqual(ui_job_budget.historical_yaml_input(cls.new), yaml.safe_load(raw))
 
     def test_only_complete_reviewed_preparation_steps_are_projected_without_mutation(self):
         raw = self.workflow()

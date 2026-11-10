@@ -9,8 +9,9 @@ import unittest
 from unittest.mock import patch
 
 import ui_download_workspace_v2_source_compatibility as current
+from ui_report_json_source_compatibility import historical_root as report_historical_root
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = report_historical_root(Path(__file__).resolve().parents[1])
 PREPARATION = ("from ui_test_device import prepare_workflow as prepare_ui_test_device\n"
                "(out/'ui-test-device-isolation.json').write_text(json.dumps(prepare_ui_test_device(adb,serial=args.serial,environment=os.environ),sort_keys=True,indent=2)+'\\n')\n")
 OWNED = frozenset((current.RUNNER, current.ACTIVITY, current.HOST,

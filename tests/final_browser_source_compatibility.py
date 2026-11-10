@@ -259,3 +259,8 @@ def canonical_cpu_fixture_sha(current_pin):
     if _sha(raw) != current_pin:
         raise ValueError('Canonical CPU fixture changed after ordinary-path validation')
     return _sha(source_input(raw, CPU_FIXTURE))
+
+
+# Only the whole reviewed UI job metadata test reaches the older build guard.
+from ui_job_budget_source_compatibility import wrap_build_budget_input as _ui_job_budget_build_input
+build_budget_input = _ui_job_budget_build_input(build_budget_input)

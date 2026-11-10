@@ -36,12 +36,24 @@ def cellular_observation(commands, record, identity, phase):
 
 
 def cellular_after_setup(commands, record, identity):
-    """Wait only for a validated empty-default handover within the same budget.
+    """Observe the known SDK Wi-Fi handover within the same preparation budget.
 
-    SDK setup teardown can remove its Wi-Fi default before Android selects the
-    already enabled cellular network. An empty observation is retained as
-    unusable; it can never satisfy either of the two final cellular proofs.
+    The verified original Wi-Fi may remain briefly after SDK package teardown,
+    then disappear before Android selects cellular. Neither the retained Wi-Fi
+    nor an empty default satisfies a cellular proof. Returning to Wi-Fi after
+    an empty observation is not a handover continuation.
     """
+    stage = record['cellularPreparation']
+    initial = record['networkObservations'][stage['initialNetworkObservationIndex']]['value']
+    initial_wifi = (type(initial) is dict and type(initial.get('schema')) is int and initial['schema'] == 1
+                    and type(initial.get('androidSdk')) is int and initial['androidSdk'] == 35
+                    and type(initial.get('transports')) is list and initial['transports'] == ['wifi']
+                    and type(initial.get('capabilities')) is str and bool(initial['capabilities'])
+                    and all(initial.get(key) is True for key in
+                            ('capabilitiesPresent', 'internetCapability', 'stableDuringRead', 'usable'))
+                    and bool(initial['activeNetwork'])
+                    and initial['activeNetwork'] == initial['activeNetworkAfter'])
+    empty_seen = False
     while True:
         index = len(record['networkObservations'])
         usable = normal.network_observation(commands, record, identity,
@@ -56,15 +68,27 @@ def cellular_after_setup(commands, record, identity):
         require(record.get('packagePresent') is True
                 and record.get('disabledStateConfirmed') is True
                 and type(value) is dict and type(value.get('schema')) is int and value['schema'] == 1
-                and type(value.get('androidSdk')) is int and value['androidSdk'] == 35
-                and usable is False
+                and type(value.get('androidSdk')) is int and value['androidSdk'] == 35,
+                'Verified SDK teardown and API 35 observation required for handover waiting')
+        empty_default = (usable is False
                 and value.get('activeNetwork') == '' and value.get('activeNetworkAfter') == ''
                 and all(value.get(key) is False for key in
                         ('capabilitiesPresent', 'internetCapability', 'stableDuringRead', 'usable'))
                 and type(value.get('transports')) is list and value['transports'] == []
-                and type(value.get('capabilities')) is str and value['capabilities'] == '',
-                'Only an exact validated empty default network may await cellular handover')
-        record['cellularPreparation'].setdefault('emptyDefaultNetworkObservationIndices', []).append(index)
+                and type(value.get('capabilities')) is str and value['capabilities'] == '')
+        retained_wifi = (not empty_seen and initial_wifi and usable is True
+                and type(value.get('transports')) is list and value['transports'] == ['wifi']
+                and type(value.get('capabilities')) is str and bool(value['capabilities'])
+                and all(value.get(key) is True for key in
+                        ('capabilitiesPresent', 'internetCapability', 'stableDuringRead', 'usable'))
+                and value['activeNetwork'] == value['activeNetworkAfter'] == initial['activeNetwork'])
+        require(empty_default or retained_wifi,
+                'Only the verified initial Wi-Fi or exact empty default may await cellular handover')
+        if empty_default:
+            empty_seen = True
+            stage.setdefault('emptyDefaultNetworkObservationIndices', []).append(index)
+        else:
+            stage.setdefault('retainedInitialWifiObservationIndices', []).append(index)
         remaining = commands.deadline - time.monotonic()
         if remaining <= 0:
             raise TimeoutError('Cellular handover did not finish within the original preparation budget')

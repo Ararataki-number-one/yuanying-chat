@@ -258,3 +258,9 @@ def wrap_input(original):
     def historical_source(raw, relative):
         return original(historical_input(raw, relative), relative)
     return historical_source
+
+
+# Exact UI job metadata inputs precede the unchanged workspace source guards.
+from ui_job_budget_source_compatibility import wrap_source_input as _ui_job_budget_source_input
+source_input = _ui_job_budget_source_input(source_input)
+historical_input = _ui_job_budget_source_input(historical_input)

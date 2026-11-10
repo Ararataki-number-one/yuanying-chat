@@ -8,6 +8,7 @@ import unittest
 from unittest.mock import patch
 
 import workspace_runner_source_compatibility as history
+from ui_job_budget_source_compatibility import historical_source_input as ui_job_budget_source_input
 
 ROOT = Path(__file__).resolve().parents[1]
 OWNED = frozenset((
@@ -31,7 +32,7 @@ class WorkspaceRunnerHistoricalInputs(unittest.TestCase):
         self.assertEqual(history.PATHS, OWNED)
         for relative, row in history.ROWS.items():
             with self.subTest(path=relative):
-                current = (ROOT/relative).read_bytes()
+                current = ui_job_budget_source_input((ROOT/relative).read_bytes(), relative)
                 self.assertEqual((len(current), history.sha(current)), (row['afterBytes'], row['afterSha256']))
                 previous = history.source_input(current, relative)
                 self.assertEqual((len(previous), history.sha(previous)), (row['beforeBytes'], row['beforeSha256']))
@@ -66,14 +67,14 @@ class WorkspaceRunnerHistoricalInputs(unittest.TestCase):
     def test_all_original_helper_bodies_and_old_assertion_trees_are_preserved(self):
         helpers = OWNED - {history.RUNNER} - {path for path in OWNED if path.endswith('_test.py')}
         for relative in helpers:
-            current = (ROOT/relative).read_bytes()
+            current = ui_job_budget_source_input((ROOT/relative).read_bytes(), relative)
             previous = history.source_input(current, relative)
             def bodies(raw):
                 return [ast.dump(node, include_attributes=False) for node in ast.parse(raw).body
                         if isinstance(node, (ast.FunctionDef, ast.ClassDef))]
             self.assertEqual(bodies(current), bodies(previous), relative)
         for relative in (path for path in OWNED if path.endswith('_test.py')):
-            current = (ROOT/relative).read_bytes()
+            current = ui_job_budget_source_input((ROOT/relative).read_bytes(), relative)
             previous = history.source_input(current, relative)
             def assertions(raw):
                 return [ast.dump(node, include_attributes=False) for node in ast.walk(ast.parse(raw))
@@ -83,7 +84,7 @@ class WorkspaceRunnerHistoricalInputs(unittest.TestCase):
 
     def test_unknown_insert_delete_change_duplicate_and_moved_context_fail_closed(self):
         for relative, row in history.ROWS.items():
-            current = (ROOT/relative).read_bytes()
+            current = ui_job_budget_source_input((ROOT/relative).read_bytes(), relative)
             candidates = [current+b' ', current[:-1], b'unknown', current[:80]]
             for delta in row['deltas']:
                 context = delta['after'].encode()

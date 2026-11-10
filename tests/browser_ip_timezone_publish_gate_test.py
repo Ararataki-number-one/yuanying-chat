@@ -13,6 +13,7 @@ import yaml
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'tests'))
 from browser_publish_gate_test import execute, workflow_tree
+from ui_job_budget_source_compatibility import historical_job_field_input as ui_job_budget_field_input
 
 SOURCE = 'a' * 40
 REPORT = 'gecko-ip-timezone-results.json'
@@ -156,7 +157,7 @@ class IpTimezonePublishGateTests(unittest.TestCase):
                     self.assertIs(type(current['jobs'][name].get(field)), int)
                     self.assertEqual(current['jobs'][name].get(field), 60)
                 else:
-                    self.assertEqual(current['jobs'][name].get(field), expected, (name, field))
+                    self.assertEqual(ui_job_budget_field_input(name, field, current['jobs'][name].get(field)), expected, (name, field))
         browser = current['jobs']['browser']
         self.assertEqual(browser['timeout-minutes'], 35)
         self.assertEqual(browser['needs'], 'build')

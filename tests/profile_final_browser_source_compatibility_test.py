@@ -23,6 +23,7 @@ from profile_fixture_root_source_compatibility import historical_input as fixtur
 import profile_ip_timezone_source_compatibility_test as retained_ip
 import profile_worker_timezone_source_compatibility_test as retained_worker
 import tls_cpu_ip_source_compatibility as tls
+from ui_job_budget_source_compatibility import historical_source_input as ui_job_budget_source_input
 
 ROOT = Path(__file__).resolve().parents[1]
 B = 'e20667d7e407e28645a59617683211fdd1345039'
@@ -1114,7 +1115,7 @@ class FinalBrowserHistoricalSources(unittest.TestCase):
         self.assertEqual(len(layer.manifest()['files']), 19)
         self.assertEqual(sum(len(item['deltas']) for item in layer.manifest()['files'].values()), 59)
         self.assertEqual(SHA(build_budget_helper_before((ROOT/'tests/final_browser_source_compatibility.py').read_bytes())), '0c24e81a178476e79907f84d107c5539e5b7d872bbcff866844d36e81238ef4d')
-        ip_raw = (ROOT/'tests/browser_ip_timezone_publish_gate_test.py').read_bytes()
+        ip_raw = ui_job_budget_source_input((ROOT/'tests/browser_ip_timezone_publish_gate_test.py').read_bytes(), 'tests/browser_ip_timezone_publish_gate_test.py')
         ip_current = b"                if name == 'build' and field == 'timeout-minutes':\n                    self.assertIs(type(expected), int)\n                    self.assertEqual(expected, 40)\n                    self.assertIs(type(current['jobs'][name].get(field)), int)\n                    self.assertEqual(current['jobs'][name].get(field), 60)\n                else:\n                    self.assertEqual(current['jobs'][name].get(field), expected, (name, field))\n"
         ip_before = b"                self.assertEqual(current['jobs'][name].get(field), expected, (name, field))\n"
         self.assertEqual(ip_raw.count(ip_current), 1)
@@ -1200,7 +1201,7 @@ class FinalBrowserHistoricalSources(unittest.TestCase):
 
     def test_build_budget_metadata_unknown_context_and_preimage_counterfeits_reject(self):
         relative = layer.BUILD_BUDGET_PATH
-        current = (ROOT/relative).read_bytes()
+        current = ui_job_budget_source_input((ROOT/relative).read_bytes(), relative)
         chunk = layer.BUILD_BUDGET_CURRENT
         self.assertEqual(current.count(chunk), 1)
         removed = current.replace(chunk, b'', 1)

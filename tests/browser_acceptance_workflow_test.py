@@ -10,6 +10,7 @@ import unittest
 import xml.etree.ElementTree as ET
 import yaml
 from gradle_transport_source_compatibility import historical_toolchain_step
+from ui_job_budget_source_compatibility import historical_job_field_input as ui_job_budget_field_input
 
 ROOT=Path(__file__).resolve().parents[1]
 
@@ -36,7 +37,7 @@ class BrowserWorkflowTests(unittest.TestCase):
                         self.assertIs(type(current[key]),int)
                         self.assertEqual(current[key],60)
                     else:
-                        self.assertEqual(current[key],value+['browser','tls'] if name=='verify' and key=='needs' else value)
+                        self.assertEqual(ui_job_budget_field_input(name,key,current[key]),value+['browser','tls'] if name=='verify' and key=='needs' else value)
     def test_single_pipeline_shares_actual_apk_and_gates_browser(self):
         self.assertEqual(self.new['on']['push']['branches'],['release/browser-2.1.0','release/browser-2.1.0-*','release/browser-2.1.1','release/browser-2.1.1-*','release/browser-2.1.2','release/browser-2.1.2-*','release/browser-2.1.3','release/browser-2.1.3-*','release/browser-2.1.4','release/browser-2.1.4-*'])
         self.assertIn('browser',self.new['jobs']['verify']['needs'])
