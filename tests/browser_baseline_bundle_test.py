@@ -19,11 +19,16 @@ class BaselineBundleTests(unittest.TestCase):
             (repo/'tools/browser').mkdir(parents=True);(repo/'tests/baselines').mkdir(parents=True)
             shutil.copy2(ROOT/'tools/browser/prepare_baselines.py',repo/'tools/browser/prepare_baselines.py')
             shutil.copy2(ROOT/'tools/browser/source_history.py',repo/'tools/browser/source_history.py')
+            shutil.copy2(ROOT/'tools/browser/prepare_ui_workspace_history.py',repo/'tools/browser/prepare_ui_workspace_history.py')
             public=json.loads((ROOT/'tests/baselines/public-source-history.json').read_text())
             shutil.copy2(ROOT/'tests/baselines/public-source-history.json',repo/'tests/baselines/public-source-history.json')
+            workspace=json.loads((ROOT/'tests/baselines/ui-workspace-public-source-history.json').read_text())
+            shutil.copy2(ROOT/'tests/baselines/ui-workspace-public-source-history.json',repo/'tests/baselines/ui-workspace-public-source-history.json')
             # Provision only real fixed public Git objects from this local fixture;
             # this test never contacts a remote origin or asks a test to lazy-fetch.
             for group in public['groups']:
+                git('fetch','--no-tags','--depth=1','--no-write-fetch-head',str(ROOT),group['commit'])
+            for group in workspace['groups']:
                 git('fetch','--no-tags','--depth=1','--no-write-fetch-head',str(ROOT),group['commit'])
             for name in ['local-performance-history.bundle','local-performance-history.json']:shutil.copy2(ROOT/'tests/baselines'/name,repo/'tests/baselines'/name)
             before=git('status','--porcelain');result=repo/'work/result.json'
