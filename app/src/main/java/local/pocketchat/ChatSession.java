@@ -21,7 +21,7 @@ final class ChatSession {
   final List<WeakReference<Observer>> observers=new ArrayList<>();String driver="",attachmentDriver="",attachmentOwner="",conversation="",browsingUrl="",status="准备连接",pageError="",confirmedPrompt="";long confirmationVersion=0;
   JSONObject draftConflict,approvedDraft;JSONObject sentAttachments=new JSONObject();JSONObject state=new JSONObject();long stateEpoch=-1;boolean googleLoginBlocked;volatile JSONObject pending;JSONArray entries=new JSONArray(),attachments=new JSONArray();boolean networkReady=false,uiVisible=false,submitting=false,operation=false,inFlight=false;
   boolean showingCache=false,offline=false,connecting=false,recoveryScheduled=false,manualAttention=false;int recoveryAttempt=0;long recoveryToken=0;volatile long connectionEpoch=0;String networkIdentity="",networkIssue="",connectionStage="未连接";final ConversationStore cache;final WebTranscriptMirror webMirror=new WebTranscriptMirror();final WebTranscriptStore webStore;long lastWebSnapshot=0,syncRun=0;String lastWebUrl="",lastDeliverySignature="";final DeliveryStore deliveries;String activeDeliveryId="";volatile boolean transferActive=false;
-  boolean deleted=false,configurationCapture=false;long lastDeferredBrowserAttempt=0;final int environmentGeneration;final String environmentId;boolean navigating=false,navigationFailed=false;String navigationTarget="",navigationLabel="";long navigationEpoch=0,navigationStarted=0;long connectionStarted=0,proxyReadyAt=0,navigationMono=0,firstPageVisible=0,pageUsableAt=0;
+  boolean deleted=false,configurationCapture=false;long lastDeferredBrowserAttempt=0;final int environmentGeneration;final String environmentId;boolean navigating=false,navigationFailed=false,browserNavigationStopped=false;String navigationTarget="",navigationLabel="";long navigationEpoch=0,navigationStarted=0;long connectionStarted=0,proxyReadyAt=0,navigationMono=0,firstPageVisible=0,pageUsableAt=0;
   final ResourcePressureController resources;boolean nativeFileWorkBusy;int resourceChoosers,resourceFilePreparations;JSONArray resourceUploadNames=new JSONArray();long resourceUploadEpoch=-1;int resourceUploadStable;boolean resourceUploadChecking;final ResourceUploadState resourceUploads=new ResourceUploadState();long resourceUploadCheckGeneration,fileWorkGeneration;
   boolean resourceWebsiteBusy,resourceWebsiteUploading;long resourceWebsiteEpoch=-1,resourceObserverEpoch=-1,resourceObserverSequence;Object resourceObserverPort;String resourceObserverDocument="",resourceObserverUrl="",resourceObserverBinding="";long resourceInspectionGeneration,resourceObservedAt;
   final Map<String,java.util.function.Consumer<TaskGuardSnapshot>> taskGuardRequests=new HashMap<>();
@@ -72,7 +72,7 @@ final class ChatSession {
     if(reconnect){audit.cancel();invalidateConnection();privacy.apply();if(!offline)openConnection(false,protectionChanged);}
     else{privacy.apply();if(!offline)navigate(resumeUrl(),"正在应用网页设置…");}
   }
-  void beginNavigation(String url,String label){resourceObserverEpoch=-1;resetReplyStability();replyStalled=false;websiteConnectionIssue=false;navigating=true;if(audit!=null)audit.retirePageCheck();navigationEpoch++;navigationFailed=false;navigationTarget=url;navigationLabel=label;spaTransition=false;documentNavigationSeen=false;navigationDispatched=true;if(!lastDocumentId.isEmpty())priorDocumentId=lastDocumentId;lastDocumentId="";awaitNewDocument=!priorDocumentId.isEmpty();spaStable=0;spaSignature="";navigationStarted=System.currentTimeMillis();trace.page("网页加载");navigationMono=SystemClock.elapsedRealtime();firstPageVisible=0;pageUsableAt=0;long epoch=navigationEpoch;setStatus(label);handler.postDelayed(()->navigationTimeout(epoch),45000);}
+  void beginNavigation(String url,String label){browserNavigationStopped=false;resourceObserverEpoch=-1;resetReplyStability();replyStalled=false;websiteConnectionIssue=false;navigating=true;if(audit!=null)audit.retirePageCheck();navigationEpoch++;navigationFailed=false;navigationTarget=url;navigationLabel=label;spaTransition=false;documentNavigationSeen=false;navigationDispatched=true;if(!lastDocumentId.isEmpty())priorDocumentId=lastDocumentId;lastDocumentId="";awaitNewDocument=!priorDocumentId.isEmpty();spaStable=0;spaSignature="";navigationStarted=System.currentTimeMillis();trace.page("网页加载");navigationMono=SystemClock.elapsedRealtime();firstPageVisible=0;pageUsableAt=0;long epoch=navigationEpoch;setStatus(label);handler.postDelayed(()->navigationTimeout(epoch),45000);}
   void navigationTimeout(long epoch){
     if(!navigating||navigationEpoch!=epoch||web.resourceDeferred)return;
     // Readiness is a DOM observation, not evidence that the verified route died.
@@ -81,9 +81,44 @@ final class ChatSession {
     finishNavigation("网页还未显示，请重试或检查网络",false);
   }
   void navigate(String url,String label){navigate(url,label,true);}
+  /** A reply observed in another webpage must not lock this browser surface. */
+  boolean pendingBlocksBrowserNavigation(){
+    JSONObject job=pending;if(job==null)return false;
+    // Older native tasks have no safe page binding; keep their existing guard.
+    if(!WebReplyObserver.webJob(job))return true;
+    String current=web.getUrl();if(!MainActivity.chatUrl(current))return false;
+    String confirmed=job.optString("confirmedUrl");
+    if(job.optBoolean("confirmed")&&!confirmed.isEmpty())return WebReplyObserver.same(confirmed,current);
+    String expected=job.optString("expectedUrl");
+    return expected.isEmpty()||WebReplyObserver.bindingRoute(expected,current);
+  }
+  /** Shared by address, home and history actions; it never discards a task. */
+  boolean allowBrowserNavigation(){
+    String reason="";
+    if(resourceChoosers>0)reason="请先完成或取消文件选择，再切换网页";
+    else if(resourceFilePreparations>0)reason="正在准备附件，请完成后再切换网页";
+    else if(submitting)reason="正在提交提问，请完成后再切换网页";
+    else if(operation)reason="当前网页操作尚未完成，请稍后再切换网页";
+    else if(transferActive)reason="文件正在传输，请完成或暂停后再切换网页";
+    else if(pendingBlocksBrowserNavigation())reason="当前提问还未处理完，请先确认发送结果再切换网页";
+    else if(MainActivity.chatUrl(web.getUrl())&&currentReplyActive())reason="当前 ChatGPT 页面正在回复，请完成后再切换网页";
+    else if(MainActivity.chatUrl(web.getUrl())&&fileWorkActive())reason="当前 ChatGPT 页面的附件尚未处理完，请完成后再切换网页";
+    if(reason.isEmpty())return true;setStatus(reason);return false;
+  }
   void browse(String url,String label){
-    if(pending!=null||submitting||operation||resourceChoosers>0||resourceFilePreparations>0||MainActivity.chatUrl(web.getUrl())&&fileWorkActive()||transferActive){setStatus("当前有回复或文件操作，请完成后再切换网址");return;}
+    if(!allowBrowserNavigation())return;
     navigate(url,label);
+  }
+  /** Stop only page loading. A connection already being prepared may still finish. */
+  void stopBrowserNavigation(){
+    if(deleted||!navigating||!allowBrowserNavigation())return;
+    browserNavigationStopped=true;navigationEpoch++;syncRun++;
+    web.stopLoading();navigating=false;navigationFailed=false;pageError="";
+    awaitNewDocument=false;spaTransition=false;pageMemory.restorePending=false;
+    if(web.hasVisibleDocument()&&web.resourcePage(web.getUrl())){
+      resourceObserverConnected(web.ports.get(web.current));webObserver.pageReady();
+    }
+    finishResourceInspection();setStatus("已停止加载");
   }
   void rememberBrowserLocation(String url){
     if(!GeckoNavigationPolicy.restorable(url)||RequestIdentityAudit.diagnosticUrl(url)||MainActivity.chatUrl(url)&&LoginPagePolicy.login(url))return;
@@ -352,6 +387,8 @@ final class ChatSession {
         // is diagnostic only; it cannot authorize a new document or resend.
         if(MainActivity.chatUrl(retained))asyncDriver("page-recover",J.obj("expectedUrl",retained),3200,result->{if(epoch!=connectionEpoch||documentEpoch!=navigationEpoch||offline||!BrowserRuntimePolicy.sameDocument(retained,web.getUrl()))return;observeWebsiteProbe(epoch,documentEpoch,retained,result);});return;
       }
+      // Completing this independent connection lease must not undo a user's Stop.
+      if(browserNavigationStopped){connectionStage="已连接";setStatus("已连接 · 已停止网页加载");wakePolling();return;}
       navigate(resumeUrl(),"正在恢复当前网页…");
     };
     if(!proxy.isEmpty()&&!MainActivity.validProxy(proxy)){connectionFailed(epoch,"代理地址无效，已停止网络加载",false);return;}

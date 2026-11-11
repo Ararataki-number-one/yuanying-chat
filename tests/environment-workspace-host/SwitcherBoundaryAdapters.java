@@ -19,4 +19,6 @@ final class EnvironmentOverviewUi {
     openings++;
     return new Intent(activity,Profiles.activity(slot)).putExtra("openWindowAction","chat").putExtra("hostOverviewMarker",true).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_REORDER_TO_FRONT);
   }
+  static Intent browserOpening(Activity activity,int slot){return opening(activity,slot).putExtra("openBrowserDirect",true);}
+  static Intent detailsOpening(Activity activity,int slot){return opening(activity,slot).putExtra("openWindowAction","overview");}
 }

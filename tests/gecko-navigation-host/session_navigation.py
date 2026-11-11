@@ -10,7 +10,7 @@ import subprocess
 import tempfile
 from run import ROOT,HERE,PROD,digest,member_at
 
-NEEDLES=('void browse(','void rememberBrowserLocation(','void navigate(','void beginNavigation(','void loadNavigation(','String resumeUrl(','static boolean resumable(','boolean targetMatches(','boolean uploading(','boolean fileWorkActive(','boolean resourceFilesActive(')
+NEEDLES=('boolean pendingBlocksBrowserNavigation(','boolean allowBrowserNavigation(','void browse(','void stopBrowserNavigation(','void applyProxy(String proxy,long epoch)','void resourceObserverConnected(','void rememberBrowserLocation(','void navigate(','void beginNavigation(','void loadNavigation(','String resumeUrl(','static boolean resumable(','boolean targetMatches(','boolean uploading(','boolean fileWorkActive(','boolean resourceFilesActive(','boolean currentReplyActive(','boolean resourceObservationCurrent(')
 PREF_NEEDLES=('private static SharedPreferences preferences(','static String home(','static String normalizeHome(')
 MUTATIONS=(
  ('transcript-isolation','void navigate(','webStore.current(chat?url:"")','webStore.current(url)','generic','Generic browse has no GPT transcript store binding: http://example.com/article?q=1'),
@@ -19,7 +19,13 @@ MUTATIONS=(
  ('saved-browser-resume','String resumeUrl(','String saved=prefs.getString("geckoBrowserUrl","");if(resumable(saved))return saved;','String saved=prefs.getString("geckoBrowserUrl","");','resume','Saved generic browser location precedes old GPT conversation'),
  ('pending-confirmed','String resumeUrl(','if(resumable(confirmed))return confirmed;','if(false)return confirmed;','pending','Bound pending confirmed GPT URL wins over all browser restoration'),
  ('configured-home','String resumeUrl(','saved=prefs.getString("url",BrowserPreferences.home(context));','saved=prefs.getString("url","https://chatgpt.com/");','home','Fresh session honors configured BrowserPreferences home'),
- ('generic-unknown-file-work','void browse(','MainActivity.chatUrl(web.getUrl())&&fileWorkActive()','fileWorkActive()','busy','Unknown generic website upload does not invent a GPT navigation block'),
+ ('generic-unknown-file-work','boolean allowBrowserNavigation(','MainActivity.chatUrl(web.getUrl())&&fileWorkActive()','fileWorkActive()','busy','Unknown generic website upload does not invent a GPT navigation block'),
+ ('web-pending-page-scope','boolean pendingBlocksBrowserNavigation(','if(!MainActivity.chatUrl(current))return false;','if(!MainActivity.chatUrl(current))return true;','reply-scope','Generic page can navigate while preserving a background web reply record'),
+ ('observed-reply-protection','boolean allowBrowserNavigation(','MainActivity.chatUrl(web.getUrl())&&currentReplyActive()','false','reply-scope','Current observed generation without a pending record blocks navigation'),
+ ('browse-navigation-guard','void browse(','if(!allowBrowserNavigation())return;','','busy','Explicit native task still blocks generic URL switch: pending'),
+ ('stop-late-capture','void stopBrowserNavigation(','browserNavigationStopped=true;navigationEpoch++;syncRun++;','browserNavigationStopped=true;syncRun++;','stop','A stopped navigation cannot be revived by its late draft capture'),
+ ('stop-network-completion','void applyProxy(String proxy,long epoch)','if(browserNavigationStopped){','if(false){','stop','A late network connection can finish without restarting a stopped page'),
+ ('explicit-navigation-after-stop','void beginNavigation(','browserNavigationStopped=false;','','stop','A new explicit navigation clears Stop and loads normally'),
  ('cross-origin-target','boolean targetMatches(','return GeckoNavigationPolicy.sameTarget(url,navigationTarget);','return java.util.Objects.equals(URI.create(url).getPath(),URI.create(navigationTarget).getPath());','matching','Same path on another host is never the current navigation target'),
  ('generic-login-save','void rememberBrowserLocation(','MainActivity.chatUrl(url)&&LoginPagePolicy.login(url)','LoginPagePolicy.login(url)','persistence','Ordinary public login saves its browser location independently of GPT: https://accounts.google.com/o/oauth2/v2/auth'),
  ('generic-login-resume','static boolean resumable(','!(MainActivity.chatUrl(url)&&LoginPagePolicy.login(url))','!LoginPagePolicy.login(url)','persistence','Ordinary public login remains a resumable live generic website: https://accounts.google.com/o/oauth2/v2/auth'),
@@ -33,7 +39,7 @@ def main():
   if not result:p.error('Provide --java-home containing '+name)
   return result
  source=PROD/'ChatSession.java';preferences=PROD/'BrowserPreferences.java';observer=PROD/'WebReplyObserver.java';template=HERE/'SessionNavigationHost.java.in'
- complete=[PROD/name for name in ('J.java','BrowserRuntimePolicy.java','BrowserAddressPolicy.java','GeckoNavigationPolicy.java','LoginPagePolicy.java','RequestIdentityAudit.java','RequestIdentityLanguages.java','ResourceUploadState.java')]
+ complete=[PROD/name for name in ('J.java','BrowserRuntimePolicy.java','BrowserAddressPolicy.java','GeckoNavigationPolicy.java','LoginPagePolicy.java','RequestIdentityAudit.java','RequestIdentityLanguages.java','ResourceUploadState.java','BrowserSettingsPolicy.java')]
  files=[source,preferences,observer,template,Path(__file__).resolve(),HERE/'run.py']+complete;hashes={str(path.relative_to(ROOT)):digest(path) for path in files};json_hash=digest(a.json_jar)
  raw=source.read_text();selected=[]
  for needle in NEEDLES:
@@ -48,11 +54,12 @@ def main():
  pref_raw=preferences.read_text();pref_parts=[member_at(pref_raw,pref_raw.index(needle)) for needle in PREF_NEEDLES]
  pref_fields=[line.strip() for line in pref_raw.splitlines() if line.strip().startswith('static final String ')]
  if len(pref_fields)!=3:raise ValueError('Review actual browser preference constants')
- same=member_at(observer.read_text(),observer.read_text().index('static boolean same('))
+ observer_raw=observer.read_text()
+ observer_members='\n'.join(member_at(observer_raw,observer_raw.index(needle)) for needle in ('static boolean same(','static boolean bindingRoute(','static boolean webJob('))
  def generate(parts):
   body='\n'.join(value for _,value in parts).replace('android.net.Uri.parse(','URI.create(').replace('System.currentTimeMillis()','Clock.wallMillis()')
   pref_body=re.sub(r'\bSharedPreferences\b','PrefsBoundary','\n'.join(pref_parts)).replace('Context context','ContextBoundary context').replace('Context.MODE_PRIVATE','ContextBoundary.MODE_PRIVATE')
-  return template.read_text().replace('@PRODUCTION_MEMBERS@',body).replace('@PREFERENCE_MEMBERS@',pref_body).replace('@PREFERENCE_FIELDS@','\n'.join(pref_fields)).replace('@SAME_MEMBER@',same.replace('Uri.parse(','URI.create('))
+  return template.read_text().replace('@PRODUCTION_MEMBERS@',body).replace('@PREFERENCE_MEMBERS@',pref_body).replace('@PREFERENCE_FIELDS@','\n'.join(pref_fields)).replace('@OBSERVER_MEMBERS@',observer_members.replace('Uri.parse(','URI.create('))
  a.output.parent.mkdir(parents=True,exist_ok=True);artifacts=a.output.parent/(a.output.stem+'-artifacts');artifacts.mkdir(parents=True,exist_ok=True);generated=generate(selected);(artifacts/'SessionNavigationHost.java').write_text(generated)
  controls=[]
  with tempfile.TemporaryDirectory(prefix='session-navigation-host-') as temporary:

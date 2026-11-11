@@ -98,14 +98,67 @@ public final class SessionNavigationHost {
     check("The same unknown active upload still blocks leaving GPT",s.web.loads.isEmpty()&&s.webStore.flushes==0&&s.navigationEpoch==4);
     s=fresh();s.web.url=GPT;s.attachments=J.arr(J.obj("state","uploading"));s.browse(HTTPS,"GPT file upload");check("Existing GPT attachment upload protection is retained",s.web.loads.isEmpty()&&s.navigationEpoch==4);
   }
+  static JSONObject webPending(String url,boolean confirmed){return J.obj("id","background-web-task","kind","web","engine","gecko","confirmed",confirmed,"confirmedUrl",confirmed?url:"","expectedUrl",url,"prompt","Preserve this original prompt");}
+  static void replyScope(){
+    ChatSession s=fresh();JSONObject job=webPending(GPT,true);String original=job.toString();s.pending=job;s.prefs.values.put("pending",original);
+    s.browse(HTTPS,"Browse without interrupting another surface");
+    check("Generic page can navigate while preserving a background web reply record",s.web.loads.equals(Arrays.asList(HTTPS))&&s.pending==job&&original.equals(job.toString())&&s.prefs.getString("pending","").equals(original));
+    s=fresh();s.pending=webPending(GPT,true);s.web.url="https://chatgpt.com/c/another";s.browse(HTTPS,"Leave an idle different conversation");
+    check("An old reply in another ChatGPT conversation does not block this page",s.web.loads.equals(Arrays.asList(HTTPS))&&s.pending!=null);
+    s=fresh();s.pending=webPending(GPT,true);s.web.url=GPT;s.browse(HTTPS,"Keep active conversation");
+    check("A pending reply for the current ChatGPT conversation still blocks navigation",s.web.loads.isEmpty()&&s.navigationEpoch==4&&s.pending!=null);
+    for(String source:new String[]{"https://chatgpt.com/","https://chatgpt.com/g/test-gpt/"}){
+      s=fresh();s.pending=webPending(source,false);s.web.url=source+"c/new-conversation";s.browse(HTTPS,"Wait for first-send binding");
+      check("Unconfirmed first send remains protected after its new conversation route: "+source,s.web.loads.isEmpty()&&s.pending!=null&&s.navigationEpoch==4);
+    }
+    s=fresh();s.pending=webPending(GPT,false);s.pending.remove("expectedUrl");s.web.url=GPT;s.browse(HTTPS,"Unknown current chat binding");
+    check("A web task with no route remains protected on ChatGPT",s.web.loads.isEmpty()&&s.pending!=null);
+    s=fresh();s.pending=webPending(GPT,true);s.resourceChoosers=1;s.browse(HTTPS,"Actual chooser still active");
+    check("Background web reply does not weaken an active native file chooser",s.web.loads.isEmpty()&&s.navigationEpoch==4&&s.pending!=null);
+    s=fresh();s.web.url=GPT;s.state=J.obj("url",GPT,"busy",true);s.stateEpoch=s.navigationEpoch;s.browse(HTTPS,"Protect observed generation");
+    check("Current observed generation without a pending record blocks navigation",s.web.loads.isEmpty()&&s.pending==null&&s.navigationEpoch==4);
+    for(boolean staleEpoch:new boolean[]{true,false}){
+      s=fresh();s.web.url=GPT;s.state=J.obj("url",staleEpoch?GPT:"https://chatgpt.com/c/old","busy",true);s.stateEpoch=staleEpoch?s.navigationEpoch-1:s.navigationEpoch;s.browse(HTTPS,"Ignore old observation");
+      check("A reply observation from a different epoch or route never blocks navigation: "+staleEpoch,s.web.loads.equals(Arrays.asList(HTTPS)));
+    }
+    s=fresh();s.web.url=GPT;Object port=new Object();s.web.ports.put(s.web.current,port);s.resourceObserverPort=port;s.resourceObserverEpoch=s.navigationEpoch;s.resourceWebsiteEpoch=s.navigationEpoch;s.resourceObserverBinding="current-binding";s.resourceObserverDocument="current-document";s.resourceObserverUrl=GPT;s.resourceObservedAt=500;s.resourceWebsiteBusy=true;s.browse(HTTPS,"Protect live resource observation");
+    check("Current bound resource observation protects generation without a pending record",s.web.loads.isEmpty()&&s.pending==null&&s.navigationEpoch==4);
+    s.web.ports.put(s.web.current,new Object());s.browse(HTTPS,"Ignore retired popup port");
+    check("An observation from a retired popup port cannot block another surface",s.web.loads.equals(Arrays.asList(HTTPS)));
+    s=fresh();s.pending=webPending(GPT,true);check("History navigation shares the same page-scoped guard",s.allowBrowserNavigation()&&s.pending!=null&&s.web.loads.isEmpty());
+    s.web.url=GPT;check("History navigation remains blocked for the current pending reply",!s.allowBrowserNavigation()&&s.pending!=null&&s.web.loads.isEmpty());
+    s=fresh();s.transferActive=true;check("History navigation preserves the live transfer guard",!s.allowBrowserNavigation()&&s.web.loads.isEmpty());
+  }
   static void lateCapture(){
     ChatSession s=fresh();s.pageMemory.defer=true;s.browse(HTTP,"Deferred capture");check("Actual navigation waits for the declared capture completion boundary",s.web.loads.isEmpty()&&s.pageMemory.pending.size()==1);
     s.browse(HTTPS,"Replacement navigation");check("A newer navigation captures a distinct epoch",s.navigationEpoch==6&&s.pageMemory.pending.size()==2);
     s.pageMemory.complete(0);check("Late old capture cannot load the replaced target",s.web.loads.isEmpty());s.pageMemory.complete(0);check("Current capture still loads the newest target",s.web.loads.equals(Arrays.asList(HTTPS)));
   }
+  static void stopNavigation(){
+    ChatSession s=fresh();s.pending=webPending(GPT,true);JSONObject pending=s.pending;s.connecting=true;s.pageMemory.defer=true;s.browse(HTTP,"Deferred navigation");
+    long connection=s.connectionEpoch,inspection=s.syncRun;s.inFlight=true;s.stopBrowserNavigation();s.pageMemory.complete(0);
+    check("A stopped navigation cannot be revived by its late draft capture",s.web.loads.isEmpty()&&!s.navigating&&s.browserNavigationStopped&&s.web.stops==1);
+    check("Stop preserves the independent network lease and background reply",s.connectionEpoch==connection&&s.connecting&&s.pending==pending&&!s.inFlight&&s.syncRun>inspection&&!s.pageMemory.restorePending);
+    s.applyProxy("",connection);
+    check("A late network connection can finish without restarting a stopped page",s.networkReady&&!s.connecting&&!s.guard.blocked&&s.identityAcknowledgements==1&&s.connectionEpoch==connection&&s.web.loads.isEmpty()&&s.browserNavigationStopped);
+    check("A stopped page retains its reply record after network completion",s.pending==pending&&s.webObserver.readyCalls==0&&s.status.contains("已停止网页加载"));
+    s.pageMemory.defer=false;s.browse(HTTPS,"Navigate after Stop");
+    check("A new explicit navigation clears Stop and loads normally",!s.browserNavigationStopped&&s.navigating&&s.web.loads.equals(Arrays.asList(HTTPS))&&s.pending==pending);
+    s=fresh();s.web.url=GPT;Object port=new Object();s.web.ports.put(s.web.current,port);s.navigating=true;s.resourceObserverPort=port;s.resourceObserverEpoch=s.navigationEpoch;s.resourceObserverBinding="old-binding";long previous=s.navigationEpoch;s.stopBrowserNavigation();
+    check("Stopping a visible ChatGPT document rebinds observation to its new epoch",s.navigationEpoch==previous+1&&s.resourceObserverEpoch==s.navigationEpoch&&s.resourceObserverPort==port&&!s.resourceObserverBinding.isEmpty()&&!s.resourceObserverBinding.equals("old-binding")&&s.webObserver.readyCalls==1&&!s.awaitNewDocument);
+    for(String task:new String[]{"reply","chooser","preparation","transfer","native"}){
+      s=fresh();s.navigating=true;if(task.equals("reply")){s.web.url=GPT;s.state=J.obj("url",GPT,"busy",true);s.stateEpoch=s.navigationEpoch;}else if(task.equals("chooser"))s.resourceChoosers=1;else if(task.equals("preparation"))s.resourceFilePreparations=1;else if(task.equals("transfer"))s.transferActive=true;else s.pending=J.obj("id","native-task");
+      previous=s.navigationEpoch;s.stopBrowserNavigation();
+      check("Stop preserves a real active task: "+task,s.navigating&&!s.browserNavigationStopped&&s.navigationEpoch==previous&&s.web.stops==0);
+    }
+    s=fresh();s.navigating=true;s.stopBrowserNavigation();s.keepPageCandidate=true;s.appliedIdentity="controlled-route";s.applyProxy("",s.connectionEpoch);
+    check("Keeping an existing page after connection recovery does not clear Stop",s.networkReady&&s.browserNavigationStopped&&s.web.loads.isEmpty());
+    s=fresh();s.navigating=true;s.stopBrowserNavigation();s.applyProxy("",s.connectionEpoch-1);
+    check("A stale connection callback cannot admit the network or clear Stop",!s.networkReady&&s.browserNavigationStopped&&s.web.loads.isEmpty());
+  }
   public static void main(String[] args){
-    if(args.length==1){switch(args[0]){case "generic":generic();break;case "persistence":persistence();break;case "resume":resume();break;case "pending":pending();break;case "home":homepage();break;case "busy":busy();break;case "matching":matching();break;default:throw new AssertionError("Unknown focus");}}
-    else{generic();gpt();persistence();resume();pending();homepage();matching();busy();lateCapture();}
+    if(args.length==1){switch(args[0]){case "generic":generic();break;case "persistence":persistence();break;case "resume":resume();break;case "pending":pending();break;case "home":homepage();break;case "busy":busy();break;case "reply-scope":replyScope();break;case "matching":matching();break;case "stop":stopNavigation();break;default:throw new AssertionError("Unknown focus");}}
+    else{generic();gpt();persistence();resume();pending();homepage();matching();busy();replyScope();lateCapture();stopNavigation();}
     System.out.println(J.obj("status","passed","passed",checks.length(),"total",checks.length(),"checks",checks,"syntheticControlledHost",true,"actualAndroidExecution",false,"actualGeckoExecution",false,"actualNetworkExecution",false).toString());
   }
 }
@@ -113,10 +166,12 @@ public final class SessionNavigationHost {
 class ChatSession {
   @PRODUCTION_MEMBERS@
   final ContextBoundary context=new ContextBoundary();final PrefsBoundary prefs=new PrefsBoundary();final WebBoundary web=new WebBoundary();final StoreBoundary webStore=new StoreBoundary();final MirrorBoundary webMirror=new MirrorBoundary();final CacheBoundary cache=new CacheBoundary();final MemoryBoundary pageMemory=new MemoryBoundary();final PrivacyBoundary privacy=new PrivacyBoundary();final TraceBoundary trace=new TraceBoundary();final HandlerBoundary handler=new HandlerBoundary();final AuditBoundary audit=new AuditBoundary();
-  final ResourceUploadState resourceUploads=new ResourceUploadState();JSONObject pending,state=new JSONObject();JSONArray entries=new JSONArray(),attachments=new JSONArray();
+  final ResourceUploadState resourceUploads=new ResourceUploadState();final GuardBoundary guard=new GuardBoundary();final WebReplyObserver webObserver=new WebReplyObserver();JSONObject pending,state=new JSONObject();JSONArray entries=new JSONArray(),attachments=new JSONArray();
   String conversation="",browsingUrl="",requestedConversation="",navigationTarget="",navigationLabel="",priorDocumentId="",lastDocumentId="",spaSignature="",lastWebUrl="",status="",lastFinish="";
-  boolean submitting,operation,transferActive,offline,showingCache,compact,navigating,navigationFailed,spaTransition,documentNavigationSeen,navigationDispatched=true,awaitNewDocument,replyStalled,websiteConnectionIssue,resourceWebsiteUploading;
-  long navigationEpoch=4,stateEpoch=-1,lastWebSnapshot,resourceObserverEpoch=-1,navigationStarted,navigationMono,firstPageVisible,pageUsableAt,resourceWebsiteEpoch=-1;int resourceChoosers,resourceFilePreparations,spaStable,wakes,finishes;
+  boolean submitting,operation,transferActive,offline,showingCache,compact,navigating,navigationFailed,spaTransition,documentNavigationSeen,navigationDispatched=true,awaitNewDocument,replyStalled,websiteConnectionIssue,resourceWebsiteUploading,resourceWebsiteBusy,deleted,browserNavigationStopped,inFlight,keepPageCandidate,connecting,networkReady,manualAttention,recoveryScheduled;
+  long navigationEpoch=4,stateEpoch=-1,lastWebSnapshot,resourceObserverEpoch=-1,navigationStarted,navigationMono,firstPageVisible,pageUsableAt,resourceWebsiteEpoch=-1,resourceObservedAt;int resourceChoosers,resourceFilePreparations,spaStable,wakes,finishes;
+  Object resourceObserverPort;String resourceObserverBinding="",resourceObserverDocument="",resourceObserverUrl="";
+  long syncRun,connectionEpoch=7,recoveryToken,proxyReadyAt,resourceObserverSequence;int recoveryAttempt,identityAcknowledgements;String pageError="",appliedIdentity="",networkIssue="",connectionStage="";
   ChatSession(){context.preferences=prefs;}
   boolean webPerformance(){return compact;}
   void setStatus(String value){status=value;}
@@ -125,28 +180,38 @@ class ChatSession {
   void finishNavigation(String value){finishes++;lastFinish=value;}
   void finishNavigation(String value,boolean retry){finishNavigation(value);}
   void navigationTimeout(long epoch){throw new AssertionError("Unexpected navigation timeout execution boundary");}
+  void finishResourceInspection(){inFlight=false;}
+  String networkIdentity(){return "controlled-route";}
+  boolean internalNetwork(){return false;}
+  void identityPolicyAcknowledged(){identityAcknowledgements++;}
+  void connectionFailed(long epoch,String message,boolean retry){throw new AssertionError("Network failure is outside this successful connection boundary");}
+  void asyncDriver(String action,JSONObject args,long timeout,java.util.function.Consumer<JSONObject> callback){throw new AssertionError("No ChatGPT recovery probe is scheduled in this host");}
+  void observeWebsiteProbe(long connection,long document,String url,JSONObject result){throw new AssertionError("No website recovery result is supplied in this host");}
 }
 class BrowserPreferences {
   @PREFERENCE_FIELDS@
   @PREFERENCE_MEMBERS@
 }
 class WebReplyObserver {
-  @SAME_MEMBER@
+  @OBSERVER_MEMBERS@
+  int readyCalls;void pageReady(){readyCalls++;}
 }
-class MainActivity {static boolean chatUrl(String value){try{return BrowserRuntimePolicy.official(URI.create(value));}catch(Exception invalid){return false;}}}
+class MainActivity {static boolean chatUrl(String value){try{return BrowserRuntimePolicy.official(URI.create(value));}catch(Exception invalid){return false;}}static boolean validProxy(String value){throw new AssertionError("Nonempty proxy input is outside this host");}}
 class ContextBoundary {static final int MODE_PRIVATE=0;PrefsBoundary preferences;PrefsBoundary getSharedPreferences(String name,int mode){if(!name.equals("chat"))throw new AssertionError("Unexpected preferences scope");return preferences;}}
 class PrefsBoundary {
   final Map<String,String> values=new LinkedHashMap<>();int applies;
   String getString(String key,String fallback){return values.getOrDefault(key,fallback);}PrefsBoundary edit(){return this;}PrefsBoundary putString(String key,String value){values.put(key,value);return this;}void apply(){applies++;}
 }
-class WebBoundary {String url="";final List<String> loads=new ArrayList<>(),scripts=new ArrayList<>();int stops;String getUrl(){return url;}void loadUrl(String target){loads.add(target);}void stopLoading(){stops++;}void evaluateJavascript(String code,Object callback){scripts.add(code);}}
+class WebBoundary {String url="";final List<String> loads=new ArrayList<>(),scripts=new ArrayList<>();final Object current=new Object();final Map<Object,Object> ports=new IdentityHashMap<>();int stops;String getUrl(){return url;}void loadUrl(String target){loads.add(target);}void stopLoading(){stops++;}void evaluateJavascript(String code,Object callback){scripts.add(code);}boolean hasVisibleDocument(){return true;}boolean resourcePage(String value){return MainActivity.chatUrl(value);}boolean resourceSamePage(String first,String second){return WebReplyObserver.same(first,second);}}
 class StoreBoundary {String current="initial GPT binding";int flushes;void flush(){flushes++;}void current(String url){current=url;}}
 class MirrorBoundary {int resets;void reset(){resets++;}}
 class CacheBoundary {final JSONArray messages=J.arr(J.obj("fixture","cached next GPT transcript"));int reads;JSONArray messages(String url){reads++;return messages;}}
 class MemoryBoundary {boolean restorePending,defer;int captures;final List<Runnable> pending=new ArrayList<>();void capture(Runnable task){captures++;if(defer)pending.add(task);else task.run();}String document(String url){return "";}void complete(int at){pending.remove(at).run();}}
 class PrivacyBoundary {boolean desktop,requestedDesktop;boolean wantsDesktop(){return requestedDesktop;}void apply(){desktop=requestedDesktop;}boolean canNavigate(){return true;}}
-class TraceBoundary {String mode="";int pages;void page(String value){pages++;}}
-class AuditBoundary {int retired;void retirePageCheck(){retired++;}}
+class TraceBoundary {String mode="";int pages;long visible,usable;void page(String value){pages++;}void network(Object network){if(network!=null)throw new AssertionError("Internal network outside this host");}}
+class AuditBoundary {int retired;void retirePageCheck(){retired++;}void refresh(boolean force){}boolean requestIdentityPageSelected(){return false;}void cancel(){throw new AssertionError("Identity page outside this host");}}
+class GuardBoundary {boolean blocked=true;boolean requiresVpn(){return false;}boolean vpnActive(){return true;}boolean routeProtected(){return true;}String vpnProtectionFailureMessage(){throw new AssertionError("VPN failure outside this host");}void setBlocked(boolean value){blocked=value;}}
+class NativeNetwork {static Object get(ContextBoundary context){throw new AssertionError("Internal network outside this host");}}
 class HandlerBoundary {final List<Runnable> pending=new ArrayList<>();void postDelayed(Runnable task,long delay){if(delay!=45000)throw new AssertionError("Unexpected scheduling boundary");pending.add(task);}}
 class SystemClock {static long elapsedRealtime(){return 1000;}}
 class Clock {static long wallMillis(){return 2000000;}}

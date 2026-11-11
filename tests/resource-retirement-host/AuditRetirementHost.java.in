@@ -52,7 +52,7 @@ final class EnvironmentAudit {
 }
 final class ChatSession {
   final Browser web=new Browser();EnvironmentAudit audit;final Queue handler=new Queue();final Guard guard=new Guard();final PageMemory pageMemory=new PageMemory();final Trace trace=new Trace();final Identity identity=new Identity();
-  Object pending;boolean uiVisible,deleted,submitting,operation,inFlight,reply,unknownPage,filesActive,transferActive,connecting,navigating,websiteRecovering,recoveryScheduled,configurationCapture;
+  Object pending;boolean uiVisible,deleted,submitting,operation,inFlight,reply,unknownPage,filesActive,transferActive,connecting,navigating,websiteRecovering,recoveryScheduled,configurationCapture,browserNavigationStopped;
   long resourceObserverEpoch=7,navigationEpoch=7,navigationStarted,navigationMono,firstPageVisible,pageUsableAt,connectionEpoch=3,recoveryToken=4;
   boolean replyStalled,websiteConnectionIssue,navigationFailed,spaTransition,documentNavigationSeen,navigationDispatched,awaitNewDocument,networkReady=true;
   String navigationTarget="",navigationLabel="",lastDocumentId="original-document",priorDocumentId="",spaSignature="",status="",draft="retained draft";int spaStable,updates;

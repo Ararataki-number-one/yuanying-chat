@@ -77,7 +77,7 @@ class Fixture extends Parent {
 }
 class Owner {
   final Queue handler=new Queue();final ResourcePressureController resources=new ResourcePressureController(null);final View web=new View(this);final Runnable tick=()->{};final Prefs prefs=new Prefs();final Deliveries deliveries=new Deliveries();final Audit audit=new Audit();final Trace trace=new Trace();
-  JSONObject pending;boolean uiVisible=true,navigating=true,navigationFailed,recoveryScheduled,deleted,replyStalled,websiteConnectionIssue,spaTransition,documentNavigationSeen,navigationDispatched,awaitNewDocument;String pageError="",navigationTarget="",navigationLabel="",lastDocumentId="",priorDocumentId="",spaSignature="";long navigationEpoch=7,resourceObserverEpoch=-1,navigationStarted,navigationMono,firstPageVisible,pageUsableAt;int spaStable,beginCount,wakes;
+  JSONObject pending;boolean uiVisible=true,navigating=true,navigationFailed,recoveryScheduled,deleted,replyStalled,websiteConnectionIssue,spaTransition,documentNavigationSeen,navigationDispatched,awaitNewDocument,browserNavigationStopped;String pageError="",navigationTarget="",navigationLabel="",lastDocumentId="",priorDocumentId="",spaSignature="";long navigationEpoch=7,resourceObserverEpoch=-1,navigationStarted,navigationMono,firstPageVisible,pageUsableAt;int spaStable,beginCount,wakes;
   @NAVIGATION@
   @TIMEOUT@
   void resetReplyStability(){}void setStatus(String value){}void wakePolling(){wakes++;}void finishNavigation(String value,boolean retry){pageError=value;navigationFailed=true;navigating=false;}

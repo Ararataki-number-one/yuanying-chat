@@ -15,7 +15,7 @@ import org.json.*;
 import java.io.*;
 import java.util.*;
 
-/** The app manages environments; Gecko displays the official ChatGPT document. */
+/** Each environment opens an isolated browser; its default homepage is ChatGPT. */
 public class MainActivity extends ThemedActivity {
   static final String ORIGIN="https://chatgpt.com/";
   final Handler handler=new Handler(Looper.getMainLooper());
@@ -55,11 +55,12 @@ public class MainActivity extends ThemedActivity {
     // Keep binding diagnostics in the delivery record, without a persistent
     // banner or off-page feedback when the conversation changes.
     quiet|=message.equals("对话已改变，请检查上次发送；不会自动重发");
+    boolean browserBlocked=message.contains("再切换网页");if(browserBlocked)quiet=false;
     boolean current=session!=null&&TextUtils.equals(message,session.status);
     boolean sessionError=current&&(session.websiteConnectionIssue||!session.pageError.isEmpty()||!session.networkIssue.isEmpty()&&TextUtils.equals(message,session.networkIssue)&&(session.offline||!session.networkReady&&!session.connecting));
     boolean waiting=current&&session.replyStalled;
     if(waiting)quiet=false;
-    boolean error=waiting||!quiet&&(sessionError||message.startsWith("网页反馈：")||message.matches(".*(失败|错误|无法|未能|不可用|未完成|待确认|断开|中断|过期|失效|未通过|请检查|请先|暂未|未添加|需要重新|没有可用).*"));
+    boolean error=waiting||!quiet&&(browserBlocked||sessionError||message.startsWith("网页反馈：")||message.matches(".*(失败|错误|无法|未能|不可用|未完成|待确认|断开|中断|过期|失效|未通过|请检查|请先|暂未|未添加|需要重新|没有可用).*"));
     boolean fileProgress=session!=null&&session.resourceFilePreparations>0&&message.equals("准备附件…");
     if(error||fileProgress){if(!TextUtils.equals(status.getText(),message))status.setText(message);status.setTextColor(error&&!waiting?DesignUi.RED:DesignUi.MUTED);}
     status.setClickable(error);status.setContentDescription(fileProgress?"正在准备所选附件":"网页或网络错误，点按查看详情");
@@ -113,6 +114,7 @@ public class MainActivity extends ThemedActivity {
     sessionUi=new UiFrameScheduler(new UiFrameScheduler.Frames(){public void post(Runnable frame){remote.postOnAnimation(frame);}public void cancel(Runnable frame){remote.removeCallbacks(frame);}},this::applySession);
     sessionUi.visible(active);
     session.add(sessionObserver);showPage(true);if(active)resumeChatUi();else startNetwork();applySession();openNotification(getIntent());
+    if(environmentOverview!=null)environmentOverview.browserReady();
   }
   static WebResourceResponse blocked(){return new WebResourceResponse("text/plain","UTF-8",new ByteArrayInputStream(new byte[0]));}
   static boolean validProxy(String value){try{Uri u=Uri.parse(value);return Arrays.asList("http","https","socks").contains(u.getScheme())&&u.getHost()!=null&&u.getPort()>0&&u.getPort()<65536&&u.getUserInfo()==null&&(u.getPath()==null||u.getPath().isEmpty())&&u.getQuery()==null&&u.getFragment()==null;}catch(Exception e){return false;}}
@@ -182,12 +184,14 @@ public class MainActivity extends ThemedActivity {
   void requestPresentationUi(){if(destroyed)return;syncSessionReferences();if(sessionUi!=null)sessionUi.request();else applySession();}
   TextView label(String text,int size,int color){TextView v=new TextView(this);v.setText(text);v.setTextSize(size);v.setTextColor(AppAppearance.text(color));return v;}
   void moreSheet(){
-    ReferenceUi.Modal d=new ReferenceUi.Modal(this,"会话选项").asSheet();
+    ReferenceUi.Modal d=new ReferenceUi.Modal(this,"浏览器菜单").asSheet();
     option(d,"打开网址或搜索",()->GeckoAddressUi.show(this));
+    option(d,"打开主页",()->GeckoAddressUi.home(this));
+    option(d,"复制当前网址",()->{String url=remote.getUrl();if(url==null||url.isEmpty())return;((ClipboardManager)getSystemService(CLIPBOARD_SERVICE)).setPrimaryClip(ClipData.newPlainText("网址",url));Toast.makeText(this,"已复制网址",Toast.LENGTH_SHORT).show();});
     if(remote.hasWebsitePages())option(d,"关闭网站并返回 ChatGPT",()->GeckoAddressUi.closeSites(this));
     option(d,"搜索操作",()->ActionSearchUi.show(this));
     option(d,"快速切换环境",()->EnvironmentSwitcherUi.show(this));
-    option(d,"Chromium 指纹浏览器",()->BrowserActivity.open(this,BrowserPreferences.home(this)));
+    option(d,"切换到 Chromium 浏览器",()->BrowserActivity.resume(this));
     option(d,"浏览器与启动偏好",()->BrowserSettingsUi.show(this));
     option(d,focusReading?"退出专注阅读":"进入专注阅读",()->setFocusReading(!focusReading));
     if(session.privacy.desktop&&BrowserReadingPolicy.chat(remote.getUrl()))option(d,"网页缩放",()->BrowserReadingUi.show(this));
@@ -207,6 +211,23 @@ public class MainActivity extends ThemedActivity {
     d.show();
   }
   boolean reloadMatches(ChatSession.ReloadTarget target){return !destroyed&&session!=null&&target.matches(session)&&remote==session.web;}
+  void browserHistory(int direction){
+    if(!GeckoAddressUi.available(this)||!session.allowBrowserNavigation())return;
+    if(direction<0?!remote.canGoBack():!remote.canGoForward())return;
+    final ChatSession owner=session;final Object surface=remote.current;final long epoch=session.navigationEpoch;
+    session.pageMemory.capture(()->{
+      if(!GeckoAddressUi.available(this)||session!=owner||remote.current!=surface||session.navigationEpoch!=epoch||!session.allowBrowserNavigation())return;
+      if(direction<0)remote.goBack();else remote.goForward();
+      if(geckoAddress!=null)geckoAddress.refresh();
+    });
+  }
+  void browserReloadOrStop(){
+    if(!GeckoAddressUi.available(this))return;
+    if(!session.navigating){requestReload();return;}
+    if(!session.allowBrowserNavigation())return;
+    session.stopBrowserNavigation();if(loading!=null)loading.update();
+    if(geckoAddress!=null)geckoAddress.refresh();
+  }
   void requestReload(){
     if(reloadChecking||reloadDialog!=null||destroyed)return;
     ChatSession.ReloadTarget target=session.reloadTarget();String url=target.url;
@@ -314,7 +335,7 @@ public class MainActivity extends ThemedActivity {
   }
   boolean dispatchBrowser(Intent intent){
     if(!BrowserPreferences.shouldOpenBrowser(this,intent)||!ProfileCatalog.get(this).available(Profiles.slot(this)))return false;
-    BrowserActivity.open(this,BrowserPreferences.home(this));
+    BrowserActivity.resume(this);
     // A cold open has no Gecko document to retain. A warm environment may have
     // ongoing replies or files, so leave its existing session behind the browser.
     if(session==null)finish();return true;
@@ -331,5 +352,5 @@ public class MainActivity extends ThemedActivity {
     }
     return super.dispatchKeyEvent(event);
   }
-  @Override public void onBackPressed(){if(ExitIpPageUi.back(this)||environmentOverview!=null&&environmentOverview.back())return;if(hub!=null&&hub.page!=AppHub.CHAT){hub.select(AppHub.CHAT);return;}if(focusActive()){setFocusReading(false);return;}if(remote!=null&&remote.canGoBack()){remote.goBack();return;}moveTaskToBack(true);}
+  @Override public void onBackPressed(){if(ExitIpPageUi.back(this)||environmentOverview!=null&&environmentOverview.back())return;if(hub!=null&&hub.page!=AppHub.CHAT){hub.select(AppHub.CHAT);return;}if(focusActive()){setFocusReading(false);return;}if(remote!=null&&remote.canGoBack()){browserHistory(-1);return;}moveTaskToBack(true);}
 }

@@ -12,7 +12,7 @@ import java.util.*;
 import java.util.concurrent.*;
 import org.json.*;
 
-/** Compact environment controls outside the untouched official ChatGPT document. */
+/** Native environment chrome around the browser, independent of website content. */
 final class DesignChrome {
   final MainActivity a;
   final TextView title,dot,stateWord,latencyWord,compactTitle;
@@ -30,7 +30,7 @@ final class DesignChrome {
   private long metadataAt;
   private String profileName;
   private JSONObject profileRow;
-  private boolean collapsed=true;
+  private boolean collapsed=false;
   private final ChromeCollapseGesture swipe;
   private Runnable pendingSwipe;
 
@@ -127,7 +127,7 @@ final class DesignChrome {
     diagnosticRow=DesignUi.row(a);diagnosticBack=new Button(a);diagnosticBack.setText("返回原聊天");diagnosticResults=new Button(a);diagnosticResults.setText("查看自检结果");
     diagnosticBack.setOnClickListener(v->{if(!a.session.audit.returnRequestIdentity())EnvironmentAuditUi.show(a);});diagnosticResults.setOnClickListener(v->EnvironmentAuditUi.show(a));
     diagnosticRow.addView(diagnosticBack,new LinearLayout.LayoutParams(0,-2,1));diagnosticRow.addView(diagnosticResults,new LinearLayout.LayoutParams(0,-2,1));diagnosticRow.setVisibility(View.GONE);a.toolbar.addView(diagnosticRow,new LinearLayout.LayoutParams(-1,-2));
-    top.setVisibility(View.GONE);networkRow.setVisibility(View.VISIBLE);
+    compact.setVisibility(View.GONE);top.setVisibility(View.VISIBLE);networkRow.setVisibility(View.VISIBLE);
     root.addView(a.toolbar,new LinearLayout.LayoutParams(-1,-2));
     actions=new View[]{a.navigation,title,more};
     a.toolbar.addOnLayoutChangeListener((v,l,t,r,b,ol,ot,or,ob)->layoutTouchTargets());

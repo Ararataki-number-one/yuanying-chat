@@ -41,7 +41,7 @@ final class EnvironmentOverviewDashboard extends LinearLayout {
     Button technical=ReferenceUi.small(a,"查看来源与详细信息",false,details);identity.addView(technical,new LinearLayout.LayoutParams(-1,-2));
     TextView credit=label("IP 网页查询：ip123.in · 使用当前环境线路",11,DesignUi.MUTED,false);credit.setPadding(a.dp(2),a.dp(14),a.dp(2),a.dp(6));body.addView(credit);
 
-    LinearLayout footer=DesignUi.column(a);footer.setPadding(a.dp(18),a.dp(8),a.dp(18),a.dp(14));footer.addView(DesignUi.button(a,"进入聊天",true,enter),new LinearLayout.LayoutParams(-1,-2));addView(footer,new LinearLayout.LayoutParams(-1,-2));
+    LinearLayout footer=DesignUi.column(a);footer.setPadding(a.dp(18),a.dp(8),a.dp(18),a.dp(14));footer.addView(DesignUi.button(a,"继续浏览",true,enter),new LinearLayout.LayoutParams(-1,-2));addView(footer,new LinearLayout.LayoutParams(-1,-2));
     paletteDark=AppAppearance.dark();check.setEnabled(false);query.setEnabled(false);audit.setEnabled(false);
   }
   TextView label(String text,int size,int color,boolean bold){return ReferenceUi.text(a,text,size,color,bold);}

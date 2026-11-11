@@ -18,7 +18,7 @@ PACKAGE = 'local.pocketchat.test'
 COMPONENT = PACKAGE + '/local.pocketchat.FiveEnvironmentVisualActivity'
 ACTIVITY = PACKAGE + '/local.pocketchat.WindowHomeActivity'
 WIDTH, HEIGHT, DENSITY = 1236, 2676, 480
-LABELS = ('会话', '环境', '下载', '网络', '设置')
+LABELS = ('浏览器', '环境', '下载', '网络', '设置')
 
 
 def sha(path):

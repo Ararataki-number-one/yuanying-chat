@@ -13,18 +13,35 @@ import android.widget.*;
 
 /** Native address controls; never inspect or modify the website's inputs. */
 final class GeckoAddressUi {
-  final MainActivity a;final LinearLayout row;final Button address,home;
+  final MainActivity a;final LinearLayout row;final Button address,home,back,forward,reload;
   private AlertDialog dialog;private EditText editor;private String shown="";
   GeckoAddressUi(MainActivity activity){
-    a=activity;row=DesignUi.row(a);row.setVisibility(View.GONE);row.setPadding(a.dp(10),a.dp(2),a.dp(10),a.dp(4));
-    address=DesignUi.button(a,"网址或搜索",false,()->show(a));address.setAllCaps(false);address.setTextSize(13);address.setSingleLine(true);address.setEllipsize(TextUtils.TruncateAt.MIDDLE);address.setGravity(android.view.Gravity.CENTER_VERTICAL);address.setPadding(a.dp(12),a.dp(8),a.dp(12),a.dp(8));
-    home=DesignUi.button(a,"主页",false,()->home(a));home.setTextSize(12);home.setSingleLine(true);home.setMinWidth(a.dp(56));home.setMinimumWidth(a.dp(56));home.setPadding(a.dp(6),a.dp(8),a.dp(6),a.dp(8));home.setContentDescription("打开当前环境主页");
-    row.addView(address,new LinearLayout.LayoutParams(0,-2,1));LinearLayout.LayoutParams hp=new LinearLayout.LayoutParams(-2,-2);hp.leftMargin=a.dp(6);row.addView(home,hp);refresh();
+    a=activity;row=DesignUi.row(a);row.setPadding(0,a.dp(3),0,a.dp(7));row.setClipChildren(false);row.setClipToPadding(false);
+    back=BrowserToolbarUi.action(a,"back","后退",()->a.browserHistory(-1));
+    forward=BrowserToolbarUi.action(a,"chevron-right","前进",()->a.browserHistory(1));
+    row.addView(back,new LinearLayout.LayoutParams(a.dp(48),a.dp(48)));
+    row.addView(forward,new LinearLayout.LayoutParams(a.dp(48),a.dp(48)));
+    address=DesignUi.button(a,"网址或搜索",false,()->show(a));address.setAllCaps(false);address.setTextSize(14);address.setSingleLine(true);address.setEllipsize(TextUtils.TruncateAt.END);address.setGravity(android.view.Gravity.CENTER_VERTICAL);address.setPadding(a.dp(12),a.dp(8),a.dp(12),a.dp(8));
+    address.setMinWidth(0);address.setMinimumWidth(0);address.setMinHeight(a.dp(48));address.setIncludeFontPadding(true);address.setBackground(DesignUi.glass(a,24));GlassMotion.press(address,false);
+    address.setOnLongClickListener(v->{a.chooseEnvironment();return true;});
+    row.addView(address,new LinearLayout.LayoutParams(0,-2,1));
+    reload=BrowserToolbarUi.action(a,"refresh","刷新网页",a::browserReloadOrStop);
+    home=BrowserToolbarUi.action(a,"home","打开当前环境主页",()->home(a));
+    row.addView(reload,new LinearLayout.LayoutParams(a.dp(48),a.dp(48)));
+    row.addView(home,new LinearLayout.LayoutParams(a.dp(48),a.dp(48)));refresh();
   }
   String target(){if(a.session==null)return "";String url=a.session.navigating?a.session.navigationTarget:a.session.web.getUrl();return url==null?"":url;}
   String current(){String url=target();return url.isEmpty()?(a.session==null?BrowserPreferences.home(a):a.session.resumeUrl()):url;}
-  static boolean visibleFor(String url){return GeckoNavigationPolicy.publicWeb(url)&&!MainActivity.chatUrl(url);}
-  void refresh(){String url=target();int visibility=visibleFor(url)?View.VISIBLE:View.GONE;if(row.getVisibility()!=visibility)row.setVisibility(visibility);if(visibility==View.GONE)return;String text=(url.startsWith("http:")?"HTTP 未加密 · ":"")+url;if(!shown.equals(text)){shown=text;address.setText(text);address.setContentDescription("当前网址 "+text+"，点击输入网址或搜索");}}
+  // ChatGPT is the default website in this browser, so it has the same controls.
+  static boolean visibleFor(String url){return true;}
+  void refresh(){
+    String url=current();if(row.getVisibility()!=View.VISIBLE)row.setVisibility(View.VISIBLE);
+    if(!shown.equals(url)){shown=url;String text=url.startsWith("https://")?url.substring(8):url;address.setText(text.isEmpty()?"网址或搜索":text);address.setContentDescription("当前网址 "+url+"，点击输入网址或搜索");address.setTooltipText(url);}
+    BrowserToolbarUi.enabled(back,a.remote!=null&&a.remote.canGoBack());
+    BrowserToolbarUi.enabled(forward,a.remote!=null&&a.remote.canGoForward());
+    boolean loading=a.session!=null&&a.session.navigating;
+    BrowserToolbarUi.action(reload,loading?"close":"refresh",loading?"停止加载":"刷新网页");
+  }
   static boolean available(MainActivity a){return a!=null&&!a.destroyed&&!a.isFinishing()&&a.session!=null&&a.remote!=null;}
   static void show(MainActivity a){
     if(!available(a))return;GeckoAddressUi owner=a.geckoAddress;if(owner==null)return;if(owner.dialog!=null&&owner.dialog.isShowing()){owner.focusEditor(false);return;}

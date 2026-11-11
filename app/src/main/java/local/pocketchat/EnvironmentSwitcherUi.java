@@ -18,7 +18,7 @@ final class EnvironmentSwitcherUi {
   static void show(Activity activity){
     if(activity.isFinishing()||activity.isDestroyed())return;
     ReferenceUi.Modal panel=new ReferenceUi.Modal(activity,"快速切换环境").asSheet();
-    DesignUi.note(panel.body,"切回原会话，阅读位置和进行中的任务沿用原环境。");
+    DesignUi.note(panel.body,"切回原网页，阅读位置和进行中的任务沿用原环境。");
     EditText search=DesignUi.searchInput(panel.body,"搜索名称、分组、备注或编号");search.setContentDescription("搜索要切换的环境");
     TextView message=DesignUi.text(activity,"",13,DesignUi.MUTED);message.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);panel.body.addView(message);
     LinearLayout list=DesignUi.column(activity);panel.body.addView(list);
@@ -43,7 +43,7 @@ final class EnvironmentSwitcherUi {
     if(activity.isFinishing()||activity.isDestroyed()||!EnvironmentWorkspacePolicy.eligible(expected))return false;
     int slot=expected.optInt("slot",-1);if(slot<0||slot>=Profiles.MAX||slot>0&&Build.VERSION.SDK_INT<28)return false;
     ProfileCatalog catalog=ProfileCatalog.get(activity);if(!EnvironmentWorkspacePolicy.sameIdentity(expected,catalog.item(slot)))return false;
-    Intent target=overview&&"chat".equals(action)?EnvironmentOverviewUi.opening(activity,slot):new Intent(activity,Profiles.activity(slot)).putExtra("openWindowAction",action).putExtra("returnToEnvironmentList","edit".equals(action)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_REORDER_TO_FRONT);
+    Intent target=overview&&"chat".equals(action)?EnvironmentOverviewUi.browserOpening(activity,slot):overview&&"overview".equals(action)?EnvironmentOverviewUi.detailsOpening(activity,slot):new Intent(activity,Profiles.activity(slot)).putExtra("openWindowAction",action).putExtra("returnToEnvironmentList","edit".equals(action)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_REORDER_TO_FRONT);
     // The catalog row may have changed while preparing the overview intent.
     if(!EnvironmentWorkspacePolicy.sameIdentity(expected,catalog.item(slot)))return false;
     catalog.opened(slot);activity.startActivity(target);return true;

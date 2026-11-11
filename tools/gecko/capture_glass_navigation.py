@@ -22,6 +22,7 @@ test-signed integration evidence with original device pixels for visual review.
 import argparse
 import hashlib
 import json
+import math
 from pathlib import Path
 import re
 import secrets
@@ -37,7 +38,7 @@ PACKAGE = 'local.pocketchat.test'
 COMPONENT = PACKAGE + '/local.pocketchat.UiVisualIntegrationActivity'
 WIDTH, HEIGHT, DENSITY = 1236, 2676, 480
 LABELS = ('环境', '网络', '下载', '阅读')
-WORKSPACE_LABELS = ('会话', '环境', '下载', '网络', '设置')
+WORKSPACE_LABELS = ('浏览器', '环境', '下载', '网络', '设置')
 MOTION_WIDTH, MOTION_HEIGHT, MOTION_BIT_RATE, MOTION_SECONDS = 618, 1338, 3500000, 60
 MOTION_MIN_WALL_SECONDS, MOTION_OBSERVATION_SECONDS, MOTION_RELEASE_SETTLE_SECONDS = 20, 20, 1.2
 MOTION_REVIEW_MIN_SECONDS = 12
@@ -211,6 +212,128 @@ def capsule(xml):
 def expanded(xml):
     return len(nodes(xml, lambda node: node.get('content-desc') == '管理环境'
                      and node.get('clickable') == 'true')) == 1
+
+
+def browser_toolbar_geometry(xml):
+    """Observe actual native browser controls, including disabled history actions.
+
+    This checks geometry and reported availability. It never interprets a
+    disabled history button as proof of a navigation failure or clicks a control
+    which Android reports as unavailable.
+    """
+    actions = {}
+    for name, descriptions in (
+            ('back', ('后退',)), ('forward', ('前进',)),
+            ('reload', ('刷新网页', '停止加载')), ('home', ('打开当前环境主页',))):
+        found = nodes(xml, lambda node: node.get('content-desc') in descriptions
+                      and node.get('clickable') == 'true')
+        if len(found) != 1 or found[0].get('enabled') not in ('true', 'false'):
+            return None
+        node = found[0]
+        box = bounds(node)
+        if min(box[2]-box[0], box[3]-box[1]) < 48*DENSITY/160-1:
+            return None
+        actions[name] = dict(bounds=list(box), enabled=node.get('enabled') == 'true',
+                             description=node.get('content-desc'))
+    prefix, suffix = '当前网址 ', '，点击输入网址或搜索'
+    addresses = nodes(xml, lambda node: node.get('content-desc', '').startswith(prefix)
+                      and node.get('content-desc', '').endswith(suffix)
+                      and node.get('clickable') == 'true' and node.get('enabled') == 'true')
+    if len(addresses) != 1 or not addresses[0].get('text'):
+        return None
+    address = addresses[0]
+    current_url = address.get('content-desc')[len(prefix):-len(suffix)]
+    if not current_url:
+        return None
+    address_box = list(bounds(address))
+    if min(address_box[2]-address_box[0], address_box[3]-address_box[1]) < 48*DENSITY/160-1:
+        return None
+    boxes = [actions['back']['bounds'], actions['forward']['bounds'], address_box,
+             actions['reload']['bounds'], actions['home']['bounds']]
+    if (max(box[1] for box in boxes) >= min(box[3] for box in boxes)
+            or any(left[2] > right[0] for left, right in zip(boxes, boxes[1:]))):
+        return None
+    return dict(currentUrl=current_url, addressText=address.get('text'),
+                addressDescription=address.get('content-desc'), addressBounds=address_box,
+                actions=actions, singleHorizontalRow=True, minimumActionTouchDp=48,
+                navigationExecutionClaimed=False)
+
+
+def browser_address_node(xml):
+    if browser_toolbar_geometry(xml) is None:
+        return None
+    return nodes(xml, lambda node: node.get('content-desc', '').startswith('当前网址 ')
+                 and node.get('content-desc', '').endswith('，点击输入网址或搜索'))[0]
+
+
+def verify_navigation_text(measured, expected_label, mode, density):
+    """Check complete native line evidence without trusting its aggregate flags."""
+    def require(value, message):
+        if not value:
+            raise ValueError('Native navigation typography: ' + message)
+
+    def integer(value):
+        return type(value) is int
+
+    def number(value):
+        return type(value) in (int, float) and math.isfinite(value)
+
+    require(mode in ('conversation', 'workspace') and number(density) and density > 0, 'mode or density missing')
+    maximum = 2 if mode == 'workspace' else 1
+    require(type(measured) is dict and measured.get('typographyVersion') == 2
+            and measured.get('label') == expected_label and measured.get('valid') is True, 'label identity or evidence version differs')
+    required_checks = {'layoutFits', 'glyphFits', 'wholeLabel', 'widthFits', 'viewVisible',
+        'horizontalLineFits', 'horizontalGlyphFits', 'verticalUnscrolled', 'selectionMatches',
+        'iconSolidMatchesSelection', 'iconInkMatchesSelection', 'labelInkMatchesSelection',
+        'buttonIdentityStable', 'buttonBoundsStable', 'iconBoundsStable',
+        'iconStatesRenderNonempty', 'iconStatesRenderDifferently', 'iconRenderStateRestored', 'minimumTouchTarget'}
+    checks = measured.get('checks')
+    require(type(checks) is dict and required_checks.issubset(checks)
+            and all(value is True for value in checks.values()), 'an original fit, visibility, selection or stability check failed')
+    for key in ('width', 'height', 'layoutHeight', 'compoundPaddingLeft', 'compoundPaddingRight',
+                'compoundPaddingTop', 'compoundPaddingBottom', 'contentWidth', 'contentHeight',
+                'scrollX', 'scrollY', 'baseline', 'lineCount', 'maximumLines'):
+        require(integer(measured.get(key)), 'missing integral measurement: ' + key)
+    left, right = measured['compoundPaddingLeft'], measured['width'] - measured['compoundPaddingRight']
+    top, bottom = measured['compoundPaddingTop'], measured['height'] - measured['compoundPaddingBottom']
+    require(0 <= left < right <= measured['width'] and 0 <= top < bottom <= measured['height'], 'invalid native content rectangle')
+    require(measured['contentWidth'] == right-left and measured['contentHeight'] == bottom-top
+            and 0 < measured['layoutHeight'] <= bottom-top and measured['scrollY'] == 0, 'layout height or scrolling clips content')
+    require(min(measured['width'], measured['height']) >= math.floor(48*density+.5), 'touch target is below48dp')
+    count, lines = measured['lineCount'], measured.get('lines')
+    require(measured['maximumLines'] == maximum and 1 <= count <= maximum
+            and type(lines) is list and len(lines) == count, 'missing or excessive native text lines')
+    covered, first_baseline, previous_baseline = 0, None, -1
+    for line in lines:
+        require(type(line) is dict, 'native text line missing')
+        for key in ('start', 'end', 'ellipsisCount', 'ellipsisStart', 'layoutBaseline', 'paragraphDirection'):
+            require(integer(line.get(key)), 'missing integral line measurement: ' + key)
+        start, end = line['start'], line['end']
+        require(start == covered and start < end <= len(expected_label)
+                and line.get('text') == expected_label[start:end], 'a label character was omitted, repeated or reordered')
+        covered = end
+        require(line['ellipsisCount'] == 0 and line['ellipsisStart'] == 0 and line['paragraphDirection'] == 1,
+                'a line is ellipsized or has an unexpected direction')
+        for key in ('lineWidth', 'lineLeft', 'lineRight', 'primaryHorizontal'):
+            require(number(line.get(key)), 'missing finite native line coordinate: ' + key)
+        glyph = line.get('glyphBounds')
+        require(type(glyph) is list and len(glyph) == 4 and all(integer(v) for v in glyph)
+                and glyph[0] < glyph[2] and glyph[1] < glyph[3], 'glyph bounds are absent or empty')
+        layout_baseline = line['layoutBaseline']
+        require(previous_baseline < layout_baseline <= measured['layoutHeight'], 'line baselines are invalid or reordered')
+        previous_baseline = layout_baseline
+        if first_baseline is None:
+            first_baseline = layout_baseline
+        baseline = measured['baseline'] + layout_baseline - first_baseline
+        glyph_top, glyph_bottom = baseline + glyph[1], baseline + glyph[3]
+        draw_x = left + line['primaryHorizontal'] - measured['scrollX']
+        line_left, line_right = left + line['lineLeft'] - measured['scrollX'], left + line['lineRight'] - measured['scrollX']
+        require(0 < line['lineWidth'] <= right-left+.5 and line_left <= line_right
+                and line_left >= left-.5 and line_right <= right+.5, 'a native line exceeds its horizontal content rectangle')
+        require(draw_x+glyph[0] >= left-.5 and draw_x+glyph[2] <= right+.5
+                and glyph_top >= top and glyph_bottom <= bottom, 'a rendered glyph is clipped')
+    require(covered == len(expected_label), 'the final label characters were not measured')
+    return True
 
 
 def native_root_bounds(xml):
@@ -730,7 +853,7 @@ def capture_native_backdrop_preview(args, report, capture, adb, wait_for, tap, s
                 sha256=sha(args.out / 'native-settings-navigation.xml'), geometry=settings_geometry),
             screenshot=dict(report['screenshots'][-1]), selectedNavigation='设置', activity=settings_owner,
             settingsObservation=settings_observation(xml, workspace_navigation_geometry))
-        tap(button(xml, '会话'), 'Return through the actual conversation destination and restore the split reading bar')
+        tap(button(xml, '浏览器'), 'Return through the actual browser destination and restore the split reading bar')
         wait_for(capture, chat, 'native-backdrop-returned-chat', seconds=15)
         preview['returnedViaConversationTab'] = True
         preview['returnedToOrdinaryChat'] = True
@@ -792,7 +915,7 @@ def collect_glass_lens_logs(args, report, adb):
         diagnostic['completedAtUnixNs'] = time.time_ns()
 
 
-def capture_navigation_typography(args, report, capture, adb, wait_for, screenshot):
+def capture_navigation_typography(args, report, capture, adb, wait_for, tap, screenshot):
     """Bounded component measurements after the original screenshots and movie."""
     result = report['navigationTypography']
     result.update(status='started', startedAtUnixNs=time.time_ns(), runNonce=report['runNonce'],
@@ -809,7 +932,15 @@ def capture_navigation_typography(args, report, capture, adb, wait_for, screensh
         adb('shell', 'am', 'force-stop', PACKAGE)
         adb('shell', 'am', 'start', '-W', '-n', COMPONENT, '--es', 'visualAction', 'chat')
         xml = wait_for(capture, lambda value: navigation(value) is not None and capsule(value) is not None,
-                       name, seconds=30)
+                       name + '-initial', seconds=30)
+        if not expanded(xml):
+            tap(capsule(xml), 'Expand the native browser header before measuring its enlarged-font controls')
+            editor_xml = wait_for(capture, lambda value: button(value, '取消') is not None,
+                                  name + '-editor', seconds=15)
+            tap(button(editor_xml, '取消'), 'Close the native address editor without changing the website')
+        xml = wait_for(capture, lambda value: navigation(value) is not None and capsule(value) is not None
+                       and browser_toolbar_geometry(value) is not None
+                       and not nodes(value, lambda node: node.get('text') == '打开网址'), name, seconds=20)
         raw = adb('shell', 'dumpsys', 'activity', 'activities').decode('utf-8', 'replace')
         (args.out / (name + '-activity.txt')).write_text(raw)
         resumed = [line.strip() for line in raw.splitlines()
@@ -817,7 +948,8 @@ def capture_navigation_typography(args, report, capture, adb, wait_for, screensh
         if not any(PACKAGE + '/local.pocketchat.MainActivity' in line for line in resumed):
             raise ValueError('The production MainActivity is not resumed after typography observation')
         return dict(file=name + '.xml', sha256=sha(args.out / (name + '.xml')),
-                    geometry=navigation_geometry(xml), resumedActivity=resumed)
+                    geometry=navigation_geometry(xml), browserToolbar=browser_toolbar_geometry(xml),
+                    resumedActivity=resumed)
 
     try:
         for mode, scale in (('conversation',1.0),('workspace',1.0),('conversation',1.3),('workspace',1.3)):
@@ -868,30 +1000,7 @@ def capture_navigation_typography(args, report, capture, adb, wait_for, screensh
                     raise ValueError('Typography record identity or actual font scale differs')
             for row in labels:
                 measured = row['measurement']
-                top = measured['compoundPaddingTop']
-                bottom = measured['height'] - measured['compoundPaddingBottom']
-                glyph = measured['glyphBounds']
-                glyph_top = measured['baseline'] + glyph[1] - measured['scrollY']
-                glyph_bottom = measured['baseline'] + glyph[3] - measured['scrollY']
-                left = measured['compoundPaddingLeft']
-                right = measured['width'] - measured['compoundPaddingRight']
-                draw_x = left + measured['primaryHorizontal'] - measured['scrollX']
-                line_left = left + measured['lineLeft'] - measured['scrollX']
-                line_right = left + measured['lineRight'] - measured['scrollX']
-                glyph_left, glyph_right = draw_x + glyph[0], draw_x + glyph[2]
-                if (measured['label'] != expected_labels[measured['buttonIndex']]
-                        or not measured['valid'] or not all(measured['checks'].values())
-                        or measured['contentHeight'] != bottom-top or measured['layoutHeight'] > bottom-top
-                        or measured['glyphTop'] != glyph_top or measured['glyphBottom'] != glyph_bottom
-                        or glyph_top < top or glyph_bottom > bottom or measured['scrollY'] != 0
-                        or measured['paragraphDirection'] != 1 or measured['contentWidth'] != right-left
-                        or abs(measured['textDrawX'] - draw_x) > .001
-                        or abs(measured['lineLeftInButton'] - line_left) > .001
-                        or abs(measured['lineRightInButton'] - line_right) > .001
-                        or abs(measured['glyphLeft'] - glyph_left) > .001 or abs(measured['glyphRight'] - glyph_right) > .001
-                        or line_left < left-.5 or line_right > right+.5
-                        or glyph_left < left-.5 or glyph_right > right+.5):
-                    raise ValueError('Actual navigation label does not fit its native text region')
+                verify_navigation_text(measured, expected_labels[measured['buttonIndex']], mode, row['density'])
             case.update(status='verified', labelObservationCount=len(labels), completedAtUnixNs=time.time_ns())
             case_path = args.out / ('navigation-typography-' + suffix + '.json')
             write(case_path, case)
@@ -1136,6 +1245,32 @@ def main():
         report['stillSettleMillis'] = 600
         time.sleep(.6)
         screenshot('glass-navigation.png')
+        toolbar = browser_toolbar_geometry(xml)
+        if toolbar is None:
+            raise ValueError('Actual browser address, history, reload/stop and home controls are missing, overlapping or too small')
+        screenshot('browser-toolbar.png')
+        toolbar_screenshot = dict(report['screenshots'][-1])
+        tap(browser_address_node(xml), 'Open the current real URL using the persistent browser address field')
+        editor_xml = wait_for(capture, lambda value: button(value, '取消') is not None
+                             and len(nodes(value, lambda node: node.get('class') == 'android.widget.EditText'
+                                 and node.get('content-desc') == '网址或搜索')) == 1,
+                             'browser-address-editor', seconds=20)
+        editor = nodes(editor_xml, lambda node: node.get('class') == 'android.widget.EditText'
+                       and node.get('content-desc') == '网址或搜索')[0]
+        if editor.get('text') != toolbar['currentUrl']:
+            raise ValueError('Browser address editor replaced the current URL with a different home or stale address')
+        screenshot('browser-address-editor.png')
+        report['browserToolbar'] = dict(status='verified', actualProductionMainActivity=True,
+            geometry=toolbar, screenshot=toolbar_screenshot,
+            editorPrefillsCurrentUrl=True, editorScreenshot=dict(report['screenshots'][-1]),
+            hierarchyFile='browser-address-editor.xml',
+            hierarchySha256=sha(args.out / 'browser-address-editor.xml'),
+            scope='Actual Android toolbar geometry, reported action availability and current-URL editor input. No live website, history navigation or network connection is inferred.')
+        tap(button(editor_xml, '取消'), 'Cancel the browser address check without navigation or editing website data')
+        xml = wait_for(capture, lambda value: navigation(value) is not None and expanded(value)
+                       and browser_toolbar_geometry(value) is not None
+                       and not nodes(value, lambda node: node.get('text') == '打开网址'),
+                       'browser-toolbar-restored', seconds=20)
         report['status'] = 'captured'
         report['staticScreenshotStatus'] = 'captured'
         # A failed optional clip must never discard the original successful PNG.
@@ -1153,7 +1288,7 @@ def main():
         # before the separate font diagnostic deliberately starts fresh views.
         collect_glass_lens_logs(args, report, adb)
         try:
-            capture_navigation_typography(args, report, capture, adb, wait_for, screenshot)
+            capture_navigation_typography(args, report, capture, adb, wait_for, tap, screenshot)
         except Exception as error:
             report['navigationTypography'].update(status='failed', errorType=type(error).__name__, error=str(error))
         incomplete = []

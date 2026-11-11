@@ -135,7 +135,7 @@ class GlassNavigationGeometryTest(unittest.TestCase):
                 result = capture.observed_navigation_geometry(xml)
                 self.assertEqual(result['layout'], 'workspace-five')
                 self.assertTrue(result['valid'])
-                self.assertEqual(result['groupLabels'], ['会话', '环境', '下载', '网络', '设置'])
+                self.assertEqual(result['groupLabels'], ['浏览器', '环境', '下载', '网络', '设置'])
                 self.assertNotIn('阅读', result['bounds'])
 
     def test_only_unselected_compact_actions_identify_the_conversation(self):

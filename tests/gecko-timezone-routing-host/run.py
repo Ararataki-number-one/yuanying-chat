@@ -27,7 +27,7 @@ MEMBERS = (
     'Object claimTimeZoneIntent(', 'boolean hasTimeZoneIntent(', 'void clearTimeZoneIntent(',
     'public void loadUrl(', 'void restoreCheckpoint(', 'static String stateUrl(',
     'public GeckoResult<AllowOrDeny> onLoadRequest(',
-    'private void resumeProtectedLoads(',
+    'private void resumeProtectedLoads(', 'public void stopLoading(',
 )
 # Each control removes one production condition, and must fail its own behavioral
 # assertion after a separately compiled pristine focused control passes.
@@ -52,6 +52,8 @@ MUTATIONS = (
     ('worker-intent-owner', 'void restoreCheckpoint(', 'timeZoneIntents.get(target)!=intent||', '', 'A superseded writer cannot restore its checkpoint after a newer explicit load'),
     ('secondary-epoch', 'void loadSessionUri(', '(!foreground||session!=current||navigation==owner.navigationEpoch)', '(navigation==owner.navigationEpoch)', 'A secondary session replays its newest target despite the primary navigation epoch advancing'),
     ('native-same-url-intent', 'void loadSessionUri(', 'nativeTimeZoneIntents.get(session)!=intent||', '', 'Old same-URL native completion cannot consume the newer exact intent'),
+    ('stopped-surface-intents', 'public void stopLoading(', 'timeZoneLoads.remove(current);timeZoneIntents.remove(current);nativeTimeZoneIntents.remove(current);', '', 'Stopped foreground cannot resume after another surface becomes current'),
+    ('stop-preserves-secondary', 'public void stopLoading(', 'timeZoneLoads.remove(current);timeZoneIntents.remove(current);nativeTimeZoneIntents.remove(current);', 'timeZoneLoads.clear();timeZoneIntents.clear();nativeTimeZoneIntents.clear();', 'Stopping one surface preserves another pending native load'),
     ('document-serial', 'private void startTimeZone(', '&&gate.documentSerial==document)finishTimeZone', ')finishTimeZone', 'Old document callback cannot finish its newer gate'),
     ('held-route', 'GeckoResult<Object> guardedRoute(', 'if(waitForDocumentTimeZone(', 'if(false&&waitForDocumentTimeZone(', 'Committed-document route waits without invoking the inner policy'),
     ('held-header', 'GeckoResult<Object> guardedRequestHeaderPolicy(', 'if(waitForDocumentTimeZone(', 'if(false&&waitForDocumentTimeZone(', 'Committed-document header request waits without invoking the inner policy'),

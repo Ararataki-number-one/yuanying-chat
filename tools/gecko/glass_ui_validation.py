@@ -667,10 +667,7 @@ def capture_acceptance_suite(args, report, capture, adb, wait_for, tap, screensh
                 raise ValueError('Typography source/APK/font identity differs from the current case')
         for row in labels:
             measured = row['measurement']
-            if (measured.get('label') != expected_labels[measured['buttonIndex']]
-                    or measured.get('valid') is not True or not measured.get('checks')
-                    or not all(value is True for value in measured['checks'].values())):
-                raise ValueError('A complete Chinese navigation label did not fit its native text region')
+            api['verify_navigation_text'](measured, expected_labels[measured['buttonIndex']], mode, row['density'])
         case[field]['status'] = 'verified'
         adb('shell', 'am', 'force-stop', package)
 
@@ -691,6 +688,12 @@ def capture_acceptance_suite(args, report, capture, adb, wait_for, tap, screensh
             raise ValueError('The actual native URL keyboard was not observed')
         tap(button(xml, '取消'), 'Cancel native URL editing without navigating')
         xml = artifact(case, 'url-cancelled', chat, photograph=False)
+        # The same controls must remain available on the actual controlled
+        # ChatGPT document, including narrow/large-font and legacy Android cases.
+        # Keep every original draft, document and lifecycle check below intact.
+        xml = artifact(case, 'browser-toolbar', lambda value: chat(value)
+                       and api['browser_toolbar_geometry'](value) is not None)
+        case['browserToolbar'] = api['browser_toolbar_geometry'](xml)
         box = bounds(capsule(xml)); x, y = (box[0] + box[2]) // 2, (box[1] + box[3]) // 2
         report['inputs'].append(dict(action='long-press', phase=case['name'], observedBounds=list(box),
             point=[x, y], durationMillis=850, atUnixNs=time.time_ns()))

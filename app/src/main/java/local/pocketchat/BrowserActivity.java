@@ -22,7 +22,7 @@ import org.json.*;
 public class BrowserActivity extends ThemedActivity {
   static final int MAX_TABS=8;
   final ArrayList<Tab> tabs=new ArrayList<>();
-  LinearLayout root,findBar;FrameLayout content;EditText address,findText;TextView caption,notice,findCount;Button back,forward,tabCount,reload;
+  LinearLayout root,findBar;FrameLayout content;EditText address,findText;TextView environmentName,caption,notice,findCount;Button environmentButton,back,forward,tabCount,reload;
   ProgressBar progress;ChromiumRuntime runtime;BrowserFiles files;BrowserLibrary library;BrowserPermissions permissions;
   final ExecutorService cookieWorker=Executors.newSingleThreadExecutor(r->new Thread(r,"browser-cookie-save"));final AtomicBoolean flushingCookies=new AtomicBoolean();
   final ExecutorService fingerprintWorker=Executors.newSingleThreadExecutor(r->new Thread(r,"chromium-fingerprint-state"));
@@ -60,6 +60,8 @@ public class BrowserActivity extends ThemedActivity {
   public static class Profile7 extends BrowserActivity {}
   static Class<?> activity(int slot){return new Class<?>[]{BrowserActivity.class,Profile1.class,Profile2.class,Profile3.class,Profile4.class,Profile5.class,Profile6.class,Profile7.class}[slot];}
   static void open(Activity host,String url){host.startActivity(new Intent(host,activity(Profiles.slot(host))).putExtra("url",url).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_REORDER_TO_FRONT));}
+  /** Environment re-entry resumes its existing tabs; only a cold start chooses home. */
+  static void resume(Activity host){host.startActivity(new Intent(host,activity(Profiles.slot(host))).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_REORDER_TO_FRONT));}
   @Override protected void attachBaseContext(Context base){super.attachBaseContext(new ProfileContext(base,Profiles.processSlot()));}
   @Override protected void onCreate(Bundle state){
     super.onCreate(state);
@@ -81,31 +83,37 @@ public class BrowserActivity extends ThemedActivity {
   @Override protected void onNewIntent(Intent intent){super.onNewIntent(intent);setIntent(intent);String url=intentAddress(intent);if(url!=null){for(Tab tab:tabs)if(url.equals(tab.url)){select(tab);return;}newTab(url);}}
   int dp(int value){return ReferenceUi.dp(this,value);}
   void buildUi(){
-    root=DesignUi.column(this);root.setBackgroundColor(ReferenceUi.CHAT_BG);
-    LinearLayout location=DesignUi.row(this);location.setPadding(dp(8),dp(4),dp(8),dp(4));
-    Button engine=ReferenceUi.iconButton(this,"globe","当前内核：Chromium；查看内核信息",this::engineInfo);location.addView(engine,new LinearLayout.LayoutParams(dp(48),dp(48)));
-    address=new EditText(this);address.setSingleLine(true);address.setTextSize(15);address.setSelectAllOnFocus(true);address.setHint("搜索或输入网址");address.setContentDescription("网址或搜索词");address.setInputType(android.text.InputType.TYPE_CLASS_TEXT|android.text.InputType.TYPE_TEXT_VARIATION_URI);address.setImeOptions(EditorInfo.IME_ACTION_GO);
-    address.setBackground(ReferenceUi.surface(this,ReferenceUi.WHITE,14,ReferenceUi.LINE));address.setPadding(dp(12),0,dp(8),0);location.addView(address,new LinearLayout.LayoutParams(0,dp(48),1));
+    root=DesignUi.column(this);root.setBackgroundColor(ReferenceUi.CHAT_BG);root.setClipChildren(false);root.setClipToPadding(false);
+    LinearLayout location=DesignUi.row(this);location.setPadding(dp(8),dp(6),dp(8),dp(4));location.setClipChildren(false);location.setClipToPadding(false);
+    environmentButton=BrowserToolbarUi.action(this,"window","打开环境管理",this::showEnvironments);location.addView(environmentButton,new LinearLayout.LayoutParams(dp(48),dp(48)));
+    address=new EditText(this);address.setSingleLine(true);address.setTextSize(15);address.setIncludeFontPadding(true);if(Build.VERSION.SDK_INT>=28)address.setFallbackLineSpacing(true);address.setSelectAllOnFocus(true);address.setHint("搜索或输入网址");address.setContentDescription("网址或搜索词");address.setInputType(android.text.InputType.TYPE_CLASS_TEXT|android.text.InputType.TYPE_TEXT_VARIATION_URI);address.setImeOptions(EditorInfo.IME_ACTION_GO|EditorInfo.IME_FLAG_NO_EXTRACT_UI);
+    address.setTextColor(DesignUi.GLASS_INK);address.setHintTextColor(DesignUi.GLASS_MUTED);address.setBackground(DesignUi.glass(this,24));address.setPadding(dp(14),dp(10),dp(12),dp(10));address.setMinimumHeight(dp(48));LinearLayout.LayoutParams addressParams=new LinearLayout.LayoutParams(0,-2,1);addressParams.leftMargin=dp(6);addressParams.rightMargin=dp(6);location.addView(address,addressParams);
     address.setOnEditorActionListener((view,action,event)->{if(action==EditorInfo.IME_ACTION_GO||event!=null&&event.getKeyCode()==KeyEvent.KEYCODE_ENTER&&event.getAction()==KeyEvent.ACTION_DOWN){go(address.getText().toString());return true;}return false;});
-    reload=ReferenceUi.iconButton(this,"refresh","刷新网页",this::reloadOrStop);location.addView(reload,new LinearLayout.LayoutParams(dp(48),dp(48)));root.addView(location);
+    reload=BrowserToolbarUi.action(this,"refresh","刷新网页",this::reloadOrStop);location.addView(reload,new LinearLayout.LayoutParams(dp(48),dp(48)));root.addView(location);
+    // Give the full Chinese name and security caption their own width at any
+    // font scale; a long caption must not squeeze the name into a narrow column.
+    LinearLayout identity=DesignUi.column(this);identity.setPadding(dp(16),dp(2),dp(16),dp(5));
+    environmentName=ReferenceUi.text(this,Profiles.display(this,Profiles.slot(this)),13,ReferenceUi.TEXT,true);environmentName.setIncludeFontPadding(true);if(Build.VERSION.SDK_INT>=28)environmentName.setFallbackLineSpacing(true);identity.addView(environmentName,new LinearLayout.LayoutParams(-1,-2));
+    caption=ReferenceUi.text(this,"Chromium",11,ReferenceUi.MUTED,false);caption.setIncludeFontPadding(true);if(Build.VERSION.SDK_INT>=28)caption.setFallbackLineSpacing(true);identity.addView(caption,new LinearLayout.LayoutParams(-1,-2));root.addView(identity);
     progress=new ProgressBar(this,null,android.R.attr.progressBarStyleHorizontal);progress.setMax(100);progress.setVisibility(View.INVISIBLE);root.addView(progress,new LinearLayout.LayoutParams(-1,dp(2)));
-    caption=ReferenceUi.text(this,"Chromium · 默认首页 ChatGPT",12,ReferenceUi.MUTED,false);caption.setSingleLine(true);caption.setEllipsize(TextUtils.TruncateAt.END);caption.setPadding(dp(12),dp(3),dp(12),dp(3));root.addView(caption);
     notice=ReferenceUi.text(this,"正在准备浏览器网络与指纹配置…",13,ReferenceUi.TEXT,false);notice.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);notice.setPadding(dp(12),dp(8),dp(12),dp(8));notice.setOnClickListener(v->{if(selected!=null)selected.fingerprintError="";loadFingerprintState();if(runtime!=null)runtime.refresh();});root.addView(notice);
-    findBar=DesignUi.row(this);findText=new EditText(this);findText.setSingleLine(true);findText.setHint("在网页中查找");findText.setContentDescription("页内查找文字");findBar.addView(findText,new LinearLayout.LayoutParams(0,dp(48),1));
+    findBar=DesignUi.row(this);findBar.setPadding(dp(8),dp(4),dp(8),dp(4));findText=new EditText(this);findText.setSingleLine(true);findText.setTextSize(15);findText.setIncludeFontPadding(true);if(Build.VERSION.SDK_INT>=28)findText.setFallbackLineSpacing(true);findText.setMinimumHeight(dp(48));findText.setPadding(dp(10),dp(10),dp(10),dp(10));findText.setHint("在网页中查找");findText.setContentDescription("页内查找文字");findBar.addView(findText,new LinearLayout.LayoutParams(0,-2,1));
     findCount=ReferenceUi.text(this,"",12,ReferenceUi.MUTED,false);findBar.addView(findCount);
-    findBar.addView(ReferenceUi.iconButton(this,"back","上一个匹配",()->{if(web()!=null)web().findNext(false);}),new LinearLayout.LayoutParams(dp(48),dp(48)));
-    findBar.addView(ReferenceUi.iconButton(this,"chevron-right","下一个匹配",()->{if(web()!=null)web().findNext(true);}),new LinearLayout.LayoutParams(dp(48),dp(48)));
-    findBar.addView(ReferenceUi.iconButton(this,"close","关闭页内查找",this::closeFind),new LinearLayout.LayoutParams(dp(48),dp(48)));findBar.setVisibility(View.GONE);root.addView(findBar);
+    findBar.addView(BrowserToolbarUi.action(this,"back","上一个匹配",()->{if(web()!=null)web().findNext(false);}),new LinearLayout.LayoutParams(dp(48),dp(48)));
+    findBar.addView(BrowserToolbarUi.action(this,"chevron-right","下一个匹配",()->{if(web()!=null)web().findNext(true);}),new LinearLayout.LayoutParams(dp(48),dp(48)));
+    findBar.addView(BrowserToolbarUi.action(this,"close","关闭页内查找",this::closeFind),new LinearLayout.LayoutParams(dp(48),dp(48)));findBar.setVisibility(View.GONE);root.addView(findBar);
     findText.addTextChangedListener(new TextWatcher(){public void beforeTextChanged(CharSequence s,int a,int c,int n){}public void onTextChanged(CharSequence s,int a,int b,int c){if(web()!=null)web().findAllAsync(s.toString());}public void afterTextChanged(Editable e){}});
     content=new FrameLayout(this);root.addView(content,new LinearLayout.LayoutParams(-1,0,1));
-    LinearLayout nav=DesignUi.row(this);nav.setBackgroundColor(ReferenceUi.WHITE);
-    back=ReferenceUi.iconButton(this,"back","后退",()->history(-1));forward=ReferenceUi.iconButton(this,"chevron-right","前进",()->history(1));
-    nav.addView(back,new LinearLayout.LayoutParams(0,dp(52),1));nav.addView(forward,new LinearLayout.LayoutParams(0,dp(52),1));
-    nav.addView(ReferenceUi.iconButton(this,"globe","打开主页",()->go(BrowserPreferences.home(this))),new LinearLayout.LayoutParams(0,dp(52),1));
-    tabCount=ReferenceUi.link(this,"1",this::showTabs);tabCount.setContentDescription("标签页");nav.addView(tabCount,new LinearLayout.LayoutParams(0,dp(52),1));
-    nav.addView(ReferenceUi.iconButton(this,"more","浏览器菜单",this::menu),new LinearLayout.LayoutParams(0,dp(52),1));root.addView(nav);
+    LinearLayout nav=DesignUi.row(this);nav.setPadding(dp(9),dp(8),dp(9),dp(10));nav.setClipChildren(false);nav.setClipToPadding(false);
+    back=BrowserToolbarUi.action(this,"back","后退",()->history(-1));forward=BrowserToolbarUi.action(this,"chevron-right","前进",()->history(1));
+    addBrowserAction(nav,back);addBrowserAction(nav,forward);
+    addBrowserAction(nav,BrowserToolbarUi.action(this,"home","打开主页",()->go(BrowserPreferences.home(this))));
+    tabCount=ReferenceUi.link(this,"1",this::showTabs);tabCount.setContentDescription("标签页");tabCount.setTextColor(DesignUi.GLASS_INK);tabCount.setTextSize(15);tabCount.setIncludeFontPadding(true);if(Build.VERSION.SDK_INT>=28)tabCount.setFallbackLineSpacing(true);tabCount.setPadding(dp(4),dp(8),dp(4),dp(8));tabCount.setBackground(DesignUi.glass(this,24));GlassMotion.press(tabCount,false);addBrowserAction(nav,tabCount);
+    addBrowserAction(nav,BrowserToolbarUi.action(this,"more","浏览器菜单",this::menu));root.addView(nav);
     setContentView(root);ReferenceUi.insets(this,root);
   }
+  void addBrowserAction(LinearLayout row,Button button){button.setMinHeight(dp(52));button.setMinimumHeight(dp(52));LinearLayout.LayoutParams params=new LinearLayout.LayoutParams(0,-2,1);params.leftMargin=dp(3);params.rightMargin=dp(3);row.addView(button,params);}
+  void showEnvironments(){startActivity(new Intent(this,WindowHomeActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_REORDER_TO_FRONT));}
   WebView web(){return selected==null?null:selected.web;}
   boolean live(Tab tab,WebView source){return !destroyed&&tabs.contains(tab)&&tab.web==source;}
   void message(String text){if(destroyed)return;notice.setText(text==null?"":text);notice.setVisibility(text==null||text.isEmpty()?View.GONE:View.VISIBLE);}
@@ -392,8 +400,10 @@ public class BrowserActivity extends ThemedActivity {
   void reloadOrStop(){if(selected==null)return;if(selected.loading&&web()!=null){web().stopLoading();selected.loading=false;updateChrome();return;}if(!selected.fingerprintError.isEmpty()){retire(selected);selected.saved=null;selected.fingerprintError="";loadFingerprintState();return;}if(runtime==null)return;if(runtime.allowed()){if(web()==null)showSelected();else if(fingerprintTraffic(selected,web())){files.cancelFor(web());permissions.onNavigation(web());beforeFingerprintNavigation(selected);selected.loading=true;web().reload();updateChrome();}}else runtime.refresh();}
   void updateChrome(){
     if(selected==null)return;if(!address.hasFocus()&&!selected.url.contentEquals(address.getText()))address.setText(selected.url);
-    String safety=selected.url.startsWith("https://")?"HTTPS":"HTTP · 不安全";caption.setText("Chromium · "+safety+" · "+(selected.title.isEmpty()?Profiles.display(this,Profiles.slot(this)):selected.title));
-    back.setEnabled(web()!=null&&web().canGoBack());forward.setEnabled(web()!=null&&web().canGoForward());tabCount.setText(String.valueOf(tabs.size()));tabCount.setContentDescription(tabs.size()+" 个标签页，点击管理");reload.setContentDescription(selected.loading?"停止加载":"刷新网页");progress.setVisibility(selected.loading?View.VISIBLE:View.INVISIBLE);
+    String environment=Profiles.display(this,Profiles.slot(this));if(!environment.contentEquals(environmentName.getText()))environmentName.setText(environment);
+    BrowserToolbarUi.action(environmentButton,"window","当前环境："+environment+"；打开环境管理");
+    String safety=selected.url.startsWith("https://")?"HTTPS":"HTTP · 不安全";caption.setText("Chromium · "+safety);caption.setContentDescription("Chromium · "+safety+(selected.title.isEmpty()?"":" · "+selected.title));caption.setTooltipText(selected.title.isEmpty()?selected.url:selected.title);
+    BrowserToolbarUi.enabled(back,web()!=null&&web().canGoBack());BrowserToolbarUi.enabled(forward,web()!=null&&web().canGoForward());tabCount.setText(String.valueOf(tabs.size()));tabCount.setContentDescription(tabs.size()+" 个标签页，点击管理");tabCount.setTooltipText(tabs.size()+" 个标签页，点击管理");BrowserToolbarUi.action(reload,selected.loading?"close":"refresh",selected.loading?"停止加载":"刷新网页");progress.setVisibility(selected.loading?View.VISIBLE:View.INVISIBLE);
   }
   void retire(Tab tab){
     retireFingerprintBinding(tab);if(tab==selected)invalidateFingerprintObservation();tab.fingerprintReady=false;tab.fingerprintValidating=false;tab.fingerprintStarted=false;
@@ -407,6 +417,7 @@ public class BrowserActivity extends ThemedActivity {
   void showTabs(){ReferenceUi.Modal dialog=new ReferenceUi.Modal(this,"标签页 · "+tabs.size()+"/8").asSheet();for(Tab tab:new ArrayList<>(tabs)){LinearLayout row=DesignUi.row(this);Button open=ReferenceUi.link(this,(tab==selected?"● ":"")+(tab.title.isEmpty()?tab.url:tab.title),()->{dialog.dismiss();select(tab);});open.setMaxLines(2);row.addView(open,new LinearLayout.LayoutParams(0,-2,1));row.addView(ReferenceUi.iconButton(this,"close","关闭标签页 "+tab.url,()->{dialog.dismiss();closeTab(tab);}),new LinearLayout.LayoutParams(dp(48),dp(48)));dialog.body.addView(row);}dialog.buttons("返回",dialog::dismiss,"新标签页",()->{dialog.dismiss();newTab(BrowserPreferences.home(this));focusAddress();});dialog.show();}
   void menu(){
     ReferenceUi.Modal dialog=new ReferenceUi.Modal(this,"浏览器").asSheet();
+    action(dialog,"环境管理",this::showEnvironments);
     action(dialog,"新标签页",()->{newTab(BrowserPreferences.home(this));focusAddress();});
     action(dialog,library.bookmarked(selected.url)?"取消收藏此页":"收藏此页",()->{if(library.bookmarked(selected.url))library.remove("bookmarks",selected.url);else library.remember("bookmarks",selected.url,selected.title,100);message(library.bookmarked(selected.url)?"已收藏此页":"已取消收藏");});
     action(dialog,"收藏夹",()->showLibrary("bookmarks","收藏夹"));action(dialog,"浏览历史",()->showLibrary("history","浏览历史"));
@@ -419,7 +430,8 @@ public class BrowserActivity extends ThemedActivity {
     action(dialog,"当前网站权限",this::sitePermissions);
     action(dialog,"此环境的网络设置",()->startActivity(new Intent(this,Profiles.activity(Profiles.slot(this))).putExtra("openWindowAction","network").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)));
     action(dialog,"首页与启动界面",()->BrowserSettingsUi.show(this,()->{}));
-    action(dialog,"设为系统默认浏览器",this::defaultBrowser);action(dialog,"ChatGPT 增强界面 · Gecko",this::openChat);action(dialog,"内核信息",this::engineInfo);dialog.show();
+    action(dialog,"设置",()->startActivity(new Intent(this,AppSettingsActivity.class).addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)));
+    action(dialog,"设为系统默认浏览器",this::defaultBrowser);action(dialog,"打开 Gecko 浏览器",this::openChat);action(dialog,"内核信息",this::engineInfo);dialog.show();
   }
   void action(ReferenceUi.Modal dialog,String title,Runnable run){ReferenceUi.menuAction(dialog,title,()->{dialog.dismiss();run.run();});}
   void linkMenu(String url){ReferenceUi.Modal dialog=new ReferenceUi.Modal(this,"链接").asSheet();dialog.body.addView(ReferenceUi.secondary(this,url));action(dialog,"在新标签页打开",()->newTab(url));action(dialog,"在当前标签页打开",()->go(url));action(dialog,"复制链接",()->((android.content.ClipboardManager)getSystemService(CLIPBOARD_SERVICE)).setPrimaryClip(ClipData.newPlainText("链接",url)));dialog.show();}
