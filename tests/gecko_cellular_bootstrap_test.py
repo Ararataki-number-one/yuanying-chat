@@ -1,13 +1,15 @@
 """Host-only counterfeit I/O controls for the explicit cellular preparation.
 
 These tests execute the real CM, route, forwarding and ADB-header parsers.
-Only subprocess/socket boundaries and elapsed time are substituted. No Android,
-network reachability, application workload or release acceptance is claimed.
+Subprocess/socket boundaries, elapsed time and the DDS host compiler's output
+are substituted. The separate subscription controls cover that compiler. No
+Android, network, application workload or release acceptance is claimed.
 Run with the workflow's GIT_NO_LAZY_FETCH=1 environment.
 """
 from contextlib import ExitStack, contextmanager, redirect_stderr, redirect_stdout
 import importlib.util
 import io
+import hashlib
 import json
 from pathlib import Path
 import struct
@@ -19,6 +21,7 @@ import unittest
 from unittest.mock import patch
 from urllib.parse import parse_qs, urlsplit
 from zipfile import ZipFile
+from gecko_caret_build_identity_test import minimal_dex
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'tools/gecko'))
@@ -65,6 +68,7 @@ def initial_wifi(value):
 
 def record():
     return dict(sourceCommit='a' * 40, sourceTree='b' * 40, networkMode='cellular',
+                runId='7', runAttempt='1',
                 commands=[], networkObservations=[], initialInputSettings={},
                 confirmedQemu=False, disabledStateConfirmed=False,
                 applicationAcceptance=False, originalWorkloadInvoked=False,
@@ -156,6 +160,29 @@ class DeviceIO:
         self.provider_raw_at = {}
         self.provider_exit_at = {}
         self.events, self.calls, self.headers, self.announcements, self.socket_timeouts = [], [], [], [], []
+        self.subscription_jars = {}
+        self.subscription_invocations = []
+        self.subscription_receipt_edit = None
+        self.subscription_initial_default = 1
+        self.subscription_before_default = 1
+        self.subscription_exit = 0
+        self.subscription_timeout = False
+        self.subscription_hash_override = None
+        self.subscription_size_override = None
+        self.subscription_cleanup_exit = 0
+
+    def compile_subscription_io(self, directory, entry, deadline):
+        """Synthetic compiler output only; no JDK dependency in the early gate."""
+        jar = directory / 'helper.jar'
+        definition = 'Lorg/pocketchat/synthetic/EmulatorDataSubscription;'
+        dex = minimal_dex([definition])
+        with ZipFile(jar, 'w') as archive:
+            archive.writestr('classes.dex', dex)
+        raw = jar.read_bytes()
+        entry.update(compilerControlScope='synthetic host-compiler I/O only',
+                     jar=dict(bytes=len(raw), sha256=hashlib.sha256(raw).hexdigest()),
+                     dex=dict(bytes=len(dex), sha256=hashlib.sha256(dex).hexdigest(), definitions=[definition]))
+        return jar
 
     def run(self, command, **kwargs):
         # The unchanged SDK identity validator may read an absent synthetic Git
@@ -205,12 +232,36 @@ class DeviceIO:
             stdout = '10.0.2.2 dev eth0 table 1015 src 10.0.2.15 uid 2000\n'
         elif parts == ('shell', 'ip', '-4', 'rule', 'show'): stdout = '0: from all lookup local\n'
         elif parts == ('shell', 'ip', '-4', 'route', 'show', 'table', 'all'): stdout = '10.0.2.0/24 dev eth0 table 1015\n'
+        elif parts[0] == 'push' and len(parts) == 3:
+            self.subscription_jars[parts[2]] = Path(parts[1]).read_bytes()
+        elif parts[:2] == ('shell', 'sha256sum'):
+            value = hashlib.sha256(self.subscription_jars[parts[2]]).hexdigest()
+            stdout = (self.subscription_hash_override or value) + '  ' + parts[2] + '\n'
+        elif parts[:4] == ('shell', 'stat', '-c', '%s'):
+            stdout = (str(len(self.subscription_jars[parts[4]])) if self.subscription_size_override is None
+                      else self.subscription_size_override) + '\n'
+        elif parts[:2] == ('shell', 'env') and parts[3:5] == ('app_process', '/system/bin'):
+            self.subscription_invocations.append(parts)
+            if parts[5] != setup.cellular_subscription.CLASS or parts[2][10:] not in self.subscription_jars:
+                raise AssertionError('Unexpected subscription helper invocation')
+            def snapshot(default):
+                return dict(activeSubscriptionIds=[1], defaultDataSubId=default, phoneId=0, slotSubscriptionId=1)
+            value = dict(schema=1, kind='synthetic-default-data-subscription', runNonce=parts[6], status='passed',
+                         uid=2000, androidSdk=35, qemu=True, abi='x86_64', hardware='ranchu',
+                         initial=snapshot(self.subscription_initial_default), beforeWrite=snapshot(self.subscription_before_default),
+                         after=snapshot(1), setCalls=1 if self.subscription_before_default == -1 else 0,
+                         applicationAcceptance=False, physicalPhoneAcceptance=False, networkAcceptance=False)
+            if self.subscription_receipt_edit: self.subscription_receipt_edit(value)
+            stdout, code = json.dumps(value) + '\n', self.subscription_exit
+        elif parts[:3] == ('shell', 'rm', '-f'):
+            code = self.subscription_cleanup_exit
+            if code == 0: self.subscription_jars.pop(parts[3], None)
         elif parts == ('tcpip', '5555'): code, stdout, stderr = self.tcpip_result
         elif parts == ('get-state',): stdout = self.native_state
         else: raise AssertionError('Unexpected command: ' + repr(parts))
         duration = self.route_delay if parts[:3] == ('shell', 'ip', '-4') and 'wlan0' not in parts else self.command_delay
         self.clock.value += min(duration, kwargs['timeout'])
-        if duration > kwargs['timeout'] or provider_index == self.provider_timeout_at and provider_index is not None or parts == ('tcpip', '5555') and self.tcpip_timeout:
+        if duration > kwargs['timeout'] or provider_index == self.provider_timeout_at and provider_index is not None or parts == ('tcpip', '5555') and self.tcpip_timeout or parts[:2] == ('shell', 'env') and self.subscription_timeout:
             raise subprocess.TimeoutExpired(command, kwargs['timeout'], output=stdout, stderr=stderr)
         return subprocess.CompletedProcess(command, code, stdout=stdout, stderr=stderr)
 
@@ -230,6 +281,7 @@ class DeviceIO:
     @contextmanager
     def installed(self):
         with ExitStack() as stack:
+            stack.enter_context(patch.object(setup.cellular_subscription, 'compile_helper', side_effect=self.compile_subscription_io))
             stack.enter_context(patch.object(setup.subprocess, 'run', side_effect=self.run))
             stack.enter_context(patch.object(setup.socket, 'socket', side_effect=lambda *a, **k: MonitorStream(self)))
             stack.enter_context(patch.object(setup.socket, 'create_connection', side_effect=self.connection))

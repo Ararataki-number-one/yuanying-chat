@@ -19,6 +19,7 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / 'tools/gecko'))
 import prepare_emulator as normal
 import prepare_native_adb as native
+import cellular_subscription
 
 RULE = 'hostfwd_add mynet tcp:127.0.0.1:5555-10.0.2.15:5555'
 require = native.require
@@ -87,6 +88,8 @@ def cellular_after_setup(commands, record, identity):
         if empty_default:
             empty_seen = True
             stage.setdefault('emptyDefaultNetworkObservationIndices', []).append(index)
+            if 'subscriptionInitialization' not in stage:
+                cellular_subscription.initialize(commands, record, identity)
         else:
             stage.setdefault('retainedInitialWifiObservationIndices', []).append(index)
         remaining = commands.deadline - time.monotonic()
