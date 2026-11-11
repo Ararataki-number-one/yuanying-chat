@@ -2,6 +2,7 @@
 import copy
 import importlib.util
 import json
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -34,6 +35,46 @@ def stack(pid=42, package='local.pocketchat.test'):
             'DALVIK THREADS (1):\n"main" prio=5 tid=1 Native\n'
             '  at android.view.ThreadedRenderer.nSyncAndDrawFrame(Native method)\n'
             f'----- end {pid} -----\n').encode()
+
+
+def real_shell_executor(directory, payload):
+    """Use ADB's literal argv join and a real shell with harmless local commands.
+
+    ADB 35.0.2 client/commandline.cpp joins shell argv with spaces; its daemon
+    passes that command to sh -c. No Android device is contacted. Synthetic
+    executables reject wrong arguments before emitting fixture data.
+    """
+    directory=Path(directory);directory.mkdir()
+    (directory/'stream.bin').write_bytes(payload)
+    programs={
+        'getprop':"""import sys
+if sys.argv[1:] != ['ro.kernel.qemu']:
+    sys.exit('unexpected synthetic getprop arguments')
+print('1')
+""",
+        'dumpsys':"""import json, os, sys
+from pathlib import Path
+directory=Path(__file__).parent
+(directory/'argv.json').write_text(json.dumps(sys.argv[1:]))
+if sys.argv[1:] != ['dropbox', '--print', 'data_app_anr']:
+    sys.exit('unexpected synthetic dumpsys arguments')
+try:
+    sys.stdout.buffer.write((directory/'stream.bin').read_bytes())
+    sys.stdout.buffer.flush()
+except BrokenPipeError:
+    os._exit(0)
+""",
+    }
+    for name,program in programs.items():
+        path=directory/name
+        path.write_text('#!'+sys.executable+'\n'+program);path.chmod(0o700)
+    calls=[]
+    def execute(args,**kwargs):
+        assert args[:4]==['controlled-adb','-s','emulator-5554','shell']
+        calls.append((args,kwargs))
+        environment=dict(os.environ,PATH=str(directory)+os.pathsep+os.defpath)
+        return subprocess.run(['/bin/sh','-c',' '.join(args[4:])],env=environment,**kwargs)
+    return execute,calls,directory/'argv.json'
 
 
 class AnrDiagnosticTest(unittest.TestCase):
@@ -92,7 +133,7 @@ class AnrDiagnosticTest(unittest.TestCase):
             calls.append((args,kwargs))
             if args[3:]==['shell','getprop','ro.kernel.qemu']:
                 return subprocess.CompletedProcess(args,0,b'1\n',b'')
-            self.assertEqual(args[3:],['shell','sh','-c','dumpsys dropbox --print data_app_anr | head -c 1048577'])
+            self.assertEqual(args[3:],['shell','dumpsys dropbox --print data_app_anr | head -c 1048577'])
             return subprocess.CompletedProcess(args,0,stack(1,'other.package')+stack()+b'foreign log payload',b'')
         with tempfile.TemporaryDirectory() as tmp:
             result=self.collect(tmp,execute)
@@ -110,6 +151,60 @@ class AnrDiagnosticTest(unittest.TestCase):
             self.assertEqual(len(calls),2);self.assertEqual([x[1]['timeout'] for x in calls],[3,7])
             with self.assertRaises(ValueError):self.collect(tmp,execute)
             self.assertEqual(len(calls),2)
+
+    def test_real_shell_preserves_dropbox_arguments_and_collects_owned_stack_once(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            directory=Path(tmp)/'capture';directory.mkdir()
+            execute,calls,argv=real_shell_executor(Path(tmp)/'commands',
+                stack(1,'other.package')+stack()+b'foreign log payload')
+            result=self.collect(directory,execute)
+            self.assertEqual(result['status'],'owned-stacks-collected')
+            self.assertEqual(json.loads(argv.read_text()),['dropbox','--print','data_app_anr'])
+            self.assertEqual(len(calls),2)
+            self.assertEqual([kwargs['timeout'] for _,kwargs in calls],[3,7])
+            self.assertEqual([row['parts'] for row in result['commands']],
+                [['shell','getprop','ro.kernel.qemu'],
+                 ['shell','dumpsys dropbox --print data_app_anr | head -c 1048577']])
+            self.assertEqual(len(result['stackFiles']),1)
+            raw=(directory/result['stackFiles'][0]['file']).read_bytes()
+            self.assertEqual(raw,stack().rstrip(b'\n'))
+            self.assertTrue(result['sourceInputsUnchanged'])
+            self.assertFalse(result['releaseAcceptance'])
+            with self.assertRaises(ValueError):self.collect(directory,execute)
+            self.assertEqual(len(calls),2)
+
+    def test_original_nested_shell_loses_arguments_and_cannot_collect(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            directory=Path(tmp)/'capture';directory.mkdir()
+            execute,calls,argv=real_shell_executor(Path(tmp)/'commands',stack())
+            def nested(args,**kwargs):
+                if args[3:]!=['shell','getprop','ro.kernel.qemu']:
+                    args=args[:4]+['sh','-c',args[4]]
+                return execute(args,**kwargs)
+            result=self.collect(directory,nested)
+            self.assertEqual(json.loads(argv.read_text()),[])
+            self.assertEqual(result['status'],'collection-failed')
+            self.assertEqual(result['stackFiles'],[])
+            self.assertGreater(result['commands'][-1]['stderrBytes'],0)
+            self.assertEqual(len(calls),2)
+            self.assertEqual([kwargs['timeout'] for _,kwargs in calls],[3,7])
+            self.assertEqual(len(list(directory.iterdir())),1)
+
+    def test_real_shell_head_cap_rejects_complete_stack_inside_oversized_stream(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            directory=Path(tmp)/'capture';directory.mkdir()
+            execute,calls,argv=real_shell_executor(Path(tmp)/'commands',
+                stack()+b'x'*(ANR.MAX_CAPTURE+128))
+            result=self.collect(directory,execute)
+            self.assertEqual(json.loads(argv.read_text()),['dropbox','--print','data_app_anr'])
+            self.assertEqual(result['commands'][-1]['stdoutBytes'],ANR.MAX_CAPTURE+1)
+            self.assertEqual(result['commands'][-1]['stderrBytes'],0)
+            self.assertTrue(result['streamTruncated'])
+            self.assertEqual(result['status'],'collection-failed')
+            self.assertEqual(result['stackFiles'],[])
+            self.assertEqual(len(calls),2)
+            self.assertEqual([kwargs['timeout'] for _,kwargs in calls],[3,7])
+            self.assertEqual(len(list(directory.iterdir())),1)
 
     def test_unconfirmed_emulator_stops_before_reading_dropbox(self):
         execute=mock.Mock(return_value=subprocess.CompletedProcess([],0,b'0\n',b''))

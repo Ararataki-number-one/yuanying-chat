@@ -382,7 +382,13 @@ def native_failure_diagnostics(commands, record):
                   ('connectivity', ('shell', 'dumpsys', 'connectivity')),
                   ('wifi', ('shell', 'dumpsys', 'wifi')),
                   ('routes', ('shell', 'ip', 'route', 'show', 'table', 'all')),
-                  ('setup-package', ('shell', 'dumpsys', 'package', normal.PACKAGE))]
+                  ('setup-package', ('shell', 'dumpsys', 'package', normal.PACKAGE)),
+                  # Dump only an existing service, with no metrics/clear/start
+                  # arguments. Android briefly disables its process freezer and
+                  # restores it in finally; no persistent configuration changes.
+                  ('telephony-debug-service', ('shell', 'dumpsys', 'activity', 'service',
+                                               'com.android.phone/.TelephonyDebugService')),
+                  ('radio-log', ('shell', 'logcat', '-d', '-b', 'radio', '-v', 'threadtime', '-t', '400'))]
     try:
         for index, (name, parts) in enumerate(operations):
             if time.monotonic() >= diagnostic_commands.deadline:

@@ -139,7 +139,7 @@ def collect(*, adb, serial, source, nonce, directory, observation, environment=N
         # Device-side byte cap prevents a large global DropBox history from
         # entering the host capture. Only complete owned stack blocks survive.
         command = 'dumpsys dropbox --print data_app_anr | head -c 1048577'
-        captured = run(('shell', 'sh', '-c', command), 7)
+        captured = run(('shell', command), 7)
         record['streamTruncated'] = len(captured.stdout) > MAX_CAPTURE
         if captured.returncode != 0 or captured.stderr or record['streamTruncated']:
             raise ValueError('ANR stream failed or exceeded its fixed byte bound')

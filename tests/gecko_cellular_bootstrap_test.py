@@ -777,6 +777,8 @@ DIAGNOSTIC_READS = [
     ('shell', 'dumpsys', 'wifi'),
     ('shell', 'ip', 'route', 'show', 'table', 'all'),
     ('shell', 'dumpsys', 'package', setup.normal.PACKAGE),
+    ('shell', 'dumpsys', 'activity', 'service', 'com.android.phone/.TelephonyDebugService'),
+    ('shell', 'logcat', '-d', '-b', 'radio', '-v', 'threadtime', '-t', '400'),
 ]
 REAL_CHECK_OUTPUT = subprocess.check_output
 
@@ -971,7 +973,8 @@ class CellularFailureDiagnosticControls(unittest.TestCase):
         self.assertEqual(commands.deadline, 45)
         self.assertEqual(receipt['preparationDeadlineMonotonic'], 45)
         self.assertEqual(capture['status'], 'budget-exhausted')
-        self.assertEqual(capture['unattempted'], ['connectivity', 'wifi', 'routes', 'setup-package'])
+        self.assertEqual(capture['unattempted'], ['connectivity', 'wifi', 'routes', 'setup-package',
+                                                'telephony-debug-service', 'radio-log'])
         self.assertEqual([row[0] for row in device.diagnostic_calls], DIAGNOSTIC_READS[:6])
         self.assertTrue(all(row[2] == 2 for row in device.diagnostic_calls))
         self.assertTrue(all(row['timedOut'] is True and row['exitCode'] is None for row in receipt['commands']))
@@ -1019,6 +1022,92 @@ class CellularFailureDiagnosticControls(unittest.TestCase):
                     self.assertEqual(len(device.diagnostic_calls), 1)
                     self.assertEqual(receipt['nativeFailureDiagnostics']['status'], 'interrupted')
                     self.assertEqual(receipt['diagnosticsFailure']['failureType'], type(diagnostic_error).__name__)
+
+    def test_added_phone_and_radio_reads_are_fixed_and_follow_original_ten(self):
+        device, receipt = DiagnosticDeviceIO(), self.failed_record()
+        device.clock.value = 45
+        commands = setup.native.BootstrapCommands('adb', 'emulator-5556', receipt, 45)
+        with device.installed():
+            setup.native_failure_diagnostics(commands, receipt)
+        rows = receipt['commands']
+        self.assertEqual(len(rows), 12)
+        self.assertEqual([tuple(row['command'][3:]) for row in rows[:10]], DIAGNOSTIC_READS[:10])
+        self.assertEqual([row['command'] for row in rows[-2:]], [
+            ['adb', '-s', 'emulator-5556', 'shell', 'dumpsys', 'activity', 'service',
+             'com.android.phone/.TelephonyDebugService'],
+            ['adb', '-s', 'emulator-5556', 'shell', 'logcat', '-d', '-b', 'radio',
+             '-v', 'threadtime', '-t', '400'],
+        ])
+        self.assertEqual(list(receipt['diagnostics'])[-2:], ['telephony-debug-service', 'radio-log'])
+        self.assertTrue(all(row['timeoutSeconds'] == 2 and row['deadlineMonotonic'] == 57
+                            for row in rows[-2:]))
+        self.assertEqual(commands.deadline, 45)
+        self.assertEqual(receipt['status'], 'failed')
+        self.assertEqual(receipt['reason'], 'original preparation failure')
+        self.assertEqual(receipt['networkObservations'], [])
+        self.assertFalse(receipt['originalWorkloadInvoked'])
+
+    def test_unavailable_existing_phone_service_never_starts_it_or_hides_main_failure(self):
+        for service_exit, service_text in ((0, 'No services match: com.android.phone/.TelephonyDebugService\n'),
+                                           (1, 'Permission Denial: synthetic service dump denied\n')):
+            with self.subTest(exit_code=service_exit):
+                class ExistingServiceIO(DiagnosticDeviceIO):
+                    def run(self, command, **kwargs):
+                        result = super().run(command, **kwargs)
+                        parts = tuple(command[3:])
+                        if parts == DIAGNOSTIC_READS[-2]:
+                            result.returncode, result.stdout = service_exit, service_text
+                        elif parts == DIAGNOSTIC_READS[-1]:
+                            result.stdout = '11-11 00:00:00.000 100 101 D DNC-0: synthetic retained radio log\n'
+                        return result
+                device = ExistingServiceIO()
+                device.provider_timeout_at = 1
+                with self.main_fixture(device) as output:
+                    with self.assertRaises(subprocess.TimeoutExpired) as failure:
+                        setup.main()
+                    receipt = json.loads(output.read_text())
+                self.assertIs(failure.exception, device.original_error)
+                self.assertEqual(receipt['status'], 'failed')
+                self.assertEqual(receipt['reason'], str(failure.exception))
+                self.assertEqual(receipt['diagnostics']['telephony-debug-service'], service_text.strip())
+                self.assertEqual(receipt['commands'][-2]['exitCode'], service_exit)
+                self.assertEqual(receipt['diagnostics']['radio-log'],
+                                 '11-11 00:00:00.000 100 101 D DNC-0: synthetic retained radio log')
+                self.assertEqual([row[0] for row in device.diagnostic_calls], DIAGNOSTIC_READS)
+                self.assertEqual(len(receipt['networkObservations']), 1)
+                self.assertNotIn('tcpipCommand', receipt)
+                self.assertFalse(receipt['applicationAcceptance'] or receipt['originalWorkloadInvoked'])
+
+    def test_phone_and_radio_share_remaining_12_seconds_and_keep_partial_raw_output(self):
+        class SlowFinalReadsIO(DiagnosticDeviceIO):
+            def run(self, command, **kwargs):
+                self.diagnostic_delay = 3 if tuple(command[3:]) in DIAGNOSTIC_READS[-2:] else .95
+                return super().run(command, **kwargs)
+        device, receipt = SlowFinalReadsIO(), self.failed_record()
+        device.clock.value = 45
+        receipt['networkObservations'] = [dict(original='unmodified failed native observation')]
+        before = json.dumps(receipt['networkObservations'])
+        commands = setup.native.BootstrapCommands('adb', 'emulator-5556', receipt, 45)
+        with device.installed():
+            setup.native_failure_diagnostics(commands, receipt)
+        self.assertAlmostEqual(device.clock.now(), 57)
+        self.assertEqual(commands.deadline, 45)
+        self.assertEqual(receipt['preparationDeadlineMonotonic'], 45)
+        self.assertEqual(receipt['nativeFailureDiagnostics']['budgetSeconds'], 12)
+        self.assertEqual(receipt['nativeFailureDiagnostics']['deadlineMonotonic'], 57)
+        self.assertEqual([row[0] for row in device.diagnostic_calls], DIAGNOSTIC_READS)
+        self.assertAlmostEqual(device.diagnostic_calls[-2][2], 2)
+        self.assertAlmostEqual(device.diagnostic_calls[-1][2], .5)
+        for row, name in zip(receipt['commands'][-2:], ('telephony-debug-service', 'radio-log')):
+            self.assertTrue(row['timedOut'])
+            self.assertIsNone(row['exitCode'])
+            self.assertEqual(row['stdout'], '{"status":"passed","usable":true,"transports":["cellular"]}')
+            self.assertEqual(receipt['diagnostics'][name]['failureType'], 'TimeoutExpired')
+        self.assertEqual(json.dumps(receipt['networkObservations']), before)
+        self.assertEqual(receipt['status'], 'failed')
+        self.assertEqual(receipt['failureType'], 'TimeoutError')
+        self.assertEqual(receipt['reason'], 'original preparation failure')
+        self.assertFalse(receipt['applicationAcceptance'] or receipt['originalWorkloadInvoked'])
 
 
 if __name__ == '__main__':
