@@ -203,8 +203,21 @@ def exercise_workspace_roundtrip(adb, initial_xml, save, package):
         deadline = time.monotonic()+20
 
         def read_frame():
-            assert time.monotonic() < deadline, 'Native navigation exceeded its original 20 second budget'
-            adb('shell', 'uiautomator', 'dump', '/sdcard/gecko-navigation-v2.xml')
+            remote = '/sdcard/gecko-navigation-v2.xml'
+            while True:
+                assert time.monotonic() < deadline, 'Native navigation exceeded its original 20 second budget'
+                # One remote shell command preserves stderr and removes the old
+                # file before this attempt; never read a previous hierarchy.
+                dumped = adb('shell', 'rm -f ' + remote + ' && uiautomator dump ' + remote + ' 2>&1')
+                print(dumped, end='', flush=True)  # Preserve actual acquisition output in the CI log.
+                assert time.monotonic() < deadline, 'Native navigation exceeded its original 20 second budget'
+                if dumped.strip() == 'ERROR: null root node returned by UiTestAutomationBridge.':
+                    remaining = deadline - time.monotonic()
+                    assert remaining > 0, 'Native navigation exceeded its original 20 second budget'
+                    time.sleep(min(.2, remaining))
+                    continue
+                assert dumped.strip() == 'UI hierchary dumped to: ' + remote, ('Unexpected native hierarchy dump output', dumped)
+                break
             xml = adb('shell', 'cat', '/sdcard/gecko-navigation-v2.xml')
             assert time.monotonic() < deadline, 'Native navigation exceeded its original 20 second budget'
             return xml

@@ -1,6 +1,9 @@
 """Reject missing or misleading current navigation; these are host controls only."""
 import copy
+from contextlib import redirect_stdout
+import io
 from pathlib import Path
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -16,6 +19,9 @@ sys.path.insert(0,str(ROOT/'tests/gecko'))
 from workspace_ui_v2 import capture_selection
 
 PACKAGE='local.pocketchat.test'
+NAVIGATION_DUMP_COMMAND='rm -f /sdcard/gecko-navigation-v2.xml && uiautomator dump /sdcard/gecko-navigation-v2.xml 2>&1'
+NAVIGATION_DUMP_SUCCESS='UI hierchary dumped to: /sdcard/gecko-navigation-v2.xml\n'
+NAVIGATION_NULL_ROOT='ERROR: null root node returned by UiTestAutomationBridge.\n'
 
 
 def node(parent, text='', description='', kind='Button', bounds='[0,0][144,144]', **extra):
@@ -116,6 +122,7 @@ class NavigationV2Tests(unittest.TestCase):
         commands=[];saved=[];frames=[xml(screen(False)),xml(dashboard_screen()),xml(screen(True))]
         def adb(*parts):
             commands.append(parts)
+            if parts==('shell',NAVIGATION_DUMP_COMMAND):return NAVIGATION_DUMP_SUCCESS
             return frames.pop(0) if parts[:2]==('shell','cat') else ''
         result=exercise_workspace_roundtrip(adb,xml(screen()),lambda name,value:saved.append((name,value)),PACKAGE)
         taps=[c for c in commands if c[:3]==('shell','input','tap')]
@@ -222,6 +229,7 @@ class RoundtripDashboardTests(unittest.TestCase):
         durations=durations or [0.0]*len(frames)
         def adb(*parts):
             self.commands.append(parts)
+            if parts==('shell',NAVIGATION_DUMP_COMMAND):return NAVIGATION_DUMP_SUCCESS
             if parts[:3]==('shell','input','tap'):
                 if sum(c[:3]==('shell','input','tap') for c in self.commands)==3:
                     clock[0]+=entry_seconds
@@ -286,6 +294,119 @@ class RoundtripDashboardTests(unittest.TestCase):
         final=screen();next(n for n in final.iter('node') if n.get('content-desc','').startswith('当前环境：')).set('content-desc','当前环境：另一环境，点按输入网址，长按切换环境')
         with self.assertRaises(AssertionError):self.exercise([screen(False),dashboard_screen(),final])
         self.assertEqual(sum(c[:3]==('shell','input','tap') for c in self.commands),3)
+
+
+class NavigationAcquisitionControls(unittest.TestCase):
+    """Substitute command I/O only; execute the real roundtrip and XML readers."""
+    def exercise(self, attempts, stale=None):
+        self.commands=[];self.saved=[];self.output=io.StringIO();self.clock=0.0
+        self.dumps=0;self.reads=0;self.remote=stale;current={}
+        def adb(*parts):
+            nonlocal current
+            self.commands.append(parts)
+            if parts[:3]==('shell','input','tap'):return ''
+            if parts==('shell',NAVIGATION_DUMP_COMMAND):
+                # Model the fixed command's rm before every real dump outcome.
+                self.remote=None
+                current=attempts[min(self.dumps,len(attempts)-1)];self.dumps+=1
+                self.clock+=current.get('seconds',0)
+                if 'error' in current:raise current['error']
+                self.remote=current.get('xml')
+                return current.get('output',NAVIGATION_DUMP_SUCCESS)
+            if parts==('shell','cat','/sdcard/gecko-navigation-v2.xml'):
+                self.reads+=1;self.clock+=current.get('catSeconds',0)
+                if 'catError' in current:raise current['catError']
+                if self.remote is None:
+                    raise subprocess.CalledProcessError(1,parts,output='',stderr='No such file or directory')
+                return self.remote
+            raise AssertionError(('Unexpected device command',parts))
+        def sleep(seconds):
+            self.assertGreaterEqual(seconds,0);self.assertLessEqual(seconds,.2)
+            self.clock+=seconds
+        with mock.patch.object(navigation_contract.time,'monotonic',lambda:self.clock), \
+                mock.patch.object(navigation_contract.time,'sleep',sleep),redirect_stdout(self.output):
+            return exercise_workspace_roundtrip(adb,xml(screen()),
+                lambda name,value:self.saved.append((name,value)),PACKAGE)
+
+    @staticmethod
+    def current_frames():
+        return [dict(xml=xml(screen(False))),dict(xml=xml(dashboard_screen())),dict(xml=xml(screen()))]
+
+    def test_exact_null_root_then_fresh_frames_keeps_three_taps_and_raw_output(self):
+        for phase in range(3):
+            frames=self.current_frames();frames.insert(phase,dict(output=NAVIGATION_NULL_ROOT))
+            with self.subTest(phase=phase):
+                result=self.exercise(frames,stale=xml(screen(False)))
+                self.assertEqual(result['actualAndroidTaps'],3)
+                self.assertEqual(sum(c[:3]==('shell','input','tap') for c in self.commands),3)
+                self.assertEqual((self.dumps,self.reads),(4,3))
+                self.assertEqual([name for name,_ in self.saved],['production-navigation-environments.xml',
+                    'production-navigation-dashboard.xml','production-navigation-chat.xml'])
+                expected=[NAVIGATION_DUMP_SUCCESS]*4;expected[phase]=NAVIGATION_NULL_ROOT
+                self.assertEqual(self.output.getvalue(),''.join(expected))
+                self.assertEqual(self.clock,.2)
+
+    def test_persistent_null_root_exhausts_original_deadline_without_cat_or_retap(self):
+        with self.assertRaisesRegex(AssertionError,'original 20 second budget'):
+            self.exercise([dict(output=NAVIGATION_NULL_ROOT)],stale=xml(screen(False)))
+        self.assertEqual(self.clock,20)
+        self.assertEqual(self.reads,0)
+        self.assertEqual(self.saved,[])
+        self.assertIsNone(self.remote)
+        self.assertEqual(sum(c[:3]==('shell','input','tap') for c in self.commands),1)
+        self.assertEqual(self.output.getvalue(),NAVIGATION_NULL_ROOT*self.dumps)
+
+    def test_late_dump_or_cat_success_is_not_admitted(self):
+        for phase in range(3):
+            for field in ('seconds','catSeconds'):
+                frames=self.current_frames();frames[phase][field]=20
+                with self.subTest(phase=phase,command=field),self.assertRaisesRegex(AssertionError,'original 20 second budget'):
+                    self.exercise(frames)
+                self.assertEqual(self.dumps,phase+1)
+                self.assertEqual(self.reads,phase+(field=='catSeconds'))
+                self.assertEqual(sum(c[:3]==('shell','input','tap') for c in self.commands),phase+1)
+
+    def test_unknown_empty_similar_or_mixed_dump_output_cannot_read_old_xml(self):
+        outputs=['','ERROR: could not get idle state.\n',NAVIGATION_NULL_ROOT+'unexpected\n',
+                 'prefix '+NAVIGATION_NULL_ROOT,NAVIGATION_NULL_ROOT+NAVIGATION_DUMP_SUCCESS,
+                 NAVIGATION_DUMP_SUCCESS.replace('gecko-navigation-v2.xml','another.xml'),
+                 NAVIGATION_DUMP_SUCCESS+'unexpected\n']
+        for output in outputs:
+            with self.subTest(output=output),self.assertRaisesRegex(AssertionError,'Unexpected native hierarchy dump'):
+                self.exercise([dict(output=output)],stale=xml(screen(False)))
+            self.assertEqual((self.dumps,self.reads),(1,0))
+            self.assertEqual(self.saved,[])
+            self.assertEqual(self.output.getvalue(),output)
+
+    def test_nonzero_timeout_or_missing_new_file_are_not_readiness(self):
+        faults=[dict(error=subprocess.CalledProcessError(1,['adb'],output=NAVIGATION_NULL_ROOT)),
+                dict(error=subprocess.TimeoutExpired(['adb'],20,output=NAVIGATION_DUMP_SUCCESS)),
+                dict(output=NAVIGATION_DUMP_SUCCESS),
+                dict(xml=xml(screen(False)),catError=subprocess.TimeoutExpired(['adb'],20,output=xml(screen(False))))]
+        for number,fault in enumerate(faults):
+            expected=type(fault.get('error',fault.get('catError',subprocess.CalledProcessError(1,['adb']))))
+            with self.subTest(fault=number),self.assertRaises(expected):
+                self.exercise([fault],stale=xml(screen(False)))
+            self.assertEqual(self.dumps,1)
+            self.assertEqual(self.saved,[])
+            self.assertEqual(sum(c[:3]==('shell','input','tap') for c in self.commands),1)
+
+    def test_malformed_fresh_xml_is_not_replaced_by_later_good_or_diagnostic_xml(self):
+        frames=[dict(xml='<hierarchy><node>'),*self.current_frames()]
+        with self.assertRaises(ET.ParseError):self.exercise(frames,stale=xml(screen(False)))
+        self.assertEqual((self.dumps,self.reads),(1,1))
+        self.assertEqual(self.saved,[])
+        self.assertEqual(sum(c[:3]==('shell','input','tap') for c in self.commands),1)
+
+    def test_null_root_wait_shares_dashboard_entry_deadline_with_final_chat(self):
+        frames=self.current_frames();frames[1]['catSeconds']=19.9
+        frames.insert(2,dict(output=NAVIGATION_NULL_ROOT))
+        with self.assertRaisesRegex(AssertionError,'original 20 second budget'):
+            self.exercise(frames)
+        self.assertEqual(self.clock,20)
+        self.assertEqual((self.dumps,self.reads),(3,2))
+        self.assertEqual(sum(c[:3]==('shell','input','tap') for c in self.commands),3)
+        self.assertNotIn('production-navigation-chat.xml',[name for name,_ in self.saved])
 
 
 def layout():

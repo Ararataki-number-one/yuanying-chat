@@ -165,6 +165,8 @@ class DeviceIO:
         self.subscription_receipt_edit = None
         self.subscription_initial_default = 1
         self.subscription_before_default = 1
+        self.subscription_config_applied_before = True
+        self.subscription_config_applied_after = True
         self.subscription_exit = 0
         self.subscription_timeout = False
         self.subscription_hash_override = None
@@ -246,10 +248,16 @@ class DeviceIO:
                 raise AssertionError('Unexpected subscription helper invocation')
             def snapshot(default):
                 return dict(activeSubscriptionIds=[1], defaultDataSubId=default, phoneId=0, slotSubscriptionId=1)
-            value = dict(schema=1, kind='synthetic-default-data-subscription', runNonce=parts[6], status='passed',
+            value = dict(schema=2, kind='synthetic-default-data-subscription', runNonce=parts[6], status='passed',
                          uid=2000, androidSdk=35, qemu=True, abi='x86_64', hardware='ranchu',
                          initial=snapshot(self.subscription_initial_default), beforeWrite=snapshot(self.subscription_before_default),
                          after=snapshot(1), setCalls=1 if self.subscription_before_default == -1 else 0,
+                         carrierConfig=dict(subscriptionId=1, slotIndex=0, simStateBefore=10, simStateAfter=10,
+                                            appliedBefore=self.subscription_config_applied_before,
+                                            appliedAfter=self.subscription_config_applied_after,
+                                            refreshCalls=1 if self.subscription_initial_default == -1
+                                                or not self.subscription_config_applied_before else 0,
+                                            asynchronous=True),
                          applicationAcceptance=False, physicalPhoneAcceptance=False, networkAcceptance=False)
             if self.subscription_receipt_edit: self.subscription_receipt_edit(value)
             stdout, code = json.dumps(value) + '\n', self.subscription_exit

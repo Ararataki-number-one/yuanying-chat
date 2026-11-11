@@ -1,7 +1,8 @@
-"""One source-bound DDS initialization inside the existing QEMU preparation budget.
+"""Source-bound DDS and carrier preparation inside the existing QEMU budget.
 
-The device's own named ISub API performs any write. This module neither changes
-mobile-data/provisioning settings nor supplies network acceptance evidence.
+The device's own named Binder APIs perform DDS initialization and normal carrier
+configuration reload. This module neither changes mobile-data/provisioning
+settings nor supplies network acceptance evidence.
 """
 import base64
 import hashlib
@@ -50,11 +51,11 @@ def decode(raw):
 def validate_receipt(raw, nonce):
     value = decode(raw)
     fields = {'schema', 'kind', 'runNonce', 'status', 'uid', 'androidSdk', 'qemu', 'abi', 'hardware',
-              'initial', 'beforeWrite', 'after', 'setCalls', 'applicationAcceptance',
+              'initial', 'beforeWrite', 'after', 'setCalls', 'carrierConfig', 'applicationAcceptance',
               'physicalPhoneAcceptance', 'networkAcceptance'}
     require(type(value) is dict and set(value) == fields, 'exact helper success fields required')
     require(type(nonce) is str and re.fullmatch('[0-9a-f]{32}', nonce)
-            and value['runNonce'] == nonce and type(value['schema']) is int and value['schema'] == 1
+            and value['runNonce'] == nonce and type(value['schema']) is int and value['schema'] == 2
             and value['kind'] == 'synthetic-default-data-subscription' and value['status'] == 'passed',
             'helper invocation or status differs')
     require(type(value['uid']) is int and value['uid'] == 2000
@@ -81,6 +82,24 @@ def validate_receipt(raw, nonce):
     require(before == initial or (initial == -1 and before == sole), 'existing valid default regressed')
     require(type(value['setCalls']) is int and value['setCalls'] == (1 if before == -1 else 0)
             and after == sole, 'single initialization/readback relation differs')
+    carrier = value['carrierConfig']
+    require(type(carrier) is dict and set(carrier) == {
+        'subscriptionId', 'slotIndex', 'simStateBefore', 'simStateAfter',
+        'appliedBefore', 'appliedAfter', 'refreshCalls', 'asynchronous'},
+        'exact carrier configuration observation fields required')
+    require(type(carrier['subscriptionId']) is int and carrier['subscriptionId'] == sole
+            and type(carrier['slotIndex']) is int and carrier['slotIndex'] == 0
+            and all(type(carrier[key]) is int and carrier[key] == 10
+                    for key in ('simStateBefore', 'simStateAfter')),
+            'same loaded single SIM required for carrier configuration')
+    require(type(carrier['appliedBefore']) is bool and type(carrier['appliedAfter']) is bool
+            and carrier['asynchronous'] is True,
+            'actual typed asynchronous carrier configuration observations required')
+    require(type(carrier['refreshCalls']) is int
+            and carrier['refreshCalls'] == (1 if initial == -1 or not carrier['appliedBefore'] else 0),
+            'single normal carrier refresh relation differs')
+    # A false appliedAfter is a valid immediate readback of an asynchronous
+    # reload. Only the unchanged later CM observations can prove the network.
     return value
 
 

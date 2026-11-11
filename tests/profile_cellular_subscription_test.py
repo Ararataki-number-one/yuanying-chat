@@ -27,12 +27,16 @@ NONCE = 'e' * 32
 REAL_RUN = subprocess.run
 
 
-def receipt(initial=-1, before=-1):
+def receipt(initial=-1, before=-1, applied_before=True, applied_after=True):
     def row(default):
         return dict(activeSubscriptionIds=[1], defaultDataSubId=default, phoneId=0, slotSubscriptionId=1)
-    return dict(schema=1, kind='synthetic-default-data-subscription', runNonce=NONCE, status='passed',
+    return dict(schema=2, kind='synthetic-default-data-subscription', runNonce=NONCE, status='passed',
                 uid=2000, androidSdk=35, qemu=True, abi='x86_64', hardware='ranchu',
                 initial=row(initial), beforeWrite=row(before), after=row(1), setCalls=1 if before == -1 else 0,
+                carrierConfig=dict(subscriptionId=1, slotIndex=0, simStateBefore=10, simStateAfter=10,
+                                   appliedBefore=applied_before, appliedAfter=applied_after,
+                                   refreshCalls=1 if initial == -1 or not applied_before else 0,
+                                   asynchronous=True),
                 applicationAcceptance=False, physicalPhoneAcceptance=False, networkAcceptance=False)
 
 
@@ -78,6 +82,62 @@ class SubscriptionReceiptControls(unittest.TestCase):
         for number, value in enumerate(bad):
             with self.subTest(mutation=number), self.assertRaises(ValueError):
                 adapter.validate_receipt(value, NONCE)
+
+    def test_carrier_refresh_is_once_for_initial_dds_or_unapplied_config(self):
+        for initial, before in ((-1, -1), (-1, 1), (1, 1)):
+            for applied_before in (False, True):
+                for applied_after in (False, True):
+                    with self.subTest(initial=initial, before=before,
+                                      applied_before=applied_before, applied_after=applied_after):
+                        value = receipt(initial, before, applied_before, applied_after)
+                        self.assertEqual(adapter.validate_receipt(json.dumps(value), NONCE), value)
+                        calls = 1 if initial == -1 or not applied_before else 0
+                        self.assertEqual(value['carrierConfig']['refreshCalls'], calls)
+                        self.assertFalse(value['networkAcceptance'])
+                        value['carrierConfig']['refreshCalls'] = 1 - calls
+                        with self.assertRaisesRegex(ValueError, 'refresh relation'):
+                            adapter.validate_receipt(json.dumps(value), NONCE)
+
+    def test_carrier_fields_types_loaded_sim_and_exact_scope_are_required(self):
+        mutations = [lambda v: v.update(carrierConfig=None), lambda v: v.update(carrierConfig=[]),
+                     lambda v: v.pop('carrierConfig'), lambda v: v['carrierConfig'].update(extra=True)]
+        for key in receipt()['carrierConfig']:
+            mutations.append(lambda v, key=key: v['carrierConfig'].pop(key))
+        wrong_values = {
+            'subscriptionId': (True, 1.0, '1', 0, -1, 2),
+            'slotIndex': (False, 0.0, '0', -1, 1),
+            'simStateBefore': (None, True, 10.0, '10', 5, 9, 11),
+            'simStateAfter': (None, True, 10.0, '10', 5, 9, 11),
+            'appliedBefore': (None, 0, 1, 'true', []),
+            'appliedAfter': (None, 0, 1, 'false', {}),
+            'refreshCalls': (None, True, 1.0, '1', -1, 2),
+            'asynchronous': (None, False, 1, 'true')}
+        for key, values in wrong_values.items():
+            for wrong in values:
+                mutations.append(lambda v, key=key, wrong=wrong: v['carrierConfig'].update({key: wrong}))
+        for number, change in enumerate(mutations):
+            with self.subTest(mutation=number):
+                value = receipt(); change(value)
+                with self.assertRaises(ValueError): adapter.validate_receipt(json.dumps(value), NONCE)
+        value = receipt()
+        for key in ('initial', 'beforeWrite', 'after'):
+            value[key]['activeSubscriptionIds'] = [37]
+            value[key]['slotSubscriptionId'] = 37
+        value['after']['defaultDataSubId'] = 37
+        value['carrierConfig']['subscriptionId'] = 37
+        self.assertEqual(adapter.validate_receipt(json.dumps(value), NONCE), value)
+        value['carrierConfig']['subscriptionId'] = 1
+        with self.assertRaises(ValueError): adapter.validate_receipt(json.dumps(value), NONCE)
+
+    def test_old_schema_and_duplicate_nested_carrier_fields_are_rejected(self):
+        for keep_carrier in (False, True):
+            value = receipt(); value['schema'] = 1
+            if not keep_carrier: value.pop('carrierConfig')
+            with self.subTest(keep_carrier=keep_carrier), self.assertRaises(ValueError):
+                adapter.validate_receipt(json.dumps(value), NONCE)
+        raw = json.dumps(receipt()).replace('"appliedAfter": true', '"appliedAfter": true, "appliedAfter": false')
+        with self.assertRaisesRegex(ValueError, 'duplicate'):
+            adapter.validate_receipt(raw, NONCE)
 
 
 class SubscriptionIntegrationControls(unittest.TestCase):
@@ -220,6 +280,54 @@ class SubscriptionIntegrationControls(unittest.TestCase):
         with device.installed(), patch.object(adapter.secrets, 'token_hex', side_effect=lambda n: value['networkObservations'][-1]['runNonce']):
             with self.assertRaisesRegex(ValueError, 'fresh helper nonce'): device.prepare(value)
         self.assertFalse(device.subscription_invocations or device.subscription_jars)
+
+    def test_async_refresh_readback_still_needs_original_two_cellular_observations(self):
+        for persistent_empty in (False, True):
+            edits = {i: fixture.empty_default for i in range(1, 100)} if persistent_empty else {1: fixture.empty_default}
+            device, value = fixture.DeviceIO(edits=edits), fixture.record()
+            device.subscription_config_applied_before = False
+            device.subscription_config_applied_after = False
+            with self.subTest(persistent_empty=persistent_empty), device.installed():
+                if persistent_empty:
+                    with self.assertRaises((TimeoutError, subprocess.TimeoutExpired)):
+                        device.prepare(value, budget=3)
+                else:
+                    device.prepare(value, budget=3)
+            stage = value['cellularPreparation']; entry = stage['subscriptionInitialization']
+            self.assertEqual(entry['status'], 'passed')
+            self.assertEqual(entry['receipt']['setCalls'], 0)
+            self.assertEqual(entry['receipt']['carrierConfig']['refreshCalls'], 1)
+            self.assertIs(entry['receipt']['carrierConfig']['appliedAfter'], False)
+            self.assertFalse(entry['networkAcceptance'])
+            self.assertEqual(len(device.subscription_invocations), 1)
+            self.assertTrue(entry['deviceJarRemoved'])
+            self.assertLessEqual(device.clock.now(), 3)
+            if persistent_empty:
+                self.assertEqual(stage['status'], 'failed')
+                self.assertNotIn('tcpipCommand', value)
+            else:
+                self.assertEqual(stage['status'], 'passed')
+                self.assertEqual((stage['firstCellularObservationIndex'], stage['confirmationCellularObservationIndex']), (2, 3))
+                self.assertNotEqual(value['networkObservations'][2]['runNonce'], value['networkObservations'][3]['runNonce'])
+
+    def test_bad_carrier_receipt_stops_before_next_cm_and_cleans_uploaded_helper(self):
+        changes = [lambda v: v.update(schema=1), lambda v: v.pop('carrierConfig'),
+                   lambda v: v['carrierConfig'].update(subscriptionId=2),
+                   lambda v: v['carrierConfig'].update(simStateAfter=9),
+                   lambda v: v['carrierConfig'].update(appliedAfter=None),
+                   lambda v: v['carrierConfig'].update(refreshCalls=2),
+                   lambda v: v['carrierConfig'].update(asynchronous=False)]
+        for number, change in enumerate(changes):
+            with self.subTest(mutation=number):
+                device, value = fixture.DeviceIO(edits={1: fixture.empty_default}), fixture.record()
+                device.subscription_receipt_edit = change
+                with device.installed(), self.assertRaises(ValueError): device.prepare(value)
+                entry = value['cellularPreparation']['subscriptionInitialization']
+                self.assertEqual(entry['status'], 'failed')
+                self.assertEqual(device.observations, 2)
+                self.assertEqual(len(device.subscription_invocations), 1)
+                self.assertTrue(entry['deviceJarRemoved'])
+                self.assertFalse(device.subscription_jars)
 
 
 class SubscriptionHostCommandControls(unittest.TestCase):
