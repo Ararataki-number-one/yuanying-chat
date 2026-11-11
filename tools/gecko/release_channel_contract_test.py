@@ -195,6 +195,16 @@ class DirectReleaseTests(unittest.TestCase):
             with self.subTest(request=request), self.assertRaises(ReleaseChannelError):
                 verify_direct_release(dict(self.record, userRequest=request), self.identity)
 
+    def test_conversational_publication_preserves_exact_user_instruction(self):
+        request = '那你给我发布新版本'
+        record = dict(self.record, userRequest=request)
+        self.assertEqual(verify_direct_release(record, self.identity)['userRequest'], request)
+        for invalid in ('那你给我发布新版本吗', '那你给我发布新版本？',
+                        '那你不要给我发布新版本', '以后那你给我发布新版本',
+                        '他说那你给我发布新版本', '你这边可以给我发布新版本吗'):
+            with self.subTest(request=invalid), self.assertRaises(ReleaseChannelError):
+                verify_direct_release(dict(record, userRequest=invalid), self.identity)
+
     def test_affirmative_command_preserves_original_user_text(self):
         for request in ('先做这个，然后发布优化后的下一版本', '做完上面的给我继续优化网络体验我现在的网络延迟还是400多。给我降到200左右。不管你用什么办法，用最高级的，最先进的架构也好，修修补补改进也好。然后再发布你优化后的版本', '做这个然后发布', '发布正式版', '发布新版本', '请现在发布正式版。', 'Publish the stable release',
                         'Please promote the existing signed APK to stable.'):
