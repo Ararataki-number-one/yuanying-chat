@@ -29,7 +29,9 @@ jobs:
           assert re.fullmatch(r'[0-9a-f]{40}',tools_commit)
           assert re.fullmatch(r'[0-9a-f]{40}',m['sourceCommit'])
           subprocess.run(['git','fetch','--no-tags','--depth=2','--filter=blob:none','origin',tools_commit],check=True)
-          subprocess.run(['git','fetch','--no-tags','--depth=1','--filter=blob:none','origin',m['sourceCommit']],check=True)
+          # A normal Actions checkout is not a partial-clone promisor remote.
+          # Refetch all exact source blobs before the unchanged source checks.
+          subprocess.run(['git','fetch','--refetch','--no-tags','--depth=1','--no-filter','origin',m['sourceCommit']],check=True)
           parents=[line.split()[1] for line in subprocess.check_output(['git','cat-file','-p',os.environ['GITHUB_SHA']],text=True).split('\n\n',1)[0].splitlines() if line.startswith('parent ')]
           assert parents[0]==m['sourceCommit'] and tools_commit in parents
           release_files={'.github/workflows/publish-gecko-release.yml','tools/publish-gecko-release.py','tools/gecko/release_channel_contract.py','tools/gecko/release_channel_contract_test.py'}
@@ -94,7 +96,7 @@ jobs:
           assert re.fullmatch(r'[0-9a-f]{40}',m['sourceCommit'])
           if m['versionCode']>=46:
               # Client and derived SDK checks use git-show before profile checks.
-              subprocess.run(['git','fetch','--no-tags','--depth=1','--filter=blob:none','origin',m['sourceCommit']],check=True)
+              subprocess.run(['git','fetch','--no-tags','--depth=1','--no-filter','origin',m['sourceCommit']],check=True)
           report=json.loads(pathlib.Path('device-results.json').read_text())
           assert report['sourceCommit']==m['sourceCommit'] and report['status']=='passed' and report['actualAndroidExecution'] and report['releaseMode']
           if m['versionCode']>=59:
