@@ -231,7 +231,7 @@ def browser_toolbar_geometry(xml):
             return None
         node = found[0]
         box = bounds(node)
-        if min(box[2]-box[0], box[3]-box[1]) < 48*DENSITY/160-1:
+        if box is None or min(box[2]-box[0], box[3]-box[1]) < 48*DENSITY/160-1:
             return None
         actions[name] = dict(bounds=list(box), enabled=node.get('enabled') == 'true',
                              description=node.get('content-desc'))
@@ -245,17 +245,36 @@ def browser_toolbar_geometry(xml):
     current_url = address.get('content-desc')[len(prefix):-len(suffix)]
     if not current_url:
         return None
-    address_box = list(bounds(address))
+    address_bounds = bounds(address)
+    if address_bounds is None:
+        return None
+    address_box = list(address_bounds)
     if min(address_box[2]-address_box[0], address_box[3]-address_box[1]) < 48*DENSITY/160-1:
+        return None
+    # The narrow layout must give the address its own full-width row. The
+    # previous 96 dp inline slot passed touch checks while hiding the hostname.
+    if address_box[2]-address_box[0] < 160*DENSITY/160-1:
+        return None
+    action_boxes = [actions[name]['bounds'] for name in ('back', 'forward', 'reload', 'home')]
+    if (max(box[1] for box in action_boxes)-min(box[1] for box in action_boxes) > 1
+            or max(box[3] for box in action_boxes)-min(box[3] for box in action_boxes) > 1
+            or any(left[2] > right[0] for left, right in zip(action_boxes, action_boxes[1:]))):
         return None
     boxes = [actions['back']['bounds'], actions['forward']['bounds'], address_box,
              actions['reload']['bounds'], actions['home']['bounds']]
-    if (max(box[1] for box in boxes) >= min(box[3] for box in boxes)
-            or any(left[2] > right[0] for left, right in zip(boxes, boxes[1:]))):
+    inline = (max(box[1] for box in boxes) < min(box[3] for box in boxes)
+              and all(left[2] <= right[0] for left, right in zip(boxes, boxes[1:]))
+              and abs(sum(address_box[1::2])-sum(action_boxes[0][1::2])) <= 2)
+    stacked = (address_box[3]+4*DENSITY/160-1 <= min(box[1] for box in action_boxes)
+               and abs(address_box[0]-action_boxes[0][0]) <= 1
+               and abs(address_box[2]-action_boxes[-1][2]) <= 1)
+    if inline == stacked:
         return None
     return dict(currentUrl=current_url, addressText=address.get('text'),
                 addressDescription=address.get('content-desc'), addressBounds=address_box,
-                actions=actions, singleHorizontalRow=True, minimumActionTouchDp=48,
+                actions=actions, singleHorizontalRow=inline, addressOwnRow=stacked,
+                layoutMode='inline' if inline else 'stacked', minimumAddressWidthDp=160,
+                minimumActionTouchDp=48, nativeGlyphVisibilityClaimed=False,
                 navigationExecutionClaimed=False)
 
 

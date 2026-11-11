@@ -38,6 +38,8 @@ final class ChromeCollapseIntegration {
   int activityStarts,menuOpens;
   int diagnosticSequence,diagnosticTicks,readyEvaluations,readyCallbacks,snapshotEvaluations,snapshotCallbacks,inputReadinessSequence;
   boolean diagnosticReady;
+  ChromeIdleDrawObservation idleDraw;
+  int idleDrawRequests;
   final Runnable diagnosticTick=new Runnable(){public void run(){
     if(diagnosticReady||diagnosticTicks>=32)return;
     diagnosticTicks++;diagnostic("waiting");a.handler.postDelayed(this,1000);
@@ -65,6 +67,17 @@ final class ChromeCollapseIntegration {
   JSONArray nativeTouches=new JSONArray();
   final BroadcastReceiver receiver=new BroadcastReceiver(){@Override public void onReceive(Context c,Intent intent){
     if(!nonce.equals(intent.getStringExtra("eventNonce")))return;
+    String idleCommand=intent.getStringExtra("idleDrawDiagnostic");
+    if(idleCommand!=null){
+      String request=intent.getStringExtra("idleDrawRequest"),phase=intent.getStringExtra("idleDrawPhase");
+      if(request==null||!request.matches("[0-9a-f]{32}")||phase==null
+          ||!phase.matches("glass-hidden-reading|foreground-settled|background"))return;
+      if("start".equals(idleCommand)&&idleDrawRequests<4){
+        if(idleDraw!=null)idleDraw.stop("replaced");idleDrawRequests++;
+        idleDraw=new ChromeIdleDrawObservation(a,events.buildIdentity,nonce,request,phase);idleDraw.start();
+      }else if("stop".equals(idleCommand)&&idleDraw!=null&&idleDraw.request.equals(request))idleDraw.stop("host-stop");
+      return;
+    }
     String readiness=intent.getStringExtra("collapseReadiness");
     if(readiness!=null){if(readiness.matches(nonce+"-[1-9][0-9]{0,2}"))inputReadiness(readiness);return;}
     String command=intent.getStringExtra("collapseCommand");
@@ -136,6 +149,14 @@ final class ChromeCollapseIntegration {
         !staleAppearanceConnections.contains(port)&&java.util.Objects.equals(appearanceConnections.get(port),appearanceLoads.getOrDefault(current,0L)));
     }
     ChromeCollapseIntegration diagnostic;
+    @Override public void onDescendantInvalidated(View child,View target){
+      if(diagnostic!=null&&diagnostic.idleDraw!=null)diagnostic.idleDraw.note("gecko-descendant-invalidated",target,0);
+      super.onDescendantInvalidated(child,target);
+    }
+    @Override public ViewParent invalidateChildInParent(int[] location,android.graphics.Rect dirty){
+      if(diagnostic!=null&&diagnostic.idleDraw!=null)diagnostic.idleDraw.note("gecko-child-invalidated",this,0);
+      return super.invalidateChildInParent(location,dirty);
+    }
     int routeCalls,fixtureRoutes,blockedRoutes,otherRoutes;
     @Override JSONObject route(String target){
       JSONObject result=super.route(target);routeCalls++;
@@ -293,5 +314,5 @@ final class ChromeCollapseIntegration {
   }
   void emit(String kind,JSONObject result){diagnostic("emit-before");try{events.emit(kind,result);diagnostic("emit-queued");}catch(Exception failure){events.failure(failure);}}
   void nativeTouch(MotionEvent event){if(web().tracking&&nativeTouches.length()<256)nativeTouches.put(J.obj("action",event.getActionMasked(),"pointers",event.getPointerCount(),"height",a.remote.getHeight(),"expanded",a.designChrome.expanded()));}
-  void close(){a.handler.removeCallbacks(diagnosticTick);try{a.unregisterReceiver(receiver);}catch(IllegalArgumentException ignored){}}
+  void close(){if(idleDraw!=null)idleDraw.stop("fixture-closed");a.handler.removeCallbacks(diagnosticTick);try{a.unregisterReceiver(receiver);}catch(IllegalArgumentException ignored){}}
 }

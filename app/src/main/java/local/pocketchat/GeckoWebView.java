@@ -738,8 +738,8 @@ class GeckoWebView extends FrameLayout {
         if(s!=current)return;url=target;owner.rememberBrowserLocation(target);
         if(committed&&!"about:blank".equals(target)){cancelZoom();if(client!=null)client.onPageStarted(null,target,null);}if(MainActivity.chatUrl(target)&&!LoginPagePolicy.login(target))owner.prefs.edit().putString("url",target).apply();
       }
-      @Override public void onCanGoBack(GeckoSession s,boolean value){if(destroyed||!locations.containsKey(s))return;backStates.put(s,value);if(s==current){canBack=value;owner.changed();}}
-      @Override public void onCanGoForward(GeckoSession s,boolean value){if(destroyed||!locations.containsKey(s))return;forwardStates.put(s,value);if(s==current){canForward=value;owner.changed();}}
+      @Override public void onCanGoBack(GeckoSession s,boolean value){if(destroyed||!locations.containsKey(s))return;backStates.put(s,value);if(s==current&&canBack!=value){canBack=value;owner.changed();}}
+      @Override public void onCanGoForward(GeckoSession s,boolean value){if(destroyed||!locations.containsKey(s))return;forwardStates.put(s,value);if(s==current&&canForward!=value){canForward=value;owner.changed();}}
       @Override public GeckoResult<GeckoSession> onNewSession(GeckoSession s,String target){
         if(destroyed||failed||addonDisabled||crashed.contains(s)||s!=current||popups.size()>=8||!protectionAllowsNetwork()||!identityRequestAllowed(target)||!owner.guard.allowed()||!(target==null||target.isEmpty()||"about:blank".equals(target)||allowedUrl(target)))return GeckoResult.fromValue(null);
         if(!owner.timeZone.popupAllowed()){blockedPopups.offer(s,target);return GeckoResult.fromValue(null);}

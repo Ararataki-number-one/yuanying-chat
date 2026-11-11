@@ -47,6 +47,39 @@ def total_frames(raw):
     return int(values[0])
 
 
+def idle_draw_records(raw, identity, nonce, request, phase):
+    """Parse bounded post-failure observations; these never establish acceptance."""
+    rows = []
+    for line in raw.splitlines():
+        if not line.startswith('{'):
+            continue
+        row = json.loads(line)
+        if row.get('request') != request or row.get('runNonce') != nonce:
+            continue
+        if (type(row.get('schema')) is not int or row.get('schema') != 1 or row.get('phase') != phase
+                or row.get('diagnosticOnly') is not True or row.get('applicationAcceptance') is not False
+                or any(row.get(key) != identity[key] for key in ('sourceCommit', 'sourceTree', 'apkSha256'))
+                or row.get('kind') not in ('start', 'frame', 'stack', 'count', 'end')
+                or not isinstance(row.get('data'), dict)
+                or type(row.get('sequence')) is not int or row['sequence'] != len(rows) + 1):
+            raise ValueError('Idle draw diagnostic identity, sequence or bounded schema mismatch')
+        rows.append(row)
+    if (not rows or len(rows) > 128 or rows[0]['kind'] != 'start' or rows[-1]['kind'] != 'end'
+            or sum(row['kind'] == 'start' for row in rows) != 1
+            or sum(row['kind'] == 'end' for row in rows) != 1
+            or sum(row['kind'] == 'frame' for row in rows) > 16
+            or sum(row['kind'] == 'stack' for row in rows) > 12
+            or sum(row['kind'] == 'count' for row in rows) > 96):
+        raise ValueError('Complete bounded idle draw diagnostic start/end required')
+    end = rows[-1]['data']
+    counts = [end.get(key) for key in ('callbacksInstalled', 'callbacksRestored', 'callbacksChangedByOwner', 'callbackRestoreErrors')]
+    if (any(type(value) is not int or value < 0 for value in counts)
+            or counts[0] > 160 or counts[0] != counts[1] + counts[2]
+            or counts[3] != 0 or end.get('perfEnabledRestored') is not True):
+        raise ValueError('Idle draw observer callback/performance-state restoration was incomplete')
+    return rows
+
+
 def system_bar_sources(raw):
     """Read observed InsetsSource rectangles from API 32/35 window dumps."""
     sources = {'statusBars': [], 'navigationBars': []}
@@ -569,6 +602,40 @@ def capture_acceptance_suite(args, report, capture, adb, wait_for, tap, screensh
             time.sleep(.2)
         raise TimeoutError('No current, source/APK/SDK/nonce-bound document observation: ' + command)
 
+    def idle_diagnostic(case, name):
+        # This is a separate observation after the unchanged counter gate failed.
+        # It never pauses production observers, navigates, retries the gate or
+        # turns its failure into a pass. The fixture has its own cleanup deadline.
+        request = secrets.token_hex(16)
+        result = case.setdefault('idleDrawDiagnostics', {}).setdefault(name, dict(
+            status='started', request=request, diagnosticOnly=True, applicationAcceptance=False,
+            measuredGateAlreadyFailed=True,
+            scope='Separate post-failure root/view/drawable observations; not the original HWUI measurement'))
+        errors = []
+        command = ('shell', 'am', 'broadcast', '-a', 'local.pocketchat.test.CHROME_COLLAPSE', '-p', package,
+                   '--es', 'eventNonce', case['runNonce'], '--es', 'idleDrawRequest', request,
+                   '--es', 'idleDrawPhase', name, '--es', 'idleDrawDiagnostic')
+        try:
+            adb(*command, 'start', timeout=6)
+            time.sleep(1.5)
+        except Exception as failure:
+            errors.append(dict(stage='start', errorType=type(failure).__name__, error=str(failure)))
+        finally:
+            try:
+                adb(*command, 'stop', timeout=6)
+            except Exception as failure:
+                errors.append(dict(stage='stop', errorType=type(failure).__name__, error=str(failure)))
+        try:
+            raw = adb('logcat', '-d', '-v', 'raw', '-s', 'PocketIdleDraw:I', '*:S', timeout=10)
+            path = args.out / (case['name'] + '-' + name + '-idle-diagnostic.log')
+            path.write_bytes(raw)
+            result.update(file=path.name, sha256=sha(path))
+            rows = idle_draw_records(raw.decode('utf-8', 'strict'), identity, case['runNonce'], request, name)
+            result['records'] = rows
+        except Exception as failure:
+            errors.append(dict(stage='collect', errorType=type(failure).__name__, error=str(failure)))
+        result.update(status='incomplete' if errors else 'captured', errors=errors)
+
     def quiet(case, name, allowed_delta):
         time.sleep(1.1)  # Longer than every glass press/selection release.
         values = []
@@ -587,6 +654,7 @@ def capture_acceptance_suite(args, report, capture, adb, wait_for, tap, screensh
                      valid=0 <= delta <= allowed_delta)
         case.setdefault('idleObservations', {})[name] = check
         if not check['valid']:
+            idle_diagnostic(case, name)
             raise ValueError('UI continued drawing during bounded ' + name + ' observation: ' + str(delta))
 
     def renderer_observation(case):

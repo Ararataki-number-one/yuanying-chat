@@ -8,25 +8,30 @@ import android.widget.*;
 
 /** Small, real-state progress indicators; never invent a completion percentage. */
 final class LoadingUi {
-  final MainActivity a;final LinearLayout band,cover,actions;final TextView bandText,title,hint;final ProgressBar wheel;final ImageView symbol;final Button retry,website;
+  final MainActivity a;final LinearLayout band,cover,content,actions;final ScrollView overflow;final FrameLayout emblem;final TextView bandText,title,hint,guidance;final ProgressBar wheel;final ImageView symbol;final Button retry,website;
   final PageLoadingWait wait=new PageLoadingWait();
   Dialog taskDialog;boolean taskRunning,coverShown=false,hintBound,networkFirst;String taskMessage="",lastTitle="",lastHint;
-  boolean actionLayoutKnown,actionsHorizontal,actionsLandscape;int actionsAvailable;float actionsFontScale;String actionsRetryLabel="",actionsWebsiteLabel="";
+  boolean actionLayoutKnown,actionsHorizontal,actionsLandscape,compactCover;int actionsAvailable;float actionsFontScale;String actionsRetryLabel="",actionsWebsiteLabel="";
   LoadingUi(MainActivity activity){a=activity;
     band=new LinearLayout(a);band.setGravity(Gravity.CENTER_VERTICAL);band.setPadding(a.dp(22),a.dp(4),a.dp(22),a.dp(9));band.setVisibility(View.GONE);
     band.addView(spinner(16),new LinearLayout.LayoutParams(a.dp(16),a.dp(16)));bandText=a.label("",12,Ui.MUTED);bandText.setPadding(a.dp(10),0,0,0);band.addView(bandText);band.setOnClickListener(v->{if(taskRunning)showTask();else ReplyState.show(a);});band.setContentDescription("回复状态，点按检查或恢复连接");band.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
-    cover=new LinearLayout(a);cover.setOrientation(LinearLayout.VERTICAL);cover.setGravity(Gravity.CENTER);cover.setPadding(a.dp(28),a.dp(20),a.dp(28),a.dp(28));cover.setBackgroundColor(ReferenceUi.CHAT_BG);cover.setClickable(true);cover.setVisibility(View.GONE);
+    cover=new LinearLayout(a){
+      @Override protected void onMeasure(int widthSpec,int heightSpec){
+        if(MeasureSpec.getMode(heightSpec)!=MeasureSpec.UNSPECIFIED)layoutCover(MeasureSpec.getSize(heightSpec));
+        super.onMeasure(widthSpec,heightSpec);
+      }
+    };cover.setOrientation(LinearLayout.VERTICAL);cover.setGravity(Gravity.CENTER);cover.setPadding(a.dp(28),a.dp(20),a.dp(28),a.dp(28));cover.setBackgroundColor(ReferenceUi.CHAT_BG);cover.setClickable(true);cover.setVisibility(View.GONE);
     // Short windows scroll the empty-page explanation instead of squeezing buttons.
-    LinearLayout content=new LinearLayout(a){
+    content=new LinearLayout(a){
       @Override protected void onMeasure(int widthSpec,int heightSpec){
         int available=MeasureSpec.getMode(widthSpec)==MeasureSpec.UNSPECIFIED?a.dp(288):MeasureSpec.getSize(widthSpec);
         super.onMeasure(MeasureSpec.makeMeasureSpec(Math.min(a.dp(288),available),MeasureSpec.EXACTLY),heightSpec);
       }
     };
     content.setOrientation(LinearLayout.VERTICAL);content.setGravity(Gravity.CENTER);
-    ScrollView overflow=new ScrollView(a);overflow.setFillViewport(true);overflow.setVerticalScrollBarEnabled(false);
+    overflow=new ScrollView(a);overflow.setFillViewport(true);overflow.setVerticalScrollBarEnabled(false);
     overflow.addView(content,new ScrollView.LayoutParams(-2,-2,Gravity.CENTER_HORIZONTAL));cover.addView(overflow,new LinearLayout.LayoutParams(-1,-1));
-    FrameLayout emblem=new FrameLayout(a);emblem.setBackground(Ui.shape(a,ReferenceUi.BLUE_SOFT,24));emblem.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+    emblem=new FrameLayout(a);emblem.setBackground(Ui.shape(a,ReferenceUi.BLUE_SOFT,24));emblem.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
     content.addView(emblem,new LinearLayout.LayoutParams(a.dp(48),a.dp(48)));
     symbol=new ImageView(a);symbol.setImageDrawable(new Ui.Icon("globe",DesignUi.BLUE));symbol.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);symbol.setVisibility(View.GONE);
     emblem.addView(symbol,new FrameLayout.LayoutParams(a.dp(24),a.dp(24),Gravity.CENTER));
@@ -54,8 +59,21 @@ final class LoadingUi {
     LinearLayout.LayoutParams actionBlock=new LinearLayout.LayoutParams(-2,-2);actionBlock.topMargin=a.dp(16);content.addView(actions,actionBlock);
     arrangeActions(false);
     cover.addOnLayoutChangeListener((v,l,t,r,b,ol,ot,or,ob)->layoutActions());
-    TextView guidance=ReferenceUi.workspaceText(a,"点按顶部输入网址，长按切换环境",ReferenceUi.SECONDARY_SIZE,Ui.MUTED,false);guidance.setGravity(Gravity.CENTER);
+    guidance=ReferenceUi.workspaceText(a,"点按顶部输入网址，长按切换环境",ReferenceUi.SECONDARY_SIZE,Ui.MUTED,false);guidance.setGravity(Gravity.CENTER);
     LinearLayout.LayoutParams guide=new LinearLayout.LayoutParams(-1,-2);guide.topMargin=a.dp(24);content.addView(guidance,guide);
+  }
+  void layoutCover(int availableHeight){
+    if(availableHeight<=0)return;
+    boolean compact=availableHeight<a.dp(280);if(compactCover==compact)return;compactCover=compact;
+    // The browser toolbars can leave only a short document viewport. Keep the
+    // real title and actions first; all explanatory text remains scrollable.
+    cover.setPadding(a.dp(28),a.dp(compact?6:20),a.dp(28),a.dp(compact?6:28));
+    MainActivity.chromeVisibility(emblem,!compact);
+    LinearLayout.LayoutParams heading=(LinearLayout.LayoutParams)title.getLayoutParams();heading.topMargin=a.dp(compact?0:14);heading.bottomMargin=a.dp(compact?4:6);title.setLayoutParams(heading);
+    LinearLayout.LayoutParams actionBlock=(LinearLayout.LayoutParams)actions.getLayoutParams();actionBlock.topMargin=a.dp(compact?0:16);content.removeView(actions);content.addView(actions,compact?2:3,actionBlock);
+    LinearLayout.LayoutParams detail=(LinearLayout.LayoutParams)hint.getLayoutParams();detail.topMargin=a.dp(compact?6:0);hint.setLayoutParams(detail);
+    LinearLayout.LayoutParams guide=(LinearLayout.LayoutParams)guidance.getLayoutParams();guide.topMargin=a.dp(compact?12:24);guidance.setLayoutParams(guide);
+    overflow.scrollTo(0,0);
   }
   private void arrangeActions(boolean checkNetworkFirst){
     if(actions.getChildCount()>0&&networkFirst==checkNetworkFirst){layoutActions();return;}

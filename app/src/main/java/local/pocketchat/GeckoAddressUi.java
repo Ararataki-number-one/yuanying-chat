@@ -1,10 +1,12 @@
 package local.pocketchat;
 
 import android.app.AlertDialog;
+import android.content.Context;
 import android.text.InputType;
 import android.text.TextUtils;
 import android.view.KeyEvent;
 import android.view.View;
+import android.view.ViewGroup;
 import android.view.ViewTreeObserver;
 import android.view.WindowManager;
 import android.view.inputmethod.EditorInfo;
@@ -13,25 +15,74 @@ import android.widget.*;
 
 /** Native address controls; never inspect or modify the website's inputs. */
 final class GeckoAddressUi {
-  final MainActivity a;final LinearLayout row;final Button address,home,back,forward,reload;
+  final MainActivity a;final BrowserAddressRow row;final Button address,home,back,forward,reload;
   private AlertDialog dialog;private EditText editor;private String shown="";
   GeckoAddressUi(MainActivity activity){
-    a=activity;row=DesignUi.row(a);row.setPadding(0,a.dp(3),0,a.dp(7));row.setClipChildren(false);row.setClipToPadding(false);
+    a=activity;
     back=BrowserToolbarUi.action(a,"back","后退",()->a.browserHistory(-1));
     forward=BrowserToolbarUi.action(a,"chevron-right","前进",()->a.browserHistory(1));
-    row.addView(back,new LinearLayout.LayoutParams(a.dp(48),a.dp(48)));
-    row.addView(forward,new LinearLayout.LayoutParams(a.dp(48),a.dp(48)));
     address=DesignUi.button(a,"网址或搜索",false,()->show(a));address.setAllCaps(false);address.setTextSize(14);address.setSingleLine(true);address.setEllipsize(TextUtils.TruncateAt.END);address.setGravity(android.view.Gravity.CENTER_VERTICAL);address.setPadding(a.dp(12),a.dp(8),a.dp(12),a.dp(8));
     address.setMinWidth(0);address.setMinimumWidth(0);address.setMinHeight(a.dp(48));address.setIncludeFontPadding(true);address.setBackground(DesignUi.glass(a,24));GlassMotion.press(address,false);
     address.setOnLongClickListener(v->{a.chooseEnvironment();return true;});
-    row.addView(address,new LinearLayout.LayoutParams(0,-2,1));
     reload=BrowserToolbarUi.action(a,"refresh","刷新网页",a::browserReloadOrStop);
     home=BrowserToolbarUi.action(a,"home","打开当前环境主页",()->home(a));
-    row.addView(reload,new LinearLayout.LayoutParams(a.dp(48),a.dp(48)));
-    row.addView(home,new LinearLayout.LayoutParams(a.dp(48),a.dp(48)));refresh();
+    row=new BrowserAddressRow(a,address,back,forward,reload,home);
+    row.setPadding(0,a.dp(3),0,a.dp(7));row.setClipChildren(false);row.setClipToPadding(false);refresh();
   }
   String target(){if(a.session==null)return "";String url=a.session.navigating?a.session.navigationTarget:a.session.web.getUrl();return url==null?"":url;}
-  String current(){String url=target();return url.isEmpty()?(a.session==null?BrowserPreferences.home(a):a.session.resumeUrl()):url;}
+  String current(){
+    String url=target();
+    // A cold Gecko surface reports about:blank before it has a document. Keep
+    // the intended destination editable, but never relabel a visible blank page.
+    if(url.isEmpty()||"about:blank".equals(url)&&a.session!=null&&!a.session.web.hasVisibleDocument()){
+      String resume=a.session==null?BrowserPreferences.home(a):a.session.resumeUrl();
+      return resume==null||resume.isEmpty()||"about:blank".equals(resume)?BrowserPreferences.home(a):resume;
+    }
+    return url;
+  }
+
+  /** Reflow the existing controls without rebuilding views or changing text size. */
+  static final class BrowserAddressRow extends ViewGroup {
+    final Button address;final Button[] actions;boolean stacked;
+    BrowserAddressRow(Context context,Button address,Button back,Button forward,Button reload,Button home){
+      super(context);this.address=address;actions=new Button[]{back,forward,reload,home};
+      addView(back);addView(forward);addView(address);addView(reload);addView(home);
+    }
+    private int dp(int value){return Math.round(value*getResources().getDisplayMetrics().density);}
+    int readableAddressWidth(){
+      String text=address.getText().toString();int start=text.indexOf("://");start=start<0?0:start+3;
+      int end=text.length();for(char separator:new char[]{'/', '?', '#'}){int index=text.indexOf(separator,start);if(index>=0)end=Math.min(end,index);}
+      // Reserve the ellipsis too, so a long path cannot consume the last host
+      // characters. The actual TextPaint already includes Android font scaling.
+      int host=(int)Math.ceil(address.getPaint().measureText(text.substring(0,end)+"…"));
+      return Math.max(dp(160),host+address.getCompoundPaddingLeft()+address.getCompoundPaddingRight());
+    }
+    @Override protected void onMeasure(int widthSpec,int heightSpec){
+      int action=dp(48),minimum=readableAddressWidth();
+      int width=resolveSize(getPaddingLeft()+getPaddingRight()+4*action+minimum,widthSpec);
+      int available=Math.max(0,width-getPaddingLeft()-getPaddingRight());
+      stacked=available-4*action<minimum;
+      int addressWidth=stacked?available:available-4*action;
+      address.measure(MeasureSpec.makeMeasureSpec(addressWidth,MeasureSpec.EXACTLY),MeasureSpec.makeMeasureSpec(0,MeasureSpec.UNSPECIFIED));
+      int actionSpec=MeasureSpec.makeMeasureSpec(action,MeasureSpec.EXACTLY);
+      for(Button button:actions)button.measure(actionSpec,actionSpec);
+      int content=stacked?address.getMeasuredHeight()+dp(4)+action:Math.max(address.getMeasuredHeight(),action);
+      setMeasuredDimension(width,resolveSize(getPaddingTop()+content+getPaddingBottom(),heightSpec));
+    }
+    @Override protected void onLayout(boolean changed,int left,int top,int right,int bottom){
+      int start=getPaddingLeft(),end=right-left-getPaddingRight(),y=getPaddingTop();
+      int action=actions[0].getMeasuredWidth(),addressHeight=address.getMeasuredHeight();
+      int content=stacked?addressHeight:Math.max(addressHeight,action);
+      int addressTop=y+(content-addressHeight)/2;
+      int addressLeft=stacked?start:start+2*action;
+      address.layout(addressLeft,addressTop,stacked?end:end-2*action,addressTop+addressHeight);
+      int actionTop=stacked?y+addressHeight+dp(4):y+(content-action)/2;
+      for(int i=0;i<actions.length;i++){
+        int x=i<2?start+i*action:end-(4-i)*action;
+        actions[i].layout(x,actionTop,x+action,actionTop+action);
+      }
+    }
+  }
   // ChatGPT is the default website in this browser, so it has the same controls.
   static boolean visibleFor(String url){return true;}
   void refresh(){

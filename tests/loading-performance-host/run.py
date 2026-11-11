@@ -45,6 +45,7 @@ def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--java-home',type=Path)
     parser.add_argument('--before-ref',default='1e3086a')
+    parser.add_argument('--current-only',action='store_true',help='Run current behavioral checks without the separate historical performance comparison')
     parser.add_argument('--output',type=Path,default=ROOT/'work/ux-loading-performance/results.json',help='JSON report file')
     args=parser.parse_args()
     def tool(name):
@@ -55,13 +56,15 @@ def main():
     inputs=[PRODUCTION/name for name in names]+[HERE/'LoadingPerformanceHost.java',Path(__file__).resolve()]
     hashes={str(path.relative_to(ROOT)):digest(path.read_bytes()) for path in inputs}
     commit=subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip()
-    baseline_commit=subprocess.check_output(['git','rev-parse',args.before_ref+'^{commit}'],cwd=ROOT,text=True).strip()
+    baseline_commit=None if args.current_only else subprocess.check_output(['git','rev-parse',args.before_ref+'^{commit}'],cwd=ROOT,text=True).strip()
     fixture=(HERE/'LoadingPerformanceHost.java').read_text()
     results={}
-    for label,before in [('before',True),('after',False)]:
+    for label,before in ([('after',False)] if args.current_only else [('before',True),('after',False)]):
         selected={name:(subprocess.check_output(['git','show',baseline_commit+':app/src/main/java/local/pocketchat/'+name],cwd=ROOT).decode() if before else (PRODUCTION/name).read_text()) for name in names}
         responsive='void layoutActions(' in selected['LoadingUi.java']
+        compact='void layoutCover(' in selected['LoadingUi.java']
         needles=['void layoutActions(','private void arrangeActions(','private void loadingSymbol(','void update('] if responsive else ['void fitActions(','void update(']
+        if compact:needles+=['void layoutCover(']
         if 'void showCover(' in selected['LoadingUi.java']:
             needles+=['static void text(','void hint(','void showCover(','void hideCover(']
         methods={name:member(selected['LoadingUi.java'],name) for name in needles}
@@ -72,6 +75,7 @@ def main():
         if constant is None:raise ValueError('Missing actual deferred-message constant')
         generated=fixture.replace('/* PRODUCTION_METHODS */','\n'.join(methods.values())).replace('/* READABLE_METHOD */',readable).replace('/* CHROME_VISIBILITY */',visibility).replace('/* DEFERRED_CONSTANT */',constant.group())
         generated=generated.replace('/* ACTION_WIDTH_METHOD */',action_width if responsive else 'static int actionWidth(Button button,int minimumDp){throw new AssertionError("Responsive action measurement is not a baseline API");}').replace('/* CURRENT_ACTIONS_ADAPTER */','void fitActions(){arrangeActions(false);}' if responsive else '')
+        generated=generated.replace('/* COMPACT_COVER_ADAPTER */','' if compact else 'void layoutCover(int height){throw new AssertionError("Compact cover is not a baseline API");}')
         with tempfile.TemporaryDirectory(prefix='loading-performance-'+label+'-') as temporary:
             work=Path(temporary);java=work/'LoadingPerformanceHost.java';java.write_text(generated)
             wait=work/'PageLoadingWait.java';wait.write_text(selected['PageLoadingWait.java'])
@@ -88,7 +92,7 @@ def main():
             classes=work/'classes'
             compiled=subprocess.run([tool('javac'),'-encoding','UTF-8','-source','8','-target','8','-d',str(classes),*[str(path) for path in files]],text=True,capture_output=True)
             if compiled.returncode:raise RuntimeError(label+' compile failed:\n'+compiled.stderr)
-            ran=subprocess.run([tool('java'),'-Dbaseline='+str(before).lower(),'-cp',str(classes),'local.pocketchat.LoadingPerformanceHost'],text=True,capture_output=True)
+            ran=subprocess.run([tool('java'),'-Dbaseline='+str(before).lower(),'-DcompactLayout='+str(compact).lower(),'-cp',str(classes),'local.pocketchat.LoadingPerformanceHost'],text=True,capture_output=True)
             if ran.returncode:raise RuntimeError(label+' workload failed:\n'+ran.stderr)
             result=json.loads(ran.stdout)
         result.update(selectedSourceSha256={name:digest(text.encode()) for name,text in selected.items()},
@@ -100,12 +104,12 @@ def main():
     unchanged=all(path.is_file() and digest(path.read_bytes())==hashes[str(path.relative_to(ROOT))] for path in inputs)
     total=sum(value['passed'] for value in results.values())
     report=dict(status='passed' if unchanged else 'source-changed',passed=total,total=total,sourceCommit=commit,baselineCommit=baseline_commit,
-        sourceFiles=hashes,executionInputsUnchanged=unchanged,before=results['before'],after=results['after'],
+        sourceFiles=hashes,executionInputsUnchanged=unchanged,currentOnly=args.current_only,before=results.get('before'),after=results['after'],
         actualAndroidExecution=False,actualGeckoExecution=False,actualDevicePerformanceMeasurement=False,
-        scope='Verbatim baseline LoadingUi update/fitActions and current update/layoutActions/arrangeActions/loadingSymbol, current text/hint/showCover/hideCover helpers when present, full production PageLoadingWait, and extracted DesignUi.readable/actionWidth/MainActivity.chromeVisibility/deferred message. The current host-only fitActions name invokes actual arrangeActions(false) for constructor initialization. Explicit counted native View/TextView/Animator/orientation/text-width, session and clock adapters. Same100-update live/empty/deferred workloads,20second thresholds, orientation, error details, readable copy and fade callback races, plus narrow/enlarged-label action layout and measurement-cache checks. No Android layout, system animator, IME, Gecko, network or device frame-time execution.')
+        scope='Verbatim baseline LoadingUi update/fitActions and current update/layoutActions/layoutCover/arrangeActions/loadingSymbol, current text/hint/showCover/hideCover helpers when present, full production PageLoadingWait, and extracted DesignUi.readable/actionWidth/MainActivity.chromeVisibility/deferred message. The current host-only fitActions name invokes actual arrangeActions(false) for constructor initialization. Explicit counted native View/TextView/Animator/orientation/text-width, child-order/scroll, session and clock adapters. Same100-update live/empty/deferred workloads,20second thresholds, orientation, error details, readable copy and fade callback races, plus narrow/enlarged-label action layout and measurement-cache checks. Compact-cover cases retain real content/action identity, restore portrait order and use the observed API35 title height to check the132dp cover budget; this is not Android measurement execution. No Android layout, system animator, IME, Gecko, network or device frame-time execution.')
     args.output.parent.mkdir(parents=True,exist_ok=True);args.output.write_text(json.dumps(report,ensure_ascii=False,indent=2)+'\n')
     print(json.dumps(dict(status=report['status'],passed=total,total=total,
-        textAssignments={name:{label:results[label]['workloads'][name]['textAssignments'] for label in ['before','after']} for name in ['live100','empty100','deferred100']},
+        textAssignments={name:{label:results[label]['workloads'][name]['textAssignments'] for label in results} for name in ['live100','empty100','deferred100']},
         actualAndroidExecution=False,output=str(args.output)),ensure_ascii=False))
     if report['status']!='passed':raise SystemExit(1)
 

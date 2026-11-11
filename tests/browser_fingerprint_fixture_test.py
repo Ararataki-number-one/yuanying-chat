@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 import re
 import subprocess
+import sys
 import tempfile
 import unittest
 import xml.etree.ElementTree as ET
@@ -36,7 +37,7 @@ public final class AddressVisibilityHost {
   static final class View {static final int VISIBLE=0,GONE=8;}
   static final class Row {int visibility=View.GONE,writes;int getVisibility(){return visibility;}void setVisibility(int v){visibility=v;writes++;}}
   static final class Label {String text="",description="",tooltip="",glyph="";boolean enabled;int writes;void setText(String s){text=s;writes++;}void setContentDescription(String s){description=s;}void setTooltipText(String s){tooltip=s;}}
-  static final class Web {String url="about:blank";boolean back,forward;String getUrl(){return url;}boolean canGoBack(){return back;}boolean canGoForward(){return forward;}}
+  static final class Web {String url="about:blank";boolean back,forward,visible;String getUrl(){return url;}boolean canGoBack(){return back;}boolean canGoForward(){return forward;}boolean hasVisibleDocument(){return visible;}}
   static final class Session {boolean navigating;String navigationTarget="",resume="https://resume.example/";final Web web=new Web();String resumeUrl(){return resume;}void browse(String url,String label){navigating=true;navigationTarget=url;}}
   static final class BrowserToolbarUi {static void enabled(Label button,boolean value){button.enabled=value;}static void action(Label button,String glyph,String label){button.glyph=glyph;button.description=label;}}
   static final class BrowserPreferences {static String selected="https://chatgpt.com/";static String home(MainActivity a){return selected;}}
@@ -46,6 +47,11 @@ public final class AddressVisibilityHost {
   public static void main(String[] args){
     MainActivity a=new MainActivity();GeckoAddressUi ui=new GeckoAddressUi(a);
     ui.refresh();check("Blank page keeps browser controls",ui.row.getVisibility()==View.VISIBLE);check("Initial history is disabled",!ui.back.enabled&&!ui.forward.enabled);
+    check("Cold blank uses the existing resume destination",ui.current().equals(a.session.resume)&&ui.address.description.contains(a.session.resume));
+    a.session.web.visible=true;ui.refresh();check("Visible blank popup keeps its real address",ui.current().equals("about:blank")&&ui.address.text.equals("about:blank"));
+    a.session.web.visible=false;a.session.resume="";ui.refresh();check("Cold blank without resume uses selected home",ui.current().equals(BrowserPreferences.selected));
+    a.session.resume="about:blank";ui.refresh();check("Blank resume cannot hide the home destination",ui.current().equals(BrowserPreferences.selected));
+    a.session.resume="https://resume.example/";
     for(String url:new String[]{"https://chatgpt.com/","https://chatgpt.com:443/c/test#fragment","https://chatgpt.com/c/test?q=1#frag"}){a.session.web.url=url;ui.refresh();check("ChatGPT keeps the browser toolbar",ui.row.getVisibility()==View.VISIBLE);check("Official page remains editable",GeckoAddressUi.available(a));check("Menu uses current official address",ui.current().equals(url));check("Full official URL stays accessible",ui.address.description.contains(url));}
     for(String url:new String[]{"http://public.example/","https://public.example/path#fragment","http://chatgpt.com/","https://chatgpt.com.other.example/"}){a.session.web.url=url;ui.refresh();check("Ordinary public origin visible",ui.row.getVisibility()==View.VISIBLE);check("Visible address is current target",ui.address.description.contains(url));check("Tooltip retains full URL",ui.address.tooltip.equals(url));}
     check("HTTP scheme stays explicit",GeckoAddressUi.visibleFor("http://public.example/"));
@@ -67,10 +73,78 @@ public final class AddressVisibilityHost {
             def execute(body):
                 path.write_text(body);built=subprocess.run([javac,'--release','17','-encoding','UTF-8','-d',str(classes),str(path),str(production/'BrowserAddressPolicy.java'),str(production/'GeckoNavigationPolicy.java')],capture_output=True,text=True,timeout=30);self.assertEqual(built.returncode,0,built.stderr);return subprocess.run([java,'-cp',str(classes),'local.pocketchat.AddressVisibilityHost'],capture_output=True,text=True,timeout=20)
             passed=execute(program);self.assertEqual(passed.returncode,0,passed.stderr);result=json.loads(passed.stdout);self.assertGreaterEqual(result['checks'],40)
-            mutations=[('row.setVisibility(View.VISIBLE)','row.setVisibility(View.GONE)','Blank page keeps browser controls'),('a.session.navigating?a.session.navigationTarget:a.session.web.getUrl()','a.session.web.getUrl()','Pending target replaces old address'),('a.remote!=null&&a.remote.canGoForward()','false','History reflects native forward state'),('a.session!=null&&a.session.navigating','false','Loading has stop action')]
+            mutations=[('row.setVisibility(View.VISIBLE)','row.setVisibility(View.GONE)','Blank page keeps browser controls'),('a.session.navigating?a.session.navigationTarget:a.session.web.getUrl()','a.session.web.getUrl()','Pending target replaces old address'),('a.remote!=null&&a.remote.canGoForward()','false','History reflects native forward state'),('a.session!=null&&a.session.navigating','false','Loading has stop action'),('!a.session.web.hasVisibleDocument()','true','Visible blank popup keeps its real address'),('"about:blank".equals(url)&&a.session!=null&&!a.session.web.hasVisibleDocument()','false','Cold blank uses the existing resume destination')]
             for before,after,failure in mutations:
                 self.assertEqual(program.count(before),1);mutant=execute(program.replace(before,after,1));self.assertNotEqual(mutant.returncode,0);self.assertIn('AssertionError: '+failure,mutant.stderr)
             print(json.dumps(dict(scope='Extracted exact production target/current/visibility/refresh/home/availability methods on explicit JVM boundaries; real address policies; no Android or Gecko execution',**result,mutationControls=len(mutations))))
+
+    def test_actual_browser_address_row_reflows_without_recreating_controls(self):
+        source=(ROOT/'app/src/main/java/local/pocketchat/GeckoAddressUi.java').read_text()
+        spec=importlib.util.spec_from_file_location('address_row_parser',ROOT/'tests/gecko-navigation-host/run.py');parser=importlib.util.module_from_spec(spec);spec.loader.exec_module(parser)
+        row=parser.member_at(source,source.index('static final class BrowserAddressRow'))
+        template=(ROOT/'tests/browser-address-host/BrowserAddressLayoutHost.java.in').read_text()
+        program=template.replace('/* PRODUCTION_ROW */',row)
+        java_home=Path(os.environ.get('JAVA_HOME',str(ROOT/'work/browser-ci-jdk/jdk-17.0.21+9')))
+        with tempfile.TemporaryDirectory(prefix='browser-address-layout-') as directory:
+            directory=Path(directory);path=directory/'BrowserAddressLayoutHost.java';classes=directory/'classes'
+            def execute(body):
+                path.write_text(body)
+                result=subprocess.run([str(java_home/'bin/javac'),'--release','17','-encoding','UTF-8','-d',str(classes),str(path)],capture_output=True,text=True,timeout=30)
+                self.assertEqual(result.returncode,0,result.stderr)
+                return subprocess.run([str(java_home/'bin/java'),'-cp',str(classes),'local.pocketchat.BrowserAddressLayoutHost'],capture_output=True,text=True,timeout=20)
+            passed=execute(program);self.assertEqual(passed.returncode,0,passed.stderr)
+            report=json.loads(passed.stdout);self.assertGreaterEqual(report['checks'],180)
+            mutations=[('stacked=available-4*action<minimum;','stacked=false;'),
+                       ('text.substring(0,end)+"…"','"chatgpt.com…"'),
+                       ('int action=dp(48),minimum=readableAddressWidth();','int action=dp(44),minimum=readableAddressWidth();'),
+                       ('setMeasuredDimension(width,resolveSize(getPaddingTop()+content+getPaddingBottom(),heightSpec));','setMeasuredDimension(width,resolveSize(getPaddingTop()+content+getPaddingBottom(),heightSpec));requestLayout();')]
+            for before,after in mutations:
+                self.assertEqual(program.count(before),1)
+                failed=execute(program.replace(before,after,1));self.assertNotEqual(failed.returncode,0);self.assertIn('AssertionError:',failed.stderr)
+            self.assertEqual((ROOT/'app/src/main/java/local/pocketchat/GeckoAddressUi.java').read_text(),source)
+            print(json.dumps(dict(scope='Exact production BrowserAddressRow measure/layout against explicit JVM text and View boundaries; native font rendering remains device evidence',**report,mutationControls=len(mutations))))
+
+    def test_native_browser_toolbar_geometry_requires_complete_inline_or_stacked_rows(self):
+        sys.path.insert(0,str(ROOT/'tools/gecko'))
+        try:
+            spec=importlib.util.spec_from_file_location('browser_toolbar_capture',ROOT/'tools/gecko/capture_glass_navigation.py')
+            capture=importlib.util.module_from_spec(spec);spec.loader.exec_module(capture)
+        finally:sys.path.pop(0)
+        descriptions={'back':'后退','forward':'前进','reload':'刷新网页','home':'打开当前环境主页',
+                      'address':'当前网址 https://chatgpt.com/c/example，点击输入网址或搜索'}
+        def fixture(stacked=False,density=1):
+            capture.set_display((320 if stacked else 412)*density,892*density,160*density)
+            boxes={'back':[16,100,64,148],'forward':[64,100,112,148],
+                   'address':[112,100,300,148],'reload':[300,100,348,148],'home':[348,100,396,148]}
+            if stacked:boxes.update(back=[16,152,64,200],forward=[64,152,112,200],address=[16,100,304,148],reload=[208,152,256,200],home=[256,152,304,200])
+            tree=ET.Element('hierarchy')
+            for name,box in boxes.items():
+                box=[value*density for value in box]
+                ET.SubElement(tree,'node',{'package':capture.PACKAGE,'class':'android.widget.Button','content-desc':descriptions[name],
+                    'clickable':'true','enabled':'false' if name in ('back','forward') else 'true',
+                    'text':'chatgpt.com/c/example' if name=='address' else '',
+                    'bounds':f'[{box[0]},{box[1]}][{box[2]},{box[3]}]'})
+            return tree
+        def observed(tree):return capture.browser_toolbar_geometry(ET.tostring(tree,encoding='unicode'))
+        def node(tree,name):return next(item for item in tree if item.get('content-desc')==descriptions[name])
+        for density in (1,3):
+            for stacked in (False,True):
+                report=observed(fixture(stacked,density));self.assertIsNotNone(report)
+                self.assertEqual(report['layoutMode'],'stacked' if stacked else 'inline')
+                self.assertEqual(report['singleHorizontalRow'],not stacked);self.assertEqual(report['addressOwnRow'],stacked)
+                self.assertFalse(report['actions']['back']['enabled']);self.assertFalse(report['nativeGlyphVisibilityClaimed'])
+        broken=fixture(False);capture.set_display(320,892,160)
+        node(broken,'address').set('bounds','[112,100][208,148]');node(broken,'reload').set('bounds','[208,100][256,148]');node(broken,'home').set('bounds','[256,100][304,148]')
+        self.assertIsNone(observed(broken),'The old narrow 96dp address slot must fail')
+        for name,box in [('back','[16,152][62,200]'),('forward','[63,152][111,200]'),
+                         ('reload','[208,154][256,202]'),('home','[208,152][256,200]'),
+                         ('address','[18,100][302,148]'),('address','[16,105][304,153]'),
+                         ('address','[16,100][321,148]')]:
+            broken=fixture(True);node(broken,name).set('bounds',box)
+            self.assertIsNone(observed(broken),(name,box))
+        broken=fixture(True);node(broken,'address').set('text','');self.assertIsNone(observed(broken))
+        broken=fixture(True);node(broken,'back').set('enabled','unknown');self.assertIsNone(observed(broken))
+        broken=fixture(True);broken.append(ET.fromstring(ET.tostring(node(broken,'address'))));self.assertIsNone(observed(broken))
 
     def test_runner_pins_all_required_source_inputs_that_actually_exist(self):
         def load(name,path):
