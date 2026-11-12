@@ -51,6 +51,29 @@ public final class AddonHost {
   View ordinary=new View();ordinary.onPageStart(ordinary.current,SITE);ordinary.onLocationChange(ordinary.current,SITE,Collections.emptyList(),false);ordinary.onPageStop(ordinary.current,true);check("Enabled native document still publishes normal start visible and finish callbacks",ordinary.client.started==1&&ordinary.client.committed==1&&ordinary.client.finished==1&&!ordinary.owner.navigationFailed&&!ordinary.owner.navigating);
  }
  static void audit(){View v=new View();v.owner.audit.consume=true;GeckoResult<String> result=v.nativeNavigationFailure(v.current,SITE,"failure");check("Existing request-audit branch retains its own failure handling",result!=null&&result.value==null&&v.owner.finishes==0&&v.owner.audit.calls==1);v.owner.audit.consume=false;v.nativeNavigationFailure(v.current,"about:blank","failure");check("Blank bootstrap cannot be mislabeled as a failed website",v.owner.finishes==0);v.nativeNavigationFailure(new GeckoSession(),SITE,"failure");check("Foreign native session cannot finish the selected navigation",v.owner.finishes==0);v.destroyed=true;v.nativeNavigationFailure(v.current,SITE,"failure");check("Retired view cannot publish a late navigation failure",v.owner.finishes==0);}
+ static void navigationCapture(){
+  View v=new View();
+  String previous="https://previous.example/",next="https://next.example/";
+  v.url=previous;v.locations.put(v.current,previous);
+  v.owner.navigationTarget=next;v.owner.navigating=true;v.owner.navigationDispatched=false;
+  v.onPageStart(v.current,SITE);
+  check("Capture rejects a stopped load's late start",v.pendingLoads.isEmpty()&&v.appearanceLoads.isEmpty());
+  v.pendingLoads.add(v.current);v.loadingTargets.put(v.current,SITE);
+  v.onLocationChange(v.current,SITE,Collections.emptyList(),false);
+  check("Capture retains the requested destination against late location",v.url.equals(previous)&&v.locations.get(v.current).equals(previous)&&v.owner.remembered==0&&v.client.started==0);
+  v.onPageStop(v.current,false);
+  check("Capture rejects a stopped load's terminal event",v.owner.finishes==0&&v.owner.pageError.isEmpty()&&v.owner.navigating&&v.pendingLoads.contains(v.current));
+  GeckoResult<String> error=v.onLoadError(v.current,SITE,new WebRequestError());
+  check("Capture rejects a stopped load's late error",error!=null&&error.value==null&&v.owner.finishes==0&&v.owner.audit.calls==0);
+  GeckoSession background=new GeckoSession();v.locations.put(background,previous);
+  v.onPageStart(background,SITE);v.onLocationChange(background,SITE,Collections.emptyList(),false);
+  check("Capture does not suppress another native page's bookkeeping",v.locations.get(background).equals(SITE)&&v.url.equals(previous));
+  v.owner.navigationDispatched=true;
+  v.onPageStart(v.current,next);v.onLocationChange(v.current,next,Collections.emptyList(),false);v.onPageStop(v.current,true);
+  check("Dispatched replacement publishes its normal lifecycle",v.url.equals(next)&&v.owner.remembered==1&&v.client.started==1&&v.client.finished==1);
+  View blocked=disabledView();blocked.owner.navigationDispatched=false;
+  check("Capture does not bypass explicit addon admission",blocked.rejectDisabledNavigation(blocked.current,next)&&blocked.owner.finishes==1);
+ }
  static void manualIpBoundary(){
   View v=new View();v.nativeNavigationFailure(v.current,SITE,"controlled manual failure");v.owner.navigating=true;v.loadUrl(SITE);v.blockedPopups.invalidate();
   check("Manual-system addon events count IP failure/retry and popup invalidation boundaries",v.ipFailureReads>0&&v.ipRetries==1&&v.blockedPopups.invalidations==1&&v.current.loads==1);
@@ -76,7 +99,7 @@ public final class AddonHost {
    check(name+" strict policy refuses this default-only boundary rather than inventing a native receipt",refused);
   }
  }
- public static void main(String[] args){String focus=args.length==0?"all":args[0];if(focus.equals("cold-policy-boundary"))coldPolicyBoundary();if(focus.equals("manual-ip-boundary"))manualIpBoundary();if(focus.equals("all")||focus.equals("authority"))authority();if(focus.equals("all")||focus.equals("entries"))entries();if(focus.equals("all")||focus.equals("enable"))enable();if(focus.equals("all")||focus.equals("progress"))progress();if(focus.equals("all")||focus.equals("audit"))audit();System.out.println(J.obj("status","passed","passed",checks.size(),"total",checks.size(),"checks",new JSONArray(checks)));}
+ public static void main(String[] args){String focus=args.length==0?"all":args[0];if(focus.equals("cold-policy-boundary"))coldPolicyBoundary();if(focus.equals("manual-ip-boundary"))manualIpBoundary();if(focus.equals("all")||focus.equals("authority"))authority();if(focus.equals("all")||focus.equals("entries"))entries();if(focus.equals("all")||focus.equals("enable"))enable();if(focus.equals("all")||focus.equals("progress"))progress();if(focus.equals("all")||focus.equals("audit"))audit();if(focus.equals("all")||focus.equals("navigation-capture"))navigationCapture();System.out.println(J.obj("status","passed","passed",checks.size(),"total",checks.size(),"checks",new JSONArray(checks)));}
 }
 class View {
  @@MEMBERS@@
@@ -105,7 +128,7 @@ class WebExtension {final String id;final boolean isBuiltIn;final MetaData metaD
 class Metadata {boolean policyAcknowledged=true,rfpAcknowledged=true;}
 /** Opaque default-policy prerequisites; no CPU/TLS startup, preferences or wire. */
 class ColdPolicyBoundary {Object expectedRuntime;String mode="kernel-default";boolean admitted=true,retired;int checks;boolean readyFor(Object runtime){checks++;if(!mode.equals("kernel-default"))throw new AssertionError("Strict CPU/TLS policy is outside the default-only addon boundary");return admitted&&!retired&&runtime!=null&&runtime==expectedRuntime;}}
-class Owner {boolean deleted,navigating,navigationFailed,lastRetry;int finishes,changes;long navigationEpoch;String navigationTarget=AddonHost.SITE,pageError="",status="";Object context=new Object();final ColdPolicyBoundary cpu=new ColdPolicyBoundary(),tls=new ColdPolicyBoundary();final Audit audit=new Audit();final Privacy privacy=new Privacy();final Guard guard=new Guard();final TimeZone timeZone=new TimeZone();final Queue handler=new Queue();final Prefs prefs=new Prefs();int remembered;void rememberBrowserLocation(String target){remembered++;}void finishNavigation(String message,boolean retry){finishes++;navigating=false;navigationFailed=!message.isEmpty();lastRetry=retry;}void setStatus(String value){status=value;}void changed(){changes++;}}
+class Owner {boolean deleted,navigating,navigationFailed,lastRetry,navigationDispatched=true;int finishes,changes;long navigationEpoch;String navigationTarget=AddonHost.SITE,pageError="",status="";Object context=new Object();final ColdPolicyBoundary cpu=new ColdPolicyBoundary(),tls=new ColdPolicyBoundary();final Audit audit=new Audit();final Privacy privacy=new Privacy();final Guard guard=new Guard();final TimeZone timeZone=new TimeZone();final Queue handler=new Queue();final Prefs prefs=new Prefs();int remembered;void rememberBrowserLocation(String target){remembered++;}void finishNavigation(String message,boolean retry){finishes++;navigating=false;navigationFailed=!message.isEmpty();lastRetry=retry;}void setStatus(String value){status=value;}void changed(){changes++;}}
 class Audit {boolean consume;int calls;boolean identityPageFailed(String target,String message){calls++;return consume;}}
 class Privacy{int level(){return 1;}}class Guard{boolean allowed(){return true;}}class TimeZone{boolean followsIp=true;boolean popupAllowed(){if(followsIp)throw new AssertionError("Automatic IP popup permission is outside the manual-system addon host");return true;}}
 class Queue {final List<Runnable> tasks=new ArrayList<>();void post(Runnable task){tasks.add(task);}}
@@ -118,6 +141,7 @@ class ChromiumRouteLease {static final class Handle{void close(){}}static Handle
 class GeckoResult<T> {final T value;GeckoResult(T value){this.value=value;}static <T>GeckoResult<T> fromValue(T value){return new GeckoResult<>(value);}}
 enum AllowOrDeny {ALLOW,DENY}
 class LoadRequest {final String uri;LoadRequest(String uri){this.uri=uri;}}
+class WebRequestError {}
 
 class Client {final Owner owner;int started,committed,finished;Client(Owner owner){this.owner=owner;}void onPageStarted(Object view,String target,Object icon){started++;owner.navigating=true;}void onPageCommitVisible(Object view,String target){committed++;}void onPageFinished(Object view,String target){finished++;owner.navigationFailed=false;owner.navigating=false;}}
 class Prefs {Prefs edit(){return this;}Prefs putString(String name,String value){return this;}void apply(){}}

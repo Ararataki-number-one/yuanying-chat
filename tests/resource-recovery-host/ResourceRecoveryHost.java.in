@@ -58,7 +58,33 @@ public final class ResourceRecoveryHost {
       check("Retired recovery continuation "+state+" refuses old startup callbacks",host.finished&&!host.recoveryAllocationComplete&&host.owner.resources.created==0&&host.allocation.length()==0);
     }
   }
-  public static void main(String[] args)throws Exception{admitted();deferredAndStopped();continuation(true);continuation(false);absoluteDeadline();System.out.println(J.obj("status","passed","passed",checks.length(),"checks",checks));}
+  static void navigationOwners(){
+    for(int mutation=0;mutation<3;mutation++){
+      Fixture host=new Fixture();host.owner.pending=J.obj("id","resource-recovery");final int change=mutation;
+      host.owner.onStatus=()->{
+        if(change==0){host.owner.navigationEpoch++;host.view.queued="https://chatgpt.com/c/newer";}
+        else if(change==1)host.view.current=new GeckoSession();
+        else host.owner.deleted=true;
+      };
+      host.view.retryResourceStart();
+      check("Superseded resource retry cannot wake an older navigation "+mutation,host.owner.wakes==0&&(mutation!=0||host.view.queued.equals("https://chatgpt.com/c/newer")));
+    }
+    Fixture host=new Fixture();host.owner.pending=J.obj("id","resource-recovery");final Fixture initializing=host;
+    host.view.onInitialize=()->{initializing.owner.navigationEpoch++;initializing.owner.navigationTarget="https://chatgpt.com/c/newer";};
+    host.view.retryResourceStart();
+    check("Initialization reentry cannot replace the newer navigation deadline",host.owner.beginCount==0&&host.owner.wakes==0&&host.owner.navigationTarget.equals("https://chatgpt.com/c/newer"));
+    host=new Fixture();host.owner.pending=J.obj("id","resource-recovery");host.view.queued="";host.owner.navigationTarget="";final Fixture noTarget=host;
+    host.owner.onStatus=()->noTarget.owner.navigationEpoch++;
+    host.view.retryResourceStart();
+    check("Status-only resource retry also respects a newer navigation",host.owner.wakes==0&&host.owner.beginCount==0);
+    host=new Fixture();String target="https://chatgpt.com/c/resource-recovery";
+    host.view.queued=target;host.owner.navigationTarget=target;
+    JSONObject pending=J.obj("id","same-page-web","kind","web","confirmed",true,"confirmedUrl",target,"attempted",true);
+    host.owner.pending=pending;String bytes=pending.toString();host.owner.prefs.edit().putString("pending",bytes).commit();
+    host.view.retryResourceStart();host.owner.handler.until(200);
+    check("Same-page ChatGPT recovery retains its actual web task through asynchronous CPU and TLS admission",host.owner.pending==pending&&host.owner.prefs.getString("pending","").equals(bytes)&&host.view.runtime!=null&&host.owner.resources.created==1&&host.view.resourceAdmission==ResourcePressureController.Admission.RECOVERY&&host.owner.beginCount==1);
+  }
+  public static void main(String[] args)throws Exception{admitted();deferredAndStopped();continuation(true);continuation(false);absoluteDeadline();int originalChecks=checks.length();navigationOwners();System.out.println(J.obj("status","passed","passed",checks.length(),"originalChecks",originalChecks,"checks",checks));}
 }
 class Parent {int caseIndex=-1,superCalls;void beginCase(){caseIndex++;superCalls++;}}
 class Fixture extends Parent {
@@ -78,9 +104,12 @@ class Fixture extends Parent {
 class Owner {
   final Queue handler=new Queue();final ResourcePressureController resources=new ResourcePressureController(null);final View web=new View(this);final Runnable tick=()->{};final Prefs prefs=new Prefs();final Deliveries deliveries=new Deliveries();final Audit audit=new Audit();final Trace trace=new Trace();
   JSONObject pending;boolean uiVisible=true,navigating=true,navigationFailed,recoveryScheduled,deleted,replyStalled,websiteConnectionIssue,spaTransition,documentNavigationSeen,navigationDispatched,awaitNewDocument,browserNavigationStopped;String pageError="",navigationTarget="",navigationLabel="",lastDocumentId="",priorDocumentId="",spaSignature="";long navigationEpoch=7,resourceObserverEpoch=-1,navigationStarted,navigationMono,firstPageVisible,pageUsableAt;int spaStable,beginCount,wakes;
+  long syncRun,resourceUploadCheckGeneration,resourceInspectionGeneration;boolean resourceUploadChecking,backgroundAttachmentCheck,inFlight;int backgroundAttachmentStable;Runnable onStatus;
+  final WebObserver webObserver=new WebObserver(this);
+  @INVALIDATE@
   @NAVIGATION@
   @TIMEOUT@
-  void resetReplyStability(){}void setStatus(String value){}void wakePolling(){wakes++;}void finishNavigation(String value,boolean retry){pageError=value;navigationFailed=true;navigating=false;}
+  void resetReplyStability(){}void setStatus(String value){Runnable callback=onStatus;onStatus=null;if(callback!=null)callback.run();}void wakePolling(){wakes++;}void finishNavigation(String value,boolean retry){pageError=value;navigationFailed=true;navigating=false;}
   boolean resourceRestoreWork(){return pending!=null;}void remove(Runnable observer){}
   void updateBrowserActivity(){if(web.resourceDeferred&&resourceRestoreWork())web.retryResourceStart();}
   void foreground(boolean value){uiVisible=value;if(web.resourceDeferred)web.retryResourceStart();updateBrowserActivity();}
@@ -90,20 +119,36 @@ class Owner {
   static class Deliveries {void recover(JSONObject value){}}
 }
 class View {
-  final Owner owner;boolean resourceDeferred=true,destroyed,failed,enabled=true,cpuRequested,cpuDone,tlsRequested,tlsDone;Object runtime;String queued="",failureAt="",stallAt="";ResourcePressureController.Admission resourceAdmission=ResourcePressureController.Admission.DEFER;
+  final Owner owner;boolean resourceDeferred=true,destroyed,failed,enabled=true,cpuRequested,cpuDone,tlsRequested,tlsDone;Object runtime;GeckoSession current;Runnable onInitialize;String queued="",failureAt="",stallAt="";ResourcePressureController.Admission resourceAdmission=ResourcePressureController.Admission.DEFER;
   View(Owner owner){this.owner=owner;owner.resources.deferred=1;}
   @RETRY@
-  boolean allowedUrl(String target){return target.startsWith("http://127.0.0.1:40000/");}boolean hasVisibleDocument(){return false;}
+  @CURRENT@
+  boolean allowedUrl(String target){return target.startsWith("http://127.0.0.1:40000/")||MainActivity.chatUrl(target);}boolean hasVisibleDocument(){return false;}
   void initialize(){
+    Runnable callback=onInitialize;onInitialize=null;if(callback!=null)callback.run();
     if(!enabled||destroyed||owner.deleted||runtime!=null||failed)return;
     ResourcePressureController.MemorySample memory=new ResourcePressureController.MemorySample(true,true,1024,4096,2048,SystemClock.elapsedRealtime(),"synthetic-pressure-control");
     resourceAdmission=owner.resources.request(false,owner.resourceRestoreWork(),memory);
     if(resourceAdmission==ResourcePressureController.Admission.DEFER){resourceDeferred=true;return;}resourceDeferred=false;
     if(!cpuDone){if(!cpuRequested){cpuRequested=true;if(!stallAt.equals("cpu"))owner.handler.postDelayed(()->complete("cpu"),100);}return;}
     if(!tlsDone){if(!tlsRequested){tlsRequested=true;if(!stallAt.equals("tls"))owner.handler.postDelayed(()->complete("tls"),100);}return;}
-    runtime=new Object();owner.resources.runtimeCreated();
+    runtime=new Object();current=new GeckoSession();owner.resources.runtimeCreated();
   }
   void complete(String phase){if(destroyed||owner.deleted||failed)return;if(failureAt.equals(phase)){failed=true;return;}if(phase.equals("cpu"))cpuDone=true;else tlsDone=true;initialize();}
+}
+class GeckoSession{}
+class WebObserver {
+  final Owner session;WebObserver(Owner owner){session=owner;}
+  @WEB_JOB@
+  @WEB_NAVIGATION@
+  @SAME@
+  @BINDING_ROUTE@
+  boolean archiveNavigation(JSONObject job){throw new AssertionError("Cross-page web archival belongs to the page-lifecycle host");}
+}
+class MainActivity {@CHAT_URL@}
+class Uri {
+  final java.net.URI value;Uri(String value){this.value=java.net.URI.create(value);}static Uri parse(String value){return new Uri(value);}
+  String getPath(){return value.getPath();}String getScheme(){return value.getScheme();}String getHost(){return value.getHost();}String getUserInfo(){return value.getUserInfo();}int getPort(){return value.getPort();}
 }
 class Queue {
   static final class Job {final long at,serial;final Runnable task;Job(long at,long serial,Runnable task){this.at=at;this.serial=serial;this.task=task;}}

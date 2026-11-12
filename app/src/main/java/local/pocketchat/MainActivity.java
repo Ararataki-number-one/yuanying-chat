@@ -55,12 +55,11 @@ public class MainActivity extends ThemedActivity {
     // Keep binding diagnostics in the delivery record, without a persistent
     // banner or off-page feedback when the conversation changes.
     quiet|=message.equals("对话已改变，请检查上次发送；不会自动重发");
-    boolean browserBlocked=message.contains("再切换网页");if(browserBlocked)quiet=false;
     boolean current=session!=null&&TextUtils.equals(message,session.status);
     boolean sessionError=current&&(session.websiteConnectionIssue||!session.pageError.isEmpty()||!session.networkIssue.isEmpty()&&TextUtils.equals(message,session.networkIssue)&&(session.offline||!session.networkReady&&!session.connecting));
     boolean waiting=current&&session.replyStalled;
     if(waiting)quiet=false;
-    boolean error=waiting||!quiet&&(browserBlocked||sessionError||message.startsWith("网页反馈：")||message.matches(".*(失败|错误|无法|未能|不可用|未完成|待确认|断开|中断|过期|失效|未通过|请检查|请先|暂未|未添加|需要重新|没有可用).*"));
+    boolean error=waiting||!quiet&&(sessionError||message.startsWith("网页反馈：")||message.matches(".*(失败|错误|无法|未能|不可用|未完成|待确认|断开|中断|过期|失效|未通过|请检查|请先|暂未|未添加|需要重新|没有可用).*"));
     boolean fileProgress=session!=null&&session.resourceFilePreparations>0&&message.equals("准备附件…");
     if(error||fileProgress){if(!TextUtils.equals(status.getText(),message))status.setText(message);status.setTextColor(error&&!waiting?DesignUi.RED:DesignUi.MUTED);}
     status.setClickable(error);status.setContentDescription(fileProgress?"正在准备所选附件":"网页或网络错误，点按查看详情");
@@ -212,19 +211,25 @@ public class MainActivity extends ThemedActivity {
   }
   boolean reloadMatches(ChatSession.ReloadTarget target){return !destroyed&&session!=null&&target.matches(session)&&remote==session.web;}
   void browserHistory(int direction){
-    if(!GeckoAddressUi.available(this)||!session.allowBrowserNavigation())return;
+    if(!GeckoAddressUi.available(this))return;
     if(direction<0?!remote.canGoBack():!remote.canGoForward())return;
-    final ChatSession owner=session;final Object surface=remote.current;final long epoch=session.navigationEpoch;
-    session.pageMemory.capture(()->{
-      if(!GeckoAddressUi.available(this)||session!=owner||remote.current!=surface||session.navigationEpoch!=epoch||!session.allowBrowserNavigation())return;
-      if(direction<0)remote.goBack();else remote.goForward();
+    final ChatSession owner=session;
+    final Object surface=remote.current;
+    // Retire callbacks now, not after an optional website snapshot returns.
+    final long epoch=owner.prepareBrowserNavigation();
+    if(epoch<0)return;
+    owner.pageMemory.captureForNavigation(()->{
+      if(!GeckoAddressUi.available(this)||session!=owner||remote.current!=surface||owner.navigationEpoch!=epoch){
+        owner.cancelBrowserNavigation(epoch);
+        return;
+      }
+      owner.dispatchBrowserHistory(direction,epoch);
       if(geckoAddress!=null)geckoAddress.refresh();
     });
   }
   void browserReloadOrStop(){
     if(!GeckoAddressUi.available(this))return;
     if(!session.navigating){requestReload();return;}
-    if(!session.allowBrowserNavigation())return;
     session.stopBrowserNavigation();if(loading!=null)loading.update();
     if(geckoAddress!=null)geckoAddress.refresh();
   }
@@ -321,7 +326,10 @@ public class MainActivity extends ThemedActivity {
   }
   static String draftPreview(String value){String text=value.replaceAll("\\s+"," ").trim();return text.codePointCount(0,text.length())>160?text.substring(0,text.offsetByCodePoints(0,160))+"…":text;}
   static void addLegacyDraft(JSONArray rows,Set<String> bodies,String origin,String body){if(body!=null&&!body.isEmpty()&&bodies.add(body))rows.put(J.obj("origin",origin==null||origin.isEmpty()?"暂存草稿":origin,"body",body));}
-  void switchConversation(String url){if(!chatUrl(url))return;if(session.pending!=null||session.submitting||session.operation){status("当前有未完成请求，请先完成等待再打开其他对话");return;}session.navigate(url,"正在打开对话…");showPage(true);}
+  void switchConversation(String url){
+    if(!chatUrl(url)||!GeckoAddressUi.available(this))return;
+    if(session.browse(url,"正在打开对话…"))showPage(true);
+  }
   @Override protected void onActivityResult(int request,int result,Intent data){super.onActivityResult(request,result,data);if(request==74&&attachments!=null)attachments.result(result,data);if(request==FileDownloads.SAVE&&downloads!=null)downloads.result(result,data);if(request==SavedFileActions.EXPORT&&downloads!=null)downloads.savedActions.result(result,data);}
   void openNotification(Intent intent){
     if(intent==null)return;if(intent.hasExtra("openConversation")||intent.hasExtra("openDownload")){intent.removeExtra(EnvironmentOverviewUi.NONCE);intent.removeExtra(EnvironmentOverviewUi.SOURCE);}String windowAction=intent.getStringExtra("openWindowAction");
@@ -329,9 +337,13 @@ public class MainActivity extends ThemedActivity {
     if(intent.getBooleanExtra("openEnvironmentEditor",false)){intent.removeExtra("openEnvironmentEditor");handler.postDelayed(()->EnvironmentEditorUi.show(this),200);}
     String download=intent.getStringExtra("openDownload");if(download!=null){intent.removeExtra("openDownload");if(hub!=null)hub.select(AppHub.DOWNLOADS);for(int i=0;i<downloads.tasks.rows.length();i++){JSONObject row=downloads.tasks.rows.optJSONObject(i);if(download.equals(row.optString("id"))){downloads.taskActions(row);break;}}return;}
     String url=intent.getStringExtra("openConversation");if(!chatUrl(url))return;intent.removeExtra("openConversation");if(hub!=null)hub.select(AppHub.CHAT);
-    if(session.pending!=null||session.submitting||session.operation){status("当前有未完成请求，请先完成等待再打开其他对话");return;}
     if(session.networkReady){if(WebReplyObserver.same(url,remote.getUrl())&&!session.navigationFailed){session.sync();showPage(true);}else switchConversation(url);}
-    else{session.requestedConversation=url;session.conversation=url;conversation=url;session.connect();}
+    else{
+      // A notification is also an explicit browser destination. Keep it ahead
+      // of an older native task when the connection finishes preparing.
+      if(!session.browse(url,"正在打开通知中的对话…"))return;
+      session.connect();
+    }
   }
   boolean dispatchBrowser(Intent intent){
     if(!BrowserPreferences.shouldOpenBrowser(this,intent)||!ProfileCatalog.get(this).available(Profiles.slot(this)))return false;

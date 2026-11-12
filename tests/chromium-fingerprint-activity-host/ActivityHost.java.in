@@ -60,6 +60,48 @@ public final class ActivityHost {
     ActivityHost popup=fresh();popup.selected.fingerprintStarted=false;Message message=new Message();message.obj=new WebView.WebViewTransport();popup.selected.fingerprintPopup=message;popup.runtime.ready=false;popup.startFingerprintSurface(popup.selected,popup.web());check("Popup transport remains withheld while route blocked",message.sent==0);popup.runtime.ready=true;popup.startFingerprintSurface(popup.selected,popup.web());check("Prepared popup transport sent once before any navigation",message.sent==1&&((WebView.WebViewTransport)message.obj).view==popup.web()&&popup.web().loads.isEmpty());
     ActivityHost popupAddress=fresh();Message abandoned=new Message();abandoned.obj=new WebView.WebViewTransport();popupAddress.selected.fingerprintPopup=abandoned;popupAddress.fingerprintLoading=true;popupAddress.go("https://example.com/explicit");check("Explicit address cancels pending popup transport without leaving opener waiting",abandoned.sent==1&&((WebView.WebViewTransport)abandoned.obj).view==null&&popupAddress.selected.fingerprintPopup==null&&"https://example.com/explicit".equals(popupAddress.selected.fingerprintNavigation));
   }
+  static void navigationReentry()throws Exception{
+    String older="https://example.com/older",newer="https://example.com/newer";
+    ActivityHost picker=fresh();picker.choose();picker.files.onCancel=()->picker.go(newer);picker.go(older);
+    check("Picker cancellation cannot overwrite a newer address",picker.web().loads.equals(Arrays.asList(newer))&&picker.selected.url.equals(newer));
+    check("Superseded address does not invalidate newer permission requests",picker.permissions.navigations==1);
+
+    ActivityHost permission=fresh();permission.web().backAvailable=true;permission.permissions.onCancel=()->permission.go(newer);permission.history(-1);
+    check("Permission cancellation cannot dispatch stale history",permission.web().backCalls==0&&permission.web().loads.equals(Arrays.asList(newer)));
+
+    ActivityHost refresh=fresh();refresh.permissions.onCancel=()->refresh.go(newer);refresh.reloadOrStop();
+    check("Permission cancellation cannot reload the newer page",refresh.web().reloadCalls==0&&refresh.web().loads.equals(Arrays.asList(newer)));
+
+    ActivityHost changedTab=fresh();Tab original=changedTab.selected;WebView originalView=changedTab.web();Tab other=new Tab("https://other.example/");other.web=new WebView(other.url);changedTab.tabs.add(other);changedTab.choose();changedTab.files.onCancel=()->changedTab.selected=other;changedTab.go(older);
+    check("Picker cancellation cannot navigate a different selected tab",changedTab.selected==other&&originalView.loads.isEmpty()&&other.web.loads.isEmpty()&&original.url.equals("https://example.com/one"));
+
+    ActivityHost closed=fresh();WebView closedView=closed.web();closed.choose();closed.files.onCancel=()->closed.destroyed=true;closed.go(older);
+    check("Closed Activity cannot continue an outer navigation",closedView.loads.isEmpty());
+
+    ActivityHost queue=fresh();queue.choose();queue.files.onCancel=()->{queue.fingerprintLoading=true;queue.go(newer);};queue.go(older);
+    check("Nested queued address keeps newest intent and network gate",queue.web().loads.isEmpty()&&newer.equals(queue.selected.fingerprintNavigation)&&newer.equals(queue.selected.url));
+    queue.fingerprintLoading=false;queue.startFingerprintSurface(queue.selected,queue.web());
+    check("Nested queued address is the only later load",queue.web().loads.equals(Arrays.asList(newer)));
+
+    ActivityHost nativeStart=fresh();nativeStart.choose();nativeStart.files.onCancel=()->nativeStart.go(newer);nativeStart.new ClientBoundary(nativeStart.selected).onPageStarted(nativeStart.web(),older,null);
+    check("Reentered native start cannot replace current page state",newer.equals(nativeStart.selected.url)&&nativeStart.web().loads.equals(Arrays.asList(newer)));
+
+    ActivityHost startup=fresh();startup.selected.fingerprintStarted=false;startup.choose();startup.files.onCancel=()->startup.go(newer);startup.startFingerprintSurface(startup.selected,startup.web());
+    check("Initial surface cannot restore an obsolete page after reentry",startup.web().loads.equals(Arrays.asList(newer))&&startup.selected.fingerprintStarted);
+
+    ActivityHost popup=fresh();Message abandoned=new Message();abandoned.obj=new WebView.WebViewTransport();abandoned.onSend=()->popup.go(newer);popup.selected.fingerprintPopup=abandoned;popup.go(older);
+    check("Popup cancellation cannot replace a newer address",popup.web().loads.equals(Arrays.asList(newer))&&newer.equals(popup.selected.url));
+
+    ActivityHost unavailable=fresh();unavailable.choose();BrowserFiles.Pending choice=unavailable.files.pending;unavailable.history(-1);
+    check("Unavailable history leaves the current file choice intact",unavailable.files.pending==choice&&unavailable.files.deliveries==0&&unavailable.permissions.navigations==0);
+
+    ActivityHost download=fresh();download.files.activeDownload=true;download.choose();download.go(newer);
+    check("Navigation cancels page picker without cancelling independent transfer",download.files.pending==null&&download.files.deliveries==1&&download.files.activeDownload&&download.files.downloadCancellations==0&&download.web().loads.equals(Arrays.asList(newer)));
+
+    ActivityHost stop=fresh();stop.selected.loading=true;stop.choose();stop.files.onCancel=stop::reloadOrStop;stop.go(older);
+    check("Explicit stop during cancellation prevents outer load",stop.web().loads.isEmpty()&&stop.web().stops==1&&!stop.selected.loading);
+    check("Stopped current document requests its new native binding",stop.bindingRequests==1);
+  }
   static void observation()throws Exception{
     ActivityHost current=fresh();current.observeFingerprint();check("Observation uses explicit synthetic function and one active callback",current.fingerprintObserving&&current.web().evaluation.contains("__pocketchatChromiumFingerprintObserve"));current.web().answer(raw("page-observed"));check("Observation persistence stays off callback UI task",current.fingerprintReceipt.length()==0&&current.fingerprintWorker.tasks.size()==1);queues(current);JSONObject receipt=ChromiumFingerprintStore.lastReceipt(current.context,current.fingerprintState.identity,current.fingerprintState.revision,current.selected.fingerprintBinding);check("Current document observation recorded separately from native setup",receipt.getJSONObject("fields").has("nativeSetup")&&receipt.getJSONObject("fields").getJSONObject("pageSelfTest").getString("state").equals("page-observed")&&!receipt.getBoolean("fingerprintProtectionVerified"));
     for(String change:new String[]{"navigation","selected","provider","pause","state","new-operation","url"}){ActivityHost h=fresh();h.observeFingerprint();WebView original=h.web();if(change.equals("navigation"))h.beforeFingerprintNavigation(h.selected);if(change.equals("selected"))h.selected=new Tab("https://other.example/");if(change.equals("provider"))WebView.provider.versionName="158.0";if(change.equals("pause"))h.foreground=false;if(change.equals("state"))h.fingerprintState=ChromiumFingerprintStore.load(h.context);if(change.equals("new-operation"))h.invalidateFingerprintObservation();if(change.equals("url"))original.url="https://example.com/changed";int queued=h.fingerprintWorker.tasks.size();original.answer(raw("page-observed"));check("Late observation cannot enqueue receipt after "+change,h.fingerprintWorker.tasks.size()==queued&&h.fingerprintReceipt.length()==0);WebView.provider.versionName="157.0";}
@@ -80,7 +122,7 @@ public final class ActivityHost {
     h.fingerprintLoading=true;h.go("https://example.com/queued");check("Undispatched queued address retains current idle DOM state",!tab.loading&&tab.fingerprintNavigation!=null);h.fingerprintLoading=false;
     ActivityHost rejected=fresh();rejected.fingerprintStateReady=false;rejected.new ClientBoundary(rejected.selected).onPageStarted(rejected.web(),rejected.selected.url,null);check("Unconfirmed native start preserves fail-closed error semantics",rejected.selected.failed&&!rejected.selected.loading&&rejected.web().stops==1);
   }
-  public static void main(String[] args)throws Exception{base=Paths.get(args[0]);upload();navigation();observation();completedHistory();System.out.println(J.obj("status","passed","passed",checks.size(),"total",checks.size(),"checks",new JSONArray(checks)));}
+  public static void main(String[] args)throws Exception{base=Paths.get(args[0]);upload();navigation();navigationReentry();observation();completedHistory();System.out.println(J.obj("status","passed","passed",checks.size(),"total",checks.size(),"checks",new JSONArray(checks)));}
   static final class PackageInfo {String packageName="host.webview",versionName="157.0";}
   static final class WebView {
     static final PackageInfo provider=new PackageInfo();static PackageInfo getCurrentWebViewPackage(){return provider;}
@@ -89,13 +131,13 @@ public final class ActivityHost {
     static final class WebViewTransport {WebView view;void setWebView(WebView value){view=value;}}
   }
   static final class Settings {boolean blocked;void setBlockNetworkLoads(boolean value){blocked=value;}}
-  static final class Bitmap {}static final class Bundle {}static final class Message {Object obj;int sent;void sendToTarget(){sent++;}}
+  static final class Bitmap {}static final class Bundle {}static final class Message {Object obj;int sent;Runnable onSend;void sendToTarget(){sent++;Runnable callback=onSend;onSend=null;if(callback!=null)callback.run();}}
   static final class Intent {Intent(){}Intent(Intent source){}}
   static final class ManualHandler {final ArrayDeque<Runnable> tasks=new ArrayDeque<>(),delayed=new ArrayDeque<>();void post(Runnable task){tasks.add(task);}void postDelayed(Runnable task,long timeout){delayed.add(task);}void removeCallbacks(Runnable task){tasks.remove(task);delayed.remove(task);}void drain(){while(!tasks.isEmpty())tasks.remove().run();}}
   static final class ManualExecutor extends AbstractExecutorService {final ArrayDeque<Runnable> tasks=new ArrayDeque<>();public void execute(Runnable task){tasks.add(task);}void drain()throws Exception{while(!tasks.isEmpty()){Runnable task=tasks.remove();Thread worker=new Thread(task,"actual-method-host-worker");worker.start();worker.join();}}public void shutdown(){}public List<Runnable> shutdownNow(){return Collections.emptyList();}public boolean isShutdown(){return false;}public boolean isTerminated(){return false;}public boolean awaitTermination(long time,TimeUnit unit){return false;}}
   static final class ChromiumRuntime {boolean ready=true;boolean allowed(){return ready;}void refresh(){}JSONObject workerPolicyReceipt(){return new JSONObject();}}
-  static final class Permissions {void onNavigation(WebView view){}}
-  static final class BrowserFiles {static final int FIRST_REQUEST=0x5000,LAST_REQUEST=0x7fff;Pending pending;int deliveries,lastResult;boolean networkOpenAtDelivery;WebView deliveredView;Runnable callback;static final class Pending {final WebView owner;final int request;final String url;Pending(WebView view,int request){owner=view;this.request=request;url=view.getUrl();}}boolean result(int request,int result,Intent data){if(request<FIRST_REQUEST||request>LAST_REQUEST)return false;if(pending!=null&&pending.request==request){pending=null;deliveries++;lastResult=result;if(result==RESULT_OK&&callback!=null)callback.run();}return true;}void cancelFor(WebView view){if(pending!=null&&pending.owner==view)result(pending.request,RESULT_CANCELED,null);}void cancelActiveDownload(){}}
+  static final class Permissions {int navigations;Runnable onCancel;void onNavigation(WebView view){navigations++;Runnable callback=onCancel;onCancel=null;if(callback!=null)callback.run();}}
+  static final class BrowserFiles {static final int FIRST_REQUEST=0x5000,LAST_REQUEST=0x7fff;Pending pending;int deliveries,lastResult,downloadCancellations;boolean networkOpenAtDelivery,activeDownload;WebView deliveredView;Runnable callback,onCancel;static final class Pending {final WebView owner;final int request;final String url;Pending(WebView view,int request){owner=view;this.request=request;url=view.getUrl();}}boolean result(int request,int result,Intent data){if(request<FIRST_REQUEST||request>LAST_REQUEST)return false;if(pending!=null&&pending.request==request){pending=null;deliveries++;lastResult=result;if(result==RESULT_OK&&callback!=null)callback.run();}return true;}void cancelFor(WebView view){if(pending!=null&&pending.owner==view){result(pending.request,RESULT_CANCELED,null);Runnable callback=onCancel;onCancel=null;if(callback!=null)callback.run();}}void cancelActiveDownload(){activeDownload=false;downloadCancellations++;}}
 }
 final class ChromiumFingerprintRuntime {static final class Prepared {JSONObject receipt(){return J.obj("documentStartRegistered",true,"unsupported",J.obj("worker","unsupported"));}void close(){}}}
 final class ChromiumRouteLease {static final class Handle {}}

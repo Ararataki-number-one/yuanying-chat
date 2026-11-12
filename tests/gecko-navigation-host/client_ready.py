@@ -45,7 +45,9 @@ def main():
             ('external-login-ready','public void onPageFinished(','if(!MainActivity.chatUrl(url)){','if(!MainActivity.chatUrl(url)&&!LoginPagePolicy.login(url)){','logins','External login is browser ready: accounts.google.com'),
             ('external-http-error','public void onReceivedHttpError(','MainActivity.chatUrl(r.getUrl().toString())&&','', 'errors','External login HTTP error is a website error: accounts.google.com'),
             ('observer-origin','observer',' && session.web.resourcePage(session.web.getUrl())','', 'generic','Public page is ready without ChatGPT script: https://example.org/form'),
-            ('stale-page-finish','public void onPageFinished(','if(!url.equals(web.getUrl()))return;','', 'chat','Stale finish callback changes no current page state'),
+            ('capture-page-finish','public void onPageFinished(','!navigationDispatched||','', 'capture','A stopped document cannot report ready during navigation capture: https://example.org/form'),
+            ('capture-http-error','public void onReceivedHttpError(','navigationDispatched&&','', 'capture','A stopped document cannot report HTTP error during navigation capture: https://example.org/form'),
+            ('stale-page-finish','public void onPageFinished(','||!url.equals(web.getUrl())','', 'chat','Stale finish callback changes no current page state'),
         ]
         for name,member,before,after,focus,assertion in mutations:
             pristine=run(generated,'pristine-'+name,focus)

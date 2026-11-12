@@ -476,13 +476,21 @@ class GeckoWebView extends FrameLayout {
   }
   boolean hasTimeZoneIntent(GeckoSession session){return timeZoneIntents.containsKey(session)||session==current&&!queued.isEmpty();}
   void clearTimeZoneIntent(GeckoSession session,Object intent){if(timeZoneIntents.get(session)==intent)timeZoneIntents.remove(session);}
+  private boolean navigationCurrent(GeckoSession session,long navigation){
+    return navigation>=0&&!destroyed&&!owner.deleted&&current==session&&owner.navigationEpoch==navigation;
+  }
   void timezoneConfigurationChanged(){
     blockedPopups.invalidate();
     ipRouteNeedsReload=false;observedIpRoute="";ipRouteObserved=false;
     if(destroyed||current==null)return;String target=getUrl();if(!allowedUrl(target))target=allowedUrl(queued)?queued:owner.resumeUrl();GeckoSession.SessionState saved=states.get(current);long revision=stateDraftRevisions.getOrDefault(current,-1L);
     closeExitIpPage();retireTimeZones();for(GeckoSession popup:new ArrayList<>(popups))closePopup(popup);
-    if(current==null||!allowedUrl(target))return;owner.beginNavigation(target,"正在应用当前环境时区…");queued=target;
+    if(current==null||!allowedUrl(target))return;
+    GeckoSession session=current;
+    long navigation=owner.beginNavigation(target,"正在应用当前环境时区…");
+    if(!navigationCurrent(session,navigation))return;
+    queued=target;
     if(!reopenCurrent())return;
+    if(destroyed||owner.deleted||owner.navigationEpoch!=navigation)return;
     if(saved!=null&&saved.size()>0&&target.equals(stateUrl(saved))){startupState=saved;startupDraftRevision=revision;}loadUrl(target);
   }
   static boolean active(Object web){return web instanceof GeckoWebView&&((GeckoWebView)web).enabled;}
@@ -536,7 +544,21 @@ class GeckoWebView extends FrameLayout {
   ResourcePressureController.MemorySample resourceMemory(){return owner.resources.sample();}
   boolean resourcePage(String target){return MainActivity.chatUrl(target);}
   boolean resourceSamePage(String a,String b){return WebReplyObserver.same(a,b);}
-  boolean retryResourceStart(){if(!resourceDeferred||destroyed||runtime!=null)return false;String target=queued.isEmpty()?owner.navigationTarget:queued;if(!target.isEmpty()&&allowedUrl(target)&&owner.guard.allowed())queued=target;initialize();if(!resourceDeferred&&!failed){if(!target.isEmpty())owner.beginNavigation(target,"正在打开当前环境");else owner.setStatus("正在打开当前环境");owner.wakePolling();}return true;}
+  boolean retryResourceStart(){
+    if(!resourceDeferred||destroyed||runtime!=null)return false;
+    String target=queued.isEmpty()?owner.navigationTarget:queued;
+    if(!target.isEmpty()&&allowedUrl(target)&&owner.guard.allowed())queued=target;
+    long navigation=owner.navigationEpoch;
+    initialize();
+    if(destroyed||owner.deleted||owner.navigationEpoch!=navigation)return true;
+    if(!resourceDeferred&&!failed){
+      GeckoSession session=current;
+      if(!target.isEmpty())navigation=owner.beginNavigation(target,"正在打开当前环境");
+      else owner.setStatus("正在打开当前环境");
+      if(navigationCurrent(session,navigation))owner.wakePolling();
+    }
+    return true;
+  }
   boolean hasOpenPopup(){return !popups.isEmpty();}
   boolean builtinAddonCurrent(GeckoRuntime expected,WebExtension value,boolean disabled){
     return !destroyed&&runtime==expected&&expected!=null&&value!=null&&value.isBuiltIn&&"browser@pocketchat.local".equals(value.id)&&value.metaData!=null&&value.metaData.enabled!=disabled;
@@ -731,6 +753,10 @@ class GeckoWebView extends FrameLayout {
         return GeckoResult.fromValue(allowed?AllowOrDeny.ALLOW:AllowOrDeny.DENY);
       }
       @Override public void onLocationChange(GeckoSession s,String target,List<GeckoSession.PermissionDelegate.ContentPermission> permissions,Boolean gesture){
+        // An explicit browser command owns this surface while its bounded
+        // snapshot is pending. Late events from the stopped load cannot save
+        // an older URL over that command's destination.
+        if(s==current&&!owner.navigationDispatched)return;
         if(destroyed||addonDisabled||!locations.containsKey(s)||ipNavigationFailed(s)&&!"about:blank".equals(target))return;if(s==current)blockedPopups.invalidate();boolean committed=pendingLoads.remove(s);locations.put(s,target);
         if(committed){painted.remove(s);usable.remove(s);pageScales.remove(s);viewportWidths.remove(s);loadingTargets.put(s,target);appearanceCommitted(s);if(!"about:blank".equals(target))revalidateTimeZone(s);}
         else{WebExtension.Port page=ports.get(s);if(page!=null)appearance(page);}
@@ -750,15 +776,16 @@ class GeckoWebView extends FrameLayout {
         return GeckoResult.fromValue(popup);
       }
       @Override public GeckoResult<String> onLoadError(GeckoSession s,String target,WebRequestError error){
+        if(s==current&&!owner.navigationDispatched)return GeckoResult.fromValue(null);
         return nativeNavigationFailure(s,target,"网页连接失败，请检查当前环境网络或重新加载");
       }
     });
     session.setProgressDelegate(new GeckoSession.ProgressDelegate(){
       // A download starts a network load without replacing the current document.
       // Only an authoritative location commit may invalidate its state or bridge.
-      @Override public void onPageStart(GeckoSession s,String target){if(destroyed||addonDisabled||!locations.containsKey(s)||ipNavigationFailed(s))return;appearanceLoads.put(s,++appearanceLoadSerial);loadingTargets.put(s,target);pendingLoads.add(s);}
+      @Override public void onPageStart(GeckoSession s,String target){if(s==current&&!owner.navigationDispatched)return;if(destroyed||addonDisabled||!locations.containsKey(s)||ipNavigationFailed(s))return;appearanceLoads.put(s,++appearanceLoadSerial);loadingTargets.put(s,target);pendingLoads.add(s);}
 
-      @Override public void onPageStop(GeckoSession s,boolean success){String target=loadingTargets.get(s);boolean uncommitted=pendingLoads.remove(s);if(uncommitted&&usable.contains(s)){loadingTargets.put(s,locations.get(s));return;}if(destroyed||addonDisabled||s!=current||target==null||"about:blank".equals(target)||crashed.contains(s)||ipNavigationFailed(s))return;if(success&&client!=null){if(MainActivity.chatUrl(url))readCookies(MainActivity.ORIGIN,value->{if(value!=null)cookieStamp=NativeNetwork.hash(value);});pageVisible(s);client.onPageFinished(null,url);}else if(!success&&owner.pageError.isEmpty()){owner.pageError="网页暂时未能加载，请重新加载或检查网络";owner.finishNavigation(owner.pageError,false);}}
+      @Override public void onPageStop(GeckoSession s,boolean success){if(s==current&&!owner.navigationDispatched)return;String target=loadingTargets.get(s);boolean uncommitted=pendingLoads.remove(s);if(uncommitted&&usable.contains(s)){loadingTargets.put(s,locations.get(s));return;}if(destroyed||addonDisabled||s!=current||target==null||"about:blank".equals(target)||crashed.contains(s)||ipNavigationFailed(s))return;if(success&&client!=null){if(MainActivity.chatUrl(url))readCookies(MainActivity.ORIGIN,value->{if(value!=null)cookieStamp=NativeNetwork.hash(value);});pageVisible(s);client.onPageFinished(null,url);}else if(!success&&owner.pageError.isEmpty()){owner.pageError="网页暂时未能加载，请重新加载或检查网络";owner.finishNavigation(owner.pageError,false);}}
       @Override public void onSessionStateChange(GeckoSession s,GeckoSession.SessionState state){if(destroyed||!locations.containsKey(s)||state.size()==0)return;states.put(s,new GeckoSession.SessionState(state));stateDraftRevisions.put(s,LocalDraftPolicy.revision(owner.context));if(s==primary){owner.handler.removeCallbacks(checkpoint);owner.handler.postDelayed(checkpoint,300);}}
     });
     session.setContentDelegate(new GeckoSession.ContentDelegate(){
@@ -923,13 +950,20 @@ class GeckoWebView extends FrameLayout {
     if(client!=null)client.onPageCommitVisible(null,url);
   }
   private void contentStopped(GeckoSession session,String message){
+    long stoppedNavigation=owner.navigationEpoch;
     if(session==current)closeExitIpPage();
     if(destroyed||!locations.containsKey(session))return;
     retireTimeZone(session);
     crashed.add(session);pendingLoads.remove(session);painted.remove(session);usable.remove(session);WebExtension.Port port=ports.remove(session);if(port!=null){callbacks.cancel(port);retireAppearance(port);}
     forgetGeneralRoute(session);
-    if(session==current){cancelZoom();failed=true;owner.webObserver.suspendUnconfirmed("网页进程已关闭，原发送结果需要核对");
-      if(owner.uiVisible&&owner.guard.allowed()&&canRecoverAutomatically()){owner.manualAttention=false;owner.beginNavigation(url,"正在恢复当前网页…");owner.handler.removeCallbacks(recovery);owner.handler.postDelayed(recovery,250);}
+    if(navigationCurrent(session,stoppedNavigation)){cancelZoom();failed=true;owner.webObserver.suspendUnconfirmed("网页进程已关闭，原发送结果需要核对");
+      if(!navigationCurrent(session,stoppedNavigation))return;
+      if(owner.uiVisible&&owner.guard.allowed()&&canRecoverAutomatically()){
+        owner.manualAttention=false;
+        long navigation=owner.beginNavigation(url,"正在恢复当前网页…");
+        if(!navigationCurrent(session,navigation))return;
+        owner.handler.removeCallbacks(recovery);owner.handler.postDelayed(recovery,250);
+      }
       else if(owner.uiVisible)failure(message);
     }
   }
@@ -943,10 +977,15 @@ class GeckoWebView extends FrameLayout {
     if(!allowedUrl(target))target=owner.resumeUrl();
     if(!identityRequestAllowed(target))return false;
     GeckoSession.SessionState state=states.get(current);
+    long previousNavigation=owner.navigationEpoch;
     if(!reopenCurrent())return false;
+    if(destroyed||owner.deleted||owner.navigationEpoch!=previousNavigation)return true;
+    GeckoSession session=current;
     owner.pageMemory.restorePending=true;
-    owner.pageError="";owner.manualAttention=false;owner.beginNavigation(target,"正在恢复当前网页…");
-    if(state!=null&&state.size()>0)restoreCheckpoint(current,state,target,stateDraftRevisions.getOrDefault(current,-1L));else loadSessionUri(current,target);
+    owner.pageError="";owner.manualAttention=false;
+    long navigation=owner.beginNavigation(target,"正在恢复当前网页…");
+    if(!navigationCurrent(session,navigation))return true;
+    if(state!=null&&state.size()>0)restoreCheckpoint(session,state,target,stateDraftRevisions.getOrDefault(session,-1L));else loadSessionUri(session,target);
     return true;
   }
   private boolean reopenCurrent(){try{
@@ -1094,23 +1133,72 @@ class GeckoWebView extends FrameLayout {
     return closePopup(current);
   }
   private boolean closePopup(GeckoSession old){
-    if(destroyed||!popups.remove(old))return false;
-    retireTimeZone(old);
-    if(old==current){activate(popups.isEmpty()?primary:popups.get(popups.size()-1));owner.pageError="";if(crashed.contains(current))contentStopped(current,"上一页被系统关闭，点按重新加载可恢复");else{owner.beginNavigation(url,"正在返回上一页…");owner.resourceObserverConnected(ports.get(current));if(client!=null&&painted.contains(current)){client.onPageCommitVisible(null,url);client.onPageFinished(null,url);}}}
+    return closePopup(old,true);
+  }
+  private boolean closePopup(GeckoSession old,boolean returnNavigation){
+    if(destroyed||!popups.contains(old))return false;
+    if(!returnNavigation){
+      GeckoSession source=current;long navigation=owner.navigationEpoch;
+      retireTimeZone(old);
+      if(!navigationCurrent(source,navigation))return false;
+      WebExtension.Port port=ports.remove(old);
+      if(port!=null){callbacks.cancel(port);retireAppearance(port);}
+      if(!navigationCurrent(source,navigation))return false;
+    }
+    popups.remove(old);
+    if(returnNavigation)retireTimeZone(old);
+    if(old==current){
+      GeckoSession session=popups.isEmpty()?primary:popups.get(popups.size()-1);
+      long previousNavigation=owner.navigationEpoch;
+      activate(session);
+      if(returnNavigation&&navigationCurrent(session,previousNavigation)){
+        owner.pageError="";
+        if(crashed.contains(session))contentStopped(session,"上一页被系统关闭，点按重新加载可恢复");
+        else{
+          long navigation=owner.beginNavigation(url,"正在返回上一页…");
+          if(navigationCurrent(session,navigation)){
+            owner.resourceObserverConnected(ports.get(session));
+            if(navigationCurrent(session,navigation)&&client!=null&&painted.contains(session)){
+              WebViewClient receiver=client;String restoredUrl=url;
+              receiver.onPageCommitVisible(null,restoredUrl);
+              if(navigationCurrent(session,navigation)&&client==receiver)receiver.onPageFinished(null,restoredUrl);
+            }
+          }
+        }
+      }
+    }
     forgetGeneralRoute(old);WebExtension.Port port=ports.remove(old);if(port!=null){callbacks.cancel(port);retireAppearance(port);}appearanceLoads.remove(old);
     locations.remove(old);backStates.remove(old);forwardStates.remove(old);pageScales.remove(old);measuredCompositors.remove(old);viewportWidths.remove(old);loadingTargets.remove(old);pendingLoads.remove(old);painted.remove(old);usable.remove(old);crashed.remove(old);states.remove(old);stateDraftRevisions.remove(old);
     if(old.isOpen())old.close();return true;
   }
   boolean hasWebsitePages(){return !generalSessions.isEmpty()||GeckoNavigationPolicy.publicWeb(getUrl())&&!MainActivity.chatUrl(getUrl());}
-  void closeWebsitePages(){
+  boolean closeWebsitePages(){
+    long navigation=owner.navigationEpoch;
+    GeckoSession session=current;
+    if(!navigationCurrent(session,navigation))return false;
     closeExitIpPage();
+    if(!navigationCurrent(session,navigation))return false;
     generalRestore=null;queued="";deferredGeneralLoads.clear();
-    for(GeckoSession popup:new ArrayList<>(popups))closePopup(popup);
-    if(current==null)return;
-    WebExtension.Port port=ports.remove(current);if(port!=null){callbacks.cancel(port);retireAppearance(port);}
-    current.stop();states.remove(current);stateDraftRevisions.remove(current);painted.remove(current);usable.remove(current);loadingTargets.remove(current);pendingLoads.remove(current);startupState=null;
-    locations.put(current,"");url="";canBack=false;canForward=false;forgetGeneralRoute(current);
-    if(current.isOpen())reopenCurrent();
+    for(GeckoSession popup:new ArrayList<>(popups)){
+      GeckoSession expected=current;
+      if(popup==current){expected=primary;for(GeckoSession other:popups)if(other!=popup)expected=other;}
+      if(!closePopup(popup,false)||!navigationCurrent(expected,navigation))return false;
+    }
+    session=current;
+    if(session==null)return true;
+    WebExtension.Port port=ports.remove(session);
+    if(port!=null){callbacks.cancel(port);retireAppearance(port);}
+    if(!navigationCurrent(session,navigation))return false;
+    session.stop();
+    if(!navigationCurrent(session,navigation))return false;
+    states.remove(session);stateDraftRevisions.remove(session);painted.remove(session);usable.remove(session);loadingTargets.remove(session);pendingLoads.remove(session);startupState=null;
+    locations.put(session,"");url="";canBack=false;canForward=false;forgetGeneralRoute(session);
+    if(!navigationCurrent(session,navigation))return false;
+    // Retire callback-bearing state before reopening the owned native surface.
+    retireTimeZone(session);
+    if(!navigationCurrent(session,navigation))return false;
+    if(session.isOpen()&&!reopenCurrent())return false;
+    return !destroyed&&!owner.deleted&&owner.navigationEpoch==navigation;
   }
   public void loadUrl(String target){
     closeExitIpPage();

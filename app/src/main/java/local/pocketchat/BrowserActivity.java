@@ -198,10 +198,11 @@ public class BrowserActivity extends ThemedActivity {
     }catch(Exception failure){fingerprintMain.post(()->{if(!fingerprintCurrent(tab,view,state,binding))return;tab.fingerprintBindingPending=false;failFingerprintSurface(tab,view,failure);fingerprintStateReady=false;syncFingerprintTraffic();loadFingerprintState();});}});}catch(RejectedExecutionException closed){tab.fingerprintBindingPending=false;}
   }
   void startFingerprintSurface(Tab tab,WebView view){
-    if(!fingerprintTraffic(tab,view)||tab.fingerprintStarted&&tab.fingerprintNavigation==null)return;tab.fingerprintStarted=true;
+    if(!fingerprintTraffic(tab,view)||tab.fingerprintStarted&&tab.fingerprintNavigation==null)return;
     try{
-      beforeFingerprintNavigation(tab);tab.loading=true;
-      if(tab.fingerprintNavigation!=null){String pending=tab.fingerprintNavigation;tab.fingerprintNavigation=null;tab.saved=null;files.cancelFor(view);permissions.onNavigation(view);view.loadUrl(pending);return;}
+      if(!beginPageNavigation(tab,view)||!fingerprintTraffic(tab,view))return;
+      tab.fingerprintStarted=true;tab.loading=true;
+      if(tab.fingerprintNavigation!=null){String pending=tab.fingerprintNavigation;tab.fingerprintNavigation=null;tab.saved=null;view.loadUrl(pending);return;}
       if(tab.fingerprintPopup!=null){Message result=tab.fingerprintPopup;tab.fingerprintPopup=null;((WebView.WebViewTransport)result.obj).setWebView(view);result.sendToTarget();return;}
       if(tab.saved!=null){Bundle saved=tab.saved;tab.saved=null;if(view.restoreState(saved)!=null)return;}
       view.loadUrl(tab.url);
@@ -211,6 +212,29 @@ public class BrowserActivity extends ThemedActivity {
   void failFingerprintSurface(Tab tab,WebView view,Exception failure){if(tab.web!=view)return;String reason="Chromium 指纹未能应用，网页保持暂停："+fingerprintProblem(failure);retire(tab);tab.saved=null;tab.failed=true;tab.fingerprintError=reason;fingerprintError=reason;if(selected==tab)message(reason);}
   void invalidateFingerprintObservation(){fingerprintObservationGeneration++;fingerprintObserving=false;if(fingerprintObservationTimeout!=null){fingerprintMain.removeCallbacks(fingerprintObservationTimeout);fingerprintObservationTimeout=null;}}
   void beforeFingerprintNavigation(Tab tab){retireFingerprintBinding(tab);if(tab==selected)invalidateFingerprintObservation();tab.generation++;}
+
+  /**
+   * Retire document requests before invoking their cancellation callbacks.
+   * Those callbacks may synchronously navigate, switch tabs, or close this
+   * surface. The newer action owns the page and must not be overwritten.
+   * File transfers have their own lifetime; only the page's picker is cancelled.
+   */
+  boolean beginPageNavigation(Tab tab,WebView view){
+    if(!live(tab,view))return false;
+    Tab selection=selected;
+    beforeFingerprintNavigation(tab);
+    long navigation=tab.generation;
+    if(view!=null){
+      files.cancelFor(view);
+      if(!pageNavigationCurrent(tab,view,selection,navigation))return false;
+      permissions.onNavigation(view);
+    }
+    return pageNavigationCurrent(tab,view,selection,navigation);
+  }
+
+  boolean pageNavigationCurrent(Tab tab,WebView view,Tab selection,long navigation){
+    return live(tab,view)&&selected==selection&&tab.generation==navigation;
+  }
   void finishedPage(Tab tab,WebView source,String url){
         if(!live(tab,source)||!url.equals(source.getUrl()))return;tab.loading=false;
         if(!tab.failed&&BrowserAddressPolicy.allowed(url)){tab.url=url;library.remember("history",url,tab.title,200);}
@@ -358,7 +382,7 @@ public class BrowserActivity extends ThemedActivity {
         if(!fingerprintTraffic(tab,source)||("http".equals(scheme)||"https".equals(scheme))&&!BrowserAddressPolicy.allowed(request.getUrl().toString()))return new WebResourceResponse("text/plain","UTF-8",503,"Network unavailable",Collections.emptyMap(),new java.io.ByteArrayInputStream(new byte[0]));return null;
       }
       @Override public void onPageStarted(WebView source,String url,Bitmap icon){
-        if(!live(tab,source))return;files.cancelFor(source);permissions.onNavigation(source);retireFingerprintBinding(tab);if(tab==selected)invalidateFingerprintObservation();tab.generation++;tab.loading=true;tab.failed=false;if(BrowserAddressPolicy.allowed(url))tab.url=url;
+        if(!beginPageNavigation(tab,source))return;tab.loading=true;tab.failed=false;if(BrowserAddressPolicy.allowed(url))tab.url=url;
         if(!fingerprintTraffic(tab,source)||!BrowserAddressPolicy.allowed(url)&&!"about:blank".equals(url)){source.stopLoading();tab.loading=false;tab.failed=true;if(tab==selected){message("网页地址、线路或指纹配置未确认，已暂停加载");updateChrome();}return;}ensureFingerprintBinding(tab);if(tab==selected){message("");updateChrome();}
       }
       @Override public void onPageFinished(WebView source,String url){
@@ -391,13 +415,64 @@ public class BrowserActivity extends ThemedActivity {
     validateFingerprintSurface(tab,view);
   }
   void go(String input){
-    try{String url=BrowserAddressPolicy.normalizeInput(input==null||input.trim().isEmpty()?BrowserPreferences.home(this):input);hideKeyboard();closeFind();
-      if(selected==null){newTab(url);return;}denyFingerprintPopup(selected);selected.url=url;selected.saved=null;
-      if(web()!=null&&fingerprintTraffic(selected,web())){selected.fingerprintNavigation=null;files.cancelFor(web());permissions.onNavigation(web());beforeFingerprintNavigation(selected);selected.loading=true;web().loadUrl(url);}else{selected.fingerprintNavigation=url;if(runtime!=null)runtime.refresh();showSelected();}updateChrome();
+    try{
+      String url=BrowserAddressPolicy.normalizeInput(input==null||input.trim().isEmpty()?BrowserPreferences.home(this):input);
+      hideKeyboard();closeFind();
+      Tab tab=selected;
+      if(tab==null){newTab(url);return;}
+      WebView view=tab.web;
+      if(!beginPageNavigation(tab,view))return;
+      long navigation=tab.generation;
+      denyFingerprintPopup(tab);
+      if(!pageNavigationCurrent(tab,view,tab,navigation))return;
+      tab.url=url;tab.saved=null;
+      if(view!=null&&fingerprintTraffic(tab,view)){
+        tab.fingerprintNavigation=null;
+        tab.fingerprintStarted=true;
+        tab.loading=true;
+        view.loadUrl(url);
+      }else{
+        tab.fingerprintNavigation=url;
+        if(runtime!=null)runtime.refresh();
+        showSelected();
+      }
+      updateChrome();
     }catch(IllegalArgumentException invalid){message(invalid.getMessage());}
   }
-  void history(int direction){if(web()==null||!fingerprintTraffic(selected,web()))return;closeFind();files.cancelFor(web());permissions.onNavigation(web());if(direction<0&&web().canGoBack()){beforeFingerprintNavigation(selected);selected.loading=true;web().goBack();}else if(direction>0&&web().canGoForward()){beforeFingerprintNavigation(selected);selected.loading=true;web().goForward();}updateChrome();}
-  void reloadOrStop(){if(selected==null)return;if(selected.loading&&web()!=null){web().stopLoading();selected.loading=false;updateChrome();return;}if(!selected.fingerprintError.isEmpty()){retire(selected);selected.saved=null;selected.fingerprintError="";loadFingerprintState();return;}if(runtime==null)return;if(runtime.allowed()){if(web()==null)showSelected();else if(fingerprintTraffic(selected,web())){files.cancelFor(web());permissions.onNavigation(web());beforeFingerprintNavigation(selected);selected.loading=true;web().reload();updateChrome();}}else runtime.refresh();}
+  void history(int direction){
+    Tab tab=selected;WebView view=web();
+    if(view==null||!fingerprintTraffic(tab,view))return;
+    boolean backward=direction<0&&view.canGoBack();
+    boolean forward=direction>0&&view.canGoForward();
+    if(!backward&&!forward)return;
+    closeFind();
+    if(!beginPageNavigation(tab,view)||!fingerprintTraffic(tab,view))return;
+    if(backward){tab.loading=true;view.goBack();}
+    else{tab.loading=true;view.goForward();}
+    updateChrome();
+  }
+  void reloadOrStop(){
+    Tab tab=selected;
+    if(tab==null)return;
+    WebView view=tab.web;
+    if(tab.loading&&view!=null){
+      beforeFingerprintNavigation(tab);
+      long navigation=tab.generation;
+      tab.fingerprintNavigation=null;tab.loading=false;
+      view.stopLoading();
+      if(pageNavigationCurrent(tab,view,tab,navigation))ensureFingerprintBinding(tab);
+      updateChrome();return;
+    }
+    if(!tab.fingerprintError.isEmpty()){
+      retire(tab);tab.saved=null;tab.fingerprintError="";loadFingerprintState();return;
+    }
+    if(runtime==null)return;
+    if(!runtime.allowed()){runtime.refresh();return;}
+    if(view==null){showSelected();return;}
+    if(fingerprintTraffic(tab,view)&&beginPageNavigation(tab,view)&&fingerprintTraffic(tab,view)){
+      tab.loading=true;view.reload();updateChrome();
+    }
+  }
   void updateChrome(){
     if(selected==null)return;if(!address.hasFocus()&&!selected.url.contentEquals(address.getText()))address.setText(selected.url);
     String environment=Profiles.display(this,Profiles.slot(this));if(!environment.contentEquals(environmentName.getText()))environmentName.setText(environment);

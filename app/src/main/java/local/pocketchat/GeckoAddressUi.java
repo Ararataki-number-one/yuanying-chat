@@ -29,7 +29,7 @@ final class GeckoAddressUi {
     row=new BrowserAddressRow(a,address,back,forward,reload,home);
     row.setPadding(0,a.dp(3),0,a.dp(7));row.setClipChildren(false);row.setClipToPadding(false);refresh();
   }
-  String target(){if(a.session==null)return "";String url=a.session.navigating?a.session.navigationTarget:a.session.web.getUrl();return url==null?"":url;}
+  String target(){if(a.session==null)return "";String url=a.session.browserDisplayUrl();return url==null?"":url;}
   String current(){
     String url=target();
     // A cold Gecko surface reports about:blank before it has a document. Keep
@@ -100,7 +100,7 @@ final class GeckoAddressUi {
     EditText input=DesignUi.input(box,"",owner.current(),"输入网址或搜索内容");input.setContentDescription("网址或搜索");input.setInputType(InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_URI);input.setSingleLine(true);input.setImeOptions(EditorInfo.IME_ACTION_GO|EditorInfo.IME_FLAG_NO_EXTRACT_UI);
     TextView notice=DesignUi.text(a,"",13,DesignUi.RED);notice.setVisibility(View.GONE);notice.setAccessibilityLiveRegion(android.view.View.ACCESSIBILITY_LIVE_REGION_POLITE);box.addView(notice);
     AlertDialog dialog=AppAppearance.dialog(a).setTitle("打开网址").setView(box).setPositiveButton("前往",null).setNeutralButton("主页",null).setNegativeButton("取消",null).create();owner.dialog=dialog;owner.editor=input;
-    Runnable submit=()->{if(!available(a)||owner.dialog!=dialog||!dialog.isShowing())return;try{String raw=input.getText().toString();String url=raw.trim().isEmpty()?BrowserPreferences.home(a):GeckoNavigationPolicy.normalizeInput(raw);long before=a.session.navigationEpoch;a.session.browse(url,"正在打开网页…");if(a.session.navigationEpoch!=before&&a.session.navigating&&url.equals(a.session.navigationTarget)){dialog.dismiss();a.showPage(true);owner.refresh();}else{notice.setText(a.session.status);notice.setVisibility(View.VISIBLE);}}catch(IllegalArgumentException invalid){notice.setText(invalid.getMessage());notice.setVisibility(View.VISIBLE);input.setError(invalid.getMessage());}};
+    Runnable submit=()->owner.submitAddress(dialog,input,notice);
     // Keep the compact address form anchored while the keyboard changes the
     // available height; repeated headings and an empty error row waste that space.
     dialog.getWindow().setGravity(android.view.Gravity.TOP|android.view.Gravity.CENTER_HORIZONTAL);
@@ -127,6 +127,27 @@ final class GeckoAddressUi {
     input.setOnEditorActionListener((v,action,event)->{if(action==EditorInfo.IME_ACTION_GO||event!=null&&event.getKeyCode()==KeyEvent.KEYCODE_ENTER&&event.getAction()==KeyEvent.ACTION_DOWN){submit.run();return true;}return false;});
     owner.focusEditor(true);
   }
+  private void submitAddress(AlertDialog opened,EditText input,TextView notice){
+    if(!available(a)||dialog!=opened||!opened.isShowing())return;
+    try{
+      String raw=input.getText().toString();
+      String url=raw.trim().isEmpty()?BrowserPreferences.home(a):GeckoNavigationPolicy.normalizeInput(raw);
+      // Acceptance is explicit. Loading state may already have changed, and an
+      // offline destination is still a valid browser command.
+      if(a.session.browse(url,"正在打开网页…")){
+        opened.dismiss();
+        a.showPage(true);
+        refresh();
+      }else{
+        notice.setText(a.session.status);
+        notice.setVisibility(View.VISIBLE);
+      }
+    }catch(IllegalArgumentException invalid){
+      notice.setText(invalid.getMessage());
+      notice.setVisibility(View.VISIBLE);
+      input.setError(invalid.getMessage());
+    }
+  }
   private void focusEditor(boolean selectAll){
     AlertDialog opened=dialog;EditText input=editor;if(opened==null||!opened.isShowing()||input==null)return;
     input.requestFocus();if(selectAll)input.selectAll();input.post(()->showKeyboard(opened,input));
@@ -136,14 +157,34 @@ final class GeckoAddressUi {
     InputMethodManager keyboard=(InputMethodManager)a.getSystemService(android.content.Context.INPUT_METHOD_SERVICE);
     if(keyboard!=null)keyboard.showSoftInput(input,InputMethodManager.SHOW_IMPLICIT);
   }
-  static void home(MainActivity a){if(!available(a))return;a.session.browse(BrowserPreferences.home(a),"正在打开主页…");a.showPage(true);if(a.geckoAddress!=null)a.geckoAddress.refresh();}
-  static boolean closeBlocked(MainActivity a){return a.session.pending!=null||a.session.submitting||a.session.operation||a.session.resourceChoosers>0||a.session.resourceFilePreparations>0||a.session.transferActive;}
+  static void home(MainActivity a){
+    if(!available(a)||!a.session.browse(BrowserPreferences.home(a),"正在打开主页…"))return;
+    a.showPage(true);
+    if(a.geckoAddress!=null)a.geckoAddress.refresh();
+  }
   static void closeSites(MainActivity a){
     if(!available(a))return;
-    if(closeBlocked(a)){a.status("请先完成回复或暂停文件操作，再关闭网站");return;}
     AppAppearance.dialog(a).setTitle("关闭网站并返回 ChatGPT？").setMessage("将关闭此环境 Gecko 中的全部网页和弹出页，未保存的网页输入或上传可能丢失。登录数据和指纹设置会保留，等待中的线路配置可以继续应用。").setNegativeButton("保留网页",null).setPositiveButton("关闭网站",(d,w)->{
-      long epoch=a.session.navigationEpoch;Object surface=a.remote.current;
-      a.session.pageMemory.capture(()->{if(!available(a)||a.session.navigationEpoch!=epoch||a.remote.current!=surface)return;if(closeBlocked(a)){a.status("网页任务已变化，请完成或暂停后再关闭网站");return;}a.remote.closeWebsitePages();a.session.browse(MainActivity.ORIGIN,"正在返回 ChatGPT…");a.showPage(true);if(a.geckoAddress!=null)a.geckoAddress.refresh();});
+      if(!available(a))return;
+      ChatSession owner=a.session;
+      Object surface=a.remote.current;
+      long epoch=owner.prepareBrowserNavigation();
+      if(epoch<0)return;
+      owner.pageMemory.captureForNavigation(()->{
+        if(!available(a)||a.session!=owner||owner.navigationEpoch!=epoch||a.remote.current!=surface){
+          owner.cancelBrowserNavigation(epoch);
+          return;
+        }
+        if(!a.remote.closeWebsitePages())return;
+        // Closing a native page can synchronously complete an old callback.
+        if(!available(a)||a.session!=owner||owner.navigationEpoch!=epoch){
+          owner.cancelBrowserNavigation(epoch);
+          return;
+        }
+        if(!owner.browse(MainActivity.ORIGIN,"正在返回 ChatGPT…"))return;
+        a.showPage(true);
+        if(a.geckoAddress!=null)a.geckoAddress.refresh();
+      });
     }).show();
   }
   void close(){if(dialog!=null)dialog.dismiss();dialog=null;editor=null;}
