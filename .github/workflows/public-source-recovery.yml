@@ -1,0 +1,34 @@
+name: Restore public source snapshot
+on:
+  push:
+    branches: ['codex/source-recovery-20261112']
+permissions:
+  contents: read
+jobs:
+  archive:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: 1178ce488bc1532d71460845b2b7131724416df6
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Export only already-public committed files
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Public repository verified through GET /repos on 2026-11-12:
+          # private=false, visibility=public. No working tree or .git archive.
+          test "$(git rev-parse HEAD)" = 1178ce488bc1532d71460845b2b7131724416df6
+          mkdir -p "$RUNNER_TEMP/public-source"
+          git archive --format=tar.gz --output="$RUNNER_TEMP/public-source/source.tar.gz" HEAD
+          git cat-file commit HEAD > "$RUNNER_TEMP/public-source/commit.txt"
+          git rev-parse HEAD HEAD^{tree} > "$RUNNER_TEMP/public-source/source-identity.txt"
+          sha256sum "$RUNNER_TEMP/public-source/source.tar.gz" > "$RUNNER_TEMP/public-source/SHA256SUMS"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: public-source-1178
+          path: ${{ runner.temp }}/public-source/
+          retention-days: 1
+          compression-level: 0
