@@ -1,7 +1,12 @@
-"""Optional fixture numeric trace controls; no Android or Gecko execution."""
+"""Optional fixture numeric trace controls; no Android or Gecko execution.
+
+Whole-source history proofs use the fixed release input. Actual runner calls,
+parser behavior and Java observation hosts continue to use current source.
+"""
 import argparse,ast,copy,hashlib,json,os,pathlib,shutil,subprocess,sys,tempfile,unittest
 from types import SimpleNamespace
 from unittest.mock import patch
+from historical_source_inputs import historical_bytes
 from reading_zoom_trace_contract import ROOT,PATHS,trace_manifest,original_reading_fixture_bytes
 from reading45_source_compatibility import reading45_source_bytes
 from startup46_source_compatibility import startup46_source_bytes
@@ -24,10 +29,12 @@ def start_call(source):
 
 class ReadingZoomTraceControls(unittest.TestCase):
  def test_exact_original_whole_sources_recovered(self):
-  for path,(digest,_) in PATHS.items():self.assertEqual(hashlib.sha256(original_reading_fixture_bytes((ROOT/path).read_bytes(),path)).hexdigest(),digest)
+  for path,(digest,_) in PATHS.items():self.assertEqual(hashlib.sha256(original_reading_fixture_bytes(historical_bytes(path),path)).hexdigest(),digest)
  def test_each_optional_addition_rejects_missing_duplicate_changed_and_relocated(self):
   for path,row in trace_manifest()['paths'].items():
-   source=(ROOT/path).read_text()
+   # Attack the inverse's accepted historical image, not an already-unknown
+   # current file whose unrelated maintenance would make every attack pass.
+   source=historical_bytes(path).decode()
    for item in row['insertions']:
     literal=item['before']+item['inserted']+item['after'];old=item['before']+item['after']
     for candidate in [source.replace(literal,old,1),source.replace(literal,item['before']+item['inserted']*2+item['after'],1),source.replace(literal,item['before']+item['inserted']+' '+item['after'],1),source.replace(literal,old,1)+item['inserted']]:
@@ -35,10 +42,10 @@ class ReadingZoomTraceControls(unittest.TestCase):
       with self.assertRaises(ValueError):original_reading_fixture_bytes(candidate.encode(),path)
  def test_old_oracle_and_runner_changes_cannot_hide_behind_observation(self):
   for path,old,new in [(FIXTURE,'Math.abs(relative-4.2)<.05','Math.abs(relative-4.2)<.06'),(FIXTURE,'SystemClock.elapsedRealtime()+20000','SystemClock.elapsedRealtime()+21000'),(RUNNER,'deadline=time.monotonic()+120','deadline=time.monotonic()+121')]:
-   source=(ROOT/path).read_text();self.assertIn(old,source)
+   source=historical_bytes(path).decode();self.assertIn(old,source)
    with self.assertRaises(ValueError):original_reading_fixture_bytes(source.replace(old,new,1).encode(),path)
  def test_default_and_other_action_argv_are_exactly_original(self):
-  current=(ROOT/RUNNER).read_text();old=original_reading_fixture_bytes(current.encode(),RUNNER).decode()
+  current=(ROOT/RUNNER).read_text();old=original_reading_fixture_bytes(historical_bytes(RUNNER),RUNNER).decode()
   def evaluate(source,args,action,extra):
    call=start_call(source);received=[];scope=dict(args=args,action=action,extra=extra,package='fixed.package',activity='FixedActivity',nonce='fixed-nonce',adb=lambda *v:received.append(v));eval(compile(ast.Expression(copy.deepcopy(call)),'<actual am-start call>','eval'),scope);self.assertEqual(len(received),1);return received[0]
   for action in ('read','readingBounds','readingBoundsProtected','readingBoundsInput','readingZoom'):
@@ -64,13 +71,13 @@ class ReadingZoomTraceControls(unittest.TestCase):
   self.assertIn('getBooleanExtra("readingZoomTrace",false)',added);self.assertEqual(added.count('super.zoomBy(factor);'),1)
   self.assertIn('if(test.trace!=null&&serial==run)recordReadingZoomNative(serial,test,update.zoom);',added)
   self.assertIn('test.nativeSession!=session.web.current',added)
-  baseline=original_reading_fixture_bytes((ROOT/FIXTURE).read_bytes(),FIXTURE).decode();current=(ROOT/FIXTURE).read_text()
+  baseline=original_reading_fixture_bytes(historical_bytes(FIXTURE),FIXTURE).decode();current=(ROOT/FIXTURE).read_text()
   self.assertEqual(current.count('test.priorDelegate.onScrollChanged(own,update)'),baseline.count('test.priorDelegate.onScrollChanged(own,update)'))
   self.assertEqual(current.count('evaluateJavascript('),baseline.count('evaluateJavascript('));self.assertEqual(current.count('postDelayed('),baseline.count('postDelayed('))
  def test_original_golden_guard_bodies_and_hashes_remain(self):
-  path=ROOT/'tests/profile_reading_fit_completion_test.py';s=reading45_source_bytes(path.read_bytes(),'tests/profile_reading_fit_completion_test.py').decode();s=s.replace('from reading_zoom_trace_contract import original_reading_fixture_bytes\n','',1).replace("   if name in ('tests/gecko/GeckoIntegrationTestActivity.java','tests/gecko/run_device.py'):raw=original_reading_fixture_bytes(raw,name)\n",'',1)
+  path='tests/profile_reading_fit_completion_test.py';s=reading45_source_bytes(historical_bytes(path),path).decode();s=s.replace('from reading_zoom_trace_contract import original_reading_fixture_bytes\n','',1).replace("   if name in ('tests/gecko/GeckoIntegrationTestActivity.java','tests/gecko/run_device.py'):raw=original_reading_fixture_bytes(raw,name)\n",'',1)
   self.assertEqual(hashlib.sha256(s.encode()).hexdigest(),'ea2ee6f5f0a3d9c9937c6d0a6e1e39589643d1509b42250b4e2a4ecc31825806')
-  path=ROOT/'tests/gecko_device_readiness_test.py';s=startup46_source_bytes(path.read_bytes(),'tests/gecko_device_readiness_test.py').decode();s=s.replace("    from reading_zoom_trace_contract import strip_reviewed_reading_trace_additions\n    source=strip_reviewed_reading_trace_additions(source.encode('utf-8'),'tests/gecko/run_device.py').decode('utf-8')\n",'',1)
+  path='tests/gecko_device_readiness_test.py';s=startup46_source_bytes(historical_bytes(path),path).decode();s=s.replace("    from reading_zoom_trace_contract import strip_reviewed_reading_trace_additions\n    source=strip_reviewed_reading_trace_additions(source.encode('utf-8'),'tests/gecko/run_device.py').decode('utf-8')\n",'',1)
   self.assertEqual(hashlib.sha256(s.encode()).hexdigest(),'a034b67f5e1e951bc4742f7f866c906516dd5bfa4acacfef616baf434d714c61')
  def test_actual_ring_sampler_and_forwarding_boundaries_on_both_json_runtimes(self):
   source=(ROOT/FIXTURE).read_text();collector=member(source,'  static final class ReadingZoomTrace {');view=trace_manifest()['paths'][FIXTURE]['insertions'][2]['inserted'];callback=member(source,'@Override public void onScrollChanged(org.mozilla.geckoview.GeckoSession own,org.mozilla.geckoview.GeckoSession.ScrollPositionUpdate update)');body=callback[callback.index('{'):]

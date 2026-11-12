@@ -2,11 +2,14 @@
 
 Only the existing reviewed46 whole-byte inverse is used. The actual runner,
 trace/window manifests, old oracles, input workloads and device timeouts stay put.
+Whole-byte inverses and their attacks read the fixed historical release input;
+the current AST consumer remains on the actual runner source.
 """
 import ast
 import hashlib
 from pathlib import Path
 import unittest
+from historical_source_inputs import historical_bytes
 
 from experience46_source_compatibility import experience46_source_bytes, manifest46
 from reading_zoom_trace_contract import original_reading_fixture_bytes, strip_reviewed_reading_trace_additions
@@ -28,16 +31,16 @@ class Experience46RunnerCompatibility(unittest.TestCase):
   with self.assertRaises(ValueError):original_reading_fixture_bytes(formatted.encode(),RUNNER)
 
  def test_existing_exact_inverse_and_original_trace_oracle_both_hold(self):
-  current=(ROOT/RUNNER).read_bytes()
-  previous=experience46_source_bytes(current,RUNNER)
+  historical=historical_bytes(RUNNER)
+  previous=experience46_source_bytes(historical,RUNNER)
   self.assertEqual(hashlib.sha256(previous).hexdigest(),FORMAL45)
-  original=original_reading_fixture_bytes(current,RUNNER)
+  original=original_reading_fixture_bytes(historical,RUNNER)
   self.assertEqual(hashlib.sha256(original).hexdigest(),ORIGINAL_TRACE)
   self.assertEqual(original_reading_fixture_bytes(previous,RUNNER),original)
   self.assertEqual(original_reading_fixture_bytes(original,RUNNER),original)
 
  def test_each_history_label_or_position_mutation_still_rejects_whole_source(self):
-  source=(ROOT/RUNNER).read_text()
+  source=historical_bytes(RUNNER).decode()
   history="        history_experience=update('historyExperience');assert history_experience['status']=='passed' and history_experience['actualAndroidExecution'] is True and history_experience['checks'] and all(row['pass'] is True for row in history_experience['checks']),history_experience\n        report['releaseHistoryExperience']=history_experience\n"
   label="for label in ['应用更新','当前安装版本','安装更新','删除安装包','自动检查更新','Wi-Fi 下自动下载新版']"
   self.assertEqual(source.count(history),1);self.assertEqual(source.count(label),1)
@@ -58,7 +61,7 @@ class Experience46RunnerCompatibility(unittest.TestCase):
      with self.assertRaises(ValueError):guard()
 
  def test_update_scroll_call_and_original_installer_steps_cannot_be_bypassed(self):
-  source=(ROOT/RUNNER).read_text()
+  source=historical_bytes(RUNNER).decode()
   call="        update_ui,update_scroll=scan_update_controls(adb,update_ui,lambda name,xml:(OUT/name).write_text(xml),package)\n"
   self.assertEqual(source.count(call),1)
   originals=["button=next(node for node in ET.fromstring(update_ui).iter('node') if node.attrib.get('text')=='安装更新')",
@@ -75,12 +78,12 @@ class Experience46RunnerCompatibility(unittest.TestCase):
    with self.assertRaises(ValueError):original_reading_fixture_bytes(candidate.encode(),RUNNER)
 
  def test_unrelated_workload_timeout_and_unknown_path_remain_rejected(self):
-  source=(ROOT/RUNNER).read_text()
+  source=historical_bytes(RUNNER).decode()
   for old,new in [('deadline=time.monotonic()+120','deadline=time.monotonic()+121'),("update('showUi');time.sleep(1)","update('showUi');time.sleep(2)"),("history_experience=update('historyExperience')","history_experience=update('showUi')")]:
    self.assertIn(old,source)
    candidate=source.replace(old,new,1).encode()
    with self.subTest(mutation=old),self.assertRaises(ValueError):original_reading_fixture_bytes(candidate,RUNNER)
-  with self.assertRaises(ValueError):experience46_source_bytes((ROOT/RUNNER).read_bytes(),RUNNER+'.other')
+  with self.assertRaises(ValueError):experience46_source_bytes(historical_bytes(RUNNER),RUNNER+'.other')
   row=manifest46()['files'][RUNNER]
   self.assertEqual(row['previousSha256'],FORMAL45)
   self.assertEqual(len(row['deltas']),1)

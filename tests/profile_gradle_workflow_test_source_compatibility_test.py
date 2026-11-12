@@ -12,6 +12,7 @@ from workspace_runner_source_compatibility import historical_input as workspace_
 from ui_job_budget_source_compatibility import historical_source_input as ui_job_budget_source_input
 import profile_fixture_root_source_compatibility_test as root_controls
 import profile_resource_startup_source_compatibility_test as resource_controls
+from historical_source_inputs import historical_bytes
 
 # Exercise composition through the retained source-control test interfaces.
 # Their fixed metadata-consumer boundary remains unchanged for runtime code.
@@ -31,7 +32,7 @@ class GradleWorkflowTestSourceCompatibilityTests(unittest.TestCase):
         value = inputs.manifest()
         self.assertEqual(git('rev-parse', value['baseCommit'] + '^{tree}').decode().strip(), value['baseTree'])
         for path, row in value['files'].items():
-            raw = workspace_source_input((ROOT / path).read_bytes(), path)
+            raw = workspace_source_input(historical_bytes(path), path)
             before = git('show', value['baseCommit'] + ':' + path)
             self.assertEqual(inputs.source_input(raw, path), before)
             self.assertEqual((inputs.sha(before), len(before)), (row['previousSha256'], row['previousBytes']))
@@ -46,7 +47,7 @@ class GradleWorkflowTestSourceCompatibilityTests(unittest.TestCase):
 
     def test_actual_after_context_mutations_still_face_original_guards(self):
         for path, row in inputs.manifest()['files'].items():
-            raw = workspace_source_input((ROOT / path).read_bytes(), path)
+            raw = workspace_source_input(historical_bytes(path), path)
             candidates = [raw + b' ', raw[:1000], b'unknown source']
             for delta in row['deltas']:
                 current = delta['current'].encode()
@@ -64,7 +65,7 @@ class GradleWorkflowTestSourceCompatibilityTests(unittest.TestCase):
                     with self.assertRaises(ValueError):resource.source_input(candidate, path)
                     if path == inputs.FINAL:
                         with self.assertRaises(ValueError):root_inputs.source_input(candidate, path)
-        raw = ui_job_budget_source_input((ROOT / final.BUILD_BUDGET_PATH).read_bytes(), final.BUILD_BUDGET_PATH)
+        raw = ui_job_budget_source_input(historical_bytes(final.BUILD_BUDGET_PATH), final.BUILD_BUDGET_PATH)
         self.assertEqual(raw.count(final.BUILD_BUDGET_CURRENT), 1)
         changed = raw.replace(b'historical_toolchain_step(current[\'steps\'][at])==step', b'True', 1)
         self.assertNotEqual(changed, raw)
@@ -81,7 +82,7 @@ class GradleWorkflowTestSourceCompatibilityTests(unittest.TestCase):
             self.assertLessEqual(max(len(delta['previous'].encode()), len(delta['current'].encode())), 32768)
             self.assertEqual(before.count(delta['previous'].encode()), 1)
             before = before.replace(delta['previous'].encode(), delta['current'].encode(), 1)
-        self.assertEqual(before, ui_job_budget_source_input((ROOT / inputs.FINAL).read_bytes(), inputs.FINAL))
+        self.assertEqual(before, ui_job_budget_source_input(historical_bytes(inputs.FINAL), inputs.FINAL))
         old_config = json.loads(resource.CONFIG.read_bytes())
         current_config = resource.config()
         self.assertEqual(set(current_config['sources']), set(old_config['sources']))
@@ -104,7 +105,7 @@ class GradleWorkflowTestSourceCompatibilityTests(unittest.TestCase):
         for path in ('tests/profile_final_browser_source_compatibility_test.py',
                      'tests/profile_fixture_root_source_compatibility.py',
                      'tests/resource_startup_source_compatibility.py'):
-            self.assertEqual(bodies(ui_job_budget_source_input((ROOT / path).read_bytes(), path)), bodies(git('show', value['baseCommit'] + ':' + path)))
+            self.assertEqual(bodies(ui_job_budget_source_input(historical_bytes(path), path)), bodies(git('show', value['baseCommit'] + ':' + path)))
         for path in inputs.PREVIOUS:
             for raw in (None, bytearray(b'unknown'), b'', memoryview(b'unknown')):
                 with self.assertRaises(ValueError):inputs.source_input(raw, path)
