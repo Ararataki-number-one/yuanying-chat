@@ -11,7 +11,14 @@ public final class CopyHost {
     final FaultProvider provider;final Activity activity;final SavedFileActions action;final JSONObject source;
     Fixture(byte[] bytes)throws Exception{File root=Files.createTempDirectory("saved-copy-host-").toFile();provider=new FaultProvider(root,bytes);activity=new Activity(root,provider);action=ui(()->new SavedFileActions(activity));actions.add(action);source=J.obj("uri",provider.original.toString(),"name","source.bin","mime","application/octet-stream");}
     void select()throws Exception{ui(()->{action.export(source);action.result(Activity.RESULT_OK,new Intent("result").setData(provider.destination));return null;});}
-    void idle()throws Exception{if(action.worker.isShutdown()){if(!action.worker.awaitTermination(5,TimeUnit.SECONDS))throw new AssertionError("copy worker retirement");}else action.worker.submit(()->{}).get(5,TimeUnit.SECONDS);ui(()->null);}
+    void idle()throws Exception{
+      try{action.worker.submit(()->{}).get(5,TimeUnit.SECONDS);}
+      catch(RejectedExecutionException retired){
+        if(!action.worker.isShutdown())throw retired;
+        if(!action.worker.awaitTermination(5,TimeUnit.SECONDS))throw new AssertionError("copy worker retirement");
+      }
+      ui(()->null);
+    }
   }
   static void streams()throws Exception{
     for(String fault:new String[]{"normal-empty","normal-large","write","flush","output-close","input-close","null-input","null-output","document-close"}){

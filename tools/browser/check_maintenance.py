@@ -92,6 +92,8 @@ def main():
         ('route-lease', 'tests/chromium-route-host/lease_boundaries.py'),
     ]:
         host(name, script, [*java, '--json-jar', jar])
+        if name == 'saved-file-copy':
+            jobs[-1][1].append([sys.executable, 'tests/profile_saved_copy_host_retirement_test.py'])
     host('page-recovery', 'tests/page-recovery-host/run.py', ['--json-jar', jar], report=False)
     host('persistent-profile', 'tests/browser-profile-path-host/run.py', java)
     host('profile-maintenance', 'tests/profile_current_runtime_raw_binding_test.py', [

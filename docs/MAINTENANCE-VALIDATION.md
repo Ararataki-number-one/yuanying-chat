@@ -68,6 +68,16 @@
 
 新 HOME 准备函数 12 项、原 AVD 5 项通过。配置页面释放另保留原 67 项检查，新增六项在原 helper 上实际失败、修复后 73 / 73 通过；停止操作仍使用配置观察的原 15 秒共享截止时间，失败或迟到不能标记成功。工作流保留原 12 分钟设备准备与 30 分钟场景预算；字体 nonce、实际视口、40 秒业务就绪以及原帧数门槛保持原值。最终仍须在新源码上重新完成全部构建与设备验收。
 
+### 候选 `09e3db4`：全量 profile 与保存宿主的诊断边界
+
+源码 `09e3db4e9eaf9b2ca353e35479b2d1022487329b`，树 `02036a538758164c6348cea9fdc98398132331ed`。独立 [profile 工作流 43206509868](https://github.com/Ararataki-number-one/yuanying-chat/actions/runs/43206509868) 的两个作业均成功：主检查 1,616 / 1,616，caret 279、UI capture 46、readiness 17、release contract 138 全部通过，无 failure、error 或 skip。两 ABI 的 release / integration APK、SDK 身份和 lint 均通过，lint 为 0 errors / 111 warnings。这些 APK 属于该 profile 运行，不作为正式流程 APK 的替代。
+
+[维护工作流 43206499027](https://github.com/Ararataki-number-one/yuanying-chat/actions/runs/43206499027) 为 34 / 35 组通过，2,010 个声明输入均与该提交的 Git blob 一致且执行前后不变。唯一失败为 `saved-file-copy`：原 runner 在解析 JVM stdout 时抛出 JSONDecodeError，未产生要求的结果文件。原 stdout / stderr 虽写为 `.txt`，但当时工作流只归档 JSON 与 log，无法追回该次 JVM 错误；不能据此断定具体生产行为失败或线程竞态。
+
+随后独立确认宿主 `Fixture.idle()` 的退休竞态：真实单线程 executor 在检查状态之后、提交屏障之前由真实 `close()` 关闭，原代码成功编译后必然抛出 RejectedExecutionException。修复后新增 8 项检查通过，包含真实排空与原 UI 屏障、已经退休、运行中拒绝、真实失败 Future，以及活动／退休 worker 的原五秒失败；用 latch 和 future 固定顺序，没有通过反复抽样获得结果。这个反例没有恢复旧 CI 丢失的 stderr。
+
+原 `CopyHost` 除 `idle()` 外逐字不变，51 / 51 行为检查通过且输入未变，原 Java 子进程 45 秒预算保留。新 runner 记录退出码及两条原始输出流；无效 JSON 原样报错，非零退出不能产生通过状态。维护入口在原 `saved-file-copy` 组追加这 8 项，原 35 组均保留，工作流另外归档 `.txt`。这些收尾修改仍须由新提交完整执行，不能将 `09e3db4` 的部分结果合并为新提交发布资格。
+
 ## 第四轮深度维护：界面、权限和文件生命周期
 
 起点为 `2ef73a275f4db849cf2ee5b740c2ed4055042699`，源码树 `58707a2518d92a1353682e687b97648269c0301c`。本轮只维护当前代码，版本保持 `2.1.4` / `106`。以下定向检查先复现原代码行为，再验证修复；整体验证与上传后的 APK 必须分别绑定本轮实际输入和新提交。

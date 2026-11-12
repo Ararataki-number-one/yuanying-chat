@@ -10,6 +10,21 @@ extract=importlib.util.module_from_spec(spec);spec.loader.exec_module(extract)
 NAMES=['J.java','SavedFileBytes.java','SavedFileDeletion.java','SealedFileIo.java']
 METHODS=['void export(','void result(','static boolean delete(','void close(']
 
+def read_host_report(run, output):
+    """Keep the actual JVM outcome visible even when it could not emit JSON."""
+    output.with_suffix('.stdout.txt').write_text(run.stdout)
+    output.with_suffix('.stderr.txt').write_text(run.stderr)
+    diagnostic={'exitCode':run.returncode,'stdout':run.stdout,'stderr':run.stderr}
+    output.with_suffix('.run.log').write_text(json.dumps(diagnostic,ensure_ascii=False)+'\n')
+    try:
+        report=json.loads(run.stdout)
+        if not isinstance(report,dict):raise ValueError('Expected a JSON object')
+    except ValueError as error:
+        raise RuntimeError('Saved-copy JVM report is not a JSON object: '+json.dumps(diagnostic,ensure_ascii=False)) from error
+    if run.returncode:report['status']='failed'
+    report['jvmExitCode']=run.returncode
+    return report
+
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--java-home',type=pathlib.Path)
@@ -38,8 +53,7 @@ def main():
         args.output.with_suffix('.compile.txt').write_text(compile_run.stdout+compile_run.stderr)
         if compile_run.returncode:raise RuntimeError(compile_run.stderr)
         run=subprocess.run([binary('java'),'-cp',str(temp)+os.pathsep+str(args.json_jar.resolve()),'local.pocketchat.CopyHost'],capture_output=True,text=True,timeout=45)
-        args.output.with_suffix('.stdout.txt').write_text(run.stdout);args.output.with_suffix('.stderr.txt').write_text(run.stderr)
-        report=json.loads(run.stdout)
+        report=read_host_report(run,args.output)
         unchanged=all(hashlib.sha256((ROOT/name).read_bytes()).hexdigest()==digest for name,digest in hashes.items())
         report.update(sourceCommit=subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip(),sourceFiles=hashes,selectedMethods={name:hashlib.sha256(code.encode()).hexdigest() for name,code in selected.items()},executionInputsUnchanged=unchanged,jsonJarSha256=hashlib.sha256(args.json_jar.read_bytes()).hexdigest(),actualAndroidExecution=False,actualExternalProviderExecution=False,scope='Exact production SavedFileActions export/result/delete/close, metadata accessors, full SavedFileBytes/SavedFileDeletion/SealedFileIo. Real JVM workers, file leases and files; controlled provider streams and UI. No Android device, external provider durability, saved-index database or global exactly-once claim.')
         if not unchanged:report['status']='invalid-source-changed'
