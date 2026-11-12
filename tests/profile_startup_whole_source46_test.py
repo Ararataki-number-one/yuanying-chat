@@ -5,6 +5,7 @@ import unittest
 from startup46_source_compatibility import PATH,PREVIOUS_SHA256,CURRENT_SHA256,HOOK,startup46_source_bytes
 from profile_startup_f14_compatibility46_test import HOOK as REVIEWED_HOOK
 from experience46_source_compatibility import experience46_source_bytes
+from historical_source_inputs import historical_bytes
 
 ROOT=Path(__file__).resolve().parents[1]
 READING='tests/profile_reading_zoom_trace_test.py'
@@ -37,7 +38,7 @@ class StartupWholeSource46(unittest.TestCase):
             with self.subTest(path=path),self.assertRaises(ValueError):startup46_source_bytes(raw,path)
 
     def test_reading_guard_inverse_cannot_hide_changed_old_golden_or_trace_strip(self):
-        raw=(ROOT/READING).read_bytes();previous=experience46_source_bytes(raw,READING)
+        raw=historical_bytes(READING);previous=experience46_source_bytes(raw,READING)
         self.assertEqual(hashlib.sha256(previous).hexdigest(),READING45_SHA256)
         self.assertIn(GOLDEN.encode(),previous)
         self.assertIn(b"source=strip_reviewed_reading_trace_additions(source.encode('utf-8'),'tests/gecko/run_device.py').decode('utf-8')",previous)

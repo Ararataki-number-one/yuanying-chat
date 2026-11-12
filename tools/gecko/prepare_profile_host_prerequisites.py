@@ -8,11 +8,14 @@ import os
 from pathlib import Path
 import re
 import subprocess
+import sys
 
 ROOT = Path(__file__).resolve().parents[2]
 _spec = importlib.util.spec_from_file_location('profile_host_public_history', ROOT / 'tools/browser/source_history.py')
 history = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(history)
+sys.path.insert(0, str(ROOT / 'tools/browser'))
+import prepare_ui_workspace_history as ui_history
 
 
 def require(condition, message):
@@ -97,6 +100,41 @@ def prepare_history(root=ROOT, *, source_commit, environment=None):
     return dict(schema=1, status='passed', sourceCommit=source_commit, sourceTree=before['sourceTree'],
                 manifestSha256=history.MANIFEST_SHA256, groups=observed, fetchedCommits=missing,
                 checkoutUnchanged=True, testsExecuted=False, actualAndroidExecution=False)
+
+
+def prepare_ui_history(root=ROOT, *, source_commit, environment=None):
+    """Prepare the existing UI pins using the actual profile event authority."""
+    root = Path(root).resolve()
+    environment = os.environ if environment is None else environment
+    require(type(source_commit) is str and re.fullmatch('[0-9a-f]{40}', source_commit),
+            'exact UI-history checkout source required')
+    # Reuse the original two-owner, twenty-three-file manifest and verifier.
+    # Its standalone setup has older SHA==HEAD authorization, so only this
+    # profile entry point supplies the already established PR-head authority.
+    groups = ui_history.manifest(root)
+    before = history.checkout_state(root)
+    require(before['sourceCommit'] == source_commit, 'UI-history source differs from actual checkout')
+    missing = []
+    for group in groups:
+        try:
+            history.verify_group(root, group)
+        except history.MissingHistoricalObject:
+            missing.append(group['commit'])
+    if missing:
+        authorize_fetch(root, source_commit, environment)
+        require(history.checkout_state(root) == before, 'checkout changed before UI-history fetch')
+        try:
+            history.checked(root, 'fetch', '--no-tags', '--depth=1', '--no-write-fetch-head',
+                            '--no-filter', 'origin', *missing)
+        finally:
+            require(history.checkout_state(root) == before,
+                    'UI-history fetch changed HEAD, tree, index or tracked bytes')
+    observed = [history.verify_group(root, group) for group in groups]
+    require(history.checkout_state(root) == before, 'UI-history verification changed checkout')
+    return dict(schema=1, status='passed', sourceCommit=source_commit, sourceTree=before['sourceTree'],
+                manifest=ui_history.MANIFEST, manifestSha256=ui_history.MANIFEST_SHA256,
+                groups=observed, fetchedCommits=missing, checkoutUnchanged=True,
+                testsExecuted=False, actualAndroidExecution=False)
 
 
 # These are the existing compatibility declarations and their existing whole-
@@ -417,6 +455,7 @@ def main():
     value['compatibilityHistory'] = prepare_compatibility_history(args.root, source_commit=args.source_commit)
     value['supplementalHistory'] = prepare_supplemental_history(args.root, source_commit=args.source_commit)
     value['releasedHistory'] = prepare_released_history(args.root, source_commit=args.source_commit)
+    value['uiHistory'] = prepare_ui_history(args.root, source_commit=args.source_commit)
     raw = json.dumps(value, sort_keys=True, indent=2) + '\n'
     if args.output:
         args.output.parent.mkdir(parents=True, exist_ok=True)

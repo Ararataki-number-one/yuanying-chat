@@ -216,7 +216,7 @@ class EnvironmentWorkspaceWorkflowSourceTests(unittest.TestCase):
 
     def test_gradle_transport_controls_only_add_two_owned_read_ports(self):
         path = 'tests/profile_gradle_transport_source_compatibility_test.py'
-        source = cellular_source_port_input((ROOT / path).read_bytes(), path).decode()
+        source = cellular_source_port_input(historical_bytes(path), path).decode()
         imported = 'from environment_workspace_workflow_source_compatibility import PATH as ENVIRONMENT_WORKFLOW_PATH, source_input as environment_workflow_source_input\n'
         current = 'raw = environment_workflow_source_input((ROOT / path).read_bytes(), path) if path == ENVIRONMENT_WORKFLOW_PATH else (ROOT / path).read_bytes()'
         previous = 'raw = (ROOT / path).read_bytes()'

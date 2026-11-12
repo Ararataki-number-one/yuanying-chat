@@ -127,7 +127,7 @@ public final class StartupWindowHost {
 
   static final class View {
     boolean enabled=true,destroyed,failed,addonDisabled,ready,checkpointReady=true,identityPrepared=true,routePrepared,requestHeadersInstalled,privacyReady,allowed,desktop,fingerprintingProtected;
-    GeckoRuntime runtime=new GeckoRuntime();WebExtension extension=new WebExtension();GeckoSession primary,current,startupWindow;GeckoView surface;
+    GeckoRuntime runtime=new GeckoRuntime();WebExtension extension=new WebExtension();GeckoSession primary,current,startupWindow;GeckoView surface;GeckoTextureSurface textureSurface;
     long addonStateSerial,routeDelegateInstalls,protectionRequest;final Object routeMessages=new Object();final Metadata metadata=new Metadata();
     final Owner owner=new Owner();final Object displayContext=new Object();String queued="",url="";int surfaceAdds;
     final List<String> loads=new ArrayList<>();
@@ -172,7 +172,9 @@ public final class StartupWindowHost {
     void loadUri(String url){uriLoads++;}
     void stop(){}
   }
-  static final class GeckoView {static final int BACKEND_TEXTURE_VIEW=2;GeckoSession session;GeckoView(Object context){}void setViewBackend(int value){}void coverUntilFirstPaint(int color){}void setSession(GeckoSession value){session=value;}GeckoSession getSession(){return session;}void releaseSession(){session=null;}}
+  static class GeckoView {static final int BACKEND_TEXTURE_VIEW=2;GeckoSession session;GeckoView(Object context){}public void requestNewSurface(){}void setViewBackend(int value){}void coverUntilFirstPaint(int color){}void setSession(GeckoSession value){session=value;}GeckoSession getSession(){return session;}void releaseSession(){session=null;}}
+  // Texture lifecycle is independently exercised by gecko-texture-surface-host.
+  static final class GeckoTextureSurface {static GeckoTextureSurface install(GeckoView view,GeckoTextureSurface previous){return previous==null?new GeckoTextureSurface():previous;}static void requestNewSurface(GeckoView view){}void close(){}}
   static final class WebExtension{boolean isBuiltIn=true;String id="browser@pocketchat.local";final Metadata metaData=new Metadata();void setMessageDelegate(Object value,String app){}static final class Port{void disconnect(){}}}
   static final class Metadata{boolean enabled=true,policyAcknowledged,rfpAcknowledged;}
   static final class FrameLayout {static final class LayoutParams{LayoutParams(int w,int h){}}}

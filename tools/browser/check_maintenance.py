@@ -75,6 +75,7 @@ def main():
         ('resource-client', 'tests/gecko-navigation-host/client_ready.py'),
         ('addon-lifecycle', 'tests/gecko-addon-lifecycle-host/run.py'),
         ('gecko-startup-window', 'tests/gecko-startup-window-host/run.py'),
+        ('gecko-texture-surface', 'tests/gecko-texture-surface-host/run.py'),
         ('ip-transport', 'tests/gecko-ip-transport-host/run.py'),
         ('resource-recovery', 'tests/resource-recovery-host/run.py'),
         ('page-lifecycle', 'tests/browser-navigation-lifecycle-host/run.py'),
@@ -101,7 +102,8 @@ def main():
     host('browser-startup', 'tests/profile_environment_dashboard_startup_test.py', report=False)
     jobs.append(('display-acceptance', [
         [sys.executable, 'tests/gecko_glass_navigation_capture_test.py'],
-        [sys.executable, 'tests/glass_ui_validation_test.py']], None))
+        [sys.executable, 'tests/glass_ui_validation_test.py'],
+        [sys.executable, 'tests/browser_workspace_device_configuration_test.py']], None))
     jobs.append(('event-transport', [
         [sys.executable, 'tests/gecko_event_transfer_test.py'],
         [sys.executable, 'tests/profile_event_journal_discovery_test.py']], None))

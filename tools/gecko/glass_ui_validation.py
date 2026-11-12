@@ -50,6 +50,72 @@ def display_configuration_commands(width, height):
             ('shell', 'wm', 'user-rotation', 'lock', '1' if width > height else '0')]
 
 
+def prepare_display(args, owner, stem, adb, api, width, height, font_scale, night):
+    """Apply emulator configuration while an ordinary app owns orientation.
+
+    Android 15's NOSENSOR launcher saves the previous user rotation and restores
+    it when the next app starts. A successful wm command on that launcher can
+    therefore be undone. Reuse the existing native network fixture as a setup
+    surface, leave that override first, then configure and observe the display.
+    This setup is not a measured scene or a typography/application pass.
+    """
+    result = owner['displayPreparation'] = dict(status='started',
+        scope='Disposable emulator configuration before observation; not UI acceptance',
+        requested=dict(widthPx=width, heightPx=height, densityDpi=480,
+                       fontScale=float(font_scale), night=night), observations=[])
+    deadline = time.monotonic() + 15
+
+    def read(*parts):
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise TimeoutError('Actual Android display configuration did not settle')
+        raw = adb(*parts, timeout=min(6, remaining))
+        if time.monotonic() >= deadline:
+            raise TimeoutError('Actual Android display configuration did not settle')
+        return raw
+
+    try:
+        read('shell', 'am', 'start', '-W', '-n', api['COMPONENT'], '--es', 'visualAction', 'network')
+        activity = read('shell', 'dumpsys', 'activity', 'activities').decode('utf-8', 'strict')
+        resumed = [line.strip() for line in activity.splitlines()
+                   if 'mResumedActivity' in line or 'topResumedActivity' in line]
+        result['resumedBeforeRotation'] = resumed
+        if not any(api['COMPONENT'] in line for line in resumed):
+            raise ValueError('The native configuration surface did not leave the NOSENSOR launcher')
+        for command in display_configuration_commands(width, height):
+            read(*command)
+        previous = None
+        while True:
+            config = read('shell', 'am', 'get-config').decode('utf-8', 'strict').strip()
+            font = float(read('shell', 'settings', 'get', 'system', 'font_scale').decode().strip())
+            raw = read('shell', 'dumpsys', 'window', 'displays')
+            path = args.out / (stem + '-preparation-' + str(len(result['observations']) + 1) + '.txt')
+            path.write_bytes(raw)
+            actual = api['window_display_viewport'](raw.decode('utf-8', 'strict'))
+            parts = config.splitlines()[0].split('-')
+            matches = (actual == dict(widthPx=width, heightPx=height, densityDpi=480)
+                       and ('land' if width > height else 'port') in parts
+                       and ('night' if night == 'yes' else 'notnight') in parts
+                       and abs(font - float(font_scale)) <= .001)
+            result['observations'].append(dict(configuration=config, fontScale=font,
+                viewport=actual, matchesRequested=matches, file=path.name,
+                sha256=hashlib.sha256(raw).hexdigest()))
+            current = (config, font, actual)
+            if time.monotonic() >= deadline:
+                raise TimeoutError('Actual Android display configuration did not settle')
+            if matches and previous == current:
+                result['status'] = 'verified'
+                return result
+            previous = current if matches else None
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise TimeoutError('Actual Android display configuration did not settle')
+            time.sleep(min(.5, remaining))
+    except Exception as error:
+        result.update(status='failed', errorType=type(error).__name__, error=str(error))
+        raise
+
+
 def total_frames(raw):
     """Read cumulative HWUI counters; no FPS or animation-smoothness inference."""
     values = re.findall(r'^\s*Total frames rendered:\s*(\d+)\s*$', raw, re.M)
@@ -329,10 +395,9 @@ def capture_loading_landscape(args, report, capture, adb, wait_for, screenshot, 
         previous_night = 'yes' if 'night' in previous_config.splitlines()[0].split('-') else 'no'
         api['set_display'](2676, 1236, 480)
         adb('shell', 'am', 'force-stop', package)
-        for command in display_configuration_commands(2676, 1236):
-            adb(*command)
         adb('shell', 'settings', 'put', 'system', 'font_scale', '1.0')
         adb('shell', 'cmd', 'uimode', 'night', 'no')
+        prepare_display(args, result, stem, adb, api, 2676, 1236, 1.0, 'no')
         adb('shell', 'am', 'start', '-W', '-n', api['COMPONENT'], '--es', 'visualAction', 'chat')
         result['actualDisplay'] = dict(size=adb('shell', 'wm', 'size').decode().strip(),
             density=adb('shell', 'wm', 'density').decode().strip(),
@@ -434,7 +499,6 @@ def capture_loading_landscape(args, report, capture, adb, wait_for, screenshot, 
     finally:
         api['set_display'](*previous_display)
         cleanup = [('shell', 'am', 'force-stop', package)]
-        cleanup.extend(display_configuration_commands(*previous_display[:2]))
         cleanup.extend([('shell', 'settings', 'put', 'system', 'font_scale', previous_font),
                         ('shell', 'cmd', 'uimode', 'night', previous_night)])
         cleanup_errors = []
@@ -445,6 +509,16 @@ def capture_loading_landscape(args, report, capture, adb, wait_for, screenshot, 
                 cleanup_errors.append(dict(stage='restore-before-controlled-document', command=list(command),
                     errorType=type(error).__name__, error=str(error)))
         try:
+            preparation = result['restorationPreparation'] = {}
+            try:
+                prepare_display(args, preparation, stem + '-restore', adb, api,
+                                *previous_display[:2], previous_font, previous_night)
+            finally:
+                try:
+                    adb('shell', 'am', 'force-stop', package, timeout=6)
+                except Exception as error:
+                    cleanup_errors.append(dict(stage='stop-loading-configuration-surface',
+                        errorType=type(error).__name__, error=str(error)))
             restored = result['restoredDisplay'] = dict(
                 size=adb('shell', 'wm', 'size').decode().strip(),
                 fontScale=adb('shell', 'settings', 'get', 'system', 'font_scale').decode().strip(),
@@ -961,8 +1035,6 @@ def capture_acceptance_suite(args, report, capture, adb, wait_for, tap, screensh
                 try:
                     api['set_display'](width * 3, height * 3, 480)
                     adb('shell', 'am', 'force-stop', package)
-                    for command in display_configuration_commands(width * 3, height * 3):
-                        adb(*command)
                     adb('shell', 'settings', 'put', 'system', 'font_scale', str(scale))
                     adb('shell', 'cmd', 'uimode', 'night', night)
                     for overlay in SAFE_AREA_OVERLAYS:
@@ -971,6 +1043,7 @@ def capture_acceptance_suite(args, report, capture, adb, wait_for, tap, screensh
                         else:
                             adb('shell', 'cmd', 'overlay', 'disable', '--user', '0', overlay)
                     adb('shell', 'settings', 'put', 'secure', 'show_ime_with_hard_keyboard', '1')
+                    prepare_display(args, case, name, adb, api, width * 3, height * 3, scale, night)
                     typography(case, 'conversation')
                     typography(case, 'workspace')
                     observations[case['runNonce']] = EventTransfer(identity=identity, nonce=case['runNonce'],
@@ -1034,7 +1107,6 @@ def capture_acceptance_suite(args, report, capture, adb, wait_for, tap, screensh
     finally:
         api['set_display'](1236, 2676, 480)
         cleanup = [('shell', 'am', 'force-stop', package)]
-        cleanup.extend(display_configuration_commands(1236, 2676))
         cleanup.extend([('shell', 'settings', 'put', 'system', 'font_scale', '1.0'),
                         ('shell', 'cmd', 'uimode', 'night', 'no')])
         cleanup.extend(('shell', 'cmd', 'overlay', 'enable' if enabled else 'disable', '--user', '0', name)
@@ -1045,6 +1117,20 @@ def capture_acceptance_suite(args, report, capture, adb, wait_for, tap, screensh
             except Exception as error:
                 result['status'] = 'failed'
                 result['errors'].append(dict(stage='restore-disposable-emulator', command=list(command),
+                    errorType=type(error).__name__, error=str(error)))
+        try:
+            preparation = result['restorationPreparation'] = {}
+            prepare_display(args, preparation, 'suite-restore', adb, api, 1236, 2676, 1.0, 'no')
+        except Exception as error:
+            result['status'] = 'failed'
+            result['errors'].append(dict(stage='observe-disposable-emulator-restoration',
+                errorType=type(error).__name__, error=str(error)))
+        finally:
+            try:
+                adb('shell', 'am', 'force-stop', package, timeout=6)
+            except Exception as error:
+                result['status'] = 'failed'
+                result['errors'].append(dict(stage='stop-configuration-surface',
                     errorType=type(error).__name__, error=str(error)))
         result['completedAtUnixNs'] = time.time_ns()
         save()

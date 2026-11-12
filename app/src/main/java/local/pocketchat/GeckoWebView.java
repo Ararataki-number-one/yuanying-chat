@@ -59,6 +59,7 @@ class GeckoWebView extends FrameLayout {
     if(surface!=null&&surface.getSession()!=null)surface.releaseSession();
     for(GeckoSession session:new ArrayList<>(locations.keySet()))if(session.isOpen())session.close();
     if(primary!=null&&primary.isOpen())primary.close();
+    if(textureSurface!=null){textureSurface.close();textureSurface=null;}
     ports.clear();popups.clear();locations.clear();backStates.clear();forwardStates.clear();pageScales.clear();measuredCompositors.clear();viewportWidths.clear();loadingTargets.clear();pendingLoads.clear();painted.clear();usable.clear();crashed.clear();states.clear();stateDraftRevisions.clear();
     routePort=null;ready=false;
     uploadWorker.execute(()->{for(GeckoUploadFiles.Selection files:uploadFiles)files.delete();uploadFiles.clear();});uploadWorker.shutdown();
@@ -67,6 +68,7 @@ class GeckoWebView extends FrameLayout {
   static final String VERSION="GeckoView 157.0.1 · 输入同步修正";
   final ChatSession owner;
   GeckoView surface;GeckoRuntime runtime;WebExtension extension;GeckoSession primary,current;
+  GeckoTextureSurface textureSurface;
   private GeckoSession startupWindow;
   boolean addonDisabled;long addonStateSerial;
   // Startup observations only; neither counter grants page or network readiness.
@@ -728,7 +730,10 @@ class GeckoWebView extends FrameLayout {
     if(!enabled||destroyed)return;
     // Choose the official transform-capable backend once. Changing a live SDK
     // surface backend can leave its surface callback detached (157.0 SDK).
-    if(surface==null){surface=new GeckoView(displayContext);surface.setViewBackend(GeckoView.BACKEND_TEXTURE_VIEW);surface.coverUntilFirstPaint(ReferenceUi.CHAT_BG);addView(surface,new FrameLayout.LayoutParams(-1,-1));}
+    if(surface==null){surface=new GeckoView(displayContext){
+      @Override public void requestNewSurface(){GeckoTextureSurface.requestNewSurface(this);super.requestNewSurface();}
+    };surface.setViewBackend(GeckoView.BACKEND_TEXTURE_VIEW);surface.coverUntilFirstPaint(ReferenceUi.CHAT_BG);addView(surface,new FrameLayout.LayoutParams(-1,-1));}
+    textureSurface=GeckoTextureSurface.install(surface,textureSurface);
     primary=newSession();current=primary;primary.open(runtime);surface.setSession(primary);configure(desktop,owner.privacy.level());ready=true;
     if(!queued.isEmpty()){String target=queued;queued="";loadUrl(target);}
     closeStartupWindow();

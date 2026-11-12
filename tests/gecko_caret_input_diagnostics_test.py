@@ -66,8 +66,12 @@ import android.content.Context;import android.view.inputmethod.*;
 public class GeckoView {
   public static final int BACKEND_TEXTURE_VIEW=1;
   public static InputConnection originalToReturn;public static int createCalls;public static EditorInfo receivedAttrs;
-  public GeckoView(Context context){}public void setViewBackend(int backend){}
+  public GeckoView(Context context){}public void setViewBackend(int backend){}public void requestNewSurface(){}
   public InputConnection onCreateInputConnection(EditorInfo attrs){createCalls++;receivedAttrs=attrs;return originalToReturn;}
+}''',
+    # Complete texture lifecycle and explicit recovery execute in gecko-texture-surface-host.
+    'GeckoTextureSurface.java': '''final class GeckoTextureSurface {
+  static void requestNewSurface(org.mozilla.geckoview.GeckoView view){}
 }''',
     'android/os/SystemClock.java': '''package android.os;
 public final class SystemClock {

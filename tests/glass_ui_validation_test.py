@@ -676,6 +676,145 @@ class GlassCaptureCoverageTest(unittest.TestCase):
                         'A real landscape configuration is required')
 
 
+class GlassDisplayPreparationTest(unittest.TestCase):
+    """Real setup helper with explicit AOSP launcher/rotation transport boundaries."""
+
+    def setUp(self):
+        self.clock = 0.0
+        self.calls = []
+        self.base = (1236, 2676)
+        self.rotation = 0
+        self.saved_launcher_rotation = 1
+        self.foreground = False
+        self.launch_succeeds = True
+        self.ignore_rotation = False
+        self.read_delay = 0.0
+        self.night = 'notnight'
+        self.scale = 1.0
+
+    def adb(self, *parts, timeout):
+        self.calls.append((parts, timeout))
+        self.clock += self.read_delay
+        if parts[:4] == ('shell', 'am', 'start', '-W'):
+            self.foreground = self.launch_succeeds
+            if self.foreground and self.saved_launcher_rotation is not None:
+                # DisplayRotationReversionController.revertOverride restores
+                # the rotation saved when the NOSENSOR launcher came forward.
+                self.rotation = self.saved_launcher_rotation
+                self.saved_launcher_rotation = None
+            return b'Status: ok\n'
+        if parts == ('shell', 'dumpsys', 'activity', 'activities'):
+            activity = capture.COMPONENT if self.foreground else 'launcher/NOSENSOR'
+            return ('topResumedActivity=ActivityRecord{' + activity + '}\n').encode()
+        if parts[:3] == ('shell', 'wm', 'size'):
+            requested = tuple(map(int, parts[3].split('x')))
+            self.base = min(requested[0], 2472), min(requested[1], 5352)
+            return b''
+        if parts[:4] == ('shell', 'wm', 'user-rotation', 'lock'):
+            if not self.ignore_rotation:
+                self.rotation = int(parts[4])
+            return b''
+        logical = self.base[::-1] if self.rotation % 2 else self.base
+        if parts == ('shell', 'am', 'get-config'):
+            orientation = 'land' if logical[0] > logical[1] else 'port'
+            return ('config: mcc310-' + orientation + '-' + self.night + '\n').encode()
+        if parts == ('shell', 'settings', 'get', 'system', 'font_scale'):
+            return str(self.scale).encode()
+        if parts == ('shell', 'dumpsys', 'window', 'displays'):
+            return (f'Display: mDisplayId=0 rootTasks=3\n  init=1236x2676 480dpi '
+                    f'base={self.base[0]}x{self.base[1]} 480dpi '
+                    f'cur={logical[0]}x{logical[1]} app={logical[0]}x{logical[1]}\n').encode()
+        self.fail('Unexpected setup command: ' + repr(parts))
+
+    def run_setup(self, target=None, width=1236, height=2676):
+        target = target or validation.prepare_display
+        self.owner = {}
+        with tempfile.TemporaryDirectory() as directory, \
+                patch.object(validation.time, 'monotonic', side_effect=lambda: self.clock), \
+                patch.object(validation.time, 'sleep', side_effect=lambda seconds: setattr(self, 'clock', self.clock + seconds)):
+            return target(SimpleNamespace(out=Path(directory)), self.owner, 'controlled', self.adb,
+                          capture.__dict__, width, height, 1.0, 'no')
+
+    def test_portrait_applies_after_launcher_override_reversion(self):
+        result = self.run_setup()
+        self.assertEqual(result['status'], 'verified')
+        self.assertIsNone(self.saved_launcher_rotation)
+        self.assertEqual(self.rotation, 0)
+        self.assertEqual(len(result['observations']), 2)
+        self.assertTrue(all(row['matchesRequested'] for row in result['observations']))
+        self.assertTrue(all(row['viewport'] == dict(widthPx=1236, heightPx=2676, densityDpi=480)
+                            for row in result['observations']))
+        self.assertGreaterEqual(self.clock, .5)
+
+    def test_old_launcher_first_order_still_fails_on_real_helper_negative_control(self):
+        source = inspect.getsource(validation.prepare_display)
+        move = '        for command in display_configuration_commands(width, height):\n            read(*command)\n'
+        self.assertEqual(source.count(move), 1)
+        source = source.replace(move, '').replace(
+            "        read('shell', 'am', 'start', '-W', '-n', api['COMPONENT']",
+            move + "        read('shell', 'am', 'start', '-W', '-n', api['COMPONENT']", 1)
+        namespace = dict(validation.__dict__)
+        exec(compile(source, '<launcher-order-negative-control>', 'exec'), namespace)
+        with self.assertRaises(TimeoutError):
+            self.run_setup(namespace['prepare_display'])
+        self.assertEqual(self.rotation, 1)
+        self.assertEqual(self.owner['displayPreparation']['status'], 'failed')
+        self.assertTrue(all(not row['matchesRequested'] for row in self.owner['displayPreparation']['observations']))
+
+    def test_natural_axes_keep_complete_landscape_under_android12_width_clamp(self):
+        result = self.run_setup(width=2676, height=1236)
+        self.assertEqual(self.base, (1236, 2676))
+        self.assertEqual(result['observations'][-1]['viewport'],
+                         dict(widthPx=2676, heightPx=1236, densityDpi=480))
+
+    def test_failed_foreground_launch_cannot_apply_or_accept_rotation(self):
+        self.launch_succeeds = False
+        with self.assertRaisesRegex(ValueError, 'did not leave the NOSENSOR launcher'):
+            self.run_setup()
+        self.assertFalse(any(parts[:2] == ('shell', 'wm') for parts, _ in self.calls))
+        self.assertEqual(self.owner['displayPreparation']['observations'], [])
+
+    def test_successful_shell_exit_cannot_hide_wrong_actual_configuration(self):
+        self.ignore_rotation = True
+        with self.assertRaisesRegex(TimeoutError, 'did not settle'):
+            self.run_setup()
+        self.assertLessEqual(self.clock, 15)
+        self.assertEqual(self.owner['displayPreparation']['status'], 'failed')
+
+    def test_theme_and_font_are_independent_actual_requirements(self):
+        for field, value in (('night', 'night'), ('scale', 1.3)):
+            with self.subTest(field=field):
+                self.setUp()
+                setattr(self, field, value)
+                with self.assertRaises(TimeoutError):
+                    self.run_setup()
+                self.assertTrue(all(not row['matchesRequested'] for row in self.owner['displayPreparation']['observations']))
+
+    def test_all_reads_share_one_deadline_and_expired_result_cannot_pass(self):
+        self.read_delay = 4
+        with self.assertRaises(TimeoutError):
+            self.run_setup()
+        self.assertEqual([timeout for _, timeout in self.calls], [6, 6, 6, 3])
+        self.assertEqual(self.owner['displayPreparation']['status'], 'failed')
+        self.assertEqual(self.owner['displayPreparation']['observations'], [])
+
+    def test_late_final_processing_cannot_accept_an_otherwise_matching_display(self):
+        original = capture.window_display_viewport
+        observed = []
+        def slow_last_parse(raw):
+            result = original(raw)
+            observed.append(result)
+            if len(observed) == 2:
+                self.clock += 16
+            return result
+        with patch.object(capture, 'window_display_viewport', side_effect=slow_last_parse), \
+                self.assertRaises(TimeoutError):
+            self.run_setup()
+        self.assertEqual(len(self.owner['displayPreparation']['observations']), 2)
+        self.assertTrue(all(row['matchesRequested'] for row in self.owner['displayPreparation']['observations']))
+        self.assertEqual(self.owner['displayPreparation']['status'], 'failed')
+
+
 class GlassCaptureFailureCleanupTest(unittest.TestCase):
     """Host-side cleanup checks with fake transports; no Android claim."""
 
@@ -686,6 +825,8 @@ class GlassCaptureFailureCleanupTest(unittest.TestCase):
         base, rotation = (1236, 2676), 0
         def adb(*parts, **options):
             nonlocal base, rotation
+            if parts == ('shell', 'dumpsys', 'activity', 'activities'):
+                return ('topResumedActivity=ActivityRecord{' + capture.COMPONENT + '}\n').encode()
             if parts[:3] == ('shell', 'wm', 'size'):
                 if len(parts) == 4:
                     width, height = map(int, parts[3].split('x'))
@@ -736,6 +877,8 @@ class GlassCaptureFailureCleanupTest(unittest.TestCase):
 
         def adb(*parts, **options):
             nonlocal forced
+            if parts == ('shell', 'dumpsys', 'activity', 'activities'):
+                return ('topResumedActivity=ActivityRecord{' + capture.COMPONENT + '}\n').encode()
             if parts[:4] == ('shell', 'wm', 'user-rotation', 'lock'):
                 forced = parts[4] == '1'
                 return b''
@@ -764,13 +907,19 @@ class GlassCaptureFailureCleanupTest(unittest.TestCase):
                     installedApk={'sha256': 'apk'}, runNonce='nonce', inputs=[], commands=[])
                 transport = MagicMock(side_effect=adb)
                 wait_for, screenshot = MagicMock(), MagicMock()
-                result = validation.capture_loading_landscape(args, report, MagicMock(), transport,
-                    wait_for, screenshot, capture.__dict__)
+                clock = [0.0]
+                with patch.object(validation.time, 'monotonic', side_effect=lambda: clock[0]), \
+                        patch.object(validation.time, 'sleep', side_effect=lambda seconds: clock.__setitem__(0, clock[0] + seconds)):
+                    result = validation.capture_loading_landscape(args, report, MagicMock(), transport,
+                        wait_for, screenshot, capture.__dict__)
                 self.assertEqual(result['status'], 'failed')
-                self.assertEqual(result['displayViewport']['requested']['widthPx'], 2676)
-                self.assertEqual(result['displayViewport']['actual']['widthPx'], 2472)
-                self.assertFalse(result['displayViewport']['matchesRequested'])
-                self.assertIn('Actual Android viewport differs', result['errors'][0]['error'])
+                preparation = result['displayPreparation']
+                self.assertEqual(preparation['status'], 'failed')
+                self.assertEqual(preparation['requested']['widthPx'], 2676)
+                self.assertTrue(preparation['observations'])
+                self.assertTrue(all(row['viewport']['widthPx'] == 2472
+                                    and not row['matchesRequested'] for row in preparation['observations']))
+                self.assertIn('Actual Android display configuration did not settle', result['errors'][0]['error'])
                 wait_for.assert_not_called()
                 self.assertFalse(report['inputs'])
                 self.assertFalse(any('input' in call.args for call in transport.call_args_list))
@@ -778,6 +927,39 @@ class GlassCaptureFailureCleanupTest(unittest.TestCase):
                 self.assertTrue(result['restoredDisplayBeforeControlledDocument'])
                 self.assertEqual(result['restoredDisplay']['displayViewport']['status'], 'verified')
                 self.assertEqual((capture.WIDTH, capture.HEIGHT, capture.DENSITY), (1236, 2676, 480))
+        finally:
+            capture.set_display(*previous, requested=request)
+
+    def test_failed_loading_restoration_still_stops_the_configuration_activity(self):
+        previous = capture.WIDTH, capture.HEIGHT, capture.DENSITY
+        request = capture.DISPLAY_REQUEST
+        capture.set_display(1236, 2676, 480)
+        calls = []
+        def adb(*parts, **options):
+            calls.append(parts)
+            if parts == ('shell', 'settings', 'get', 'system', 'font_scale'):
+                return b'1.0\n'
+            if parts == ('shell', 'am', 'get-config'):
+                return b'config: mcc310-port-notnight\n'
+            return b''
+        def fail_setup(*args, **options):
+            calls.append(('prepare', args[2]))
+            raise TimeoutError('configuration failed')
+        try:
+            with tempfile.TemporaryDirectory() as directory, \
+                    patch.object(validation, 'prepare_display', side_effect=fail_setup):
+                args = SimpleNamespace(root=Path(__file__).resolve().parents[1], out=Path(directory))
+                report = dict(buildIdentity=dict(sourceCommit='source', sourceTree='tree',
+                    sdkReceiptSha256='sdk', integrationSigningCertificateSha256='signer'),
+                    installedApk={'sha256': 'apk'}, runNonce='nonce', inputs=[], commands=[])
+                result = validation.capture_loading_landscape(args, report, MagicMock(), adb,
+                    MagicMock(), MagicMock(), capture.__dict__)
+                self.assertEqual(result['status'], 'failed')
+                self.assertFalse(result['restoredDisplayBeforeControlledDocument'])
+                self.assertEqual(calls[-2:], [('prepare', 'landscape-loading-native-restore'),
+                                             ('shell', 'am', 'force-stop', capture.PACKAGE)])
+                self.assertEqual([row['error'] for row in result['errors']],
+                                 ['configuration failed', 'configuration failed'])
         finally:
             capture.set_display(*previous, requested=request)
 
