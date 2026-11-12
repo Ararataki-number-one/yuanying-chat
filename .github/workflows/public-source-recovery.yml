@@ -1,34 +1,42 @@
-name: Restore public source snapshot
+name: Restore public build dependencies
 on:
   push:
     branches: ['codex/source-recovery-20261112']
 permissions:
   contents: read
 jobs:
-  archive:
+  dependencies:
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
         with:
           ref: 1178ce488bc1532d71460845b2b7131724416df6
           fetch-depth: 1
           persist-credentials: false
-      - name: Export only already-public committed files
+      - name: Export pinned public historical Git objects
         shell: bash
         run: |
           set -euo pipefail
-          # Public repository verified through GET /repos on 2026-11-12:
-          # private=false, visibility=public. No working tree or .git archive.
-          test "$(git rev-parse HEAD)" = 1178ce488bc1532d71460845b2b7131724416df6
-          mkdir -p "$RUNNER_TEMP/public-source"
-          git archive --format=tar.gz --output="$RUNNER_TEMP/public-source/source.tar.gz" HEAD
-          git cat-file commit HEAD > "$RUNNER_TEMP/public-source/commit.txt"
-          git rev-parse HEAD HEAD^{tree} > "$RUNNER_TEMP/public-source/source-identity.txt"
-          sha256sum "$RUNNER_TEMP/public-source/source.tar.gz" > "$RUNNER_TEMP/public-source/SHA256SUMS"
+          mkdir -p "$RUNNER_TEMP/public-dependencies"
+          git fetch --no-tags --depth=1 --no-write-fetch-head origin c244835a4c1e3629909b2b1ce132ca5987a97d9a 7383bb1dd82c5d2155ba7c8dcc11b541478f6cfe
+          git rev-list --objects --no-object-names c244835a4c1e3629909b2b1ce132ca5987a97d9a 7383bb1dd82c5d2155ba7c8dcc11b541478f6cfe --not 1178ce488bc1532d71460845b2b7131724416df6 | git pack-objects --stdout > "$RUNNER_TEMP/public-dependencies/historical.pack"
+      - name: Export standard public Java and Android build tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          target="$RUNNER_TEMP/public-dependencies"
+          tar -C "$JAVA_HOME_17_X64" -czf "$target/jdk17.tar.gz" .
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'build-tools;37.0.0'
+          tar -C "$ANDROID_HOME/build-tools/37.0.0" -czf "$target/build-tools37.tar.gz" .
+          for version in 20240303 20250517; do
+            curl -fsSL --retry 3 "https://repo.maven.apache.org/maven2/org/json/json/$version/json-$version.jar" -o "$target/json-$version.jar"
+          done
+          "$JAVA_HOME_17_X64/bin/java" -version 2> "$target/java-version.txt"
+          (cd "$target" && sha256sum *.gz *.pack *.jar > SHA256SUMS)
       - uses: actions/upload-artifact@v4
         with:
-          name: public-source-1178
-          path: ${{ runner.temp }}/public-source/
+          name: public-maintenance-dependencies
+          path: ${{ runner.temp }}/public-dependencies/
           retention-days: 1
           compression-level: 0
