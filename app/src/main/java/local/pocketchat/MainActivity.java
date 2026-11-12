@@ -20,6 +20,7 @@ public class MainActivity extends ThemedActivity {
   static final String ORIGIN="https://chatgpt.com/";
   final Handler handler=new Handler(Looper.getMainLooper());
   GeckoWebView remote;
+  GeckoUiBinding browserUi;
   // The Android regression asserts that retired native surfaces are absent.
   // These references remain null; recovery reads data without creating editors.
   WebView reader; EditText input; Button send; LinearLayout composer;
@@ -104,7 +105,9 @@ public class MainActivity extends ThemedActivity {
     status.setContentDescription("网页或网络错误，点按查看详情");status.setOnClickListener(v->showStatusDetails());root.addView(status,new LinearLayout.LayoutParams(-1,-2));
     loading=new LoadingUi(this);FrameLayout stack=new FrameLayout(this);root.addView(stack,new LinearLayout.LayoutParams(-1,0,1));
     remote=session.web;if(remote.getParent() instanceof ViewGroup)((ViewGroup)remote.getParent()).removeView(remote);remote.setHost(this);remote.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_AUTO);
+    WebViewClient sessionClient=session.client();
     attachments=new Attachments(this);downloads=new FileDownloads(this);remote.setWebViewClient(remoteClient());remote.setWebChromeClient(attachments.chrome());
+    browserUi=new GeckoUiBinding(remote,this,stack,sessionClient);
     chatDownloadProgress=new ChatDownloadProgressUi(this,root,stack,downloads);
     stack.addView(remote,new FrameLayout.LayoutParams(-1,-1));stack.addView(loading.cover,new FrameLayout.LayoutParams(-1,-1));
     focusExit=DesignUi.button(this,"退出阅读",false,()->setFocusReading(false));focusExit.setContentDescription("退出专注阅读，恢复应用工具栏和导航");focusExit.setTextSize(12);focusExit.setElevation(dp(3));focusExit.setBackground(DesignUi.surface(this,DesignUi.CARD,24,DesignUi.LINE));focusExit.setVisibility(View.GONE);
@@ -355,8 +358,22 @@ public class MainActivity extends ThemedActivity {
   @Override protected void onNewIntent(Intent intent){super.onNewIntent(intent);setIntent(intent);ExitIpPageUi.close(this);if(dispatchBrowser(intent))return;if(environmentOverview!=null&&environmentOverview.consume(intent)&&session==null)prepareBrowserAfterOverview();if(session!=null)openNotification(intent);}
   @Override protected void onResume(){super.onResume();if(!ProfileCatalog.get(this).available(Profiles.slot(this))){finish();return;}active=true;if(sessionUi!=null)sessionUi.visible(true);if(environmentOverview!=null)environmentOverview.resume();if(session==null){if(browserStartup!=null){browserStartup.foreground(true);startBrowserAfterOverview();}return;}resumeChatUi();}
   void resumeChatUi(){AppUpdates.schedule(this);if(hub!=null)hub.downloadsVisible(true);AppPrefs.maintainCache(this);session.add(sessionObserver);session.audit.refresh(true);session.foreground(true);session.connect();if(hub!=null&&hub.page!=AppHub.CHAT){hub.refresh();handler.removeCallbacks(hub.tick);handler.postDelayed(hub.tick,2500);}handler.removeCallbacks(ticker);handler.post(ticker);}
-  @Override protected void onPause(){super.onPause();active=false;if(sessionUi!=null)sessionUi.visible(false);if(chatDownloadProgress!=null)chatDownloadProgress.visible(false);if(browserStartup!=null)browserStartup.foreground(false);if(environmentOverview!=null)environmentOverview.pause();ExitIpPageUi.close(this);if(hub!=null)hub.downloadsVisible(false);if(designChrome!=null){designChrome.cancelWebGesture();designChrome.cancelUpdates();}handler.removeCallbacks(ticker);if(session==null||session.deleted)return;NativeNetwork.get(this).traffic.watch(false);session.remove(sessionObserver);session.audit.cancel();session.reading.keyboard(false);session.foreground(false);}
-  @Override protected void onDestroy(){destroyed=true;if(sessionUi!=null)sessionUi.close();if(designChrome!=null)designChrome.cancelUpdates();if(chatDownloadProgress!=null)chatDownloadProgress.close();if(geckoAddress!=null)geckoAddress.close();if(browserStartup!=null)browserStartup.close();if(environmentOverview!=null)environmentOverview.close();ExitIpPageUi.close(this);if(hub!=null)hub.downloadsVisible(false);if(reloadDialog!=null)reloadDialog.dismiss();if(networkDialog!=null)networkDialog.dismiss();if(downloads!=null)downloads.destroy();if(attachments!=null)attachments.destroy();if(loading!=null)loading.dismissTask();if(hub!=null)hub.networkWorkspace.close();handler.removeCallbacksAndMessages(null);if(session!=null)session.remove(sessionObserver);if(remote!=null&&remote.getParent() instanceof ViewGroup)((ViewGroup)remote.getParent()).removeView(remote);if(remote!=null)remote.setHost(null);super.onDestroy();}
+  @Override protected void onPause(){
+    super.onPause();active=false;if(sessionUi!=null)sessionUi.visible(false);if(chatDownloadProgress!=null)chatDownloadProgress.visible(false);if(browserStartup!=null)browserStartup.foreground(false);if(environmentOverview!=null)environmentOverview.pause();
+    if(hub!=null)hub.downloadsVisible(false);if(designChrome!=null){designChrome.cancelWebGesture();designChrome.cancelUpdates();}handler.removeCallbacks(ticker);
+    if(session!=null)session.remove(sessionObserver);
+    if(session==null||session.deleted||browserUi==null||!browserUi.current())return;
+    ExitIpPageUi.close(this);
+    if(!browserUi.current())return;
+    NativeNetwork.get(this).traffic.watch(false);
+    if(!browserUi.current())return;
+    session.audit.cancel();
+    if(!browserUi.current())return;
+    session.reading.keyboard(false);
+    if(!browserUi.current())return;
+    session.foreground(false);
+  }
+  @Override protected void onDestroy(){destroyed=true;if(browserUi!=null)browserUi.close();if(sessionUi!=null)sessionUi.close();if(designChrome!=null)designChrome.cancelUpdates();if(chatDownloadProgress!=null)chatDownloadProgress.close();if(geckoAddress!=null)geckoAddress.close();if(browserStartup!=null)browserStartup.close();if(environmentOverview!=null)environmentOverview.close();if(hub!=null)hub.downloadsVisible(false);if(reloadDialog!=null)reloadDialog.dismiss();if(networkDialog!=null)networkDialog.dismiss();if(downloads!=null)downloads.destroy();if(attachments!=null)attachments.destroy();if(loading!=null)loading.dismissTask();if(hub!=null)hub.networkWorkspace.close();handler.removeCallbacksAndMessages(null);if(session!=null)session.remove(sessionObserver);super.onDestroy();}
   @Override protected void onSaveInstanceState(Bundle state){super.onSaveInstanceState(state);state.putBoolean("focusReading",focusReading);Bundle downloadsState=new Bundle();if(hub!=null&&hub.downloadController!=null)hub.downloadController.saveState(downloadsState);else if(downloadUiState!=null)downloadsState.putAll(downloadUiState);state.putBundle("uxDownloads",downloadsState);}
   @Override public boolean dispatchKeyEvent(KeyEvent event){
     if(event.getAction()==KeyEvent.ACTION_DOWN&&event.getRepeatCount()==0){

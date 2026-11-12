@@ -5,8 +5,12 @@ The fixtures represent native button touch regions, including the two-row
 layout used when a narrow window cannot fit an independently centered dock.
 They do not stand in for Android capture or visual inspection.
 """
-import sys
+import ast
+import hashlib
+import inspect
+import json
 from pathlib import Path
+import sys
 import tempfile
 from types import SimpleNamespace
 import unittest
@@ -16,6 +20,164 @@ import xml.etree.ElementTree as ET
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'tools' / 'gecko'))
 import capture_glass_navigation as capture
 import glass_ui_validation as validation
+
+
+class GlassReadyFailureDiagnosticsTest(unittest.TestCase):
+    def setUp(self):
+        path = Path(__file__).parent / 'fixtures/glass-ready-failure-api32.json'
+        self.fixture = json.loads(path.read_text())
+        self.identity = {key: self.fixture[key] for key in ('sourceCommit', 'sourceTree')}
+        self.case = dict(self.fixture['case'])
+
+    def trace(self, sequence=1):
+        # Explicit synthetic native boundary; this is not a captured device success.
+        result = dict(self.identity, schema=1, sequence=sequence, runNonce=self.case['runNonce'],
+                      stage='waiting', diagnosticOnly=True)
+        for key in ('checkpointReady', 'runtimePresent', 'extensionPresent', 'identityPrepared',
+                    'routePrepared', 'privacyReady', 'ready', 'failed', 'destroyed', 'resourceDeferred',
+                    'sessionPresent', 'surfacePresent', 'portPresent', 'usable', 'queuedTarget',
+                    'routePortPresent', 'guardBlocked', 'networkReady', 'browserPaused', 'uiVisible', 'navigating'):
+            result[key] = False
+        for key in ('elapsedMs', 'requestedProtection', 'protectionRequest', 'protectionLevel',
+                    'documents', 'readyEvaluations', 'readyCallbacks', 'snapshotEvaluations',
+                    'snapshotCallbacks', 'eventSequence', 'routeCalls', 'fixtureRoutes', 'blockedRoutes', 'otherRoutes'):
+            result[key] = 0
+        return result
+
+    def parse(self, rows):
+        raw = ('\n'.join(json.dumps(row) for row in rows) + '\n').encode()
+        return validation.collapse_start_trace(raw, self.identity, self.case['runNonce'])
+
+    def test_original_api32_timeout_has_no_startup_evidence_to_promote(self):
+        raw = self.fixture['originalEvents']['text'].encode()
+        self.assertEqual(hashlib.sha256(raw).hexdigest(), self.fixture['originalEvents']['sha256'])
+        self.assertEqual(self.fixture['runId'], 43155512845)
+        self.assertFalse(self.fixture['launchStdoutRetained'])
+        self.assertEqual(self.fixture['fixtureRequestCount'], 0)
+        self.assertEqual(self.case['errorType'], 'TimeoutError')
+        self.assertEqual(validation.collapse_start_trace(raw, self.identity, self.case['runNonce']), ([], b''))
+
+    def test_current_nonce_source_and_original_trace_lines_are_retained(self):
+        first, second = self.trace(), self.trace(3)
+        unrelated = dict(first, runNonce='f' * 32, draft='private data must not be retained')
+        records, raw = self.parse([unrelated, first, second])
+        self.assertEqual(records, [first, second])
+        self.assertEqual(raw, (json.dumps(first) + '\n' + json.dumps(second) + '\n').encode())
+        self.assertNotIn(b'private', raw)
+
+    def test_wrong_identity_malformed_state_and_content_fields_are_rejected(self):
+        changes = ({'sourceCommit': '0' * 40}, {'sourceTree': '0' * 40}, {'diagnosticOnly': False},
+                   {'runtimePresent': 1}, {'routeCalls': '1'}, {'elapsedMs': 1.5}, {'sequence': True},
+                   {'sequence': 81}, {'stage': 'unowned'}, {'stage': []}, {'pageUrl': 'https://private.invalid/'},
+                   {'state': {'draft': 'private'}}, {'unlistedCounter': 1})
+        for change in changes:
+            with self.subTest(change=change), self.assertRaises(ValueError):
+                self.parse([dict(self.trace(), **change)])
+        missing = self.trace(); del missing['runtimePresent']
+        with self.assertRaises(ValueError):
+            self.parse([missing])
+        for raw in (b'\xff', b'x' * (1024 * 1024 + 1)):
+            with self.assertRaises((ValueError, UnicodeError)):
+                validation.collapse_start_trace(raw, self.identity, self.case['runNonce'])
+
+    def test_duplicate_or_reversed_trace_sequences_cannot_be_combined(self):
+        for rows in ([self.trace(), self.trace()], [self.trace(2), self.trace()]):
+            with self.assertRaises(ValueError):
+                self.parse(rows)
+
+    def collect(self, path, raw_trace, activity, *, launch=b'Controlled synthetic am output\n'):
+        calls = []
+        def adb(*command, **kwargs):
+            calls.append((command, kwargs))
+            value = raw_trace if command[0] == 'logcat' else activity
+            if isinstance(value, Exception):
+                raise value
+            return value
+        result = validation.capture_ready_failure(path, self.case, self.identity, adb, launch)
+        self.assertEqual(len(calls), 2)
+        self.assertTrue(all(kwargs == {'timeout': 6} for _, kwargs in calls))
+        self.assertTrue(all('start' not in command and 'broadcast' not in command for command, _ in calls))
+        return result
+
+    def test_post_failure_capture_keeps_only_native_counters_and_resumed_lines(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory); line = self.fixture['initialActivity']['resumedLines'][0]
+            raw_trace = (json.dumps(self.trace()) + '\n').encode()
+            activity = ('Intent { data=https://private.invalid/ }\n' + line + '\n').encode()
+            result = self.collect(path, raw_trace, activity)
+            self.assertEqual(result['status'], 'captured')
+            self.assertTrue(result['readyGateAlreadyFailed'])
+            self.assertFalse(result['applicationAcceptance'])
+            self.assertEqual(self.case['status'], 'failed')
+            self.assertEqual(self.case['error'], self.fixture['case']['error'])
+            self.assertEqual((path / result['launchOutput']['file']).read_bytes(), b'Controlled synthetic am output\n')
+            self.assertEqual((path / result['nativeTrace']['file']).read_bytes(), raw_trace)
+            self.assertEqual((path / result['resumedActivity']['file']).read_text(), line + '\n')
+            self.assertFalse(any(b'private.invalid' in p.read_bytes() for p in path.iterdir()))
+
+    def test_absent_trace_or_resumed_component_remains_incomplete(self):
+        with tempfile.TemporaryDirectory() as directory:
+            result = self.collect(Path(directory), self.fixture['originalEvents']['text'].encode(), b'no resumed component\n')
+            self.assertEqual(result['status'], 'incomplete')
+            self.assertEqual(result['nativeTrace']['status'], 'missing')
+            self.assertEqual(result['resumedActivity']['status'], 'missing')
+            self.assertEqual(self.case['errorType'], 'TimeoutError')
+
+    def test_diagnostic_transport_and_launch_boundary_failures_do_not_retry_or_clear_gate(self):
+        with tempfile.TemporaryDirectory() as directory:
+            result = self.collect(Path(directory), TimeoutError('trace unavailable'),
+                                  OSError('activity unavailable'), launch=b'x' * 16385)
+            self.assertEqual(result['status'], 'incomplete')
+            self.assertEqual([row['stage'] for row in result['errors']],
+                             ['launch-output', 'native-trace', 'resumed-activity'])
+            self.assertEqual(self.case['status'], 'failed')
+            self.assertEqual(self.case['error'], self.fixture['case']['error'])
+
+    def ready_boundary(self):
+        # Execute the actual call boundary in the suite, with only its transport
+        # and observer substituted. This does not simulate an Android success.
+        tree = ast.parse(inspect.getsource(validation.capture_acceptance_suite))
+        matches = [node for node in ast.walk(tree) if isinstance(node, ast.Try)
+                   and len(node.body) == 1 and isinstance(node.body[0], ast.Expr)
+                   and isinstance(node.body[0].value, ast.Call)
+                   and isinstance(node.body[0].value.func, ast.Name)
+                   and node.body[0].value.func.id == 'observed_event'
+                   and len(node.body[0].value.args) == 2
+                   and isinstance(node.body[0].value.args[1], ast.Constant)
+                   and node.body[0].value.args[1].value == 'ready']
+        self.assertEqual(len(matches), 1)
+        return compile(ast.Module(body=matches, type_ignores=[]),
+                       validation.__file__, 'exec')
+
+    def test_collector_top_level_failure_preserves_the_actual_ready_error(self):
+        ready_error = TimeoutError(self.case['error'])
+        observer = MagicMock(side_effect=ready_error)
+        collector = MagicMock(side_effect=OSError('controlled collector failure'))
+        namespace = dict(case=self.case, identity=self.identity, args=SimpleNamespace(out=Path('unused')),
+                         adb=MagicMock(), start_output=b'started', observed_event=observer,
+                         capture_ready_failure=collector)
+        with self.assertRaises(TimeoutError) as caught:
+            exec(self.ready_boundary(), namespace)
+        self.assertIs(caught.exception, ready_error)
+        observer.assert_called_once_with(self.case, 'ready', request=False)
+        collector.assert_called_once_with(namespace['args'].out, self.case, self.identity,
+                                          namespace['adb'], b'started')
+        self.assertEqual(self.case['error'], self.fixture['case']['error'])
+        self.assertEqual(self.case['status'], 'failed')
+        self.assertEqual(self.case['readyFailureDiagnostics']['errors'], [dict(
+            stage='diagnostic-collector', errorType='OSError', error='controlled collector failure')])
+        namespace['adb'].assert_not_called()
+
+    def test_successful_ready_observation_has_no_failure_diagnostic_side_effects(self):
+        observer, collector = MagicMock(), MagicMock()
+        namespace = dict(case=self.case, identity=self.identity, args=SimpleNamespace(out=Path('unused')),
+                         adb=MagicMock(), start_output=b'started', observed_event=observer,
+                         capture_ready_failure=collector)
+        exec(self.ready_boundary(), namespace)
+        observer.assert_called_once_with(self.case, 'ready', request=False)
+        collector.assert_not_called()
+        namespace['adb'].assert_not_called()
+        self.assertNotIn('readyFailureDiagnostics', self.case)
 
 
 def hierarchy(boxes, *, selected=None, extra=None, labels=None):

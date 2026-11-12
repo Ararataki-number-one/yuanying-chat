@@ -27,6 +27,45 @@ public final class BrowserPermissionsHost {
     void request(Request request){permissions.request(view,request);}void allow(){permissions.pending.dialog.positive();}void reject(){permissions.pending.dialog.negative();}
     int code(){return permissions.pending.requestCode;}public void close(){permissions.close();}
   }
+  static void admissionReentry(){
+    for(boolean olderLocation:new boolean[]{false,true})for(boolean incomingLocation:new boolean[]{false,true})try(Fixture f=new Fixture()){
+      int[] settled={0};
+      Runnable navigate=()->{settled[0]++;f.permissions.onNavigation(f.view);};
+      if(olderLocation)f.permissions.geolocation(f.view,"https://example.com/",(origin,grant,remember)->navigate.run());
+      else {Request older=f.camera();older.denied=navigate;f.request(older);}
+      Request incoming=f.camera();Location location=new Location();String kind=olderLocation+"/"+incomingLocation;
+      if(incomingLocation)f.permissions.geolocation(f.view,"https://example.com/",location);else f.request(incoming);
+      check("Replacing a request settles its prior callback once: "+kind,settled[0]==1);
+      check("Same-URL navigation during denial rejects the incoming old-document request: "+kind,
+        f.permissions.pending==null&&f.a.requests==0&&(incomingLocation?location.calls==1&&!location.granted&&!location.remember:incoming.denials==1&&incoming.grants==0));
+      f.a.granted.add(CAMERA);Request fresh=f.camera();f.request(fresh);f.allow();
+      check("A fresh request in the replacement document still obtains site consent: "+kind,fresh.grants==1&&fresh.denials==0&&f.permissions.pending==null);
+    }
+    try(Fixture f=new Fixture()){
+      Request older=f.camera(),incoming=f.camera();f.request(older);
+      older.denied=()->{f.permissions.onNavigation(f.view);throw new IllegalStateException("controlled native callback failure");};
+      f.request(incoming);
+      check("A throwing denial callback cannot hide its same-URL navigation",older.denials==1&&incoming.denials==1&&incoming.grants==0&&f.permissions.pending==null);
+    }
+    try(Fixture f=new Fixture()){
+      Request older=f.camera(),incoming=f.camera();WebView background=new WebView(f.view.url);f.request(older);
+      older.denied=()->f.permissions.onNavigation(background);f.request(incoming);
+      check("Navigation of another WebView does not invalidate the incoming current document",incoming.denials==0&&f.permissions.pending.request==incoming);
+      f.a.granted.add(CAMERA);f.allow();check("The unaffected current document still receives its requested grant",incoming.grants==1&&incoming.denials==0);
+    }
+    for(boolean destroyed:new boolean[]{false,true})try(Fixture f=new Fixture()){
+      Request older=f.camera(),incoming=f.camera();f.request(older);
+      older.denied=()->{if(destroyed)f.a.destroyed=true;else f.a.finishing=true;};f.request(incoming);
+      check("Activity retirement during denial cannot create a replacement consent dialog: "+destroyed,
+        older.denials==1&&incoming.denials==1&&incoming.grants==0&&f.permissions.pending==null&&f.a.requests==0);
+    }
+    try(Fixture f=new Fixture()){
+      f.a.granted.add(CAMERA);Request older=f.camera(),incoming=f.camera(),fresh=f.camera();f.request(older);
+      older.denied=()->{f.permissions.onNavigation(f.view);f.request(fresh);f.allow();};f.request(incoming);
+      check("A newer document can finish consent inside the prior denial callback",fresh.grants==1&&fresh.denials==0);
+      check("An already-finished newer consent does not revive the incoming old-document request",incoming.denials==1&&incoming.grants==0&&f.permissions.pending==null);
+    }
+  }
   public static void main(String[] args){
     try(Fixture f=new Fixture()){
       f.a.granted.add(CAMERA);Request request=f.camera();f.request(request);
@@ -114,6 +153,7 @@ public final class BrowserPermissionsHost {
       Request closing=f.camera();f.request(closing);f.permissions.close();f.permissions.close();check("Close denies once and unregisters lifecycle",closing.denials==1&&f.a.application.callbacks.isEmpty()&&f.permissions.closed);
       Request late=f.camera();f.request(late);check("Closed owner rejects new request",late.denials==1&&late.grants==0);
     }
+    admissionReentry();
     check("Default HTTPS port canonicalizes origin only",BrowserPermissions.origin("https://EXAMPLE.COM:443/a").equals("https://example.com"));
     check("Nondefault HTTPS port remains origin scoped",!BrowserPermissions.origin("https://example.com:8443/a").equals(BrowserPermissions.origin("https://example.com/a")));
     System.out.println("{\"status\":\"passed\",\"passed\":"+checks.size()+",\"total\":"+checks.size()+",\"actualAndroidExecution\":false,\"actualWebViewExecution\":false}");

@@ -33,6 +33,13 @@ class GeckoWebView extends FrameLayout {
     return value;
   }
   void setHost(android.app.Activity activity){Context next=activity==null?owner.context:activity;if(displayContext.getBaseContext()!=next)blockedPopups.invalidate();if(activity==null)closeExitIpPage();displayContext.setBaseContext(next);}
+  void releaseHost(android.app.Activity activity){
+    if(activity==null||displayContext.getBaseContext()!=activity)return;
+    // Relinquish this host before dismissal/listener callbacks can bind its successor.
+    displayContext.setBaseContext(owner.context);
+    blockedPopups.invalidate();
+    if(displayContext.getBaseContext()==owner.context)closeExitIpPage();
+  }
   @Override public void onWindowFocusChanged(boolean focused){super.onWindowFocusChanged(focused);blockedPopups.focusChanged(focused);}
   OnTouchListener touches;
   @Override public void setOnTouchListener(OnTouchListener listener){touches=listener;}

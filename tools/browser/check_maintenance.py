@@ -65,16 +65,22 @@ def main():
         jobs.append((name, [command], target))
 
     host('address-policy', 'tests/browser-address-host/run.py', java)
+    host('browser-permissions', 'tests/browser-permissions-host/run.py', java)
     for name, script in [
         ('session-navigation', 'tests/gecko-navigation-host/session_navigation.py'),
         ('driver-ownership', 'tests/gecko-navigation-host/run.py'),
         ('gecko-activation', 'tests/gecko-activation-host/run.py'),
+        ('gecko-ui-lifecycle', 'tests/gecko-ui-host-lifecycle/run.py'),
         ('resource-client', 'tests/gecko-navigation-host/client_ready.py'),
         ('addon-lifecycle', 'tests/gecko-addon-lifecycle-host/run.py'),
         ('ip-transport', 'tests/gecko-ip-transport-host/run.py'),
         ('resource-recovery', 'tests/resource-recovery-host/run.py'),
         ('page-lifecycle', 'tests/browser-navigation-lifecycle-host/run.py'),
         ('reply-task-persistence', 'tests/reply-task-persistence-host/run.py'),
+        ('download-cancellation', 'tests/download-resume-host/run.py'),
+        ('download-persistence', 'tests/download-persistence-host/run.py'),
+        ('download-recovery', 'tests/download-recovery-host/run.py'),
+        ('saved-file-copy', 'tests/saved-copy-host/run.py'),
         ('draft-policy', 'tests/local-draft-policy-host/run.py'),
         ('chromium-navigation', 'tests/chromium-fingerprint-activity-host/run.py'),
         ('chromium-fingerprint-jobs', 'tests/chromium-fingerprint-jobs-host/run.py'),
@@ -160,7 +166,7 @@ def main():
                   startedAt=started_at, completedAt=datetime.now(timezone.utc).isoformat(),
                   durationSeconds=round(time.monotonic()-started, 3),
                   actualAndroidExecution=False, fullAppBuild=False, fullReleaseQualification=False,
-                  scope='Current production navigation, task/callback ownership, fingerprint transactions, route-change leases, address UI, browser entry and persistent profile behavior on declared host boundaries. Optional native Java API compilation. No device, website, network or full release acceptance.')
+                  scope='Current production navigation, UI host and permission ownership, task/file persistence and cancellation, fingerprint transactions, route-change leases, address UI, browser entry and persistent profile behavior on declared host boundaries. Optional native Java API compilation. No device, website, network or full release acceptance.')
     (out/'results.json').write_text(json.dumps(result, ensure_ascii=False, indent=2)+'\n')
     print(json.dumps(dict(status=result['status'], suites=len(rows), executionInputsUnchanged=stable)), flush=True)
     return 0 if passed else 1

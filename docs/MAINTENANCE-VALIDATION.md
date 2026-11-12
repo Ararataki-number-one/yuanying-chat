@@ -2,6 +2,42 @@
 
 日期：2026-11-11；上传与深度维护记录追加于 2026-11-12。此记录对应暂停新功能后的导航修复与维护整理，配套说明见 [MAINTENANCE-AUDIT.md](MAINTENANCE-AUDIT.md)。
 
+## 第四轮深度维护：界面、权限和文件生命周期
+
+起点为 `2ef73a275f4db849cf2ee5b740c2ed4055042699`，源码树 `58707a2518d92a1353682e687b97648269c0301c`。本轮只维护当前代码，版本保持 `2.1.4` / `106`。以下定向检查先复现原代码行为，再验证修复；整体验证与上传后的 APK 必须分别绑定本轮实际输入和新提交。
+
+| 验证 | 原代码行为证据 | 修复后定向结果 |
+| --- | --- | --- |
+| browser-permissions | HEAD 原源码成功编译，同网址刷新重入触发指定断言失败 | 62 / 62，原 43 项保留，新增 19 项 |
+| gecko-ui-lifecycle | 原组合成功编译；首份 39 项中 16 项失败，补充 pause 重入后 44 项中 20 项失败 | 53 / 53，17 个负控均成功编译后由行为断言拒绝 |
+| download-cancellation | 原组合成功编译，42 / 53，11 项失败 | 60 / 60，原 37 项保留，新增 23 项 |
+| saved-file-copy | 原组合成功编译，33 / 42，9 项失败 | 51 / 51，原红测 42 项保留，新增 9 项拒删检查 |
+| download-persistence / download-recovery | 保留原 fixture 与断言 | 39 / 39 和 42 / 42 |
+| display-acceptance | 保留原观测、40 秒 ready 时限、交互路径与预算 | 两个工具组 23 + 49 = 72 项；后者原 40 个方法 AST 不变 |
+
+UI 生命周期检查执行当前 `createChatUi`、`remoteClient`、生命周期方法、会话客户端、附件/下载安装销毁及 Gecko 回调分派；新绑定组件整类执行。引用遍历是确定性的宿主对象检查，不是真机 heap 分析。权限检查使用当前完整生产类，原 fixture 除新增方法及其调用外逐字保留。
+
+文件检查执行真实 Java 生产方法、JVM worker、文件租约与测试文件，Activity、偏好实现和文件提供方是声明的边界。原 persistence / recovery fixture 逐字保留；唯一接口迁移是 persistence runner 提取当前真实 `retirePrivateCopy()`。未更改原断言或历史源码投影。定向并行检查曾因 JDK `hsperfdata` 锁警告污染 stdout，被旧 runner 的严格 JSON 解析拒收；关闭该 JVM 诊断计数器后顺序重跑通过，没有放宽解析。
+
+### 统一入口与证据范围
+
+`tools/browser/check_maintenance.py` 在原 25 组基础上加入权限、UI 生命周期、下载取消、下载持久化、下载恢复、另存为，共 31 组。新增的 `GeckoUiBinding` 也列入可选的原生 Java 编译清单。完整 APK 构建仍使用实际 Android / Gecko SDK，不以生成的编译边界替代。
+
+冻结后的统一入口 **31 / 31 组通过，34 个命令均返回 0**。UTC 2026-11-12 05:54:25 至 05:59:57，耗时 **332.219 秒**。**1,985 个执行输入**、依赖与 HEAD 前后一致，`executionInputsUnchanged=true`、`changedInputs=[]`。执行时为上述起点加本轮未提交变更，`dirtySource=true`；不能用起点 SHA 冒充修改后的身份。
+
+总回执为 `/workspace/scratch/d82e7decf2fd/maintenance-validation/round3-final/results.json`，SHA-256：`0b126067cebde21fd0d5313ca82bdeb8ef5cf7cf40bd3465069304c333023180`。这次完整顺序运行中，原下载持久化与恢复组均正常生成回执，无须改变解析或 JVM 选项。
+
+定向证据另位于 `maintenance-validation/round3-permissions`、`round3-browser`、`round3-download` 和 `round3-ci-audit`。使用 Temurin 17.0.21+9 与固定 JSON jar，SHA-256 为 `3ea61b2a06e31edf1c91134fe9106b0ebb16628be169f3db75bc7a2b06b45796`。本地没有执行可选完整 Android API 编译、APK 或设备运行；上传后的新提交结果追加到 PR #7，不能沿用旧提交的 APK。
+
+### 上轮 `2ef73a2` 的最终 CI 状态
+
+- [current-maintenance 作业 130974413774](https://github.com/Ararataki-number-one/yuanying-chat/actions/runs/43155512845/job/130974413774)：25 / 25 组通过，349.777 秒，1,971 个输入不变、`dirtySource=false`。回执 SHA-256 为 `bfafdbc13ff7d39cb264733e2641ae04d9da00963660472d79b29f828a8411d9`。
+- [official-sdk-build 作业 130974440252](https://github.com/Ararataki-number-one/yuanying-chat/actions/runs/43155521692/job/130974440252)：完整 release / integration APK 与 lint 成功，lint 0 errors、111 warnings；原生 SDK 与实际解析 AAR 身份核对成功。
+- [host-contracts 作业 130974439767](https://github.com/Ararataki-number-one/yuanying-chat/actions/runs/43155521692/job/130974439767)：1,562 项，60 failures、78 errors、1 skipped，138 个失败标识；127 项历史源码/AST 合同、10 项缺固定历史 Git 对象、1 项缺固定 Android 35 jar。旧启动 fixture 缺接口已在第三轮消除；其余失败没有消失。
+- [设备工作流 43155512845](https://github.com/Ararataki-number-one/yuanying-chat/actions/runs/43155512845)：API 35 玻璃 4 / 7，长按环境 7 / 7 都通过；阅读 5、9 帧超预算 2，后台 1 帧超预算 0。三次追加诊断均零绘制，但不能覆盖此前窗口的失败。API 32 横屏 2472 × 1236 与要求 2676 × 1236 不符，正确拒绝且恢复尺寸已验证；随后 7 / 7 未取得 ready，fixture 请求为零，未进入交互或空闲测量阶段。两个 API 的独立 Chromium 原生界面 smoke 均 2 / 2，通过不代表真实网页或保护策略已验收。
+
+设备审计回执 `round3-ci-audit/device-audit.json` 的 SHA-256 为 `847f54781e6f8410cacfb84d020b5dc90d2a43e452cce5fea9d52ac618a8908a`。本轮只补充 ready 失败后诊断，不声称已经修复 API 32 启动或 API 35 绘制问题。未修改等待期限、绘制预算、历史 pin、工作流或正式玻璃实现。
+
 ## 第三轮深度维护：冻结后的当前源码检查
 
 本轮从 `b389db2da1b53c26ce83c3c9415be9fb515303b1`、源码树 `efa3482cc8408eb51a2bf3f8782bac77297db541` 继续，保留此前导航、指纹事务、网络租约和集成接点修复。正式基准、版本 `2.1.4` / `106`、默认 ChatGPT 主页、两种内核接入和玻璃实现不变。

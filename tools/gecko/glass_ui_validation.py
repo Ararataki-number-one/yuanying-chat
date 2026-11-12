@@ -47,6 +47,93 @@ def total_frames(raw):
     return int(values[0])
 
 
+def collapse_start_trace(raw, identity, nonce):
+    """Keep only this case's existing native counters, never page/user content."""
+    if len(raw) > 1024 * 1024:
+        raise ValueError('Collapse startup trace exceeds its bounded buffer')
+    stages = {'waiting', 'route-return', 'document-ready-before', 'document-ready-after',
+              'start-before', 'page-finished-before', 'page-finished-after', 'load-before',
+              'load-return', 'ready-evaluate', 'ready-callback', 'snapshot-evaluate',
+              'snapshot-callback', 'emit-before', 'emit-queued'}
+    strings = {'runNonce', 'sourceCommit', 'sourceTree', 'stage'}
+    flags = {'diagnosticOnly', 'checkpointReady', 'runtimePresent', 'extensionPresent',
+             'identityPrepared', 'routePrepared', 'privacyReady', 'ready', 'failed', 'destroyed',
+             'resourceDeferred', 'sessionPresent', 'surfacePresent', 'portPresent', 'usable',
+             'queuedTarget', 'routePortPresent', 'guardBlocked', 'networkReady', 'browserPaused',
+             'uiVisible', 'navigating'}
+    counters = {'schema', 'sequence', 'elapsedMs', 'requestedProtection', 'protectionRequest',
+                'protectionLevel', 'documents', 'readyEvaluations', 'readyCallbacks',
+                'snapshotEvaluations', 'snapshotCallbacks', 'eventSequence', 'routeCalls',
+                'fixtureRoutes', 'blockedRoutes', 'otherRoutes'}
+    records, lines = [], []
+    for line in raw.decode('utf-8', 'strict').splitlines():
+        if not line.startswith('{'):
+            continue
+        value = json.loads(line)
+        if type(value) is not dict or value.get('runNonce') != nonce:
+            continue
+        if (set(value) != strings | flags | counters
+                or any(type(value[key]) is not str for key in strings)
+                or any(type(value[key]) is not bool for key in flags)
+                or any(type(value[key]) is not int or not -1 <= value[key] < 2**63 for key in counters)
+                or value['schema'] != 1
+                or value.get('diagnosticOnly') is not True
+                or any(value.get(key) != identity[key] for key in ('sourceCommit', 'sourceTree'))
+                or value.get('stage') not in stages
+                or type(value.get('sequence')) is not int or not 1 <= value['sequence'] <= 80
+                or records and value['sequence'] <= records[-1]['sequence']):
+            raise ValueError('Collapse startup diagnostic identity, sequence or scalar boundary differs')
+        records.append(value)
+        lines.append(line)
+    return records, ('\n'.join(lines) + ('\n' if lines else '')).encode('utf-8')
+
+
+def capture_ready_failure(out, case, identity, adb, start_output):
+    """Observe an already failed ready gate; never retry it or change its result."""
+    result = case['readyFailureDiagnostics'] = dict(status='incomplete', diagnosticOnly=True,
+        applicationAcceptance=False, readyGateAlreadyFailed=True, runNonce=case['runNonce'],
+        sourceCommit=identity['sourceCommit'], sourceTree=identity['sourceTree'],
+        scope='Post-failure existing native startup counters and resumed component; not a new readiness gate',
+        errors=[])
+
+    def save(suffix, raw):
+        path = out / (case['name'] + '-' + suffix)
+        path.write_bytes(raw)
+        return dict(file=path.name, bytes=len(raw), sha256=hashlib.sha256(raw).hexdigest())
+
+    try:
+        if not isinstance(start_output, bytes) or len(start_output) > 16384:
+            raise ValueError('Controlled activity launch output exceeds its boundary')
+        result['launchOutput'] = save('launch-output.txt', start_output)
+    except Exception as error:
+        result['errors'].append(dict(stage='launch-output', errorType=type(error).__name__, error=str(error)))
+    try:
+        raw = adb('logcat', '-d', '-v', 'raw', '-s', 'PocketCollapseTrace:I', '*:S', timeout=6)
+        records, selected = collapse_start_trace(raw, identity, case['runNonce'])
+        result['nativeTrace'] = dict(save('collapse-start-trace.log', selected), records=records,
+            rawBufferBytes=len(raw), rawBufferSha256=hashlib.sha256(raw).hexdigest(),
+            currentCaseOnly=True, status='captured' if records else 'missing')
+    except Exception as error:
+        result['errors'].append(dict(stage='native-trace', errorType=type(error).__name__, error=str(error)))
+    try:
+        raw = adb('shell', 'dumpsys', 'activity', 'activities', timeout=6)
+        if len(raw) > 2 * 1024 * 1024:
+            raise ValueError('Activity diagnostic exceeds its bounded buffer')
+        # Retain only resumed records; the remaining task/Intent dump can contain URLs.
+        lines = [line for line in raw.decode('utf-8', 'strict').splitlines()
+                 if re.match(r'^\s*(?:mResumedActivity|topResumedActivity)[:=]\s*ActivityRecord\{'
+                             r'[0-9a-f]+ u[0-9]+ [A-Za-z0-9_.$]+/[A-Za-z0-9_.$]+ t[0-9]+\}\s*$', line)]
+        result['resumedActivity'] = dict(save('ready-failed-activity.txt',
+            ('\n'.join(lines) + ('\n' if lines else '')).encode('utf-8')), records=lines,
+            status='captured' if lines else 'missing')
+    except Exception as error:
+        result['errors'].append(dict(stage='resumed-activity', errorType=type(error).__name__, error=str(error)))
+    if (not result['errors'] and result['nativeTrace']['status'] == 'captured'
+            and result['resumedActivity']['status'] == 'captured'):
+        result['status'] = 'captured'
+    return result
+
+
 def idle_draw_records(raw, identity, nonce, request, phase):
     """Parse bounded post-failure observations; these never establish acceptance."""
     rows = []
@@ -837,10 +924,19 @@ def capture_acceptance_suite(args, report, capture, adb, wait_for, tap, screensh
                     typography(case, 'workspace')
                     observations[case['runNonce']] = EventTransfer(identity=identity, nonce=case['runNonce'],
                         slot=0, action='chromeCollapse', fetch=lambda uri: adb('exec-out', 'content', 'read', '--uri', uri))
-                    adb('shell', 'am', 'start', '-W', '-n', component,
+                    start_output = adb('shell', 'am', 'start', '-W', '-n', component,
                         '--es', 'compactAction', 'collapseStart', '--ei', 'chromeNavigationVersion', '2',
                         '--es', 'eventNonce', case['runNonce'], '--ez', 'longName', 'false')
-                    observed_event(case, 'ready', request=False)
+                    try:
+                        observed_event(case, 'ready', request=False)
+                    except Exception:
+                        try:
+                            capture_ready_failure(args.out, case, identity, adb, start_output)
+                        except Exception as diagnostic_error:
+                            case.setdefault('readyFailureDiagnostics', {}).setdefault('errors', []).append(
+                                dict(stage='diagnostic-collector', errorType=type(diagnostic_error).__name__,
+                                     error=str(diagnostic_error)))
+                        raise
                     case['actualConfiguration'] = adb('shell', 'am', 'get-config').decode().strip()
                     case['observedFontSetting'] = adb('shell', 'settings', 'get', 'system', 'font_scale').decode().strip()
                     if abs(float(case['observedFontSetting']) - scale) > .001:
