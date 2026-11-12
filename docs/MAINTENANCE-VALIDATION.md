@@ -1,8 +1,77 @@
 # 浏览器维护验证记录
 
-日期：2026-11-11。此记录对应暂停新功能后的导航修复与维护整理，配套说明见 [MAINTENANCE-AUDIT.md](MAINTENANCE-AUDIT.md)。
+日期：2026-11-11；上传与深度维护记录追加于 2026-11-12。此记录对应暂停新功能后的导航修复与维护整理，配套说明见 [MAINTENANCE-AUDIT.md](MAINTENANCE-AUDIT.md)。
 
-## 结果与源码归属
+## 上传后的完整 APK 构建
+
+第一轮导航补丁已上传为 `0a95be3d15e42c679343d9a6caa7bdea6758bcf9`，源码树 `2811d7e3f34cde413be5337b4fc4c2e18c35f5ba`。该树与下面 18 组原始回执记录的 409 个输入逐一一致。版本保持 `2.1.4` / `106`，PR #7 仍为 Draft。
+
+- [浏览器工作流 43125924155](https://github.com/Ararataki-number-one/yuanying-chat/actions/runs/43125924155)：API 32、35 两组均通过完整 `assembleRelease`、`assembleIntegration`、`lintRelease` 以及源码 / APK stamp 检查。
+- [SDK 构建作业 130877864561](https://github.com/Ararataki-number-one/yuanying-chat/actions/runs/43125931795/job/130877864561)：整作业通过。原 `build.log` 显示上述任务与 `writeCaretResolvedArtifacts` 实际执行并 `BUILD SUCCESSFUL`，不是缓存的旧提交结论。
+- 原生 SDK 仍为 `local.pocketchat.sdk:geckoview-caret:157.0.20261005135250-pocket3`；实际解析 AAR SHA-256 为 `f9fad20c02e554b00da51b72c8cd2643e121b4a81bc656dd5cf03de21ded2e72`，`gradleResolvedAarVerified=true`。
+- release 与 integration 两种 ABI 均构建；测试包名为 `local.pocketchat.test`，使用临时测试签名，不是正式更新发布。release APK 中没有测试 stamp。
+
+构建回执 `ci-0a95be3-build-receipt.json` 的 SHA-256 为 `88d9a3de20ceff0ae2b68641ca112a1aa8667ee33bc043994a7bb300a81e8f5e`，来自实际 Actions 原始日志及已核对 ZIP 摘要的构建制品。
+
+lint 没有 error，仍有 **115 条 warning**。与父提交 `815f7fee` 的 114 条按诊断 ID、消息和文件比较，增加一条 `WebReplyObserver.archiveNavigation` 的 `ApplySharedPref`：偏好监听器重入后恢复 `pending` 的提交未读取返回值。不能机械改为 `apply()`，其持久化失败语义应与任务终局单独整理。
+
+全量宿主检查仍失败：[host-contracts 作业 130877864935](https://github.com/Ararataki-number-one/yuanying-chat/actions/runs/43125931795/job/130877864935) 的主 discover 实际运行 1,560 项，65 failures、70 errors、1 skipped。按最终失败头去重的 135 项中，117 项属于历史源码 / AST 身份及其保留合同，10 项缺少固定历史 Git 对象，1 项缺少 Android 35 编译依赖，7 项是当前宿主协作接口缺失；其中 Dashboard 启动入口缺失在父提交已存在，本轮导航变更另暴露 3 组、6 项接口迁移遗漏。它们需要按实际接口修复，不能由新增当前维护作业的通过结论替代。
+
+以上完整 APK 结论仅绑定 `0a95be3`。后续深度维护修改必须另有对应新源码的验证和 APK 结果，不能沿用本次构建成功。
+
+## 第二轮深度维护的本地验证
+
+统一入口 **22 / 22 组通过**，运行时间 **385.806 秒**，UTC 00:34:41 至 00:41:06。**426 个生产与宿主输入**、全部依赖和执行期间 HEAD 前后一致，`changedInputs` 为空。
+
+执行时 HEAD 是 `0a95be3d15e42c679343d9a6caa7bdea6758bcf9`、工作区含尚未提交的深度维护变更，回执如实记录 `dirtySource=true`。实际执行内容由逐文件哈希绑定，不能将父提交当作本轮生产修改。下次完整 APK 与 CI 当前维护作业必须绑定新提交。
+
+证据目录：`/workspace/scratch/d82e7decf2fd/maintenance-validation/deep-final`。
+
+| 回执 | SHA-256 |
+| --- | --- |
+| 22 组 `results.json` | `9dcefb9acfdbb0888ed557e0fb003da4753c19e974d8350516207377d1ac0caa` |
+| 68 个完整生产 Java 类 `native-compile/receipt.json` | `73566432bbe96270557f28ad0e0beaf8c48a9774a6cfb09b62e8fd47256e3986` |
+| 三组当前宿主接口迁移汇总 | `f78e631882beddf0190cc1ba0972b16b09bbab6d16ad5a65f970439b890e787c` |
+
+### 主要新增 / 扩展检查
+
+| 组 | 本次实际结果 | 验证内容 |
+| --- | --- | --- |
+| chromium-navigation | 316 项，8 个编译后反例 | 原 276 项保留；新增 11 项失败停网 / 重入，29 项实际 load / save / validate / ensure 调用 |
+| chromium-fingerprint-jobs | 32 项，4 个编译后反例 | 完整 Jobs + Store / Spec，快照、串行事务、CAS、关闭排空 / 禁止旧交付、执行器拒绝 |
+| route-start | 65 项 | 原 43 条名称和顺序保留；22 条新租约与连续启动边界 |
+| route-terminal | 8 项 | 实际终局观察器与当前启动方法 |
+| route-lease | 48 项 | 实际租约、准入、候选与释放唤醒 |
+| native-compile | 68 个完整类，262 个编译边界文件 | 新 Jobs 已加入完整生产类；Android / WebKit / SnakeYAML 均为实际依赖 |
+
+其余第一轮各组仍包含在本次统一执行中并通过；不以旧回执代替重新执行。当前维护 CI 作业不传三个原生编译依赖，因此执行 **21 个宿主组**；完整 APK / lint 在同工作流原有独立作业执行。
+
+原缺陷均先用修改前源码成功编译并触发指定失败：保护模式自测结果写盘失败仍放行，以及第二轮重启过早释放变更租约。对应原始回执为 `deep-audit/fingerprint-receipt-failure-new-head.json` 和 `deep-state/red-before-fix.json`。
+
+### 针对实际 CI 接口遗漏的补充验证
+
+以下单独回执不混入 22 组计数：
+
+- PageBridge：桌面及 Android JSON 各原 32 项 + 独立导航 dispatch 4 项通过；原四个可编译反例分别在原 32 项中得到 28 / 26 / 29 / 31 项通过，均按预期被拒绝。
+- SourceCaseHandoff：两种 JSON 各原 36 项通过，observer 与 deadline 守卫保留。
+- ResourceRetirement：38 条原契约 + 2 条有明确理由的当前所有权迁移，共 40 项；原 8 条 pending、原 2 个负控与新 2 个负控通过。旧 / 新谓词逐条保存在 `resource-navigation-ownership.json`，见维护审查中的迁移说明。
+- 当前 network-core 提取入口 28 项通过，回执 `deep-state/network-core-final.json` 绑定下面最终 NativeNetwork 哈希。
+
+这些测试迁移对应第一次上传 CI 中本轮新增的 6 个当前宿主编译失败；旧 Dashboard 入口与其余历史校验未更改，也没有据此宣称全量 discover 已通过。
+
+补充验证使用的 Android JSON 为 `android-json-0.0.20131108.vaadin1.jar`，SHA-256 `dfb7bae2f404cfe0b72b4d23944698cb716b7665171812a0a4d0f5926c0fac79`。统一 22 组仍使用固定的桌面 JSON。其他 JDK / API / WebKit / SnakeYAML 版本与下方第一轮依赖表相同。
+
+### 本轮三个生产文件
+
+| 文件 | SHA-256 |
+| --- | --- |
+| `BrowserActivity.java` | `0ecd479e779fb656227000a18c3d9615d53785f9ec37a96faf098a9c89d83494` |
+| `ChromiumFingerprintJobs.java`（新增） | `628797b8d258a95db775ad9976cc74ceccbc2992075cd004929ea17711d12180` |
+| `NativeNetwork.java` | `b15ac95e7a6555f98dff2a43d8c3c58b0c9bda067b3aea7f430ddc147d808dd9` |
+
+本轮不修改 Gecko、ChatSession、玻璃渲染、版本、更新源或签名。上述宿主与 API 编译回执均不代表 Android / Gecko / Chromium 实机运行；旧页 JavaScript 的立即停止也不在资源宿主证明范围内。
+
+## 第一轮宿主结果与源码归属
 
 本轮统一入口的 **18 / 18 组通过**，运行时间为 **284.728 秒**，UTC 16:23:43 至 16:28:28。执行器记录的 **409 个生产与宿主输入文件**、依赖文件和运行时 HEAD 在执行前后未变，`changedInputs` 为空。另在同一冻结源码窗口执行了资源恢复的 3 个现有故障变体：均成功编译并执行，在各自指定行为断言被拒绝。
 

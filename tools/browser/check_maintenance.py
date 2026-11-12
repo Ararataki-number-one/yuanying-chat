@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run current-source browser navigation regressions without historical source views.
+"""Run current-source browser and network regressions without historical source views.
 
 This is a focused maintenance check, not the full release or device acceptance.
 Each child retains its original behavioral assertions and negative controls.
@@ -37,6 +37,10 @@ def main():
     for path in [java_home/'bin/java', java_home/'bin/javac', jar, *[p for p in native if p]]:
         if not path.is_file():
             parser.error('Missing dependency: '+str(path))
+    compiler = subprocess.check_output([str(java_home/'bin/javac'), '-version'], stderr=subprocess.STDOUT, text=True).strip()
+    if not compiler.startswith('javac 17.'):
+        parser.error('The maintenance checks require JDK 17')
+    runtime = subprocess.check_output([str(java_home/'bin/java'), '-version'], stderr=subprocess.STDOUT, text=True).strip()
     out.mkdir(parents=True, exist_ok=True)
     env = dict(os.environ, JAVA_HOME=str(java_home), PROFILE_JAVA=str(java_home/'bin/java'),
                PROFILE_JSON_JAR=str(jar), BROWSER_ENTRY_REPORT=str(out/'environment-entry.json'))
@@ -62,6 +66,10 @@ def main():
         ('page-lifecycle', 'tests/browser-navigation-lifecycle-host/run.py'),
         ('draft-policy', 'tests/local-draft-policy-host/run.py'),
         ('chromium-navigation', 'tests/chromium-fingerprint-activity-host/run.py'),
+        ('chromium-fingerprint-jobs', 'tests/chromium-fingerprint-jobs-host/run.py'),
+        ('route-start', 'tests/source-route-start-host/run.py'),
+        ('route-terminal', 'tests/source-route-start-host/terminal_join.py'),
+        ('route-lease', 'tests/chromium-route-host/lease_boundaries.py'),
     ]:
         host(name, script, [*java, '--json-jar', jar])
     host('page-recovery', 'tests/page-recovery-host/run.py', ['--json-jar', jar], report=False)
@@ -102,6 +110,8 @@ def main():
     hashes = {str(path.relative_to(ROOT)): digest(path) for path in sorted(set(inputs))}
     dependencies = {str(path.resolve()): digest(path) for path in [jar, *[p for p in native if p]]}
     commit = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip()
+    tree = subprocess.check_output(['git', 'rev-parse', 'HEAD^{tree}'], cwd=ROOT, text=True).strip()
+    dirty = bool(subprocess.check_output(['git', 'status', '--porcelain'], cwd=ROOT, text=True).strip())
     started_at, started = datetime.now(timezone.utc).isoformat(), time.monotonic()
     rows = []
     for name, commands, report in jobs:
@@ -137,12 +147,13 @@ def main():
     changed += [name for name, value in dependencies.items() if not Path(name).is_file() or digest(Path(name)) != value]
     stable = not changed and subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip() == commit
     passed = stable and all(row['status'] == 'passed' for row in rows)
-    result = dict(status='passed' if passed else 'failed', sourceCommit=commit, sourceFiles=hashes,
+    result = dict(status='passed' if passed else 'failed', sourceCommit=commit, sourceTree=tree,
+                  dirtySource=dirty, sourceFiles=hashes, javaVersion=runtime, compilerVersion=compiler,
                   executionInputsUnchanged=stable, changedInputs=changed, dependencies=dependencies, suites=rows,
                   startedAt=started_at, completedAt=datetime.now(timezone.utc).isoformat(),
                   durationSeconds=round(time.monotonic()-started, 3),
                   actualAndroidExecution=False, fullAppBuild=False, fullReleaseQualification=False,
-                  scope='Current production navigation, task/callback ownership, address UI, browser entry and persistent profile behavior on declared host boundaries. Optional native Java API compilation. No device, website, network or full release acceptance.')
+                  scope='Current production navigation, task/callback ownership, fingerprint transactions, route-change leases, address UI, browser entry and persistent profile behavior on declared host boundaries. Optional native Java API compilation. No device, website, network or full release acceptance.')
     (out/'results.json').write_text(json.dumps(result, ensure_ascii=False, indent=2)+'\n')
     print(json.dumps(dict(status=result['status'], suites=len(rows), executionInputsUnchanged=stable)), flush=True)
     return 0 if passed else 1

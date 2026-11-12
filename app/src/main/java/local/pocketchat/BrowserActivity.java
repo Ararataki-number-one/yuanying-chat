@@ -25,8 +25,8 @@ public class BrowserActivity extends ThemedActivity {
   LinearLayout root,findBar;FrameLayout content;EditText address,findText;TextView environmentName,caption,notice,findCount;Button environmentButton,back,forward,tabCount,reload;
   ProgressBar progress;ChromiumRuntime runtime;BrowserFiles files;BrowserLibrary library;BrowserPermissions permissions;
   final ExecutorService cookieWorker=Executors.newSingleThreadExecutor(r->new Thread(r,"browser-cookie-save"));final AtomicBoolean flushingCookies=new AtomicBoolean();
-  final ExecutorService fingerprintWorker=Executors.newSingleThreadExecutor(r->new Thread(r,"chromium-fingerprint-state"));
   final Handler fingerprintMain=new Handler(Looper.getMainLooper());
+  ChromiumFingerprintJobs fingerprintJobs;
   final String fingerprintRuntimeEpoch=UUID.randomUUID().toString();
   volatile ChromiumFingerprintStore.State fingerprintState;
   ChromiumFingerprintSpec fingerprintSpec;String fingerprintScript,fingerprintError="",fingerprintProvider="";
@@ -66,6 +66,7 @@ public class BrowserActivity extends ThemedActivity {
   @Override protected void onCreate(Bundle state){
     super.onCreate(state);
     if(!ProfileCatalog.get(this).available(Profiles.slot(this))){finish();return;}
+    fingerprintJobs=new ChromiumFingerprintJobs(getApplicationContext(),fingerprintMain::post);
     library=new BrowserLibrary(this);
     buildUi();runtime=new ChromiumRuntime(this,this::routeChanged);files=new BrowserFiles(this,this::message,runtime);permissions=new BrowserPermissions(this,this::web,this::message);
     loadFingerprintState();
@@ -117,37 +118,67 @@ public class BrowserActivity extends ThemedActivity {
   WebView web(){return selected==null?null:selected.web;}
   boolean live(Tab tab,WebView source){return !destroyed&&tabs.contains(tab)&&tab.web==source;}
   void message(String text){if(destroyed)return;notice.setText(text==null?"":text);notice.setVisibility(text==null||text.isEmpty()?View.GONE:View.VISIBLE);}
-  static boolean sameFingerprintPolicy(ChromiumFingerprintStore.State first,ChromiumFingerprintStore.State second){return first!=null&&second!=null&&first.identity.equals(second.identity)&&first.revision==second.revision&&first.seed.equals(second.seed)&&first.spec().toString().equals(second.spec().toString());}
+  static boolean sameFingerprintPolicy(ChromiumFingerprintStore.State first,ChromiumFingerprintStore.State second){return ChromiumFingerprintJobs.samePolicy(first,second);}
   String fingerprintProviderKey(){try{PackageInfo provider=WebView.getCurrentWebViewPackage();return provider==null||provider.versionName==null?"":provider.packageName+"/"+provider.versionName;}catch(RuntimeException unavailable){return "";}}
   boolean fingerprintProviderMatches(Tab tab){try{PackageInfo provider=WebView.getCurrentWebViewPackage();return provider!=null&&provider.packageName.equals(tab.fingerprintProviderPackage)&&Objects.equals(provider.versionName,tab.fingerprintProviderVersion);}catch(RuntimeException unavailable){return false;}}
   boolean fingerprintTraffic(Tab tab,WebView view){return !destroyed&&fingerprintStateReady&&!fingerprintLoading&&!fingerprintSaving&&tab!=null&&view!=null&&tab.web==view&&tab.fingerprintReady&&tab.fingerprint!=null&&fingerprintState!=null&&tab.fingerprintPolicy==fingerprintState&&runtime!=null&&runtime.allowed();}
-  boolean fingerprintCurrent(Tab tab,WebView view,ChromiumFingerprintStore.State state,ChromiumFingerprintStore.Binding binding){return tab!=null&&foreground&&selected==tab&&live(tab,view)&&!fingerprintLoading&&!fingerprintSaving&&fingerprintStateReady&&fingerprintState==state&&tab.fingerprintPolicy==state&&tab.fingerprintReady&&tab.fingerprint!=null&&binding!=null&&tab.fingerprintBinding==binding&&binding.providerPackage.equals(tab.fingerprintProviderPackage)&&binding.providerVersion.equals(tab.fingerprintProviderVersion)&&binding.runtimeEpoch.equals(fingerprintRuntimeEpoch)&&binding.surfaceGeneration==tab.surfaceGeneration&&binding.navigationGeneration==tab.generation&&fingerprintProviderMatches(tab);}
+  /** A failed current page may retain its own receipt after traffic is paused. */
+  boolean fingerprintBindingCurrent(Tab tab,WebView view,ChromiumFingerprintStore.State state,ChromiumFingerprintStore.Binding binding){
+    return tab!=null&&foreground&&selected==tab&&live(tab,view)
+        &&!fingerprintLoading&&!fingerprintSaving&&fingerprintStateReady
+        &&fingerprintState==state&&tab.fingerprintPolicy==state&&tab.fingerprint!=null
+        &&binding!=null&&tab.fingerprintBinding==binding
+        &&binding.providerPackage.equals(tab.fingerprintProviderPackage)
+        &&binding.providerVersion.equals(tab.fingerprintProviderVersion)
+        &&binding.runtimeEpoch.equals(fingerprintRuntimeEpoch)
+        &&binding.surfaceGeneration==tab.surfaceGeneration
+        &&binding.navigationGeneration==tab.generation&&fingerprintProviderMatches(tab);
+  }
+  boolean fingerprintCurrent(Tab tab,WebView view,ChromiumFingerprintStore.State state,ChromiumFingerprintStore.Binding binding){
+    return fingerprintBindingCurrent(tab,view,state,binding)&&tab.fingerprintReady;
+  }
   void syncFingerprintTraffic(){for(Tab tab:new ArrayList<>(tabs)){WebView view=tab.web;if(view!=null)try{view.getSettings().setBlockNetworkLoads(!fingerprintTraffic(tab,view));}catch(RuntimeException unavailable){retire(tab);}}}
   String fingerprintProblem(Exception error){String value=error.getMessage();return value==null||value.trim().isEmpty()?"配置或内核能力未确认":value.replace('\n',' ').replace('\r',' ').substring(0,Math.min(220,value.length()));}
   void loadFingerprintState(){
     if(destroyed||fingerprintLoading||fingerprintSaving)return;
     fingerprintLoading=true;fingerprintStateReady=false;long generation=++fingerprintLoadGeneration;
     final long workerPolicy=runtime==null?0:runtime.beginWorkerPolicy();
-    invalidateFingerprintObservation();if(selected!=null)retireFingerprintBinding(selected);syncFingerprintTraffic();
-    String cached=fingerprintScript;Context context=getApplicationContext();
-    try{fingerprintWorker.execute(()->{
-      try{
-        ChromiumFingerprintStore.State state=ChromiumFingerprintStore.load(context);ChromiumFingerprintSpec spec=ChromiumFingerprintSpec.from(state.spec());
-        String script=cached;if(script==null)try(java.io.InputStream input=context.getAssets().open("chromium-fingerprint.js")){script=J.text(input,256*1024);}
-        final String selectedScript=script;
-        fingerprintMain.post(()->{
-          if(destroyed||generation!=fingerprintLoadGeneration)return;
-          String provider=fingerprintProviderKey();boolean changed=!sameFingerprintPolicy(fingerprintState,state)||!provider.equals(fingerprintProvider),rebuild=changed&&fingerprintState!=null;
-          if(changed){if(files!=null)files.cancelActiveDownload();for(Tab tab:new ArrayList<>(tabs)){retire(tab);tab.saved=null;tab.fingerprintError="";tab.desktop=spec.desktop();}fingerprintState=state;}
-          fingerprintSpec=spec;fingerprintScript=selectedScript;fingerprintProvider=provider;fingerprintError="";fingerprintLoading=false;
-          if(runtime==null||!runtime.confirmWorkerPolicy(workerPolicy,state.identity,state.revision,spec.restrictWorkers())){
-            fingerprintStateReady=false;fingerprintError="Chromium 后台 Worker 策略未获内核确认，网页联网已暂停";syncFingerprintTraffic();message(fingerprintError);return;
-          }
-          fingerprintStateReady=true;
-          if(rebuild)for(Tab tab:new ArrayList<>(tabs))createSurface(tab);syncFingerprintTraffic();showSelected();drainFingerprintFileResult();updateChrome();if(fingerprintOpenAfterLoad){fingerprintOpenAfterLoad=false;showFingerprintSettings();}
-        });
-      }catch(Exception failure){fingerprintMain.post(()->{if(destroyed||generation!=fingerprintLoadGeneration)return;fingerprintLoading=false;fingerprintStateReady=false;fingerprintError="Chromium 指纹配置未确认："+fingerprintProblem(failure);syncFingerprintTraffic();cancelFingerprintFileResult("指纹配置未确认，未向网页交付所选文件");message(fingerprintError);});}
-    });}catch(RejectedExecutionException closed){fingerprintLoading=false;fingerprintStateReady=false;}
+    invalidateFingerprintObservation();
+    if(selected!=null)retireFingerprintBinding(selected);
+    syncFingerprintTraffic();
+    fingerprintJobs.load(fingerprintScript,loaded->{
+      if(destroyed||generation!=fingerprintLoadGeneration)return;
+      ChromiumFingerprintStore.State state=loaded.state;
+      ChromiumFingerprintSpec spec=loaded.spec;
+      String provider=fingerprintProviderKey();
+      boolean changed=!sameFingerprintPolicy(fingerprintState,state)||!provider.equals(fingerprintProvider);
+      boolean rebuild=changed&&fingerprintState!=null;
+      if(changed){
+        if(files!=null)files.cancelActiveDownload();
+        for(Tab tab:new ArrayList<>(tabs)){
+          retire(tab);tab.saved=null;tab.fingerprintError="";tab.desktop=spec.desktop();
+        }
+        fingerprintState=state;
+      }
+      fingerprintSpec=spec;fingerprintScript=loaded.script;fingerprintProvider=provider;
+      fingerprintError="";fingerprintLoading=false;
+      if(runtime==null||!runtime.confirmWorkerPolicy(workerPolicy,state.identity,state.revision,spec.restrictWorkers())){
+        fingerprintStateReady=false;
+        fingerprintError="Chromium 后台 Worker 策略未获内核确认，网页联网已暂停";
+        syncFingerprintTraffic();message(fingerprintError);return;
+      }
+      fingerprintStateReady=true;
+      if(rebuild)for(Tab tab:new ArrayList<>(tabs))createSurface(tab);
+      syncFingerprintTraffic();showSelected();drainFingerprintFileResult();updateChrome();
+      if(fingerprintOpenAfterLoad){fingerprintOpenAfterLoad=false;showFingerprintSettings();}
+    },failure->{
+      if(destroyed||generation!=fingerprintLoadGeneration)return;
+      fingerprintLoading=false;fingerprintStateReady=false;
+      fingerprintError="Chromium 指纹配置未确认："+fingerprintProblem(failure);
+      syncFingerprintTraffic();
+      cancelFingerprintFileResult("指纹配置未确认，未向网页交付所选文件");
+      message(fingerprintError);
+    });
   }
   JSONObject fingerprintNativeFields(JSONObject receipt){
     JSONObject workerNetwork=runtime==null?new JSONObject():runtime.workerPolicyReceipt();
@@ -158,10 +189,15 @@ public class BrowserActivity extends ThemedActivity {
       "workers",J.obj("state","unsupported","detail","Worker、Service Worker、OffscreenCanvas、AudioWorklet、字体与 TLS 等未获完整覆盖确认"));}
   ChromiumFingerprintStore.Binding fingerprintBinding(Tab tab){return new ChromiumFingerprintStore.Binding(tab.fingerprintProviderPackage,tab.fingerprintProviderVersion,fingerprintRuntimeEpoch,tab.surfaceGeneration,tab.generation);}
   void retireFingerprintBinding(Tab tab){
-    ChromiumFingerprintStore.Binding binding=tab.fingerprintBinding;ChromiumFingerprintStore.State state=tab.fingerprintPolicy;
-    tab.fingerprintBinding=null;tab.fingerprintBindingPending=false;tab.fingerprintBindingReady=false;if(tab==selected)fingerprintReceipt=new JSONObject();
-    if(binding==null||state==null)return;Context context=getApplicationContext();
-    try{fingerprintWorker.execute(()->{try{ChromiumFingerprintStore.retire(context,state.identity,binding);}catch(Exception ignored){}});}catch(RejectedExecutionException ignored){}
+    ChromiumFingerprintStore.Binding binding=tab.fingerprintBinding;
+    ChromiumFingerprintStore.State state=tab.fingerprintPolicy;
+    tab.fingerprintBinding=null;tab.fingerprintBindingPending=false;tab.fingerprintBindingReady=false;
+    if(tab==selected)fingerprintReceipt=new JSONObject();
+    if(binding==null||state==null)return;
+    fingerprintJobs.retire(state,binding,failure->{
+      // The in-memory owner is already invalid. Durable cleanup is best effort;
+      // a later receipt still requires an exact active binding in the store.
+    });
   }
   void validateFingerprintSurface(Tab tab,WebView view){
     ChromiumFingerprintStore.State state=fingerprintState;
@@ -170,32 +206,38 @@ public class BrowserActivity extends ThemedActivity {
     tab.fingerprintValidating=true;
     ChromiumFingerprintStore.Binding binding=selected==tab&&foreground?fingerprintBinding(tab):null;
     if(binding!=null){retireFingerprintBinding(tab);tab.fingerprintBinding=binding;tab.fingerprintBindingPending=true;}
-    String fields=fingerprintNativeFields(tab.fingerprint.receipt()).toString();Context context=getApplicationContext();
-    try{fingerprintWorker.execute(()->{
-      try{
-        ChromiumFingerprintStore.State actual=ChromiumFingerprintStore.load(context);if(!sameFingerprintPolicy(actual,state))throw new java.io.IOException("指纹配置已改变，请重新读取后加载网页");
-        JSONObject receipt=null;if(binding!=null){ChromiumFingerprintStore.activate(context,state.identity,state.revision,binding);receipt=ChromiumFingerprintStore.record(context,state.identity,state.revision,binding,new JSONObject(fields));}
-        final JSONObject recorded=receipt;
-        fingerprintMain.post(()->{
-          if(!live(tab,view)||tab.fingerprintPolicy!=state)return;tab.fingerprintValidating=false;
-          if(fingerprintState!=state||fingerprintLoading||fingerprintSaving||!fingerprintStateReady)return;
-          if(!fingerprintProviderMatches(tab)){failFingerprintSurface(tab,view,new IllegalStateException("Chromium 组件已变化，旧确认已作废"));return;}
-          tab.fingerprintReady=true;
-          if(binding!=null&&fingerprintCurrent(tab,view,state,binding)){tab.fingerprintBindingPending=false;tab.fingerprintBindingReady=true;fingerprintReceipt=recorded;}
-          syncFingerprintTraffic();startFingerprintSurface(tab,view);ensureFingerprintBinding(tab);drainFingerprintFileResult();
-        });
-      }catch(Exception failure){fingerprintMain.post(()->{if(!live(tab,view)||tab.fingerprintPolicy!=state)return;tab.fingerprintValidating=false;failFingerprintSurface(tab,view,failure);fingerprintStateReady=false;syncFingerprintTraffic();loadFingerprintState();});}
-    });}catch(RejectedExecutionException closed){tab.fingerprintValidating=false;failFingerprintSurface(tab,view,closed);}
+    JSONObject fields=fingerprintNativeFields(tab.fingerprint.receipt());
+    fingerprintJobs.validate(state,binding,fields,receipt->{
+      if(!live(tab,view)||tab.fingerprintPolicy!=state)return;
+      tab.fingerprintValidating=false;
+      if(fingerprintState!=state||fingerprintLoading||fingerprintSaving||!fingerprintStateReady)return;
+      if(!fingerprintProviderMatches(tab)){failFingerprintSurface(tab,view,new IllegalStateException("Chromium 组件已变化，旧确认已作废"));return;}
+      tab.fingerprintReady=true;
+      if(binding!=null&&fingerprintCurrent(tab,view,state,binding)){
+        tab.fingerprintBindingPending=false;tab.fingerprintBindingReady=true;fingerprintReceipt=receipt;
+      }
+      syncFingerprintTraffic();startFingerprintSurface(tab,view);ensureFingerprintBinding(tab);drainFingerprintFileResult();
+    },failure->{
+      if(!live(tab,view)||tab.fingerprintPolicy!=state)return;
+      tab.fingerprintValidating=false;failFingerprintSurface(tab,view,failure);
+      fingerprintStateReady=false;syncFingerprintTraffic();loadFingerprintState();
+    });
   }
   void ensureFingerprintBinding(Tab tab){
     WebView view=tab.web;ChromiumFingerprintStore.State state=fingerprintState;
     if(selected!=tab||!foreground||!fingerprintTraffic(tab,view)||!fingerprintProviderMatches(tab)||tab.fingerprintBindingPending||tab.fingerprintBindingReady)return;
-    ChromiumFingerprintStore.Binding binding=fingerprintBinding(tab);tab.fingerprintBinding=binding;tab.fingerprintBindingPending=true;
-    String fields=fingerprintNativeFields(tab.fingerprint.receipt()).toString();Context context=getApplicationContext();
-    try{fingerprintWorker.execute(()->{try{
-      ChromiumFingerprintStore.activate(context,state.identity,state.revision,binding);JSONObject receipt=ChromiumFingerprintStore.record(context,state.identity,state.revision,binding,new JSONObject(fields));
-      fingerprintMain.post(()->{if(!fingerprintCurrent(tab,view,state,binding))return;tab.fingerprintBindingPending=false;tab.fingerprintBindingReady=true;fingerprintReceipt=receipt;drainFingerprintFileResult();});
-    }catch(Exception failure){fingerprintMain.post(()->{if(!fingerprintCurrent(tab,view,state,binding))return;tab.fingerprintBindingPending=false;failFingerprintSurface(tab,view,failure);fingerprintStateReady=false;syncFingerprintTraffic();loadFingerprintState();});}});}catch(RejectedExecutionException closed){tab.fingerprintBindingPending=false;}
+    ChromiumFingerprintStore.Binding binding=fingerprintBinding(tab);
+    tab.fingerprintBinding=binding;tab.fingerprintBindingPending=true;
+    JSONObject fields=fingerprintNativeFields(tab.fingerprint.receipt());
+    fingerprintJobs.activate(state,binding,fields,receipt->{
+      if(!fingerprintCurrent(tab,view,state,binding))return;
+      tab.fingerprintBindingPending=false;tab.fingerprintBindingReady=true;fingerprintReceipt=receipt;
+      drainFingerprintFileResult();
+    },failure->{
+      if(!fingerprintCurrent(tab,view,state,binding))return;
+      tab.fingerprintBindingPending=false;failFingerprintSurface(tab,view,failure);
+      fingerprintStateReady=false;syncFingerprintTraffic();loadFingerprintState();
+    });
   }
   void startFingerprintSurface(Tab tab,WebView view){
     if(!fingerprintTraffic(tab,view)||tab.fingerprintStarted&&tab.fingerprintNavigation==null)return;
@@ -264,17 +306,42 @@ public class BrowserActivity extends ThemedActivity {
   }
   void saveFingerprint(ChromiumFingerprintStore.State expected,JSONObject desired,boolean rotateSeed){
     if(destroyed||expected!=fingerprintState||!fingerprintStateReady||fingerprintLoading||fingerprintSaving){message("指纹配置已改变或正在读取，请重新打开设置");return;}
-    final JSONObject selectedSpec;try{selectedSpec=ChromiumFingerprintSpec.from(desired).json();if(rotateSeed&&!selectedSpec.toString().equals(ChromiumFingerprintSpec.from(expected.spec()).json().toString()))throw new IllegalArgumentException("请先保存配置，再单独更换稳定种子");}catch(Exception failure){message("指纹配置未保存："+fingerprintProblem(failure));return;}
-    fingerprintSaving=true;final long workerPolicy=runtime==null?0:runtime.beginWorkerPolicy();invalidateFingerprintObservation();if(files!=null)files.cancelActiveDownload();if(selected!=null)retireFingerprintBinding(selected);syncFingerprintTraffic();Context context=getApplicationContext();
-    try{fingerprintWorker.execute(()->{try{
-      ChromiumFingerprintStore.State actual=rotateSeed?ChromiumFingerprintStore.rotate(context,expected.identity,expected.revision):ChromiumFingerprintStore.save(context,expected.identity,expected.revision,selectedSpec);
-      ChromiumFingerprintSpec spec=ChromiumFingerprintSpec.from(actual.spec());
-      fingerprintMain.post(()->{if(destroyed)return;fingerprintSaving=false;fingerprintStateReady=false;for(Tab tab:new ArrayList<>(tabs)){retire(tab);tab.saved=null;tab.fingerprintError="";tab.desktop=spec.desktop();}fingerprintState=actual;fingerprintSpec=spec;fingerprintError="";
-        if(runtime==null||!runtime.confirmWorkerPolicy(workerPolicy,actual.identity,actual.revision,spec.restrictWorkers())){
-          fingerprintError="Chromium 后台 Worker 策略未获内核确认，网页联网已暂停";syncFingerprintTraffic();message(fingerprintError);return;
-        }
-        fingerprintStateReady=true;for(Tab tab:new ArrayList<>(tabs))createSurface(tab);showSelected();updateChrome();message("此环境的 Chromium 指纹配置已保存，正在按新配置重新加载全部标签页");});
-    }catch(Exception failure){fingerprintMain.post(()->{if(destroyed)return;fingerprintSaving=false;fingerprintStateReady=false;fingerprintError="指纹配置保存未确认："+fingerprintProblem(failure);syncFingerprintTraffic();AppAppearance.dialog(this).setTitle("指纹配置未确认").setMessage(fingerprintError+"\n将重新读取实际保存结果；不会回退为未配置的浏览器。").setPositiveButton("知道了",null).show();loadFingerprintState();});}});}catch(RejectedExecutionException closed){fingerprintSaving=false;fingerprintStateReady=false;}
+    final JSONObject selectedSpec;
+    try{
+      selectedSpec=ChromiumFingerprintSpec.from(desired).json();
+      if(rotateSeed&&!selectedSpec.toString().equals(ChromiumFingerprintSpec.from(expected.spec()).json().toString()))
+        throw new IllegalArgumentException("请先保存配置，再单独更换稳定种子");
+    }catch(Exception failure){message("指纹配置未保存："+fingerprintProblem(failure));return;}
+    fingerprintSaving=true;
+    final long workerPolicy=runtime==null?0:runtime.beginWorkerPolicy();
+    invalidateFingerprintObservation();
+    if(files!=null)files.cancelActiveDownload();
+    if(selected!=null)retireFingerprintBinding(selected);
+    syncFingerprintTraffic();
+    fingerprintJobs.save(expected,selectedSpec,rotateSeed,saved->{
+      if(destroyed)return;
+      fingerprintSaving=false;fingerprintStateReady=false;
+      for(Tab tab:new ArrayList<>(tabs)){
+        retire(tab);tab.saved=null;tab.fingerprintError="";tab.desktop=saved.spec.desktop();
+      }
+      fingerprintState=saved.state;fingerprintSpec=saved.spec;fingerprintError="";
+      if(runtime==null||!runtime.confirmWorkerPolicy(workerPolicy,saved.state.identity,saved.state.revision,saved.spec.restrictWorkers())){
+        fingerprintError="Chromium 后台 Worker 策略未获内核确认，网页联网已暂停";
+        syncFingerprintTraffic();message(fingerprintError);return;
+      }
+      fingerprintStateReady=true;
+      for(Tab tab:new ArrayList<>(tabs))createSurface(tab);
+      showSelected();updateChrome();message("此环境的 Chromium 指纹配置已保存，正在按新配置重新加载全部标签页");
+    },failure->{
+      if(destroyed)return;
+      fingerprintSaving=false;fingerprintStateReady=false;
+      fingerprintError="指纹配置保存未确认："+fingerprintProblem(failure);
+      syncFingerprintTraffic();
+      AppAppearance.dialog(this).setTitle("指纹配置未确认")
+          .setMessage(fingerprintError+"\n将重新读取实际保存结果；不会回退为未配置的浏览器。")
+          .setPositiveButton("知道了",null).show();
+      loadFingerprintState();
+    });
   }
   void requestFingerprintDesktop(boolean desktop){
     ChromiumFingerprintStore.State state=fingerprintState;if(state==null||fingerprintLoading||fingerprintSaving){message("请先等待指纹配置读取完成");return;}
@@ -322,15 +389,52 @@ public class BrowserActivity extends ThemedActivity {
   }
   void finishFingerprintObservation(Tab tab,WebView view,ChromiumFingerprintStore.State state,ChromiumFingerprintStore.Binding binding,String url,long operation,JSONObject result,String error){
     if(operation!=fingerprintObservationGeneration||!fingerprintCurrent(tab,view,state,binding)||tab.loading||!Objects.equals(url,view.getUrl()))return;
-    invalidateFingerprintObservation();long completedGeneration=fingerprintObservationGeneration;boolean failed=error!=null;
-    if(result!=null){JSONObject observed=result.optJSONObject("fields");for(String name:new String[]{"canvas","webgl","audio","webrtc"})if(observed.optJSONObject(name).optString("state").equals("failed"))failed=true;
-      JSONObject worker=result.optJSONObject("workerCreation");if(fingerprintSpec.restrictWorkers()&&(worker==null||!"restrict".equals(worker.optString("mode"))||"failed".equals(worker.optString("state"))))failed=true;
+    invalidateFingerprintObservation();long completedGeneration=fingerprintObservationGeneration;
+    boolean failed=error!=null;
+    if(result!=null){
+      JSONObject observed=result.optJSONObject("fields");
+      for(String name:new String[]{"canvas","webgl","audio","webrtc"})
+        if(observed.optJSONObject(name).optString("state").equals("failed"))failed=true;
+      JSONObject worker=result.optJSONObject("workerCreation");
+      if(fingerprintSpec.restrictWorkers()&&(worker==null||!"restrict".equals(worker.optString("mode"))||"failed".equals(worker.optString("state"))))failed=true;
     }
-    JSONObject fields=fingerprintNativeFields(tab.fingerprint.receipt());try{fields.put("pageSelfTest",J.obj("state",failed?"failed":"page-observed","value",result==null?J.obj("error",error):result));
-      JSONObject worker=result==null?null:result.optJSONObject("workerCreation");if(worker!=null)fields.put("workerCreation",J.obj("state","not-requested".equals(worker.optString("state"))?"saved":worker.optString("state"),"value",worker));
+    JSONObject fields=fingerprintNativeFields(tab.fingerprint.receipt());
+    try{
+      fields.put("pageSelfTest",J.obj("state",failed?"failed":"page-observed","value",result==null?J.obj("error",error):result));
+      JSONObject worker=result==null?null:result.optJSONObject("workerCreation");
+      if(worker!=null)fields.put("workerCreation",J.obj("state","not-requested".equals(worker.optString("state"))?"saved":worker.optString("state"),"value",worker));
     }catch(JSONException impossible){return;}
-    final String encoded=fields.toString();final boolean pause=failed&&(fingerprintSpec.protectedMode()||fingerprintSpec.restrictWorkers());final String failureReason=error;
-    Context context=getApplicationContext();try{fingerprintWorker.execute(()->{try{JSONObject receipt=ChromiumFingerprintStore.record(context,state.identity,state.revision,binding,new JSONObject(encoded));fingerprintMain.post(()->{if(completedGeneration!=fingerprintObservationGeneration||!fingerprintCurrent(tab,view,state,binding)||!Objects.equals(url,view.getUrl()))return;fingerprintReceipt=receipt;if(pause){tab.fingerprintReady=false;tab.fingerprintError="当前网页的指纹自测失败，已暂停此页联网。刷新可重新应用配置。";view.stopLoading();files.cancelFor(view);files.cancelActiveDownload();syncFingerprintTraffic();}message(pause?tab.fingerprintError:failureReason==null?"当前网页自测已记录；原生确认与页内观测分开显示，不代表完整指纹保护":"网页自测失败："+failureReason);});}catch(Exception failure){fingerprintMain.post(()->{if(completedGeneration==fingerprintObservationGeneration&&fingerprintCurrent(tab,view,state,binding))message("自测结果未保存："+fingerprintProblem(failure));});}});}catch(RejectedExecutionException ignored){}
+    final boolean pause=failed&&(fingerprintSpec.protectedMode()||fingerprintSpec.restrictWorkers());
+    // A failed current-page check revokes traffic before any disk I/O. Saving
+    // diagnostic evidence must not decide whether that page may keep loading.
+    if(pause&&!pauseFingerprintObservation(tab,view,state,binding,url,completedGeneration))return;
+    fingerprintJobs.record(state,binding,fields,receipt->{
+      if(!fingerprintObservationCurrent(tab,view,state,binding,url,completedGeneration))return;
+      fingerprintReceipt=receipt;
+      message(pause?tab.fingerprintError:error==null
+          ?"当前网页自测已记录；原生确认与页内观测分开显示，不代表完整指纹保护"
+          :"网页自测失败："+error);
+    },failure->{
+      if(!fingerprintObservationCurrent(tab,view,state,binding,url,completedGeneration))return;
+      message((pause?tab.fingerprintError+"\n":"")+"自测结果未保存："+fingerprintProblem(failure));
+    });
+  }
+  boolean fingerprintObservationCurrent(Tab tab,WebView view,ChromiumFingerprintStore.State state,ChromiumFingerprintStore.Binding binding,String url,long operation){
+    return operation==fingerprintObservationGeneration&&fingerprintBindingCurrent(tab,view,state,binding)
+        &&Objects.equals(url,view.getUrl());
+  }
+  boolean pauseFingerprintObservation(Tab tab,WebView view,ChromiumFingerprintStore.State state,ChromiumFingerprintStore.Binding binding,String url,long operation){
+    if(!fingerprintObservationCurrent(tab,view,state,binding,url,operation))return false;
+    tab.fingerprintReady=false;
+    tab.fingerprintError="当前网页的指纹自测失败，已暂停此页联网。刷新可重新应用配置。";
+    syncFingerprintTraffic();
+    if(!fingerprintObservationCurrent(tab,view,state,binding,url,operation))return false;
+    view.stopLoading();
+    if(!fingerprintObservationCurrent(tab,view,state,binding,url,operation))return false;
+    files.cancelFor(view);
+    if(!fingerprintObservationCurrent(tab,view,state,binding,url,operation))return false;
+    files.cancelActiveDownload();
+    return fingerprintObservationCurrent(tab,view,state,binding,url,operation);
   }
   void routeChanged(boolean ready,String reason){
     if(destroyed)return;message(ready?"":reason);
@@ -537,5 +641,5 @@ public class BrowserActivity extends ThemedActivity {
   void confirmCloseBrowser(){boolean downloading=files!=null&&files.hasActiveDownload();AppAppearance.dialog(this).setTitle("关闭浏览器？").setMessage("将关闭全部标签页，未保存的网页输入可能丢失。"+(downloading?"正在进行的下载会取消。":"")+"关闭后，此环境等待中的网络设置可以应用。").setNegativeButton("继续浏览",null).setPositiveButton(downloading?"关闭并取消下载":"关闭浏览器",(d,w)->leaveBrowser()).show();}
   @Override public void onBackPressed(){if(customView!=null){hideCustomView();return;}if(findBar!=null&&findBar.getVisibility()==View.VISIBLE){closeFind();return;}if(web()!=null&&web().canGoBack()){history(-1);return;}confirmCloseBrowser();}
   @Override public boolean dispatchKeyEvent(KeyEvent event){if(event.getAction()==KeyEvent.ACTION_DOWN&&event.isCtrlPressed()){switch(event.getKeyCode()){case KeyEvent.KEYCODE_L:focusAddress();return true;case KeyEvent.KEYCODE_T:newTab(BrowserPreferences.home(this));focusAddress();return true;case KeyEvent.KEYCODE_W:if(selected!=null)closeTab(selected);return true;case KeyEvent.KEYCODE_F:findBar.setVisibility(View.VISIBLE);findText.requestFocus();return true;case KeyEvent.KEYCODE_R:reloadOrStop();return true;}}return super.dispatchKeyEvent(event);}
-  @Override protected void onDestroy(){destroyed=true;fingerprintStateReady=false;invalidateFingerprintObservation();hideCustomView();if(runtime!=null)runtime.close();for(Tab tab:tabs)retire(tab);if(permissions!=null)permissions.close();if(files!=null)files.destroy();saveCookies();fingerprintMain.removeCallbacksAndMessages(null);fingerprintWorker.shutdown();cookieWorker.shutdown();super.onDestroy();}
+  @Override protected void onDestroy(){destroyed=true;fingerprintStateReady=false;invalidateFingerprintObservation();hideCustomView();if(runtime!=null)runtime.close();for(Tab tab:tabs)retire(tab);if(permissions!=null)permissions.close();if(files!=null)files.destroy();saveCookies();fingerprintMain.removeCallbacksAndMessages(null);if(fingerprintJobs!=null)fingerprintJobs.close();cookieWorker.shutdown();super.onDestroy();}
 }

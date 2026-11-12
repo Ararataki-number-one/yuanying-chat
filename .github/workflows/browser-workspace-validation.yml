@@ -9,6 +9,40 @@ concurrency:
   group: browser-workspace-validation-${{ github.ref }}
   cancel-in-progress: true
 jobs:
+  current-maintenance:
+    name: Current browser and network maintenance
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Prepare the declared host dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p work/browser-maintenance-dependencies
+          curl -fsSL --retry 3 https://repo.maven.apache.org/maven2/org/json/json/20250517/json-20250517.jar -o work/browser-maintenance-dependencies/json.jar
+          echo '3ea61b2a06e31edf1c91134fe9106b0ebb16628be169f3db75bc7a2b06b45796  work/browser-maintenance-dependencies/json.jar' | sha256sum -c -
+      - name: Check current production behavior and compiled negative controls
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/browser/check_maintenance.py --java-home "$JAVA_HOME_17_X64" --json-jar work/browser-maintenance-dependencies/json.jar --output work/browser-maintenance
+      - name: Retain current-source maintenance evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: browser-maintenance-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            work/browser-maintenance/**/*.json
+            work/browser-maintenance/**/*.log
+          if-no-files-found: error
+          retention-days: 14
+      - name: State maintenance verification scope
+        run: |
+          printf '%s\n' 'Current-source host behavior, ownership and persistence checks passed. Reports bind the actual inputs and dependencies. APK/lint and device acceptance remain separate jobs; historical proof checks remain in the profile workflow.' >> "$GITHUB_STEP_SUMMARY"
   glass-device-acceptance:
     name: Glass UI acceptance (API ${{ matrix.device-api }})
     strategy:

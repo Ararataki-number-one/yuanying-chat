@@ -10,13 +10,13 @@ import org.json.*;
 public final class ActivityHost {
   static final int RESULT_OK=-1,RESULT_CANCELED=0;
   final ArrayList<Tab> tabs=new ArrayList<>();final ManualExecutor fingerprintWorker=new ManualExecutor();final ManualHandler fingerprintMain=new ManualHandler();
-  final String fingerprintRuntimeEpoch="host-runtime";final TestContext context;
+  final String fingerprintRuntimeEpoch="host-runtime";final TestContext context;final ChromiumFingerprintJobs fingerprintJobs;
   ChromiumFingerprintStore.State fingerprintState;ChromiumFingerprintSpec fingerprintSpec;
   boolean destroyed,foreground=true,fingerprintStateReady=true,fingerprintLoading,fingerprintSaving,fingerprintObserving;
   long fingerprintObservationGeneration;Runnable fingerprintObservationTimeout;JSONObject fingerprintReceipt=new JSONObject();
   Tab selected;ChromiumRuntime runtime=new ChromiumRuntime();BrowserFiles files=new BrowserFiles();Permissions permissions=new Permissions();BrowserLibrary library;int bindingRequests;
   FingerprintFileChoice fingerprintFileChoice;Intent fingerprintFileResult;int fingerprintFileRequest;String lastMessage="";
-  ActivityHost(Path path)throws Exception{context=new TestContext(path,new EnvironmentSpec.Identity(2,4,"00000000-0000-0000-0000-000000000002"));library=new BrowserLibrary(context);fingerprintState=ChromiumFingerprintStore.load(context);fingerprintSpec=ChromiumFingerprintSpec.from(fingerprintState.spec());
+  ActivityHost(Path path)throws Exception{context=new TestContext(path,new EnvironmentSpec.Identity(2,4,"00000000-0000-0000-0000-000000000002"));fingerprintJobs=new ChromiumFingerprintJobs(context,fingerprintWorker,fingerprintMain::post);library=new BrowserLibrary(context);fingerprintState=ChromiumFingerprintStore.load(context);fingerprintSpec=ChromiumFingerprintSpec.from(fingerprintState.spec());
     Tab tab=new Tab("https://example.com/one");tab.web=new WebView(tab.url);tab.fingerprintPolicy=fingerprintState;tab.fingerprint=new ChromiumFingerprintRuntime.Prepared();tab.fingerprintReady=true;tab.fingerprintStarted=true;tab.surfaceGeneration=1;tab.generation=2;tab.fingerprintProviderPackage="host.webview";tab.fingerprintProviderVersion="157.0";tab.fingerprintBinding=fingerprintBinding(tab);tab.fingerprintBindingReady=true;tabs.add(tab);selected=tab;ChromiumFingerprintStore.activate(context,fingerprintState.identity,fingerprintState.revision,tab.fingerprintBinding);}
   Context getApplicationContext(){return context;}WebView web(){return selected==null?null:selected.web;}
   void message(String value){lastMessage=value;}void failFingerprintSurface(Tab tab,WebView view,Exception error){tab.fingerprintReady=false;lastMessage="failed";}
@@ -110,6 +110,48 @@ public final class ActivityHost {
     ActivityHost compatible=fresh();compatible.fingerprintSpec=ChromiumFingerprintSpec.from(J.obj("protection","compatibility"));compatible.observeFingerprint();compatible.web().answer(raw("failed"));queues(compatible);check("Compatibility failed self-test stays truthful without retiring DOM",compatible.selected.fingerprintReady&&compatible.web().stops==0&&compatible.fingerprintReceipt.getJSONObject("fields").getJSONObject("pageSelfTest").getString("state").equals("failed"));
     ActivityHost timeout=fresh();timeout.observeFingerprint();timeout.fingerprintMain.delayed.remove().run();queues(timeout);check("Missing observation explicitly fails closed for protected page",timeout.web().settings.blocked&&!timeout.fingerprintObserving);
   }
+  static void observationFailureIsolation()throws Exception{
+    ActivityHost failed=fresh();WebView paused=failed.web();failed.observeFingerprint();paused.answer(raw("failed"));
+    check("Protected failure blocks traffic before the receipt worker runs",paused.settings.blocked&&!failed.selected.fingerprintReady&&paused.stops==1&&failed.fingerprintReceipt.length()==0);
+    failed.context.vault.failPut=true;queues(failed);
+    check("Protected failed self-test blocks traffic even if receipt write fails",paused.settings.blocked&&!failed.selected.fingerprintReady&&paused.stops==1&&failed.fingerprintReceipt.length()==0&&failed.lastMessage.contains("已暂停")&&failed.lastMessage.contains("未保存"));
+
+    ActivityHost rejected=fresh();WebView rejectedPage=rejected.web();rejected.fingerprintWorker.reject=true;
+    rejected.observeFingerprint();rejectedPage.answer(raw("failed"));
+    check("Rejected receipt worker leaves protected page paused and reports failure",rejectedPage.settings.blocked&&!rejected.selected.fingerprintReady&&rejectedPage.stops==1&&rejected.lastMessage.contains("未保存")&&rejected.fingerprintWorker.tasks.isEmpty());
+
+    ActivityHost compatible=fresh();compatible.fingerprintSpec=ChromiumFingerprintSpec.from(J.obj("protection","compatibility"));compatible.context.vault.failPut=true;
+    compatible.observeFingerprint();compatible.web().answer(raw("failed"));queues(compatible);
+    check("Compatibility receipt failure keeps the existing traffic policy",compatible.selected.fingerprintReady&&!compatible.web().settings.blocked&&compatible.web().stops==0&&compatible.lastMessage.contains("未保存"));
+
+    ActivityHost workers=fresh();workers.fingerprintSpec=ChromiumFingerprintSpec.from(J.obj("protection","compatibility","workers","restrict"));workers.context.vault.failPut=true;
+    workers.observeFingerprint();workers.web().answer(raw("page-observed"));queues(workers);
+    check("Unconfirmed restricted Worker observation pauses despite receipt failure",!workers.selected.fingerprintReady&&workers.web().settings.blocked&&workers.lastMessage.contains("未保存"));
+
+    ActivityHost stale=fresh();WebView current=stale.web();stale.observeFingerprint();stale.selected.generation++;
+    current.answer(raw("failed"));
+    check("Failed observation from an older binding cannot pause current page",stale.selected.fingerprintReady&&!current.settings.blocked&&current.stops==0&&stale.fingerprintWorker.tasks.isEmpty());
+
+    ActivityHost deferred=fresh();deferred.observeFingerprint();deferred.web().answer(raw("failed"));deferred.fingerprintWorker.drain();
+    deferred.beforeFingerprintNavigation(deferred.selected);deferred.fingerprintReceipt=J.obj("owner","newer-page");deferred.fingerprintMain.drain();
+    check("Late failed receipt cannot replace a newer page receipt",deferred.fingerprintReceipt.optString("owner").equals("newer-page"));
+
+    String newer="https://example.com/newer-after-failed-observation";
+    ActivityHost picker=fresh();picker.choose();picker.files.activeDownload=true;picker.files.onCancel=()->picker.go(newer);
+    picker.observeFingerprint();picker.web().answer(raw("failed"));
+    check("Failed-observation picker callback preserves its newer address",newer.equals(picker.selected.fingerprintNavigation)&&newer.equals(picker.selected.url));
+    check("Failed-observation cleanup stops after picker callback changes owner",picker.files.activeDownload&&picker.files.downloadCancellations==0&&picker.fingerprintReceipt.length()==0);
+
+    ActivityHost stopped=fresh();stopped.choose();stopped.files.activeDownload=true;
+    stopped.web().onStop=()->{stopped.beforeFingerprintNavigation(stopped.selected);stopped.selected.url=newer;stopped.web().url=newer;};
+    stopped.observeFingerprint();stopped.web().answer(raw("failed"));
+    check("Failed-observation stop callback prevents later stale cancellation",stopped.files.pending!=null&&stopped.files.activeDownload&&stopped.files.downloadCancellations==0&&newer.equals(stopped.selected.url));
+
+    ActivityHost download=fresh();download.files.activeDownload=true;
+    download.files.onDownloadCancel=()->{download.beforeFingerprintNavigation(download.selected);download.fingerprintReceipt=J.obj("owner","download-callback");};
+    download.observeFingerprint();download.web().answer(raw("failed"));queues(download);
+    check("Download cancellation reentry cannot publish a stale failed receipt",download.fingerprintReceipt.optString("owner").equals("download-callback")&&download.files.downloadCancellations==1);
+  }
   static void completedHistory()throws Exception{
     ActivityHost h=fresh();WebView view=h.web();Tab tab=h.selected;ClientBoundary client=h.new ClientBoundary(tab);String first=view.getUrl(),next="https://example.com/two";h.finishedPage(tab,view,first);check("First native completion exposes original history synchronously",h.library.list("history").length()==1);
     h.go(next);view.title="Second page";view.progress=100;check("Explicit go marks loading before getter updates and native start callback",tab.loading&&view.getUrl().equals(next)&&h.library.list("history").length()==1);
@@ -122,22 +164,22 @@ public final class ActivityHost {
     h.fingerprintLoading=true;h.go("https://example.com/queued");check("Undispatched queued address retains current idle DOM state",!tab.loading&&tab.fingerprintNavigation!=null);h.fingerprintLoading=false;
     ActivityHost rejected=fresh();rejected.fingerprintStateReady=false;rejected.new ClientBoundary(rejected.selected).onPageStarted(rejected.web(),rejected.selected.url,null);check("Unconfirmed native start preserves fail-closed error semantics",rejected.selected.failed&&!rejected.selected.loading&&rejected.web().stops==1);
   }
-  public static void main(String[] args)throws Exception{base=Paths.get(args[0]);upload();navigation();navigationReentry();observation();completedHistory();System.out.println(J.obj("status","passed","passed",checks.size(),"total",checks.size(),"checks",new JSONArray(checks)));}
+  public static void main(String[] args)throws Exception{base=Paths.get(args[0]);upload();navigation();navigationReentry();observation();observationFailureIsolation();completedHistory();System.out.println(J.obj("status","passed","passed",checks.size(),"total",checks.size(),"checks",new JSONArray(checks)));}
   static final class PackageInfo {String packageName="host.webview",versionName="157.0";}
-  static final class WebView {
+  static final class WebView {Runnable onStop;
     static final PackageInfo provider=new PackageInfo();static PackageInfo getCurrentWebViewPackage(){return provider;}
     final Settings settings=new Settings();String url,evaluation,title="";java.util.function.Consumer<String> callback;boolean backAvailable,forwardAvailable;int restores,stops,backCalls,forwardCalls,reloadCalls,progress;final List<String> loads=new ArrayList<>();WebView(String url){this.url=url;}
-    Settings getSettings(){return settings;}String getUrl(){return url;}String getTitle(){return title;}int getProgress(){return progress;}boolean canGoBack(){return backAvailable;}boolean canGoForward(){return forwardAvailable;}void goBack(){backCalls++;}void goForward(){forwardCalls++;}void reload(){reloadCalls++;}void loadUrl(String value){loads.add(value);url=value;}Object restoreState(Bundle value){restores++;return new Object();}void stopLoading(){stops++;}void evaluateJavascript(String script,java.util.function.Consumer<String> answer){evaluation=script;callback=answer;}void answer(String value){java.util.function.Consumer<String> cb=callback;callback=null;cb.accept(value);}
+    Settings getSettings(){return settings;}String getUrl(){return url;}String getTitle(){return title;}int getProgress(){return progress;}boolean canGoBack(){return backAvailable;}boolean canGoForward(){return forwardAvailable;}void goBack(){backCalls++;}void goForward(){forwardCalls++;}void reload(){reloadCalls++;}void loadUrl(String value){loads.add(value);url=value;}Object restoreState(Bundle value){restores++;return new Object();}void stopLoading(){stops++;Runnable action=onStop;onStop=null;if(action!=null)action.run();}void evaluateJavascript(String script,java.util.function.Consumer<String> answer){evaluation=script;callback=answer;}void answer(String value){java.util.function.Consumer<String> cb=callback;callback=null;cb.accept(value);}
     static final class WebViewTransport {WebView view;void setWebView(WebView value){view=value;}}
   }
   static final class Settings {boolean blocked;void setBlockNetworkLoads(boolean value){blocked=value;}}
   static final class Bitmap {}static final class Bundle {}static final class Message {Object obj;int sent;Runnable onSend;void sendToTarget(){sent++;Runnable callback=onSend;onSend=null;if(callback!=null)callback.run();}}
   static final class Intent {Intent(){}Intent(Intent source){}}
   static final class ManualHandler {final ArrayDeque<Runnable> tasks=new ArrayDeque<>(),delayed=new ArrayDeque<>();void post(Runnable task){tasks.add(task);}void postDelayed(Runnable task,long timeout){delayed.add(task);}void removeCallbacks(Runnable task){tasks.remove(task);delayed.remove(task);}void drain(){while(!tasks.isEmpty())tasks.remove().run();}}
-  static final class ManualExecutor extends AbstractExecutorService {final ArrayDeque<Runnable> tasks=new ArrayDeque<>();public void execute(Runnable task){tasks.add(task);}void drain()throws Exception{while(!tasks.isEmpty()){Runnable task=tasks.remove();Thread worker=new Thread(task,"actual-method-host-worker");worker.start();worker.join();}}public void shutdown(){}public List<Runnable> shutdownNow(){return Collections.emptyList();}public boolean isShutdown(){return false;}public boolean isTerminated(){return false;}public boolean awaitTermination(long time,TimeUnit unit){return false;}}
+  static final class ManualExecutor extends AbstractExecutorService {final ArrayDeque<Runnable> tasks=new ArrayDeque<>();boolean reject,closed;public void execute(Runnable task){if(reject||closed)throw new RejectedExecutionException("Injected worker rejection");tasks.add(task);}void drain()throws Exception{while(!tasks.isEmpty()){Runnable task=tasks.remove();Thread worker=new Thread(task,"actual-method-host-worker");worker.start();worker.join();}}public void shutdown(){closed=true;}public List<Runnable> shutdownNow(){return Collections.emptyList();}public boolean isShutdown(){return false;}public boolean isTerminated(){return false;}public boolean awaitTermination(long time,TimeUnit unit){return false;}}
   static final class ChromiumRuntime {boolean ready=true;boolean allowed(){return ready;}void refresh(){}JSONObject workerPolicyReceipt(){return new JSONObject();}}
   static final class Permissions {int navigations;Runnable onCancel;void onNavigation(WebView view){navigations++;Runnable callback=onCancel;onCancel=null;if(callback!=null)callback.run();}}
-  static final class BrowserFiles {static final int FIRST_REQUEST=0x5000,LAST_REQUEST=0x7fff;Pending pending;int deliveries,lastResult,downloadCancellations;boolean networkOpenAtDelivery,activeDownload;WebView deliveredView;Runnable callback,onCancel;static final class Pending {final WebView owner;final int request;final String url;Pending(WebView view,int request){owner=view;this.request=request;url=view.getUrl();}}boolean result(int request,int result,Intent data){if(request<FIRST_REQUEST||request>LAST_REQUEST)return false;if(pending!=null&&pending.request==request){pending=null;deliveries++;lastResult=result;if(result==RESULT_OK&&callback!=null)callback.run();}return true;}void cancelFor(WebView view){if(pending!=null&&pending.owner==view){result(pending.request,RESULT_CANCELED,null);Runnable callback=onCancel;onCancel=null;if(callback!=null)callback.run();}}void cancelActiveDownload(){activeDownload=false;downloadCancellations++;}}
+  static final class BrowserFiles {static final int FIRST_REQUEST=0x5000,LAST_REQUEST=0x7fff;Pending pending;int deliveries,lastResult,downloadCancellations;boolean networkOpenAtDelivery,activeDownload;WebView deliveredView;Runnable callback,onCancel,onDownloadCancel;static final class Pending {final WebView owner;final int request;final String url;Pending(WebView view,int request){owner=view;this.request=request;url=view.getUrl();}}boolean result(int request,int result,Intent data){if(request<FIRST_REQUEST||request>LAST_REQUEST)return false;if(pending!=null&&pending.request==request){pending=null;deliveries++;lastResult=result;if(result==RESULT_OK&&callback!=null)callback.run();}return true;}void cancelFor(WebView view){if(pending!=null&&pending.owner==view){result(pending.request,RESULT_CANCELED,null);Runnable callback=onCancel;onCancel=null;if(callback!=null)callback.run();}}void cancelActiveDownload(){activeDownload=false;downloadCancellations++;Runnable action=onDownloadCancel;onDownloadCancel=null;if(action!=null)action.run();}}
 }
 final class ChromiumFingerprintRuntime {static final class Prepared {JSONObject receipt(){return J.obj("documentStartRegistered",true,"unsupported",J.obj("worker","unsupported"));}void close(){}}}
 final class ChromiumRouteLease {static final class Handle {}}

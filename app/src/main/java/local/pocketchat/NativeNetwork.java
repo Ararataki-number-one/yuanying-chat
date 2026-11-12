@@ -218,9 +218,46 @@ class NativeNetwork {
     ExitRouteReceipt receipt=outcome==null?null:outcome.receipt;
     return outcome!=null&&outcome.state==RecoveryState.RETAINED&&receipt!=null&&receipt==verifiedRoute&&ready&&!recoveryBlocked&&admission.usable()&&receipt.matches(this,transport==null?null:transport.state);
   }
-  synchronized void startOperation(Callback callback,int mode){if(activeConfiguration!=null){main.post(()->callback.done(false,"网络设置正在应用"));return;}if(mode==0&&connectionAdmission().usable()&&coreAlive()){main.post(()->callback.done(true,message));return;}if(ChromiumRouteLease.held()){main.post(()->callback.done(false,ChromiumRouteLease.REASON));return;}startWaiters.add(callback);if(starting){if(mode==2)restartQueued=true;return;}ChromiumRouteLease.Handle change=ChromiumRouteLease.tryChange();if(change==null){startWaiters.remove(callback);main.post(()->callback.done(false,ChromiumRouteLease.REASON));return;}if(mode==2)recoveryBlocked=false;starting=true;routeChanged();cancelMaintenance();worker.execute(()->{try{runStartOperation(mode);}finally{change.close();}});
+  synchronized void startOperation(Callback callback,int mode){
+    if(activeConfiguration!=null){main.post(()->callback.done(false,"网络设置正在应用"));return;}
+    if(mode==0&&connectionAdmission().usable()&&coreAlive()){main.post(()->callback.done(true,message));return;}
+    if(ChromiumRouteLease.held()){main.post(()->callback.done(false,ChromiumRouteLease.REASON));return;}
+    startWaiters.add(callback);
+    if(starting){if(mode==2)restartQueued=true;return;}
+    ChromiumRouteLease.Handle change=ChromiumRouteLease.tryChange();
+    if(change==null){startWaiters.remove(callback);main.post(()->callback.done(false,ChromiumRouteLease.REASON));return;}
+    boolean blockedBefore=recoveryBlocked;
+    if(mode==2)recoveryBlocked=false;
+    starting=true;
+    routeChanged();
+    cancelMaintenance();
+    try{
+      worker.execute(()->{
+        try{
+          // All merged restarts belong to this admitted batch. Keep its barrier
+          // until the final result; another queued worker must not lose ownership.
+          int nextMode=mode;
+          while(runStartOperation(nextMode))nextMode=2;
+        }finally{change.close();}
+      });
+    }catch(RejectedExecutionException retired){
+      // Retire the rejected batch before closing the handle: a lease listener
+      // may synchronously start another operation when the barrier is released.
+      starting=false;
+      restartQueued=false;
+      recoveryBlocked=blockedBefore;
+      List<Callback> rejected=new ArrayList<>(startWaiters);
+      startWaiters.clear();
+      main.post(()->{for(Callback waiter:rejected)waiter.done(false,"暂时无法启动网络，请重新打开当前环境");});
+      change.close();
+    }
   }
-  void runStartOperation(int mode){bindDiagnostics();if(mode!=0)note(NetworkDiagnostics.Event.RECONNECT_ATTEMPT,NetworkDiagnostics.Reason.REQUESTED,NetworkDiagnostics.Stage.RECOVER,++reconnectAttempts);boolean ok=false,retainedResult=false;try{
+  /** Returns true only when this batch has another merged restart to run. */
+  boolean runStartOperation(int mode){
+    bindDiagnostics();
+    if(mode!=0)note(NetworkDiagnostics.Event.RECONNECT_ATTEMPT,NetworkDiagnostics.Reason.REQUESTED,NetworkDiagnostics.Stage.RECOVER,++reconnectAttempts);
+    boolean ok=false,retainedResult=false;
+    try{
       if(mode==1&&recoveryBlocked)throw new ExitMismatch();
       if(mode==1&&ready&&coreAlive()&&configurationMatches()){
         report("正在检查代理链与固定出口…");
@@ -235,7 +272,20 @@ class NativeNetwork {
       boolean retained=retainedFailure(e)||retainVerifiedRoute(e);retainedResult=retained;ok=false;
       if(!retained&&!(e instanceof RouteTransactionFailure)&&!(e instanceof StartupRouteFailure)){note(NetworkDiagnostics.Event.FAILURE,e instanceof ExitMismatch?NetworkDiagnostics.Reason.EXIT_MISMATCH:NetworkDiagnostics.Reason.START_FAILED,NetworkDiagnostics.Stage.RECOVER,mode);stopNow(e instanceof ExitMismatch?NetworkDiagnostics.Reason.EXIT_MISMATCH:NetworkDiagnostics.Reason.START_FAILED);if(e instanceof ExitMismatch)recoveryBlocked=true;report(e instanceof IOException&&e.getMessage()!=null?e.getMessage():"应用网络连接失败，请检查节点与固定出口");}
     }
-    final boolean success=ok;final String detail=message;final ExitRouteReceipt kept=retainedResult&&verifiedRouteCurrent()?verifiedRoute:null;final RecoveryOutcome outcome=new RecoveryOutcome(ok?RecoveryState.RECOVERED:kept!=null?RecoveryState.RETAINED:RecoveryState.FAILED,detail,kept);final List<Callback> callbacks;synchronized(this){if(restartQueued){restartQueued=false;worker.execute(()->runStartOperation(2));return;}starting=false;callbacks=new ArrayList<>(startWaiters);startWaiters.clear();}if(success)NetworkCoreApplication.observeRunning(this);main.post(()->{for(Callback cb:callbacks)if(cb instanceof RecoveryAdapter)((RecoveryAdapter)cb).complete(outcome);else cb.done(success,detail);});
+    final boolean success=ok;
+    final String detail=message;
+    final ExitRouteReceipt kept=retainedResult&&verifiedRouteCurrent()?verifiedRoute:null;
+    final RecoveryOutcome outcome=new RecoveryOutcome(ok?RecoveryState.RECOVERED:kept!=null?RecoveryState.RETAINED:RecoveryState.FAILED,detail,kept);
+    final List<Callback> callbacks;
+    synchronized(this){
+      if(restartQueued){restartQueued=false;return true;}
+      starting=false;
+      callbacks=new ArrayList<>(startWaiters);
+      startWaiters.clear();
+    }
+    if(success)NetworkCoreApplication.observeRunning(this);
+    main.post(()->{for(Callback cb:callbacks)if(cb instanceof RecoveryAdapter)((RecoveryAdapter)cb).complete(outcome);else cb.done(success,detail);});
+    return false;
   }
   /** A detector's retry timer never suppresses current-chain reachability checks. */
   void recoverExistingRoute()throws Exception{

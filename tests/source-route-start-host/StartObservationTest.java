@@ -22,7 +22,7 @@ public final class StartObservationTest {
     void begin(boolean rootAdapter){Callback callback=rootAdapter?new RecoveryAdapter(outcome->{callbackThread=Thread.currentThread().getId();rootOutcome=outcome;rootOk=outcome.state==RecoveryState.RECOVERED;rootCallbacks.incrementAndGet();}):(ok,message)->{rootOk=ok;rootCallbacks.incrementAndGet();};root=observer.root(callback,CASE,SOURCE,NONCE);restart(callback);}
     void join(boolean registered,boolean wrongRoot){RecoveryCallback callback=outcome->{recoveryOutcome=outcome;recoverCallbacks.incrementAndGet();};SourceRouteStartObservation.Root selected=root;if(wrongRoot)selected=observer.root((ok,message)->{},"22222222-2222-4222-8222-222222222222",SOURCE,NONCE);if(registered)observer.recovery(callback,1,selected);requestSerial=1;recoverOutcome(callback);}
     @Override synchronized void startOperation(Callback callback,int mode){SourceRouteStartObservation.Registration value=observer.registrationBefore("registrationBefore".equals(fault)?null:this,callback,mode);try{super.startOperation(callback,mode);}finally{observer.registrationAfter("registrationAfter".equals(fault)?null:this,value);}}
-    @Override void runStartOperation(int mode){observer.workerBefore("workerBefore".equals(fault)?null:this,mode);try{super.runStartOperation(mode);}finally{if(holdFinally){beforeFinally.countDown();try{await(releaseFinally);}catch(Exception failure){throw new RuntimeException(failure);}}observer.workerAfter("workerAfter".equals(fault)?null:this,mode);}}
+    @Override boolean runStartOperation(int mode){observer.workerBefore("workerBefore".equals(fault)?null:this,mode);try{return super.runStartOperation(mode);}finally{if(holdFinally){beforeFinally.countDown();try{await(releaseFinally);}catch(Exception failure){throw new RuntimeException(failure);}}observer.workerAfter("workerAfter".equals(fault)?null:this,mode);}}
     @Override void stopOwnedCore(ExitRouteReceipt owned,NetworkDiagnostics.Reason reason){JSONObject row=J.obj("caseId",CASE,"beganAtNs",System.nanoTime(),"recoveryRequestSerial",requestSerial,"owned",J.obj("pid",owned.pid,"servicePid",owned.servicePid,"generation",owned.generation,"configuration",owned.configuration));stops.add(row);observer.stopBefore(this,row);try{super.stopOwnedCore(owned,reason);}finally{SourceRouteStartObservation.put(row,"endedAtNs",System.nanoTime());SourceRouteStartObservation.put(row,"afterRequestSerial",requestSerial);observer.stopAfter(this,row);}}
     @Override void stopTransport(int index)throws Exception{entered[index].countDown();await(release[index]);}
     void finish(int index)throws Exception{release[index].countDown();worker.submit(()->{}).get(3,TimeUnit.SECONDS);Runnable callback;while((callback=main.queue.poll())!=null)callback.run();}
@@ -53,11 +53,14 @@ public final class StartObservationTest {
       n.release[0].countDown();await(n.entered[1]);
       check("Original queued restart executes a second actual worker invocation",n.launches==2&&n.observer.snapshot(n.root).getJSONArray("workerInvocations").length()==2);
       check("Queued flag returns false before the second operation completes",!n.restartQueued&&n.starting&&n.rootCallbacks.get()==0&&n.startWaiters.contains(n.root.callback));
+      check("Queued restart retains the actual route change lease",ChromiumRouteLease.snapshot().changes==1);
+      check("Queued restart fences new pages and downloads",newWorkBlocked());
       n.join(true,false);n.finish(1);JSONObject snapshot=n.observer.snapshot(n.root);JSONArray workers=snapshot.getJSONArray("workerInvocations");
       check("Both worker invocations reuse the exact original root callback",workers.getJSONObject(0).getInt("rootCallbackId")==workers.getJSONObject(1).getInt("rootCallbackId")&&workers.getJSONObject(0).getLong("invocationId")!=workers.getJSONObject(1).getLong("invocationId"));
       boolean specific=false;try{n.observer.joinFor(1,n.stops.get(1));}catch(IOException failure){specific=failure.getMessage().contains("crossed worker invocations");}
       check("Queued restart ABA is rejected by actual invocation identity",specific);
       check("Rejecting observation preserves all original queued callbacks",n.rootCallbacks.get()==1&&n.queuedCallbacks.get()==1&&n.recoverCallbacks.get()==1&&!n.rootOk&&n.recoveryOutcome.state==NativeNetwork.RecoveryState.FAILED);
+      check("A failed queued restart releases its batch and waiters",ChromiumRouteLease.snapshot().changes==0&&!n.starting&&!n.restartQueued&&n.startWaiters.isEmpty());
       return snapshot;
     }
   }
@@ -96,7 +99,91 @@ public final class StartObservationTest {
       check(fault+" completes the observation exceptionally instead of waiting indefinitely",n.observer.workerCompletion(n.root).isCompletedExceptionally());
     }
   }
-  public static void main(String[] args)throws Exception{JSONObject report=J.obj("status","failed","syntheticControlledHost",true,"checks",checks);try{report.put("joined",joined());report.put("queuedRestart",queued());report.put("callbacksBeforeFinally",callbacksBeforeFinally());wrongBindings();hookFailures();report.put("status","passed");}finally{report.put("total",checks.length());Files.writeString(Path.of(args[0]),report.toString(2));}System.out.println("Start observation checks: "+checks.length());}
+  static boolean newWorkBlocked(){
+    ChromiumRouteLease.Handle surface=ChromiumRouteLease.acquireSurface(),download=ChromiumRouteLease.acquireDownload();
+    try{return surface==null&&download==null;}finally{if(surface!=null)surface.close();if(download!=null)download.close();}
+  }
+  static final class LeaseNetwork extends NativeNetwork implements AutoCloseable {
+    final boolean[] successes;
+    final CountDownLatch[] entered,release;
+    final List<Integer> modes=new CopyOnWriteArrayList<>();
+    int proofObservations;
+    LeaseNetwork(boolean... successes){
+      this.successes=successes;entered=new CountDownLatch[successes.length];release=new CountDownLatch[successes.length];
+      for(int i=0;i<successes.length;i++){entered[i]=new CountDownLatch(1);release[i]=new CountDownLatch(1);}
+    }
+    @Override boolean runStartOperation(int mode){modes.add(mode);return super.runStartOperation(mode);}
+    @Override void startNow()throws Exception{
+      int index=launches++;
+      if(index>=successes.length)throw new AssertionError("Unexpected extra startup");
+      entered[index].countDown();await(release[index]);
+      if(!successes[index])throw new IOException("Controlled startup failure");
+      message="Controlled startup succeeded";
+    }
+    @Override void observeRunning(){proofObservations++;}
+    void finish(int index)throws Exception{release[index].countDown();worker.submit(()->{}).get(3,TimeUnit.SECONDS);callbacks();}
+    void callbacks(){Runnable callback;while((callback=main.queue.poll())!=null)callback.run();}
+    public void close()throws Exception{
+      for(CountDownLatch latch:release)latch.countDown();
+      worker.shutdownNow();
+      if(!worker.awaitTermination(3,TimeUnit.SECONDS))throw new AssertionError("Controlled startup worker did not finish");
+    }
+  }
+  static void repeatedRestarts()throws Exception{
+    for(boolean success:new boolean[]{true,false})try(LeaseNetwork n=new LeaseNetwork(false,true,success)){
+      String label=success?"success":"failure";
+      AtomicInteger first=new AtomicInteger(),second=new AtomicInteger(),third=new AtomicInteger();
+      List<NativeNetwork.RecoveryOutcome> outcomes=new ArrayList<>();
+      n.restart(new NativeNetwork.RecoveryAdapter(result->{first.incrementAndGet();outcomes.add(result);}));await(n.entered[0]);
+      n.restart(new NativeNetwork.RecoveryAdapter(result->{second.incrementAndGet();outcomes.add(result);}));
+      n.release[0].countDown();await(n.entered[1]);
+      check("Repeated restart keeps the second round fenced: "+label,ChromiumRouteLease.snapshot().changes==1&&newWorkBlocked());
+      n.restart(new NativeNetwork.RecoveryAdapter(result->{third.incrementAndGet();outcomes.add(result);}));
+      n.release[1].countDown();await(n.entered[2]);
+      check("Repeated restart keeps the third round fenced: "+label,ChromiumRouteLease.snapshot().changes==1&&newWorkBlocked());
+      check("Repeated restart does not deliver an intermediate result: "+label,n.starting&&!n.restartQueued&&n.startWaiters.size()==3&&n.main.queue.isEmpty());
+      n.finish(2);
+      check("Repeated restart delivers the same final outcome exactly once: "+label,first.get()==1&&second.get()==1&&third.get()==1&&outcomes.size()==3&&outcomes.get(0)==outcomes.get(1)&&outcomes.get(1)==outcomes.get(2)&&outcomes.get(0).state==(success?NativeNetwork.RecoveryState.RECOVERED:NativeNetwork.RecoveryState.FAILED));
+      check("Repeated restart retires its complete batch: "+label,n.launches==3&&n.modes.equals(Arrays.asList(2,2,2))&&!n.starting&&!n.restartQueued&&n.startWaiters.isEmpty()&&ChromiumRouteLease.snapshot().changes==0);
+      check("Only the final successful restart publishes proof: "+label,n.proofObservations==(success?1:0));
+    }
+  }
+  static void releasedLeaseReentry()throws Exception{
+    try(LeaseNetwork n=new LeaseNetwork(true,true)){
+      AtomicBoolean armed=new AtomicBoolean(true);AtomicInteger first=new AtomicInteger(),next=new AtomicInteger();
+      NativeNetwork.Callback nextCallback=(ok,message)->next.incrementAndGet();
+      Runnable listener=()->{if(ChromiumRouteLease.snapshot().changes==0&&armed.compareAndSet(true,false))n.restart(nextCallback);};
+      ChromiumRouteLease.addListener(listener);
+      try{
+        n.restart((ok,message)->first.incrementAndGet());await(n.entered[0]);n.release[0].countDown();await(n.entered[1]);
+        check("Released lease listener starts a separate fenced batch",n.starting&&!n.restartQueued&&n.startWaiters.size()==1&&n.startWaiters.get(0)==nextCallback&&ChromiumRouteLease.snapshot().changes==1&&newWorkBlocked());
+        n.callbacks();
+        check("Previous batch callback cannot consume the listener's new waiter",first.get()==1&&next.get()==0&&n.starting&&n.startWaiters.size()==1);
+        n.finish(1);
+        check("Listener reentry completes both batches exactly once",first.get()==1&&next.get()==1&&n.launches==2&&!n.starting&&n.startWaiters.isEmpty()&&ChromiumRouteLease.snapshot().changes==0);
+      }finally{ChromiumRouteLease.removeListener(listener);}
+    }
+  }
+  static void rejectedSubmission()throws Exception{
+    try(LeaseNetwork n=new LeaseNetwork()){
+      n.worker.shutdown();n.recoveryBlocked=true;
+      AtomicInteger first=new AtomicInteger(),joined=new AtomicInteger(),later=new AtomicInteger();
+      List<NativeNetwork.RecoveryOutcome> outcomes=new ArrayList<>();
+      AtomicBoolean joinedOnce=new AtomicBoolean(),releasedOnce=new AtomicBoolean();
+      Runnable join=()->{if(n.starting&&joinedOnce.compareAndSet(false,true))n.restart(new NativeNetwork.RecoveryAdapter(result->{joined.incrementAndGet();outcomes.add(result);}));};
+      Runnable release=()->{if(ChromiumRouteLease.snapshot().changes==0&&releasedOnce.compareAndSet(false,true))n.restart(new NativeNetwork.RecoveryAdapter(result->{later.incrementAndGet();outcomes.add(result);}));};
+      n.routeListeners.add(join);ChromiumRouteLease.addListener(release);
+      try{
+        n.restart(new NativeNetwork.RecoveryAdapter(result->{first.incrementAndGet();outcomes.add(result);}));
+        check("Rejected startup retires its waiters before release-listener reentry",!n.starting&&!n.restartQueued&&n.startWaiters.isEmpty()&&ChromiumRouteLease.snapshot().changes==0&&releasedOnce.get());
+        check("Rejected startup preserves the prior recovery block",n.recoveryBlocked&&n.launches==0);
+        n.callbacks();
+        check("Rejected startup reports every original and reentrant waiter once",first.get()==1&&joined.get()==1&&later.get()==1&&outcomes.size()==3&&outcomes.stream().allMatch(result->result.state==NativeNetwork.RecoveryState.FAILED&&result.receipt==null&&!result.message.isEmpty()));
+        check("Rejected startup leaves no delayed callback or route barrier",n.main.queue.isEmpty()&&!n.starting&&!n.restartQueued&&n.startWaiters.isEmpty()&&ChromiumRouteLease.snapshot().changes==0);
+      }finally{n.routeListeners.remove(join);ChromiumRouteLease.removeListener(release);}
+    }
+  }
+  public static void main(String[] args)throws Exception{JSONObject report=J.obj("status","failed","syntheticControlledHost",true,"checks",checks);try{report.put("joined",joined());report.put("queuedRestart",queued());report.put("callbacksBeforeFinally",callbacksBeforeFinally());wrongBindings();hookFailures();repeatedRestarts();releasedLeaseReentry();rejectedSubmission();report.put("status","passed");}finally{report.put("total",checks.length());Files.writeString(Path.of(args[0]),report.toString(2));}System.out.println("Start observation checks: "+checks.length());}
 }
 
 class NativeNetwork {
@@ -118,8 +205,9 @@ class NativeNetwork {
   void startNow()throws Exception{int index=launches++;stopOwnedCore(new ExitRouteReceipt(index+1),NetworkDiagnostics.Reason.START_FAILED);throw new StartupRouteFailure();}
   void stopOwnedCore(ExitRouteReceipt receipt,NetworkDiagnostics.Reason reason){try{stopTransport(launches-1);}catch(Exception failure){throw new RuntimeException(failure);}}
   void stopTransport(int index)throws Exception{}
+  void observeRunning(){throw new AssertionError("Live core application is outside the start-observer fixture scope");}
 }
 class Dispatcher {final BlockingQueue<Runnable> queue=new LinkedBlockingQueue<>();void post(Runnable value){queue.add(value);}}
 class NetworkDiagnostics {enum Event{RECONNECT_ATTEMPT,FAILURE}enum Reason{REQUESTED,REPLACE,EXIT_MISMATCH,START_FAILED}enum Stage{RECOVER}}
-/** Fail-explicit boundary: these failure/join cases never create a live core proof. */
-class NetworkCoreApplication {static void observeRunning(NativeNetwork ignored){throw new AssertionError("Live core application is outside the start-observer fixture scope");}}
+/** Original failure/join cases reject publication; lease cases only count this boundary call. */
+class NetworkCoreApplication {static void observeRunning(NativeNetwork network){network.observeRunning();}}
