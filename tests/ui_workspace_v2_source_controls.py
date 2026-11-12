@@ -12,10 +12,16 @@ import unittest
 from unittest.mock import patch
 
 import ui_workspace_v2_source_compatibility as current
-from ui_download_workspace_v2_source_compatibility import historical_root
+from historical_source_inputs import historical_bytes
+from ui_download_workspace_v2_source_compatibility import historical_input as download_history_input
 
 
-ROOT = historical_root(Path(__file__).resolve().parents[1], (current.RUNNER, current.HOST))
+ROOT = Path(__file__).resolve().parents[1]
+
+
+def historical_workspace_input(path):
+    """Original versioned proofs use verified release bytes, never execution."""
+    return download_history_input(historical_bytes(path), path)
 PREPARATION = ("from ui_test_device import prepare_workflow as prepare_ui_test_device\n"
                "(out/'ui-test-device-isolation.json').write_text(json.dumps(prepare_ui_test_device(adb,serial=args.serial,environment=os.environ),sort_keys=True,indent=2)+'\\n')\n")
 LOAD_TESTS = """def load_tests(loader, tests, pattern):
@@ -41,7 +47,7 @@ class UiWorkspaceV2SourceControls(unittest.TestCase):
     def test_exact_current_files_restore_real_c244_git_blobs_and_forward_roundtrip(self):
         self.assertEqual(subprocess.check_output(['git', 'rev-parse', current.BASE_COMMIT+'^{tree}'], cwd=ROOT, text=True).strip(), current.BASE_TREE)
         for path, row in current.manifest()['files'].items():
-            raw, original = (ROOT/path).read_bytes(), committed(path)
+            raw, original = historical_workspace_input(path), committed(path)
             with self.subTest(path=path):
                 self.assertEqual((len(raw), current.sha(raw)), (row['reviewedBytes'], row['reviewedSha256']))
                 self.assertEqual(current.source_input(raw, path), original)
@@ -56,7 +62,7 @@ class UiWorkspaceV2SourceControls(unittest.TestCase):
 
     def test_whole_bytes_missing_duplicate_relocated_changed_and_legacy_images_reject(self):
         for path, row in current.manifest()['files'].items():
-            raw = (ROOT/path).read_bytes()
+            raw = historical_workspace_input(path)
             candidates = [b'', raw[:1024], raw+b' ', committed(path)]
             for delta in row['deltas']:
                 chunk = delta['current'].encode()
@@ -73,7 +79,7 @@ class UiWorkspaceV2SourceControls(unittest.TestCase):
     def test_unknown_forwarded_inputs_still_fail_the_original_runner_guards(self):
         import ui_checkpoint_source_compatibility as checkpoint
         import ui_quick_sheet_source_compatibility as quick
-        raw = (ROOT/current.RUNNER).read_bytes()
+        raw = historical_workspace_input(current.RUNNER)
         for value in (b'', raw[:200], raw+b' ', raw.replace(b'UI_NAVIGATION_CONTRACT=2', b'UI_NAVIGATION_CONTRACT=1', 1)):
             self.assertIs(current.historical_input(value, current.RUNNER), value)
             for guard in (checkpoint.require_current_runner, checkpoint.checkpoint_runner_input):
@@ -82,7 +88,7 @@ class UiWorkspaceV2SourceControls(unittest.TestCase):
 
     def test_two_complete_ast_variants_and_formatting_keep_all_old_oracles(self):
         import ui_visual_preservation_contract as original_ui
-        raw = (ROOT/current.RUNNER).read_text()
+        raw = historical_workspace_input(current.RUNNER).decode('utf-8')
         original = committed(current.RUNNER).decode()
         for after, before in ((raw, original), (raw.replace(PREPARATION, '', 1), original.replace(PREPARATION, '', 1))):
             for selected in (after, '# coding: utf-8\n# formatting only\n'+ast.unparse(ast.parse(after))+'\n'):
@@ -96,7 +102,7 @@ class UiWorkspaceV2SourceControls(unittest.TestCase):
                 self.assertFalse(receipt['actualAndroidExecution'])
 
     def test_every_new_ast_block_missing_duplicate_moved_or_changed_rejects_before_mutation(self):
-        raw = (ROOT/current.RUNNER).read_bytes()
+        raw = historical_workspace_input(current.RUNNER)
         for edit in current.manifest()['runnerAst']['edits']:
             reviewed = ast.parse(edit['currentSource']).body
             signatures = [ast.dump(n, include_attributes=False) for n in reviewed]
@@ -119,7 +125,7 @@ class UiWorkspaceV2SourceControls(unittest.TestCase):
 
     def test_old_counts_deadlines_source_binding_and_new_version_cannot_be_weakened(self):
         import ui_visual_preservation_contract as original_ui
-        raw = (ROOT/current.RUNNER).read_text()
+        raw = historical_workspace_input(current.RUNNER).decode('utf-8')
         changes = (("assert '已选 8 个' in xml", 'assert True'),
                    ('deadline=time.monotonic()+35;readiness_scrolls=0', 'deadline=time.monotonic()+36;readiness_scrolls=0'),
                    ('verify_captures(records,source)', 'verify_captures(records)'),
@@ -134,7 +140,7 @@ class UiWorkspaceV2SourceControls(unittest.TestCase):
             with self.assertRaises(AssertionError):original_ui.verify_shared_ui_source(candidate)
 
     def test_types_paths_excerpt_and_modified_fixture_never_gain_acceptance(self):
-        raw = (ROOT/current.RUNNER).read_bytes()
+        raw = historical_workspace_input(current.RUNNER)
         for value in (None, raw.decode(), bytearray(raw), memoryview(raw)):
             with self.assertRaises(AssertionError):current.source_input(value, current.RUNNER)
         for path in (None, Path(current.RUNNER), '/'+current.RUNNER, '../'+current.RUNNER, 'another.py'):
@@ -147,7 +153,7 @@ class UiWorkspaceV2SourceControls(unittest.TestCase):
 
     def test_capture_host_uses_current_constant_and_retains_every_original_class_method(self):
         import gecko_ui_visual_capture_test as host
-        previous, selected = committed(current.HOST).decode(), (ROOT/current.HOST).read_text()
+        previous, selected = committed(current.HOST).decode(), historical_workspace_input(current.HOST).decode('utf-8')
         def methods(text):
             return {cls.name: {n.name: ast.get_source_segment(text, n) for n in cls.body if isinstance(n, ast.FunctionDef)}
                     for cls in ast.parse(text).body if isinstance(cls, ast.ClassDef)}
@@ -174,7 +180,7 @@ class UiWorkspaceV2SourceControls(unittest.TestCase):
 
     def test_only_explicit_historical_read_ports_and_original_suite_loading_are_added(self):
         path = 'tests/profile_ui_checkpoint_source_compatibility_test.py'
-        before, selected = committed(path), (ROOT/path).read_bytes()
+        before, selected = committed(path), historical_workspace_input(path)
         self.assertEqual(assertions(selected), assertions(before))
         ports = (
             (b'from ui_workspace_v2_source_compatibility import historical_input as workspace_input\n', b''),

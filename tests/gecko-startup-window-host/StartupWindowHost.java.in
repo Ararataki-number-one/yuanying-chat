@@ -1,0 +1,186 @@
+package local.pocketchat;
+
+import java.io.IOException;
+import java.util.*;
+import org.json.*;
+
+/** Verbatim production startup/retirement methods; SDK windows are an explicit
+ * boundary. The pinned SDK delays an installed background until its first
+ * window's extensions-late-startup event. No native execution is claimed. */
+public final class StartupWindowHost {
+  static final List<JSONObject> checks=new ArrayList<>();
+  static void check(String name,boolean pass){checks.add(J.obj("name",name,"pass",pass));}
+  static void scenario(String name,Runnable task){try{task.run();}catch(Throwable error){checks.add(J.obj("name",name,"pass",false,"error",error.toString()));}}
+  static View waiting(){GeckoSession.created.clear();GeckoSession.openHook=null;GeckoSession.failOpen=false;GeckoSession.failPrimary=false;GeckoSession.failConstruct=false;GeckoSession.failDelegate=false;GeckoSession.lateOpen=false;GeckoSession.closeHook=null;View v=new View();v.runtime.owner=v;return v;}
+  static GeckoSession bootstrap(){return GeckoSession.created.stream().filter(s->!s.primary).findFirst().orElse(null);}
+  static int opened(){return GeckoSession.created.stream().mapToInt(s->s.opens).sum();}
+  static int liveBootstrap(){return (int)GeckoSession.created.stream().filter(s->!s.primary&&s.open).count();}
+  static void ready(View v){v.routePrepared=v.requestHeadersInstalled=v.privacyReady=v.allowed=true;}
+
+  public static void main(String[] args){
+    scenario("installed cold startup",()->{
+      View v=waiting();v.queued="https://chatgpt.com/c/retained";v.runtime.installed=true;
+      v.runtime.startBackground();v.maybeOpen();
+      check("Installed background receives an initial SDK window without waiting for its own bridge",opened()==1&&liveBootstrap()==1);
+      check("Bootstrap does not publish a primary, current surface or ready browser",v.primary==null&&v.current==null&&v.surface==null&&!v.ready&&v.surfaceAdds==0);
+      check("Queued webpage is retained without a navigation",v.loads.isEmpty()&&v.queued.equals("https://chatgpt.com/c/retained"));
+      v.runtime.drain();
+      check("The delayed installed background can now connect",v.runtime.backgroundStarts==1);
+      check("Only full native barriers open the retained real primary",v.ready&&v.primary==v.current&&v.current!=null&&v.current.primary&&v.surface.getSession()==v.primary&&v.loads.equals(List.of("https://chatgpt.com/c/retained")));
+      GeckoSession boot=bootstrap();check("Successful primary opening retires its bootstrap exactly once",boot!=null&&boot.closes==1&&!boot.open&&v.primary.open&&liveBootstrap()==0);
+      v.maybeOpen();check("Late startup notification cannot allocate another window after ready",GeckoSession.created.size()==2);
+      v.destroy();v.destroy();check("Destroy retires the real primary once without re-closing the bootstrap",boot!=null&&boot.closes==1&&v.primary.closes==1);
+    });
+    scenario("new install",()->{
+      View v=waiting();v.runtime.installed=false;v.queued="https://example.org/";v.runtime.startBackground();v.runtime.drain();
+      check("Fresh installation retains its immediate extension startup",v.runtime.backgroundStarts==1&&v.ready&&v.loads.equals(List.of("https://example.org/")));
+      check("Fresh installation leaves no bootstrap resource after readiness",liveBootstrap()==0&&v.primary!=null&&v.primary.open);
+    });
+    scenario("barriers",()->{
+      for(String gate:List.of("checkpoint","identity","route","headers","privacy","native")){
+        View v=waiting();ready(v);switch(gate){case "checkpoint":v.checkpointReady=false;break;case "identity":v.identityPrepared=false;break;case "route":v.routePrepared=false;break;case "headers":v.requestHeadersInstalled=false;break;case "privacy":v.privacyReady=false;break;default:v.allowed=false;}
+        v.queued="https://blocked.example/";v.maybeOpen();
+        check("Bootstrap cannot bypass the "+gate+" prerequisite",!v.ready&&v.current==null&&v.primary==null&&v.loads.isEmpty());
+        int before=GeckoSession.created.size();for(int n=0;n<4;n++)v.maybeOpen();
+        check("Repeated "+gate+" notifications reuse at most one startup window",GeckoSession.created.size()==before&&before<=1);
+        v.destroy();check("Destroy closes the held "+gate+" window",liveBootstrap()==0);
+      }
+    });
+    scenario("ineligible startup",()->{
+      for(String state:List.of("destroyed","deleted","failed","disabled","no-runtime","no-extension","already-ready")){
+        View v=waiting();switch(state){case "destroyed":v.destroyed=true;break;case "deleted":v.owner.deleted=true;break;case "failed":v.failed=true;break;case "disabled":v.addonDisabled=true;break;case "no-runtime":v.runtime=null;break;case "no-extension":v.extension=null;break;default:v.ready=true;}
+        v.maybeOpen();check("No bootstrap is allocated for "+state,GeckoSession.created.isEmpty());
+      }
+    });
+    scenario("deny all navigation",()->{
+      View v=waiting();v.maybeOpen();GeckoSession boot=bootstrap();
+      for(String url:Arrays.asList("https://chatgpt.com/","http://127.0.0.1/","about:blank","file:///private","data:text/html,hello",null)){
+        check("Bootstrap refuses SDK load "+String.valueOf(url),boot!=null&&boot.navigation!=null&&boot.navigation.onLoadRequest(boot,new GeckoSession.NavigationDelegate.LoadRequest(url)).value==AllowOrDeny.DENY);
+        check("Bootstrap refuses SDK popup "+String.valueOf(url),boot!=null&&boot.navigation!=null&&boot.navigation.onNewSession(boot,url).value==null);
+      }
+      check("Bootstrap never calls loadUri or attaches a display",boot!=null&&boot.uriLoads==0&&v.surface==null);
+    });
+    scenario("failure cleanup",()->{
+      View v=waiting();v.maybeOpen();GeckoSession boot=bootstrap();v.failure("original initialization failure");v.maybeOpen();
+      check("Initialization failure closes the startup window and remains failed",boot!=null&&boot.closes==1&&liveBootstrap()==0&&v.failed&&v.owner.pageError.equals("original initialization failure")&&GeckoSession.created.size()==1);
+      v.destroy();check("Destroy after initialization failure is idempotent",boot!=null&&boot.closes==1);
+    });
+    scenario("SDK open failure",()->{
+      View v=waiting();GeckoSession.failOpen=true;v.maybeOpen();GeckoSession boot=bootstrap();
+      check("A partially opened bootstrap is closed after an SDK exception",boot!=null&&!boot.open&&boot.closes==1&&v.failed&&!v.ready&&v.current==null);
+      v.maybeOpen();check("An SDK startup exception cannot create a retry loop",GeckoSession.created.size()==1);
+    });
+    scenario("SDK allocation failure",()->{
+      View v=waiting();GeckoSession.failConstruct=true;v.maybeOpen();
+      check("SDK construction failure leaves no window or retry loop",v.failed&&!v.ready&&GeckoSession.created.isEmpty());
+      v=waiting();GeckoSession.failDelegate=true;v.maybeOpen();
+      check("SDK delegate-install failure retires the unopened candidate",v.failed&&!v.ready&&GeckoSession.created.size()==1&&liveBootstrap()==0&&opened()==0);
+    });
+    scenario("disabled addon",()->{
+      View v=waiting();WebExtension enabled=v.extension;v.maybeOpen();GeckoSession boot=bootstrap();WebExtension disabled=new WebExtension();disabled.metaData.enabled=false;
+      GeckoSession.closeHook=()->{GeckoSession.closeHook=null;v.maybeOpen();};v.addonStateChanged(v.runtime,disabled,true);
+      check("Authoritative disable closes the startup window without reentrant reopening",boot!=null&&boot.closes==1&&liveBootstrap()==0&&v.addonDisabled&&GeckoSession.created.size()==1);
+      v.acceptBuiltinAddon(v.runtime,enabled,0);v.maybeOpen();
+      check("Late initial installation result cannot revive a disabled generation",v.addonDisabled&&!v.ready&&v.extension==disabled&&GeckoSession.created.size()==1);
+      v.addonStateChanged(v.runtime,new WebExtension(),false);
+      check("An explicit enable may create one new closed-route startup window",!v.addonDisabled&&liveBootstrap()==1&&GeckoSession.created.size()==2&&!v.ready&&v.current==null);
+      v.destroy();check("Reenabled startup window is still owned by destroy",liveBootstrap()==0&&GeckoSession.created.stream().allMatch(s->s.closes==1));
+    });
+    scenario("late close callback",()->{
+      View v=waiting();v.maybeOpen();GeckoSession boot=bootstrap();v.runtime.pending.add(()->{ready(v);v.maybeOpen();});v.destroy();v.runtime.drain();
+      check("A late bridge confirmation cannot revive a destroyed UI owner",boot!=null&&boot.closes==1&&!v.ready&&v.primary==null&&v.current==null&&GeckoSession.created.size()==1);
+    });
+    scenario("synchronous open reentry",()->{
+      View v=waiting();GeckoSession.openHook=()->{GeckoSession.openHook=null;v.destroy();};v.maybeOpen();
+      GeckoSession boot=bootstrap();check("Destroy reentered from SDK open cannot revive a startup window",boot!=null&&boot.closes==1&&liveBootstrap()==0&&v.destroyed&&!v.ready&&v.current==null);
+    });
+    scenario("late SDK window allocation",()->{
+      for(boolean throwsAfterOpen:List.of(false,true)){
+        View v=waiting();GeckoSession.lateOpen=true;GeckoSession.failOpen=throwsAfterOpen;
+        GeckoSession.openHook=()->{GeckoSession.openHook=null;v.destroy();};v.maybeOpen();GeckoSession boot=bootstrap();
+        check("Captured window is retired when SDK opens after destroy, throw="+throwsAfterOpen,boot!=null&&boot.closes==1&&!boot.open&&v.destroyed&&v.current==null);
+      }
+      for(boolean replacement:List.of(false,true))for(boolean throwsAfterOpen:List.of(false,true)){
+        View v=waiting();GeckoSession.lateOpen=true;
+        GeckoSession.openHook=()->{GeckoSession.openHook=null;WebExtension disabled=new WebExtension();disabled.metaData.enabled=false;v.addonStateChanged(v.runtime,disabled,true);if(replacement)v.addonStateChanged(v.runtime,new WebExtension(),false);GeckoSession.failOpen=throwsAfterOpen;};
+        v.maybeOpen();GeckoSession old=bootstrap();
+        check("Retired captured window closes without retiring a newer window, replacement="+replacement+", throw="+throwsAfterOpen,old!=null&&old.closes==1&&!old.open&&liveBootstrap()==(replacement?1:0)&&!v.failed&&!v.ready&&v.current==null);
+        GeckoSession.failOpen=false;v.destroy();check("Final destroy closes each late-allocated window exactly once, replacement="+replacement+", throw="+throwsAfterOpen,liveBootstrap()==0&&GeckoSession.created.stream().allMatch(s->s.closes==1));
+      }
+    });
+    scenario("primary failure cleanup",()->{
+      View v=waiting();v.maybeOpen();GeckoSession boot=bootstrap();ready(v);GeckoSession.failPrimary=true;v.maybeOpen();
+      check("Real primary allocation failure also retires the bootstrap",boot!=null&&boot.closes==1&&liveBootstrap()==0&&v.failed&&!v.ready&&v.loads.isEmpty());
+    });
+    scenario("close reentry",()->{
+      View v=waiting();v.maybeOpen();GeckoSession boot=bootstrap();GeckoSession.closeHook=()->{GeckoSession.closeHook=null;v.maybeOpen();};v.failure("keep failed");
+      check("Cleanup clears ownership before close can reenter startup",boot!=null&&boot.closes==1&&GeckoSession.created.size()==1&&v.failed);
+    });
+    scenario("successful close reentry",()->{
+      View v=waiting();v.maybeOpen();GeckoSession boot=bootstrap();ready(v);GeckoSession.closeHook=()->{GeckoSession.closeHook=null;v.maybeOpen();};v.maybeOpen();
+      check("Successful cleanup cannot allocate a second real primary on reentry",boot!=null&&boot.closes==1&&GeckoSession.created.size()==2&&v.ready&&v.current==v.primary);
+    });
+    int passed=(int)checks.stream().filter(x->x.optBoolean("pass")).count();
+    System.out.println(J.obj("status",passed==checks.size()?"passed":"failed","passed",passed,"total",checks.size(),"checks",new JSONArray(checks)));
+    if(passed!=checks.size())System.exit(1);
+  }
+
+  static final class View {
+    boolean enabled=true,destroyed,failed,addonDisabled,ready,checkpointReady=true,identityPrepared=true,routePrepared,requestHeadersInstalled,privacyReady,allowed,desktop,fingerprintingProtected;
+    GeckoRuntime runtime=new GeckoRuntime();WebExtension extension=new WebExtension();GeckoSession primary,current,startupWindow;GeckoView surface;
+    long addonStateSerial,routeDelegateInstalls,protectionRequest;final Object routeMessages=new Object();final Metadata metadata=new Metadata();
+    final Owner owner=new Owner();final Object displayContext=new Object();String queued="",url="";int surfaceAdds;
+    final List<String> loads=new ArrayList<>();
+    void addView(GeckoView view,FrameLayout.LayoutParams params){surfaceAdds++;}
+    GeckoSession newSession(){if(GeckoSession.failPrimary)throw new IllegalStateException("controlled primary allocation failure");GeckoSession s=new GeckoSession();s.primary=true;locations.put(s,"");return s;}
+    void configure(boolean desktop,int protection){}
+    void loadUrl(String target){if(!ready||!allowed||!identityPrepared||!routePrepared||!privacyReady||!requestHeadersInstalled)throw new AssertionError("Unprotected user navigation");loads.add(target);}
+    boolean protectionAllowsNetwork(){return allowed;}
+    void retireTimeZones(){}void retireRequestHeaderPolicy(){}void releaseGeneralRoutes(){}boolean closeExitIpPage(){return false;}
+    void cancelZoom(){}void cancelProtectionTasks(){}void saveCheckpoint(){}
+    GeckoResult<String> nativeNavigationFailure(GeckoSession session,String target,String message){return GeckoResult.fromValue(null);}
+    final Resource blockedPopups=new Resource(),ipRoutes=new Resource(),contentPermissions=new Resource(),nativeProtection=new Resource(),callbacks=new Resource(),cookieCallbacks=new Resource(),appearanceSync=new Resource();
+    final Map<GeckoSession,String> locations=new IdentityHashMap<>();final Set<GeckoSession> popups=new HashSet<>();
+    final Map<Object,Object> appearanceLoads=new HashMap<>(),appearanceConnections=new HashMap<>(),appearanceDocuments=new HashMap<>(),ports=new HashMap<>(),backStates=new HashMap<>(),forwardStates=new HashMap<>(),pageScales=new HashMap<>(),viewportWidths=new HashMap<>(),loadingTargets=new HashMap<>(),states=new HashMap<>(),stateDraftRevisions=new HashMap<>();
+    final Set<Object> generalSessions=new HashSet<>(),deferredGeneralLoads=new HashSet<>(),staleAppearanceConnections=new HashSet<>(),measuredCompositors=new HashSet<>(),pendingLoads=new HashSet<>(),painted=new HashSet<>(),usable=new HashSet<>(),crashed=new HashSet<>();
+    Resource ipObservedNetwork;Object ipRouteSignal,ipPreferences,ipRouteCheck,generalRestore,protectionRestore,recovery,checkpoint,routeLeaseChanged,startupState;WebExtension.Port routePort;
+    final Worker uploadWorker=new Worker();final List<GeckoUploadFiles.Selection> uploadFiles=new ArrayList<>();
+    @@MEMBERS@@
+  }
+  static final class GeckoRuntime {
+    View owner;boolean installed=true;int backgroundStarts;final ArrayDeque<Runnable> pending=new ArrayDeque<>();
+    void startBackground(){if(!installed)pending.add(this::connect);}
+    void windowCreated(){if(installed&&backgroundStarts==0)pending.add(this::connect);}
+    void connect(){if(backgroundStarts>0)return;backgroundStarts++;ready(owner);owner.maybeOpen();}
+    void drain(){int bounded=0;while(!pending.isEmpty()){if(bounded++>20)throw new AssertionError("unbounded SDK fixture");pending.remove().run();}}
+  }
+  enum AllowOrDeny {ALLOW,DENY}
+  static final class GeckoResult<T>{final T value;GeckoResult(T value){this.value=value;}static <T> GeckoResult<T> fromValue(T value){return new GeckoResult<>(value);}}
+  static final class GeckoSession {
+    static final List<GeckoSession> created=new ArrayList<>();static Runnable openHook,closeHook;static boolean failOpen,failPrimary,failConstruct,failDelegate,lateOpen;
+    boolean open,primary;int opens,closes,uriLoads;NavigationDelegate navigation;
+    GeckoSession(){if(failConstruct)throw new IllegalStateException("controlled SDK construction failure");created.add(this);}
+    interface NavigationDelegate {
+      final class LoadRequest {final String uri;LoadRequest(String uri){this.uri=uri;}}
+      default GeckoResult<AllowOrDeny> onLoadRequest(GeckoSession session,LoadRequest request){return GeckoResult.fromValue(AllowOrDeny.ALLOW);}
+      default GeckoResult<GeckoSession> onNewSession(GeckoSession session,String url){throw new AssertionError("Bootstrap popup must be explicitly rejected");}
+    }
+    void setNavigationDelegate(NavigationDelegate value){if(failDelegate)throw new IllegalStateException("controlled SDK delegate failure");navigation=value;}
+    void open(GeckoRuntime runtime){if(!lateOpen){open=true;opens++;}if(openHook!=null)openHook.run();if(lateOpen){open=true;opens++;}if(failOpen)throw new IllegalStateException("controlled SDK open failure");runtime.windowCreated();}
+    boolean isOpen(){return open;}
+    void close(){if(!open)throw new AssertionError("SDK window closed twice");open=false;closes++;if(closeHook!=null)closeHook.run();}
+    void loadUri(String url){uriLoads++;}
+    void stop(){}
+  }
+  static final class GeckoView {static final int BACKEND_TEXTURE_VIEW=2;GeckoSession session;GeckoView(Object context){}void setViewBackend(int value){}void coverUntilFirstPaint(int color){}void setSession(GeckoSession value){session=value;}GeckoSession getSession(){return session;}void releaseSession(){session=null;}}
+  static final class WebExtension{boolean isBuiltIn=true;String id="browser@pocketchat.local";final Metadata metaData=new Metadata();void setMessageDelegate(Object value,String app){}static final class Port{void disconnect(){}}}
+  static final class Metadata{boolean enabled=true,policyAcknowledged,rfpAcknowledged;}
+  static final class FrameLayout {static final class LayoutParams{LayoutParams(int w,int h){}}}
+  static final class ReferenceUi{static final int CHAT_BG=0;}
+  static final class Owner {boolean deleted,navigating;String pageError="",navigationTarget="";final Resource cpu=new Resource(),tls=new Resource(),prefs=new Resource(),handler=new Resource();final Privacy privacy=new Privacy();void finishNavigation(String message,boolean failed){}void setStatus(String message){}void changed(){}}
+  static final class Privacy {int level(){return 1;}}
+  static class Resource {void retire(Object value){}void close(){}void closed(){}void clear(){}void removeRouteListener(Object listener){}void unregisterOnSharedPreferenceChangeListener(Object value){}void removeCallbacks(Object value){}void disconnected(){}long token(){return 0;}void cancel(Object value){}}
+  static final class ChromiumRouteLease{static void removeListener(Object value){}}
+  static final class Worker{void execute(Runnable value){value.run();}void shutdown(){}}
+  static final class GeckoUploadFiles {static final class Selection{void delete(){}}}
+}

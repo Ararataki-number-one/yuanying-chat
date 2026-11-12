@@ -1,4 +1,5 @@
 """Finite CPU-on-IP preparation only; no runtime projection or Android claims."""
+from historical_source_inputs import historical_bytes
 import ast
 import copy
 import hashlib
@@ -29,7 +30,7 @@ class CpuIpHistoricalPreparation(unittest.TestCase):
         value=layer.manifest();self.assertEqual(len(value['files']),2)
         self.assertEqual(sum(len(row['deltas']) for row in value['files'].values()),9)
         for relative,row in value['files'].items():
-            before=git('show',layer.BASE_COMMIT+':'+relative);after=tls_source_input((ROOT/relative).read_bytes(),relative)
+            before=git('show',layer.BASE_COMMIT+':'+relative);after=tls_source_input(historical_bytes(relative),relative)
             self.assertEqual((SHA(before),len(before)),(row['previousSha256'],row['previousBytes']))
             self.assertEqual((SHA(after),len(after)),(row['reviewedSha256'],row['reviewedBytes']))
             self.assertEqual(layer.source_input(before,relative),before)
@@ -43,7 +44,7 @@ class CpuIpHistoricalPreparation(unittest.TestCase):
     def test_every_missing_duplicate_changed_moved_truncated_and_unknown_input_rejects(self):
         rejected=0
         for relative,row in layer.manifest()['files'].items():
-            after=tls_source_input((ROOT/relative).read_bytes(),relative)
+            after=tls_source_input(historical_bytes(relative),relative)
             for delta in row['deltas']:
                 part=delta['current'].encode();self.assertEqual(after.count(part),1)
                 removed=after.replace(part,b'',1);moved=removed+part
@@ -54,7 +55,7 @@ class CpuIpHistoricalPreparation(unittest.TestCase):
         self.assertEqual(rejected,54)
 
     def test_only_exact_complete_bytes_and_owned_paths_are_admitted(self):
-        relative=next(iter(layer.PATHS));raw=(ROOT/relative).read_bytes()
+        relative=next(iter(layer.PATHS));raw=historical_bytes(relative)
         for bad in (None,'source',bytearray(raw),raw[:100]):
             with self.assertRaises(ValueError):layer.source_input(bad,relative)
         for bad in (None,Path(relative),'/'+relative,'./'+relative,'app/src/main/java/local/pocketchat/MainActivity.java'):
@@ -115,7 +116,7 @@ class CpuIpHistoricalPreparation(unittest.TestCase):
             'tests/profile_worker_timezone_source_compatibility_test.py','tests/review-host/run_identity_controller_host.py',
             'tests/worker_timezone_host_source_compatibility.py','tests/worker_timezone_source_compatibility.py')
         for relative in [*fixtures,*tests]:
-            with self.subTest(path=relative):self.assertEqual(final_metadata_input((ROOT/relative).read_bytes(),relative),git('show',layer.BASE_COMMIT+':'+relative))
+            with self.subTest(path=relative):self.assertEqual(final_metadata_input(((ROOT/relative).read_bytes() if relative.startswith('tests/fixtures/') else historical_bytes(relative)),relative),git('show',layer.BASE_COMMIT+':'+relative))
 
     def test_ip_desired_native_controller_parser_and_guard_assets_remain_verbatim(self):
         paths=['app/src/main/java/local/pocketchat/'+name+'.java' for name in ('GeckoTimeZoneSpec','GeckoTimeZoneStore',

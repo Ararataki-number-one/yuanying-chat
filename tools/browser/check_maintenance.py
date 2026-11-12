@@ -66,6 +66,7 @@ def main():
 
     host('address-policy', 'tests/browser-address-host/run.py', java)
     host('browser-permissions', 'tests/browser-permissions-host/run.py', java)
+    host('native-attachment-chooser', 'tests/native-attachment-chooser-host/run.py', [*java, '--json-jar', jar])
     for name, script in [
         ('session-navigation', 'tests/gecko-navigation-host/session_navigation.py'),
         ('driver-ownership', 'tests/gecko-navigation-host/run.py'),
@@ -73,6 +74,7 @@ def main():
         ('gecko-ui-lifecycle', 'tests/gecko-ui-host-lifecycle/run.py'),
         ('resource-client', 'tests/gecko-navigation-host/client_ready.py'),
         ('addon-lifecycle', 'tests/gecko-addon-lifecycle-host/run.py'),
+        ('gecko-startup-window', 'tests/gecko-startup-window-host/run.py'),
         ('ip-transport', 'tests/gecko-ip-transport-host/run.py'),
         ('resource-recovery', 'tests/resource-recovery-host/run.py'),
         ('page-lifecycle', 'tests/browser-navigation-lifecycle-host/run.py'),
@@ -100,6 +102,9 @@ def main():
     jobs.append(('display-acceptance', [
         [sys.executable, 'tests/gecko_glass_navigation_capture_test.py'],
         [sys.executable, 'tests/glass_ui_validation_test.py']], None))
+    jobs.append(('event-transport', [
+        [sys.executable, 'tests/gecko_event_transfer_test.py'],
+        [sys.executable, 'tests/profile_event_journal_discovery_test.py']], None))
     host('address-ui', 'tests/browser_fingerprint_fixture_test.py', [
         'BrowserFingerprintFixtureTests.test_actual_browser_address_navigation_and_history_controls',
         'BrowserFingerprintFixtureTests.test_actual_browser_address_row_reflows_without_recreating_controls'], report=False)

@@ -53,6 +53,8 @@ final class ChromeCollapseIntegration {
       "sourceCommit",events.buildIdentity.optString("sourceCommit"),"sourceTree",events.buildIdentity.optString("sourceTree"),
       "stage",stage,"elapsedMs",SystemClock.elapsedRealtime(),"diagnosticOnly",true,
       "checkpointReady",w.checkpointReady,"runtimePresent",w.runtime!=null,"extensionPresent",w.extension!=null,
+      "addonDisabled",w.addonDisabled,"metadataEnabled",w.extension!=null&&w.extension.metaData!=null&&w.extension.metaData.enabled,
+      "routeDelegateInstalls",w.routeDelegateInstalls,"routeConnectAttempts",w.routeConnectAttempts,
       "identityPrepared",w.identityPrepared,"routePrepared",w.routePrepared,"privacyReady",w.privacyReady,
       "ready",w.ready,"failed",w.failed,"destroyed",w.destroyed,"resourceDeferred",w.resourceDeferred,
       "sessionPresent",w.current!=null,"surfacePresent",w.surface!=null,"portPresent",w.ports.get(w.current)!=null,

@@ -22,7 +22,7 @@ import time
 import uuid
 import xml.etree.ElementTree as ET
 
-from integration_event_contract import EventTransfer, parse_receipt_line
+from integration_event_contract import EventTransfer, ReceiptJournalDiscovery, parse_receipt_line
 
 
 CONFIGURATIONS = (
@@ -37,6 +37,17 @@ CONFIGURATIONS = (
 
 SAFE_AREA_OVERLAYS = ('com.android.internal.display.cutout.emulation.tall',
                       'com.android.internal.systemui.navbar.threebutton')
+
+
+def display_configuration_commands(width, height):
+    """Use the portrait emulator's natural axes, then rotate the actual display.
+
+    Android 12 clamps a forced natural width to twice the physical width. A
+    swapped `wm size` therefore cannot represent this phone's full landscape.
+    The subsequent viewport observation still requires the exact logical size.
+    """
+    return [('shell', 'wm', 'size', str(min(width, height)) + 'x' + str(max(width, height))),
+            ('shell', 'wm', 'user-rotation', 'lock', '1' if width > height else '0')]
 
 
 def total_frames(raw):
@@ -60,11 +71,11 @@ def collapse_start_trace(raw, identity, nonce):
              'identityPrepared', 'routePrepared', 'privacyReady', 'ready', 'failed', 'destroyed',
              'resourceDeferred', 'sessionPresent', 'surfacePresent', 'portPresent', 'usable',
              'queuedTarget', 'routePortPresent', 'guardBlocked', 'networkReady', 'browserPaused',
-             'uiVisible', 'navigating'}
+             'uiVisible', 'navigating', 'addonDisabled', 'metadataEnabled'}
     counters = {'schema', 'sequence', 'elapsedMs', 'requestedProtection', 'protectionRequest',
                 'protectionLevel', 'documents', 'readyEvaluations', 'readyCallbacks',
                 'snapshotEvaluations', 'snapshotCallbacks', 'eventSequence', 'routeCalls',
-                'fixtureRoutes', 'blockedRoutes', 'otherRoutes'}
+                'fixtureRoutes', 'blockedRoutes', 'otherRoutes', 'routeDelegateInstalls', 'routeConnectAttempts'}
     records, lines = [], []
     for line in raw.decode('utf-8', 'strict').splitlines():
         if not line.startswith('{'):
@@ -115,6 +126,17 @@ def capture_ready_failure(out, case, identity, adb, start_output):
             currentCaseOnly=True, status='captured' if records else 'missing')
     except Exception as error:
         result['errors'].append(dict(stage='native-trace', errorType=type(error).__name__, error=str(error)))
+    try:
+        raw = adb('logcat', '-d', '-v', 'threadtime', '-t', '300', '-s', 'WebExtension:D',
+                  'GeckoRuntime:D', 'GeckoProcessManager:W', 'ServiceAllocator:W',
+                  'GeckoConsole:W', 'Gecko:W', 'AndroidRuntime:E', '*:S', timeout=6)
+        if len(raw) > 256 * 1024:
+            raise ValueError('Gecko startup diagnostic exceeds its bounded buffer')
+        result['geckoStartupLog'] = dict(save('gecko-startup.log', raw),
+            currentCaseOnly=False, diagnosticOnly=True, applicationAcceptance=False,
+            scope='Last 300 selected SDK log lines; not nonce-filtered or attributed to the current process')
+    except Exception as error:
+        result['errors'].append(dict(stage='gecko-startup-log', errorType=type(error).__name__, error=str(error)))
     try:
         raw = adb('shell', 'dumpsys', 'activity', 'activities', timeout=6)
         if len(raw) > 2 * 1024 * 1024:
@@ -307,7 +329,8 @@ def capture_loading_landscape(args, report, capture, adb, wait_for, screenshot, 
         previous_night = 'yes' if 'night' in previous_config.splitlines()[0].split('-') else 'no'
         api['set_display'](2676, 1236, 480)
         adb('shell', 'am', 'force-stop', package)
-        adb('shell', 'wm', 'size', '2676x1236')
+        for command in display_configuration_commands(2676, 1236):
+            adb(*command)
         adb('shell', 'settings', 'put', 'system', 'font_scale', '1.0')
         adb('shell', 'cmd', 'uimode', 'night', 'no')
         adb('shell', 'am', 'start', '-W', '-n', api['COMPONENT'], '--es', 'visualAction', 'chat')
@@ -410,10 +433,10 @@ def capture_loading_landscape(args, report, capture, adb, wait_for, screenshot, 
                 result['errors'].append(dict(stage='failure-screenshot', errorType=type(capture_error).__name__, error=str(capture_error)))
     finally:
         api['set_display'](*previous_display)
-        cleanup = [('shell', 'am', 'force-stop', package),
-                   ('shell', 'wm', 'size', str(previous_display[0]) + 'x' + str(previous_display[1])),
-                   ('shell', 'settings', 'put', 'system', 'font_scale', previous_font),
-                   ('shell', 'cmd', 'uimode', 'night', previous_night)]
+        cleanup = [('shell', 'am', 'force-stop', package)]
+        cleanup.extend(display_configuration_commands(*previous_display[:2]))
+        cleanup.extend([('shell', 'settings', 'put', 'system', 'font_scale', previous_font),
+                        ('shell', 'cmd', 'uimode', 'night', previous_night)])
         cleanup_errors = []
         for command in cleanup:
             try:
@@ -430,7 +453,7 @@ def capture_loading_landscape(args, report, capture, adb, wait_for, screenshot, 
             config_parts = restored['configuration'].splitlines()[0].split('-')
             expected_orientation = 'land' if previous_display[0] > previous_display[1] else 'port'
             expected_night = 'night' if previous_night == 'yes' else 'notnight'
-            if (not sizes or tuple(map(int, sizes[-1])) != previous_display[:2]
+            if (not sizes or tuple(map(int, sizes[-1])) != tuple(sorted(previous_display[:2]))
                     or abs(float(restored['fontScale']) - float(previous_font)) > .001
                     or expected_orientation not in config_parts or expected_night not in config_parts):
                 raise ValueError('Actual Android display/font/theme was not restored before controlled documents')
@@ -628,6 +651,7 @@ def capture_acceptance_suite(args, report, capture, adb, wait_for, tap, screensh
     nav, capsule, geometry = [api[key] for key in ('navigation', 'capsule', 'observed_navigation_geometry')]
     identity = report['buildIdentity']
     observations = {}
+    journals = {}
     previous_overlays = {}
 
     def save():
@@ -673,23 +697,49 @@ def capture_acceptance_suite(args, report, capture, adb, wait_for, tap, screensh
             adb('shell', 'am', 'broadcast', '-a', package + '.CHROME_COLLAPSE', '-p', package,
                 '--es', 'eventNonce', case['runNonce'], '--es', 'collapseCommand', command)
         deadline = time.monotonic() + 40
-        while time.monotonic() < deadline:
-            raw = adb('logcat', '-d', '-v', 'brief', '-s', 'PocketGeckoIntegration:I', 'AndroidRuntime:E', '*:S')
-            (args.out / (case['name'] + '-events.log')).write_bytes(raw)
-            if b'FATAL EXCEPTION' in raw:
-                raise ValueError('Android crashed during the real UI sequence')
-            for line in raw.decode('utf-8', 'replace').splitlines():
-                receipt = parse_receipt_line(line)
-                if receipt is None or receipt.get('runNonce') != case['runNonce']:
-                    continue
-                value = observations[case['runNonce']].read(receipt)
-                if value['kind'] == 'error':
-                    raise ValueError('Controlled document fixture failed: ' + str(value))
-                if value['kind'] == 'collapseSnapshot' and value['result'].get('command') == command:
-                    case.setdefault('documentObservations', {})[command] = value['result']
-                    return value['result']
-            time.sleep(.2)
-        raise TimeoutError('No current, source/APK/SDK/nonce-bound document observation: ' + command)
+        timeout_message = 'No current, source/APK/SDK/nonce-bound document observation: ' + command
+
+        def remaining():
+            budget = deadline - time.monotonic()
+            if budget <= 0:
+                raise TimeoutError(timeout_message)
+            return budget
+
+        def bounded_read(*parts):
+            raw = adb(*parts, timeout=remaining())
+            remaining()
+            return raw
+
+        reader = observations[case['runNonce']]
+        previous_fetch = reader.fetch
+        reader.fetch = lambda uri: bounded_read('exec-out', 'content', 'read', '--uri', uri)
+        try:
+            while time.monotonic() < deadline:
+                raw = bounded_read('logcat', '-d', '-v', 'brief', '-s', 'PocketGeckoIntegration:I', 'AndroidRuntime:E', '*:S')
+                (args.out / (case['name'] + '-events.log')).write_bytes(raw)
+                if b'FATAL EXCEPTION' in raw:
+                    raise ValueError('Android crashed during the real UI sequence')
+                for line in raw.decode('utf-8', 'replace').splitlines():
+                    receipt = parse_receipt_line(line)
+                    if receipt is None or receipt.get('runNonce') != case['runNonce']:
+                        continue
+                    if receipt.get('kind') == 'eventTransportError':
+                        raise ValueError('Native complete event publication failed: ' + str(receipt))
+                discovery = journals[case['runNonce']]
+                journal = bounded_read('exec-out', 'content', 'read', '--uri', discovery.uri())
+                (args.out / (case['name'] + '-event-receipts.json')).write_bytes(journal)
+                for receipt in discovery.snapshot(journal):
+                    value = reader.read(receipt)
+                    remaining()
+                    if value['kind'] == 'error':
+                        raise ValueError('Controlled document fixture failed: ' + str(value))
+                    if value['kind'] == 'collapseSnapshot' and value['result'].get('command') == command:
+                        case.setdefault('documentObservations', {})[command] = value['result']
+                        return value['result']
+                time.sleep(min(.2, remaining()))
+            raise TimeoutError(timeout_message)
+        finally:
+            reader.fetch = previous_fetch
 
     def idle_diagnostic(case, name):
         # This is a separate observation after the unchanged counter gate failed.
@@ -911,7 +961,8 @@ def capture_acceptance_suite(args, report, capture, adb, wait_for, tap, screensh
                 try:
                     api['set_display'](width * 3, height * 3, 480)
                     adb('shell', 'am', 'force-stop', package)
-                    adb('shell', 'wm', 'size', str(width * 3) + 'x' + str(height * 3))
+                    for command in display_configuration_commands(width * 3, height * 3):
+                        adb(*command)
                     adb('shell', 'settings', 'put', 'system', 'font_scale', str(scale))
                     adb('shell', 'cmd', 'uimode', 'night', night)
                     for overlay in SAFE_AREA_OVERLAYS:
@@ -924,6 +975,7 @@ def capture_acceptance_suite(args, report, capture, adb, wait_for, tap, screensh
                     typography(case, 'workspace')
                     observations[case['runNonce']] = EventTransfer(identity=identity, nonce=case['runNonce'],
                         slot=0, action='chromeCollapse', fetch=lambda uri: adb('exec-out', 'content', 'read', '--uri', uri))
+                    journals[case['runNonce']] = ReceiptJournalDiscovery(observations[case['runNonce']])
                     start_output = adb('shell', 'am', 'start', '-W', '-n', component,
                         '--es', 'compactAction', 'collapseStart', '--ei', 'chromeNavigationVersion', '2',
                         '--es', 'eventNonce', case['runNonce'], '--ez', 'longName', 'false')
@@ -981,9 +1033,10 @@ def capture_acceptance_suite(args, report, capture, adb, wait_for, tap, screensh
         result['errors'].append(dict(stage='suite-setup-or-server', errorType=type(error).__name__, error=str(error)))
     finally:
         api['set_display'](1236, 2676, 480)
-        cleanup = [('shell', 'am', 'force-stop', package), ('shell', 'wm', 'size', '1236x2676'),
-                   ('shell', 'settings', 'put', 'system', 'font_scale', '1.0'),
-                   ('shell', 'cmd', 'uimode', 'night', 'no')]
+        cleanup = [('shell', 'am', 'force-stop', package)]
+        cleanup.extend(display_configuration_commands(1236, 2676))
+        cleanup.extend([('shell', 'settings', 'put', 'system', 'font_scale', '1.0'),
+                        ('shell', 'cmd', 'uimode', 'night', 'no')])
         cleanup.extend(('shell', 'cmd', 'overlay', 'enable' if enabled else 'disable', '--user', '0', name)
                        for name, enabled in previous_overlays.items())
         for command in cleanup:

@@ -12,6 +12,8 @@ name: Dual browser and complete original Gecko acceptance
     - release/browser-2.1.3-*
     - release/browser-2.1.4
     - release/browser-2.1.4-*
+    - release/browser-2.1.5
+    - release/browser-2.1.5-*
     paths:
     - app/**
     - tests/**
@@ -112,6 +114,11 @@ jobs:
         fetch-depth: 16
     - name: Restore exact historical source baselines without checkout
       run: python3 tools/browser/prepare_baselines.py
+    - name: Prepare fixed release source proof objects
+      shell: bash
+      run: |
+        set -euo pipefail
+        python3 tools/gecko/prepare_profile_host_prerequisites.py --source-commit "$GITHUB_SHA" --output work/profile-host/release-source-prerequisites.json
     - name: Verify pinned network core and source patch
       run: |
         python3 tests/gecko_prepare_image_test.py
@@ -154,6 +161,14 @@ jobs:
         python3 tools/gecko/run_key_order_host.py | tee work/gecko-integration/key-order-host-results.json
         python3 tools/gecko/run_reply_handoff_host.py --upstream-sources work/gecko-integration/geckoview-sources.jar | tee work/gecko-integration/reply-handoff-host-results.json
         python3 tools/gecko/caret_workflow.py prepare --work work/gecko-integration
+    - name: Prepare pinned Android 35 host API
+      shell: bash
+      run: |
+        set -euo pipefail
+        "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'platforms;android-35'
+        PROFILE_ANDROID_JAR="$ANDROID_HOME/platforms/android-35/android.jar"
+        echo "4566663c3876e022b4fa4ced8c8697c4ab1688267f090114fd92d027b32e619b  $PROFILE_ANDROID_JAR" | sha256sum -c -
+        echo "PROFILE_ANDROID_JAR=$PROFILE_ANDROID_JAR" >> "$GITHUB_ENV"
     - name: Compile release and native regression package
       run: |
         set -euo pipefail

@@ -13,7 +13,7 @@ import yaml
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'tests'))
 from browser_publish_gate_test import execute, workflow_tree
-from ui_job_budget_source_compatibility import historical_job_field_input as ui_job_budget_field_input
+from released_workflow_comparison import released_job_field_input as ui_job_budget_field_input
 
 SOURCE = 'a' * 40
 REPORT = 'gecko-ip-timezone-results.json'

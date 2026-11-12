@@ -57,7 +57,10 @@ def main():
         'ACTUAL_WEB_MEMBERS': '\n'.join(member_at(sources['GeckoWebView.java'], signature) for signature in ['void setHost(', 'public void setWebViewClient(', 'public void setWebChromeClient(', 'public void setDownloadListener(']),
         'ACTUAL_EXTERNAL_RESPONSE': member_at(sources['GeckoWebView.java'], '@Override public void onExternalResponse('),
         'ACTUAL_SESSION_CLIENT': member_at(sources['ChatSession.java'], 'WebViewClient client('),
-        'ACTUAL_ATTACHMENT_MEMBERS': '\n'.join(member_at(sources['Attachments.java'], signature) for signature in ['Attachments(MainActivity', 'final class Chrome ', 'WebChromeClient chrome(', 'void cancelChooser(', 'void destroy(']),
+        # Keep the actual request fields/Pending class and every helper used by
+        # chooser admission/retirement. Result/legacy-preview paths have their
+        # own complete-class host; no synthetic cancellation helper is used.
+        'ACTUAL_ATTACHMENT_DECLARATION': sources['Attachments.java'][sources['Attachments.java'].index('final class Attachments {'):sources['Attachments.java'].index('  static Intent chooserIntent(')] + '\n'.join(member_at(sources['Attachments.java'], signature) for signature in ['static Intent chooserIntent(', 'private boolean live(', 'private boolean samePage(', 'private boolean current(', 'private ValueCallback<Uri[]> detach(', 'private static void deliver(', 'private void cancel(', 'private void fail(', 'private void reject(', 'void cancelChooser(', 'void destroy(', 'boolean blocked(']) + '\n}',
         'ACTUAL_DOWNLOAD_MEMBERS': '\n'.join(member_at(sources['FileDownloads.java'], signature) for signature in ['FileDownloads(MainActivity', 'void destroy(']),
         'BINDING_DECLARATION': '',
     }

@@ -20,6 +20,151 @@ import xml.etree.ElementTree as ET
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'tools' / 'gecko'))
 import capture_glass_navigation as capture
 import glass_ui_validation as validation
+import gecko_event_transfer_test as event_controls
+from profile_event_journal_discovery_test import discovery_class
+
+
+class GlassDocumentEventDiscoveryTest(unittest.TestCase):
+    """Exercise the actual glass consumer with explicit synthetic native bytes."""
+
+    def observer(self, out, *, journal_changes=None, log=None, payload=None, pending=False, delays=None):
+        result = dict(command='ready', document='controlled', applicationAcceptance=False)
+        receipt, raw = event_controls.packet(
+            event_controls.event('collapseSnapshot', result), fixtureAction='chromeCollapse')
+        transfer = event_controls.transfer
+        if payload is not None:
+            raw = payload(raw)
+        self.calls = []
+        self.read_timeouts = []
+        self.clock = 0
+        journal = dict(schema=1, status='committed', runNonce='e' * 32, processSlot=0,
+                       fixtureAction='chromeCollapse', command=7, receipts=[json.dumps(receipt)])
+        journal.update(journal_changes or {})
+        if pending:
+            journal = dict(schema=1, status='pending', runNonce='e' * 32, processSlot=0)
+        journal_raw = json.dumps(journal).encode()
+        # A stale log is a real transport condition: it cannot supply this
+        # invocation's current receipt, even if native publication succeeded.
+        stale = dict(receipt, runNonce='f' * 32)
+        log = (json.dumps(stale) + '\n').encode() if log is None else log
+
+        def adb(*parts, timeout=None):
+            self.calls.append(parts)
+            if parts[0] == 'logcat':
+                self.read_timeouts.append(('log', timeout))
+                self.clock += (delays or {}).get('log', 0)
+                return log
+            if parts[:3] == ('exec-out', 'content', 'read'):
+                if '/gecko-event-receipts/' in parts[-1]:
+                    self.read_timeouts.append(('journal', timeout))
+                    self.clock += (delays or {}).get('journal', 0)
+                    return journal_raw
+                self.read_timeouts.append(('payload', timeout))
+                self.clock += (delays or {}).get('payload', 0)
+                self.assertEqual(parts[-1], transfer.event_uri(receipt))
+                return raw
+            self.assertEqual(parts[:3], ('shell', 'am', 'broadcast'))
+            return b'Broadcast completed'
+
+        reader = transfer.EventTransfer(identity=event_controls.identity(), nonce='e' * 32,
+            slot=0, action='chromeCollapse', fetch=lambda uri: adb('exec-out', 'content', 'read', '--uri', uri))
+        discovery = discovery_class()(reader)
+        def sleep(seconds):
+            self.clock += seconds
+        bindings = dict(adb=adb, package='local.pocketchat.test', args=SimpleNamespace(out=out),
+            observations={'e' * 32: reader}, journals={'e' * 32: discovery},
+            time=SimpleNamespace(monotonic=lambda: self.clock, sleep=sleep),
+            parse_receipt_line=transfer.parse_receipt_line)
+        source = ast.parse(inspect.getsource(validation.capture_acceptance_suite))
+        suite = next(node for node in source.body if isinstance(node, ast.FunctionDef))
+        observer = next(node for node in suite.body
+                        if isinstance(node, ast.FunctionDef) and node.name == 'observed_event')
+        exec(compile(ast.Module(body=[observer], type_ignores=[]), validation.__file__, 'exec'), bindings)
+        self.case = dict(name='controlled', runNonce='e' * 32)
+        return bindings['observed_event'], reader, result
+
+    def test_committed_native_journal_survives_missing_log_receipt(self):
+        with tempfile.TemporaryDirectory() as directory:
+            observer, reader, expected = self.observer(Path(directory))
+            self.assertEqual(observer(self.case, 'ready', request=False), expected)
+            self.assertEqual(self.case['documentObservations']['ready'], expected)
+            self.assertEqual(len(reader.records), 1)
+            self.assertFalse(any(call[:3] == ('shell', 'am', 'broadcast') for call in self.calls))
+            self.assertTrue((Path(directory) / 'controlled-event-receipts.json').is_file())
+
+    def test_malformed_pending_publication_never_claims_ready(self):
+        with tempfile.TemporaryDirectory() as directory:
+            observer, reader, _ = self.observer(Path(directory), journal_changes={
+                'status': 'pending', 'fixtureAction': None, 'command': None, 'receipts': []})
+            # This is a malformed pending marker; native pending has only its
+            # owner fields. It must fail closed, rather than becoming readiness.
+            with self.assertRaises(ValueError):
+                observer(self.case, 'ready', request=False)
+            self.assertEqual(reader.records, [])
+            self.assertNotIn('documentObservations', self.case)
+
+    def test_pending_publication_keeps_the_original_deadline(self):
+        with tempfile.TemporaryDirectory() as directory:
+            observer, reader, _ = self.observer(Path(directory), pending=True)
+            with self.assertRaises(TimeoutError):
+                observer(self.case, 'ready', request=False)
+            self.assertGreaterEqual(self.clock, 40)
+            self.assertLess(self.clock, 40.3)
+            self.assertEqual(reader.records, [])
+            self.assertNotIn('documentObservations', self.case)
+
+    def test_late_journal_cannot_extend_the_original_ready_deadline(self):
+        with tempfile.TemporaryDirectory() as directory:
+            observer, reader, _ = self.observer(Path(directory), delays={'journal': 41})
+            original_fetch = reader.fetch
+            with self.assertRaises(TimeoutError):
+                observer(self.case, 'ready', request=False)
+            self.assertEqual(reader.records, [])
+            self.assertNotIn('documentObservations', self.case)
+            self.assertIs(reader.fetch, original_fetch)
+
+    def test_late_payload_cannot_extend_the_original_ready_deadline(self):
+        with tempfile.TemporaryDirectory() as directory:
+            observer, reader, _ = self.observer(Path(directory), delays={'payload': 41})
+            original_fetch = reader.fetch
+            with self.assertRaises(TimeoutError):
+                observer(self.case, 'ready', request=False)
+            self.assertEqual(reader.records, [])
+            self.assertNotIn('documentObservations', self.case)
+            self.assertIs(reader.fetch, original_fetch)
+
+    def test_all_native_reads_share_one_remaining_budget_and_restore_fetch(self):
+        with tempfile.TemporaryDirectory() as directory:
+            observer, reader, expected = self.observer(Path(directory),
+                delays={'log': 7, 'journal': 9, 'payload': 11})
+            original_fetch = reader.fetch
+            self.assertEqual(observer(self.case, 'ready', request=False), expected)
+            self.assertEqual(self.read_timeouts, [('log', 40), ('journal', 33), ('payload', 24)])
+            self.assertEqual(self.clock, 27)
+            self.assertIs(reader.fetch, original_fetch)
+
+    def test_foreign_owner_command_and_digest_are_not_repaired_from_payload(self):
+        for changes in ({'runNonce': 'f' * 32}, {'processSlot': 1},
+                        {'fixtureAction': 'other'}, {'command': 8}):
+            with self.subTest(changes=changes), tempfile.TemporaryDirectory() as directory:
+                observer, reader, _ = self.observer(Path(directory), journal_changes=changes)
+                with self.assertRaises(ValueError):
+                    observer(self.case, 'ready', request=False)
+                self.assertEqual(reader.records, [])
+        with tempfile.TemporaryDirectory() as directory:
+            observer, reader, _ = self.observer(Path(directory), payload=lambda raw: raw[:-1])
+            with self.assertRaisesRegex(ValueError, 'payload length'):
+                observer(self.case, 'ready', request=False)
+            self.assertEqual(reader.records, [])
+
+    def test_native_publication_error_and_android_crash_cannot_be_hidden_by_journal(self):
+        error = dict(kind='eventTransportError', runNonce='e' * 32, processSlot=0)
+        for log in ((json.dumps(error) + '\n').encode(), b'FATAL EXCEPTION: main\n'):
+            with self.subTest(log=log), tempfile.TemporaryDirectory() as directory:
+                observer, reader, _ = self.observer(Path(directory), log=log)
+                with self.assertRaises(ValueError):
+                    observer(self.case, 'ready', request=False)
+                self.assertEqual(reader.records, [])
 
 
 class GlassReadyFailureDiagnosticsTest(unittest.TestCase):
@@ -36,11 +181,13 @@ class GlassReadyFailureDiagnosticsTest(unittest.TestCase):
         for key in ('checkpointReady', 'runtimePresent', 'extensionPresent', 'identityPrepared',
                     'routePrepared', 'privacyReady', 'ready', 'failed', 'destroyed', 'resourceDeferred',
                     'sessionPresent', 'surfacePresent', 'portPresent', 'usable', 'queuedTarget',
-                    'routePortPresent', 'guardBlocked', 'networkReady', 'browserPaused', 'uiVisible', 'navigating'):
+                    'routePortPresent', 'guardBlocked', 'networkReady', 'browserPaused', 'uiVisible', 'navigating',
+                    'addonDisabled', 'metadataEnabled'):
             result[key] = False
         for key in ('elapsedMs', 'requestedProtection', 'protectionRequest', 'protectionLevel',
                     'documents', 'readyEvaluations', 'readyCallbacks', 'snapshotEvaluations',
-                    'snapshotCallbacks', 'eventSequence', 'routeCalls', 'fixtureRoutes', 'blockedRoutes', 'otherRoutes'):
+                    'snapshotCallbacks', 'eventSequence', 'routeCalls', 'fixtureRoutes', 'blockedRoutes', 'otherRoutes',
+                    'routeDelegateInstalls', 'routeConnectAttempts'):
             result[key] = 0
         return result
 
@@ -94,7 +241,7 @@ class GlassReadyFailureDiagnosticsTest(unittest.TestCase):
                 raise value
             return value
         result = validation.capture_ready_failure(path, self.case, self.identity, adb, launch)
-        self.assertEqual(len(calls), 2)
+        self.assertEqual(len(calls), 3)
         self.assertTrue(all(kwargs == {'timeout': 6} for _, kwargs in calls))
         self.assertTrue(all('start' not in command and 'broadcast' not in command for command, _ in calls))
         return result
@@ -129,7 +276,7 @@ class GlassReadyFailureDiagnosticsTest(unittest.TestCase):
                                   OSError('activity unavailable'), launch=b'x' * 16385)
             self.assertEqual(result['status'], 'incomplete')
             self.assertEqual([row['stage'] for row in result['errors']],
-                             ['launch-output', 'native-trace', 'resumed-activity'])
+                             ['launch-output', 'native-trace', 'gecko-startup-log', 'resumed-activity'])
             self.assertEqual(self.case['status'], 'failed')
             self.assertEqual(self.case['error'], self.fixture['case']['error'])
 
@@ -532,6 +679,55 @@ class GlassCaptureCoverageTest(unittest.TestCase):
 class GlassCaptureFailureCleanupTest(unittest.TestCase):
     """Host-side cleanup checks with fake transports; no Android claim."""
 
+    def test_loading_rotates_portrait_base_instead_of_exceeding_android12_width_limit(self):
+        previous = capture.WIDTH, capture.HEIGHT, capture.DENSITY
+        request = capture.DISPLAY_REQUEST
+        capture.set_display(1236, 2676, 480)
+        base, rotation = (1236, 2676), 0
+        def adb(*parts, **options):
+            nonlocal base, rotation
+            if parts[:3] == ('shell', 'wm', 'size'):
+                if len(parts) == 4:
+                    width, height = map(int, parts[3].split('x'))
+                    # AOSP Android 12 DisplayContent.setForcedSize clamps each
+                    # natural-orientation axis to twice its physical size.
+                    base = min(width, 1236 * 2), min(height, 2676 * 2)
+                    return b''
+                return f'Physical size: 1236x2676\nOverride size: {base[0]}x{base[1]}\n'.encode()
+            if parts[:4] == ('shell', 'wm', 'user-rotation', 'lock'):
+                rotation = int(parts[4]); return b''
+            logical = base[::-1] if rotation % 2 else base
+            if parts == ('shell', 'wm', 'density'):
+                return b'Physical density: 480\n'
+            if parts == ('shell', 'settings', 'get', 'system', 'font_scale'):
+                return b'1.0\n'
+            if parts == ('shell', 'am', 'get-config'):
+                return b'config: mcc310-land-notnight\n' if logical[0] > logical[1] else b'config: mcc310-port-notnight\n'
+            if parts == ('shell', 'dumpsys', 'window', 'displays'):
+                return (f'Display: mDisplayId=0 rootTasks=5\n  init=1236x2676 480dpi '
+                        f'base={base[0]}x{base[1]} 480dpi cur={logical[0]}x{logical[1]} '
+                        f'app={logical[0]}x{logical[1]}\n').encode()
+            return b''
+        try:
+            with tempfile.TemporaryDirectory() as directory:
+                args = SimpleNamespace(root=Path(__file__).resolve().parents[1], out=Path(directory))
+                report = dict(buildIdentity=dict(sourceCommit='source', sourceTree='tree',
+                    sdkReceiptSha256='sdk', integrationSigningCertificateSha256='signer'),
+                    installedApk={'sha256': 'apk'}, runNonce='nonce', inputs=[], commands=[])
+                boundary = MagicMock(side_effect=RuntimeError('viewport boundary completed'))
+                result = validation.capture_loading_landscape(args, report, MagicMock(), adb,
+                    boundary, MagicMock(), capture.__dict__)
+                self.assertEqual(result['displayViewport']['status'], 'verified')
+                self.assertEqual(result['displayViewport']['actual']['widthPx'], 2676)
+                self.assertEqual(result['displayViewport']['actual']['heightPx'], 1236)
+                self.assertEqual(result['errors'][0]['error'], 'viewport boundary completed')
+                boundary.assert_called_once()
+                self.assertTrue(result['restoredDisplayBeforeControlledDocument'])
+                self.assertEqual((base, rotation), ((1236, 2676), 0))
+                self.assertFalse(report['inputs'])
+        finally:
+            capture.set_display(*previous, requested=request)
+
     def test_clamped_loading_viewport_fails_before_input_or_geometry_wait_and_restores_display(self):
         previous = capture.WIDTH, capture.HEIGHT, capture.DENSITY
         request = capture.DISPLAY_REQUEST
@@ -540,6 +736,9 @@ class GlassCaptureFailureCleanupTest(unittest.TestCase):
 
         def adb(*parts, **options):
             nonlocal forced
+            if parts[:4] == ('shell', 'wm', 'user-rotation', 'lock'):
+                forced = parts[4] == '1'
+                return b''
             if parts[:3] == ('shell', 'wm', 'size'):
                 if len(parts) == 4:
                     forced = parts[3] == '2676x1236'

@@ -5,6 +5,7 @@ import hashlib
 import importlib.util
 import json
 from pathlib import Path
+from historical_source_inputs import historical_bytes
 import re
 import sys
 import tempfile
@@ -212,7 +213,7 @@ class DisplayGateTest(unittest.TestCase):
         root=Path(__file__).resolve().parents[1]
         spec=importlib.util.spec_from_file_location('update_readiness_preservation',root/'tests/ui_visual_preservation_contract.py')
         contract=importlib.util.module_from_spec(spec);spec.loader.exec_module(contract)
-        source=(root/'tests/gecko/run_ui_visuals.py').read_text()
+        source=historical_bytes('tests/gecko/run_ui_visuals.py').decode('utf-8')
         self.assertTrue(contract.verify_shared_ui_source(source)['originalWorkloadSemanticsPreserved'])
         for changed in [source.replace("'update':'当前安装版本'","'update':'当前版本X'",1),
                         source.replace("'update':'当前安装版本'","'update':'当前安装版本','update':'当前安装版本'",1),
@@ -265,7 +266,7 @@ class DisplayGateTest(unittest.TestCase):
 
     def test_profile_history_depth_only_changes_the_host_contract_checkout(self):
         root=Path(__file__).resolve().parents[1]
-        source=environment_workspace_workflow_input((root/'.github/workflows/profile-upgrade-checks.yml').read_text())
+        source=environment_workspace_workflow_input(historical_bytes('.github/workflows/profile-upgrade-checks.yml').decode('utf-8'))
         source=reverse_reviewed_glass_host_workflow_additions(source)
         before='  host-contracts:\n    runs-on: ubuntu-24.04\n    timeout-minutes: 15\n    steps:\n      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262\n        with:\n          ref: ${{ github.event.pull_request.head.sha || github.sha }}\n          persist-credentials: false\n'
         inserted='          fetch-depth: 16\n'
@@ -280,7 +281,7 @@ class DisplayGateTest(unittest.TestCase):
         import os
         import subprocess
         root=Path(__file__).resolve().parents[1]
-        source=environment_workspace_workflow_input((root/'.github/workflows/profile-upgrade-checks.yml').read_text())
+        source=environment_workspace_workflow_input(historical_bytes('.github/workflows/profile-upgrade-checks.yml').decode('utf-8'))
         manifest=profile_workflow_history_manifest()
         restored=reverse_reviewed_glass_host_workflow_additions(source)
         committed=subprocess.check_output(['git','--no-replace-objects','show',manifest['baseCommit']+':'+manifest['path']],cwd=root,env=dict(os.environ,GIT_NO_LAZY_FETCH='1'))

@@ -4,6 +4,7 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+from historical_source_inputs import historical_bytes, historical_identity
 import shutil
 import subprocess
 import tempfile
@@ -91,7 +92,10 @@ class PageBridgeLifecycleTests(unittest.TestCase):
 
     def test_old_commit_gap_and_individual_protections_are_observed(self):
         raw = (SOURCE / 'GeckoWebView.java').read_bytes()
-        previous = bridge42_preservation_bytes(raw)
+        # The predecessor proof is immutable. Mutants below still execute the
+        # actual current production members, not this historical image.
+        historical = historical_bytes('app/src/main/java/local/pocketchat/GeckoWebView.java')
+        previous = bridge42_preservation_bytes(historical)
         self.assertEqual(hashlib.sha256(previous).hexdigest(), PREVIOUS_SHA256)
         old = execute(previous.decode())
         self.assertEqual(old['status'], 'failed')
@@ -106,15 +110,17 @@ class PageBridgeLifecycleTests(unittest.TestCase):
                 outcomes.append(result)
         output = os.environ.get('PAGE_BRIDGE_LIFECYCLE_NEGATIVE_REPORT')
         if output:
-            Path(output).write_text(json.dumps({'previous': old, 'individualCounterexamples': outcomes}, indent=2) + '\n')
+            Path(output).write_text(json.dumps({'previous': old, 'individualCounterexamples': outcomes,
+                'historicalSource': historical_identity('app/src/main/java/local/pocketchat/GeckoWebView.java')}, indent=2) + '\n')
 
     def test_exact_inverse_preserves_original_reading_guard(self):
-        raw = (SOURCE / 'GeckoWebView.java').read_bytes()
+        raw = historical_bytes('app/src/main/java/local/pocketchat/GeckoWebView.java')
         from fingerprint_source_compatibility import reading_preservation_bytes, BASELINE
         self.assertEqual(hashlib.sha256(reading_preservation_bytes(raw)).hexdigest(), BASELINE)
         self.assertEqual(hashlib.sha256(reading_preservation_bytes(bridge42_preservation_bytes(raw))).hexdigest(), BASELINE)
         geometry = b'Math.abs(next-readingLayout)<.001f'
         self.assertEqual(raw.count(geometry), 1)
+        self.assertEqual((SOURCE / 'GeckoWebView.java').read_bytes().count(geometry), 1)
         with self.assertRaises(ValueError):
             reading_preservation_bytes(raw.replace(geometry, b'Math.abs(next-readingLayout)<.002f', 1))
         for previous, current in DELTAS:

@@ -1,7 +1,7 @@
-"""Current persistent-path behavior and the retained window recovery proof.
+"""Current persistent-path/window behavior and the retained historical proof.
 
-The path host uses current Gecko source provenance and compiled behavior. The
-separate window recovery host retains its historical binding contract.
+Both hosts compile current Gecko source. The separate recovery byte proof reads
+its actual published Git object and never supplies current Java behavior.
 """
 import ast
 import copy
@@ -37,7 +37,9 @@ WINDOW_HOST = load('current_window_raw_binding', 'tests/gecko-ip-window-barrier-
 
 class CurrentRuntimeRawBindings(unittest.TestCase):
     def test_exact_current_raw_and_only_fifteen_byte_whole_predecessor_proof(self):
-        raw = (ROOT/SOURCE_PATH).read_bytes()
+        raw, identity = WINDOW_HOST.historical_recovery_source()
+        self.assertEqual(identity['commit'], '7383bb1dd82c5d2155ba7c8dcc11b541478f6cfe')
+        self.assertEqual(identity['tree'], '56be467a913681f60dac48cefeedfce119b0a361')
         self.assertEqual((SHA(raw), len(raw)), (CURRENT, 128874))
         previous = raw.replace(CURRENT_CONTEXT, PREVIOUS_CONTEXT, 1)
         self.assertEqual((SHA(previous), len(previous)), (PREVIOUS, 128889))
@@ -66,7 +68,8 @@ class CurrentRuntimeRawBindings(unittest.TestCase):
             PATH_HOST.verify_factored_raw('UnknownClass', b'unknown')
 
     def test_unknown_recovery_hunks_and_forged_outer_pins_cannot_admit_a_new_image(self):
-        raw = (ROOT/SOURCE_PATH).read_bytes()
+        # These are counterfeits of the exact historical proof, not current Java.
+        raw, _ = WINDOW_HOST.historical_recovery_source()
         previous = raw.replace(CURRENT_CONTEXT, PREVIOUS_CONTEXT, 1)
         removed = raw.replace(CURRENT_CONTEXT, b'', 1)
         variants = [raw+b' ', raw[:-1], removed,
@@ -103,7 +106,7 @@ class CurrentRuntimeRawBindings(unittest.TestCase):
                     report = json.loads(output.read_text())
                     self.assertEqual(report['status'], 'passed')
                     self.assertTrue(report['executionInputsUnchanged'])
-                    self.assertEqual(report['sourceFiles'][SOURCE_PATH], SHA((ROOT/SOURCE_PATH).read_bytes()) if name == 'profile' else CURRENT)
+                    self.assertEqual(report['sourceFiles'][SOURCE_PATH], SHA((ROOT/SOURCE_PATH).read_bytes()))
                     self.assertEqual(report['jsonJarSha256'], SHA(jar.read_bytes()))
                     if name == 'profile':
                         self.assertEqual(run.stdout.strip(), 'PERSISTENT_PROFILE_PATH_PROOF:factored')
@@ -120,6 +123,38 @@ class CurrentRuntimeRawBindings(unittest.TestCase):
                         self.assertEqual(len(report['sourceMetadataControls']['pythonGuardCounterfeits']), 3)
                         self.assertEqual(report['resourceRecoveryWholeProof']['currentSha256'], CURRENT)
                         self.assertTrue(report['sourceMetadataControls']['actualCurrentJavaUsesRawSource'])
+                        self.assertTrue(report['historicalSourceProof']['historicalProofOnly'])
+                        self.assertFalse(report['historicalSourceProof']['currentJavaGeneratedFromHistoricalSource'])
+                        self.assertEqual(report['currentWindowContract']['currentSourceSha256'], SHA((ROOT/SOURCE_PATH).read_bytes()))
+                        self.assertTrue(report['currentWindowContract']['currentJavaFromRawCurrent'])
+                        self.assertFalse(report['currentWindowContract']['sourceHistoryProjectionUsed'])
+
+    def test_current_window_contract_accepts_unrelated_maintenance_but_keeps_all_seven_members(self):
+        raw = (ROOT/SOURCE_PATH).read_bytes()
+        historical, _ = WINDOW_HOST.historical_recovery_source()
+        expected = WINDOW_HOST.verify_current_window(raw, historical)
+        self.assertEqual(len(expected['memberSha256']), 7)
+        self.assertTrue(expected['originalFiveEightAndEightPointFiveSecondBudgetsPreserved'])
+        at = raw.rfind(b'}'); self.assertGreater(at, 0)
+        changed = raw[:at] + b'\n  private void unrelatedWindowMaintenanceTestMethod() {}\n' + raw[at:]
+        current = WINDOW_HOST.verify_current_window(changed, historical)
+        self.assertNotEqual(current['currentSourceSha256'], expected['currentSourceSha256'])
+        self.assertEqual(current['memberSha256'], expected['memberSha256'])
+        self.assertTrue(current['currentJavaFromRawCurrent'])
+        self.assertFalse(current['sourceHistoryProjectionUsed'])
+        for needle in WINDOW_HOST.WINDOW_CONTRACT_MEMBERS:
+            member = WINDOW_HOST.declaration(raw.decode(), needle).encode()
+            for changed_member in (b'', member + member, member.replace(b'{', b'{ /* changed contract */', 1)):
+                mutated = raw.replace(member, changed_member, 1)
+                with self.subTest(member=needle), self.assertRaises((AssertionError, ValueError)):
+                    WINDOW_HOST.verify_current_window(mutated, historical)
+        for before, after in ((b'deadline[0],5000', b'deadline[0],5001'),
+                              (b'+8000', b'+8001'), (b'},8500', b'},8501')):
+            self.assertEqual(raw.count(before), 1)
+            with self.subTest(budget=before), self.assertRaises(AssertionError):
+                WINDOW_HOST.verify_current_window(raw.replace(before, after, 1), historical)
+        with self.assertRaises(AssertionError):
+            WINDOW_HOST.verify_current_window(raw, historical + b'\n')
 
     def test_current_profile_behavior_accepts_an_unrelated_browser_method(self):
         java = os.environ.get('PROFILE_JAVA') or shutil.which('java')

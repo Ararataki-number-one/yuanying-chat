@@ -52,7 +52,7 @@ class GeckoWebView extends FrameLayout {
     if(chrome!=null){if(readingOwnerVisible())chrome.webTouch(event);else chrome.cancelWebGesture();}return handled;
   }
   void destroy(){
-    if(destroyed)return;destroyed=true;owner.cpu.retire(runtime);owner.tls.retire(runtime);blockedPopups.close();ipRoutes.close();if(ipObservedNetwork!=null)ipObservedNetwork.removeRouteListener(ipRouteSignal);owner.prefs.unregisterOnSharedPreferenceChangeListener(ipPreferences);owner.handler.removeCallbacks(ipRouteCheck);retireTimeZones();requestHeadersInstalled=false;retireRequestHeaderPolicy();generalRestore=null;ChromiumRouteLease.removeListener(routeLeaseChanged);releaseGeneralRoutes();generalSessions.clear();deferredGeneralLoads.clear();closeExitIpPage();if(contentPermissions!=null)contentPermissions.close();
+    if(destroyed)return;destroyed=true;closeStartupWindow();owner.cpu.retire(runtime);owner.tls.retire(runtime);blockedPopups.close();ipRoutes.close();if(ipObservedNetwork!=null)ipObservedNetwork.removeRouteListener(ipRouteSignal);owner.prefs.unregisterOnSharedPreferenceChangeListener(ipPreferences);owner.handler.removeCallbacks(ipRouteCheck);retireTimeZones();requestHeadersInstalled=false;retireRequestHeaderPolicy();generalRestore=null;ChromiumRouteLease.removeListener(routeLeaseChanged);releaseGeneralRoutes();generalSessions.clear();deferredGeneralLoads.clear();closeExitIpPage();if(contentPermissions!=null)contentPermissions.close();
     cancelZoom();cancelProtectionTasks();nativeProtection.closed();protectionRestore=null;owner.handler.removeCallbacks(recovery);owner.handler.removeCallbacks(checkpoint);saveCheckpoint();
     callbacks.clear();cookieCallbacks.clear();appearanceSync.clear();
     appearanceLoads.clear();appearanceConnections.clear();appearanceDocuments.clear();staleAppearanceConnections.clear();
@@ -67,7 +67,10 @@ class GeckoWebView extends FrameLayout {
   static final String VERSION="GeckoView 157.0.1 · 输入同步修正";
   final ChatSession owner;
   GeckoView surface;GeckoRuntime runtime;WebExtension extension;GeckoSession primary,current;
+  private GeckoSession startupWindow;
   boolean addonDisabled;long addonStateSerial;
+  // Startup observations only; neither counter grants page or network readiness.
+  long routeDelegateInstalls,routeConnectAttempts;
   GeckoCpuController.Boot cpuBoot;boolean cpuStartupRequested;GeckoTlsController.Boot tlsBoot;boolean tlsStartupRequested;
   interface ExitIpPageListener{void changed(String message);void closed();}
   ExitIpPageSession exitIpPage;int exitIpTopInset;
@@ -581,8 +584,8 @@ class GeckoWebView extends FrameLayout {
   void applyAddonState(GeckoRuntime expected,WebExtension value,boolean disabled,long serial){
     if(addonStateSerial!=serial||!builtinAddonCurrent(expected,value,disabled))return;
     extension=value;addonDisabled=disabled;
-    if(!disabled){extension.setMessageDelegate(routeMessages,"pocketroute");maybeOpen();return;}
-    closeExitIpPage();WebExtension.Port previous=routePort;routePort=null;
+    if(!disabled){extension.setMessageDelegate(routeMessages,"pocketroute");routeDelegateInstalls++;maybeOpen();return;}
+    closeStartupWindow();closeExitIpPage();WebExtension.Port previous=routePort;routePort=null;
     requestHeadersInstalled=false;routePrepared=false;privacyReady=false;fingerprintingProtected=false;
     cancelProtectionTasks();nativeProtection.disconnected();protectionRequest=nativeProtection.token();metadata.policyAcknowledged=false;metadata.rfpAcknowledged=false;
     retireTimeZones();retireRequestHeaderPolicy();releaseGeneralRoutes();deferredGeneralLoads.clear();generalRestore=null;protectionRestore=null;startupState=null;
@@ -607,6 +610,7 @@ class GeckoWebView extends FrameLayout {
   }
   private final WebExtension.MessageDelegate routeMessages=new WebExtension.MessageDelegate(){
     @Override public void onConnect(WebExtension.Port port){
+      routeConnectAttempts++;
       if(destroyed||port.sender.environmentType!=WebExtension.MessageSender.ENV_TYPE_EXTENSION)return;
       if(addonDisabled){port.disconnect();return;}
       WebExtension.Port previous=routePort;
@@ -727,9 +731,50 @@ class GeckoWebView extends FrameLayout {
     if(surface==null){surface=new GeckoView(displayContext);surface.setViewBackend(GeckoView.BACKEND_TEXTURE_VIEW);surface.coverUntilFirstPaint(ReferenceUi.CHAT_BG);addView(surface,new FrameLayout.LayoutParams(-1,-1));}
     primary=newSession();current=primary;primary.open(runtime);surface.setSession(primary);configure(desktop,owner.privacy.level());ready=true;
     if(!queued.isEmpty()){String target=queued;queued="";loadUrl(target);}
+    closeStartupWindow();
   }
   void identityConfigurationReady(){identityPrepared=true;maybeOpen();}
-  private void maybeOpen(){if(!destroyed&&!failed&&!addonDisabled&&!ready&&extension!=null&&checkpointReady&&identityPrepared&&routePrepared&&requestHeadersInstalled&&privacyReady&&protectionAllowsNetwork())open();}
+  private void maybeOpen(){
+    if(enabled&&!destroyed&&!owner.deleted&&!failed&&!addonDisabled&&!ready&&extension!=null&&runtime!=null){
+      // Gecko 157 defers an already installed background until its first
+      // window's extensions-late-startup event. Its native bridge cannot be
+      // a prerequisite for creating that otherwise empty window.
+      if(!routePrepared&&!prepareStartupWindow())return;
+      if(checkpointReady&&identityPrepared&&routePrepared&&requestHeadersInstalled&&privacyReady&&protectionAllowsNetwork()){
+        try{open();}catch(RuntimeException unavailable){failure("浏览器窗口未能启动，请重新打开当前环境重试");}
+      }
+    }
+  }
+  private boolean prepareStartupWindow(){
+    if(startupWindow!=null)return startupWindow.isOpen();
+    final GeckoRuntime expected=runtime;
+    final GeckoSession window;
+    try{window=new GeckoSession();}catch(RuntimeException unavailable){if(!destroyed&&!owner.deleted&&!failed&&!addonDisabled&&runtime==expected)failure("浏览器启动窗口未能创建，请重新打开当前环境重试");return false;}
+    startupWindow=window;
+    try{
+      // This SDK initialization window has no display, page bridge or URL load.
+      // The runtime's closed bootstrap proxy and every real-page gate stay intact.
+      window.setNavigationDelegate(new GeckoSession.NavigationDelegate(){
+        @Override public GeckoResult<AllowOrDeny> onLoadRequest(GeckoSession session,LoadRequest request){return GeckoResult.fromValue(AllowOrDeny.DENY);}
+        @Override public GeckoResult<GeckoSession> onNewSession(GeckoSession session,String target){return GeckoResult.fromValue(null);}
+      });
+      window.open(expected);
+      if(destroyed||owner.deleted||failed||addonDisabled||runtime!=expected||startupWindow!=window){if(startupWindow==window)startupWindow=null;closeStartupWindow(window);return false;}
+      return true;
+    }catch(RuntimeException unavailable){
+      if(startupWindow==window&&!destroyed&&!owner.deleted&&!failed&&!addonDisabled&&runtime==expected)failure("浏览器启动窗口未能初始化，请重新打开当前环境重试");
+      if(startupWindow==window)startupWindow=null;
+      closeStartupWindow(window);
+      return false;
+    }
+  }
+  private void closeStartupWindow(){
+    GeckoSession window=startupWindow;startupWindow=null;
+    closeStartupWindow(window);
+  }
+  private void closeStartupWindow(GeckoSession window){
+    if(window!=null&&window.isOpen())try{window.close();}catch(RuntimeException alreadyClosed){}
+  }
   GeckoSession newSession(){
     // Isolation comes from existing Android processes and distinct profile directories.
     // Default cookie storage remains usable by the official cookie API in this runtime.
@@ -947,7 +992,7 @@ class GeckoWebView extends FrameLayout {
     try{if(!completed.await(7,TimeUnit.SECONDS)||result[0]==null)throw new IOException("当前环境的登录信息暂不可用，请重试下载");return result[0];}
     catch(InterruptedException error){Thread.currentThread().interrupt();throw new IOException("下载已暂停");}
   }
-  private void failure(String message){failed=true;owner.pageError=message;owner.finishNavigation(message,false);}
+  private void failure(String message){failed=true;closeStartupWindow();owner.pageError=message;owner.finishNavigation(message,false);}
   boolean hasVisibleDocument(){return enabled&&current!=null&&current.isOpen()&&!failed&&!crashed.contains(current)&&usable.contains(current);}
   boolean canChooseFiles(){return hasVisibleDocument()&&!pendingLoads.contains(current)&&(!owner.navigating||owner.navigationDispatched&&owner.targetMatches(getUrl()));}
   private void uploadPreparationFinished(String previousStatus){owner.resourceFileWork(false,false);if(!destroyed&&owner.resourceFilePreparations==0&&owner.status.equals("准备附件…"))owner.setStatus(previousStatus.equals("准备附件…")?"":previousStatus);}

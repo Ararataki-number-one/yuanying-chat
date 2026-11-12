@@ -91,13 +91,17 @@ public final class LifecycleHost {
   static void chooser(){
     fresh();MainActivity old=open();GeckoWebView web=old.remote;WebChromeClient chrome=web.chrome;final int[] cancelled={0},late={0};
     chrome.onShowFileChooser(null,value->{if(value==null)cancelled[0]++;},new WebChromeClient.FileChooserParams());
-    check(old.requests==1&&old.attachments.callback!=null,"Real chooser callback is pending before teardown");
-    old.onDestroy();check(cancelled[0]==1&&old.attachments.callback==null,"UI retirement settles pending attachment callback exactly once");
+    check(old.requests==1&&old.attachments.blocked(),"Real chooser callback is pending before teardown");
+    old.onDestroy();check(cancelled[0]==1&&!old.attachments.blocked(),"UI retirement settles pending attachment callback exactly once");
     chrome.onShowFileChooser(null,value->{if(value==null)late[0]++;},new WebChromeClient.FileChooserParams());
     check(late[0]==1&&old.requests==1,"Late old chooser callback cannot reopen a picker");
     PermissionRequest permission=new PermissionRequest();chrome.onPermissionRequest(permission);final boolean[] allowed={true};chrome.onGeolocationPermissionsShowPrompt("https://chatgpt.com",(origin,grant,retain)->allowed[0]=grant||retain);
     check(permission.denied==1&&!allowed[0],"Existing retired chooser permission callbacks remain deny-only");
     old.onDestroy();check(cancelled[0]==1,"Repeated Activity destruction does not redeliver old attachment result");
+    fresh();MainActivity throwing=open();final int[] thrown={0};throwing.remote.chrome.onShowFileChooser(null,value->{thrown[0]++;throw new IllegalStateException("Controlled native cancellation failure");},new WebChromeClient.FileChooserParams());
+    Throwable escaped=null;try{throwing.onDestroy();}catch(RuntimeException failure){escaped=failure;}
+    check(escaped==null&&thrown[0]==1&&!throwing.attachments.blocked(),"Throwing native cancellation cannot abort actual Activity retirement");
+    check(throwing.handler.removals==1&&throwing.platformDestroys==1&&!throwing.session.observers.contains(throwing.sessionObserver),"Actual Activity teardown still clears its handlers and observer after callback failure");
   }
   static void chooserReentry(){
     fresh();MainActivity old=open();GeckoWebView web=old.remote;MainActivity next=new MainActivity();
@@ -172,11 +176,7 @@ class GeckoWebView extends FrameLayout {
 class PopupBoundary {Runnable onInvalidate;int invalidated;void invalidate(){invalidated++;Runnable action=onInvalidate;onInvalidate=null;if(action!=null)action.run();}}
 class Body extends ByteArrayInputStream {int closed;Body(){super(new byte[]{1});}@Override public void close()throws IOException{closed++;super.close();}}
 class Request implements WebResourceRequest {final Uri uri;Request(String value){uri=Uri.parse(value);}public Uri getUrl(){return uri;}public boolean isForMainFrame(){return true;}}
-class Attachments {
-  final MainActivity a;ValueCallback<Uri[]> callback;String pickerUrl="";long pickerEpoch;boolean destroyed;
-  static Intent chooserIntent(WebChromeClient.FileChooserParams value,String kind){return new Intent();}
-  /*ACTUAL_ATTACHMENT_MEMBERS*/
-}
+/*ACTUAL_ATTACHMENT_DECLARATION*/
 class FileDownloads {
   final MainActivity a;final Worker worker=new Worker();final SavedFileActions savedActions;final DownloadTasks tasks;boolean active,destroyed;Dialog manager,noticeDialog;int responses,accepts;
   boolean intercept(String url){return false;}void pause(){active=false;}void accept(String u,String a,String c,String t,long size){accepts++;this.a.status("download");}

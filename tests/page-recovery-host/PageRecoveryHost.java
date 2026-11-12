@@ -299,6 +299,9 @@ class Store{final java.util.concurrent.Executor worker=Runnable::run;void offer(
 class Cache{JSONArray withEarlier(String u,JSONArray a){return a;}void saveMessages(String u,JSONArray e){}}
 
 class Audit{void retirePageCheck(){}boolean requestIdentitySelected;boolean requestIdentityPageSelected(){return requestIdentitySelected;}void refresh(boolean force){}}class ChatService{static boolean running;static void networkLost(Object c){}}class GeckoWebView{
+ // Recovery cases already own a real page in their explicit SDK boundary;
+ // no cold startup window exists. Its exact lifecycle has a separate host.
+ void closeStartupWindow(){}
  // This recovery workload has no auxiliary page. Never simulate its lifecycle.
  boolean auxiliaryPageSelected;
  boolean closeExitIpPage(){if(auxiliaryPageSelected)throw new AssertionError("Auxiliary page lifecycle is outside this host");return false;}

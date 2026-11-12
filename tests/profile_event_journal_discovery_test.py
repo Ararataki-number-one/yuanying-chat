@@ -3,8 +3,6 @@
 No Android/device result is synthesized. Original EventTransfer and all existing
 business assertions execute; counterfeit discovery and payloads remain failures.
 """
-import ast
-import copy
 import json
 from pathlib import Path
 import sys
@@ -22,12 +20,7 @@ TRANSFER=original.transfer
 
 
 def discovery_class():
-    source=ast.parse((ROOT/'tests/gecko/run_device.py').read_text())
-    node=copy.deepcopy(next(n for n in source.body if isinstance(n,ast.ClassDef) and n.name=='ReceiptJournalDiscovery'))
-    bindings=dict(json=json,parse_receipt_line=TRANSFER.parse_receipt_line)
-    exec(compile(ast.fix_missing_locations(ast.Module(body=[node],type_ignores=[])),str(ROOT/'tests/gecko/run_device.py'),'exec'),bindings)
-    return bindings['ReceiptJournalDiscovery']
-
+    return TRANSFER.ReceiptJournalDiscovery
 
 def marker(receipt):return json.dumps(receipt,separators=(',',':'))
 def journal(native_receipts,**changes):

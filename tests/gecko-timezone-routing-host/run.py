@@ -99,7 +99,8 @@ def main():
     hashes = {str(path.relative_to(ROOT)): digest(path) for path in files}
     jar_hash = digest(args.json_jar)
     text = source.read_text()
-    selected = {name: declaration(text, name) for name in MEMBERS}
+    session = declaration(text, 'GeckoSession newSession()')
+    selected = {name: declaration(session if name == 'public GeckoResult<AllowOrDeny> onLoadRequest(' else text, name) for name in MEMBERS}
     fields = [line.strip() for line in text.splitlines() if line.strip().startswith('final Map<TimeZoneGate,ChromiumRouteLease.Handle> ipRouteLeases=')]
     if len(fields) != 1 or not fields[0].endswith(';'):
         raise ValueError('Unique complete actual IP route lease map field required')

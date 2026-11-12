@@ -10,6 +10,7 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+from historical_source_inputs import historical_bytes
 import struct
 import sys
 import tempfile
@@ -155,7 +156,7 @@ class ReportSourceInputs(unittest.TestCase):
         self.assertEqual((current.BASE_COMMIT, current.BASE_TREE),
                          ('89729eb2c079d40237ecd466c7444da934206d98', '583db08f6595ddc8e5a387e5cc035de1e70cb690'))
         for path, identities in current.IDENTITIES.items():
-            raw = (ROOT/path).read_bytes()
+            raw = historical_bytes(path)
             with self.subTest(path=path):
                 self.assertEqual(current.identity(raw), identities[3:])
                 before = current.source_input(raw, path)
@@ -179,7 +180,7 @@ class ReportSourceInputs(unittest.TestCase):
                     and isinstance(n.func, ast.Attribute) and n.func.attr.startswith('assert')]
 
         for path in current.IDENTITIES:
-            after = (ROOT/path).read_bytes(); before = current.source_input(after, path)
+            after = historical_bytes(path); before = current.source_input(after, path)
             self.assertEqual(functions(after), functions(before), path)
             self.assertEqual(assertions(after), assertions(before), path)
         raw = raw_runner()
@@ -190,7 +191,7 @@ class ReportSourceInputs(unittest.TestCase):
 
     def test_missing_duplicate_moved_modified_and_previous_whole_images_fail_closed(self):
         for path in current.IDENTITIES:
-            raw = (ROOT/path).read_bytes()
+            raw = historical_bytes(path)
             values = [b'', raw[:1024], raw+b' ', current.source_input(raw, path)]
             for _, new in current.DELTAS[path]:
                 block = new.encode(); remaining = raw.replace(block, b'', 1)
@@ -204,7 +205,7 @@ class ReportSourceInputs(unittest.TestCase):
                 self.assertIs(current.historical_input(value, path), value)
 
     def test_both_complete_ast_forms_and_formatting_keep_original_ui_oracles(self):
-        raw = raw_runner().decode(); before = current.source_input(raw.encode(), current.RUNNER).decode()
+        raw = historical_bytes(current.RUNNER).decode(); before = current.source_input(raw.encode(), current.RUNNER).decode()
         self.assertEqual(raw.count(PREPARATION), 1)
         for selected, old in ((raw, before), (raw.replace(PREPARATION, '', 1), before.replace(PREPARATION, '', 1))):
             for text in (selected, '# formatting only\n'+ast.unparse(ast.parse(selected))+'\n'):
@@ -217,7 +218,7 @@ class ReportSourceInputs(unittest.TestCase):
                 self.assertFalse(result['actualAndroidExecution'])
 
     def test_writer_ast_removal_duplication_movement_or_change_rejects_before_mutation(self):
-        raw = raw_runner()
+        raw = historical_bytes(current.RUNNER)
         for writer in current.WRITERS_AFTER:
             expected = ast.dump(ast.parse(writer).body[0], include_attributes=False)
             for kind in ('missing', 'duplicate', 'moved', 'changed'):
@@ -243,7 +244,7 @@ class ReportSourceInputs(unittest.TestCase):
                     original.verify_shared_ui_source(ast.unparse(tree))
 
     def test_original_threshold_fields_and_other_writer_changes_never_normalize(self):
-        raw = raw_runner().decode()
+        raw = historical_bytes(current.RUNNER).decode()
         changes = ((current.WRITERS_AFTER[0], current.WRITERS_AFTER[0].replace("'autoCollapse':auto_collapse", "'autoCollapse':None")),
                    (current.WRITERS_AFTER[1], current.WRITERS_AFTER[1].replace('json.dumps(report,', "json.dumps({**report,'rawUtf8':report['rawUtf8'].strip()},")),
                    ('json.dumps(report,ensure_ascii=False', 'json.dumps({},ensure_ascii=False'),
@@ -262,7 +263,7 @@ class ReportSourceInputs(unittest.TestCase):
                 original.verify_shared_ui_source(selected.decode())
 
     def test_invalid_types_paths_excerpts_and_unrecognized_asts_do_not_gain_a_mapping(self):
-        raw = raw_runner()
+        raw = historical_bytes(current.RUNNER)
         for value in (None, raw.decode(), bytearray(raw), memoryview(raw), True):
             with self.assertRaises(AssertionError):
                 current.source_input(value, current.RUNNER)
@@ -274,30 +275,40 @@ class ReportSourceInputs(unittest.TestCase):
                 current.original_runner_tree(tree)
 
     def test_named_historical_port_preserves_real_bytes_and_unknowns_without_global_patch(self):
-        read = Path.read_bytes
-        view = current.historical_root(ROOT)
-        self.assertIsInstance(view, Path)
-        self.assertEqual(view, ROOT)
-        self.assertEqual(os.fspath(view), os.fspath(ROOT))
-        raw = raw_runner(); selected = view/current.RUNNER
-        self.assertEqual(selected.read_bytes(), current.source_input(raw, current.RUNNER))
-        self.assertEqual(selected.read_text().encode(), current.source_input(raw, current.RUNNER))
-        self.assertFalse(hasattr(selected, 'write_bytes'))
-        self.assertEqual(raw_runner(), raw)
-        self.assertIs(Path.read_bytes, read)
-        self.assertIs(type(view/current.PORT), type(ROOT))
-        for root in (str(ROOT), ROOT.parent, view):
-            with self.assertRaises(AssertionError):
-                current.historical_root(root)
-        unknown = raw+b' '
-        def changed(path):
-            return unknown if path == ROOT/current.RUNNER else read(path)
-        with patch.object(Path, 'read_bytes', changed):
-            self.assertIs(selected.read_bytes(), unknown)
-        with tempfile.TemporaryDirectory() as directory:
-            link = Path(directory)/'linked.py'; link.symlink_to(ROOT/current.RUNNER)
-            with self.assertRaises(AssertionError):
-                current._HistoricalSource(link).read_bytes()
+        # Model the fixed source file at this test's read boundary only. The
+        # actual final_writers()/write_actual() functions above stay current.
+        actual_read = Path.read_bytes
+        path = ROOT/current.RUNNER;actual_bytes = actual_read(path)
+        fixed_bytes = historical_bytes(current.RUNNER)
+        def fixture_read(selected):
+            return fixed_bytes if selected==path else actual_read(selected)
+        with patch.object(Path,'read_bytes',fixture_read):
+            read = Path.read_bytes
+            view = current.historical_root(ROOT)
+            self.assertIsInstance(view, Path)
+            self.assertEqual(view, ROOT)
+            self.assertEqual(os.fspath(view), os.fspath(ROOT))
+            raw = raw_runner(); selected = view/current.RUNNER
+            self.assertEqual(selected.read_bytes(), current.source_input(raw, current.RUNNER))
+            self.assertEqual(selected.read_text().encode(), current.source_input(raw, current.RUNNER))
+            self.assertFalse(hasattr(selected, 'write_bytes'))
+            self.assertEqual(raw_runner(), raw)
+            self.assertIs(Path.read_bytes, read)
+            self.assertIs(type(view/current.PORT), type(ROOT))
+            for root in (str(ROOT), ROOT.parent, view):
+                with self.assertRaises(AssertionError):
+                    current.historical_root(root)
+            unknown = raw+b' '
+            def changed(path):
+                return unknown if path == ROOT/current.RUNNER else read(path)
+            with patch.object(Path, 'read_bytes', changed):
+                self.assertIs(selected.read_bytes(), unknown)
+            with tempfile.TemporaryDirectory() as directory:
+                link = Path(directory)/'linked.py'; link.symlink_to(ROOT/current.RUNNER)
+                with self.assertRaises(AssertionError):
+                    current._HistoricalSource(link).read_bytes()
+        self.assertIs(Path.read_bytes,actual_read)
+        self.assertEqual(actual_read(path),actual_bytes)
 
 
 if __name__ == '__main__':

@@ -1,4 +1,5 @@
 """Finite TLS metadata closure; no runtime or Android execution projection."""
+from historical_source_inputs import historical_bytes
 import ast
 import copy
 import hashlib
@@ -36,7 +37,7 @@ class TlsCpuIpHistoricalClosure(unittest.TestCase):
         self.assertEqual(sum(len(row['deltas']) for row in value['files'].values()), 19)
         for relative, row in value['files'].items():
             before = git('show', layer.BASE_COMMIT+':'+relative)
-            after = p2_metadata_input((ROOT/relative).read_bytes(), relative)
+            after = p2_metadata_input(historical_bytes(relative), relative)
             self.assertEqual((SHA(before), len(before)), (row['previousSha256'], row['previousBytes']))
             self.assertEqual((SHA(after), len(after)), (row['reviewedSha256'], row['reviewedBytes']))
             self.assertEqual(layer.source_input(before, relative), before)
@@ -52,7 +53,7 @@ class TlsCpuIpHistoricalClosure(unittest.TestCase):
     def test_missing_duplicate_changed_moved_truncated_and_unknown_all_reject(self):
         rejected = 0
         for relative, row in layer.manifest()['files'].items():
-            after = p2_metadata_input((ROOT/relative).read_bytes(), relative)
+            after = p2_metadata_input(historical_bytes(relative), relative)
             for delta in row['deltas']:
                 part = delta['current'].encode()
                 self.assertEqual(after.count(part), 1)
@@ -69,7 +70,7 @@ class TlsCpuIpHistoricalClosure(unittest.TestCase):
 
     def test_owned_paths_types_and_complete_inputs_only(self):
         relative = 'app/src/main/java/local/pocketchat/GeckoWebView.java'
-        raw = p2_metadata_input((ROOT/relative).read_bytes(), relative)
+        raw = p2_metadata_input(historical_bytes(relative), relative)
         for bad in (None, raw.decode(), bytearray(raw), raw[:100], raw+b'\n'):
             with self.assertRaises(ValueError):
                 layer.source_input(bad, relative)
@@ -134,7 +135,7 @@ class TlsCpuIpHistoricalClosure(unittest.TestCase):
 
     def test_removing_only_declared_hooks_restores_the_whole_original_suite_and_assertions(self):
         original = git('show', layer.BASE_COMMIT+':'+SUITE)
-        current = (ROOT/SUITE).read_bytes()
+        current = historical_bytes(SUITE)
         imported = b'from tls_cpu_ip_source_compatibility import source_input as tls_source_input\n'
         final_imported = b'from final_browser_source_compatibility import metadata_input as final_metadata_input\n'
         hooked = b'after=tls_source_input((ROOT/relative).read_bytes(),relative)'
@@ -162,7 +163,7 @@ class TlsCpuIpHistoricalClosure(unittest.TestCase):
         self.assertEqual(canonical_cpu_fixture_sha(cpu.DELTA_SHA256), '66c9b3643b26edb54b0c371c2053d56e482efcce2035aa1ca067fdead8f48e5a')
         self.assertEqual(sum(len(row['deltas']) for row in cpu.manifest()['files'].values()), 9)
         for relative in cpu.PATHS:
-            cpu_source = layer.source_input(p2_metadata_input((ROOT/relative).read_bytes(), relative), relative)
+            cpu_source = layer.source_input(p2_metadata_input(historical_bytes(relative), relative), relative)
             self.assertEqual(cpu_source, git('show', layer.BASE_COMMIT+':'+relative))
             ip_source = cpu.source_input(cpu_source, relative)
             self.assertEqual(ip_source, git('show', cpu.BASE_COMMIT+':'+relative))
@@ -180,7 +181,7 @@ class TlsCpuIpHistoricalClosure(unittest.TestCase):
         self.assertTrue(fixtures)
         for relative in [*fixtures, *originals]:
             with self.subTest(path=relative):
-                current = final_metadata_input((ROOT/relative).read_bytes(), relative)
+                current = final_metadata_input(historical_bytes(relative), relative)
                 self.assertEqual(current, git('show', layer.BASE_COMMIT+':'+relative))
 
     def test_current_templates_unknown_edits_and_nonclosing_reverse_are_independent(self):
@@ -191,7 +192,7 @@ class TlsCpuIpHistoricalClosure(unittest.TestCase):
         namespace = {'__file__': str(path), '__name__': 'tls_reverse_counterfeit'}
         exec(compile(source.replace(guard, '', 1), '<TLS reverse closure counterfeit>', 'exec'), namespace)
         for relative in layer.TEMPLATE_PATHS:
-            current = (ROOT/relative).read_bytes()
+            current = historical_bytes(relative)
             before = git('show', layer.BASE_COMMIT+':'+relative)
             self.assertEqual(layer.source_input(current, relative), before)
             with self.assertRaises(ValueError):

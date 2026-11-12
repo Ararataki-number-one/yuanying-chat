@@ -343,6 +343,70 @@ def prepare_supplemental_history(root=ROOT, *, source_commit, environment=None):
                 scope='Setup-only five original fixture-root blobs and eight original environment-workflow direct reads; no test/source projection or ref update.')
 
 
+RELEASED_PROOF_COMMIT = '7383bb1dd82c5d2155ba7c8dcc11b541478f6cfe'
+RELEASED_PROOF_TREE = '56be467a913681f60dac48cefeedfce119b0a361'
+
+
+def released_proof_objects(root):
+    """Check fixed ownership and object presence, without walking parent history.
+
+This is a setup completeness check. The explicit historical reader separately
+verifies the SHA-1 and path ownership of every blob it actually reads. Merely
+being present here is never reported as a passed behavior or source proof.
+"""
+    commit = compatibility_object_bytes(root, 'commit', RELEASED_PROOF_COMMIT)
+    trees = [line[5:].decode() for line in commit.split(b'\n\n', 1)[0].splitlines() if line.startswith(b'tree ')]
+    require(trees == [RELEASED_PROOF_TREE], 'released proof commit does not own the fixed tree')
+    compatibility_object_bytes(root, 'tree', RELEASED_PROOF_TREE)
+    raw = history.checked(root, 'rev-list', '--objects', '--no-object-names',
+                          '--missing=print', RELEASED_PROOF_TREE)
+    require(len(raw) <= 1024 * 1024, 'released proof object closure exceeds setup bound')
+    rows = raw.decode('ascii').splitlines()
+    require(0 < len(rows) <= 8192 and len(rows) == len(set(rows))
+            and all(re.fullmatch(r'\??[0-9a-f]{40}', row) for row in rows),
+            'invalid released proof object closure')
+    missing = [row[1:] for row in rows if row.startswith('?')]
+    if missing:
+        raise history.MissingHistoricalObject('Released proof tree has missing objects: ' + str(len(missing)))
+    require(RELEASED_PROOF_TREE in rows, 'released proof closure omitted its root tree')
+    return dict(commit=RELEASED_PROOF_COMMIT, tree=RELEASED_PROOF_TREE,
+                reachableObjectsPresent=len(rows),
+                objectIdentityListSha256=hashlib.sha256(('\n'.join(sorted(rows))+'\n').encode()).hexdigest(),
+                commitAndRootTreeSha1Verified=True, objectPresenceOnly=True,
+                individualReadBytesVerifiedBy='tests/historical_source_inputs.py')
+
+
+def prepare_released_history(root=ROOT, *, source_commit, environment=None):
+    """Prepare the real release owner independently of the original inventories."""
+    root = Path(root).resolve()
+    environment = os.environ if environment is None else environment
+    require(type(source_commit) is str and re.fullmatch('[0-9a-f]{40}', source_commit),
+            'exact released-proof checkout source required')
+    before = history.checkout_state(root)
+    require(before['sourceCommit'] == source_commit, 'released-proof source differs from actual checkout')
+    fetched = []
+    try:
+        observed = released_proof_objects(root)
+    except history.MissingHistoricalObject:
+        authorize_fetch(root, source_commit, environment)
+        require(history.checkout_state(root) == before, 'checkout changed before released-proof fetch')
+        try:
+            # Refetch also repairs a partial object set whose owner is already
+            # present. No branch, HEAD, index or FETCH_HEAD is updated.
+            history.checked(root, 'fetch', '--refetch', '--no-tags', '--depth=1',
+                            '--no-write-fetch-head', '--no-filter', 'origin', RELEASED_PROOF_COMMIT)
+        finally:
+            require(history.checkout_state(root) == before,
+                    'released-proof fetch changed HEAD, tree, index or tracked bytes')
+        fetched.append(RELEASED_PROOF_COMMIT)
+        observed = released_proof_objects(root)
+    require(history.checkout_state(root) == before, 'released-proof verification changed checkout')
+    return dict(schema=1, status='passed', sourceCommit=source_commit, sourceTree=before['sourceTree'],
+                releasedProof=observed, fetchedCommits=fetched, checkoutUnchanged=True,
+                testsExecuted=False, actualAndroidExecution=False,
+                scope='Setup-only fixed 2.1.4 owner/tree identity and complete object presence; actual historical reads separately verify every input blob; no source projection or ref update.')
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--source-commit', required=True)
@@ -352,6 +416,7 @@ def main():
     value = prepare_history(args.root, source_commit=args.source_commit)
     value['compatibilityHistory'] = prepare_compatibility_history(args.root, source_commit=args.source_commit)
     value['supplementalHistory'] = prepare_supplemental_history(args.root, source_commit=args.source_commit)
+    value['releasedHistory'] = prepare_released_history(args.root, source_commit=args.source_commit)
     raw = json.dumps(value, sort_keys=True, indent=2) + '\n'
     if args.output:
         args.output.parent.mkdir(parents=True, exist_ok=True)

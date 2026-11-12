@@ -569,7 +569,7 @@ class CompactQuickEnvironmentContractTest(unittest.TestCase):
                 root=self.hierarchy();root[index].set('bounds',bounds)
                 with self.subTest(index=index,bounds=bounds),self.assertRaises(AssertionError):self.parse(root)
 
-    def run_controls(self,names=('drawer','environment','more'),home_resumes=True):
+    def run_controls(self,names=('drawer','environment','more'),home_resumes=True,more_label='浏览器菜单'):
         namespace=self.functions('visible','focus','quick_environment_sheet');clock=ModelClock()
         state={'xml':'<hierarchy/>','resumed':'local.pocketchat.CompactChromeIntegrationActivity','actions':0,'action':''};commands=[]
         targets={name:[10+index*10,20] for index,name in enumerate(('drawer','environment','more'))}
@@ -581,7 +581,7 @@ class CompactQuickEnvironmentContractTest(unittest.TestCase):
                 state['actions']+=1;state['action']='activity:local.pocketchat.WindowHomeActivity' if name=='drawer' else name
                 if name=='drawer' and home_resumes:state['resumed']='local.pocketchat.WindowHomeActivity'
                 if name=='environment':state['xml']=ET.tostring(self.hierarchy(),encoding='unicode')
-                if name=='more':state['xml']='<hierarchy><node text="会话选项" /></hierarchy>'
+                if name=='more':state['xml']='<hierarchy><node text="'+more_label+'" /></hierarchy>'
             elif command==('shell','input','keyevent','KEYCODE_BACK'):
                 state['resumed']='local.pocketchat.CompactChromeIntegrationActivity';state['xml']='<hierarchy/>'
             elif command==('shell','dumpsys','activity','activities'):return 'topResumedActivity= '+state['resumed']
@@ -600,6 +600,9 @@ class CompactQuickEnvironmentContractTest(unittest.TestCase):
         self.assertEqual(namespace['management_navigation'],dict(activity='local.pocketchat.WindowHomeActivity',actualDrawerTap=True,resumedThenReturned=True))
         self.assertEqual(namespace['environment_sheet']['currentSlot'],0)
 
+    def test_legacy_conversation_label_cannot_fake_current_browser_menu(self):
+        with self.assertRaises(TimeoutError):self.run_controls(more_label='会话选项')
+
     def test_environment_cannot_replace_missing_or_unresumed_management_navigation(self):
         with self.assertRaises(AssertionError):self.run_controls(('environment','more'))
         with self.assertRaises(TimeoutError):self.run_controls(home_resumes=False)
@@ -617,6 +620,7 @@ class CompactQuickEnvironmentContractTest(unittest.TestCase):
     def test_original_capture_test_methods_and_screenshot_matrix_are_preserved(self):
         import subprocess
         from ui_checkpoint_source_compatibility import require_current_runner
+        from historical_source_inputs import historical_bytes
         base='03d0c4ace70942a3f6899daffac086cc6682885e'
         path=Path(__file__).resolve().relative_to(ROOT).as_posix()
         old=subprocess.check_output(['git','show',base+':'+path],cwd=ROOT,text=True)
@@ -625,7 +629,7 @@ class CompactQuickEnvironmentContractTest(unittest.TestCase):
                     for node in ast.parse(source).body if isinstance(node,ast.ClassDef)}
         before,after=methods(old),methods(Path(__file__).read_text())
         for name,value in before.items():self.assertEqual(after[name],value)
-        old=subprocess.check_output(['git','show',base+':tests/gecko/run_ui_visuals.py'],cwd=ROOT,text=True);current=require_current_runner(RUNNER.read_bytes()).decode()
+        old=subprocess.check_output(['git','show',base+':tests/gecko/run_ui_visuals.py'],cwd=ROOT,text=True);current=require_current_runner(historical_bytes('tests/gecko/run_ui_visuals.py')).decode()
         def functions(source):return [ast.get_source_segment(source,node) for node in ast.walk(ast.parse(source)) if isinstance(node,ast.FunctionDef)]
         before_functions,after_functions=functions(old),functions(current)
         for function in before_functions:self.assertEqual(after_functions.count(function),before_functions.count(function))

@@ -3,6 +3,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+from historical_source_inputs import historical_bytes, historical_identity
 import subprocess
 import unittest
 
@@ -18,7 +19,8 @@ sha = lambda raw: hashlib.sha256(raw).hexdigest()
 
 
 def source43():
-    return experience46_source_bytes(SOURCE.read_bytes(), 'app/src/main/java/local/pocketchat/GeckoWebView.java')
+    relative = 'app/src/main/java/local/pocketchat/GeckoWebView.java'
+    return experience46_source_bytes(historical_bytes(relative), relative)
 
 
 class Native43SourceCompatibilityTests(unittest.TestCase):
@@ -32,6 +34,7 @@ class Native43SourceCompatibilityTests(unittest.TestCase):
                 status='passed' if len(cls.completed) == 6 else 'failed',
                 cases=cls.completed, expectedCases=6,
                 productionSha256=sha(SOURCE.read_bytes()),
+                historicalSource=historical_identity('app/src/main/java/local/pocketchat/GeckoWebView.java'),
                 priorIntendedTree=native.PREVIOUS_INTENDED_TREE,
                 priorWholeSourceSha256=native.PREVIOUS_SHA256,
                 assertionsChanged=False, actualAndroidExecution=False,
@@ -127,7 +130,7 @@ class Native43SourceCompatibilityTests(unittest.TestCase):
             ],
         }
         for relative, changes in edits.items():
-            text = (ROOT / relative).read_text()
+            text = historical_bytes(relative).decode('utf-8')
             for before, after, count in reversed(changes):
                 self.assertEqual(text.count(after), count)
                 text = text.replace(after, before)
@@ -135,7 +138,8 @@ class Native43SourceCompatibilityTests(unittest.TestCase):
         for relative in ('tests/fingerprint_source_compatibility.py', 'tests/profile_upload37_source_compatibility_test.py',
                          'tests/profile_lifecycle39_source_compatibility_test.py', 'tests/profile_page_bridge_lifecycle_test.py',
                          'tests/profile_content_permission_decisions_test.py', 'tests/profile_reading_fit_completion_test.py'):
-            self.assertEqual(reading45_source_bytes((ROOT / relative).read_bytes(),relative) if relative=='tests/profile_reading_fit_completion_test.py' else source_input((ROOT / relative).read_bytes(),relative) if relative=='tests/profile_page_bridge_lifecycle_test.py' else (ROOT / relative).read_bytes(), subprocess.check_output(['git', 'show', native.PREVIOUS_INTENDED_TREE + ':' + relative], cwd=ROOT))
+            raw = historical_bytes(relative)
+            self.assertEqual(reading45_source_bytes(raw,relative) if relative=='tests/profile_reading_fit_completion_test.py' else source_input(raw,relative) if relative=='tests/profile_page_bridge_lifecycle_test.py' else raw, subprocess.check_output(['git', 'show', native.PREVIOUS_INTENDED_TREE + ':' + relative], cwd=ROOT))
         self.completed.append(dict(name='all-prior-test-assertion-bytes', passed=True))
 
 

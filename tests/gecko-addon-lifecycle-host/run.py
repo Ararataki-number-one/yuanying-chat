@@ -12,9 +12,11 @@ NAMES.append('public GeckoResult<String> onLoadError(')
 def sha(path):return hashlib.sha256(path.read_bytes()).hexdigest()
 def main():
  p=argparse.ArgumentParser(description=__doc__);p.add_argument('--java-home',required=True,type=Path);p.add_argument('--json-jar',required=True,type=Path);p.add_argument('--output',required=True,type=Path);a=p.parse_args();text=SOURCE.read_text();parts={}
+ session=member_at(text,text.index('GeckoSession newSession()'))
  for name in NAMES:
-  if text.count(name)!=1:raise ValueError('Unique current method required: '+name)
-  parts[name]=member_at(text,text.index(name))
+  selected=session if name in ('public GeckoResult<AllowOrDeny> onLoadRequest(','public GeckoResult<GeckoSession> onNewSession(') else text
+  if selected.count(name)!=1:raise ValueError('Unique current method required in its owning session: '+name)
+  parts[name]=member_at(selected,selected.index(name))
  start=text.index('private final WebExtension.MessageDelegate routeMessages=');at=text.index('public void onDisconnect(WebExtension.Port incoming)',start);parts['route-port-onDisconnect']=member_at(text,at)
  files=[SOURCE,HERE/'AddonHost.java.in',Path(__file__).resolve(),ROOT/'app/src/main/java/local/pocketchat/J.java',ROOT/'app/src/main/java/local/pocketchat/NativeProtectionState.java'];before={str(x.relative_to(ROOT)):sha(x) for x in files};template=(HERE/'AddonHost.java.in').read_text()
  def generated(chosen):return template.replace('@@MEMBERS@@','\n'.join(chosen.values()))
