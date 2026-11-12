@@ -1,6 +1,6 @@
 """Real native startup methods and wait policy on explicit JVM platform doubles.
 
-Browser selection/homepage and Activity launch use explicit controlled boundaries; the actual MainActivity dispatcher is executed for both cold Chromium and retained warm Gecko sessions. No Android frame timing, actual Gecko initialization or phone speed is claimed.
+Browser selection and Android task launch use explicit controlled boundaries. The actual MainActivity dispatcher and BrowserActivity.resume are executed for both cold Chromium and retained warm Gecko sessions, so environment entry cannot force a homepage over the user's current browser destination. No Android frame timing, actual Gecko initialization or phone speed is claimed.
 """
 import hashlib,json,os
 from pathlib import Path
@@ -23,7 +23,8 @@ class DashboardStartup(unittest.TestCase):
         java=Path(os.environ.get('PROFILE_JAVA') or shutil.which('java') or '')
         source=(PROD/'MainActivity.java').read_text()
         methods='\n'.join(member(source,x) for x in ['  @Override public void onCreate(', '  void prepareBrowserAfterOverview(', '  void startBrowserAfterOverview(', '  @Override protected void onResume(', '  @Override protected void onNewIntent(', '  boolean dispatchBrowser('])
-        host=(ROOT/'tests/overview-dashboard-host/StartupHost.java').read_text().replace('/*ACTUAL_ENTRY_METHODS*/',methods)
+        resume=member((PROD/'BrowserActivity.java').read_text(),'  static void resume(')
+        host=(ROOT/'tests/overview-dashboard-host/StartupHost.java').read_text().replace('/*ACTUAL_ENTRY_METHODS*/',methods).replace('/*ACTUAL_BROWSER_RESUME*/',resume)
         with tempfile.TemporaryDirectory(prefix='overview-dashboard-startup-') as folder:
             folder=Path(folder);(folder/'StartupHost.java').write_text(host)
             for name in ['BrowserStartupGate.java','PageLoadingWait.java']:(folder/name).write_bytes((PROD/name).read_bytes())
@@ -32,7 +33,7 @@ class DashboardStartup(unittest.TestCase):
             result=subprocess.run([str(java),'-cp',str(folder),'local.pocketchat.StartupHost'],capture_output=True,text=True,timeout=20)
             self.assertEqual(result.returncode,0,result.stdout+result.stderr)
             report=json.loads(result.stdout);self.assertGreaterEqual(report['checks'],30)
-            report.update(status='passed',scope=__doc__.strip(),sourceSha256={name:hashlib.sha256((PROD/name).read_bytes()).hexdigest() for name in ['MainActivity.java','BrowserStartupGate.java','PageLoadingWait.java']})
+            report.update(status='passed',scope=__doc__.strip(),sourceSha256={name:hashlib.sha256((PROD/name).read_bytes()).hexdigest() for name in ['MainActivity.java','BrowserActivity.java','BrowserStartupGate.java','PageLoadingWait.java']})
             output=os.environ.get('DASHBOARD_STARTUP_REPORT')
             if output:Path(output).write_text(json.dumps(report,indent=2)+'\n')
 

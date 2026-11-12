@@ -15,10 +15,19 @@ import sys
 import time
 
 ROOT = Path(__file__).resolve().parents[2]
+INPUT_PATHS = ('app/src', 'app/build.gradle', 'tests', 'tools', 'third-party',
+               '.github/workflows', 'build.gradle', 'settings.gradle', 'gradle.properties')
 
 
 def digest(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def source_inputs(root=ROOT):
+    """Include sibling fixtures, imported runners and assets, not only argv files."""
+    raw = subprocess.check_output(['git', 'ls-files', '-z', '--cached', '--others',
+                                   '--exclude-standard', '--', *INPUT_PATHS], cwd=root)
+    return sorted({root / os.fsdecode(name) for name in raw.split(b'\0') if name})
 
 
 def main():
@@ -59,11 +68,13 @@ def main():
     for name, script in [
         ('session-navigation', 'tests/gecko-navigation-host/session_navigation.py'),
         ('driver-ownership', 'tests/gecko-navigation-host/run.py'),
+        ('gecko-activation', 'tests/gecko-activation-host/run.py'),
         ('resource-client', 'tests/gecko-navigation-host/client_ready.py'),
         ('addon-lifecycle', 'tests/gecko-addon-lifecycle-host/run.py'),
         ('ip-transport', 'tests/gecko-ip-transport-host/run.py'),
         ('resource-recovery', 'tests/resource-recovery-host/run.py'),
         ('page-lifecycle', 'tests/browser-navigation-lifecycle-host/run.py'),
+        ('reply-task-persistence', 'tests/reply-task-persistence-host/run.py'),
         ('draft-policy', 'tests/local-draft-policy-host/run.py'),
         ('chromium-navigation', 'tests/chromium-fingerprint-activity-host/run.py'),
         ('chromium-fingerprint-jobs', 'tests/chromium-fingerprint-jobs-host/run.py'),
@@ -79,6 +90,10 @@ def main():
         'CurrentRuntimeRawBindings.test_current_profile_behavior_accepts_an_unrelated_browser_method',
         'CurrentRuntimeRawBindings.test_default_embedded_dependency_and_reject_unknown_explicit_jar'], report=False)
     host('environment-entry', 'tests/profile_browser_environment_entry_test.py', report=False)
+    host('browser-startup', 'tests/profile_environment_dashboard_startup_test.py', report=False)
+    jobs.append(('display-acceptance', [
+        [sys.executable, 'tests/gecko_glass_navigation_capture_test.py'],
+        [sys.executable, 'tests/glass_ui_validation_test.py']], None))
     host('address-ui', 'tests/browser_fingerprint_fixture_test.py', [
         'BrowserFingerprintFixtureTests.test_actual_browser_address_navigation_and_history_controls',
         'BrowserFingerprintFixtureTests.test_actual_browser_address_row_reflows_without_recreating_controls'], report=False)
@@ -98,16 +113,7 @@ def main():
             '--android-jar', str(args.android_jar.resolve()), '--classpath-jar', str(args.webkit_jar.resolve()),
             '--classpath-jar', str(args.snakeyaml_jar.resolve()), '--output', str(target)]], target/'receipt.json'))
 
-    inputs = list((ROOT/'app/src/main/java/local/pocketchat').glob('*.java'))+[Path(__file__).resolve()]
-    for _, commands, _ in jobs:
-        for command in commands:
-            for value in command:
-                path = ROOT/value
-                if path.is_file() and path.suffix in ('.py', '.java'):
-                    inputs.append(path)
-                    if path.parent.parent == ROOT/'tests':
-                        inputs.extend(p for p in path.parent.rglob('*') if p.is_file() and p.suffix in ('.py', '.java', '.in'))
-    hashes = {str(path.relative_to(ROOT)): digest(path) for path in sorted(set(inputs))}
+    hashes = {str(path.relative_to(ROOT)): digest(path) for path in source_inputs()}
     dependencies = {str(path.resolve()): digest(path) for path in [jar, *[p for p in native if p]]}
     commit = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip()
     tree = subprocess.check_output(['git', 'rev-parse', 'HEAD^{tree}'], cwd=ROOT, text=True).strip()
@@ -144,6 +150,7 @@ def main():
         rows.append(row)
         print(json.dumps(dict(suite=name, status=row['status'], log=str(log_path))), flush=True)
     changed = [name for name, value in hashes.items() if not (ROOT/name).is_file() or digest(ROOT/name) != value]
+    changed += sorted({str(path.relative_to(ROOT)) for path in source_inputs()} - hashes.keys())
     changed += [name for name, value in dependencies.items() if not Path(name).is_file() or digest(Path(name)) != value]
     stable = not changed and subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip() == commit
     passed = stable and all(row['status'] == 'passed' for row in rows)

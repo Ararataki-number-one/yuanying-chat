@@ -128,7 +128,7 @@ class ChatSession {
  // Current navigation invalidates read-only inspection leases. This host does
  // not execute the website driver or resource worker behind those leases.
  long syncRun,resourceUploadCheckGeneration,resourceInspectionGeneration;boolean resourceUploadChecking,backgroundAttachmentCheck,inFlight;int backgroundAttachmentStable;
- final Deliveries deliveries=new Deliveries();final JSONArray attachments=new JSONArray();boolean submitting,operation,configurationCapture,networkReady=true,offline,navigating,replyStalled;String replyHealthStatus="";int stableTicks;long webConfirmationVersion;String stableReply="";
+ final Deliveries deliveries=new Deliveries(this);final JSONArray attachments=new JSONArray();boolean submitting,operation,configurationCapture,networkReady=true,offline,navigating,replyStalled;String replyHealthStatus="";int stableTicks;long webConfirmationVersion;String stableReply="";
  final Object context=new Object();final int environmentGeneration=4;final String environmentId="environment-one";final Web web=new Web();final Prefs prefs=new Prefs();final WebReplyObserver webObserver=new WebReplyObserver(this);final Store webStore=new Store();
  long navigationEpoch=7,fileWorkGeneration,webWorkGeneration,stateEpoch=-1,resourceWebsiteEpoch=-1,resourceObserverEpoch=-1;JSONObject state=new JSONObject();boolean resourceWebsiteBusy;Object resourceObserverPort;String resourceObserverBinding="",resourceObserverDocument="",resourceObserverUrl="";boolean fileBusy,replyBusy,deleted,observedReplyHasFiles;String lastDocumentId="document-one",appliedIdentity="route-one",conversation="https://chatgpt.com/c/A",activeDeliveryId="old-job",observedReplyJob="",observedReplyUrl="",observedReplyKey="",observedReplyRevision="",observedReplyMarkdown="",status="",deliveryState="",draft="unsent controlled browser draft",lastAction="";JSONObject pending;Result driverResult;int asyncCalls;
  boolean webPerformance(){return true;}void resourceObserverRouteReady(JSONObject x,Object p){}void resourceWebsiteObservation(JSONObject x,Object p){}boolean targetMatches(String u){return true;}void wakePolling(){}
@@ -153,8 +153,17 @@ class DraftArchive{static DraftArchive get(Object c){return new DraftArchive();}
 class ChatService{static int ends;static void begin(Object c){}static void completed(Object c,String id,String url){}static void end(Object c){ends++;}}
 class ProfileUi{static boolean working(ChatSession s){return s.pending!=null||s.fileWorkActive()||s.currentReplyActive();}}
 class LoginPagePolicy{static boolean login(String u){return false;}}
-class SystemClock{static long elapsedRealtime(){return 1000;}}class Trace{void page(String label){}}class Handler{void postDelayed(Runnable work,long delay){}}
-class Deliveries{int next;String begin(String u,String p,JSONArray a,String k,Object unused){return "new-production-job-"+(++next);}}
+class SystemClock{static long elapsedRealtime(){return 1000;}}class Trace{void page(String label){}}class Handler{void postDelayed(Runnable work,long delay){}void post(Runnable work){throw new AssertionError("Cold restoration is outside this reload host");}}
+class Deliveries{
+ final ChatSession owner;Deliveries(ChatSession owner){this.owner=owner;}
+ int next;String begin(String u,String p,JSONArray a,String k,Object unused){return "new-production-job-"+(++next);}
+ // Explicit acknowledged storage boundary; actual failures and durable recovery
+ // execute with the full production store in reply-task-persistence-host.
+ boolean update(String id,String state,String detail,boolean attempted,String key,String url){
+  if(owner.pending==null||!id.equals(owner.pending.optString("id"))||!attempted||!Arrays.asList("completed","stopped","uncertain").contains(state))throw new AssertionError("Unsupported reload-host delivery outcome");
+  owner.deliveryState=state;return true;
+ }
+}
 class J{static JSONObject parse(String value){try{return new JSONObject(value);}catch(Exception e){return new JSONObject();}}static JSONObject obj(Object...v){JSONObject o=new JSONObject();try{for(int i=0;i<v.length;i+=2)o.put((String)v[i],v[i+1]);}catch(Exception e){throw new RuntimeException(e);}return o;}}
 
 class LocalDraftPolicy{static boolean allowed=true;static boolean enabled(Object c){return allowed;}static long revision(Object c){return 0;}}

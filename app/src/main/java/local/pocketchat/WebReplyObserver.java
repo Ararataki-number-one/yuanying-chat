@@ -38,11 +38,7 @@ final class WebReplyObserver {
     JSONObject receipt = session.deliveries.get(job.optString("id"));
     String state = receipt == null ? "" : receipt.optString("state");
     if ("completed".equals(state) || "stopped".equals(state)) {
-      session.pending = null;
-      session.activeDeliveryId = "";
-      session.prefs.edit().remove("pending").commit();
-      if ("completed".equals(state)) session.handler.post(() -> ChatService.completed(session.context,
-        job.optString("id"), job.optString("confirmedUrl", job.optString("expectedUrl"))));
+      ReplyTaskPersistence.restoreTerminal(session,job,receipt);
     } else if (!job.optBoolean("confirmed")) suspendUnconfirmed("网页已重新打开，请核对之前的发送结果");
   }
 
@@ -168,12 +164,7 @@ final class WebReplyObserver {
   }
 
   void finishStopped(JSONObject job) {
-    session.delivery(job.optString("id"), "stopped", "已观察到网页停止操作，已停止完成提醒", true, job.optString("userKey"), "");
-    session.pending = null;
-    session.activeDeliveryId = "";
-    session.prefs.edit().remove("pending").commit();
-    ChatService.end(session.context);
-    session.setStatus("已停止等待这条网页回复");
+    ReplyTaskPersistence.stopped(session,job);
   }
 
   /** Ends this device's observation after the website actually changes chats. */

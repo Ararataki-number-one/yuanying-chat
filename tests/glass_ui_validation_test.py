@@ -370,6 +370,56 @@ class GlassCaptureCoverageTest(unittest.TestCase):
 class GlassCaptureFailureCleanupTest(unittest.TestCase):
     """Host-side cleanup checks with fake transports; no Android claim."""
 
+    def test_clamped_loading_viewport_fails_before_input_or_geometry_wait_and_restores_display(self):
+        previous = capture.WIDTH, capture.HEIGHT, capture.DENSITY
+        request = capture.DISPLAY_REQUEST
+        capture.set_display(1236, 2676, 480)
+        forced = False
+
+        def adb(*parts, **options):
+            nonlocal forced
+            if parts[:3] == ('shell', 'wm', 'size'):
+                if len(parts) == 4:
+                    forced = parts[3] == '2676x1236'
+                    return b''
+                return b'Physical size: 1236x2676\n' + (b'Override size: 2472x1236\n' if forced else b'')
+            if parts == ('shell', 'wm', 'density'):
+                return b'Physical density: 480\n'
+            if parts == ('shell', 'settings', 'get', 'system', 'font_scale'):
+                return b'1.0\n'
+            if parts == ('shell', 'am', 'get-config'):
+                return b'config: mcc310-land-notnight\n' if forced else b'config: mcc310-port-notnight\n'
+            if parts == ('shell', 'dumpsys', 'window', 'displays'):
+                return (b'Display: mDisplayId=0 rootTasks=5\n'
+                        + (b'  init=1236x2676 480dpi base=2472x1236 480dpi cur=2472x1236 app=2472x1236\n'
+                           if forced else b'  init=1236x2676 480dpi cur=1236x2676 app=1236x2676\n'))
+            return b''
+
+        try:
+            with tempfile.TemporaryDirectory() as directory:
+                args = SimpleNamespace(root=Path(__file__).resolve().parents[1], out=Path(directory))
+                report = dict(buildIdentity=dict(sourceCommit='source', sourceTree='tree',
+                    sdkReceiptSha256='sdk', integrationSigningCertificateSha256='signer'),
+                    installedApk={'sha256': 'apk'}, runNonce='nonce', inputs=[], commands=[])
+                transport = MagicMock(side_effect=adb)
+                wait_for, screenshot = MagicMock(), MagicMock()
+                result = validation.capture_loading_landscape(args, report, MagicMock(), transport,
+                    wait_for, screenshot, capture.__dict__)
+                self.assertEqual(result['status'], 'failed')
+                self.assertEqual(result['displayViewport']['requested']['widthPx'], 2676)
+                self.assertEqual(result['displayViewport']['actual']['widthPx'], 2472)
+                self.assertFalse(result['displayViewport']['matchesRequested'])
+                self.assertIn('Actual Android viewport differs', result['errors'][0]['error'])
+                wait_for.assert_not_called()
+                self.assertFalse(report['inputs'])
+                self.assertFalse(any('input' in call.args for call in transport.call_args_list))
+                screenshot.assert_called_once_with('landscape-loading-native-failed.png')
+                self.assertTrue(result['restoredDisplayBeforeControlledDocument'])
+                self.assertEqual(result['restoredDisplay']['displayViewport']['status'], 'verified')
+                self.assertEqual((capture.WIDTH, capture.HEIGHT, capture.DENSITY), (1236, 2676, 480))
+        finally:
+            capture.set_display(*previous, requested=request)
+
     def test_second_server_constructor_failure_does_not_shutdown_unstarted_server(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

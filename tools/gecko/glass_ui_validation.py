@@ -228,6 +228,7 @@ def capture_loading_landscape(args, report, capture, adb, wait_for, screenshot, 
             density=adb('shell', 'wm', 'density').decode().strip(),
             fontScale=adb('shell', 'settings', 'get', 'system', 'font_scale').decode().strip(),
             configuration=adb('shell', 'am', 'get-config').decode().strip())
+        api['observe_display_viewport'](adb, args.out, result, stem, 2676, 1236, 480)
         config_parts = result['actualDisplay']['configuration'].splitlines()[0].split('-')
         if ('land' not in config_parts or 'notnight' not in config_parts
                 or abs(float(result['actualDisplay']['fontScale']) - 1.0) > .001):
@@ -346,6 +347,7 @@ def capture_loading_landscape(args, report, capture, adb, wait_for, screenshot, 
                     or abs(float(restored['fontScale']) - float(previous_font)) > .001
                     or expected_orientation not in config_parts or expected_night not in config_parts):
                 raise ValueError('Actual Android display/font/theme was not restored before controlled documents')
+            api['observe_display_viewport'](adb, args.out, restored, stem + '-restored', *previous_display)
         except Exception as error:
             cleanup_errors.append(dict(stage='observe-restored-display', errorType=type(error).__name__, error=str(error)))
         result['errors'].extend(cleanup_errors)
@@ -849,6 +851,7 @@ def capture_acceptance_suite(args, report, capture, adb, wait_for, tap, screensh
                     orientation = 'land' if width > height else 'port'
                     if orientation not in config_parts:
                         raise ValueError('The actual Android configuration did not apply the requested orientation')
+                    api['observe_display_viewport'](adb, args.out, case, name, width * 3, height * 3, 480)
                     safe_area(case)
                     if name in ('default-light', 'default-dark'):
                         with record_case(args, report, adb, case, sha, api['mp4_metadata']):

@@ -2,6 +2,55 @@
 
 日期：2026-11-11；上传与深度维护记录追加于 2026-11-12。此记录对应暂停新功能后的导航修复与维护整理，配套说明见 [MAINTENANCE-AUDIT.md](MAINTENANCE-AUDIT.md)。
 
+## 第三轮深度维护：冻结后的当前源码检查
+
+本轮从 `b389db2da1b53c26ce83c3c9415be9fb515303b1`、源码树 `efa3482cc8408eb51a2bf3f8782bac77297db541` 继续，保留此前导航、指纹事务、网络租约和集成接点修复。正式基准、版本 `2.1.4` / `106`、默认 ChatGPT 主页、两种内核接入和玻璃实现不变。
+
+统一入口 **25 / 25 组通过**，UTC 2026-11-12 04:23:52 至 04:29:17，耗时 **324.984 秒**。执行时为上述父提交加尚未提交的维护变更，回执明确记录 `dirtySource=true`；不能把父提交名称当成本轮修改的源码身份。**1,971 个输入文件**逐项 SHA-256 前后相同，`executionInputsUnchanged=true`、`changedInputs=[]`。
+
+这次输入清单覆盖生产代码、测试及其同目录 fixture、工具及导入脚本、资源和构建配置；包含指定目录内尚未加入 Git 且未被忽略的新文件，也检测运行中的新增与删除。文档不在执行输入内。没有声称扫描被 Git 忽略的任意文件。
+
+| 新增或同步的验证 | 本轮结果 | 证明范围 |
+| --- | --- | --- |
+| reply-task-persistence | 127 / 127 | 完整当前 `DeliveryStore`、`WebReplyObserver`、无状态协调类及原样抽取的三个 `ChatSession` 入口；数据库失败、偏好内存/磁盘分离、同步回调重入、冷恢复 |
+| gecko-activation | 50 项行为检查，17 个编译后负控通过 | 当前完整 `activate`、`closePopup`、`closeWebsitePages`、线路退役，以及真实桥接请求与租约类 |
+| browser-startup | 46 项宿主断言通过 | 当前真实 `BrowserActivity.resume` 与环境入口；恢复既有浏览器、保留网址、重排现有任务 |
+| display-acceptance | 23 + 40 = 63 项通过 | 默认 display 0 的实际窗口尺寸/DPI、请求值与观测值分开记录、严格拒绝不匹配配置；原 54 项测试保留 |
+| 已有 page-lifecycle / reload-request / deferred-wake | 44 / 131 / 30 项通过 | 原场景主体逐字保留，仅同步完整协调类所需边界；原 blank-final 编译拒绝负控仍成立 |
+| 其余已有维护组 | 全部通过 | 导航、桥接归属、Chromium 指纹事务、网络租约、环境配置、页面恢复等重新执行，不沿用旧绿灯 |
+
+持久化红测使用与 `b389db2` 一致的原生产源码，成功编译后为 **47 / 111，64 项失败**；部分异常提前结束单个场景，因此不能说旧版执行了修复版全部 127 项。Gecko 分别保留两份成功编译后的失败回执：原 `activate` 覆盖回调中新导航，以及修复 `activate` 但保留原 `closePopup` 时误关新导航所在页面。不是用编译失败代替行为反例。
+
+启动宿主原来缺少 `BrowserActivity.resume` 接口。此次抽取实际当前实现，原两个“强制打开主页”的旧预期明确迁移为恢复当前浏览器，并增加任务重排断言。没有改变应用的默认主页。
+
+### 本轮本地回执
+
+目录：`/workspace/scratch/d82e7decf2fd/maintenance-validation/round2-final`。
+
+| 回执 | SHA-256 |
+| --- | --- |
+| 25 组 `results.json` | `cd08fefeb69aa58dd360eb70ed9bfe218ac21346e9346051b87a5642a202ffcc` |
+| `reply-task-persistence.json` | `5f1a4f472899f4ef18f944098a3a9fa9cc8b8aa817a10ff791d01c885c6ebbd1` |
+| `gecko-activation.json` | `348c3bb9202e24077b77e26d912d5d4ca7a266500124c8f20ae9cbbe44447880` |
+| `session-navigation.json` | `482025fd5735f65badee2761e30abc793a9a1311bb0ff974ee059d9d8959682a` |
+| `browser-startup.log` | `ff4f00a97256bce11b04344bcbc5ef9f66f0fb579a7c432a214b565fc3c75454` |
+| `display-acceptance.log` | `9595d80c9471e830a6e4a16ca011ca851eba10502e40e0f38f7f7707c2d9446e` |
+
+本轮使用 Temurin **17.0.21+9** 和 `json-20250517.jar`，后者 SHA-256 为 `3ea61b2a06e31edf1c91134fe9106b0ebb16628be169f3db75bc7a2b06b45796`。本地没有运行可选 Android API 编译组，回执 `actualAndroidExecution`、`fullAppBuild`、`fullReleaseQualification` 均为 `false`。存储检查底层是限制 SQL 形状的文件模型；没有验证真实 SQLite/WAL、Android 偏好实现或系统通知全局一次性。新提交的 APK、lint 与设备检查由原 CI 工作流执行，结果追加在 PR #7，不能引用下方旧提交的 APK 作为本轮产物。
+
+### 上轮 `b389db2` 的最终 CI 状态
+
+为避免把上一轮待完成结果误读为绿灯，补齐实际终态：
+
+- [current-maintenance 作业 130893701690](https://github.com/Ararataki-number-one/yuanying-chat/actions/runs/43130666820/job/130893701690)：**21 / 21 组通过**，225.852 秒，424 个输入不变。
+- [official-sdk-build 作业 130893730827](https://github.com/Ararataki-number-one/yuanying-chat/actions/runs/43130675765/job/130893730827)：完整 release / integration 编译、APK、lint 与 SDK 身份核对通过；lint **0 errors、115 warnings**，测试包和临时签名不等于正式发布。
+- [host-contracts 作业 130893731189](https://github.com/Ararataki-number-one/yuanying-chat/actions/runs/43130675765/job/130893731189)：1,562 项，61 failures、78 errors、1 skipped。最终失败头去重 139 项：127 项历史源码/AST 合同，10 项缺历史 Git 对象，1 项旧启动 fixture 缺 `resume`，1 项缺 Android 35 jar。此次只修复已复现的启动 fixture；没有禁用或改写其余旧门禁来制造全绿。
+- [API 32 / 35 设备工作流 43130666820](https://github.com/Ararataki-number-one/yuanying-chat/actions/runs/43130666820)：两组玻璃设备验收均为 **3 / 7 通过、4 / 7 失败**；两版本的 Chromium 默认及窄屏大字场景均通过。部分阅读空闲绘制超预算、API 35 长按误入网址编辑器仍是未解决验收项。
+
+API 32 横屏窗口实际为 **2472 × 1236**，请求为 **2676 × 1236**。旧工具以请求宽度测量，产生错误的导航中心偏移 `-102 px`；按真实窗口回放偏移为 `0 px`。本轮工具会在请求与观测不匹配时明确停止并报告配置失败，**不会把实际 824 dp 当作要求的 892 dp 场景验收通过**。原 14 份设备窗口记录已回放核对；未增加等待预算、放宽长按或空闲帧验收条件。
+
+以上旧 CI 结论只绑定 `b389db2`。它们为本轮定位提供证据，不构成本轮已通过设备验收的声明。
+
 ## 上传后的完整 APK 构建
 
 第一轮导航补丁已上传为 `0a95be3d15e42c679343d9a6caa7bdea6758bcf9`，源码树 `2811d7e3f34cde413be5337b4fc4c2e18c35f5ba`。该树与下面 18 组原始回执记录的 409 个输入逐一一致。版本保持 `2.1.4` / `106`，PR #7 仍为 Draft。

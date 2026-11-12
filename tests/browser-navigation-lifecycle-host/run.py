@@ -19,7 +19,7 @@ def main():
     parser.add_argument('--output', type=Path, required=True)
     args = parser.parse_args()
     java = lambda name: str(args.java_home / 'bin' / name) if args.java_home else name
-    sources = [PROD / name for name in ('PageMemory.java', 'WebReplyObserver.java', 'J.java')]
+    sources = [PROD / name for name in ('PageMemory.java', 'WebReplyObserver.java', 'ReplyTaskPersistence.java', 'J.java')]
     sources += [HERE / 'NavigationLifecycleHost.java']
     sources += [ROOT / 'tests/local-draft-policy-host/stubs' / name for name in (
         'android/net/Uri.java', 'android/content/pm/ApplicationInfo.java')]
@@ -40,7 +40,7 @@ def main():
     report['sourceCommit'] = subprocess.check_output(
         ['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip()
     report['scope'] = (
-        'Whole current PageMemory and WebReplyObserver classes, without source rewriting. '
+        'Whole current PageMemory, WebReplyObserver and ReplyTaskPersistence classes, without source rewriting. '
         'Explicit in-memory preferences/delivery/archive, deterministic main-thread scheduler, '
         'queued page-driver responses, and current browser port boundaries. '
         'No Android/Gecko, actual DOM, disk durability or network/server execution.')

@@ -300,7 +300,7 @@ final class ChatSession {
   void add(Observer o){remove(o);observers.add(new WeakReference<>(o));o.changed();}
   void remove(Observer o){observers.removeIf(w->w.get()==null||w.get()==o);}
   void changed(){if(internalNetwork()){NativeNetwork n=NativeNetwork.get(context);n.pauseBackgroundWhenBusy();}try{ProfileCatalog.get(context).heartbeat(this,false);NetworkJournal.record(this);}catch(Exception ignored){}for(WeakReference<Observer> w:new ArrayList<>(observers)){Observer o=w.get();if(o!=null)o.changed();}if(ChatService.running)ChatService.update(context,status);}
-  void delivery(String id,String stage,String detail,boolean attempted,String key,String url){String signature=id+"|"+stage+"|"+detail+"|"+attempted+"|"+key+"|"+url;if(webPerformance()&&signature.equals(lastDeliverySignature))return;try{deliveries.update(id,stage,detail,attempted,key,url);lastDeliverySignature=signature;}catch(Exception ignored){}}
+  void delivery(String id,String stage,String detail,boolean attempted,String key,String url){String signature=id+"|"+stage+"|"+detail+"|"+attempted+"|"+key+"|"+url;if(webPerformance()&&signature.equals(lastDeliverySignature))return;try{if(deliveries.update(id,stage,detail,attempted,key,url))lastDeliverySignature=signature;}catch(Exception ignored){}}
   void sendFailure(String message){submitting=false;ChatService.end(context);delivery(activeDeliveryId,"failed",message==null?"发送前检查失败":message,false,"","");setStatus(message);}
   void setStatus(String text){status=text==null?"网络连接未完成":text;changed();}
   boolean uploading(){for(int i=0;i<attachments.length();i++){JSONObject file=attachments.optJSONObject(i);if(file!=null&&"uploading".equals(file.optString("state")))return true;}return false;}
@@ -780,9 +780,9 @@ final class ChatSession {
       replyHealthStatus=message;changed();
     });
   }
-  void completeReply(JSONObject job,JSONObject poll){replyStalled=false;replyHealthStatus="";String id=job.optString("id","recovered"),url=poll.optString("url",conversation);delivery(id,"completed","回复已完成",true,poll.optString("userKey"),url);pending=null;activeDeliveryId="";prefs.edit().remove("pending").putString("lastCompletedId",id).putString("url",url).commit();status="回复完成";ChatService.completed(context,id,url);ChatService.end(context);wakeDeferredBrowserSettings();}
+  void completeReply(JSONObject job,JSONObject poll){ReplyTaskPersistence.complete(this,job,poll);}
   void resetReplyStability(){stableReply="";stableTicks=0;webObserver.resetCompletion();}
-  void abandonWait(){replyStalled=false;replyHealthStatus="";if(pending!=null)delivery(pending.optString("id"),"uncertain","已解除等待，发送结果仍需在网页核对",true,"","");pending=null;activeDeliveryId="";prefs.edit().remove("pending").commit();ChatService.end(context);setStatus("已解除等待，请自行核对是否需要发送");}
+  void abandonWait(){ReplyTaskPersistence.abandon(this,pending);}
   void timeout(){setStatus("安卓后台等待时间已到，请打开应用继续检测；不会自动重发");ChatService.needsAttention(context,status);}
   void escape(){}
   void nativeKey(int key){setStatus(BrowserRuntimePolicy.websiteActionMessage());}

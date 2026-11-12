@@ -37,6 +37,7 @@ from ui_visual_capture import UiVisualCapture
 PACKAGE = 'local.pocketchat.test'
 COMPONENT = PACKAGE + '/local.pocketchat.UiVisualIntegrationActivity'
 WIDTH, HEIGHT, DENSITY = 1236, 2676, 480
+DISPLAY_REQUEST = (WIDTH, HEIGHT, DENSITY)
 LABELS = ('环境', '网络', '下载', '阅读')
 WORKSPACE_LABELS = ('浏览器', '环境', '下载', '网络', '设置')
 MOTION_WIDTH, MOTION_HEIGHT, MOTION_BIT_RATE, MOTION_SECONDS = 618, 1338, 3500000, 60
@@ -44,12 +45,75 @@ MOTION_MIN_WALL_SECONDS, MOTION_OBSERVATION_SECONDS, MOTION_RELEASE_SETTLE_SECON
 MOTION_REVIEW_MIN_SECONDS = 12
 
 
-def set_display(width, height, density=DENSITY):
-    """Keep hierarchy coordinates tied to the current Android logical display."""
-    global WIDTH, HEIGHT, DENSITY
+def set_display(width, height, density=DENSITY, *, requested=None):
+    """Bind hierarchy coordinates, retaining a separate requested configuration."""
+    global WIDTH, HEIGHT, DENSITY, DISPLAY_REQUEST
     if any(type(value) is not int or value <= 0 for value in (width, height, density)):
         raise ValueError('Positive integral logical display geometry required')
+    if requested is None:
+        requested = (width, height, density)
+    if (not isinstance(requested, (tuple, list)) or len(requested) != 3
+            or any(type(value) is not int or value <= 0 for value in requested)):
+        raise ValueError('Positive integral requested display geometry required')
     WIDTH, HEIGHT, DENSITY = width, height, density
+    DISPLAY_REQUEST = tuple(requested)
+
+
+def window_display_viewport(raw):
+    """Read the default display's current viewport, not its requested wm override.
+
+    API 32 and 35 both expose an actual `cur` size in `dumpsys window displays`.
+    A base override may be clamped or rotated; it supplies density only. Missing
+    or ambiguous observations cannot fall back to the requested configuration.
+    """
+    headers = list(re.finditer(r'^\s*Display: mDisplayId=(\d+)\b[^\n]*$', raw, re.M))
+    selected = [index for index, match in enumerate(headers) if match[1] == '0']
+    if len(selected) != 1:
+        raise ValueError('Exactly one observed default Android display is required')
+    index = selected[0]
+    section = raw[headers[index].end():headers[index + 1].start() if index + 1 < len(headers) else len(raw)]
+    summaries = re.findall(r'^\s*init=(\d+)x(\d+)\s+(\d+)dpi\b([^\n]*)$', section, re.M)
+    if len(summaries) != 1:
+        raise ValueError('Exactly one default-display viewport summary is required')
+    initial_width, initial_height, initial_density, tail = summaries[0]
+    current = re.findall(r'\bcur=(\d+)x(\d+)\b', tail)
+    base = re.findall(r'\bbase=(\d+)x(\d+)\s+(\d+)dpi\b', tail)
+    if (len(current) != 1 or len(base) > 1
+            or len(re.findall(r'\bcur=', tail)) != 1
+            or len(re.findall(r'\bbase=', tail)) != len(base)):
+        raise ValueError('Unambiguous current viewport and display density are required')
+    values = [int(value) for value in (initial_width, initial_height, initial_density,
+                                      *current[0], *(base[0] if base else ()))]
+    if any(value <= 0 for value in values):
+        raise ValueError('Observed Android display dimensions and density must be positive')
+    return dict(widthPx=int(current[0][0]), heightPx=int(current[0][1]),
+                densityDpi=int(base[0][2] if base else initial_density))
+
+
+def observe_display_viewport(adb, out, owner, stem, width, height, density):
+    """Retain actual window evidence and fail before input on a configuration mismatch."""
+    requested = dict(widthPx=width, heightPx=height, densityDpi=density)
+    observation = owner['displayViewport'] = dict(status='started', requested=requested,
+        acquiredBy='adb shell dumpsys window displays', displayId=0)
+    try:
+        raw = adb('shell', 'dumpsys', 'window', 'displays', timeout=10)
+        path = Path(out) / (stem + '-display-viewport.txt')
+        path.write_bytes(raw)
+        observation.update(file=path.name, sha256=sha(path))
+        actual = window_display_viewport(raw.decode('utf-8', 'strict'))
+        observation['actual'] = actual
+        set_display(actual['widthPx'], actual['heightPx'], actual['densityDpi'],
+                    requested=(width, height, density))
+        observation['matchesRequested'] = actual == requested
+        if not observation['matchesRequested']:
+            raise ValueError('Actual Android viewport differs from requested configuration: '
+                f"requested {width}x{height} at {density} dpi; observed "
+                f"{actual['widthPx']}x{actual['heightPx']} at {actual['densityDpi']} dpi")
+        observation['status'] = 'verified'
+        return actual
+    except Exception as error:
+        observation.update(status='failed', errorType=type(error).__name__, error=str(error))
+        raise
 
 
 def sha(path):
@@ -1141,8 +1205,10 @@ def main():
         actual_width, actual_height = struct.unpack('>II', raw[16:24])
         report['screenshots'].append(dict(file=name, bytes=len(raw),
             sha256=hashlib.sha256(raw).hexdigest(), width=actual_width, height=actual_height,
-            requestedLogicalWidth=WIDTH, requestedLogicalHeight=HEIGHT,
-            matchesRequestedLogicalSize=(actual_width, actual_height) == (WIDTH, HEIGHT),
+            requestedLogicalWidth=DISPLAY_REQUEST[0], requestedLogicalHeight=DISPLAY_REQUEST[1],
+            matchesRequestedLogicalSize=(actual_width, actual_height) == DISPLAY_REQUEST[:2],
+            geometryLogicalWidth=WIDTH, geometryLogicalHeight=HEIGHT,
+            matchesGeometryLogicalSize=(actual_width, actual_height) == (WIDTH, HEIGHT),
             acquiredBy='adb exec-out screencap -p', capturedAtUnixNs=time.time_ns()))
         if raw[-12:] != b'\x00\x00\x00\x00IEND\xaeB`\x82':
             raise ValueError('Device PNG is incomplete; original bytes retained in ' + name)
@@ -1228,6 +1294,7 @@ def main():
         if adb('shell', 'pm', 'clear', PACKAGE).strip() != b'Success':
             raise ValueError('Disposable visual fixture reset failed')
         adb('shell', 'am', 'start', '-W', '-n', COMPONENT, '--es', 'visualAction', 'chat')
+        observe_display_viewport(adb, args.out, report, 'initial', WIDTH, HEIGHT, DENSITY)
         capture = UiVisualCapture(adb=args.adb, serial=args.serial, source=source,
                                   diagnostics=args.out / 'hierarchy-attempts.json')
         xml = wait_for(capture, lambda value: navigation(value) is not None and capsule(value) is not None,
