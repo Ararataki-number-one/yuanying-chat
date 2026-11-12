@@ -103,7 +103,8 @@ def main():
     jobs.append(('display-acceptance', [
         [sys.executable, 'tests/gecko_glass_navigation_capture_test.py'],
         [sys.executable, 'tests/glass_ui_validation_test.py'],
-        [sys.executable, 'tests/browser_workspace_device_configuration_test.py']], None))
+        [sys.executable, 'tests/browser_workspace_device_configuration_test.py'],
+        [sys.executable, 'tests/profile_ui_device_preparation_test.py']], None))
     jobs.append(('event-transport', [
         [sys.executable, 'tests/gecko_event_transfer_test.py'],
         [sys.executable, 'tests/profile_event_journal_discovery_test.py']], None))

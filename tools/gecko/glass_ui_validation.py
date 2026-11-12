@@ -57,12 +57,14 @@ def prepare_display(args, owner, stem, adb, api, width, height, font_scale, nigh
     it when the next app starts. A successful wm command on that launcher can
     therefore be undone. Reuse the existing native network fixture as a setup
     surface, leave that override first, then configure and observe the display.
+    Retire the setup instance so the next scene executes its own onCreate.
     This setup is not a measured scene or a typography/application pass.
     """
     result = owner['displayPreparation'] = dict(status='started',
         scope='Disposable emulator configuration before observation; not UI acceptance',
         requested=dict(widthPx=width, heightPx=height, densityDpi=480,
-                       fontScale=float(font_scale), night=night), observations=[])
+                       fontScale=float(font_scale), night=night), observations=[],
+        configurationSurfaceStopped=False)
     deadline = time.monotonic() + 15
 
     def read(*parts):
@@ -104,6 +106,12 @@ def prepare_display(args, owner, stem, adb, api, width, height, font_scale, nigh
             if time.monotonic() >= deadline:
                 raise TimeoutError('Actual Android display configuration did not settle')
             if matches and previous == current:
+                # The same fixture component dispatches scenes in onCreate.
+                # Its live network setup must not consume the next scene's
+                # intent. The launcher now saves the final configured rotation
+                # and restores it on the next app launch, as between typography modes.
+                read('shell', 'am', 'force-stop', api['PACKAGE'])
+                result['configurationSurfaceStopped'] = True
                 result['status'] = 'verified'
                 return result
             previous = current if matches else None

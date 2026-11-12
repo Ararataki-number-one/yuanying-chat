@@ -223,6 +223,7 @@ jobs:
           cp "$ANDROID_AVD_HOME/glassnavigation.avd/hardware-qemu.ini" work/glass-navigation/avd-hardware-qemu.txt
           timeout 10 "$ANDROID_HOME/platform-tools/adb" -s emulator-5554 shell getprop | tee work/glass-navigation/device-getprop.txt
           timeout 10 "$ANDROID_HOME/platform-tools/adb" -s emulator-5554 shell dumpsys window displays > work/glass-navigation/device-window-displays.txt
+          python3 tools/gecko/prepare_ui_device.py --adb "$ANDROID_HOME/platform-tools/adb" --serial emulator-5554 --timeout 45 --output work/glass-navigation/ui-device-preparation.json
       - name: Run real glass rendering, input and layout acceptance
         timeout-minutes: 30
         shell: bash
@@ -260,6 +261,7 @@ jobs:
           fi
           if [ -f work/glass-navigation/emulator.pid ]; then
             timeout 15 "$ANDROID_HOME/platform-tools/adb" -s emulator-5554 logcat -d -s 'PocketUiVisual:I' 'AndroidRuntime:E' '*:S' > work/glass-navigation/final-logcat.txt 2>&1 || true
+            timeout 10 "$ANDROID_HOME/platform-tools/adb" -s emulator-5554 logcat -b all -d -v threadtime > work/glass-navigation/system-logcat.txt 2>&1 || true
             timeout 10 "$ANDROID_HOME/platform-tools/adb" -s emulator-5554 emu kill > work/glass-navigation/emulator-stop.txt 2>&1 || true
             task_glass_pid=$(cat work/glass-navigation/emulator.pid)
             if kill -0 "$task_glass_pid" 2>/dev/null; then

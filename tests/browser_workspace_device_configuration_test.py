@@ -80,6 +80,12 @@ class BrowserWorkspaceDeviceConfigurationTests(unittest.TestCase):
         marker = 'test "$task_glass_booted" = true\n'
         self.assertEqual(self.setup.count(marker), 1)
         tail = self.setup.split(marker, 1)[1]
+        # This fixture owns the original hardware/getprop/window observations.
+        # The following real HOME preparation runs in profile_ui_device_preparation_test.
+        next_phase = 'python3 tools/gecko/prepare_ui_device.py '
+        self.assertEqual(tail.count(next_phase), 1)
+        tail, preparation = tail.split(next_phase, 1)
+        self.assertNotIn('\n', preparation.strip())
         self.assertIn('set -euo pipefail', self.setup.splitlines()[0])
         return subprocess.run(['bash', '-c', 'set -euo pipefail\n' + tail], cwd=self.directory,
                               env=self.environment, capture_output=True, text=True)

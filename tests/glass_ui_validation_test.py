@@ -10,6 +10,7 @@ import hashlib
 import inspect
 import json
 from pathlib import Path
+import subprocess
 import sys
 import tempfile
 from types import SimpleNamespace
@@ -706,6 +707,9 @@ class GlassDisplayPreparationTest(unittest.TestCase):
         if parts == ('shell', 'dumpsys', 'activity', 'activities'):
             activity = capture.COMPONENT if self.foreground else 'launcher/NOSENSOR'
             return ('topResumedActivity=ActivityRecord{' + activity + '}\n').encode()
+        if parts == ('shell', 'am', 'force-stop', capture.PACKAGE):
+            self.foreground = False
+            return b''
         if parts[:3] == ('shell', 'wm', 'size'):
             requested = tuple(map(int, parts[3].split('x')))
             self.base = min(requested[0], 2472), min(requested[1], 5352)
@@ -813,6 +817,114 @@ class GlassDisplayPreparationTest(unittest.TestCase):
         self.assertEqual(len(self.owner['displayPreparation']['observations']), 2)
         self.assertTrue(all(row['matchesRequested'] for row in self.owner['displayPreparation']['observations']))
         self.assertEqual(self.owner['displayPreparation']['status'], 'failed')
+
+    def setup_then_start_scene(self, action, *, target=None, width=1236, height=2676,
+                               stop_error=False, stop_delay=0):
+        """Actual setup helper; explicit observed task and NOSENSOR boundaries.
+
+        The b6 Android 35 stdout hashes confirm START_DELIVERED_TO_TOP for
+        the same live setup component. UiVisual's onNewIntent only observes
+        downloads; its typography/chat dispatch belongs to onCreate. This is
+        a controlled framework/fixture boundary, not another Android run.
+        """
+        original_adb = self.adb
+        state = self.task_boundary = dict(live=None, created=[], delivered=[],
+                                         nonces=[], viewports=[], stoppedAfter=[])
+
+        def task_adb(*parts, timeout):
+            starting = parts[:4] == ('shell', 'am', 'start', '-W')
+            if starting and state['live'] is not None:
+                self.calls.append((parts, timeout))
+                self.clock += self.read_delay
+                state['delivered'].append(parts[parts.index('visualAction') + 1])
+                return (b'Warning: Activity not started, intent has been delivered '
+                        b'to currently running top-most instance.\nStatus: ok\n')
+            raw = original_adb(*parts, timeout=timeout)
+            if starting:
+                next_action = parts[parts.index('visualAction') + 1]
+                state['live'] = next_action
+                state['created'].append(next_action)
+                state['viewports'].append(self.base[::-1] if self.rotation % 2 else self.base)
+                if next_action == 'navigation-typography':
+                    state['nonces'].append(parts[parts.index('visualNonce') + 1])
+            if parts == ('shell', 'am', 'force-stop', capture.PACKAGE):
+                state['stoppedAfter'].append(len(self.owner['displayPreparation']['observations']))
+                if stop_error:
+                    raise subprocess.CalledProcessError(1, parts, stderr=b'controlled stop failure')
+                self.clock += stop_delay
+                state['live'] = None
+                # Entering the NOSENSOR launcher saves the final configured
+                # rotation; the next app launch restores that same value.
+                self.saved_launcher_rotation = self.rotation
+                self.rotation = 0
+            return raw
+
+        with patch.object(self, 'adb', side_effect=task_adb):
+            state['setup'] = self.run_setup(target, width, height)
+            state['savedBeforeNextLaunch'] = self.saved_launcher_rotation
+            self.adb('shell', 'am', 'start', '-W', '-n', capture.COMPONENT,
+                     '--es', 'visualAction', action, '--es', 'visualNonce', 'fresh-scene', timeout=6)
+        return state
+
+    def test_first_typography_has_a_fresh_instance_nonce_and_final_rotation(self):
+        for width, height, rotation in ((1236, 2676, 0), (2676, 1236, 1)):
+            with self.subTest(rotation=rotation):
+                self.setUp()
+                state = self.setup_then_start_scene('navigation-typography', width=width, height=height)
+                self.assertEqual(state['nonces'], ['fresh-scene'], 'Fresh typography must execute onCreate')
+                self.assertEqual(state['created'], ['network', 'navigation-typography'])
+                self.assertEqual(state['delivered'], [])
+                self.assertEqual(state['savedBeforeNextLaunch'], rotation)
+                self.assertEqual(state['viewports'][-1], (width, height))
+                self.assertEqual(state['stoppedAfter'], [2])
+                self.assertIs(state['setup']['configurationSurfaceStopped'], True)
+
+    def test_first_loading_chat_cannot_be_delivered_to_the_network_setup_instance(self):
+        state = self.setup_then_start_scene('chat', width=2676, height=1236)
+        self.assertEqual(state['live'], 'chat', 'Chat must execute its onCreate dispatch')
+        self.assertEqual(state['created'], ['network', 'chat'])
+        self.assertEqual(state['delivered'], [])
+        self.assertEqual(state['savedBeforeNextLaunch'], 1)
+        self.assertEqual(state['viewports'][-1], (2676, 1236))
+
+    def test_missing_retirement_negative_control_reuses_network_and_emits_no_new_nonce(self):
+        source = inspect.getsource(validation.prepare_display)
+        stop = "                read('shell', 'am', 'force-stop', api['PACKAGE'])\n"
+        self.assertLessEqual(source.count(stop), 1)
+        namespace = dict(validation.__dict__)
+        exec(compile(source.replace(stop, ''), '<unretired-configuration-surface>', 'exec'), namespace)
+        for action in ('navigation-typography', 'chat'):
+            with self.subTest(action=action):
+                self.setUp()
+                state = self.setup_then_start_scene(action, target=namespace['prepare_display'])
+                self.assertEqual(state['created'], ['network'])
+                self.assertEqual(state['delivered'], [action])
+                self.assertEqual(state['live'], 'network')
+                self.assertEqual(state['nonces'], [])
+
+    def test_stop_failure_cannot_verify_an_otherwise_matching_display(self):
+        with self.assertRaises(subprocess.CalledProcessError):
+            self.setup_then_start_scene('chat', stop_error=True)
+        self.assertEqual(self.owner['displayPreparation']['status'], 'failed')
+        self.assertFalse(self.owner['displayPreparation'].get('configurationSurfaceStopped', False))
+        self.assertEqual(self.task_boundary['created'], ['network'])
+
+    def test_stop_uses_remaining_setup_budget_without_a_new_deadline(self):
+        self.read_delay = 1
+        state = self.setup_then_start_scene('chat')
+        timeouts = [timeout for parts, timeout in self.calls
+                    if parts == ('shell', 'am', 'force-stop', capture.PACKAGE)]
+        self.assertEqual(timeouts, [4.5])
+        self.assertEqual(state['setup']['status'], 'verified')
+        self.assertLess(self.clock, 15)
+
+    def test_late_stop_cannot_verify_or_start_the_next_scene(self):
+        self.read_delay = 1
+        with self.assertRaises(TimeoutError):
+            self.setup_then_start_scene('chat', stop_delay=5)
+        self.assertEqual(self.owner['displayPreparation']['status'], 'failed')
+        self.assertFalse(self.owner['displayPreparation'].get('configurationSurfaceStopped', False))
+        self.assertEqual(self.task_boundary['created'], ['network'])
 
 
 class GlassCaptureFailureCleanupTest(unittest.TestCase):

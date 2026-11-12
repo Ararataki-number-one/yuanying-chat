@@ -154,6 +154,58 @@ class CompactCaptureReportV2Tests(unittest.TestCase):
         self.assertIn('pathlib.Path(__file__).resolve()', ast.unparse(main))
         self.assertIn("contract.verify_shared_ui_source(selected['tests/gecko/run_ui_visuals.py'])", ast.unparse(main))
 
+    def test_current_compact_consumer_and_fixed_history_are_separate_proofs(self):
+        path = 'tests/gecko/run_ui_visuals.py'
+        source = (ROOT / path).read_text()
+        released = capture.history.historical_bytes(path).decode('utf-8')
+        with patch.object(capture.contract, 'verify_shared_ui_source',
+                          wraps=capture.contract.verify_shared_ui_source) as old_proof:
+            report = capture.verify_current_compact_ui_source(source)
+        old_proof.assert_called_once_with(released)
+        self.assertNotEqual(source, released)
+        self.assertEqual(report['historicalSource'], capture.history.historical_identity(path))
+        self.assertTrue(report['historicalProofOnly'])
+        self.assertTrue(report['originalWorkloadSemanticsPreserved'])
+        self.assertTrue(report['currentCompactWorkloadPreserved'])
+        self.assertFalse(report['currentWholeUiWorkloadClaimed'])
+        self.assertFalse(report['actualAndroidExecution'])
+        self.assertEqual(report['currentMenuLabel'], '浏览器菜单')
+        self.assertEqual(report['currentCompactSourceSha256'], hashlib.sha256(source.encode()).hexdigest())
+        self.assertEqual(set(report['currentCompactMembersAstSha256']),
+                         {'adb', 'dump', 'chrome_event', 'focus', 'visible', 'quick_environment_sheet',
+                          'compactWorkload', 'compactImport', 'UI_NAVIGATION_CONTRACT', 'ui_capture'})
+
+    def test_current_compact_deadlines_touches_labels_and_callback_wiring_reject_drift(self):
+        source = (ROOT / 'tests/gecko/run_ui_visuals.py').read_text()
+        changes = (
+            ('def chrome_event(command,event):\n        deadline=time.monotonic()+20',
+             'def chrome_event(command,event):\n        deadline=time.monotonic()+21'),
+            ("after['actions']==sample['actions']==0", "after['actions']==sample['actions']>=0"),
+            ("str(control['tap'][0])", "str(control['tap'][0]+1)"),
+            ("performance['status']=='passed'", "performance['status']!='failed'"),
+            ("label='浏览器菜单'", "label='会话选项'"),
+            ("label='浏览器菜单'", "label='其它菜单'"),
+            ('capture_compact_v2(adb,lambda', 'capture_compact_v2(dump,lambda'),
+            ('UI_NAVIGATION_CONTRACT=2', 'UI_NAVIGATION_CONTRACT=1'),
+            ('from compact_chrome_v2 import run_case as capture_compact_v2',
+             'from compact_chrome_v2 import other_case as capture_compact_v2'),
+            ('return ui_capture.read(deadline=deadline)', 'return ui_capture.read(deadline=None)'),
+        )
+        for before, after in changes:
+            self.assertEqual(source.count(before), 1, before)
+            with self.subTest(change=before), self.assertRaises(AssertionError):
+                capture.verify_current_compact_ui_source(source.replace(before, after, 1))
+        with self.assertRaises(AssertionError):
+            capture.verify_current_compact_ui_source(source + '\ndef chrome_event(command,event): return {}\n')
+
+    def test_current_compact_proof_is_the_default_and_before_ref_keeps_its_original_guard(self):
+        tree = ast.parse(RUNNER.read_text())
+        main = next(node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == 'main')
+        selected = next(node.value for node in ast.walk(main) if isinstance(node, ast.Assign)
+                        and any(isinstance(target, ast.Name) and target.id == 'runner_contract' for target in node.targets))
+        expected = ast.parse("contract.verify_shared_ui_source(selected['tests/gecko/run_ui_visuals.py']) if a.before_ref else verify_current_compact_ui_source(selected['tests/gecko/run_ui_visuals.py'])", mode='eval').body
+        self.assertEqual(ast.dump(selected, include_attributes=False), ast.dump(expected, include_attributes=False))
+
 
 if __name__ == '__main__':
     unittest.main()
