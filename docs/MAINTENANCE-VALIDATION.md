@@ -61,7 +61,7 @@ lint 没有 error，仍有 **115 条 warning**。与父提交 `815f7fee` 的 114
 
 补充验证使用的 Android JSON 为 `android-json-0.0.20131108.vaadin1.jar`，SHA-256 `dfb7bae2f404cfe0b72b4d23944698cb716b7665171812a0a4d0f5926c0fac79`。统一 22 组仍使用固定的桌面 JSON。其他 JDK / API / WebKit / SnakeYAML 版本与下方第一轮依赖表相同。
 
-### 本轮三个生产文件
+### 22 组冻结时的三个生产文件
 
 | 文件 | SHA-256 |
 | --- | --- |
@@ -70,6 +70,25 @@ lint 没有 error，仍有 **115 条 warning**。与父提交 `815f7fee` 的 114
 | `NativeNetwork.java` | `b15ac95e7a6555f98dff2a43d8c3c58b0c9bda067b3aea7f430ddc147d808dd9` |
 
 本轮不修改 Gecko、ChatSession、玻璃渲染、版本、更新源或签名。上述宿主与 API 编译回执均不代表 Android / Gecko / Chromium 实机运行；旧页 JavaScript 的立即停止也不在资源宿主证明范围内。
+
+## 集成测试接点同步与 APK 重试
+
+深度维护已上传为 `7f5f90190c0e733f73b1ea51d97d32ce7e052e52`，源码树 `ed8098e664488b65a220094adb87832b80789e81`。
+
+该提交的 [current-maintenance 作业 130889823139](https://github.com/Ararataki-number-one/yuanying-chat/actions/runs/43129448758/job/130889823139) **21 / 21 组通过**，336.107 秒，424 个输入文件前后不变；原始 `results.json` SHA-256 为 `1a1294e40ef5c34f572ebf7dec2a66220bbd7503fc8966b9135165217fff13be`。
+
+完整 APK 检查没有通过：两个浏览器构建和 reviewed SDK 构建均在 `compileIntegrationJavaWithJavac` 发现同一编译错误。`WorkerPolicyIntegrationActivity` 的真实 JavaScript 迟到回调测试仍直接访问已经移走的 `fingerprintWorker` 字段；release Java 已编译，但 integration APK / lint / stamp 未完成，不能称为完整构建成功。
+
+后续修复仅增加生产协调器工厂接点并迁移该集成 fixture：
+
+- 默认工厂使用原应用环境 Context 和主线程交付器，生产构造行为保持原样。
+- fixture 私有单线程队列注入真实 Jobs；原 8 秒 fence 与实际保存 CAS 共用该队列。
+- 原 Worker check 表达式、JavaScript 观测 / 保存 / 等待顺序和 `onDestroy` 方法未改；先释放 latch，再由 Jobs 排空并关闭队列。
+- 不暴露 Jobs 私有 worker，不添加任意排队接口，也不恢复 Activity 裸线程字段。
+
+工厂接点版本的 **68 个完整生产 Java 类 API 编译再次通过**，回执位于 `deep-integration-followup/native-compile/receipt.json`，SHA-256 为 `ca3c2ef9903409233f85ea58fa1ba612f068e2c5e933dc039ba07ea1742727f6`。输入前后不变。该检查不含完整集成 APK，最终仍须以下一次对应提交的完整 CI 构建为准，结果更新在 PR #7。
+
+此跟进后 `BrowserActivity.java` 的 SHA-256 为 `40dc87fd23e850ee6b585021b3720a4836b50e9e37c7b1f7fb551e4c1e3f0b89`；`WorkerPolicyIntegrationActivity.java` 为 `93d108adde4a7f4cefc2d4f9991723706a80fedcba722a26e4c8fc5bc51a183c`。Jobs / NativeNetwork 与上面的 22 组冻结输入一致。原 22 组回执继续保留其真实源码哈希，未重写成已执行工厂跟进版本的证明。
 
 ## 第一轮宿主结果与源码归属
 

@@ -63,10 +63,13 @@ public class BrowserActivity extends ThemedActivity {
   /** Environment re-entry resumes its existing tabs; only a cold start chooses home. */
   static void resume(Activity host){host.startActivity(new Intent(host,activity(Profiles.slot(host))).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_REORDER_TO_FRONT));}
   @Override protected void attachBaseContext(Context base){super.attachBaseContext(new ProfileContext(base,Profiles.processSlot()));}
+  ChromiumFingerprintJobs createFingerprintJobs(){
+    return new ChromiumFingerprintJobs(getApplicationContext(),fingerprintMain::post);
+  }
   @Override protected void onCreate(Bundle state){
     super.onCreate(state);
     if(!ProfileCatalog.get(this).available(Profiles.slot(this))){finish();return;}
-    fingerprintJobs=new ChromiumFingerprintJobs(getApplicationContext(),fingerprintMain::post);
+    fingerprintJobs=createFingerprintJobs();
     library=new BrowserLibrary(this);
     buildUi();runtime=new ChromiumRuntime(this,this::routeChanged);files=new BrowserFiles(this,this::message,runtime);permissions=new BrowserPermissions(this,this::web,this::message);
     loadFingerprintState();

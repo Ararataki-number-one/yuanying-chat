@@ -135,6 +135,8 @@ python3 tools/browser/check_maintenance.py \
 | 加载、保存 / 轮换、策略核对、activate / record / retire 的串行编排 | `ChromiumFingerprintJobs` |
 | 环境身份、文件锁、revision 比较与持久化内容 | 原 `ChromiumFingerprintStore`，语义保持不变 |
 
+Activity 通过包内 `createFingerprintJobs()` 工厂创建一次协调器。真实 Worker 集成测试从这里注入自己持有的串行队列，使测试 fence 与实际保存 CAS 使用同一队列；生产 Jobs 的 worker 保持私有，测试不再直接依赖 Activity 裸线程字段。
+
 任务提交时先复制 JSON，后续调用方修改对象不会改变已经排队的写入。关闭组件后，已接受的写入按原 `shutdown()` 语义继续排空；旧 Activity 的迟到结果停止交付。工作队列拒绝执行会回到明确的失败分支，不能使 loading / saving / pending 状态永远等待。
 
 这次不是单纯搬动代码。完整的新组件由真实 Store / Spec 的宿主执行器验证；Activity 的现有导航检查继续保留，并补充原来没有实际执行的加载、保存、核对和激活路径。
