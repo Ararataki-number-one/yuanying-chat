@@ -18,6 +18,14 @@
 
 本轮采用逐文件不可变 Git blob 保存已经通过的维护切片，最终完整提交再运行原正式验收。中间带 `[skip ci]` 的保存提交不作为发布候选，也不代替最终检查。正式发布必须使用同一最终源码的完整 APK 和最后完整证据提交，核对 run、attempt、版本、原签名及所有要求的作业。缺失的旧 stderr、未确定的录屏退出原因和物理手机验证继续如实保留。
 
+### 候选 `92c3e76`：补齐 parser 准备的历史读取边界
+
+[profile 43370796925 / attempt 1](https://github.com/Ararataki-number-one/yuanying-chat/actions/runs/43370796925) 绑定源码 `92c3e7601b62e7b1bd26caa3ec48d370313832ee`、树 `9e5c311a0597edf682c7045b6cf70f389fdea819`。SDK job `131705812036` 成功，实际完成两 ABI 的 release/integration 构建、lint 和 APK 印记核验。host job `131705811554` 失败，完整 discover 为 1,698 项、589.056 秒、2 failures 与 1 error；job 共 13 分 46 秒，未触发原 15 分钟限制。
+
+三个失败均来自 `profile_chrome_parser_preparation_test.py` 的历史整文件证明：first-tap/resume 的旧 SHA 比较以及旧 runner 的有限逆差异，仍读取了当前已变更的浏览器实现。先用该候选实际复现原组 13 项中的同样 2 failures / 1 error，再把三个历史证明方法中的四个读取表达式明确改为既有 `historical_bytes`。输入来自正式 `7383bb1…` 的真实 commit/tree/blob；原 pin、断言、逆差异、负例和全部当前 compiler/cache/runner 测试保持，修改后原整组 13 项通过。
+
+当前 header、v1 runner 与原 collapse 测试仍逐字等于正式对象。当前 first-tap、resume 和 browser runner 的行为继续执行当前文件，分别由既有 22、20、13、17 项对应检查覆盖。该小修不改变应用、版本或 APK 验收步骤；新的完整运行另绑定新源码，旧 `92c3e76` profile 失败不改写为成功。
+
 ## 2.1.5 准备阶段：本地回归与上轮终态
 
 本轮从 `d02457f2344c9eb439758507fb9dfe39cd72b7d5` 继续，准备 `2.1.5 / 107`。下述定向检查来自包含新补丁的工作树；不能把父提交当成新 APK 的源码。统一回执、完整 APK 与设备结果由新提交 CI 另行绑定，最终发布入口见 [PR #7](https://github.com/Ararataki-number-one/yuanying-chat/pull/7) 和正式 Release。
