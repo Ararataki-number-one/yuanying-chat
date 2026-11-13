@@ -13,7 +13,7 @@ from http.server import BaseHTTPRequestHandler,ThreadingHTTPServer
 import json
 import os
 from pathlib import Path
-import signal
+import sys
 import subprocess
 import tempfile
 import threading
@@ -21,6 +21,8 @@ import time
 from urllib.parse import urlsplit,parse_qs
 
 ROOT=Path(__file__).resolve().parents[2]
+sys.path.insert(0,str(ROOT/'tools/browser'))
+from chromium_process import chromium_endpoint
 ASSET=ROOT/'app/src/main/assets/chromium-fingerprint.js'
 PRELUDE="const existingWorker=new Worker('/worker.js?kind=prior&epoch='+location.pathname.slice(1));"
 CASES=r'''
@@ -82,7 +84,7 @@ def main():
     parser.add_argument('--chromium',required=True,type=Path)
     parser.add_argument('--output',required=True,type=Path)
     args=parser.parse_args();args.output.mkdir(parents=True,exist_ok=True)
-    paths=[ASSET,Path(__file__).resolve()];hashes={str(p.relative_to(ROOT)):hashlib.sha256(p.read_bytes()).hexdigest() for p in paths}
+    paths=[ASSET,Path(__file__).resolve(),ROOT/'tools/browser/chromium_process.py'];hashes={str(p.relative_to(ROOT)):hashlib.sha256(p.read_bytes()).hexdigest() for p in paths}
     source=ASSET.read_text();counts=Counter();lock=threading.Lock()
     def asset(epoch):
         config=dict(seed='1'*64,canvas=False,webgl=False,audio=False,webrtc=False,workers='restrict' if epoch=='restrict' else 'allow')
@@ -113,18 +115,9 @@ def main():
         with tempfile.TemporaryDirectory(prefix='chromium-worker-browser-') as temporary:
             base=Path(temporary);(base/'config').mkdir();(base/'cache').mkdir()
             command=[str(args.chromium.resolve()),'--headless','--no-sandbox','--disable-dev-shm-usage','--disable-background-networking','--disable-component-update','--disable-sync','--no-first-run','--no-default-browser-check','--user-data-dir='+str(base/'profile'),'--remote-debugging-port=0','--remote-debugging-address=127.0.0.1','about:blank']
-            process=subprocess.Popen(command,stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True,env=dict(os.environ,XDG_CONFIG_HOME=str(base/'config'),XDG_CACHE_HOME=str(base/'cache')),start_new_session=True)
-            try:
-                port_file=base/'profile/DevToolsActivePort';deadline=time.monotonic()+12
-                while not port_file.is_file() and process.poll() is None and time.monotonic()<deadline:time.sleep(.1)
-                if not port_file.is_file():raise RuntimeError('Actual Chromium endpoint did not start')
-                port,path=port_file.read_text().splitlines()[:2]
-                result=subprocess.run(['node','--input-type=module','-e',CONTROLLER,'ws://127.0.0.1:'+port+path,'http://127.0.0.1:'+str(server.server_port)],capture_output=True,text=True,timeout=75)
-            finally:
-                if process.poll() is None:os.killpg(process.pid,signal.SIGTERM)
-                try:_,stderr=process.communicate(timeout=5)
-                except subprocess.TimeoutExpired:os.killpg(process.pid,signal.SIGKILL);_,stderr=process.communicate(timeout=5)
-                (args.output/'chromium.stderr.log').write_text(stderr)
+            environment=dict(os.environ,XDG_CONFIG_HOME=str(base/'config'),XDG_CACHE_HOME=str(base/'cache'))
+            with chromium_endpoint(command=command,environment=environment,profile=base/'profile',output=args.output,version=version,source_files=hashes) as endpoint:
+                result=subprocess.run(['node','--input-type=module','-e',CONTROLLER,endpoint,'http://127.0.0.1:'+str(server.server_port)],capture_output=True,text=True,timeout=75)
     finally:server.shutdown();server.server_close();thread.join(timeout=5)
     (args.output/'controller.stderr.log').write_text(result.stderr)
     if result.returncode:raise RuntimeError('Actual Chromium Worker fixture did not complete; see bounded local controller stderr')
