@@ -8,12 +8,15 @@ sys.path.insert(0,str(ROOT/'tests/gecko-navigation-host'))
 from run import member_at
 SOURCE=ROOT/'app/src/main/java/local/pocketchat/GeckoWebView.java'
 NAMES=['boolean builtinAddonCurrent(','void acceptBuiltinAddon(','void addonStateChanged(','void applyAddonState(','boolean rejectDisabledNavigation(','GeckoResult<String> nativeNavigationFailure(','private void maybeOpen(','boolean protectionAllowsNetwork(','public void loadUrl(','void loadSessionUri(','void restoreCheckpoint(','static String stateUrl(','public GeckoResult<AllowOrDeny> onLoadRequest(','public GeckoResult<GeckoSession> onNewSession(','public void onLocationChange(','public void onPageStart(','public void onPageStop(','private void pageVisible(']
+NAMES.append('public GeckoResult<String> onLoadError(')
 def sha(path):return hashlib.sha256(path.read_bytes()).hexdigest()
 def main():
  p=argparse.ArgumentParser(description=__doc__);p.add_argument('--java-home',required=True,type=Path);p.add_argument('--json-jar',required=True,type=Path);p.add_argument('--output',required=True,type=Path);a=p.parse_args();text=SOURCE.read_text();parts={}
+ session=member_at(text,text.index('GeckoSession newSession()'))
  for name in NAMES:
-  if text.count(name)!=1:raise ValueError('Unique current method required: '+name)
-  parts[name]=member_at(text,text.index(name))
+  selected=session if name in ('public GeckoResult<AllowOrDeny> onLoadRequest(','public GeckoResult<GeckoSession> onNewSession(') else text
+  if selected.count(name)!=1:raise ValueError('Unique current method required in its owning session: '+name)
+  parts[name]=member_at(selected,selected.index(name))
  start=text.index('private final WebExtension.MessageDelegate routeMessages=');at=text.index('public void onDisconnect(WebExtension.Port incoming)',start);parts['route-port-onDisconnect']=member_at(text,at)
  files=[SOURCE,HERE/'AddonHost.java.in',Path(__file__).resolve(),ROOT/'app/src/main/java/local/pocketchat/J.java',ROOT/'app/src/main/java/local/pocketchat/NativeProtectionState.java'];before={str(x.relative_to(ROOT)):sha(x) for x in files};template=(HERE/'AddonHost.java.in').read_text()
  def generated(chosen):return template.replace('@@MEMBERS@@','\n'.join(chosen.values()))
@@ -33,6 +36,9 @@ def main():
   if cold.returncode:raise AssertionError('Default CPU/TLS addon prerequisites failed: '+cold.stderr)
   cold_report=json.loads(cold.stdout)
   mutations=[('runtime-authority','boolean builtinAddonCurrent(','runtime==expected&&','','authority'),('stale-commit','void applyAddonState(','addonStateSerial!=serial||','','authority'),('failure-notification','GeckoResult<String> nativeNavigationFailure(','owner.finishNavigation(owner.pageError,false);','owner.setStatus(owner.pageError);','entries'),('forged-enable','void applyAddonState(','if(!disabled){extension.setMessageDelegate','if(!disabled){privacyReady=true;extension.setMessageDelegate','enable'),('disabled-open','private void maybeOpen(','&&!addonDisabled','','entries'),('late-stop','public void onPageStop(','||addonDisabled','','progress'),('late-visible','private void pageVisible(','||addonDisabled','','progress'),('late-start','public void onPageStart(','||addonDisabled','','progress'),('late-location','public void onLocationChange(','||addonDisabled','','progress')]
+  for name in ('public void onLocationChange(','public void onPageStart(','public void onPageStop('):
+   mutations.append(('capture-'+name.split('(')[0].split()[-1],name,'if(s==current&&!owner.navigationDispatched)return;','','navigation-capture'))
+  mutations.append(('capture-error','public GeckoResult<String> onLoadError(','if(s==current&&!owner.navigationDispatched)return GeckoResult.fromValue(null);','','navigation-capture'))
   for label,name,old,new,focus in mutations:
    if parts[name].count(old)!=1:raise ValueError('Unique semantic mutation required: '+label)
    changed=dict(parts);changed[name]=changed[name].replace(old,new,1);failed=run(changed,label,focus)

@@ -232,7 +232,7 @@ public class WindowHomeActivity extends ThemedActivity {
     if(!empty.equals(emptySignature)){
       emptySignature=empty;emptyRows.removeAllViews();
       if("maintenance".equals(empty))DesignUi.note(emptyRows,"有环境等待完成维护，请点击上方继续重置或清理。");
-      else if("empty".equals(empty))DesignUi.empty(emptyRows,"还没有环境","创建一个环境，开始独立的会话。","新建环境",this::createWindow);
+      else if("empty".equals(empty))DesignUi.empty(emptyRows,"还没有环境","创建一个环境，打开独立的浏览器。","新建环境",this::createWindow);
     }
     updateSelectionBar(rows);
     // Only compensate actual content-layout changes; preserve the user's drag.
@@ -280,7 +280,7 @@ public class WindowHomeActivity extends ThemedActivity {
       badge.setBackground(DesignUi.surface(WindowHomeActivity.this,active||problem?(color&0x00ffffff)|0x11000000:android.graphics.Color.TRANSPARENT,12,android.graphics.Color.TRANSPARENT));
       setText(network,networkStatus(row,active,fresh));network.setTextColor(DesignUi.MUTED);
       more.setVisibility(selecting?View.GONE:View.VISIBLE);more.setContentDescription("更多操作 "+row.optString("name"));
-      card.setContentDescription((selecting?"选择环境：":"打开环境：")+row.optString("name")+(row.optBoolean("favorite")?"，已收藏":"")+"，"+sub.getText()+"，"+network.getText()+"，"+badge.getText());
+      card.setContentDescription((selecting?"选择环境：":"打开浏览器：")+row.optString("name")+(row.optBoolean("favorite")?"，已收藏":"")+"，"+sub.getText()+"，"+network.getText()+"，"+badge.getText());
     }
   }
   void openExpected(JSONObject expected,String action,boolean overview){
@@ -348,14 +348,14 @@ public class WindowHomeActivity extends ThemedActivity {
   void menu(int id){
     JSONObject row=ProfileCatalog.get(this).item(id);
     if(!ProfileCatalog.get(this).available(id))return;
-    String[] labels={"编辑环境","分组与备注",row.optBoolean("favorite")?"取消收藏":"收藏环境",id==AppSettings.defaultSlot(this)?"当前默认环境":"设为默认启动环境","网络配置","选择此环境","复制环境配置","重置登录数据","删除环境"};
+    String[] labels={"编辑环境","分组与备注",row.optBoolean("favorite")?"取消收藏":"收藏环境",id==AppSettings.defaultSlot(this)?"当前默认环境":"设为默认启动环境","网络配置","选择此环境","复制环境配置","重置登录数据","删除环境","环境详情"};
     ReferenceUi.Modal panel=new ReferenceUi.Modal(this,row.optString("name")).asSheet();
     for(int i=0;i<labels.length;i++){final int n=i;Button item=ReferenceUi.menuAction(panel,labels[i],()->{panel.dismiss();
       if(n==0)openWindow(id,"edit");if(n==1)metadata(id);
       if(n==2){ProfileCatalog.get(this).favorite(id,!row.optBoolean("favorite"));refresh();}
       if(n==3){AppSettings.defaultSlot(this,id);refresh();}
-      if(n==4)openWindow(id,"network");if(n==5)toggleSelection(id);if(n==6)copyEnvironment(id);if(n==7)resetEnvironment(id);if(n==8)deleteEnvironment(id);
-    });if(i>=7)item.setTextColor(DesignUi.RED);}
+      if(n==4)openWindow(id,"network");if(n==5)toggleSelection(id);if(n==6)copyEnvironment(id);if(n==7)resetEnvironment(id);if(n==8)deleteEnvironment(id);if(n==9)openExpected(row,"overview",true);
+    });if(i==7||i==8)item.setTextColor(DesignUi.RED);}
     panel.show();
   }
   void startReset(int id,int generation,String environmentId){startActivity(new Intent(this,EnvironmentResetActivity.class).putExtra("slot",id).putExtra("confirmedGeneration",generation).putExtra("confirmedEnvironmentId",environmentId).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));}
@@ -398,7 +398,7 @@ public class WindowHomeActivity extends ThemedActivity {
     if(!ProfileCatalog.get(this).available(id))return;
     if(id>0&&Build.VERSION.SDK_INT<28){showProblem("独立环境需要 Android 9 或更新版本");return;}
     ProfileCatalog.get(this).opened(id);
-    Intent opening="chat".equals(action)?EnvironmentOverviewUi.opening(this,id):new Intent(this,Profiles.activity(id)).putExtra("openWindowAction",action).putExtra("returnToEnvironmentList","edit".equals(action))
+    Intent opening="chat".equals(action)?EnvironmentOverviewUi.browserOpening(this,id):new Intent(this,Profiles.activity(id)).putExtra("openWindowAction",action).putExtra("returnToEnvironmentList","edit".equals(action))
       .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_REORDER_TO_FRONT);
     startActivity(opening);
   }
@@ -490,7 +490,7 @@ public class WindowHomeActivity extends ThemedActivity {
       int selectedSource=sourceType==0?AppSettings.defaultSlot(WindowHomeActivity.this):sourceSlot;
       DesignUi.field(body,"网络来源",sourceType==2?"创建后手动配置":selectedSource<0?"来源环境暂不可用":Profiles.display(WindowHomeActivity.this,selectedSource));
       CheckBox selected=new CheckBox(WindowHomeActivity.this);selected.setText("设为默认环境");selected.setTextColor(DesignUi.TEXT);selected.setMinHeight(dp(48));
-      DesignUi.note(body,sourceType==2?"创建后会打开网络配置页。保存网络方式后，再登录 ChatGPT。":"创建后会使用复制的网络配置打开会话，请在新环境单独登录 ChatGPT。");
+      DesignUi.note(body,sourceType==2?"创建后会打开网络配置页。保存网络方式后，再登录 ChatGPT。":"创建后会使用复制的网络配置打开浏览器，请在新环境单独登录 ChatGPT。");
       selected.setChecked(makeDefault);selected.setOnCheckedChangeListener((b,c)->makeDefault=c);body.addView(selected);
     }
     void next(){

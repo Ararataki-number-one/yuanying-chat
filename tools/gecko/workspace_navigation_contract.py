@@ -9,6 +9,7 @@ import xml.etree.ElementTree as ET
 
 VERSION = 2
 WORKSPACE_LABELS = ('会话', '环境', '下载', '网络', '设置')
+BROWSER_WORKSPACE_LABELS = ('浏览器', '环境', '下载', '网络', '设置')
 CONVERSATION_LABELS = ('环境', '网络', '下载', '阅读')
 
 
@@ -20,10 +21,11 @@ def bounds(node):
     return [left, top, right, bottom]
 
 
-def navigation(xml, package, *, conversation, selected=None):
+def navigation(xml, package, *, conversation, selected=None, browser=False):
+    assert type(browser) is bool
     assert type(conversation) is bool and type(package) is str and package.endswith('.test')
     tree = ET.fromstring(xml)
-    labels = CONVERSATION_LABELS if conversation else WORKSPACE_LABELS
+    labels = CONVERSATION_LABELS if conversation else (BROWSER_WORKSPACE_LABELS if browser else WORKSPACE_LABELS)
     parents = {child: parent for parent in tree.iter() for child in parent}
     controls = []
     for label in labels:
@@ -51,7 +53,7 @@ def navigation(xml, package, *, conversation, selected=None):
         assert not any(n.attrib.get('package') == package
                        and n.attrib.get('class') == 'android.widget.Button'
                        and n.attrib.get('text') == n.attrib.get('content-desc')
-                       and n.attrib.get('text') in ('会话', '设置') for n in tree.iter('node'))
+                       and n.attrib.get('text') in ('会话', '浏览器', '设置') for n in tree.iter('node'))
     ordered = controls[:-1] if conversation else controls
     for a, b in zip(ordered, ordered[1:]):
         assert a['bounds'][2] <= b['bounds'][0], 'Native navigation touch areas overlap or reorder'
@@ -107,9 +109,10 @@ def conversation_layout(nodes, parents, package):
     return 'stacked'
 
 
-def conversation_header(xml, package, width, height, scale, environment):
-    result = navigation(xml, package, conversation=True)
-    nodes = list(ET.fromstring(xml).iter('node'))
+def conversation_header(xml, package, width, height, scale, environment, *, browser=False):
+    result = navigation(xml, package, conversation=True, browser=browser)
+    tree = ET.fromstring(xml)
+    nodes = list(tree.iter('node'))
     capsule = [n for n in nodes if n.attrib.get('package') == package
                and n.attrib.get('content-desc', '').startswith('当前环境：')]
     status = [n for n in nodes if n.attrib.get('package') == package
@@ -120,15 +123,23 @@ def conversation_header(xml, package, width, height, scale, environment):
     assert capsule.attrib.get('class') == 'android.widget.Button'
     assert capsule.attrib.get('clickable') == capsule.attrib.get('long-clickable') == 'true'
     assert status.attrib.get('clickable') == status.attrib.get('focusable') == 'false'
-    assert not any(n.attrib.get('content-desc') in ('管理环境', '更多') for n in nodes)
+    if not browser:
+        assert not any(n.attrib.get('content-desc') in ('管理环境', '更多') for n in nodes)
     assert not any(n.attrib.get('text') in ('简洁', '原网页') for n in nodes)
     left, top, right, bottom = bounds(capsule)
     nl, nt, nr, nb = bounds(status)
     assert 0 <= left < right <= width * 3 and 0 <= nl < nr <= width * 3
-    assert 0 <= top < bottom == nt < nb <= height * 3
+    if browser:
+        assert capsule.get('text') == environment, 'Current environment name must remain complete'
+        result.update(browser_header_controls(tree, package, capsule, status, width, height))
+        assert 0 <= top < bottom < nt < nb <= height * 3
+    else:
+        assert 0 <= top < bottom == nt < nb <= height * 3
     # The redesigned capsule includes a full 48 dp native touch target; the old
     # 28 dp visual-only bound no longer describes this accessibility control.
-    assert 48 * 3 <= bottom - top <= max(56, 40 * scale) * 3
+    assert 48 * 3 <= bottom - top
+    if not browser:
+        assert bottom - top <= max(56, 40 * scale) * 3
     for row in result['controls']:
         l, t, r, b = row['bounds']
         assert r-l >= 48*3 and b-t >= 48*3
@@ -136,6 +147,91 @@ def conversation_header(xml, package, width, height, scale, environment):
     result.update(environment=environment, capsuleBounds=[left, top, right, bottom],
                   networkBounds=[nl, nt, nr, nb], addressTapAndEnvironmentLongPressDescribed=True)
     return result
+
+
+def browser_header_controls(tree, package, capsule, status, width, height):
+    """Observe the native browser header; the legacy contract stays the default.
+
+    BrowserAddressRow has two layouts, both read from their actual Android
+    children and bounds. History actions may be disabled when no entry exists.
+    Other actions must be enabled; all touch surfaces remain at least 48 dp.
+    """
+    nodes = list(tree.iter('node'))
+    parents = {child: parent for parent in tree.iter() for child in parent}
+
+    def owned(node, kind, action=False, history=False):
+        assert node.get('package') == package and node.get('class') == kind, 'Foreign browser header control'
+        assert node.get('visible-to-user') != 'false', 'Hidden browser header control'
+        l, t, r, b = bounds(node)
+        assert 0 <= l < r <= width * 3 and 0 <= t < b <= height * 3, 'Browser header outside viewport'
+        if action:
+            assert node.get('clickable') == 'true', 'Browser action is not clickable'
+            assert node.get('enabled') in (('true', 'false') if history else ('true',)), 'Browser action is inactive'
+            assert r-l >= 144 and b-t >= 144, 'Browser action is smaller than 48 dp'
+        ancestor = node
+        while parents.get(ancestor) is not None and parents[ancestor].tag == 'node':
+            ancestor = parents[ancestor]
+            assert ancestor.get('package') == package and ancestor.get('visible-to-user') != 'false', 'Foreign or hidden browser ancestor'
+            al, at, ar, ab = bounds(ancestor)
+            assert al <= l < r <= ar and at <= t < b <= ab, 'Browser control is clipped by its native ancestor'
+        return node
+
+    def action(descriptions, history=False):
+        matches = [n for n in nodes if n.get('content-desc') in descriptions]
+        assert len(matches) == 1, ('Missing or ambiguous browser action', descriptions)
+        return owned(matches[0], 'android.widget.Button', True, history)
+
+    address = [n for n in nodes if n.get('content-desc', '').startswith('当前网址 ')]
+    assert len(address) == 1, 'One native current address is required'
+    address = owned(address[0], 'android.widget.Button', True)
+    assert re.fullmatch(r'当前网址 .+，点击输入网址或搜索', address.get('content-desc', '')), 'Address editing semantics missing'
+    assert address.get('long-clickable') == 'true', 'Address must retain environment long press'
+    back, forward = action(('后退',), True), action(('前进',), True)
+    reload = action(('刷新网页', '停止加载'))
+    home = action(('打开当前环境主页',))
+    manage, more = action(('管理环境',)), action(('更多',))
+    owned(capsule, 'android.widget.Button', True)
+    owned(status, 'android.widget.LinearLayout')
+    actions = [back, forward, reload, home]
+    row = owned(parents[address], 'android.view.ViewGroup')
+    assert all(parents[n] is row for n in actions), 'Browser address actions have different native parents'
+    rl, rt, rr, rb = bounds(row)
+    al, at, ar, ab = bounds(address)
+    action_bounds = [bounds(n) for n in actions]
+    assert all(r-l == b-t == 144 for l, t, r, b in action_bounds), 'Browser history and load actions must retain their square surfaces'
+    assert len({(t, b) for l, t, r, b in action_bounds}) == 1, 'Browser actions must share a row'
+    for a, b in zip(action_bounds, action_bounds[1:]):
+        assert a[2] <= b[0], 'Browser actions overlap or reorder'
+    assert action_bounds[0][0] == rl and action_bounds[0][2] == action_bounds[1][0]
+    assert action_bounds[2][2] == action_bounds[3][0] and action_bounds[3][2] == rr
+    if list(row) == [address, back, forward, reload, home]:
+        layout = 'stacked'
+        assert (al, ar) == (rl, rr) and at == rt+9, 'Stacked address must fill its native first row'
+        assert action_bounds[0][1] == ab+12 and action_bounds[0][3]+21 == rb, 'Stacked browser actions must occupy the native second row'
+    else:
+        layout = 'inline'
+        assert list(row) == [back, forward, address, reload, home], 'Unexpected browser address children'
+        assert action_bounds[1][2] == al and ar == action_bounds[2][0], 'Inline address overlaps its actions'
+        assert abs(at+ab-action_bounds[0][1]-action_bounds[0][3]) <= 1, 'Inline address must share the action center'
+        assert min(at, action_bounds[0][1]) == rt+9 and max(ab, action_bounds[0][3])+21 == rb
+    hosts = [parents[n] for n in (manage, capsule, more)]
+    for host, child in zip(hosts, (manage, capsule, more)):
+        owned(host, 'android.widget.FrameLayout')
+        assert list(host) == [child], 'Unexpected browser header action host'
+    header = owned(parents[hosts[0]], 'android.widget.LinearLayout')
+    assert list(header) == hosts and all(parents[h] is header for h in hosts), 'Browser header must retain its native three surfaces'
+    hl, ht, hr, hb = bounds(header)
+    cl, ct, cr, cb = bounds(capsule)
+    ml, mt, mr, mb = bounds(manage)
+    ol, ot, ore, ob = bounds(more)
+    assert ml < mr <= cl < cr <= ol < ore, 'Browser header surfaces overlap or reorder'
+    assert abs(cl+cr-hl-hr) <= 1, 'Environment capsule is not centered'
+    assert abs(ct+cb-mt-mb) <= 1 and abs(ct+cb-ot-ob) <= 1, 'Browser header actions must share a vertical center'
+    assert parents[header] is parents[row] is parents[status], 'Browser header, address and status must share their native toolbar'
+    assert hl == rl == bounds(status)[0] and hr == rr == bounds(status)[2]
+    assert hb == rt and rb == bounds(status)[1], 'Browser toolbar sections must keep their native order'
+    return dict(browserWorkspace=True, addressLayout=layout, addressBounds=bounds(address),
+                browserActionBounds={n.get('content-desc'): bounds(n) for n in actions+[manage, more]})
 
 
 def dashboard_entry(xml, package, environment):
@@ -184,9 +280,9 @@ def dashboard_entry(xml, package, environment):
                 buttonBounds=[l, t, r, b], point=[(l+r)//2, (t+b)//2])
 
 
-def exercise_workspace_roundtrip(adb, initial_xml, save, package):
-    """Open management, its chat dashboard, then enter the same conversation."""
-    initial = navigation(initial_xml, package, conversation=True)
+def exercise_workspace_roundtrip(adb, initial_xml, save, package, *, browser=False):
+    """Exercise the explicitly selected legacy or direct-browser entry contract."""
+    initial = navigation(initial_xml, package, conversation=True, browser=browser)
     original_capsule = [n.attrib['content-desc'] for n in ET.fromstring(initial_xml).iter('node')
                         if n.attrib.get('content-desc', '').startswith('当前环境：')]
     assert len(original_capsule) == 1
@@ -194,7 +290,7 @@ def exercise_workspace_roundtrip(adb, initial_xml, save, package):
     assert capsule is not None, 'Current environment identity is required'
     environment = capsule.group(1)
     observed = []
-    for label, conversation, selected in (('环境', False, '环境'), ('会话', True, None)):
+    for label, conversation, selected in (('环境', False, '环境'), ('浏览器' if browser else '会话', True, None)):
         before = initial if not observed else observed[-1]
         target = next(row for row in before['controls'] if row['label'] == label)
         l, t, r, b = target['bounds']
@@ -223,7 +319,7 @@ def exercise_workspace_roundtrip(adb, initial_xml, save, package):
             return xml
 
         entry = None
-        if conversation:
+        if conversation and not browser:
             while True:
                 xml = read_frame()
                 if any(n.attrib.get('content-desc') == '环境仪表盘'
@@ -239,7 +335,9 @@ def exercise_workspace_roundtrip(adb, initial_xml, save, package):
         while True:
             xml = read_frame()
             try:
-                value = navigation(xml, package, conversation=conversation, selected=selected)
+                if browser and conversation:
+                    assert not any(n.get('content-desc') == '环境仪表盘' for n in ET.fromstring(xml).iter('node')), 'Direct browser entry opened an environment dashboard'
+                value = navigation(xml, package, conversation=conversation, selected=selected, browser=browser)
                 break
             except AssertionError:
                 if time.monotonic() >= deadline:
@@ -249,10 +347,11 @@ def exercise_workspace_roundtrip(adb, initial_xml, save, package):
         if conversation:
             assert [n.attrib['content-desc'] for n in ET.fromstring(xml).iter('node')
                     if n.attrib.get('content-desc', '').startswith('当前环境：')] == original_capsule
+        assert time.monotonic() < deadline, 'Native navigation exceeded its original 20 second budget'
         value.update(actualAndroidTap=dict(label=label, point=point, bounds=target['bounds']))
         if entry is not None:
             value['dashboardEntry'] = entry
         observed.append(value)
-    return dict(navigationContract=VERSION, actualAndroidTaps=3, initial=initial,
+    return dict(navigationContract=VERSION, actualAndroidTaps=2 if browser else 3, browserWorkspace=browser, initial=initial,
                 observations=observed, allFiveWorkspaceDestinationsVisible=True,
                 returnedToSameEnvironment=True)

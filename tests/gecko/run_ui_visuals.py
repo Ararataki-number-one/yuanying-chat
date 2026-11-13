@@ -151,9 +151,9 @@ def capture(variant,width,height,scale,scene,theme='light'):
         preference_check={'preferenceControls':sorted(seen),'removedNoticeControlsAbsent':True,'scrollFrames':len(collected),'tabScrolls':tab_scrolls}
     if scene=='chat' and UI_NAVIGATION_CONTRACT==2:
         time.sleep(2.5);xml=dump()
-        conversation_header(xml,package,width,height,scale,'日常会话')
+        conversation_header(xml,package,width,height,scale,'日常会话',browser=True)
     elif scene=='chat':
-        time.sleep(2.5);xml=dump();assert all(label in xml for label in ['会话','环境','下载','网络','设置'])
+        time.sleep(2.5);xml=dump();assert all(label in xml for label in ['浏览器','环境','下载','网络','设置'])
         assert not any(n.attrib.get('text') in ['简洁','原网页'] for n in ET.fromstring(xml).iter('node')),xml
         nodes=list(ET.fromstring(xml).iter('node'))
         environment=[n for n in nodes if n.attrib.get('content-desc','').startswith('当前环境：')]
@@ -385,7 +385,7 @@ try:
                 assert management_navigation=={'activity':'local.pocketchat.WindowHomeActivity','actualDrawerTap':True,'resumedThenReturned':True},management_navigation
                 adb('shell','input','keyevent','KEYCODE_BACK');visible('快速切换环境',False)
             elif control['name']=='more':
-                label='会话选项'
+                label='浏览器菜单'
                 visible(label)
                 adb('shell','input','keyevent','KEYCODE_BACK')
                 visible(label,False)

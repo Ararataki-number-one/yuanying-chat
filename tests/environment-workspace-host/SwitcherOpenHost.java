@@ -22,6 +22,9 @@ final class SwitcherOpenHost {
     check(ProfileCatalog.instance.opened==1&&ProfileCatalog.instance.openedSlot==1&&ProfileCatalog.instance.reads==2,"success stamps recent use only after second identity read");
     caller=reset(row(1));check(EnvironmentSwitcherUi.open(caller,expected,"chat",true),"explicit home overview opening supported");
     check(EnvironmentOverviewUi.openings==1&&Boolean.TRUE.equals(caller.started.extras.get("hostOverviewMarker")),"overview intent retained only for explicit chat opening");
+    check(Boolean.TRUE.equals(caller.started.extras.get("openBrowserDirect"))&&!caller.started.extras.containsKey("url"),"environment card opens its browser without replacing the live URL");
+    caller=reset(row(1));check(EnvironmentSwitcherUi.open(caller,expected,"overview",true),"explicit environment details supported");
+    check(EnvironmentOverviewUi.openings==1&&"overview".equals(caller.started.extras.get("openWindowAction"))&&!caller.started.extras.containsKey("openBrowserDirect"),"details are an explicit separate action and retain identity-bound opening");
     caller=reset(row(1));check(EnvironmentSwitcherUi.open(caller,expected,"edit",true),"editor opening supported");
     check(EnvironmentOverviewUi.openings==0&&Boolean.TRUE.equals(caller.started.extras.get("returnToEnvironmentList"))&&"edit".equals(caller.started.extras.get("openWindowAction")),"edit goes directly to editor and preserves return request");
     caller=reset(row(1));check(EnvironmentSwitcherUi.open(caller,expected,"network",true),"network opening supported");

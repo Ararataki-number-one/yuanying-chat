@@ -1,6 +1,7 @@
 """An additional dashboard check preserves every existing workload and gate."""
 import hashlib,unittest
 from pathlib import Path
+from historical_source_inputs import historical_bytes
 import ui_visual_preservation_contract as original
 
 ROOT=Path(__file__).resolve().parents[1]
@@ -18,8 +19,8 @@ class DashboardIntegrationHook(unittest.TestCase):
     def test_original_ui_fixture_workflow_and_quiet_body_are_unchanged(self):
         inverse((ROOT/'tests/gecko/run_quiet_notifications.py').read_text())
         self.assertEqual(hashlib.sha256((ROOT/'.github/workflows/gecko-integration.yml').read_bytes()).hexdigest(),'22f507ecac58d307a237b666460e74c4bd47804c56e9bdd8f3cfed64efcb1578')
-        self.assertTrue(original.verify_shared_ui_source((ROOT/'tests/gecko/run_ui_visuals.py').read_text())['originalWorkloadSemanticsPreserved'])
-        self.assertTrue(original.verify_download_visual_fixture_source((ROOT/'tests/gecko/UiVisualIntegrationActivity.java').read_bytes())['fourSyntheticRowsAndProductionRendererPreserved'])
+        self.assertTrue(original.verify_shared_ui_source(historical_bytes('tests/gecko/run_ui_visuals.py').decode('utf-8'))['originalWorkloadSemanticsPreserved'])
+        self.assertTrue(original.verify_download_visual_fixture_source(historical_bytes('tests/gecko/UiVisualIntegrationActivity.java'))['fourSyntheticRowsAndProductionRendererPreserved'])
 
     def test_removal_duplication_movement_or_original_workload_edits_reject(self):
         source=(ROOT/'tests/gecko/run_quiet_notifications.py').read_text()

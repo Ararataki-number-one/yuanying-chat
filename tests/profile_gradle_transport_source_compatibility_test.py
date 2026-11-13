@@ -1,4 +1,4 @@
-"""Current fixed official transport and exact historical workflow comparisons."""
+"""Fixed workflow history; actual current browser step controls remain current."""
 import copy
 import os
 from pathlib import Path
@@ -13,6 +13,7 @@ import gradle_transport_source_compatibility as transport
 import ui_checkpoint_source_compatibility as checkpoint
 from environment_workspace_workflow_source_compatibility import PATH as ENVIRONMENT_WORKFLOW_PATH, source_input as environment_workflow_source_input
 from cellular_workflow_source_compatibility import historical_input as cellular_workflow_source_input
+from historical_source_inputs import historical_bytes
 
 ROOT = Path(__file__).resolve().parents[1]
 ASSET = b'https://api.github.com/repos/gradle/gradle-distributions/releases/assets/586068844'
@@ -26,7 +27,7 @@ class GradleTransportSourceCompatibilityTests(unittest.TestCase):
         tree = subprocess.check_output(['git', '--no-replace-objects', 'rev-parse', value['baseCommit'] + '^{tree}'], cwd=ROOT, env=environment).decode().strip()
         self.assertEqual(tree, value['baseTree'])
         for path, row in value['files'].items():
-            raw = environment_workflow_source_input((ROOT / path).read_bytes(), path) if path == ENVIRONMENT_WORKFLOW_PATH else (ROOT / path).read_bytes()
+            raw = environment_workflow_source_input(historical_bytes(path), path) if path == ENVIRONMENT_WORKFLOW_PATH else historical_bytes(path)
             raw = cellular_workflow_source_input(raw, path)
             before = subprocess.check_output(['git', '--no-replace-objects', 'show', value['baseCommit'] + ':' + path], cwd=ROOT, env=environment)
             self.assertEqual(transport.source_input(raw, path), before)
@@ -42,7 +43,7 @@ class GradleTransportSourceCompatibilityTests(unittest.TestCase):
 
     def test_fixed_asset_size_checksum_and_unknown_missing_moved_hunks_fail_closed(self):
         for path, row in transport.manifest()['files'].items():
-            raw = environment_workflow_source_input((ROOT / path).read_bytes(), path) if path == ENVIRONMENT_WORKFLOW_PATH else (ROOT / path).read_bytes()
+            raw = environment_workflow_source_input(historical_bytes(path), path) if path == ENVIRONMENT_WORKFLOW_PATH else historical_bytes(path)
             raw = cellular_workflow_source_input(raw, path)
             current = row['deltas'][0]['current'].encode()
             remaining = raw.replace(current, b'', 1)
@@ -65,7 +66,7 @@ class GradleTransportSourceCompatibilityTests(unittest.TestCase):
             with self.assertRaises(AssertionError):transport.source_input(transport.source_input(raw, path), path)
 
     def test_canonical_historical_oracle_runs_after_current_transport_is_verified(self):
-        raw = (ROOT / transport.CANONICAL).read_bytes()
+        raw = historical_bytes(transport.CANONICAL)
         previous = transport.canonical_history_input(raw)
         self.assertEqual(transport.sha(previous), checkpoint.WORKFLOW_CURRENT_SHA256)
         self.assertEqual(transport.sha(checkpoint.checkpoint_workflow_input(raw)), checkpoint.WORKFLOW_PREVIOUS_SHA256)
@@ -73,7 +74,7 @@ class GradleTransportSourceCompatibilityTests(unittest.TestCase):
                           raw.replace(CHECKSUM, b'0' * 64, 1)):
             self.assertEqual(transport.canonical_history_input(candidate), candidate)
             with self.assertRaises(AssertionError):checkpoint.checkpoint_workflow_input(candidate)
-        self.assertEqual((ROOT / transport.CANONICAL).read_bytes(), raw)
+        self.assertEqual(historical_bytes(transport.CANONICAL), raw)
         for candidate in (None, raw.decode(), bytearray(raw), memoryview(raw), True, b''):
             with self.assertRaises(AssertionError):transport.source_input(candidate, transport.CANONICAL)
         for path in (None, Path(transport.CANONICAL), '/' + transport.CANONICAL, '../' + transport.CANONICAL):

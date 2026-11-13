@@ -218,6 +218,23 @@ public final class RoutingHost {
     check("Old same-URL native completion cannot consume the newer exact intent",web.current.loads.isEmpty()&&web.nativeTimeZoneIntents.get(web.current)==newest&&web.timeZoneLoads.get(web.current).equals(SITE));
     callbacks.get(1).accept(true);check("Latest same-URL native intent alone loads once",web.current.events.equals(List.of("load "+SITE))&&web.nativeTimeZoneIntents.isEmpty()&&web.timeZoneLoads.isEmpty());
   }
+  static void stoppedSurface(){
+    WebBoundary web=new WebBoundary();SessionBoundary stopped=web.current;web.loadSessionUri(stopped,SITE);sdk(stopped);
+    ControllerBoundary.Call stoppedCall=web.owner.timeZone.calls.get(0);WebBoundary.TimeZoneGate stoppedGate=web.timeZoneGates.get(stopped);
+    SessionBoundary other=new SessionBoundary();web.locations.put(other,"");web.loadSessionUri(other,OTHER);sdk(other);ControllerBoundary.Call otherCall=web.owner.timeZone.calls.get(1);
+    // Match the browser Stop action's epoch change, then deliberately switch the
+    // selected surface before the old native timezone callback is delivered.
+    web.owner.navigationEpoch++;web.stopLoading();web.current=other;web.owner.timeZone.complete(stoppedCall,true);
+    check("Stopped foreground cannot resume after another surface becomes current",stopped.loads.isEmpty()&&stopped.stops==1);
+    check("Stopping loading retains the exact native timezone gate and session",web.timeZoneGates.get(stopped)==stoppedGate&&stopped.isOpen()&&web.owner.timeZone.retired.isEmpty());
+    web.owner.timeZone.complete(otherCall,true);
+    check("Stopping one surface preserves another pending native load",other.loads.equals(List.of(OTHER))&&other.stops==0);
+    web.current=stopped;web.loadUrl(OTHER);
+    check("A new explicit navigation still works after stopped callback retirement",stopped.loads.equals(List.of(OTHER))&&web.queued.isEmpty());
+    WebBoundary writer=prepared();writer.owner.context.keepDrafts=false;SessionBoundary original=writer.current;writer.restoreCheckpoint(original,new StateBoundary(OTHER),OTHER,7);
+    writer.owner.navigationEpoch++;writer.stopLoading();writer.sessionStore.io.drain();writer.owner.handler.drain();
+    check("Stopped checkpoint writer cannot restore or reload its cancelled target",original.loads.equals(List.of(SITE))&&original.restored.isEmpty()&&original.stops==1);
+  }
   static void documentRevalidation(){
     WebBoundary web=prepared();SessionBoundary session=web.current;WebBoundary.TimeZoneGate gate=web.timeZoneGates.get(session);String epoch=gate.epoch;ControllerBoundary.Call original=web.owner.timeZone.calls.get(0);
     web.revalidateTimeZone(session);ControllerBoundary.Call changed=web.owner.timeZone.calls.get(1);
@@ -301,12 +318,13 @@ public final class RoutingHost {
       case "restore-epoch":case "restore-current":changedRestore(args[0]);break;case "after-worker-gate":filteredRecheck();break;case "send-port":send(args[0]);directSendPort();break;case "reply-port":send(args[0]);break;
       case "explicit-native-queue":nativeAfterLoad(SITE,OTHER);break;case "claim-clears-native-queue":loadAfterNative(SITE,OTHER);break;case "restore-clears-main-queue":restoreAfterLoad(SITE,OTHER);break;case "worker-intent-owner":writerAfterLoad(SITE,OTHER);break;
       case "secondary-epoch":secondaryNavigation();break;case "native-same-url-intent":sameNativeIntent();break;case "document-serial":documentRevalidation();break;
+      case "stopped-surface-intents":case "stop-preserves-secondary":stoppedSurface();break;
       case "held-route":case "held-header":heldRequests();break;case "held-queue-cap":heldQueueBound();break;
       case "held-identity":heldOwnership("identity");break;case "held-desired":heldOwnership("desired");break;
       case "proof-before-requests":proofBeforeRequests();break;
       case "ip-lease-close":case "ip-lease-remove":actualIpLease();break;
       default:throw new AssertionError(args[0]);
-    }}else{firstLoad();checkpoint();navigation();gate("");retired();windowChanged("window-port");windowChanged("window-session");changedEpoch();changedRestore("restore-epoch");changedRestore("restore-current");timeout();disconnected();send("all");popups();filteredRestore();filteredRecheck();guards();intentOwnership();directSendPort();secondaryNavigation();sameNativeIntent();documentRevalidation();heldRequests();for(String kind:new String[]{"navigation","connection","identity","protection","desired","port","closed","destroyed","deleted","current"})heldOwnership(kind);heldQueueBound();heldNewDocument();proofBeforeRequests();addonEntryBoundary();manualIpBoundary();actualIpLease();}
+    }}else{firstLoad();checkpoint();navigation();gate("");retired();windowChanged("window-port");windowChanged("window-session");changedEpoch();changedRestore("restore-epoch");changedRestore("restore-current");timeout();disconnected();send("all");popups();filteredRestore();filteredRecheck();guards();intentOwnership();directSendPort();secondaryNavigation();sameNativeIntent();stoppedSurface();documentRevalidation();heldRequests();for(String kind:new String[]{"navigation","connection","identity","protection","desired","port","closed","destroyed","deleted","current"})heldOwnership(kind);heldQueueBound();heldNewDocument();proofBeforeRequests();addonEntryBoundary();manualIpBoundary();actualIpLease();}
     System.out.println(J.obj("status","passed","passed",checks.length(),"total",checks.length(),"checks",checks,"actualAndroidExecution",false,"actualGeckoExecution",false,"nativeTimezoneReadback",false,"dateIntlEffectVerified",false,"workerEffectVerified",false).toString());
   }
 }
@@ -317,6 +335,7 @@ class WebBoundary {
   final OwnerBoundary owner=new OwnerBoundary();final MetadataBoundary metadata=new MetadataBoundary();final StoreBoundary sessionStore=new StoreBoundary();
   final Map<SessionBoundary,TimeZoneGate> timeZoneGates=new IdentityHashMap<>();final Map<SessionBoundary,String> timeZoneLoads=new IdentityHashMap<>(),locations=new IdentityHashMap<>(),deferredGeneralLoads=new IdentityHashMap<>();
   final Map<SessionBoundary,Object> timeZoneIntents=new IdentityHashMap<>(),nativeTimeZoneIntents=new IdentityHashMap<>();
+  final Map<SessionBoundary,String> loadingTargets=new IdentityHashMap<>();final Set<SessionBoundary> pendingLoads=Collections.newSetFromMap(new IdentityHashMap<>());
   final List<SessionBoundary> popups=new ArrayList<>();final Set<SessionBoundary> crashed=Collections.newSetFromMap(new IdentityHashMap<>());
   final Map<SessionBoundary,StateBoundary> states=new IdentityHashMap<>();final Map<SessionBoundary,Long> stateDraftRevisions=new IdentityHashMap<>();
   SessionBoundary current=new SessionBoundary(),primary=current;PortBoundary routePort=new PortBoundary();ExitBoundary exitIpPage;
@@ -351,6 +370,7 @@ class WebBoundary {
   ResultBoundary<Object> requestHeaderPolicy(String target){headerCalls++;return ResultBoundary.fromValue(J.obj("allowed",headerDecision,"headerTarget",target).toString());}
   String protectionSummary(){return "Protection boundary";}
   boolean retainGeneralRoute(SessionBoundary session,String target){return routeReady;}
+  void forgetGeneralRoute(SessionBoundary session){deferredGeneralLoads.remove(session);}
   boolean generalRouteReady(){return routeReady;}
   boolean reopenCurrent(){return false;}
   void closeExitIpPage(){}
@@ -373,10 +393,11 @@ class ControllerBoundary {
   void complete(Call call,boolean decision){call.ready=decision;call.done.accept(decision);}
 }
 class SessionBoundary {
-  static int sequence;final String id="sdk-session-"+(++sequence);boolean open=true,throwRead;int reads;final List<ResultBoundary<String>> pending=new ArrayList<>();final List<String> loads=new ArrayList<>(),events=new ArrayList<>();final List<StateBoundary> restored=new ArrayList<>();
+  static int sequence;final String id="sdk-session-"+(++sequence);boolean open=true,throwRead;int reads,stops;final List<ResultBoundary<String>> pending=new ArrayList<>();final List<String> loads=new ArrayList<>(),events=new ArrayList<>();final List<StateBoundary> restored=new ArrayList<>();
   boolean isOpen(){return open;}String getId(){return id;}
   ResultBoundary<String> getUserAgent(){reads++;if(throwRead)throw new IllegalStateException("SDK read boundary failure");ResultBoundary<String> result=new ResultBoundary<>();pending.add(result);return result;}
   void loadUri(String target){loads.add(target);events.add("load "+target);}void restoreState(StateBoundary state){restored.add(state);events.add("restore "+state.url);}
+  void stop(){stops++;}
 }
 class ResultBoundary<T> {
   boolean completed;T value;Throwable error;final List<Consumer<T>> success=new ArrayList<>();final List<Consumer<Throwable>> failure=new ArrayList<>();
@@ -407,3 +428,4 @@ class GuardBoundary {boolean permitted=true;boolean allowed(){return permitted;}
 class ExitBoundary {SessionBoundary aux;}
 class LoadRequest {final String uri;LoadRequest(String uri){this.uri=uri;}}
 enum AllowOrDeny {ALLOW,DENY}
+class MainActivity {static boolean chatUrl(String value){try{return BrowserRuntimePolicy.official(java.net.URI.create(value));}catch(Exception invalid){return false;}}}

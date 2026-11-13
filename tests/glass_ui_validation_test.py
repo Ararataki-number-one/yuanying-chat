@@ -5,8 +5,13 @@ The fixtures represent native button touch regions, including the two-row
 layout used when a narrow window cannot fit an independently centered dock.
 They do not stand in for Android capture or visual inspection.
 """
-import sys
+import ast
+import hashlib
+import inspect
+import json
 from pathlib import Path
+import subprocess
+import sys
 import tempfile
 from types import SimpleNamespace
 import unittest
@@ -16,6 +21,311 @@ import xml.etree.ElementTree as ET
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'tools' / 'gecko'))
 import capture_glass_navigation as capture
 import glass_ui_validation as validation
+import gecko_event_transfer_test as event_controls
+from profile_event_journal_discovery_test import discovery_class
+
+
+class GlassDocumentEventDiscoveryTest(unittest.TestCase):
+    """Exercise the actual glass consumer with explicit synthetic native bytes."""
+
+    def observer(self, out, *, journal_changes=None, log=None, payload=None, pending=False, delays=None):
+        result = dict(command='ready', document='controlled', applicationAcceptance=False)
+        receipt, raw = event_controls.packet(
+            event_controls.event('collapseSnapshot', result), fixtureAction='chromeCollapse')
+        transfer = event_controls.transfer
+        if payload is not None:
+            raw = payload(raw)
+        self.calls = []
+        self.read_timeouts = []
+        self.clock = 0
+        journal = dict(schema=1, status='committed', runNonce='e' * 32, processSlot=0,
+                       fixtureAction='chromeCollapse', command=7, receipts=[json.dumps(receipt)])
+        journal.update(journal_changes or {})
+        if pending:
+            journal = dict(schema=1, status='pending', runNonce='e' * 32, processSlot=0)
+        journal_raw = json.dumps(journal).encode()
+        # A stale log is a real transport condition: it cannot supply this
+        # invocation's current receipt, even if native publication succeeded.
+        stale = dict(receipt, runNonce='f' * 32)
+        log = (json.dumps(stale) + '\n').encode() if log is None else log
+
+        def adb(*parts, timeout=None):
+            self.calls.append(parts)
+            if parts[0] == 'logcat':
+                self.read_timeouts.append(('log', timeout))
+                self.clock += (delays or {}).get('log', 0)
+                return log
+            if parts[:3] == ('exec-out', 'content', 'read'):
+                if '/gecko-event-receipts/' in parts[-1]:
+                    self.read_timeouts.append(('journal', timeout))
+                    self.clock += (delays or {}).get('journal', 0)
+                    return journal_raw
+                self.read_timeouts.append(('payload', timeout))
+                self.clock += (delays or {}).get('payload', 0)
+                self.assertEqual(parts[-1], transfer.event_uri(receipt))
+                return raw
+            self.assertEqual(parts[:3], ('shell', 'am', 'broadcast'))
+            return b'Broadcast completed'
+
+        reader = transfer.EventTransfer(identity=event_controls.identity(), nonce='e' * 32,
+            slot=0, action='chromeCollapse', fetch=lambda uri: adb('exec-out', 'content', 'read', '--uri', uri))
+        discovery = discovery_class()(reader)
+        def sleep(seconds):
+            self.clock += seconds
+        bindings = dict(adb=adb, package='local.pocketchat.test', args=SimpleNamespace(out=out),
+            observations={'e' * 32: reader}, journals={'e' * 32: discovery},
+            time=SimpleNamespace(monotonic=lambda: self.clock, sleep=sleep),
+            parse_receipt_line=transfer.parse_receipt_line)
+        source = ast.parse(inspect.getsource(validation.capture_acceptance_suite))
+        suite = next(node for node in source.body if isinstance(node, ast.FunctionDef))
+        observer = next(node for node in suite.body
+                        if isinstance(node, ast.FunctionDef) and node.name == 'observed_event')
+        exec(compile(ast.Module(body=[observer], type_ignores=[]), validation.__file__, 'exec'), bindings)
+        self.case = dict(name='controlled', runNonce='e' * 32)
+        return bindings['observed_event'], reader, result
+
+    def test_committed_native_journal_survives_missing_log_receipt(self):
+        with tempfile.TemporaryDirectory() as directory:
+            observer, reader, expected = self.observer(Path(directory))
+            self.assertEqual(observer(self.case, 'ready', request=False), expected)
+            self.assertEqual(self.case['documentObservations']['ready'], expected)
+            self.assertEqual(len(reader.records), 1)
+            self.assertFalse(any(call[:3] == ('shell', 'am', 'broadcast') for call in self.calls))
+            self.assertTrue((Path(directory) / 'controlled-event-receipts.json').is_file())
+
+    def test_malformed_pending_publication_never_claims_ready(self):
+        with tempfile.TemporaryDirectory() as directory:
+            observer, reader, _ = self.observer(Path(directory), journal_changes={
+                'status': 'pending', 'fixtureAction': None, 'command': None, 'receipts': []})
+            # This is a malformed pending marker; native pending has only its
+            # owner fields. It must fail closed, rather than becoming readiness.
+            with self.assertRaises(ValueError):
+                observer(self.case, 'ready', request=False)
+            self.assertEqual(reader.records, [])
+            self.assertNotIn('documentObservations', self.case)
+
+    def test_pending_publication_keeps_the_original_deadline(self):
+        with tempfile.TemporaryDirectory() as directory:
+            observer, reader, _ = self.observer(Path(directory), pending=True)
+            with self.assertRaises(TimeoutError):
+                observer(self.case, 'ready', request=False)
+            self.assertGreaterEqual(self.clock, 40)
+            self.assertLess(self.clock, 40.3)
+            self.assertEqual(reader.records, [])
+            self.assertNotIn('documentObservations', self.case)
+
+    def test_late_journal_cannot_extend_the_original_ready_deadline(self):
+        with tempfile.TemporaryDirectory() as directory:
+            observer, reader, _ = self.observer(Path(directory), delays={'journal': 41})
+            original_fetch = reader.fetch
+            with self.assertRaises(TimeoutError):
+                observer(self.case, 'ready', request=False)
+            self.assertEqual(reader.records, [])
+            self.assertNotIn('documentObservations', self.case)
+            self.assertIs(reader.fetch, original_fetch)
+
+    def test_late_payload_cannot_extend_the_original_ready_deadline(self):
+        with tempfile.TemporaryDirectory() as directory:
+            observer, reader, _ = self.observer(Path(directory), delays={'payload': 41})
+            original_fetch = reader.fetch
+            with self.assertRaises(TimeoutError):
+                observer(self.case, 'ready', request=False)
+            self.assertEqual(reader.records, [])
+            self.assertNotIn('documentObservations', self.case)
+            self.assertIs(reader.fetch, original_fetch)
+
+    def test_all_native_reads_share_one_remaining_budget_and_restore_fetch(self):
+        with tempfile.TemporaryDirectory() as directory:
+            observer, reader, expected = self.observer(Path(directory),
+                delays={'log': 7, 'journal': 9, 'payload': 11})
+            original_fetch = reader.fetch
+            self.assertEqual(observer(self.case, 'ready', request=False), expected)
+            self.assertEqual(self.read_timeouts, [('log', 40), ('journal', 33), ('payload', 24)])
+            self.assertEqual(self.clock, 27)
+            self.assertIs(reader.fetch, original_fetch)
+
+    def test_foreign_owner_command_and_digest_are_not_repaired_from_payload(self):
+        for changes in ({'runNonce': 'f' * 32}, {'processSlot': 1},
+                        {'fixtureAction': 'other'}, {'command': 8}):
+            with self.subTest(changes=changes), tempfile.TemporaryDirectory() as directory:
+                observer, reader, _ = self.observer(Path(directory), journal_changes=changes)
+                with self.assertRaises(ValueError):
+                    observer(self.case, 'ready', request=False)
+                self.assertEqual(reader.records, [])
+        with tempfile.TemporaryDirectory() as directory:
+            observer, reader, _ = self.observer(Path(directory), payload=lambda raw: raw[:-1])
+            with self.assertRaisesRegex(ValueError, 'payload length'):
+                observer(self.case, 'ready', request=False)
+            self.assertEqual(reader.records, [])
+
+    def test_native_publication_error_and_android_crash_cannot_be_hidden_by_journal(self):
+        error = dict(kind='eventTransportError', runNonce='e' * 32, processSlot=0)
+        for log in ((json.dumps(error) + '\n').encode(), b'FATAL EXCEPTION: main\n'):
+            with self.subTest(log=log), tempfile.TemporaryDirectory() as directory:
+                observer, reader, _ = self.observer(Path(directory), log=log)
+                with self.assertRaises(ValueError):
+                    observer(self.case, 'ready', request=False)
+                self.assertEqual(reader.records, [])
+
+
+class GlassReadyFailureDiagnosticsTest(unittest.TestCase):
+    def setUp(self):
+        path = Path(__file__).parent / 'fixtures/glass-ready-failure-api32.json'
+        self.fixture = json.loads(path.read_text())
+        self.identity = {key: self.fixture[key] for key in ('sourceCommit', 'sourceTree')}
+        self.case = dict(self.fixture['case'])
+
+    def trace(self, sequence=1):
+        # Explicit synthetic native boundary; this is not a captured device success.
+        result = dict(self.identity, schema=1, sequence=sequence, runNonce=self.case['runNonce'],
+                      stage='waiting', diagnosticOnly=True)
+        for key in ('checkpointReady', 'runtimePresent', 'extensionPresent', 'identityPrepared',
+                    'routePrepared', 'privacyReady', 'ready', 'failed', 'destroyed', 'resourceDeferred',
+                    'sessionPresent', 'surfacePresent', 'portPresent', 'usable', 'queuedTarget',
+                    'routePortPresent', 'guardBlocked', 'networkReady', 'browserPaused', 'uiVisible', 'navigating',
+                    'addonDisabled', 'metadataEnabled'):
+            result[key] = False
+        for key in ('elapsedMs', 'requestedProtection', 'protectionRequest', 'protectionLevel',
+                    'documents', 'readyEvaluations', 'readyCallbacks', 'snapshotEvaluations',
+                    'snapshotCallbacks', 'eventSequence', 'routeCalls', 'fixtureRoutes', 'blockedRoutes', 'otherRoutes',
+                    'routeDelegateInstalls', 'routeConnectAttempts'):
+            result[key] = 0
+        return result
+
+    def parse(self, rows):
+        raw = ('\n'.join(json.dumps(row) for row in rows) + '\n').encode()
+        return validation.collapse_start_trace(raw, self.identity, self.case['runNonce'])
+
+    def test_original_api32_timeout_has_no_startup_evidence_to_promote(self):
+        raw = self.fixture['originalEvents']['text'].encode()
+        self.assertEqual(hashlib.sha256(raw).hexdigest(), self.fixture['originalEvents']['sha256'])
+        self.assertEqual(self.fixture['runId'], 43155512845)
+        self.assertFalse(self.fixture['launchStdoutRetained'])
+        self.assertEqual(self.fixture['fixtureRequestCount'], 0)
+        self.assertEqual(self.case['errorType'], 'TimeoutError')
+        self.assertEqual(validation.collapse_start_trace(raw, self.identity, self.case['runNonce']), ([], b''))
+
+    def test_current_nonce_source_and_original_trace_lines_are_retained(self):
+        first, second = self.trace(), self.trace(3)
+        unrelated = dict(first, runNonce='f' * 32, draft='private data must not be retained')
+        records, raw = self.parse([unrelated, first, second])
+        self.assertEqual(records, [first, second])
+        self.assertEqual(raw, (json.dumps(first) + '\n' + json.dumps(second) + '\n').encode())
+        self.assertNotIn(b'private', raw)
+
+    def test_wrong_identity_malformed_state_and_content_fields_are_rejected(self):
+        changes = ({'sourceCommit': '0' * 40}, {'sourceTree': '0' * 40}, {'diagnosticOnly': False},
+                   {'runtimePresent': 1}, {'routeCalls': '1'}, {'elapsedMs': 1.5}, {'sequence': True},
+                   {'sequence': 81}, {'stage': 'unowned'}, {'stage': []}, {'pageUrl': 'https://private.invalid/'},
+                   {'state': {'draft': 'private'}}, {'unlistedCounter': 1})
+        for change in changes:
+            with self.subTest(change=change), self.assertRaises(ValueError):
+                self.parse([dict(self.trace(), **change)])
+        missing = self.trace(); del missing['runtimePresent']
+        with self.assertRaises(ValueError):
+            self.parse([missing])
+        for raw in (b'\xff', b'x' * (1024 * 1024 + 1)):
+            with self.assertRaises((ValueError, UnicodeError)):
+                validation.collapse_start_trace(raw, self.identity, self.case['runNonce'])
+
+    def test_duplicate_or_reversed_trace_sequences_cannot_be_combined(self):
+        for rows in ([self.trace(), self.trace()], [self.trace(2), self.trace()]):
+            with self.assertRaises(ValueError):
+                self.parse(rows)
+
+    def collect(self, path, raw_trace, activity, *, launch=b'Controlled synthetic am output\n'):
+        calls = []
+        def adb(*command, **kwargs):
+            calls.append((command, kwargs))
+            value = raw_trace if command[0] == 'logcat' else activity
+            if isinstance(value, Exception):
+                raise value
+            return value
+        result = validation.capture_ready_failure(path, self.case, self.identity, adb, launch)
+        self.assertEqual(len(calls), 3)
+        self.assertTrue(all(kwargs == {'timeout': 6} for _, kwargs in calls))
+        self.assertTrue(all('start' not in command and 'broadcast' not in command for command, _ in calls))
+        return result
+
+    def test_post_failure_capture_keeps_only_native_counters_and_resumed_lines(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory); line = self.fixture['initialActivity']['resumedLines'][0]
+            raw_trace = (json.dumps(self.trace()) + '\n').encode()
+            activity = ('Intent { data=https://private.invalid/ }\n' + line + '\n').encode()
+            result = self.collect(path, raw_trace, activity)
+            self.assertEqual(result['status'], 'captured')
+            self.assertTrue(result['readyGateAlreadyFailed'])
+            self.assertFalse(result['applicationAcceptance'])
+            self.assertEqual(self.case['status'], 'failed')
+            self.assertEqual(self.case['error'], self.fixture['case']['error'])
+            self.assertEqual((path / result['launchOutput']['file']).read_bytes(), b'Controlled synthetic am output\n')
+            self.assertEqual((path / result['nativeTrace']['file']).read_bytes(), raw_trace)
+            self.assertEqual((path / result['resumedActivity']['file']).read_text(), line + '\n')
+            self.assertFalse(any(b'private.invalid' in p.read_bytes() for p in path.iterdir()))
+
+    def test_absent_trace_or_resumed_component_remains_incomplete(self):
+        with tempfile.TemporaryDirectory() as directory:
+            result = self.collect(Path(directory), self.fixture['originalEvents']['text'].encode(), b'no resumed component\n')
+            self.assertEqual(result['status'], 'incomplete')
+            self.assertEqual(result['nativeTrace']['status'], 'missing')
+            self.assertEqual(result['resumedActivity']['status'], 'missing')
+            self.assertEqual(self.case['errorType'], 'TimeoutError')
+
+    def test_diagnostic_transport_and_launch_boundary_failures_do_not_retry_or_clear_gate(self):
+        with tempfile.TemporaryDirectory() as directory:
+            result = self.collect(Path(directory), TimeoutError('trace unavailable'),
+                                  OSError('activity unavailable'), launch=b'x' * 16385)
+            self.assertEqual(result['status'], 'incomplete')
+            self.assertEqual([row['stage'] for row in result['errors']],
+                             ['launch-output', 'native-trace', 'gecko-startup-log', 'resumed-activity'])
+            self.assertEqual(self.case['status'], 'failed')
+            self.assertEqual(self.case['error'], self.fixture['case']['error'])
+
+    def ready_boundary(self):
+        # Execute the actual call boundary in the suite, with only its transport
+        # and observer substituted. This does not simulate an Android success.
+        tree = ast.parse(inspect.getsource(validation.capture_acceptance_suite))
+        matches = [node for node in ast.walk(tree) if isinstance(node, ast.Try)
+                   and len(node.body) == 1 and isinstance(node.body[0], ast.Expr)
+                   and isinstance(node.body[0].value, ast.Call)
+                   and isinstance(node.body[0].value.func, ast.Name)
+                   and node.body[0].value.func.id == 'observed_event'
+                   and len(node.body[0].value.args) == 2
+                   and isinstance(node.body[0].value.args[1], ast.Constant)
+                   and node.body[0].value.args[1].value == 'ready']
+        self.assertEqual(len(matches), 1)
+        return compile(ast.Module(body=matches, type_ignores=[]),
+                       validation.__file__, 'exec')
+
+    def test_collector_top_level_failure_preserves_the_actual_ready_error(self):
+        ready_error = TimeoutError(self.case['error'])
+        observer = MagicMock(side_effect=ready_error)
+        collector = MagicMock(side_effect=OSError('controlled collector failure'))
+        namespace = dict(case=self.case, identity=self.identity, args=SimpleNamespace(out=Path('unused')),
+                         adb=MagicMock(), start_output=b'started', observed_event=observer,
+                         capture_ready_failure=collector)
+        with self.assertRaises(TimeoutError) as caught:
+            exec(self.ready_boundary(), namespace)
+        self.assertIs(caught.exception, ready_error)
+        observer.assert_called_once_with(self.case, 'ready', request=False)
+        collector.assert_called_once_with(namespace['args'].out, self.case, self.identity,
+                                          namespace['adb'], b'started')
+        self.assertEqual(self.case['error'], self.fixture['case']['error'])
+        self.assertEqual(self.case['status'], 'failed')
+        self.assertEqual(self.case['readyFailureDiagnostics']['errors'], [dict(
+            stage='diagnostic-collector', errorType='OSError', error='controlled collector failure')])
+        namespace['adb'].assert_not_called()
+
+    def test_successful_ready_observation_has_no_failure_diagnostic_side_effects(self):
+        observer, collector = MagicMock(), MagicMock()
+        namespace = dict(case=self.case, identity=self.identity, args=SimpleNamespace(out=Path('unused')),
+                         adb=MagicMock(), start_output=b'started', observed_event=observer,
+                         capture_ready_failure=collector)
+        exec(self.ready_boundary(), namespace)
+        observer.assert_called_once_with(self.case, 'ready', request=False)
+        collector.assert_not_called()
+        namespace['adb'].assert_not_called()
+        self.assertNotIn('readyFailureDiagnostics', self.case)
 
 
 def hierarchy(boxes, *, selected=None, extra=None, labels=None):
@@ -135,7 +445,7 @@ class GlassNavigationGeometryTest(unittest.TestCase):
                 result = capture.observed_navigation_geometry(xml)
                 self.assertEqual(result['layout'], 'workspace-five')
                 self.assertTrue(result['valid'])
-                self.assertEqual(result['groupLabels'], ['会话', '环境', '下载', '网络', '设置'])
+                self.assertEqual(result['groupLabels'], ['浏览器', '环境', '下载', '网络', '设置'])
                 self.assertNotIn('阅读', result['bounds'])
 
     def test_only_unselected_compact_actions_identify_the_conversation(self):
@@ -367,8 +677,403 @@ class GlassCaptureCoverageTest(unittest.TestCase):
                         'A real landscape configuration is required')
 
 
+class GlassDisplayPreparationTest(unittest.TestCase):
+    """Real setup helper with explicit AOSP launcher/rotation transport boundaries."""
+
+    def setUp(self):
+        self.clock = 0.0
+        self.calls = []
+        self.base = (1236, 2676)
+        self.rotation = 0
+        self.saved_launcher_rotation = 1
+        self.foreground = False
+        self.launch_succeeds = True
+        self.ignore_rotation = False
+        self.read_delay = 0.0
+        self.night = 'notnight'
+        self.scale = 1.0
+
+    def adb(self, *parts, timeout):
+        self.calls.append((parts, timeout))
+        self.clock += self.read_delay
+        if parts[:4] == ('shell', 'am', 'start', '-W'):
+            self.foreground = self.launch_succeeds
+            if self.foreground and self.saved_launcher_rotation is not None:
+                # DisplayRotationReversionController.revertOverride restores
+                # the rotation saved when the NOSENSOR launcher came forward.
+                self.rotation = self.saved_launcher_rotation
+                self.saved_launcher_rotation = None
+            return b'Status: ok\n'
+        if parts == ('shell', 'dumpsys', 'activity', 'activities'):
+            activity = capture.COMPONENT if self.foreground else 'launcher/NOSENSOR'
+            return ('topResumedActivity=ActivityRecord{' + activity + '}\n').encode()
+        if parts == ('shell', 'am', 'force-stop', capture.PACKAGE):
+            self.foreground = False
+            return b''
+        if parts[:3] == ('shell', 'wm', 'size'):
+            requested = tuple(map(int, parts[3].split('x')))
+            self.base = min(requested[0], 2472), min(requested[1], 5352)
+            return b''
+        if parts[:4] == ('shell', 'wm', 'user-rotation', 'lock'):
+            if not self.ignore_rotation:
+                self.rotation = int(parts[4])
+            return b''
+        logical = self.base[::-1] if self.rotation % 2 else self.base
+        if parts == ('shell', 'am', 'get-config'):
+            orientation = 'land' if logical[0] > logical[1] else 'port'
+            return ('config: mcc310-' + orientation + '-' + self.night + '\n').encode()
+        if parts == ('shell', 'settings', 'get', 'system', 'font_scale'):
+            return str(self.scale).encode()
+        if parts == ('shell', 'dumpsys', 'window', 'displays'):
+            return (f'Display: mDisplayId=0 rootTasks=3\n  init=1236x2676 480dpi '
+                    f'base={self.base[0]}x{self.base[1]} 480dpi '
+                    f'cur={logical[0]}x{logical[1]} app={logical[0]}x{logical[1]}\n').encode()
+        self.fail('Unexpected setup command: ' + repr(parts))
+
+    def run_setup(self, target=None, width=1236, height=2676):
+        target = target or validation.prepare_display
+        self.owner = {}
+        with tempfile.TemporaryDirectory() as directory, \
+                patch.object(validation.time, 'monotonic', side_effect=lambda: self.clock), \
+                patch.object(validation.time, 'sleep', side_effect=lambda seconds: setattr(self, 'clock', self.clock + seconds)):
+            return target(SimpleNamespace(out=Path(directory)), self.owner, 'controlled', self.adb,
+                          capture.__dict__, width, height, 1.0, 'no')
+
+    def test_portrait_applies_after_launcher_override_reversion(self):
+        result = self.run_setup()
+        self.assertEqual(result['status'], 'verified')
+        self.assertIsNone(self.saved_launcher_rotation)
+        self.assertEqual(self.rotation, 0)
+        self.assertEqual(len(result['observations']), 2)
+        self.assertTrue(all(row['matchesRequested'] for row in result['observations']))
+        self.assertTrue(all(row['viewport'] == dict(widthPx=1236, heightPx=2676, densityDpi=480)
+                            for row in result['observations']))
+        self.assertGreaterEqual(self.clock, .5)
+
+    def test_old_launcher_first_order_still_fails_on_real_helper_negative_control(self):
+        source = inspect.getsource(validation.prepare_display)
+        move = '        for command in display_configuration_commands(width, height):\n            read(*command)\n'
+        self.assertEqual(source.count(move), 1)
+        source = source.replace(move, '').replace(
+            "        read('shell', 'am', 'start', '-W', '-n', api['COMPONENT']",
+            move + "        read('shell', 'am', 'start', '-W', '-n', api['COMPONENT']", 1)
+        namespace = dict(validation.__dict__)
+        exec(compile(source, '<launcher-order-negative-control>', 'exec'), namespace)
+        with self.assertRaises(TimeoutError):
+            self.run_setup(namespace['prepare_display'])
+        self.assertEqual(self.rotation, 1)
+        self.assertEqual(self.owner['displayPreparation']['status'], 'failed')
+        self.assertTrue(all(not row['matchesRequested'] for row in self.owner['displayPreparation']['observations']))
+
+    def test_natural_axes_keep_complete_landscape_under_android12_width_clamp(self):
+        result = self.run_setup(width=2676, height=1236)
+        self.assertEqual(self.base, (1236, 2676))
+        self.assertEqual(result['observations'][-1]['viewport'],
+                         dict(widthPx=2676, heightPx=1236, densityDpi=480))
+
+    def test_failed_foreground_launch_cannot_apply_or_accept_rotation(self):
+        self.launch_succeeds = False
+        with self.assertRaisesRegex(ValueError, 'did not leave the NOSENSOR launcher'):
+            self.run_setup()
+        self.assertFalse(any(parts[:2] == ('shell', 'wm') for parts, _ in self.calls))
+        self.assertEqual(self.owner['displayPreparation']['observations'], [])
+
+    def test_successful_shell_exit_cannot_hide_wrong_actual_configuration(self):
+        self.ignore_rotation = True
+        with self.assertRaisesRegex(TimeoutError, 'did not settle'):
+            self.run_setup()
+        self.assertLessEqual(self.clock, 15)
+        self.assertEqual(self.owner['displayPreparation']['status'], 'failed')
+
+    def test_theme_and_font_are_independent_actual_requirements(self):
+        for field, value in (('night', 'night'), ('scale', 1.3)):
+            with self.subTest(field=field):
+                self.setUp()
+                setattr(self, field, value)
+                with self.assertRaises(TimeoutError):
+                    self.run_setup()
+                self.assertTrue(all(not row['matchesRequested'] for row in self.owner['displayPreparation']['observations']))
+
+    def test_all_reads_share_one_deadline_and_expired_result_cannot_pass(self):
+        self.read_delay = 4
+        with self.assertRaises(TimeoutError):
+            self.run_setup()
+        self.assertEqual([timeout for _, timeout in self.calls], [6, 6, 6, 3])
+        self.assertEqual(self.owner['displayPreparation']['status'], 'failed')
+        self.assertEqual(self.owner['displayPreparation']['observations'], [])
+
+    def test_late_final_processing_cannot_accept_an_otherwise_matching_display(self):
+        original = capture.window_display_viewport
+        observed = []
+        def slow_last_parse(raw):
+            result = original(raw)
+            observed.append(result)
+            if len(observed) == 2:
+                self.clock += 16
+            return result
+        with patch.object(capture, 'window_display_viewport', side_effect=slow_last_parse), \
+                self.assertRaises(TimeoutError):
+            self.run_setup()
+        self.assertEqual(len(self.owner['displayPreparation']['observations']), 2)
+        self.assertTrue(all(row['matchesRequested'] for row in self.owner['displayPreparation']['observations']))
+        self.assertEqual(self.owner['displayPreparation']['status'], 'failed')
+
+    def setup_then_start_scene(self, action, *, target=None, width=1236, height=2676,
+                               stop_error=False, stop_delay=0):
+        """Actual setup helper; explicit observed task and NOSENSOR boundaries.
+
+        The b6 Android 35 stdout hashes confirm START_DELIVERED_TO_TOP for
+        the same live setup component. UiVisual's onNewIntent only observes
+        downloads; its typography/chat dispatch belongs to onCreate. This is
+        a controlled framework/fixture boundary, not another Android run.
+        """
+        original_adb = self.adb
+        state = self.task_boundary = dict(live=None, created=[], delivered=[],
+                                         nonces=[], viewports=[], stoppedAfter=[])
+
+        def task_adb(*parts, timeout):
+            starting = parts[:4] == ('shell', 'am', 'start', '-W')
+            if starting and state['live'] is not None:
+                self.calls.append((parts, timeout))
+                self.clock += self.read_delay
+                state['delivered'].append(parts[parts.index('visualAction') + 1])
+                return (b'Warning: Activity not started, intent has been delivered '
+                        b'to currently running top-most instance.\nStatus: ok\n')
+            raw = original_adb(*parts, timeout=timeout)
+            if starting:
+                next_action = parts[parts.index('visualAction') + 1]
+                state['live'] = next_action
+                state['created'].append(next_action)
+                state['viewports'].append(self.base[::-1] if self.rotation % 2 else self.base)
+                if next_action == 'navigation-typography':
+                    state['nonces'].append(parts[parts.index('visualNonce') + 1])
+            if parts == ('shell', 'am', 'force-stop', capture.PACKAGE):
+                state['stoppedAfter'].append(len(self.owner['displayPreparation']['observations']))
+                if stop_error:
+                    raise subprocess.CalledProcessError(1, parts, stderr=b'controlled stop failure')
+                self.clock += stop_delay
+                state['live'] = None
+                # Entering the NOSENSOR launcher saves the final configured
+                # rotation; the next app launch restores that same value.
+                self.saved_launcher_rotation = self.rotation
+                self.rotation = 0
+            return raw
+
+        with patch.object(self, 'adb', side_effect=task_adb):
+            state['setup'] = self.run_setup(target, width, height)
+            state['savedBeforeNextLaunch'] = self.saved_launcher_rotation
+            self.adb('shell', 'am', 'start', '-W', '-n', capture.COMPONENT,
+                     '--es', 'visualAction', action, '--es', 'visualNonce', 'fresh-scene', timeout=6)
+        return state
+
+    def test_first_typography_has_a_fresh_instance_nonce_and_final_rotation(self):
+        for width, height, rotation in ((1236, 2676, 0), (2676, 1236, 1)):
+            with self.subTest(rotation=rotation):
+                self.setUp()
+                state = self.setup_then_start_scene('navigation-typography', width=width, height=height)
+                self.assertEqual(state['nonces'], ['fresh-scene'], 'Fresh typography must execute onCreate')
+                self.assertEqual(state['created'], ['network', 'navigation-typography'])
+                self.assertEqual(state['delivered'], [])
+                self.assertEqual(state['savedBeforeNextLaunch'], rotation)
+                self.assertEqual(state['viewports'][-1], (width, height))
+                self.assertEqual(state['stoppedAfter'], [2])
+                self.assertIs(state['setup']['configurationSurfaceStopped'], True)
+
+    def test_first_loading_chat_cannot_be_delivered_to_the_network_setup_instance(self):
+        state = self.setup_then_start_scene('chat', width=2676, height=1236)
+        self.assertEqual(state['live'], 'chat', 'Chat must execute its onCreate dispatch')
+        self.assertEqual(state['created'], ['network', 'chat'])
+        self.assertEqual(state['delivered'], [])
+        self.assertEqual(state['savedBeforeNextLaunch'], 1)
+        self.assertEqual(state['viewports'][-1], (2676, 1236))
+
+    def test_missing_retirement_negative_control_reuses_network_and_emits_no_new_nonce(self):
+        source = inspect.getsource(validation.prepare_display)
+        stop = "                read('shell', 'am', 'force-stop', api['PACKAGE'])\n"
+        self.assertLessEqual(source.count(stop), 1)
+        namespace = dict(validation.__dict__)
+        exec(compile(source.replace(stop, ''), '<unretired-configuration-surface>', 'exec'), namespace)
+        for action in ('navigation-typography', 'chat'):
+            with self.subTest(action=action):
+                self.setUp()
+                state = self.setup_then_start_scene(action, target=namespace['prepare_display'])
+                self.assertEqual(state['created'], ['network'])
+                self.assertEqual(state['delivered'], [action])
+                self.assertEqual(state['live'], 'network')
+                self.assertEqual(state['nonces'], [])
+
+    def test_stop_failure_cannot_verify_an_otherwise_matching_display(self):
+        with self.assertRaises(subprocess.CalledProcessError):
+            self.setup_then_start_scene('chat', stop_error=True)
+        self.assertEqual(self.owner['displayPreparation']['status'], 'failed')
+        self.assertFalse(self.owner['displayPreparation'].get('configurationSurfaceStopped', False))
+        self.assertEqual(self.task_boundary['created'], ['network'])
+
+    def test_stop_uses_remaining_setup_budget_without_a_new_deadline(self):
+        self.read_delay = 1
+        state = self.setup_then_start_scene('chat')
+        timeouts = [timeout for parts, timeout in self.calls
+                    if parts == ('shell', 'am', 'force-stop', capture.PACKAGE)]
+        self.assertEqual(timeouts, [4.5])
+        self.assertEqual(state['setup']['status'], 'verified')
+        self.assertLess(self.clock, 15)
+
+    def test_late_stop_cannot_verify_or_start_the_next_scene(self):
+        self.read_delay = 1
+        with self.assertRaises(TimeoutError):
+            self.setup_then_start_scene('chat', stop_delay=5)
+        self.assertEqual(self.owner['displayPreparation']['status'], 'failed')
+        self.assertFalse(self.owner['displayPreparation'].get('configurationSurfaceStopped', False))
+        self.assertEqual(self.task_boundary['created'], ['network'])
+
+
 class GlassCaptureFailureCleanupTest(unittest.TestCase):
     """Host-side cleanup checks with fake transports; no Android claim."""
+
+    def test_loading_rotates_portrait_base_instead_of_exceeding_android12_width_limit(self):
+        previous = capture.WIDTH, capture.HEIGHT, capture.DENSITY
+        request = capture.DISPLAY_REQUEST
+        capture.set_display(1236, 2676, 480)
+        base, rotation = (1236, 2676), 0
+        def adb(*parts, **options):
+            nonlocal base, rotation
+            if parts == ('shell', 'dumpsys', 'activity', 'activities'):
+                return ('topResumedActivity=ActivityRecord{' + capture.COMPONENT + '}\n').encode()
+            if parts[:3] == ('shell', 'wm', 'size'):
+                if len(parts) == 4:
+                    width, height = map(int, parts[3].split('x'))
+                    # AOSP Android 12 DisplayContent.setForcedSize clamps each
+                    # natural-orientation axis to twice its physical size.
+                    base = min(width, 1236 * 2), min(height, 2676 * 2)
+                    return b''
+                return f'Physical size: 1236x2676\nOverride size: {base[0]}x{base[1]}\n'.encode()
+            if parts[:4] == ('shell', 'wm', 'user-rotation', 'lock'):
+                rotation = int(parts[4]); return b''
+            logical = base[::-1] if rotation % 2 else base
+            if parts == ('shell', 'wm', 'density'):
+                return b'Physical density: 480\n'
+            if parts == ('shell', 'settings', 'get', 'system', 'font_scale'):
+                return b'1.0\n'
+            if parts == ('shell', 'am', 'get-config'):
+                return b'config: mcc310-land-notnight\n' if logical[0] > logical[1] else b'config: mcc310-port-notnight\n'
+            if parts == ('shell', 'dumpsys', 'window', 'displays'):
+                return (f'Display: mDisplayId=0 rootTasks=5\n  init=1236x2676 480dpi '
+                        f'base={base[0]}x{base[1]} 480dpi cur={logical[0]}x{logical[1]} '
+                        f'app={logical[0]}x{logical[1]}\n').encode()
+            return b''
+        try:
+            with tempfile.TemporaryDirectory() as directory:
+                args = SimpleNamespace(root=Path(__file__).resolve().parents[1], out=Path(directory))
+                report = dict(buildIdentity=dict(sourceCommit='source', sourceTree='tree',
+                    sdkReceiptSha256='sdk', integrationSigningCertificateSha256='signer'),
+                    installedApk={'sha256': 'apk'}, runNonce='nonce', inputs=[], commands=[])
+                boundary = MagicMock(side_effect=RuntimeError('viewport boundary completed'))
+                result = validation.capture_loading_landscape(args, report, MagicMock(), adb,
+                    boundary, MagicMock(), capture.__dict__)
+                self.assertEqual(result['displayViewport']['status'], 'verified')
+                self.assertEqual(result['displayViewport']['actual']['widthPx'], 2676)
+                self.assertEqual(result['displayViewport']['actual']['heightPx'], 1236)
+                self.assertEqual(result['errors'][0]['error'], 'viewport boundary completed')
+                boundary.assert_called_once()
+                self.assertTrue(result['restoredDisplayBeforeControlledDocument'])
+                self.assertEqual((base, rotation), ((1236, 2676), 0))
+                self.assertFalse(report['inputs'])
+        finally:
+            capture.set_display(*previous, requested=request)
+
+    def test_clamped_loading_viewport_fails_before_input_or_geometry_wait_and_restores_display(self):
+        previous = capture.WIDTH, capture.HEIGHT, capture.DENSITY
+        request = capture.DISPLAY_REQUEST
+        capture.set_display(1236, 2676, 480)
+        forced = False
+
+        def adb(*parts, **options):
+            nonlocal forced
+            if parts == ('shell', 'dumpsys', 'activity', 'activities'):
+                return ('topResumedActivity=ActivityRecord{' + capture.COMPONENT + '}\n').encode()
+            if parts[:4] == ('shell', 'wm', 'user-rotation', 'lock'):
+                forced = parts[4] == '1'
+                return b''
+            if parts[:3] == ('shell', 'wm', 'size'):
+                if len(parts) == 4:
+                    forced = parts[3] == '2676x1236'
+                    return b''
+                return b'Physical size: 1236x2676\n' + (b'Override size: 2472x1236\n' if forced else b'')
+            if parts == ('shell', 'wm', 'density'):
+                return b'Physical density: 480\n'
+            if parts == ('shell', 'settings', 'get', 'system', 'font_scale'):
+                return b'1.0\n'
+            if parts == ('shell', 'am', 'get-config'):
+                return b'config: mcc310-land-notnight\n' if forced else b'config: mcc310-port-notnight\n'
+            if parts == ('shell', 'dumpsys', 'window', 'displays'):
+                return (b'Display: mDisplayId=0 rootTasks=5\n'
+                        + (b'  init=1236x2676 480dpi base=2472x1236 480dpi cur=2472x1236 app=2472x1236\n'
+                           if forced else b'  init=1236x2676 480dpi cur=1236x2676 app=1236x2676\n'))
+            return b''
+
+        try:
+            with tempfile.TemporaryDirectory() as directory:
+                args = SimpleNamespace(root=Path(__file__).resolve().parents[1], out=Path(directory))
+                report = dict(buildIdentity=dict(sourceCommit='source', sourceTree='tree',
+                    sdkReceiptSha256='sdk', integrationSigningCertificateSha256='signer'),
+                    installedApk={'sha256': 'apk'}, runNonce='nonce', inputs=[], commands=[])
+                transport = MagicMock(side_effect=adb)
+                wait_for, screenshot = MagicMock(), MagicMock()
+                clock = [0.0]
+                with patch.object(validation.time, 'monotonic', side_effect=lambda: clock[0]), \
+                        patch.object(validation.time, 'sleep', side_effect=lambda seconds: clock.__setitem__(0, clock[0] + seconds)):
+                    result = validation.capture_loading_landscape(args, report, MagicMock(), transport,
+                        wait_for, screenshot, capture.__dict__)
+                self.assertEqual(result['status'], 'failed')
+                preparation = result['displayPreparation']
+                self.assertEqual(preparation['status'], 'failed')
+                self.assertEqual(preparation['requested']['widthPx'], 2676)
+                self.assertTrue(preparation['observations'])
+                self.assertTrue(all(row['viewport']['widthPx'] == 2472
+                                    and not row['matchesRequested'] for row in preparation['observations']))
+                self.assertIn('Actual Android display configuration did not settle', result['errors'][0]['error'])
+                wait_for.assert_not_called()
+                self.assertFalse(report['inputs'])
+                self.assertFalse(any('input' in call.args for call in transport.call_args_list))
+                screenshot.assert_called_once_with('landscape-loading-native-failed.png')
+                self.assertTrue(result['restoredDisplayBeforeControlledDocument'])
+                self.assertEqual(result['restoredDisplay']['displayViewport']['status'], 'verified')
+                self.assertEqual((capture.WIDTH, capture.HEIGHT, capture.DENSITY), (1236, 2676, 480))
+        finally:
+            capture.set_display(*previous, requested=request)
+
+    def test_failed_loading_restoration_still_stops_the_configuration_activity(self):
+        previous = capture.WIDTH, capture.HEIGHT, capture.DENSITY
+        request = capture.DISPLAY_REQUEST
+        capture.set_display(1236, 2676, 480)
+        calls = []
+        def adb(*parts, **options):
+            calls.append(parts)
+            if parts == ('shell', 'settings', 'get', 'system', 'font_scale'):
+                return b'1.0\n'
+            if parts == ('shell', 'am', 'get-config'):
+                return b'config: mcc310-port-notnight\n'
+            return b''
+        def fail_setup(*args, **options):
+            calls.append(('prepare', args[2]))
+            raise TimeoutError('configuration failed')
+        try:
+            with tempfile.TemporaryDirectory() as directory, \
+                    patch.object(validation, 'prepare_display', side_effect=fail_setup):
+                args = SimpleNamespace(root=Path(__file__).resolve().parents[1], out=Path(directory))
+                report = dict(buildIdentity=dict(sourceCommit='source', sourceTree='tree',
+                    sdkReceiptSha256='sdk', integrationSigningCertificateSha256='signer'),
+                    installedApk={'sha256': 'apk'}, runNonce='nonce', inputs=[], commands=[])
+                result = validation.capture_loading_landscape(args, report, MagicMock(), adb,
+                    MagicMock(), MagicMock(), capture.__dict__)
+                self.assertEqual(result['status'], 'failed')
+                self.assertFalse(result['restoredDisplayBeforeControlledDocument'])
+                self.assertEqual(calls[-2:], [('prepare', 'landscape-loading-native-restore'),
+                                             ('shell', 'am', 'force-stop', capture.PACKAGE)])
+                self.assertEqual([row['error'] for row in result['errors']],
+                                 ['configuration failed', 'configuration failed'])
+        finally:
+            capture.set_display(*previous, requested=request)
 
     def test_second_server_constructor_failure_does_not_shutdown_unstarted_server(self):
         with tempfile.TemporaryDirectory() as directory:

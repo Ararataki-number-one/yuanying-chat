@@ -22,7 +22,7 @@ import time
 import uuid
 import xml.etree.ElementTree as ET
 
-from integration_event_contract import EventTransfer, parse_receipt_line
+from integration_event_contract import EventTransfer, ReceiptJournalDiscovery, parse_receipt_line
 
 
 CONFIGURATIONS = (
@@ -39,12 +39,228 @@ SAFE_AREA_OVERLAYS = ('com.android.internal.display.cutout.emulation.tall',
                       'com.android.internal.systemui.navbar.threebutton')
 
 
+def display_configuration_commands(width, height):
+    """Use the portrait emulator's natural axes, then rotate the actual display.
+
+    Android 12 clamps a forced natural width to twice the physical width. A
+    swapped `wm size` therefore cannot represent this phone's full landscape.
+    The subsequent viewport observation still requires the exact logical size.
+    """
+    return [('shell', 'wm', 'size', str(min(width, height)) + 'x' + str(max(width, height))),
+            ('shell', 'wm', 'user-rotation', 'lock', '1' if width > height else '0')]
+
+
+def prepare_display(args, owner, stem, adb, api, width, height, font_scale, night):
+    """Apply emulator configuration while an ordinary app owns orientation.
+
+    Android 15's NOSENSOR launcher saves the previous user rotation and restores
+    it when the next app starts. A successful wm command on that launcher can
+    therefore be undone. Reuse the existing native network fixture as a setup
+    surface, leave that override first, then configure and observe the display.
+    Retire the setup instance so the next scene executes its own onCreate.
+    This setup is not a measured scene or a typography/application pass.
+    """
+    result = owner['displayPreparation'] = dict(status='started',
+        scope='Disposable emulator configuration before observation; not UI acceptance',
+        requested=dict(widthPx=width, heightPx=height, densityDpi=480,
+                       fontScale=float(font_scale), night=night), observations=[],
+        configurationSurfaceStopped=False)
+    deadline = time.monotonic() + 15
+
+    def read(*parts):
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise TimeoutError('Actual Android display configuration did not settle')
+        raw = adb(*parts, timeout=min(6, remaining))
+        if time.monotonic() >= deadline:
+            raise TimeoutError('Actual Android display configuration did not settle')
+        return raw
+
+    try:
+        read('shell', 'am', 'start', '-W', '-n', api['COMPONENT'], '--es', 'visualAction', 'network')
+        activity = read('shell', 'dumpsys', 'activity', 'activities').decode('utf-8', 'strict')
+        resumed = [line.strip() for line in activity.splitlines()
+                   if 'mResumedActivity' in line or 'topResumedActivity' in line]
+        result['resumedBeforeRotation'] = resumed
+        if not any(api['COMPONENT'] in line for line in resumed):
+            raise ValueError('The native configuration surface did not leave the NOSENSOR launcher')
+        for command in display_configuration_commands(width, height):
+            read(*command)
+        previous = None
+        while True:
+            config = read('shell', 'am', 'get-config').decode('utf-8', 'strict').strip()
+            font = float(read('shell', 'settings', 'get', 'system', 'font_scale').decode().strip())
+            raw = read('shell', 'dumpsys', 'window', 'displays')
+            path = args.out / (stem + '-preparation-' + str(len(result['observations']) + 1) + '.txt')
+            path.write_bytes(raw)
+            actual = api['window_display_viewport'](raw.decode('utf-8', 'strict'))
+            parts = config.splitlines()[0].split('-')
+            matches = (actual == dict(widthPx=width, heightPx=height, densityDpi=480)
+                       and ('land' if width > height else 'port') in parts
+                       and ('night' if night == 'yes' else 'notnight') in parts
+                       and abs(font - float(font_scale)) <= .001)
+            result['observations'].append(dict(configuration=config, fontScale=font,
+                viewport=actual, matchesRequested=matches, file=path.name,
+                sha256=hashlib.sha256(raw).hexdigest()))
+            current = (config, font, actual)
+            if time.monotonic() >= deadline:
+                raise TimeoutError('Actual Android display configuration did not settle')
+            if matches and previous == current:
+                # The same fixture component dispatches scenes in onCreate.
+                # Its live network setup must not consume the next scene's
+                # intent. The launcher now saves the final configured rotation
+                # and restores it on the next app launch, as between typography modes.
+                read('shell', 'am', 'force-stop', api['PACKAGE'])
+                result['configurationSurfaceStopped'] = True
+                result['status'] = 'verified'
+                return result
+            previous = current if matches else None
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise TimeoutError('Actual Android display configuration did not settle')
+            time.sleep(min(.5, remaining))
+    except Exception as error:
+        result.update(status='failed', errorType=type(error).__name__, error=str(error))
+        raise
+
+
 def total_frames(raw):
     """Read cumulative HWUI counters; no FPS or animation-smoothness inference."""
     values = re.findall(r'^\s*Total frames rendered:\s*(\d+)\s*$', raw, re.M)
     if len(values) != 1:
         raise ValueError('Expected one actual HWUI cumulative frame counter')
     return int(values[0])
+
+
+def collapse_start_trace(raw, identity, nonce):
+    """Keep only this case's existing native counters, never page/user content."""
+    if len(raw) > 1024 * 1024:
+        raise ValueError('Collapse startup trace exceeds its bounded buffer')
+    stages = {'waiting', 'route-return', 'document-ready-before', 'document-ready-after',
+              'start-before', 'page-finished-before', 'page-finished-after', 'load-before',
+              'load-return', 'ready-evaluate', 'ready-callback', 'snapshot-evaluate',
+              'snapshot-callback', 'emit-before', 'emit-queued'}
+    strings = {'runNonce', 'sourceCommit', 'sourceTree', 'stage'}
+    flags = {'diagnosticOnly', 'checkpointReady', 'runtimePresent', 'extensionPresent',
+             'identityPrepared', 'routePrepared', 'privacyReady', 'ready', 'failed', 'destroyed',
+             'resourceDeferred', 'sessionPresent', 'surfacePresent', 'portPresent', 'usable',
+             'queuedTarget', 'routePortPresent', 'guardBlocked', 'networkReady', 'browserPaused',
+             'uiVisible', 'navigating', 'addonDisabled', 'metadataEnabled'}
+    counters = {'schema', 'sequence', 'elapsedMs', 'requestedProtection', 'protectionRequest',
+                'protectionLevel', 'documents', 'readyEvaluations', 'readyCallbacks',
+                'snapshotEvaluations', 'snapshotCallbacks', 'eventSequence', 'routeCalls',
+                'fixtureRoutes', 'blockedRoutes', 'otherRoutes', 'routeDelegateInstalls', 'routeConnectAttempts'}
+    records, lines = [], []
+    for line in raw.decode('utf-8', 'strict').splitlines():
+        if not line.startswith('{'):
+            continue
+        value = json.loads(line)
+        if type(value) is not dict or value.get('runNonce') != nonce:
+            continue
+        if (set(value) != strings | flags | counters
+                or any(type(value[key]) is not str for key in strings)
+                or any(type(value[key]) is not bool for key in flags)
+                or any(type(value[key]) is not int or not -1 <= value[key] < 2**63 for key in counters)
+                or value['schema'] != 1
+                or value.get('diagnosticOnly') is not True
+                or any(value.get(key) != identity[key] for key in ('sourceCommit', 'sourceTree'))
+                or value.get('stage') not in stages
+                or type(value.get('sequence')) is not int or not 1 <= value['sequence'] <= 80
+                or records and value['sequence'] <= records[-1]['sequence']):
+            raise ValueError('Collapse startup diagnostic identity, sequence or scalar boundary differs')
+        records.append(value)
+        lines.append(line)
+    return records, ('\n'.join(lines) + ('\n' if lines else '')).encode('utf-8')
+
+
+def capture_ready_failure(out, case, identity, adb, start_output):
+    """Observe an already failed ready gate; never retry it or change its result."""
+    result = case['readyFailureDiagnostics'] = dict(status='incomplete', diagnosticOnly=True,
+        applicationAcceptance=False, readyGateAlreadyFailed=True, runNonce=case['runNonce'],
+        sourceCommit=identity['sourceCommit'], sourceTree=identity['sourceTree'],
+        scope='Post-failure existing native startup counters and resumed component; not a new readiness gate',
+        errors=[])
+
+    def save(suffix, raw):
+        path = out / (case['name'] + '-' + suffix)
+        path.write_bytes(raw)
+        return dict(file=path.name, bytes=len(raw), sha256=hashlib.sha256(raw).hexdigest())
+
+    try:
+        if not isinstance(start_output, bytes) or len(start_output) > 16384:
+            raise ValueError('Controlled activity launch output exceeds its boundary')
+        result['launchOutput'] = save('launch-output.txt', start_output)
+    except Exception as error:
+        result['errors'].append(dict(stage='launch-output', errorType=type(error).__name__, error=str(error)))
+    try:
+        raw = adb('logcat', '-d', '-v', 'raw', '-s', 'PocketCollapseTrace:I', '*:S', timeout=6)
+        records, selected = collapse_start_trace(raw, identity, case['runNonce'])
+        result['nativeTrace'] = dict(save('collapse-start-trace.log', selected), records=records,
+            rawBufferBytes=len(raw), rawBufferSha256=hashlib.sha256(raw).hexdigest(),
+            currentCaseOnly=True, status='captured' if records else 'missing')
+    except Exception as error:
+        result['errors'].append(dict(stage='native-trace', errorType=type(error).__name__, error=str(error)))
+    try:
+        raw = adb('logcat', '-d', '-v', 'threadtime', '-t', '300', '-s', 'WebExtension:D',
+                  'GeckoRuntime:D', 'GeckoProcessManager:W', 'ServiceAllocator:W',
+                  'GeckoConsole:W', 'Gecko:W', 'AndroidRuntime:E', '*:S', timeout=6)
+        if len(raw) > 256 * 1024:
+            raise ValueError('Gecko startup diagnostic exceeds its bounded buffer')
+        result['geckoStartupLog'] = dict(save('gecko-startup.log', raw),
+            currentCaseOnly=False, diagnosticOnly=True, applicationAcceptance=False,
+            scope='Last 300 selected SDK log lines; not nonce-filtered or attributed to the current process')
+    except Exception as error:
+        result['errors'].append(dict(stage='gecko-startup-log', errorType=type(error).__name__, error=str(error)))
+    try:
+        raw = adb('shell', 'dumpsys', 'activity', 'activities', timeout=6)
+        if len(raw) > 2 * 1024 * 1024:
+            raise ValueError('Activity diagnostic exceeds its bounded buffer')
+        # Retain only resumed records; the remaining task/Intent dump can contain URLs.
+        lines = [line for line in raw.decode('utf-8', 'strict').splitlines()
+                 if re.match(r'^\s*(?:mResumedActivity|topResumedActivity)[:=]\s*ActivityRecord\{'
+                             r'[0-9a-f]+ u[0-9]+ [A-Za-z0-9_.$]+/[A-Za-z0-9_.$]+ t[0-9]+\}\s*$', line)]
+        result['resumedActivity'] = dict(save('ready-failed-activity.txt',
+            ('\n'.join(lines) + ('\n' if lines else '')).encode('utf-8')), records=lines,
+            status='captured' if lines else 'missing')
+    except Exception as error:
+        result['errors'].append(dict(stage='resumed-activity', errorType=type(error).__name__, error=str(error)))
+    if (not result['errors'] and result['nativeTrace']['status'] == 'captured'
+            and result['resumedActivity']['status'] == 'captured'):
+        result['status'] = 'captured'
+    return result
+
+
+def idle_draw_records(raw, identity, nonce, request, phase):
+    """Parse bounded post-failure observations; these never establish acceptance."""
+    rows = []
+    for line in raw.splitlines():
+        if not line.startswith('{'):
+            continue
+        row = json.loads(line)
+        if row.get('request') != request or row.get('runNonce') != nonce:
+            continue
+        if (type(row.get('schema')) is not int or row.get('schema') != 1 or row.get('phase') != phase
+                or row.get('diagnosticOnly') is not True or row.get('applicationAcceptance') is not False
+                or any(row.get(key) != identity[key] for key in ('sourceCommit', 'sourceTree', 'apkSha256'))
+                or row.get('kind') not in ('start', 'frame', 'stack', 'count', 'end')
+                or not isinstance(row.get('data'), dict)
+                or type(row.get('sequence')) is not int or row['sequence'] != len(rows) + 1):
+            raise ValueError('Idle draw diagnostic identity, sequence or bounded schema mismatch')
+        rows.append(row)
+    if (not rows or len(rows) > 128 or rows[0]['kind'] != 'start' or rows[-1]['kind'] != 'end'
+            or sum(row['kind'] == 'start' for row in rows) != 1
+            or sum(row['kind'] == 'end' for row in rows) != 1
+            or sum(row['kind'] == 'frame' for row in rows) > 16
+            or sum(row['kind'] == 'stack' for row in rows) > 12
+            or sum(row['kind'] == 'count' for row in rows) > 96):
+        raise ValueError('Complete bounded idle draw diagnostic start/end required')
+    end = rows[-1]['data']
+    counts = [end.get(key) for key in ('callbacksInstalled', 'callbacksRestored', 'callbacksChangedByOwner', 'callbackRestoreErrors')]
+    if (any(type(value) is not int or value < 0 for value in counts)
+            or counts[0] > 160 or counts[0] != counts[1] + counts[2]
+            or counts[3] != 0 or end.get('perfEnabledRestored') is not True):
+        raise ValueError('Idle draw observer callback/performance-state restoration was incomplete')
+    return rows
 
 
 def system_bar_sources(raw):
@@ -187,14 +403,15 @@ def capture_loading_landscape(args, report, capture, adb, wait_for, screenshot, 
         previous_night = 'yes' if 'night' in previous_config.splitlines()[0].split('-') else 'no'
         api['set_display'](2676, 1236, 480)
         adb('shell', 'am', 'force-stop', package)
-        adb('shell', 'wm', 'size', '2676x1236')
         adb('shell', 'settings', 'put', 'system', 'font_scale', '1.0')
         adb('shell', 'cmd', 'uimode', 'night', 'no')
+        prepare_display(args, result, stem, adb, api, 2676, 1236, 1.0, 'no')
         adb('shell', 'am', 'start', '-W', '-n', api['COMPONENT'], '--es', 'visualAction', 'chat')
         result['actualDisplay'] = dict(size=adb('shell', 'wm', 'size').decode().strip(),
             density=adb('shell', 'wm', 'density').decode().strip(),
             fontScale=adb('shell', 'settings', 'get', 'system', 'font_scale').decode().strip(),
             configuration=adb('shell', 'am', 'get-config').decode().strip())
+        api['observe_display_viewport'](adb, args.out, result, stem, 2676, 1236, 480)
         config_parts = result['actualDisplay']['configuration'].splitlines()[0].split('-')
         if ('land' not in config_parts or 'notnight' not in config_parts
                 or abs(float(result['actualDisplay']['fontScale']) - 1.0) > .001):
@@ -289,10 +506,9 @@ def capture_loading_landscape(args, report, capture, adb, wait_for, screenshot, 
                 result['errors'].append(dict(stage='failure-screenshot', errorType=type(capture_error).__name__, error=str(capture_error)))
     finally:
         api['set_display'](*previous_display)
-        cleanup = [('shell', 'am', 'force-stop', package),
-                   ('shell', 'wm', 'size', str(previous_display[0]) + 'x' + str(previous_display[1])),
-                   ('shell', 'settings', 'put', 'system', 'font_scale', previous_font),
-                   ('shell', 'cmd', 'uimode', 'night', previous_night)]
+        cleanup = [('shell', 'am', 'force-stop', package)]
+        cleanup.extend([('shell', 'settings', 'put', 'system', 'font_scale', previous_font),
+                        ('shell', 'cmd', 'uimode', 'night', previous_night)])
         cleanup_errors = []
         for command in cleanup:
             try:
@@ -301,6 +517,16 @@ def capture_loading_landscape(args, report, capture, adb, wait_for, screenshot, 
                 cleanup_errors.append(dict(stage='restore-before-controlled-document', command=list(command),
                     errorType=type(error).__name__, error=str(error)))
         try:
+            preparation = result['restorationPreparation'] = {}
+            try:
+                prepare_display(args, preparation, stem + '-restore', adb, api,
+                                *previous_display[:2], previous_font, previous_night)
+            finally:
+                try:
+                    adb('shell', 'am', 'force-stop', package, timeout=6)
+                except Exception as error:
+                    cleanup_errors.append(dict(stage='stop-loading-configuration-surface',
+                        errorType=type(error).__name__, error=str(error)))
             restored = result['restoredDisplay'] = dict(
                 size=adb('shell', 'wm', 'size').decode().strip(),
                 fontScale=adb('shell', 'settings', 'get', 'system', 'font_scale').decode().strip(),
@@ -309,10 +535,11 @@ def capture_loading_landscape(args, report, capture, adb, wait_for, screenshot, 
             config_parts = restored['configuration'].splitlines()[0].split('-')
             expected_orientation = 'land' if previous_display[0] > previous_display[1] else 'port'
             expected_night = 'night' if previous_night == 'yes' else 'notnight'
-            if (not sizes or tuple(map(int, sizes[-1])) != previous_display[:2]
+            if (not sizes or tuple(map(int, sizes[-1])) != tuple(sorted(previous_display[:2]))
                     or abs(float(restored['fontScale']) - float(previous_font)) > .001
                     or expected_orientation not in config_parts or expected_night not in config_parts):
                 raise ValueError('Actual Android display/font/theme was not restored before controlled documents')
+            api['observe_display_viewport'](adb, args.out, restored, stem + '-restored', *previous_display)
         except Exception as error:
             cleanup_errors.append(dict(stage='observe-restored-display', errorType=type(error).__name__, error=str(error)))
         result['errors'].extend(cleanup_errors)
@@ -487,6 +714,111 @@ def record_case(args, report, adb, case, sha, mp4_metadata):
                     raise RuntimeError('Suite recording failed; original diagnostics are retained')
 
 
+def background_state(activity, gfx, *, package, component, pid):
+    """Observe lifecycle/window readiness, never select a sample by frame count."""
+    if type(pid) is not int or pid <= 0 or not component.startswith(package + '/'):
+        raise ValueError('A fixed background Activity/process identity is required')
+    lines = activity.splitlines()
+    headers = [(index, len(line) - len(line.lstrip())) for index, line in enumerate(lines)
+               if re.fullmatch(r'\s*\* Hist\s+#\d+: ActivityRecord\{[^\n]*\s' +
+                               re.escape(component) + r'\s[^\n]*\}', line)]
+    if len(headers) != 1:
+        raise ValueError('One actual background Activity record is required')
+    start, indent = headers[0]
+    end = next((index for index in range(start + 1, len(lines))
+                if lines[index].strip() and len(lines[index]) - len(lines[index].lstrip()) <= indent), len(lines))
+    block = '\n'.join(lines[start:end])
+    process = re.findall(r'\bapp=ProcessRecord\{[^\n]*?\s(\d+):' + re.escape(package) + r'/[^}\n]+\}', block)
+    if process != [str(pid)]:
+        raise ValueError('Background Activity process identity changed')
+    states = re.findall(r'\bstate=([^\s]*)', block)
+    if len(states) != 1 or states[0] not in ('INITIALIZING', 'STARTED', 'RESUMED', 'PAUSING', 'PAUSED', 'STOPPING', 'STOPPED', 'FINISHING', 'DESTROYING', 'DESTROYED', 'RESTARTING_PROCESS'):
+        raise ValueError('Background Activity state is missing or ambiguous')
+    visible = {}
+    for name in ('mVisibleRequested', 'mVisible', 'mClientVisible'):
+        values = re.findall(r'\b' + name + r'=([^\s]*)', block)
+        if len(values) != 1 or values[0] not in ('true', 'false'):
+            raise ValueError('Background visibility is missing or ambiguous: ' + name)
+        visible[name] = values[0] == 'true'
+    resumed = [line for line in lines if re.match(
+        r'^\s*(?:mResumedActivity|topResumedActivity|ResumedActivity|Resumed)\s*[:=]', line)]
+    if not resumed:
+        raise ValueError('An actual resumed destination is required')
+    owners = []
+    for line in resumed:
+        match = re.search(r'ActivityRecord\{[^\n]*?\s([^\s/{}]+)/([^\s{}]+)\s', line)
+        if match is None:
+            raise ValueError('Unknown resumed destination observation')
+        owners.append(match[1])
+    processes = re.findall(r'\*\* Graphics info for pid (\d+) \[([^\]]+)\] \*\*', gfx)
+    if processes != [(str(pid), package)]:
+        raise ValueError('Background graphics process identity changed')
+    sections = re.findall(r'(?ms)^Profile data in ms:\s*\n(.*?)^View hierarchy:', gfx)
+    if len(sections) != 1:
+        raise ValueError('One closed background graphics root section is required')
+    roots = []
+    for line in sections[0].splitlines():
+        if not line.strip():
+            continue
+        match = re.fullmatch(r'\s*([^\s]+)/(android\.view\.ViewRootImpl@[0-9a-fA-F]+) \(visibility=(0|4|8)\)\s*', line)
+        if match is None or not match[1].startswith(package + '/'):
+            raise ValueError('Unknown or foreign background graphics root')
+        roots.append(dict(component=match[1], root=match[2], visibility=int(match[3])))
+    if not roots or len({row['root'] for row in roots}) != len(roots):
+        raise ValueError('Background graphics roots are missing or duplicated')
+    totals = re.findall(r'(?m)^[ \t]*Total ViewRootImpl\b(.*)$', gfx)
+    total = re.fullmatch(r'[ \t]*:[ \t]*([0-9]+)[ \t]*', totals[0]) if len(totals) == 1 else None
+    if total is None or int(total[1]) != len(roots):
+        raise ValueError('Background graphics root count is missing or inconsistent')
+    if not any(row['component'] == component for row in roots):
+        raise ValueError('The actual background Activity root is missing')
+    return dict(pid=pid, component=component, state=states[0], visibility=visible,
+                resumedPackages=owners, roots=roots,
+                ready=states[0] == 'STOPPED' and not any(visible.values())
+                    and package not in owners and all(row['visibility'] == 8 for row in roots))
+
+
+def prepare_background(case, adb, out, *, package, component, pid):
+    """Use one 15-second preparation deadline before the original quiet window."""
+    started = time.monotonic(); deadline = started + 15
+    record = case['backgroundPreparation'] = dict(status='failed', budgetSeconds=15,
+        pid=pid, component=component, scope='lifecycle-and-window-readiness-only',
+        framesUsedForReadiness=False, observations=[])
+    def read(*parts):
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise TimeoutError('Background preparation exceeded 15 seconds')
+        raw = adb(*parts, timeout=min(5, remaining))
+        if time.monotonic() >= deadline:
+            raise TimeoutError('Background preparation exceeded 15 seconds')
+        return raw
+    try:
+        while time.monotonic() < deadline:
+            actual = read('shell', 'pidof', package).decode().strip().split()
+            if actual != [str(pid)]:
+                raise ValueError('Background process exited or changed')
+            activity = read('shell', 'dumpsys', 'activity', 'activities')
+            gfx = read('shell', 'dumpsys', 'gfxinfo', package)
+            index = len(record['observations'])
+            row = dict(observedAtUnixNs=time.time_ns())
+            for suffix, raw in (('activity', activity), ('gfxinfo', gfx)):
+                path = out / (case['name'] + '-background-preparation-' + str(index) + '-' + suffix + '.txt')
+                path.write_bytes(raw)
+                row[suffix] = dict(file=path.name, bytes=len(raw), sha256=hashlib.sha256(raw).hexdigest())
+            record['observations'].append(row)
+            row['state'] = background_state(activity.decode('utf-8', 'strict'), gfx.decode('utf-8', 'strict'),
+                                             package=package, component=component, pid=pid)
+            if time.monotonic() >= deadline:
+                raise TimeoutError('Background preparation exceeded 15 seconds')
+            if row['state']['ready']:
+                record['status'] = 'ready'
+                return record
+            time.sleep(min(.2, max(0, deadline - time.monotonic())))
+        raise TimeoutError('Background preparation exceeded 15 seconds')
+    finally:
+        record['elapsedSeconds'] = time.monotonic() - started
+
+
 def capture_acceptance_suite(args, report, capture, adb, wait_for, tap, screenshot, api):
     """Fail closed on route/configuration failures; save every original observation."""
     result = report['glassUiAcceptance'] = dict(schema=1, status='started',
@@ -506,6 +838,7 @@ def capture_acceptance_suite(args, report, capture, adb, wait_for, tap, screensh
     nav, capsule, geometry = [api[key] for key in ('navigation', 'capsule', 'observed_navigation_geometry')]
     identity = report['buildIdentity']
     observations = {}
+    journals = {}
     previous_overlays = {}
 
     def save():
@@ -551,23 +884,83 @@ def capture_acceptance_suite(args, report, capture, adb, wait_for, tap, screensh
             adb('shell', 'am', 'broadcast', '-a', package + '.CHROME_COLLAPSE', '-p', package,
                 '--es', 'eventNonce', case['runNonce'], '--es', 'collapseCommand', command)
         deadline = time.monotonic() + 40
-        while time.monotonic() < deadline:
-            raw = adb('logcat', '-d', '-v', 'brief', '-s', 'PocketGeckoIntegration:I', 'AndroidRuntime:E', '*:S')
-            (args.out / (case['name'] + '-events.log')).write_bytes(raw)
-            if b'FATAL EXCEPTION' in raw:
-                raise ValueError('Android crashed during the real UI sequence')
-            for line in raw.decode('utf-8', 'replace').splitlines():
-                receipt = parse_receipt_line(line)
-                if receipt is None or receipt.get('runNonce') != case['runNonce']:
-                    continue
-                value = observations[case['runNonce']].read(receipt)
-                if value['kind'] == 'error':
-                    raise ValueError('Controlled document fixture failed: ' + str(value))
-                if value['kind'] == 'collapseSnapshot' and value['result'].get('command') == command:
-                    case.setdefault('documentObservations', {})[command] = value['result']
-                    return value['result']
-            time.sleep(.2)
-        raise TimeoutError('No current, source/APK/SDK/nonce-bound document observation: ' + command)
+        timeout_message = 'No current, source/APK/SDK/nonce-bound document observation: ' + command
+
+        def remaining():
+            budget = deadline - time.monotonic()
+            if budget <= 0:
+                raise TimeoutError(timeout_message)
+            return budget
+
+        def bounded_read(*parts):
+            raw = adb(*parts, timeout=remaining())
+            remaining()
+            return raw
+
+        reader = observations[case['runNonce']]
+        previous_fetch = reader.fetch
+        reader.fetch = lambda uri: bounded_read('exec-out', 'content', 'read', '--uri', uri)
+        try:
+            while time.monotonic() < deadline:
+                raw = bounded_read('logcat', '-d', '-v', 'brief', '-s', 'PocketGeckoIntegration:I', 'AndroidRuntime:E', '*:S')
+                (args.out / (case['name'] + '-events.log')).write_bytes(raw)
+                if b'FATAL EXCEPTION' in raw:
+                    raise ValueError('Android crashed during the real UI sequence')
+                for line in raw.decode('utf-8', 'replace').splitlines():
+                    receipt = parse_receipt_line(line)
+                    if receipt is None or receipt.get('runNonce') != case['runNonce']:
+                        continue
+                    if receipt.get('kind') == 'eventTransportError':
+                        raise ValueError('Native complete event publication failed: ' + str(receipt))
+                discovery = journals[case['runNonce']]
+                journal = bounded_read('exec-out', 'content', 'read', '--uri', discovery.uri())
+                (args.out / (case['name'] + '-event-receipts.json')).write_bytes(journal)
+                for receipt in discovery.snapshot(journal):
+                    value = reader.read(receipt)
+                    remaining()
+                    if value['kind'] == 'error':
+                        raise ValueError('Controlled document fixture failed: ' + str(value))
+                    if value['kind'] == 'collapseSnapshot' and value['result'].get('command') == command:
+                        case.setdefault('documentObservations', {})[command] = value['result']
+                        return value['result']
+                time.sleep(min(.2, remaining()))
+            raise TimeoutError(timeout_message)
+        finally:
+            reader.fetch = previous_fetch
+
+    def idle_diagnostic(case, name):
+        # This is a separate observation after the unchanged counter gate failed.
+        # It never pauses production observers, navigates, retries the gate or
+        # turns its failure into a pass. The fixture has its own cleanup deadline.
+        request = secrets.token_hex(16)
+        result = case.setdefault('idleDrawDiagnostics', {}).setdefault(name, dict(
+            status='started', request=request, diagnosticOnly=True, applicationAcceptance=False,
+            measuredGateAlreadyFailed=True,
+            scope='Separate post-failure root/view/drawable observations; not the original HWUI measurement'))
+        errors = []
+        command = ('shell', 'am', 'broadcast', '-a', 'local.pocketchat.test.CHROME_COLLAPSE', '-p', package,
+                   '--es', 'eventNonce', case['runNonce'], '--es', 'idleDrawRequest', request,
+                   '--es', 'idleDrawPhase', name, '--es', 'idleDrawDiagnostic')
+        try:
+            adb(*command, 'start', timeout=6)
+            time.sleep(1.5)
+        except Exception as failure:
+            errors.append(dict(stage='start', errorType=type(failure).__name__, error=str(failure)))
+        finally:
+            try:
+                adb(*command, 'stop', timeout=6)
+            except Exception as failure:
+                errors.append(dict(stage='stop', errorType=type(failure).__name__, error=str(failure)))
+        try:
+            raw = adb('logcat', '-d', '-v', 'raw', '-s', 'PocketIdleDraw:I', '*:S', timeout=10)
+            path = args.out / (case['name'] + '-' + name + '-idle-diagnostic.log')
+            path.write_bytes(raw)
+            result.update(file=path.name, sha256=sha(path))
+            rows = idle_draw_records(raw.decode('utf-8', 'strict'), identity, case['runNonce'], request, name)
+            result['records'] = rows
+        except Exception as failure:
+            errors.append(dict(stage='collect', errorType=type(failure).__name__, error=str(failure)))
+        result.update(status='incomplete' if errors else 'captured', errors=errors)
 
     def quiet(case, name, allowed_delta):
         time.sleep(1.1)  # Longer than every glass press/selection release.
@@ -587,6 +980,7 @@ def capture_acceptance_suite(args, report, capture, adb, wait_for, tap, screensh
                      valid=0 <= delta <= allowed_delta)
         case.setdefault('idleObservations', {})[name] = check
         if not check['valid']:
+            idle_diagnostic(case, name)
             raise ValueError('UI continued drawing during bounded ' + name + ' observation: ' + str(delta))
 
     def renderer_observation(case):
@@ -667,10 +1061,7 @@ def capture_acceptance_suite(args, report, capture, adb, wait_for, tap, screensh
                 raise ValueError('Typography source/APK/font identity differs from the current case')
         for row in labels:
             measured = row['measurement']
-            if (measured.get('label') != expected_labels[measured['buttonIndex']]
-                    or measured.get('valid') is not True or not measured.get('checks')
-                    or not all(value is True for value in measured['checks'].values())):
-                raise ValueError('A complete Chinese navigation label did not fit its native text region')
+            api['verify_navigation_text'](measured, expected_labels[measured['buttonIndex']], mode, row['density'])
         case[field]['status'] = 'verified'
         adb('shell', 'am', 'force-stop', package)
 
@@ -691,6 +1082,12 @@ def capture_acceptance_suite(args, report, capture, adb, wait_for, tap, screensh
             raise ValueError('The actual native URL keyboard was not observed')
         tap(button(xml, '取消'), 'Cancel native URL editing without navigating')
         xml = artifact(case, 'url-cancelled', chat, photograph=False)
+        # The same controls must remain available on the actual controlled
+        # ChatGPT document, including narrow/large-font and legacy Android cases.
+        # Keep every original draft, document and lifecycle check below intact.
+        xml = artifact(case, 'browser-toolbar', lambda value: chat(value)
+                       and api['browser_toolbar_geometry'](value) is not None)
+        case['browserToolbar'] = api['browser_toolbar_geometry'](xml)
         box = bounds(capsule(xml)); x, y = (box[0] + box[2]) // 2, (box[1] + box[3]) // 2
         report['inputs'].append(dict(action='long-press', phase=case['name'], observedBounds=list(box),
             point=[x, y], durationMillis=850, atUnixNs=time.time_ns()))
@@ -751,7 +1148,6 @@ def capture_acceptance_suite(args, report, capture, adb, wait_for, tap, screensh
                 try:
                     api['set_display'](width * 3, height * 3, 480)
                     adb('shell', 'am', 'force-stop', package)
-                    adb('shell', 'wm', 'size', str(width * 3) + 'x' + str(height * 3))
                     adb('shell', 'settings', 'put', 'system', 'font_scale', str(scale))
                     adb('shell', 'cmd', 'uimode', 'night', night)
                     for overlay in SAFE_AREA_OVERLAYS:
@@ -760,14 +1156,25 @@ def capture_acceptance_suite(args, report, capture, adb, wait_for, tap, screensh
                         else:
                             adb('shell', 'cmd', 'overlay', 'disable', '--user', '0', overlay)
                     adb('shell', 'settings', 'put', 'secure', 'show_ime_with_hard_keyboard', '1')
+                    prepare_display(args, case, name, adb, api, width * 3, height * 3, scale, night)
                     typography(case, 'conversation')
                     typography(case, 'workspace')
                     observations[case['runNonce']] = EventTransfer(identity=identity, nonce=case['runNonce'],
                         slot=0, action='chromeCollapse', fetch=lambda uri: adb('exec-out', 'content', 'read', '--uri', uri))
-                    adb('shell', 'am', 'start', '-W', '-n', component,
+                    journals[case['runNonce']] = ReceiptJournalDiscovery(observations[case['runNonce']])
+                    start_output = adb('shell', 'am', 'start', '-W', '-n', component,
                         '--es', 'compactAction', 'collapseStart', '--ei', 'chromeNavigationVersion', '2',
                         '--es', 'eventNonce', case['runNonce'], '--ez', 'longName', 'false')
-                    observed_event(case, 'ready', request=False)
+                    try:
+                        observed_event(case, 'ready', request=False)
+                    except Exception:
+                        try:
+                            capture_ready_failure(args.out, case, identity, adb, start_output)
+                        except Exception as diagnostic_error:
+                            case.setdefault('readyFailureDiagnostics', {}).setdefault('errors', []).append(
+                                dict(stage='diagnostic-collector', errorType=type(diagnostic_error).__name__,
+                                     error=str(diagnostic_error)))
+                        raise
                     case['actualConfiguration'] = adb('shell', 'am', 'get-config').decode().strip()
                     case['observedFontSetting'] = adb('shell', 'settings', 'get', 'system', 'font_scale').decode().strip()
                     if abs(float(case['observedFontSetting']) - scale) > .001:
@@ -778,6 +1185,7 @@ def capture_acceptance_suite(args, report, capture, adb, wait_for, tap, screensh
                     orientation = 'land' if width > height else 'port'
                     if orientation not in config_parts:
                         raise ValueError('The actual Android configuration did not apply the requested orientation')
+                    api['observe_display_viewport'](adb, args.out, case, name, width * 3, height * 3, 480)
                     safe_area(case)
                     if name in ('default-light', 'default-dark'):
                         with record_case(args, report, adb, case, sha, api['mp4_metadata']):
@@ -789,9 +1197,10 @@ def capture_acceptance_suite(args, report, capture, adb, wait_for, tap, screensh
                     key(case, 3, 'Background the application after every glass release has settled')
                     activity = adb('shell', 'dumpsys', 'activity', 'activities').decode()
                     path = args.out / (name + '-background-activity.txt'); path.write_text(activity)
-                    resumed = [line for line in activity.splitlines() if 'mResumedActivity' in line or 'topResumedActivity' in line]
-                    if not resumed or any(package + '/' in line for line in resumed):
-                        raise ValueError('The application did not actually leave the resumed state')
+                    pids = case['materialPath']['currentAppPids']
+                    if len(pids) != 1 or not pids[0].isdigit():
+                        raise ValueError('One foreground process is required before background sampling')
+                    prepare_background(case, adb, args.out, package=package, component=component, pid=int(pids[0]))
                     quiet(case, 'background', 0)
                     case['status'] = 'verified'
                 except Exception as error:
@@ -811,9 +1220,9 @@ def capture_acceptance_suite(args, report, capture, adb, wait_for, tap, screensh
         result['errors'].append(dict(stage='suite-setup-or-server', errorType=type(error).__name__, error=str(error)))
     finally:
         api['set_display'](1236, 2676, 480)
-        cleanup = [('shell', 'am', 'force-stop', package), ('shell', 'wm', 'size', '1236x2676'),
-                   ('shell', 'settings', 'put', 'system', 'font_scale', '1.0'),
-                   ('shell', 'cmd', 'uimode', 'night', 'no')]
+        cleanup = [('shell', 'am', 'force-stop', package)]
+        cleanup.extend([('shell', 'settings', 'put', 'system', 'font_scale', '1.0'),
+                        ('shell', 'cmd', 'uimode', 'night', 'no')])
         cleanup.extend(('shell', 'cmd', 'overlay', 'enable' if enabled else 'disable', '--user', '0', name)
                        for name, enabled in previous_overlays.items())
         for command in cleanup:
@@ -822,6 +1231,20 @@ def capture_acceptance_suite(args, report, capture, adb, wait_for, tap, screensh
             except Exception as error:
                 result['status'] = 'failed'
                 result['errors'].append(dict(stage='restore-disposable-emulator', command=list(command),
+                    errorType=type(error).__name__, error=str(error)))
+        try:
+            preparation = result['restorationPreparation'] = {}
+            prepare_display(args, preparation, 'suite-restore', adb, api, 1236, 2676, 1.0, 'no')
+        except Exception as error:
+            result['status'] = 'failed'
+            result['errors'].append(dict(stage='observe-disposable-emulator-restoration',
+                errorType=type(error).__name__, error=str(error)))
+        finally:
+            try:
+                adb('shell', 'am', 'force-stop', package, timeout=6)
+            except Exception as error:
+                result['status'] = 'failed'
+                result['errors'].append(dict(stage='stop-configuration-surface',
                     errorType=type(error).__name__, error=str(error)))
         result['completedAtUnixNs'] = time.time_ns()
         save()

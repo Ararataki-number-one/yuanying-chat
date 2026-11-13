@@ -12,9 +12,30 @@ final class FocusIntegrationHost {
     check(name+" navigation",a.hub.bar.visibility==navigation&&a.hub.divider.visibility==navigation);
     check(name+" exit",a.focusExit.visibility==exit);
   }
-  static MainActivity fresh(){MainActivity a=new MainActivity();a.hub=new AppHub(a);a.toolbar=new View();a.remote=new Browser();a.session=new Session();a.designChrome=new Chrome(a);a.bindFocusExit();return a;}
+  static MainActivity fresh(){MainActivity a=new MainActivity();a.hub=new AppHub(a);a.toolbar=new View();a.remote=new Browser();a.session=new Session();a.session.browser=a.remote;a.designChrome=new Chrome(a);a.bindFocusExit();return a;}
   static void noBrowserWork(String name,MainActivity a){
     check(name,a.remote.browserActions==0&&a.remote.historyBack==0&&a.session.browserActions==0&&a.remote.url.equals("https://chatgpt.com/c/retained"));
+  }
+  static void historyAdmission(){
+    MainActivity a=fresh();a.remote.back=true;a.addressAvailable=false;a.onBackPressed();
+    check("Actual Back history admission does no work when the address surface is unavailable",a.session.preparations==0&&a.session.pageMemory.captures==0&&a.remote.historyBack==0&&a.taskMoves==0);
+    a=fresh();a.remote.back=true;a.session.allowPreparation=false;a.onBackPressed();
+    check("A rejected navigation preparation cannot start a snapshot or browser history",a.session.preparations==1&&a.session.pageMemory.captures==0&&a.remote.historyBack==0);
+    a=fresh();a.remote.back=true;a.session.pageMemory.deferred=true;a.onBackPressed();
+    check("Actual Back waits for its captured navigation snapshot before dispatch",a.session.preparations==1&&a.session.pageMemory.captures==1&&a.session.dispatches==0&&a.remote.historyBack==0);
+    a.session.pageMemory.complete();
+    check("A still-current captured Back dispatches the requested direction and generation",a.session.dispatches==1&&a.session.direction==-1&&a.session.dispatchedEpoch==a.session.navigationEpoch&&a.remote.historyBack==1);
+    for(String change:new String[]{"owner","surface","generation","availability"}){
+      a=fresh();a.remote.back=true;a.session.pageMemory.deferred=true;a.onBackPressed();ChatSession owner=a.session;
+      if(change.equals("owner")){a.session=new Session();a.session.browser=a.remote;}
+      else if(change.equals("surface"))a.remote.current=new Object();
+      else if(change.equals("generation"))owner.navigationEpoch++;
+      else a.addressAvailable=false;
+      owner.pageMemory.complete();
+      check("Late Back snapshot cancels its own request after changed "+change,owner.cancelled==1&&owner.dispatches==0&&a.remote.historyBack==0);
+    }
+    a=fresh();a.remote.forward=true;a.geckoAddress=new GeckoAddressUi();a.browserHistory(1);
+    check("Actual forward dispatch retains its direction and refreshes the address controls",a.session.dispatches==1&&a.session.direction==1&&a.remote.historyForward==1&&a.geckoAddress.refreshes==1);
   }
   public static void main(String[] args){
     MainActivity a=fresh();a.applyFocusLayout();
@@ -90,6 +111,7 @@ final class FocusIntegrationHost {
     layout("No browser leaves recovery chrome",a,View.VISIBLE,View.VISIBLE,View.GONE);
     a=new MainActivity();a.setFocusReading(true);a.applyFocusLayout();
     check("Early startup tolerates missing native and browser surfaces",a.focusReading&&!a.focusActive());
+    historyAdmission();
     System.out.print("{\"status\":\"passed\",\"passed\":"+checks.size()+",\"total\":"+checks.size()+",\"checks\":[");
     for(int i=0;i<checks.size();i++){if(i>0)System.out.print(",");System.out.print("{\"name\":\""+checks.get(i)+"\",\"pass\":true}");}
     System.out.println("]}");
@@ -102,8 +124,8 @@ class BaseActivity {
   boolean moveTaskToBack(boolean nonRoot){taskMoves++;return true;}
 }
 final class MainActivity extends BaseActivity {
-  boolean focusReading,keyboardVisible,ipOverlay;
-  AppHub hub;View toolbar;Button focusExit;Browser remote;Session session;Chrome designChrome;Overview environmentOverview;
+  boolean focusReading,keyboardVisible,ipOverlay,addressAvailable=true;
+  AppHub hub;View toolbar;Button focusExit;Browser remote;Session session;Chrome designChrome;Overview environmentOverview;GeckoAddressUi geckoAddress;
   int dp(int n){return n;}
   void bindFocusExit(){/* EXIT_INITIALIZATION */}
   /* PRODUCTION_METHODS */
@@ -137,18 +159,37 @@ final class AppHub {
   /* HUB_KEYBOARD */
 }
 final class Browser {
-  boolean visible=true,back;String url="https://chatgpt.com/c/retained";int browserActions,historyBack;
+  boolean visible=true,back,forward;String url="https://chatgpt.com/c/retained";int browserActions,historyBack,historyForward;Object current=new Object();
   boolean hasVisibleDocument(){return visible;}
   String getUrl(){return url;}
   boolean canGoBack(){return back;}
+  boolean canGoForward(){return forward;}
   void goBack(){historyBack++;}
+  void goForward(){historyForward++;}
   void reload(){browserActions++;}
   void loadUrl(String value){browserActions++;url=value;}
 }
-final class Session {
+final class Session extends ChatSession {
   final Audit audit=new Audit();final Reading reading=new Reading();int browserActions;
   void reconnect(){browserActions++;}
   void navigate(String value){browserActions++;}
+}
+class ChatSession {
+  final PageMemory pageMemory=new PageMemory();Browser browser;long navigationEpoch,dispatchedEpoch;int preparations,dispatches,direction,cancelled;boolean allowPreparation=true;
+  long prepareBrowserNavigation(){preparations++;return allowPreparation?++navigationEpoch:-1;}
+  void cancelBrowserNavigation(long epoch){cancelled++;}
+  // This boundary deliberately accepts any generation: only the actual Main
+  // method may reject a stale snapshot, so the adapter cannot hide its error.
+  void dispatchBrowserHistory(int value,long epoch){dispatches++;direction=value;dispatchedEpoch=epoch;if(value<0)browser.goBack();else browser.goForward();}
+}
+final class PageMemory {
+  boolean deferred;int captures;Runnable completion;
+  void captureForNavigation(Runnable value){captures++;completion=value;if(!deferred)complete();}
+  void complete(){Runnable value=completion;completion=null;if(value!=null)value.run();}
+}
+final class GeckoAddressUi {
+  int refreshes;static boolean available(MainActivity a){return a.addressAvailable&&a.session!=null&&a.remote!=null;}
+  void refresh(){refreshes++;}
 }
 final class Audit {boolean diagnostic;boolean canReturnRequestIdentity(){return diagnostic;}}
 final class Reading {boolean keyboard;int updates;void keyboard(boolean value){keyboard=value;updates++;}}

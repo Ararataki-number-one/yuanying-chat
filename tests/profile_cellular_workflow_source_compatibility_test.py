@@ -1,5 +1,6 @@
 """Exact preparation input history; no host result is Android acceptance."""
 import copy
+from contextlib import contextmanager
 import hashlib
 from pathlib import Path
 import tempfile
@@ -12,6 +13,7 @@ import cellular_workflow_source_compatibility as cellular
 import gradle_transport_source_compatibility as gradle
 import ui_checkpoint_source_compatibility as checkpoint
 import ui_job_budget_source_compatibility as ui_job_budget
+from historical_source_inputs import historical_bytes
 
 ROOT = Path(__file__).resolve().parents[1]
 CURRENT = (92783, 'e077be03328741ac49c8043d17af707287c8fff664c0486eb91dbeff6ce0f0e8')
@@ -44,9 +46,21 @@ def forward(previous, deltas):
     return result
 
 
+@contextmanager
+def fixed_workflow_file(module):
+    """Exercise the unchanged historical file guard on its real release image."""
+    with tempfile.TemporaryDirectory(prefix='released-workflow-proof-') as directory:
+        root = Path(directory)
+        path = root / module.PATH
+        path.parent.mkdir(parents=True)
+        path.write_bytes(historical_bytes(module.PATH))
+        with patch.object(module, 'ROOT', root):
+            yield
+
+
 class CellularWorkflowSourceCompatibilityTests(unittest.TestCase):
     def workflow(self):
-        return ui_job_budget.historical_workflow_input((ROOT / cellular.PATH).read_bytes(), cellular.PATH)
+        return ui_job_budget.historical_workflow_input(historical_bytes(cellular.PATH), cellular.PATH)
 
     def reject_workflow(self, candidate, actual):
         self.assertNotEqual(candidate, actual)
@@ -171,7 +185,7 @@ class CellularWorkflowSourceCompatibilityTests(unittest.TestCase):
         self.assertEqual([len(row['deltas']) for row in cellular.SOURCE_PORTS.values()], [1, 3, 2, 2, 2])
         for path, row in cellular.SOURCE_PORTS.items():
             with self.subTest(path=path):
-                raw = (ROOT / path).read_bytes()
+                raw = historical_bytes(path)
                 before = cellular.source_port_input(raw, path)
                 self.assertEqual(digest(raw), (row['reviewedBytes'], row['reviewedSha256']))
                 self.assertEqual(digest(before), (row['previousBytes'], row['previousSha256']))
@@ -202,10 +216,17 @@ class CellularWorkflowSourceCompatibilityTests(unittest.TestCase):
         self.assertEqual(gradle.FIXTURE_SHA256, '0e34228b10f4ecb511c584f5fc071e06ffd87e6981caddd80b0510897fbcc793')
         cls = workflow.BrowserWorkflowTests
         cls.setUpClass()
-        self.assertEqual(ui_job_budget.historical_yaml_input(cls.new), yaml.safe_load(raw))
+        current = copy.deepcopy(cls.new)
+        self.assertEqual(cls.new, yaml.safe_load((ROOT / cellular.PATH).read_bytes()))
+        released = yaml.safe_load(historical_bytes(cellular.PATH))
+        with fixed_workflow_file(ui_job_budget):
+            self.assertEqual(ui_job_budget.historical_yaml_input(released), yaml.safe_load(raw))
         cls('test_original_checks_retained_in_order').test_original_checks_retained_in_order()
         cls('test_single_pipeline_shares_actual_apk_and_gates_browser').test_single_pipeline_shares_actual_apk_and_gates_browser()
-        self.assertEqual(ui_job_budget.historical_yaml_input(cls.new), yaml.safe_load(raw))
+        self.assertEqual(cls.new, current)
+        self.assertEqual(cls.new, yaml.safe_load((ROOT / cellular.PATH).read_bytes()))
+        with fixed_workflow_file(ui_job_budget):
+            self.assertEqual(ui_job_budget.historical_yaml_input(released), yaml.safe_load(raw))
 
     def test_only_complete_reviewed_preparation_steps_are_projected_without_mutation(self):
         raw = self.workflow()
@@ -216,14 +237,16 @@ class CellularWorkflowSourceCompatibilityTests(unittest.TestCase):
                         if 'python3 tools/gecko/prepare_cellular_adb.py' in step.get('run', ''))
             original = copy.deepcopy(step)
             expected = next(row for row in previous['jobs'][owner]['steps'] if row.get('name') == step['name'])
-            self.assertEqual(cellular.historical_step_input(step), expected)
+            with fixed_workflow_file(cellular):
+                self.assertEqual(cellular.historical_step_input(step), expected)
             self.assertEqual(step, original)
             mutants = (dict(step, run=step['run'] + '\n'), dict(step, shell='sh'),
                        dict(step, **{'continue-on-error': True}), dict(step, **{'timeout-minutes': 99}),
                        dict(step, run=step['run'].replace('--phase normal', '--phase native', 1)))
             for mutant in mutants:
                 self.assertNotEqual(mutant, step)
-                self.assertIs(cellular.historical_step_input(mutant), mutant)
+                with fixed_workflow_file(cellular):
+                    self.assertIs(cellular.historical_step_input(mutant), mutant)
         with tempfile.TemporaryDirectory(prefix='cellular-raw-workflow-') as directory:
             root = Path(directory)
             path = root / cellular.PATH

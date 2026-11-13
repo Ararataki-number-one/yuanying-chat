@@ -51,7 +51,7 @@ public final class NetworkSourcesRouteIntegrationActivity extends Activity {
     final SourceRouteStartObservation startObservation=new SourceRouteStartObservation();
     RouteNetwork(NetworkSourcesRouteIntegrationActivity c,NetworkOptimizationIntegrationActivity.HttpFixture site,NetworkOptimizationIntegrationActivity.HttpFixture plain){super(c,new File(c.getNoBackupFilesDir(),"network-runtime"),false);this.test=c;this.site=site;this.plain=plain;trust=site.tls.getSocketFactory();}
     @Override synchronized void startOperation(Callback callback,int mode){SourceRouteStartObservation.Registration observation=startObservation.registrationBefore(this,callback,mode);try{super.startOperation(callback,mode);}finally{startObservation.registrationAfter(this,observation);}}
-    @Override void runStartOperation(int mode){startObservation.workerBefore(this,mode);try{super.runStartOperation(mode);}finally{startObservation.workerAfter(this,mode);}}
+    @Override boolean runStartOperation(int mode){startObservation.workerBefore(this,mode);try{return super.runStartOperation(mode);}finally{startObservation.workerAfter(this,mode);}}
     @Override void recoverOutcome(RecoveryCallback callback){
       int request=++test.recoveryRequestSerial;test.recoveryEvent("recover-request",J.obj("request",request,"state",test.recoveryState()));
       CaseRecovery handoff=new CaseRecovery(test,request);test.caseRecovery=handoff;

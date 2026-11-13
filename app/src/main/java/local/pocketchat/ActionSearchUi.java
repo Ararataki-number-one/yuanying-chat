@@ -21,8 +21,8 @@ final class ActionSearchUi {
     if(a instanceof MainActivity){MainActivity m=(MainActivity)a;ChatSession owner=m.session;
       if(owner!=null&&m.hub!=null){
         java.util.function.Consumer<Runnable> current=run->{if(NetworkStatusUi.current(m,owner)&&ProfileCatalog.get(m).available(Profiles.slot(m)))run.run();};
-        add(out,"chat","返回当前会话","继续当前网页与输入","聊天 返回 继续 chat",()->current.accept(()->m.hub.select(AppHub.CHAT)));
-        add(out,"switch","快速切换环境","搜索窗口，保留正在进行的会话","账号 窗口 切换 switch",()->EnvironmentSwitcherUi.show(a));
+        add(out,"chat","返回浏览器","继续当前网页与输入","浏览器 网页 聊天 返回 继续 browser chat",()->current.accept(()->m.hub.select(AppHub.CHAT)));
+        add(out,"switch","快速切换环境","切换浏览器，保留原网页和任务","账号 窗口 切换 浏览器 switch browser",()->EnvironmentSwitcherUi.show(a));
         add(out,"drafts","草稿救援","查找暂存输入或保存当前草稿","草稿 复制 恢复 输入 draft",()->current.accept(()->LocalDraftsUi.show(m)));
         add(out,"history","离线会话检索","搜索本机已经保存的会话内容","历史 记录 搜索 阅读 history offline",()->current.accept(()->LocalHistoryUi.show(m)));
         add(out,"focus",m.focusReading?"退出专注阅读":"进入专注阅读","收起应用工具栏与导航，扩大网页阅读空间","全屏 阅读 沉浸 focus fullscreen",()->current.accept(()->m.setFocusReading(!m.focusReading)));

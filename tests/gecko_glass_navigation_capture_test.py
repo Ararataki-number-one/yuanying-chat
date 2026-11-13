@@ -1,8 +1,11 @@
 """Selector/geometry and signature parsing checks; not Android execution evidence."""
 import importlib.util
+import hashlib
 from pathlib import Path
 import sys
+import tempfile
 import unittest
+from unittest.mock import MagicMock
 import xml.etree.ElementTree as ET
 
 ROOT=Path(__file__).resolve().parents[1]
@@ -22,6 +25,115 @@ def hierarchy(labels,boxes,selected=None):
 
 
 def xml(root):return ET.tostring(root,encoding='unicode')
+
+
+class ActualDisplayViewportTest(unittest.TestCase):
+    # Exact relevant default-display lines retained from b389db2 run 43130666820.
+    api32 = ('  Display: mDisplayId=0 rootTasks=5\n'
+             '    init=1236x2676 480dpi base=2472x1236 480dpi '
+             'cur=2472x1236 app=2472x1236 rng=1236x1164-2472x2400\n')
+    api35 = ('  Display: mDisplayId=0 (organized)\n'
+             '    init=1236x2676 480dpi mMinSizeOfResizeableTaskDp=220 '
+             'base=2676x1236 480dpi cur=2676x1236 app=2676x1236 '
+             'rng=1236x1236-2676x2676\n')
+
+    def setUp(self):
+        self.display = CAPTURE.WIDTH, CAPTURE.HEIGHT, CAPTURE.DENSITY
+        self.request = CAPTURE.DISPLAY_REQUEST
+
+    def tearDown(self):
+        CAPTURE.set_display(*self.display, requested=self.request)
+
+    def test_retained_api32_and_api35_window_observations_keep_actual_widths(self):
+        for raw, width in ((self.api32, 2472), (self.api35, 2676)):
+            with self.subTest(width=width):
+                self.assertEqual(CAPTURE.window_display_viewport(raw),
+                    dict(widthPx=width, heightPx=1236, densityDpi=480))
+
+    def test_current_viewport_is_not_inferred_from_base_override_or_app_insets(self):
+        raw = self.api35.replace('base=2676x1236 480dpi', 'base=2676x1236 320dpi')
+        raw = raw.replace('cur=2676x1236', 'cur=1236x2676').replace('app=2676x1236', 'app=1236x2532')
+        self.assertEqual(CAPTURE.window_display_viewport(raw),
+            dict(widthPx=1236, heightPx=2676, densityDpi=320))
+
+    def test_initial_density_is_used_only_when_no_base_override_exists(self):
+        raw = self.api32.replace('base=2472x1236 480dpi ', '')
+        self.assertEqual(CAPTURE.window_display_viewport(raw),
+            dict(widthPx=2472, heightPx=1236, densityDpi=480))
+
+    def test_other_displays_cannot_supply_default_viewport_or_density(self):
+        other = self.api35.replace('mDisplayId=0', 'mDisplayId=2')
+        self.assertEqual(CAPTURE.window_display_viewport(other + self.api32 + other),
+            dict(widthPx=2472, heightPx=1236, densityDpi=480))
+
+    def test_missing_duplicate_or_malformed_display_observations_fail_closed(self):
+        for raw in ('', self.api32.replace('mDisplayId=0', 'mDisplayId=1'), self.api32 * 2,
+                    self.api32 + self.api32.split('\n', 1)[1],
+                    self.api32.replace('cur=2472x1236', ''),
+                    self.api32.replace('cur=2472x1236', 'cur=2472x1236 cur=2472x1236'),
+                    self.api32.replace('cur=2472x1236', 'cur=-2472x1236'),
+                    self.api32.replace('cur=2472x1236', 'cur=0x1236'),
+                    self.api32.replace('base=2472x1236 480dpi', 'base=2472x1236 unknown'),
+                    self.api32.replace('base=2472x1236 480dpi', 'base=2472x1236 0dpi'),
+                    self.api32.replace('base=2472x1236 480dpi',
+                                       'base=2472x1236 480dpi base=2472x1236 480dpi'),
+                    self.api32.replace('init=1236x2676 480dpi', 'init=1236x2676 unknown')):
+            with self.subTest(raw=raw), self.assertRaises(ValueError):
+                CAPTURE.window_display_viewport(raw)
+
+    def test_clamped_viewport_binds_geometry_but_cannot_pass_requested_landscape(self):
+        CAPTURE.set_display(2676, 1236, 480)
+        # Unchanged native touch bounds from the retained API32 landscape XML.
+        retained = xml(hierarchy(CAPTURE.LABELS,
+            [(909, 990, 1127, 1194), (1127, 990, 1345, 1194),
+             (1345, 990, 1563, 1194), (2220, 984, 2436, 1200)]))
+        self.assertEqual(CAPTURE.navigation_geometry(retained)['horizontalCenterOffsetPx'], -102)
+        with tempfile.TemporaryDirectory() as directory:
+            owner = {}
+            adb = MagicMock(return_value=self.api32.encode())
+            with self.assertRaisesRegex(ValueError, 'requested 2676x1236.*observed 2472x1236'):
+                CAPTURE.observe_display_viewport(adb, directory, owner, 'landscape', 2676, 1236, 480)
+            row = owner['displayViewport']
+            self.assertEqual(row['status'], 'failed')
+            self.assertFalse(row['matchesRequested'])
+            self.assertEqual(row['requested']['widthPx'], 2676)
+            self.assertEqual(row['actual']['widthPx'], 2472)
+            original = (Path(directory) / row['file']).read_bytes()
+            self.assertEqual(original, self.api32.encode())
+            self.assertEqual(row['sha256'], hashlib.sha256(original).hexdigest())
+            self.assertEqual(CAPTURE.DISPLAY_REQUEST, (2676, 1236, 480))
+            self.assertEqual((CAPTURE.WIDTH, CAPTURE.HEIGHT), (2472, 1236))
+            self.assertEqual(CAPTURE.navigation_geometry(retained)['horizontalCenterOffsetPx'], 0)
+            self.assertIsNotNone(CAPTURE.navigation(retained))
+            adb.assert_called_once_with('shell', 'dumpsys', 'window', 'displays', timeout=10)
+
+    def test_matching_actual_viewport_is_verified_and_missing_density_match_is_rejected(self):
+        with tempfile.TemporaryDirectory() as directory:
+            owner = {}
+            actual = CAPTURE.observe_display_viewport(MagicMock(return_value=self.api35.encode()),
+                directory, owner, 'matching', 2676, 1236, 480)
+            self.assertEqual(owner['displayViewport']['status'], 'verified')
+            self.assertEqual(actual, owner['displayViewport']['requested'])
+            with self.assertRaisesRegex(ValueError, 'at 320 dpi; observed.*at 480 dpi'):
+                CAPTURE.observe_display_viewport(MagicMock(return_value=self.api35.encode()),
+                    directory, owner, 'wrong-density', 2676, 1236, 320)
+            self.assertEqual(owner['displayViewport']['status'], 'failed')
+
+    def test_unreadable_or_unparseable_actual_viewport_never_falls_back_to_request(self):
+        CAPTURE.set_display(1236, 2676, 480)
+        for output in (OSError('display unavailable'), b'Physical size: 2676x1236\n', b'\xff'):
+            with self.subTest(output=output), tempfile.TemporaryDirectory() as directory:
+                owner = {}
+                adb = MagicMock(side_effect=output) if isinstance(output, Exception) else MagicMock(return_value=output)
+                with self.assertRaises((OSError, ValueError, UnicodeDecodeError)):
+                    CAPTURE.observe_display_viewport(adb, directory, owner, 'missing', 2676, 1236, 480)
+                row = owner['displayViewport']
+                self.assertEqual(row['status'], 'failed')
+                self.assertNotIn('actual', row)
+                self.assertNotIn('matchesRequested', row)
+                self.assertEqual((CAPTURE.WIDTH, CAPTURE.HEIGHT), (1236, 2676))
+                if isinstance(output, bytes):
+                    self.assertEqual((Path(directory) / row['file']).read_bytes(), output)
 
 
 class IntegrationSigningCertificateTest(unittest.TestCase):

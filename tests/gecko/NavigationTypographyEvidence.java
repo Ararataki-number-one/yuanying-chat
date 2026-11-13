@@ -43,7 +43,7 @@ final class NavigationTypographyEvidence implements ViewTreeObserver.OnPreDrawLi
     if(requestedMode!=null&&!"conversation".equals(requestedMode)&&!"workspace".equals(requestedMode))
       throw new IllegalArgumentException("Known navigation mode required");
     navigationMode="workspace".equals(requestedMode)?"workspace":"conversation";
-    labels="workspace".equals(navigationMode)?new String[]{"会话","环境","下载","网络","设置"}:DesignUi.NAV;
+    labels="workspace".equals(navigationMode)?new String[]{"浏览器","环境","下载","网络","设置"}:DesignUi.NAV;
     buttons=new Button[labels.length];
     if(nonce==null||!nonce.matches("[0-9a-f]{32}"))throw new IllegalArgumentException("Owned observation nonce required");
     identity=IntegrationBuildIdentity.read(activity);
@@ -72,18 +72,38 @@ final class NavigationTypographyEvidence implements ViewTreeObserver.OnPreDrawLi
         if(layout==null||b.isLayoutRequested()||!b.isLaidOut()||!b.isAttachedToWindow()){
           root.postInvalidateOnAnimation();return true;
         }
-        String label=b.getText().toString();Rect glyph=new Rect(),visible=new Rect();
-        b.getPaint().getTextBounds(label,0,label.length(),glyph);
+        String label=b.getText().toString();Rect visible=new Rect();
         int top=b.getCompoundPaddingTop(),bottom=b.getHeight()-b.getCompoundPaddingBottom();
-        int glyphTop=b.getBaseline()+glyph.top-b.getScrollY(),glyphBottom=b.getBaseline()+glyph.bottom-b.getScrollY();
         int left=b.getCompoundPaddingLeft(),right=b.getWidth()-b.getCompoundPaddingRight();
-        float primary=layout.getPrimaryHorizontal(layout.getLineStart(0));
-        // For these plain LTR Chinese labels the native line-start caret is
-        // the draw origin. A single-line centered Layout can have a legitimate
-        // nonzero scrollX; compare final view coordinates, not that offset alone.
-        float drawX=left+primary-b.getScrollX();
-        float lineLeft=left+layout.getLineLeft(0)-b.getScrollX(),lineRight=left+layout.getLineRight(0)-b.getScrollX();
-        float glyphLeft=drawX+glyph.left,glyphRight=drawX+glyph.right;
+        int lineCount=layout.getLineCount(),maximumLines="workspace".equals(navigationMode)?2:1,covered=0;
+        boolean wholeLabel=labels[i].equals(label)&&layout.getText().toString().equals(label)
+          &&lineCount>=1&&lineCount<=maximumLines;
+        boolean glyphFits=true,widthFits=true,horizontalLineFits=true,horizontalGlyphFits=true;
+        JSONArray lines=new JSONArray();
+        for(int line=0;line<lineCount;line++){
+          int start=layout.getLineStart(line),end=layout.getLineEnd(line);
+          boolean range=start==covered&&start>=0&&end>start&&end<=label.length();
+          Rect glyph=new Rect();if(range)b.getPaint().getTextBounds(label,start,end,glyph);
+          wholeLabel&=range&&layout.getEllipsisCount(line)==0&&layout.getEllipsisStart(line)==0;covered=end;
+          int baseline=b.getBaseline()+layout.getLineBaseline(line)-layout.getLineBaseline(0);
+          int glyphTop=baseline+glyph.top-b.getScrollY(),glyphBottom=baseline+glyph.bottom-b.getScrollY();
+          // Use each native line's draw origin and baseline. The complete label
+          // may wrap, but no character, glyph or fallback-font height may clip.
+          float primary=layout.getPrimaryHorizontal(start),drawX=left+primary-b.getScrollX();
+          float lineLeft=left+layout.getLineLeft(line)-b.getScrollX(),lineRight=left+layout.getLineRight(line)-b.getScrollX();
+          float glyphLeft=drawX+glyph.left,glyphRight=drawX+glyph.right;
+          glyphFits&=glyphTop>=top&&glyphBottom<=bottom;
+          widthFits&=layout.getLineWidth(line)<=right-left+.5f;
+          horizontalLineFits&=lineLeft>=left-.5f&&lineRight<=right+.5f;
+          horizontalGlyphFits&=layout.getParagraphDirection(line)==1&&glyphLeft>=left-.5f&&glyphRight<=right+.5f;
+          lines.put(new JSONObject().put("start",start).put("end",end).put("text",range?label.substring(start,end):"")
+            .put("ellipsisCount",layout.getEllipsisCount(line)).put("ellipsisStart",layout.getEllipsisStart(line))
+            .put("layoutBaseline",layout.getLineBaseline(line)).put("lineWidth",layout.getLineWidth(line))
+            .put("lineLeft",layout.getLineLeft(line)).put("lineRight",layout.getLineRight(line))
+            .put("paragraphDirection",layout.getParagraphDirection(line)).put("primaryHorizontal",primary)
+            .put("glyphBounds",new JSONArray(new int[]{glyph.left,glyph.top,glyph.right,glyph.bottom})));
+        }
+        wholeLabel&=covered==label.length();
         boolean shown=b.getGlobalVisibleRect(visible)&&b.isShown();
         Drawable drawable=b.getCompoundDrawables()[1];Ui.Icon icon=drawable instanceof Ui.Icon?(Ui.Icon)drawable:null;
         Rect iconBounds=drawable==null?new Rect():new Rect(drawable.getBounds());
@@ -93,13 +113,12 @@ final class NavigationTypographyEvidence implements ViewTreeObserver.OnPreDrawLi
         int expectedIconInk=expectedSelected?DesignUi.BLUE:DesignUi.GLASS_MUTED;
         JSONObject rendered=iconRendering(icon);
         JSONObject checks=new JSONObject().put("layoutFits",layout.getHeight()<=bottom-top)
-          .put("glyphFits",glyphTop>=top&&glyphBottom<=bottom)
-          .put("wholeLabel",labels[i].equals(label)&&layout.getText().toString().equals(label)
-            &&layout.getLineCount()==1&&layout.getEllipsisCount(0)==0&&layout.getLineEnd(0)==label.length())
-          .put("widthFits",layout.getLineWidth(0)<=b.getWidth()-b.getCompoundPaddingLeft()-b.getCompoundPaddingRight()+.5f)
+          .put("glyphFits",glyphFits)
+          .put("wholeLabel",wholeLabel)
+          .put("widthFits",widthFits)
           .put("viewVisible",shown&&visible.width()==b.getWidth()&&visible.height()==b.getHeight())
-          .put("horizontalLineFits",lineLeft>=left-.5f&&lineRight<=right+.5f)
-          .put("horizontalGlyphFits",layout.getParagraphDirection(0)==1&&glyphLeft>=left-.5f&&glyphRight<=right+.5f)
+          .put("horizontalLineFits",horizontalLineFits)
+          .put("horizontalGlyphFits",horizontalGlyphFits)
           .put("verticalUnscrolled",b.getScrollY()==0)
           .put("selectionMatches",b.isSelected()==expectedSelected)
           .put("iconSolidMatchesSelection",icon!=null&&icon.solid==expectedSelected)
@@ -116,15 +135,12 @@ final class NavigationTypographyEvidence implements ViewTreeObserver.OnPreDrawLi
         rows.put(new JSONObject().put("buttonIndex",i).put("label",label).put("selected",b.isSelected())
           .put("width",b.getWidth()).put("height",b.getHeight()).put("layoutHeight",layout.getHeight())
           .put("layoutWidth",layout.getWidth()).put("compoundPaddingLeft",left).put("compoundPaddingRight",b.getCompoundPaddingRight())
-          .put("contentWidth",right-left).put("scrollX",b.getScrollX()).put("primaryHorizontal",primary)
-          .put("lineLeft",layout.getLineLeft(0)).put("lineRight",layout.getLineRight(0)).put("paragraphDirection",layout.getParagraphDirection(0))
-          .put("textDrawX",drawX).put("lineLeftInButton",lineLeft).put("lineRightInButton",lineRight)
-          .put("glyphLeft",glyphLeft).put("glyphRight",glyphRight)
+          .put("contentWidth",right-left).put("scrollX",b.getScrollX())
+          .put("typographyVersion",2).put("lineCount",lineCount).put("maximumLines",maximumLines).put("lines",lines)
           .put("standardLineHeight",b.getLineHeight()).put("layoutClass",layout.getClass().getName())
           .put("compoundPaddingTop",top).put("compoundPaddingBottom",b.getCompoundPaddingBottom())
           .put("contentHeight",bottom-top).put("baseline",b.getBaseline()).put("scrollY",b.getScrollY())
-          .put("glyphBounds",new JSONArray(new int[]{glyph.left,glyph.top,glyph.right,glyph.bottom}))
-          .put("glyphTop",glyphTop).put("glyphBottom",glyphBottom).put("textSizePx",b.getTextSize())
+          .put("textSizePx",b.getTextSize())
           .put("includeFontPadding",b.getIncludeFontPadding()).put("fallbackLineSpacing",Build.VERSION.SDK_INT>=28&&b.isFallbackLineSpacing())
           .put("icon",new JSONObject().put("name",icon==null?JSONObject.NULL:icon.name)
             .put("solid",icon==null?JSONObject.NULL:icon.solid).put("color",icon==null?JSONObject.NULL:icon.color)

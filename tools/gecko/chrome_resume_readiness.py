@@ -11,7 +11,7 @@ import re
 import time
 
 import chrome_header_readiness as gate
-from chrome_first_tap_readiness import SNAPSHOT_FIELDS, TAG, TARGET, _focus, _rect
+from chrome_first_tap_readiness import ADDRESS_SNAPSHOT_FIELDS, SNAPSHOT_FIELDS, TAG, TARGET, _focus, _rect
 
 ROOT = Path(__file__).resolve().parents[2]
 ADAPTER = 'tools/gecko/chrome_resume_readiness.py'
@@ -34,8 +34,12 @@ def _sources(root, source, identity, deadline):
 
 
 def _original(first, *, source, identity, nonce, before, binding, additional, compiled):
+    address = isinstance(first, dict) and first.get('target') == 'address'
+    scope = 'chrome-initial-address-tap-only' if address else 'chrome-initial-compact-tap-only'
+    fields = ADDRESS_SNAPSHOT_FIELDS if address else SNAPSHOT_FIELDS
+    gate.need(isinstance(first, dict) and ('target' not in first or address), 'identity-changed')
     gate.need(isinstance(first, dict) and first.get('status') == 'passed' and first.get('reason') == 'clear'
-              and first.get('scope') == 'chrome-initial-compact-tap-only' and first.get('tapInvocations') == 1
+              and first.get('scope') == scope and first.get('tapInvocations') == 1
               and first.get('diagnosticOnly') is True and first.get('releaseAcceptance') is False
               and first.get('sourceCommit') == source and first.get('sourceTree') == identity['sourceTree']
               and first.get('runNonce') == nonce, 'identity-changed')
@@ -52,7 +56,8 @@ def _original(first, *, source, identity, nonce, before, binding, additional, co
     samples = first.get('nativeSnapshots')
     gate.need(isinstance(samples, list) and 2 <= len(samples) <= 4, 'invalid-observation')
     initial = samples[-1]
-    gate.need(isinstance(initial, dict) and set(initial) == SNAPSHOT_FIELDS
+    gate.need(isinstance(initial, dict) and set(initial) == fields
+              and type(initial.get('schema')) is int and initial['schema'] == (2 if address else 1)
               and initial.get('sourceCommit') == source and initial.get('sourceTree') == identity['sourceTree']
               and initial.get('apkSha256') == identity['apkSha256'] and initial.get('runNonce') == nonce
               and type(initial.get('sequence')) is int and 1 < initial['sequence'] < 128
@@ -60,6 +65,8 @@ def _original(first, *, source, identity, nonce, before, binding, additional, co
               and type(initial.get('activityRef')) is int and initial['activityRef'] > 0
               and initial.get('windowFocus') is True and initial.get('decorFocus') is True,
               'identity-changed')
+    if address:
+        gate.need(initial.get('target') == 'address' and initial.get('expanded') is True, 'identity-changed')
     windows = first.get('windowObservations')
     gate.need(isinstance(windows, list) and windows and windows[-1].get('parserState') == 'CLEAR', 'invalid-observation')
     focused = windows[-1].get('currentFocus')

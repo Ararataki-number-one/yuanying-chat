@@ -66,7 +66,7 @@ def run_case(adb, adb_bytes, dump, event, focus, visible, quick_sheet, shots, pa
     tap('more',control['tap'],control['touch'],'more')
     action=event(command,'action')
     assert action['action']=='more' and action['actions']==before['actions']+1 and action['page']==0
-    visible('会话选项');adb('shell','input','keyevent','KEYCODE_BACK');visible('会话选项',False)
+    visible('浏览器菜单');adb('shell','input','keyevent','KEYCODE_BACK');visible('浏览器菜单',False)
     command+='-performance'
     adb('shell','am','start','-W','--activity-single-top','-n',component,
         '--es','compactAction','performance','--es','compactCommand',command)

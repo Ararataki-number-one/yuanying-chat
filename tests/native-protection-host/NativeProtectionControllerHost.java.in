@@ -152,6 +152,11 @@ final class NativeProtectionControllerHost {
     boolean closeExitIpPage(){if(exitIpPage!=null)throw new AssertionError("Auxiliary IP page is outside this protection fixture");return false;}
     __PROTECTION_RESTORE__
     void acknowledgeIdentity(){metadata.policyAcknowledged=privacyReady&&metadata.rfpAcknowledged;}
+    // Count only SDK startup allocation requests. This boundary never grants
+    // route/privacy/native readiness or creates a surface; the exact startup
+    // helpers execute separately in gecko-startup-window-host.
+    int startupWindowRequests;
+    boolean prepareStartupWindow(){startupWindowRequests++;return true;}
     void open(){opens++;ready=true;}
     int loadCount(){return current==null?0:current.loads.size();}int restoreCount(){return current==null?0:current.restored.size();}String lastLoad(){return current.loads.get(current.loads.size()-1);}
     boolean reopenCurrent(){return true;}static String stateUrl(GeckoSession.SessionState state){return state.url;}

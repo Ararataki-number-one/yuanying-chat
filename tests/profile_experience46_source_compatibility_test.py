@@ -2,6 +2,7 @@
 
 These checks preserve historical oracle inputs; they are not runtime acceptance.
 """
+from historical_source_inputs import historical_bytes
 import ast,hashlib,json,os
 from pathlib import Path
 import subprocess,tempfile,unittest
@@ -17,7 +18,7 @@ class Experience46SourceCompatibility(unittest.TestCase):
   old45=json.loads((ROOT/'tests/fixtures/reading45-restoration-source-deltas.json').read_bytes())
   for path,row in manifest['files'].items():
    with self.subTest(path=path):
-    previous=subprocess.check_output(['git','show',compat.BASE_COMMIT+':'+path],cwd=ROOT);current=(ROOT/path).read_bytes()
+    previous=subprocess.check_output(['git','show',compat.BASE_COMMIT+':'+path],cwd=ROOT);current=historical_bytes(path)
     if path in ('app/src/main/java/local/pocketchat/ChatSession.java','app/src/main/java/local/pocketchat/GeckoWebView.java','tests/gecko/GeckoIntegrationTestActivity.java'):
      from dual_browser_source_compatibility import source_input
      current=source_input(current,path)
@@ -40,7 +41,7 @@ class Experience46SourceCompatibility(unittest.TestCase):
  def test_missing_duplicate_changed_relocated_and_unknown_whole_bytes_rejected(self):
   rejected=0
   for path,row in compat.manifest46()['files'].items():
-   current=(ROOT/path).read_bytes()
+   current=historical_bytes(path)
    if path in ('app/src/main/java/local/pocketchat/ChatSession.java','app/src/main/java/local/pocketchat/GeckoWebView.java','tests/gecko/GeckoIntegrationTestActivity.java'):
     from dual_browser_source_compatibility import source_input
     current=source_input(current,path)
@@ -60,7 +61,7 @@ class Experience46SourceCompatibility(unittest.TestCase):
     rejected+=1
   self.assertGreaterEqual(rejected,200);type(self).rejected=rejected
  def test_altered_fixture_path_or_ancestor_cannot_be_whitelisted(self):
-  relative='app/src/main/java/local/pocketchat/BrowserReading.java';raw=(ROOT/relative).read_bytes()
+  relative='app/src/main/java/local/pocketchat/BrowserReading.java';raw=historical_bytes(relative)
   with tempfile.TemporaryDirectory(prefix='experience46-fixture-negative-') as directory:
    fake=Path(directory)/'modified.json';fake.write_bytes(compat.DELTA_PATH.read_bytes()+b' ')
    with patch.object(compat,'DELTA_PATH',fake),self.assertRaises(ValueError):compat.experience46_source_bytes(raw,relative)
@@ -70,10 +71,10 @@ class Experience46SourceCompatibility(unittest.TestCase):
  def test_original45_fixture_goldens_and_behavior_hosts_remain(self):
   self.assertEqual(sha((ROOT/'tests/fixtures/reading45-restoration-source-deltas.json').read_bytes()),'8d9fd8380a5d6337860989ad8ce95b0529773cdfa433ef090b229a8beb423f3c')
   for relative in ['tests/profile_reading_restore_precision45_test.py','tests/profile_reading_zoom_trace_test.py']:
-   current=(ROOT/relative).read_bytes()
+   current=historical_bytes(relative)
    if relative=='tests/profile_reading_zoom_trace_test.py':current=compat.experience46_source_bytes(current,relative)
    self.assertEqual(current,subprocess.check_output(['git','show',compat.BASE_COMMIT+':'+relative],cwd=ROOT))
-  relative='tests/profile_reading_fit_completion_test.py';current=(ROOT/relative).read_bytes();previous=subprocess.check_output(['git','show',compat.BASE_COMMIT+':'+relative],cwd=ROOT)
+  relative='tests/profile_reading_fit_completion_test.py';current=historical_bytes(relative);previous=subprocess.check_output(['git','show',compat.BASE_COMMIT+':'+relative],cwd=ROOT)
   self.assertEqual(compat.experience46_source_bytes(current,relative),previous)
   for name in ['execute','test_measured_completion_and_failure_controls']:
    def body(raw):

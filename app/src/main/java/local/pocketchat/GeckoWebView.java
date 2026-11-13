@@ -33,6 +33,13 @@ class GeckoWebView extends FrameLayout {
     return value;
   }
   void setHost(android.app.Activity activity){Context next=activity==null?owner.context:activity;if(displayContext.getBaseContext()!=next)blockedPopups.invalidate();if(activity==null)closeExitIpPage();displayContext.setBaseContext(next);}
+  void releaseHost(android.app.Activity activity){
+    if(activity==null||displayContext.getBaseContext()!=activity)return;
+    // Relinquish this host before dismissal/listener callbacks can bind its successor.
+    displayContext.setBaseContext(owner.context);
+    blockedPopups.invalidate();
+    if(displayContext.getBaseContext()==owner.context)closeExitIpPage();
+  }
   @Override public void onWindowFocusChanged(boolean focused){super.onWindowFocusChanged(focused);blockedPopups.focusChanged(focused);}
   OnTouchListener touches;
   @Override public void setOnTouchListener(OnTouchListener listener){touches=listener;}
@@ -45,14 +52,15 @@ class GeckoWebView extends FrameLayout {
     if(chrome!=null){if(readingOwnerVisible())chrome.webTouch(event);else chrome.cancelWebGesture();}return handled;
   }
   void destroy(){
-    if(destroyed)return;destroyed=true;owner.cpu.retire(runtime);owner.tls.retire(runtime);blockedPopups.close();ipRoutes.close();if(ipObservedNetwork!=null)ipObservedNetwork.removeRouteListener(ipRouteSignal);owner.prefs.unregisterOnSharedPreferenceChangeListener(ipPreferences);owner.handler.removeCallbacks(ipRouteCheck);retireTimeZones();requestHeadersInstalled=false;retireRequestHeaderPolicy();generalRestore=null;ChromiumRouteLease.removeListener(routeLeaseChanged);releaseGeneralRoutes();generalSessions.clear();deferredGeneralLoads.clear();closeExitIpPage();if(contentPermissions!=null)contentPermissions.close();
+    if(destroyed)return;destroyed=true;closeStartupWindow();owner.cpu.retire(runtime);owner.tls.retire(runtime);blockedPopups.close();ipRoutes.close();if(ipObservedNetwork!=null)ipObservedNetwork.removeRouteListener(ipRouteSignal);owner.prefs.unregisterOnSharedPreferenceChangeListener(ipPreferences);owner.handler.removeCallbacks(ipRouteCheck);retireTimeZones();requestHeadersInstalled=false;retireRequestHeaderPolicy();generalRestore=null;ChromiumRouteLease.removeListener(routeLeaseChanged);releaseGeneralRoutes();generalSessions.clear();deferredGeneralLoads.clear();closeExitIpPage();if(contentPermissions!=null)contentPermissions.close();
     cancelZoom();cancelProtectionTasks();nativeProtection.closed();protectionRestore=null;owner.handler.removeCallbacks(recovery);owner.handler.removeCallbacks(checkpoint);saveCheckpoint();
     callbacks.clear();cookieCallbacks.clear();appearanceSync.clear();
     appearanceLoads.clear();appearanceConnections.clear();appearanceDocuments.clear();staleAppearanceConnections.clear();
     if(surface!=null&&surface.getSession()!=null)surface.releaseSession();
     for(GeckoSession session:new ArrayList<>(locations.keySet()))if(session.isOpen())session.close();
     if(primary!=null&&primary.isOpen())primary.close();
-    ports.clear();popups.clear();locations.clear();backStates.clear();pageScales.clear();measuredCompositors.clear();viewportWidths.clear();loadingTargets.clear();pendingLoads.clear();painted.clear();usable.clear();crashed.clear();states.clear();stateDraftRevisions.clear();
+    if(textureSurface!=null){textureSurface.close();textureSurface=null;}
+    ports.clear();popups.clear();locations.clear();backStates.clear();forwardStates.clear();pageScales.clear();measuredCompositors.clear();viewportWidths.clear();loadingTargets.clear();pendingLoads.clear();painted.clear();usable.clear();crashed.clear();states.clear();stateDraftRevisions.clear();
     routePort=null;ready=false;
     uploadWorker.execute(()->{for(GeckoUploadFiles.Selection files:uploadFiles)files.delete();uploadFiles.clear();});uploadWorker.shutdown();
   }
@@ -60,7 +68,11 @@ class GeckoWebView extends FrameLayout {
   static final String VERSION="GeckoView 157.0.1 · 输入同步修正";
   final ChatSession owner;
   GeckoView surface;GeckoRuntime runtime;WebExtension extension;GeckoSession primary,current;
+  GeckoTextureSurface textureSurface;
+  private GeckoSession startupWindow;
   boolean addonDisabled;long addonStateSerial;
+  // Startup observations only; neither counter grants page or network readiness.
+  long routeDelegateInstalls,routeConnectAttempts;
   GeckoCpuController.Boot cpuBoot;boolean cpuStartupRequested;GeckoTlsController.Boot tlsBoot;boolean tlsStartupRequested;
   interface ExitIpPageListener{void changed(String message);void closed();}
   ExitIpPageSession exitIpPage;int exitIpTopInset;
@@ -139,7 +151,7 @@ class GeckoWebView extends FrameLayout {
   }
   final Map<GeckoSession,WebExtension.Port> ports=new IdentityHashMap<>();
   final Map<GeckoSession,String> locations=new IdentityHashMap<>();
-  final Map<GeckoSession,Boolean> backStates=new IdentityHashMap<>();
+  final Map<GeckoSession,Boolean> backStates=new IdentityHashMap<>(),forwardStates=new IdentityHashMap<>();
   final Map<GeckoSession,Float> pageScales=new IdentityHashMap<>(),viewportWidths=new IdentityHashMap<>();
   // Native scale belongs to the open compositor, not a DOM document. A new
   // document at the same scale need not produce another scroll notification.
@@ -178,7 +190,7 @@ class GeckoWebView extends FrameLayout {
   ResponseDownload responseDownload;
   WebViewClient client;WebChromeClient chrome;DownloadListener download;
   final boolean enabled=true;
-  boolean ready,failed,desktop,canBack,destroyed,privacyReady,fingerprintingProtected;int protectionLevel=-1,configuredProtection=-1,requestedProtection=-1;long identityPolicyRevision,protectionRequest;String url="",queued="";float scale=1;
+  boolean ready,failed,desktop,canBack,canForward,destroyed,privacyReady,fingerprintingProtected;int protectionLevel=-1,configuredProtection=-1,requestedProtection=-1;long identityPolicyRevision,protectionRequest;String url="",queued="";float scale=1;
   final NativeProtectionState nativeProtection=new NativeProtectionState();
   Runnable protectionTimeout,protectionRetry;
   ProtectionRestore protectionRestore;
@@ -476,13 +488,21 @@ class GeckoWebView extends FrameLayout {
   }
   boolean hasTimeZoneIntent(GeckoSession session){return timeZoneIntents.containsKey(session)||session==current&&!queued.isEmpty();}
   void clearTimeZoneIntent(GeckoSession session,Object intent){if(timeZoneIntents.get(session)==intent)timeZoneIntents.remove(session);}
+  private boolean navigationCurrent(GeckoSession session,long navigation){
+    return navigation>=0&&!destroyed&&!owner.deleted&&current==session&&owner.navigationEpoch==navigation;
+  }
   void timezoneConfigurationChanged(){
     blockedPopups.invalidate();
     ipRouteNeedsReload=false;observedIpRoute="";ipRouteObserved=false;
     if(destroyed||current==null)return;String target=getUrl();if(!allowedUrl(target))target=allowedUrl(queued)?queued:owner.resumeUrl();GeckoSession.SessionState saved=states.get(current);long revision=stateDraftRevisions.getOrDefault(current,-1L);
     closeExitIpPage();retireTimeZones();for(GeckoSession popup:new ArrayList<>(popups))closePopup(popup);
-    if(current==null||!allowedUrl(target))return;owner.beginNavigation(target,"正在应用当前环境时区…");queued=target;
+    if(current==null||!allowedUrl(target))return;
+    GeckoSession session=current;
+    long navigation=owner.beginNavigation(target,"正在应用当前环境时区…");
+    if(!navigationCurrent(session,navigation))return;
+    queued=target;
     if(!reopenCurrent())return;
+    if(destroyed||owner.deleted||owner.navigationEpoch!=navigation)return;
     if(saved!=null&&saved.size()>0&&target.equals(stateUrl(saved))){startupState=saved;startupDraftRevision=revision;}loadUrl(target);
   }
   static boolean active(Object web){return web instanceof GeckoWebView&&((GeckoWebView)web).enabled;}
@@ -536,7 +556,21 @@ class GeckoWebView extends FrameLayout {
   ResourcePressureController.MemorySample resourceMemory(){return owner.resources.sample();}
   boolean resourcePage(String target){return MainActivity.chatUrl(target);}
   boolean resourceSamePage(String a,String b){return WebReplyObserver.same(a,b);}
-  boolean retryResourceStart(){if(!resourceDeferred||destroyed||runtime!=null)return false;String target=queued.isEmpty()?owner.navigationTarget:queued;if(!target.isEmpty()&&allowedUrl(target)&&owner.guard.allowed())queued=target;initialize();if(!resourceDeferred&&!failed){if(!target.isEmpty())owner.beginNavigation(target,"正在打开当前环境");else owner.setStatus("正在打开当前环境");owner.wakePolling();}return true;}
+  boolean retryResourceStart(){
+    if(!resourceDeferred||destroyed||runtime!=null)return false;
+    String target=queued.isEmpty()?owner.navigationTarget:queued;
+    if(!target.isEmpty()&&allowedUrl(target)&&owner.guard.allowed())queued=target;
+    long navigation=owner.navigationEpoch;
+    initialize();
+    if(destroyed||owner.deleted||owner.navigationEpoch!=navigation)return true;
+    if(!resourceDeferred&&!failed){
+      GeckoSession session=current;
+      if(!target.isEmpty())navigation=owner.beginNavigation(target,"正在打开当前环境");
+      else owner.setStatus("正在打开当前环境");
+      if(navigationCurrent(session,navigation))owner.wakePolling();
+    }
+    return true;
+  }
   boolean hasOpenPopup(){return !popups.isEmpty();}
   boolean builtinAddonCurrent(GeckoRuntime expected,WebExtension value,boolean disabled){
     return !destroyed&&runtime==expected&&expected!=null&&value!=null&&value.isBuiltIn&&"browser@pocketchat.local".equals(value.id)&&value.metaData!=null&&value.metaData.enabled!=disabled;
@@ -552,8 +586,8 @@ class GeckoWebView extends FrameLayout {
   void applyAddonState(GeckoRuntime expected,WebExtension value,boolean disabled,long serial){
     if(addonStateSerial!=serial||!builtinAddonCurrent(expected,value,disabled))return;
     extension=value;addonDisabled=disabled;
-    if(!disabled){extension.setMessageDelegate(routeMessages,"pocketroute");maybeOpen();return;}
-    closeExitIpPage();WebExtension.Port previous=routePort;routePort=null;
+    if(!disabled){extension.setMessageDelegate(routeMessages,"pocketroute");routeDelegateInstalls++;maybeOpen();return;}
+    closeStartupWindow();closeExitIpPage();WebExtension.Port previous=routePort;routePort=null;
     requestHeadersInstalled=false;routePrepared=false;privacyReady=false;fingerprintingProtected=false;
     cancelProtectionTasks();nativeProtection.disconnected();protectionRequest=nativeProtection.token();metadata.policyAcknowledged=false;metadata.rfpAcknowledged=false;
     retireTimeZones();retireRequestHeaderPolicy();releaseGeneralRoutes();deferredGeneralLoads.clear();generalRestore=null;protectionRestore=null;startupState=null;
@@ -578,6 +612,7 @@ class GeckoWebView extends FrameLayout {
   }
   private final WebExtension.MessageDelegate routeMessages=new WebExtension.MessageDelegate(){
     @Override public void onConnect(WebExtension.Port port){
+      routeConnectAttempts++;
       if(destroyed||port.sender.environmentType!=WebExtension.MessageSender.ENV_TYPE_EXTENSION)return;
       if(addonDisabled){port.disconnect();return;}
       WebExtension.Port previous=routePort;
@@ -695,19 +730,63 @@ class GeckoWebView extends FrameLayout {
     if(!enabled||destroyed)return;
     // Choose the official transform-capable backend once. Changing a live SDK
     // surface backend can leave its surface callback detached (157.0 SDK).
-    if(surface==null){surface=new GeckoView(displayContext);surface.setViewBackend(GeckoView.BACKEND_TEXTURE_VIEW);surface.coverUntilFirstPaint(ReferenceUi.CHAT_BG);addView(surface,new FrameLayout.LayoutParams(-1,-1));}
+    if(surface==null){surface=new GeckoView(displayContext){
+      @Override public void requestNewSurface(){GeckoTextureSurface.requestNewSurface(this);super.requestNewSurface();}
+    };surface.setViewBackend(GeckoView.BACKEND_TEXTURE_VIEW);surface.coverUntilFirstPaint(ReferenceUi.CHAT_BG);addView(surface,new FrameLayout.LayoutParams(-1,-1));}
+    textureSurface=GeckoTextureSurface.install(surface,textureSurface);
     primary=newSession();current=primary;primary.open(runtime);surface.setSession(primary);configure(desktop,owner.privacy.level());ready=true;
     if(!queued.isEmpty()){String target=queued;queued="";loadUrl(target);}
+    closeStartupWindow();
   }
   void identityConfigurationReady(){identityPrepared=true;maybeOpen();}
-  private void maybeOpen(){if(!destroyed&&!failed&&!addonDisabled&&!ready&&extension!=null&&checkpointReady&&identityPrepared&&routePrepared&&requestHeadersInstalled&&privacyReady&&protectionAllowsNetwork())open();}
+  private void maybeOpen(){
+    if(enabled&&!destroyed&&!owner.deleted&&!failed&&!addonDisabled&&!ready&&extension!=null&&runtime!=null){
+      // Gecko 157 defers an already installed background until its first
+      // window's extensions-late-startup event. Its native bridge cannot be
+      // a prerequisite for creating that otherwise empty window.
+      if(!routePrepared&&!prepareStartupWindow())return;
+      if(checkpointReady&&identityPrepared&&routePrepared&&requestHeadersInstalled&&privacyReady&&protectionAllowsNetwork()){
+        try{open();}catch(RuntimeException unavailable){failure("浏览器窗口未能启动，请重新打开当前环境重试");}
+      }
+    }
+  }
+  private boolean prepareStartupWindow(){
+    if(startupWindow!=null)return startupWindow.isOpen();
+    final GeckoRuntime expected=runtime;
+    final GeckoSession window;
+    try{window=new GeckoSession();}catch(RuntimeException unavailable){if(!destroyed&&!owner.deleted&&!failed&&!addonDisabled&&runtime==expected)failure("浏览器启动窗口未能创建，请重新打开当前环境重试");return false;}
+    startupWindow=window;
+    try{
+      // This SDK initialization window has no display, page bridge or URL load.
+      // The runtime's closed bootstrap proxy and every real-page gate stay intact.
+      window.setNavigationDelegate(new GeckoSession.NavigationDelegate(){
+        @Override public GeckoResult<AllowOrDeny> onLoadRequest(GeckoSession session,LoadRequest request){return GeckoResult.fromValue(AllowOrDeny.DENY);}
+        @Override public GeckoResult<GeckoSession> onNewSession(GeckoSession session,String target){return GeckoResult.fromValue(null);}
+      });
+      window.open(expected);
+      if(destroyed||owner.deleted||failed||addonDisabled||runtime!=expected||startupWindow!=window){if(startupWindow==window)startupWindow=null;closeStartupWindow(window);return false;}
+      return true;
+    }catch(RuntimeException unavailable){
+      if(startupWindow==window&&!destroyed&&!owner.deleted&&!failed&&!addonDisabled&&runtime==expected)failure("浏览器启动窗口未能初始化，请重新打开当前环境重试");
+      if(startupWindow==window)startupWindow=null;
+      closeStartupWindow(window);
+      return false;
+    }
+  }
+  private void closeStartupWindow(){
+    GeckoSession window=startupWindow;startupWindow=null;
+    closeStartupWindow(window);
+  }
+  private void closeStartupWindow(GeckoSession window){
+    if(window!=null&&window.isOpen())try{window.close();}catch(RuntimeException alreadyClosed){}
+  }
   GeckoSession newSession(){
     // Isolation comes from existing Android processes and distinct profile directories.
     // Default cookie storage remains usable by the official cookie API in this runtime.
     GeckoSession session=new GeckoSession(new GeckoSessionSettings.Builder()
       .userAgentMode(desktop?GeckoSessionSettings.USER_AGENT_MODE_DESKTOP:GeckoSessionSettings.USER_AGENT_MODE_MOBILE)
       .viewportMode(GeckoSessionSettings.VIEWPORT_MODE_MOBILE).build());
-    locations.put(session,"");backStates.put(session,false);
+    locations.put(session,"");backStates.put(session,false);forwardStates.put(session,false);
     session.setCompositorScrollDelegate(new GeckoSession.CompositorScrollDelegate(){
       @Override public void onScrollChanged(GeckoSession source,GeckoSession.ScrollPositionUpdate update){
         if(destroyed||!locations.containsKey(source)||!Float.isFinite(update.zoom)||update.zoom<=0)return;
@@ -731,6 +810,10 @@ class GeckoWebView extends FrameLayout {
         return GeckoResult.fromValue(allowed?AllowOrDeny.ALLOW:AllowOrDeny.DENY);
       }
       @Override public void onLocationChange(GeckoSession s,String target,List<GeckoSession.PermissionDelegate.ContentPermission> permissions,Boolean gesture){
+        // An explicit browser command owns this surface while its bounded
+        // snapshot is pending. Late events from the stopped load cannot save
+        // an older URL over that command's destination.
+        if(s==current&&!owner.navigationDispatched)return;
         if(destroyed||addonDisabled||!locations.containsKey(s)||ipNavigationFailed(s)&&!"about:blank".equals(target))return;if(s==current)blockedPopups.invalidate();boolean committed=pendingLoads.remove(s);locations.put(s,target);
         if(committed){painted.remove(s);usable.remove(s);pageScales.remove(s);viewportWidths.remove(s);loadingTargets.put(s,target);appearanceCommitted(s);if(!"about:blank".equals(target))revalidateTimeZone(s);}
         else{WebExtension.Port page=ports.get(s);if(page!=null)appearance(page);}
@@ -738,7 +821,8 @@ class GeckoWebView extends FrameLayout {
         if(s!=current)return;url=target;owner.rememberBrowserLocation(target);
         if(committed&&!"about:blank".equals(target)){cancelZoom();if(client!=null)client.onPageStarted(null,target,null);}if(MainActivity.chatUrl(target)&&!LoginPagePolicy.login(target))owner.prefs.edit().putString("url",target).apply();
       }
-      @Override public void onCanGoBack(GeckoSession s,boolean value){if(destroyed||!locations.containsKey(s))return;backStates.put(s,value);if(s==current)canBack=value;}
+      @Override public void onCanGoBack(GeckoSession s,boolean value){if(destroyed||!locations.containsKey(s))return;backStates.put(s,value);if(s==current&&canBack!=value){canBack=value;owner.changed();}}
+      @Override public void onCanGoForward(GeckoSession s,boolean value){if(destroyed||!locations.containsKey(s))return;forwardStates.put(s,value);if(s==current&&canForward!=value){canForward=value;owner.changed();}}
       @Override public GeckoResult<GeckoSession> onNewSession(GeckoSession s,String target){
         if(destroyed||failed||addonDisabled||crashed.contains(s)||s!=current||popups.size()>=8||!protectionAllowsNetwork()||!identityRequestAllowed(target)||!owner.guard.allowed()||!(target==null||target.isEmpty()||"about:blank".equals(target)||allowedUrl(target)))return GeckoResult.fromValue(null);
         if(!owner.timeZone.popupAllowed()){blockedPopups.offer(s,target);return GeckoResult.fromValue(null);}
@@ -749,15 +833,16 @@ class GeckoWebView extends FrameLayout {
         return GeckoResult.fromValue(popup);
       }
       @Override public GeckoResult<String> onLoadError(GeckoSession s,String target,WebRequestError error){
+        if(s==current&&!owner.navigationDispatched)return GeckoResult.fromValue(null);
         return nativeNavigationFailure(s,target,"网页连接失败，请检查当前环境网络或重新加载");
       }
     });
     session.setProgressDelegate(new GeckoSession.ProgressDelegate(){
       // A download starts a network load without replacing the current document.
       // Only an authoritative location commit may invalidate its state or bridge.
-      @Override public void onPageStart(GeckoSession s,String target){if(destroyed||addonDisabled||!locations.containsKey(s)||ipNavigationFailed(s))return;appearanceLoads.put(s,++appearanceLoadSerial);loadingTargets.put(s,target);pendingLoads.add(s);}
+      @Override public void onPageStart(GeckoSession s,String target){if(s==current&&!owner.navigationDispatched)return;if(destroyed||addonDisabled||!locations.containsKey(s)||ipNavigationFailed(s))return;appearanceLoads.put(s,++appearanceLoadSerial);loadingTargets.put(s,target);pendingLoads.add(s);}
 
-      @Override public void onPageStop(GeckoSession s,boolean success){String target=loadingTargets.get(s);boolean uncommitted=pendingLoads.remove(s);if(uncommitted&&usable.contains(s)){loadingTargets.put(s,locations.get(s));return;}if(destroyed||addonDisabled||s!=current||target==null||"about:blank".equals(target)||crashed.contains(s)||ipNavigationFailed(s))return;if(success&&client!=null){if(MainActivity.chatUrl(url))readCookies(MainActivity.ORIGIN,value->{if(value!=null)cookieStamp=NativeNetwork.hash(value);});pageVisible(s);client.onPageFinished(null,url);}else if(!success&&owner.pageError.isEmpty()){owner.pageError="网页暂时未能加载，请重新加载或检查网络";owner.finishNavigation(owner.pageError,false);}}
+      @Override public void onPageStop(GeckoSession s,boolean success){if(s==current&&!owner.navigationDispatched)return;String target=loadingTargets.get(s);boolean uncommitted=pendingLoads.remove(s);if(uncommitted&&usable.contains(s)){loadingTargets.put(s,locations.get(s));return;}if(destroyed||addonDisabled||s!=current||target==null||"about:blank".equals(target)||crashed.contains(s)||ipNavigationFailed(s))return;if(success&&client!=null){if(MainActivity.chatUrl(url))readCookies(MainActivity.ORIGIN,value->{if(value!=null)cookieStamp=NativeNetwork.hash(value);});pageVisible(s);client.onPageFinished(null,url);}else if(!success&&owner.pageError.isEmpty()){owner.pageError="网页暂时未能加载，请重新加载或检查网络";owner.finishNavigation(owner.pageError,false);}}
       @Override public void onSessionStateChange(GeckoSession s,GeckoSession.SessionState state){if(destroyed||!locations.containsKey(s)||state.size()==0)return;states.put(s,new GeckoSession.SessionState(state));stateDraftRevisions.put(s,LocalDraftPolicy.revision(owner.context));if(s==primary){owner.handler.removeCallbacks(checkpoint);owner.handler.postDelayed(checkpoint,300);}}
     });
     session.setContentDelegate(new GeckoSession.ContentDelegate(){
@@ -912,7 +997,7 @@ class GeckoWebView extends FrameLayout {
     try{if(!completed.await(7,TimeUnit.SECONDS)||result[0]==null)throw new IOException("当前环境的登录信息暂不可用，请重试下载");return result[0];}
     catch(InterruptedException error){Thread.currentThread().interrupt();throw new IOException("下载已暂停");}
   }
-  private void failure(String message){failed=true;owner.pageError=message;owner.finishNavigation(message,false);}
+  private void failure(String message){failed=true;closeStartupWindow();owner.pageError=message;owner.finishNavigation(message,false);}
   boolean hasVisibleDocument(){return enabled&&current!=null&&current.isOpen()&&!failed&&!crashed.contains(current)&&usable.contains(current);}
   boolean canChooseFiles(){return hasVisibleDocument()&&!pendingLoads.contains(current)&&(!owner.navigating||owner.navigationDispatched&&owner.targetMatches(getUrl()));}
   private void uploadPreparationFinished(String previousStatus){owner.resourceFileWork(false,false);if(!destroyed&&owner.resourceFilePreparations==0&&owner.status.equals("准备附件…"))owner.setStatus(previousStatus.equals("准备附件…")?"":previousStatus);}
@@ -922,13 +1007,20 @@ class GeckoWebView extends FrameLayout {
     if(client!=null)client.onPageCommitVisible(null,url);
   }
   private void contentStopped(GeckoSession session,String message){
+    long stoppedNavigation=owner.navigationEpoch;
     if(session==current)closeExitIpPage();
     if(destroyed||!locations.containsKey(session))return;
     retireTimeZone(session);
     crashed.add(session);pendingLoads.remove(session);painted.remove(session);usable.remove(session);WebExtension.Port port=ports.remove(session);if(port!=null){callbacks.cancel(port);retireAppearance(port);}
     forgetGeneralRoute(session);
-    if(session==current){cancelZoom();failed=true;owner.webObserver.suspendUnconfirmed("网页进程已关闭，原发送结果需要核对");
-      if(owner.uiVisible&&owner.guard.allowed()&&canRecoverAutomatically()){owner.manualAttention=false;owner.beginNavigation(url,"正在恢复当前网页…");owner.handler.removeCallbacks(recovery);owner.handler.postDelayed(recovery,250);}
+    if(navigationCurrent(session,stoppedNavigation)){cancelZoom();failed=true;owner.webObserver.suspendUnconfirmed("网页进程已关闭，原发送结果需要核对");
+      if(!navigationCurrent(session,stoppedNavigation))return;
+      if(owner.uiVisible&&owner.guard.allowed()&&canRecoverAutomatically()){
+        owner.manualAttention=false;
+        long navigation=owner.beginNavigation(url,"正在恢复当前网页…");
+        if(!navigationCurrent(session,navigation))return;
+        owner.handler.removeCallbacks(recovery);owner.handler.postDelayed(recovery,250);
+      }
       else if(owner.uiVisible)failure(message);
     }
   }
@@ -942,15 +1034,21 @@ class GeckoWebView extends FrameLayout {
     if(!allowedUrl(target))target=owner.resumeUrl();
     if(!identityRequestAllowed(target))return false;
     GeckoSession.SessionState state=states.get(current);
+    long previousNavigation=owner.navigationEpoch;
     if(!reopenCurrent())return false;
+    if(destroyed||owner.deleted||owner.navigationEpoch!=previousNavigation)return true;
+    GeckoSession session=current;
     owner.pageMemory.restorePending=true;
-    owner.pageError="";owner.manualAttention=false;owner.beginNavigation(target,"正在恢复当前网页…");
-    if(state!=null&&state.size()>0)restoreCheckpoint(current,state,target,stateDraftRevisions.getOrDefault(current,-1L));else loadSessionUri(current,target);
+    owner.pageError="";owner.manualAttention=false;
+    long navigation=owner.beginNavigation(target,"正在恢复当前网页…");
+    if(!navigationCurrent(session,navigation))return true;
+    if(state!=null&&state.size()>0)restoreCheckpoint(session,state,target,stateDraftRevisions.getOrDefault(session,-1L));else loadSessionUri(session,target);
     return true;
   }
   private boolean reopenCurrent(){try{
     if(autoIpMode())return reopenIpCurrent();
     retireTimeZone(current);
+    canBack=false;canForward=false;backStates.put(current,false);forwardStates.put(current,false);
     measuredCompositors.remove(current);pageScales.remove(current);
     if(surface.getSession()!=null)surface.releaseSession();if(current.isOpen())current.close();current.open(runtime);surface.setSession(current);
     current.setActive(!owner.browserPaused);crashed.remove(current);failed=false;configure(desktop,owner.privacy.level());return true;
@@ -964,30 +1062,57 @@ class GeckoWebView extends FrameLayout {
       int popup=popups.indexOf(old);if(popup>=0)popups.set(popup,replacement);
       GeckoSession.SessionState saved=states.remove(old);Long revision=stateDraftRevisions.remove(old);if(saved!=null)states.put(replacement,saved);if(revision!=null)stateDraftRevisions.put(replacement,revision);
       forgetGeneralRoute(old);WebExtension.Port page=ports.remove(old);if(page!=null){callbacks.cancel(page);retireAppearance(page);try{page.disconnect();}catch(RuntimeException disconnected){}}
-      appearanceLoads.remove(old);locations.remove(old);backStates.remove(old);pageScales.remove(old);measuredCompositors.remove(old);viewportWidths.remove(old);loadingTargets.remove(old);pendingLoads.remove(old);painted.remove(old);usable.remove(old);crashed.remove(old);
+      appearanceLoads.remove(old);locations.remove(old);backStates.remove(old);forwardStates.remove(old);pageScales.remove(old);measuredCompositors.remove(old);viewportWidths.remove(old);loadingTargets.remove(old);pendingLoads.remove(old);painted.remove(old);usable.remove(old);crashed.remove(old);
       // The old native window no longer exists. Old delegate events retain its
       // SDK object and fail the normal tracked-session/current-session checks.
-      locations.put(replacement,"");url="";canBack=false;ipNavigationFailure=null;owner.resourceObserverConnected(null);
+      locations.put(replacement,"");url="";canBack=false;canForward=false;ipNavigationFailure=null;owner.resourceObserverConnected(null);
       if(old.isOpen()){old.stop();old.close();}replacement.open(runtime);
       surface.setSession(replacement);replacement.setActive(!owner.browserPaused);failed=false;configure(desktop,owner.privacy.level());return true;
     }catch(RuntimeException unavailable){
-      if(replacement!=null&&replacement!=current){locations.remove(replacement);backStates.remove(replacement);if(replacement.isOpen())try{replacement.close();}catch(RuntimeException ignored){}}
+      if(replacement!=null&&replacement!=current){locations.remove(replacement);backStates.remove(replacement);forwardStates.remove(replacement);if(replacement.isOpen())try{replacement.close();}catch(RuntimeException ignored){}}
       failure("网页暂未恢复，请重新打开当前环境");return false;
     }
   }
+  private boolean activationCurrent(GeckoSession previous,GeckoSession target,long navigation,boolean wasOpen){
+    // A new popup is legitimately closed until Gecko opens the returned SDK
+    // session. A target that was already open must not close during callbacks.
+    return navigationCurrent(previous,navigation)&&target!=null&&locations.containsKey(target)
+        &&(!wasOpen||target.isOpen());
+  }
   private void activate(GeckoSession session){
-    blockedPopups.invalidate();
-    closeExitIpPage();
-    cancelZoom();
     GeckoSession previous=current;
+    long navigation=owner.navigationEpoch;
+    boolean wasOpen=session!=null&&session.isOpen();
+    if(!activationCurrent(previous,session,navigation,wasOpen))return;
+    blockedPopups.invalidate();
+    if(!activationCurrent(previous,session,navigation,wasOpen))return;
+    closeExitIpPage();
+    if(!activationCurrent(previous,session,navigation,wasOpen))return;
+    cancelZoom();
+    if(!activationCurrent(previous,session,navigation,wasOpen))return;
+    // Cancelling bridge requests invokes their consumers synchronously. Keep
+    // the old surface usable until they finish, so a newer navigation or popup
+    // selection can take ownership without inheriting a detached native view.
+    WebExtension.Port previousPort=ports.get(previous);
+    if(previousPort!=null)callbacks.cancel(previousPort);
+    if(!activationCurrent(previous,session,navigation,wasOpen))return;
     if(surface.getSession()!=null)surface.releaseSession();
-    if(previous!=null){if(previous.isOpen())previous.setActive(false);WebExtension.Port port=ports.get(previous);if(port!=null)callbacks.cancel(port);}
-    current=session;metadata.timeZonePolicy=timeZoneStatus();owner.resourceObserverConnected(ports.get(session));url=locations.getOrDefault(session,"");canBack=backStates.getOrDefault(session,false);scale=pageScales.getOrDefault(session,1f)*readingLayout;
+    if(previous!=null&&previous.isOpen())previous.setActive(false);
+    current=session;
+    metadata.timeZonePolicy=timeZoneStatus();owner.resourceObserverConnected(ports.get(session));
+    url=locations.getOrDefault(session,"");canBack=backStates.getOrDefault(session,false);canForward=forwardStates.getOrDefault(session,false);
+    scale=pageScales.getOrDefault(session,1f)*readingLayout;
     failed=crashed.contains(session);
     if(!failed){surface.setSession(session);session.setActive(!owner.browserPaused);}
     configure(desktop,owner.privacy.level());
-    if(!url.isEmpty()&&!"about:blank".equals(url)){
-      owner.reading.started(url);owner.reading.viewportMeasured(viewportWidths.getOrDefault(session,0f)*readingLayout);if(painted.contains(session))owner.reading.visible(url);
+    if(!activationCurrent(session,session,navigation,wasOpen))return;
+    String selectedUrl=url;
+    if(!selectedUrl.isEmpty()&&!"about:blank".equals(selectedUrl)){
+      owner.reading.started(selectedUrl);
+      if(!activationCurrent(session,session,navigation,wasOpen)||!selectedUrl.equals(url))return;
+      owner.reading.viewportMeasured(viewportWidths.getOrDefault(session,0f)*readingLayout);
+      if(!activationCurrent(session,session,navigation,wasOpen)||!selectedUrl.equals(url))return;
+      if(painted.contains(session))owner.reading.visible(selectedUrl);
     }
   }
   void configure(boolean desktop,int protection){
@@ -1092,23 +1217,85 @@ class GeckoWebView extends FrameLayout {
     return closePopup(current);
   }
   private boolean closePopup(GeckoSession old){
-    if(destroyed||!popups.remove(old))return false;
+    return closePopup(old,true);
+  }
+  private boolean closePopup(GeckoSession old,boolean returnNavigation){
+    if(destroyed||!popups.contains(old))return false;
+    GeckoSession source=current;long closingNavigation=owner.navigationEpoch;
     retireTimeZone(old);
-    if(old==current){activate(popups.isEmpty()?primary:popups.get(popups.size()-1));owner.pageError="";if(crashed.contains(current))contentStopped(current,"上一页被系统关闭，点按重新加载可恢复");else{owner.beginNavigation(url,"正在返回上一页…");owner.resourceObserverConnected(ports.get(current));if(client!=null&&painted.contains(current)){client.onPageCommitVisible(null,url);client.onPageFinished(null,url);}}}
-    forgetGeneralRoute(old);WebExtension.Port port=ports.remove(old);if(port!=null){callbacks.cancel(port);retireAppearance(port);}appearanceLoads.remove(old);
-    locations.remove(old);backStates.remove(old);pageScales.remove(old);measuredCompositors.remove(old);viewportWidths.remove(old);loadingTargets.remove(old);pendingLoads.remove(old);painted.remove(old);usable.remove(old);crashed.remove(old);states.remove(old);stateDraftRevisions.remove(old);
-    if(old.isOpen())old.close();return true;
+    if(destroyed||owner.deleted)return false;
+    if(!popups.contains(old))return true;
+    if(!returnNavigation){
+      if(!navigationCurrent(source,closingNavigation))return false;
+      WebExtension.Port port=ports.remove(old);
+      if(port!=null){callbacks.cancel(port);retireAppearance(port);}
+      if(!navigationCurrent(source,closingNavigation))return false;
+      if(!popups.contains(old))return true;
+    }else if(current==old&&!navigationCurrent(source,closingNavigation))return false;
+    if(old==current){
+      // Keep the active popup tracked until activation really relinquishes it.
+      // Cancellation may accept a newer command on this same native surface.
+      GeckoSession session=primary;for(GeckoSession popup:popups)if(popup!=old)session=popup;
+      long previousNavigation=owner.navigationEpoch;
+      activate(session);
+      if(destroyed||owner.deleted)return false;
+      if(!popups.contains(old))return true;
+      if(current==old)return false;
+      if(returnNavigation&&navigationCurrent(session,previousNavigation)){
+        owner.pageError="";
+        if(crashed.contains(session))contentStopped(session,"上一页被系统关闭，点按重新加载可恢复");
+        else{
+          long navigation=owner.beginNavigation(url,"正在返回上一页…");
+          if(navigationCurrent(session,navigation)){
+            owner.resourceObserverConnected(ports.get(session));
+            if(navigationCurrent(session,navigation)&&client!=null&&painted.contains(session)){
+              WebViewClient receiver=client;String restoredUrl=url;
+              receiver.onPageCommitVisible(null,restoredUrl);
+              if(navigationCurrent(session,navigation)&&client==receiver)receiver.onPageFinished(null,restoredUrl);
+            }
+          }
+        }
+      }
+    }
+    if(destroyed||owner.deleted||current==old)return false;
+    if(!popups.remove(old))return true;
+    // Revoke the old identity before lease listeners or request consumers run;
+    // they may navigate the new page but cannot reactivate this retiring one.
+    WebExtension.Port port=ports.remove(old);appearanceLoads.remove(old);
+    locations.remove(old);backStates.remove(old);forwardStates.remove(old);pageScales.remove(old);measuredCompositors.remove(old);viewportWidths.remove(old);loadingTargets.remove(old);pendingLoads.remove(old);painted.remove(old);usable.remove(old);crashed.remove(old);states.remove(old);stateDraftRevisions.remove(old);
+    forgetGeneralRoute(old);
+    try{if(port!=null)callbacks.cancel(port);}
+    finally{if(port!=null)retireAppearance(port);if(old.isOpen())old.close();}
+    return true;
   }
   boolean hasWebsitePages(){return !generalSessions.isEmpty()||GeckoNavigationPolicy.publicWeb(getUrl())&&!MainActivity.chatUrl(getUrl());}
-  void closeWebsitePages(){
+  boolean closeWebsitePages(){
+    long navigation=owner.navigationEpoch;
+    GeckoSession session=current;
+    if(!navigationCurrent(session,navigation))return false;
     closeExitIpPage();
+    if(!navigationCurrent(session,navigation))return false;
     generalRestore=null;queued="";deferredGeneralLoads.clear();
-    for(GeckoSession popup:new ArrayList<>(popups))closePopup(popup);
-    if(current==null)return;
-    WebExtension.Port port=ports.remove(current);if(port!=null){callbacks.cancel(port);retireAppearance(port);}
-    current.stop();states.remove(current);stateDraftRevisions.remove(current);painted.remove(current);usable.remove(current);loadingTargets.remove(current);pendingLoads.remove(current);startupState=null;
-    locations.put(current,"");url="";canBack=false;forgetGeneralRoute(current);
-    if(current.isOpen())reopenCurrent();
+    for(GeckoSession popup:new ArrayList<>(popups)){
+      GeckoSession expected=current;
+      if(popup==current){expected=primary;for(GeckoSession other:popups)if(other!=popup)expected=other;}
+      if(!closePopup(popup,false)||!navigationCurrent(expected,navigation))return false;
+    }
+    session=current;
+    if(session==null)return true;
+    WebExtension.Port port=ports.remove(session);
+    if(port!=null){callbacks.cancel(port);retireAppearance(port);}
+    if(!navigationCurrent(session,navigation))return false;
+    session.stop();
+    if(!navigationCurrent(session,navigation))return false;
+    states.remove(session);stateDraftRevisions.remove(session);painted.remove(session);usable.remove(session);loadingTargets.remove(session);pendingLoads.remove(session);startupState=null;
+    locations.put(session,"");url="";canBack=false;canForward=false;forgetGeneralRoute(session);
+    if(!navigationCurrent(session,navigation))return false;
+    // Retire callback-bearing state before reopening the owned native surface.
+    retireTimeZone(session);
+    if(!navigationCurrent(session,navigation))return false;
+    if(session.isOpen()&&!reopenCurrent())return false;
+    return !destroyed&&!owner.deleted&&owner.navigationEpoch==navigation;
   }
   public void loadUrl(String target){
     closeExitIpPage();
@@ -1174,7 +1361,12 @@ class GeckoWebView extends FrameLayout {
     catch(RuntimeException error){cookieCallbacks.complete(port,request,"null");}
   }
   void cancelEnvironmentAudit(){WebExtension.Port port=ports.get(current);if(port!=null)try{port.postMessage(J.obj("kind","auditCancel"));}catch(Exception ignored){}}
-  public void stopLoading(){queued="";protectionRestore=null;generalRestore=null;if(current!=null){deferredGeneralLoads.remove(current);loadingTargets.remove(current);pendingLoads.remove(current);current.stop();if(MainActivity.chatUrl(locations.get(current)))forgetGeneralRoute(current);}}
+  public void stopLoading(){queued="";protectionRestore=null;generalRestore=null;if(current!=null){
+    // Cancel this surface's deferred intent as well as its active network load.
+    // Its timezone callback may finish after another popup becomes current.
+    timeZoneLoads.remove(current);timeZoneIntents.remove(current);nativeTimeZoneIntents.remove(current);
+    deferredGeneralLoads.remove(current);loadingTargets.remove(current);pendingLoads.remove(current);current.stop();if(MainActivity.chatUrl(locations.get(current)))forgetGeneralRoute(current);
+  }}
   public void setWebViewClient(WebViewClient value){client=value;}
   public void setWebChromeClient(WebChromeClient value){chrome=value;}
   public void setDownloadListener(DownloadListener value){download=value;}
@@ -1193,6 +1385,8 @@ class GeckoWebView extends FrameLayout {
   }
   public void pauseTimers(){}
   public void resumeTimers(){}
+  public boolean canGoForward(){return !destroyed&&!failed&&!hasExitIpPage()&&current!=null&&current.isOpen()&&canForward;}
+  public void goForward(){if(canGoForward()&&current!=null&&current.isOpen()){if(!protectionAllowsNetwork()){owner.setStatus(protectionSummary());return;}current.goForward();}}
   public boolean canGoBack(){return hasExitIpPage()||canBack||!popups.isEmpty();}
   public void goBack(){if(closeExitIpPage())return;if(canBack&&current!=null){if(!protectionAllowsNetwork()){owner.setStatus(protectionSummary());return;}current.goBack();}else closePopup();}
   public float getScale(){

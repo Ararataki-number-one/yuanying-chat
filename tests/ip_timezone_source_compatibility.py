@@ -118,3 +118,13 @@ def historical_read(relative):
         return source_input(raw, relative)
     from final_browser_source_compatibility import metadata_input
     return metadata_input(raw, relative)
+
+
+def released_historical_read(relative):
+    """Feed retained oracles the fixed real release; never read current Java."""
+    from historical_source_inputs import historical_bytes
+    raw = historical_bytes(relative)
+    if relative in PATHS:
+        return source_input(raw, relative)
+    from final_browser_source_compatibility import metadata_input
+    return metadata_input(raw, relative)

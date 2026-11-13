@@ -1,4 +1,5 @@
 """Finite outer historical source inputs, never runtime/browser qualification."""
+from historical_source_inputs import historical_bytes
 import ast
 import copy
 import hashlib
@@ -49,7 +50,7 @@ class IpTimezoneHistoricalSources(unittest.TestCase):
             with self.subTest(path=relative):
                 self.assertEqual(git('rev-parse', row['previousCommit'] + '^{tree}').decode().strip(), row['previousTree'])
                 before = git('show', row['previousCommit'] + ':' + relative)
-                after = (ROOT / relative).read_bytes()
+                after = historical_bytes(relative)
                 after = final_ip_input(after, relative)
                 self.assertEqual((SHA(before), len(before)), (row['previousSha256'], row['previousBytes']))
                 self.assertEqual((SHA(after), len(after)), (row['reviewedSha256'], row['reviewedBytes']))
@@ -66,7 +67,7 @@ class IpTimezoneHistoricalSources(unittest.TestCase):
     def test_missing_duplicate_mutated_moved_truncated_unknown_complete_images_reject(self):
         rejected = 0
         for relative, row in overlay.manifest()['files'].items():
-            current = (ROOT / relative).read_bytes()
+            current = historical_bytes(relative)
             current = final_ip_input(current, relative)
             for delta in row['deltas']:
                 chunk = delta['current'].encode()
@@ -100,7 +101,7 @@ class IpTimezoneHistoricalSources(unittest.TestCase):
             ('tests/profile_native_protection_test.py', "        '__PROTECTED_ROUTE__':member(source,'JSONObject protectedNetworkRoute(String target)'),\n", ''),
         )
         for relative, before, after in cases:
-            raw = (ROOT / relative).read_bytes()
+            raw = historical_bytes(relative)
             self.assertEqual(raw.count(before.encode()), 1, before)
             with self.assertRaises(ValueError):
                 overlay.source_input(raw.replace(before.encode(), after.encode(), 1), relative)
@@ -108,7 +109,7 @@ class IpTimezoneHistoricalSources(unittest.TestCase):
 
     def test_source_types_paths_and_whole_identity_precede_context_access(self):
         relative = 'app/src/main/java/local/pocketchat/GeckoWebView.java'
-        raw = (ROOT / relative).read_bytes()
+        raw = historical_bytes(relative)
         for value in (None, raw.decode(), bytearray(raw), memoryview(raw)):
             with self.assertRaises(ValueError):
                 overlay.source_input(value, relative)
@@ -158,7 +159,7 @@ class IpTimezoneHistoricalSources(unittest.TestCase):
     def test_read_port_stripping_restores_whole_public_sources_and_all_original_assertions(self):
         for relative in ('tests/phase1_context_fix_source_compatibility.py', 'tests/worker_timezone_host_source_compatibility.py'):
             before = git('show', overlay.PORTS_BEFORE + ':' + relative)
-            current = (ROOT / relative).read_bytes()
+            current = historical_bytes(relative)
             self.assertEqual(current.count(IP_HOOK.encode()), 1)
             self.assertEqual(current.replace(IP_HOOK.encode(), b'', 1), before)
         for relative, name, count in (
@@ -167,7 +168,7 @@ class IpTimezoneHistoricalSources(unittest.TestCase):
             ('tests/profile_page_bridge_budget_source_compatibility_test.py', 'relative', 9),
         ):
             before = git('show', overlay.PORTS_BEFORE + ':' + relative)
-            current = (ROOT / relative).read_bytes()
+            current = historical_bytes(relative)
             self.assertEqual(assertions(current), assertions(before))
             token = ('historical_read(' + name + ')').encode()
             self.assertEqual(current.count(READ_IMPORT), 1)
@@ -175,7 +176,7 @@ class IpTimezoneHistoricalSources(unittest.TestCase):
             self.assertEqual(current.replace(READ_IMPORT, b'', 1).replace(token, ('(ROOT/' + name + ').read_bytes()').encode()), before)
         for name in ('dual-browser-source-deltas.json', 'worker-timezone-source-deltas.json', 'worker-timezone-host-adapter-source-deltas.json', 'connection-timezone-prerequisite-source-deltas.json', 'phase1-context-fix-source-deltas.json', 'page-bridge-budget-source-deltas.json'):
             relative = 'tests/fixtures/' + name
-            self.assertEqual((ROOT / relative).read_bytes(), git('show', overlay.PORTS_BEFORE + ':' + relative))
+            self.assertEqual(historical_bytes(relative), git('show', overlay.PORTS_BEFORE + ':' + relative))
 
     def test_historical_read_never_projects_unowned_source_or_escapes_source_root(self):
         with tempfile.TemporaryDirectory(prefix='ip-historical-read-boundary-') as folder:
@@ -194,9 +195,23 @@ class IpTimezoneHistoricalSources(unittest.TestCase):
                     with self.assertRaises(ValueError):
                         overlay.historical_read(path)
 
+    def test_released_read_has_explicit_git_inputs_and_keeps_owned_inverse_priority(self):
+        for relative in overlay.PATHS:
+            raw = historical_bytes(relative)
+            with self.subTest(path=relative), patch.object(overlay, 'source_input', wraps=overlay.source_input) as checked:
+                result = overlay.released_historical_read(relative)
+                checked.assert_called_once_with(raw, relative)
+                self.assertEqual(result, overlay.source_input(raw, relative))
+        relative = 'app/src/main/java/local/pocketchat/ChatSession.java'
+        raw = historical_bytes(relative)
+        with patch.object(overlay, 'source_input', side_effect=AssertionError('Unowned path reached IP inverse')):
+            self.assertEqual(overlay.released_historical_read(relative), final_metadata_input(raw, relative))
+        with self.assertRaises(RuntimeError):
+            overlay.released_historical_read('tests/current-runtime.py')
+
     def test_old_public_inventory_rows_unchanged_and_new_public_predecessors_exact(self):
         previous = json.loads(git('show', overlay.PORTS_BEFORE + ':tests/baselines/public-source-history.json'))
-        current = json.loads(final_metadata_input((ROOT / 'tests/baselines/public-source-history.json').read_bytes(), 'tests/baselines/public-source-history.json'))
+        current = json.loads(final_metadata_input(historical_bytes('tests/baselines/public-source-history.json'), 'tests/baselines/public-source-history.json'))
         before = {row['commit']: row for row in previous['groups']}
         now = {row['commit']: row for row in current['groups']}
         self.assertEqual(len(now), len(before) + 2)
@@ -213,9 +228,9 @@ class IpTimezoneHistoricalSources(unittest.TestCase):
                 self.assertEqual(git('ls-tree', source, '--', relative).decode().split()[0], pin['mode'])
         relative = 'tools/browser/source_history.py'
         before = git('show', overlay.PORTS_BEFORE + ':' + relative)
-        after = (ROOT / relative).read_bytes()
+        after = historical_bytes(relative)
         after = final_metadata_input(after, relative)
-        token = b"MANIFEST_SHA256 = '" + SHA(final_metadata_input((ROOT / 'tests/baselines/public-source-history.json').read_bytes(), 'tests/baselines/public-source-history.json')).encode() + b"'"
+        token = b"MANIFEST_SHA256 = '" + SHA(final_metadata_input(historical_bytes('tests/baselines/public-source-history.json'), 'tests/baselines/public-source-history.json')).encode() + b"'"
         self.assertEqual(after.count(token), 1)
         self.assertEqual(re.sub(rb"MANIFEST_SHA256 = '[0-9a-f]{64}'", b"MANIFEST_SHA256 = 'PIN'", after), re.sub(rb"MANIFEST_SHA256 = '[0-9a-f]{64}'", b"MANIFEST_SHA256 = 'PIN'", before))
 

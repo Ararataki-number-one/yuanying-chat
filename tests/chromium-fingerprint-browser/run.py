@@ -10,12 +10,14 @@ import json
 import os
 from pathlib import Path
 import re
-import signal
+import sys
 import subprocess
 import tempfile
 import time
 
 ROOT=Path(__file__).resolve().parents[2]
+sys.path.insert(0,str(ROOT/'tools/browser'))
+from chromium_process import chromium_endpoint
 ASSET=ROOT/'app/src/main/assets/chromium-fingerprint.js'
 PRELUDE=r'''
 const nativeRead=CanvasRenderingContext2D.prototype.getImageData;
@@ -82,7 +84,7 @@ def main():
     parser.add_argument('--chromium',required=True,type=Path)
     parser.add_argument('--output',required=True,type=Path)
     args=parser.parse_args();args.output.mkdir(parents=True,exist_ok=True)
-    sources=[ASSET,Path(__file__).resolve()];hashes={str(p.relative_to(ROOT)):hashlib.sha256(p.read_bytes()).hexdigest() for p in sources}
+    sources=[ASSET,Path(__file__).resolve(),ROOT/'tools/browser/chromium_process.py'];hashes={str(p.relative_to(ROOT)):hashlib.sha256(p.read_bytes()).hexdigest() for p in sources}
     policy=dict(seed='1'*64,canvas=True,webgl=True,audio=True,webrtc=True)
     script=ASSET.read_text().replace('__POCKETCHAT_CHROMIUM_FINGERPRINT_CONFIG__',json.dumps(policy))
     page='<!doctype html><meta charset="utf-8"><pre id="result">pending</pre><script>function finish(value){document.getElementById("result").textContent=JSON.stringify(value)}\n'+PRELUDE+'\n'+script+'\n'+CASES+'</script>'
@@ -92,19 +94,8 @@ def main():
         command=[str(args.chromium.resolve()),'--headless','--no-sandbox','--disable-dev-shm-usage','--disable-background-networking','--disable-component-update','--disable-sync','--no-first-run','--no-default-browser-check','--enable-unsafe-swiftshader','--user-data-dir='+str(base/'profile'),'--remote-debugging-port=0','--remote-debugging-address=127.0.0.1','about:blank']
         environment=dict(os.environ,XDG_CONFIG_HOME=str(base/'config'),XDG_CACHE_HOME=str(base/'cache'))
         (base/'config').mkdir();(base/'cache').mkdir()
-        process=subprocess.Popen(command,stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True,env=environment,start_new_session=True)
-        try:
-            port_file=base/'profile/DevToolsActivePort';deadline=time.monotonic()+12
-            while not port_file.is_file() and process.poll() is None and time.monotonic()<deadline:time.sleep(.1)
-            if not port_file.is_file():raise RuntimeError('Actual Chromium debugging endpoint did not start')
-            port,path=port_file.read_text().splitlines()[:2]
-            result=subprocess.run(['node','--input-type=module','-e',CONTROLLER,'ws://127.0.0.1:'+port+path,str(source)],capture_output=True,text=True,timeout=40)
-        finally:
-            if process.poll() is None:os.killpg(process.pid,signal.SIGTERM)
-            try:stdout,stderr=process.communicate(timeout=5)
-            except subprocess.TimeoutExpired:
-                os.killpg(process.pid,signal.SIGKILL);stdout,stderr=process.communicate(timeout=5)
-            (args.output/'chromium.stderr.log').write_text(stderr)
+        with chromium_endpoint(command=command,environment=environment,profile=base/'profile',output=args.output,version=version,source_files=hashes) as endpoint:
+            result=subprocess.run(['node','--input-type=module','-e',CONTROLLER,endpoint,str(source)],capture_output=True,text=True,timeout=40)
     (args.output/'controller.stderr.log').write_text(result.stderr)
     if result.returncode:raise RuntimeError('Actual Chromium fixture did not complete; inspect local controller stderr log')
     report=json.loads(result.stdout)

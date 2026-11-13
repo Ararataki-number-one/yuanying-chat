@@ -62,7 +62,9 @@ public final class ResourcePressureIntegrationActivity extends GeckoIdentityProt
     resourceCheck("Cold network retry timer cannot bypass low memory admission",view.runtime==null&&owner.resources.created==0&&view.resourceDeferred);
     owner.recoveryScheduled=false;
     resourceCheck("Deferred candidate retains the captured URL",target.equals(view.queued)&&target.equals(owner.navigationTarget));
-    view.queued="";owner.pending=J.obj("id","resource-"+run,"kind","web","engine","gecko","attempted",true,"webSuspended",true,"expectedUrl","https://chatgpt.com/","prompt","synthetic resource recovery");pendingBytes=owner.pending.toString();
+    // This synthetic task tests native resource admission, not a ChatGPT send.
+    // A ChatGPT web observation cannot remain attached to the localhost fixture.
+    view.queued="";owner.pending=J.obj("id","resource-"+run,"kind","resource-recovery","engine","gecko","attempted",true,"webSuspended",true,"expectedUrl",target,"prompt","synthetic resource recovery");pendingBytes=owner.pending.toString();
     if(!owner.prefs.edit().putString("pending",pendingBytes).commit())throw new IOException("Controlled pending persistence failed");owner.deliveries.recover(owner.pending);
     owner.updateBrowserActivity();owner.handler.removeCallbacks(owner.tick);
     awaitRecoveryAllocation(oldEpoch);

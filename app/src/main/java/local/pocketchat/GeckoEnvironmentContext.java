@@ -8,6 +8,11 @@ final class GeckoEnvironmentContext extends ContextWrapper {
   final int slot;
   GeckoEnvironmentContext(Context context){super(context.getApplicationContext());slot=Profiles.slot(context);}
   @Override public Context getApplicationContext(){return this;}
+  // Through Android 12L Context dispatches these calls via getApplicationContext().
+  // Both this wrapper and its ProfileContext base retain their isolated identity;
+  // only the process-wide lifecycle callback registry belongs to the Application.
+  @Override public void registerComponentCallbacks(ComponentCallbacks callback){Profiles.global(getBaseContext()).registerComponentCallbacks(callback);}
+  @Override public void unregisterComponentCallbacks(ComponentCallbacks callback){Profiles.global(getBaseContext()).unregisterComponentCallbacks(callback);}
   private Intent isolated(Intent intent){
     ComponentName name=intent.getComponent();
     String prefix="org.mozilla.gecko.process.GeckoChildProcessServices$";

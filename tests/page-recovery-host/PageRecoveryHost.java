@@ -37,6 +37,103 @@ public class PageRecoveryHost {
    }finally{stoppedLease.close();otherLease.close();download.close();}
    return checks-start;
  }
+ static int navigationOwners(){
+   int start=checks;
+   GeckoWebView view=new GeckoWebView(route());
+   view.states.put(view.current,new GeckoSession.SessionState(view.url));
+   view.timezoneConfigurationChanged();
+   check("Owned time zone reset reopens and retains its matching checkpoint",view.reopens==1&&view.loads==1&&view.startupState!=null&&view.loadedUrl.equals(view.url));
+   for(int mutation=0;mutation<3;mutation++){
+     view=new GeckoWebView(route());final GeckoWebView changed=view;
+     final int change=mutation;
+     changed.owner.onStatus=()->{
+       if(change==0){changed.owner.navigationEpoch++;changed.queued="https://example.com/newer";}
+       else if(change==1)changed.current=new GeckoSession();
+       else changed.owner.deleted=true;
+     };
+     changed.timezoneConfigurationChanged();
+     check("Time zone reset cannot overwrite a synchronous newer URL or surface "+mutation,changed.reopens==0&&changed.loads==0&&(mutation!=0||changed.queued.equals("https://example.com/newer")));
+   }
+   for(boolean saved:new boolean[]{false,true}){
+     view=new GeckoWebView(route());view.crashed.add(view.current);
+     if(saved)view.states.put(view.current,new GeckoSession.SessionState(view.url));
+     check("Owned closed-page recovery remains accepted "+saved,view.recoverClosed());
+     check("Owned closed-page recovery keeps its original load or checkpoint path "+saved,view.reopens==1&&(saved?view.restores==1&&view.loads==0:view.loads==1&&view.restores==0));
+     view=new GeckoWebView(route());view.crashed.add(view.current);
+     if(saved)view.states.put(view.current,new GeckoSession.SessionState(view.url));
+     final GeckoWebView newer=view;newer.owner.onStatus=()->newer.owner.navigationEpoch++;
+     check("Superseded closed-page recovery consumes the request without a fallback reload "+saved,newer.recoverClosed()&&newer.loads==0&&newer.restores==0);
+   }
+   view=new GeckoWebView(route());view.crashed.add(view.current);final GeckoWebView reopened=view;
+   reopened.onReopen=()->reopened.owner.navigationEpoch++;
+   check("Native reopen reentry cannot start an older recovery navigation",reopened.recoverClosed()&&reopened.loads==0&&reopened.restores==0&&reopened.owner.navigationEpoch==8);
+   view=new GeckoWebView(route());view.stop();
+   check("Owned content exit retains its existing delayed recovery",view.owner.handler.delays.contains(250L));
+   view=new GeckoWebView(route());final GeckoWebView stopped=view;
+   stopped.owner.onStatus=()->stopped.owner.navigationEpoch++;
+   stopped.stop();
+   check("Superseded content exit cannot schedule its older recovery",!stopped.owner.handler.delays.contains(250L));
+   for(int reentry=0;reentry<4;reentry++){
+     view=new GeckoWebView(route());final GeckoWebView popupView=view;
+     GeckoSession parent=view.current,popup=new GeckoSession();
+     view.popups.add(popup);view.current=popup;view.locations.put(popup,"https://example.com/popup");
+     view.ports.put(popup,new WebExtension.Port());view.painted.add(parent);
+     WebViewClient receiver=new WebViewClient();view.client=receiver;
+     ChromiumRouteLease.Handle popupLease=ChromiumRouteLease.acquireSurface(),download=ChromiumRouteLease.acquireDownload();
+     view.generalSessions.add(popup);view.generalRoutes.put(popup,popupLease);
+     if(reentry==1)view.owner.onStatus=()->popupView.owner.navigationEpoch++;
+     else if(reentry==2)receiver.onCommit=()->popupView.owner.navigationEpoch++;
+     else if(reentry==3)view.onActivate=()->popupView.owner.navigationEpoch++;
+     try{
+       check("Closing popup is accepted and always retires the old native surface "+reentry,view.close(popup)&&!popup.isOpen()&&!view.locations.containsKey(popup)&&!view.ports.containsKey(popup)&&popupLease.closed);
+       check("Closing popup preserves an independent native download "+reentry,ChromiumRouteLease.snapshot().surfaces==0&&ChromiumRouteLease.snapshot().downloads==1&&!download.closed);
+       check("Popup callbacks belong only to the navigation that returned to its parent "+reentry,receiver.commits==(reentry==0||reentry==2?1:0)&&receiver.finished==(reentry==0?1:0));
+     }finally{popupLease.close();download.close();}
+   }
+   return checks-start;
+ }
+ static int closeAllOwners(){
+   int start=checks;
+   for(int reentry=-1;reentry<4;reentry++){
+     GeckoWebView view=new GeckoWebView(route());GeckoSession parent=view.current,first=new GeckoSession(),second=new GeckoSession();
+     view.popups.add(first);view.popups.add(second);view.current=second;view.client=new WebViewClient();
+     List<ChromiumRouteLease.Handle> leases=new ArrayList<>();
+     for(GeckoSession page:new GeckoSession[]{parent,first,second}){
+       view.locations.put(page,"https://example.com/old");view.ports.put(page,new WebExtension.Port());view.painted.add(page);
+       view.states.put(page,new GeckoSession.SessionState("https://example.com/old"));view.generalSessions.add(page);
+       ChromiumRouteLease.Handle lease=ChromiumRouteLease.acquireSurface();leases.add(lease);view.generalRoutes.put(page,lease);
+     }
+     ChromiumRouteLease.Handle download=ChromiumRouteLease.acquireDownload();
+     long navigation=view.owner.prepareBrowserNavigation();
+     Runnable browse=()->{
+       view.owner.beginNavigation("https://example.com/newer","New user navigation");
+       GeckoSession page=view.current;view.queued="https://example.com/newer";view.url=view.queued;
+       view.locations.put(page,view.queued);view.states.put(page,new GeckoSession.SessionState(view.queued));view.painted.add(page);
+       view.ports.put(page,new WebExtension.Port());view.loadUrl(view.queued);
+       if(!view.generalRoutes.containsKey(page)){ChromiumRouteLease.Handle lease=ChromiumRouteLease.acquireSurface();leases.add(lease);view.generalRoutes.put(page,lease);view.generalSessions.add(page);}
+     };
+     if(reentry==0)view.callbacks.add(view.ports.get(first),ignored->browse.run(),1000);
+     else if(reentry==1)view.callbacks.add(view.ports.get(parent),ignored->browse.run(),1000);
+     else if(reentry==2)parent.onStop=browse;
+     else if(reentry==3){GeckoWebView.TimeZoneGate gate=new GeckoWebView.TimeZoneGate();gate.waiting.add(ready->browse.run());view.timeZoneGates.put(parent,gate);}
+     try{
+       boolean accepted=view.closeWebsitePages();
+       if(reentry<0){
+         check("Close-all retains one navigation owner across multiple popups",accepted&&view.owner.navigationEpoch==navigation&&view.current==parent&&view.popups.isEmpty()&&view.client.commits==0&&view.client.finished==0);
+         check("Close-all releases its page leases and native popups while retaining downloads",!first.isOpen()&&!second.isOpen()&&view.ports.isEmpty()&&view.reopens==1&&ChromiumRouteLease.snapshot().surfaces==0&&ChromiumRouteLease.snapshot().downloads==1&&!download.closed);
+         if(accepted&&view.owner.navigationEpoch==navigation){view.owner.beginNavigation("https://chatgpt.com/","Return home");view.loadUrl("https://chatgpt.com/");}
+         check("Close-all permits the single final ChatGPT home navigation",view.owner.navigationEpoch==navigation+1&&view.loads==1&&view.loadedUrl.equals("https://chatgpt.com/"));
+       }else{
+         String boundary=reentry==0?"popup callback":reentry==1?"main-page callback":reentry==2?"native stop":"time-zone retirement";
+         check("Close-all stops before erasing a newer document after "+boundary,!accepted&&view.owner.navigationEpoch==navigation+1&&view.current.isOpen()&&view.locations.get(view.current).equals("https://example.com/newer")&&view.states.get(view.current).url.equals("https://example.com/newer")&&view.painted.contains(view.current)&&view.ports.containsKey(view.current)&&view.loads==1&&view.reopens==0);
+         check("Interrupted close-all keeps completed old cleanup and independent downloads after "+boundary,(reentry==0?first.isOpen()&&second.isOpen():!first.isOpen()&&!second.isOpen())&&ChromiumRouteLease.snapshot().surfaces==(reentry==0?3:1)&&ChromiumRouteLease.snapshot().downloads==1&&!download.closed);
+       }
+     }finally{for(ChromiumRouteLease.Handle lease:leases)lease.close();download.close();}
+   }
+   GeckoWebView refused=new GeckoWebView(route());refused.reopenAllowed=false;
+   check("Close-all reports native reopen refusal to its home-navigation caller",!refused.closeWebsitePages());
+   return checks-start;
+ }
  public static void main(String[] args)throws Exception{
    ChatSession s=route();s.networkReady=false;s.recoveryScheduled=true;s.recoveryToken=41;s.recoveryAttempt=3;s.manualAttention=true;s.networkIssue="service disconnected";s.connectionStage="waiting";s.status="service disconnected";s.navigationFailed=true;
    s.acceptTranscript(j("ok",true,"url",s.web.url,"entries",new JSONArray().put(j("id","answer"))),j("composer",true,"model","test"),true);
@@ -146,21 +243,25 @@ public class PageRecoveryHost {
    s.runRecovery(oldRetry);check("Independent network retry remains runnable after the pure foreground notice",s.opened==1&&s.recoveryAttempt==1&&s.recoveryToken==oldRetry&&!s.recoveryScheduled&&s.pending==retainedTask&&stopped.recoveryDispatches==0);
    int lifecycleChecks=checks-lifecycleStart;
    int originalChecks=checks,currentPolicyChecks=currentPolicyAndCleanup();
-   System.out.println(j("status","passed","checks",checks,"contentLifecycleChecks",lifecycleChecks,"originalChecks",originalChecks,"currentPolicyAndCleanupChecks",currentPolicyChecks,"syntheticTimeZoneRetirements",syntheticTimeZoneRetirements,"actualNativeTimeZoneExecution",false));
+   int navigationOwnerChecks=navigationOwners();
+   int closeAllOwnerChecks=closeAllOwners();
+   System.out.println(j("status","passed","checks",checks,"contentLifecycleChecks",lifecycleChecks,"originalChecks",originalChecks,"currentPolicyAndCleanupChecks",currentPolicyChecks,"navigationOwnerChecks",navigationOwnerChecks,"closeAllOwnerChecks",closeAllOwnerChecks,"syntheticTimeZoneRetirements",syntheticTimeZoneRetirements,"actualNativeTimeZoneExecution",false));
  }
 }
 class ChatSession {
  // Declared host boundary: legacy capture scenarios are foreground-only;
  // the global background-reply policy is exercised by its separate hosts.
  boolean replyObservationAllowed(){return uiVisible;}
- final WebReplyObserver webObserver=new WebReplyObserver();final Object context=new Object();final int environmentGeneration=4;final String environmentId="environment-one";final Web web=new Web();final Guard guard=new Guard();final Memory pageMemory=new Memory();final Prefs prefs=new Prefs();final Trace trace=new Trace();final Mirror webMirror=new Mirror();final Store webStore=new Store();final Cache cache=new Cache();final Handler handler=new Handler(this);final Audit audit=new Audit();final Privacy privacy=new Privacy();final Identity identity=new Identity();Result driverResult;
- String navigationLabel="";long navigationStarted,navigationMono,firstPageVisible;boolean documentNavigationSeen;
+ final WebReplyObserver webObserver=new WebReplyObserver(this);final Object context=new Object();final int environmentGeneration=4;final String environmentId="environment-one";final Web web=new Web();final Guard guard=new Guard();final Memory pageMemory=new Memory();final Prefs prefs=new Prefs();final Trace trace=new Trace();final Mirror webMirror=new Mirror();final Store webStore=new Store();final Cache cache=new Cache();final Handler handler=new Handler(this);final Audit audit=new Audit();final Privacy privacy=new Privacy();final Identity identity=new Identity();final TimeZoneBoundary timeZone=new TimeZoneBoundary();Result driverResult;
+ String navigationLabel="";long navigationStarted,navigationMono,firstPageVisible;boolean documentNavigationSeen,browserNavigationStopped,browserNavigationChosen;
+ long resourceUploadCheckGeneration;boolean resourceUploadChecking,backgroundAttachmentCheck;int backgroundAttachmentStable;
  boolean deleted,navigating,navigationFailed,showingCache,offline,connecting,recoveryScheduled,manualAttention,submitting,operation,websiteRecovering,replyStalled,websiteConnectionIssue,uiVisible=true,networkReady=true;int recoveryAttempt,scheduled,opened,loads,captures,bridgeCalls,stableTicks,resourceFilePreparations,spaStable;boolean keepPageCandidate,configurationCapture,identityApplicationPending;boolean lastCapture=true,inFlight,navigationDispatched=true,awaitNewDocument,spaTransition,fileBusy,replyBusy;
- long lastDeferredBrowserAttempt,webWorkGeneration,resourceWebsiteEpoch=-1,resourceObserverEpoch=-1;Object resourceObserverPort;String resourceObserverBinding="",resourceObserverDocument="",resourceObserverUrl="";long fileWorkGeneration,resourceInspectionGeneration,syncRun,stateEpoch,lastWebSnapshot;long recoveryToken,navigationEpoch=7,connectionEpoch=4,pageUsableAt,lastReplyDiagnostic,lastReplyProgress;String networkIssue="",connectionStage="connected",status="",pageError="",navigationTarget="https://chatgpt.com/c/current",conversation=navigationTarget,lastDocumentId="document-one",appliedIdentity="route-one",websiteProbeIssue="",replyHealthStatus="",currentNetworkIdentity="route-one",progressJob="",progressSignature="",stableReply="",priorDocumentId="",spaBefore="",spaSignature="",lastWebUrl="https://chatgpt.com/c/current";
+ long lastDeferredBrowserAttempt,webWorkGeneration,resourceWebsiteEpoch=-1,resourceObserverEpoch=-1,resourceObserverSequence;Object resourceObserverPort;String resourceObserverBinding="",resourceObserverDocument="",resourceObserverUrl="";long fileWorkGeneration,resourceInspectionGeneration,syncRun,stateEpoch,lastWebSnapshot;long recoveryToken,navigationEpoch=7,connectionEpoch=4,pageUsableAt,lastReplyDiagnostic,lastReplyProgress;String networkIssue="",connectionStage="connected",status="",pageError="",navigationTarget="https://chatgpt.com/c/current",conversation=navigationTarget,lastDocumentId="document-one",appliedIdentity="route-one",websiteProbeIssue="",replyHealthStatus="",currentNetworkIdentity="route-one",progressJob="",progressSignature="",stableReply="",priorDocumentId="",spaBefore="",spaSignature="",lastWebUrl="https://chatgpt.com/c/current";
  JSONObject state=new JSONObject();JSONObject pending,sentAttachments=new JSONObject();JSONArray entries=new JSONArray();
- void changed(){}void setStatus(String x){status=x;}boolean internalNetwork(){return true;}static long retryDelay(int n){return 1000;}void openConnection(boolean a,boolean b){opened++;}boolean targetMatches(String u){return navigationTarget.equals(u);}void runDriver(String x,JSONObject a,Result done){bridgeCalls++;if(x.equals("web-inspect")||x.equals("page-state"))driverResult=done;}void asyncDriver(String action,JSONObject args,long timeout,Result done){driverResult=done;}interface Result{void accept(JSONObject x);}
+ Runnable onStatus;
+ void changed(){}void setStatus(String x){status=x;Runnable callback=onStatus;onStatus=null;if(callback!=null)callback.run();}String resumeUrl(){return web.url;}boolean internalNetwork(){return true;}static long retryDelay(int n){return 1000;}void openConnection(boolean a,boolean b){opened++;}boolean targetMatches(String u){return navigationTarget.equals(u);}void runDriver(String x,JSONObject a,Result done){bridgeCalls++;if(x.equals("web-inspect")||x.equals("page-state"))driverResult=done;}void asyncDriver(String action,JSONObject args,long timeout,Result done){driverResult=done;}interface Result{void accept(JSONObject x);}
  boolean resourceFilesUncertain(){return false;}boolean fileWorkActive(){return fileBusy;}String networkIdentity(){return currentNetworkIdentity;}void wakePolling(){}boolean currentReplyActive(){return replyBusy;}boolean webPerformance(){return true;}void finishResourceInspection(){inFlight=false;}void updateBrowserActivity(boolean p){}void resetReplyStability(){}void archiveWebsiteNavigation(JSONObject p){}void pollSync(long epoch,long run,boolean optimized){}
- void navigate(String url,String label,boolean capture){lastCapture=capture;if(capture)captures++;loads++;navigationEpoch++;pageMemory.restorePending=true;}
+ boolean navigate(String url,String label,boolean capture){lastCapture=capture;if(capture)captures++;loads++;navigationEpoch++;pageMemory.restorePending=true;return true;}
  /* CHAT */
 }
 class PageMemory {/* MEMORY */}
@@ -177,14 +278,18 @@ class ReferenceUi {static class Modal{Runnable positive;String positiveLabel;jav
 class J {static JSONObject obj(Object...p){JSONObject o=new JSONObject();try{for(int i=0;i<p.length;i+=2)o.put((String)p[i],p[i+1]);}catch(Exception e){throw new RuntimeException(e);}return o;}}
 class Text {int visibility;boolean clickable;String text="";String getText(){return text;}void setText(String s){text=s;}void setTextColor(int c){}void setClickable(boolean b){clickable=b;}void setContentDescription(String s){}void setVisibility(int v){visibility=v;}}
 class TextUtils{static boolean equals(Object a,Object b){return Objects.equals(a,b);}}class DesignUi{static int RED=1,MUTED=2;}class View{static int VISIBLE=0,GONE=8;}class AppHub{static int CHAT=0;int page=0;void feedback(String s,boolean b){}}
-class Browser {boolean isOpen(){return true;}void reload(){}}class Web{boolean failed,resourceDeferred,visible=true;String url="https://chatgpt.com/c/current";Browser current=new Browser();final Map<Object,Object> ports=new IdentityHashMap<>();Web(){ports.put(current,new Object());}String getUrl(){return url;}boolean hasVisibleDocument(){return visible;}void checkpointState(){}}
+class Browser {boolean isOpen(){return true;}void reload(){}}class Web{boolean failed,resourceDeferred,visible=true;String url="https://chatgpt.com/c/current";Browser current=new Browser();final Map<Object,Object> ports=new IdentityHashMap<>();Web(){ports.put(current,new Object());}String getUrl(){return url;}boolean hasVisibleDocument(){return visible;}void checkpointState(){}void stopLoading(){}}
 class Guard{boolean blocked,protectedRoute=true;void setBlocked(boolean b){blocked=b;}boolean allowed(){return !blocked;}boolean routeProtected(){return protectedRoute;}}
 class Profiles{static int slot(Object c){return 2;}}
 class ProfileCatalog{static int generation=4;static boolean available=true,deleting,resetting;static ProfileCatalog get(Object c){return new ProfileCatalog();}boolean available(int n){return available;}JSONObject item(int n){return J.obj("generation",generation,"environmentId","environment-one","created",available,"deleting",deleting,"resetting",resetting);}}
-class BrowserRuntimePolicy{static boolean sameDocument(String a,String b){return Objects.equals(a,b);}}class WebReplyObserver{JSONObject lastNavigationArchivedJob;long navigationArchiveSequence;static boolean same(String a,String b){return Objects.equals(a,b);}void suspendUnconfirmed(String reason){/* Lifecycle scenarios use confirmed tasks, whose production path returns unchanged. */}}
+class BrowserRuntimePolicy{static boolean sameDocument(String a,String b){return Objects.equals(a,b);}}class WebReplyObserver{final ChatSession session;WebReplyObserver(ChatSession session){this.session=session;}JSONObject lastNavigationArchivedJob;long navigationArchiveSequence;static boolean same(String a,String b){return Objects.equals(a,b);}void suspendUnconfirmed(String reason){/* Lifecycle scenarios use confirmed tasks, whose production path returns unchanged. */}
+ // beginNavigation is exercised here only without a web task. Actual archival
+ // and its preference-listener callbacks run in the independent reload host.
+ void navigationStarted(String target){if(session.pending!=null)throw new AssertionError("Pending observation navigation belongs to the reload-request host");}
+}
 class Memory{int restores,forgot;JSONObject remembered;boolean restorePending;void restore(String u,long e){restores++;}void forget(String u){forgot++;restorePending=false;}void remember(String n,String u,JSONObject p){remembered=p;}String scope(){return "scope";}}
 class SystemClock{static long now;static long elapsedRealtime(){return now;}}
-class Handler{ChatSession s;Handler(ChatSession s){this.s=s;}void postDelayed(Runnable r,long n){s.scheduled++;}void post(Runnable r){r.run();}void removeCallbacks(Runnable r){}}
+class Handler{ChatSession s;final List<Long> delays=new ArrayList<>();Handler(ChatSession s){this.s=s;}void postDelayed(Runnable r,long n){s.scheduled++;delays.add(n);}void post(Runnable r){r.run();}void removeCallbacks(Runnable r){}}
 class NativeNetwork{interface Callback{void done(boolean ok,String msg);}static NativeNetwork network=new NativeNetwork();static class RecoveryOutcome{final String message;RecoveryOutcome(String m){message=m;}}boolean retainedCurrent=true;boolean retainedOutcomeCurrent(RecoveryOutcome o){return retainedCurrent;}boolean recoveryBlocked,starting;String message="fixed exit blocked";int diagnostics;Callback callback;static NativeNetwork get(Object c){return network;}void diagnoseReadOnly(Callback c){diagnostics++;callback=c;}}
 class Prefs{boolean getBoolean(String x,boolean b){return true;}Prefs edit(){return this;}Prefs putString(String k,String v){return this;}void apply(){}}
 class ConnectionTrace{static double bounded(double v){return v;}}
@@ -194,19 +299,41 @@ class Store{final java.util.concurrent.Executor worker=Runnable::run;void offer(
 class Cache{JSONArray withEarlier(String u,JSONArray a){return a;}void saveMessages(String u,JSONArray e){}}
 
 class Audit{void retirePageCheck(){}boolean requestIdentitySelected;boolean requestIdentityPageSelected(){return requestIdentitySelected;}void refresh(boolean force){}}class ChatService{static boolean running;static void networkLost(Object c){}}class GeckoWebView{
- // Default-system collaborator boundary only; no native Date/engine behavior.
- boolean customTimeZoneScope;void retireTimeZone(GeckoSession session){if(customTimeZoneScope||session==null)throw new AssertionError("Custom native time-zone retirement is outside this legacy host");PageRecoveryHost.syntheticTimeZoneRetirements++;}
+ // Recovery cases already own a real page in their explicit SDK boundary;
+ // no cold startup window exists. Its exact lifecycle has a separate host.
+ void closeStartupWindow(){}
  // This recovery workload has no auxiliary page. Never simulate its lifecycle.
  boolean auxiliaryPageSelected;
  boolean closeExitIpPage(){if(auxiliaryPageSelected)throw new AssertionError("Auxiliary page lifecycle is outside this host");return false;}
- static boolean active(Web w){return true;}final ChatSession owner;GeckoSession current=new GeckoSession();boolean destroyed,enabled=true,failed;long recoveryWindow;int contentRecoveries,recoveryDispatches;String url="https://chatgpt.com/c/lifecycle-current";
+ static boolean active(Web w){return true;}final ChatSession owner;GeckoSession current=new GeckoSession(),primary=current;boolean destroyed,enabled=true,failed;long recoveryWindow;int contentRecoveries,recoveryDispatches;String url="https://chatgpt.com/c/lifecycle-current";
  final Map<GeckoSession,String> locations=new IdentityHashMap<>();final Map<GeckoSession,WebExtension.Port> ports=new IdentityHashMap<>();final Set<GeckoSession> crashed=new HashSet<>(),pendingLoads=new HashSet<>(),painted=new HashSet<>(),usable=new HashSet<>();final Runnable recovery=()->recoveryDispatches++;
  final BrowserBridgeRequests callbacks=new BrowserBridgeRequests(new BrowserBridgeRequests.Timer(){public void schedule(Runnable r,long delay){}public void cancel(Runnable r){}},"null");
  /* ROUTE_FIELDS */
- GeckoWebView(ChatSession s){owner=s;locations.put(current,url);ports.put(current,new WebExtension.Port());usable.add(current);}void cancelZoom(){}void retireAppearance(WebExtension.Port port){}void stop(){contentStopped(current,"网页进程已退出，点按重新加载可恢复当前环境");}void stopOther(GeckoSession session){contentStopped(session,"other session");}
+ // Native allocation, activation and SDK restore are explicit counters, not
+ // emulated Gecko execution. Reentrant hooks represent collaborator callbacks.
+ boolean ipRouteNeedsReload,ipRouteObserved,canBack,canForward,reopenAllowed=true;String observedIpRoute="",queued="",loadedUrl="";int reopens,loads,restores;Object generalRestore;
+ long startupDraftRevision;GeckoSession.SessionState startupState;WebViewClient client;Runnable onReopen,onActivate;
+ final PopupBoundary blockedPopups=new PopupBoundary();final List<GeckoSession> popups=new ArrayList<>();
+ final Map<GeckoSession,GeckoSession.SessionState> states=new IdentityHashMap<>();final Map<GeckoSession,Long> stateDraftRevisions=new IdentityHashMap<>();
+ final Map<GeckoSession,Object> appearanceLoads=new IdentityHashMap<>(),backStates=new IdentityHashMap<>(),forwardStates=new IdentityHashMap<>(),pageScales=new IdentityHashMap<>(),measuredCompositors=new IdentityHashMap<>(),viewportWidths=new IdentityHashMap<>(),loadingTargets=new IdentityHashMap<>();
+ String getUrl(){return url;}boolean allowedUrl(String target){return GeckoNavigationPolicy.publicWeb(target);}boolean protectionAllowsNetwork(){return owner.guard.allowed();}boolean identityRequestAllowed(String target){return true;}
+ String stateUrl(GeckoSession.SessionState state){return state.url;}
+ boolean reopenCurrent(){retireTimeZone(current);reopens++;if(!reopenAllowed)return false;failed=false;crashed.remove(current);if(onReopen!=null)onReopen.run();return true;}
+ void loadUrl(String target){loads++;loadedUrl=target;}void loadSessionUri(GeckoSession session,String target){loads++;loadedUrl=target;}
+ void restoreCheckpoint(GeckoSession session,GeckoSession.SessionState state,String target,long revision){restores++;loadedUrl=target;}
+ void activate(GeckoSession session){current=session;url=locations.getOrDefault(session,"");if(onActivate!=null)onActivate.run();}
+ final Map<GeckoSession,TimeZoneGate> timeZoneGates=new IdentityHashMap<>();final Map<GeckoSession,Object> timeZoneLoads=new IdentityHashMap<>(),timeZoneIntents=new IdentityHashMap<>(),nativeTimeZoneIntents=new IdentityHashMap<>();
+ final Map<TimeZoneGate,ChromiumRouteLease.Handle> ipRouteLeases=new IdentityHashMap<>();final TimeZoneMetadata metadata=new TimeZoneMetadata();IpPageBoundary ipNavigationFailure,ipLookup;
+ void cancelIpLookup(){throw new AssertionError("Automatic IP lookup is outside this recovery host");}JSONObject timeZoneStatus(){return new JSONObject();}
+ GeckoWebView(ChatSession s){owner=s;locations.put(current,url);ports.put(current,new WebExtension.Port());usable.add(current);}void cancelZoom(){}void retireAppearance(WebExtension.Port port){}void stop(){contentStopped(current,"网页进程已退出，点按重新加载可恢复当前环境");}void stopOther(GeckoSession session){contentStopped(session,"other session");}boolean close(GeckoSession session){return closePopup(session);}
  /* LIFECYCLE */
 }
-class GeckoSession{boolean open=true;int activeCalls;boolean isOpen(){return open;}void setActive(boolean active){activeCalls++;}}
+class PopupBoundary{void invalidate(){}}
+class IpPageBoundary{GeckoSession session;}
+class TimeZoneMetadata{JSONObject timeZonePolicy;}
+class TimeZoneBoundary{boolean custom;void retire(GeckoSession session,String epoch){if(custom||session==null)throw new AssertionError("Custom native time-zone settings are outside this recovery host");PageRecoveryHost.syntheticTimeZoneRetirements++;}}
+class WebViewClient{int commits,finished;Runnable onCommit;void onPageCommitVisible(Object view,String target){commits++;if(onCommit!=null)onCommit.run();}void onPageFinished(Object view,String target){finished++;}}
+class GeckoSession{boolean open=true;int activeCalls;Runnable onStop;boolean isOpen(){return open;}void close(){open=false;}void stop(){Runnable callback=onStop;onStop=null;if(callback!=null)callback.run();}void setActive(boolean active){activeCalls++;}static class SessionState{final String url;SessionState(String url){this.url=url;}int size(){return 1;}}}
 class WebExtension{static class Port{}}
 class LoginPagePolicy{/* LOGIN */}
 

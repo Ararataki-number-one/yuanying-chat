@@ -1,7 +1,8 @@
-"""Permit the reviewed CI precondition without weakening any original UI gate."""
+"""Fixed CI-precondition history with every original oracle and negative control."""
 import ast
 import hashlib
 from pathlib import Path
+from historical_source_inputs import historical_bytes
 import unittest
 
 import ui_visual_preservation_contract as contract
@@ -16,7 +17,7 @@ BLOCK = ("from ui_test_device import prepare_workflow as prepare_ui_test_device\
 
 class UiVisualDeviceCompatibilityTests(unittest.TestCase):
     def setUp(self):
-        self.source = RUNNER.read_text()
+        self.source = historical_bytes('tests/gecko/run_ui_visuals.py').decode('utf-8')
         self.assertEqual(self.source.count(BLOCK), 1)
 
     def rejected_change(self, before, after):

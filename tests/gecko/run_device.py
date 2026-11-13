@@ -8,51 +8,11 @@ ROOT=pathlib.Path(__file__).resolve().parents[2]
 OUT=ROOT/'work/gecko-integration'
 sys.path.insert(0,str(ROOT/'tools/gecko'))
 from check_interaction_transfer_evidence import verify_paint_case, verify_saved_file_deletion
-from integration_event_contract import EventTransfer, parse_receipt_line, read_with_sequence_failure_diagnostics
+from integration_event_contract import EventTransfer, ReceiptJournalDiscovery, parse_receipt_line, read_with_sequence_failure_diagnostics
 from profile_invocation_contract import expected_build, verify_installed
 from page_continuity_contract import verify_page_continuity
 from local_draft_contract import verify_local_draft_policy
 from download_resume_contract import verify_download_resume
-class ReceiptJournalDiscovery:
-    """Discover actual native markers from committed, immutable prefix snapshots.
-
-    Logcat remains a diagnostic/error channel. This never constructs a receipt
-    from an event payload, sorts entries, fills a gap, or changes EventTransfer.
-    """
-    MAX_BYTES=4*1024*1024
-    def __init__(self,transfer):
-        self.transfer=transfer;self.prefix=()
-    def uri(self):
-        return ('content://local.pocketchat.test.evidence/gecko-event-receipts/'
-                +str(self.transfer.slot)+'/'+self.transfer.nonce)
-    def snapshot(self,raw):
-        if type(raw) is not bytes or not 0<len(raw)<=self.MAX_BYTES:raise ValueError('Native receipt journal byte bound')
-        def pairs(items):
-            value={}
-            for key,item in items:
-                if key in value:raise ValueError('Duplicate native receipt journal field')
-                value[key]=item
-            return value
-        value=json.loads(raw.decode('utf-8',errors='strict'),object_pairs_hook=pairs,
-            parse_constant=lambda _:(_ for _ in ()).throw(ValueError('Nonfinite native receipt journal')))
-        if not isinstance(value,dict) or type(value.get('schema')) is not int or value['schema']!=1:raise ValueError('Native receipt journal schema')
-        if value.get('runNonce')!=self.transfer.nonce or type(value.get('processSlot')) is not int or value['processSlot']!=self.transfer.slot:raise ValueError('Native receipt journal owner')
-        if value.get('status')=='pending':
-            if self.prefix or set(value)!={'schema','status','runNonce','processSlot'}:raise ValueError('Committed native receipt journal disappeared')
-            return []
-        if value.get('status')!='committed' or value.get('fixtureAction')!=self.transfer.action:raise ValueError('Native receipt journal action or status')
-        command=value.get('command')
-        if type(command) is not int or command<=0 or self.transfer.command is not None and command!=self.transfer.command:raise ValueError('Native receipt journal command')
-        markers=value.get('receipts')
-        if not isinstance(markers,list) or not 1<=len(markers)<=4096 or any(type(marker) is not str for marker in markers):raise ValueError('Native receipt journal markers')
-        if len(markers)<len(self.prefix) or tuple(markers[:len(self.prefix)])!=self.prefix:raise ValueError('Native receipt journal prefix changed')
-        receipts=[]
-        for marker in markers:
-            receipt=parse_receipt_line(marker)
-            if receipt is None or receipt.get('kind')!='eventReceipt' or receipt.get('command')!=command:raise ValueError('Native receipt journal marker')
-            receipts.append(receipt)
-        self.prefix=tuple(markers)
-        return receipts
 def collect_readiness(log,identity,invocations):
     """Diagnostic sidecar only. Never feeds a business decoder or acceptance gate."""
     owners={value['runNonce']:value for value in invocations};observations=[];counts={}
@@ -798,7 +758,7 @@ def main():
         hierarchy=adb('shell','cat','/sdcard/gecko-production.xml')
         (OUT/'production-ui.xml').write_text(hierarchy)
         from workspace_navigation_contract import exercise_workspace_roundtrip
-        report['productionNavigation']=exercise_workspace_roundtrip(adb,hierarchy,lambda name,xml:(OUT/name).write_text(xml),package)
+        report['productionNavigation']=exercise_workspace_roundtrip(adb,hierarchy,lambda name,xml:(OUT/name).write_text(xml),package,browser=True)
         assert not any(node.attrib.get('text') in ['简洁','原网页'] for node in ET.fromstring(hierarchy).iter('node')),hierarchy
         assert 'FATAL EXCEPTION' not in adb('logcat','-d','-s','AndroidRuntime:E','*:S')
         update_checks=[]

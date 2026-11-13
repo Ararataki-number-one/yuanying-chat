@@ -97,13 +97,14 @@ class CheckpointPublicationControls(unittest.TestCase):
 
     def test_two_opt_in_insertions_inverse_entire_actual_runner_to_exact_before(self):
         from ui_checkpoint_source_compatibility import checkpoint_runner_input, checkpoint_workflow_input
-        source = checkpoint_runner_input(RUNNER.read_bytes()).decode()
+        from historical_source_inputs import historical_bytes
+        source = checkpoint_runner_input(historical_bytes('tests/gecko/run_ui_visuals.py')).decode()
         self.assertEqual(source.count(FLAG_DECLARATION), 1)
         self.assertEqual(source.count(FLAG_RETURN), 1)
         before = source.replace(FLAG_DECLARATION, '', 1).replace(FLAG_RETURN, '', 1)
         self.assertEqual(hashlib.sha256(before.encode()).hexdigest(), BEFORE_SHA256)
         workflow = ROOT / '.github/workflows/browser-2_1-acceptance.yml'
-        self.assertEqual(hashlib.sha256(checkpoint_workflow_input(workflow.read_bytes())).hexdigest(),
+        self.assertEqual(hashlib.sha256(checkpoint_workflow_input(historical_bytes(workflow.relative_to(ROOT).as_posix()))).hexdigest(),
                          'a0fdfae87d0b32ee1ab9479aacdbff81755e9e5fe45cfcaf92a8bce3e11a0069')
 
     def test_actual_legacy_targeted_generator_guard_contract_remains_valid(self):

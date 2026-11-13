@@ -62,7 +62,7 @@ def main():
     inputs=[source,PRODUCTION/'AppHub.java',PRODUCTION/'FocusReadingPolicy.java',PRODUCTION/'LoginPagePolicy.java',PRODUCTION/'BrowserAddressPolicy.java',HERE/'focus_host.java',Path(__file__).resolve()]
     hashes={str(path.relative_to(ROOT)):digest(path.read_bytes()) for path in inputs}
     original=source.read_text()
-    needles=['static boolean chatUrl(','void updateReadingLayout(','boolean focusActive(','void setFocusReading(','void applyFocusLayout(','static void chromeVisibility(','@Override public void onBackPressed(']
+    needles=['static boolean chatUrl(','void updateReadingLayout(','boolean focusActive(','void setFocusReading(','void applyFocusLayout(','static void chromeVisibility(','void browserHistory(','@Override public void onBackPressed(']
     selected={needle:member(original,needle) for needle in needles}
     exit_lines=[line.strip() for line in original.splitlines() if line.strip().startswith('focusExit=DesignUi.button(')]
     if len(exit_lines)!=1:raise ValueError('Expected exactly one real focus exit button initialization')
@@ -89,7 +89,7 @@ def main():
         extractedMethods={name:digest(text.encode()) for name,text in selected.items()},
         focusExitInitializationSha256=digest(exit_initialization.encode()),
         generatedHarnessSha256=digest(generated.encode()),
-        scope='Verbatim MainActivity focusActive/setFocusReading/applyFocusLayout/updateReadingLayout/onBackPressed/chatUrl and real focus-exit initialization statement, plus complete production FocusReadingPolicy, LoginPagePolicy and BrowserAddressPolicy. Deterministic native View, hub selection, browser visibility/history, session, overlay and accessibility adapters. No actual Android layout, input, Activity lifecycle, Gecko document, device or network acceptance.')
+        scope='Verbatim MainActivity focusActive/setFocusReading/applyFocusLayout/updateReadingLayout/onBackPressed/browserHistory/chatUrl and real focus-exit initialization statement, plus complete production FocusReadingPolicy, LoginPagePolicy and BrowserAddressPolicy. Deterministic native View, hub selection, browser visibility, address availability, session navigation preparation/dispatch, deferred page snapshot, overlay and accessibility adapters. The actual Main history method decides when and for which owner/surface/generation the controlled session receives navigation. No actual Android layout, input, Activity lifecycle, Gecko document, device or network acceptance.')
     if not stable:report['status']='source-changed'
     args.output.parent.mkdir(parents=True,exist_ok=True)
     args.output.write_text(json.dumps(report,ensure_ascii=False,indent=2)+'\n')

@@ -19,6 +19,7 @@ sys.path[:0] = [str(ROOT/'tools/gecko'), str(ROOT/'tests/gecko')]
 import chrome_header_readiness as gate
 import chrome_parser_preparation as preparation
 import run_chrome_collapse_v2 as runner
+from historical_source_inputs import historical_bytes
 
 RUNNER = 'tests/gecko/run_chrome_collapse_v2.py'
 OLD_TEST = 'tests/gecko_chrome_collapse_v2_test.py'
@@ -246,11 +247,11 @@ class PreparationBoundaryTests(unittest.TestCase):
         }
         for relative, sha256 in original.items():
             with self.subTest(relative=relative):
-                self.assertEqual(digest((ROOT/relative).read_bytes()), sha256)
+                self.assertEqual(digest(historical_bytes(relative)), sha256)
 
     def test_only_the_explicit_runner_hook_and_old_fake_edge_are_added(self):
         for relative in (RUNNER, OLD_TEST):
-            raw = (ROOT/relative).read_bytes()
+            raw = historical_bytes(relative)
             restored = before_image(raw, relative)
             self.assertEqual(pin(restored), BEFORE[relative])
             if relative == OLD_TEST:
@@ -259,7 +260,7 @@ class PreparationBoundaryTests(unittest.TestCase):
                 self.assertEqual(assertions(raw), assertions(restored))
 
     def test_finite_delta_check_rejects_relocated_duplicate_missing_or_other_changes(self):
-        raw = (ROOT/RUNNER).read_bytes()
+        raw = historical_bytes(RUNNER)
         installed, prefix = ANCHOR.splitlines(keepends=True)
         changed = [raw.replace(HOOK, b'', 1), raw.replace(HOOK, HOOK+HOOK, 1),
             raw.replace(installed+HOOK, HOOK+installed, 1), raw+b'\n',
@@ -267,7 +268,7 @@ class PreparationBoundaryTests(unittest.TestCase):
         for item in changed:
             with self.subTest(sha256=digest(item)), self.assertRaises(ValueError):
                 before_image(item, RUNNER)
-        old = (ROOT/OLD_TEST).read_bytes()
+        old = historical_bytes(OLD_TEST)
         for item in (old.replace(MOCK, b'', 1), old.replace(MOCK, MOCK+MOCK, 1),
                      old.replace(b'self.assertFalse(partial[', b'self.assertTrue(partial[', 1)):
             with self.subTest(sha256=digest(item)), self.assertRaises(ValueError):

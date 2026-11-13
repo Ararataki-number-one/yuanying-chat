@@ -5,6 +5,7 @@ import java.util.*;
 /** Production methods are inserted verbatim; native views and time are explicit adapters. */
 public final class LoadingPerformanceHost {
   static final boolean baseline=Boolean.getBoolean("baseline");
+  static final boolean compactLayout=Boolean.getBoolean("compactLayout");
   static final List<String> checks=new ArrayList<>();
   static void check(String name,boolean value){if(!value)throw new AssertionError(name);checks.add(name);}
   static LoadingUi create(boolean visible,boolean deferred){
@@ -92,6 +93,22 @@ public final class LoadingPerformanceHost {
       android.os.SystemClock.now=21000;responsive.update();check("Network-first ordering retains the same native buttons and correct leading gap",responsive.actions.children.get(0)==responsive.website&&responsive.actions.children.get(1)==responsive.retry&&responsive.website.params.leftMargin==0&&responsive.retry.params.leftMargin==12);
       Metrics.reset();for(int i=0;i<100;i++)responsive.update();check("Stable wide landscape updates do not remeasure or rewrite presentation",Metrics.measures==0&&Metrics.presentationWrites()==0);
     }
+    if(!baseline&&compactLayout){
+      LoadingUi shortWindow=create(false,false);shortWindow.a.session.connecting=false;shortWindow.a.session.connectionStage="等待手机 VPN";shortWindow.a.session.status="手机 VPN 未连接，已暂停网页联网；连接 VPN 后，点击“重新加载”。";
+      shortWindow.a.resources.configuration.orientation=android.content.res.Configuration.ORIENTATION_LANDSCAPE;shortWindow.update();shortWindow.layoutCover(132);
+      check("Short viewport puts both real actions before scrollable explanation",shortWindow.content.children.indexOf(shortWindow.title)<shortWindow.content.children.indexOf(shortWindow.actions)&&shortWindow.content.children.indexOf(shortWindow.actions)<shortWindow.content.children.indexOf(shortWindow.hint)&&shortWindow.actions.children.contains(shortWindow.retry)&&shortWindow.actions.children.contains(shortWindow.website));
+      check("Short viewport keeps all real content and hides only the decorative emblem",shortWindow.emblem.visibility==View.GONE&&shortWindow.title.visibility==View.VISIBLE&&shortWindow.hint.visibility==View.VISIBLE&&shortWindow.guidance.visibility==View.VISIBLE&&shortWindow.retry.visibility==View.VISIBLE&&shortWindow.website.visibility==View.VISIBLE&&shortWindow.actions.orientation==LinearLayout.HORIZONTAL);
+      // Actual API 35 evidence measured this native title at 79px at density3.
+      // The 48dp buttons and existing12dp horizontal top gap are unchanged.
+      int actionBottom=shortWindow.cover.paddingTop+shortWindow.title.params.topMargin+27+shortWindow.title.params.bottomMargin+shortWindow.actions.params.topMargin+shortWindow.website.params.topMargin+48;
+      check("Observed132dp cover fits the complete48dp action row before scrolling",actionBottom<=132-shortWindow.cover.paddingBottom&&shortWindow.cover.paddingTop==6&&shortWindow.cover.paddingBottom==6&&shortWindow.overflow.scrollY==0);
+      check("Compact layout preserves true VPN error and primary action",shortWindow.title.text.equals("等待 VPN 连接")&&shortWindow.hint.description.equals("网页联网已暂停。\n连接手机 VPN 后，再重新加载。")&&shortWindow.actions.children.get(0)==shortWindow.website);
+      Metrics.reset();for(int i=0;i<100;i++){shortWindow.layoutCover(132);shortWindow.update();}
+      check("Repeated short-window measurement is idle and invokes no actions",Metrics.presentationWrites()==0&&Metrics.measures==0&&shortWindow.a.session.web.actions==0);
+      shortWindow.overflow.scrollY=80;shortWindow.a.resources.configuration.orientation=android.content.res.Configuration.ORIENTATION_PORTRAIT;shortWindow.layoutCover(480);shortWindow.update();
+      check("Restored portrait retains original order decorative emblem and spacing",shortWindow.emblem.visibility==View.VISIBLE&&shortWindow.content.children.indexOf(shortWindow.hint)<shortWindow.content.children.indexOf(shortWindow.actions)&&shortWindow.cover.paddingTop==20&&shortWindow.cover.paddingBottom==28&&shortWindow.title.params.topMargin==14&&shortWindow.title.params.bottomMargin==6&&shortWindow.actions.params.topMargin==16&&shortWindow.hint.params.topMargin==0&&shortWindow.guidance.params.topMargin==24&&shortWindow.actions.orientation==LinearLayout.VERTICAL&&shortWindow.overflow.scrollY==0);
+      shortWindow.layoutCover(0);check("Unknown viewport height does not replace the measured arrangement",!shortWindow.compactCover&&shortWindow.emblem.visibility==View.VISIBLE);
+    }
 
     Map<String,Object> report=new LinkedHashMap<>();report.put("status","passed");report.put("passed",checks.size());report.put("total",checks.size());report.put("baseline",baseline);report.put("updatesPerWorkload",100);report.put("workloads",workloads);report.put("checks",checks);
     System.out.println(json(report));
@@ -105,14 +122,15 @@ public final class LoadingPerformanceHost {
 }
 
 final class LoadingUi {
-  final MainActivity a;final LinearLayout band=new LinearLayout(),cover=new LinearLayout(),actions=new LinearLayout();
-  final TextView bandText=new TextView(),title=new TextView(),hint=new TextView();final ProgressBar wheel=new ProgressBar();final ImageView symbol=new ImageView();final Button retry=new Button(),website=new Button();
-  boolean actionLayoutKnown,actionsHorizontal;final PageLoadingWait wait=new PageLoadingWait();
+  final MainActivity a;final LinearLayout band=new LinearLayout(),cover=new LinearLayout(),content=new LinearLayout(),actions=new LinearLayout();final View emblem=new View();final ScrollView overflow=new ScrollView();
+  final TextView bandText=new TextView(),title=new TextView(),hint=new TextView(),guidance=new TextView();final ProgressBar wheel=new ProgressBar();final ImageView symbol=new ImageView();final Button retry=new Button(),website=new Button();
+  boolean actionLayoutKnown,actionsHorizontal,compactCover;final PageLoadingWait wait=new PageLoadingWait();
   boolean networkFirst,actionsLandscape;int actionsAvailable;float actionsFontScale;String actionsRetryLabel="",actionsWebsiteLabel="";
   boolean coverShown,hintBound;String lastTitle="",lastHint;
-  LoadingUi(MainActivity a){this.a=a;cover.visibility=View.GONE;band.visibility=View.GONE;retry.text="重新加载";website.text="检查网络";retry.owner=a;website.owner=a;cover.paddingLeft=cover.paddingRight=28;}
+  LoadingUi(MainActivity a){this.a=a;cover.visibility=View.GONE;band.visibility=View.GONE;retry.text="重新加载";website.text="检查网络";retry.owner=a;website.owner=a;cover.paddingLeft=cover.paddingRight=28;cover.paddingTop=20;cover.paddingBottom=28;title.params.topMargin=14;title.params.bottomMargin=6;actions.params.topMargin=16;guidance.params.topMargin=24;for(View child:new View[]{emblem,title,hint,actions,guidance})content.addView(child,child.params);}
   /* PRODUCTION_METHODS */
   /* CURRENT_ACTIONS_ADAPTER */
+  /* COMPACT_COVER_ADAPTER */
 }
 final class Metrics {
   static int text,description,visibility,alpha,animationCancel,animationStart,animationAlpha,layout,orientation,measures;
@@ -121,9 +139,9 @@ final class Metrics {
   static Map<String,Object> snapshot(){Map<String,Object> out=new LinkedHashMap<>();out.put("textAssignments",text);out.put("contentDescriptionAssignments",description);out.put("visibilityAssignments",visibility);out.put("alphaAssignments",alpha);out.put("animationCancels",animationCancel);out.put("animationStarts",animationStart);out.put("animationAlphaAssignments",animationAlpha);out.put("layoutAssignments",layout);out.put("orientationAssignments",orientation);out.put("presentationWrites",presentationWrites());return out;}
 }
 class View {
-  static final int VISIBLE=0,GONE=8;int visibility=VISIBLE,width=900,paddingLeft,paddingRight;float alpha=1;final Animator animator=new Animator(this);LinearLayout.LayoutParams params=new LinearLayout.LayoutParams();
+  static final int VISIBLE=0,GONE=8;int visibility=VISIBLE,width=900,paddingLeft,paddingRight,paddingTop,paddingBottom;float alpha=1;final Animator animator=new Animator(this);LinearLayout.LayoutParams params=new LinearLayout.LayoutParams();
   int getWidth(){return width;}int getPaddingLeft(){return paddingLeft;}int getPaddingRight(){return paddingRight;}
-  void setPadding(int left,int top,int right,int bottom){Metrics.layout++;paddingLeft=left;paddingRight=right;}void setBackground(Object drawable){Metrics.layout++;}
+  void setPadding(int left,int top,int right,int bottom){Metrics.layout++;paddingLeft=left;paddingRight=right;paddingTop=top;paddingBottom=bottom;}void setBackground(Object drawable){Metrics.layout++;}
   void setVisibility(int value){Metrics.visibility++;visibility=value;}int getVisibility(){return visibility;}
   void setAlpha(float value){Metrics.alpha++;alpha=value;}float getAlpha(){return alpha;}
   Animator animate(){return animator;}
@@ -143,9 +161,11 @@ final class Color {static final int WHITE=-1,TRANSPARENT=0;}
 final class Ui {static Object ripple(MainActivity owner,int color,int radius){return color;}}
 final class LinearLayout extends View {
   final List<View> children=new ArrayList<>();int getChildCount(){return children.size();}void removeAllViews(){Metrics.layout++;children.clear();}void addView(View view,LayoutParams params){Metrics.layout++;view.params=params;children.add(view);}
+  void removeView(View view){Metrics.layout++;children.remove(view);}void addView(View view,int at,LayoutParams params){Metrics.layout++;view.params=params;children.add(at,view);}
   static final int HORIZONTAL=0,VERTICAL=1;int orientation=VERTICAL;void setOrientation(int value){Metrics.orientation++;orientation=value;}
-  static final class LayoutParams {LayoutParams(){}LayoutParams(int width,int height){this.width=width;this.height=height;}int width=-1,height=-2,topMargin,leftMargin;float weight;}
+  static final class LayoutParams {LayoutParams(){}LayoutParams(int width,int height){this.width=width;this.height=height;}int width=-1,height=-2,topMargin,bottomMargin,leftMargin;float weight;}
 }
+final class ScrollView extends View {int scrollY;void scrollTo(int x,int y){Metrics.layout++;scrollY=y;}}
 final class Animator {
   final View owner;long duration;Runnable endAction;float targetAlpha;
   Animator(View owner){this.owner=owner;}

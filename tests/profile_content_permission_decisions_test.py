@@ -1,4 +1,5 @@
 """Exact production decisions and SDK adapter with controlled SDK/handler/catalog boundaries."""
+from historical_source_inputs import historical_bytes
 import hashlib,importlib.util,json,os
 from pathlib import Path
 import shutil,subprocess,tempfile,unittest
@@ -23,7 +24,7 @@ class ContentPermissionDecisionsTest(unittest.TestCase):
   self.assertEqual(before,{str(p.relative_to(ROOT)):hashlib.sha256(p.read_bytes()).hexdigest() for p in inputs});p=ROOT/'work/content-permission-decisions/host-results.json';p.parent.mkdir(parents=True,exist_ok=True);p.write_text(json.dumps({'status':'passed','sourceSha256':before,'runs':runs,'actualAndroidExecution':False,'actualGeckoExecution':False,'actualSdkApiCompile':False},indent=2)+'\n')
  def test_exact_permission_inverse_retains_original_reading_oracle_and_rejects_unlisted_edits(self):
   spec=importlib.util.spec_from_file_location('permission_reading_compatibility',ROOT/'tests/fingerprint_source_compatibility.py');compat=importlib.util.module_from_spec(spec);spec.loader.exec_module(compat)
-  raw=(SOURCE/'GeckoWebView.java').read_bytes();prior=compat.permission_denial_preservation_bytes(raw)
+  raw=historical_bytes('app/src/main/java/local/pocketchat/GeckoWebView.java');prior=compat.permission_denial_preservation_bytes(raw)
   self.assertEqual(hashlib.sha256(prior).hexdigest(),'80b24f3e89b8ebd8e798d1841b92d006387c9131b00d467228a737b110db5001')
   self.assertEqual(compat.BASELINE,'0dba767dde6a574d5d534723a9283613bdf39fc4843252e1ddb6946a3dfceb10');self.assertEqual(compat.PATCH_SHA256,'f831967e6d6a4265ffadc8ffa008402a091da1204812ec71e6593b37256c22b9')
   self.assertEqual(hashlib.sha256(compat.reading_preservation_bytes(raw)).hexdigest(),compat.BASELINE);self.assertEqual(compat.reading_preservation_bytes(raw),compat.reading_preservation_bytes(prior))

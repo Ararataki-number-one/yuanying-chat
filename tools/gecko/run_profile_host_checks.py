@@ -97,6 +97,7 @@ def main():
         raise ValueError("Profile prerequisite setup changed source checkout")
     prerequisite_inputs = {ROOT / path for path in ('tools/gecko/prepare_profile_host_prerequisites.py',
         'tools/browser/source_history.py', 'tests/baselines/public-source-history.json',
+        'tools/browser/prepare_ui_workspace_history.py', 'tests/baselines/ui-workspace-public-source-history.json',
         'tests/fixtures/profile-fixture-root-source-deltas.json')}
     input_paths = set((ROOT / "app/src/main/java").rglob("*.java"))
     input_paths.update(prerequisite_inputs)

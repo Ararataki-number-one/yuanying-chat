@@ -6,16 +6,17 @@ from run import member, ROOT
 def run(json_jar):
     source=ROOT/'app/src/main/java/local/pocketchat'
     selections={
-      'CHAT':('ChatSession.java',['static final class ReloadTarget','ReloadTarget reloadTarget(','boolean archiveWebsiteNavigation(','void completeReply(','void abandonWait(','boolean currentReplyActive(','void beginNavigation(']),
+      'CHAT':('ChatSession.java',['static final class ReloadTarget','ReloadTarget reloadTarget(','boolean archiveWebsiteNavigation(','void completeReply(','void abandonWait(','boolean currentReplyActive(','private long invalidateBrowserPageWork(','long beginNavigation(','boolean resourceBindingMatches(']),
       'MAIN':('MainActivity.java',['boolean reloadMatches(','void requestReload(','void confirmReload(','void confirmIndependentReload(']),
-      'OBSERVER':('WebReplyObserver.java',['static boolean same(','static boolean webJob(','boolean archiveNavigation(','void receive(JSONObject event,Object port)','static boolean stable(','static boolean bindingRoute(','void finishStopped(']),
+      'OBSERVER':('WebReplyObserver.java',['static boolean same(','static boolean webJob(','void navigationStarted(','boolean currentEvent(','boolean archiveNavigation(','void receive(JSONObject event,Object port)','static boolean stable(','static boolean bindingRoute(','void finishStopped(']),
       'POLICY':('BrowserRuntimePolicy.java',['static boolean sameDocument(','static boolean leftConversation(','static boolean official(','static String conversationId(']),
       'REPLY_POLICY':('BrowserSettingsPolicy.java',['static boolean currentReply(']),
       'MEMORY':('PageMemory.java',['static boolean completeDraft(','static boolean hasDraft('])}
     if 'ReloadTarget reloadTargetAfterInspection(' in (source/'ChatSession.java').read_text():
         selections['CHAT'][1].append('ReloadTarget reloadTargetAfterInspection(')
     fixture=pathlib.Path(__file__).with_name('ReloadRequestHost.java');text=fixture.read_text();methods=[]
-    paths={fixture,pathlib.Path(__file__).resolve(),pathlib.Path(__file__).with_name('run.py')}|{source/name for name,_ in selections.values()}
+    coordinator=source/'ReplyTaskPersistence.java'
+    paths={fixture,pathlib.Path(__file__).resolve(),pathlib.Path(__file__).with_name('run.py'),coordinator}|{source/name for name,_ in selections.values()}
     hashes={str(p.relative_to(ROOT)):hashlib.sha256(p.read_bytes()).hexdigest() for p in sorted(paths)}
     for marker,(name,needles) in selections.items():
         original=(source/name).read_text();text=text.replace('/* '+marker+' */','\n'.join(member(original,n) for n in needles));methods.extend(name+':'+n for n in needles)
@@ -26,11 +27,11 @@ def run(json_jar):
     with tempfile.TemporaryDirectory(prefix='reload-request-host-') as root:
         root=pathlib.Path(root);java=root/'local/pocketchat/ReloadRequestHost.java';java.parent.mkdir(parents=True);java.write_text(text)
         uri=root/'android/net/Uri.java';uri.parent.mkdir(parents=True);uri.write_text('package android.net; public class Uri {java.net.URI value; public static Uri parse(String x){Uri u=new Uri();u.value=java.net.URI.create(x);return u;} public String getPath(){return value.getPath();}public String getEncodedPath(){return value.getRawPath();}}')
-        subprocess.run(['javac','-encoding','UTF-8','-cp',str(json_jar.resolve()),'-d',str(root),str(java),str(uri)],check=True)
+        subprocess.run(['javac','-encoding','UTF-8','-cp',str(json_jar.resolve()),'-d',str(root),str(java),str(uri),str(coordinator)],check=True)
         result=subprocess.run(['java','-cp',str(root)+os.pathsep+str(json_jar.resolve()),'local.pocketchat.ReloadRequestHost'],text=True,capture_output=True)
         if not result.stdout:raise RuntimeError(result.stderr)
         report=json.loads(result.stdout)
-    report.update(actualAndroidExecution=False,scope='Exact production requestReload, identity guards and archiveNavigation; controlled host callbacks/preferences/widgets, no real Android touch or storage claim',productionMembers=methods,sourceFiles=hashes,jsonJarSha256=hashlib.sha256(json_jar.read_bytes()).hexdigest(),executionInputsUnchanged=all(hashlib.sha256((ROOT/p).read_bytes()).hexdigest()==h for p,h in hashes.items()))
+    report.update(actualAndroidExecution=False,scope='Exact production requestReload, identity guards, archiveNavigation and complete ReplyTaskPersistence; acknowledged receipt and controlled host callbacks/preferences/widgets, no real Android touch or storage claim',productionMembers=methods,productionWholeClasses=['ReplyTaskPersistence.java'],sourceFiles=hashes,jsonJarSha256=hashlib.sha256(json_jar.read_bytes()).hexdigest(),executionInputsUnchanged=all(hashlib.sha256((ROOT/p).read_bytes()).hexdigest()==h for p,h in hashes.items()))
     return report
 
 if __name__=='__main__':

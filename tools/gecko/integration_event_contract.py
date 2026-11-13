@@ -194,6 +194,48 @@ class EventTransfer:
         return copy.deepcopy(event)
 
 
+class ReceiptJournalDiscovery:
+    """Discover actual native markers from committed, immutable prefix snapshots.
+
+    Logcat remains a diagnostic/error channel. This never constructs a receipt
+    from an event payload, sorts entries, fills a gap, or changes EventTransfer.
+    """
+    MAX_BYTES=4*1024*1024
+    def __init__(self,transfer):
+        self.transfer=transfer;self.prefix=()
+    def uri(self):
+        return ('content://local.pocketchat.test.evidence/gecko-event-receipts/'
+                +str(self.transfer.slot)+'/'+self.transfer.nonce)
+    def snapshot(self,raw):
+        if type(raw) is not bytes or not 0<len(raw)<=self.MAX_BYTES:raise ValueError('Native receipt journal byte bound')
+        def pairs(items):
+            value={}
+            for key,item in items:
+                if key in value:raise ValueError('Duplicate native receipt journal field')
+                value[key]=item
+            return value
+        value=json.loads(raw.decode('utf-8',errors='strict'),object_pairs_hook=pairs,
+            parse_constant=lambda _:(_ for _ in ()).throw(ValueError('Nonfinite native receipt journal')))
+        if not isinstance(value,dict) or type(value.get('schema')) is not int or value['schema']!=1:raise ValueError('Native receipt journal schema')
+        if value.get('runNonce')!=self.transfer.nonce or type(value.get('processSlot')) is not int or value['processSlot']!=self.transfer.slot:raise ValueError('Native receipt journal owner')
+        if value.get('status')=='pending':
+            if self.prefix or set(value)!={'schema','status','runNonce','processSlot'}:raise ValueError('Committed native receipt journal disappeared')
+            return []
+        if value.get('status')!='committed' or value.get('fixtureAction')!=self.transfer.action:raise ValueError('Native receipt journal action or status')
+        command=value.get('command')
+        if type(command) is not int or command<=0 or self.transfer.command is not None and command!=self.transfer.command:raise ValueError('Native receipt journal command')
+        markers=value.get('receipts')
+        if not isinstance(markers,list) or not 1<=len(markers)<=4096 or any(type(marker) is not str for marker in markers):raise ValueError('Native receipt journal markers')
+        if len(markers)<len(self.prefix) or tuple(markers[:len(self.prefix)])!=self.prefix:raise ValueError('Native receipt journal prefix changed')
+        receipts=[]
+        for marker in markers:
+            receipt=parse_receipt_line(marker)
+            if receipt is None or receipt.get('kind')!='eventReceipt' or receipt.get('command')!=command:raise ValueError('Native receipt journal marker')
+            receipts.append(receipt)
+        self.prefix=tuple(markers)
+        return receipts
+
+
 SEQUENCE_GAP_ERROR = 'Synthetic event transfer: missing or out-of-order event sequence'
 
 

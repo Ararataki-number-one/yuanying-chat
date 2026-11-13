@@ -21,6 +21,46 @@ def current_body():
 
 
 class CompactCaptureReportV2Tests(unittest.TestCase):
+    def run_current_menu_segment(self, *, old_label=False, action='more'):
+        source = (ROOT/'tests/gecko/compact_chrome_v2.py').read_text()
+        tree = ast.parse(source)
+        run = next(node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == 'run_case')
+        start = next(index for index, node in enumerate(run.body) if isinstance(node, ast.Assign)
+                     and ast.unparse(node) == "before = snapshot('more')")
+        end = next(index for index, node in enumerate(run.body) if isinstance(node, ast.AugAssign)
+                   and ast.unparse(node) == "command += '-performance'")
+        fragment = ast.unparse(ast.Module(body=run.body[start:end], type_ignores=[]))
+        if old_label:
+            self.assertEqual(fragment.count('浏览器菜单'), 2)
+            fragment = fragment.replace('浏览器菜单', '会话选项')
+        calls = []
+        control = dict(tap=[960,156], touch=[900,80,1020,230])
+        def visible(label, shown=True):
+            self.assertEqual(label, '浏览器菜单', 'Actual current menu must be observed')
+            calls.append(('visible',label,shown))
+        scope = dict(command='controlled-current',
+            snapshot=lambda name: dict(controls=[None,None,control],actions=4),
+            tap=lambda *args: calls.append(('tap',)+args),
+            event=lambda command,kind: dict(action=action,actions=5,page=0),
+            visible=visible,adb=lambda *args: calls.append(('adb',)+args))
+        exec(compile(fragment,'<actual-current-menu>','exec'),scope)
+        return calls
+
+    def test_actual_current_compact_menu_segment_observes_browser_menu_and_one_back(self):
+        calls = self.run_current_menu_segment()
+        self.assertEqual(calls, [
+            ('tap','more',[960,156],[900,80,1020,230],'more'),
+            ('visible','浏览器菜单',True),('adb','shell','input','keyevent','KEYCODE_BACK'),
+            ('visible','浏览器菜单',False)])
+
+    def test_old_menu_label_is_rejected_by_the_same_current_ui_boundary(self):
+        with self.assertRaisesRegex(AssertionError, 'Actual current menu'):
+            self.run_current_menu_segment(old_label=True)
+
+    def test_wrong_action_cannot_claim_the_browser_menu_was_opened_and_closed(self):
+        with self.assertRaises(AssertionError):
+            self.run_current_menu_segment(action='environment')
+
     def reject(self, body):
         with self.assertRaises(AssertionError):
             capture.historical_report_body(body)
@@ -153,6 +193,58 @@ class CompactCaptureReportV2Tests(unittest.TestCase):
                          ast.dump(expected, include_attributes=False))
         self.assertIn('pathlib.Path(__file__).resolve()', ast.unparse(main))
         self.assertIn("contract.verify_shared_ui_source(selected['tests/gecko/run_ui_visuals.py'])", ast.unparse(main))
+
+    def test_current_compact_consumer_and_fixed_history_are_separate_proofs(self):
+        path = 'tests/gecko/run_ui_visuals.py'
+        source = (ROOT / path).read_text()
+        released = capture.history.historical_bytes(path).decode('utf-8')
+        with patch.object(capture.contract, 'verify_shared_ui_source',
+                          wraps=capture.contract.verify_shared_ui_source) as old_proof:
+            report = capture.verify_current_compact_ui_source(source)
+        old_proof.assert_called_once_with(released)
+        self.assertNotEqual(source, released)
+        self.assertEqual(report['historicalSource'], capture.history.historical_identity(path))
+        self.assertTrue(report['historicalProofOnly'])
+        self.assertTrue(report['originalWorkloadSemanticsPreserved'])
+        self.assertTrue(report['currentCompactWorkloadPreserved'])
+        self.assertFalse(report['currentWholeUiWorkloadClaimed'])
+        self.assertFalse(report['actualAndroidExecution'])
+        self.assertEqual(report['currentMenuLabel'], '浏览器菜单')
+        self.assertEqual(report['currentCompactSourceSha256'], hashlib.sha256(source.encode()).hexdigest())
+        self.assertEqual(set(report['currentCompactMembersAstSha256']),
+                         {'adb', 'dump', 'chrome_event', 'focus', 'visible', 'quick_environment_sheet',
+                          'compactWorkload', 'compactImport', 'UI_NAVIGATION_CONTRACT', 'ui_capture'})
+
+    def test_current_compact_deadlines_touches_labels_and_callback_wiring_reject_drift(self):
+        source = (ROOT / 'tests/gecko/run_ui_visuals.py').read_text()
+        changes = (
+            ('def chrome_event(command,event):\n        deadline=time.monotonic()+20',
+             'def chrome_event(command,event):\n        deadline=time.monotonic()+21'),
+            ("after['actions']==sample['actions']==0", "after['actions']==sample['actions']>=0"),
+            ("str(control['tap'][0])", "str(control['tap'][0]+1)"),
+            ("performance['status']=='passed'", "performance['status']!='failed'"),
+            ("label='浏览器菜单'", "label='会话选项'"),
+            ("label='浏览器菜单'", "label='其它菜单'"),
+            ('capture_compact_v2(adb,lambda', 'capture_compact_v2(dump,lambda'),
+            ('UI_NAVIGATION_CONTRACT=2', 'UI_NAVIGATION_CONTRACT=1'),
+            ('from compact_chrome_v2 import run_case as capture_compact_v2',
+             'from compact_chrome_v2 import other_case as capture_compact_v2'),
+            ('return ui_capture.read(deadline=deadline)', 'return ui_capture.read(deadline=None)'),
+        )
+        for before, after in changes:
+            self.assertEqual(source.count(before), 1, before)
+            with self.subTest(change=before), self.assertRaises(AssertionError):
+                capture.verify_current_compact_ui_source(source.replace(before, after, 1))
+        with self.assertRaises(AssertionError):
+            capture.verify_current_compact_ui_source(source + '\ndef chrome_event(command,event): return {}\n')
+
+    def test_current_compact_proof_is_the_default_and_before_ref_keeps_its_original_guard(self):
+        tree = ast.parse(RUNNER.read_text())
+        main = next(node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == 'main')
+        selected = next(node.value for node in ast.walk(main) if isinstance(node, ast.Assign)
+                        and any(isinstance(target, ast.Name) and target.id == 'runner_contract' for target in node.targets))
+        expected = ast.parse("contract.verify_shared_ui_source(selected['tests/gecko/run_ui_visuals.py']) if a.before_ref else verify_current_compact_ui_source(selected['tests/gecko/run_ui_visuals.py'])", mode='eval').body
+        self.assertEqual(ast.dump(selected, include_attributes=False), ast.dump(expected, include_attributes=False))
 
 
 if __name__ == '__main__':
