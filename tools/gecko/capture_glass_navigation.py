@@ -501,6 +501,56 @@ def mp4_metadata(path):
                 decoderValidation=False, framePacingMeasurement=False)
 
 
+def wait_for_recorder_exit(process, log, timeout, observation):
+    """Observe file-backed output while preserving one process-exit deadline.
+
+    These are host observation times, not the device's log-emission times.
+    Existing bytes in the first snapshot may predate the wait. Neither output
+    phases nor a finalized MP4 can replace the process's actual exit result.
+    """
+    started = time.monotonic()
+    deadline = started + timeout
+    observation.update(status='waiting', timeoutSeconds=timeout, diagnosticOnly=True,
+        applicationAcceptance=False, logFile=log.name, startedAtMonotonic=started,
+        deadlineMonotonic=deadline, observations=[], logReadErrors=[])
+    offset = 0
+    try:
+        while True:
+            return_code = process.poll()
+            row = dict(observedAtUnixNs=time.time_ns(), elapsedSeconds=time.monotonic() - started,
+                       returnCode=return_code, initialSnapshot=not observation['observations'],
+                       byteStart=offset, byteEnd=offset, newBytesHex='', text='')
+            try:
+                raw = log.read_bytes()
+                if len(raw) < offset:
+                    raise ValueError('The recording log shrank during the exit observation')
+                chunk = raw[offset:]
+                row.update(byteEnd=len(raw), newBytesHex=chunk.hex(),
+                           newBytesSha256=hashlib.sha256(chunk).hexdigest(),
+                           text=chunk.decode('utf-8', 'replace'))
+                offset = len(raw)
+            except (OSError, ValueError) as error:
+                row['logReadError'] = dict(errorType=type(error).__name__, error=str(error))
+                observation['logReadErrors'].append(row['logReadError'])
+            remaining = deadline - time.monotonic()
+            if (row['initialSnapshot'] or row['newBytesHex'] or return_code is not None
+                    or 'logReadError' in row or remaining <= 0):
+                observation['observations'].append(row)
+            if deadline - time.monotonic() <= 0:
+                raise subprocess.TimeoutExpired(process.args, timeout)
+            if return_code is not None:
+                observation.update(status='exited', returnCode=return_code,
+                                   completedAtMonotonic=time.monotonic())
+                return return_code
+            try:
+                process.wait(timeout=min(.1, deadline - time.monotonic()))
+            except subprocess.TimeoutExpired:
+                pass  # Only the original shared deadline determines failure.
+    except subprocess.TimeoutExpired:
+        observation.update(status='timed-out', completedAtMonotonic=time.monotonic())
+        raise
+
+
 def capture_motion(args, report, capture, adb, wait_for):
     """Optional, bounded recording of actual controls after the original PNG.
 
@@ -713,7 +763,8 @@ def capture_motion(args, report, capture, adb, wait_for):
         motion['recordingWallSecondsAtStopRequest'] = time.monotonic() - recording_started
         if not signal_owned('INT'):
             raise RuntimeError('The completed recording no longer has its verified owned recorder')
-        process.wait(timeout=8)
+        motion['recorderExitObservation'] = {}
+        wait_for_recorder_exit(process, log, 8, motion['recorderExitObservation'])
         recorder_row.update(completedAtUnixNs=time.time_ns(), exitCode=process.returncode)
         motion['recorderStoppedAtUnixNs'] = recorder_row['completedAtUnixNs']
         if process.returncode != 0:

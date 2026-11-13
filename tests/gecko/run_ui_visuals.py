@@ -151,7 +151,7 @@ def capture(variant,width,height,scale,scene,theme='light'):
         preference_check={'preferenceControls':sorted(seen),'removedNoticeControlsAbsent':True,'scrollFrames':len(collected),'tabScrolls':tab_scrolls}
     if scene=='chat' and UI_NAVIGATION_CONTRACT==2:
         time.sleep(2.5);xml=dump()
-        conversation_header(xml,package,width,height,scale,'日常会话')
+        conversation_header(xml,package,width,height,scale,'日常会话',browser=True)
     elif scene=='chat':
         time.sleep(2.5);xml=dump();assert all(label in xml for label in ['浏览器','环境','下载','网络','设置'])
         assert not any(n.attrib.get('text') in ['简洁','原网页'] for n in ET.fromstring(xml).iter('node')),xml

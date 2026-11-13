@@ -758,7 +758,7 @@ def main():
         hierarchy=adb('shell','cat','/sdcard/gecko-production.xml')
         (OUT/'production-ui.xml').write_text(hierarchy)
         from workspace_navigation_contract import exercise_workspace_roundtrip
-        report['productionNavigation']=exercise_workspace_roundtrip(adb,hierarchy,lambda name,xml:(OUT/name).write_text(xml),package)
+        report['productionNavigation']=exercise_workspace_roundtrip(adb,hierarchy,lambda name,xml:(OUT/name).write_text(xml),package,browser=True)
         assert not any(node.attrib.get('text') in ['简洁','原网页'] for node in ET.fromstring(hierarchy).iter('node')),hierarchy
         assert 'FATAL EXCEPTION' not in adb('logcat','-d','-s','AndroidRuntime:E','*:S')
         update_checks=[]

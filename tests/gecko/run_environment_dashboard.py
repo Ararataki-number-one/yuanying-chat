@@ -43,6 +43,39 @@ def settings_workspace(xml):
     assert chats[0].get('class')=='android.widget.Button' and chats[0].get('enabled')==chats[0].get('clickable')=='true','settings browser action is not available'
     return True
 
+def details_menu_progress(xml,environment):
+    """Select only the named native sheet; reveal its existing offscreen action."""
+    root=ET.fromstring(xml);parents={c:p for p in root.iter() for c in p}
+    titles=[n for n in root.iter('node') if n.get('text')==n.get('content-desc')==environment]
+    closes=[n for n in root.iter('node') if n.get('content-desc')=='关闭'+environment]
+    if not titles and not closes:return None
+    assert len(titles)==len(closes)==1,'ambiguous environment menu'
+    title,close=titles[0],closes[0]
+    assert title.get('package')==close.get('package')==PACKAGE,'foreign environment menu'
+    assert title.get('class')=='android.widget.TextView' and close.get('class')=='android.widget.Button'
+    assert parents[title] is parents[close],'environment sheet header differs'
+    sheet=parents[parents[title]]
+    scrolls=[n for n in sheet if n.get('class')=='android.widget.ScrollView']
+    assert len(scrolls)==1 and scrolls[0].get('package')==PACKAGE,'one owned menu scroll surface required'
+    scroll=scrolls[0]
+    def rectangle(node):
+        match=re.fullmatch(r'\[(\d+),(\d+)\]\[(\d+),(\d+)\]',node.get('bounds',''))
+        assert match is not None,'menu bounds missing'
+        l,t,r,b=map(int,match.groups());assert l<r and t<b,'empty menu bounds'
+        return l,t,r,b
+    l,t,r,b=rectangle(scroll)
+    targets=[n for n in scroll.iter('node') if n.get('text')=='环境详情']
+    assert len(targets)<=1,'ambiguous environment details action'
+    if targets:
+        target=targets[0]
+        assert target.get('package')==PACKAGE and target.get('class')=='android.widget.Button'
+        assert target.get('enabled')==target.get('clickable')=='true','inactive environment details action'
+        al,at,ar,ab=rectangle(target)
+        if l<=al<ar<=r and t<=at<ab<=b and ab-at>=144 and target.get('visible-to-user')!='false':
+            return dict(ready=True,bounds=[al,at,ar,ab])
+    assert scroll.get('scrollable')=='true','environment details cannot be reached'
+    return dict(ready=False,bounds=[l,t,r,b])
+
 def run(adb,binary,source,out,dump):
     records=[];events=[];taps=[];directory=out/'ui-visuals/environment-dashboard';directory.mkdir(parents=True,exist_ok=True)
     def tree(xml):return list(ET.fromstring(xml).iter('node'))
@@ -56,8 +89,10 @@ def run(adb,binary,source,out,dump):
             xml=dump(deadline=deadline)
             crash=adb('logcat','-d','-s','AndroidRuntime:E','*:S')
             assert 'FATAL EXCEPTION' not in crash,(label,crash[-4000:])
-            if predicate(xml):return xml
-            if time.monotonic()>=deadline:raise AssertionError((label,'not observed',xml[-5000:]))
+            if time.monotonic()>=deadline:raise AssertionError((label,'wait budget expired',xml[-5000:]))
+            accepted=predicate(xml)
+            if time.monotonic()>=deadline:raise AssertionError((label,'wait budget expired',xml[-5000:]))
+            if accepted:return xml
             time.sleep(.2)
     def click(xml,label=None,description=None):
         node=next(n for n in tree(xml) if (label is not None and n.get('text')==label or description is not None and n.get('content-desc')==description) and n.get('enabled')=='true')
@@ -68,8 +103,25 @@ def run(adb,binary,source,out,dump):
         adb('shell','am','start','-W','-n',PACKAGE+'/local.pocketchat.WindowHomeActivity')
         xml=wait(lambda x:environment_action_description(x,environment) is not None,'details environment card')
         click(xml,description='更多操作 '+environment)
-        xml=wait(lambda x:any(n.get('text')=='环境详情' for n in tree(x)),'explicit details menu')
-        click(xml,'环境详情')
+        scrolls=0;details_target=None
+        def details_ready(value):
+            nonlocal scrolls,details_target
+            progress=details_menu_progress(value,environment)
+            if progress is None:return False
+            if progress['ready']:
+                details_target=progress['bounds'];return True
+            assert scrolls<8,'environment details exceeded eight real menu scrolls'
+            l,t,r,b=progress['bounds'];x=(l+r)//2
+            start,end=t+(b-t)*4//5,t+(b-t)//5
+            adb('shell','input','swipe',str(x),str(start),str(x),str(end),'300')
+            scrolls+=1
+            events.append(dict(name='reveal-explicit-environment-details',environment=environment,
+                actualAndroidSwipe=dict(start=[x,start],end=[x,end],durationMillis=300,observedBounds=progress['bounds'])))
+            return False
+        xml=wait(details_ready,'explicit details menu')
+        l,t,r,b=details_target
+        adb('shell','input','tap',str((l+r)//2),str((t+b)//2))
+        taps.append(dict(label='环境详情',description=None,x=(l+r)//2,y=(t+b)//2))
         return wait(lambda x:dashboard(x) and environment in x,'explicit environment details')
     def snapshot(name,xml,**metadata):
         for text in ('跳过','停留查看'):
