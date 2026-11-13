@@ -714,6 +714,111 @@ def record_case(args, report, adb, case, sha, mp4_metadata):
                     raise RuntimeError('Suite recording failed; original diagnostics are retained')
 
 
+def background_state(activity, gfx, *, package, component, pid):
+    """Observe lifecycle/window readiness, never select a sample by frame count."""
+    if type(pid) is not int or pid <= 0 or not component.startswith(package + '/'):
+        raise ValueError('A fixed background Activity/process identity is required')
+    lines = activity.splitlines()
+    headers = [(index, len(line) - len(line.lstrip())) for index, line in enumerate(lines)
+               if re.fullmatch(r'\s*\* Hist\s+#\d+: ActivityRecord\{[^\n]*\s' +
+                               re.escape(component) + r'\s[^\n]*\}', line)]
+    if len(headers) != 1:
+        raise ValueError('One actual background Activity record is required')
+    start, indent = headers[0]
+    end = next((index for index in range(start + 1, len(lines))
+                if lines[index].strip() and len(lines[index]) - len(lines[index].lstrip()) <= indent), len(lines))
+    block = '\n'.join(lines[start:end])
+    process = re.findall(r'\bapp=ProcessRecord\{[^\n]*?\s(\d+):' + re.escape(package) + r'/[^}\n]+\}', block)
+    if process != [str(pid)]:
+        raise ValueError('Background Activity process identity changed')
+    states = re.findall(r'\bstate=([^\s]*)', block)
+    if len(states) != 1 or states[0] not in ('INITIALIZING', 'STARTED', 'RESUMED', 'PAUSING', 'PAUSED', 'STOPPING', 'STOPPED', 'FINISHING', 'DESTROYING', 'DESTROYED', 'RESTARTING_PROCESS'):
+        raise ValueError('Background Activity state is missing or ambiguous')
+    visible = {}
+    for name in ('mVisibleRequested', 'mVisible', 'mClientVisible'):
+        values = re.findall(r'\b' + name + r'=([^\s]*)', block)
+        if len(values) != 1 or values[0] not in ('true', 'false'):
+            raise ValueError('Background visibility is missing or ambiguous: ' + name)
+        visible[name] = values[0] == 'true'
+    resumed = [line for line in lines if re.match(
+        r'^\s*(?:mResumedActivity|topResumedActivity|ResumedActivity|Resumed)\s*[:=]', line)]
+    if not resumed:
+        raise ValueError('An actual resumed destination is required')
+    owners = []
+    for line in resumed:
+        match = re.search(r'ActivityRecord\{[^\n]*?\s([^\s/{}]+)/([^\s{}]+)\s', line)
+        if match is None:
+            raise ValueError('Unknown resumed destination observation')
+        owners.append(match[1])
+    processes = re.findall(r'\*\* Graphics info for pid (\d+) \[([^\]]+)\] \*\*', gfx)
+    if processes != [(str(pid), package)]:
+        raise ValueError('Background graphics process identity changed')
+    sections = re.findall(r'(?ms)^Profile data in ms:\s*\n(.*?)^View hierarchy:', gfx)
+    if len(sections) != 1:
+        raise ValueError('One closed background graphics root section is required')
+    roots = []
+    for line in sections[0].splitlines():
+        if not line.strip():
+            continue
+        match = re.fullmatch(r'\s*([^\s]+)/(android\.view\.ViewRootImpl@[0-9a-fA-F]+) \(visibility=(0|4|8)\)\s*', line)
+        if match is None or not match[1].startswith(package + '/'):
+            raise ValueError('Unknown or foreign background graphics root')
+        roots.append(dict(component=match[1], root=match[2], visibility=int(match[3])))
+    if not roots or len({row['root'] for row in roots}) != len(roots):
+        raise ValueError('Background graphics roots are missing or duplicated')
+    totals = re.findall(r'(?m)^[ \t]*Total ViewRootImpl\b(.*)$', gfx)
+    total = re.fullmatch(r'[ \t]*:[ \t]*([0-9]+)[ \t]*', totals[0]) if len(totals) == 1 else None
+    if total is None or int(total[1]) != len(roots):
+        raise ValueError('Background graphics root count is missing or inconsistent')
+    if not any(row['component'] == component for row in roots):
+        raise ValueError('The actual background Activity root is missing')
+    return dict(pid=pid, component=component, state=states[0], visibility=visible,
+                resumedPackages=owners, roots=roots,
+                ready=states[0] == 'STOPPED' and not any(visible.values())
+                    and package not in owners and all(row['visibility'] == 8 for row in roots))
+
+
+def prepare_background(case, adb, out, *, package, component, pid):
+    """Use one 15-second preparation deadline before the original quiet window."""
+    started = time.monotonic(); deadline = started + 15
+    record = case['backgroundPreparation'] = dict(status='failed', budgetSeconds=15,
+        pid=pid, component=component, scope='lifecycle-and-window-readiness-only',
+        framesUsedForReadiness=False, observations=[])
+    def read(*parts):
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise TimeoutError('Background preparation exceeded 15 seconds')
+        raw = adb(*parts, timeout=min(5, remaining))
+        if time.monotonic() >= deadline:
+            raise TimeoutError('Background preparation exceeded 15 seconds')
+        return raw
+    try:
+        while time.monotonic() < deadline:
+            actual = read('shell', 'pidof', package).decode().strip().split()
+            if actual != [str(pid)]:
+                raise ValueError('Background process exited or changed')
+            activity = read('shell', 'dumpsys', 'activity', 'activities')
+            gfx = read('shell', 'dumpsys', 'gfxinfo', package)
+            index = len(record['observations'])
+            row = dict(observedAtUnixNs=time.time_ns())
+            for suffix, raw in (('activity', activity), ('gfxinfo', gfx)):
+                path = out / (case['name'] + '-background-preparation-' + str(index) + '-' + suffix + '.txt')
+                path.write_bytes(raw)
+                row[suffix] = dict(file=path.name, bytes=len(raw), sha256=hashlib.sha256(raw).hexdigest())
+            record['observations'].append(row)
+            row['state'] = background_state(activity.decode('utf-8', 'strict'), gfx.decode('utf-8', 'strict'),
+                                             package=package, component=component, pid=pid)
+            if time.monotonic() >= deadline:
+                raise TimeoutError('Background preparation exceeded 15 seconds')
+            if row['state']['ready']:
+                record['status'] = 'ready'
+                return record
+            time.sleep(min(.2, max(0, deadline - time.monotonic())))
+        raise TimeoutError('Background preparation exceeded 15 seconds')
+    finally:
+        record['elapsedSeconds'] = time.monotonic() - started
+
+
 def capture_acceptance_suite(args, report, capture, adb, wait_for, tap, screenshot, api):
     """Fail closed on route/configuration failures; save every original observation."""
     result = report['glassUiAcceptance'] = dict(schema=1, status='started',
@@ -1092,9 +1197,10 @@ def capture_acceptance_suite(args, report, capture, adb, wait_for, tap, screensh
                     key(case, 3, 'Background the application after every glass release has settled')
                     activity = adb('shell', 'dumpsys', 'activity', 'activities').decode()
                     path = args.out / (name + '-background-activity.txt'); path.write_text(activity)
-                    resumed = [line for line in activity.splitlines() if 'mResumedActivity' in line or 'topResumedActivity' in line]
-                    if not resumed or any(package + '/' in line for line in resumed):
-                        raise ValueError('The application did not actually leave the resumed state')
+                    pids = case['materialPath']['currentAppPids']
+                    if len(pids) != 1 or not pids[0].isdigit():
+                        raise ValueError('One foreground process is required before background sampling')
+                    prepare_background(case, adb, args.out, package=package, component=component, pid=int(pids[0]))
                     quiet(case, 'background', 0)
                     case['status'] = 'verified'
                 except Exception as error:

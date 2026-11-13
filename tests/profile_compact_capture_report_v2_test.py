@@ -21,6 +21,46 @@ def current_body():
 
 
 class CompactCaptureReportV2Tests(unittest.TestCase):
+    def run_current_menu_segment(self, *, old_label=False, action='more'):
+        source = (ROOT/'tests/gecko/compact_chrome_v2.py').read_text()
+        tree = ast.parse(source)
+        run = next(node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == 'run_case')
+        start = next(index for index, node in enumerate(run.body) if isinstance(node, ast.Assign)
+                     and ast.unparse(node) == "before = snapshot('more')")
+        end = next(index for index, node in enumerate(run.body) if isinstance(node, ast.AugAssign)
+                   and ast.unparse(node) == "command += '-performance'")
+        fragment = ast.unparse(ast.Module(body=run.body[start:end], type_ignores=[]))
+        if old_label:
+            self.assertEqual(fragment.count('浏览器菜单'), 2)
+            fragment = fragment.replace('浏览器菜单', '会话选项')
+        calls = []
+        control = dict(tap=[960,156], touch=[900,80,1020,230])
+        def visible(label, shown=True):
+            self.assertEqual(label, '浏览器菜单', 'Actual current menu must be observed')
+            calls.append(('visible',label,shown))
+        scope = dict(command='controlled-current',
+            snapshot=lambda name: dict(controls=[None,None,control],actions=4),
+            tap=lambda *args: calls.append(('tap',)+args),
+            event=lambda command,kind: dict(action=action,actions=5,page=0),
+            visible=visible,adb=lambda *args: calls.append(('adb',)+args))
+        exec(compile(fragment,'<actual-current-menu>','exec'),scope)
+        return calls
+
+    def test_actual_current_compact_menu_segment_observes_browser_menu_and_one_back(self):
+        calls = self.run_current_menu_segment()
+        self.assertEqual(calls, [
+            ('tap','more',[960,156],[900,80,1020,230],'more'),
+            ('visible','浏览器菜单',True),('adb','shell','input','keyevent','KEYCODE_BACK'),
+            ('visible','浏览器菜单',False)])
+
+    def test_old_menu_label_is_rejected_by_the_same_current_ui_boundary(self):
+        with self.assertRaisesRegex(AssertionError, 'Actual current menu'):
+            self.run_current_menu_segment(old_label=True)
+
+    def test_wrong_action_cannot_claim_the_browser_menu_was_opened_and_closed(self):
+        with self.assertRaises(AssertionError):
+            self.run_current_menu_segment(action='environment')
+
     def reject(self, body):
         with self.assertRaises(AssertionError):
             capture.historical_report_body(body)

@@ -1,8 +1,9 @@
 """Version 2: actual address dialogs and the four-action conversation dock.
 
 This is a separate reader, not a projection into the historical six-tap report.
-All fourteen original protections remain, with the removed Chat/Settings taps
-replaced by explicit current-address and Network roundtrips. New destinations,
+The default reader retains all fourteen legacy protections. Explicit browser
+cases verify two current startup protections and the twelve later protections.
+The removed Chat/Settings taps use current-address and Network roundtrips. New destinations,
 reading, environment long-press, More and Drawer have additional real inputs.
 """
 import hashlib
@@ -65,6 +66,13 @@ NAMES = (
     'Long-pressing the environment capsule opens and closes the actual environment picker',
     'More opens the native conversation menu and Back dismisses it without an action',
     'Drawer opens the actual environment Activity and Back preserves the SDK document',
+)
+BROWSER_NAMES = (
+    'Actual Gecko document starts with visible expanded browser controls',
+    'Tapping the expanded environment address opens the dialog without navigation',
+) + NAMES[2:]
+BROWSER_STARTUP_MAP = (
+    ('cold-expanded-browser', 'ready'), ('expanded-address-tap', 'initialAddress/initialChat'),
 )
 LEGACY_BEHAVIOR_MAP = (
     ('cold-collapsed', 'ready'), ('compact-tap-reveal', 'initialAddress/initialChat'),
@@ -295,9 +303,10 @@ def verify_short_target(proof, *, identity, nonce, android_user, before):
     return expected['geometry']
 
 
-def modal(xml, kind, environment):
+def modal(xml, kind, environment, *, browser=False):
+    assert type(browser) is bool
     nodes = list(ET.fromstring(xml).iter('node'))
-    title = '快速切换环境' if kind == 'environmentPicker' else '会话选项'
+    title = '快速切换环境' if kind == 'environmentPicker' else ('浏览器菜单' if browser else '会话选项')
     def one(widget, field, value):
         rows = [n for n in nodes if n.attrib.get('package') == PACKAGE and
                 n.attrib.get('class') == 'android.widget.' + widget and n.attrib.get(field) == value]
@@ -325,8 +334,9 @@ def modal(xml, kind, environment):
     return dict(title=title, closeBounds=bounds(close), closePoint=center(bounds(close)))
 
 
-def inspect_ui(raw, phase, environment):
+def inspect_ui(raw, phase, environment, *, browser=False):
     """Pure reader of original, unmodified Android XML; used before real input."""
+    assert type(browser) is bool
     if phase in ADDRESS_PHASES:
         result = address_dialog(raw, PACKAGE)
         fields = [n for n in ET.fromstring(raw).iter('node') if n.attrib.get('package') == PACKAGE and n.attrib.get('class') == 'android.widget.EditText']
@@ -334,7 +344,7 @@ def inspect_ui(raw, phase, environment):
         assert fields[0].attrib.get('text') == TARGET and fields[0].attrib.get('focused') == 'true'
         return result
     if phase in ('environmentPicker', 'more'):
-        return modal(raw, phase, environment)
+        return modal(raw, phase, environment, browser=browser)
     if phase in ('reading', 'readingBackMode'):
         nodes = list(ET.fromstring(raw).iter('node'))
         exits = [n for n in nodes if n.attrib.get('package') == PACKAGE and n.attrib.get('class') == 'android.widget.Button'
@@ -345,11 +355,11 @@ def inspect_ui(raw, phase, environment):
         return dict(exitBounds=bounds(exits[0]), exitPoint=center(bounds(exits[0])))
     if phase in ('environment', 'drawer', 'network', 'downloads'):
         return navigation(raw, PACKAGE, conversation=False,
-                          selected={'environment': '环境', 'drawer': '环境', 'network': '网络', 'downloads': '下载'}[phase])
+                          selected={'environment': '环境', 'drawer': '环境', 'network': '网络', 'downloads': '下载'}[phase], browser=browser)
     assert phase in NORMAL_UI_PHASES
     value = navigation(raw, PACKAGE, conversation=True)
     assert not any(n.attrib.get('package') == PACKAGE and n.attrib.get('text') in
-                   ('打开网址', '快速切换环境', '会话选项') for n in ET.fromstring(raw).iter('node'))
+                   ('打开网址', '快速切换环境', '会话选项', '浏览器菜单') for n in ET.fromstring(raw).iter('node'))
     return value
 
 
@@ -382,13 +392,34 @@ def address_cancel(sample, interpreted):
     return cancel
 
 
+def verify_cold_start(cold, *, browser=False):
+    """Read real startup geometry; old reports keep the collapsed default."""
+    assert type(browser) is bool
+    assert cold['toolbarVisibility'] == cold['networkVisibility'] == 0
+    assert cold['compactName'] == cold['environmentName']
+    if browser:
+        assert cold['expanded'] is True and cold['compactVisibility'] == 8 and cold['topVisibility'] == 0
+        assert cold['compactTap'] is None
+        point = cold['addressTap']
+        assert type(point) is list and len(point) == 2 and all(type(n) is int and n >= 0 for n in point)
+        inside(point, cold['headerButtonTouch'])
+    else:
+        assert cold['expanded'] is False and cold['compactVisibility'] == 0 and cold['topVisibility'] == 8
+        assert cold['compactHeight'] > 0
+
+
 def verify_case(case, identity):
     source = identity['sourceCommit']
+    browser = case.get('browserChrome', False)
+    assert type(browser) is bool
+    names = BROWSER_NAMES if browser else NAMES
     assert type(case.get('navigationContract')) is int and case['navigationContract'] == 2
     assert case['sourceCommit'] == source and re.fullmatch('[0-9a-f]{32}', case['runNonce'])
     assert all(case[k] is True for k in ('actualAndroidExecution', 'actualGeckoExecution', 'actualAndroidTouchExecution'))
-    assert [c['name'] for c in case['checks']] == list(NAMES) and all(c['pass'] is True for c in case['checks'])
-    assert case['legacyBehaviorMap'] == [list(row) for row in LEGACY_BEHAVIOR_MAP]
+    assert [c['name'] for c in case['checks']] == list(names) and all(c['pass'] is True for c in case['checks'])
+    assert case['legacyBehaviorMap'] == [list(row) for row in (LEGACY_BEHAVIOR_MAP[2:] if browser else LEGACY_BEHAVIOR_MAP)]
+    if browser:
+        assert case['browserStartupMap'] == [list(row) for row in BROWSER_STARTUP_MAP]
     owned = case['eventTransfer']
     assert owned['runNonce'] == case['runNonce'] and owned['fixtureAction'] == 'chromeCollapse' and type(owned['processSlot']) is int and owned['processSlot'] == 0
     rows = owned['events']; payloads = {event_uri(row['receipt']): row['rawUtf8'].encode('utf-8') for row in rows}
@@ -402,10 +433,12 @@ def verify_case(case, identity):
         samples[expected] = sample
     assert samples == case['observations'] and list(samples) == list(PHASES)
     cold, initial = samples['ready'], samples['initialChat']
-    assert cold['expanded'] is False and cold['toolbarVisibility'] == cold['compactVisibility'] == cold['networkVisibility'] == 0 and cold['topVisibility'] == 8
-    assert cold['compactName'] == cold['environmentName'] and cold['compactHeight'] > 0
-    assert cold['webHeight'] == initial['webHeight'] + initial['toolbarHeight'] - cold['toolbarHeight']
-    assert initial['toolbarHeight'] > cold['toolbarHeight'] and initial['webHeight'] > 0
+    verify_cold_start(cold, browser=browser)
+    compact = samples['up'] if browser else cold
+    assert compact['webHeight'] == initial['webHeight'] + initial['toolbarHeight'] - compact['toolbarHeight']
+    assert initial['toolbarHeight'] > compact['toolbarHeight'] and initial['webHeight'] > 0
+    if browser:
+        assert all(cold[key] == initial[key] for key in ('webHeight', 'toolbarHeight', 'addressTap'))
     assert initial['loads'] == initial['stops'] == initial['sendCount'] == 0 and initial['documents'] == 1
     assert initial['sdkSession'] == initial['attachedSession'] and all(type(initial[k]) is int and initial[k] > 0 for k in ('sdkSession', 'surface'))
     assert re.fullmatch('[0-9a-f]{32}', initial['document']) and initial['path'] == '/c/reload-collapse'
@@ -445,12 +478,12 @@ def verify_case(case, identity):
     for before_key, after_key, expanded in (('initialChat', 'up', False), ('up', 'down', False), ('compactExpand', 'horizontal', True)):
         gesture(samples[before_key], samples[after_key]); assert samples[after_key]['expanded'] is expanded
     assert samples['up']['scrollY'] > initial['scrollY'] and any(t['trusted'] is True and t['type'] == 'touchend' for t in samples['up']['trusted'])
-    collapsed = ('ready', 'up', 'down', 'upBeforeChat', 'upBeforeNative', 'upBeforeResume', 'activityResume', 'headerUp')
+    collapsed = (() if browser else ('ready',)) + ('up', 'down', 'upBeforeChat', 'upBeforeNative', 'upBeforeResume', 'activityResume', 'headerUp')
     for phase in collapsed:
         s = samples[phase]
         assert s['expanded'] is False and s['toolbarVisibility'] == s['compactVisibility'] == 0 and s['topVisibility'] == 8
-        assert s['webHeight'] == cold['webHeight'] and s['navigationVisibility'] == 0
-    expanded = ('initialChat', 'compactExpand', 'horizontal', 'short', 'selectedChat', 'nativeReturn', 'resumeChat') + NORMAL_UI_PHASES[5:]
+        assert s['webHeight'] == compact['webHeight'] and s['navigationVisibility'] == 0
+    expanded = (('ready',) if browser else ()) + ('initialChat', 'compactExpand', 'horizontal', 'short', 'selectedChat', 'nativeReturn', 'resumeChat') + NORMAL_UI_PHASES[5:]
     for phase in expanded:
         s = samples[phase]
         assert s['expanded'] is True and s['compactVisibility'] == 8 and s['topVisibility'] == s['toolbarVisibility'] == 0
@@ -477,7 +510,7 @@ def verify_case(case, identity):
             assert 0 < len(raw) <= 1024*1024 and value[size_key] == len(raw) and value[hash_key] == hashlib.sha256(raw).hexdigest()
         expected_activity = ENVIRONMENT_ACTIVITY if phase in ('environment', 'drawer') else ACTIVITY
         assert resumed(value['activityState']) == {(case['androidUser'], expected_activity)}
-        interpreted[phase] = inspect_ui(value['rawXml'], phase, initial['environmentName'])
+        interpreted[phase] = inspect_ui(value['rawXml'], phase, initial['environmentName'], browser=browser)
         if phase in ADDRESS_PHASES:
             address_cancel(samples[phase], interpreted[phase])
         elif phase in ('environmentPicker', 'more'):
@@ -487,6 +520,7 @@ def verify_case(case, identity):
     # Exact ordered emissions: no claimed destination with its real input missing.
     inputs = case['actualAndroidInputs']; assert len(inputs) == len(INPUTS)
     for row, (label, kind, previous, target) in zip(inputs, INPUTS):
+        if browser and label == 'initialAddress': target = 'addressTap'
         assert row['label'] == label and row['kind'] == kind and row['before'] == previous and row['actualAndroidInput'] is True
         assert 'shortTargetProof' not in row or (kind == 'swipe' and target == 'short' and previous == 'horizontal')
         if kind == 'tap':
@@ -521,19 +555,26 @@ def verify_case(case, identity):
         assert value['status'] == 'passed' and value['sourceCommit'] == source and value[counter] == 1
         assert value['preEmitOnly'] is True and value['releaseAcceptance'] is False and value['applicationAcceptance'] is False
         assert value['originalActionBudgetMs'] == 90000 and value['preparationBudgetMs'] == 20000
+    if browser:
+        assert case['firstTapReadiness']['target'] == 'address'
+        assert case['firstTapReadiness']['scope'] == 'chrome-initial-address-tap-only'
     requests = case['fixtureRequests']
     assert len(requests) == 1 and requests[0]['kind'] == 'http' and requests[0]['path'] == '/c/reload-collapse' and requests[0]['documentMarker'] == initial['document']
-    return len(NAMES)
+    return len(names)
 
 
 def verify_auto_collapse_v2(report, source, apk_sha):
+    browser = report.get('browserChrome', False)
+    assert type(browser) is bool
     assert type(report.get('navigationContract')) is int and report['navigationContract'] == 2
     assert report['status'] == 'passed' and report['sourceCommit'] == source
     assert all(report[k] is True for k in ('actualAndroidExecution', 'actualGeckoExecution', 'actualAndroidTouchExecution'))
     identity = report['buildIdentity']; assert identity['sourceCommit'] == source and identity['apkSha256'] == apk_sha
     cases = report['cases']
+    assert all(type(c.get('browserChrome', False)) is bool and c.get('browserChrome', False) is browser for c in cases)
     assert len(cases) == 3 and {(c['viewport'], c['fontScale']) for c in cases} == {(360, 1), (412, 1), (360, 2)}
     assert len({case['runNonce'] for case in cases}) == 3
     total = sum(verify_case(case, identity) for case in cases)
     return dict(navigationContract=2, cases=3, actualAndroidExecution=True, actualGeckoExecution=True,
-                checks=total, retainedLegacyProtections=14, phasesPerCase=len(PHASES), actualInputsPerCase=len(INPUTS))
+                checks=total, retainedLegacyProtections=12 if browser else 14, browserStartupProtections=2 if browser else 0,
+                phasesPerCase=len(PHASES), actualInputsPerCase=len(INPUTS))

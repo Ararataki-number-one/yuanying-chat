@@ -363,7 +363,7 @@ public class GeckoIntegrationTestActivity extends Activity {
   void desktopImage(long serial){desktopImage(serial,false);}
   void desktopImage(long serial,boolean ownProvider){
     session.reading.configure(true);session.web.configure(true,session.privacy.level());
-    final JSONObject held=J.obj("kind","web","confirmed",true);session.pending=held;
+    final JSONObject held=J.obj("kind","web","confirmed",true);
     FixtureView view=(FixtureView)session.web;final boolean[] chooser={false},mime={false};
     MainActivity host=new MainActivity(){
       @Override public android.view.Window getWindow(){return GeckoIntegrationTestActivity.this.getWindow();}
@@ -387,8 +387,9 @@ public class GeckoIntegrationTestActivity extends Activity {
     // still contain its successful upload while the next navigation starts.
     // Accept readiness and results only from this invocation's exact URL.
     session.web.evaluateJavascript("(()=>({ready:location.href==="+JSONObject.quote(target)+"&&!!document.getElementById('upload'),value:document.getElementById('upload-result')?.textContent||''}))()",raw->{
+      if(serial!=run)return;
       JSONObject current=J.parse(raw);String value=current.optString("value");boolean touched=tapped;
-      if(!touched&&current.optBoolean("ready")&&session.web.hasVisibleDocument()&&!session.navigating){tapElement(serial,"upload");touched=true;}
+      if(!touched&&current.optBoolean("ready")&&session.web.hasVisibleDocument()&&!session.navigating){session.pending=held;tapElement(serial,"upload");touched=true;}
       final boolean next=touched;
       if(current.optBoolean("ready")&&value.startsWith("ok:")){boolean retained=session.pending==held;session.pending=null;finishDesktopImageHost(host);event(serial,"desktopImage",J.obj("productionChooserOpened",chooser[0],"imageMimeAndMultiple",mime[0],"pendingPreserved",retained,"noPhantomUpload",session.attachments.length()==0,"upload",value,"desktop",((GeckoWebView)session.web).desktop));return;}
       if(SystemClock.elapsedRealtime()>deadline){session.pending=null;finishDesktopImageHost(host);event(serial,"error",J.obj("error","desktop image chooser/upload failed","result",raw,"chooser",chooser[0]));return;}

@@ -240,11 +240,18 @@ jobs:
       with:
         name: browser-${{ github.run_id }}-${{ github.run_attempt }}-host
         path: |
-          work/browser-host-controls/*.json
-          work/browser-host-controls/*.log
+          work/browser-host-controls/**/*.json
+          work/browser-host-controls/**/*.log
           work/browser-native-semantics/results.json
+          work/browser-native-semantics/chromium.startup.json
+          work/browser-native-semantics/chromium.stdout.log
           work/browser-native-semantics/chromium.stderr.log
           work/browser-native-semantics/controller.stderr.log
+          work/browser-worker-native-semantics/results.json
+          work/browser-worker-native-semantics/chromium.startup.json
+          work/browser-worker-native-semantics/chromium.stdout.log
+          work/browser-worker-native-semantics/chromium.stderr.log
+          work/browser-worker-native-semantics/controller.stderr.log
           work/browser-baselines/results.json
         if-no-files-found: warn
         retention-days: 7
