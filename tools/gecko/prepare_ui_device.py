@@ -58,6 +58,58 @@ def ready_observation(home, activity, window):
     return dict(home=home, resumed=sorted(resumed), focus=focus, ready=ready)
 
 
+def prepare_broadcasts(adb, serial, output, timeout=120):
+    """Drain cold-boot broadcasts before the unchanged HOME/recorder budgets.
+
+    API32's wait-for-broadcast-idle also cancels deferred broadcasts. This is
+    limited to the disposable CI emulator, never an ordinary user's device.
+    """
+    if serial != 'emulator-5554' or not 1 <= timeout <= 120:
+        raise ValueError('Fixed disposable emulator and a 1..120 second broadcast budget required')
+    started=time.monotonic();deadline=started+timeout;output=Path(output)
+    record=dict(schema=1,status='failed',serial=serial,timeoutSeconds=timeout,
+        startedAtMonotonic=started,deadlineMonotonic=deadline,commands=[],
+        applicationAcceptance=False,scope='Disposable emulator cold-boot broadcast preparation only')
+    def remaining():
+        value=deadline-time.monotonic()
+        if value<=0:raise TimeoutError('Bounded broadcast preparation expired')
+        return value
+    def save():
+        output.parent.mkdir(parents=True,exist_ok=True)
+        output.write_text(json.dumps(record,ensure_ascii=False,indent=2)+'\n')
+    def command(parts, limit=5, *, device=True):
+        argv=[adb,'-s',serial,*parts] if device else list(parts)
+        row=dict(command=argv,startedAtMonotonic=time.monotonic());record['commands'].append(row)
+        try:
+            row['timeoutSeconds']=min(limit,remaining())
+            value=subprocess.run(argv,stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True,
+                errors='replace',timeout=row['timeoutSeconds'])
+            row.update(exitCode=value.returncode,stdout=value.stdout,stderr=value.stderr)
+            value.check_returncode();remaining()
+        except Exception as error:
+            if isinstance(error,subprocess.TimeoutExpired):
+                decode=lambda value:value.decode('utf-8','replace') if isinstance(value,bytes) else value
+                row.update(timedOut=True,stdout=decode(error.stdout),stderr=decode(error.stderr))
+            row.update(errorType=type(error).__name__,error=str(error));raise
+        finally:row['completedAtMonotonic']=time.monotonic();save()
+        remaining();return value.stdout
+    try:
+        for key,ref in (('sourceCommit','HEAD'),('sourceTree','HEAD^{tree}')):
+            record[key]=command(['git','rev-parse',ref],device=False).strip()
+            if re.fullmatch('[0-9a-f]{40}',record[key]) is None:raise ValueError('Exact source identity required')
+        if command(['shell','getprop','ro.kernel.qemu']).strip()!='1':raise ValueError('Confirmed disposable emulator required')
+        if command(['shell','am','get-current-user']).strip()!='0':raise ValueError('Actual Android User 0 required')
+        result=command(['shell','am','wait-for-broadcast-idle'],timeout)
+        lines=[line.strip() for line in result.splitlines() if line.strip()]
+        if not lines or lines[-1]!='All broadcast queues are idle!' or lines.count('All broadcast queues are idle!')!=1:
+            raise ValueError('Actual broadcast-idle completion marker required')
+        record.update(status='prepared',completedAtMonotonic=time.monotonic());save();remaining()
+        return record
+    except Exception as error:
+        record.update(status='failed',errorType=type(error).__name__,error=str(error),completedAtMonotonic=time.monotonic())
+        save();raise
+
+
 def prepare(adb, serial, output, timeout=45):
     if serial != 'emulator-5554' or not 1 <= timeout <= 45:
         raise ValueError('Fixed disposable emulator and a 1..45 second preparation budget required')
@@ -151,7 +203,11 @@ def main():
     parser.add_argument('--serial', required=True)
     parser.add_argument('--output', required=True, type=Path)
     parser.add_argument('--timeout', type=float, default=45)
+    parser.add_argument('--broadcast-idle-timeout', type=float)
     args = parser.parse_args()
+    if args.broadcast_idle_timeout is not None:
+        prepare_broadcasts(args.adb, args.serial,
+            args.output.with_name(args.output.stem+'-broadcast.json'), args.broadcast_idle_timeout)
     result = prepare(args.adb, args.serial, args.output, args.timeout)
     print(json.dumps({key:result[key] for key in ('status', 'sourceCommit', 'sourceTree', 'applicationAcceptance')}))
 

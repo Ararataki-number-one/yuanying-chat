@@ -143,14 +143,44 @@ public final class ReplyTaskPersistenceHost {
     });
   }
 
+  static void syntheticFixtureSetup(){
+    for(String label:new String[]{"synthetic-queued-question","synthetic-background-settings"})scenario(label,()->{
+      ChatSession s=fresh();SyntheticFixture fixture=new SyntheticFixture(s);JSONObject job=fixture.beginSyntheticReply(label);String id=job.optString("id");
+      check(label+" creates a fresh durable awaiting task",!id.isEmpty()&&!id.equals(label)&&state(s,id).equals("awaiting"));
+      check(label+" publishes the persisted cursor and current task identity",s.pending==job&&s.activeDeliveryId.equals(id)&&s.webWorkGeneration==1&&diskPending(s).equals(job.toString()));
+      JSONObject row=s.deliveries.get(id);
+      check(label+" records the actual fixture URL and prompt",row!=null&&row.optString("url").equals(URL)&&row.optString("body").equals(label));
+      ChatSession cold=reopen(s);
+      check(label+" survives a fresh-context restore",cold.pending!=null&&cold.pending.optString("id").equals(id)&&state(cold,id).equals("awaiting"));
+      s.completeReply(job,J.obj("url",URL));
+      check(label+" satisfies the original completion cleanup predicate",s.pending==null&&!s.prefs.memory.containsKey("pending")&&diskPending(s).isEmpty()&&state(s,id).equals("completed"));
+    });
+    for(String failure:new String[]{"insert","awaiting","preferences"})scenario("Synthetic setup "+failure,()->{
+      ChatSession s=fresh();
+      if(failure.equals("insert"))s.deliveries.getWritableDatabase().failWrites=1;
+      if(failure.equals("awaiting"))s.deliveries.getWritableDatabase().zeroNextUpdate=true;
+      if(failure.equals("preferences"))s.prefs.nextFailure=SharedPreferences.Failure.BEFORE_MEMORY;
+      boolean failed=false;try{new SyntheticFixture(s).beginSyntheticReply("failed-fixture");}catch(RuntimeException expected){failed=true;}
+      check(failure+" failure cannot announce a prepared fixture",failed&&s.pending==null&&s.activeDeliveryId.isEmpty()&&s.webWorkGeneration==0);
+      check(failure+" failure cannot start completion or a service",s.context.completionCalls.isEmpty()&&s.context.endedJobs.isEmpty());
+      check(failure+" failure leaves no durable pending cursor",diskPending(s).isEmpty());
+    });
+  }
+
   public static void main(String[] args)throws Exception{
-    root=Paths.get(args[0]);successfulFinalization();databaseFailures();preferenceFailures();reentrantOwnership();
+    root=Paths.get(args[0]);successfulFinalization();databaseFailures();preferenceFailures();reentrantOwnership();syntheticFixtureSetup();
     int passed=0;for(int i=0;i<checks.length();i++)if(checks.getJSONObject(i).getBoolean("pass"))passed++;
     System.out.println(J.obj("status",passed==checks.length()?"passed":"failed","passed",passed,"total",checks.length(),"checks",checks,
       "actualAndroidExecution",false,"actualSQLiteExecution",false,"actualNotificationExecution",false,"actualWebsiteExecution",false,
       "hostFileDurability",true,"globalExactlyOnceClaim",false));
     if(passed!=checks.length())System.exit(1);
   }
+}
+
+class SyntheticFixture {
+  final ChatSession session;
+  SyntheticFixture(ChatSession session){this.session=session;}
+  /* FIXTURE_SETUP */
 }
 
 class ChatSession {

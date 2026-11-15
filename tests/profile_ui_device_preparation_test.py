@@ -168,5 +168,44 @@ class PreparationTests(unittest.TestCase):
         self.assertIn('logcat -b all -d -v threadtime > work/glass-navigation/system-logcat.txt', workflow)
 
 
+class BroadcastPreparationTests(unittest.TestCase):
+    def exercise(self, *, stdout='Waiting for broadcasts...\nAll broadcast queues are idle!\n', code=0, late=False, expired=False, qemu='1'):
+        self.clock=Clock();fake=Adb();fake.qemu=qemu;self.calls=[]
+        def run(argv,**options):
+            self.calls.append((argv,options))
+            if argv[-3:]==['shell','am','wait-for-broadcast-idle']:
+                if expired:raise subprocess.TimeoutExpired(argv,options['timeout'],output='still pending',stderr='original detail')
+                if late:self.clock.value=121
+                return subprocess.CompletedProcess(argv,code,stdout,'original detail')
+            return fake.run(argv,**options)
+        with tempfile.TemporaryDirectory() as directory:
+            path=Path(directory)/'broadcast.json'
+            with patch.object(preparation.subprocess,'run',run),patch.object(preparation.time,'monotonic',self.clock.now):
+                try:return preparation.prepare_broadcasts('adb','emulator-5554',path,120)
+                finally:self.record=json.loads(path.read_text()) if path.exists() else None
+
+    def test_actual_zero_exit_and_final_completion_line_are_required(self):
+        value=self.exercise();self.assertEqual(value['status'],'prepared');self.assertFalse(value['applicationAcceptance'])
+        queue=[(a,o) for a,o in self.calls if a[-3:]==['shell','am','wait-for-broadcast-idle']]
+        self.assertEqual(len(queue),1);self.assertEqual(queue[0][1]['timeout'],120)
+
+    def test_nonzero_missing_marker_and_expired_process_cannot_prepare(self):
+        for options,error in (({'code':1},subprocess.CalledProcessError),({'stdout':'waiting'},ValueError),
+                              ({'expired':True},subprocess.TimeoutExpired),({'qemu':'0'},ValueError)):
+            with self.subTest(options=options),self.assertRaises(error):self.exercise(**options)
+            self.assertEqual(self.record['status'],'failed')
+
+    def test_late_zero_exit_cannot_prepare(self):
+        with self.assertRaises(TimeoutError):self.exercise(late=True)
+        self.assertEqual(self.record['status'],'failed');self.assertEqual(self.record['commands'][-1]['exitCode'],0)
+
+    def test_broadcast_preparation_does_not_accept_later_anr_or_change_home_budget(self):
+        self.exercise()
+        with self.assertRaises(ValueError):preparation.ready_observation(HOME,ACTIVITY,ANR)
+        source=(ROOT/'tools/gecko/prepare_ui_device.py').read_text().split('def main():',1)[1]
+        self.assertLess(source.index('prepare_broadcasts('),source.index('result = prepare('))
+        self.assertIn('--broadcast-idle-timeout 120 --timeout 45', (ROOT/'.github/workflows/browser-workspace-validation.yml').read_text())
+
+
 if __name__ == '__main__':
     unittest.main()

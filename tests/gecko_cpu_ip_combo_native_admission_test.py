@@ -21,6 +21,7 @@ HASHES = {
     'remote-settings-attachments': '329ef95339e0fd70cc2fa20c8ea4b30288dc5ad57c8c96dc860d4479a61c9b79',
     'safe-browsing-google': '6b3357bd9a4a410a4a9fec1bb0d2a8e609232c33b98d92051e89e1616693ab5c',
     'content-signature-chain': 'f0fa75029afb166605b17fa3f9f08cc543673f75203345e7f127d3031119c199',
+    'connectivity-service': '0c8438a139a2f87f37b59b340f3c45ce942b5f649ca7c14ffe994353713f2ca2',
 }
 CLOSED = dict(type='socks', host='127.0.0.1', port=9, proxyDNS=True, failoverTimeout=1)
 
@@ -38,7 +39,7 @@ def fixture(count=2):
     return dict(schema=1, kind='gecko-cpu-ip-combo-native-admission-v1',
                 sourceCommit=modeled.SOURCE, sourceTree=expected['sourceTree'], runNonce=modeled.NONCE,
                 buildIdentity=identity, process=copy.deepcopy(report['activity']['process']),
-                scope='integration-only-exact-sdk-startup-https-admission',
+                scope='integration-only-exact-sdk-startup-http-https-admission',
                 automaticLatencyChecks=False, eventLimit=128, totalRefusals=count,
                 droppedEvents=count - len(events), events=events,
                 snapshotScope='persisted-async-snapshot-before-force-stop-later-events-not-covered',
@@ -79,7 +80,7 @@ class NativeAdmissionTests(unittest.TestCase):
         return read
 
     def test_exact_identity_roles_and_routes_round_trip_without_mutation(self):
-        value, expected = fixture(4)
+        value, expected = fixture(5)
         original = copy.deepcopy(value)
         self.assertEqual(runner.NATIVE_ADMISSION_HASHES, HASHES)
         self.assertEqual(self.validate(value, expected), original)
@@ -88,11 +89,12 @@ class NativeAdmissionTests(unittest.TestCase):
         self.assertFalse(value['automaticLatencyChecks'])
 
     def test_each_exact_role_is_bound_to_its_own_public_host_hash(self):
-        value, expected = fixture(4)
+        value, expected = fixture(5)
         hosts = ('firefox.settings.services.mozilla.com',
                  'firefox-settings-attachments.cdn.mozilla.net',
                  'safebrowsing.googleapis.com',
-                 'content-signature-2.cdn.mozilla.net')
+                 'content-signature-2.cdn.mozilla.net',
+                 'firefox-portal-detection.com')
         for index, host in enumerate(hosts):
             with self.subTest(host=host):
                 self.assertEqual(value['events'][index]['hostSha256'],

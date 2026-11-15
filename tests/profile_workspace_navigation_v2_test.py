@@ -428,14 +428,44 @@ def layout():
         texts=texts,networkTap=[540,276],stateTap=[960,270])
 
 
-def complete_case():
-    value=layout();taps=[]
+def browser_layout(width=360, scale=1):
+    value=layout();value.update(viewportDp=width,fontScale=scale)
+    value['toolbar'][2]=width*3
+    if scale==2:value['texts'][0]['ellipsized']=True
+    left,right,top=42,width*3-42,240
+    stacked=right-left-4*144<480 or scale==2
+    address_height=162 if scale==2 else 144
+    address_top=top+9;action_top=address_top+address_height+12 if stacked else address_top
+    bottom=max(address_top+address_height,action_top+144)+9
+    boxes=[[left,action_top,left+144,action_top+144],
+           [left+144,action_top,left+288,action_top+144],
+           [left if stacked else left+288,address_top,right if stacked else right-288,address_top+address_height],
+           [right-288,action_top,right-144,action_top+144],
+           [right-144,action_top,right,action_top+144]]
+    controls=[]
+    for name,box in zip(('back','forward','address','reload','home'),boxes):
+        l,t,r,b=box;row=dict(name=name,bounds=box,shown=True,clickable=True,tap=[(l+r)//2,(t+b)//2])
+        if name=='address':row.update(fontHeight=60*scale,contentHeight=address_height,lineCount=1)
+        controls.append(row)
+    height=bottom-top
+    value.update(browserChrome=True,browserAddressRow=dict(bounds=[left,top,right,bottom],
+        padding=[0,9,0,9],stacked=stacked,controls=controls))
+    value['toolbar'][3]+=height;value['toolbarHeightDp']+=height/3
+    for index in (1,3):value['networkBounds'][index]+=height
+    for text in value['texts'][1:]:
+        for index in (1,3):text['bounds'][index]+=height
+    value['networkTap'][1]+=height;value['stateTap'][1]+=height
+    return value
+
+
+def complete_case(*, browser=False, width=360, scale=1):
+    value=browser_layout(width,scale) if browser else layout();taps=[]
     for name,index,action in (('drawer',0,'activity:local.pocketchat.WindowHomeActivity'),('address',1,'address-dialog')):
         c=value['controls'][index];taps.append(dict(control=name,point=c['tap'][:],bounds=c['touch'][:],action=action,actualAndroidTap=True))
     controls=[dict(label=label,bounds=[i*160,300,i*160+150,450],point=[i*160+75,375]) for i,label in enumerate(('取消','主页','前往'))]
     taps.append(dict(control='cancel-address',point=controls[0]['point'],bounds=controls[0]['bounds'],action='cancel-address-dialog',actualAndroidTap=True))
     c=value['controls'][2];taps.append(dict(control='more',point=c['tap'][:],bounds=c['touch'][:],action='more',actualAndroidTap=True))
-    return dict(navigationContract=2,viewport=360,fontScale=1,layout=value,readOnlyStatus=True,
+    return dict(navigationContract=2,viewport=width,fontScale=scale,layout=value,readOnlyStatus=True,
         statusObservation=dict(beforeActions=0,afterActions=0,afterPage=0,points=[value['networkTap'],value['stateTap']]),
         actualAndroidTaps=taps,managementNavigation=dict(activity='local.pocketchat.WindowHomeActivity',actualDrawerTap=True,resumedThenReturned=True),
         addressDialog=dict(title='打开网址',editableFields=1,controls=controls,cancelled=True,actionsBefore=1,actionsAfter=1),
@@ -445,8 +475,52 @@ def complete_case():
 
 
 class CompactGeometryV2Tests(unittest.TestCase):
+    def test_current_browser_controls_cover_stacked_and_single_row_geometry(self):
+        for width,scale in ((360,1),(412,1),(360,2)):
+            with self.subTest(width=width,scale=scale):
+                self.assertTrue(verify_case(complete_case(browser=True,width=width,scale=scale),require_browser_chrome=True))
+
+    def test_browser_geometry_rejects_missing_hidden_overlapping_and_unreadable_controls(self):
+        mutations=(lambda v:v['browserAddressRow']['controls'].pop(),
+            lambda v:v['browserAddressRow']['controls'][0].update(shown=False),
+            lambda v:v['browserAddressRow']['controls'][2].update(clickable=False),
+            lambda v:v['browserAddressRow']['controls'][2].update(contentHeight=20),
+            lambda v:v['browserAddressRow']['controls'][2].update(lineCount=2),
+            lambda v:v['browserAddressRow']['controls'][0].update(bounds=[42,405,170,549]),
+            lambda v:v['browserAddressRow']['controls'][1].update(bounds=[180,405,324,549]),
+            lambda v:v['browserAddressRow']['controls'][2].update(tap=[1000,1000]),
+            lambda v:v['browserAddressRow']['bounds'].__setitem__(1,241),
+            lambda v:v.update(toolbarHeightDp=80),lambda v:v.pop('browserChrome'))
+        for index,change in enumerate(mutations):
+            value=browser_layout();change(value)
+            with self.subTest(index=index),self.assertRaises(AssertionError):verify_layout(value,360,1)
+
+    def test_entire_row_outside_toolbar_is_rejected(self):
+        value=browser_layout();row=value['browserAddressRow']
+        for box in [row['bounds'],*[item['bounds'] for item in row['controls']]]:
+            for index in (0,2):box[index]+=1080
+        for item in row['controls']:item['tap'][0]+=1080
+        with self.assertRaisesRegex(AssertionError,'outside the toolbar'):verify_layout(value,360,1)
+
+    def test_current_case_cannot_downgrade_to_complete_historical_shape(self):
+        for marker in (None,False,1):
+            value=complete_case()
+            if marker is not None:value['layout']['browserChrome']=marker
+            with self.subTest(marker=marker),self.assertRaises(AssertionError):verify_case(value,require_browser_chrome=True)
+        self.assertTrue(verify_case(complete_case(),require_browser_chrome=False))
+        with self.assertRaises(TypeError):verify_case(complete_case())
+
+    def test_current_marker_requires_real_measured_row(self):
+        value=layout();value['browserChrome']=True
+        with self.assertRaises(KeyError):verify_layout(value,360,1)
+
+    def test_layout_contract_selection_requires_an_explicit_boolean(self):
+        for value in (None,0,1,'true'):
+            with self.subTest(value=value),self.assertRaises(AssertionError):
+                verify_case(complete_case(browser=True),require_browser_chrome=value)
+
     def test_complete_actual_tap_and_long_press_receipts_are_separate(self):
-        self.assertTrue(verify_case(complete_case()))
+        self.assertTrue(verify_case(complete_case(), require_browser_chrome=False))
         mutations=(lambda v:v['actualAndroidTaps'].pop(1),
             lambda v:v['actualAndroidTaps'][1].update(control='environment'),
             lambda v:v['actualAndroidTaps'][1].update(actualAndroidTap=False),
@@ -464,7 +538,7 @@ class CompactGeometryV2Tests(unittest.TestCase):
             lambda v:v.update(menuDismissedByBack=False))
         for index,mutate in enumerate(mutations):
             value=complete_case();mutate(value)
-            with self.subTest(mutation=index),self.assertRaises(AssertionError):verify_case(value)
+            with self.subTest(mutation=index),self.assertRaises(AssertionError):verify_case(value, require_browser_chrome=False)
 
     def test_geometry_uses_actual_capsule_row_and_native_font_layout(self):
         self.assertTrue(verify_layout(layout(),360,1))

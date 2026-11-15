@@ -50,14 +50,15 @@ def display_configuration_commands(width, height):
             ('shell', 'wm', 'user-rotation', 'lock', '1' if width > height else '0')]
 
 
-def prepare_display(args, owner, stem, adb, api, width, height, font_scale, night):
+def prepare_display(args, owner, stem, adb, api, width, height, font_scale, night, *, retire_surface=True):
     """Apply emulator configuration while an ordinary app owns orientation.
 
     Android 15's NOSENSOR launcher saves the previous user rotation and restores
     it when the next app starts. A successful wm command on that launcher can
     therefore be undone. Reuse the existing native network fixture as a setup
     surface, leave that override first, then configure and observe the display.
-    Retire the setup instance so the next scene executes its own onCreate.
+    Callers retaining this surface must start the next Activity with CLEAR_TASK
+    so its own onCreate runs without returning through the launcher.
     This setup is not a measured scene or a typography/application pass.
     """
     result = owner['displayPreparation'] = dict(status='started',
@@ -106,12 +107,10 @@ def prepare_display(args, owner, stem, adb, api, width, height, font_scale, nigh
             if time.monotonic() >= deadline:
                 raise TimeoutError('Actual Android display configuration did not settle')
             if matches and previous == current:
-                # The same fixture component dispatches scenes in onCreate.
-                # Its live network setup must not consume the next scene's
-                # intent. The launcher now saves the final configured rotation
-                # and restores it on the next app launch, as between typography modes.
-                read('shell', 'am', 'force-stop', api['PACKAGE'])
-                result['configurationSurfaceStopped'] = True
+                if retire_surface:
+                    read('shell', 'am', 'force-stop', api['PACKAGE'])
+                    result['configurationSurfaceStopped'] = True
+                result['configurationSurfaceRetained'] = not retire_surface
                 result['status'] = 'verified'
                 return result
             previous = current if matches else None
@@ -171,6 +170,68 @@ def collapse_start_trace(raw, identity, nonce):
         records.append(value)
         lines.append(line)
     return records, ('\n'.join(lines) + ('\n' if lines else '')).encode('utf-8')
+
+
+def renderer_scene_messages(raw, identity, nonce, pids):
+    """Exclude preparation logs at the existing source-bound native start."""
+    if type(raw) is not bytes or len(raw)>1024*1024 or len(pids)!=1:
+        raise ValueError('One bounded current renderer log/process is required')
+    rows=[]
+    for index,line in enumerate(raw.decode('utf-8','strict').splitlines()):
+        match=re.fullmatch(r'\d\d-\d\d\s+\d\d:\d\d:\d\d\.\d+\s+(\d+)\s+\d+\s+([VDIWEFAS])\s+(GlassLens|PocketCollapseTrace)\s*:\s?(.*)',line)
+        if match:rows.append(dict(index=index,pid=match[1],priority=match[2],tag=match[3],text=match[4]))
+    trace=('\n'.join(row['text'] for row in rows if row['tag']=='PocketCollapseTrace')+'\n').encode()
+    records,_=collapse_start_trace(trace,identity,nonce)
+    starts=[value for value in records if value['stage']=='start-before']
+    if len(starts)!=1 or starts[0]['sequence']!=1:
+        raise ValueError('One source/nonce-bound native renderer start is required')
+    boundaries=[row for row in rows if row['tag']=='PocketCollapseTrace' and json.loads(row['text'])==starts[0]]
+    if len(boundaries)!=1 or boundaries[0]['pid']!=pids[0]:raise ValueError('Renderer boundary belongs to another process')
+    boundary=boundaries[0]
+    messages=[dict(priority=row['priority'],text=row['text']) for row in rows
+              if row['index']>boundary['index'] and row['tag']=='GlassLens' and row['pid']==pids[0]]
+    return messages,dict(sourceCommit=identity['sourceCommit'],sourceTree=identity['sourceTree'],
+        runNonce=nonce,pid=pids[0],lineIndex=boundary['index'],nativeStart=starts[0])
+
+
+def verify_scene_renderers(before, after, device_api, pids):
+    """Require the current Activity's actual materials, not another PID peer."""
+    for value in (before,after):
+        if (type(value) is not dict or type(value.get('schema')) is not int or value['schema']!=1
+                or value.get('deviceApi')!=device_api or type(value.get('pid')) is not int
+                or pids!=[str(value['pid'])] or value.get('mainThread') is not True
+                or value.get('activityClass')!='local.pocketchat.CompactChromeIntegrationActivity'
+                or type(value.get('activityRef')) is not int or value['activityRef']==0):
+            raise ValueError('Current Activity renderer receipt identity differs')
+        docks=value.get('docks')
+        if type(docks) is not list or [row.get('role') for row in docks]!=['conversation','workspace']:
+            raise ValueError('Both actual current dock materials are required')
+        for row in docks:
+            if (any(row.get(key) is not True for key in ('attached','currentActivityRoot','ownerBound','backdropBound'))
+                    or row.get('gpuBroken') is not False
+                    or any(type(row.get(key)) is not int or row[key]==0 for key in ('dockRef','drawableRef'))
+                    or type(row.get('rendererRef')) is not int
+                    or any(type(row.get(key)) is not bool for key in ('agslReady','nativeBackdropRecorded',
+                                                                     'hadBackdrop','lastSourcePresent','lastSourceCurrent'))):
+                raise ValueError('Renderer does not belong to the current live dock')
+            present=row['rendererRef']!=0
+            if (row['agslReady']!=present
+                    or row.get('rendererClass')!=('local.pocketchat.GlassLensRenderer' if present else '')
+                    or row['nativeBackdropRecorded'] and not present
+                    or row['lastSourcePresent']!=row['lastSourceCurrent']
+                    or row['hadBackdrop'] and not row['lastSourceCurrent']
+                    or not present and (row['hadBackdrop'] or row['lastSourcePresent'])
+                    or device_api<33 and present):
+                raise ValueError('Actual renderer branch is inconsistent')
+    if before['activityRef']!=after['activityRef']:raise ValueError('Renderer observation changed Activity')
+    for first,last in zip(before['docks'],after['docks']):
+        if any(first[key]!=last[key] for key in ('dockRef','drawableRef')):
+            raise ValueError('Renderer observation changed the current dock material')
+    if device_api>=33 and (not any(row['agslReady'] for row in after['docks'])
+                           or not any(row['nativeBackdropRecorded'] for row in after['docks'])):
+        raise ValueError('The current scene materials did not actually render AGSL/native backdrop')
+    return dict(currentActivityRef=after['activityRef'],currentAppPid=after['pid'],
+        beforeDocks=before['docks'],afterDocks=after['docks'],verified=True)
 
 
 def capture_ready_failure(out, case, identity, adb, start_output):
@@ -405,8 +466,8 @@ def capture_loading_landscape(args, report, capture, adb, wait_for, screenshot, 
         adb('shell', 'am', 'force-stop', package)
         adb('shell', 'settings', 'put', 'system', 'font_scale', '1.0')
         adb('shell', 'cmd', 'uimode', 'night', 'no')
-        prepare_display(args, result, stem, adb, api, 2676, 1236, 1.0, 'no')
-        adb('shell', 'am', 'start', '-W', '-n', api['COMPONENT'], '--es', 'visualAction', 'chat')
+        prepare_display(args, result, stem, adb, api, 2676, 1236, 1.0, 'no', retire_surface=False)
+        adb('shell', 'am', 'start', '-W', '--activity-clear-task', '-n', api['COMPONENT'], '--es', 'visualAction', 'chat')
         result['actualDisplay'] = dict(size=adb('shell', 'wm', 'size').decode().strip(),
             density=adb('shell', 'wm', 'density').decode().strip(),
             fontScale=adb('shell', 'settings', 'get', 'system', 'font_scale').decode().strip(),
@@ -985,18 +1046,20 @@ def capture_acceptance_suite(args, report, capture, adb, wait_for, tap, screensh
 
     def renderer_observation(case):
         pids = adb('shell', 'pidof', package, timeout=5).decode().strip().split()
-        raw = adb('logcat', '-d', '-v', 'threadtime', '-s', 'GlassLens:V', '*:S', timeout=10)
+        raw = adb('logcat', '-d', '-v', 'threadtime', '-s', 'GlassLens:V', 'PocketCollapseTrace:I', '*:S', timeout=10)
         path = args.out / (case['name'] + '-glass-lens.txt'); path.write_bytes(raw)
-        messages = []
-        for line in raw.decode('utf-8', 'replace').splitlines():
-            match = re.match(r'^\d\d-\d\d\s+\d\d:\d\d:\d\d\.\d+\s+(\d+)\s+\d+\s+([VDIWEFAS])\s+GlassLens\s*:\s?(.*)$', line)
-            if match and match[1] in pids:
-                messages.append(dict(priority=match[2], text=match[3]))
         observation = case['materialPath'] = dict(deviceApi=args.device_api,
-            file=path.name, sha256=sha(path), currentAppPids=pids, messages=messages,
-            agslReady=any('AGSL material ready' in row['text'] for row in messages),
-            nativeBackdropRecorded=any('native backdrop recorded' in row['text'] for row in messages),
+            file=path.name, sha256=sha(path), currentAppPids=pids,
             sourceBoundCpuBranch=args.device_api < 33, appearanceVerified=False)
+        messages,boundary=renderer_scene_messages(raw,identity,case['runNonce'],pids)
+        observation.update(messages=messages,startupBoundary=boundary,
+            agslReady=any('AGSL material ready' in row['text'] for row in messages),
+            nativeBackdropRecorded=any('native backdrop recorded' in row['text'] for row in messages))
+        # Transitioning Activities may share a PID. Their old material logs
+        # cannot qualify current objects in the nonce-owned native receipts.
+        observation['sceneRenderers']=verify_scene_renderers(
+            case['documentObservations']['ready'].get('glassRenderer'),
+            case['documentObservations']['after-interactions'].get('glassRenderer'),args.device_api,pids)
         if args.device_api >= 33 and (not observation['agslReady'] or not observation['nativeBackdropRecorded']
                 or any(row['priority'] in 'WEFA' for row in messages)):
             raise ValueError('The expected actual AGSL/native-backdrop path was not observed in the current app PID')
@@ -1024,7 +1087,7 @@ def capture_acceptance_suite(args, report, capture, adb, wait_for, tap, screensh
         count = len(expected_labels)
         observation_count = count * (count + 1)
         field = 'typography' if mode == 'conversation' else 'workspaceTypography'
-        adb('shell', 'am', 'start', '-W', '-n', api['COMPONENT'],
+        adb('shell', 'am', 'start', '-W', '--activity-clear-task', '-n', api['COMPONENT'],
             '--es', 'visualAction', 'navigation-typography', '--es', 'visualNonce', nonce,
             '--es', 'visualNavigationMode', mode,
             '--es', 'visualSourceCommit', identity['sourceCommit'], '--ef', 'visualFontScale', str(case['fontScale']))
@@ -1063,7 +1126,7 @@ def capture_acceptance_suite(args, report, capture, adb, wait_for, tap, screensh
             measured = row['measurement']
             api['verify_navigation_text'](measured, expected_labels[measured['buttonIndex']], mode, row['density'])
         case[field]['status'] = 'verified'
-        adb('shell', 'am', 'force-stop', package)
+        # The next CLEAR_TASK launch retires this instance without the launcher.
 
     def interactions(case):
         xml = artifact(case, 'chat', chat)
@@ -1156,15 +1219,21 @@ def capture_acceptance_suite(args, report, capture, adb, wait_for, tap, screensh
                         else:
                             adb('shell', 'cmd', 'overlay', 'disable', '--user', '0', overlay)
                     adb('shell', 'settings', 'put', 'secure', 'show_ime_with_hard_keyboard', '1')
-                    prepare_display(args, case, name, adb, api, width * 3, height * 3, scale, night)
+                    prepare_display(args, case, name, adb, api, width * 3, height * 3, scale, night, retire_surface=False)
                     typography(case, 'conversation')
                     typography(case, 'workspace')
                     observations[case['runNonce']] = EventTransfer(identity=identity, nonce=case['runNonce'],
                         slot=0, action='chromeCollapse', fetch=lambda uri: adb('exec-out', 'content', 'read', '--uri', uri))
                     journals[case['runNonce']] = ReceiptJournalDiscovery(observations[case['runNonce']])
-                    start_output = adb('shell', 'am', 'start', '-W', '-n', component,
+                    preparation_log=adb('logcat','-d','-v','threadtime','-s','GlassLens:V','*:S',timeout=10)
+                    preparation_path=args.out/(name+'-renderer-preparation.txt');preparation_path.write_bytes(preparation_log)
+                    case['rendererPreparationLog']=dict(file=preparation_path.name,bytes=len(preparation_log),sha256=sha(preparation_path),
+                        sourceCommit=identity['sourceCommit'],sourceTree=identity['sourceTree'],apkSha256=identity['apkSha256'],
+                        runNonce=case['runNonce'],applicationAcceptance=False)
+                    start_output = adb('shell', 'am', 'start', '-W', '--activity-clear-task', '-n', component,
                         '--es', 'compactAction', 'collapseStart', '--ei', 'chromeNavigationVersion', '2',
-                        '--es', 'eventNonce', case['runNonce'], '--ez', 'longName', 'false')
+                        '--es', 'eventNonce', case['runNonce'], '--ez', 'longName', 'false',
+                        '--ez', 'observeGlassRenderer', 'true')
                     try:
                         observed_event(case, 'ready', request=False)
                     except Exception:

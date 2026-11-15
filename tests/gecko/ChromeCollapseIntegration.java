@@ -314,6 +314,7 @@ final class ChromeCollapseIntegration {
         .put("readingRequested",a.focusReading).put("readingActive",a.focusActive()).put("readingExitVisibility",a.focusExit.getVisibility())
         .put("navigationVisibility",a.hub.bar.getVisibility()).put("navigationHeight",a.hub.bar.getHeight())
         .put("workspaceHeight",a.hub.workspace.getHeight()).put("addressDialog",addressDialog());
+        if(a.getIntent().getBooleanExtra("observeGlassRenderer",false))result.put("glassRenderer",glassRendererObservation());
         if(a.designChrome.expanded()){
           java.lang.reflect.Method method=DesignChrome.class.getDeclaredMethod("touchBounds",View.class);method.setAccessible(true);
           android.graphics.Rect target=(android.graphics.Rect)method.invoke(a.designChrome,a.designChrome.title);int[] origin=new int[2];a.toolbar.getLocationOnScreen(origin);target.offset(origin[0],origin[1]);
@@ -322,6 +323,50 @@ final class ChromeCollapseIntegration {
         emit("collapseSnapshot",result);if("ready".equals(command)){diagnosticReady=true;a.handler.removeCallbacks(diagnosticTick);}
       }catch(Exception failure){emit("error",J.obj("error",failure.toString()));}
     });
+  }
+  JSONObject glassRendererObservation() throws Exception {
+    JSONArray docks=new JSONArray();
+    View[] views={(View)a.hub.tabs[0].getParent(),(View)a.hub.workspaceTabs[0].getParent()};
+    String[] roles={"conversation","workspace"};View root=a.getWindow().getDecorView();
+    for(int i=0;i<views.length;i++){
+      View dock=views[i];LiquidGlassDrawable drawable=glassMaterial(dock.getBackground());
+      if(!(dock instanceof GlassDock)||drawable==null)throw new IllegalStateException("Actual glass dock required");
+      Object owner=glassField(drawable,"owner"),backdrop=glassField(drawable,"backdrop");
+      // API32 never resolves the API33 renderer or its private fields.
+      Object renderer=Build.VERSION.SDK_INT>=33?glassField(drawable,"renderer"):null;
+      Object lastSource=renderer==null?null:glassField(renderer,"lastSource");
+      docks.put(J.obj("role",roles[i],"dockRef",System.identityHashCode(dock),"drawableRef",System.identityHashCode(drawable),
+        "attached",dock.isAttachedToWindow(),"currentActivityRoot",dock.getRootView()==root&&dock.getContext()==a&&a.hub.a==a,
+        "ownerBound",owner instanceof java.lang.ref.WeakReference&&((java.lang.ref.WeakReference<?>)owner).get()==dock,
+        "backdropBound",backdrop instanceof java.lang.ref.WeakReference&&((java.lang.ref.WeakReference<?>)backdrop).get()==a.hub.panel,
+        "gpuBroken",glassField(drawable,"gpuBroken"),"rendererRef",renderer==null?0:System.identityHashCode(renderer),
+        "rendererClass",renderer==null?"":renderer.getClass().getName(),"agslReady",renderer!=null,
+        "hadBackdrop",renderer!=null&&Boolean.TRUE.equals(glassField(renderer,"hadBackdrop")),
+        "lastSourcePresent",lastSource!=null,"lastSourceCurrent",lastSource==a.hub.panel,
+        "nativeBackdropRecorded",renderer!=null&&Boolean.TRUE.equals(glassField(renderer,"reportedBackdrop"))));
+    }
+    return J.obj("schema",1,"deviceApi",Build.VERSION.SDK_INT,"pid",android.os.Process.myPid(),
+      "activityRef",System.identityHashCode(a),"activityClass",a.getClass().getName(),
+      "mainThread",Looper.myLooper()==Looper.getMainLooper(),"docks",docks);
+  }
+  static Object glassField(Object target,String name) throws Exception {
+    for(Class<?> type=target.getClass();type!=null;type=type.getSuperclass())try{
+      java.lang.reflect.Field field=type.getDeclaredField(name);field.setAccessible(true);return field.get(target);
+    }catch(NoSuchFieldException missing){}
+    throw new NoSuchFieldException(name);
+  }
+  static LiquidGlassDrawable glassMaterial(android.graphics.drawable.Drawable value){
+    if(value instanceof LiquidGlassDrawable)return (LiquidGlassDrawable)value;
+    if(value instanceof android.graphics.drawable.InsetDrawable)return glassMaterial(((android.graphics.drawable.InsetDrawable)value).getDrawable());
+    LiquidGlassDrawable found=null;
+    if(value instanceof android.graphics.drawable.LayerDrawable){
+      android.graphics.drawable.LayerDrawable layers=(android.graphics.drawable.LayerDrawable)value;
+      for(int i=0;i<layers.getNumberOfLayers();i++){
+        LiquidGlassDrawable next=glassMaterial(layers.getDrawable(i));
+        if(next!=null){if(found!=null)throw new IllegalStateException("Ambiguous dock material");found=next;}
+      }
+    }
+    return found;
   }
   void emit(String kind,JSONObject result){diagnostic("emit-before");try{events.emit(kind,result);diagnostic("emit-queued");}catch(Exception failure){events.failure(failure);}}
   void nativeTouch(MotionEvent event){if(web().tracking&&nativeTouches.length()<256)nativeTouches.put(J.obj("action",event.getActionMasked(),"pointers",event.getPointerCount(),"height",a.remote.getHeight(),"expanded",a.designChrome.expanded()));}

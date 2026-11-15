@@ -10,6 +10,7 @@ def run_case(adb, adb_bytes, dump, event, focus, visible, quick_sheet, shots, pa
     command=f'compact-v2-{width}-{scale}'
     adb('shell','am','start','-W','-n',component,'--es','compactCommand',command)
     sample=event(command,'ready')
+    assert sample.get('browserChrome') is True, 'Current browser address controls must be measured'
     verify_layout(sample,width,scale)
     stem=f'compact-chrome-{width}-font{scale}'
     (shots/(stem+'.xml')).write_text(dump())
@@ -77,5 +78,5 @@ def run_case(adb, adb_bytes, dump, event, focus, visible, quick_sheet, shots, pa
         actualAndroidTaps=taps,actualAndroidLongPress=long_press,layout=sample,
         performance=performance['performance'],environmentSheet=sheet,managementNavigation=management,
         addressDialog=dialog,menuDismissedByBack=True,environmentDismissedByBack=True)
-    verify_case(case)
+    verify_case(case, require_browser_chrome=True)
     return case

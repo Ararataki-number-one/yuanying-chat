@@ -407,6 +407,11 @@ try:
             body=b'''<!doctype html><html data-reload-document="__RELOAD_DOCUMENT__"><meta name="viewport" content="width=device-width,initial-scale=1"><style>body{font:18px sans-serif}#composer{position:fixed;bottom:0;background:white;width:90%}textarea{width:95%;height:70px}</style><main><article data-message-author-role="user" data-message-id="reload-user"><div data-user-message-bubble>already sent fixture question</div></article><section><div data-message-author-role="assistant" data-message-id="reload-reply"><div class="markdown"><p>Preserved controlled reply body.</p></div></div></section></main><form id="composer"><textarea id="prompt-textarea">unsent controlled browser draft</textarea><button type="button" data-testid="send-button" aria-label="Send" onclick="document.getElementById('send-count').textContent=Number(document.getElementById('send-count').textContent)+1">Send</button></form><span id="send-count">0</span><script>document.cookie='session=synthetic-reload; Path=/';</script></html>'''.replace(b'__RELOAD_DOCUMENT__',document_marker.encode('ascii'))
             if self.path=='/c/reload-collapse':
                 body=body.replace(b'</main>',b'<div style="height:12000px;overflow:hidden">Controlled long reading document</div></main>')
+                # This reading gesture fixture needs an unobstructed scroll
+                # surface at large fonts. Keep its live composer in document
+                # flow after the existing reading content; editing fixtures
+                # above retain their fixed composer and original controls.
+                body=body.replace(b'#composer{position:fixed;bottom:0;',b'#composer{position:static;')
                 body=body.replace(b'</form>',b'<button type="button" data-testid="stop-button" aria-label="Stop">Stop</button></form>')
                 body=body.replace(b'</html>',b'''<script>
                 (()=>{

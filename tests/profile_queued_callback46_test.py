@@ -79,6 +79,9 @@ class GeckoQueuedChangesObservation {
 class GeckoIntegrationTestActivity {
  ChatSession session=new ChatSession();QueuedChangesVpn46 queuedVpn;int slot=1;long run=46;int events;JSONObject eventValue;
  void event(long serial,String kind,JSONObject value){if(serial!=run||!"queuedChanges".equals(kind))throw new AssertionError("foreign event");events++;eventValue=value;}
+ // Durable preparation is covered by the real reply-task-persistence host.
+ // This boundary keeps this host focused on the unchanged callback fences.
+ JSONObject beginSyntheticReply(String label){JSONObject job=J.obj("id",label,"kind","web","confirmed",true);session.prefs.edit().putString("pending",job.toString()).commit();session.pending=job;return job;}
  @READY@
 }
 public final class QueuedCallback46Host {

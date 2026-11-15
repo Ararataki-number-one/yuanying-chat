@@ -303,11 +303,24 @@ public class GeckoIntegrationTestActivity extends Activity {
     if(SystemClock.elapsedRealtime()>deadline){event(serial,"error",J.obj("error","Restored bootstrap extension did not acknowledge native protection","newNativeRoutePort",reconnected,"privacyReady",web.privacyReady,"protectionLevel",web.protectionLevel));return;}
     session.handler.postDelayed(()->waitExtensionRestore(serial,web,previous,result,deadline),100);
   }
+  /** A completion fixture must own a durable delivery just like a real web task. */
+  JSONObject beginSyntheticReply(String label){
+    String url=session.web.getUrl();
+    String id=session.deliveries.begin(url,label,new JSONArray(),"web",null);
+    if(!session.deliveries.update(id,"awaiting","synthetic fixture",true,"",url))
+      throw new IllegalStateException("Synthetic reply delivery was not persisted");
+    JSONObject job=J.obj("id",id,"kind","web","engine","gecko","confirmed",true,
+      "confirmedUrl",url,"expectedUrl",url,"prompt",label,"attempted",true);
+    if(!session.prefs.edit().putString("pending",job.toString()).commit())
+      throw new IllegalStateException("Synthetic reply cursor was not persisted");
+    session.pending=job;session.activeDeliveryId=id;session.webWorkGeneration++;
+    return job;
+  }
   void backgroundSettings(long serial){
-    boolean desktop=session.privacy.wantsDesktop();session.pending=J.obj("id","synthetic-background-settings","confirmed",true);session.navigating=false;session.connecting=false;
+    boolean desktop=session.privacy.wantsDesktop();JSONObject job=beginSyntheticReply("synthetic-background-settings");session.navigating=false;session.connecting=false;
     boolean saved=DeferredBrowserSettings.save(session,session.privacy.level(),!desktop);ChatService.begin(this);
     event(serial,"homeNeeded",J.obj("id","background-settings-"+serial));
-    session.handler.postDelayed(()->{session.networkReady=false;session.guard.setBlocked(true);session.completeReply(session.pending,J.obj("url",session.web.getUrl()));session.changed();},5000);
+    session.handler.postDelayed(()->{session.networkReady=false;session.guard.setBlocked(true);session.completeReply(job,J.obj("url",session.web.getUrl()));session.changed();},5000);
     session.handler.postDelayed(()->event(serial,"backgroundSettings",J.obj("saved",saved,"actualBackground",!session.uiVisible&&!processForeground(),"replyFinished",session.pending==null,"automaticallyApplied",!DeferredBrowserSettings.pending(session)&&session.privacy.wantsDesktop()!=desktop&&session.privacy.desktop!=desktop)),8500);
   }
   void queuedChanges(long serial){
@@ -319,7 +332,7 @@ public class GeckoIntegrationTestActivity extends Activity {
   void queuedChangesReady(long serial,GeckoQueuedChangesObservation observation,QueuedChangesVpn46 vpn){
     if(!vpn.owns()||!observation.ownsUrl(session.web.getUrl())){vpn.abort();return;}
     session.prefs.edit().putString("managementMarker","prime-target").commit();String original=session.prefs.getString("proxy","");int level=session.privacy.level();boolean desktop=session.privacy.wantsDesktop();
-    session.pending=J.obj("id","synthetic-queued-question","kind","web","confirmed",true);session.navigating=false;session.connecting=false;session.state=J.obj("busy",false);
+    beginSyntheticReply("synthetic-queued-question");session.navigating=false;session.connecting=false;session.state=J.obj("busy",false);
     session.changed();boolean browserSaved=DeferredBrowserSettings.save(session,2,!desktop),livePolicyKept=session.privacy.level()==level&&session.privacy.wantsDesktop()==desktop;
     // This synthetic busy-save fixture explicitly chooses deferred application.
     NetworkBridge.run(this,slot,"external",J.obj("proxy","","requireExternalVpn",true),NetworkChanges.hash(this),null,(choice,select)->select.accept(NetworkApplyCoordinator.DEFER),(ok,message,snapshot)->{

@@ -12,11 +12,17 @@ python3 tests/combo-native-admission-host/run.py \
 
 Run with actual JDK 17 and each supported JSON jar. Inputs, generated sources,
 commands, compile/run logs, and bounded publisher outputs are source-bound.
-Fifteen separately compiled semantic mutations must fail precise behavioral
+Separately compiled semantic mutations must fail precise behavioral
 assertions after the pristine focused controls pass.
 
-Cases cover the three exact SDK startup HTTPS authorities (Remote Settings,
-its attachments, and the pinned Google Safe Browsing provider), their explicit 443 form,
+Cases cover the exact SDK startup HTTPS authorities (Remote Settings,
+its attachments, the pinned Google Safe Browsing provider and content-signature
+chain), their explicit 443 form, and the pinned HTTP connectivity authority
+`firefox-portal-detection.com` with only the default or canonical `:80` port.
+The pinned SDK enables IPv4/IPv6 probes to this host; HTTPS, WebSocket and all
+near-match forms retain the original production route. These are integration
+refusals, not changes to production network or Safe Browsing preferences.
+Controls retain
 unknown/case/subdomain/trailing-dot/userinfo/port/scheme variants, original
 WebSocket normalization, unchanged main fixture targets, strict JSON types and
 keys, earlier guards without a false causal claim, role/hash and view/runtime/

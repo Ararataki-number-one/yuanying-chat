@@ -224,7 +224,7 @@ jobs:
           cp "$ANDROID_AVD_HOME/glassnavigation.avd/hardware-qemu.ini" work/glass-navigation/avd-hardware-qemu.txt
           timeout 10 "$ANDROID_HOME/platform-tools/adb" -s emulator-5554 shell getprop | tee work/glass-navigation/device-getprop.txt
           timeout 10 "$ANDROID_HOME/platform-tools/adb" -s emulator-5554 shell dumpsys window displays > work/glass-navigation/device-window-displays.txt
-          python3 tools/gecko/prepare_ui_device.py --adb "$ANDROID_HOME/platform-tools/adb" --serial emulator-5554 --timeout 45 --output work/glass-navigation/ui-device-preparation.json
+          python3 tools/gecko/prepare_ui_device.py --adb "$ANDROID_HOME/platform-tools/adb" --serial emulator-5554 --broadcast-idle-timeout 120 --timeout 45 --output work/glass-navigation/ui-device-preparation.json
       - name: Run real glass rendering, input and layout acceptance
         timeout-minutes: 30
         shell: bash

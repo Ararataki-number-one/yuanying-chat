@@ -6,9 +6,11 @@ layout used when a narrow window cannot fit an independently centered dock.
 They do not stand in for Android capture or visual inspection.
 """
 import ast
+import copy
 import hashlib
 import inspect
 import json
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -730,14 +732,14 @@ class GlassDisplayPreparationTest(unittest.TestCase):
                     f'cur={logical[0]}x{logical[1]} app={logical[0]}x{logical[1]}\n').encode()
         self.fail('Unexpected setup command: ' + repr(parts))
 
-    def run_setup(self, target=None, width=1236, height=2676):
+    def run_setup(self, target=None, width=1236, height=2676, *, retire_surface=True):
         target = target or validation.prepare_display
         self.owner = {}
         with tempfile.TemporaryDirectory() as directory, \
                 patch.object(validation.time, 'monotonic', side_effect=lambda: self.clock), \
                 patch.object(validation.time, 'sleep', side_effect=lambda seconds: setattr(self, 'clock', self.clock + seconds)):
             return target(SimpleNamespace(out=Path(directory)), self.owner, 'controlled', self.adb,
-                          capture.__dict__, width, height, 1.0, 'no')
+                          capture.__dict__, width, height, 1.0, 'no', retire_surface=retire_surface)
 
     def test_portrait_applies_after_launcher_override_reversion(self):
         result = self.run_setup()
@@ -889,7 +891,7 @@ class GlassDisplayPreparationTest(unittest.TestCase):
 
     def test_missing_retirement_negative_control_reuses_network_and_emits_no_new_nonce(self):
         source = inspect.getsource(validation.prepare_display)
-        stop = "                read('shell', 'am', 'force-stop', api['PACKAGE'])\n"
+        stop = "                    read('shell', 'am', 'force-stop', api['PACKAGE'])\n"
         self.assertLessEqual(source.count(stop), 1)
         namespace = dict(validation.__dict__)
         exec(compile(source.replace(stop, ''), '<unretired-configuration-surface>', 'exec'), namespace)
@@ -925,6 +927,24 @@ class GlassDisplayPreparationTest(unittest.TestCase):
         self.assertEqual(self.owner['displayPreparation']['status'], 'failed')
         self.assertFalse(self.owner['displayPreparation'].get('configurationSurfaceStopped', False))
         self.assertEqual(self.task_boundary['created'], ['network'])
+
+    def test_retained_surface_keeps_observed_landscape_without_launcher(self):
+        value=self.run_setup(width=2676,height=1236,retire_surface=False)
+        self.assertTrue(self.foreground);self.assertEqual(self.rotation,1)
+        self.assertTrue(value['configurationSurfaceRetained']);self.assertFalse(value['configurationSurfaceStopped'])
+        self.assertEqual(len(value['observations']),2)
+        self.assertFalse(any(parts==('shell','am','force-stop',capture.PACKAGE) for parts,_ in self.calls))
+
+    def test_scene_and_typography_handoffs_create_fresh_activities_without_launcher(self):
+        for function in (validation.capture_loading_landscape,validation.capture_acceptance_suite):
+            tree=ast.parse(inspect.getsource(function))
+            setup=[n for n in ast.walk(tree) if isinstance(n,ast.Call) and isinstance(n.func,ast.Name) and n.func.id=='prepare_display']
+            retained=[n for n in setup if any(k.arg=='retire_surface' and ast.literal_eval(k.value) is False for k in n.keywords)]
+            self.assertEqual(len(retained),1)
+        source=inspect.getsource(validation.capture_acceptance_suite)
+        typography=next(n for n in ast.walk(ast.parse(source)) if isinstance(n,ast.FunctionDef) and n.name=='typography')
+        self.assertIn('--activity-clear-task',ast.unparse(typography));self.assertNotIn('force-stop',ast.unparse(typography))
+        self.assertIn("start_output = adb('shell', 'am', 'start', '-W', '--activity-clear-task'",source)
 
 
 class GlassCaptureFailureCleanupTest(unittest.TestCase):
@@ -1141,6 +1161,193 @@ class GlassCaptureFailureCleanupTest(unittest.TestCase):
                                 for call in transport.call_args_list))
             self.assertTrue(any(call.args[:4] == ('shell', 'rm', '-f', pid_file)
                                 for call in transport.call_args_list))
+
+
+
+
+class GlassRendererAttributionTest(unittest.TestCase):
+    """Host controls for actual renderer consumers, not Android observations."""
+    def setUp(self):
+        fixture=GlassReadyFailureDiagnosticsTest();fixture.setUp()
+        self.identity=fixture.identity;self.nonce=fixture.case['runNonce']
+        self.start=fixture.trace();self.start['stage']='start-before'
+
+    def line(self,text,tag='GlassLens',pid='4321',priority='I'):
+        return f'11-15 12:00:00.123  {pid}  4321 {priority} {tag}: {text}\n'
+
+    def log(self,*,old=False,warning=False):
+        marks=self.line('AGSL material ready')+self.line('native backdrop recorded')
+        boundary=self.line(json.dumps(self.start),'PocketCollapseTrace')
+        return ((marks+boundary if old else boundary+marks)+(self.line('AGSL unavailable',priority='W') if warning else '')).encode()
+
+    def native(self,api=35,*,recorded=True):
+        rows=[]
+        for index,role in enumerate(('conversation','workspace')):
+            present=api>=33
+            rows.append(dict(role=role,dockRef=100+index,drawableRef=200+index,
+                attached=True,currentActivityRoot=True,ownerBound=True,backdropBound=True,gpuBroken=False,
+                rendererRef=300+index if present else 0,
+                rendererClass='local.pocketchat.GlassLensRenderer' if present else '',agslReady=present,
+                nativeBackdropRecorded=present and recorded,hadBackdrop=present,
+                lastSourcePresent=present,lastSourceCurrent=present))
+        return dict(schema=1,deviceApi=api,pid=4321,mainThread=True,
+            activityClass='local.pocketchat.CompactChromeIntegrationActivity',activityRef=1234,docks=rows)
+
+    def observe(self,raw,before=None,after=None,api=35):
+        tree=ast.parse(inspect.getsource(validation.capture_acceptance_suite))
+        function=next(n for n in ast.walk(tree) if isinstance(n,ast.FunctionDef) and n.name=='renderer_observation')
+        case=dict(name='host-renderer-boundary',runNonce=self.nonce,documentObservations=dict(
+            ready=dict(glassRenderer=before if before is not None else self.native(api)),
+            **{'after-interactions':dict(glassRenderer=after if after is not None else self.native(api))}))
+        def adb(*parts,**kwargs):
+            if parts==('shell','pidof','local.pocketchat.test'):return b'4321\n'
+            if parts[:2]==('logcat','-d'):return raw
+            raise AssertionError(parts)
+        with tempfile.TemporaryDirectory() as directory:
+            namespace=dict(adb=adb,package='local.pocketchat.test',identity=self.identity,
+                args=SimpleNamespace(out=Path(directory),device_api=api),
+                renderer_scene_messages=validation.renderer_scene_messages,
+                verify_scene_renderers=validation.verify_scene_renderers,
+                sha=lambda path:hashlib.sha256(path.read_bytes()).hexdigest())
+            exec(compile(ast.Module(body=[function],type_ignores=[]),'<actual-renderer-consumer>','exec'),namespace)
+            namespace['renderer_observation'](case)
+        return case['materialPath']
+
+    def test_same_pid_preparation_lines_cannot_satisfy_current_scene(self):
+        raw=self.log(old=True)
+        messages,boundary=validation.renderer_scene_messages(raw,self.identity,self.nonce,['4321'])
+        self.assertEqual(messages,[]);self.assertEqual(boundary['lineIndex'],2)
+        with self.assertRaises(ValueError):self.observe(raw)
+
+    def test_current_lines_and_current_materials_keep_original_log_claims(self):
+        value=self.observe(self.log())
+        self.assertTrue(value['agslReady']);self.assertTrue(value['nativeBackdropRecorded'])
+        self.assertTrue(value['sceneRenderers']['verified'])
+
+    def test_late_old_same_pid_logs_cannot_replace_unrendered_current_material(self):
+        before=self.native(recorded=False);after=self.native(recorded=False)
+        with self.assertRaisesRegex(ValueError,'did not actually render'):self.observe(self.log(),before,after)
+
+    def test_warning_foreign_source_and_missing_current_nonce_are_rejected(self):
+        with self.assertRaises(ValueError):self.observe(self.log(warning=True))
+        self.start['sourceCommit']='f'*40
+        with self.assertRaises(ValueError):self.observe(self.log())
+        self.start['sourceCommit']=self.identity['sourceCommit'];self.start['runNonce']='f'*32
+        with self.assertRaises(ValueError):self.observe(self.log())
+
+    def test_native_foreign_objects_failed_materials_and_missing_receipts_are_rejected(self):
+        changes=(lambda v:v.update(activityRef=9),lambda v:v.update(pid=1),
+            lambda v:v['docks'][0].update(drawableRef=9),lambda v:v['docks'][0].update(ownerBound=False),
+            lambda v:v['docks'][0].update(backdropBound=False),lambda v:v['docks'][0].update(currentActivityRoot=False),
+            lambda v:v['docks'][0].update(gpuBroken=True),lambda v:v['docks'][0].update(lastSourceCurrent=False),
+            lambda v:v['docks'].pop())
+        for index,change in enumerate(changes):
+            after=self.native();change(after)
+            with self.subTest(index=index),self.assertRaises(ValueError):self.observe(self.log(),after=after)
+        with self.assertRaises(ValueError):self.observe(self.log(),before={})
+
+    def test_already_rendered_ready_and_legitimate_hidden_dock_discard_are_allowed(self):
+        after=self.native()
+        for row in after['docks']:row.update(hadBackdrop=False,lastSourcePresent=False,lastSourceCurrent=False)
+        self.assertTrue(self.observe(self.log(),after=after)['sceneRenderers']['verified'])
+
+    def test_api32_retains_cpu_branch_and_rejects_any_agsl_claim(self):
+        raw=self.line(json.dumps(self.start),'PocketCollapseTrace').encode()
+        self.assertTrue(self.observe(raw,api=32)['sourceBoundCpuBranch'])
+        with self.assertRaises(ValueError):self.observe(self.log(),api=32)
+        with self.assertRaises(ValueError):self.observe(raw,after=self.native(),api=32)
+
+    def test_preparation_is_saved_before_opted_in_launch_without_clearing_journal(self):
+        source=inspect.getsource(validation.capture_acceptance_suite)
+        self.assertLess(source.index("case['rendererPreparationLog']"),source.index('start_output = adb('))
+        self.assertIn("'observeGlassRenderer', 'true'",source)
+        prefix=source[source.index('preparation_log='):source.index('start_output = adb(')]
+        self.assertNotIn("'-c'",prefix);self.assertNotIn('force-stop',prefix)
+
+
+
+    def test_actual_native_observer_reads_owned_materials_and_skips_api33_fields_on_api32(self):
+        root=Path(__file__).resolve().parents[1]
+        java_home=Path(os.environ['JAVA_HOME'])
+        jar=Path(os.environ.get('PROFILE_JSON_JAR',str(root/'work/profile-host/json.jar')))
+        self.assertTrue((java_home/'bin/javac').is_file() and jar.is_file(),'Actual JDK17 and JSON dependency required')
+        source=(root/'tests/gecko/ChromeCollapseIntegration.java').read_text()
+        methods=source[source.index('  JSONObject glassRendererObservation()'):source.index('  void emit(',source.index('  JSONObject glassRendererObservation()'))]
+        java=r"""package local.pocketchat;
+import org.json.*;
+import android.graphics.drawable.*;
+class Build {static class VERSION {static int SDK_INT=SDK_VALUE;}}
+class Looper {static final Looper MAIN=new Looper();static Looper myLooper(){return MAIN;}static Looper getMainLooper(){return MAIN;}}
+class View {Object context;View parent,root;Drawable background;boolean attached=true;
+ View(Object context,View root){this.context=context;this.root=root==null?this:root;}
+ View getParent(){return parent;}View getRootView(){return root;}Object getContext(){return context;}
+ Drawable getBackground(){return background;}boolean isAttachedToWindow(){return attached;}}
+class GlassDock extends View {GlassDock(Object context,View root){super(context,root);}}
+class GlassLensRenderer {private boolean reportedBackdrop=true,hadBackdrop=true;private Object lastSource;
+ GlassLensRenderer(Object source){lastSource=source;}}
+class LiquidGlassDrawable extends Drawable {
+ private java.lang.ref.WeakReference<Object> owner,backdrop;private boolean gpuBroken;
+ RENDERER_FIELD
+ LiquidGlassDrawable(Object host,Object source){owner=new java.lang.ref.WeakReference<>(host);backdrop=new java.lang.ref.WeakReference<>(source);RENDERER_INIT}
+ void owner(Object value){owner=new java.lang.ref.WeakReference<>(value);}
+}
+class ChildMaterial extends LiquidGlassDrawable {ChildMaterial(Object h,Object s){super(h,s);}}
+class Hub {CompactChromeIntegrationActivity a;Object panel=new Object();View[] tabs,workspaceTabs;}
+class Window {View root;Window(View root){this.root=root;}View getDecorView(){return root;}}
+class CompactChromeIntegrationActivity {Hub hub=new Hub();Window window;Window getWindow(){return window;}}
+public class RendererHost {
+ final CompactChromeIntegrationActivity a=new CompactChromeIntegrationActivity();
+ final ChildMaterial first,second;
+ RendererHost(){
+  View root=new View(a,null);a.window=new Window(root);a.hub.a=a;
+  GlassDock conversation=new GlassDock(a,root),workspace=new GlassDock(a,root);
+  first=new ChildMaterial(conversation,a.hub.panel);second=new ChildMaterial(workspace,a.hub.panel);
+  conversation.background=new InsetDrawable(new LayerDrawable(new Drawable[]{new Drawable(),first}));
+  workspace.background=new LayerDrawable(new Drawable[]{new InsetDrawable(second)});
+  View tab=new View(a,root),workspaceTab=new View(a,root);tab.parent=conversation;workspaceTab.parent=workspace;
+  a.hub.tabs=new View[]{tab};a.hub.workspaceTabs=new View[]{workspaceTab};
+ }
+ METHODS
+ static void require(boolean value,String message){if(!value)throw new AssertionError(message);}
+ public static void main(String[] args)throws Exception {
+  RendererHost host=new RendererHost();JSONObject report=host.glassRendererObservation();
+  require(report.getBoolean("mainThread"),"actual main thread boundary");
+  require(report.getString("activityClass").equals("local.pocketchat.CompactChromeIntegrationActivity"),"actual activity class");
+  JSONArray docks=report.getJSONArray("docks");require(docks.length()==2,"both actual docks");
+  for(int i=0;i<2;i++){
+   JSONObject row=docks.getJSONObject(i);
+   for(String key:new String[]{"attached","currentActivityRoot","ownerBound","backdropBound"})require(row.getBoolean(key),key);
+   require(row.getBoolean("agslReady")== (Build.VERSION.SDK_INT>=33),"actual guarded renderer branch");
+   require(row.getBoolean("nativeBackdropRecorded")== (Build.VERSION.SDK_INT>=33),"actual recording flag");
+   require(row.getBoolean("lastSourceCurrent")== (Build.VERSION.SDK_INT>=33),"actual source identity");
+  }
+  host.first.owner(new Object());require(!host.glassRendererObservation().getJSONArray("docks").getJSONObject(0).getBoolean("ownerBound"),"foreign owner rejected");
+  try {glassMaterial(new LayerDrawable(new Drawable[]{host.first,host.second}));throw new AssertionError("ambiguous material accepted");}
+  catch(IllegalStateException expected){}
+  require(glassMaterial(new InsetDrawable(new LayerDrawable(new Drawable[]{host.second})))==host.second,"layered actual object identity");
+  System.out.println("{\"passed\":true,\"api\":"+Build.VERSION.SDK_INT+"}");
+ }
+}
+"""
+        with tempfile.TemporaryDirectory() as directory:
+            work=Path(directory)
+            stubs={
+                'android/graphics/drawable/Drawable.java':'package android.graphics.drawable;public class Drawable {}',
+                'android/graphics/drawable/InsetDrawable.java':'package android.graphics.drawable;public class InsetDrawable extends Drawable {final Drawable value;public InsetDrawable(Drawable v){value=v;}public Drawable getDrawable(){return value;}}',
+                'android/graphics/drawable/LayerDrawable.java':'package android.graphics.drawable;public class LayerDrawable extends Drawable {final Drawable[] values;public LayerDrawable(Drawable[] v){values=v;}public int getNumberOfLayers(){return values.length;}public Drawable getDrawable(int i){return values[i];}}',
+                'android/os/Process.java':'package android.os;public class Process {public static int myPid(){return 4321;}}'}
+            for name,text in stubs.items():
+                path=work/name;path.parent.mkdir(parents=True,exist_ok=True);path.write_text(text)
+            for api in (32,35):
+                code=java.replace('SDK_VALUE',str(api)).replace('METHODS',methods)
+                code=code.replace('RENDERER_FIELD','private GlassLensRenderer renderer;' if api>=33 else '')
+                code=code.replace('RENDERER_INIT','renderer=new GlassLensRenderer(source);' if api>=33 else '')
+                target=work/'RendererHost.java';target.write_text(code);classes=work/str(api);classes.mkdir()
+                compiled=subprocess.run([str(java_home/'bin/javac'),'-encoding','UTF-8','-cp',str(jar),'-d',str(classes),
+                    *[str(work/name) for name in stubs],str(root/'app/src/main/java/local/pocketchat/J.java'),str(target)],capture_output=True,text=True,timeout=30)
+                self.assertEqual(compiled.returncode,0,compiled.stdout+compiled.stderr)
+                ran=subprocess.run([str(java_home/'bin/java'),'-cp',str(classes)+os.pathsep+str(jar),'local.pocketchat.RendererHost'],capture_output=True,text=True,timeout=10)
+                self.assertEqual(ran.returncode,0,ran.stdout+ran.stderr);self.assertEqual(json.loads(ran.stdout),dict(passed=True,api=api))
 
 
 if __name__ == '__main__':
