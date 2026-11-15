@@ -20,6 +20,10 @@ def current_body():
                           'void report(String event,')
 
 
+def v2_body():
+    return capture.restore_browser_report_body(current_body())
+
+
 class CompactCaptureReportV2Tests(unittest.TestCase):
     def run_current_menu_segment(self, *, old_label=False, action='more'):
         source = (ROOT/'tests/gecko/compact_chrome_v2.py').read_text()
@@ -68,17 +72,22 @@ class CompactCaptureReportV2Tests(unittest.TestCase):
     def test_complete_current_inverse_retains_both_historical_byte_identities(self):
         body = current_body()
         self.assertEqual(capture.report_pin(body),
+                         (5329, '230302b641f3c2da9e1d88b932bf632ec7cd3a2712aa3c219afbf2bce5d8fe24'))
+        previous = capture.restore_browser_report_body(body)
+        self.assertEqual(capture.report_pin(previous),
                          (3982, '4cfa806c09c40ad3dcac9f3217b744f6d9d88b6acb0611e506f24939cc6b2e39'))
-        restored = capture.restore_v2_report_body(body)
+        self.assertEqual((capture.V2_REPORT_BYTES, capture.V2_REPORT_SHA256), capture.report_pin(previous))
+        restored = capture.restore_v2_report_body(previous)
         self.assertEqual(capture.report_pin(restored),
                          (3507, '8de01adca0ba191e634a90aa8dc125fbe91e22172f4894ad32d0590ca9af8fd0'))
+        self.assertEqual(capture.historical_report_body(body), restored)
         self.assertEqual(restored.count(SYNTHETIC_DECLARATION), 1)
         original = restored.replace(SYNTHETIC_DECLARATION, '')
         self.assertEqual(capture.report_pin(original), (3445, ORIGINAL_SHA256))
         self.assertEqual(capture.ORIGINAL_REPORT_SHA256, ORIGINAL_SHA256)
 
     def test_only_exact_old_bodies_keep_original_acceptance_and_cannot_reenter_v2(self):
-        previous = capture.restore_v2_report_body(current_body())
+        previous = capture.restore_v2_report_body(v2_body())
         for body in (previous, previous.replace(SYNTHETIC_DECLARATION, '')):
             with self.subTest(bytes=len(body.encode())):
                 self.assertEqual(capture.historical_report_body(body), body)
@@ -102,7 +111,7 @@ class CompactCaptureReportV2Tests(unittest.TestCase):
             ('"topBounds",bounds(top),', '"topBounds",bounds(toolbar),'),
         )
         for before, after in mutations:
-            body = current_body()
+            body = v2_body()
             self.assertEqual(body.count(before), 1, before)
             with self.subTest(field=before):
                 self.reject(body.replace(before, after, 1))
@@ -112,7 +121,8 @@ class CompactCaptureReportV2Tests(unittest.TestCase):
             ('hit.bottom-1', 'hit.bottom-2'),
             ('hit.width()/density()', 'hit.width()/2'),
             ('hit.offset(origin[0],origin[1])', 'hit.offset(0,0)'),
-            ('"fontHeight",font.bottom-font.top', '"fontHeight",font.bottom'),
+            ('"bounds",bounds(text),"fontHeight",font.bottom-font.top',
+             '"bounds",bounds(text),"fontHeight",font.bottom'),
             ('"networkTap",J.arr(networkBounds.centerX(),networkBounds.centerY())', '"networkTap",J.arr(0,0)'),
             ('"latency",latency.getText().toString()', '"latency","42 ms"'),
             ('"syntheticPresentation",true,', '"syntheticPresentation",false,'),
@@ -126,7 +136,7 @@ class CompactCaptureReportV2Tests(unittest.TestCase):
 
     def test_missing_duplicate_moved_or_reordered_additions_are_not_normalized(self):
         for index, (left, addition, right) in enumerate(capture.V2_REPORT_INSERTIONS):
-            body = current_body()
+            body = v2_body()
             self.assertEqual(body.count(left + addition + right), 1)
             mutations = (
                 body.replace(left + addition + right, left + right, 1),
@@ -155,7 +165,7 @@ class CompactCaptureReportV2Tests(unittest.TestCase):
     def test_context_and_restored_pins_still_reject_if_only_current_hash_is_replaced(self):
         # A blind after-hash replacement cannot bypass the exact inverse or the
         # unchanged old body identity. These are adversarial host-only controls.
-        original = current_body()
+        original = v2_body()
         mutations = (
             original.replace('"navigationContract",2,', '"navigationContract",3,', 1),
             original.replace('"navigationContract",2,', '"navigationContract",2,"navigationContract",2,', 1),
@@ -167,6 +177,102 @@ class CompactCaptureReportV2Tests(unittest.TestCase):
                     patch.object(capture, 'V2_REPORT_SHA256', hashlib.sha256(candidate.encode()).hexdigest()), \
                     self.assertRaises(AssertionError):
                 capture.restore_v2_report_body(candidate)
+
+    def test_old_known_members_cannot_enter_the_browser_bridge(self):
+        previous = v2_body()
+        presentation = capture.restore_v2_report_body(previous)
+        for body in (previous, presentation, presentation.replace(SYNTHETIC_DECLARATION, '')):
+            with self.subTest(bytes=len(body.encode())), self.assertRaises(AssertionError):
+                capture.restore_browser_report_body(body)
+        with self.assertRaises(AssertionError):
+            capture.restore_v2_report_body(current_body())
+        self.assertEqual(capture.historical_report_body(previous), presentation)
+
+    def test_browser_measurement_order_geometry_font_and_clickability_are_locked(self):
+        mutations = (
+            ('String[] browserNames={"back","forward","address","reload","home"}',
+             'String[] browserNames={"forward","back","address","reload","home"}'),
+            ('Button[] browserViews={geckoAddress.back,geckoAddress.forward,',
+             'Button[] browserViews={geckoAddress.forward,geckoAddress.back,'),
+            ('Rect box=screenBounds(view);', 'Rect box=screenBounds(geckoAddress.address);'),
+            ('"bounds",rect(box)', '"bounds",J.arr(box.left,box.top,box.right+1,box.bottom)'),
+            ('"shown",view.isShown()', '"shown",true'),
+            ('"clickable",view.isClickable()', '"clickable",true'),
+            ('J.arr(box.centerX(),box.centerY())', 'J.arr(box.left,box.top)'),
+            ('control.put("fontHeight",font.bottom-font.top)', 'control.put("fontHeight",font.bottom)'),
+            ('view.getHeight()-view.getCompoundPaddingTop()-view.getCompoundPaddingBottom()', 'view.getHeight()'),
+            ('.put("lineCount",view.getLayout()==null?0:view.getLayout().getLineCount())', '.put("lineCount",1)'),
+            ('"bounds",bounds(browserRow)', '"bounds",bounds(toolbar)'),
+            ('"stacked",browserRow.stacked', '"stacked",false'),
+            ('"controls",browserControls', '"controls",new JSONArray()'),
+            ('browserRow.getPaddingRight()', 'browserRow.getPaddingRight()+1'),
+            ('"browserChrome",true,', '"browserChrome",false,'),
+            ('"browserAddressRow",browserAddressRow,', '"browserAddressRow",new JSONObject(),'),
+        )
+        for before, after in mutations:
+            body = current_body()
+            self.assertEqual(body.count(before), 1, before)
+            with self.subTest(field=before):
+                self.reject(body.replace(before, after, 1))
+
+    def test_browser_additions_missing_duplicated_moved_or_reordered_are_rejected(self):
+        for index, (left, addition, right) in enumerate(capture.BROWSER_REPORT_INSERTIONS):
+            body = current_body()
+            self.assertEqual(body.count(left + addition + right), 1)
+            mutations = (
+                body.replace(left + addition + right, left + right, 1),
+                body.replace(left + addition + right, left + addition + addition + right, 1),
+                body.replace(left + addition + right, left + right, 1) + addition,
+                body.replace(left + addition + right, left + right + addition, 1),
+            )
+            for change, candidate in enumerate(mutations):
+                with self.subTest(addition=index, mutation=change):
+                    self.reject(candidate)
+
+    def test_browser_fixed_context_rejects_even_when_only_current_pin_is_replaced(self):
+        original = current_body()
+        candidates = []
+        for left, addition, right in capture.BROWSER_REPORT_INSERTIONS:
+            context = left + addition + right
+            self.assertEqual(original.count(context), 1)
+            candidates.extend((
+                original.replace(context, left + right, 1),
+                original.replace(context, left + addition + addition + right, 1),
+                original.replace(context, left + right, 1) + addition,
+                original.replace(context, left + addition[:-1] + right, 1),
+            ))
+        candidates.extend((
+            original.replace('"browserChrome",true,', '"browserChrome",false,', 1),
+            original.replace('control.put("fontHeight",font.bottom-font.top)',
+                             'control.put("fontHeight",font.bottom)', 1),
+        ))
+        for candidate in candidates:
+            with self.subTest(body=hashlib.sha256(candidate.encode()).hexdigest()), \
+                    patch.object(capture, 'BROWSER_REPORT_BYTES', len(candidate.encode())), \
+                    patch.object(capture, 'BROWSER_REPORT_SHA256', hashlib.sha256(candidate.encode()).hexdigest()), \
+                    self.assertRaisesRegex(AssertionError, 'Browser report addition is missing, duplicated or moved'):
+                capture.restore_browser_report_body(candidate)
+
+    def test_browser_previous_whole_pin_rejects_even_when_only_current_pin_is_replaced(self):
+        # These changes leave both inserted blocks and their anchors intact.
+        # The restored whole-member pin, not the current entry pin, must reject.
+        mutations = (
+            ('hit.width()/density()', 'hit.width()/2'),
+            ('"bounds",bounds(text),"fontHeight",font.bottom-font.top',
+             '"bounds",bounds(text),"fontHeight",font.bottom'),
+            ('"networkTap",J.arr(networkBounds.centerX(),networkBounds.centerY())',
+             '"networkTap",J.arr(0,0)'),
+            ('"actions",actionCount,', '"unknown",true,"actions",actionCount,'),
+        )
+        for before, after in mutations:
+            original = current_body()
+            self.assertEqual(original.count(before), 1, before)
+            candidate = original.replace(before, after, 1)
+            with self.subTest(field=before), \
+                    patch.object(capture, 'BROWSER_REPORT_BYTES', len(candidate.encode())), \
+                    patch.object(capture, 'BROWSER_REPORT_SHA256', hashlib.sha256(candidate.encode()).hexdigest()), \
+                    self.assertRaisesRegex(AssertionError, 'Original v2 report body changed'):
+                capture.restore_browser_report_body(candidate)
 
     def test_adapter_only_feeds_the_original_body_assert_not_java_execution(self):
         tree = ast.parse(RUNNER.read_text())

@@ -19,11 +19,49 @@ V2_REPORT_INSERTIONS=(
  ('"fontScale",getResources().getConfiguration().fontScale,','"navigationContract",2,','"toolbar",rect(toolbarBounds),'),
  ('"toolbar",rect(toolbarBounds),','"topBounds",bounds(top),','"toolbarHeightDp",toolbar.getHeight()/density(),'),
 )
+# Exact 376a77c browser-row observations. Keep the original 3982-byte v2
+# report and its inverse unchanged; this layer must restore that whole member
+# before any historical comparison. Neither inverse feeds the Java adapter.
+BROWSER_REPORT_BYTES=5329
+BROWSER_REPORT_SHA256='230302b641f3c2da9e1d88b932bf632ec7cd3a2712aa3c219afbf2bce5d8fe24'
+BROWSER_REPORT_INSERTIONS=(
+ ('"tap",J.arr(hit.centerX(),hit.bottom-1)));\n      }\n',
+  '''      JSONArray browserControls=new JSONArray();
+      String[] browserNames={"back","forward","address","reload","home"};
+      Button[] browserViews={geckoAddress.back,geckoAddress.forward,geckoAddress.address,geckoAddress.reload,geckoAddress.home};
+      for(int i=0;i<browserViews.length;i++){
+        Button view=browserViews[i];Rect box=screenBounds(view);
+        JSONObject control=J.obj("name",browserNames[i],"bounds",rect(box),"shown",view.isShown(),"clickable",view.isClickable(),
+          "tap",J.arr(box.centerX(),box.centerY()));
+        if(view==geckoAddress.address){
+          Paint.FontMetrics font=view.getPaint().getFontMetrics();
+          control.put("fontHeight",font.bottom-font.top).put("contentHeight",view.getHeight()-view.getCompoundPaddingTop()-view.getCompoundPaddingBottom())
+            .put("lineCount",view.getLayout()==null?0:view.getLayout().getLineCount());
+        }
+        browserControls.put(control);
+      }
+      GeckoAddressUi.BrowserAddressRow browserRow=geckoAddress.row;
+      JSONObject browserAddressRow=J.obj("bounds",bounds(browserRow),"stacked",browserRow.stacked,"controls",browserControls,
+        "padding",J.arr(browserRow.getPaddingLeft(),browserRow.getPaddingTop(),browserRow.getPaddingRight(),browserRow.getPaddingBottom()));
+''',
+  '      JSONArray texts=new JSONArray();'),
+ ('"navigationContract",2,','"browserChrome",true,"browserAddressRow",browserAddressRow,','"toolbar",rect(toolbarBounds),'),
+)
 
 def report_pin(text):
  assert type(text) is str,'Report source must be text'
  raw=text.encode('utf-8')
  return len(raw),hashlib.sha256(raw).hexdigest()
+
+def restore_browser_report_body(text):
+ assert report_pin(text)==(BROWSER_REPORT_BYTES,BROWSER_REPORT_SHA256),'Unknown browser geometry report body'
+ restored=text
+ for left,addition,right in BROWSER_REPORT_INSERTIONS:
+  context=left+addition+right
+  assert restored.count(context)==1,'Browser report addition is missing, duplicated or moved'
+  restored=restored.replace(context,left+right,1)
+ assert report_pin(restored)==(V2_REPORT_BYTES,V2_REPORT_SHA256),'Original v2 report body changed'
+ return restored
 
 def restore_v2_report_body(text):
  assert report_pin(text)==(V2_REPORT_BYTES,V2_REPORT_SHA256),'Unknown v2 geometry report body'
@@ -37,6 +75,7 @@ def restore_v2_report_body(text):
 
 def historical_report_body(text):
  if report_pin(text) in ((3445,ORIGINAL_REPORT_SHA256),(PRESENTATION_REPORT_BYTES,PRESENTATION_REPORT_SHA256)):return text
+ if report_pin(text)==(BROWSER_REPORT_BYTES,BROWSER_REPORT_SHA256):text=restore_browser_report_body(text)
  return restore_v2_report_body(text)
 
 contract_path=ROOT/'tests/ui_visual_preservation_contract.py'
