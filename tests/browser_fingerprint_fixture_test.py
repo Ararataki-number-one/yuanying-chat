@@ -43,7 +43,8 @@ public final class AddressVisibilityHost {
   static final class View {static final int VISIBLE=0,GONE=8;}
   static final class Row {int visibility=View.GONE,writes;int getVisibility(){return visibility;}void setVisibility(int v){visibility=v;writes++;}}
   static final class Label {String text="",description="",tooltip="",glyph="";boolean enabled;int writes;void setText(String s){text=s;writes++;}void setContentDescription(String s){description=s;}void setTooltipText(String s){tooltip=s;}}
-  static final class Web {String url="about:blank";boolean back,forward,visible;String getUrl(){return url;}boolean canGoBack(){return back;}boolean canGoForward(){return forward;}boolean hasVisibleDocument(){return visible;}}
+  static final class DisplayContext {Object base;Object getBaseContext(){return base;}}
+  static final class Web {final DisplayContext displayContext=new DisplayContext();String url="about:blank";boolean back,forward,visible;String getUrl(){return url;}boolean canGoBack(){return back;}boolean canGoForward(){return forward;}boolean hasVisibleDocument(){return visible;}}
   static final class RequestIdentityAudit {@DIAGNOSTIC@}
   static final class Session {boolean navigating,navigationFailed,browserNavigationChosen,browserNavigationStopped,accept=true,startLoading=true;int browseCalls;String status="环境已关闭",navigationTarget="",browsingUrl="",resume="https://resume.example/";final Web web=new Web();String resumeUrl(){return resume;}@DISPLAY@ boolean browse(String url,String label){browseCalls++;if(!accept)return false;navigating=startLoading;navigationFailed=!startLoading;browserNavigationChosen=true;browserNavigationStopped=false;browsingUrl=url;navigationTarget=url;return true;}}
   static final class AlertDialog {boolean showing=true;boolean isShowing(){return showing;}void dismiss(){showing=false;}}
@@ -52,7 +53,7 @@ public final class AddressVisibilityHost {
   static final class BrowserToolbarUi {static void enabled(Label button,boolean value){button.enabled=value;}static void action(Label button,String glyph,String label){button.glyph=glyph;button.description=label;}}
   static final class BrowserPreferences {static String selected="https://chatgpt.com/";static String home(MainActivity a){return selected;}}
   static final class Uri {final URI uri;Uri(String s){uri=URI.create(s);}static Uri parse(String s){return new Uri(s);}String getScheme(){return uri.getScheme();}String getHost(){return uri.getHost();}String getUserInfo(){return uri.getUserInfo();}int getPort(){return uri.getPort();}}
-  static final class MainActivity {Session session=new Session();Web remote=session.web;boolean destroyed,finishing;int reveals;GeckoAddressUi geckoAddress;boolean isFinishing(){return finishing;}void showPage(boolean b){reveals++;}@CHAT@}
+  static final class MainActivity {Session session=new Session();Web remote=session.web;boolean destroyed,finishing;int reveals;GeckoAddressUi geckoAddress;MainActivity(){remote.displayContext.base=this;}boolean isFinishing(){return finishing;}void showPage(boolean b){reveals++;}@CHAT@}
   static final class GeckoAddressUi {final MainActivity a;final Row row=new Row();final Label address=new Label(),back=new Label(),forward=new Label(),reload=new Label();String shown="";AlertDialog dialog;GeckoAddressUi(MainActivity a){this.a=a;a.geckoAddress=this;}@MEMBERS@}
   public static void main(String[] args){
     MainActivity a=new MainActivity();GeckoAddressUi ui=new GeckoAddressUi(a);
@@ -71,7 +72,7 @@ public final class AddressVisibilityHost {
     a.session.navigating=false;a.remote.back=true;a.remote.forward=false;ui.refresh();check("History reflects native back state",ui.back.enabled&&!ui.forward.enabled);a.remote.forward=true;ui.refresh();check("History reflects native forward state",ui.forward.enabled);check("Ready page has reload action",ui.reload.glyph.equals("refresh")&&ui.reload.description.equals("刷新网页"));
     for(String url:new String[]{"", "about:blank","javascript:void(0)","http://127.0.0.1/private","file:///private"}){a.session.web.url=url;ui.refresh();check("Displayed URL never hides navigation controls",ui.row.getVisibility()==View.VISIBLE);}
     a.session.web.url=null;ui.refresh();check("Empty live URL uses saved resume prefill",ui.current().equals(a.session.resume));a.session.web.url="https://public.example/";a.session.navigating=true;a.session.navigationTarget="";ui.refresh();check("Unknown history target keeps current address",ui.current().equals(a.session.web.url));a.session=null;BrowserPreferences.selected="https://homepage.example/";ui.refresh();check("No-session startup keeps home address",ui.current().equals(BrowserPreferences.selected));check("No-session menu unavailable",!GeckoAddressUi.available(a));
-    a.session=new Session();a.remote=a.session.web;a.session.web.url="https://public.example/";ui.refresh();BrowserPreferences.selected="https://chatgpt.com/";GeckoAddressUi.home(a);check("Home retains normal browser toolbar",ui.row.getVisibility()==View.VISIBLE&&a.reveals==1&&a.session.navigationTarget.equals(BrowserPreferences.selected));check("Home immediately updates visible target",ui.address.description.contains(BrowserPreferences.selected));
+    a.session=new Session();a.remote=a.session.web;a.remote.displayContext.base=a;a.session.web.url="https://public.example/";ui.refresh();BrowserPreferences.selected="https://chatgpt.com/";GeckoAddressUi.home(a);check("Home retains normal browser toolbar",ui.row.getVisibility()==View.VISIBLE&&a.reveals==1&&a.session.navigationTarget.equals(BrowserPreferences.selected));check("Home immediately updates visible target",ui.address.description.contains(BrowserPreferences.selected));
     for(boolean loading:new boolean[]{true,false}){
       a.session.startLoading=loading;ui.dialog=new AlertDialog();EditText input=new EditText("example.org/path");TextView notice=new TextView();int reveals=a.reveals;
       ui.submitAddress(ui.dialog,input,notice);
@@ -89,6 +90,16 @@ public final class AddressVisibilityHost {
     a.session.accept=false;ui.dialog=new AlertDialog();notice=new TextView();ui.submitAddress(ui.dialog,new EditText("example.org"),notice);check("Unavailable session retains form and actual reason",ui.dialog.showing&&notice.text.equals(a.session.status));a.session.accept=true;
     AlertDialog replaced=new AlertDialog();ui.dialog=new AlertDialog();attempts=a.session.browseCalls;ui.submitAddress(replaced,new EditText("example.org"),new TextView());check("Replaced dialog cannot navigate",a.session.browseCalls==attempts&&replaced.showing);
     a.destroyed=true;ui.submitAddress(ui.dialog,new EditText("example.org"),new TextView());check("Destroyed address owner cannot navigate",a.session.browseCalls==attempts);a.destroyed=false;
+    Web owned=a.remote;a.remote=new Web();a.remote.displayContext.base=a;
+    ui.submitAddress(ui.dialog,new EditText("example.org"),new TextView());check("Detached address surface cannot navigate the current session",a.session.browseCalls==attempts);
+    GeckoAddressUi.home(a);check("Detached home control cannot navigate the current session",a.session.browseCalls==attempts);a.remote=owned;
+    MainActivity replacement=new MainActivity();replacement.session=a.session;replacement.remote=owned;owned.displayContext.base=replacement;
+    ui.submitAddress(ui.dialog,new EditText("example.org"),new TextView());check("Retired Activity address dialog cannot navigate its replacement",a.session.browseCalls==attempts&&ui.dialog.showing);
+    GeckoAddressUi.home(a);check("Retired Activity home control cannot navigate its replacement",a.session.browseCalls==attempts);
+    check("Replacement Activity owns the retained address controls",GeckoAddressUi.available(replacement));
+    GeckoAddressUi current=new GeckoAddressUi(replacement);current.dialog=new AlertDialog();current.submitAddress(current.dialog,new EditText("replacement.example/path"),new TextView());
+    check("Replacement Activity can submit a retained-session destination",a.session.browseCalls==attempts+1&&!current.dialog.showing&&a.session.navigationTarget.equals("https://replacement.example/path"));
+    owned.displayContext.base=a;check("Returning display ownership restores the original host",GeckoAddressUi.available(a));
     a.destroyed=true;check("Destroyed owner cannot open menu",!GeckoAddressUi.available(a));a.destroyed=false;a.finishing=true;check("Finishing owner cannot open menu",!GeckoAddressUi.available(a));a.finishing=false;a.remote=null;check("Absent surface cannot open menu",!GeckoAddressUi.available(a));
     System.out.println("{\"checks\":"+checks+",\"actualAndroidExecution\":false,\"persistentBrowserControls\":true}");
   }
@@ -103,6 +114,8 @@ public final class AddressVisibilityHost {
             mutations=[('row.setVisibility(View.VISIBLE)','row.setVisibility(View.GONE)','Blank page keeps browser controls'),('a.session.browserDisplayUrl()','a.session.web.getUrl()','Pending target replaces old address'),('a.remote!=null&&a.remote.canGoForward()','false','History reflects native forward state'),('a.session!=null&&a.session.navigating','false','Loading has stop action'),('!a.session.web.hasVisibleDocument()','true','Visible blank popup keeps its real address'),('"about:blank".equals(url)&&a.session!=null&&!a.session.web.hasVisibleDocument()','false','Cold blank uses the existing resume destination')]
             mutations.append(('if(a.session.browse(url,"正在打开网页…")){','if(a.session.browse(url,"正在打开网页…")&&a.session.navigating){','Accepted address closes form even before loading starts'))
             mutations.append(('browserNavigationChosen&&navigationFailed&&navigationTarget.equals(browsingUrl)','false','Accepted offline destination stays editable'))
+            mutations.append(('&&a.remote==a.session.web','','Detached address surface cannot navigate the current session'))
+            mutations.append(('&&a.remote.displayContext.getBaseContext()==a','','Retired Activity address dialog cannot navigate its replacement'))
             for before,after,failure in mutations:
                 self.assertEqual(program.count(before),1);mutant=execute(program.replace(before,after,1));self.assertNotEqual(mutant.returncode,0);self.assertIn('AssertionError: '+failure,mutant.stderr)
             self.assertEqual((production/'GeckoAddressUi.java').read_text(),source)

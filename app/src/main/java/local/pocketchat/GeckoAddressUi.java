@@ -93,7 +93,12 @@ final class GeckoAddressUi {
     boolean loading=a.session!=null&&a.session.navigating;
     BrowserToolbarUi.action(reload,loading?"close":"refresh",loading?"停止加载":"刷新网页");
   }
-  static boolean available(MainActivity a){return a!=null&&!a.destroyed&&!a.isFinishing()&&a.session!=null&&a.remote!=null;}
+  static boolean available(MainActivity a){
+    // A retained session can already belong to a replacement Activity while
+    // this host still has a pending dialog or page-capture callback.
+    return a!=null&&!a.destroyed&&!a.isFinishing()&&a.session!=null&&a.remote!=null
+      &&a.remote==a.session.web&&a.remote.displayContext.getBaseContext()==a;
+  }
   static void show(MainActivity a){
     if(!available(a))return;GeckoAddressUi owner=a.geckoAddress;if(owner==null)return;if(owner.dialog!=null&&owner.dialog.isShowing()){owner.focusEditor(false);return;}
     LinearLayout box=DesignUi.column(a);box.setPadding(a.dp(18),a.dp(8),a.dp(18),a.dp(12));
