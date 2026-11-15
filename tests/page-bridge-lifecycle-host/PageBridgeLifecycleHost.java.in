@@ -34,6 +34,9 @@ public final class PageBridgeLifecycleHost {
   static final class MainActivity {static final String ORIGIN="https://chatgpt.com";static boolean chatUrl(String s){return s!=null&&s.startsWith(ORIGIN+"/");}}
   static final class LoginPagePolicy {static boolean login(String s){return false;}}
   static final class Owner {
+    // The original 32 bridge cases receive an already dispatched navigation.
+    // A separate control executes the current production pending-capture guard.
+    boolean navigationDispatched=true;
     final Reading reading=new Reading();final Observer webObserver=new Observer();final Prefs prefs=new Prefs();
     final List<String> browserLocations=new ArrayList<>();void rememberBrowserLocation(String url){browserLocations.add(url);}
     int changes,connected,disconnected;void changed(){changes++;}
@@ -185,6 +188,27 @@ public final class PageBridgeLifecycleHost {
     check("Route/native messaging ports are not admitted as page ports",route.delegate==null&&b.ports.get(b.current)==primary);
   }
   public static void main(String[] args){staleWindow();replacement();earlyConnection();nonCommit();existingBoundaries();int pass=0;for(JSONObject v:checks)if(v.optBoolean("passed"))pass++;System.out.println(J.obj("status",pass==checks.size()?"passed":"failed","passed",pass,"total",checks.size(),"checks",checks,"actualGeneralRouteExecution",false,"generalRouteBoundary","Counted app-route release and browser-location delivery on the original ChatGPT-only bridge cases; generic retain fails explicitly as out of scope"));}
+}
+final class NavigationDispatchBoundaryHost {
+  static void require(boolean value,String message){if(!value)throw new AssertionError(message);}
+  public static void main(String[] args){
+    PageBridgeLifecycleHost.Bridge b=new PageBridgeLifecycleHost.Bridge();
+    require(b.owner.navigationDispatched,"Original bridge workload must begin dispatched");
+    PageBridgeLifecycleHost.WebExtension.Port port=b.connect(b.current);List<String> replies=new ArrayList<>();
+    PageBridgeLifecycleHost.request(b,port,replies);
+    b.appearanceLoads.put(b.current,1L);b.pendingLoads.add(b.current);
+    b.owner.navigationDispatched=false;
+    String target="https://chatgpt.com/c/new-document";
+    b.navigation.onLocationChange(b.current,target,Collections.emptyList(),false);
+    require(b.locations.get(b.current).equals(PageBridgeLifecycleHost.URL)&&b.pendingLoads.contains(b.current)&&b.owner.browserLocations.isEmpty()&&b.callbacks.size()==1&&replies.isEmpty()&&b.popupInvalidations==0,"A pending browser capture must reject the old primary location event");
+    PageBridgeLifecycleHost.GeckoSession background=new PageBridgeLifecycleHost.GeckoSession();b.locations.put(background,PageBridgeLifecycleHost.URL);
+    b.navigation.onLocationChange(background,target,Collections.emptyList(),false);
+    require(b.locations.get(background).equals(target)&&b.owner.browserLocations.isEmpty()&&b.callbacks.size()==1,"The primary capture must not discard another surface's location");
+    b.owner.navigationDispatched=true;
+    b.navigation.onLocationChange(b.current,target,Collections.emptyList(),false);
+    require(b.locations.get(b.current).equals(target)&&b.owner.browserLocations.equals(Arrays.asList(target))&&b.callbacks.size()==0&&replies.equals(Arrays.asList("null")),"The dispatched primary document must resume actual commit retirement");
+    System.out.println(J.obj("status","passed","controls",4,"actualAndroidExecution",false,"scope","Actual primary location dispatch guard with explicit owner state; no Android or native Gecko execution"));
+  }
 }
 final class DefaultTimeZoneBoundaryHost {
   public static void main(String[] args){

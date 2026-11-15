@@ -3,6 +3,7 @@
 These controls never run Android, behavior hosts, publishing or a network fetch.
 Actual workflow and publisher statements below consume current raw source.
 """
+from historical_source_inputs import historical_bytes
 import ast
 import copy
 from functools import lru_cache
@@ -76,7 +77,7 @@ def current_context(relative, row, delta):
     chunk = delta['current'].encode()
     if relative not in INVENTORY_115_PINS:
         return chunk
-    current = (ROOT/relative).read_bytes()
+    current = historical_bytes(relative)
     if (SHA(current), len(current)) != (row['reviewedSha256'], row['reviewedBytes']):
         raise ValueError('Current catalog context requires its exact whole image')
     index = next(i for i, item in enumerate(row['deltas']) if item['id'] == delta['id'])
@@ -115,7 +116,7 @@ def current_context(relative, row, delta):
 
 def tagged_current_context(relative, row, delta):
     """Independent byte-label oracle for the numeric position replay above."""
-    current = (ROOT/relative).read_bytes()
+    current = historical_bytes(relative)
     index = next(i for i, item in enumerate(row['deltas']) if item['id'] == delta['id'])
     later = row['deltas'][index+1:]
     phase = current
@@ -230,7 +231,7 @@ class FinalBrowserHistoricalSources(unittest.TestCase):
                 commit, tree = provenance[relative]
                 self.assertEqual((row['previousCommit'], row['previousTree']), (commit, tree))
                 before = git('show', commit+':'+relative)
-                current = layer.build_budget_input(fixture_root_input((ROOT/relative).read_bytes(), relative), relative)
+                current = layer.build_budget_input(fixture_root_input(historical_bytes(relative), relative), relative)
                 self.assertEqual((SHA(before), len(before)), (row['previousSha256'], row['previousBytes']))
                 self.assertEqual((SHA(current), len(current)), (row['reviewedSha256'], row['reviewedBytes']))
                 self.assertEqual(row['contextLines'], 6)
@@ -261,7 +262,7 @@ class FinalBrowserHistoricalSources(unittest.TestCase):
         rejected = 0
         value = layer.manifest()
         for relative, row in value['files'].items():
-            current = layer.build_budget_input(fixture_root_input((ROOT/relative).read_bytes(), relative), relative)
+            current = layer.build_budget_input(fixture_root_input(historical_bytes(relative), relative), relative)
             # The appended P2 context has its own complete-image controls below.
             for delta in (row['deltas'][:-1] if relative == GV else row['deltas'][:-(1 + INVENTORY_CLEANUP_CONTEXT_COUNTS[relative])] if relative in INVENTORY_115_PINS else row['deltas']):
                 chunk = current_context(relative, row, delta)
@@ -280,7 +281,7 @@ class FinalBrowserHistoricalSources(unittest.TestCase):
         self.assertEqual(rejected, 258)
 
     def test_source_types_paths_and_whole_identity_precede_inversion(self):
-        raw = (ROOT/GV).read_bytes()
+        raw = historical_bytes(GV)
         for bad in (None, raw.decode(), bytearray(raw), memoryview(raw), raw[:100],
                     b'x'*(layer.MAX_SOURCE_BYTES+1)):
             with self.assertRaises(ValueError):
@@ -387,11 +388,11 @@ class FinalBrowserHistoricalSources(unittest.TestCase):
 
     def test_metadata_left_inputs_only_and_original_ip_seven_path_boundary(self):
         for relative, row in layer.manifest()['files'].items():
-            self.assertEqual(layer.metadata_input((ROOT/relative).read_bytes(), relative),
+            self.assertEqual(layer.metadata_input(historical_bytes(relative), relative),
                 git('show', row['previousCommit']+':'+relative))
         for relative in tls.TEMPLATE_PATHS:
-            self.assertEqual(layer.metadata_input((ROOT/relative).read_bytes(), relative),
-                tls.source_input((ROOT/relative).read_bytes(), relative))
+            self.assertEqual(layer.metadata_input(historical_bytes(relative), relative),
+                tls.source_input(historical_bytes(relative), relative))
         relative = 'tests/fixtures/unowned-metadata.json'
         for raw in (b'', b'unknown source still faces the original golden',
                     b'x'*(layer.MAX_SOURCE_BYTES+1)):
@@ -408,9 +409,9 @@ class FinalBrowserHistoricalSources(unittest.TestCase):
         overlay = retained_ip.overlay
         self.assertEqual(layer.IP_PATHS, overlay.PATHS)
         self.assertEqual(len(layer.IP_PATHS), 7)
-        self.assertEqual(layer.ip_input((ROOT/GV).read_bytes(), GV), git('show', B+':'+GV))
+        self.assertEqual(layer.ip_input(historical_bytes(GV), GV), git('show', B+':'+GV))
         for relative in overlay.PATHS-{GV}:
-            raw = (ROOT/relative).read_bytes()
+            raw = historical_bytes(relative)
             self.assertIs(layer.ip_input(raw, relative), raw)
             unknown = b'unknown complete source'
             self.assertIs(layer.ip_input(unknown, relative), unknown)
@@ -421,7 +422,7 @@ class FinalBrowserHistoricalSources(unittest.TestCase):
                 layer.ip_input(b'raw', relative)
         self.assertEqual({layer.GV, layer.CHAT}, {GV, CHAT})
         for relative, commit in ((GV, B), (CHAT, P)):
-            raw = (ROOT/relative).read_bytes()
+            raw = historical_bytes(relative)
             self.assertEqual(layer.producer_input(raw, relative), git('show', commit+':'+relative))
             for bad in (None, raw.decode(), bytearray(raw), memoryview(raw), raw[:100], raw+b' '):
                 with self.assertRaises(ValueError):
@@ -433,7 +434,7 @@ class FinalBrowserHistoricalSources(unittest.TestCase):
 
     def test_both_producers_call_actual_tls_then_cpu_and_check_their_independent_inverse(self):
         for relative, commit in ((GV, B), (CHAT, P)):
-            after = (ROOT/relative).read_bytes()
+            after = historical_bytes(relative)
             current = layer.p2_input(after, relative)
             cpu_source = git('show', S+':'+relative)
             public_before = git('show', commit+':'+relative)
@@ -467,7 +468,7 @@ class FinalBrowserHistoricalSources(unittest.TestCase):
             cpu_call.assert_called_once_with(cpu_source, relative)
 
     def test_canonical_cpu_fixture_actual_pin_and_nine_original_payloads(self):
-        current = (ROOT/CPU_FIXTURE).read_bytes()
+        current = historical_bytes(CPU_FIXTURE)
         previous = git('show', S+':'+CPU_FIXTURE)
         self.assertEqual(SHA(current), cpu.DELTA_SHA256)
         self.assertEqual(SHA(previous), OLD_CPU_SHA)
@@ -484,7 +485,7 @@ class FinalBrowserHistoricalSources(unittest.TestCase):
         self.assertEqual(len(before['files']), 2)
         self.assertEqual(sum(len(row['deltas']) for row in before['files'].values()), 9)
         self.assertEqual(cpu.manifest()['files'], before['files'])
-        helper = (ROOT/'tests/cpu_ip_source_compatibility.py').read_bytes()
+        helper = historical_bytes('tests/cpu_ip_source_compatibility.py')
         original_helper = git('show', S+':tests/cpu_ip_source_compatibility.py')
         for current_token, old_token in ((
                 b"BASE_COMMIT = '972b7767300587af98b3f4a2088a44dd30af8098'",
@@ -524,7 +525,7 @@ class FinalBrowserHistoricalSources(unittest.TestCase):
                 layer.canonical_cpu_fixture_sha(cpu.DELTA_SHA256)
 
     def test_original_ip_fixture_is_still_the_exact_seven_rows_and_forty_two_contexts(self):
-        raw = (ROOT/IP_FIXTURE).read_bytes()
+        raw = historical_bytes(IP_FIXTURE)
         self.assertEqual(SHA(raw), IP_SHA)
         self.assertEqual(raw, git('show', B+':'+IP_FIXTURE))
         overlay = retained_ip.overlay
@@ -533,14 +534,14 @@ class FinalBrowserHistoricalSources(unittest.TestCase):
         self.assertEqual(len(value['files']), 7)
         self.assertEqual(sum(len(row['deltas']) for row in value['files'].values()), 42)
         for relative, row in value['files'].items():
-            current = layer.ip_input((ROOT/relative).read_bytes(), relative)
+            current = layer.ip_input(historical_bytes(relative), relative)
             self.assertEqual((SHA(current), len(current)), (row['reviewedSha256'], row['reviewedBytes']))
             self.assertEqual(overlay.source_input(current, relative),
                 git('show', row['previousCommit']+':'+relative))
 
     def test_declared_ip_read_hooks_strip_to_whole_B_and_all_nine_original_tests(self):
         helper_path = 'tests/ip_timezone_source_compatibility.py'
-        helper = (ROOT/helper_path).read_bytes()
+        helper = historical_bytes(helper_path)
         hook = b"    if (digest, len(raw)) != (row['reviewedSha256'], row['reviewedBytes']):\n        from final_browser_source_compatibility import ip_input\n        raw = ip_input(raw, relative)\n        digest = _sha(raw)\n"
         self.assertEqual(helper.count(hook), 1)
         helper = helper.replace(hook, b'', 1)
@@ -549,7 +550,7 @@ class FinalBrowserHistoricalSources(unittest.TestCase):
         helper = helper.replace(hook, b'    return source_input(raw, relative) if relative in PATHS else raw\n', 1)
         self.assertEqual(helper, git('show', B+':'+helper_path))
         relative = 'tests/profile_ip_timezone_source_compatibility_test.py'
-        current, previous = (ROOT/relative).read_bytes(), git('show', B+':'+relative)
+        current, previous = historical_bytes(relative), git('show', B+':'+relative)
         restored = current
         for token in (b'from final_browser_source_compatibility import ip_input as final_ip_input, metadata_input as final_metadata_input\n',
                 b'                after = final_ip_input(after, relative)\n',
@@ -574,7 +575,7 @@ class FinalBrowserHistoricalSources(unittest.TestCase):
             root = Path(folder)
             with patch.object(overlay, 'ROOT', root):
                 for relative in final_only:
-                    current = (ROOT/relative).read_bytes()
+                    current = historical_bytes(relative)
                     path = root/relative; path.parent.mkdir(parents=True, exist_ok=True)
                     path.write_bytes(current)
                     commit, tree = layer.PROVENANCE[relative]
@@ -586,7 +587,7 @@ class FinalBrowserHistoricalSources(unittest.TestCase):
                         overlay.historical_read(relative)
                     path.write_bytes(current)
                 for relative, row in overlay.manifest()['files'].items():
-                    current = (ROOT/relative).read_bytes()
+                    current = historical_bytes(relative)
                     path = root/relative; path.parent.mkdir(parents=True, exist_ok=True)
                     path.write_bytes(current)
                     with patch.object(layer, 'metadata_input', side_effect=AssertionError('Old IP-owned path lost priority')):
@@ -603,14 +604,14 @@ class FinalBrowserHistoricalSources(unittest.TestCase):
                 delegated.assert_called_once_with(current, relative)
                 relative = 'tests/profile_dual_browser_source_compatibility_test.py'
                 path = root/relative; path.unlink()
-                target = root/'ordinary'; target.write_bytes((ROOT/relative).read_bytes())
+                target = root/'ordinary'; target.write_bytes(historical_bytes(relative))
                 path.symlink_to(target)
                 with patch.object(layer, 'metadata_input', side_effect=AssertionError('Symlink reached metadata delegation')), self.assertRaises(ValueError):
                     overlay.historical_read(relative)
 
     def test_cpu_read_hooks_strip_to_whole_S_all_golden_rhs_and_original_budgets(self):
         relative = 'tests/profile_cpu_ip_source_compatibility_test.py'
-        current, previous = (ROOT/relative).read_bytes(), git('show', S+':'+relative)
+        current, previous = historical_bytes(relative), git('show', S+':'+relative)
         restored = current
         for token in (b'from tls_cpu_ip_source_compatibility import source_input as tls_source_input\n',
                 b'from final_browser_source_compatibility import metadata_input as final_metadata_input\n'):
@@ -642,7 +643,7 @@ class FinalBrowserHistoricalSources(unittest.TestCase):
 
     def test_two_publisher_metadata_inputs_restore_S_for_the_unchanged_cpu_goldens(self):
         suite = 'tests/profile_cpu_ip_source_compatibility_test.py'
-        current_suite = (ROOT/suite).read_bytes()
+        current_suite = historical_bytes(suite)
         previous_suite = git('show', S+':'+suite)
         whole_method_name = 'test_all_original_fixtures_and_preexisting_test_assertions_remain_whole_bytes'
         methods = [next(node for node in ast.walk(ast.parse(raw)) if isinstance(node, ast.FunctionDef)
@@ -662,7 +663,7 @@ class FinalBrowserHistoricalSources(unittest.TestCase):
         self.assertEqual(len(assertions(previous_suite)), 30)
         for relative, reviewed_sha in PUBLISHER_METADATA_PINS.items():
             with self.subTest(path=relative):
-                current = (ROOT/relative).read_bytes()
+                current = historical_bytes(relative)
                 previous = git('show', S+':'+relative)
                 self.assertEqual(SHA(current), reviewed_sha)
                 self.assertEqual(layer.PROVENANCE[relative], (S, S_TREE))
@@ -673,8 +674,8 @@ class FinalBrowserHistoricalSources(unittest.TestCase):
                 for changed in (current+b'unknown publisher edit', current[:-1]):
                     with self.assertRaises(ValueError):
                         layer.metadata_input(changed, relative)
-                self.assertEqual((ROOT/relative).read_bytes(), current)
-                self.assertEqual(SHA((ROOT/relative).read_bytes()), reviewed_sha)
+                self.assertEqual(historical_bytes(relative), current)
+                self.assertEqual(SHA(historical_bytes(relative)), reviewed_sha)
 
     def test_actual_publisher_sources_stay_current_and_cpu_nine_bodies_stay_unprojected(self):
         histories = {'final_browser_source_compatibility', 'tls_cpu_ip_source_compatibility',
@@ -731,12 +732,12 @@ class FinalBrowserHistoricalSources(unittest.TestCase):
 
     def test_worker_producer_hooks_strip_to_whole_S_and_preserve_all_original_oracles(self):
         relative = 'tests/worker_timezone_source_compatibility.py'
-        current = (ROOT/relative).read_bytes()
+        current = historical_bytes(relative)
         hook = b"    if ((digest, len(raw)) not in ((row['previousSha256'], row['previousBytes']),\n                                  (row['reviewedSha256'], row['reviewedBytes']))\n            and relative == 'app/src/main/java/local/pocketchat/ChatSession.java'):\n        from final_browser_source_compatibility import producer_input\n        raw = producer_input(raw, relative)\n        digest = _sha(raw)\n"
         self.assertEqual(current.count(hook), 1)
         self.assertEqual(current.replace(hook, b'', 1), git('show', S+':'+relative))
         relative = 'tests/profile_worker_timezone_source_compatibility_test.py'
-        current, previous = fixture_root_input((ROOT/relative).read_bytes(), relative), git('show', S+':'+relative)
+        current, previous = fixture_root_input(historical_bytes(relative), relative), git('show', S+':'+relative)
         imported = b'from final_browser_source_compatibility import producer_input as final_producer_input, metadata_input as final_metadata_input\n'
         self.assertEqual(current.count(imported), 1)
         restored = current.replace(imported, b'', 1)
@@ -760,23 +761,23 @@ class FinalBrowserHistoricalSources(unittest.TestCase):
         self.assertIn(('len(variants)', 18), budgets)
         self.assertEqual(sum(right == 23 for left, right in budgets), 1)
         fixture = 'tests/fixtures/worker-timezone-source-deltas.json'
-        raw = (ROOT/fixture).read_bytes()
+        raw = historical_bytes(fixture)
         self.assertEqual(SHA(raw), '4eafec08cbeb3beb9098ebf5df7b976423616bb213e47e802a1d39315a27602b')
         self.assertEqual(raw, git('show', S+':'+fixture))
         value = retained_worker.overlay.manifest()
         self.assertEqual(len(value['files']), 2)
         self.assertEqual(sum(len(row['deltas']) for row in value['files'].values()), 23)
         for relative, row in value['files'].items():
-            after = layer.producer_input((ROOT/relative).read_bytes(), relative)
+            after = layer.producer_input(historical_bytes(relative), relative)
             if relative in retained_worker.context_paths:
                 after = retained_worker.context_source_input(after, relative)
             self.assertEqual((SHA(after), len(after)), (row['reviewedSha256'], row['reviewedBytes']))
-            self.assertEqual(retained_worker.overlay.source_input((ROOT/relative).read_bytes(), relative),
+            self.assertEqual(retained_worker.overlay.source_input(historical_bytes(relative), relative),
                 git('show', retained_worker.overlay.BASE_COMMIT+':'+relative))
 
     def test_dual_producer_hook_strips_to_whole_S_and_keeps_all_native_guard_targets(self):
         relative = 'tests/profile_dual_browser_source_compatibility_test.py'
-        current, previous = fixture_root_input((ROOT/relative).read_bytes(), relative), git('show', S+':'+relative)
+        current, previous = fixture_root_input(historical_bytes(relative), relative), git('show', S+':'+relative)
         restored = current
         for hook in (b'from final_browser_source_compatibility import producer_input as final_producer_input\n',
                      b'            current = final_producer_input(current, relative)\n'):
@@ -797,14 +798,14 @@ class FinalBrowserHistoricalSources(unittest.TestCase):
         self.assertEqual(targets[0], targets[1])
         self.assertEqual(len(targets[0]), 2)
         for relative, previous, current in targets[0]:
-            raw = layer.producer_input((ROOT/relative).read_bytes(), relative)
+            raw = layer.producer_input(historical_bytes(relative), relative)
             self.assertIn(previous.encode(), raw)
             self.assertEqual(retained_worker.dual.source_input(raw, relative),
                 git('show', retained_worker.dual.BASE_COMMIT+':'+relative))
             with self.assertRaises(ValueError):
                 retained_worker.dual.source_input(raw.replace(previous.encode(), current.encode(), 1), relative)
         fixture = 'tests/fixtures/dual-browser-source-deltas.json'
-        raw = (ROOT/fixture).read_bytes()
+        raw = historical_bytes(fixture)
         self.assertEqual(SHA(raw), 'b593b0db2b56b5a5d8143a920fbd15858dafbab21d1cdaf90ca2a5ba164c9933')
         self.assertEqual(raw, git('show', S+':'+fixture))
         value = retained_worker.dual.manifest()
@@ -835,7 +836,7 @@ class FinalBrowserHistoricalSources(unittest.TestCase):
 
     def test_real_execution_rejects_nonclosing_reverse_with_trusted_whole_before_pin(self):
         relative = 'tools/browser/source_history.py'
-        current = (ROOT/relative).read_bytes()
+        current = historical_bytes(relative)
         changed = copy.deepcopy(layer.manifest())
         row = changed['files'][relative]
         original_pin = row['previousSha256']
@@ -885,7 +886,7 @@ class FinalBrowserHistoricalSources(unittest.TestCase):
 
     def test_p2_whole_image_unique_context_and_frozen_preimage_are_independent(self):
         from resource_startup_source_compatibility import source_input as resource_input
-        current = resource_input((ROOT/GV).read_bytes(), GV)
+        current = resource_input(historical_bytes(GV), GV)
         delta = layer.manifest()['files'][GV]['deltas'][-1]
         before, after = delta['previous'].encode(), delta['current'].encode()
         frozen = current.replace(after, before, 1)
@@ -946,7 +947,7 @@ class FinalBrowserHistoricalSources(unittest.TestCase):
             layer.p2_input(current+b' ', GV)
 
     def test_p2_tls_read_hooks_strip_to_the_exact_frozen_metadata_sources(self):
-        final = build_budget_helper_before((ROOT/'tests/final_browser_source_compatibility.py').read_bytes())
+        final = build_budget_helper_before(historical_bytes('tests/final_browser_source_compatibility.py'))
         constants = (b"P2_PREVIOUS_SHA256 = '98c648b06ef28cd35e01ea0ad8128258d3f171706cc3ef23087bd102f545a510'\n"
                      b"P2_PREVIOUS_BYTES = 128741\nP2_CONTEXT_ID = 'context-08'\n")
         self.assertEqual(final.count(constants), 1)
@@ -957,11 +958,11 @@ class FinalBrowserHistoricalSources(unittest.TestCase):
         restored_final = restored_final.replace(layer.DELTA_SHA256.encode(), b'76726f6bddd10a22e2267ecbcac3e98d904ef6ed2bb4049f036fc7c2a7e38cf4', 1)
         restored_final = restored_final.replace(b'tls_input(p2_input(raw, relative), relative)', b'tls_input(raw, relative)', 1)
         self.assertEqual(SHA(restored_final), '29ba5853908753e2be9bca7e77f38456a05627c7ae6a1136150d73234eca67b1')
-        helper = (ROOT/'tests/tls_cpu_ip_source_compatibility.py').read_bytes()
+        helper = historical_bytes('tests/tls_cpu_ip_source_compatibility.py')
         hook = b"    if relative == 'app/src/main/java/local/pocketchat/GeckoWebView.java' and (digest, len(raw)) not in ((row['previousSha256'], row['previousBytes']), (row['reviewedSha256'], row['reviewedBytes'])):\n        from final_browser_source_compatibility import p2_input\n        raw = p2_input(raw, relative)\n        digest = _sha(raw)\n"
         self.assertEqual(helper.count(hook), 1)
         self.assertEqual(SHA(helper.replace(hook, b'', 1)), 'aef26cf20a6cc5a9415bc73d53d0e849f14727dc4605bea411eefcd692288608')
-        current = (ROOT/'tests/profile_tls_cpu_ip_source_compatibility_test.py').read_bytes()
+        current = historical_bytes('tests/profile_tls_cpu_ip_source_compatibility_test.py')
         imported = b'from final_browser_source_compatibility import p2_input as p2_metadata_input\n\n'
         self.assertEqual(current.count(imported), 1)
         restored = current.replace(imported, b'', 1)
@@ -991,7 +992,7 @@ class FinalBrowserHistoricalSources(unittest.TestCase):
         for relative, (digest, size) in INVENTORY_115_PINS.items():
             row = value['files'][relative]
             delta = row['deltas'].pop()
-            current = (ROOT/relative).read_bytes()
+            current = historical_bytes(relative)
             before, after = delta['previous'].encode(), delta['current'].encode()
             phase = inventory_116_input(current, relative, full)
             self.assertEqual(phase.count(after), 1)
@@ -1021,7 +1022,7 @@ class FinalBrowserHistoricalSources(unittest.TestCase):
         rejected = 0
         for relative in INVENTORY_115_PINS:
             row = layer.manifest()['files'][relative]
-            current = (ROOT/relative).read_bytes()
+            current = historical_bytes(relative)
             self.assertEqual(layer.source_input(current, relative), git('show', B+':'+relative))
             retained = row['deltas'][:-INVENTORY_CLEANUP_CONTEXT_COUNTS[relative]]
             for delta in retained:
@@ -1076,7 +1077,7 @@ class FinalBrowserHistoricalSources(unittest.TestCase):
             row = value['files'][relative]
             deltas = row['deltas'][-INVENTORY_CLEANUP_CONTEXT_COUNTS[relative]:]
             del row['deltas'][-INVENTORY_CLEANUP_CONTEXT_COUNTS[relative]:]
-            current = (ROOT/relative).read_bytes()
+            current = historical_bytes(relative)
             restored = current
             for delta in reversed(deltas):
                 before, after = delta['previous'].encode(), delta['current'].encode()
@@ -1104,7 +1105,7 @@ class FinalBrowserHistoricalSources(unittest.TestCase):
 
     def test_build_budget_metadata_adapter_preserves_the_original_fifty_nine_contexts(self):
         relative = layer.BUILD_BUDGET_PATH
-        raw = (ROOT/relative).read_bytes()
+        raw = historical_bytes(relative)
         restored = layer.build_budget_input(raw, relative)
         self.assertEqual((SHA(restored), len(restored)), ('2792c0919de89b13eb9040660be96f7c3ba55cf689e54abd075646f103e479bf', 7205))
         self.assertIs(layer.build_budget_input(restored, relative), restored)
@@ -1114,8 +1115,8 @@ class FinalBrowserHistoricalSources(unittest.TestCase):
         self.assertEqual(SHA(layer.DELTA_PATH.read_bytes()), '8bb0bb6580879fcef6258f48e57fbdce19304c0d3ea0061131d993b815877a16')
         self.assertEqual(len(layer.manifest()['files']), 19)
         self.assertEqual(sum(len(item['deltas']) for item in layer.manifest()['files'].values()), 59)
-        self.assertEqual(SHA(build_budget_helper_before((ROOT/'tests/final_browser_source_compatibility.py').read_bytes())), '0c24e81a178476e79907f84d107c5539e5b7d872bbcff866844d36e81238ef4d')
-        ip_raw = ui_job_budget_source_input((ROOT/'tests/browser_ip_timezone_publish_gate_test.py').read_bytes(), 'tests/browser_ip_timezone_publish_gate_test.py')
+        self.assertEqual(SHA(build_budget_helper_before(historical_bytes('tests/final_browser_source_compatibility.py'))), '0c24e81a178476e79907f84d107c5539e5b7d872bbcff866844d36e81238ef4d')
+        ip_raw = ui_job_budget_source_input(historical_bytes('tests/browser_ip_timezone_publish_gate_test.py'), 'tests/browser_ip_timezone_publish_gate_test.py')
         ip_current = b"                if name == 'build' and field == 'timeout-minutes':\n                    self.assertIs(type(expected), int)\n                    self.assertEqual(expected, 40)\n                    self.assertIs(type(current['jobs'][name].get(field)), int)\n                    self.assertEqual(current['jobs'][name].get(field), 60)\n                else:\n                    self.assertEqual(current['jobs'][name].get(field), expected, (name, field))\n"
         ip_before = b"                self.assertEqual(current['jobs'][name].get(field), expected, (name, field))\n"
         self.assertEqual(ip_raw.count(ip_current), 1)
@@ -1201,7 +1202,7 @@ class FinalBrowserHistoricalSources(unittest.TestCase):
 
     def test_build_budget_metadata_unknown_context_and_preimage_counterfeits_reject(self):
         relative = layer.BUILD_BUDGET_PATH
-        current = ui_job_budget_source_input((ROOT/relative).read_bytes(), relative)
+        current = ui_job_budget_source_input(historical_bytes(relative), relative)
         chunk = layer.BUILD_BUDGET_CURRENT
         self.assertEqual(current.count(chunk), 1)
         removed = current.replace(chunk, b'', 1)

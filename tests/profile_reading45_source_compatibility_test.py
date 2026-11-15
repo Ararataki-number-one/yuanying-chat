@@ -1,4 +1,5 @@
 """Finite exact source-input port controls, independent from runtime acceptance."""
+from historical_source_inputs import historical_bytes
 import ast
 import hashlib
 import json
@@ -23,7 +24,7 @@ def prior(path):
 
 def guard46(path):
     # Only historical source assertions consume the exact46 -> formal45 port.
-    return experience46_source_bytes((ROOT / path).read_bytes(), path)
+    return experience46_source_bytes(historical_bytes(path), path)
 
 
 class Reading45CompatibilityTests(unittest.TestCase):
@@ -70,7 +71,7 @@ class Reading45CompatibilityTests(unittest.TestCase):
 
     def test_changed_fixture_and_unlisted_path_rejected(self):
         relative = 'app/src/main/java/local/pocketchat/BrowserReading.java'
-        raw = (ROOT / relative).read_bytes()
+        raw = historical_bytes(relative)
         with tempfile.TemporaryDirectory(prefix='reading45-inverse-fixture-') as tmp:
             fake = Path(tmp) / 'modified.json'
             fake.write_bytes(compat.DELTA_PATH.read_bytes() + b' ')

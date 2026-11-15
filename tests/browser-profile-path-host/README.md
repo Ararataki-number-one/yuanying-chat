@@ -10,12 +10,15 @@ Android, Gecko, SQLite, Keystore, native preferences or browser login execution.
 Current Java never uses historical source views. Compiled wrong bindings must fail
 actual runtime-profile assertions, independently of the source metadata pins.
 
-The current raw Gecko image is fixed at 128,874 bytes, SHA-256
-`55225a8da3ba67b3be724e243c9b442e635dbc5aa282a2ef0257653e8fb2b364`.
-Its single recovery-deadline predicate deletion is independently reversed only
-for a whole-file proof against the prior 128,889-byte `34a651c3…` image. The
-inverse is never supplied to member extraction or javac. All other raw pins and
-the unknown-source rejection remain exact.
+The Gecko view is read from the current checkout. Its complete SHA-256 is recorded
+before compilation and verified afterwards, but unrelated browser methods no
+longer have to match a historical whole-file image. The host still extracts the
+single active `initialize` profile binding and the actual `GeckoRuntime.create`
+consumer, then executes the original persistent-directory and cookie/draft
+sentinel assertions. All five compiled wrong-path controls remain mandatory.
+This proves current path behavior and input immutability, not equivalence of all
+Gecko view behavior to an old release. The other thirteen scope-specific raw
+pins and the fixed JSON dependency remain unchanged.
 
 Release qualification remains separate from this path proof. A cancelled or partial
 CI run cannot qualify an APK. Keep every original workload, per-case timeout and

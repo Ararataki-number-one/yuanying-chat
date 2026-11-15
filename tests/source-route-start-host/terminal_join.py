@@ -12,7 +12,7 @@ from run import ROOT, member
 EXPECTED_CHECK_NAMES = ['Complete observer waits for actual workerAfter after both original callbacks', 'Complete observer accepts exact joined restart with one fresh read and unchanged raw serials', 'Worker completion stays inside the original fetch budget and precedes the sole fresh read', 'Complete observer rejects a joined restart with wrong source', 'Complete observer rejects a joined restart with wrong nonce', 'Complete observer rejects a joined restart with wrong case', 'Original deadline rejects unfinished worker observation without fresh IPC or cancellation', 'Complete observer rejects real queued-worker ABA despite retained root waiter and closed core']
 BEFORE_CHECK_NAMES = ['Original observer rejects the same actual joined restart before the fixture fix']
 
-NEEDLES = ['interface Callback', 'enum RecoveryState', 'static final class RecoveryOutcome', 'interface RecoveryCallback', 'static final class RecoveryAdapter', 'void routeChanged()', 'void restart(Callback callback)', 'void recover(Callback callback)', 'void recoverOutcome(RecoveryCallback callback)', 'synchronized void startOperation(', 'void runStartOperation(']
+NEEDLES = ['interface Callback', 'enum RecoveryState', 'static final class RecoveryOutcome', 'interface RecoveryCallback', 'static final class RecoveryAdapter', 'void routeChanged()', 'void restart(Callback callback)', 'void recover(Callback callback)', 'void recoverOutcome(RecoveryCallback callback)', 'synchronized void startOperation(', 'boolean runStartOperation(']
 
 def run(java_home, json_jar, output, before_observer_ref=None):
     production=ROOT/'app/src/main/java/local/pocketchat/NativeNetwork.java'

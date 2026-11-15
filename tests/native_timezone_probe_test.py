@@ -17,6 +17,7 @@ from unittest.mock import patch
 from zipfile import ZipFile
 import yaml
 from cellular_workflow_source_compatibility import historical_workflow_text as cellular_workflow_history_input
+from historical_source_inputs import historical_bytes
 
 ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT/'tools/gecko'))
@@ -213,7 +214,7 @@ public static void main(String[] ignored){
 
     def test_workflow_uses_actual_full_sdk_and_original_capacity_fences(self):
         new=yaml.safe_load((ROOT/'.github/workflows/native-timezone-probe.yml').read_text())
-        original=yaml.safe_load(cellular_workflow_history_input((ROOT/'.github/workflows/browser-2_1-acceptance.yml').read_text()))
+        original=yaml.safe_load(cellular_workflow_history_input(historical_bytes('.github/workflows/browser-2_1-acceptance.yml').decode('utf-8')))
         self.assertEqual(new['permissions'],{'contents':'read'})
         self.assertEqual(new['on']['push']['branches'],['diagnostics/native-timezone-*'])
         self.assertEqual(new['env'],original['env'])

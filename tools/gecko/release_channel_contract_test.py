@@ -72,6 +72,7 @@ class ReleaseChannelTests(unittest.TestCase):
 
 class DirectReleaseTests(unittest.TestCase):
     GLASS_TAKEOVER_REQUEST = '请直接从 GitHub 接手我的 Android 项目，完成当前液态玻璃会话页的必要修改、验证和正式发布。无需我提供压缩包，请实际执行。'
+    MAINTENANCE_REQUEST = '再深度优化软件。然后发布新版本'
 
     def setUp(self):
         self.identity = dict(channel='stable', sourceCommit='a'*40, sha256='b'*64,
@@ -105,6 +106,57 @@ class DirectReleaseTests(unittest.TestCase):
         for request in ('继续', '继续优化', '继续，然后不要发布新版本', '继续，然后发布新版本？'):
             with self.subTest(request=request), self.assertRaises(ReleaseChannelError):
                 verify_direct_release(dict(record, userRequest=request), self.identity)
+
+    def test_maintenance_publication_preserves_the_complete_actual_request(self):
+        identity = dict(self.identity, version='2.1.5', versionCode=107)
+        for source in ('current-user-message', 'prior-explicit-user-message-in-current-task'):
+            record = dict(self.record, version=identity['version'], versionCode=identity['versionCode'],
+                userRequest=self.MAINTENANCE_REQUEST, authorizationSource=source)
+            before = copy.deepcopy(record)
+            with self.subTest(authorizationSource=source):
+                result = verify_direct_release(record, identity)
+                self.assertEqual(result, dict(record, physicalArmPhone='not-tested'))
+                self.assertEqual(result['userRequest'], self.MAINTENANCE_REQUEST)
+                self.assertEqual(result['physicalPhoneAcceptanceStatus'], 'not-reported')
+                self.assertNotIn('actualPhysicalPhoneExecution', result)
+                self.assertEqual(record, before)
+                with self.assertRaises(ReleaseChannelError):
+                    verify_manual_acceptance(record, identity)
+
+    def test_maintenance_publication_rejects_negative_quoted_conditional_or_changed_text(self):
+        request = self.MAINTENANCE_REQUEST
+        invalid = (
+            '不要' + request, request.replace('发布新版本', '不要发布新版本'),
+            '他说“' + request + '”', '“' + request + '”', '用户说' + request,
+            request + '取消发布。', request.replace('发布新版本', '取消发布'),
+            request + '？', request + '?', request + '之后再确认。',
+            '如果通过就' + request, '等我确认后' + request,
+            request.replace('发布新版本', '准备发布新版本'),
+            request.replace('深度优化软件', '任意修改软件'),
+            request.replace('然后发布新版本', '然后再说'), '再深度优化软件。',
+        )
+        for changed in invalid:
+            with self.subTest(request=changed), self.assertRaises(ReleaseChannelError):
+                verify_direct_release(dict(self.record, userRequest=changed), self.identity)
+
+    def test_maintenance_publication_keeps_exact_identity_and_no_phone_claims(self):
+        record = dict(self.record, userRequest=self.MAINTENANCE_REQUEST)
+        changed = dict(sourceCommit='d'*40, sha256='d'*64, version='2.1.5',
+            versionCode=107, signerSha256='d'*64, bytes=119000001,
+            authorizationSource='inferred-user-intent', requestedChannel='candidate',
+            status='pending', scope='publish-new-apk', physicalPhoneAcceptanceStatus='passed')
+        for key, value in changed.items():
+            with self.subTest(field=key), self.assertRaises(ReleaseChannelError):
+                verify_direct_release(dict(record, **{key: value}), self.identity)
+        for key, value in dict(actualPhysicalPhoneExecution=True,
+                              manualAcceptance={'status': 'passed'},
+                              physicalArmPhone='user-reported-passed').items():
+            with self.subTest(extra=key), self.assertRaises(ReleaseChannelError):
+                verify_direct_release(dict(record, **{key: value}), self.identity)
+        for identity in (dict(self.identity, channel='candidate', candidateNumber=1),
+                         {key: value for key, value in self.identity.items() if key != 'channel'}):
+            with self.subTest(identity=identity), self.assertRaises(ReleaseChannelError):
+                verify_direct_release(record, identity)
 
     def test_glass_takeover_preserves_the_actual_complete_user_request(self):
         identity = dict(self.identity, version='2.1.4', versionCode=106,

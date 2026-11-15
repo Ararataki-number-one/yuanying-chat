@@ -29,7 +29,15 @@ jobs:
           assert re.fullmatch(r'[0-9a-f]{40}',tools_commit)
           assert re.fullmatch(r'[0-9a-f]{40}',m['sourceCommit'])
           subprocess.run(['git','fetch','--no-tags','--depth=2','--filter=blob:none','origin',tools_commit],check=True)
-          subprocess.run(['git','fetch','--no-tags','--depth=1','--filter=blob:none','origin',m['sourceCommit']],check=True)
+          # Evidence readers intentionally disable lazy fetching. Retrieve the
+          # complete selected-source tree before importing those readers.
+          subprocess.run(['git','fetch','--no-tags','--depth=1','--refetch','--no-filter','origin',m['sourceCommit']],check=True)
+          source_env=dict(os.environ,GIT_NO_LAZY_FETCH='1')
+          source_entries=subprocess.check_output(['git','ls-tree','-r','--format=%(objecttype) %(objectname)',m['sourceCommit']],text=True,env=source_env).splitlines()
+          source_blobs=[entry.split()[1] for entry in source_entries if entry.startswith('blob ')]
+          available=subprocess.check_output(['git','cat-file','--batch-check=%(objectname) %(objecttype)'],input='\n'.join(source_blobs)+'\n',text=True,env=source_env).splitlines()
+          assert source_blobs and available==[sha+' blob' for sha in source_blobs],'Selected-source blobs must be locally available before evidence validation.'
+          print('Verified '+str(len(source_blobs))+' selected-source blobs before evidence validation.')
           parents=[line.split()[1] for line in subprocess.check_output(['git','cat-file','-p',os.environ['GITHUB_SHA']],text=True).split('\n\n',1)[0].splitlines() if line.startswith('parent ')]
           assert parents[0]==m['sourceCommit'] and tools_commit in parents
           release_files={'.github/workflows/publish-gecko-release.yml','tools/publish-gecko-release.py','tools/gecko/release_channel_contract.py','tools/gecko/release_channel_contract_test.py'}

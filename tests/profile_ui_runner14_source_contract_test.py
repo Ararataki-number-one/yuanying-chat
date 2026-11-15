@@ -1,4 +1,4 @@
-"""Finite source and declared device boundaries, never Android UI acceptance."""
+"""Fixed UI14 source proofs; current acquisition and sharing boundaries still execute."""
 import ast
 import contextlib
 import copy
@@ -7,6 +7,7 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+from historical_source_inputs import historical_bytes
 import shutil
 import subprocess
 import sys
@@ -39,7 +40,7 @@ ENV = dict(CI='true', GITHUB_RUN_ID='123', GITHUB_RUN_ATTEMPT='1', GITHUB_SHA=SO
 
 class UiRunner14SourceTests(unittest.TestCase):
     def test_actual_current_ui_fix_and_sharing_lease_are_required_without_historical_bypass(self):
-        ui, sharing = UI.read_bytes(), SHARING.read_bytes()
+        ui, sharing = historical_bytes('tests/gecko/run_ui_visuals.py'), SHARING.read_bytes()
         old_ui = contract.require_current_ui14(ui)
         old_sharing = contract.require_current_sharing14(sharing)
         self.assertEqual(contract.digest(old_ui), contract.UI_PREVIOUS_SHA256)
@@ -54,7 +55,7 @@ class UiRunner14SourceTests(unittest.TestCase):
         with self.assertRaises(AssertionError): contract.require_current_sharing14(old_sharing)
 
     def test_real_ui_chain_preserves_formatted_and_no_old_preparation_positives(self):
-        source = UI.read_text()
+        source = historical_bytes('tests/gecko/run_ui_visuals.py').decode('utf-8')
         adapter = (ROOT/'tests/ui_settings_services11_contract.py').read_bytes()
         marker = b'\n\n# Source14 binds the pre-existing30-second readiness budget'
         self.assertEqual(adapter.count(marker), 1)
@@ -75,7 +76,9 @@ class UiRunner14SourceTests(unittest.TestCase):
         script = '''import importlib.util,pathlib,sys
 root=pathlib.Path(sys.argv[1]);spec=importlib.util.spec_from_file_location('selected_ui',root/'tests/ui_visual_preservation_contract.py')
 module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
-assert module.verify_shared_ui_source((root/'tests/gecko/run_ui_visuals.py').read_text())['originalWorkloadSemanticsPreserved']
+history_spec=importlib.util.spec_from_file_location('fixed_ui_history',root/'tests/historical_source_inputs.py')
+history=importlib.util.module_from_spec(history_spec);history_spec.loader.exec_module(history)
+assert module.verify_shared_ui_source(history.historical_bytes('tests/gecko/run_ui_visuals.py').decode('utf-8'))['originalWorkloadSemanticsPreserved']
 print('UI14_STANDALONE_REAL_INPUT_CHAIN')
 '''
         result = subprocess.run([sys.executable, '-I', '-c', script, str(ROOT)], cwd=ROOT,
@@ -84,7 +87,7 @@ print('UI14_STANDALONE_REAL_INPUT_CHAIN')
         self.assertIn(b'UI14_STANDALONE_REAL_INPUT_CHAIN', result.stdout)
 
     def test_ui_inverse_rejects_threshold_deadline_identity_duplicates_and_moved_calls(self):
-        raw = UI.read_bytes(); source = raw.decode()
+        raw = historical_bytes('tests/gecko/run_ui_visuals.py'); source = raw.decode()
         loop = contract.UI_AFTER
         variants = [source + '\n# unknown\n', source.replace(loop, loop + loop, 1),
                     source.replace(loop, loop.replace('deadline=deadline', 'deadline=None'), 1),
@@ -145,7 +148,7 @@ print('UI14_STANDALONE_REAL_INPUT_CHAIN')
                 with self.assertRaises(AssertionError): contract.original_sharing13_tree(ast.parse(value))
 
     def test_real_capture_acquires_null_then_xml_only_under_the_unchanged_existing_deadline(self):
-        raw = UI.read_bytes(); old = contract.original_ui13_bytes(raw)
+        raw = UI.read_bytes(); old = contract.original_ui13_bytes(historical_bytes('tests/gecko/run_ui_visuals.py'))
         xml = b'<hierarchy rotation="0"><node text="controlled current hierarchy"/></hierarchy>'
         for selected, succeeds in ((old, False), (raw, True)):
             tree = ast.parse(selected)

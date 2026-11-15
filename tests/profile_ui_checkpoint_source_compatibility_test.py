@@ -1,4 +1,4 @@
-"""Finite checkpoint source-oracle controls, never Android/UI acceptance."""
+"""Fixed checkpoint history proofs plus current workflow and publication checks."""
 import ast
 import hashlib
 from pathlib import Path
@@ -8,6 +8,7 @@ import ui_checkpoint_source_compatibility as checkpoint
 import ui_quick_sheet_source_compatibility as quick
 import ui_visual_preservation_contract as original_ui
 from ui_workspace_v2_source_compatibility import historical_input as workspace_input
+from historical_source_inputs import historical_bytes
 
 ROOT = Path(__file__).resolve().parents[1]
 PREPARATION = ("from ui_test_device import prepare_workflow as prepare_ui_test_device\n"
@@ -41,7 +42,7 @@ class UiCheckpointSourceCompatibilityTests(unittest.TestCase):
         self.assertIn("copy_gecko_tls_evidence(pathlib.Path('work/tls-acceptance'),destination,os.environ['GITHUB_SHA'],expected)", copy[0]['run'])
 
     def test_actual_current_runner_and_entire_two_snippet_inverse(self):
-        raw = workspace_input((ROOT / checkpoint.RUNNER).read_bytes(), checkpoint.RUNNER)
+        raw = workspace_input(historical_bytes(checkpoint.RUNNER), checkpoint.RUNNER)
         old = checkpoint.require_current_runner(raw)
         self.assertEqual(checkpoint.sha(raw), checkpoint.RUNNER_CURRENT_SHA256)
         self.assertEqual(checkpoint.sha(old), '65fb205cbb7a466858a0a1869cd4b5388f70026d4e09da078318827e92432f4f')
@@ -51,15 +52,16 @@ class UiCheckpointSourceCompatibilityTests(unittest.TestCase):
         with self.assertRaises(AssertionError):checkpoint.require_current_runner(old)
         self.assertNotIn('ui_checkpoint_source_compatibility', (ROOT / checkpoint.RUNNER).read_text())
         path = 'tests/gecko_ui_checkpoint_publication_test.py'
-        actual = (ROOT / path).read_bytes()
+        actual = historical_bytes(path)
         previous = checkpoint.source_input(actual, path)
         def runtime_functions(raw):
             return {node.name: ast.dump(node, include_attributes=False)
                     for node in ast.walk(ast.parse(raw)) if isinstance(node, ast.FunctionDef)
                     and node.name != 'test_two_opt_in_insertions_inverse_entire_actual_runner_to_exact_before'}
         self.assertEqual(runtime_functions(actual), runtime_functions(previous))
+        self.assertEqual(runtime_functions((ROOT / path).read_bytes()), runtime_functions(actual))
         self.assertEqual(checkpoint.sha(checkpoint.checkpoint_runner_input(raw)), checkpoint.PREFERENCE_PREVIOUS_SHA256)
-        workflow = checkpoint.checkpoint_transport_input((ROOT / '.github/workflows/browser-2_1-acceptance.yml').read_bytes())
+        workflow = checkpoint.checkpoint_transport_input(historical_bytes('.github/workflows/browser-2_1-acceptance.yml'))
         before = checkpoint.checkpoint_workflow_input(workflow)
         self.assertEqual(checkpoint.sha(before), checkpoint.WORKFLOW_PREVIOUS_SHA256)
         self.assertEqual(before.replace(checkpoint.TLS_DOWNLOAD_PREVIOUS.encode(), checkpoint.TLS_DOWNLOAD_CURRENT.encode(), 1), workflow)
@@ -75,14 +77,14 @@ class UiCheckpointSourceCompatibilityTests(unittest.TestCase):
     def test_four_source_rows_keep_fixed_before_pins_and_forward_roundtrip(self):
         manifest = checkpoint.manifest()
         host = quick.manifest()['host']
-        actual = (ROOT / host['path']).read_text()
+        actual = historical_bytes(host['path']).decode('utf-8')
         classes = {n.name:n for n in ast.parse(actual).body if isinstance(n,ast.ClassDef)}
         for name,methods in host['previousMethods'].items():
             current={n.name:hashlib.sha256(ast.get_source_segment(actual,n).encode()).hexdigest() for n in classes[name].body if isinstance(n,ast.FunctionDef)}
             self.assertEqual(current,methods)
         self.assertEqual(set(manifest['files']), set(checkpoint.PREVIOUS))
         for path, row in manifest['files'].items():
-            raw = workspace_input((ROOT / path).read_bytes(), path)
+            raw = workspace_input(historical_bytes(path), path)
             old = checkpoint.source_input(raw, path)
             self.assertEqual(checkpoint.sha(old), checkpoint.PREVIOUS[path])
             for delta in row['deltas']:
@@ -97,7 +99,7 @@ class UiCheckpointSourceCompatibilityTests(unittest.TestCase):
                          '998637d381722c943cb32517cb1c72e092d0d0db7581e0f7c9103d74303b42c8')
 
     def test_complete_formatted_and_no_old_preparation_ast_inputs_still_pass(self):
-        current = (ROOT / checkpoint.RUNNER).read_bytes()
+        current = historical_bytes(checkpoint.RUNNER)
         before = checkpoint.require_current_runner(current)
         for raw, old in ((current.decode(), before.decode()),
                          (current.decode().replace(PREPARATION, '', 1), before.decode().replace(PREPARATION, '', 1))):
@@ -110,7 +112,7 @@ class UiCheckpointSourceCompatibilityTests(unittest.TestCase):
                 self.assertFalse(receipt['actualAndroidExecution'])
 
     def test_missing_duplicate_moved_default_and_original_timeout_changes_are_rejected(self):
-        source = (ROOT / checkpoint.RUNNER).read_text()
+        source = historical_bytes(checkpoint.RUNNER).decode('utf-8')
         declaration, returned = checkpoint.FLAG_DECLARATION, checkpoint.FLAG_RETURN
         changed = [source.replace(declaration, '', 1), source.replace(returned, '', 1),
                    source.replace(declaration, declaration * 2, 1), source.replace(returned, returned * 2, 1),
@@ -139,7 +141,7 @@ class UiCheckpointSourceCompatibilityTests(unittest.TestCase):
         with self.assertRaises(AssertionError):quick.source_input(unknown, checkpoint.RUNNER)
 
     def test_types_paths_and_ast_excerpts_cannot_gain_acceptance(self):
-        raw = (ROOT / checkpoint.RUNNER).read_bytes()
+        raw = historical_bytes(checkpoint.RUNNER)
         for value in (None, raw.decode(), bytearray(raw), memoryview(raw), True):
             with self.assertRaises(AssertionError):checkpoint.source_input(value, checkpoint.RUNNER)
         for path in (None, Path(checkpoint.RUNNER), '../' + checkpoint.RUNNER, '/' + checkpoint.RUNNER, 'unknown.py'):

@@ -5,6 +5,7 @@ import java.util.*;
 
 /** Bounded in-process snapshots, scoped to applied network profile and cookies. */
 final class PageMemory {
+  static final long NAVIGATION_CAPTURE_BUDGET_MS=200;
   final ChatSession session;final LinkedHashMap<String,JSONObject> pages=new LinkedHashMap<>(16,0.75f,true);long serial;
   boolean restorePending;JSONObject lastRestore=new JSONObject();
   PageMemory(ChatSession s){session=s;}
@@ -16,12 +17,27 @@ final class PageMemory {
   String document(String url){JSONObject state=pages.get(scope()+"|"+address(url));return state==null?"":state.optString("documentId");}
   String content(String url){JSONObject state=pages.get(scope()+"|"+address(url));return state==null?"":state.optString("contentKey");}
   void remember(String namespace,String url,JSONObject state){if(state==null||!state.optBoolean("ok")||!namespace.equals(scope())||!WebReplyObserver.same(url,state.optString("url")))return;serial++;pages.put(namespace+"|"+address(url),LocalDraftPolicy.snapshot(session.context,state));while(pages.size()>8)pages.remove(pages.keySet().iterator().next());}
-  void capture(Runnable done){String url=session.web.getUrl(),namespace=scope();long request=++serial,draftRevision=LocalDraftPolicy.revision(session.context);
+  void capture(Runnable done){String url=session.web.getUrl(),namespace=scope();long request=++serial,epoch=session.navigationEpoch,draftRevision=LocalDraftPolicy.revision(session.context);
     if(!MainActivity.chatUrl(url)||namespace.isEmpty()){done.run();return;}
     session.runDriver("page-state",J.obj("expectedUrl",url),state->{
-      if(request==serial&&state.optBoolean("ok")&&namespace.equals(scope())&&WebReplyObserver.same(url,session.web.getUrl())&&WebReplyObserver.same(url,state.optString("url"))){pages.put(namespace+"|"+address(url),LocalDraftPolicy.snapshot(session.context,state,draftRevision));while(pages.size()>8)pages.remove(pages.keySet().iterator().next());}
+      if(request==serial&&epoch==session.navigationEpoch&&!session.deleted&&state.optBoolean("ok")&&namespace.equals(scope())&&WebReplyObserver.same(url,session.web.getUrl())&&WebReplyObserver.same(url,state.optString("url"))){pages.put(namespace+"|"+address(url),LocalDraftPolicy.snapshot(session.context,state,draftRevision));while(pages.size()>8)pages.remove(pages.keySet().iterator().next());}
       done.run();
     });
+  }
+  /** A stalled page bridge must never hold a user's browser command hostage. */
+  void captureForNavigation(Runnable done){
+    final long epoch=session.navigationEpoch,request=serial+1;
+    final boolean[] finished={false};
+    Runnable complete=()->{
+      if(finished[0])return;
+      finished[0]=true;
+      // A timed-out capture may still arrive before the browser changes its
+      // URL. Retire only this request, without invalidating a newer capture.
+      if(serial==request)serial++;
+      if(!session.deleted&&epoch==session.navigationEpoch)done.run();
+    };
+    session.handler.postDelayed(complete,NAVIGATION_CAPTURE_BUDGET_MS);
+    capture(()->{session.handler.removeCallbacks(complete);complete.run();});
   }
   void restore(String url,long epoch){if(!restorePending)return;restorePending=false;
     JSONObject saved=pages.get(scope()+"|"+address(url));if(saved==null){lastRestore=J.obj("ok",false,"reason","no-snapshot");return;}

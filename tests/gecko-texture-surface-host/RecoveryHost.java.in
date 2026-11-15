@@ -1,0 +1,75 @@
+package local.pocketchat;
+
+import android.content.Context;
+import android.graphics.SurfaceTexture;
+import android.view.*;
+import org.json.*;
+import org.mozilla.gecko.SurfaceViewWrapper;
+
+/** Real SDK surface wrapper, exact public recovery method, declared GeckoView boundary. */
+public final class RecoveryHost {
+  static final JSONArray checks=new JSONArray();
+  static void check(String name,boolean pass){checks.put(new JSONObject().put("name",name).put("pass",pass));}
+  interface NewSurfaceProvider{void requestNewSurface();}
+  static class SdkView extends ViewGroup implements NewSurfaceProvider {
+    final SurfaceViewWrapper mSurfaceWrapper;
+    final AdapterHost.Sink sink=new AdapterHost.Sink();
+    final TextureView texture;
+    SdkView(){super(new Context());mSurfaceWrapper=new SurfaceViewWrapper(getContext());mSurfaceWrapper.setListener(sink);mSurfaceWrapper.useTextureView(getContext());sink.destroyed=0;texture=(TextureView)mSurfaceWrapper.getView();addView(texture);}
+    @@SDK_RECOVERY@@
+  }
+  static final class ProductionView extends SdkView {
+    @@PRODUCTION_HOOK@@
+  }
+  static final class CaretView extends SdkView {
+    @@CARET_HOOK@@
+  }
+  static final class Scene {
+    final SdkView view;final TextureView texture;final AdapterHost.Sink sink;
+    final SurfaceTexture image=new SurfaceTexture(20);
+    GeckoTextureSurface binding;
+    Scene(boolean caret){view=caret?new CaretView():new ProductionView();texture=view.texture;sink=view.sink;binding=GeckoTextureSurface.install(view,null);texture.available(image,400,800);}
+    void present(){texture.present("visible document");}
+  }
+  static void explicitRecovery(boolean caret){
+    String prefix=caret?"Caret fixture: ":"Production view: ";Scene s=new Scene(caret);Surface initial=s.sink.surface;
+    s.view.requestNewSurface();
+    check(prefix+"the SDK request keeps its asynchronous dispatch boundary",s.sink.resets==1&&s.view.postedCount()==1&&s.texture.visibilityChanges==0);
+    s.view.dispatchPosted();
+    check(prefix+"the original SDK recovery only toggles visibility without replacing texture",s.texture.visibilityChanges==2&&s.texture.getVisibility()==View.VISIBLE&&s.texture.getSurfaceTexture()==s.image&&s.sink.resets==1);
+    s.present();
+    check(prefix+"explicit invalid-surface recovery receives a new Surface at identical texture and dimensions",s.sink.resets==2&&s.sink.surface!=initial&&s.sink.surface.texture==s.image&&s.sink.width==400&&s.sink.height==800);
+    s.present();s.present();check(prefix+"content after explicit recovery returns to ordinary deduplication",s.sink.resets==2&&s.texture.displayedFrames==3);
+    s.view.requestNewSurface();s.view.requestNewSurface();s.view.dispatchPosted();s.present();s.present();
+    check(prefix+"repeated pending requests share the next valid replacement",s.sink.resets==3&&s.texture.visibilityChanges==6);
+  }
+  static void lifecycle(){
+    Scene sized=new Scene(false);Surface old=sized.sink.surface;sized.view.requestNewSurface();sized.texture.resize(700,300);
+    check("A resize still reaches the SDK while replacement is pending",sized.sink.resets==2&&sized.sink.surface==old&&sized.sink.width==700&&sized.sink.height==300);
+    sized.view.dispatchPosted();sized.present();sized.present();
+    check("Resize does not consume a request for a replacement Surface",sized.sink.resets==3&&sized.sink.surface!=old&&sized.sink.width==700&&sized.sink.height==300);
+    Scene available=new Scene(false);available.view.requestNewSurface();SurfaceTexture fresh=new SurfaceTexture(21);available.texture.available(fresh,500,900);available.view.dispatchPosted();available.present();
+    check("A real availability satisfies the pending replacement without a redundant reset",available.sink.resets==2&&available.sink.surface.texture==fresh);
+    Scene retired=new Scene(false);retired.view.requestNewSurface();boolean released=retired.texture.destroy();retired.view.dispatchPosted();retired.binding.onSurfaceTextureUpdated(retired.image);
+    check("A request before destroy preserves the original SDK retirement and release result",!released&&retired.sink.destroyed==1&&retired.sink.resets==1&&retired.view.mSurfaceWrapper.getSurface()==null);
+    retired.texture.available(new SurfaceTexture(22),400,800);retired.present();
+    check("Recreation after requested retirement starts with one fresh SDK surface",retired.sink.resets==2);
+    Scene owner=new Scene(false);GeckoTextureSurface previous=owner.binding;owner.view.requestNewSurface();previous.close();AdapterHost.Listener successor=new AdapterHost.Listener();owner.texture.setSurfaceTextureListener(successor);owner.binding=GeckoTextureSurface.install(owner.view,null);owner.view.dispatchPosted();owner.present();previous.onSurfaceTextureUpdated(owner.image);
+    check("A retired binding's pending request cannot reset its successor listener",owner.sink.resets==1&&successor.updated==0&&owner.texture.getSurfaceTextureListener()==owner.binding);
+  }
+  static void reentry(){
+    Scene s=new Scene(false);s.view.requestNewSurface();s.view.dispatchPosted();
+    s.sink.change=()->s.view.requestNewSurface();s.present();
+    check("A new request inside the SDK surface callback is deferred without recursive reset",s.sink.resets==2&&s.view.postedCount()==1);
+    s.view.dispatchPosted();s.present();s.present();
+    check("Callback reentry preserves the newer pending request exactly once",s.sink.resets==3);
+    Scene available=new Scene(false);available.view.requestNewSurface();available.sink.change=()->available.view.requestNewSurface();available.texture.available(new SurfaceTexture(23),400,800);available.view.dispatchPosted();available.present();available.present();
+    check("Availability does not erase a newer request raised by its delegate",available.sink.resets==3);
+  }
+  public static void main(String[] args){
+    explicitRecovery(false);explicitRecovery(true);lifecycle();reentry();
+    int passed=0;for(int i=0;i<checks.length();i++)if(checks.getJSONObject(i).getBoolean("pass"))passed++;
+    JSONObject result=new JSONObject().put("status",passed==checks.length()?"passed":"failed").put("passed",passed).put("total",checks.length()).put("checks",checks);
+    System.out.println(result);if(passed!=checks.length())System.exit(1);
+  }
+}

@@ -1,5 +1,6 @@
 """Actual host TLS/proxy and controlled adb-boundary tests; no Android execution claim."""
 import importlib.util
+import json
 import os
 from pathlib import Path
 import shlex
@@ -73,6 +74,53 @@ class EphemeralHostTests(unittest.TestCase):
         with self.assertRaises(ssl.SSLCertVerificationError):self.tls(ssl.create_default_context())
         with self.assertRaises(ssl.SSLCertVerificationError):self.tls(hostname='fp-c.pocketchat.test')
         self.wait_idle();self.assertEqual(self.server.snapshot('chromium')['accepted'],0)
+
+    def test_transport_diagnostic_distinguishes_real_rejection_stages_without_payload(self):
+        control='/__evidence?engine=chromium&nonce='+BINDING['runNonce']+'&source='+BINDING['sourceCommit']
+        packets=[
+            ('GET '+control+' HTTP/1.1\r\nHost: private-host.invalid\r\n\r\n','control','control-authority'),
+            ('GET '+control+'&source='+BINDING['sourceCommit']+' HTTP/1.1\r\nHost: 127.0.0.1:18765\r\n\r\n','control','control-query'),
+            ('GET '+control.replace(BINDING['runNonce'],'f'*32)+' HTTP/1.1\r\nHost: 127.0.0.1:18765\r\n\r\n','control','control-binding'),
+            ('CONNECT private-host.invalid:443 HTTP/1.1\r\nHost: private-host.invalid:443\r\n\r\n','connect','connect-target'),
+            ('GET / HTTP/1.1\r\nHost: x\r\nHost: private-host.invalid\r\n\r\n','unparsed','header-duplicate-or-invalid')]
+        for packet,_,_ in packets:
+            with self.connect() as connection:connection.sendall(packet.encode());self.assertTrue(refused(connection))
+        self.wait_idle();diagnostic=self.server.transport_diagnostics('chromium')
+        self.assertEqual([(row['requestKind'],row['guardCode']) for row in diagnostic['events']],[(kind,code) for _,kind,code in packets])
+        self.assertEqual(diagnostic['rejected'],len(packets));self.assertEqual(sum(row['count'] for row in diagnostic['rejectionCounts']),len(packets))
+        self.assertTrue(diagnostic['diagnosticOnly']);self.assertFalse(diagnostic['qualificationEvidence'])
+        self.assertNotIn('private-host',json.dumps(diagnostic));self.assertNotIn('events',self.server.snapshot('chromium'))
+
+    def test_diagnostic_event_bound_keeps_complete_counts_and_returns_defensive_copies(self):
+        packet=b'CONNECT private-host.invalid:443 HTTP/1.1\r\nHost: private-host.invalid:443\r\n\r\n'
+        for _ in range(host.REJECTION_EVENT_LIMIT+3):
+            with self.connect() as connection:connection.sendall(packet);self.assertTrue(refused(connection))
+        self.wait_idle();value=self.server.transport_diagnostics('chromium')
+        self.assertEqual(len(value['events']),64);self.assertEqual(value['rejected'],67);self.assertEqual(value['droppedEvents'],3)
+        self.assertEqual(sum(row['count'] for row in value['rejectionCounts']),67)
+        value['events'][0]['guardCode']='changed';value['binding']['runNonce']='changed';value['rejectionCounts'][0]['count']=0
+        fresh=self.server.transport_diagnostics('chromium');self.assertEqual(fresh['events'][0]['guardCode'],'connect-target')
+        self.assertEqual(fresh['binding'],BINDING);self.assertEqual(fresh['rejectionCounts'][0]['count'],67)
+        self.server.close();self.assertTrue(self.server.transport_diagnostics('chromium')['collectorQuiesced'])
+
+    def test_successful_control_is_diagnostic_only_and_per_engine_reset_is_exact(self):
+        snapshot=self.server.snapshot('chromium')
+        with self.connect() as connection:
+            connection.sendall(('GET /__evidence?engine=chromium&nonce='+BINDING['runNonce']+'&source='+BINDING['sourceCommit']+' HTTP/1.1\r\nHost: 127.0.0.1:18765\r\n\r\n').encode())
+            _,body=response(connection);self.assertEqual(json.loads(body),snapshot)
+        self.wait_idle();self.assertEqual(self.server.snapshot('chromium'),snapshot)
+        self.assertEqual(self.server.transport_diagnostics('chromium')['controlResponses'],1)
+        self.server.begin('gecko');self.assertEqual(self.server.transport_diagnostics('gecko')['controlResponses'],0)
+        self.assertEqual(self.server.transport_diagnostics('chromium')['controlResponses'],1)
+        self.server.begin('chromium');self.assertEqual(self.server.transport_diagnostics('chromium')['controlResponses'],0)
+
+    def test_exception_identity_exports_only_fixed_exception_and_reason_categories(self):
+        self.assertEqual(host.rejection_identity(ValueError('secret request payload')),('ValueError','unclassified-validation'))
+        self.assertEqual(host.rejection_identity(OSError('secret certificate key')),('OSError','io-error'))
+        error=ssl.SSLError('secret TLS text');error.reason='TLSV1_ALERT_UNKNOWN_CA'
+        self.assertEqual(host.rejection_identity(error),('SSLError','tls-peer-unknown-ca'))
+        error.reason='unknown secret TLS detail';self.assertEqual(host.rejection_identity(error),('SSLError','tls-error'))
+        with self.assertRaises(ValueError):self.server.transport_diagnostics('foreign-engine')
 
     def test_restricted_proxy_rejects_nonfixture_hosts_paths_methods_duplicate_authority_and_bodies(self):
         packets=[b'CONNECT example.com:443 HTTP/1.1\r\nHost: example.com:443\r\n\r\n',('GET http://'+host.HOSTS[0]+'/other HTTP/1.1\r\nHost: '+host.HOSTS[0]+'\r\n\r\n').encode(),('POST http://'+host.HOSTS[0]+'/hints HTTP/1.1\r\nHost: '+host.HOSTS[0]+'\r\n\r\n').encode(),('GET http://'+host.HOSTS[0]+'/hints HTTP/1.1\r\nHost: '+host.HOSTS[1]+'\r\n\r\n').encode(),('GET http://'+host.HOSTS[0]+'/hints HTTP/1.1\r\nHost: '+host.HOSTS[0]+'\r\nHost: '+host.HOSTS[0]+'\r\n\r\n').encode(),('GET http://'+host.HOSTS[0]+'/hints HTTP/1.1\r\nHost: '+host.HOSTS[0]+'\r\nContent-Length: 1\r\n\r\nx').encode()]

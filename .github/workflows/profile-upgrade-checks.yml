@@ -21,6 +21,17 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
           fetch-depth: 16
+      - name: Prepare pinned Android 35 host API
+        shell: bash
+        run: |
+          set -euo pipefail
+          export JAVA_HOME="$JAVA_HOME_17_X64"
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'platforms;android-35'
+          PROFILE_ANDROID_JAR="$ANDROID_HOME/platforms/android-35/android.jar"
+          echo "4566663c3876e022b4fa4ced8c8697c4ab1688267f090114fd92d027b32e619b  $PROFILE_ANDROID_JAR" | sha256sum -c -
+          echo "PROFILE_ANDROID_JAR=$PROFILE_ANDROID_JAR" >> "$GITHUB_ENV"
+          echo "JAVA_HOME=$JAVA_HOME" >> "$GITHUB_ENV"
       - name: Run source model, parser and protocol checks
         shell: bash
         run: |

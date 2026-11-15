@@ -18,7 +18,8 @@ public final class DefaultEnvironmentHost{
  static void routing()throws Exception{
   ProfileCatalog c=setup(3);BrandLaunchActivity brand=new BrandLaunchActivity();brand.route();check("Direct launch with no available environment routes to manager without indexing Profiles",brand.launched!=null&&brand.launched.target==WindowHomeActivity.class&&Profiles.lastActivity==-1&&brand.finished);
   c=setup(2,1,2);EnvironmentSpec.Identity identity=c.identity(2);brand=new BrandLaunchActivity();brand.route();check("Valid default launch keeps exact selected environment identity",Profiles.lastActivity==2&&brand.launched!=null&&Boolean.TRUE.equals(brand.launched.extras.get("forceWebMode"))&&c.identity(2).equals(identity));
-  overview("Default launcher shows the selected native dashboard",brand.launched,identity);
+  overview("Default launcher retains the selected one-shot identity",brand.launched,identity);
+  check("Direct app launch opens its browser without an intermediate details screen",Boolean.TRUE.equals(brand.launched.extras.get("openBrowserDirect"))&&!brand.launched.extras.containsKey("url"));
   // Tab indices are the public four-action layout: environment, network, downloads, reading.
   for(int target:new int[]{0,1,3}){
    c=setup(7);Activity downloads=new DownloadCenterActivity();WorkspaceNavigation.select(downloads,2,target);
@@ -43,7 +44,8 @@ public final class DefaultEnvironmentHost{
   }
   c.db.rows.get(1).put("resetting",1);workspace=new DownloadCenterActivity();WorkspaceNavigation.select(workspace,2,3);
   check("Reading excludes a more recent unavailable environment",Profiles.lastActivity==2&&workspace.launched!=null&&"reading".equals(workspace.launched.extras.get("openWindowAction")));
-  c=setup(2,1,2);home=new WindowHomeActivity();home.openWindow(2,"chat");overview("Environment list keeps the one-shot dashboard contract",home.launched,c.identity(2));
+  c=setup(2,1,2);home=new WindowHomeActivity();home.openWindow(2,"chat");overview("Environment list keeps the one-shot opening identity",home.launched,c.identity(2));
+  check("Environment list opens the browser directly without supplying a replacement URL",Boolean.TRUE.equals(home.launched.extras.get("openBrowserDirect"))&&!home.launched.extras.containsKey("url"));
   home=new WindowHomeActivity();WorkspaceNavigation.select(home,0,3);
   check("Reading from manager opens the recent environment with the reading action",Profiles.lastActivity==2&&home.launched!=null&&"reading".equals(home.launched.extras.get("openWindowAction"))&&!home.launched.extras.containsKey("manualEnvironmentOverview")&&!home.finished);
   workspace=new DownloadCenterActivity();WorkspaceNavigation.select(workspace,2,2);
@@ -79,6 +81,7 @@ public final class DefaultEnvironmentHost{
   }
   settings=new AppSettingsActivity();WorkspaceNavigation.selectPage(settings,AppHub.SETTINGS,AppHub.CHAT);
   overview("Settings chat opens the actual recently selected profile 1 dashboard",settings.launched,recent);
+  check("Settings browser tab resumes the recent browser without a forced homepage",Boolean.TRUE.equals(settings.launched.extras.get("openBrowserDirect"))&&!settings.launched.extras.containsKey("url"));
   check("Settings chat launches profile 1 once and finishes only its standalone screen",Profiles.lastActivity==1&&settings.finished&&c.identity(1).equals(recent));
   Object firstNonce=settings.launched.extras.get("manualEnvironmentOverview");
   settings=new AppSettingsActivity();WorkspaceNavigation.selectPage(settings,AppHub.SETTINGS,AppHub.CHAT);
@@ -116,6 +119,11 @@ public final class DefaultEnvironmentHost{
  static void overview(String label,Intent intent,EnvironmentSpec.Identity identity){
   check(label,intent!=null&&"chat".equals(intent.extras.get("openWindowAction"))&&"environment-list-chat".equals(intent.extras.get("overviewSource"))&&identity.environmentId.equals(intent.extras.get("overviewEnvironmentId"))&&Integer.valueOf(identity.slot).equals(intent.extras.get("overviewSlot"))&&Integer.valueOf(identity.generation).equals(intent.extras.get("overviewGeneration"))&&Long.valueOf(123456L).equals(intent.extras.get("overviewRequestedAt"))&&String.valueOf(intent.extras.get("manualEnvironmentOverview")).matches("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"));
  }
+ static void directBrowserRouting()throws Exception{
+  ProfileCatalog c=setup(2,1,2);WindowHomeActivity home=new WindowHomeActivity();
+  Intent details=EnvironmentOverviewUi.detailsOpening(home,2);
+  check("Explicit environment details retain current identity without a direct-browser request","overview".equals(details.extras.get("openWindowAction"))&&!details.extras.containsKey("openBrowserDirect")&&c.identity(2).environmentId.equals(details.extras.get("overviewEnvironmentId"))&&Integer.valueOf(c.identity(2).generation).equals(details.extras.get("overviewGeneration")));
+ }
  static void current()throws Exception{
   for(int selected=0;selected<8;selected++){int other=(selected+1)%8;ProfileCatalog c=setup(selected,selected,other);EnvironmentSpec.Identity keep=c.identity(other),gone=c.identity(selected);c.beginDelete(selected);check("Default deletion chooses actual remaining environment "+selected,AppSettings.defaultSlot(c.root)==other&&String.valueOf(other).equals(c.db.settings.get("defaultSlot")));check("Only deleted generation advances; remaining UUID and generation stay exact "+selected,c.identity(other).equals(keep)&&c.item(selected).optInt("generation")==gone.generation+1&&c.item(selected).optString("environmentId").equals(gone.environmentId)&&!c.item(selected).optBoolean("created")&&c.item(selected).optBoolean("deleting"));int generation=c.item(selected).optInt("generation");c.beginDelete(selected);check("Repeated deletion does not reassign or advance generation "+selected,c.item(selected).optInt("generation")==generation&&AppSettings.defaultSlot(c.root)==other);boolean last=false;try{c.beginDelete(other);}catch(java.io.IOException expected){last=true;}check("Every slot retains the existing last-environment guard "+other,last&&c.identity(other).equals(keep));}
   ProfileCatalog c=setup(2,0,1,2);EnvironmentSpec.Identity kept=c.identity(2);c.beginDelete(1);check("Deleting nondefault preserves actual selected identity",AppSettings.defaultSlot(c.root)==2&&c.identity(2).equals(kept));
@@ -132,7 +140,7 @@ public final class DefaultEnvironmentHost{
   c=setup(99,0,1);before=c.db.rows.toString();c.db.failDefaultWrite=true;failed=false;try{c.beginDelete(1);}catch(java.io.IOException expected){failed=true;}check("Failed stale-default repair aborts deletion without a false success",failed&&before.equals(c.db.rows.toString())&&"99".equals(c.db.settings.get("defaultSlot")));
   c=setup(0,0,1);c.db.rows.get(1).put("opened",999L);c.db.rows.get(1).put("resetting",1);check("Recent navigation excludes unavailable row",AppSettings.recentSlot(c.root)==0);
  }
- public static void main(String[]args)throws Exception{if(Boolean.getBoolean("before"))baseline();else {current();concurrency();routing();workspaceRouting();}int passed=0;for(int i=0;i<checks.length();i++)if(checks.optJSONObject(i).optBoolean("pass"))passed++;System.out.println(J.obj("status",passed==checks.length()?"passed":"failed","passed",passed,"total",checks.length(),"checks",checks));if(passed!=checks.length())System.exit(1);}
+ public static void main(String[]args)throws Exception{if(Boolean.getBoolean("before"))baseline();else {current();concurrency();routing();workspaceRouting();directBrowserRouting();}int passed=0;for(int i=0;i<checks.length();i++)if(checks.optJSONObject(i).optBoolean("pass"))passed++;System.out.println(J.obj("status",passed==checks.length()?"passed":"failed","passed",passed,"total",checks.length(),"checks",checks));if(passed!=checks.length())System.exit(1);}
 }
 class ProfileCatalog{static ProfileCatalog instance;final Context root=new Context();final SQLiteDatabase db=new SQLiteDatabase();static ProfileCatalog get(Context c){return instance;}SQLiteDatabase getReadableDatabase(){return db;}SQLiteDatabase getWritableDatabase(){return db;}/* CATALOG */}
 class EnvironmentSpec{static JSONObject object(Object...x){return J.obj(x);}/* IDENTITY */}

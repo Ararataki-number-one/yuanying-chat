@@ -30,13 +30,14 @@ def main():
  if sum(bool(x) for x in (a.before_ref,a.before_writer_ref,a.before_range_ref,a.before_load_ref))>1:p.error('Select one before reproduction')
  source=ROOT/'app/src/main/java/local/pocketchat';old=ROOT/'tests/download-recovery-host'
  names=['J.java','DownloadTasks.java','DownloadTaskRevisions.java','DownloadResumePolicy.java','DownloadRange.java','SavedFileDeletion.java','SavedFilePublication.java','DefaultDownloads.java','SealedFileIo.java','DownloadMetadataValues.java']
- needles=['void taskActions(','boolean requestAvailable(','String continuationAction(','void requestRedownload(','void discardForRedownload(','boolean loadTask(','void newTask(','void updateTask(','void mark(','boolean valid(','String downloadSource(','void acceptResponse(','void retry(','void fail(','void pause(','void destroy(','void download(','void readChunk(','boolean saveTask(','void persistenceFailed(','boolean claimTask(']
- files=[source/n for n in names]+[source/'FileDownloads.java',HERE/'DownloadResumeHost.java',pathlib.Path(__file__).resolve(),old/'local/pocketchat/Support.java',ROOT/'tests/sealed-file-host/android/util/AtomicFile.java']+list((old/'android').rglob('*.java'))+list((HERE/'stubs').rglob('*.java'))
+ needles=['void taskActions(','boolean requestAvailable(','String continuationAction(','void requestRedownload(','void discardForRedownload(','boolean loadTask(','void newTask(','void updateTask(','void mark(','boolean valid(','String downloadSource(','void acceptResponse(','void retry(','void fail(','void pause(','void destroy(','void download(','void readChunk(','boolean saveTask(','void persistenceFailed(','boolean claimTask(','void cancel(']
+ files=[source/n for n in names]+[source/'FileDownloads.java',HERE/'DownloadResumeHost.java',HERE/'CancelCases.java',pathlib.Path(__file__).resolve(),old/'local/pocketchat/Support.java',ROOT/'tests/sealed-file-host/android/util/AtomicFile.java']+list((old/'android').rglob('*.java'))+list((HERE/'stubs').rglob('*.java'))
  hashes={str(f.relative_to(ROOT)):hashlib.sha256(f.read_bytes()).hexdigest() for f in sorted(files)}
  commit=subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip();before=subprocess.check_output(['git','rev-parse',a.before_ref+'^{commit}'],cwd=ROOT,text=True).strip() if a.before_ref else None
  writer_before=subprocess.check_output(['git','rev-parse',a.before_writer_ref+'^{commit}'],cwd=ROOT,text=True).strip() if a.before_writer_ref else None
  range_before=subprocess.check_output(['git','rev-parse',a.before_range_ref+'^{commit}'],cwd=ROOT,text=True).strip() if a.before_range_ref else None
  load_before=subprocess.check_output(['git','rev-parse',a.before_load_ref+'^{commit}'],cwd=ROOT,text=True).strip() if a.before_load_ref else None
+ needles.append('private void retirePrivateCopy(')
  text=(source/'FileDownloads.java').read_text();parts=[member(text,n) for n in needles]
  if before:
   previous=subprocess.check_output(['git','show',before+':app/src/main/java/local/pocketchat/FileDownloads.java'],cwd=ROOT,text=True)
@@ -53,6 +54,7 @@ def main():
  with tempfile.TemporaryDirectory(prefix='download-resume-host-') as temporary:
   temp=pathlib.Path(temporary);package=temp/'local/pocketchat';package.mkdir(parents=True);_,boundary_hashes=boundary.emit(package)
   for n in names:(package/n).write_bytes((source/n).read_bytes())
+  (package/'CancelCases.java').write_bytes((HERE/'CancelCases.java').read_bytes())
   fixture=(HERE/'DownloadResumeHost.java').read_text()
   for old_boundary,new_boundary in [('class Remote{','class Remote{String getUrl(){return "https://chatgpt.com/c/one";}'),('class MainActivity extends Context{','class MainActivity extends Context{static boolean chatUrl(String url){return "https://chatgpt.com/c/one".equals(url);}')]:
    if fixture.count(old_boundary)!=1:raise ValueError('Review fixed-page download-source boundary: '+old_boundary)

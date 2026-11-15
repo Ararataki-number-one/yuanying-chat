@@ -4,6 +4,7 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+from historical_source_inputs import historical_bytes, historical_identity
 import shutil
 import subprocess
 import tempfile
@@ -20,7 +21,7 @@ extract = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(extract)
 
 
-def execute(view=None):
+def execute(view=None, navigation_boundary=False):
     java = os.environ.get('PROFILE_JAVA') or shutil.which('java')
     if not java:
         raise AssertionError('Java 17 required')
@@ -62,11 +63,23 @@ def execute(view=None):
         report['defaultSystemTimeZoneBoundary'] = json.loads(boundary.stdout)
         report['actualNativeTimeZoneExecution'] = False
         report['actualAddonLifecycleExecution'] = False
+        report['navigationOwnerBoundary'] = 'The original 32 cases use navigationDispatched=true; pending primary capture and independent background-surface controls are executed separately when requested.'
+        if navigation_boundary:
+            dispatch = subprocess.run([java, '-cp', str(out) + os.pathsep + str(jar), 'local.pocketchat.NavigationDispatchBoundaryHost'], capture_output=True, text=True, timeout=30)
+            if dispatch.returncode:
+                raise AssertionError('Current navigation dispatch boundary failed: ' + dispatch.stderr)
+            report['navigationDispatchBoundary'] = json.loads(dispatch.stdout)
         report.update(sourceCommit=subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip(), sourceFiles=hashes, executedViewSha256=hashlib.sha256(raw.encode()).hexdigest(), injectedCounterexample=view is not None, selectedMembersSha256={k: hashlib.sha256(v.encode()).hexdigest() for k, v in members.items()}, executionInputsUnchanged=all(hashlib.sha256((ROOT / k).read_bytes()).hexdigest() == v for k, v in hashes.items()), actualAndroidExecution=False, actualGeckoExecution=False, actualPhoneExecution=False, scope='Exact production bridge, authoritative location callback and request lifecycle with controlled SDK port/session and Android owner boundaries; not actual Gecko event ordering or malicious-page reachability proof.')
         return report
 
 
 class PageBridgeLifecycleTests(unittest.TestCase):
+    def test_current_primary_navigation_dispatch_boundary(self):
+        report = execute(navigation_boundary=True)
+        self.assertEqual(report['navigationDispatchBoundary']['status'], 'passed')
+        self.assertEqual(report['navigationDispatchBoundary']['controls'], 4)
+        self.assertTrue(report['executionInputsUnchanged'])
+
     def test_authoritative_commit_and_other_document_orderings(self):
         report = execute()
         output = Path(os.environ.get('PAGE_BRIDGE_LIFECYCLE_REPORT') or ROOT / 'work/profile-host/page-bridge-lifecycle-results.json')
@@ -79,7 +92,10 @@ class PageBridgeLifecycleTests(unittest.TestCase):
 
     def test_old_commit_gap_and_individual_protections_are_observed(self):
         raw = (SOURCE / 'GeckoWebView.java').read_bytes()
-        previous = bridge42_preservation_bytes(raw)
+        # The predecessor proof is immutable. Mutants below still execute the
+        # actual current production members, not this historical image.
+        historical = historical_bytes('app/src/main/java/local/pocketchat/GeckoWebView.java')
+        previous = bridge42_preservation_bytes(historical)
         self.assertEqual(hashlib.sha256(previous).hexdigest(), PREVIOUS_SHA256)
         old = execute(previous.decode())
         self.assertEqual(old['status'], 'failed')
@@ -94,15 +110,17 @@ class PageBridgeLifecycleTests(unittest.TestCase):
                 outcomes.append(result)
         output = os.environ.get('PAGE_BRIDGE_LIFECYCLE_NEGATIVE_REPORT')
         if output:
-            Path(output).write_text(json.dumps({'previous': old, 'individualCounterexamples': outcomes}, indent=2) + '\n')
+            Path(output).write_text(json.dumps({'previous': old, 'individualCounterexamples': outcomes,
+                'historicalSource': historical_identity('app/src/main/java/local/pocketchat/GeckoWebView.java')}, indent=2) + '\n')
 
     def test_exact_inverse_preserves_original_reading_guard(self):
-        raw = (SOURCE / 'GeckoWebView.java').read_bytes()
+        raw = historical_bytes('app/src/main/java/local/pocketchat/GeckoWebView.java')
         from fingerprint_source_compatibility import reading_preservation_bytes, BASELINE
         self.assertEqual(hashlib.sha256(reading_preservation_bytes(raw)).hexdigest(), BASELINE)
         self.assertEqual(hashlib.sha256(reading_preservation_bytes(bridge42_preservation_bytes(raw))).hexdigest(), BASELINE)
         geometry = b'Math.abs(next-readingLayout)<.001f'
         self.assertEqual(raw.count(geometry), 1)
+        self.assertEqual((SOURCE / 'GeckoWebView.java').read_bytes().count(geometry), 1)
         with self.assertRaises(ValueError):
             reading_preservation_bytes(raw.replace(geometry, b'Math.abs(next-readingLayout)<.002f', 1))
         for previous, current in DELTAS:

@@ -97,6 +97,7 @@ def execute(source_override=None):
         if result.returncode:raise AssertionError(result.stdout+result.stderr)
     report=json.loads(result.stdout)
     report.update(scope='Actual production pure-Java state plus byte-extracted native controller, route, navigation, load, checkpoint restore, port-message and diagnostic URL policy methods. Handler, Gecko/Android, environment lifecycle, network guard and JSON boundaries are synthetic; no actual network or SDK execution.',
+                  actualStartupWindowExecution=False,startupWindowBoundary='Counted SDK startup request only; never grants any route, privacy or native protection readiness. Exact startup allocation and cleanup execute in gecko-startup-window-host.',
                   auxiliaryPageBoundary='Default absent; close returns false only while absent, and any auxiliary freshness/close behavior fails explicitly. Real auxiliary lifecycle is not exercised.',
                   actualRequestHeaderPolicyExecution=False,actualTimeZonePolicyExecution=False,
                   actualIpTransportExecution=False,actualBlockedPopupUiExecution=False,

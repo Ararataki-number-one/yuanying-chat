@@ -30,13 +30,15 @@ class ResourceRecoveryAsync(unittest.TestCase):
                 self.assertEqual(run.returncode, 0, run.stderr[-4000:])
                 report = json.loads(output.read_text())
                 self.assertEqual(report['status'], 'passed')
-                self.assertEqual(report['passed'], 34)
+                self.assertEqual(report['originalChecks'], 34)
+                self.assertEqual(report['passed'], 40)
                 self.assertTrue(all(row['pass'] is True for row in report['checks']))
                 self.assertFalse(report['actualAndroidExecution'])
                 self.assertFalse(report['actualGeckoExecution'])
                 self.assertFalse(report['actualNativeStartup'])
                 for name, expected in [('sync-runtime-only', 'Asynchronous admitted recovery renews original navigation deadline'),
-                                       ('pretend-allocation-ready', 'Durable user recovery outranks synthetic low memory')]:
+                                       ('pretend-allocation-ready', 'Durable user recovery outranks synthetic low memory'),
+                                       ('obsolete-navigation-owner', 'Superseded resource retry cannot wake an older navigation')]:
                     output.unlink(missing_ok=True)
                     mutant = subprocess.run(cmd+['--mutation', name], text=True, capture_output=True, timeout=45)
                     self.assertNotEqual(mutant.returncode, 0)
@@ -57,16 +59,14 @@ class ResourceRecoveryAsync(unittest.TestCase):
         self.assertIn(b'if(owner.deleted||view.destroyed||view.failed)', raw)
         self.assertIn(b'if(!recoveryAllocationComplete){resourceReadyForControls=true;return;}', raw)
 
-    def test_production_retry_changes_only_the_obsolete_synchronous_creation_predicate(self):
+    def test_original_cpu_and_tls_startup_guards_remain(self):
         path = ROOT/'tests/resource-recovery-host/run.py'
         spec = importlib.util.spec_from_file_location('current_resource_recovery_extraction', path)
         runner = importlib.util.module_from_spec(spec); spec.loader.exec_module(runner)
         source = (ROOT/'app/src/main/java/local/pocketchat/GeckoWebView.java').read_text()
-        retry = runner.member(source, '  boolean retryResourceStart()')
-        current = 'initialize();if(!resourceDeferred&&!failed){'
-        self.assertEqual(retry.count(current), 1)
-        restored = retry.replace(current, 'initialize();if(!resourceDeferred&&!failed&&runtime!=null){', 1)
-        self.assertEqual(hashlib.sha256(restored.encode()).hexdigest(), '5b4d48134d9b4367f0102008a08237c49dce1fa6a8d32112c50fa7e62a7c827f')
+        # The retry now also fences synchronous navigation reentry. Its actual
+        # behavior and former synchronous-only admission run above; a historical
+        # whole-member hash would reject this intentional maintenance change.
         initializer = runner.member(source, 'private void initialize()')
         for guard in ['if(!enabled||destroyed||owner.deleted||runtime!=null||failed)return;',
                       'owner.cpu.prepareStartup(', 'owner.tls.prepareStartup(',

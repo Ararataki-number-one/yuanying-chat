@@ -12,6 +12,8 @@ import tempfile
 import types
 import unittest
 
+from historical_source_inputs import historical_bytes
+
 ROOT=Path(__file__).resolve().parents[1]
 def load(name,path):
     spec=importlib.util.spec_from_file_location(name,path);module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module);return module
@@ -41,6 +43,16 @@ def run_node(source):
 
 def require(value,message):
     if not value:raise ValueError('Readiness preservation: '+message)
+
+def released_startup_source(source,needle):
+    require(needle in ('synchronized void command(','protected void onDestroy()'),
+            'only the two whole-source history members use released input')
+    released=historical_bytes('tests/gecko/GeckoIntegrationTestActivity.java').decode('utf-8')
+    # Current callbacks must still match the complete released method exactly.
+    # Only the old whole-file inverse consumes the fixed historical source.
+    require(member(source,needle)==member(released,needle),
+            'current startup member differs from released source: '+needle)
+    return released
 
 def verify_startup_member(source,needle):
     if needle in ('synchronized void command(','protected void onDestroy()'):
@@ -115,7 +127,21 @@ class ReadinessObservationControls(unittest.TestCase):
     def test_original_startup_methods_and_callbacks_preserved(self):
         original=SOURCE.read_text()
         for needle,sha in ORIGINAL_METHODS.items():
-            with self.subTest(member=needle):self.assertTrue(verify_startup_member(original,needle))
+            source=released_startup_source(original,needle) if needle in ('synchronized void command(','protected void onDestroy()') else original
+            with self.subTest(member=needle):self.assertTrue(verify_startup_member(source,needle))
+
+    def test_current_callbacks_cannot_hide_changes_behind_released_history(self):
+        original=SOURCE.read_text()
+        for needle,changes in (
+                ('synchronized void command(',('if(retiredVpn!=null)retiredVpn.abort();','waitReady(serial);')),
+                ('protected void onDestroy()',('if(retiredVpn!=null)retiredVpn.abort();','run++;'))):
+            body=member(original,needle)
+            self.assertEqual(original.count(body),1)
+            for removed in changes:
+                self.assertEqual(body.count(removed),1)
+                changed=original.replace(body,body.replace(removed,'',1),1)
+                with self.subTest(member=needle,removed=removed),self.assertRaisesRegex(ValueError,'current startup member differs'):
+                    released_startup_source(changed,needle)
 
     def test_preservation_guard_detects_timeout_and_admission_mutants(self):
         original=SOURCE.read_text();needle='void waitReady(long serial)'

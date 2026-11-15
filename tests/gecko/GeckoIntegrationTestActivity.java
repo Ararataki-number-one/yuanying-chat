@@ -303,11 +303,24 @@ public class GeckoIntegrationTestActivity extends Activity {
     if(SystemClock.elapsedRealtime()>deadline){event(serial,"error",J.obj("error","Restored bootstrap extension did not acknowledge native protection","newNativeRoutePort",reconnected,"privacyReady",web.privacyReady,"protectionLevel",web.protectionLevel));return;}
     session.handler.postDelayed(()->waitExtensionRestore(serial,web,previous,result,deadline),100);
   }
+  /** A completion fixture must own a durable delivery just like a real web task. */
+  JSONObject beginSyntheticReply(String label){
+    String url=session.web.getUrl();
+    String id=session.deliveries.begin(url,label,new JSONArray(),"web",null);
+    if(!session.deliveries.update(id,"awaiting","synthetic fixture",true,"",url))
+      throw new IllegalStateException("Synthetic reply delivery was not persisted");
+    JSONObject job=J.obj("id",id,"kind","web","engine","gecko","confirmed",true,
+      "confirmedUrl",url,"expectedUrl",url,"prompt",label,"attempted",true);
+    if(!session.prefs.edit().putString("pending",job.toString()).commit())
+      throw new IllegalStateException("Synthetic reply cursor was not persisted");
+    session.pending=job;session.activeDeliveryId=id;session.webWorkGeneration++;
+    return job;
+  }
   void backgroundSettings(long serial){
-    boolean desktop=session.privacy.wantsDesktop();session.pending=J.obj("id","synthetic-background-settings","confirmed",true);session.navigating=false;session.connecting=false;
+    boolean desktop=session.privacy.wantsDesktop();JSONObject job=beginSyntheticReply("synthetic-background-settings");session.navigating=false;session.connecting=false;
     boolean saved=DeferredBrowserSettings.save(session,session.privacy.level(),!desktop);ChatService.begin(this);
     event(serial,"homeNeeded",J.obj("id","background-settings-"+serial));
-    session.handler.postDelayed(()->{session.networkReady=false;session.guard.setBlocked(true);session.completeReply(session.pending,J.obj("url",session.web.getUrl()));session.changed();},5000);
+    session.handler.postDelayed(()->{session.networkReady=false;session.guard.setBlocked(true);session.completeReply(job,J.obj("url",session.web.getUrl()));session.changed();},5000);
     session.handler.postDelayed(()->event(serial,"backgroundSettings",J.obj("saved",saved,"actualBackground",!session.uiVisible&&!processForeground(),"replyFinished",session.pending==null,"automaticallyApplied",!DeferredBrowserSettings.pending(session)&&session.privacy.wantsDesktop()!=desktop&&session.privacy.desktop!=desktop)),8500);
   }
   void queuedChanges(long serial){
@@ -319,7 +332,7 @@ public class GeckoIntegrationTestActivity extends Activity {
   void queuedChangesReady(long serial,GeckoQueuedChangesObservation observation,QueuedChangesVpn46 vpn){
     if(!vpn.owns()||!observation.ownsUrl(session.web.getUrl())){vpn.abort();return;}
     session.prefs.edit().putString("managementMarker","prime-target").commit();String original=session.prefs.getString("proxy","");int level=session.privacy.level();boolean desktop=session.privacy.wantsDesktop();
-    session.pending=J.obj("id","synthetic-queued-question","kind","web","confirmed",true);session.navigating=false;session.connecting=false;session.state=J.obj("busy",false);
+    beginSyntheticReply("synthetic-queued-question");session.navigating=false;session.connecting=false;session.state=J.obj("busy",false);
     session.changed();boolean browserSaved=DeferredBrowserSettings.save(session,2,!desktop),livePolicyKept=session.privacy.level()==level&&session.privacy.wantsDesktop()==desktop;
     // This synthetic busy-save fixture explicitly chooses deferred application.
     NetworkBridge.run(this,slot,"external",J.obj("proxy","","requireExternalVpn",true),NetworkChanges.hash(this),null,(choice,select)->select.accept(NetworkApplyCoordinator.DEFER),(ok,message,snapshot)->{
@@ -363,17 +376,18 @@ public class GeckoIntegrationTestActivity extends Activity {
   void desktopImage(long serial){desktopImage(serial,false);}
   void desktopImage(long serial,boolean ownProvider){
     session.reading.configure(true);session.web.configure(true,session.privacy.level());
-    final JSONObject held=J.obj("kind","web","confirmed",true);session.pending=held;
+    final JSONObject held=J.obj("kind","web","confirmed",true);
     FixtureView view=(FixtureView)session.web;final boolean[] chooser={false},mime={false};
     MainActivity host=new MainActivity(){
       @Override public android.view.Window getWindow(){return GeckoIntegrationTestActivity.this.getWindow();}
       @Override void status(String message){if(message.contains("失败"))event(serial,"error",J.obj("error",message));}
       @Override public void startActivityForResult(Intent intent,int request){
-        chooser[0]=request==74&&Intent.ACTION_OPEN_DOCUMENT.equals(intent.getAction());mime[0]="image/*".equals(intent.getType())&&intent.getBooleanExtra(Intent.EXTRA_ALLOW_MULTIPLE,false);
-        session.handler.post(()->{view.chooserOrigin=true;try{attachments.result(Activity.RESULT_OK,new Intent().setData(android.net.Uri.parse(ownProvider?"content://local.pocketchat.test.upload/image":"content://synthetic.pocket.upload/image")));}finally{view.chooserOrigin=false;}});
+        chooser[0]=request>=Attachments.FIRST_REQUEST&&request<=Attachments.LAST_REQUEST&&Intent.ACTION_OPEN_DOCUMENT.equals(intent.getAction());mime[0]="image/*".equals(intent.getType())&&intent.getBooleanExtra(Intent.EXTRA_ALLOW_MULTIPLE,false);
+        session.handler.post(()->{view.chooserOrigin=true;try{attachments.result(request,Activity.RESULT_OK,new Intent().setData(android.net.Uri.parse(ownProvider?"content://local.pocketchat.test.upload/image":"content://synthetic.pocket.upload/image")));}finally{view.chooserOrigin=false;}});
       }
     };
     host.attachBaseContext(this);host.session=session;host.remote=view;host.prefs=session.prefs;host.pageMode=true;host.status=new TextView(host);host.loading=new LoadingUi(host);host.attachments=new Attachments(host);
+    view.setHost(host);
     android.webkit.WebChromeClient production=host.attachments.chrome();
     view.setWebChromeClient(new android.webkit.WebChromeClient(){@Override public boolean onShowFileChooser(WebView web,android.webkit.ValueCallback<android.net.Uri[]> callback,FileChooserParams params){view.chooserOrigin=true;try{return production.onShowFileChooser(web,callback,params);}finally{view.chooserOrigin=false;}}});
     final String target="http://127.0.0.1:8765/browser-image?command="+serial+"&nonce="+eventStore.nonce;
@@ -386,14 +400,16 @@ public class GeckoIntegrationTestActivity extends Activity {
     // still contain its successful upload while the next navigation starts.
     // Accept readiness and results only from this invocation's exact URL.
     session.web.evaluateJavascript("(()=>({ready:location.href==="+JSONObject.quote(target)+"&&!!document.getElementById('upload'),value:document.getElementById('upload-result')?.textContent||''}))()",raw->{
+      if(serial!=run)return;
       JSONObject current=J.parse(raw);String value=current.optString("value");boolean touched=tapped;
-      if(!touched&&current.optBoolean("ready")&&session.web.hasVisibleDocument()&&!session.navigating){tapElement(serial,"upload");touched=true;}
+      if(!touched&&current.optBoolean("ready")&&session.web.hasVisibleDocument()&&!session.navigating){session.pending=held;tapElement(serial,"upload");touched=true;}
       final boolean next=touched;
-      if(current.optBoolean("ready")&&value.startsWith("ok:")){boolean retained=session.pending==held;session.pending=null;host.attachments.destroy();event(serial,"desktopImage",J.obj("productionChooserOpened",chooser[0],"imageMimeAndMultiple",mime[0],"pendingPreserved",retained,"noPhantomUpload",session.attachments.length()==0,"upload",value,"desktop",((GeckoWebView)session.web).desktop));return;}
-      if(SystemClock.elapsedRealtime()>deadline){session.pending=null;host.attachments.destroy();event(serial,"error",J.obj("error","desktop image chooser/upload failed","result",raw,"chooser",chooser[0]));return;}
+      if(current.optBoolean("ready")&&value.startsWith("ok:")){boolean retained=session.pending==held;session.pending=null;finishDesktopImageHost(host);event(serial,"desktopImage",J.obj("productionChooserOpened",chooser[0],"imageMimeAndMultiple",mime[0],"pendingPreserved",retained,"noPhantomUpload",session.attachments.length()==0,"upload",value,"desktop",((GeckoWebView)session.web).desktop));return;}
+      if(SystemClock.elapsedRealtime()>deadline){session.pending=null;finishDesktopImageHost(host);event(serial,"error",J.obj("error","desktop image chooser/upload failed","result",raw,"chooser",chooser[0]));return;}
       session.handler.postDelayed(()->desktopImageReady(serial,deadline,host,held,chooser,mime,next,target),100);
     });
   }
+  void finishDesktopImageHost(MainActivity host){host.attachments.destroy();if(host.remote.displayContext.getBaseContext()==host)host.remote.setHost(this);}
   void usability(long serial){
     session.reading.configure(false);session.web.configure(false,session.privacy.level());
     session.web.setWebChromeClient(new android.webkit.WebChromeClient(){

@@ -27,7 +27,9 @@ def member(text,needle):
 
 def opening_helpers(source):
  constants=next(line for line in source.splitlines() if 'static final String NONCE=' in line)
- return constants+'\n'+member(source,'static Intent opening(')+'\n'+member(source,'static void mark(')
+ if 'static final String DIRECT=' in source:constants+='\n'+next(line for line in source.splitlines() if 'static final String DIRECT=' in line)
+ names=['static Intent opening(','static Intent browserOpening(','static Intent detailsOpening(','static void mark(']
+ return constants+'\n'+'\n'.join(member(source,name) for name in names if name in source)
 
 def main():
  p=argparse.ArgumentParser();p.add_argument('--java-home',required=True,type=pathlib.Path);p.add_argument('--json-jar',required=True,type=pathlib.Path);p.add_argument('--before-ref');p.add_argument('--output',required=True,type=pathlib.Path);a=p.parse_args();prod=ROOT/'app/src/main/java/local/pocketchat'
@@ -45,6 +47,8 @@ def main():
  # baseline cases without attempting to compile calls to that new API.
  if a.before_ref and 'static void selectPage(' not in source['WorkspaceNavigation.java'].decode():
   text=text.replace(member(text,'static void workspaceRouting('),'static void workspaceRouting(){}')
+ if a.before_ref:
+  text=text.replace(member(text,'static void directBrowserRouting('),'static void directBrowserRouting(){}')
  with tempfile.TemporaryDirectory(prefix='default-environment-host-') as raw:
   tmp=pathlib.Path(raw);base=tmp/'local/pocketchat';base.mkdir(parents=True);(base/'DefaultEnvironmentHost.java').write_text(text);(base/'AppSettings.java').write_bytes(source['AppSettings.java']);(base/'WorkspaceNavigation.java').write_bytes(source['WorkspaceNavigation.java']);classes=tmp/'classes';files=[*base.glob('*.java'),*HERE.glob('stubs/**/*.java')]
   subprocess.run([str(a.java_home/'bin/javac'),'-encoding','UTF-8','-cp',str(a.json_jar),'-d',str(classes),*map(str,files)],check=True)

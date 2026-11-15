@@ -1,4 +1,4 @@
-"""Finite historical inputs; actual download UI acceptance is a separate gate."""
+"""Fixed release source proofs; current capture AST executes in its separate host."""
 import ast
 import copy
 import hashlib
@@ -9,9 +9,16 @@ import unittest
 from unittest.mock import patch
 
 import ui_download_workspace_v2_source_compatibility as current
-from ui_report_json_source_compatibility import historical_root as report_historical_root
+from ui_report_json_source_compatibility import historical_input as report_historical_input
+from historical_source_inputs import historical_bytes
 
-ROOT = report_historical_root(Path(__file__).resolve().parents[1])
+ROOT = Path(__file__).resolve().parents[1]
+
+
+def historical_download_input(path):
+    """The fixed release cohort, before its already-verified JSON-only change."""
+    return report_historical_input(historical_bytes(path),path)
+
 PREPARATION = ("from ui_test_device import prepare_workflow as prepare_ui_test_device\n"
                "(out/'ui-test-device-isolation.json').write_text(json.dumps(prepare_ui_test_device(adb,serial=args.serial,environment=os.environ),sort_keys=True,indent=2)+'\\n')\n")
 OWNED = frozenset((current.RUNNER, current.ACTIVITY, current.HOST,
@@ -39,7 +46,7 @@ class DownloadWorkspaceHistoricalInputs(unittest.TestCase):
         self.assertEqual((current.BASE_COMMIT, current.BASE_TREE),
                          ('62b37a9c52b899ce593a9cec85050d70fb32e56e', 'bc1e7d6844ec6bd0b4a34a9be321e55140cf32da'))
         for path, row in manifest['files'].items():
-            selected = (ROOT/path).read_bytes()
+            selected = historical_download_input(path)
             with self.subTest(path=path):
                 self.assertEqual((len(selected), current.sha(selected), current.blob(selected)), current.IDENTITIES[path][3:])
                 before = current.source_input(selected, path)
@@ -54,7 +61,7 @@ class DownloadWorkspaceHistoricalInputs(unittest.TestCase):
 
     def test_whole_bytes_missing_duplicate_moved_changed_and_old_images_fail_closed(self):
         for path, row in current.manifest()['files'].items():
-            raw = (ROOT/path).read_bytes()
+            raw = historical_download_input(path)
             candidates = [b'', raw[:1024], raw+b' ', current.source_input(raw, path)]
             for delta in row['deltas']:
                 block = delta['current'].encode();remaining = raw.replace(block, b'', 1)
@@ -69,7 +76,7 @@ class DownloadWorkspaceHistoricalInputs(unittest.TestCase):
 
     def test_two_complete_ast_forms_and_formatting_keep_original_oracles(self):
         import ui_visual_preservation_contract as original
-        raw = (ROOT/current.RUNNER).read_text()
+        raw = historical_download_input(current.RUNNER).decode('utf-8')
         before = current.source_input(raw.encode(), current.RUNNER).decode()
         self.assertEqual(raw.count(PREPARATION), 1)
         for after, previous in ((raw, before), (raw.replace(PREPARATION, '', 1), before.replace(PREPARATION, '', 1))):
@@ -84,7 +91,7 @@ class DownloadWorkspaceHistoricalInputs(unittest.TestCase):
 
     def test_every_ast_addition_rejects_missing_duplicate_moved_or_changed_before_mutation(self):
         import ui_visual_preservation_contract as original
-        raw = (ROOT/current.RUNNER).read_bytes()
+        raw = historical_download_input(current.RUNNER)
         for edit in current.manifest()['runnerAst']['edits']:
             expected = ast.parse(edit['currentSource']).body
             signatures = [ast.dump(n, include_attributes=False) for n in expected]
@@ -124,7 +131,7 @@ class DownloadWorkspaceHistoricalInputs(unittest.TestCase):
                 ('downloadWorkspace=new DownloadWorkspaceVisuals(this,root,nonce)', 'downloadWorkspace=new DownloadWorkspaceVisuals(this,root,null)')),
         }
         for path, changes in cases.items():
-            source = (ROOT/path).read_text()
+            source = historical_download_input(path).decode('utf-8')
             for before, after in changes:
                 self.assertEqual(source.count(before), 1)
                 selected = source.replace(before, after, 1).encode()
@@ -141,7 +148,7 @@ class DownloadWorkspaceHistoricalInputs(unittest.TestCase):
         for path in (current.HOST, 'tests/ui_workspace_v2_source_compatibility.py',
                      'tests/ui_checkpoint_source_compatibility.py', 'tests/ui_workspace_v2_source_controls.py',
                      'tests/profile_ui_navigation_source_compatibility_test.py'):
-            raw = (ROOT/path).read_bytes();before = current.source_input(raw, path)
+            raw = historical_download_input(path);before = current.source_input(raw, path)
             with self.subTest(path=path):
                 self.assertEqual(assertions(raw), assertions(before))
                 self.assertEqual(methods(raw), methods(before))
@@ -157,6 +164,8 @@ class DownloadWorkspaceHistoricalInputs(unittest.TestCase):
 
     def test_retained_v1_host_executes_current_ast_with_only_explicit_protocol_configuration(self):
         import gecko_ui_visual_capture_test as host
+        # Execute and compare the actual working-tree capture; only its old v1
+        # counterpart below is a fixed historical input.
         raw = (ROOT/current.RUNNER).read_bytes()
         actual = next(n for n in ast.parse(raw).body if isinstance(n, ast.FunctionDef) and n.name == 'capture')
         compiled = host.runner_functions('capture')
@@ -171,35 +180,45 @@ class DownloadWorkspaceHistoricalInputs(unittest.TestCase):
         self.assertEqual(record['downloadLocationObservationHistory'], [case.initial_raw, case.fresh_raw])
         selected = next(n for n in actual.body if isinstance(n, ast.If) and
                         any(isinstance(c, ast.Name) and c.id == 'label_log' and isinstance(c.ctx, ast.Store) for c in ast.walk(n)))
-        before = ast.parse(current.source_input(raw, current.RUNNER))
+        before = ast.parse(current.source_input(historical_download_input(current.RUNNER), current.RUNNER))
         old_capture = next(n for n in before.body if isinstance(n, ast.FunctionDef) and n.name == 'capture')
         old_final = next(n for n in old_capture.body if isinstance(n, ast.If) and ast.unparse(n.test) == "scene == 'downloads'")
         self.assertEqual(len(selected.orelse), 1)
         self.assertEqual(ast.dump(selected.orelse[0], include_attributes=False), ast.dump(old_final, include_attributes=False))
 
     def test_historical_roots_only_change_named_read_ports_and_never_disk(self):
-        for names in ((current.RUNNER, current.HOST), (current.ACTIVITY,)):
-            root = current.historical_root(ROOT, names)
-            self.assertEqual(os.fspath(root), str(ROOT))
-            for path in names:
-                raw = (ROOT/path).read_bytes()
-                self.assertEqual((root/path).read_bytes(), current.source_input(raw, path))
-                self.assertEqual((root/path).read_text().encode(), current.source_input(raw, path))
-                self.assertFalse(hasattr(root/path, 'write_bytes'))
-                self.assertEqual((ROOT/path).read_bytes(), raw)
-            plain = 'tests/gecko/DownloadLocationLayoutEvidence.java'
-            self.assertIsInstance(root/plain, Path)
-            self.assertEqual((root/plain).read_bytes(), (ROOT/plain).read_bytes())
-        for root, names in ((str(ROOT), (current.ACTIVITY,)), (ROOT.parent, (current.ACTIVITY,)),
-                            (ROOT, [current.ACTIVITY]), (ROOT, (current.RUNNER,)), (ROOT, tuple(OWNED))):
-            with self.assertRaises(AssertionError):current.historical_root(root, names)
-        raw = (ROOT/current.ACTIVITY).read_bytes()+b'\n';read = Path.read_bytes
-        def changed(path):return raw if path == ROOT/current.ACTIVITY else read(path)
-        with patch.object(Path, 'read_bytes', changed):
-            self.assertIs((current.historical_root(ROOT, (current.ACTIVITY,))/current.ACTIVITY).read_bytes(), raw)
+        # Supply fixed source files to the unchanged old read-port contract.
+        # This test-local filesystem boundary never supplies a runtime host.
+        actual_read = Path.read_bytes
+        paths = [ROOT/name for name in (current.RUNNER,current.HOST,current.ACTIVITY)]
+        actual_files = {path:actual_read(path) for path in paths}
+        selected_files = {ROOT/name:historical_download_input(name) for name in (current.RUNNER,current.HOST,current.ACTIVITY)}
+        def fixture_read(path):
+            return selected_files[path] if path in selected_files else actual_read(path)
+        with patch.object(Path,'read_bytes',fixture_read):
+            for names in ((current.RUNNER, current.HOST), (current.ACTIVITY,)):
+                root = current.historical_root(ROOT, names)
+                self.assertEqual(os.fspath(root), str(ROOT))
+                for path in names:
+                    raw = (ROOT/path).read_bytes()
+                    self.assertEqual((root/path).read_bytes(), current.source_input(raw, path))
+                    self.assertEqual((root/path).read_text().encode(), current.source_input(raw, path))
+                    self.assertFalse(hasattr(root/path, 'write_bytes'))
+                    self.assertEqual((ROOT/path).read_bytes(), raw)
+                plain = 'tests/gecko/DownloadLocationLayoutEvidence.java'
+                self.assertIsInstance(root/plain, Path)
+                self.assertEqual((root/plain).read_bytes(), (ROOT/plain).read_bytes())
+            for root, names in ((str(ROOT), (current.ACTIVITY,)), (ROOT.parent, (current.ACTIVITY,)),
+                                (ROOT, [current.ACTIVITY]), (ROOT, (current.RUNNER,)), (ROOT, tuple(OWNED))):
+                with self.assertRaises(AssertionError):current.historical_root(root, names)
+            raw = (ROOT/current.ACTIVITY).read_bytes()+b'\n';read = Path.read_bytes
+            def changed(path):return raw if path == ROOT/current.ACTIVITY else read(path)
+            with patch.object(Path, 'read_bytes', changed):
+                self.assertIs((current.historical_root(ROOT, (current.ACTIVITY,))/current.ACTIVITY).read_bytes(), raw)
+        self.assertEqual({path:actual_read(path) for path in paths},actual_files)
 
     def test_types_paths_excerpt_modified_fixture_and_symlink_are_rejected(self):
-        raw = (ROOT/current.RUNNER).read_bytes()
+        raw = historical_download_input(current.RUNNER)
         for candidate in (None, raw.decode(), bytearray(raw), memoryview(raw), True):
             with self.assertRaises(AssertionError):current.source_input(candidate, current.RUNNER)
         for path in (None, Path(current.RUNNER), '/'+current.RUNNER, '../'+current.RUNNER, 'unknown.py'):
@@ -214,7 +233,7 @@ class DownloadWorkspaceHistoricalInputs(unittest.TestCase):
 
     def test_shallow_history_views_and_original_oracles_need_no_git_or_network(self):
         import ui_visual_preservation_contract as original
-        raw = (ROOT/current.RUNNER).read_text();fixture = (ROOT/current.ACTIVITY).read_bytes()
+        raw = historical_download_input(current.RUNNER).decode('utf-8');fixture = historical_download_input(current.ACTIVITY)
         with (patch('subprocess.check_output', side_effect=AssertionError('No undeclared historical object access')),
               patch('subprocess.run', side_effect=AssertionError('No historical fetch or new process'))):
             runner = original.verify_shared_ui_source(raw)

@@ -19,9 +19,9 @@ final class BrowserSettingsUi {
     ReferenceUi.Modal dialog=new ReferenceUi.Modal(activity,"此环境的浏览器与启动");
     dialog.note(Profiles.display(activity,expected.slot));
     LinearLayout form=DesignUi.column(activity);dialog.body.addView(form);
-    DesignUi.note(form,"启动界面");
-    Spinner start=new Spinner(activity);start.setContentDescription("此环境的默认启动界面");start.setMinimumHeight(DesignUi.dp(activity,48));
-    start.setAdapter(DesignUi.spinnerAdapter(activity,new String[]{"Gecko 指纹浏览器 · ChatGPT 增强","Chromium 指纹浏览器"}));start.setSelection(BrowserPreferences.startBrowser(activity)?1:0);form.addView(start,new LinearLayout.LayoutParams(-1,-2));
+    DesignUi.note(form,"默认浏览器内核");
+    Spinner start=new Spinner(activity);start.setContentDescription("此环境的默认浏览器内核");start.setMinimumHeight(DesignUi.dp(activity,48));
+    start.setAdapter(DesignUi.spinnerAdapter(activity,new String[]{"Gecko 浏览器","Chromium 浏览器"}));start.setSelection(BrowserPreferences.startBrowser(activity)?1:0);form.addView(start,new LinearLayout.LayoutParams(-1,-2));
     EditText home=DesignUi.input(form,"两个内核的默认网站",BrowserPreferences.home(activity),BrowserPreferences.DEFAULT_URL);
     home.setInputType(InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_URI);home.setSingleLine(true);home.setImeOptions(EditorInfo.IME_ACTION_DONE);home.setFilters(new InputFilter[]{new InputFilter.LengthFilter(8192)});
     DesignUi.action(form,"恢复默认网站为 ChatGPT",false,()->home.setText(BrowserPreferences.DEFAULT_URL));

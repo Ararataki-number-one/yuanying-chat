@@ -464,6 +464,23 @@ public final class CompactChromeIntegrationActivity extends MainActivity {
         Rect hit=(Rect)touch.invoke(designChrome,views[i]);hit.offset(origin[0],origin[1]);
         controls.put(J.obj("name",names[i],"visible",bounds(views[i]),"touch",rect(hit),"widthDp",hit.width()/density(),"heightDp",hit.height()/density(),"tap",J.arr(hit.centerX(),hit.bottom-1)));
       }
+      JSONArray browserControls=new JSONArray();
+      String[] browserNames={"back","forward","address","reload","home"};
+      Button[] browserViews={geckoAddress.back,geckoAddress.forward,geckoAddress.address,geckoAddress.reload,geckoAddress.home};
+      for(int i=0;i<browserViews.length;i++){
+        Button view=browserViews[i];Rect box=screenBounds(view);
+        JSONObject control=J.obj("name",browserNames[i],"bounds",rect(box),"shown",view.isShown(),"clickable",view.isClickable(),
+          "tap",J.arr(box.centerX(),box.centerY()));
+        if(view==geckoAddress.address){
+          Paint.FontMetrics font=view.getPaint().getFontMetrics();
+          control.put("fontHeight",font.bottom-font.top).put("contentHeight",view.getHeight()-view.getCompoundPaddingTop()-view.getCompoundPaddingBottom())
+            .put("lineCount",view.getLayout()==null?0:view.getLayout().getLineCount());
+        }
+        browserControls.put(control);
+      }
+      GeckoAddressUi.BrowserAddressRow browserRow=geckoAddress.row;
+      JSONObject browserAddressRow=J.obj("bounds",bounds(browserRow),"stacked",browserRow.stacked,"controls",browserControls,
+        "padding",J.arr(browserRow.getPaddingLeft(),browserRow.getPaddingTop(),browserRow.getPaddingRight(),browserRow.getPaddingBottom()));
       JSONArray texts=new JSONArray();int[] textRoles={16,12,12,11};int textRole=0;
       for(TextView text:new TextView[]{designChrome.title,networkLine,latency,designChrome.stateWord}){
         Paint.FontMetrics font=text.getPaint().getFontMetrics();
@@ -474,7 +491,7 @@ public final class CompactChromeIntegrationActivity extends MainActivity {
       TextView dot=designChrome.dot;
       Paint.FontMetrics dotFont=dot.getPaint().getFontMetrics();
       JSONObject decorativeDot=J.obj("textSizeDp",dot.getTextSize()/density(),"inkWidth",dot.getPaint().measureText(dot.getText().toString()),"contentWidth",dot.getWidth()-dot.getPaddingLeft()-dot.getPaddingRight(),"fontHeight",dotFont.bottom-dotFont.top,"contentHeight",dot.getHeight()-dot.getPaddingTop()-dot.getPaddingBottom(),"height",dot.getHeight());
-      Log.i("PocketCompactChrome",J.obj("command",command,"event",event,"syntheticPresentation",true,"actualLatencyMeasurement",false,"actions",actionCount,"page",hub.page,"pageMode",pageMode,"geckoOnly",remote.enabled,"noNativeChat",noNativeChat(),"systemWebViews",systemWebViews(getWindow().getDecorView()),"viewportDp",getResources().getDisplayMetrics().widthPixels/density(),"fontScale",getResources().getConfiguration().fontScale,"navigationContract",2,"toolbar",rect(toolbarBounds),"topBounds",bounds(top),"toolbarHeightDp",toolbar.getHeight()/density(),"topHeightDp",top.getHeight()/density(),"networkHeightDp",designChrome.networkRow.getHeight()/density(),"networkBounds",rect(networkBounds),"networkTap",J.arr(networkBounds.centerX(),networkBounds.centerY()),"stateTap",center(designChrome.stateWord),"networkClickable",designChrome.networkRow.isClickable(),"networkFocusable",designChrome.networkRow.isFocusable(),"networkBackground",designChrome.networkRow.getBackground()==null?"none":designChrome.networkRow.getBackground().getClass().getName(),"networkDescription",String.valueOf(designChrome.networkRow.getContentDescription()),"latency",latency.getText().toString(),"expectedLatency",network.latency+network.latencyTimer,"controls",controls,"texts",texts,"decorativeDot",decorativeDot).toString());
+      Log.i("PocketCompactChrome",J.obj("command",command,"event",event,"syntheticPresentation",true,"actualLatencyMeasurement",false,"actions",actionCount,"page",hub.page,"pageMode",pageMode,"geckoOnly",remote.enabled,"noNativeChat",noNativeChat(),"systemWebViews",systemWebViews(getWindow().getDecorView()),"viewportDp",getResources().getDisplayMetrics().widthPixels/density(),"fontScale",getResources().getConfiguration().fontScale,"navigationContract",2,"browserChrome",true,"browserAddressRow",browserAddressRow,"toolbar",rect(toolbarBounds),"topBounds",bounds(top),"toolbarHeightDp",toolbar.getHeight()/density(),"topHeightDp",top.getHeight()/density(),"networkHeightDp",designChrome.networkRow.getHeight()/density(),"networkBounds",rect(networkBounds),"networkTap",J.arr(networkBounds.centerX(),networkBounds.centerY()),"stateTap",center(designChrome.stateWord),"networkClickable",designChrome.networkRow.isClickable(),"networkFocusable",designChrome.networkRow.isFocusable(),"networkBackground",designChrome.networkRow.getBackground()==null?"none":designChrome.networkRow.getBackground().getClass().getName(),"networkDescription",String.valueOf(designChrome.networkRow.getContentDescription()),"latency",latency.getText().toString(),"expectedLatency",network.latency+network.latencyTimer,"controls",controls,"texts",texts,"decorativeDot",decorativeDot).toString());
     }catch(Exception error){Log.i("PocketCompactChrome",J.obj("command",command,"event",event,"error",error.toString()).toString());}
   }
 

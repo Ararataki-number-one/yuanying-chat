@@ -5,6 +5,7 @@ import hashlib
 import importlib.machinery
 import importlib.util
 import itertools
+import io
 import json
 import os
 from pathlib import Path
@@ -14,6 +15,7 @@ import sys
 import tempfile
 import types
 import unittest
+import uuid
 from unittest import mock
 
 ROOT=Path(__file__).resolve().parents[1]
@@ -28,6 +30,51 @@ def named(tree,name):
 def calls(tree,name):
     return [n for n in ast.walk(tree) if isinstance(n,ast.Call) and isinstance(n.func,ast.Name) and n.func.id==name]
 def normalized(node):return ast.dump(node,include_attributes=False)
+
+class CollapseReadingFixtureTest(unittest.TestCase):
+    """Execute the real synthetic handler; these are HTML controls, not device proof."""
+    def render(self,path):
+        class Fixture:
+            def __init__(self):self.path=path;self.wfile=io.BytesIO();self.headers={};self.status=None
+            def send_response(self,code):self.status=code
+            def send_error(self,code):self.status=code
+            def send_header(self,key,value):self.headers[key]=value
+            def end_headers(self):pass
+        trace=[];namespace=dict(reload_loopback=types.SimpleNamespace(Fixture=Fixture,TRACE=trace),uuid=uuid)
+        exec(compile(ast.Module(body=[named(original,'ReloadHttp')],type_ignores=[]),'<actual-reload-handler>','exec'),namespace)
+        handler=namespace['ReloadHttp']();handler.do_GET()
+        body=handler.wfile.getvalue().decode()
+        self.assertEqual(handler.status,200);self.assertEqual(int(handler.headers['Content-Length']),len(body.encode()))
+        self.assertEqual(trace[0]['path'],path)
+        return body
+
+    def assert_reading_surface(self,body):
+        self.assertIn('#composer{position:static;',body)
+        self.assertNotIn('#composer{position:fixed;',body)
+        self.assertLess(body.index('height:12000px'),body.index('<form id="composer">'))
+
+    def test_collapse_reading_surface_keeps_live_composer_after_full_reading_content(self):
+        body=self.render('/c/reload-collapse');self.assert_reading_surface(body)
+        for value in ('id="prompt-textarea"','unsent controlled browser draft','data-testid="send-button"',
+                      'data-testid="stop-button"','id="send-count">0','chromeInputEvidence',"listenerTypes:types"):
+            self.assertIn(value,body)
+        self.assertNotIn('pointer-events:none',body);self.assertNotIn('disabled=',body)
+
+    def test_editing_reload_fixtures_retain_original_fixed_composer(self):
+        for suffix in ('A','B','C'):
+            body=self.render('/c/reload-'+suffix)
+            self.assertIn('#composer{position:fixed;bottom:0;',body)
+            self.assertNotIn('height:12000px',body);self.assertNotIn('data-testid="stop-button"',body)
+            self.assertIn('unsent controlled browser draft',body)
+
+    def test_old_fixed_reading_composer_is_rejected_without_changing_input_workload(self):
+        body=self.render('/c/reload-collapse').replace('#composer{position:static;','#composer{position:fixed;bottom:0;')
+        with self.assertRaises(AssertionError):self.assert_reading_surface(body)
+        for scenario in ('cold','after-reload'):
+            selected=module.selected_program(source,scenario)
+            self.assertEqual([normalized(n) for n in calls(selected,'run_chrome_collapse')],
+                             [normalized(n) for n in calls(original,'run_chrome_collapse')])
+
 
 class FocusedDiagnosticTest(unittest.TestCase):
     def test_unknown_scenario_rejected(self):

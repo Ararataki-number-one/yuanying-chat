@@ -18,7 +18,7 @@ final class ReferenceUi {
     GREEN=DesignUi.GREEN,ORANGE=0xffa96c0a,RED=DesignUi.RED;
   // Page identities deliberately differ from visual positions in this bar.
   private static final int[] WORKSPACE_PAGES={AppHub.CHAT,AppHub.ENVIRONMENTS,AppHub.DOWNLOADS,AppHub.NETWORK,AppHub.SETTINGS};
-  private static final String[] WORKSPACE_LABELS={"会话","环境","下载","网络","设置"},WORKSPACE_GLYPHS={"chat","window","download","globe","settings"};
+  private static final String[] WORKSPACE_LABELS={"浏览器","环境","下载","网络","设置"},WORKSPACE_GLYPHS={"browser","window","download","globe","settings"};
   // Shared roles keep the four native surfaces in step without changing the
   // conversation's compact controls into a management-page header.
   static final int PAGE_TITLE_SIZE=30,CARD_TITLE_SIZE=16,EMPTY_TITLE_SIZE=18,
@@ -45,7 +45,7 @@ final class ReferenceUi {
     Context c=panel.a;
     if(panel.body.getChildCount()>0){View line=new View(c);line.setBackgroundColor(LINE);LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(-1,Math.max(1,dp(c,1)/2));p.leftMargin=dp(c,12);p.rightMargin=dp(c,12);panel.body.addView(line,p);}
     Button b=link(c,label,run);boolean destructive=label.startsWith("删除")||label.startsWith("清空");b.setTextSize(16);b.setTextColor(destructive?RED:TEXT);b.setGravity(Gravity.START|Gravity.CENTER_VERTICAL);b.setPadding(dp(c,12),dp(c,14),dp(c,12),dp(c,14));b.setMinHeight(dp(c,54));b.setMinimumHeight(dp(c,54));
-    String glyph=destructive?"trash":label.contains("分享")?"share":label.contains("复制")?"clipboard":label.contains("另存")||label.contains("保存位置")?"download":label.contains("会话")?"chat":label.equals("打开")?"file":label.contains("编辑")?"new":label.contains("网络")?"globe":label.contains("下载")?"download":label.contains("环境")?"window":label.contains("刷新")||label.contains("重新连接")?"refresh":"info";
+    String glyph=destructive?"trash":label.contains("分享")?"share":label.contains("复制")?"clipboard":label.contains("另存")||label.contains("保存位置")?"download":label.contains("浏览器")||label.contains("继续浏览")?"browser":label.contains("会话")?"chat":label.equals("打开")?"file":label.contains("编辑")?"new":label.contains("网络")?"globe":label.contains("下载")?"download":label.contains("环境")?"window":label.contains("刷新")||label.contains("重新连接")?"refresh":"info";
     Ui.Icon icon=new Ui.Icon(glyph,destructive?RED:BLUE);icon.setBounds(0,0,dp(c,21),dp(c,21));b.setCompoundDrawables(icon,null,null,null);b.setCompoundDrawablePadding(dp(c,14));
     panel.body.addView(b,new LinearLayout.LayoutParams(-1,-2));return b;
   }
@@ -139,15 +139,15 @@ final class ReferenceUi {
   static LinearLayout workspaceNav(Activity a,int page,java.util.function.IntConsumer action,Button[] buttons){
     if(buttons==null)buttons=new Button[WORKSPACE_PAGES.length];
     if(buttons.length!=WORKSPACE_PAGES.length)throw new IllegalArgumentException("Five workspace buttons required");
-    LinearLayout bar=DesignUi.column(a);bar.setPadding(dp(a,12),dp(a,10),dp(a,12),dp(a,12));
-    bar.setClipChildren(false);bar.setClipToPadding(false);
     int heightDp=navHeightDp(a),radius=(heightDp+1)/2;
     GlassDock dock=new GlassDock(a,true);dock.setPadding(dp(a,5),dp(a,2),dp(a,5),dp(a,2));
+    LinearLayout bar=new WorkspaceNavBar(a,dock,dp(a,heightDp));bar.setPadding(dp(a,12),dp(a,10),dp(a,12),dp(a,12));
+    bar.setClipChildren(false);bar.setClipToPadding(false);
     dock.setBackground(DesignUi.glass(a,radius));GlassMotion.press(dock,false);
     for(int i=0;i<WORKSPACE_PAGES.length;i++){
       final int destination=WORKSPACE_PAGES[i];
       Button b=link(a,WORKSPACE_LABELS[i],()->action.accept(destination));b.setTextSize(12);b.setGravity(Gravity.CENTER);
-      b.setSingleLine(false);b.setMaxLines(1);b.setHorizontallyScrolling(false);b.setEllipsize(null);
+      b.setSingleLine(false);b.setMaxLines(2);b.setHorizontallyScrolling(false);b.setEllipsize(null);
       b.setIncludeFontPadding(true);if(Build.VERSION.SDK_INT>=28)b.setFallbackLineSpacing(true);
       b.setTypeface(Typeface.create("sans-serif",Typeface.NORMAL));
       b.setMinWidth(dp(a,48));b.setMinimumWidth(dp(a,48));b.setContentDescription(WORKSPACE_LABELS[i]);
@@ -159,7 +159,32 @@ final class ReferenceUi {
       dock.addView(b,new LinearLayout.LayoutParams(0,-1,1));
       ((DesignUi.ActionButton)b).pressedSurface(dock);buttons[i]=b;
     }
-    bar.addView(dock,new LinearLayout.LayoutParams(-1,dp(a,heightDp)));markWorkspaceNav(buttons,page);return bar;
+    markWorkspaceNav(buttons,page);return bar;
+  }
+  /** Equal destinations keep the system text size and grow for wrapped labels. */
+  private static final class WorkspaceNavBar extends LinearLayout {
+    private final GlassDock dock;private final int minimumHeight,verticalPadding;
+    WorkspaceNavBar(Context c,GlassDock dock,int minimumHeight){
+      super(c);this.dock=dock;this.minimumHeight=minimumHeight;verticalPadding=dp(c,16);
+      setOrientation(VERTICAL);addView(dock,new LinearLayout.LayoutParams(-1,minimumHeight));
+    }
+    @Override protected void onMeasure(int widthSpec,int heightSpec){
+      super.onMeasure(widthSpec,heightSpec);
+      int count=dock.getChildCount();if(count==0)return;
+      int columnWidth=Math.max(0,(dock.getMeasuredWidth()-dock.getPaddingLeft()-dock.getPaddingRight())/count);
+      int height=minimumHeight;
+      for(int i=0;i<count;i++){
+        View button=dock.getChildAt(i);
+        button.measure(MeasureSpec.makeMeasureSpec(columnWidth,MeasureSpec.EXACTLY),
+          MeasureSpec.makeMeasureSpec(0,MeasureSpec.UNSPECIFIED));
+        // Centering changes padding after layout. Measure the native content
+        // with its original breathing room, without accumulating that padding.
+        int content=button.getMeasuredHeight()-button.getPaddingTop()-button.getPaddingBottom();
+        height=Math.max(height,content+verticalPadding+dock.getPaddingTop()+dock.getPaddingBottom());
+      }
+      dock.getLayoutParams().height=height;
+      super.onMeasure(widthSpec,heightSpec);
+    }
   }
   static void markWorkspaceNav(Button[] tabs,int page){
     int position=-1;

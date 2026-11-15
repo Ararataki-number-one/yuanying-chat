@@ -151,9 +151,9 @@ def capture(variant,width,height,scale,scene,theme='light'):
         preference_check={'preferenceControls':sorted(seen),'removedNoticeControlsAbsent':True,'scrollFrames':len(collected),'tabScrolls':tab_scrolls}
     if scene=='chat' and UI_NAVIGATION_CONTRACT==2:
         time.sleep(2.5);xml=dump()
-        conversation_header(xml,package,width,height,scale,'日常会话')
+        conversation_header(xml,package,width,height,scale,'日常会话',browser=True)
     elif scene=='chat':
-        time.sleep(2.5);xml=dump();assert all(label in xml for label in ['会话','环境','下载','网络','设置'])
+        time.sleep(2.5);xml=dump();assert all(label in xml for label in ['浏览器','环境','下载','网络','设置'])
         assert not any(n.attrib.get('text') in ['简洁','原网页'] for n in ET.fromstring(xml).iter('node')),xml
         nodes=list(ET.fromstring(xml).iter('node'))
         environment=[n for n in nodes if n.attrib.get('content-desc','').startswith('当前环境：')]
@@ -385,7 +385,7 @@ try:
                 assert management_navigation=={'activity':'local.pocketchat.WindowHomeActivity','actualDrawerTap':True,'resumedThenReturned':True},management_navigation
                 adb('shell','input','keyevent','KEYCODE_BACK');visible('快速切换环境',False)
             elif control['name']=='more':
-                label='会话选项'
+                label='浏览器菜单'
                 visible(label)
                 adb('shell','input','keyevent','KEYCODE_BACK')
                 visible(label,False)
@@ -407,6 +407,11 @@ try:
             body=b'''<!doctype html><html data-reload-document="__RELOAD_DOCUMENT__"><meta name="viewport" content="width=device-width,initial-scale=1"><style>body{font:18px sans-serif}#composer{position:fixed;bottom:0;background:white;width:90%}textarea{width:95%;height:70px}</style><main><article data-message-author-role="user" data-message-id="reload-user"><div data-user-message-bubble>already sent fixture question</div></article><section><div data-message-author-role="assistant" data-message-id="reload-reply"><div class="markdown"><p>Preserved controlled reply body.</p></div></div></section></main><form id="composer"><textarea id="prompt-textarea">unsent controlled browser draft</textarea><button type="button" data-testid="send-button" aria-label="Send" onclick="document.getElementById('send-count').textContent=Number(document.getElementById('send-count').textContent)+1">Send</button></form><span id="send-count">0</span><script>document.cookie='session=synthetic-reload; Path=/';</script></html>'''.replace(b'__RELOAD_DOCUMENT__',document_marker.encode('ascii'))
             if self.path=='/c/reload-collapse':
                 body=body.replace(b'</main>',b'<div style="height:12000px;overflow:hidden">Controlled long reading document</div></main>')
+                # This reading gesture fixture needs an unobstructed scroll
+                # surface at large fonts. Keep its live composer in document
+                # flow after the existing reading content; editing fixtures
+                # above retain their fixed composer and original controls.
+                body=body.replace(b'#composer{position:fixed;bottom:0;',b'#composer{position:static;')
                 body=body.replace(b'</form>',b'<button type="button" data-testid="stop-button" aria-label="Stop">Stop</button></form>')
                 body=body.replace(b'</html>',b'''<script>
                 (()=>{

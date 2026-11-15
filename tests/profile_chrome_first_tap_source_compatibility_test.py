@@ -2,6 +2,7 @@
 import ast
 import hashlib
 from pathlib import Path
+from historical_source_inputs import historical_bytes
 import subprocess
 import tempfile
 import unittest
@@ -21,7 +22,7 @@ class FirstTapHistoricalSourceControls(unittest.TestCase):
     def test_two_whole_sources_inverse_and_forward_equal_real_committed_bytes(self):
         for relative, row in compat.manifest()['files'].items():
             previous = subprocess.check_output(['git', 'show', compat.BASE_COMMIT + ':' + relative], cwd=ROOT)
-            current = before_navigation((ROOT / relative).read_bytes(), relative)
+            current = before_navigation(historical_bytes(relative), relative)
             with self.subTest(path=relative):
                 self.assertEqual((SHA(previous), len(previous)), (row['previousSha256'], row['previousBytes']))
                 self.assertEqual((SHA(current), len(current)), (row['reviewedSha256'], row['reviewedBytes']))
@@ -40,7 +41,7 @@ class FirstTapHistoricalSourceControls(unittest.TestCase):
         for relative, row in compat.manifest()['files'].items():
             if relative == 'tools/gecko/chrome_header_readiness.py':
                 continue  # The original two rows retain all fourteen old controls.
-            raw = (ROOT / relative).read_bytes()
+            raw = historical_bytes(relative)
             for delta in row['deltas']:
                 chunk = delta['current'].encode()
                 remaining = raw.replace(chunk, b'', 1)
@@ -62,7 +63,7 @@ class FirstTapHistoricalSourceControls(unittest.TestCase):
     def test_reviewed_header_transport_input_has_exact_bounded_negative_controls(self):
         relative = 'tools/gecko/chrome_header_readiness.py'
         row = compat.manifest()['files'][relative]
-        current = (ROOT / relative).read_bytes()
+        current = historical_bytes(relative)
         original = subprocess.check_output(['git', 'show', compat.BASE_COMMIT + ':' + relative], cwd=ROOT)
         self.assertEqual(original, subprocess.check_output(['git', 'show', '72e3bcac55285fea483e612ba4481f7e073a5422:' + relative], cwd=ROOT))
         self.assertEqual(compat.source_input(current, relative), original)
@@ -98,11 +99,11 @@ class FirstTapHistoricalSourceControls(unittest.TestCase):
             self.assertNotIn('chrome_first_tap_source_compatibility', (ROOT / path).read_text())
 
     def test_existing_header_whole_golden_home_ast_and_all_original_assertions_remain(self):
-        current = (ROOT / RUNNER).read_text()
+        current = historical_bytes(RUNNER).decode('utf-8')
         self.assertEqual(SHA(original_header_runner(current).encode()),
                          '47889966ca35c31ab8556a2c987f84378619471103c9720221cc2c3bf2ade1e3')
         old = subprocess.check_output(['git', 'show', compat.BASE_COMMIT + ':' + GUARD], cwd=ROOT)
-        current_guard = (ROOT / GUARD).read_bytes()
+        current_guard = historical_bytes(GUARD)
         self.assertEqual(compat.source_input(current_guard, GUARD), old)
         def assertions(raw):
             return [ast.dump(node, include_attributes=False) for node in ast.walk(ast.parse(raw))
@@ -116,7 +117,7 @@ class FirstTapHistoricalSourceControls(unittest.TestCase):
         self.assertIn('b663b22628d1868c5348434823505d2ce23956cbe228a08d3c6e4043f39e83d8', current_guard.decode())
 
     def test_changed_scope_point_identity_original_deadline_or_oracle_cannot_normalize_away(self):
-        source = (ROOT / RUNNER).read_text()
+        source = historical_bytes(RUNNER).decode('utf-8')
         for before, after in (
                 ("if label=='initialChat':", "if label!='initialChat':"),
                 ("point=prepared['point']", 'point=[0,0]'),
@@ -132,7 +133,7 @@ class FirstTapHistoricalSourceControls(unittest.TestCase):
                 original_header_runner(candidate)
 
     def test_types_owned_paths_excerpt_and_corrupted_fixture_fail_closed(self):
-        raw = (ROOT / RUNNER).read_bytes()
+        raw = historical_bytes(RUNNER)
         for path in (None, Path(RUNNER), '/' + RUNNER, '../' + RUNNER, RUNNER + '.other'):
             with self.assertRaises(ValueError):
                 compat.source_input(raw, path)

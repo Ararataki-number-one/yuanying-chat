@@ -21,15 +21,22 @@ def main():
     parser.add_argument('--java-home', type=Path, required=True)
     parser.add_argument('--json-jar', type=Path, required=True)
     parser.add_argument('--output', type=Path, required=True)
-    parser.add_argument('--mutation', choices=['sync-runtime-only', 'pretend-allocation-ready'])
+    parser.add_argument('--mutation', choices=['sync-runtime-only', 'pretend-allocation-ready', 'obsolete-navigation-owner'])
     args = parser.parse_args()
     root = Path(__file__).resolve().parents[2]; prod = root/'app/src/main/java/local/pocketchat'
-    view = prod/'GeckoWebView.java'; session = prod/'ChatSession.java'
+    view = prod/'GeckoWebView.java'; session = prod/'ChatSession.java'; observer = prod/'WebReplyObserver.java'
     activity = root/'tests/gecko/ResourcePressureIntegrationActivity.java'
     parent = root/'tests/gecko/GeckoIdentityPrototypeIntegrationActivity.java'
     template = Path(__file__).with_name('ResourceRecoveryHost.java.in')
     methods = {'retry': member(view.read_text(), 'boolean retryResourceStart()'),
-               'navigation': member(session.read_text(), 'void beginNavigation('),
+               'current': member(view.read_text(), 'private boolean navigationCurrent('),
+               'invalidate': member(session.read_text(), 'private long invalidateBrowserPageWork('),
+               'navigation': member(session.read_text(), 'long beginNavigation('),
+               'web_job': member(observer.read_text(), 'static boolean webJob('),
+               'web_navigation': member(observer.read_text(), 'void navigationStarted('),
+               'same': member(observer.read_text(), 'static boolean same('),
+               'binding_route': member(observer.read_text(), 'static boolean bindingRoute('),
+               'chat_url': member((prod/'MainActivity.java').read_text(), 'static boolean chatUrl('),
                'timeout': member(session.read_text(), 'void navigationTimeout('),
                'cold': member(activity.read_text(), 'void coldAllocation()'),
                'allocated': member(activity.read_text(), 'void awaitRecoveryAllocation('),
@@ -41,15 +48,19 @@ def main():
         code = code.replace('@'+key.upper()+'@', body)
     code = code.replace('@STARTUP@', startup)
     if args.mutation == 'sync-runtime-only':
-        needle = 'initialize();if(!resourceDeferred&&!failed){'
+        needle = 'if(!resourceDeferred&&!failed){'
         assert code.count(needle) == 1
-        code = code.replace(needle, 'initialize();if(!resourceDeferred&&!failed&&runtime!=null){', 1)
+        code = code.replace(needle, 'if(!resourceDeferred&&!failed&&runtime!=null){', 1)
     if args.mutation == 'pretend-allocation-ready':
         needle = 'if(view.runtime==null){handler.postDelayed(()->awaitRecoveryAllocation(oldEpoch),20);return;}'
         assert code.count(needle) == 1
         code = code.replace(needle, 'if(false){handler.postDelayed(()->awaitRecoveryAllocation(oldEpoch),20);return;}', 1)
+    if args.mutation == 'obsolete-navigation-owner':
+        needle = 'return navigation>=0&&!destroyed&&!owner.deleted&&current==session&&owner.navigationEpoch==navigation;'
+        assert code.count(needle) == 1
+        code = code.replace(needle, 'return true;', 1)
     boundaries = sorted((root/'tests/resource-pressure-host/android').rglob('*.java'))
-    inputs = [view, session, activity, parent, prod/'ResourcePressureController.java', prod/'J.java',
+    inputs = [view, session, observer, prod/'MainActivity.java', activity, parent, prod/'ResourcePressureController.java', prod/'J.java',
               template, Path(__file__).resolve(), *boundaries]
     hashes = {str(path.relative_to(root)): hashlib.sha256(path.read_bytes()).hexdigest() for path in inputs}
     args.output.parent.mkdir(parents=True, exist_ok=True)
@@ -73,8 +84,10 @@ def main():
                   files=hashes, actualMethodsSha256={key:hashlib.sha256(value.encode()).hexdigest() for key,value in methods.items()},
                   startupDeadlineStatementSha256=hashlib.sha256(startup.encode()).hexdigest(),
                   actualAndroidExecution=False, actualGeckoExecution=False, actualNativeStartup=False,
-                  scope='Current production resource retry, beginNavigation, navigationTimeout and ResourcePressureController; '
+                  scope='Current production resource retry/ownership, beginNavigation/read-lease invalidation, navigationTimeout, webJob/navigationStarted and ResourcePressureController; '
                         'current coldAllocation/awaitRecoveryAllocation/beginCase and original60s startup guard. '
+                        'Synthetic non-web resource recovery task plus actual ChatGPT origin/route matching for same-page recovery. '
+                        'Cross-page web archival throws at this explicit observer boundary and runs in the independent page-lifecycle host; Android Uri uses java.net.URI. '
                         'Explicit session, Gecko-runtime creation and asynchronous CPU/TLS/looper doubles; no real native execution or capacity claim.')
     args.output.write_text(json.dumps(report, ensure_ascii=False, indent=2)+'\n')
     print(json.dumps(dict(status=report['status'], passed=report['passed'], output=str(args.output))))

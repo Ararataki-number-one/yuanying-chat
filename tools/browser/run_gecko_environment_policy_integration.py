@@ -29,6 +29,7 @@ from check_gecko_environment_policy_evidence import (
 REPORT_URI = 'content://local.pocketchat.test.gecko-environment-policy-evidence/report'
 ACTIVITY = 'local.pocketchat.test/local.pocketchat.GeckoEnvironmentPolicyIntegrationActivity'
 MAX_ACTIVITY_BYTES = 1024 * 1024
+TRANSPORT_DIAGNOSTIC_NAME = 'gecko-environment-policy-transport-diagnostic.json'
 
 
 def activity_start_args(nonce, source, leaf, ca):
@@ -242,6 +243,16 @@ def main():
         if not unchanged:
             error = error or ValueError('Gecko policy execution inputs changed')
             report.update(status='failed', error='Gecko policy execution inputs changed')
+        if server is not None:
+            try:
+                # Separate bounded failure diagnostics preserve the original
+                # qualification schema, counts and accept/reject conditions.
+                write_report(args.output / TRANSPORT_DIAGNOSTIC_NAME,
+                             server.transport_diagnostics('gecko'))
+            except Exception as failure:
+                if error is None:
+                    error = failure
+                    report.update(status='failed', error='Gecko policy transport diagnostic unavailable')
         output = args.output / REPORT_NAME
         write_report(output, report)
         if error is None:

@@ -4,10 +4,10 @@ import java.util.*;import org.json.*;
 public class ReloadRequestHost {
  static final JSONArray checks=new JSONArray();
  static void check(String name,boolean passed){checks.put(J.obj("name",name,"passed",passed));}
- static ChatSession route(){ReferenceUi.Modal.shows=0;LocalDraftPolicy.allowed=true;ProfileCatalog.generation=4;ProfileCatalog.environmentId="environment-one";ProfileCatalog.available=true;ProfileCatalog.deleting=false;ProfileCatalog.resetting=false;Profiles.slot=2;ChatService.ends=0;return new ChatSession();}
+ static ChatSession route(){ReferenceUi.Modal.shows=0;LocalDraftPolicy.allowed=true;ProfileCatalog.generation=4;ProfileCatalog.environmentId="environment-one";ProfileCatalog.available=true;ProfileCatalog.deleting=false;ProfileCatalog.resetting=false;Profiles.slot=2;ChatService.ends=0;ChatSession session=new ChatSession();session.resourceObserverEpoch=session.navigationEpoch;session.resourceObserverPort=session.web.ports.get(session.web.current);session.resourceObserverBinding="reload-host-binding";return session;}
  static JSONObject job(String id,String path){return J.obj("id",id,"kind","web","confirmed",true,"confirmedUrl","https://chatgpt.com/c/"+path,"expectedUrl","https://chatgpt.com/c/"+path,"prompt","already sent fixture question","userKey","id:user");}
  static JSONObject inspect(ChatSession s){return J.obj("url",s.web.url,"documentId",s.lastDocumentId,"composer",true,"hasMessages",true,"busy",true);}
- static JSONObject gesture(String token){return J.obj("url","https://chatgpt.com/c/B","documentId","gesture-document-0001","token",token,"type","intent","capturedAt",System.currentTimeMillis(),"prompt","controlled new user gesture","beforeKeys",new JSONArray());}
+ static JSONObject gesture(String token){return J.obj("url","https://chatgpt.com/c/B","documentId","gesture-document-0001","token",token,"type","intent","capturedAt",System.currentTimeMillis(),"prompt","controlled new user gesture","beforeKeys",new JSONArray(),"resourceBinding","reload-host-binding");}
  static JSONObject snapshot(ChatSession s){return J.obj("ok",true,"url",s.web.url,"documentId",s.lastDocumentId,"draft","unsent controlled browser draft","draftComplete",true,"draftLength",31);}
  static void inspect(MainActivity a){a.session.driverResult.accept(inspect(a.session));}
  static void page(MainActivity a){if(a.session.lastAction.equals("page-state"))a.session.driverResult.accept(snapshot(a.session));}
@@ -116,7 +116,7 @@ public class ReloadRequestHost {
 class ChatSession {
  // These reload cases observe the foreground page and have no fresh resource
  // receipt. Global reply policy and resource-freshness admission run elsewhere.
- boolean uiVisible=true;long resourceObservedAt;
+ boolean uiVisible=true,browserNavigationStopped;long resourceObservedAt;
  boolean replyObservationAllowed(){return uiVisible;}
  boolean resourceObservationCurrent(){if(resourceObservedAt!=0)throw new AssertionError("Fresh resource observation is outside this reload host");return false;}
  // This reload-only workload stores no deferred browser candidate. Its real
@@ -124,8 +124,11 @@ class ChatSession {
  void wakeDeferredBrowserSettings(){if(prefs.values.containsKey("nextPrivacyLevel"))throw new AssertionError("Deferred browser candidate outside reload host scope");}
  // No audit is running in this reload-only host workload.
  static final class Audit {void retirePageCheck(){}}Audit audit;
- final Trace trace=new Trace();final Handler handler=new Handler();boolean navigationFailed,websiteConnectionIssue,spaTransition,documentNavigationSeen,navigationDispatched,awaitNewDocument;String navigationTarget="",navigationLabel="",priorDocumentId="",spaSignature="";int spaStable;long navigationStarted,navigationMono,firstPageVisible,pageUsableAt;void navigationTimeout(long epoch){}
- final Deliveries deliveries=new Deliveries();final JSONArray attachments=new JSONArray();boolean submitting,operation,configurationCapture,networkReady=true,offline,navigating,replyStalled;String replyHealthStatus="";int stableTicks;long webConfirmationVersion;String stableReply="";
+ final Trace trace=new Trace();final Handler handler=new Handler();boolean navigationFailed,websiteConnectionIssue,spaTransition,documentNavigationSeen,awaitNewDocument;boolean navigationDispatched=true;String navigationTarget="",navigationLabel="",priorDocumentId="",spaSignature="";int spaStable;long navigationStarted,navigationMono,firstPageVisible,pageUsableAt;void navigationTimeout(long epoch){}
+ // Current navigation invalidates read-only inspection leases. This host does
+ // not execute the website driver or resource worker behind those leases.
+ long syncRun,resourceUploadCheckGeneration,resourceInspectionGeneration;boolean resourceUploadChecking,backgroundAttachmentCheck,inFlight;int backgroundAttachmentStable;
+ final Deliveries deliveries=new Deliveries(this);final JSONArray attachments=new JSONArray();boolean submitting,operation,configurationCapture,networkReady=true,offline,navigating,replyStalled;String replyHealthStatus="";int stableTicks;long webConfirmationVersion;String stableReply="";
  final Object context=new Object();final int environmentGeneration=4;final String environmentId="environment-one";final Web web=new Web();final Prefs prefs=new Prefs();final WebReplyObserver webObserver=new WebReplyObserver(this);final Store webStore=new Store();
  long navigationEpoch=7,fileWorkGeneration,webWorkGeneration,stateEpoch=-1,resourceWebsiteEpoch=-1,resourceObserverEpoch=-1;JSONObject state=new JSONObject();boolean resourceWebsiteBusy;Object resourceObserverPort;String resourceObserverBinding="",resourceObserverDocument="",resourceObserverUrl="";boolean fileBusy,replyBusy,deleted,observedReplyHasFiles;String lastDocumentId="document-one",appliedIdentity="route-one",conversation="https://chatgpt.com/c/A",activeDeliveryId="old-job",observedReplyJob="",observedReplyUrl="",observedReplyKey="",observedReplyRevision="",observedReplyMarkdown="",status="",deliveryState="",draft="unsent controlled browser draft",lastAction="";JSONObject pending;Result driverResult;int asyncCalls;
  boolean webPerformance(){return true;}void resourceObserverRouteReady(JSONObject x,Object p){}void resourceWebsiteObservation(JSONObject x,Object p){}boolean targetMatches(String u){return true;}void wakePolling(){}
@@ -150,8 +153,17 @@ class DraftArchive{static DraftArchive get(Object c){return new DraftArchive();}
 class ChatService{static int ends;static void begin(Object c){}static void completed(Object c,String id,String url){}static void end(Object c){ends++;}}
 class ProfileUi{static boolean working(ChatSession s){return s.pending!=null||s.fileWorkActive()||s.currentReplyActive();}}
 class LoginPagePolicy{static boolean login(String u){return false;}}
-class SystemClock{static long elapsedRealtime(){return 1000;}}class Trace{void page(String label){}}class Handler{void postDelayed(Runnable work,long delay){}}
-class Deliveries{int next;String begin(String u,String p,JSONArray a,String k,Object unused){return "new-production-job-"+(++next);}}
+class SystemClock{static long elapsedRealtime(){return 1000;}}class Trace{void page(String label){}}class Handler{void postDelayed(Runnable work,long delay){}void post(Runnable work){throw new AssertionError("Cold restoration is outside this reload host");}}
+class Deliveries{
+ final ChatSession owner;Deliveries(ChatSession owner){this.owner=owner;}
+ int next;String begin(String u,String p,JSONArray a,String k,Object unused){return "new-production-job-"+(++next);}
+ // Explicit acknowledged storage boundary; actual failures and durable recovery
+ // execute with the full production store in reply-task-persistence-host.
+ boolean update(String id,String state,String detail,boolean attempted,String key,String url){
+  if(owner.pending==null||!id.equals(owner.pending.optString("id"))||!attempted||!Arrays.asList("completed","stopped","uncertain").contains(state))throw new AssertionError("Unsupported reload-host delivery outcome");
+  owner.deliveryState=state;return true;
+ }
+}
 class J{static JSONObject parse(String value){try{return new JSONObject(value);}catch(Exception e){return new JSONObject();}}static JSONObject obj(Object...v){JSONObject o=new JSONObject();try{for(int i=0;i<v.length;i+=2)o.put((String)v[i],v[i+1]);}catch(Exception e){throw new RuntimeException(e);}return o;}}
 
 class LocalDraftPolicy{static boolean allowed=true;static boolean enabled(Object c){return allowed;}static long revision(Object c){return 0;}}

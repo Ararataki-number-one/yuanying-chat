@@ -31,7 +31,8 @@ def main():
     source_path=args.source or ROOT/'app/src/main/java/local/pocketchat/NativeNetwork.java';source=source_path.read_text()
     java=str(args.java_home/'bin/java') if args.java_home else os.environ.get('PROFILE_JAVA','java')
     work=ROOT/'work/plan-repairs/network-core/host';work.mkdir(parents=True,exist_ok=True)
-    methods=['  void runStartOperation(int mode)','  void scanSubset(', '  void selectNow(', '  void rescan(', '  void health(boolean reuseRecent)', '  static long exitRetryDelayMs(', '  boolean retainVerifiedRoute(']
+    start_signature='  boolean runStartOperation(int mode)' if '  boolean runStartOperation(int mode)' in source else '  void runStartOperation(int mode)'
+    methods=[start_signature,'  void scanSubset(', '  void selectNow(', '  void rescan(', '  void health(boolean reuseRecent)', '  static long exitRetryDelayMs(', '  boolean retainVerifiedRoute(']
     added=['  void recoverExistingRoute(', '  RetainedRouteFailure retained(', '  boolean retainedFailure(', '  boolean unchangedVerifiedSelection(', '  void commitSelection(', '  void selectVerifiedRoute(String name,boolean measure)', '  void selectVerifiedRoute(String name,boolean measure,StartupRoute bootstrap)', '  void selectVerifiedRoute(String name,boolean measure,StartupRoute bootstrap,RecoveryRoute recovery)', '  JSONObject recoveryState(', '  private StartupRoute startupRoute(', '  JSONObject startupState(', '  void abortStartup(', '  void verifyExitWhenDue(', '  boolean retainedOutcomeCurrent(', '  void stopFailedTransaction(', '  void stopOwnedCore(', '  void clearReadyState(']
     classes=block(source,'  static final class ExitRouteReceipt ')
     if '  static final class StartupRoute ' in source:classes+='\n'+block(source,'  static final class StartupRoute ')+'\n'+block(source,'  static final class StartupRouteFailure ')

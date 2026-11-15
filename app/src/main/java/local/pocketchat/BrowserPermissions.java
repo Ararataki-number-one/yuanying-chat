@@ -61,10 +61,15 @@ final class BrowserPermissions {
   Pending prepare(WebView source,String requested,PermissionRequest request,GeolocationPermissions.Callback location,String locationOrigin,String[] resources,String[] permissions){
     if(closed||!foreground||activity.isFinishing()||activity.isDestroyed()||source==null||active.get()!=source)return null;
     String url=source.getUrl(),origin=origin(url);if(origin.isEmpty()||!origin.equals(origin(requested))){message("网页权限仅向当前 HTTPS 站点开放");return null;}
+    long documentGeneration=generation(source);
     Pending previous=pending;if(previous!=null)finish(previous,false);
-    // Native callbacks can reenter while the older request is denied.
-    if(pending!=null||closed||!foreground||active.get()!=source||!Objects.equals(url,source.getUrl()))return null;
-    Pending value=new Pending(source,url,origin,generation(source),request,location,locationOrigin,resources,permissions);pending=value;return value;
+    // Denying the older request can reload the same URL or retire the activity.
+    // The incoming request still belongs to the document captured before denial.
+    if(pending!=null||closed||!foreground||activity.isFinishing()||activity.isDestroyed()
+        ||active.get()!=source||generation(source)!=documentGeneration||!Objects.equals(url,source.getUrl()))return null;
+    Pending value=new Pending(source,url,origin,documentGeneration,request,location,locationOrigin,resources,permissions);
+    pending=value;
+    return value;
   }
   void show(Pending value){
     String names=value.location!=null?"大致位置":String.join("、",labels(value.resources));

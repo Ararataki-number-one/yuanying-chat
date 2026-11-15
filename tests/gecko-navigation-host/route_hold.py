@@ -79,10 +79,11 @@ def main():
     files=[production,guard,template,Path(__file__).resolve(),HERE/'run.py']+complete
     hashes={str(path.relative_to(ROOT)):digest(path) for path in files};json_hash=digest(args.json_jar)
     source=production.read_text();selected=[]
+    session=member_at(source,source.index('GeckoSession newSession()'))
     for needle in MEMBERS:
-        positions=[source.index(needle)]
-        if source.count(needle)!=1:raise ValueError('Review actual helper declaration: '+needle)
-        selected.append(member_at(source,positions[0]))
+        owner=session if needle=='public GeckoResult<GeckoSession> onNewSession(' else source
+        if owner.count(needle)!=1:raise ValueError('Review actual helper declaration in its owning session: '+needle)
+        selected.append(member_at(owner,owner.index(needle)))
     field_lines=[]
     for needle in FIELDS:
         lines=[line.strip() for line in source.splitlines() if line.strip().startswith(needle)]

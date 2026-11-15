@@ -20,7 +20,7 @@ from integration_event_contract import EventTransfer, parse_receipt_line
 from profile_invocation_contract import expected_build, verify_installed
 from ui_visual_capture import UiVisualCapture
 from chrome_parser_preparation import prepare_parser
-from chrome_collapse_contract_v2 import (ACTIVITY, ENVIRONMENT_ACTIVITY, PACKAGE, PHASES, NAMES,
+from chrome_collapse_contract_v2 import (ACTIVITY, ENVIRONMENT_ACTIVITY, PACKAGE, PHASES, BROWSER_NAMES, BROWSER_STARTUP_MAP,
                                          LEGACY_BEHAVIOR_MAP, address_cancel, inspect_ui, resumed, verify_case,
                                          make_short_target_proof, verify_short_target)
 from run_chrome_collapse import resume_after_home, resume_transport
@@ -198,7 +198,7 @@ def run_v2(adb, adb_bytes, source, trace, out, focus):
                 attempt['activity'] = raw_file('chrome-v2-'+nonce+'-'+phase+'-attempt-'+str(attempt['index'])+'.activity.txt', activity)
                 try:
                     assert resumed(state) == {(user, wanted)}
-                    parsed = inspect_ui(xml, phase, observations['ready']['environmentName'])
+                    parsed = inspect_ui(xml, phase, observations['ready']['environmentName'], browser=True)
                     if address_sample is not None: address_cancel(address_sample, parsed)
                 except AssertionError as error:
                     attempt.update(status='not-ready', error=repr(error))
@@ -228,7 +228,7 @@ def run_v2(adb, adb_bytes, source, trace, out, focus):
             if first:
                 from chrome_first_tap_readiness import first_tap_once
                 first_readiness = first_tap_once(argv=sys.argv[1:], source=source, identity=identity,
-                                                before=observations[before], nonce=nonce, out=out)
+                                                before=observations[before], nonce=nonce, out=out, target='address')
                 record('tap', opened, before, point=first_readiness['point'])
             else: tap(before, opened, 'compactTap')
             cancel_address_once(observe=ui, snapshot=snapshot, tap=tap, opened=opened, returned=returned)
@@ -312,11 +312,12 @@ def run_v2(adb, adb_bytes, source, trace, out, focus):
             back('drawer', 'drawerReturn')
             initial = observations['initialChat']
             requests = [r for r in trace if r['kind'] == 'http' and r['path'] == '/c/reload-collapse' and r['documentMarker'] == initial['document']]
-            case = dict(navigationContract=2, viewport=width, fontScale=scale, androidUser=user,
+            case = dict(navigationContract=2, browserChrome=True, viewport=width, fontScale=scale, androidUser=user,
                         runNonce=nonce, sourceCommit=source, actualAndroidExecution=True,
                         actualGeckoExecution=True, actualAndroidTouchExecution=True,
-                        checks=[{'name': name, 'pass': True} for name in NAMES],
-                        legacyBehaviorMap=[list(row) for row in LEGACY_BEHAVIOR_MAP],
+                        checks=[{'name': name, 'pass': True} for name in BROWSER_NAMES],
+                        legacyBehaviorMap=[list(row) for row in LEGACY_BEHAVIOR_MAP[2:]],
+                        browserStartupMap=[list(row) for row in BROWSER_STARTUP_MAP],
                         observations=observations, actualAndroidInputs=inputs, nativeUi=native_ui,
                         firstTapReadiness=first_readiness, headerReadiness=header_readiness,
                         resumeReadiness=resume_readiness,
@@ -333,7 +334,7 @@ def run_v2(adb, adb_bytes, source, trace, out, focus):
             except Exception as error:
                 if failure is None: raise
                 print('V2 diagnostic collection failed: '+repr(error), file=sys.stderr)
-    return dict(navigationContract=2, status='passed', actualAndroidExecution=True,
+    return dict(navigationContract=2, browserChrome=True, status='passed', actualAndroidExecution=True,
                 actualGeckoExecution=True, actualAndroidTouchExecution=True, sourceCommit=source,
                 buildIdentity=identity, cases=cases,
                 scope='Actual production chrome and protected local Gecko document with synthetic login/draft/task; no real ChatGPT acceptance or phone performance claim.')

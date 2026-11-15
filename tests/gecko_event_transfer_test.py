@@ -77,13 +77,13 @@ class GeckoEventTransportControls(unittest.TestCase):
             return raw
         bindings=dict(adb=fake_adb,adb_bytes=fake_bytes,identity=identity(),event_transfers=[],
                       uuid=types.SimpleNamespace(uuid4=lambda:types.SimpleNamespace(hex='e'*32)),
-                      EventTransfer=transfer.EventTransfer,parse_receipt_line=transfer.parse_receipt_line,
+                      EventTransfer=transfer.EventTransfer,ReceiptJournalDiscovery=transfer.ReceiptJournalDiscovery,
+                      parse_receipt_line=transfer.parse_receipt_line,
                       read_with_sequence_failure_diagnostics=transfer.read_with_sequence_failure_diagnostics,
                       args=types.SimpleNamespace(adb='counterfeit-adb',serial='counterfeit-serial'),
                       has_pixel_launcher=False,launcher='counterfeit-unused-launcher',package='local.pocketchat.test',
                       surface_gestures={},time=time,json=json,report={},logs=[],steps=[],OUT=ROOT/'work/gecko-integration',journal_calls=journal_calls)
-        discovery=copy.deepcopy(next(node for node in source.body if isinstance(node,ast.ClassDef) and node.name=='ReceiptJournalDiscovery'))
-        exec(compile(ast.fix_missing_locations(ast.Module(body=[discovery,run],type_ignores=[])),
+        exec(compile(ast.fix_missing_locations(ast.Module(body=[run],type_ignores=[])),
                      '<counterfeit-device-consumer-control>','exec'),bindings)
         return bindings,calls
 

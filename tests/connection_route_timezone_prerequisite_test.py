@@ -11,6 +11,8 @@ import subprocess
 import tempfile
 import unittest
 
+from historical_source_inputs import historical_bytes
+
 ROOT = Path(__file__).resolve().parents[1]
 ROUTE = ROOT / 'tests/gecko/NetworkSourcesRouteIntegrationActivity.java'
 POOL = ROOT / 'tests/gecko/GeckoConnectionPoolIntegrationActivity.java'
@@ -51,13 +53,15 @@ class ConnectionRouteTimezonePrerequisiteTest(unittest.TestCase):
     def test_only_two_declared_setup_changes_preserve_the_complete_prior_fixture(self):
         before = subprocess.check_output(['git', 'show', BEFORE + ':' + str(ROUTE.relative_to(ROOT))], cwd=ROOT)
         self.assertEqual(sha(before), BEFORE_SHA)
-        current = ROUTE.read_text()
-        self.assertEqual(current.count(FIELD), 1)
-        self.assertEqual(current.count(TERM), 1)
-        restored = current.replace(FIELD, '', 1).replace(TERM, '', 1).encode()
+        # This is the original released fixture's whole-source proof. The
+        # separate JVM test below still compiles the actual current setup.
+        released = historical_bytes(str(ROUTE.relative_to(ROOT))).decode()
+        self.assertEqual(released.count(FIELD), 1)
+        self.assertEqual(released.count(TERM), 1)
+        restored = released.replace(FIELD, '', 1).replace(TERM, '', 1).encode()
         self.assertEqual(restored, before)
         prior = setup(before.decode())
-        self.assertEqual(setup(current).replace(TERM, '', 1), prior)
+        self.assertEqual(setup(released).replace(TERM, '', 1), prior)
         self.assertIn(',60000);', prior)
         self.assertIn('after.optString("queued").isEmpty()&&after.optLong("epoch",-1)==before.optLong("epoch")', prior)
 

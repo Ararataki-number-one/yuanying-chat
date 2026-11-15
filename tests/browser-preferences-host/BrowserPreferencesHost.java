@@ -46,7 +46,7 @@ public final class BrowserPreferencesHost {
     for(String action:new String[]{"edit","network","settings","unknown",""})check("Explicit action stays in original interface: "+action,!BrowserPreferences.shouldOpenBrowser(a,new Intent().putExtra("openWindowAction",action)));
     check("False legacy flag and unrelated data do not block selected entry",BrowserPreferences.shouldOpenBrowser(a,new Intent().putExtra("legacyChat",false).setData(Uri.parse("pocketchat://unrelated/item"))));
     BrowserActivity.calls=0;boolean dispatched=a.dispatchBrowser(new Intent());
-    check("Cold Chromium dispatch opens the selected environment homepage and finishes empty Main",dispatched&&BrowserActivity.calls==1&&BrowserActivity.owner==a&&BrowserActivity.url.equals("https://example.com/home")&&a.finishes==1&&a.session==null);
+    check("Cold Chromium dispatch resumes its environment without forcing a URL and finishes empty Main",dispatched&&BrowserActivity.calls==1&&BrowserActivity.owner==a&&!a.launched.hasExtra("url")&&BrowserActivity.url.isEmpty()&&a.finishes==1&&a.session==null);
     a=new MainActivity();BrowserPreferences.save(a,true,"https://example.com/warm");a.session=new ChatSession();ChatSession owner=a.session;BrowserActivity.calls=0;dispatched=a.dispatchBrowser(new Intent().putExtra("openWindowAction","chat"));
     check("Warm Chromium dispatch preserves the exact running Gecko session",dispatched&&BrowserActivity.calls==1&&a.finishes==0&&a.session==owner);
     BrowserActivity.calls=0;int reads=ProfileCatalog.reads;dispatched=a.dispatchBrowser(new Intent().putExtra("legacyChat",true));
@@ -54,7 +54,24 @@ public final class BrowserPreferencesHost {
     a.available=false;BrowserActivity.calls=0;check("Unavailable environment never dispatches or closes Main",!a.dispatchBrowser(new Intent())&&BrowserActivity.calls==0&&a.finishes==0);
     a=new MainActivity();BrowserActivity.calls=0;check("Default cold launch remains in original enhanced Main",!a.dispatchBrowser(new Intent())&&BrowserActivity.calls==0&&a.finishes==0);
   }
-  public static void main(String[]args){preferences();routing();int passed=0;for(int i=0;i<checks.length();i++)if(checks.optJSONObject(i).optBoolean("pass"))passed++;System.out.println(object("status",passed==checks.length()?"passed":"failed","passed",passed,"total",checks.length(),"checks",checks));if(passed!=checks.length())System.exit(1);}
+  static void resumedDocument(){
+    MainActivity owner=new MainActivity();owner.slot=6;BrowserPreferences.save(owner,true,"https://example.com/home");
+    owner.dispatchBrowser(new Intent());Intent request=owner.launched;
+    check("Resume targets the selected environment using the actual class mapping",request.owner==owner&&request.target==BrowserActivity.Profile6.class);
+    check("Resume retains exactly the actual new-task and reorder flags",request.getFlags()==(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_REORDER_TO_FRONT));
+    check("Environment re-entry has no URL or VIEW request that could force the homepage",!request.hasExtra("url")&&request.getData()==null&&request.getAction()==null);
+    BrowserActivity browser=new BrowserActivity();BrowserActivity.Tab current=new BrowserActivity.Tab("https://example.com/current"),other=new BrowserActivity.Tab("https://example.com/other");
+    browser.tabs.add(current);browser.tabs.add(other);browser.selected=current;List<BrowserActivity.Tab> originalTabs=new ArrayList<>(browser.tabs);
+    browser.onNewIntent(request);
+    check("Actual intent receiver keeps the exact selected page and all tabs on resume",browser.selected==current&&browser.tabs.equals(originalTabs)&&browser.newTabs==0&&browser.selections==0&&current.url.equals("https://example.com/current"));
+    browser.onNewIntent(request);
+    check("Repeated environment resume does not create or reselect a tab",browser.selected==current&&browser.tabs.equals(originalTabs)&&browser.newTabs==0&&browser.selections==0);
+    browser.onNewIntent(new Intent().putExtra("url",other.url));
+    check("Explicit existing-page requests still select their original tab",browser.selected==other&&browser.tabs.equals(originalTabs)&&browser.newTabs==0&&browser.selections==1);
+    browser.onNewIntent(new Intent().setAction(Intent.ACTION_VIEW).setData(Uri.parse("https://example.com/requested")));
+    check("Explicit VIEW destinations still reach actual new-tab dispatch",browser.selected.url.equals("https://example.com/requested")&&browser.tabs.size()==3&&browser.newTabs==1);
+  }
+  public static void main(String[]args){preferences();routing();resumedDocument();int passed=0;for(int i=0;i<checks.length();i++)if(checks.optJSONObject(i).optBoolean("pass"))passed++;System.out.println(object("status",passed==checks.length()?"passed":"failed","passed",passed,"total",checks.length(),"checks",checks));if(passed!=checks.length())System.exit(1);}
 }
 
 final class Store implements SharedPreferences {
@@ -63,11 +80,27 @@ final class Store implements SharedPreferences {
   public Editor edit(){return new Editor(){final Map<String,String> staged=new HashMap<>();public Editor putString(String key,String value){staged.put(key,value);return this;}public boolean commit(){commits++;lastKeys=new HashSet<>(staged.keySet());values.putAll(staged);return commitResult;}};}
 }
 class MainActivity extends Activity {
-  final Store store=new Store();ChatSession session;boolean available=true;int slot;
+  final Store store=new Store();ChatSession session;boolean available=true;int slot;Intent launched;
   @Override public SharedPreferences getSharedPreferences(String name,int mode){if(!name.equals("chat"))throw new AssertionError("Unexpected global preference access");return store;}
+  @Override public void startActivity(Intent intent){launched=intent;BrowserActivity.calls++;BrowserActivity.owner=this;BrowserActivity.url=intent.hasExtra("url")?intent.getStringExtra("url"):"";}
   /* DISPATCH_METHOD */
 }
 class ChatSession {}
-class Profiles {static int slot(MainActivity owner){return owner.slot;}}
+class Profiles {static int slot(Activity owner){return ((MainActivity)owner).slot;}}
 class ProfileCatalog {static int reads;MainActivity owner;static ProfileCatalog get(MainActivity activity){ProfileCatalog c=new ProfileCatalog();c.owner=activity;return c;}boolean available(int slot){reads++;return owner.available;}}
-class BrowserActivity {static int calls;static Activity owner;static String url;static void open(Activity activity,String address){calls++;owner=activity;url=address;}}
+class BrowserActivity extends Activity {
+  static int calls;static Activity owner;static String url;
+  static class Profile1 extends BrowserActivity {}static class Profile2 extends BrowserActivity {}
+  static class Profile3 extends BrowserActivity {}static class Profile4 extends BrowserActivity {}
+  static class Profile5 extends BrowserActivity {}static class Profile6 extends BrowserActivity {}
+  static class Profile7 extends BrowserActivity {}
+  static class Tab {final String url;Tab(String value){url=value;}}
+  final List<Tab> tabs=new ArrayList<>();Tab selected;int newTabs,selections;final Store store=new Store();
+  @Override public SharedPreferences getSharedPreferences(String name,int mode){return store;}
+  void select(Tab tab){selections++;selected=tab;}
+  void newTab(String url){newTabs++;selected=new Tab(url);tabs.add(selected);}
+  /* BROWSER_ACTIVITY */
+  /* BROWSER_RESUME */
+  /* BROWSER_INTENT_ADDRESS */
+  /* BROWSER_NEW_INTENT */
+}

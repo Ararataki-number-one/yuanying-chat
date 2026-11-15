@@ -107,10 +107,22 @@ final class DownloadTasks {
  /** A confirmed user-selected restart retires only an incomplete private cache file.
   * This is not a saved destination or a publication recovery operation. */
  boolean beginPartialRetirement(JSONObject row,String generation,String name){
-  save();if(!retirementOwner(row,generation)||retirementFile(row)==null||!DownloadResumePolicy.incomplete(row)||!name.equals(partialName(row))||referencedElsewhere(row,name,rows))return false;
+  return beginPrivateCopyRetirement(row,generation,name,false);
+ }
+ /** Explicit cancellation may discard a complete private copy, but never a
+  * published destination or the source of an unconfirmed publication. */
+ boolean beginCancelledCopyRetirement(JSONObject row,String generation,String name){
+  return beginPrivateCopyRetirement(row,generation,name,true);
+ }
+ private boolean beginPrivateCopyRetirement(JSONObject row,String generation,String name,boolean cancellation){
+  save();if(!retirementOwner(row,generation)||(cancellation?cancellationFile(row):retirementFile(row))==null||!name.equals(partialName(row))||referencedElsewhere(row,name,rows))return false;
+  boolean eligible=DownloadResumePolicy.incomplete(row)||cancellation&&row.opt("complete") instanceof Boolean
+      &&row.optString("pendingDestination").isEmpty()&&row.optString("uri").isEmpty()
+      &&Arrays.asList("paused","failed","cancelled").contains(row.optString("state"));
+  if(!eligible)return false;
   JSONObject previous=J.parse(row.toString());
   try{
-   put(row,"partial","","retiredPartial",name,"received",0,"total",-1,"validator","","resource","","state","cancelled","reason","旧副本清理尚未完成，请重新下载时重试");
+   put(row,"partial","","retiredPartial",name,"complete",false,"received",0,"total",-1,"validator","","resource","","state","cancelled","reason",cancellation?"你已取消下载；副本清理尚未完成，请稍后重试":"旧副本清理尚未完成，请重新下载时重试");
    save(true);return retiredPartialCurrent(row,generation,name);
   }catch(RuntimeException error){DownloadTaskRevisions.restore(row,previous);throw error;}
  }
@@ -126,13 +138,26 @@ final class DownloadTasks {
   return stored!=null&&DownloadTaskRevisions.value(stored).equals(DownloadTaskRevisions.value(row))&&!referencedElsewhere(row,name,rows)&&!referencedElsewhere(row,name,confirmed);
  }
  void finishPartialRetirement(JSONObject row,String generation,String name){
+  finishPrivateCopyRetirement(row,generation,name,"旧的未完成副本已清理，请回原网页重新下载");
+ }
+ void finishCancelledCopyRetirement(JSONObject row,String generation,String name){
+  finishPrivateCopyRetirement(row,generation,name,"你已取消下载，副本已清理");
+ }
+ private void finishPrivateCopyRetirement(JSONObject row,String generation,String name,String reason){
   if(!retiredPartialCurrent(row,generation,name))return;JSONObject previous=J.parse(row.toString());
-  try{row.remove("retiredPartial");put(row,"reason","旧的未完成副本已清理，请回原网页重新下载");save(true);}
+  try{row.remove("retiredPartial");put(row,"reason",reason);save(true);}
   catch(RuntimeException error){DownloadTaskRevisions.restore(row,previous);throw error;}
  }
  File retirementFile(JSONObject row){
+  return retirementFile(row,false);
+ }
+ /** A cache-evicted copy can still be explicitly cancelled under its file lease. */
+ File cancellationFile(JSONObject row){
+  return retirementFile(row,true);
+ }
+ private File retirementFile(JSONObject row,boolean allowAbsent){
   String name=partialName(row);if(!name.matches("download-[A-Za-z0-9-]+[.]part"))return null;
-  try{File root=context.getCacheDir().getCanonicalFile(),file=new File(root,name);if(!root.equals(file.getCanonicalFile().getParentFile())||!file.getAbsoluteFile().equals(file.getCanonicalFile()))return null;return file.isFile()||!file.exists()&&row.optString("partial").isEmpty()&&name.equals(row.optString("retiredPartial"))?file:null;}catch(IOException invalid){return null;}
+  try{File root=context.getCacheDir().getCanonicalFile(),file=new File(root,name);if(!root.equals(file.getCanonicalFile().getParentFile())||!file.getAbsoluteFile().equals(file.getCanonicalFile()))return null;return file.isFile()||!file.exists()&&(allowAbsent||row.optString("partial").isEmpty()&&name.equals(row.optString("retiredPartial")))?file:null;}catch(IOException invalid){return null;}
  }
  File partial(JSONObject r){String n=r.optString("partial");if(!n.matches("download-[A-Za-z0-9-]+[.]part"))return null;File f=new File(context.getCacheDir(),n);return f.isFile()?f:null;}
  static String label(String state){switch(state){case "preparing":return "获取链接中";case "downloading":return "下载中";case "paused":return "已暂停";case "choosing":return "等待选择保存位置";case "saving":return "保存中";case "saved":return "已保存";case "cancelled":return "已取消";default:return "失败待处理";}}

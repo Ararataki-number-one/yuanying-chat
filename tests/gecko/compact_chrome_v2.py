@@ -10,6 +10,7 @@ def run_case(adb, adb_bytes, dump, event, focus, visible, quick_sheet, shots, pa
     command=f'compact-v2-{width}-{scale}'
     adb('shell','am','start','-W','-n',component,'--es','compactCommand',command)
     sample=event(command,'ready')
+    assert sample.get('browserChrome') is True, 'Current browser address controls must be measured'
     verify_layout(sample,width,scale)
     stem=f'compact-chrome-{width}-font{scale}'
     (shots/(stem+'.xml')).write_text(dump())
@@ -66,7 +67,7 @@ def run_case(adb, adb_bytes, dump, event, focus, visible, quick_sheet, shots, pa
     tap('more',control['tap'],control['touch'],'more')
     action=event(command,'action')
     assert action['action']=='more' and action['actions']==before['actions']+1 and action['page']==0
-    visible('会话选项');adb('shell','input','keyevent','KEYCODE_BACK');visible('会话选项',False)
+    visible('浏览器菜单');adb('shell','input','keyevent','KEYCODE_BACK');visible('浏览器菜单',False)
     command+='-performance'
     adb('shell','am','start','-W','--activity-single-top','-n',component,
         '--es','compactAction','performance','--es','compactCommand',command)
@@ -77,5 +78,5 @@ def run_case(adb, adb_bytes, dump, event, focus, visible, quick_sheet, shots, pa
         actualAndroidTaps=taps,actualAndroidLongPress=long_press,layout=sample,
         performance=performance['performance'],environmentSheet=sheet,managementNavigation=management,
         addressDialog=dialog,menuDismissedByBack=True,environmentDismissedByBack=True)
-    verify_case(case)
+    verify_case(case, require_browser_chrome=True)
     return case

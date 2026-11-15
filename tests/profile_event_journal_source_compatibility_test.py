@@ -2,6 +2,7 @@
 import ast
 import hashlib
 from pathlib import Path
+from historical_source_inputs import historical_bytes
 import subprocess
 import tempfile
 import unittest
@@ -21,7 +22,7 @@ class ReceiptJournalSourceCompatibility(unittest.TestCase):
         for relative, row in journal.manifest()['files'].items():
             with self.subTest(path=relative):
                 previous = subprocess.check_output(['git', 'show', journal.BASE_COMMIT + ':' + relative], cwd=ROOT)
-                current = workspace_source_input((ROOT / relative).read_bytes(), relative)
+                current = workspace_source_input(historical_bytes(relative), relative)
                 if relative in ('tests/experience46_source_compatibility.py', 'tests/profile_experience46_source_compatibility_test.py'):
                     from dual_browser_source_compatibility import source_input
                     current = source_input(current, relative)
@@ -40,7 +41,7 @@ class ReceiptJournalSourceCompatibility(unittest.TestCase):
     def test_missing_duplicate_changed_relocated_and_unknown_bytes_are_rejected(self):
         rejected = 0
         for relative, row in journal.manifest()['files'].items():
-            current = workspace_source_input((ROOT / relative).read_bytes(), relative)
+            current = workspace_source_input(historical_bytes(relative), relative)
             if relative in ('tests/experience46_source_compatibility.py', 'tests/profile_experience46_source_compatibility_test.py'):
                 from dual_browser_source_compatibility import source_input
                 current = source_input(current, relative)
@@ -69,7 +70,7 @@ class ReceiptJournalSourceCompatibility(unittest.TestCase):
         self.assertEqual((ROOT / relative).read_bytes(), old)
         for relative in journal.PATHS - {RUNNER}:
             previous = subprocess.check_output(['git', 'show', journal.BASE_COMMIT + ':' + relative], cwd=ROOT)
-            current = (ROOT / relative).read_bytes()
+            current = historical_bytes(relative)
             self.assertEqual(journal.source_input(current, relative), previous)
             def assertions(raw):
                 return [ast.dump(node, include_attributes=False) for node in ast.walk(ast.parse(raw))
@@ -78,7 +79,8 @@ class ReceiptJournalSourceCompatibility(unittest.TestCase):
             self.assertEqual(assertions(current), assertions(previous))
 
     def test_old_runner_predicates_timeouts_payload_and_sequence_gates_stay_strict(self):
-        current = (ROOT / RUNNER).read_text()
+        current = historical_bytes(RUNNER).decode('utf-8')
+        actual = (ROOT / RUNNER).read_text()
         for old, new in (
                 ('deadline=time.monotonic()+120', 'deadline=time.monotonic()+121'),
                 ("assert 'error' not in result,event", 'assert True,event'),
@@ -86,6 +88,7 @@ class ReceiptJournalSourceCompatibility(unittest.TestCase):
                  'read_with_sequence_failure_diagnostics(None,receipt,'),
                 ("if event.get('kind')=='error':", "if event.get('kind')=='ignoredError':")):
             self.assertIn(old, current)
+            self.assertIn(old, actual)
             candidate = current.replace(old, new, 1).encode()
             with self.subTest(predicate=old):
                 with self.assertRaises(ValueError):
@@ -138,7 +141,7 @@ class ReceiptJournalSourceCompatibility(unittest.TestCase):
                 journal.original_runner_tree(value)
 
     def test_types_paths_excerpt_and_altered_fixture_are_rejected(self):
-        current = (ROOT / RUNNER).read_bytes()
+        current = historical_bytes(RUNNER)
         for relative in (RUNNER + '.other', '../' + RUNNER, '/' + RUNNER,
                          Path(RUNNER), None):
             with self.subTest(path=relative), self.assertRaises(ValueError):
@@ -156,13 +159,29 @@ class ReceiptJournalSourceCompatibility(unittest.TestCase):
         for relative in ('tests/gecko_event_transfer_test.py', 'tests/profile_event_journal_discovery_test.py'):
             source = (ROOT / relative).read_text()
             self.assertIn('ReceiptJournalDiscovery', source)
-            self.assertIn('ast.parse', source)
             self.assertNotIn('event_journal_source_compatibility', source)
             self.assertNotIn('experience46_source_bytes', source)
+        # Both behavior hosts use the same current implementation; only the
+        # consumer extraction needs AST because importing it would invoke adb.
+        import gecko_event_transfer_test as current_transport
+        import profile_event_journal_discovery_test as current_discovery
+        self.assertIs(current_discovery.discovery_class(), current_transport.transfer.ReceiptJournalDiscovery)
+        self.assertIn('ast.parse', (ROOT / 'tests/gecko_event_transfer_test.py').read_text())
         relative = 'tools/gecko/integration_event_contract.py'
-        self.assertEqual((ROOT / relative).read_bytes(),
-                         subprocess.check_output(['git', 'show', journal.BASE_COMMIT + ':' + relative], cwd=ROOT))
-        self.assertIn('class ReceiptJournalDiscovery:', (ROOT / RUNNER).read_text())
+        original = ast.parse(subprocess.check_output(['git', 'show', journal.BASE_COMMIT + ':' + relative], cwd=ROOT))
+        shared = ast.parse((ROOT / relative).read_bytes())
+        moved = [node for node in shared.body if isinstance(node, ast.ClassDef) and node.name == 'ReceiptJournalDiscovery']
+        self.assertEqual(len(moved), 1)
+        shared.body.remove(moved[0])
+        self.assertEqual(ast.dump(shared, include_attributes=False), ast.dump(original, include_attributes=False))
+        old_runner = ast.parse(historical_bytes(RUNNER))
+        original_discovery = next(node for node in old_runner.body
+            if isinstance(node, ast.ClassDef) and node.name == 'ReceiptJournalDiscovery')
+        self.assertEqual(ast.dump(moved[0], include_attributes=False), ast.dump(original_discovery, include_attributes=False))
+        runner = ast.parse((ROOT / RUNNER).read_bytes())
+        self.assertFalse(any(isinstance(node, ast.ClassDef) and node.name == 'ReceiptJournalDiscovery' for node in runner.body))
+        self.assertTrue(any(isinstance(node, ast.ImportFrom) and node.module == 'integration_event_contract'
+            and any(alias.name == 'ReceiptJournalDiscovery' for alias in node.names) for node in runner.body))
 
 
 if __name__ == '__main__':

@@ -21,6 +21,7 @@ SNAPSHOT_FIELDS = set(('schema kind diagnosticOnly releaseAcceptance sourceCommi
     'observedAtElapsedRealtime pid uid activityRef surface sdkSession attachedSession appearanceDocument documentBinding documentPort currentPort url visibleDocument pendingId pendingConfirmed '
     'windowFocus decorFocus attached shown enabled clickable laidOut layoutRequested globallyVisible expanded toolbarVisibility compactVisibility page '
     'activityStarts menuOpens nativeTouchCount hostBounds toolbarBounds compactBounds visibleBounds webBounds point').split())
+ADDRESS_SNAPSHOT_FIELDS = SNAPSHOT_FIELDS | {'target', 'targetBounds'}
 
 
 def need(value, reason):
@@ -55,10 +56,16 @@ def _rect(value):
     return value
 
 
-def _validate_snapshot(value, *, source, identity, nonce, request, owner, before):
-    need(isinstance(value, dict) and value.get('schema') == 1 and type(value.get('schema')) is int
+def _validate_snapshot(value, *, source, identity, nonce, request, owner, before, target='compact'):
+    need(target in ('compact', 'address'), 'invalid-request')
+    address = target == 'address'
+    fields = ADDRESS_SNAPSHOT_FIELDS if address else SNAPSHOT_FIELDS
+    need(isinstance(value, dict) and value.get('schema') == (2 if address else 1) and type(value.get('schema')) is int
          and value.get('diagnosticOnly') is True and value.get('releaseAcceptance') is False
-         and value.get('kind') == 'nativeInputReadiness' and set(value) == SNAPSHOT_FIELDS, 'invalid-observation')
+         and value.get('kind') == 'nativeInputReadiness' and set(value) == fields, 'invalid-observation')
+    if address:
+        need(value.get('target') == 'address' and before.get('expanded') is True, 'identity-changed')
+        _rect(value.get('compactBounds'))
     need(value.get('runNonce') == nonce and value.get('request') == request
          and value.get('sourceCommit') == source and value.get('sourceTree') == identity['sourceTree']
          and value.get('apkSha256') == identity['apkSha256'] and value.get('fixtureAction') == 'chromeCollapse', 'identity-changed')
@@ -82,18 +89,20 @@ def _validate_snapshot(value, *, source, identity, nonce, request, owner, before
         need(type(value.get(key)) is bool, 'invalid-observation')
     for key in ('toolbarVisibility', 'compactVisibility', 'page', 'activityStarts', 'menuOpens', 'nativeTouchCount'):
         need(type(value.get(key)) is int, 'invalid-observation')
-    need(value['expanded'] is False and value['toolbarVisibility'] == value['compactVisibility'] == value['page'] == 0
+    need(value['expanded'] is address and value['toolbarVisibility'] == value['page'] == 0
+         and value['compactVisibility'] == (8 if address else 0)
          and value['activityStarts'] == before['activityStarts'] and value['menuOpens'] == before['menuOpens']
          and value['nativeTouchCount'] == 0 and value['visibleDocument'] is True, 'identity-changed')
-    geometry = {key: _rect(value.get(key)) for key in ('hostBounds', 'toolbarBounds', 'compactBounds', 'visibleBounds', 'webBounds')}
+    bounds_key = 'targetBounds' if address else 'compactBounds'
+    geometry = {key: _rect(value.get(key)) for key in ('hostBounds', 'toolbarBounds', bounds_key, 'visibleBounds', 'webBounds')}
     point = value.get('point')
     need(isinstance(point, list) and len(point) == 2 and all(type(x) is int and x >= 0 for x in point), 'invalid-observation')
-    original = before.get('compactTap')
+    original = before.get('addressTap' if address else 'compactTap')
     need(isinstance(original, list) and len(original) == 2 and all(type(x) is int and x >= 0 for x in original), 'invalid-request')
     geometry['point'] = point
     ready = all(value[key] for key in ('windowFocus', 'decorFocus', 'attached', 'shown', 'enabled', 'clickable', 'laidOut', 'globallyVisible')) and not value['layoutRequested']
     ready = ready and all(rect[0] < rect[2] and rect[1] < rect[3] for key, rect in geometry.items() if key != 'point')
-    left, top, right, bottom = geometry['compactBounds']
+    left, top, right, bottom = geometry[bounds_key]
     vl, vt, vr, vb = geometry['visibleBounds']
     ready = ready and left <= vl < vr <= right and top <= vt < vb <= bottom
     ready = ready and point == [(left+right)//2, (top+bottom)//2] and point == original
@@ -102,16 +111,19 @@ def _validate_snapshot(value, *, source, identity, nonce, request, owner, before
     return geometry if ready else None
 
 
-def first_tap_once(*, argv, source, identity, before, nonce, out, root=ROOT, clock=time.monotonic, sleep=time.sleep):
+def first_tap_once(*, argv, source, identity, before, nonce, out, target='compact', root=ROOT, clock=time.monotonic, sleep=time.sleep):
     started = clock(); action_deadline = started+90; preparation_deadline = started+20
     safe_source = source if isinstance(source, str) and re.fullmatch('[0-9a-f]{40}', source) else None
     safe_nonce = nonce if isinstance(nonce, str) and re.fullmatch('[0-9a-f]{32}', nonce) else None
-    record = dict(schema=1, status='failed', reason='invalid-request', scope='chrome-initial-compact-tap-only',
+    record = dict(schema=1, status='failed', reason='invalid-request',
+        scope='chrome-initial-address-tap-only' if target == 'address' else 'chrome-initial-compact-tap-only',
         sourceCommit=safe_source, runNonce=safe_nonce, diagnosticOnly=True, releaseAcceptance=False, applicationAcceptance=False,
         preEmitOnly=True, preparationBudgetMs=20000, originalActionBudgetMs=90000, tapInvocations=0,
         nativeSnapshots=[], windowObservations=[], elapsedMs=0)
     path = None; owned = False
     try:
+        need(target in ('compact', 'address'), 'invalid-request')
+        if target == 'address': record['target'] = 'address'
         parser = gate.Parser(add_help=False, allow_abbrev=False)
         parser.add_argument('--adb', required=True); parser.add_argument('--serial', required=True)
         parser.add_argument('--out', type=Path)
@@ -128,7 +140,7 @@ def first_tap_once(*, argv, source, identity, before, nonce, out, root=ROOT, clo
         need(report_out.is_dir() and not report_out.is_symlink(), 'invalid-request')
         path = report_out/('chrome-first-tap-readiness-'+nonce+'.json')
         need(not path.exists() and not path.is_symlink(), 'already-invoked')
-        with path.open('x') as target:json.dump(record, target, sort_keys=True)
+        with path.open('x') as stream:json.dump(record, stream, sort_keys=True)
         owned = True
         binding, additional = _sources(root, source, identity, preparation_deadline)
         parser_command, compiled = gate._compile_parser(root, binding, preparation_deadline)
@@ -162,7 +174,8 @@ def first_tap_once(*, argv, source, identity, before, nonce, out, root=ROOT, clo
                 previous = None; sleep(min(.2, max(0, preparation_deadline-clock()))); continue
             queries += 1; request = nonce+'-'+str(queries)
             gate._checked(prefix+['shell', 'am', 'broadcast', '-a', 'local.pocketchat.test.CHROME_COLLAPSE', '-p', gate.PACKAGE,
-                '--es', 'eventNonce', nonce, '--es', 'collapseReadiness', request], preparation_deadline)
+                '--es', 'eventNonce', nonce, '--es', 'collapseReadiness', request]
+                + (['--es', 'collapseReadinessTarget', 'address'] if target == 'address' else []), preparation_deadline)
             value = None
             while clock() < preparation_deadline:
                 log = gate._checked(prefix+['logcat', '-d', '-v', 'threadtime', '-s', TAG+':I', 'AndroidRuntime:E', '*:S'], preparation_deadline)
@@ -183,7 +196,7 @@ def first_tap_once(*, argv, source, identity, before, nonce, out, root=ROOT, clo
                 if matches:value = matches[0];break
                 sleep(min(.1, max(0, preparation_deadline-clock())))
             need(value is not None, 'deadline')
-            geometry = _validate_snapshot(value, source=source, identity=identity, nonce=nonce, request=request, owner=owner, before=before)
+            geometry = _validate_snapshot(value, source=source, identity=identity, nonce=nonce, request=request, owner=owner, before=before, target=target)
             need(value['sequence'] > sequence, 'invalid-observation'); sequence = value['sequence']
             need(activity_ref is None or activity_ref == value['activityRef'], 'identity-changed'); activity_ref = value['activityRef']
             record['nativeSnapshots'] = (record['nativeSnapshots']+[value])[-4:]
@@ -209,7 +222,7 @@ def first_tap_once(*, argv, source, identity, before, nonce, out, root=ROOT, clo
             need(_sources(root, source, identity, preparation_deadline) == (binding, additional)
                  and gate._identity(prefix, identity, preparation_deadline) == owner, 'identity-changed')
             need(clock() < preparation_deadline and clock() < action_deadline, 'deadline')
-            point = before['compactTap']; record.update(point=point, tapInvocations=1)
+            point = before['addressTap' if target == 'address' else 'compactTap']; record.update(point=point, tapInvocations=1)
             outcome = gate._bounded_run(prefix+['shell', 'input', 'tap', str(point[0]), str(point[1])], action_deadline)
             need(outcome.returncode == 0, 'action-failed');need(clock() < action_deadline, 'deadline')
             record.update(status='passed', reason='clear', preparationQueries=queries)
@@ -224,7 +237,7 @@ def first_tap_once(*, argv, source, identity, before, nonce, out, root=ROOT, clo
         if owned and path is not None and path.is_file():
             try:
                 temporary = path.with_suffix('.partial')
-                with temporary.open('x') as target:json.dump(record, target, sort_keys=True)
+                with temporary.open('x') as stream:json.dump(record, stream, sort_keys=True)
                 temporary.replace(path)
             except OSError:raise gate.HeaderReadinessFailure('receipt-unavailable') from None
         print('CHROME_FIRST_TAP_READINESS '+json.dumps(record, sort_keys=True, separators=(',', ':')), flush=True)

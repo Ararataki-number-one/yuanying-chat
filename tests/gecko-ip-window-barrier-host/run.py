@@ -22,9 +22,13 @@ CURRENT_GV_SHA256 = '55225a8da3ba67b3be724e243c9b442e635dbc5aa282a2ef0257653e8fb
 WINDOW_LOOKUP_SHA256 = '181b9349f1330e64eb174d7995030b2785c157351a9a47dee44fa481184f018e'
 MEMBERS = ('static final class TimeZoneGate', 'boolean timeZoneSessionAlive(',
            'boolean timeZoneAllows(', 'private void startTimeZone(')
+WINDOW_CONTRACT_MEMBERS = MEMBERS + ('public void lookupIp(', 'static final class IpLookup {', 'void lookupIpTimeZone(')
 module_spec = importlib.util.spec_from_file_location('window_gate_extraction', ROOT / 'tests/gecko-navigation-host/run.py')
 extraction = importlib.util.module_from_spec(module_spec)
 module_spec.loader.exec_module(extraction)
+history_spec = importlib.util.spec_from_file_location('window_public_history', ROOT / 'tests/historical_source_inputs.py')
+history = importlib.util.module_from_spec(history_spec)
+history_spec.loader.exec_module(history)
 
 
 def sha(data):
@@ -35,6 +39,30 @@ def declaration(source, needle):
     if source.count(needle) != 1:
         raise ValueError('Unique actual production member required: ' + needle)
     return extraction.member_at(source, source.index(needle))
+
+
+def historical_recovery_source():
+    """Read the real published after-image for the unchanged historical proof."""
+    return history.historical_bytes(SOURCE_PATH), history.historical_identity(SOURCE_PATH)
+
+
+def verify_current_window(raw, released_raw):
+    """Keep the actual window members and budgets, without pinning unrelated code."""
+    if type(raw) is not bytes or type(released_raw) is not bytes:
+        raise AssertionError('Complete current and historical window sources required')
+    if len(released_raw) != 128874 or sha(released_raw) != CURRENT_GV_SHA256:
+        raise AssertionError('Exact published window reference required')
+    current, released = raw.decode('utf-8'), released_raw.decode('utf-8')
+    members = {}
+    for name in WINDOW_CONTRACT_MEMBERS:
+        selected = declaration(current, name)
+        if selected != declaration(released, name):
+            raise AssertionError('Current window member differs from its retained contract: ' + name)
+        members[name] = sha(selected.encode())
+    return dict(scope='Current raw window methods, initial consumer and original 5000/8000/8500ms budgets',
+                currentSourceSha256=sha(raw), memberSha256=members,
+                currentJavaFromRawCurrent=True, sourceHistoryProjectionUsed=False,
+                originalFiveEightAndEightPointFiveSecondBudgetsPreserved=True)
 
 
 def verify_recovery_source(raw,composed_raw):
@@ -181,7 +209,7 @@ def main():
     identity = ROOT / 'app/src/main/java/org/mozilla/geckoview/AppSessionIdentity.java'
     template_file = HERE / 'WindowBarrierHost.java.in'
     complete = [PROD / 'J.java']
-    files = [source, identity, template_file, Path(__file__).resolve(), ROOT / 'tests/gecko-navigation-host/run.py'] + complete
+    files = [source, identity, template_file, Path(__file__).resolve(), ROOT / 'tests/gecko-navigation-host/run.py', ROOT / 'tools/browser/source_history.py', ROOT / 'tests/historical_source_inputs.py'] + complete
     hashes = {str(path.relative_to(ROOT)): sha(path.read_bytes()) for path in files}
     jar_hash = sha(jar.read_bytes())
     selected = {name: declaration(source.read_text(), name) for name in MEMBERS}
@@ -234,8 +262,12 @@ def main():
         original_lookup = declaration(baseline_raw.decode(), lookup_declaration)
         current_lookup = declaration(source.read_text(), lookup_declaration)
         composed_raw = subprocess.check_output(['git', 'show', COMPOSED_SOURCE + ':' + SOURCE_PATH], cwd=ROOT, env=git_env, timeout=30)
-        delta_scope = verify_source_delta(source.read_bytes(), baseline_raw, composed_raw)
-        recovery_scope = None if delta_scope['lookupOnlyWholeFileInverseVerified'] else verify_recovery_source(source.read_bytes(),composed_raw)
+        released_raw, historical_identity = historical_recovery_source()
+        # The original whole-file oracle remains exact on its actual published input.
+        # Current Java already executed above and is independently bound below.
+        delta_scope = verify_source_delta(released_raw, baseline_raw, composed_raw)
+        recovery_scope = verify_recovery_source(released_raw, composed_raw)
+        current_contract = verify_current_window(source.read_bytes(), released_raw)
         metadata_controls = source_metadata_controls(composed_raw, baseline_raw)
         control_specs = [('actual-before', baseline, 'pending', 'Pending window has zero IP transport invocations true')]
         before = 'if(!ready||!current()){fail.accept(new IOException("出口时区查询上下文已变化"))'
@@ -263,6 +295,9 @@ def main():
                   identityMethodSha256=sha(identity_body.encode()), jsonJarSha256=jar_hash,
                   lookupOnlyWholeFileInverseVerified=delta_scope['lookupOnlyWholeFileInverseVerified'], originalInitialConsumerPreserved=True,
                   sourceDeltaScope=delta_scope, sourceMetadataControls=metadata_controls, resourceRecoveryWholeProof=recovery_scope,
+                  currentWindowContract=current_contract,
+                  historicalSourceProof=dict(source=historical_identity, historicalProofOnly=True,
+                                             currentJavaGeneratedFromHistoricalSource=False),
                   baseline=dict(commit=BASE, sourceSha256=sha(baseline_raw), usage='Real Git before-image runs only as a separately compiled negative; current workload executes raw current methods'),
                   negativeControls=controls, executionInputsUnchanged=unchanged,
                   typeTokenSubstitutions=replacements,

@@ -16,6 +16,18 @@ the original full report body (apart from two scope labels), Android runner,
 source preservation. Real geometry, touch targets and the original Android
 runner remain mandatory device acceptance.
 
+The browser address row adds a separate, exact source comparison layer. Its
+5329-byte `report` member must match the pinned current hash before two complete
+insertions can be reversed: the five-control measurement block and its two JSON
+fields. The result must match the unchanged 3982-byte v2 member. The original
+v2 inverse then restores the unchanged 3507-byte presentation member and, after
+the two existing scope labels, the original 3445-byte report. Unknown fields,
+partial additions, moved measurements and changed original or browser geometry
+are rejected. Separate controls exercise each inverse even when only that
+layer's current input hash is replaced. These source inverses feed only the
+historical report assertion; Java extraction uses the actual current methods,
+and live Android acceptance still requires the measured browser address row.
+
 Run with the pinned desktop and Android JSON implementations:
 
 ```sh

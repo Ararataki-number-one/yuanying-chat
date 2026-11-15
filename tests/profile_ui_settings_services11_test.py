@@ -12,6 +12,7 @@ from unittest.mock import patch
 
 import ui_settings_services11_contract as contract
 import ui_visual_preservation_contract as original_ui
+from historical_source_inputs import historical_bytes
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'tools/gecko'))
@@ -298,14 +299,14 @@ class SourceBuildBindingTests(unittest.TestCase):
 
 class SourcePreservationTests(unittest.TestCase):
     def test_complete_actual_runner_inverse_recovers_all_original_bytes(self):
-        raw = (ROOT / 'tests/gecko/run_ui_visuals.py').read_bytes()
+        raw = historical_bytes('tests/gecko/run_ui_visuals.py')
         old = contract.require_runner_source(raw)
         self.assertEqual(hashlib.sha256(old).hexdigest(), contract.PREVIOUS_SHA256)
         self.assertEqual(old.count(b"timeout=90).decode(errors='replace')"), 1)
         self.assertTrue(original_ui.verify_shared_ui_source(raw.decode())['originalWorkloadSemanticsPreserved'])
 
     def test_unknown_bytes_and_partial_moved_or_changed_lease_are_rejected(self):
-        raw = (ROOT / 'tests/gecko/run_ui_visuals.py').read_bytes()
+        raw = historical_bytes('tests/gecko/run_ui_visuals.py')
         text = raw.decode()
         changed = [text + '\n# unreviewed change\n', text.replace(contract.PREPARATION, '', 1),
                    text.replace(contract.PREPARATION, contract.PREPARATION * 2, 1),

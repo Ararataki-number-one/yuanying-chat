@@ -64,9 +64,12 @@ public final class GeckoTlsCpuIpComboIntegrationActivity extends MainActivity {
   // original production route, including native wss-to-https normalization.
 static String sdkStartupRole(String target){
     if(target==null||target.length()>16384)return "";
-    try{java.net.URI uri=new java.net.URI(target);if(!"https".equals(uri.getScheme())||uri.getRawUserInfo()!=null)return "";
+    try{java.net.URI uri=new java.net.URI(target);if(uri.getRawUserInfo()!=null)return "";
       String authority=uri.getRawAuthority();String host=uri.getHost();int port=uri.getPort();
-      if(host==null||!(port==-1||port==443)||!(host.equals(authority)||(host+":443").equals(authority)))return "";
+      if(host==null)return "";
+      if("http".equals(uri.getScheme())&&"firefox-portal-detection.com".equals(host)
+        &&(port==-1||port==80)&&(host.equals(authority)||(host+":80").equals(authority)))return "connectivity-service";
+      if(!"https".equals(uri.getScheme())||!(port==-1||port==443)||!(host.equals(authority)||(host+":443").equals(authority)))return "";
       if("firefox.settings.services.mozilla.com".equals(host))return "remote-settings";
       if("firefox-settings-attachments.cdn.mozilla.net".equals(host))return "remote-settings-attachments";
       if("safebrowsing.googleapis.com".equals(host))return "safe-browsing-google";

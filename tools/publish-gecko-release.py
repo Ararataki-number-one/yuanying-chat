@@ -42,7 +42,7 @@ def verify_compact_touch_evidence(chrome, source):
         assert chrome['actualAndroidExecution'] is True,message
         from gecko.compact_chrome_layout_v2 import verify_case
         assert {(case['viewport'],case['fontScale']) for case in cases}=={(360,1),(412,1),(360,2)},message
-        for case in cases:verify_case(case)
+        for case in cases:verify_case(case,require_browser_chrome=True)
     else:
         assert all(case['readOnlyStatus'] and len(case['actualAndroidTaps'])==3 for case in cases),message
     return True

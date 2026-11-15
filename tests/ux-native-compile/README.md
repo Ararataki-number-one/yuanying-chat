@@ -15,4 +15,6 @@ The Chromium sources also require the actual AndroidX WebKit dependency jar. Pas
 
 The generated helpers are never executed. This catches Java syntax, Android API use, and cross-feature application method/field integration errors in the listed files. It does not validate browser internals, resource linking, native libraries, APK assembly, Android lifecycle behavior, or device rendering. A passing receipt explicitly reports `fullAppBuild: false` and `actualAndroidExecution: false`; full Gradle and device checks remain necessary for an installable release.
 
+The complete `ReferenceUi` source also references `R.style.FloatingPanelAnimation`. The runner requires that exact style declaration in the actual `styles.xml`, records its hash, and supplies one explicit compile-only resource ID. Its placeholder value is never executed and is not an AAPT resource-linking result.
+
 `receipt.json` records the exact production source hashes, Android API hash, compiler version, source commit/dirty state, boundary generator hash, and actual command. It also hashes the application boundary source inputs before and after compilation, and fails if concurrent edits change an execution input. `javac.log` contains compiler diagnostics. Do not ship generated helper classes in the application.

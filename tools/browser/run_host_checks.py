@@ -144,6 +144,10 @@ def main():
             target=out/(name+'-'+label+'.json');add(name+'-'+label,script,java+['--json-jar',jar,'--output',target],target)
     add('combo-native-admission-collector','tests/gecko_cpu_ip_combo_native_admission_test.py')
     # END_DEVICE_FIX_HOSTS
+    # Current surface lifecycle, including the actual receipt-bound SDK class.
+    # The complete original 190 commands above retain their order and budget.
+    texture_sdk_arguments=(['--sdk-classes',a.gecko_sdk_jar.resolve()] if a.gecko_sdk_jar else [])+(['--sdk-receipt',a.gecko_sdk_receipt.resolve()] if a.gecko_sdk_receipt else [])
+    target=out/'gecko-texture-surface.json';add('gecko-texture-surface','tests/gecko-texture-surface-host/run.py',java+['--json-jar',desktop,'--output',target,'--require-sdk']+texture_sdk_arguments,target)
     names=subprocess.check_output(['git','ls-files','--cached','--others','--exclude-standard','app/src/main/java','app/src/main/assets','tests','tools/browser','tools/gecko','.github/workflows/browser-2_1-acceptance.yml'],cwd=ROOT,text=True).splitlines()
     files=[ROOT/name for name in sorted(set(names)) if (ROOT/name).is_file()]
     hashes={str(path.relative_to(ROOT)):hashlib.sha256(path.read_bytes()).hexdigest() for path in files}

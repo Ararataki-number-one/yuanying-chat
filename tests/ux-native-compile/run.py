@@ -7,6 +7,7 @@ from pathlib import Path
 import shutil
 import subprocess
 import sys
+import xml.etree.ElementTree as ET
 
 ROOT = Path(__file__).resolve().parents[2]
 HERE = Path(__file__).resolve().parent
@@ -40,7 +41,8 @@ def main():
         if not source.is_file():
             raise FileNotFoundError(source)
     app_sources = sorted(SOURCE.glob('*.java'))
-    input_paths = [HERE / 'BoundaryGenerator.java', HERE / 'production-sources.json', Path(__file__).resolve(), *app_sources]
+    styles = ROOT / 'app/src/main/res/values/styles.xml'
+    input_paths = [HERE / 'BoundaryGenerator.java', HERE / 'production-sources.json', Path(__file__).resolve(), styles, *app_sources]
     input_hashes = {str(path.relative_to(ROOT)): digest(path) for path in input_paths}
     version = subprocess.check_output([str(java / 'javac'), '-version'], stderr=subprocess.STDOUT, text=True).strip()
     if not version.startswith('javac 17.'):
@@ -50,6 +52,13 @@ def main():
     subprocess.run([str(java / 'javac'), '-d', str(out / 'generator-classes'), str(HERE / 'BoundaryGenerator.java')], check=True, cwd=ROOT)
     subprocess.run([str(java / 'java'), '-cp', str(out / 'generator-classes'), 'BoundaryGenerator',
                     str(SOURCE), str(out / 'stubs/local/pocketchat'), *names], check=True, cwd=ROOT)
+    if len(ET.parse(styles).getroot().findall("style[@name='FloatingPanelAnimation']")) != 1:
+        raise ValueError('The actual FloatingPanelAnimation style resource is missing or duplicated')
+    # AAPT supplies R in a real APK build. This declared ID boundary lets the
+    # complete ReferenceUi source compile here; it is never linked or executed.
+    (out / 'stubs/local/pocketchat/R.java').write_text(
+        'package local.pocketchat; final class R { static final class style { '
+        'static final int FloatingPanelAnimation = 0; } }\n')
     classpath = [str(android)]
     classpath.extend(map(str, dependencies))
     command = [str(java / 'javac'), '-encoding', 'UTF-8', '-Xmaxerrs', '300', '-cp', ':'.join(classpath),
@@ -75,6 +84,8 @@ def main():
         supplementalClasspathJars=[dict(path=str(path),sha256=dependency_hashes[str(path)]) for path in dependencies],
         actualProductionSources=[dict(path=str((SOURCE / name).relative_to(ROOT)), sha256=digest(SOURCE / name)) for name in names],
         applicationBoundaryFiles=len(boundaries),
+        resourceIdBoundary=dict(name='R.style.FloatingPanelAnimation', declarationSource=str(styles.relative_to(ROOT)),
+            declarationSha256=input_hashes[str(styles.relative_to(ROOT))], compileOnly=True, resourceLinkingExecuted=False),
         applicationBoundaryErasures=[dict(owner='GeckoWebView',field='surface',compilationType='android.view.View',scope='Inherited Android View input-fence API only'),dict(owner='GeckoWebView',field='current',compilationType='java.lang.Object',scope='Opaque app session identity comparisons only')],
         boundaryGeneratorSha256=digest(HERE / 'BoundaryGenerator.java'),
         command=command, exitCode=result.returncode,

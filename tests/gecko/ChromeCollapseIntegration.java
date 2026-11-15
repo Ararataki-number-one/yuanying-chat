@@ -38,6 +38,8 @@ final class ChromeCollapseIntegration {
   int activityStarts,menuOpens;
   int diagnosticSequence,diagnosticTicks,readyEvaluations,readyCallbacks,snapshotEvaluations,snapshotCallbacks,inputReadinessSequence;
   boolean diagnosticReady;
+  ChromeIdleDrawObservation idleDraw;
+  int idleDrawRequests;
   final Runnable diagnosticTick=new Runnable(){public void run(){
     if(diagnosticReady||diagnosticTicks>=32)return;
     diagnosticTicks++;diagnostic("waiting");a.handler.postDelayed(this,1000);
@@ -51,6 +53,8 @@ final class ChromeCollapseIntegration {
       "sourceCommit",events.buildIdentity.optString("sourceCommit"),"sourceTree",events.buildIdentity.optString("sourceTree"),
       "stage",stage,"elapsedMs",SystemClock.elapsedRealtime(),"diagnosticOnly",true,
       "checkpointReady",w.checkpointReady,"runtimePresent",w.runtime!=null,"extensionPresent",w.extension!=null,
+      "addonDisabled",w.addonDisabled,"metadataEnabled",w.extension!=null&&w.extension.metaData!=null&&w.extension.metaData.enabled,
+      "routeDelegateInstalls",w.routeDelegateInstalls,"routeConnectAttempts",w.routeConnectAttempts,
       "identityPrepared",w.identityPrepared,"routePrepared",w.routePrepared,"privacyReady",w.privacyReady,
       "ready",w.ready,"failed",w.failed,"destroyed",w.destroyed,"resourceDeferred",w.resourceDeferred,
       "sessionPresent",w.current!=null,"surfacePresent",w.surface!=null,"portPresent",w.ports.get(w.current)!=null,
@@ -65,19 +69,37 @@ final class ChromeCollapseIntegration {
   JSONArray nativeTouches=new JSONArray();
   final BroadcastReceiver receiver=new BroadcastReceiver(){@Override public void onReceive(Context c,Intent intent){
     if(!nonce.equals(intent.getStringExtra("eventNonce")))return;
+    String idleCommand=intent.getStringExtra("idleDrawDiagnostic");
+    if(idleCommand!=null){
+      String request=intent.getStringExtra("idleDrawRequest"),phase=intent.getStringExtra("idleDrawPhase");
+      if(request==null||!request.matches("[0-9a-f]{32}")||phase==null
+          ||!phase.matches("glass-hidden-reading|foreground-settled|background"))return;
+      if("start".equals(idleCommand)&&idleDrawRequests<4){
+        if(idleDraw!=null)idleDraw.stop("replaced");idleDrawRequests++;
+        idleDraw=new ChromeIdleDrawObservation(a,events.buildIdentity,nonce,request,phase);idleDraw.start();
+      }else if("stop".equals(idleCommand)&&idleDraw!=null&&idleDraw.request.equals(request))idleDraw.stop("host-stop");
+      return;
+    }
     String readiness=intent.getStringExtra("collapseReadiness");
-    if(readiness!=null){if(readiness.matches(nonce+"-[1-9][0-9]{0,2}"))inputReadiness(readiness);return;}
+    if(readiness!=null){
+      if(readiness.matches(nonce+"-[1-9][0-9]{0,2}")){
+        String target=intent.getStringExtra("collapseReadinessTarget");
+        if(target==null)inputReadiness(readiness);else if("address".equals(target))inputReadiness(readiness,true);
+      }
+      return;
+    }
     String command=intent.getStringExtra("collapseCommand");
     if(command==null||!command.matches("[a-zA-Z0-9_-]{1,80}"))return;
     if("clear".equals(command)){web().touchesObserved=new JSONArray();nativeTouches=new JSONArray();return;}
     a.handler.postDelayed(()->snapshot(command),150);
   }};
-  void inputReadiness(String request){
+  void inputReadiness(String request){inputReadiness(request,false);}
+  void inputReadiness(String request,boolean address){
     if(!"local.pocketchat.test".equals(a.getPackageName())||!request.matches(nonce+"-[1-9][0-9]{0,2}")||inputReadinessSequence>=128)return;
-    CollapseView w=web();View compact=a.designChrome.compact;android.graphics.Rect visible=new android.graphics.Rect();
-    boolean globallyVisible=compact.getGlobalVisibleRect(visible);int[] rootLocation=new int[2];compact.getRootView().getLocationOnScreen(rootLocation);visible.offset(rootLocation[0],rootLocation[1]);JSONObject pending=a.session.pending;
+    CollapseView w=web();View compact=a.designChrome.compact,target=address?a.designChrome.title:compact;android.graphics.Rect visible=new android.graphics.Rect();
+    boolean globallyVisible=target.getGlobalVisibleRect(visible);int[] rootLocation=new int[2];target.getRootView().getLocationOnScreen(rootLocation);visible.offset(rootLocation[0],rootLocation[1]);JSONObject pending=a.session.pending;
     String url=w.getUrl(),document=w.inputDocument(nonce,events.buildIdentity.optString("sourceCommit"));InputDocumentBinding binding=w.inputBinding;
-    JSONObject value=J.obj("schema",1,"kind","nativeInputReadiness","diagnosticOnly",true,"releaseAcceptance",false,
+    JSONObject value=J.obj("schema",address?2:1,"kind","nativeInputReadiness","diagnosticOnly",true,"releaseAcceptance",false,
       "sourceCommit",events.buildIdentity.optString("sourceCommit"),"sourceTree",events.buildIdentity.optString("sourceTree"),"apkSha256",events.buildIdentity.optString("apkSha256"),
       "runNonce",nonce,"request",request,"fixtureAction","chromeCollapse","sequence",++inputReadinessSequence,"observedAtElapsedRealtime",SystemClock.elapsedRealtime(),
       "pid",android.os.Process.myPid(),"uid",android.os.Process.myUid(),"activityRef",System.identityHashCode(a),
@@ -85,12 +107,14 @@ final class ChromeCollapseIntegration {
       "appearanceDocument",document,"documentBinding","fixture-admitted-current-port","documentPort",System.identityHashCode(binding==null?null:binding.port),"currentPort",System.identityHashCode(w.ports.get(w.current)),
       "url",TARGET.equals(url)?url:"<outside-fixture>","visibleDocument",w.hasVisibleDocument(),
       "pendingId",pending==null?"":pending.optString("id"),"pendingConfirmed",pending!=null&&pending.optBoolean("confirmed"),
-      "windowFocus",a.hasWindowFocus(),"decorFocus",a.getWindow().getDecorView().hasWindowFocus(),"attached",compact.isAttachedToWindow(),
-      "shown",compact.isShown(),"enabled",compact.isEnabled(),"clickable",compact.isClickable(),"laidOut",compact.isLaidOut(),"layoutRequested",compact.isLayoutRequested(),
+      "windowFocus",a.hasWindowFocus(),"decorFocus",a.getWindow().getDecorView().hasWindowFocus(),"attached",target.isAttachedToWindow(),
+      "shown",target.isShown(),"enabled",target.isEnabled(),"clickable",target.isClickable(),"laidOut",target.isLaidOut(),"layoutRequested",target.isLayoutRequested(),
       "globallyVisible",globallyVisible,"expanded",a.designChrome.expanded(),"toolbarVisibility",a.toolbar.getVisibility(),"compactVisibility",compact.getVisibility(),
       "page",a.hub.page,"activityStarts",activityStarts,"menuOpens",menuOpens,"nativeTouchCount",nativeTouches.length(),
       "hostBounds",a.bounds(a.getWindow().getDecorView()),"toolbarBounds",a.bounds(a.toolbar),"compactBounds",a.bounds(compact),"visibleBounds",a.rect(visible),
-      "webBounds",a.bounds(w),"point",a.center(compact));
+      "webBounds",a.bounds(w),"point",a.center(target));
+    if(address)try{value.put("target","address").put("targetBounds",a.bounds(target));}
+    catch(org.json.JSONException error){throw new IllegalStateException("Address bounds observation failed",error);}
     String raw=value.toString();if(raw.getBytes(java.nio.charset.StandardCharsets.UTF_8).length>3500)throw new IllegalStateException("Bounded native input readiness required");
     android.util.Log.i("PocketChromeInputReady",raw);
   }
@@ -136,6 +160,14 @@ final class ChromeCollapseIntegration {
         !staleAppearanceConnections.contains(port)&&java.util.Objects.equals(appearanceConnections.get(port),appearanceLoads.getOrDefault(current,0L)));
     }
     ChromeCollapseIntegration diagnostic;
+    @Override public void onDescendantInvalidated(View child,View target){
+      if(diagnostic!=null&&diagnostic.idleDraw!=null)diagnostic.idleDraw.note("gecko-descendant-invalidated",target,0);
+      super.onDescendantInvalidated(child,target);
+    }
+    @Override public ViewParent invalidateChildInParent(int[] location,android.graphics.Rect dirty){
+      if(diagnostic!=null&&diagnostic.idleDraw!=null)diagnostic.idleDraw.note("gecko-child-invalidated",this,0);
+      return super.invalidateChildInParent(location,dirty);
+    }
     int routeCalls,fixtureRoutes,blockedRoutes,otherRoutes;
     @Override JSONObject route(String target){
       JSONObject result=super.route(target);routeCalls++;
@@ -282,6 +314,7 @@ final class ChromeCollapseIntegration {
         .put("readingRequested",a.focusReading).put("readingActive",a.focusActive()).put("readingExitVisibility",a.focusExit.getVisibility())
         .put("navigationVisibility",a.hub.bar.getVisibility()).put("navigationHeight",a.hub.bar.getHeight())
         .put("workspaceHeight",a.hub.workspace.getHeight()).put("addressDialog",addressDialog());
+        if(a.getIntent().getBooleanExtra("observeGlassRenderer",false))result.put("glassRenderer",glassRendererObservation());
         if(a.designChrome.expanded()){
           java.lang.reflect.Method method=DesignChrome.class.getDeclaredMethod("touchBounds",View.class);method.setAccessible(true);
           android.graphics.Rect target=(android.graphics.Rect)method.invoke(a.designChrome,a.designChrome.title);int[] origin=new int[2];a.toolbar.getLocationOnScreen(origin);target.offset(origin[0],origin[1]);
@@ -291,7 +324,51 @@ final class ChromeCollapseIntegration {
       }catch(Exception failure){emit("error",J.obj("error",failure.toString()));}
     });
   }
+  JSONObject glassRendererObservation() throws Exception {
+    JSONArray docks=new JSONArray();
+    View[] views={(View)a.hub.tabs[0].getParent(),(View)a.hub.workspaceTabs[0].getParent()};
+    String[] roles={"conversation","workspace"};View root=a.getWindow().getDecorView();
+    for(int i=0;i<views.length;i++){
+      View dock=views[i];LiquidGlassDrawable drawable=glassMaterial(dock.getBackground());
+      if(!(dock instanceof GlassDock)||drawable==null)throw new IllegalStateException("Actual glass dock required");
+      Object owner=glassField(drawable,"owner"),backdrop=glassField(drawable,"backdrop");
+      // API32 never resolves the API33 renderer or its private fields.
+      Object renderer=Build.VERSION.SDK_INT>=33?glassField(drawable,"renderer"):null;
+      Object lastSource=renderer==null?null:glassField(renderer,"lastSource");
+      docks.put(J.obj("role",roles[i],"dockRef",System.identityHashCode(dock),"drawableRef",System.identityHashCode(drawable),
+        "attached",dock.isAttachedToWindow(),"currentActivityRoot",dock.getRootView()==root&&dock.getContext()==a&&a.hub.a==a,
+        "ownerBound",owner instanceof java.lang.ref.WeakReference&&((java.lang.ref.WeakReference<?>)owner).get()==dock,
+        "backdropBound",backdrop instanceof java.lang.ref.WeakReference&&((java.lang.ref.WeakReference<?>)backdrop).get()==a.hub.panel,
+        "gpuBroken",glassField(drawable,"gpuBroken"),"rendererRef",renderer==null?0:System.identityHashCode(renderer),
+        "rendererClass",renderer==null?"":renderer.getClass().getName(),"agslReady",renderer!=null,
+        "hadBackdrop",renderer!=null&&Boolean.TRUE.equals(glassField(renderer,"hadBackdrop")),
+        "lastSourcePresent",lastSource!=null,"lastSourceCurrent",lastSource==a.hub.panel,
+        "nativeBackdropRecorded",renderer!=null&&Boolean.TRUE.equals(glassField(renderer,"reportedBackdrop"))));
+    }
+    return J.obj("schema",1,"deviceApi",Build.VERSION.SDK_INT,"pid",android.os.Process.myPid(),
+      "activityRef",System.identityHashCode(a),"activityClass",a.getClass().getName(),
+      "mainThread",Looper.myLooper()==Looper.getMainLooper(),"docks",docks);
+  }
+  static Object glassField(Object target,String name) throws Exception {
+    for(Class<?> type=target.getClass();type!=null;type=type.getSuperclass())try{
+      java.lang.reflect.Field field=type.getDeclaredField(name);field.setAccessible(true);return field.get(target);
+    }catch(NoSuchFieldException missing){}
+    throw new NoSuchFieldException(name);
+  }
+  static LiquidGlassDrawable glassMaterial(android.graphics.drawable.Drawable value){
+    if(value instanceof LiquidGlassDrawable)return (LiquidGlassDrawable)value;
+    if(value instanceof android.graphics.drawable.InsetDrawable)return glassMaterial(((android.graphics.drawable.InsetDrawable)value).getDrawable());
+    LiquidGlassDrawable found=null;
+    if(value instanceof android.graphics.drawable.LayerDrawable){
+      android.graphics.drawable.LayerDrawable layers=(android.graphics.drawable.LayerDrawable)value;
+      for(int i=0;i<layers.getNumberOfLayers();i++){
+        LiquidGlassDrawable next=glassMaterial(layers.getDrawable(i));
+        if(next!=null){if(found!=null)throw new IllegalStateException("Ambiguous dock material");found=next;}
+      }
+    }
+    return found;
+  }
   void emit(String kind,JSONObject result){diagnostic("emit-before");try{events.emit(kind,result);diagnostic("emit-queued");}catch(Exception failure){events.failure(failure);}}
   void nativeTouch(MotionEvent event){if(web().tracking&&nativeTouches.length()<256)nativeTouches.put(J.obj("action",event.getActionMasked(),"pointers",event.getPointerCount(),"height",a.remote.getHeight(),"expanded",a.designChrome.expanded()));}
-  void close(){a.handler.removeCallbacks(diagnosticTick);try{a.unregisterReceiver(receiver);}catch(IllegalArgumentException ignored){}}
+  void close(){if(idleDraw!=null)idleDraw.stop("fixture-closed");a.handler.removeCallbacks(diagnosticTick);try{a.unregisterReceiver(receiver);}catch(IllegalArgumentException ignored){}}
 }

@@ -39,6 +39,46 @@ def address_dialog(xml, package):
     return dict(title='打开网址',editableFields=1,controls=actions)
 
 
+def verify_browser_address_row(row, density):
+    """Measure the real address and four action controls between native rows."""
+    left, top, right, bottom = rect(row['bounds'])
+    padding = row['padding']
+    assert type(padding) is list and len(padding) == 4
+    assert all(type(value) is int and value >= 0 for value in padding)
+    assert type(row['stacked']) is bool
+    controls = row['controls']
+    assert [item['name'] for item in controls] == ['back', 'forward', 'address', 'reload', 'home']
+    boxes = []
+    for item in controls:
+        box = rect(item['bounds']); l, t, r, b = box
+        assert item['shown'] is True and item['clickable'] is True
+        assert left <= l < r <= right and top <= t < b <= bottom
+        assert r-l >= 47.9*density and b-t >= 47.9*density
+        inside(item['tap'], item['bounds'])
+        boxes.append(box)
+    back, forward, address, reload, home = boxes
+    actions = [back, forward, reload, home]
+    assert all(abs((r-l)/density-48) < .34 and abs((b-t)/density-48) < .34 for l,t,r,b in actions)
+    assert all(a[2] <= b[0] for a,b in zip(actions, actions[1:]))
+    assert all(a[1] == back[1] and a[3] == back[3] for a in actions)
+    assert back[0] == left+padding[0] and home[2] == right-padding[2]
+    assert forward[0] == back[2] and reload[2] == home[0]
+    assert address[2]-address[0] >= 159.9*density
+    assert controls[2]['lineCount'] == 1
+    assert controls[2]['fontHeight'] <= controls[2]['contentHeight']+1
+    if row['stacked']:
+        assert address[0] == back[0] and address[2] == home[2]
+        assert address[1] == top+padding[1]
+        assert abs((back[1]-address[3])/density-4) < .34
+        assert bottom == back[3]+padding[3]
+    else:
+        assert forward[2] == address[0] and address[2] == reload[0]
+        assert abs((address[1]+address[3])-(back[1]+back[3])) <= 1
+        assert min(address[1],back[1]) == top+padding[1]
+        assert bottom == max(address[3],back[3])+padding[3]
+    return bottom-top
+
+
 def verify_layout(layout, width, scale):
     assert type(layout.get('navigationContract')) is int and layout['navigationContract']==2
     assert layout['geckoOnly'] and layout['pageMode'] and layout['noNativeChat'] and layout['systemWebViews']==0
@@ -50,8 +90,17 @@ def verify_layout(layout, width, scale):
     tl,tt,tr,tb=rect(layout['toolbar']);density=(tr-tl)/width
     assert abs(density-3)<.01
     top=rect(layout['topBounds']);network=rect(layout['networkBounds'])
-    assert top[1]==tt and top[3]==network[1] and network[3]==tb
-    assert abs(layout['toolbarHeightDp']-(layout['topHeightDp']+layout['networkHeightDp']))<.34
+    browser_height = 0
+    if layout.get('browserChrome') is True:
+        row = layout['browserAddressRow']
+        browser_height = verify_browser_address_row(row, density)
+        assert tl <= row['bounds'][0] < row['bounds'][2] <= tr, 'Browser address row lies outside the toolbar'
+        assert top[3] == row['bounds'][1] and row['bounds'][3] == network[1]
+    else:
+        assert 'browserAddressRow' not in layout
+        assert top[3] == network[1]
+    assert top[1] == tt and network[3] == tb
+    assert abs(layout['toolbarHeightDp']-(layout['topHeightDp']+browser_height/density+layout['networkHeightDp']))<.34
     assert layout['networkHeightDp']>=20
     controls=layout['controls']
     assert [c['name'] for c in controls]==['drawer','environment','more']
@@ -93,9 +142,13 @@ def verify_layout(layout, width, scale):
     return True
 
 
-def verify_case(case):
+def verify_case(case, *, require_browser_chrome):
+    # Missing current evidence must never silently select a historical layout.
+    assert type(require_browser_chrome) is bool
     assert type(case.get('navigationContract')) is int and case['navigationContract']==2
     assert (case['viewport'],case['fontScale']) in ((360,1),(412,1),(360,2))
+    if require_browser_chrome:
+        assert case['layout'].get('browserChrome') is True, 'Current browser address controls must be measured'
     verify_layout(case['layout'],case['viewport'],case['fontScale'])
     assert case['readOnlyStatus'] is True
     status=case['statusObservation']

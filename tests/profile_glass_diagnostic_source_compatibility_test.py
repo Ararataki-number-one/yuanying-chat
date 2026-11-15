@@ -2,6 +2,7 @@
 import ast
 import os
 from pathlib import Path
+from historical_source_inputs import historical_bytes
 import subprocess
 import unittest
 
@@ -18,7 +19,7 @@ class GlassDiagnosticSourceCompatibilityTests(unittest.TestCase):
         environment = dict(os.environ, GIT_NO_LAZY_FETCH='1')
         self.assertEqual(subprocess.check_output(['git', '--no-replace-objects', 'rev-parse', value['baseCommit'] + '^{tree}'], cwd=ROOT, env=environment).decode().strip(), value['baseTree'])
         for path, row in value['files'].items():
-            current = (ROOT / path).read_bytes()
+            current = historical_bytes(path)
             previous = subprocess.check_output(['git', '--no-replace-objects', 'show', value['baseCommit'] + ':' + path], cwd=ROOT, env=environment)
             self.assertEqual(inputs.source_input(current, path), previous)
             self.assertEqual(inputs.sha(previous), inputs.PREVIOUS[path])
@@ -31,15 +32,15 @@ class GlassDiagnosticSourceCompatibilityTests(unittest.TestCase):
     def test_current_bindings_run_all_original_function_bodies_and_goldens(self):
         self.assertTrue(hasattr(native.SharedSaveNormalizersInput.restore.__func__, '__wrapped__'))
         self.assertTrue(hasattr(editing.restore_native_setup_shared_save_view, '__wrapped__'))
-        current_display = (ROOT / inputs.DISPLAY).read_bytes()
-        current_native = (ROOT / inputs.NATIVE).read_bytes()
+        current_display = historical_bytes(inputs.DISPLAY)
+        current_native = historical_bytes(inputs.NATIVE)
         self.assertEqual(inputs.sha(native.SharedSaveNormalizersInput.restore(current_display)), '3c0f755bf0718db15ecf403d448f4c48a55261b241d1671f6574342f947a34e0')
         self.assertEqual(inputs.sha(editing.restore_native_setup_shared_save_view(current_native)), 'f4f01aa91c2e9f0a31859cf239a0d0e35172abee8267d69478c24a4616d503c5')
         def bodies(raw):
             text = raw.decode()
             return [ast.get_source_segment(text, node) for node in ast.walk(ast.parse(raw)) if isinstance(node, (ast.ClassDef, ast.FunctionDef))]
         for path in (inputs.NATIVE, 'tests/profile_editing_transport13_diagnostic_test.py'):
-            current = (ROOT / path).read_bytes()
+            current = historical_bytes(path)
             previous = subprocess.check_output(['git', '--no-replace-objects', 'show', inputs.manifest()['baseCommit'] + ':' + path], cwd=ROOT, env=dict(os.environ, GIT_NO_LAZY_FETCH='1'))
             self.assertEqual(bodies(current), bodies(previous))
 
@@ -47,7 +48,7 @@ class GlassDiagnosticSourceCompatibilityTests(unittest.TestCase):
         wrappers = {inputs.DISPLAY: native.SharedSaveNormalizersInput.restore,
                     inputs.NATIVE: editing.restore_native_setup_shared_save_view}
         for path, row in inputs.manifest()['files'].items():
-            raw = (ROOT / path).read_bytes()
+            raw = historical_bytes(path)
             changed = [raw + b'\n', raw[:1024], b'unknown source']
             for delta in row['deltas']:
                 current = delta['current'].encode()
@@ -78,7 +79,7 @@ class GlassDiagnosticSourceCompatibilityTests(unittest.TestCase):
             self.assertEqual(inputs.historical_input(previous, path), previous)
 
     def test_types_paths_and_incomplete_bytes_cannot_gain_acceptance(self):
-        raw = (ROOT / inputs.DISPLAY).read_bytes()
+        raw = historical_bytes(inputs.DISPLAY)
         for candidate in (None, raw.decode(), bytearray(raw), memoryview(raw), True, b''):
             with self.assertRaises(AssertionError):inputs.source_input(candidate, inputs.DISPLAY)
             with self.assertRaises(AssertionError):native.SharedSaveNormalizersInput.restore(candidate)

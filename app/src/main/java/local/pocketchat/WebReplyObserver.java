@@ -38,11 +38,7 @@ final class WebReplyObserver {
     JSONObject receipt = session.deliveries.get(job.optString("id"));
     String state = receipt == null ? "" : receipt.optString("state");
     if ("completed".equals(state) || "stopped".equals(state)) {
-      session.pending = null;
-      session.activeDeliveryId = "";
-      session.prefs.edit().remove("pending").commit();
-      if ("completed".equals(state)) session.handler.post(() -> ChatService.completed(session.context,
-        job.optString("id"), job.optString("confirmedUrl", job.optString("expectedUrl"))));
+      ReplyTaskPersistence.restoreTerminal(session,job,receipt);
     } else if (!job.optBoolean("confirmed")) suspendUnconfirmed("网页已重新打开，请核对之前的发送结果");
   }
 
@@ -67,6 +63,24 @@ final class WebReplyObserver {
   }
   static boolean webJob(JSONObject job) { return job != null && "web".equals(job.optString("kind")); }
 
+  /** Retire this device's observation; never stop or replay the website task. */
+  void navigationStarted(String target) {
+    JSONObject job=session.pending;
+    if(!webJob(job))return;
+    String bound=job.optBoolean("confirmed")?job.optString("confirmedUrl"):job.optString("expectedUrl");
+    if(same(bound,target)||!job.optBoolean("confirmed")&&bindingRoute(bound,target))return;
+    archiveNavigation(job);
+  }
+
+  boolean currentEvent(JSONObject event,Object port) {
+    return !session.deleted&&session.navigationDispatched&&session.resourceBindingMatches(event,port)
+      &&port==session.web.ports.get(session.web.current)
+      &&session.resourceObserverEpoch==session.navigationEpoch
+      &&same(event.optString("url"),session.web.getUrl())
+      &&(session.resourceObserverDocument.isEmpty()
+        ||session.resourceObserverDocument.equals(event.optString("documentId")));
+  }
+
   void receive(JSONObject event) {receive(event,null);}
   void receive(JSONObject event,Object port) {
     String url = event.optString("url"), token = event.optString("token"), document = event.optString("documentId");
@@ -81,7 +95,7 @@ final class WebReplyObserver {
           session.navigating && session.targetMatches(url)) session.wakePolling();
       return;
     }
-    if(!session.replyObservationAllowed())return;
+    if(!currentEvent(event,port)||!session.replyObservationAllowed())return;
     try {
       if ("intent".equals(type)) {
         if (!session.webPerformance() || session.submitting || session.operation && !session.configurationCapture ||
@@ -150,22 +164,24 @@ final class WebReplyObserver {
   }
 
   void finishStopped(JSONObject job) {
-    session.delivery(job.optString("id"), "stopped", "已观察到网页停止操作，已停止完成提醒", true, job.optString("userKey"), "");
-    session.pending = null;
-    session.activeDeliveryId = "";
-    session.prefs.edit().remove("pending").commit();
-    ChatService.end(session.context);
-    session.setStatus("已停止等待这条网页回复");
+    ReplyTaskPersistence.stopped(session,job);
   }
 
   /** Ends this device's observation after the website actually changes chats. */
   boolean archiveNavigation(JSONObject job){
     if(session.pending!=job||!webJob(job))return false;
+    long epoch=session.navigationEpoch;
     if(!session.prefs.edit().putString("archivedWebObservation",job.toString()).remove("pending").commit()){
       session.setStatus("本地等待记录保存失败，请保留原网页核对");return false;
     }
     // A synchronous preferences listener may already have installed another job.
     if(session.pending!=job)return false;
+    if(epoch!=session.navigationEpoch){
+      // A listener may have navigated back to this same task without replacing
+      // its object. Restore only an absent record; never overwrite newer data.
+      if(session.prefs.getString("pending","").isEmpty())session.prefs.edit().putString("pending",job.toString()).commit();
+      return false;
+    }
     String url=job.optString("confirmedUrl");if(url.isEmpty())url=job.optString("expectedUrl");String prompt=job.optString("prompt");
     session.delivery(job.optString("id"),"uncertain","已离开原对话，本机完成提醒已停止；原网页发送状态未改动",true,job.optString("userKey"),url);
     session.pending=null;session.activeDeliveryId="";session.resetReplyStability();

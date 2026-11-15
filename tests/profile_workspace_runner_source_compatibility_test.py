@@ -8,6 +8,7 @@ import unittest
 from unittest.mock import patch
 
 import workspace_runner_source_compatibility as history
+from historical_source_inputs import historical_bytes
 from ui_job_budget_source_compatibility import historical_source_input as ui_job_budget_source_input
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -32,7 +33,7 @@ class WorkspaceRunnerHistoricalInputs(unittest.TestCase):
         self.assertEqual(history.PATHS, OWNED)
         for relative, row in history.ROWS.items():
             with self.subTest(path=relative):
-                current = ui_job_budget_source_input((ROOT/relative).read_bytes(), relative)
+                current = ui_job_budget_source_input(historical_bytes(relative), relative)
                 self.assertEqual((len(current), history.sha(current)), (row['afterBytes'], row['afterSha256']))
                 previous = history.source_input(current, relative)
                 self.assertEqual((len(previous), history.sha(previous)), (row['beforeBytes'], row['beforeSha256']))
@@ -46,7 +47,7 @@ class WorkspaceRunnerHistoricalInputs(unittest.TestCase):
                 self.assertEqual(forward, current)
 
     def test_runner_inverse_owns_exactly_the_two_reviewed_lines_and_no_runtime_input(self):
-        current = (ROOT/history.RUNNER).read_bytes()
+        current = historical_bytes(history.RUNNER)
         previous = history.source_input(current, history.RUNNER)
         before = previous.decode().splitlines(keepends=True)
         after = current.decode().splitlines(keepends=True)
@@ -62,19 +63,20 @@ class WorkspaceRunnerHistoricalInputs(unittest.TestCase):
         self.assertEqual(len(imports), 1)
         self.assertEqual(len(calls), 1)
         self.assertNotIn(b'workspace_runner_source_compatibility', current)
+        self.assertNotIn(b'workspace_runner_source_compatibility', (ROOT/history.RUNNER).read_bytes())
         self.assertEqual(len(history.ROWS[history.RUNNER]['deltas']), 1)
 
     def test_all_original_helper_bodies_and_old_assertion_trees_are_preserved(self):
         helpers = OWNED - {history.RUNNER} - {path for path in OWNED if path.endswith('_test.py')}
         for relative in helpers:
-            current = ui_job_budget_source_input((ROOT/relative).read_bytes(), relative)
+            current = ui_job_budget_source_input(historical_bytes(relative), relative)
             previous = history.source_input(current, relative)
             def bodies(raw):
                 return [ast.dump(node, include_attributes=False) for node in ast.parse(raw).body
                         if isinstance(node, (ast.FunctionDef, ast.ClassDef))]
             self.assertEqual(bodies(current), bodies(previous), relative)
         for relative in (path for path in OWNED if path.endswith('_test.py')):
-            current = ui_job_budget_source_input((ROOT/relative).read_bytes(), relative)
+            current = ui_job_budget_source_input(historical_bytes(relative), relative)
             previous = history.source_input(current, relative)
             def assertions(raw):
                 return [ast.dump(node, include_attributes=False) for node in ast.walk(ast.parse(raw))
@@ -84,7 +86,7 @@ class WorkspaceRunnerHistoricalInputs(unittest.TestCase):
 
     def test_unknown_insert_delete_change_duplicate_and_moved_context_fail_closed(self):
         for relative, row in history.ROWS.items():
-            current = ui_job_budget_source_input((ROOT/relative).read_bytes(), relative)
+            current = ui_job_budget_source_input(historical_bytes(relative), relative)
             candidates = [current+b' ', current[:-1], b'unknown', current[:80]]
             for delta in row['deltas']:
                 context = delta['after'].encode()
@@ -103,7 +105,7 @@ class WorkspaceRunnerHistoricalInputs(unittest.TestCase):
                     self.assertIs(history.historical_input(candidate, relative), candidate)
 
     def test_navigation_arguments_anchor_and_unrelated_old_guard_mutations_reject(self):
-        raw = (ROOT/history.RUNNER).read_bytes()
+        raw = historical_bytes(history.RUNNER)
         changes = (
             (b'exercise_workspace_roundtrip(adb,hierarchy,', b'exercise_workspace_roundtrip(None,hierarchy,'),
             (b"report['productionNavigation']", b"report['other']"),
@@ -118,7 +120,7 @@ class WorkspaceRunnerHistoricalInputs(unittest.TestCase):
                 history.source_input(raw.replace(old, new, 1), history.RUNNER)
 
     def test_wrong_types_paths_and_reusing_restored_input_as_current_are_rejected(self):
-        raw = (ROOT/history.RUNNER).read_bytes()
+        raw = historical_bytes(history.RUNNER)
         for value in (raw.decode(), bytearray(raw), memoryview(raw), None, b''):
             with self.assertRaises(ValueError):
                 history.source_input(value, history.RUNNER)
@@ -133,7 +135,7 @@ class WorkspaceRunnerHistoricalInputs(unittest.TestCase):
 
     def test_whole_pin_precedes_context_and_restored_sha_and_git_blob_are_required(self):
         relative = history.RUNNER
-        raw = (ROOT/relative).read_bytes()
+        raw = historical_bytes(relative)
         class ForbiddenContext:
             def encode(self, *args):
                 raise AssertionError('Unknown source reached a context')
@@ -158,7 +160,7 @@ class WorkspaceRunnerHistoricalInputs(unittest.TestCase):
             calls.append((raw, relative))
             return raw
         wrapped = history.wrap_input(original)
-        raw = (ROOT/history.RUNNER).read_bytes()
+        raw = historical_bytes(history.RUNNER)
         self.assertEqual(wrapped(raw, history.RUNNER), history.source_input(raw, history.RUNNER))
         unknown = raw+b'unknown'
         self.assertIs(wrapped(unknown, history.RUNNER), unknown)

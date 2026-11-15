@@ -1,4 +1,4 @@
-"""Real resume functions with a controlled transport/clock; no Android acceptance."""
+"""Current HOME transport executes; source-history proofs use fixed release bytes."""
 import ast
 import hashlib
 import importlib.util
@@ -8,11 +8,19 @@ import types
 import unittest
 from unittest.mock import patch
 from ui_visual_preservation_contract import verify_shared_ui_source
-from chrome_navigation_v2_source_compatibility import historical_ui_path
+from historical_source_inputs import historical_bytes
+from ui_workspace_v2_source_compatibility import historical_input as shared_history_input
 
 ROOT=pathlib.Path(__file__).resolve().parents[1]
 RUNNER=ROOT/'tests/gecko/run_chrome_collapse.py'
-SHARED=historical_ui_path(ROOT/'tests/gecko/run_ui_visuals.py')
+SHARED=ROOT/'tests/gecko/run_ui_visuals.py'
+
+
+def historical_shared_text():
+    """The fixed release's old UI workload; current HOME transport stays above."""
+    path='tests/gecko/run_ui_visuals.py'
+    return shared_history_input(historical_bytes(path),path).decode('utf-8')
+
 spec=importlib.util.spec_from_file_location('tested_chrome_resume',RUNNER)
 resume=importlib.util.module_from_spec(spec);spec.loader.exec_module(resume)
 TARGET='local.pocketchat.test/local.pocketchat.CompactChromeIntegrationActivity'
@@ -124,7 +132,7 @@ class HomeResumeTests(unittest.TestCase):
 
     def test_original_pending_home_order_fails_with_actual_original_focus(self):
         transport=Transport()
-        tree=ast.parse(SHARED.read_text())
+        tree=ast.parse(historical_shared_text())
         focus=next(n for n in ast.walk(tree) if isinstance(n,ast.FunctionDef) and n.name=='focus')
         program=ast.fix_missing_locations(ast.Module(body=[focus],type_ignores=[]))
         namespace={'adb':transport.legacy_adb,'component':TARGET,
@@ -203,7 +211,7 @@ class HomeResumeTests(unittest.TestCase):
             self.assertIn("add_argument('--serial',required=True)",source)
 
     def test_original_shared_runner_and_remaining_workload_preserved(self):
-        self.assertTrue(verify_shared_ui_source(SHARED.read_text())['originalWorkloadSemanticsPreserved'])
+        self.assertTrue(verify_shared_ui_source(historical_shared_text())['originalWorkloadSemanticsPreserved'])
         tree=ast.parse(original_header_runner(RUNNER.read_text()));run=next(n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name=='run')
         loop=next(n for n in run.body if isinstance(n,ast.For))
         replacements=[i for i,n in enumerate(loop.body) if isinstance(n,ast.Expr) and isinstance(n.value,ast.Call) and isinstance(n.value.func,ast.Name) and n.value.func.id=='resume_after_home']
@@ -228,13 +236,13 @@ class HomeResumeTests(unittest.TestCase):
                     original_header_runner(source.replace(before, after, 1))
 
     def test_owned_download_addition_and_nonsemantic_formatting_are_allowed(self):
-        source=SHARED.read_text()
+        source=historical_shared_text()
         self.assertTrue(verify_shared_ui_source(source)['authorizedDownloadLabelAddition'])
         formatted='# Formatting does not change the protected workload.\n'+ast.unparse(ast.parse(source))+'\n'
         self.assertTrue(verify_shared_ui_source(formatted)['authorizedDownloadLabelAddition'])
 
     def test_changed_home_dependencies_capture_or_binding_are_rejected(self):
-        source=SHARED.read_text()
+        source=historical_shared_text()
         changes=[
             ("def focus(activity):\n        deadline=time.monotonic()+20", "def focus(activity):\n        deadline=time.monotonic()+21"),
             ("timeout=90).decode(errors='replace')", "timeout=91).decode(errors='replace')"),
@@ -253,7 +261,7 @@ class HomeResumeTests(unittest.TestCase):
                 with self.assertRaises(AssertionError):verify_shared_ui_source(source.replace(before,after,1))
 
     def test_encoding_cookie_uses_real_utf8_file_semantics(self):
-        source=SHARED.read_text()
+        source=historical_shared_text()
         self.assertTrue(verify_shared_ui_source('# coding: utf-8\n'+source)['authorizedDownloadLabelAddition'])
         altered='# coding: latin-1\n'+source
         self.assertNotEqual(ast.dump(ast.parse(altered),include_attributes=False),
@@ -261,7 +269,7 @@ class HomeResumeTests(unittest.TestCase):
         with self.assertRaises(AssertionError):verify_shared_ui_source(altered)
 
     def test_only_complete_strict_download_observation_is_allowed(self):
-        source=SHARED.read_text()
+        source=historical_shared_text()
         changes=[
             ("label_nonce=uuid.uuid4().hex if scene=='downloads' else None", "label_nonce=uuid.uuid4().hex"),
             ("if scene=='downloads':\n        # Small native payload", "if scene in ('downloads','chat'):\n        # Small native payload"),

@@ -1,4 +1,5 @@
 """Exact newest39 -> upload37 -> permission32 -> original reading inverse."""
+from historical_source_inputs import historical_bytes
 import hashlib
 from pathlib import Path
 import unittest
@@ -12,7 +13,7 @@ sha = lambda raw: hashlib.sha256(raw).hexdigest()
 
 class Lifecycle39SourceCompatibilityTest(unittest.TestCase):
     def test_exact_whole_source_chain_preserves_all_older_oracles(self):
-        raw = compat.bridge42_preservation_bytes(SOURCE.read_bytes())
+        raw = compat.bridge42_preservation_bytes(historical_bytes('app/src/main/java/local/pocketchat/GeckoWebView.java'))
         self.assertEqual(sha(raw), compat.LIFECYCLE39_REVIEWED_BROWSER_SHA256)
         parent = compat.lifecycle39_preservation_bytes(raw)
         self.assertEqual(sha(parent), compat.LIFECYCLE39_PRIOR_BROWSER_SHA256)
@@ -28,7 +29,7 @@ class Lifecycle39SourceCompatibilityTest(unittest.TestCase):
             self.assertEqual(parent.count(addition), 1)
 
     def test_known_exact_predecessors_still_pass_without_new39(self):
-        parent = compat.lifecycle39_preservation_bytes(SOURCE.read_bytes())
+        parent = compat.lifecycle39_preservation_bytes(historical_bytes('app/src/main/java/local/pocketchat/GeckoWebView.java'))
         before37 = compat.upload37_preservation_bytes(parent)
         before32 = compat.permission_denial_preservation_bytes(parent)
         for raw in [parent, before37, before32]:
@@ -36,7 +37,7 @@ class Lifecycle39SourceCompatibilityTest(unittest.TestCase):
             self.assertEqual(sha(compat.reading_preservation_bytes(raw)), compat.BASELINE)
 
     def test_on_resume_rejects_missing_duplicate_changed_and_relocated(self):
-        raw = compat.bridge42_preservation_bytes(SOURCE.read_bytes())
+        raw = compat.bridge42_preservation_bytes(historical_bytes('app/src/main/java/local/pocketchat/GeckoWebView.java'))
         current, previous = compat.LIFECYCLE39_REVIEWED_ON_RESUME, compat.LIFECYCLE39_PRIOR_ON_RESUME
         self.assertEqual(raw.count(current), 1)
         mutations = [raw.replace(current, previous, 1) + b' ',
@@ -50,7 +51,7 @@ class Lifecycle39SourceCompatibilityTest(unittest.TestCase):
                 compat.reading_preservation_bytes(mutation)
 
     def test_each_notice_guard_and_v1_network_failure_call_remain_rejected(self):
-        raw = compat.bridge42_preservation_bytes(SOURCE.read_bytes())
+        raw = compat.bridge42_preservation_bytes(historical_bytes('app/src/main/java/local/pocketchat/GeckoWebView.java'))
         resume = compat.LIFECYCLE39_REVIEWED_ON_RESUME
         fields = [b'!destroyed&&failed&&owner.uiVisible', b'owner.pageError.isEmpty()',
                   b'owner.navigating=false;', b'owner.navigationFailed=true;',
@@ -64,7 +65,7 @@ class Lifecycle39SourceCompatibilityTest(unittest.TestCase):
             compat.lifecycle39_preservation_bytes(v1)
 
     def test_unlisted_geometry_upload_and_permission_edits_remain_rejected(self):
-        raw = compat.bridge42_preservation_bytes(SOURCE.read_bytes())
+        raw = compat.bridge42_preservation_bytes(historical_bytes('app/src/main/java/local/pocketchat/GeckoWebView.java'))
         geometry = b'Math.abs(next-readingLayout)<.001f'
         self.assertEqual(raw.count(geometry), 1)
         edits = [raw.replace(geometry, b'Math.abs(next-readingLayout)<.002f', 1)]

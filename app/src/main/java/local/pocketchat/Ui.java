@@ -26,6 +26,15 @@ final class Ui {
     private boolean buildNavigation(String glyph){
       if(glyph==null)return false;
       switch(glyph){
+        case "browser":{
+          outline.addRoundRect(new RectF(3,4,21,20),3,3,Path.Direction.CW);
+          outline.moveTo(3,9);outline.lineTo(21,9);
+          ink.addCircle(6.5f,6.5f,.65f,Path.Direction.CW);
+          ink.addCircle(9.5f,6.5f,.65f,Path.Direction.CW);
+          solidShape.addRoundRect(new RectF(3,4,21,20),3,3,Path.Direction.CW);
+          solidShape.addRoundRect(new RectF(5.5f,6,18.5f,8),1,1,Path.Direction.CW);
+          return true;
+        }
         case "chat":{
           outline.moveTo(7,3.8f);outline.lineTo(17,3.8f);
           outline.cubicTo(19.6f,3.8f,21,5.3f,21,7.8f);outline.lineTo(21,14.8f);
@@ -155,6 +164,7 @@ final class Ui {
         case "more":p.setStyle(Paint.Style.FILL);for(int x:new int[]{5,12,19})canvas.drawCircle(x,12,1.5f,p);break;
         case "plus":canvas.drawLine(5,12,19,12,p);canvas.drawLine(12,5,12,19,p);break;
         case "arrow":canvas.drawLine(12,18,12,5,p);path.moveTo(6,11);path.lineTo(12,5);path.lineTo(18,11);canvas.drawPath(path,p);break;
+        case "home":path.moveTo(3,10.5f);path.lineTo(12,3);path.lineTo(21,10.5f);path.moveTo(5,9);path.lineTo(5,21);path.lineTo(10,21);path.lineTo(10,14);path.lineTo(14,14);path.lineTo(14,21);path.lineTo(19,21);path.lineTo(19,9);canvas.drawPath(path,p);break;
         case "back":path.moveTo(14,5);path.lineTo(7,12);path.lineTo(14,19);canvas.drawPath(path,p);break;
         case "chevron":path.moveTo(7,10);path.lineTo(12,15);path.lineTo(17,10);canvas.drawPath(path,p);break;
         case "chevron-right":path.moveTo(9,5);path.lineTo(16,12);path.lineTo(9,19);canvas.drawPath(path,p);break;

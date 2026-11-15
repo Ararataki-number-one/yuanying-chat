@@ -66,7 +66,7 @@ public final class BrowserRuntimePolicyTest {
       check("Safe browser recovery keeps account/network scope and draft conflict protection",Files.readString(java.resolve("PageMemory.java")).contains("namespace.equals(scope())")&&Files.readString(java.resolve("PageMemory.java")).contains("result.optBoolean(\"conflict\")"));
       String files=Files.readString(java.resolve("Attachments.java"));
       check("Official picker allocates no native attachment strip or old file queue",!files.contains("new HorizontalScrollView(")&&!files.contains("new LinearLayout(")&&!files.contains("getString(\"files:")&&!files.contains("putString(\"files:"));
-      check("Official picker keeps route ownership and exactly-once cancellation",files.contains("pickerEpoch==a.session.navigationEpoch")&&files.contains("callback=null;recipient.onReceiveValue")&&files.contains("callback=null;if(old!=null)old.onReceiveValue(null)"));
+      check("Official picker keeps route ownership and exactly-once cancellation",files.contains("request.epoch==a.session.navigationEpoch")&&files.contains("request.callback;request.callback=null")&&files.contains("if(pending==request)pending=null")&&files.contains("deliver(detach(request),selected.toArray")&&files.contains("ValueCallback<Uri[]> callback=detach(request);if(callback==null)return;")&&files.contains("deliver(callback,null)"));
     }
     StringBuilder result=new StringBuilder("{\"status\":\"passed\",\"passed\":"+checks.size()+",\"total\":"+checks.size()+",\"checks\":[");
     for(int i=0;i<checks.size();i++){if(i>0)result.append(',');result.append("{\"name\":\"").append(checks.get(i)).append("\",\"pass\":true}");}

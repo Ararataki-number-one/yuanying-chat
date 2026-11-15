@@ -55,7 +55,7 @@ def verify_performance_evidence(directory, source):
                 from .compact_chrome_layout_v2 import verify_case
             else:
                 from compact_chrome_layout_v2 import verify_case
-            verify_case(case)
+            verify_case(case, require_browser_chrome=True)
         else:
             assert 'navigationContract' not in case or type(case['navigationContract']) is int and case['navigationContract'] == 1
             assert case['readOnlyStatus'] and len(case['actualAndroidTaps']) == 3

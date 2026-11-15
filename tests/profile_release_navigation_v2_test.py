@@ -36,12 +36,7 @@ def v2_report():
     # Parser fixtures only. These values are never saved as Android evidence.
     cases = []
     for width, scale in ((360, 1), (412, 1), (360, 2)):
-        case = complete_case()
-        case.update(viewport=width, fontScale=scale)
-        case['layout'].update(viewportDp=width, fontScale=scale)
-        case['layout']['toolbar'][2] = width * 3
-        if scale == 2:
-            case['layout']['texts'][0]['ellipsized'] = True
+        case = complete_case(browser=True, width=width, scale=scale)
         cases.append(case)
     return dict(status='passed', actualAndroidExecution=True, sourceCommit=SOURCE, cases=cases)
 
@@ -94,7 +89,7 @@ for prefix in ('tools.gecko.', 'gecko.', ''):
         assert pathlib.Path(module.__file__).resolve().is_relative_to(stage)
         if name == 'compact_chrome_layout_v2':
             for case in report['cases']:
-                module.verify_case(case)
+                module.verify_case(case, require_browser_chrome=True)
 for name, module in list(sys.modules.items()):
     if name.startswith(('tools.gecko', 'gecko.')) or name in names or name.startswith('selected_sdk_'):
         filename = getattr(module, '__file__', None)
@@ -178,6 +173,12 @@ class ReleaseNavigationV2GateTests(unittest.TestCase):
             report = v2_report(); report['actualAndroidExecution'] = value
             with self.subTest(value=value), self.assertRaises(AssertionError):
                 self.verify(report, SOURCE)
+
+    def test_current_publisher_rejects_a_complete_historical_layout_downgrade(self):
+        for marker in (None,False,1,'true'):
+            report=v2_report();report['cases'][0]=complete_case()
+            if marker is not None:report['cases'][0]['layout']['browserChrome']=marker
+            with self.subTest(marker=marker),self.assertRaises(AssertionError):self.verify(report,SOURCE)
 
     def test_same_source_three_cases_and_actual_android_requirements_remain(self):
         mutations = (

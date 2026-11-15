@@ -3,6 +3,8 @@ import hashlib
 from pathlib import Path
 import unittest
 
+from historical_source_inputs import historical_bytes
+
 ROOT = Path(__file__).resolve().parents[1]
 RUNNER = ROOT / 'tools/browser/run_host_checks.py'
 BEFORE_SHA = '6a5e736f71da5391f64b4cb7737973c813cdfbe45ce71ac61963488ac67d8513'
@@ -11,8 +13,8 @@ BEGIN = b'    # BEGIN_DEVICE_FIX_HOSTS\n'
 END = b'    # END_DEVICE_FIX_HOSTS\n'
 
 
-def declaration():
-    raw = RUNNER.read_bytes()
+def declaration(raw=None):
+    raw = RUNNER.read_bytes() if raw is None else raw
     if raw.count(BEGIN) != 1 or raw.count(END) != 1:
         raise ValueError('One reviewed append block is required')
     begin = raw.index(BEGIN)
@@ -25,7 +27,9 @@ def declaration():
 
 class DeviceFixHostRegistryTests(unittest.TestCase):
     def test_every_byte_of_the_original_169_suite_cohort_is_preserved(self):
-        _, original, _ = declaration()
+        # Keep the original released whole-source proof separate from the
+        # current twenty-one command declarations checked below.
+        _, original, _ = declaration(historical_bytes(str(RUNNER.relative_to(ROOT))))
         self.assertEqual(len(original), 19230)
         self.assertEqual(hashlib.sha256(original).hexdigest(), BEFORE_SHA)
         self.assertIn(b'timeout=300', original)

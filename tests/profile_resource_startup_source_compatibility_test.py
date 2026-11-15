@@ -1,4 +1,5 @@
 """Current production bytes and strict resource-recovery historical inputs."""
+from historical_source_inputs import historical_bytes
 import ast
 import copy
 import hashlib
@@ -19,7 +20,7 @@ SHA = lambda raw: hashlib.sha256(raw).hexdigest()
 
 class ResourceStartupHistoricalInputs(unittest.TestCase):
     def test_actual_one_condition_fix_restores_the_complete_public_producer(self):
-        current = (ROOT/layer.GV).read_bytes()
+        current = historical_bytes(layer.GV)
         previous = subprocess.check_output(['git', '--no-replace-objects', 'show',
             '12a45fb8a1343bbe5767bdf6c3fba54519650fa1:'+layer.GV], cwd=ROOT,
             env=dict(os.environ, GIT_NO_LAZY_FETCH='1'))
@@ -34,7 +35,7 @@ class ResourceStartupHistoricalInputs(unittest.TestCase):
         self.assertEqual(set(cfg['sources']), set(layer.SOURCE_PATHS))
         for relative, row in cfg['sources'].items():
             with self.subTest(path=relative):
-                current = workspace_source_input((ROOT/relative).read_bytes(), relative)
+                current = workspace_source_input(historical_bytes(relative), relative)
                 previous = layer.source_input(current, relative)
                 self.assertEqual((SHA(previous), len(previous)), (row['previousSha256'], row['previousBytes']))
                 forward = previous
@@ -69,12 +70,12 @@ class ResourceStartupHistoricalInputs(unittest.TestCase):
             return ast.get_source_segment(source, node)
         for path, names in [(layer.FINAL, ('_decode', 'source_input', '_metadata_path')),
                             (layer.LAYER, ('source_input', '_path'))]:
-            current = (ROOT/path).read_bytes()
+            current = historical_bytes(path)
             previous = layer.source_input(current, path)
             for name in names:
                 self.assertEqual(method(current.decode(), name), method(previous.decode(), name))
         for path in (layer.FINALTEST, layer.ROOTTEST):
-            current = (ROOT/path).read_bytes()
+            current = historical_bytes(path)
             previous = layer.source_input(current, path)
             def right_operands(raw):
                 return [ast.dump(node.args[1], include_attributes=False)
@@ -86,7 +87,7 @@ class ResourceStartupHistoricalInputs(unittest.TestCase):
     def test_each_missing_duplicate_changed_moved_unknown_and_foreign_image_rejects(self):
         rejected = 0
         for path, row in layer.config()['sources'].items():
-            current = workspace_source_input((ROOT/path).read_bytes(), path)
+            current = workspace_source_input(historical_bytes(path), path)
             for delta in row['edits']:
                 chunk = delta['current'].encode()
                 remainder = current.replace(chunk, b'', 1)
@@ -100,7 +101,7 @@ class ResourceStartupHistoricalInputs(unittest.TestCase):
                     layer.source_input(bad, path)
                 rejected += 1
         self.assertGreaterEqual(rejected, 59)
-        current = (ROOT/layer.GV).read_bytes()
+        current = historical_bytes(layer.GV)
         for bad in (None, current.decode(), bytearray(current), memoryview(current), b''):
             with self.assertRaises(ValueError):
                 layer.source_input(bad, layer.GV)
@@ -128,7 +129,7 @@ class ResourceStartupHistoricalInputs(unittest.TestCase):
                 layer.config()
 
     def test_whole_source_and_complete_predecessor_guards_remain_independent(self):
-        current = (ROOT/layer.GV).read_bytes()
+        current = historical_bytes(layer.GV)
         source = Path(layer.__file__).read_text()
         first = '    if identity != (row["currentSha256"], row["currentBytes"]):\n        raise ValueError("Resource metadata rejects unknown complete source bytes")\n'
         last = '    if (_sha(raw), len(raw)) != (row["previousSha256"], row["previousBytes"]):\n        raise ValueError("Resource metadata failed to restore its complete actual predecessor")\n'

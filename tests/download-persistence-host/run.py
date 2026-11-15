@@ -25,7 +25,7 @@ def main():
     text = source('FileDownloads.java')
     old_needles = ['void taskActions(', 'boolean requestAvailable(', 'String continuationAction(', 'void requestRedownload(', 'void discardForRedownload(', 'boolean loadTask(', 'void newTask(', 'void updateTask(', 'void mark(', 'boolean valid(', 'void acceptResponse(', 'void retry(', 'void fail(', 'void pause(', 'void destroy(', 'void download(', 'void readChunk(']
     extra = ['void transferProgress(', 'void cancel(']
-    optional = ['String downloadSource(', 'boolean saveTask(', 'void persistenceFailed(', 'boolean claimTask(']
+    optional = ['String downloadSource(', 'boolean saveTask(', 'void persistenceFailed(', 'boolean claimTask(', 'private void retirePrivateCopy(']
     needles = old_needles + extra + [n for n in optional if n in text]
     parts = [adapter.member(text, n) for n in needles]
     inputs = [ADAPTER / 'DownloadResumeHost.java', ADAPTER / 'run.py', HERE / 'FailureCases.java.in', pathlib.Path(__file__).resolve(), RECOVERY / 'local/pocketchat/Support.java', ROOT / 'tests/sealed-file-host/android/util/AtomicFile.java'] + list((RECOVERY / 'android').rglob('*.java')) + list((ADAPTER / 'stubs').rglob('*.java'))

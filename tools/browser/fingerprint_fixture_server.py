@@ -19,6 +19,53 @@ GUEST_PORT=18765
 HEADER_LIMIT=16384
 HEADERS=('user-agent','sec-ch-ua','sec-ch-ua-mobile','sec-ch-ua-platform','sec-ch-ua-platform-version','sec-ch-ua-model','sec-ch-ua-arch','sec-ch-ua-bitness','sec-ch-ua-full-version-list')
 PATHS=('/document','/frame','/hints','/worker.js','/favicon.ico')
+REJECTION_EVENT_LIMIT=64
+# Fixed categories only: never export arbitrary exception text, targets,
+# headers or TLS/private material as diagnostic values.
+REJECTION_GUARDS={
+    'Incomplete synthetic request':'incomplete-header',
+    'Synthetic header exceeds bound':'header-bound',
+    **{'Synthetic TLS fixture: '+message:code for message,code in (
+        ('request line invalid','request-line'),('header invalid','header-format'),
+        ('header duplicate or invalid','header-duplicate-or-invalid'),
+        ('header value exceeds bound','header-value-bound'),('request body unsupported','request-body'),
+        ('control authority differs','control-authority'),('control query invalid','control-query'),
+        ('control invocation differs','control-binding'),('engine not started','engine-not-started'),
+        ('CONNECT target outside synthetic hosts','connect-target'),('CONNECT authority differs','connect-authority'),
+        ('TLS target must be origin form','tls-origin-form'),('HTTP target outside synthetic hosts','http-target'),
+        ('only synthetic GET permitted','method'),('target outside synthetic paths','path'),
+        ('HTTP authority differs','authority'),('request receipt bound exceeded','receipt-bound'),
+        ('only synthetic Worker GET permitted','worker-method'),('target outside Worker fixture paths','worker-path'),
+        ('Chromium Worker fixture requires real native TLS','worker-tls'),('Worker HTTP authority differs','worker-authority'),
+        ('duplicate Worker query','worker-query-duplicate'),('favicon query differs','favicon-query'),
+        ('Worker phase invalid','worker-phase'),('Worker document query differs','worker-document-query'),
+        ('Worker resource query differs','worker-resource-query'),('Worker realm/document invalid','worker-realm-document'),
+        ('Worker path/realm differs','worker-path-realm'),('Worker request receipt bound exceeded','worker-receipt-bound'),
+    )},
+}
+TLS_REJECTION_REASONS={
+    'TLSV1_ALERT_UNKNOWN_CA':'tls-peer-unknown-ca',
+    'SSLV3_ALERT_CERTIFICATE_UNKNOWN':'tls-peer-certificate-unknown',
+    'SSLV3_ALERT_BAD_CERTIFICATE':'tls-peer-bad-certificate',
+    'CERTIFICATE_VERIFY_FAILED':'tls-certificate-verification',
+    'WRONG_VERSION_NUMBER':'tls-version',
+}
+
+
+def rejection_identity(error):
+    """Describe a rejection without serializing attacker-controlled error text."""
+    for category in (ssl.SSLError,TimeoutError,ConnectionResetError,BrokenPipeError,OSError,UnicodeError,ValueError):
+        if isinstance(error,category):
+            name=category.__name__;break
+    else:name='Exception'
+    message=error.args[0] if error.args and type(error.args[0]) is str else ''
+    code=REJECTION_GUARDS.get(message)
+    if code is None and isinstance(error,ssl.SSLError):
+        code=TLS_REJECTION_REASONS.get(getattr(error,'reason',None))
+    if code is None:
+        code={'SSLError':'tls-error','TimeoutError':'timeout','ConnectionResetError':'connection-reset',
+              'BrokenPipeError':'broken-pipe','OSError':'io-error','UnicodeError':'encoding-error'}.get(name,'unclassified-validation')
+    return name,code
 
 
 def require(value,message):
@@ -93,6 +140,7 @@ class FingerprintServer:
         self.certificates=certificates;self.script=script;self.binding=dict(binding)
         self._lock=threading.Lock();self._gate=threading.BoundedSemaphore(12);self._clients=set();self._threads=set();self._closed=threading.Event();self.engine=None
         self.rows={engine:dict(accepted=0,rejected=0,tlsConnections=0,requests=[]) for engine in ('chromium','gecko')}
+        self._transport={engine:dict(controlResponses=0,counts={},events=[]) for engine in self.rows}
         self.socket=socket.socket();self.socket.bind(('127.0.0.1',0));self.socket.listen(16);self.socket.settimeout(.2)
         self.port=self.socket.getsockname()[1];self.thread=threading.Thread(target=self._accept,daemon=True)
 
@@ -103,7 +151,8 @@ class FingerprintServer:
         while True:
             with self._lock:
                 if not self._clients:
-                    self.engine=engine;self.rows[engine]=dict(accepted=0,rejected=0,tlsConnections=0,requests=[]);return
+                    self.engine=engine;self.rows[engine]=dict(accepted=0,rejected=0,tlsConnections=0,requests=[])
+                    self._transport[engine]=dict(controlResponses=0,counts={},events=[]);return
             require(time.monotonic()<until,'previous engine still has active synthetic connections');time.sleep(.02)
 
     def snapshot(self,engine):
@@ -111,6 +160,28 @@ class FingerprintServer:
         with self._lock:result=json.loads(json.dumps(self.rows[engine]))
         result.update(schema=1,engine=engine,binding=self.binding,upstreamConnections=0,forwardingImplemented=False,certificateExceptionUsed=False,trustMethod='domain-scoped-user-ca',caPemSha256=self.certificates.ca_sha,leafDerSha256=self.certificates.leaf_sha)
         return result
+
+    def transport_diagnostics(self,engine):
+        """Separate diagnostic output; never added to qualifying fixture evidence."""
+        require(engine in self.rows,'unknown diagnostic engine')
+        with self._lock:
+            row=self.rows[engine];transport=self._transport[engine]
+            counts=[dict(requestKind=kind,stage=stage,exceptionClass=name,guardCode=code,count=count)
+                    for (kind,stage,name,code),count in sorted(transport['counts'].items())]
+            events=[dict(event) for event in transport['events']]
+            quiesced=self._closed.is_set() and not self.thread.is_alive() and not self._clients and not any(thread.is_alive() for thread in self._threads)
+            return dict(schema=1,kind='synthetic-transport-diagnostics-v1',diagnosticOnly=True,qualificationEvidence=False,
+                        engine=engine,binding=dict(self.binding),collectorClosed=self._closed.is_set(),collectorQuiesced=quiesced,
+                        controlResponses=transport['controlResponses'],rejected=row['rejected'],eventLimit=REJECTION_EVENT_LIMIT,
+                        droppedEvents=row['rejected']-len(events),rejectionCounts=counts,events=events)
+
+    def _record_rejection(self,engine,kind,stage,error):
+        name,code=rejection_identity(error)
+        with self._lock:
+            row=self.rows[engine];row['rejected']+=1;transport=self._transport[engine]
+            key=(kind,stage,name,code);transport['counts'][key]=transport['counts'].get(key,0)+1
+            if len(transport['events'])<REJECTION_EVENT_LIMIT:
+                transport['events'].append(dict(sequence=row['rejected'],requestKind=kind,stage=stage,exceptionClass=name,guardCode=code))
 
     def _accept(self):
         while not self._closed.is_set():
@@ -124,30 +195,46 @@ class FingerprintServer:
             thread.start()
 
     def _serve(self,connection,engine):
+        kind='unparsed';stage='initial-header'
         try:
             connection.settimeout(15);method,target,headers=read_header(connection)
             if method=='GET' and target.startswith('/__evidence?'):
+                kind='control';stage='control-authority'
                 require(headers.get('host')=='127.0.0.1:'+str(GUEST_PORT),'control authority differs')
+                stage='control-query'
                 query=urlsplit(target);parameters=parse_qs(query.query,strict_parsing=True)
                 require(query.path=='/__evidence' and set(parameters)=={'engine','nonce','source'} and all(len(v)==1 for v in parameters.values()),'control query invalid')
+                stage='control-binding'
                 require(parameters['nonce']==[self.binding['runNonce']] and parameters['source']==[self.binding['sourceCommit']] and parameters['engine']==[engine],'control invocation differs')
-                self._send(connection,'application/json',json.dumps(self.snapshot(engine),separators=(',',':')).encode());return
+                stage='control-response'
+                self._send(connection,'application/json',json.dumps(self.snapshot(engine),separators=(',',':')).encode())
+                with self._lock:self._transport[engine]['controlResponses']+=1
+                return
+            kind='connect' if method=='CONNECT' else 'http';stage='engine-admission'
             require(engine in self.rows,'engine not started')
             secure=False
             if method=='CONNECT':
+                stage='connect-target'
                 require(target in tuple(host+':443' for host in HOSTS),'CONNECT target outside synthetic hosts')
+                stage='connect-authority'
                 host=target[:-4];require(headers.get('host') in (host,host+':443'),'CONNECT authority differs')
+                stage='connect-response'
                 connection.sendall(b'HTTP/1.1 200 Connection Established\r\n\r\n')
+                stage='tls-handshake'
                 wrapped=self.certificates.context.wrap_socket(connection,server_side=True)
                 with self._lock:self._clients.discard(connection);self._clients.add(wrapped);self.rows[engine]['tlsConnections']+=1
+                stage='tls-header'
                 connection=wrapped;secure=True;method,target,headers=read_header(connection)
+                stage='tls-target'
                 require(target.startswith('/') and not target.startswith('//'),'TLS target must be origin form')
             else:
+                stage='http-target'
                 uri=urlsplit(target);require(uri.scheme=='http' and uri.hostname in HOSTS and uri.port in (None,80) and not uri.username and not uri.password and not uri.fragment,'HTTP target outside synthetic hosts');host=uri.hostname
+            stage='response'
             self._respond(connection,engine,host,secure,method,target,headers)
-        except (ValueError,OSError,ssl.SSLError,UnicodeError):
+        except (ValueError,OSError,ssl.SSLError,UnicodeError) as error:
             if engine in self.rows:
-                with self._lock:self.rows[engine]['rejected']+=1
+                self._record_rejection(engine,kind,stage,error)
         finally:
             with self._lock:self._clients.discard(connection);self._threads.discard(threading.current_thread())
             with contextlib.suppress(OSError):connection.close()

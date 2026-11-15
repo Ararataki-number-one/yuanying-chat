@@ -8,6 +8,7 @@ import io
 import json
 import os
 from pathlib import Path
+from historical_source_inputs import historical_bytes
 import tempfile
 import subprocess
 import sys
@@ -114,7 +115,7 @@ class NativeSetupDiagnostic11Tests(unittest.TestCase):
         self.assertEqual(old.replace(contract.BEFORE + contract.AFTER,
                                      contract.BEFORE + contract.STEP + contract.AFTER, 1), current)
         self.assertEqual(current.count(contract.STEP), 1)
-        raw = NORMALIZERS.read_bytes()
+        raw = NORMALIZERS.restore(historical_bytes('tests/profile_display_sampling_gate_test.py'))
         self.assertEqual(raw.count(REBINDING), 1)
         previous = raw.replace(REBINDING, b'', 1)
         self.assertEqual(hashlib.sha256(previous).hexdigest(),

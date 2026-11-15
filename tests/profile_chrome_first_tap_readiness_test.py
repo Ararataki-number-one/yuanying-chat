@@ -249,7 +249,7 @@ class NativeReadOnlySourceTest(unittest.TestCase):
 
     def test_actual_native_visible_rect_conversion_handles_nonzero_root_origin(self):
         java=(ROOT/'tests/gecko/ChromeCollapseIntegration.java').read_text()
-        start=java.index('boolean globallyVisible=compact.getGlobalVisibleRect(visible);',java.index('  void inputReadiness('))
+        start=java.index('boolean globallyVisible=target.getGlobalVisibleRect(visible);',java.index('  void inputReadiness('))
         end=java.index('JSONObject pending=',start);fragment=java[start:end]
         home=os.environ.get('JAVA_HOME_17_X64') or os.environ.get('JAVA_HOME')
         compiler=Path(home)/'bin/javac' if home else Path(shutil.which('javac') or '')
@@ -259,7 +259,7 @@ class NativeReadOnlySourceTest(unittest.TestCase):
             target.write_text('''final class Origin {
               static final class Rect {int left,top,right,bottom;void offset(int x,int y){left+=x;right+=x;top+=y;bottom+=y;}}
               static final class View {int x,y;View(int x,int y){this.x=x;this.y=y;}boolean getGlobalVisibleRect(Rect r){r.left=0;r.top=72;r.right=1080;r.bottom=156;return true;}View getRootView(){return this;}void getLocationOnScreen(int[] a){a[0]=x;a[1]=y;}}
-              public static void main(String[] args){for(int[] origin:new int[][]{{0,0},{17,29},{-30,100}}){View compact=new View(origin[0],origin[1]);Rect visible=new Rect();
+              public static void main(String[] args){for(int[] origin:new int[][]{{0,0},{17,29},{-30,100}}){View target=new View(origin[0],origin[1]);Rect visible=new Rect();
               '''+fragment+'''
               if(!globallyVisible||visible.left!=origin[0]||visible.top!=72+origin[1]||visible.right!=1080+origin[0]||visible.bottom!=156+origin[1])throw new AssertionError("Actual native origin conversion");}System.out.println("3 native source origin controls");}}
             ''')

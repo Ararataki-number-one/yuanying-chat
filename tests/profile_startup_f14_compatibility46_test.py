@@ -3,6 +3,7 @@ import hashlib
 from pathlib import Path
 import unittest
 import gecko_device_readiness_test as readiness
+from historical_source_inputs import historical_bytes
 from experience46_source_compatibility import experience46_source_bytes,manifest46
 
 ROOT=Path(__file__).resolve().parents[1]
@@ -19,10 +20,10 @@ NEEDLES=('synchronized void command(','protected void onDestroy()')
 class StartupF14Compatibility46(unittest.TestCase):
     def test_only_exact_hook_added_and_both_approved_inputs_keep_original_members(self):
         from event_journal_source_compatibility import source_input
-        current=source_input((ROOT/CONSUMER).read_bytes(),CONSUMER).decode()
+        current=source_input(historical_bytes(CONSUMER),CONSUMER).decode()
         self.assertEqual(current.count(HOOK),1)
         self.assertEqual(hashlib.sha256(current.replace(HOOK,'',1).encode()).hexdigest(),BEFORE_SHA256)
-        source=(ROOT/FIXTURE).read_bytes();previous=experience46_source_bytes(source,FIXTURE)
+        source=historical_bytes(FIXTURE);previous=experience46_source_bytes(source,FIXTURE)
         for value in (source,previous):
             for needle in NEEDLES:
                 with self.subTest(source=hashlib.sha256(value).hexdigest(),member=needle):
@@ -31,7 +32,9 @@ class StartupF14Compatibility46(unittest.TestCase):
         self.assertTrue(readiness.verify_startup_member(formatted,'void waitReady(long serial)'))
 
     def test_retirement_missing_duplicate_changed_relocated_and_unknown_sources_reject(self):
-        source=(ROOT/FIXTURE).read_text();row=manifest46()['files'][FIXTURE]
+        # Start the old inverse's attacks from its actual accepted image, so
+        # refusal cannot pass merely because current production has evolved.
+        source=historical_bytes(FIXTURE).decode();row=manifest46()['files'][FIXTURE]
         changes=[delta['current'] for delta in row['deltas'] if 'retiredVpn=queuedVpn' in delta['current']]
         self.assertEqual(len(changes),2)
         for chunk in changes:

@@ -38,6 +38,9 @@ public class NetworkSourcesRouteIntegrationActivity {
  static class ChatSession {
   static class DiagnosticAudit {boolean requestIdentityPageSelected(){return false;}void cancel(){}void retirePageCheck(){}}
   DiagnosticAudit audit;
+  // Original handoff cases own a live session with no pending browser capture.
+  // These are the production defaults read by the extracted invalidation method.
+  boolean navigating,deleted,navigationDispatched=true;
   boolean offline,recoveryScheduled,connecting,manualAttention,submitting,operation,networkReady;int recoveryAttempt,requests;long recoveryToken,connectionEpoch,navigationEpoch,pageUsableAt;String connectionStage,networkIssue,status;Object context;Handler handler=new Handler();Prefs prefs=new Prefs();FixtureView web;Guard guard=new Guard();PageMemory pageMemory=new PageMemory();
   boolean internalNetwork(){return true;}void setStatus(String value){status=value;}void resetReplyStability(){}void finishResourceInspection(){}void openConnection(boolean recover,boolean force){requests++;connecting=true;connectionEpoch++;}
 __SESSION__

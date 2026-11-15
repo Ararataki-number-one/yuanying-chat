@@ -15,6 +15,7 @@ import org.json.*;
 public final class WorkerPolicyIntegrationActivity extends BrowserActivity {
   static final String URL="https://"+BrowserFingerprintFixture.A+"/worker-document";
   final Handler poll=new Handler(Looper.getMainLooper());final ExecutorService evidence=Executors.newSingleThreadExecutor();
+  private final ExecutorService policyWorker=Executors.newSingleThreadExecutor();
   final JSONArray checks=new JSONArray(),samples=new JSONArray(),nativeSetups=new JSONArray();
   BrowserFingerprintFixture fixture;JSONObject build,staleProof=new JSONObject(),routeProof=new JSONObject(),currentSelfTest=new JSONObject();
   String invocation,phase="initial",failure="";boolean done;long deadline,staleOperation=-1;int staleCallbacks;
@@ -22,6 +23,12 @@ public final class WorkerPolicyIntegrationActivity extends BrowserActivity {
   String previousDocument="";
   final CountDownLatch staleRelease=new CountDownLatch(1);
   interface Ready{boolean get()throws Exception;}interface Step{void run()throws Exception;}
+
+  @Override ChromiumFingerprintJobs createFingerprintJobs(){
+    // The fence and real policy CAS share this queue; production jobs own its
+    // orderly shutdown after onDestroy has released the fixture's latch.
+    return new ChromiumFingerprintJobs(getApplicationContext(),policyWorker,fingerprintMain::post);
+  }
 
   @Override public void onCreate(Bundle state){try{
     BrowserFingerprintIntegrationActivity.validateIntent(this);invocation=getIntent().getStringExtra("runNonce");build=IntegrationBuildIdentity.read(this);
@@ -84,7 +91,7 @@ public final class WorkerPolicyIntegrationActivity extends BrowserActivity {
     // A bounded test-only queue fence makes the old real JS callback arrive
     // while production saveFingerprint has blocked traffic but before CAS can
     // destroy its old WebView. No callback/result is manufactured or replaced.
-    fingerprintWorker.execute(()->{try{if(!staleRelease.await(8,TimeUnit.SECONDS))poll.post(()->fail(new IllegalStateException("Actual stale JavaScript callback absent")));}catch(InterruptedException stopped){Thread.currentThread().interrupt();}});
+    policyWorker.execute(()->{try{if(!staleRelease.await(8,TimeUnit.SECONDS))poll.post(()->fail(new IllegalStateException("Actual stale JavaScript callback absent")));}catch(InterruptedException stopped){Thread.currentThread().interrupt();}});
     observeFingerprint();staleOperation=fingerprintObservationGeneration;check("stale.actual-js-dispatched",fingerprintObserving);
     JSONObject desired=ChromiumFingerprintSpec.from(original.spec()).json().put("workers","restrict");saveFingerprint(original,desired,false);
     await("saved restrict surface",()->ready()&&fingerprintState.revision>original.revision&&web()!=originalWeb,()->sample("restrict",previousDocument,true,this::restricted));

@@ -4,8 +4,13 @@ import importlib.util
 import json
 from pathlib import Path
 import shlex
+import socket
+import subprocess
+import sys
 import tempfile
+from types import SimpleNamespace
 import unittest
+from unittest.mock import patch
 import xml.etree.ElementTree as ET
 
 import browser_fingerprint_evidence_test as schema_fixture
@@ -122,6 +127,59 @@ class GeckoEnvironmentRunnerTests(unittest.TestCase):
         self.assertTrue({ROOT / name for name in runner.SOURCE_INPUTS} <= set(paths))
         self.assertIn(ROOT / 'app/src/main/java/org/mozilla/geckoview/AppSessionIdentity.java', paths)
         self.assertIn(ROOT / 'app/src/main/assets/gecko/native-timezone-api.js', paths)
+
+    def test_failed_android_boundary_keeps_original_failure_and_real_transport_diagnostic(self):
+        identity=self.identity();activity=dict(self.activity(),status='failed',stage='startup',failure='controlled startup failure')
+        original_run=subprocess.run;servers=[];certificates=[];actions=[]
+        real_server=runner.WorkerFixtureServer;real_certificates=runner.EphemeralCertificates
+        def make_server(*args,**kwargs):
+            value=real_server(*args,**kwargs);servers.append(value);return value
+        def make_certificates():
+            value=real_certificates();certificates.append(value);return value
+        class CaBoundary:
+            def __init__(self,*args):self.receipt={'scope':'modeled Android CA boundary'}
+            def install(self):actions.append('ca-installed')
+            def remove(self):actions.append('ca-removed')
+        def run(command,**kwargs):
+            if command[0]!='adb':return original_run(command,**kwargs)
+            words=command[3:];out=b''
+            if words==['shell','getprop','ro.kernel.qemu']:out=b'1\n'
+            elif words==['shell','getprop','persist.sys.timezone']:out=b'UTC\n'
+            elif words==['shell','id','-u']:out=b'2000\n'
+            elif words==['shell','pm','clear','local.pocketchat.test']:out=b'Success\n'
+            elif words==['reverse','--list']:out=b''
+            elif words[:2]==['reverse','--remove']:actions.append('reverse-removed')
+            elif words[:1]==['reverse']:actions.append('reverse-installed')
+            elif words==['shell','am','force-stop','local.pocketchat.test']:actions.append('app-stopped')
+            elif words[:2]==['exec-out','content']:
+                out=json.dumps(identity if words[-1].endswith('/build-identity') else activity).encode()
+            elif len(words)==2 and words[0]=='shell' and shlex.split(words[1])[:2]==['am','start']:
+                with socket.create_connection(('127.0.0.1',servers[0].port),timeout=3) as connection:
+                    connection.sendall(('GET /__evidence?engine=gecko&nonce='+NONCE+'&source='+SOURCE+' HTTP/1.1\r\nHost: private-host.invalid\r\n\r\n').encode())
+                    self.assertEqual(connection.recv(1),b'')
+            else:raise AssertionError('Unexpected modeled adb command: '+repr(words))
+            return subprocess.CompletedProcess(command,0,out,b'')
+        def check_output(command,**kwargs):
+            if command==['git','status','--porcelain']:return ''
+            if command==['git','rev-parse','HEAD']:return SOURCE+'\n'
+            if command==['git','rev-parse','HEAD^{tree}']:return TREE+'\n'
+            # This existing synthetic build-identity fixture models the legacy
+            # official SDK; it has no selected-source derived SDK manifest.
+            if command==['git','show',SOURCE+':third-party/sdk/geckoview-157.0.1-editable-selection.json']:
+                raise subprocess.CalledProcessError(128,command,stderr=b'modeled source has no derived manifest')
+            raise AssertionError(command)
+        with tempfile.TemporaryDirectory() as directory:
+            with patch.object(sys,'argv',['runner','--output',directory]),patch.object(runner.subprocess,'run',run),patch.object(runner.subprocess,'check_output',check_output),patch.object(runner,'expected_build',return_value=identity),patch.object(runner.uuid,'uuid4',return_value=SimpleNamespace(hex=NONCE)),patch.object(runner,'WorkerFixtureServer',make_server),patch.object(runner,'EphemeralCertificates',make_certificates),patch.object(runner,'AndroidUserCa',CaBoundary):
+                with self.assertRaisesRegex(AssertionError,'Gecko environment fixture failed'):
+                    runner.main()
+            report=json.loads((Path(directory)/runner.REPORT_NAME).read_text())
+            diagnostic=json.loads((Path(directory)/runner.TRANSPORT_DIAGNOSTIC_NAME).read_text())
+            self.assertEqual(report['status'],'failed');self.assertEqual(report['activity']['failure'],'controlled startup failure')
+            self.assertTrue(all(report['cleanup'].values()));self.assertIn('ca-removed',actions);self.assertIn('reverse-removed',actions)
+            self.assertFalse(certificates[0].directory.exists());self.assertTrue(diagnostic['collectorQuiesced'])
+            self.assertEqual(diagnostic['rejected'],1);self.assertEqual(diagnostic['events'][0]['guardCode'],'control-authority')
+            self.assertTrue(diagnostic['diagnosticOnly']);self.assertFalse(diagnostic['qualificationEvidence'])
+            self.assertNotIn('private-host',json.dumps(diagnostic));self.assertNotIn('events',report['activity']['fixture'])
 
 
 if __name__ == '__main__':

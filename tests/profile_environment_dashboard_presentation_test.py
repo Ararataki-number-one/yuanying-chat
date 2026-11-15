@@ -1,7 +1,9 @@
-"""Native selector controls; synthetic XML here is not Android acceptance.
+"""Native selectors and exact interaction ports; synthetic XML is not Android acceptance.
 
-The unchanged c244 device flow supplies every actual tap, lifecycle assertion,
-capture, timeout and cohort. Only two obsolete presentation selectors change.
+The original dashboard cohorts, captures, lifecycle observations and timeouts
+remain. Browser entry is now direct, and dashboard checks explicitly choose
+environment details. The inverse pins every deliberate port and rejects any
+unrelated change to the accepted runner.
 """
 import copy
 import hashlib
@@ -10,6 +12,7 @@ from pathlib import Path
 import subprocess
 import unittest
 import xml.etree.ElementTree as ET
+import dashboard_browser_entry_compatibility as browser_ports
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -38,7 +41,7 @@ DELTAS = (
 )
 
 
-def original_flow(raw):
+def original_selector_flow(raw):
     if type(raw) is not bytes:
         raise ValueError('Complete dashboard source bytes required')
     start = raw.index(b'def environment_action_description(')
@@ -54,6 +57,10 @@ def original_flow(raw):
     return raw
 
 
+def original_flow(raw):
+    return original_selector_flow(browser_ports.historical_dashboard_source(raw))
+
+
 def node(parent, kind, text='', description='', bounds='[60,361][1020,674]', **attributes):
     values = {'class': kind, 'package': RUN.PACKAGE, 'text': text,
               'content-desc': description, 'enabled': 'true', 'clickable': 'false',
@@ -64,7 +71,7 @@ def node(parent, kind, text='', description='', bounds='[60,361][1020,674]', **a
 
 def environment_tree(name='日常会话', metadata='已收藏，01 · 工作 · 默认 · 电脑版，手机网络 · 连接需处理，需处理'):
     root = ET.Element('hierarchy')
-    card = node(root, 'android.widget.LinearLayout', description='打开环境：'+name+'，'+metadata,
+    card = node(root, 'android.widget.LinearLayout', description='打开浏览器：'+name+'，'+metadata,
                 clickable='true')
     node(card, 'android.widget.TextView', name, bounds='[264,404][828,474]')
     node(card, 'android.widget.TextView', '01 · 工作 · 默认 · 电脑版', bounds='[264,474][828,539]')
@@ -75,7 +82,7 @@ def settings_tree():
     root = ET.Element('hierarchy')
     node(root, 'android.widget.TextView', '设置', '应用设置')
     node(root, 'android.widget.TextView', '启动与外观')
-    node(root, 'android.widget.Button', '会话', '会话', clickable='true')
+    node(root, 'android.widget.Button', '浏览器', '浏览器', clickable='true')
     return root
 
 
@@ -84,7 +91,7 @@ def xml(tree):
 
 
 class DashboardPresentation(unittest.TestCase):
-    def test_every_original_device_action_assertion_timeout_and_cohort_is_retained(self):
+    def test_original_workload_outside_explicit_browser_entry_ports_is_retained(self):
         previous = subprocess.check_output(
             ['git', 'show', BASE_COMMIT+':tests/gecko/run_environment_dashboard.py'], cwd=ROOT)
         self.assertEqual((len(previous), hashlib.sha256(previous).hexdigest()), (12001, BASE_SHA256))
@@ -92,11 +99,17 @@ class DashboardPresentation(unittest.TestCase):
 
     def test_original_flow_changes_missing_or_duplicate_selector_ports_reject(self):
         current = RUNNER.read_bytes()
-        for old, new in DELTAS:
+        for old, new, count in browser_ports.HUNKS:
             for candidate in (current.replace(new.encode(), b'', 1),
                               current.replace(new.encode(), new.encode()*2, 1)):
                 with self.assertRaises(ValueError):
                     original_flow(candidate)
+        prior = browser_ports.historical_dashboard_source(current)
+        for old, new in DELTAS:
+            for candidate in (prior.replace(new.encode(), b'', 1),
+                              prior.replace(new.encode(), new.encode()*2, 1)):
+                with self.assertRaises(ValueError):
+                    original_selector_flow(candidate)
         for old, new in (
                 (b'for _ in range(8):', b'for _ in range(7):'),
                 (b'until=time.monotonic()+7', b'until=time.monotonic()+6'),
@@ -121,8 +134,8 @@ class DashboardPresentation(unittest.TestCase):
         tree, card = environment_tree()
         self.assertIsNone(RUN.environment_action_description(xml(tree), '资料整理'))
         self.assertIsNone(RUN.environment_action_description('<hierarchy />', '日常会话'))
-        for description in ('打开环境 日常会话', '打开环境：日常会话备份，01',
-                            '选择环境：日常会话，01', '打开环境：日常会话'):
+        for description in ('打开环境 日常会话', '打开浏览器：日常会话备份，01',
+                            '选择环境：日常会话，01', '打开浏览器：日常会话'):
             card.set('content-desc', description)
             self.assertIsNone(RUN.environment_action_description(xml(tree), '日常会话'))
 

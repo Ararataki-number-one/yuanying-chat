@@ -209,35 +209,42 @@ class FileDownloads {
   }
   void discardForRedownload(JSONObject selected){
     if(active||awaitingPicker||retiringPartial||destroyed||task!=selected||!DownloadResumePolicy.RESTART.equals(continuationAction(selected)))return;
-    File file=tasks.retirementFile(selected);if(file==null){a.status("请回原网页重新下载；已有文件和下载记录已保留");return;}
+    retirePrivateCopy(selected,false);
+  }
+  private void retirePrivateCopy(JSONObject selected,boolean cancellation){
+    File file=cancellation?tasks.cancellationFile(selected):tasks.retirementFile(selected);if(file==null){a.status("请回原网页重新下载；已有文件和下载记录已保留");return;}
     final String generation=selected.optString("taskGeneration"),partial=file.getName();final long attempt=ticket;
-    worker.execute(()->{
+    try{worker.execute(()->{
       final boolean[] retired={false},allowed={false},removed={false};String failure="";
       try{
         // This worker is queued after the paused stream. Main never waits for I/O.
         SavedFileDeletion.onMain(a.handler,()->{
-          if(destroyed||active||awaitingPicker||retiringPartial||task!=selected||ticket!=attempt)return;
-          if(!DownloadResumePolicy.RESTART.equals(continuationAction(selected)))return;
+          if(destroyed||active||!cancellation&&awaitingPicker||retiringPartial||task!=selected||ticket!=attempt||!generation.equals(selected.optString("taskGeneration")))return;
+          if(!cancellation&&!DownloadResumePolicy.RESTART.equals(continuationAction(selected)))return;
           retiringPartial=true;
-          try{retired[0]=tasks.beginPartialRetirement(selected,generation,partial);if(retired[0]){if(temp!=null&&temp.getName().equals(partial))temp=null;receivedBytes=0;totalBytes=-1;}}
+          try{
+            retired[0]=cancellation?tasks.beginCancelledCopyRetirement(selected,generation,partial):tasks.beginPartialRetirement(selected,generation,partial);
+            if(retired[0]){if(temp!=null&&temp.getName().equals(partial))temp=null;completeFile=false;retryUrl="";resumeValidator="";resumeAddress="";receivedBytes=0;totalBytes=-1;}
+          }
           finally{if(!retired[0])retiringPartial=false;}
         });
         if(!retired[0])return;
         SealedFileIo.lease(file,()->{
-          SavedFileDeletion.onMain(a.handler,()->{allowed[0]=!destroyed&&!active&&!awaitingPicker&&retiringPartial&&task==selected&&ticket==attempt&&tasks.retiredPartialCurrent(selected,generation,partial);});
+          SavedFileDeletion.onMain(a.handler,()->{allowed[0]=!destroyed&&!active&&(cancellation||!awaitingPicker)&&retiringPartial&&task==selected&&ticket==attempt&&tasks.retiredPartialCurrent(selected,generation,partial);});
           File current=tasks.retirementFile(selected);
           if(!allowed[0]||current==null||!current.equals(file))return null;
           if(!file.delete()&&file.exists())throw new IOException("旧副本未能清理，请稍后再试；原网页仍可重新下载");removed[0]=true;return null;
         });
         if(!removed[0])return;
-        SavedFileDeletion.onMain(a.handler,()->tasks.finishPartialRetirement(selected,generation,partial));
-      }catch(Exception error){failure="旧副本清理尚未完成，请重新下载时重试";}
+        SavedFileDeletion.onMain(a.handler,()->{if(cancellation)tasks.finishCancelledCopyRetirement(selected,generation,partial);else tasks.finishPartialRetirement(selected,generation,partial);});
+      }catch(Exception error){failure=cancellation?"取消记录或副本清理尚未完成，请稍后重试":"旧副本清理尚未完成，请重新下载时重试";}
       finally{final String issue=failure;a.handler.post(()->{
         if(task!=selected||ticket!=attempt)return;retiringPartial=false;
+        if(!generation.equals(selected.optString("taskGeneration")))return;
         if(retired[0])tasks.release();
-        if(!destroyed)a.status(!issue.isEmpty()?issue:removed[0]?"旧副本已清理，请回原网页重新下载":"下载记录已变化，旧副本已保留");
+        if(!destroyed)a.status(!issue.isEmpty()?issue:removed[0]?(cancellation?"你已取消下载，副本已清理":"旧副本已清理，请回原网页重新下载"):!selected.optString("pendingDestination").isEmpty()?"保存结果仍待确认，完整副本和恢复记录已保留":"下载记录已变化，旧副本已保留");
       });}
-    });
+    });}catch(RejectedExecutionException closed){if(!destroyed)a.status("文件清理尚未开始，下载副本已保留，请稍后重试");}
   }
   void clearBlob(){if(!blobKey.isEmpty()&&Objects.equals(blobPage,a.remote.getUrl()))a.remote.evaluateJavascript("delete window["+JSONObject.quote(blobKey)+"]",null);blobKey="";}
   void dismiss(){if(dialog!=null){dialog.dismiss();dialog=null;}}
@@ -278,7 +285,16 @@ class FileDownloads {
   void fail(long attempt,String reason){a.handler.post(()->{if(!valid(attempt))return;mark(reason!=null&&reason.startsWith("仅 Wi-Fi")?"paused":"failed",reason);if(persistenceBlocked)return;active=false;a.session.transferActive=false;a.session.updateBrowserActivity();dismiss();clearBlob();if(a.hub!=null&&a.hub.page==1)a.hub.refresh();});}
   void pause(){if(!active)return;ignoreUntil=System.currentTimeMillis()+1500;cancelled=true;active=false;a.session.transferActive=false;a.session.updateBrowserActivity();ticket++;if(connection!=null)connection.disconnect();InputStream nativeStream=nativeInput;nativeInput=null;if(nativeStream!=null)new Thread(()->{try{nativeStream.close();}catch(IOException ignored){}},"download-close").start();clearBlob();dismiss();savingDestination=null;mark("paused",DownloadResumePolicy.paused(task,temp!=null&&temp.isFile(),requestAvailable(task)));}
   void requestCancel(){if(destroyed||retiringPartial||task==null||"saved".equals(task.optString("state")))return;JSONObject chosen=task;AppAppearance.dialog(a).setTitle("取消下载？").setMessage(DownloadResumePolicy.RESUME.equals(continuationAction(chosen))?"会清理已下载的部分。只想稍后继续，可以暂停下载。":completeFile?"会清理尚未保存的完整文件。也可保留，稍后继续保存。":"会清理本任务未完成的部分；重新下载需要回原网页再次点按。").setPositiveButton("取消并清理",(d,w)->{if(task==chosen&&!"saved".equals(chosen.optString("state")))cancel();}).setNeutralButton("暂停下载",(d,w)->{if(task==chosen)pause();}).setNegativeButton("保留下载",null).show();}
-  void cancel(){if(retiringPartial)return;pause();ignoreUntil=System.currentTimeMillis()+3000;mark("cancelled","你已取消下载");if(persistenceBlocked)return;completeFile=false;retryUrl="";File file=temp;temp=null;if(file!=null&&!worker.isShutdown())worker.execute(()->file.delete());}
+  void cancel(){
+    if(destroyed||retiringPartial||task==null||"saved".equals(task.optString("state")))return;
+    JSONObject selected=task;pause();if(persistenceBlocked||task!=selected||destroyed)return;
+    ignoreUntil=System.currentTimeMillis()+3000;
+    if(!selected.optString("pendingDestination").isEmpty()){a.status("保存结果仍待确认，完整副本和恢复记录已保留，请先重试核验");return;}
+    if(!selected.optString("uri").isEmpty()||!(selected.opt("complete") instanceof Boolean)){a.status("无法确认下载副本状态，文件和记录已保留");return;}
+    if(tasks.cancellationFile(selected)!=null){retirePrivateCopy(selected,true);return;}
+    if(!DownloadTasks.partialName(selected).isEmpty()){a.status("下载副本位置已变化，文件和记录已保留");return;}
+    mark("cancelled","你已取消下载");if(persistenceBlocked)return;completeFile=false;retryUrl="";tasks.release();
+  }
   boolean loadTask(JSONObject row){if(retiringPartial){a.status("正在清理旧的未完成副本，请稍后再试");return false;}if(!claimTask(row)){if(!persistenceBlocked)a.status("下载记录已变化，请重新打开下载菜单");return false;}task=row;name=row.optString("name","文件");mime=row.optString("mime","application/octet-stream");sourceId=row.optString("source");sourceKey=row.optString("key");sourceUrl=row.optString("conversation");retryUrl="";temp=tasks.partial(row);resumeValidator=row.optString("validator");resumeAddress=row.optString("resource");completeFile=row.optBoolean("complete")&&temp!=null;receivedBytes=temp==null?0:temp.length();totalBytes=row.optLong("total",-1);imageLabel="";return true;}
   void history(){if(manager!=null&&manager.isShowing())return;LinearLayout box=new LinearLayout(a);box.setOrientation(LinearLayout.VERTICAL);box.setPadding(a.dp(16),a.dp(8),a.dp(16),a.dp(8));ListView list=new ListView(a);box.addView(list,new LinearLayout.LayoutParams(-1,a.dp(360)));List<JSONObject> rows=new ArrayList<>();JSONArray known=DownloadLibrary.get(a).prune(tasks.rows);for(int i=0;i<known.length();i++)rows.add(known.optJSONObject(i));JSONArray old=J.parse(a.prefs.getString("downloadHistory","{}")).optJSONArray("files");if(old!=null)old=DownloadLibrary.get(a).prune(old);if(old!=null)for(int i=0;i<old.length();i++){JSONObject r=old.optJSONObject(i);boolean duplicate=false;for(JSONObject item:rows)if(item.optString("uri").equals(r.optString("uri")))duplicate=true;if(!duplicate){JSONObject copy=J.parse(r.toString());DownloadTasks.put(copy,"state","saved");rows.add(copy);}}ArrayAdapter<String> adapter=new ArrayAdapter<>(a,android.R.layout.simple_list_item_1,new ArrayList<>());list.setAdapter(adapter);Runnable refresh=new Runnable(){public void run(){if(manager==null||!manager.isShowing())return;JSONArray live=new JSONArray();for(JSONObject row:rows)live.put(row);live=DownloadLibrary.get(a).prune(live);rows.clear();for(int i=0;i<live.length();i++)rows.add(live.optJSONObject(i));adapter.clear();for(JSONObject r:rows){String state=r.optString("state");adapter.add(r.optString("name")+"\n"+DownloadTasks.label(state)+(state.equals("saved")?"":" · "+DownloadTasks.progress(r))+(r.optString("reason").isEmpty()?"":"\n"+r.optString("reason")));}if(rows.isEmpty())adapter.add("还没有下载记录");adapter.notifyDataSetChanged();a.handler.postDelayed(this,700);}};list.setOnItemClickListener((p,v,n,id)->{if(n<rows.size())taskActions(rows.get(n));});manager=AppAppearance.dialog(a).setTitle("下载管理").setView(box).setNegativeButton("关闭",null).create();manager.show();refresh.run();}
   void taskActions(JSONObject r){if(retiringPartial){a.status("正在清理旧的未完成副本，请稍后再试");return;}if(tasks.recovering&&!r.optString("pendingDestination").isEmpty()){a.status("正在恢复下载记录，请稍后再试");return;}if(r.optString("state").equals("saved")){savedActions.show(r);return;}boolean current=task!=null&&task.optString("id").equals(r.optString("id"));if(active&&current){AppAppearance.dialog(a).setTitle(r.optString("name")).setItems(new String[]{"查看进度","暂停","取消下载"},(d,n)->{if(n==0){minimized=false;showProgress(DownloadTasks.progress(r));}else if(n==1)pause();else requestCancel();}).show();return;}LinearLayout detail=new LinearLayout(a);detail.setOrientation(LinearLayout.VERTICAL);TextView reason=a.label(r.optString("reason")+"\n"+DownloadTasks.progress(r),14,Ui.MUTED);reason.setPadding(a.dp(20),a.dp(10),a.dp(20),a.dp(10));detail.addView(reason);if(!r.optString("pendingDestination").isEmpty()){Button inspect=new Button(a);inspect.setText("查看待确认文件");detail.addView(inspect);inspect.setOnClickListener(v->openSaved(Uri.parse(r.optString("pendingDestination")),r.optString("mime","application/octet-stream"),r.optString("pendingName",r.optString("name","文件")),false));}if(r.optString("pendingDestination").isEmpty()&&r.optBoolean("complete")&&tasks.partial(r)!=null){Button save=new Button(a);save.setText("另存为已下载文件");detail.addView(save);save.setOnClickListener(v->{if(active||awaitingPicker){a.status("请先完成当前下载");return;}if(!loadTask(r))return;cancelled=false;active=true;a.session.transferActive=true;a.session.updateBrowserActivity();chooseManually(++ticket);});}AppAppearance.dialog(a).setTitle(r.optString("name")).setView(detail).setPositiveButton(continuationAction(r),(d,w)->{if(DownloadResumePolicy.RESTART.equals(continuationAction(r))){requestRedownload(r);return;}if(active){a.status("请先暂停或完成当前下载");return;}String liveUrl=current?retryUrl:"";if(!loadTask(r))return;retryUrl=liveUrl;if(!completeFile&&sourceId.isEmpty()&&retryUrl.isEmpty()){a.status("请回原网页再次点按下载，临时链接不会长期保存");return;}if(!completeFile&&!sourceId.isEmpty()&&!sameSource()){a.status("请返回该文件所在对话，再从下载管理继续");return;}retry();}).setNeutralButton("取消并清理",(d,w)->{if(active){a.status("请先暂停当前下载");return;}if(!loadTask(r))return;requestCancel();}).setNegativeButton("关闭",null).show();}

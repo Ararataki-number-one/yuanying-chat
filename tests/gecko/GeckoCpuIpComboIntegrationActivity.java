@@ -90,11 +90,16 @@ public final class GeckoCpuIpComboIntegrationActivity extends MainActivity {
   // variants, retain the production admission and original strict proxy guard.
   // The Safe Browsing provider and content-signature chain host are pinned SDK
   // services. Production Safe Browsing and signature checks remain unchanged.
+  // Pinned greprefs.js also enables IPv4/IPv6 connectivity probes to this
+  // exact HTTP authority; HTTPS and WebSocket variants remain unclassified.
   static String sdkStartupRole(String target){
     if(target==null||target.length()>16384)return "";
-    try{java.net.URI uri=new java.net.URI(target);if(!"https".equals(uri.getScheme())||uri.getRawUserInfo()!=null)return "";
+    try{java.net.URI uri=new java.net.URI(target);if(uri.getRawUserInfo()!=null)return "";
       String authority=uri.getRawAuthority();String host=uri.getHost();int port=uri.getPort();
-      if(host==null||!(port==-1||port==443)||!(host.equals(authority)||(host+":443").equals(authority)))return "";
+      if(host==null)return "";
+      if("http".equals(uri.getScheme())&&"firefox-portal-detection.com".equals(host)
+        &&(port==-1||port==80)&&(host.equals(authority)||(host+":80").equals(authority)))return "connectivity-service";
+      if(!"https".equals(uri.getScheme())||!(port==-1||port==443)||!(host.equals(authority)||(host+":443").equals(authority)))return "";
       if("firefox.settings.services.mozilla.com".equals(host))return "remote-settings";
       if("firefox-settings-attachments.cdn.mozilla.net".equals(host))return "remote-settings-attachments";
       if("safebrowsing.googleapis.com".equals(host))return "safe-browsing-google";
@@ -113,6 +118,7 @@ public final class GeckoCpuIpComboIntegrationActivity extends MainActivity {
       else if("remote-settings-attachments".equals(role))hostHash="329ef95339e0fd70cc2fa20c8ea4b30288dc5ad57c8c96dc860d4479a61c9b79";
       else if("safe-browsing-google".equals(role))hostHash="6b3357bd9a4a410a4a9fec1bb0d2a8e609232c33b98d92051e89e1616693ab5c";
       else if("content-signature-chain".equals(role))hostHash="f0fa75029afb166605b17fa3f9f08cc543673f75203345e7f127d3031119c199";
+      else if("connectivity-service".equals(role))hostHash="0c8438a139a2f87f37b59b340f3c45ce942b5f649ca7c14ffe994353713f2ca2";
       else throw new SecurityException("Unknown native admission role");
       boolean closed=closedNativeRefusal(actual);
       synchronized(nativeRefusals){nativeRefusalCount++;
@@ -135,7 +141,7 @@ public final class GeckoCpuIpComboIntegrationActivity extends MainActivity {
       JSONObject value;long revision;
       synchronized(nativeRefusals){revision=admissionRevision;value=J.obj("schema",1,"kind","gecko-cpu-ip-combo-native-admission-v1","sourceCommit",build.getString("sourceCommit"),"sourceTree",build.getString("sourceTree"),"runNonce",nonce,"buildIdentity",build,
         "process",J.obj("pid",android.os.Process.myPid(),"uid",android.os.Process.myUid(),"name",android.app.Application.getProcessName()),
-        "scope","integration-only-exact-sdk-startup-https-admission","automaticLatencyChecks",AppPrefs.enabled(this,"automaticLatencyChecks"),
+        "scope","integration-only-exact-sdk-startup-http-https-admission","automaticLatencyChecks",AppPrefs.enabled(this,"automaticLatencyChecks"),
         "eventLimit",128,"totalRefusals",nativeRefusalCount,"droppedEvents",nativeRefusalCount-nativeRefusals.length(),"events",new JSONArray(nativeRefusals.toString()),
         "snapshotScope","persisted-async-snapshot-before-force-stop-later-events-not-covered","diagnosticOnly",true,"qualificationEvidence",false);}
       byte[] raw=(value.toString()+"\n").getBytes(StandardCharsets.UTF_8);if(raw.length>262144)throw new IOException("Bounded native admission report exceeded");

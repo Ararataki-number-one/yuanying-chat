@@ -54,7 +54,7 @@ public final class GeckoCaretCompatibilityIntegrationActivity extends Activity {
     @Override public void closeConnection(){forward("closeConnection",()->J.arr(),()->{super.closeConnection();return true;});}
   }
   static final class FixtureView extends GeckoWebView {
-    FixtureView(Context c,ChatSession owner,GeckoCaretCompatibilityIntegrationActivity fixture){super(c,owner);surface=new org.mozilla.geckoview.GeckoView(displayContext){@Override public InputConnection onCreateInputConnection(EditorInfo attrs){InputConnection original=super.onCreateInputConnection(attrs);return original==null?null:new DiagnosticInputConnection(original,fixture::recordExternalIme);}};surface.setViewBackend(org.mozilla.geckoview.GeckoView.BACKEND_TEXTURE_VIEW);addView(surface,new android.widget.FrameLayout.LayoutParams(-1,-1));}
+    FixtureView(Context c,ChatSession owner,GeckoCaretCompatibilityIntegrationActivity fixture){super(c,owner);surface=new org.mozilla.geckoview.GeckoView(displayContext){@Override public void requestNewSurface(){GeckoTextureSurface.requestNewSurface(this);super.requestNewSurface();}@Override public InputConnection onCreateInputConnection(EditorInfo attrs){InputConnection original=super.onCreateInputConnection(attrs);return original==null?null:new DiagnosticInputConnection(original,fixture::recordExternalIme);}};surface.setViewBackend(org.mozilla.geckoview.GeckoView.BACKEND_TEXTURE_VIEW);addView(surface,new android.widget.FrameLayout.LayoutParams(-1,-1));}
     @Override protected boolean allowedUrl(String value){return value!=null&&value.startsWith(ORIGIN+"/");}
     @Override boolean readingPage(String value){return value!=null&&value.startsWith(ORIGIN+"/caret");}
   }

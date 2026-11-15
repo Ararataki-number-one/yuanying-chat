@@ -10,7 +10,7 @@ public final class ClientReadyHost {
   final AuditBoundary audit=new AuditBoundary();final ObserverBoundary webObserver=new ObserverBoundary(this);
   final PrefsBoundary prefs=new PrefsBoundary();final TraceBoundary trace=new TraceBoundary();
   String pageError="",connectionStage="",status="",resourceObserverBinding="synthetic-binding";
-  long pageUsableAt;int awaiting,finishes,wakes,remembered,googleReads;boolean retry;
+  long pageUsableAt;int awaiting,finishes,wakes,remembered,googleReads;boolean retry,navigationDispatched=true;
   boolean targetMatches(String url){return url.equals(web.url);}
   boolean replyObservationAllowed(){return true;}
   void rememberBrowserLocation(String url){remembered++;}
@@ -54,6 +54,16 @@ public final class ClientReadyHost {
     h=page("https://chatgpt.com/c/owned");h.audit.selected=true;h.onPageFinished(h.web,h.web.url);
     check("Selected diagnostic retains its independent lifecycle",h.web.scripts.isEmpty()&&h.prefs.values.isEmpty()&&h.finishes==0&&h.awaiting==0);
   }
+  static void capturePhase(){
+    for(String url:new String[]{"https://example.org/form","https://chatgpt.com/c/current"}){
+      ClientReadyHost h=page(url);h.navigationDispatched=false;h.onPageFinished(h.web,url);
+      check("A stopped document cannot report ready during navigation capture: "+url,h.reading.visible==0&&h.web.scripts.isEmpty()&&h.remembered==0&&h.finishes==0&&h.awaiting==0);
+      h.onReceivedHttpError(h.web,new RequestBoundary(url,true),new ResponseBoundary(401));
+      check("A stopped document cannot report HTTP error during navigation capture: "+url,h.finishes==0&&h.awaiting==0&&h.pageError.isEmpty());
+      h.navigationDispatched=true;h.onPageFinished(h.web,url);
+      check("A dispatched document retains normal ready behavior: "+url,h.reading.visible==1&&h.remembered==1);
+    }
+  }
   static void errors(){
     for(String host:new String[]{"example.org","accounts.google.com","appleid.apple.com","login.microsoftonline.com","auth.openai.com"}){
       ClientReadyHost h=page("https://"+host+"/auth/login");h.onReceivedHttpError(h.web,new RequestBoundary(h.web.url,true),new ResponseBoundary(401));
@@ -66,7 +76,7 @@ public final class ClientReadyHost {
     h=page("https://example.org/page");h.onReceivedHttpError(h.web,new RequestBoundary(h.web.url,false),new ResponseBoundary(401));
     check("Subresource HTTP errors do not replace the page status",h.awaiting==0&&h.finishes==0&&h.pageError.isEmpty());
   }
-  public static void main(String[] args){String focus=args.length==0?"all":args[0];if(focus.equals("all")||focus.equals("generic"))generic();if(focus.equals("all")||focus.equals("google"))google();if(focus.equals("all")||focus.equals("logins"))logins();if(focus.equals("all")||focus.equals("chat"))chat();if(focus.equals("all")||focus.equals("errors"))errors();System.out.println(J.obj("status","passed","passed",checks.length(),"total",checks.length(),"checks",checks,"actualAndroidExecution",false,"actualGeckoExecution",false));}
+  public static void main(String[] args){String focus=args.length==0?"all":args[0];if(focus.equals("all")||focus.equals("generic"))generic();if(focus.equals("all")||focus.equals("google"))google();if(focus.equals("all")||focus.equals("logins"))logins();if(focus.equals("all")||focus.equals("chat"))chat();if(focus.equals("all")||focus.equals("errors"))errors();if(focus.equals("all")||focus.equals("capture"))capturePhase();System.out.println(J.obj("status","passed","passed",checks.length(),"total",checks.length(),"checks",checks,"actualAndroidExecution",false,"actualGeckoExecution",false));}
 }
 final class ObserverBoundary {
   final ClientReadyHost session;String script="CONTROLLED_GPT_OBSERVER";

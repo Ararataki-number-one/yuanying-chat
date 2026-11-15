@@ -6,6 +6,7 @@ import importlib.util
 import io
 import json
 from pathlib import Path
+from historical_source_inputs import historical_bytes
 import subprocess
 import struct
 import sys
@@ -132,7 +133,7 @@ class EditingTransport13WorkflowTests(unittest.TestCase):
         self.assertEqual(adapter.count(marker), 1)
         previous_adapter = adapter.split(marker, 1)[0]
         self.assertEqual(sha(previous_adapter), 'f7c31b6d5bad40140978f8f14347769b738583feea2226d0c11c2c90b015d3d8')
-        current = restore_native_setup_shared_save_view(OLD_TEST.read_bytes())
+        current = restore_native_setup_shared_save_view(historical_bytes('tests/profile_native_setup_diagnostic11_test.py'))
         self.assertEqual(current.count(VIEW_BINDING), 1)
         previous = current.replace(VIEW_BINDING, b'', 1)
         self.assertEqual(sha(previous), '6d1831300cdda830c6bf2366731818320634ae7cebc635f2dc3f6d0f28384e44')
@@ -146,7 +147,7 @@ class EditingTransport13WorkflowTests(unittest.TestCase):
                          sorted((k, v) for k, v in methods(adapter).items() if k in methods(previous_adapter)))
 
     def test_shared_save_source_views_reject_missing_duplicate_and_unreviewed_bytes(self):
-        native = OLD_TEST.read_bytes()
+        native = historical_bytes('tests/profile_native_setup_diagnostic11_test.py')
         restored = restore_native_setup_shared_save_view(native)
         begin = b'# Exact current shared-save test-input view; old S11 functions remain unchanged.\n'
         end = b'NORMALIZERS = SharedSaveNormalizersInput(NORMALIZERS)\n\n\n'
@@ -160,7 +161,7 @@ class EditingTransport13WorkflowTests(unittest.TestCase):
                 restore_native_setup_shared_save_view(raw)
         spec = importlib.util.spec_from_file_location('shared_save_native_setup_controls', OLD_TEST)
         module = importlib.util.module_from_spec(spec); spec.loader.exec_module(module)
-        display = (ROOT / 'tests/profile_display_sampling_gate_test.py').read_bytes()
+        display = historical_bytes('tests/profile_display_sampling_gate_test.py')
         old_display = module.SharedSaveNormalizersInput.restore(display)
         self.assertEqual(sha(old_display), '3c0f755bf0718db15ecf403d448f4c48a55261b241d1671f6574342f947a34e0')
         for begin, end, _, _ in module.SharedSaveNormalizersInput.BLOCKS:

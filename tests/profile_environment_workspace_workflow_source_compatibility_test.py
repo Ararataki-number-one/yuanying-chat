@@ -1,8 +1,9 @@
-"""Exact environment-capture workflow history; never device execution evidence."""
+"""Fixed 2.1.4 environment-workflow history; never current CI execution evidence."""
 import hashlib
 import json
 import os
 from pathlib import Path
+from historical_source_inputs import historical_bytes
 import subprocess
 import unittest
 
@@ -26,12 +27,13 @@ def previous_blob(path):
 
 class EnvironmentWorkspaceWorkflowSourceTests(unittest.TestCase):
     def test_inverse_and_forward_match_the_actual_upstream_git_blob(self):
+        working_path=ROOT/workspace.PATH;working_bytes=working_path.read_bytes()
         value = workspace.manifest()
         tree = subprocess.check_output(['git', '--no-replace-objects', 'rev-parse', workspace.PREVIOUS_COMMIT + '^{tree}'],
                                        cwd=ROOT, env=dict(os.environ, GIT_NO_LAZY_FETCH='1')).decode().strip()
         self.assertEqual(tree, workspace.PREVIOUS_TREE)
         before = previous_blob(workspace.PATH)
-        current = (ROOT / workspace.PATH).read_bytes()
+        current = historical_bytes(workspace.PATH)
         self.assertEqual(workspace.source_input(current, workspace.PATH), before)
         self.assertEqual(workspace.historical_workflow_text(current.decode()).encode(), before)
         restored = before
@@ -40,7 +42,8 @@ class EnvironmentWorkspaceWorkflowSourceTests(unittest.TestCase):
             self.assertEqual(restored.count(previous), 1)
             restored = restored.replace(previous, after, 1)
         self.assertEqual(restored, current)
-        self.assertEqual((ROOT / workspace.PATH).read_bytes(), current)
+        self.assertEqual(historical_bytes(workspace.PATH), current)
+        self.assertEqual(working_path.read_bytes(),working_bytes)
 
     def assert_rejected_by_both_guards(self, changed, original):
         self.assertNotEqual(changed, original)
@@ -52,7 +55,7 @@ class EnvironmentWorkspaceWorkflowSourceTests(unittest.TestCase):
             display.reverse_reviewed_glass_host_workflow_additions(workspace.historical_workflow_text(text))
 
     def test_missing_duplicated_moved_and_changed_reviewed_hunks_fail_closed(self):
-        raw = (ROOT / workspace.PATH).read_bytes()
+        raw = historical_bytes(workspace.PATH)
         for delta in workspace.manifest()['deltas']:
             current = delta['current'].encode()
             self.assertEqual(raw.count(current), 1)
@@ -66,7 +69,7 @@ class EnvironmentWorkspaceWorkflowSourceTests(unittest.TestCase):
                     self.assert_rejected_by_both_guards(changed, raw)
 
     def test_branch_timeout_environment_and_capture_arguments_are_exact(self):
-        raw = (ROOT / workspace.PATH).read_bytes()
+        raw = historical_bytes(workspace.PATH)
         mutations = (
             (b'"codex/environment-workspace-polish"', b'"codex/unreviewed-workspace"'),
             (b'        timeout-minutes: 9\n', b'        timeout-minutes: 10\n'),
@@ -81,7 +84,7 @@ class EnvironmentWorkspaceWorkflowSourceTests(unittest.TestCase):
                 self.assert_rejected_by_both_guards(raw.replace(before, after, 1), raw)
 
     def test_environment_push_and_branch_concurrency_preserve_paths_and_event_identity(self):
-        raw = (ROOT / workspace.PATH).read_bytes()
+        raw = historical_bytes(workspace.PATH)
         current = yaml.load(raw, Loader=yaml.BaseLoader)
         previous = yaml.load(previous_blob(workspace.PATH), Loader=yaml.BaseLoader)
         self.assertEqual(current['on']['push']['branches'], previous['on']['push']['branches'] + ['codex/environment-workspace-polish'])
@@ -94,7 +97,7 @@ class EnvironmentWorkspaceWorkflowSourceTests(unittest.TestCase):
             self.assertEqual(current['jobs'][job]['steps'][0], previous['jobs'][job]['steps'][0])
 
     def test_push_scope_concurrency_and_checkout_identity_mutations_are_rejected(self):
-        raw = (ROOT / workspace.PATH).read_bytes()
+        raw = historical_bytes(workspace.PATH)
         mutations = (
             (b"'release/gecko-*', 'codex/environment-workspace-polish']", b"'release/gecko-*', '*']"),
             (b"'release/gecko-*', 'codex/environment-workspace-polish']", b"'release/gecko-*']"),
@@ -111,7 +114,7 @@ class EnvironmentWorkspaceWorkflowSourceTests(unittest.TestCase):
                 self.assert_rejected_by_both_guards(raw.replace(before, after, 1), raw)
 
     def test_extra_history_owner_is_exact_and_keeps_the_original_twenty_one(self):
-        source = (ROOT / workspace.PATH).read_text()
+        source = historical_bytes(workspace.PATH).decode('utf-8')
         prepare = "          python3 tools/gecko/prepare_profile_host_prerequisites.py --source-commit '${{ github.event.pull_request.head.sha || github.sha }}' --output work/profile-host/prerequisites.json\n"
         fetch = '          git fetch --no-tags --depth=1 --no-write-fetch-head --no-filter origin 6ee06aced87581e52aa301431f8996ed46d666b8\n'
         following = '          npm install --prefix work/resource-observer --ignore-scripts --no-audit --no-fund jsdom@26.1.0\n'
@@ -129,7 +132,7 @@ class EnvironmentWorkspaceWorkflowSourceTests(unittest.TestCase):
                 self.assert_rejected_by_both_guards(source.replace(fetch, changed, 1).encode(), source.encode())
 
     def test_unrelated_steps_action_pins_and_existing_validation_cannot_change(self):
-        raw = (ROOT / workspace.PATH).read_bytes()
+        raw = historical_bytes(workspace.PATH)
         mutations = (
             (b'checkout@11d5960a326750d5838078e36cf38b85af677262', b'checkout@unreviewed'),
             (b'    timeout-minutes: 15\n', b'    timeout-minutes: 16\n'),
@@ -144,7 +147,7 @@ class EnvironmentWorkspaceWorkflowSourceTests(unittest.TestCase):
                 self.assert_rejected_by_both_guards(raw.replace(before, after, 1), raw)
 
     def test_environment_inverse_preserves_the_exact_upstream_gradle_transport(self):
-        raw = (ROOT / workspace.PATH).read_bytes()
+        raw = historical_bytes(workspace.PATH)
         previous = previous_blob(workspace.PATH)
         restored = workspace.source_input(raw, workspace.PATH)
         self.assertEqual(restored, previous)
@@ -162,7 +165,7 @@ class EnvironmentWorkspaceWorkflowSourceTests(unittest.TestCase):
             self.assertEqual((ROOT / path).read_bytes(), previous_blob(path))
 
     def test_environment_adapter_cannot_hide_upstream_asset_size_or_checksum_changes(self):
-        raw = (ROOT / workspace.PATH).read_bytes()
+        raw = historical_bytes(workspace.PATH)
         mutations = (
             (b'https://api.github.com/repos/gradle/gradle-distributions/releases/assets/586068844', b'https://api.github.com/repos/gradle/gradle-distributions/releases/assets/586068845'),
             (b'151611662', b'151611663'),
@@ -182,7 +185,7 @@ class EnvironmentWorkspaceWorkflowSourceTests(unittest.TestCase):
                     transport.source_input(workspace.historical_workflow_text(changed.decode()).encode(), workspace.PATH)
 
     def test_types_paths_partial_and_unknown_sources_cannot_gain_acceptance(self):
-        raw = (ROOT / workspace.PATH).read_bytes()
+        raw = historical_bytes(workspace.PATH)
         for changed in (None, raw.decode(), bytearray(raw), memoryview(raw), True, b'', raw[:1024], raw + b'\n'):
             with self.assertRaises(AssertionError):
                 workspace.source_input(changed, workspace.PATH)
@@ -205,7 +208,7 @@ class EnvironmentWorkspaceWorkflowSourceTests(unittest.TestCase):
         self.assertEqual((ROOT / path).read_bytes(), previous_blob(path))
 
     def test_only_the_declared_display_test_read_ports_change(self):
-        raw = (ROOT / DISPLAY).read_text()
+        raw = historical_bytes(DISPLAY).decode('utf-8')
         self.assertEqual(raw.count(PORT_IMPORT), 1)
         self.assertEqual(raw.count(CURRENT_READ), 2)
         restored = raw.replace(PORT_IMPORT, '', 1).replace(CURRENT_READ, PREVIOUS_READ)
@@ -213,7 +216,7 @@ class EnvironmentWorkspaceWorkflowSourceTests(unittest.TestCase):
 
     def test_gradle_transport_controls_only_add_two_owned_read_ports(self):
         path = 'tests/profile_gradle_transport_source_compatibility_test.py'
-        source = cellular_source_port_input((ROOT / path).read_bytes(), path).decode()
+        source = cellular_source_port_input(historical_bytes(path), path).decode()
         imported = 'from environment_workspace_workflow_source_compatibility import PATH as ENVIRONMENT_WORKFLOW_PATH, source_input as environment_workflow_source_input\n'
         current = 'raw = environment_workflow_source_input((ROOT / path).read_bytes(), path) if path == ENVIRONMENT_WORKFLOW_PATH else (ROOT / path).read_bytes()'
         previous = 'raw = (ROOT / path).read_bytes()'

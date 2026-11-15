@@ -1,11 +1,14 @@
 """Window-only preparation and delivery observations on JVM boundary doubles.
 
 No Android input, Gecko rendering, timing improvement or old-fault fix is claimed.
+Historical inverses use the fixed release; helper and fixture behavior hosts
+continue to compile current source.
 """
 import hashlib,json,os
 from pathlib import Path
 import shutil,subprocess,tempfile,unittest
 from unittest.mock import patch
+from historical_source_inputs import historical_bytes
 import window_tap_readiness_contract as contract
 from profile_display_sampling_gate_test import reverse_reviewed_history_checkout_addition
 from reading_zoom_trace_contract import original_reading_fixture_bytes
@@ -28,23 +31,24 @@ def member(text,needle):
 
 class WindowTapReadinessTest(unittest.TestCase):
  def test_exact_inverse_preserves_whole37_then_original_reading_fixture(self):
-  current=(ROOT/FIXTURE).read_bytes();original=contract.strip_reviewed_window_additions(current)
+  current=(ROOT/FIXTURE).read_bytes();historical=historical_bytes(FIXTURE);original=contract.strip_reviewed_window_additions(historical)
   self.assertEqual(digest(original),'6581b1d35024ce6edcf829575104e5dd3464ebfe20280e1a49d1c4b468325b39')
-  self.assertEqual(digest(original_reading_fixture_bytes(current,FIXTURE)),'7d6cc589a2718f629568205c79c290ef713d745b05a62a700a72451846c8d814')
+  self.assertEqual(digest(original_reading_fixture_bytes(historical,FIXTURE)),'7d6cc589a2718f629568205c79c290ef713d745b05a62a700a72451846c8d814')
   for signature,value in [('  void windowFlow(long serial){','b1d04434e25942ccfe9cbdcc07b1ca8d8bed74b95819e9862d3247632a872025'),('  void waitWindow(long serial,String step,long deadline,Runnable done){','f22b0cc0a85ee465effb713874f6975fd5a64e963409d3a72bdfea141c714bea'),('  void tapElement(long serial,String id){','4af23acb9cb582a4085ae8bd3e1b2981c12a705273ab1b4de3c15ee7f9ca0639')]:
    self.assertEqual(digest(member(original.decode(),signature).encode()),value)
   self.assertEqual(member(current.decode(),'  void waitWindow(long serial,String step,long deadline,Runnable done){'),member(original.decode(),'  void waitWindow(long serial,String step,long deadline,Runnable done){'))
   flow=member(current.decode(),'  void windowFlow(long serial){');self.assertEqual(flow.count('windowDeadline=SystemClock.elapsedRealtime()+15000'),1);self.assertIn('waitWindow(serial,"three",windowDeadline,()->{',flow)
   self.assertNotIn('tapElement(serial,"popup");',flow)
  def test_missing_changed_duplicated_and_relocated_window_changes_are_rejected(self):
-  source=(ROOT/FIXTURE).read_text()
+  # Keep mutations on the accepted whole-source input of the old inverse.
+  source=historical_bytes(FIXTURE).decode()
   for item in contract.window_manifest()['changes']:
    added=item.get('inserted',item.get('replacement'));old=item.get('original','');literal=item['before']+added+item['after'];prior=item['before']+old+item['after']
    mutants=[source.replace(literal,prior,1),source.replace(literal,item['before']+added*2+item['after'],1),source.replace(literal,item['before']+added+' '+item['after'],1),source.replace(literal,prior,1)+added]
    for i,value in enumerate(mutants):
     with self.subTest(change=item['id'],kind=i),self.assertRaises(ValueError):contract.strip_reviewed_window_additions(value.encode())
  def test_original_deadline_oracle_and_coordinate_changes_are_not_whitelisted(self):
-  source=(ROOT/FIXTURE).read_text()
+  source=historical_bytes(FIXTURE).decode()
   for old,new in [('windowDeadline=SystemClock.elapsedRealtime()+15000','windowDeadline=SystemClock.elapsedRealtime()+15001'),('JSONObject.quote(step).equals(raw)&&','true&&'),('if(web.current==parent||web.popups.size()!=1)','if(false)'),('"realPopup",true','"realPopup",false'),('rect.optDouble("x")-rect.optDouble("left")','rect.optDouble("x")+rect.optDouble("left")'),('Math.abs(relative-4.2)<.05','Math.abs(relative-4.2)<.06')]:
    self.assertIn(old,source)
    with self.subTest(mutation=old),self.assertRaises(ValueError):contract.strip_reviewed_window_additions(source.replace(old,new,1).encode())
@@ -64,9 +68,9 @@ class WindowTapReadinessTest(unittest.TestCase):
   added46=" if path=='tests/gecko/run_device.py' and hashlib.sha256(raw).hexdigest()!=PATHS[path][0]:\n  from experience46_source_compatibility import experience46_source_bytes\n  raw=experience46_source_bytes(raw,path)\n"
   self.assertEqual(current.count(added46),1);current=current.replace(added46,'',1)
   self.assertEqual(digest(current.replace(added,'',1).encode()),'2ad6c04e7d6fa27b84ae432039a079b887f673ac1d99474dd4441721f12918cd')
-  self.assertEqual(digest(experience46_source_bytes((ROOT/'tests/gecko/run_device.py').read_bytes(),'tests/gecko/run_device.py')),'54fa412be9f89e46d61597caf61b0246e451e6c9b5eebca592e36b05686ab8a6')
-  self.assertEqual(digest(reverse_reviewed_history_checkout_addition(self,(ROOT/'.github/workflows/gecko-integration.yml').read_text()).encode()),'10e35f9884e6eac2ea2fc2e0e6d6f6d5d14c55dc7e776cd0128019c75ab3f2f5')
-  fixture=(ROOT/FIXTURE).read_text();old=contract.strip_reviewed_window_additions(fixture.encode()).decode()
+  self.assertEqual(digest(experience46_source_bytes(historical_bytes('tests/gecko/run_device.py'),'tests/gecko/run_device.py')),'54fa412be9f89e46d61597caf61b0246e451e6c9b5eebca592e36b05686ab8a6')
+  self.assertEqual(digest(reverse_reviewed_history_checkout_addition(self,historical_bytes('.github/workflows/gecko-integration.yml').decode()).encode()),'10e35f9884e6eac2ea2fc2e0e6d6f6d5d14c55dc7e776cd0128019c75ab3f2f5')
+  fixture=(ROOT/FIXTURE).read_text();old=contract.strip_reviewed_window_additions(historical_bytes(FIXTURE)).decode()
   self.assertEqual(fixture.count('evaluateJavascript('),old.count('evaluateJavascript('));self.assertEqual(fixture.count('postDelayed('),old.count('postDelayed('))
   dispatch=member(fixture,'    @Override public boolean dispatchTouchEvent(android.view.MotionEvent event){');self.assertEqual(dispatch.count('super.dispatchTouchEvent(event)'),1);self.assertIn('return handled;',dispatch)
   helper=(ROOT/HELPER).read_text()

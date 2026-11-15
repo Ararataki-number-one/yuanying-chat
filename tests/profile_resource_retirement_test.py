@@ -52,7 +52,7 @@ def method(source, name):
     raise AssertionError('Unterminated actual production method')
 
 
-def execute(root=ROOT, expect_fixed=True, audit_override=None):
+def execute(root=ROOT, expect_fixed=True, audit_override=None, session_override=None):
     java = os.environ.get('PROFILE_JAVA') or (str(PINNED_JAVA) if PINNED_JAVA.is_file() else shutil.which('java'))
     if not java:
         raise RuntimeError('JDK required for actual production audit-retirement host checks')
@@ -61,6 +61,8 @@ def execute(root=ROOT, expect_fixed=True, audit_override=None):
     source = {name: path.read_text() for name, path in paths.items()}
     if audit_override is not None:
         source['EnvironmentAudit'] = audit_override
+    if session_override is not None:
+        source['ChatSession'] = session_override
     template = ROOT / 'tests/resource-retirement-host/AuditRetirementHost.java.in'
     rendered = template.read_text()
     values = {
@@ -69,6 +71,7 @@ def execute(root=ROOT, expect_fixed=True, audit_override=None):
         '__CLEANUP__': method(source['EnvironmentAudit'], 'cleanup'),
         '__RETIRE__': method(source['EnvironmentAudit'], 'retirePageCheck') if expect_fixed else '',
         '__BROWSER_ACTIVE__': method(source['ChatSession'], 'browserWorkActive'),
+        '__INVALIDATE_PAGE_WORK__': method(source['ChatSession'], 'invalidateBrowserPageWork') if 'invalidateBrowserPageWork(' in source['ChatSession'] else '',
         '__BEGIN_NAVIGATION__': method(source['ChatSession'], 'beginNavigation'),
         '__INVALIDATE_CONNECTION__': method(source['ChatSession'], 'invalidateConnection'),
     }
@@ -92,7 +95,7 @@ def execute(root=ROOT, expect_fixed=True, audit_override=None):
                                   capture_output=True, text=True, timeout=30)
         if compiled.returncode:
             raise AssertionError(compiled.stdout + compiled.stderr)
-        run = subprocess.run([java, '-cp', temporary, 'local.pocketchat.AuditRetirementHost', str(expect_fixed).lower()],
+        run = subprocess.run([java, '-cp', temporary, 'local.pocketchat.AuditRetirementHost', str(expect_fixed).lower(), str(bool(values['__INVALIDATE_PAGE_WORK__'])).lower()],
                              capture_output=True, text=True, timeout=15)
     metrics = [json.loads(line.removeprefix('METRICS ')) for line in run.stdout.splitlines() if line.startswith('METRICS ')]
     counts = re.findall(r'^TOTAL ([0-9]+)$', run.stdout, re.MULTILINE)
@@ -100,8 +103,17 @@ def execute(root=ROOT, expect_fixed=True, audit_override=None):
     return dict(status='passed' if run.returncode == 0 else 'failed', expectedFixed=expect_fixed,
                 actualAndroidExecution=False, actualGeckoExecution=False, actualNativeHttpExecution=False,
                 physicalMemoryMeasurement=False, actualPendingDocumentNativeProofExecution=False,
+                actualPageWorkInvalidationExecution=bool(values['__INVALIDATE_PAGE_WORK__']),
+                webObserverBoundary='Counted navigation for absent or explicitly independent native tasks only; webpage task archival and all other pending representations fail explicitly.',
+                unchangedContractChecks=38 if values['__INVALIDATE_PAGE_WORK__'] else 40,
+                navigationOwnershipMigrations=[
+                    dict(name='navigation-cancellation', previous='s.web.cancellations==(expectFixed?1:0)&&(!expectFixed||s.web.cancellationEpoch==epoch)', current='s.web.cancellations==0', reason='The new navigation already owns the epoch; the unbound current-port cancellation cannot safely target its retired document. Route invalidation retains the original old-epoch cancellation assertion.'),
+                    dict(name='page-inspection', previous='s.browserWorkActive()', current='!s.inFlight&&!s.browserWorkActive()', reason='The inspection callback belongs to the retired page epoch. Nine independent activity reasons retain their original positive assertions.'),
+                ] if values['__INVALIDATE_PAGE_WORK__'] else [],
+                actualOldPageJavascriptStopped=False,
                 pendingPageAuditBoundary='Explicit default null; a nonnull opaque ownership token exercises only actual cancel/retire nullness branches. No PendingPageAudit document/native proof, currentness or readiness is simulated.',
                 injectedAuditCounterexample=audit_override is not None, executedAuditSha256=hashlib.sha256(source['EnvironmentAudit'].encode()).hexdigest(),
+                injectedSessionCounterexample=session_override is not None, executedSessionSha256=hashlib.sha256(source['ChatSession'].encode()).hexdigest(),
                 pendingBoundaryApplicable=expect_fixed,
                 pendingBoundaryPassed=int(pending_counts[0]) if len(pending_counts) == 1 else None,
                 compiled=True, auxiliaryPageBoundary='Default absent; close returns false only while absent and auxiliary selection fails explicitly. Real auxiliary close is outside this host.', scope='Exact extracted production methods on JVM; explicit fake scheduler and HttpURLConnection',
@@ -113,6 +125,36 @@ def execute(root=ROOT, expect_fixed=True, audit_override=None):
 
 
 class ResourceAuditRetirementTest(unittest.TestCase):
+    def test_current_navigation_ownership_contracts_reject_old_page_effects(self):
+        report = execute()
+        self.assertEqual(report['returncode'], 0, report['stdout'] + report['stderr'])
+        self.assertEqual(report['passed'], 40)
+        self.assertEqual(report['unchangedContractChecks'], 38)
+        self.assertEqual(len(report['navigationOwnershipMigrations']), 2)
+        self.assertTrue(report['actualPageWorkInvalidationExecution'])
+        source = (ROOT / 'app/src/main/java/local/pocketchat/ChatSession.java').read_text()
+        body = method(source, 'invalidateBrowserPageWork')
+        controls = (
+            ('old-epoch-cancellation', 'navigationEpoch++;', 'if(audit!=null)audit.retirePageCheck();\n    navigationEpoch++;', 'Navigation epoch invalidation does not send an unbound page cancellation'),
+            ('stale-inspection', 'inFlight=false;', '', 'Page-bound inspection is retired with its navigation epoch'),
+        )
+        rejected_controls = []
+        for name, before, after, message in controls:
+            self.assertEqual(body.count(before), 1)
+            mutant = source.replace(body, body.replace(before, after, 1), 1)
+            with self.subTest(counterexample=name):
+                rejected = execute(session_override=mutant)
+                self.assertTrue(rejected['compiled'])
+                self.assertTrue(rejected['injectedSessionCounterexample'])
+                self.assertEqual(rejected['returncode'], 1)
+                self.assertIn('java.lang.AssertionError: ' + message, rejected['stderr'])
+                rejected_controls.append(dict(name=name, expectedAssertion=message, report=rejected))
+        out = Path(os.environ.get('RESOURCE_NAVIGATION_OWNERSHIP_REPORT') or ROOT / 'work/resource40/navigation-ownership-results.json')
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(json.dumps(dict(status='passed', positive=report, compiledCounterexamples=rejected_controls,
+                                       actualAndroidExecution=False, actualOldPageJavascriptStopped=False,
+                                       scope='38 original checks plus two explicit current navigation-ownership migrations; original predicates retained for sources without the new helper.'), indent=2) + '\n')
+
     def test_document_and_route_invalidation_retire_only_obsolete_page_checks(self):
         report = execute()
         out = ROOT / 'work/resource40/audit-retirement-host.json'

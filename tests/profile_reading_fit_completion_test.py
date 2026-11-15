@@ -3,6 +3,7 @@
 The zoom boundary records requested factors and never changes measured scale.
 Only a separately supplied native measurement may let the controller align.
 """
+from historical_source_inputs import historical_bytes
 import hashlib,json,os
 from pathlib import Path
 import shutil,subprocess,tempfile,unittest
@@ -153,12 +154,12 @@ def execute(reading=None,policy=None):
 
 class ReadingFitCompletionTests(unittest.TestCase):
  def test_original_controller_and_oracle_preservation(self):
-  reading=reading45_source_bytes((PRODUCTION/'BrowserReading.java').read_bytes(),'app/src/main/java/local/pocketchat/BrowserReading.java').decode();self.assertEqual(reading.count(NEW_RESTORE),1)
+  reading=reading45_source_bytes(historical_bytes('app/src/main/java/local/pocketchat/BrowserReading.java'),'app/src/main/java/local/pocketchat/BrowserReading.java').decode();self.assertEqual(reading.count(NEW_RESTORE),1)
   self.assertEqual(sha(reading.replace(NEW_RESTORE,OLD_RESTORE,1).encode()),ORIGINAL_READING_SHA)
-  policy=reading45_source_bytes((PRODUCTION/'BrowserReadingPolicy.java').read_bytes(),'app/src/main/java/local/pocketchat/BrowserReadingPolicy.java').decode();self.assertEqual(policy.count(FITTED),1)
+  policy=reading45_source_bytes(historical_bytes('app/src/main/java/local/pocketchat/BrowserReadingPolicy.java'),'app/src/main/java/local/pocketchat/BrowserReadingPolicy.java').decode();self.assertEqual(policy.count(FITTED),1)
   self.assertEqual(sha(policy.replace(FITTED,'',1).encode()),ORIGINAL_POLICY_SHA)
   for name,digest in ORIGINAL_PROTECTED.items():
-   raw=(ROOT/name).read_bytes()
+   raw=historical_bytes(name)
    if name=='tests/gecko/run_device.py':raw=experience46_source_bytes(raw,name)
    if name=='app/src/main/java/local/pocketchat/GeckoWebView.java':raw=reading_preservation_bytes(raw)
    if name in ('tests/gecko/GeckoIntegrationTestActivity.java','tests/gecko/run_device.py'):raw=original_reading_fixture_bytes(raw,name)
@@ -166,7 +167,7 @@ class ReadingFitCompletionTests(unittest.TestCase):
   self.assertEqual((PRODUCTION/'GeckoWebView.java').read_text().count('boolean requiresViewportMeasurement(){return true;}'),1)
 
  def test_fingerprint_inverse_cannot_hide_a_reading_geometry_change(self):
-  raw=(PRODUCTION/'GeckoWebView.java').read_bytes();needle=b'Math.abs(next-readingLayout)<.001f'
+  raw=historical_bytes('app/src/main/java/local/pocketchat/GeckoWebView.java');needle=b'Math.abs(next-readingLayout)<.001f'
   self.assertEqual(raw.count(needle),1)
   with self.assertRaises(ValueError):reading_preservation_bytes(raw.replace(needle,b'Math.abs(next-readingLayout)<.002f',1))
 

@@ -1,0 +1,220 @@
+package local.pocketchat;
+
+import android.app.Activity;
+import android.content.*;
+import android.net.Uri;
+import android.os.*;
+import android.text.TextUtils;
+import android.view.*;
+import android.webkit.*;
+import android.widget.*;
+import java.io.*;
+import java.lang.reflect.*;
+import java.util.*;
+import org.json.*;
+import org.mozilla.geckoview.*;
+
+/** Current production lifecycle members, with explicit UI/native/transfer boundaries. */
+public final class LifecycleHost {
+  static int checks;static final ArrayList<String> failures=new ArrayList<>();
+  static void check(boolean value,String message){checks++;if(!value)failures.add(message);}
+  static MainActivity open(){MainActivity result=new MainActivity();result.createChatUi();return result;}
+  static void fresh(){ChatSession.instance=new ChatSession();NativeNetwork.instance=new NativeNetwork();}
+  static boolean reachable(Object start,Object target){
+    Set<Object> seen=Collections.newSetFromMap(new IdentityHashMap<>());ArrayDeque<Object> todo=new ArrayDeque<>();if(start!=null)todo.add(start);
+    while(!todo.isEmpty()){
+      Object value=todo.removeFirst();if(value==target)return true;if(!seen.add(value))continue;
+      if(value instanceof Collection){for(Object next:(Collection<?>)value)if(next!=null)todo.add(next);continue;}
+      if(value instanceof Map){for(Object next:((Map<?,?>)value).values())if(next!=null)todo.add(next);continue;}
+      for(Class<?> type=value.getClass();type!=null;type=type.getSuperclass()){
+        if(!type.getName().startsWith("local.pocketchat.")&&!type.getName().startsWith("android."))continue;
+        for(Field field:type.getDeclaredFields())if(!Modifier.isStatic(field.getModifiers())&&!field.getType().isPrimitive())try{field.setAccessible(true);Object next=field.get(value);if(next!=null)todo.add(next);}catch(ReflectiveOperationException error){throw new AssertionError(error);}
+      }
+    }return false;
+  }
+  static void retention(){
+    fresh();MainActivity old=open();GeckoWebView web=old.remote;ChatSession session=old.session;long epoch=session.navigationEpoch;
+    check(reachable(web.client,old)&&reachable(web.chrome,old)&&reachable(web.download,old)&&reachable(web.responseDownload,old),"Installed four UI callbacks really retain their Activity before teardown");
+    old.onDestroy();
+    check(!reachable(web.client,old),"Retained page client releases destroyed Activity");
+    check(!reachable(web.chrome,old),"Retained chooser client releases destroyed Activity");
+    check(!reachable(web.download,old),"Retained download callback releases destroyed Activity");
+    check(!reachable(web.responseDownload,old),"Retained native response callback releases destroyed Activity");
+    check(!reachable(web,old),"Process-retained session view has no strong path to destroyed Activity");
+    check(web.displayContext.getBaseContext()==session.context&&web.getParent()==null,"Unowned view returns to application context and detaches its old parent");
+    check(ChatSession.instance==session&&web.current.closed==0&&!web.destroyed&&session.navigationEpoch==epoch,"UI destruction preserves the native session and document generation");
+    check(old.downloads.destroyed&&old.downloads.tasks.releases==1&&old.downloads.savedActions.closes==1&&old.downloads.worker.shutdown,"Existing transfer cleanup still executes");
+    Body body=new Body();int status=old.statusCalls;web.content.onExternalResponse(web.current,new WebResponse(body));
+    check(body.closed==1&&old.downloads.responses==0&&old.statusCalls==status,"Late native response uses body-closing default without destroyed Activity callbacks");
+    background(web,session);
+  }
+  static void background(GeckoWebView web,ChatSession session){
+    WebViewClient client=web.client;check(client!=null,"Session page client survives UI retirement");if(client==null)return;
+    web.url="https://example.org/after-ui";session.navigationDispatched=true;int before=session.reading.starts;
+    client.onPageStarted(null,web.url,null);client.onPageCommitVisible(null,web.url);client.onPageFinished(null,web.url);
+    check(session.reading.starts==before+1&&session.reading.visibles>=2&&session.webObserver.ready>=2&&session.finishes==1,"Actual session page callbacks continue after UI retirement");
+    client.onReceivedError(null,new Request(web.url),new WebResourceError());
+    check(session.finishes==2&&!session.pageError.isEmpty(),"Actual session network-error callback continues after UI retirement");
+    client.onReceivedHttpError(null,new Request(web.url),new WebResourceResponse(503));
+    check(session.finishes==3&&session.pageError.contains("503"),"Actual session HTTP-error callback continues after UI retirement");
+    client.onScaleChanged(null,1,2);check(session.reading.scale==2,"Session reading scale callback remains attached");
+    check(!client.shouldOverrideUrlLoading(null,new Request(web.url)),"Background page client keeps normal public navigation");
+  }
+  static void replacement(){
+    fresh();MainActivity old=open(),next=open();GeckoWebView web=old.remote;ViewGroup parent=web.getParent();Object client=web.client,chrome=web.chrome,download=web.download,response=web.responseDownload;web.auxOpen=true;
+    old.onDestroy();
+    check(web.getParent()==parent&&parent.children.contains(web),"Old Activity destruction cannot detach newer host parent");
+    check(web.displayContext.getBaseContext()==next,"Old Activity destruction cannot clear newer host context");
+    check(web.client==client&&web.chrome==chrome&&web.download==download&&web.responseDownload==response,"Old Activity destruction preserves exact newer callbacks");
+    check(web.auxOpen,"Old Activity destruction preserves newer host auxiliary page");
+    Body body=new Body();web.content.onExternalResponse(web.current,new WebResponse(body));check(next.downloads.responses==1&&old.downloads.responses==0,"New host receives native response after old Activity destruction");
+    check(!reachable(web,old),"New host never retains retired Activity through browser callbacks");next.onDestroy();
+  }
+  static void detachReentry(){
+    fresh();MainActivity old=open();GeckoWebView web=old.remote;MainActivity next=new MainActivity();ViewGroup oldParent=web.getParent();oldParent.onRemove=()->next.createChatUi();old.onDestroy();
+    check(web.getParent()!=null&&web.getParent()!=oldParent&&web.getParent().context==next,"Detach callback can attach newer host without subsequent removal");
+    check(web.displayContext.getBaseContext()==next,"Detach callback cannot be followed by clearing newer context");
+    check(web.client!=null&&reachable(web.client,next)&&!reachable(web,old),"Detach callback keeps only newer UI routes");next.onDestroy();
+  }
+  static void popupReentry(){
+    fresh();MainActivity old=open();GeckoWebView web=old.remote;MainActivity next=new MainActivity();web.blockedPopups.onInvalidate=()->{next.createChatUi();web.auxOpen=true;};old.onDestroy();
+    check(web.displayContext.getBaseContext()==next&&web.getParent()!=null&&web.getParent().context==next,"Popup invalidation callback retains newly bound host");
+    check(web.auxOpen,"Old host release cannot close auxiliary page opened during popup invalidation");
+    check(reachable(web.client,next)&&!reachable(web,old),"Popup invalidation preserves newly installed callbacks");next.onDestroy();
+  }
+  static void auxiliaryReentry(){
+    fresh();MainActivity old=open();GeckoWebView web=old.remote;MainActivity next=new MainActivity();web.auxOpen=true;web.onClose=()->{next.createChatUi();web.auxOpen=true;};old.onDestroy();
+    check(web.displayContext.getBaseContext()==next&&web.getParent()!=null&&web.getParent().context==next,"Auxiliary close callback retains newly bound host and parent");
+    check(web.auxOpen,"Old destruction does not close a new auxiliary page a second time");
+    check(reachable(web.client,next)&&!reachable(web,old),"Auxiliary close callback keeps newer UI routes");next.onDestroy();
+  }
+  static void chooser(){
+    fresh();MainActivity old=open();GeckoWebView web=old.remote;WebChromeClient chrome=web.chrome;final int[] cancelled={0},late={0};
+    chrome.onShowFileChooser(null,value->{if(value==null)cancelled[0]++;},new WebChromeClient.FileChooserParams());
+    check(old.requests==1&&old.attachments.blocked(),"Real chooser callback is pending before teardown");
+    old.onDestroy();check(cancelled[0]==1&&!old.attachments.blocked(),"UI retirement settles pending attachment callback exactly once");
+    chrome.onShowFileChooser(null,value->{if(value==null)late[0]++;},new WebChromeClient.FileChooserParams());
+    check(late[0]==1&&old.requests==1,"Late old chooser callback cannot reopen a picker");
+    PermissionRequest permission=new PermissionRequest();chrome.onPermissionRequest(permission);final boolean[] allowed={true};chrome.onGeolocationPermissionsShowPrompt("https://chatgpt.com",(origin,grant,retain)->allowed[0]=grant||retain);
+    check(permission.denied==1&&!allowed[0],"Existing retired chooser permission callbacks remain deny-only");
+    old.onDestroy();check(cancelled[0]==1,"Repeated Activity destruction does not redeliver old attachment result");
+    fresh();MainActivity throwing=open();final int[] thrown={0};throwing.remote.chrome.onShowFileChooser(null,value->{thrown[0]++;throw new IllegalStateException("Controlled native cancellation failure");},new WebChromeClient.FileChooserParams());
+    Throwable escaped=null;try{throwing.onDestroy();}catch(RuntimeException failure){escaped=failure;}
+    check(escaped==null&&thrown[0]==1&&!throwing.attachments.blocked(),"Throwing native cancellation cannot abort actual Activity retirement");
+    check(throwing.handler.removals==1&&throwing.platformDestroys==1&&!throwing.session.observers.contains(throwing.sessionObserver),"Actual Activity teardown still clears its handlers and observer after callback failure");
+  }
+  static void chooserReentry(){
+    fresh();MainActivity old=open();GeckoWebView web=old.remote;MainActivity next=new MainActivity();
+    web.chrome.onShowFileChooser(null,value->{next.createChatUi();web.auxOpen=true;},new WebChromeClient.FileChooserParams());old.onDestroy();
+    check(web.displayContext.getBaseContext()==next&&web.getParent()!=null&&web.getParent().context==next,"Attachment cancellation may bind a new host without old cleanup detaching it");
+    check(web.auxOpen&&reachable(web.client,next)&&!reachable(web,old),"Attachment cancellation keeps new auxiliary page and callbacks");next.onDestroy();
+  }
+  static void independentCallbacks(){
+    fresh();MainActivity old=open();GeckoWebView web=old.remote;WebViewClient unrelated=new WebViewClient();WebChromeClient unrelatedChrome=new WebChromeClient();DownloadListener download=(u,a,c,t,s)->{};GeckoWebView.ResponseDownload response=r->{};
+    web.setWebViewClient(unrelated);web.setWebChromeClient(unrelatedChrome);web.setDownloadListener(download);web.responseDownload=response;old.onDestroy();
+    check(web.client==unrelated&&web.chrome==unrelatedChrome&&web.download==download&&web.responseDownload==response,"Cleanup only removes callback instances installed by its own UI binding");
+  }
+  static void movedParent(){
+    fresh();MainActivity old=open();GeckoWebView web=old.remote;ViewGroup parent=web.getParent();parent.removeView(web);FrameLayout other=new FrameLayout(new Context());other.addView(web);old.onDestroy();
+    check(web.getParent()==other&&other.children.contains(web),"Retirement cannot remove a parent it did not install");
+    check(web.displayContext.getBaseContext()==old.session.context&&!reachable(web,old),"A moved view still releases retired host context and UI callbacks");
+  }
+  static void pause(){
+    fresh();MainActivity old=open(),next=open();GeckoWebView web=old.remote;web.auxOpen=true;old.session.uiVisible=true;int audit=old.session.audit.cancels;
+    old.onPause();
+    check(web.auxOpen,"Old Activity pause cannot close newer host auxiliary page");
+    check(old.session.uiVisible&&old.session.audit.cancels==audit,"Old Activity pause cannot suspend the newer host session");
+    check(!old.session.observers.contains(old.sessionObserver)&&old.session.observers.contains(next.sessionObserver),"Old pause removes only its exact observer even after host replacement");
+    next.onPause();check(!web.auxOpen&&!old.session.uiVisible&&old.session.audit.cancels==audit+1,"Current host pause still closes its auxiliary page and backgrounds its session");
+    ViewGroup parent=web.getParent();next.onResume();check(next.active&&old.session.uiVisible&&web.getParent()==parent&&web.displayContext.getBaseContext()==next,"Current host resumes its retained UI and foreground session after pause");old.onDestroy();next.onDestroy();
+  }
+  static void pauseReentry(){
+    fresh();MainActivity old=open();GeckoWebView web=old.remote;MainActivity next=new MainActivity();web.auxOpen=true;web.onClose=()->{next.createChatUi();web.auxOpen=true;old.session.uiVisible=true;};int audit=old.session.audit.cancels;
+    old.onPause();
+    check(web.displayContext.getBaseContext()==next&&web.auxOpen,"Pause auxiliary callback can transfer UI ownership without closing the newer page");
+    check(NativeNetwork.instance.traffic.watches==0,"Pause cannot stop newer traffic observation after auxiliary-close reentry");
+    check(old.session.uiVisible&&old.session.audit.cancels==audit,"Pause cannot suspend a newly bound session after auxiliary-close reentry");old.onDestroy();next.onDestroy();
+  }
+  static void pauseAuditReentry(){
+    fresh();MainActivity old=open();GeckoWebView web=old.remote;MainActivity next=new MainActivity();old.session.audit.onCancel=()->{next.createChatUi();old.session.uiVisible=true;};int keyboard=old.session.reading.keyboards;
+    old.onPause();check(old.session.uiVisible&&old.session.reading.keyboards==keyboard,"Pause cannot clear keyboard or foreground after audit callback binds a newer host");
+    check(web.displayContext.getBaseContext()==next&&web.getParent().context==next,"Audit callback keeps newer view ownership");old.onDestroy();next.onDestroy();
+  }
+  static void pauseKeyboardReentry(){
+    fresh();MainActivity old=open();MainActivity next=new MainActivity();old.session.reading.onKeyboard=()->{next.createChatUi();old.session.uiVisible=true;};
+    old.onPause();check(old.session.uiVisible,"Pause cannot background a newer host created by reading callback");old.onDestroy();next.onDestroy();
+  }
+  static void pauseTrafficReentry(){
+    fresh();MainActivity old=open();MainActivity next=new MainActivity();NativeNetwork.instance.traffic.onWatch=()->{next.createChatUi();old.session.uiVisible=true;};int audit=old.session.audit.cancels;
+    old.onPause();check(old.session.uiVisible&&old.session.audit.cancels==audit,"Pause cannot cancel audit after traffic callback transfers UI ownership");old.onDestroy();next.onDestroy();
+  }
+  static void run(String name,Runnable action,String requested){if(!"all".equals(requested)&&!name.equals(requested))return;try{action.run();}catch(Throwable error){failures.add(name+": "+error);}}
+  public static void main(String[] args){String focus=args.length==0?"all":args[0];
+    run("retention",LifecycleHost::retention,focus);run("replacement",LifecycleHost::replacement,focus);run("detach",LifecycleHost::detachReentry,focus);run("popup",LifecycleHost::popupReentry,focus);run("auxiliary",LifecycleHost::auxiliaryReentry,focus);run("chooser",LifecycleHost::chooser,focus);run("chooser-reentry",LifecycleHost::chooserReentry,focus);run("independent",LifecycleHost::independentCallbacks,focus);run("parent",LifecycleHost::movedParent,focus);run("pause",LifecycleHost::pause,focus);run("pause-reentry",LifecycleHost::pauseReentry,focus);run("pause-audit",LifecycleHost::pauseAuditReentry,focus);run("pause-keyboard",LifecycleHost::pauseKeyboardReentry,focus);run("pause-traffic",LifecycleHost::pauseTrafficReentry,focus);
+    System.out.println(new JSONObject().put("status",failures.isEmpty()?"passed":"failed").put("passed",checks-failures.size()).put("checks",checks).put("failures",new JSONArray(failures)).put("actualAndroidExecution",false).put("actualGeckoExecution",false));if(!failures.isEmpty())System.exit(1);
+  }
+}
+
+class MainActivity extends Activity {
+  GeckoWebView remote;ChatSession session;/*BINDING_DECLARATION*/
+  JSONObject pending;JSONArray entries;String conversation;boolean destroyed,active,keyboardVisible;int statusCalls;
+  DesignChrome designChrome;GeckoAddressUi geckoAddress;AppHub hub;EnvironmentOverviewUi environmentOverview;BrowserStartupGate browserStartup;UiFrameScheduler sessionUi;final ChatSession.Observer sessionObserver=()->requestSessionUi();
+  TextView status;Button focusExit;LoadingUi loading;Attachments attachments;FileDownloads downloads;ChatDownloadProgressUi chatDownloadProgress;Dialog reloadDialog,networkDialog;final Handler handler=new Handler();final Runnable ticker=()->{};
+  TextView label(String text,int size,int color){return new TextView(this);}int dp(int value){return value;}void updateReadingLayout(){}void showStatusDetails(){}void setFocusReading(boolean value){}void applySession(){}void requestSessionUi(){}void showPage(boolean value){}void resumeChatUi(){session.foreground(true);session.add(sessionObserver);}void startNetwork(){}void startBrowserAfterOverview(){}void openNotification(Intent value){}void status(String value){statusCalls++;}
+  /*ACTUAL_MAIN_METHODS*/
+}
+class GeckoWebView extends FrameLayout {
+  final ChatSession owner;final MutableContextWrapper displayContext;final PopupBoundary blockedPopups=new PopupBoundary();
+  WebViewClient client;WebChromeClient chrome;DownloadListener download;interface ResponseDownload{void receive(WebResponse response);}ResponseDownload responseDownload;
+  boolean destroyed,auxOpen;Runnable onClose;int auxCloses;String url="https://chatgpt.com/";final GeckoSession current=new GeckoSession();final Set<GeckoSession> pendingLoads=new HashSet<>();final Map<GeckoSession,String> loadingTargets=new HashMap<>(),locations=new HashMap<>();
+  GeckoWebView(ChatSession owner){this(owner,new MutableContextWrapper(owner.context));}GeckoWebView(ChatSession owner,MutableContextWrapper context){super(context);this.owner=owner;displayContext=context;locations.put(current,url);}
+  String getUrl(){return url;}boolean canChooseFiles(){return true;}
+  boolean closeExitIpPage(){if(!auxOpen)return false;auxOpen=false;auxCloses++;Runnable action=onClose;onClose=null;if(action!=null)action.run();return true;}
+  /*ACTUAL_WEB_MEMBERS*/
+  final GeckoSession.ContentDelegate content=new GeckoSession.ContentDelegate(){/*ACTUAL_EXTERNAL_RESPONSE*/};
+}
+class PopupBoundary {Runnable onInvalidate;int invalidated;void invalidate(){invalidated++;Runnable action=onInvalidate;onInvalidate=null;if(action!=null)action.run();}}
+class Body extends ByteArrayInputStream {int closed;Body(){super(new byte[]{1});}@Override public void close()throws IOException{closed++;super.close();}}
+class Request implements WebResourceRequest {final Uri uri;Request(String value){uri=Uri.parse(value);}public Uri getUrl(){return uri;}public boolean isForMainFrame(){return true;}}
+/*ACTUAL_ATTACHMENT_DECLARATION*/
+class FileDownloads {
+  final MainActivity a;final Worker worker=new Worker();final SavedFileActions savedActions;final DownloadTasks tasks;boolean active,destroyed;Dialog manager,noticeDialog;int responses,accepts;
+  boolean intercept(String url){return false;}void pause(){active=false;}void accept(String u,String a,String c,String t,long size){accepts++;this.a.status("download");}
+  void acceptResponse(WebResponse response){responses++;if(destroyed){try{response.body.close();}catch(IOException ignored){}a.status("destroyed download");}}
+  /*ACTUAL_DOWNLOAD_MEMBERS*/
+}
+class Worker{boolean shutdown;void shutdown(){shutdown=true;}}
+class SavedFileActions{int closes;SavedFileActions(MainActivity a){}void close(){closes++;}}
+class DownloadTasks{int releases;DownloadTasks(MainActivity a){}void release(){releases++;}}
+class ChatSession {
+  static ChatSession instance;static ChatSession get(MainActivity activity){return instance;}final Context context=new Context();final GeckoWebView web=new GeckoWebView(this);final ArrayList<Observer> observers=new ArrayList<>();interface Observer{void changed();}
+  JSONObject pending;JSONArray entries=new JSONArray();String conversation="";long navigationEpoch=9;final Guard guard=new Guard();final Reading reading=new Reading();final Audit audit=new Audit();final ObserverBoundary webObserver=new ObserverBoundary();final Trace trace=new Trace();final Preferences prefs=new Preferences();
+  boolean navigationDispatched,navigating,googleLoginBlocked,documentNavigationSeen,spaTransition,awaitNewDocument,deleted,uiVisible;String pageError="",priorDocumentId="",connectionStage="",target="";long firstPageVisible,pageUsableAt;int finishes,polls;
+  ChatSession(){web.setWebViewClient(client());web.setWebChromeClient(new WebChromeClient());}void add(Observer value){observers.add(value);}void remove(Observer value){observers.remove(value);}void foreground(boolean value){uiVisible=value;}boolean targetMatches(String url){return url.equals(target);}void beginNavigation(String url,String message){target=url;navigating=true;navigationEpoch++;}void rememberBrowserLocation(String url){}void finishNavigation(String message){finishes++;navigating=false;}void finishNavigation(String message,boolean failed){finishNavigation(message);}void setStatus(String message){}void wakePolling(){polls++;}void awaitLogin(String message){}
+  /*ACTUAL_SESSION_CLIENT*/
+}
+class Guard {boolean allowed(){return true;}}
+class Reading {int starts,visibles,keyboards;float scale;Runnable onKeyboard;void keyboard(boolean value){keyboards++;Runnable action=onKeyboard;onKeyboard=null;if(action!=null)action.run();}void scaled(float value){scale=value;}void started(String value){starts++;}void visible(String value){visibles++;}}
+class Audit {int cancels;Runnable onCancel;void cancel(){cancels++;Runnable action=onCancel;onCancel=null;if(action!=null)action.run();}boolean identityPageStarted(String value){return false;}boolean requestIdentityPageSelected(){return false;}boolean identityPageFinished(String value){return false;}boolean identityPageFailed(String url,String message){return false;}}
+class ObserverBoundary {int ready;void suspendUnconfirmed(String message){}void pageReady(){ready++;}}
+class Trace {String mode;long visible,usable;}
+class Preferences {Preferences edit(){return this;}Preferences putString(String key,String value){return this;}void apply(){}}
+class BrowserNetworkGuard {static boolean publicWeb(Uri uri){return true;}static WebResourceResponse denied(){return new WebResourceResponse(403);}}
+class GeckoNavigationPolicy {static boolean publicWeb(String value){return true;}}
+class LoginPagePolicy {static boolean login(String value){return false;}}
+class ProfileCatalog {static ProfileCatalog get(MainActivity a){return new ProfileCatalog();}boolean available(int slot){return true;}JSONObject item(int slot){return new JSONObject().put("environmentId","fixture").put("generation",1);}}
+class Profiles {static int slot(MainActivity a){return 0;}}
+class ReferenceUi {static final int CHAT_BG=0;static void insets(MainActivity a,LinearLayout root,java.util.function.Consumer<Boolean> result){}}
+class DesignUi {static final int RED=1,CARD=2,LINE=3;static void chrome(MainActivity a){}static Button button(MainActivity a,String label,boolean selected,Runnable action){return new Button(a);}static Object surface(MainActivity a,int color,int radius,int line){return new Object();}}
+class DesignChrome {DesignChrome(MainActivity a,LinearLayout root){}void cancelUpdates(){}void cancelWebGesture(){}}
+class GeckoAddressUi {void close(){}}
+class AppHub {final NetworkWorkspace networkWorkspace=new NetworkWorkspace();AppHub(MainActivity a,LinearLayout root,FrameLayout stack){}void downloadsVisible(boolean value){}}
+class NetworkWorkspace {void close(){}}
+class EnvironmentOverviewUi {void browserReady(){}void close(){}void pause(){}void resume(){}}
+class BrowserStartupGate {boolean matches(String environment,int slot,int generation){return true;}void close(){}void foreground(boolean value){}}
+class UiFrameScheduler {interface Frames{void post(Runnable frame);void cancel(Runnable frame);}UiFrameScheduler(Frames frames,Runnable render){}void visible(boolean value){}void close(){}}
+class LoadingUi {final View cover;LoadingUi(MainActivity a){cover=new View(a);}void dismissTask(){}}
+class ChatDownloadProgressUi {ChatDownloadProgressUi(MainActivity a,LinearLayout root,FrameLayout stack,FileDownloads downloads){}void close(){}void visible(boolean value){}}
+class NativeNetwork {static NativeNetwork instance=new NativeNetwork();final Traffic traffic=new Traffic();static NativeNetwork get(MainActivity a){return instance;}static class Traffic{Runnable onWatch;int watches;void watch(boolean value){watches++;Runnable action=onWatch;onWatch=null;if(action!=null)action.run();}}}
+class Dialog {void dismiss(){}}
+class ExitIpPageUi {static void close(MainActivity a){if(a.remote!=null)a.remote.closeExitIpPage();}}

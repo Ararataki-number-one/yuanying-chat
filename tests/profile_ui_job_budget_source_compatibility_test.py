@@ -1,4 +1,4 @@
-"""Raw UI job resources and exact history; no result is Android acceptance."""
+"""Fixed UI job history; no result is current workflow or Android acceptance."""
 import copy
 import hashlib
 from pathlib import Path
@@ -9,13 +9,27 @@ from unittest.mock import patch
 
 import yaml
 import ui_job_budget_source_compatibility as budget
+from historical_source_inputs import historical_bytes
 
 ROOT = Path(__file__).resolve().parents[1]
 
 
 class UiJobBudgetSourceCompatibilityTests(unittest.TestCase):
+    def setUp(self):
+        # This whole class proves the old file reader and inverse. Current
+        # workflow fields are checked separately by BrowserWorkflowTests.
+        temporary = tempfile.TemporaryDirectory(prefix='released-ui-budget-proof-')
+        self.addCleanup(temporary.cleanup)
+        root = Path(temporary.name)
+        path = root / budget.PATH
+        path.parent.mkdir(parents=True)
+        path.write_bytes(historical_bytes(budget.PATH))
+        selected = patch.object(budget, 'ROOT', root)
+        selected.start()
+        self.addCleanup(selected.stop)
+
     def workflow(self):
-        return (ROOT / budget.PATH).read_bytes()
+        return historical_bytes(budget.PATH)
 
     def test_actual_raw_workflow_changes_only_ui_job_resource_envelope(self):
         raw = self.workflow()
@@ -100,7 +114,7 @@ class UiJobBudgetSourceCompatibilityTests(unittest.TestCase):
         self.assertTrue(budget.SOURCE_PORTS)
         for path, row in budget.SOURCE_PORTS.items():
             with self.subTest(path=path):
-                raw = (ROOT / path).read_bytes()
+                raw = historical_bytes(path)
                 previous = budget.source_port_input(raw, path)
                 self.assertEqual(previous, subprocess.check_output(['git', 'show', budget.BASE_COMMIT + ':' + path], cwd=ROOT))
                 self.assertEqual(budget.historical_source_input(raw, path), previous)
@@ -128,7 +142,7 @@ class UiJobBudgetSourceCompatibilityTests(unittest.TestCase):
             changed = dict(row, previousSha256='0' * 64)
             with patch.dict(budget.SOURCE_PORTS, {path: changed}):
                 with self.assertRaisesRegex(AssertionError, 'predecessor did not restore'):
-                    budget.source_port_input((ROOT / path).read_bytes(), path)
+                    budget.source_port_input(historical_bytes(path), path)
 
 
 if __name__ == '__main__':

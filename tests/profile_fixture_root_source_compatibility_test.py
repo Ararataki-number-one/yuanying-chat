@@ -13,6 +13,7 @@ import unittest
 from unittest.mock import patch
 
 import profile_fixture_root_source_compatibility as layer
+from historical_source_inputs import historical_bytes
 from workspace_runner_source_compatibility import historical_input as workspace_source_input
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -40,7 +41,7 @@ class FixtureRootHistoricalInputs(unittest.TestCase):
         self.assertEqual(set(BEFORE), layer.PATHS)
         self.assertEqual(sum(len(r['deltas']) for r in value['files'].values()), 7)
         for relative, row in value['files'].items():
-            current = workspace_source_input((ROOT/relative).read_bytes(), relative)
+            current = workspace_source_input(historical_bytes(relative), relative)
             previous = layer.source_input(current, relative)
             self.assertEqual((SHA(previous), len(previous)), BEFORE[relative])
             self.assertEqual((SHA(current), len(current)), (row['reviewedSha256'], row['reviewedBytes']))
@@ -56,7 +57,7 @@ class FixtureRootHistoricalInputs(unittest.TestCase):
     def test_missing_duplicate_changed_moved_truncated_and_unknown_owned_images_reject(self):
         rejected = 0
         for relative, row in layer.manifest()['files'].items():
-            raw = workspace_source_input((ROOT/relative).read_bytes(), relative)
+            raw = workspace_source_input(historical_bytes(relative), relative)
             for delta in row['deltas']:
                 chunk = delta['current'].encode()
                 self.assertEqual(raw.count(chunk), 1)
@@ -78,7 +79,7 @@ class FixtureRootHistoricalInputs(unittest.TestCase):
 
     def test_source_type_foreign_path_and_whole_pin_precede_context_access(self):
         relative = 'tests/gecko/FingerprintFollowupIntegrationActivity.java'
-        raw = (ROOT/relative).read_bytes()
+        raw = historical_bytes(relative)
         for bad in (None, raw.decode(), bytearray(raw), memoryview(raw)):
             with self.assertRaises(ValueError):
                 layer.source_input(bad, relative)
@@ -119,7 +120,7 @@ class FixtureRootHistoricalInputs(unittest.TestCase):
 
     def test_context_and_complete_preimage_guards_are_necessary(self):
         relative = 'tests/gecko/FingerprintFollowupIntegrationActivity.java'
-        raw = (ROOT/relative).read_bytes()
+        raw = historical_bytes(relative)
         for change in ('missing', 'nonclosing'):
             value = copy.deepcopy(layer.manifest()); delta = value['files'][relative]['deltas'][0]
             if change == 'missing':
@@ -157,7 +158,7 @@ class FixtureRootHistoricalInputs(unittest.TestCase):
 
     def test_final_historical_read_hooks_strip_to_the_complete_prior_suite(self):
         from resource_startup_source_compatibility import source_input as resource_input
-        raw = resource_input((ROOT/'tests/profile_final_browser_source_compatibility_test.py').read_bytes(), 'tests/profile_final_browser_source_compatibility_test.py')
+        raw = resource_input(historical_bytes('tests/profile_final_browser_source_compatibility_test.py'), 'tests/profile_final_browser_source_compatibility_test.py')
         restored = raw
         global_import = b'from profile_fixture_root_source_compatibility import historical_input as fixture_root_input\n'
         local_hook = (b'    from profile_fixture_root_source_compatibility import historical_input as fixture_root_input\n'
@@ -178,7 +179,10 @@ class FixtureRootHistoricalInputs(unittest.TestCase):
                 ('final-browser-source-deltas.json', '8bb0bb6580879fcef6258f48e57fbdce19304c0d3ea0061131d993b815877a16')]:
             self.assertEqual(SHA((ROOT/'tests/fixtures'/name).read_bytes()), expected)
         for relative in ('tests/profile_dual_browser_source_compatibility_test.py', 'tests/profile_worker_timezone_source_compatibility_test.py'):
-            raw = (ROOT/relative).read_bytes()
+            # Only the original assertions' historical whole-byte proof uses
+            # the release input. Runtime sources, fixtures and imports below
+            # continue to inspect the actual current working tree.
+            raw = historical_bytes(relative)
             self.assertEqual(assertions(raw), assertions(layer.source_input(raw, relative)))
         self.assertEqual(SHA((ROOT/'tests/gecko/FingerprintFollowupIntegrationActivity.java').read_bytes()),
                          'aac64b137b041b89f6c262b5b52e691fb94a3bb4a0abd5322f4ce5973aad3036')

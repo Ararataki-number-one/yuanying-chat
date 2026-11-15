@@ -9,8 +9,8 @@ import tempfile
 import unittest
 import xml.etree.ElementTree as ET
 import yaml
-from gradle_transport_source_compatibility import historical_toolchain_step
-from ui_job_budget_source_compatibility import historical_job_field_input as ui_job_budget_field_input
+from released_workflow_comparison import released_toolchain_step as historical_toolchain_step
+from released_workflow_comparison import released_job_field_input as ui_job_budget_field_input
 
 ROOT=Path(__file__).resolve().parents[1]
 
@@ -39,7 +39,7 @@ class BrowserWorkflowTests(unittest.TestCase):
                     else:
                         self.assertEqual(ui_job_budget_field_input(name,key,current[key]),value+['browser','tls'] if name=='verify' and key=='needs' else value)
     def test_single_pipeline_shares_actual_apk_and_gates_browser(self):
-        self.assertEqual(self.new['on']['push']['branches'],['release/browser-2.1.0','release/browser-2.1.0-*','release/browser-2.1.1','release/browser-2.1.1-*','release/browser-2.1.2','release/browser-2.1.2-*','release/browser-2.1.3','release/browser-2.1.3-*','release/browser-2.1.4','release/browser-2.1.4-*'])
+        self.assertEqual(self.new['on']['push']['branches'],['release/browser-2.1.0','release/browser-2.1.0-*','release/browser-2.1.1','release/browser-2.1.1-*','release/browser-2.1.2','release/browser-2.1.2-*','release/browser-2.1.3','release/browser-2.1.3-*','release/browser-2.1.4','release/browser-2.1.4-*','release/browser-2.1.5','release/browser-2.1.5-*'])
         self.assertIn('browser',self.new['jobs']['verify']['needs'])
         self.assertEqual(self.new['jobs']['browser']['needs'],'build')
         browser=self.new['jobs']['browser'];self.assertNotIn('continue-on-error',browser)
@@ -60,6 +60,35 @@ class BrowserWorkflowTests(unittest.TestCase):
         for required in ('tools/browser/run_gecko_tls_integration.py','--source "$GITHUB_SHA"','--apk app/build/outputs/apk/integration/app-x86_64-integration.apk'):
             self.assertIn(required,workload[0]['run'])
         self.assertIn('test "$TLS_RESULT" = success',final)
+    def test_host_api_dependency_is_pinned_before_current_profile_checks(self):
+        release_steps=self.new['jobs']['build']['steps']
+        history=[(index,step) for index,step in enumerate(release_steps) if step.get('name')=='Prepare fixed release source proof objects']
+        self.assertEqual(len(history),1)
+        history_index,history_step=history[0]
+        self.assertNotIn('if',history_step)
+        self.assertNotIn('continue-on-error',history_step)
+        self.assertIn('set -euo pipefail',history_step['run'])
+        self.assertIn('tools/gecko/prepare_profile_host_prerequisites.py --source-commit "$GITHUB_SHA"',history_step['run'])
+        first_proof=next(index for index,step in enumerate(release_steps) if step.get('name')=='Verify strict cellular emulator preparation controls')
+        self.assertLess(history_index,first_proof)
+        profile=yaml.safe_load((ROOT/'.github/workflows/profile-upgrade-checks.yml').read_text())
+        for workflow,job_name in ((self.new,'build'),(profile,'host-contracts')):
+            with self.subTest(job=job_name):
+                steps=workflow['jobs'][job_name]['steps']
+                setup=[(index,step) for index,step in enumerate(steps) if step.get('name')=='Prepare pinned Android 35 host API']
+                self.assertEqual(len(setup),1)
+                index,step=setup[0]
+                self.assertNotIn('if',step)
+                self.assertNotIn('continue-on-error',step)
+                self.assertEqual(step.get('shell'),'bash')
+                self.assertIn('set -euo pipefail',step['run'])
+                self.assertIn('"$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" \'platforms;android-35\'',step['run'])
+                self.assertIn('4566663c3876e022b4fa4ced8c8697c4ab1688267f090114fd92d027b32e619b  $PROFILE_ANDROID_JAR',step['run'])
+                self.assertIn('| sha256sum -c -',step['run'])
+                self.assertIn('echo "PROFILE_ANDROID_JAR=$PROFILE_ANDROID_JAR" >> "$GITHUB_ENV"',step['run'])
+                checks=[at for at,item in enumerate(steps) if "-p 'profile_*_test.py'" in item.get('run','')]
+                self.assertEqual(len(checks),1)
+                self.assertLess(index,checks[0])
     def test_new_host_suites_and_exact_history_are_mandatory(self):
         body='\n'.join(step.get('run','') for step in self.new['jobs']['build']['steps'])
         self.assertIn('tools/browser/prepare_baselines.py',body);self.assertIn('tools/browser/run_host_checks.py',body)

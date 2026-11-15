@@ -5,7 +5,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
-from ip_timezone_source_compatibility import historical_read
+from ip_timezone_source_compatibility import released_historical_read as historical_read
 import subprocess
 import tempfile
 import unittest
