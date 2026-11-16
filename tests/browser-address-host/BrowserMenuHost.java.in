@@ -1,0 +1,142 @@
+package local.pocketchat;
+
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+
+/** Exact production menu assembly/callbacks on explicit JVM UI boundaries. */
+public final class BrowserMenuHost {
+  static int checks;
+  static boolean extraActions;
+  static void check(String message,boolean value){if(!value)throw new AssertionError(message);checks++;}
+
+  static final class Button {
+    final String title;final Runnable action;boolean enabled=true;
+    Button(String title,Runnable action){this.title=title;this.action=action;}
+    void setEnabled(boolean enabled){this.enabled=enabled;}
+    void click(){if(enabled)action.run();}
+  }
+  static final class ReferenceUi {
+    static final class Modal {
+      static Modal latest;final MainActivity owner;final String title;
+      final List<Button> actions=new ArrayList<>();boolean sheet,shown;int dismisses,statusRows;
+      Modal(MainActivity owner,String title){this.owner=owner;this.title=title;latest=this;}
+      Modal asSheet(){sheet=true;return this;}
+      void show(){shown=true;}
+      void dismiss(){shown=false;dismisses++;owner.events.add("dismiss");}
+    }
+    static Button menuAction(Modal dialog,String title,Runnable action){
+      Button button=new Button(title,action);dialog.actions.add(button);return button;
+    }
+  }
+  static final class DesignChrome {void addMenuStatus(ReferenceUi.Modal d){d.statusRows++;}}
+  static final class Privacy {boolean desktop;}
+  static final class Session {final Privacy privacy=new Privacy();boolean websiteConnectionIssue,replyStalled;String pageError="";}
+  static final class Web {String url="https://chatgpt.com/c/preserved";String getUrl(){return url;}boolean hasWebsitePages(){return extraActions;}}
+  static final class AppHub {
+    static final int DOWNLOADS=3,SETTINGS=4;final MainActivity owner;
+    AppHub(MainActivity owner){this.owner=owner;}
+    void select(int page){owner.called(page==DOWNLOADS?"downloads":page==SETTINGS?"settings":"unknown-page");}
+    void networkFor(int slot){owner.called("network:"+slot);}
+  }
+  static final class Profiles {static int slot(MainActivity a){return 7;}}
+  static final class GeckoAddressUi {
+    static boolean canForward(MainActivity a){return a.forwardAvailable;}
+    static void show(MainActivity a){a.called("address");}
+    static void home(MainActivity a){a.called("home");}
+    static void closeSites(MainActivity a){a.called("close-sites");}
+  }
+  static final class BrowserReadingPolicy {static boolean chat(String url){return extraActions;}}
+  static final class LoginPagePolicy {static boolean google(String url){return extraActions;}}
+  static final class ActionSearchUi {static void show(MainActivity a){a.called("search");}}
+  static final class EnvironmentSwitcherUi {static void show(MainActivity a){a.called("switch-environment");}}
+  static final class BrowserActivity {static void resume(MainActivity a){a.called("chromium");}}
+  static final class BrowserSettingsUi {static void show(MainActivity a){a.called("browser-settings");}}
+  static final class BrowserReadingUi {static void show(MainActivity a){a.called("zoom");}}
+  static final class ReplyState {static void websiteConnection(MainActivity a){a.called("recover");}}
+  static final class EnvironmentEditorUi {static void show(MainActivity a){a.called("edit-environment");}}
+  static final class SitePermissionsUi {static void show(MainActivity a){a.called("permissions");}}
+  static final class ExitIpPageUi {static void open(MainActivity a){a.called("exit-ip");}}
+  static final class ProfileUi {static void manage(MainActivity a){a.called("manage-environments");}}
+  static final class LocalDraftsUi {static void show(MainActivity a){a.called("draft-rescue");}}
+  static final class LocalHistoryUi {static void show(MainActivity a){a.called("offline-history");}}
+  static final class LoginHelpUi {static void show(MainActivity a){a.called("login-help");}}
+  static final class ClipData {
+    final String value;ClipData(String value){this.value=value;}
+    static ClipData newPlainText(String label,String value){return new ClipData(value);}
+  }
+  static final class ClipboardManager {
+    final MainActivity owner;ClipboardManager(MainActivity owner){this.owner=owner;}
+    void setPrimaryClip(ClipData data){owner.called("copy:"+data.value);}
+  }
+  static final class Toast {
+    static final int LENGTH_SHORT=0;
+    static Toast makeText(MainActivity a,String message,int duration){return new Toast();}
+    void show(){}
+  }
+  static final class MainActivity {
+    static final String CLIPBOARD_SERVICE="clipboard";
+    final List<String> events=new ArrayList<>();final DesignChrome designChrome=new DesignChrome();
+    final AppHub hub=new AppHub(this);final Web remote=new Web();final Session session=new Session();
+    boolean focusReading,forwardAvailable;
+    Object getSystemService(String service){return new ClipboardManager(this);}
+    void called(String value){events.add(value);}
+    void browserHistory(int direction){called("history:"+direction);}
+    void setFocusReading(boolean reading){focusReading=reading;called("reading:"+reading);}
+    void requestReload(){called("reload");}
+    void copyLegacyDraft(){called("save-draft");}
+    /* PRODUCTION_MENU */
+    /* PRODUCTION_OPTION */
+  }
+
+  static LinkedHashMap<String,String> expected(boolean reading){
+    LinkedHashMap<String,String> rows=new LinkedHashMap<>();
+    rows.put("前进","history:1");rows.put("下载管理","downloads");
+    rows.put(reading?"退出专注阅读":"进入专注阅读","reading:"+!reading);
+    rows.put("快速切换环境","switch-environment");rows.put("当前环境网络","network:7");
+    rows.put("管理全部环境","manage-environments");rows.put("应用设置","settings");
+    rows.put("打开网址或搜索","address");rows.put("打开主页","home");
+    rows.put("复制当前网址","copy:https://chatgpt.com/c/preserved");
+    if(extraActions)rows.put("关闭网站并返回 ChatGPT","close-sites");
+    rows.put("搜索操作","search");rows.put("切换到 Chromium 浏览器","chromium");
+    rows.put("浏览器与启动偏好","browser-settings");
+    if(extraActions)rows.put("网页缩放","zoom");rows.put("重新加载网页","reload");
+    if(extraActions)rows.put("恢复网页连接","recover");
+    rows.put("编辑当前环境","edit-environment");rows.put("站点权限","permissions");
+    rows.put("查询当前环境 IP","exit-ip");rows.put("暂存草稿","save-draft");
+    rows.put("草稿救援","draft-rescue");rows.put("离线会话检索","offline-history");
+    if(extraActions)rows.put("登录帮助","login-help");return rows;
+  }
+  static MainActivity activity(boolean reading,boolean forward){
+    MainActivity a=new MainActivity();a.focusReading=reading;a.forwardAvailable=forward;
+    a.session.privacy.desktop=extraActions;a.session.websiteConnectionIssue=extraActions;
+    a.moreSheet();return a;
+  }
+  public static void main(String[] args){
+    for(boolean extras:new boolean[]{false,true})for(boolean reading:new boolean[]{false,true})for(boolean forward:new boolean[]{false,true}){
+      extraActions=extras;MainActivity a=activity(reading,forward);ReferenceUi.Modal dialog=ReferenceUi.Modal.latest;
+      check("Actual browser menu remains a shown sheet",dialog.shown&&dialog.sheet&&dialog.title.equals("浏览器菜单"));
+      check("Current environment status remains in the menu",dialog.statusRows==1);
+      Map<String,String> expected=expected(reading);List<String> titles=new ArrayList<>();
+      for(Button button:dialog.actions)titles.add(button.title);
+      check("Every original action remains exactly once",titles.size()==expected.size()&&new java.util.HashSet<>(titles).equals(expected.keySet()));
+      check("Common browser and workspace actions precede secondary options",titles.subList(0,7).equals(new ArrayList<>(expected.keySet()).subList(0,7)));
+      check("Opening the menu does not perform any action",a.events.isEmpty());
+      for(Map.Entry<String,String> entry:expected.entrySet()){
+        a=activity(reading,forward);dialog=ReferenceUi.Modal.latest;Button found=null;
+        for(Button button:dialog.actions)if(button.title.equals(entry.getKey()))found=button;
+        check("The real forward control reflects native history",!entry.getKey().equals("前进")||found.enabled==forward);
+        check("Other original actions remain enabled",entry.getKey().equals("前进")||found.enabled);
+        found.click();
+        if(entry.getKey().equals("前进")&&!forward){
+          check("Disabled forward does not dismiss or navigate",a.events.isEmpty()&&dialog.shown&&dialog.dismisses==0);
+        }else{
+          check("Every callback dismisses before its original action: "+entry.getKey(),a.events.equals(Arrays.asList("dismiss",entry.getValue()))&&!dialog.shown&&dialog.dismisses==1);
+        }
+      }
+    }
+    System.out.println("{\"checks\":"+checks+",\"actualAndroidExecution\":false}");
+  }
+}

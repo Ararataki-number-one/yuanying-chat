@@ -190,25 +190,27 @@ public class MainActivity extends ThemedActivity {
     designChrome.addMenuStatus(d);
     Button forward=ReferenceUi.menuAction(d,"前进",()->{d.dismiss();browserHistory(1);});
     forward.setEnabled(GeckoAddressUi.canForward(this));
+    // Keep the common browser and workspace actions within a short scroll,
+    // including landscape sheets with only a few visible rows.
+    option(d,"下载管理",()->hub.select(AppHub.DOWNLOADS));
+    option(d,focusReading?"退出专注阅读":"进入专注阅读",()->setFocusReading(!focusReading));
+    option(d,"快速切换环境",()->EnvironmentSwitcherUi.show(this));
+    option(d,"当前环境网络",()->hub.networkFor(Profiles.slot(this)));
+    option(d,"管理全部环境",()->ProfileUi.manage(this));
+    option(d,"应用设置",()->hub.select(AppHub.SETTINGS));
     option(d,"打开网址或搜索",()->GeckoAddressUi.show(this));
     option(d,"打开主页",()->GeckoAddressUi.home(this));
     option(d,"复制当前网址",()->{String url=remote.getUrl();if(url==null||url.isEmpty())return;((ClipboardManager)getSystemService(CLIPBOARD_SERVICE)).setPrimaryClip(ClipData.newPlainText("网址",url));Toast.makeText(this,"已复制网址",Toast.LENGTH_SHORT).show();});
     if(remote.hasWebsitePages())option(d,"关闭网站并返回 ChatGPT",()->GeckoAddressUi.closeSites(this));
     option(d,"搜索操作",()->ActionSearchUi.show(this));
-    option(d,"快速切换环境",()->EnvironmentSwitcherUi.show(this));
     option(d,"切换到 Chromium 浏览器",()->BrowserActivity.resume(this));
     option(d,"浏览器与启动偏好",()->BrowserSettingsUi.show(this));
-    option(d,focusReading?"退出专注阅读":"进入专注阅读",()->setFocusReading(!focusReading));
     if(session.privacy.desktop&&BrowserReadingPolicy.chat(remote.getUrl()))option(d,"网页缩放",()->BrowserReadingUi.show(this));
     option(d,"重新加载网页",this::requestReload);
     if(session.websiteConnectionIssue||session.replyStalled||!session.pageError.isEmpty())option(d,"恢复网页连接",()->ReplyState.websiteConnection(this));
     option(d,"编辑当前环境",()->EnvironmentEditorUi.show(this));
     option(d,"站点权限",()->SitePermissionsUi.show(this));
-    option(d,"当前环境网络",()->hub.networkFor(Profiles.slot(this)));
     option(d,"查询当前环境 IP",()->ExitIpPageUi.open(this));
-    option(d,"管理全部环境",()->ProfileUi.manage(this));
-    option(d,"下载管理",()->hub.select(AppHub.DOWNLOADS));
-    option(d,"应用设置",()->hub.select(AppHub.SETTINGS));
     option(d,"暂存草稿",()->copyLegacyDraft());
     option(d,"草稿救援",()->LocalDraftsUi.show(this));
     option(d,"离线会话检索",()->LocalHistoryUi.show(this));

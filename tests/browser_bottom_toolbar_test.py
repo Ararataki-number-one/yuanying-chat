@@ -2,8 +2,12 @@
 import ast
 import copy
 import hashlib
+import importlib.util
 import inspect
+import json
+import os
 from pathlib import Path
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -51,6 +55,47 @@ def toolbar(width=320,density=1,rtl=False,large=False):
         node(tree,descriptions[key],[v*density for v in (left,top,right,bottom)],
              text='chatgpt.com/c/long-url' if key=='address' else '',enabled=key!='back')
     return tree
+
+
+class CurrentBrowserMenuTests(unittest.TestCase):
+    def test_actual_menu_preserves_actions_and_prioritizes_common_destinations(self):
+        source_path=ROOT/'app/src/main/java/local/pocketchat/MainActivity.java'
+        source=source_path.read_text()
+        spec=importlib.util.spec_from_file_location('browser_menu_member_parser',ROOT/'tests/gecko-navigation-host/run.py')
+        parser=importlib.util.module_from_spec(spec);spec.loader.exec_module(parser)
+        menu=parser.member_at(source,source.index('void moreSheet('))
+        option=parser.member_at(source,source.index('void option('))
+        template=(ROOT/'tests/browser-address-host/BrowserMenuHost.java.in').read_text()
+        java_home=Path(os.environ.get('JAVA_HOME',str(ROOT/'work/browser-ci-jdk/jdk-17.0.21+9')))
+        with tempfile.TemporaryDirectory(prefix='browser-menu-host-') as directory:
+            directory=Path(directory);path=directory/'BrowserMenuHost.java';classes=directory/'classes'
+            def execute(current_menu,current_option=option):
+                path.write_text(template.replace('/* PRODUCTION_MENU */',current_menu)
+                    .replace('/* PRODUCTION_OPTION */',current_option))
+                compiled=subprocess.run([str(java_home/'bin/javac'),'--release','17','-encoding','UTF-8',
+                    '-d',str(classes),str(path)],capture_output=True,text=True,timeout=30)
+                self.assertEqual(compiled.returncode,0,compiled.stderr)
+                return subprocess.run([str(java_home/'bin/java'),'-cp',str(classes),
+                    'local.pocketchat.BrowserMenuHost'],capture_output=True,text=True,timeout=20)
+            passed=execute(menu);self.assertEqual(passed.returncode,0,passed.stderr)
+            report=json.loads(passed.stdout);self.assertGreaterEqual(report['checks'],500)
+            downloads='option(d,"下载管理",()->hub.select(AppHub.DOWNLOADS));'
+            settings='option(d,"应用设置",()->hub.select(AppHub.SETTINGS));'
+            self.assertEqual(menu.count(downloads),1);self.assertEqual(menu.count(settings),1)
+            moved=menu.replace(downloads,'',1).replace('d.show();',downloads+'\n    d.show();',1)
+            controls=[(menu.replace(downloads,'',1),option,'Every original action remains exactly once'),
+                (moved,option,'Common browser and workspace actions precede secondary options'),
+                (menu.replace(settings,settings.replace('AppHub.SETTINGS','AppHub.DOWNLOADS'),1),option,
+                    'Every callback dismisses before its original action: 应用设置'),
+                (menu,option.replace('d.dismiss();','',1),'Every callback dismisses before its original action'),
+                (menu.replace('forward.setEnabled(GeckoAddressUi.canForward(this));','forward.setEnabled(true);',1),option,
+                    'The real forward control reflects native history')]
+            for changed_menu,changed_option,message in controls:
+                with self.subTest(mutation=message):
+                    self.assertNotEqual((changed_menu,changed_option),(menu,option))
+                    failed=execute(changed_menu,changed_option)
+                    self.assertNotEqual(failed.returncode,0);self.assertIn('AssertionError: '+message,failed.stderr)
+        self.assertEqual(source_path.read_text(),source)
 
 
 class CurrentBottomBarTests(unittest.TestCase):
