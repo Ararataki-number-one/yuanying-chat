@@ -69,7 +69,7 @@ class BrowserV2HistoryPrerequisitesTests(unittest.TestCase):
         self.git('fetch', '--refetch', '--no-tags', '--depth=1', '--no-write-fetch-head',
                  '--no-filter', str(ROOT), self.group['commit'])
 
-    def test_missing_real_owner_restores_exact_six_blobs_without_changing_checkout_or_refs(self):
+    def test_missing_real_owner_restores_exact_seven_blobs_without_changing_checkout_or_refs(self):
         with self.assertRaises(setup.history.MissingHistoricalObject):
             setup.history.verify_group(self.root, self.group)
         before = setup.history.checkout_state(self.root)
@@ -78,7 +78,7 @@ class BrowserV2HistoryPrerequisitesTests(unittest.TestCase):
         report = self.prepare()
         observed = setup.history.verify_group(self.root, self.group)
         self.assertEqual(report['group'], observed)
-        self.assertEqual(len(observed['files']), 6)
+        self.assertEqual(len(observed['files']), 7)
         self.assertEqual(report['fetchedCommits'], [self.group['commit']])
         self.assertEqual(len(self.fetches), 1)
         self.assertEqual(report['sourceCommit'], self.source)
