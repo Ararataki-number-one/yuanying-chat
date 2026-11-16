@@ -1,8 +1,0 @@
-void rememberCheck(JSONObject dom,boolean enabled){
-    String scope=s.pageMemory.scope();if(scope.isEmpty())throw new IllegalStateException("Actual PageMemory scope missing");
-    s.pageMemory.remember(scope,dom.optString("url"),dom);
-    JSONObject stored=s.pageMemory.pages.get(scope+"|"+PageMemory.address(dom.optString("url")));
-    boolean valid=stored!=null&&(enabled?text("stale-on".equals(phase)||"fresh-on".equals(phase)).equals(stored.optString("draft"))&&LocalDraftPolicy.mayRestore(a,stored):stored.isNull("draft")&&!PageMemory.completeDraft(stored)&&PageMemory.hasDraft(stored)&&!LocalDraftPolicy.mayRestore(a,stored));
-    if(!valid)throw new IllegalStateException("Production PageMemory policy mismatch");
-    NetworkCatalog.put(result,enabled?"enabledPageMemoryKeepsActualDraft":"disabledPageMemoryRedactsActualDraft",true);
-  }
