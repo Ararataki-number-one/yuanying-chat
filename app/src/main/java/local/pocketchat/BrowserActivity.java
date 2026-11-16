@@ -22,7 +22,8 @@ import org.json.*;
 public class BrowserActivity extends ThemedActivity {
   static final int MAX_TABS=8;
   final ArrayList<Tab> tabs=new ArrayList<>();
-  LinearLayout root,findBar;FrameLayout content;EditText address,findText;TextView environmentName,caption,notice,findCount;Button environmentButton,back,forward,tabCount,reload;
+  LinearLayout root,findBar;FrameLayout content;EditText address,findText;TextView environmentName,notice,findCount;Button back,home,reload,menu;
+  BrowserToolbarUi.NavigationBar browserBar;boolean keyboardVisible;
   ProgressBar progress;ChromiumRuntime runtime;BrowserFiles files;BrowserLibrary library;BrowserPermissions permissions;
   final ExecutorService cookieWorker=Executors.newSingleThreadExecutor(r->new Thread(r,"browser-cookie-save"));final AtomicBoolean flushingCookies=new AtomicBoolean();
   final Handler fingerprintMain=new Handler(Looper.getMainLooper());
@@ -88,17 +89,21 @@ public class BrowserActivity extends ThemedActivity {
   int dp(int value){return ReferenceUi.dp(this,value);}
   void buildUi(){
     root=DesignUi.column(this);root.setBackgroundColor(ReferenceUi.CHAT_BG);root.setClipChildren(false);root.setClipToPadding(false);
-    LinearLayout location=DesignUi.row(this);location.setPadding(dp(8),dp(6),dp(8),dp(4));location.setClipChildren(false);location.setClipToPadding(false);
-    environmentButton=BrowserToolbarUi.action(this,"window","打开环境管理",this::showEnvironments);location.addView(environmentButton,new LinearLayout.LayoutParams(dp(48),dp(48)));
     address=new EditText(this);address.setSingleLine(true);address.setTextSize(15);address.setIncludeFontPadding(true);if(Build.VERSION.SDK_INT>=28)address.setFallbackLineSpacing(true);address.setSelectAllOnFocus(true);address.setHint("搜索或输入网址");address.setContentDescription("网址或搜索词");address.setInputType(android.text.InputType.TYPE_CLASS_TEXT|android.text.InputType.TYPE_TEXT_VARIATION_URI);address.setImeOptions(EditorInfo.IME_ACTION_GO|EditorInfo.IME_FLAG_NO_EXTRACT_UI);
-    address.setTextColor(DesignUi.GLASS_INK);address.setHintTextColor(DesignUi.GLASS_MUTED);address.setBackground(DesignUi.glass(this,24));address.setPadding(dp(14),dp(10),dp(12),dp(10));address.setMinimumHeight(dp(48));LinearLayout.LayoutParams addressParams=new LinearLayout.LayoutParams(0,-2,1);addressParams.leftMargin=dp(6);addressParams.rightMargin=dp(6);location.addView(address,addressParams);
+    BrowserToolbarUi.address(address);
     address.setOnEditorActionListener((view,action,event)->{if(action==EditorInfo.IME_ACTION_GO||event!=null&&event.getKeyCode()==KeyEvent.KEYCODE_ENTER&&event.getAction()==KeyEvent.ACTION_DOWN){go(address.getText().toString());return true;}return false;});
-    reload=BrowserToolbarUi.action(this,"refresh","刷新网页",this::reloadOrStop);location.addView(reload,new LinearLayout.LayoutParams(dp(48),dp(48)));root.addView(location);
-    // Give the full Chinese name and security caption their own width at any
-    // font scale; a long caption must not squeeze the name into a narrow column.
-    LinearLayout identity=DesignUi.column(this);identity.setPadding(dp(16),dp(2),dp(16),dp(5));
-    environmentName=ReferenceUi.text(this,Profiles.display(this,Profiles.slot(this)),13,ReferenceUi.TEXT,true);environmentName.setIncludeFontPadding(true);if(Build.VERSION.SDK_INT>=28)environmentName.setFallbackLineSpacing(true);identity.addView(environmentName,new LinearLayout.LayoutParams(-1,-2));
-    caption=ReferenceUi.text(this,"Chromium",11,ReferenceUi.MUTED,false);caption.setIncludeFontPadding(true);if(Build.VERSION.SDK_INT>=28)caption.setFallbackLineSpacing(true);identity.addView(caption,new LinearLayout.LayoutParams(-1,-2));root.addView(identity);
+    address.setOnFocusChangeListener((view,focused)->updateBrowserBar());
+    // The environment remains above the page; the editable URL lives below it.
+    FrameLayout identity=new FrameLayout(this);identity.setPadding(dp(16),dp(2),dp(16),dp(2));identity.setClipChildren(false);identity.setClipToPadding(false);
+    environmentName=ReferenceUi.text(this,Profiles.display(this,Profiles.slot(this)),16,DesignUi.GLASS_INK,true);ReferenceUi.readable(environmentName);ReferenceUi.single(environmentName);
+    environmentName.setMinWidth(dp(160));environmentName.setMaxWidth(dp(240));environmentName.setMinHeight(dp(52));environmentName.setGravity(Gravity.CENTER);environmentName.setPadding(dp(16),dp(6),dp(16),dp(6));
+    Ui.Icon environmentIcon=new Ui.Icon("globe",DesignUi.GLASS_MUTED);environmentIcon.setBounds(0,0,dp(16),dp(16));environmentName.setCompoundDrawables(environmentIcon,null,null,null);environmentName.setCompoundDrawablePadding(dp(8));
+    environmentName.setBackground(DesignUi.glass(this,26));GlassMotion.press(environmentName,false);environmentName.setFocusable(true);
+    environmentName.setOnClickListener(view->focusAddress());environmentName.setOnLongClickListener(view->{EnvironmentSwitcherUi.show(this);return true;});
+    environmentName.setAccessibilityDelegate(new View.AccessibilityDelegate(){
+      @Override public void onInitializeAccessibilityNodeInfo(View view,android.view.accessibility.AccessibilityNodeInfo info){super.onInitializeAccessibilityNodeInfo(view,info);info.setClassName(Button.class.getName());info.addAction(new android.view.accessibility.AccessibilityNodeInfo.AccessibilityAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_CLICK,"输入网址"));info.addAction(new android.view.accessibility.AccessibilityNodeInfo.AccessibilityAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_LONG_CLICK,"切换环境"));}
+    });
+    identity.addView(environmentName,new FrameLayout.LayoutParams(-2,-2,Gravity.CENTER));root.addView(identity,new LinearLayout.LayoutParams(-1,-2));
     progress=new ProgressBar(this,null,android.R.attr.progressBarStyleHorizontal);progress.setMax(100);progress.setVisibility(View.INVISIBLE);root.addView(progress,new LinearLayout.LayoutParams(-1,dp(2)));
     notice=ReferenceUi.text(this,"正在准备浏览器网络与指纹配置…",13,ReferenceUi.TEXT,false);notice.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);notice.setPadding(dp(12),dp(8),dp(12),dp(8));notice.setOnClickListener(v->{if(selected!=null)selected.fingerprintError="";loadFingerprintState();if(runtime!=null)runtime.refresh();});root.addView(notice);
     findBar=DesignUi.row(this);findBar.setPadding(dp(8),dp(4),dp(8),dp(4));findText=new EditText(this);findText.setSingleLine(true);findText.setTextSize(15);findText.setIncludeFontPadding(true);if(Build.VERSION.SDK_INT>=28)findText.setFallbackLineSpacing(true);findText.setMinimumHeight(dp(48));findText.setPadding(dp(10),dp(10),dp(10),dp(10));findText.setHint("在网页中查找");findText.setContentDescription("页内查找文字");findBar.addView(findText,new LinearLayout.LayoutParams(0,-2,1));
@@ -108,15 +113,15 @@ public class BrowserActivity extends ThemedActivity {
     findBar.addView(BrowserToolbarUi.action(this,"close","关闭页内查找",this::closeFind),new LinearLayout.LayoutParams(dp(48),dp(48)));findBar.setVisibility(View.GONE);root.addView(findBar);
     findText.addTextChangedListener(new TextWatcher(){public void beforeTextChanged(CharSequence s,int a,int c,int n){}public void onTextChanged(CharSequence s,int a,int b,int c){if(web()!=null)web().findAllAsync(s.toString());}public void afterTextChanged(Editable e){}});
     content=new FrameLayout(this);root.addView(content,new LinearLayout.LayoutParams(-1,0,1));
-    LinearLayout nav=DesignUi.row(this);nav.setPadding(dp(9),dp(8),dp(9),dp(10));nav.setClipChildren(false);nav.setClipToPadding(false);
-    back=BrowserToolbarUi.action(this,"back","后退",()->history(-1));forward=BrowserToolbarUi.action(this,"chevron-right","前进",()->history(1));
-    addBrowserAction(nav,back);addBrowserAction(nav,forward);
-    addBrowserAction(nav,BrowserToolbarUi.action(this,"home","打开主页",()->go(BrowserPreferences.home(this))));
-    tabCount=ReferenceUi.link(this,"1",this::showTabs);tabCount.setContentDescription("标签页");tabCount.setTextColor(DesignUi.GLASS_INK);tabCount.setTextSize(15);tabCount.setIncludeFontPadding(true);if(Build.VERSION.SDK_INT>=28)tabCount.setFallbackLineSpacing(true);tabCount.setPadding(dp(4),dp(8),dp(4),dp(8));tabCount.setBackground(DesignUi.glass(this,24));GlassMotion.press(tabCount,false);addBrowserAction(nav,tabCount);
-    addBrowserAction(nav,BrowserToolbarUi.action(this,"more","浏览器菜单",this::menu));root.addView(nav);
-    setContentView(root);ReferenceUi.insets(this,root);
+    back=BrowserToolbarUi.action(this,"back","后退",()->history(-1));
+    home=BrowserToolbarUi.action(this,"home","打开当前环境主页",()->go(BrowserPreferences.home(this)));
+    reload=BrowserToolbarUi.action(this,"refresh","刷新网页",this::reloadOrStop);
+    menu=BrowserToolbarUi.action(this,"more","浏览器菜单",this::menu);
+    browserBar=new BrowserToolbarUi.NavigationBar(this,address,back,home,reload,menu);root.addView(browserBar,new LinearLayout.LayoutParams(-1,-2));
+    root.setFocusableInTouchMode(true);root.requestFocus();
+    setContentView(root);ReferenceUi.insets(this,root,visible->{keyboardVisible=visible;updateBrowserBar();});
   }
-  void addBrowserAction(LinearLayout row,Button button){button.setMinHeight(dp(52));button.setMinimumHeight(dp(52));LinearLayout.LayoutParams params=new LinearLayout.LayoutParams(0,-2,1);params.leftMargin=dp(3);params.rightMargin=dp(3);row.addView(button,params);}
+  void updateBrowserBar(){if(browserBar!=null){int visible=keyboardVisible&&!address.hasFocus()?View.GONE:View.VISIBLE;if(browserBar.getVisibility()!=visible)browserBar.setVisibility(visible);}}
   void showEnvironments(){startActivity(new Intent(this,WindowHomeActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_REORDER_TO_FRONT));}
   WebView web(){return selected==null?null:selected.web;}
   boolean live(Tab tab,WebView source){return !destroyed&&tabs.contains(tab)&&tab.web==source;}
@@ -583,9 +588,9 @@ public class BrowserActivity extends ThemedActivity {
   void updateChrome(){
     if(selected==null)return;if(!address.hasFocus()&&!selected.url.contentEquals(address.getText()))address.setText(selected.url);
     String environment=Profiles.display(this,Profiles.slot(this));if(!environment.contentEquals(environmentName.getText()))environmentName.setText(environment);
-    BrowserToolbarUi.action(environmentButton,"window","当前环境："+environment+"；打开环境管理");
-    String safety=selected.url.startsWith("https://")?"HTTPS":"HTTP · 不安全";caption.setText("Chromium · "+safety);caption.setContentDescription("Chromium · "+safety+(selected.title.isEmpty()?"":" · "+selected.title));caption.setTooltipText(selected.title.isEmpty()?selected.url:selected.title);
-    BrowserToolbarUi.enabled(back,web()!=null&&web().canGoBack());BrowserToolbarUi.enabled(forward,web()!=null&&web().canGoForward());tabCount.setText(String.valueOf(tabs.size()));tabCount.setContentDescription(tabs.size()+" 个标签页，点击管理");tabCount.setTooltipText(tabs.size()+" 个标签页，点击管理");BrowserToolbarUi.action(reload,selected.loading?"close":"refresh",selected.loading?"停止加载":"刷新网页");progress.setVisibility(selected.loading?View.VISIBLE:View.INVISIBLE);
+    environmentName.setContentDescription("当前环境："+environment+"，点按输入网址，长按切换环境");environmentName.setTooltipText(environment);
+    address.setTooltipText(selected.url);menu.setTooltipText("浏览器菜单 · "+tabs.size()+" 个标签页");
+    BrowserToolbarUi.enabled(back,web()!=null&&web().canGoBack());BrowserToolbarUi.action(reload,selected.loading?"close":"refresh",selected.loading?"停止加载":"刷新网页");progress.setVisibility(selected.loading?View.VISIBLE:View.INVISIBLE);
   }
   void retire(Tab tab){
     retireFingerprintBinding(tab);if(tab==selected)invalidateFingerprintObservation();tab.fingerprintReady=false;tab.fingerprintValidating=false;tab.fingerprintStarted=false;
@@ -598,7 +603,11 @@ public class BrowserActivity extends ThemedActivity {
   void closeTab(Tab tab){if(!tabs.contains(tab))return;int index=tabs.indexOf(tab);boolean active=tab==selected;retire(tab);tabs.remove(tab);if(active){selected=null;if(tabs.isEmpty())newTab(BrowserPreferences.home(this));else select(tabs.get(Math.min(index,tabs.size()-1)));}updateChrome();}
   void showTabs(){ReferenceUi.Modal dialog=new ReferenceUi.Modal(this,"标签页 · "+tabs.size()+"/8").asSheet();for(Tab tab:new ArrayList<>(tabs)){LinearLayout row=DesignUi.row(this);Button open=ReferenceUi.link(this,(tab==selected?"● ":"")+(tab.title.isEmpty()?tab.url:tab.title),()->{dialog.dismiss();select(tab);});open.setMaxLines(2);row.addView(open,new LinearLayout.LayoutParams(0,-2,1));row.addView(ReferenceUi.iconButton(this,"close","关闭标签页 "+tab.url,()->{dialog.dismiss();closeTab(tab);}),new LinearLayout.LayoutParams(dp(48),dp(48)));dialog.body.addView(row);}dialog.buttons("返回",dialog::dismiss,"新标签页",()->{dialog.dismiss();newTab(BrowserPreferences.home(this));focusAddress();});dialog.show();}
   void menu(){
-    ReferenceUi.Modal dialog=new ReferenceUi.Modal(this,"浏览器").asSheet();
+    ReferenceUi.Modal dialog=new ReferenceUi.Modal(this,"浏览器菜单").asSheet();
+    String safety=selected.url.startsWith("https://")?"HTTPS":"HTTP · 不安全";
+    dialog.body.addView(ReferenceUi.secondary(this,"Chromium · "+safety));
+    Button forward=ReferenceUi.menuAction(dialog,"前进",()->{dialog.dismiss();history(1);});forward.setEnabled(web()!=null&&web().canGoForward());
+    action(dialog,"标签页 · "+tabs.size(),this::showTabs);
     action(dialog,"环境管理",this::showEnvironments);
     action(dialog,"新标签页",()->{newTab(BrowserPreferences.home(this));focusAddress();});
     action(dialog,library.bookmarked(selected.url)?"取消收藏此页":"收藏此页",()->{if(library.bookmarked(selected.url))library.remove("bookmarks",selected.url);else library.remember("bookmarks",selected.url,selected.title,100);message(library.bookmarked(selected.url)?"已收藏此页":"已取消收藏");});
@@ -628,8 +637,8 @@ public class BrowserActivity extends ThemedActivity {
     AppAppearance.dialog(this).setTitle("打开外部应用？").setMessage(url).setNegativeButton("取消",null).setPositiveButton("打开",(d,w)->{try{startActivity(new Intent(Intent.ACTION_VIEW,uri).addCategory(Intent.CATEGORY_BROWSABLE));}catch(ActivityNotFoundException missing){message("没有可以打开此链接的应用");}}).show();
   }
   void share(){try{startActivity(Intent.createChooser(new Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT,selected.url),"分享网址"));}catch(ActivityNotFoundException missing){message("暂无可用的分享应用");}}
-  void focusAddress(){address.requestFocus();address.selectAll();((InputMethodManager)getSystemService(INPUT_METHOD_SERVICE)).showSoftInput(address,InputMethodManager.SHOW_IMPLICIT);}
-  void hideKeyboard(){address.clearFocus();((InputMethodManager)getSystemService(INPUT_METHOD_SERVICE)).hideSoftInputFromWindow(address.getWindowToken(),0);}
+  void focusAddress(){browserBar.setVisibility(View.VISIBLE);address.requestFocus();address.selectAll();((InputMethodManager)getSystemService(INPUT_METHOD_SERVICE)).showSoftInput(address,InputMethodManager.SHOW_IMPLICIT);}
+  void hideKeyboard(){address.clearFocus();root.requestFocus();((InputMethodManager)getSystemService(INPUT_METHOD_SERVICE)).hideSoftInputFromWindow(address.getWindowToken(),0);}
   void closeFind(){if(findBar==null)return;findBar.setVisibility(View.GONE);findText.setText("");if(web()!=null)web().clearMatches();}
   void showCustomView(View view,WebChromeClient.CustomViewCallback callback){hideCustomView();customView=view;customCallback=callback;((android.view.ViewGroup)getWindow().getDecorView()).addView(view,new android.view.ViewGroup.LayoutParams(-1,-1));}
   void hideCustomView(){if(customView==null)return;View view=customView;customView=null;if(view.getParent() instanceof android.view.ViewGroup)((android.view.ViewGroup)view.getParent()).removeView(view);WebChromeClient.CustomViewCallback callback=customCallback;customCallback=null;if(callback!=null)callback.onCustomViewHidden();}
@@ -642,7 +651,7 @@ public class BrowserActivity extends ThemedActivity {
   @Override protected void onSaveInstanceState(Bundle state){ArrayList<String> urls=new ArrayList<>();for(Tab tab:tabs)urls.add(tab.url);state.putStringArrayList("browser.urls",urls);state.putInt("browser.selected",tabs.indexOf(selected));super.onSaveInstanceState(state);}
   void leaveBrowser(){if(runtime!=null)runtime.close();if(files!=null)files.destroy();for(Tab tab:tabs)retire(tab);finish();}
   void confirmCloseBrowser(){boolean downloading=files!=null&&files.hasActiveDownload();AppAppearance.dialog(this).setTitle("关闭浏览器？").setMessage("将关闭全部标签页，未保存的网页输入可能丢失。"+(downloading?"正在进行的下载会取消。":"")+"关闭后，此环境等待中的网络设置可以应用。").setNegativeButton("继续浏览",null).setPositiveButton(downloading?"关闭并取消下载":"关闭浏览器",(d,w)->leaveBrowser()).show();}
-  @Override public void onBackPressed(){if(customView!=null){hideCustomView();return;}if(findBar!=null&&findBar.getVisibility()==View.VISIBLE){closeFind();return;}if(web()!=null&&web().canGoBack()){history(-1);return;}confirmCloseBrowser();}
+  @Override public void onBackPressed(){if(customView!=null){hideCustomView();return;}if(findBar!=null&&findBar.getVisibility()==View.VISIBLE){closeFind();return;}if(address.hasFocus()){hideKeyboard();updateChrome();return;}if(web()!=null&&web().canGoBack()){history(-1);return;}confirmCloseBrowser();}
   @Override public boolean dispatchKeyEvent(KeyEvent event){if(event.getAction()==KeyEvent.ACTION_DOWN&&event.isCtrlPressed()){switch(event.getKeyCode()){case KeyEvent.KEYCODE_L:focusAddress();return true;case KeyEvent.KEYCODE_T:newTab(BrowserPreferences.home(this));focusAddress();return true;case KeyEvent.KEYCODE_W:if(selected!=null)closeTab(selected);return true;case KeyEvent.KEYCODE_F:findBar.setVisibility(View.VISIBLE);findText.requestFocus();return true;case KeyEvent.KEYCODE_R:reloadOrStop();return true;}}return super.dispatchKeyEvent(event);}
   @Override protected void onDestroy(){destroyed=true;fingerprintStateReady=false;invalidateFingerprintObservation();hideCustomView();if(runtime!=null)runtime.close();for(Tab tab:tabs)retire(tab);if(permissions!=null)permissions.close();if(files!=null)files.destroy();saveCookies();fingerprintMain.removeCallbacksAndMessages(null);if(fingerprintJobs!=null)fingerprintJobs.close();cookieWorker.shutdown();super.onDestroy();}
 }

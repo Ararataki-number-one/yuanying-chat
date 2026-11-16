@@ -1,6 +1,7 @@
 """Real fake-ADB capture controls; no Android, UI acceptance or input execution."""
 import ast
 import copy
+import hashlib
 import importlib.util
 import json
 from pathlib import Path
@@ -32,8 +33,8 @@ def runner_functions(*names):
     assert {n.name for n in functions} == set(names)
     if 'capture' in names:
         declarations = [n for n in tree.body if isinstance(n, ast.Assign)
-                        and any(isinstance(t, ast.Name) and t.id == 'UI_NAVIGATION_CONTRACT' for t in n.targets)]
-        assert len(declarations) == 1, 'Actual capture navigation declaration required'
+                        and any(isinstance(t, ast.Name) and t.id in ('UI_NAVIGATION_CONTRACT', 'WORKSPACE_LAYOUT_CONTRACT') for t in n.targets)]
+        assert len(declarations) == 2, 'Actual browser and workspace declarations required'
         functions.extend(copy.deepcopy(declarations))
     return ast.Module(body=functions, type_ignores=[])
 
@@ -351,6 +352,14 @@ if len(parts)==4 and parts[:3]==['shell','uiautomator','dump']:
     if mode in ['null','stale-null']:
         if mode=='stale-null':local.write_bytes(b'<hierarchy><node text="stale" /></hierarchy>')
         print('ERROR: null root node returned by UiTestAutomationBridge.',file=sys.stderr);raise SystemExit(0)
+    if mode in ['idle','stale-idle','idle-nonzero','idle-stdout','idle-prefix','idle-suffix','idle-whitespace']:
+        if mode=='stale-idle':local.write_bytes(b'<hierarchy><node text="stale idle attempt" /></hierarchy>')
+        value='ERROR: could not get idle state.'
+        if mode=='idle-prefix':value='unexpected '+value
+        if mode=='idle-suffix':value+=' unexpected'
+        if mode=='idle-whitespace':value=' '+value
+        if mode=='idle-stdout':print('unexpected stdout')
+        print(value,file=sys.stderr);raise SystemExit(1 if mode=='idle-nonzero' else 0)
     if mode=='unknown':
         local.write_bytes(bytes.fromhex(config['xml']));print('ERROR: unknown accessibility error',file=sys.stderr);raise SystemExit(0)
     if mode=='adb-error':print('error: device offline',file=sys.stderr);raise SystemExit(1)
@@ -498,6 +507,326 @@ class UiVisualCaptureTest(unittest.TestCase):
         self.assertEqual(value['bytes'],10000);self.assertEqual(len(value['text']),8192);self.assertTrue(value['truncated'])
 
 
+class IdleUiVisualCaptureTest(unittest.TestCase):
+    setUp = UiVisualCaptureTest.setUp
+    modes = UiVisualCaptureTest.modes
+    commands = UiVisualCaptureTest.commands
+    report = UiVisualCaptureTest.report
+    assert_read_only = UiVisualCaptureTest.assert_read_only
+
+    def test_exact_idle_error_can_only_reacquire_a_fresh_owned_file_within_same_budget(self):
+        self.modes('stale-idle','ok')
+        deadline=time.monotonic()+3
+        self.assertEqual(self.capture.read(deadline=deadline),XML.decode())
+        calls=self.commands()
+        self.assertEqual(len(calls),3)
+        self.assertNotEqual(calls[0][-1],calls[1][-1])
+        self.assertEqual(calls[1][-1],calls[2][-1])
+        self.assertFalse(any(row[:2]==['shell','cat'] and row[-1]==calls[0][-1] for row in calls))
+        rows=self.report()['attempts']
+        self.assertEqual([row['status'] for row in rows],['not-ready','captured'])
+        self.assertEqual({row['existingSceneDeadline'] for row in rows},{deadline})
+        self.assertNotIn('xmlSha256',rows[0])
+        self.assertEqual(rows[0]['reason'],CAPTURE.IDLE_NOT_READY)
+        self.assert_read_only()
+
+    def test_idle_without_deadline_remains_one_failed_acquisition(self):
+        self.modes('idle','ok')
+        with self.assertRaises(CAPTURE.CaptureNotReady):self.capture.read()
+        self.assertEqual(len(self.commands()),1)
+        self.assertNotIn('xmlSha256',self.report()['attempts'][0])
+        self.assert_read_only()
+
+    def test_only_exact_observed_idle_stderr_and_success_exit_are_retryable(self):
+        for mode in ('idle-nonzero','idle-stdout','idle-prefix','idle-suffix','idle-whitespace'):
+            with self.subTest(mode=mode):
+                (self.root/'next.txt').unlink(missing_ok=True)
+                self.modes(mode,'ok');before=len(self.commands())
+                with self.assertRaises((RuntimeError,CAPTURE.subprocess.CalledProcessError)):
+                    self.capture.read(deadline=time.monotonic()+3)
+                self.assertEqual(len(self.commands()),before+1)
+                self.assertEqual(self.report()['attempts'][-1]['status'],'failed')
+        self.assert_read_only()
+
+    def test_continuous_idle_cannot_create_a_retry_budget_or_capture_stale_xml(self):
+        self.modes('stale-idle')
+        deadline=time.monotonic()+.3
+        with self.assertRaises(TimeoutError):self.capture.read(deadline=deadline)
+        self.assertEqual(len(self.commands()),1)
+        self.assertEqual(self.report()['attempts'][0]['existingSceneDeadline'],deadline)
+        self.assertNotIn('xmlSha256',self.report()['attempts'][0])
+        self.assert_read_only()
+
+
+class RecordedIdleAcquisitionTest(unittest.TestCase):
+    """Original native failures replayed at a mocked process boundary, not new Android evidence."""
+    def test_all_six_original_errors_remain_uncaptured_and_keep_the_actual_deadline(self):
+        fixtures=(('c6-api32-idle-errors.json','79bc32533a02b3e17faacddc5d66d6de8d4a73ca8836616b510e77b1c3b4dd34',2),
+                  ('c6-api35-idle-errors.json','9b912ef31820e681720cc4b2cdd9f3530f964a39950295dba64882c1588c3c71',4))
+        for filename,digest,count in fixtures:
+            raw=(ROOT/'tests/browser-address-host'/filename).read_bytes()
+            self.assertEqual(hashlib.sha256(raw).hexdigest(),digest)
+            fixture=json.loads(raw);self.assertIs(fixture['recordedFailureOnly'],True)
+            self.assertEqual(len(fixture['cases']),count)
+            for case in fixture['cases']:
+                original=case['attempt'];command=original['commands'][0]
+                self.assertEqual(original['status'],'failed')
+                self.assertEqual(case['callerBudgetSeconds'],20)
+                self.assertEqual(len(original['commands']),1)
+                self.assertEqual(command['parts'][:3],['shell','uiautomator','dump'])
+                self.assertEqual(command['exitCode'],0)
+                self.assertEqual(command['stdout']['text'],'')
+                self.assertEqual(command['stderr']['text'],'ERROR: could not get idle state.\n')
+                for stream in ('stdout','stderr'):
+                    payload=command[stream]['text'].encode()
+                    self.assertEqual(len(payload),command[stream]['bytes'])
+                    self.assertEqual(hashlib.sha256(payload).hexdigest(),command[stream]['sha256'])
+                deadline=original['existingSceneDeadline']
+                clock=ModelClock(command['startedAtMonotonicNanos']/1e9)
+                self.assertGreater(deadline-command['completedAtMonotonicNanos']/1e9,0)
+                def process(parts,**options):
+                    self.assertEqual(parts[3:6],['shell','uiautomator','dump'])
+                    self.assertLessEqual(options['timeout'],command['timeoutSeconds']+.001)
+                    clock.value=command['completedAtMonotonicNanos']/1e9
+                    return CAPTURE.subprocess.CompletedProcess(parts,command['exitCode'],
+                        command['stdout']['text'].encode(),command['stderr']['text'].encode())
+                with self.subTest(file=filename,case=case['case']),tempfile.TemporaryDirectory() as temporary:
+                    capture=CAPTURE.UiVisualCapture(adb='mocked-read-only-adb',serial='emulator-model',
+                        source=fixture['sourceCommit'],diagnostics=Path(temporary)/'attempts.json')
+                    with mock.patch.object(CAPTURE.time,'monotonic',side_effect=clock.monotonic),\
+                         mock.patch.object(CAPTURE.subprocess,'run',side_effect=process) as boundary:
+                        with self.assertRaises(CAPTURE.CaptureNotReady):capture.attempt(deadline)
+                    boundary.assert_called_once()
+                    row=capture.records[0]
+                    self.assertEqual(row['status'],'not-ready')
+                    self.assertEqual(row['existingSceneDeadline'],deadline)
+                    self.assertNotIn('xmlSha256',row)
+                    self.assertEqual(json.loads(raw)['cases'][fixture['cases'].index(case)]['attempt']['status'],'failed')
+
+
+class DeviceHierarchyAdapterTest(unittest.TestCase):
+    """Execute the current adapter; only preparation and OS processes are model boundaries."""
+    def test_window_sync_is_opt_in_and_fresh_read_uses_only_the_remaining_budget(self):
+        source='a'*40;clock=ModelClock();calls=[]
+        driver=types.SimpleNamespace(evidence=dict(status='verified',sourceCommit=source),
+            dump_parts=mock.Mock(side_effect=lambda path,remaining,*,sync_window:
+                ['shell','native-observer-model',path,'sync-window-input'] if sync_window else []))
+        def process(parts,**options):
+            action=parts[3:];calls.append((action,options['timeout']))
+            if action[1]=='native-observer-model':
+                self.assertEqual(action[-1],'sync-window-input');clock.value+=1.25
+                return CAPTURE.subprocess.CompletedProcess(parts,0,('UI hierchary dumped to: '+action[2]).encode(),b'')
+            self.assertEqual(action[:2],['shell','cat']);clock.value+=.25
+            return CAPTURE.subprocess.CompletedProcess(parts,0,XML,b'')
+        with tempfile.TemporaryDirectory() as temporary:
+            capture=CAPTURE.UiVisualCapture(adb='model-adb',serial='emulator-model',source=source,
+                diagnostics=Path(temporary)/'capture.json',acquisition_driver=driver)
+            with mock.patch.object(CAPTURE.time,'monotonic',side_effect=clock.monotonic),\
+                 mock.patch.object(CAPTURE.subprocess,'run',side_effect=process):
+                self.assertEqual(capture.read(deadline=102,sync_window=True),XML.decode())
+            driver.dump_parts.assert_called_once_with(calls[0][0][2],2,sync_window=True)
+            self.assertEqual([timeout for _,timeout in calls],[2,.75])
+            self.assertEqual(calls[0][0][2],calls[1][0][2])
+            row=capture.records[0]
+            self.assertEqual(row['existingSceneDeadline'],102)
+            self.assertEqual(row['windowInputSynchronization'],'UiAutomation.syncInputTransactions')
+            self.assertEqual(row['xmlSha256'],hashlib.sha256(XML).hexdigest())
+
+    def test_failed_or_expired_window_sync_never_reads_a_hierarchy(self):
+        for outcome in ('failed','expired','timeout'):
+            with self.subTest(outcome=outcome),tempfile.TemporaryDirectory() as temporary:
+                clock=ModelClock();calls=[]
+                driver=types.SimpleNamespace(evidence=dict(sourceCommit='a'*40),
+                    dump_parts=mock.Mock(return_value=['shell','native-observer-model','owned.xml','sync-window-input']))
+                capture=CAPTURE.UiVisualCapture(adb='model-adb',serial='emulator-model',source='a'*40,
+                    diagnostics=Path(temporary)/'capture.json',acquisition_driver=driver)
+                def process(parts,**options):
+                    calls.append(parts);self.assertEqual(options['timeout'],2)
+                    if outcome=='timeout':raise CAPTURE.subprocess.TimeoutExpired(parts,options['timeout'])
+                    if outcome=='failed':return CAPTURE.subprocess.CompletedProcess(parts,1,b'',b'window sync failed')
+                    clock.value=102
+                    return CAPTURE.subprocess.CompletedProcess(parts,0,b'',b'')
+                expected={'failed':CAPTURE.subprocess.CalledProcessError,'expired':TimeoutError,
+                          'timeout':CAPTURE.subprocess.TimeoutExpired}[outcome]
+                with mock.patch.object(CAPTURE.time,'monotonic',side_effect=clock.monotonic),\
+                     mock.patch.object(CAPTURE.subprocess,'run',side_effect=process):
+                    with self.assertRaises(expected):capture.read(deadline=102,sync_window=True)
+                self.assertEqual(len(calls),1)
+                self.assertNotIn('xmlSha256',capture.records[0])
+                self.assertEqual(capture.records[0]['status'],'failed')
+
+    def test_window_sync_requires_an_explicit_mode_driver_and_existing_deadline(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            options=dict(adb='model-adb',serial='emulator-model',source='a'*40,
+                diagnostics=Path(temporary)/'capture.json')
+            driver=types.SimpleNamespace(evidence=dict(sourceCommit='a'*40),dump_parts=mock.Mock())
+            for prepared,deadline,mode in ((None,102,True),(driver,None,True),(driver,102,1),
+                                          (driver,102,'true'),(driver,102,None)):
+                capture=CAPTURE.UiVisualCapture(**options,acquisition_driver=prepared)
+                with mock.patch.object(CAPTURE.time,'monotonic',return_value=100),\
+                     mock.patch.object(CAPTURE.subprocess,'run') as boundary:
+                    with self.assertRaises(ValueError):capture.read(deadline=deadline,sync_window=mode)
+                    boundary.assert_not_called();driver.dump_parts.assert_not_called()
+
+    def test_prepared_native_command_and_fresh_xml_use_the_same_parent_deadline(self):
+        source='a'*40;clock=ModelClock();calls=[]
+        driver=types.SimpleNamespace(evidence=dict(status='verified',sourceCommit=source,sourceTree='b'*40),
+            dump_parts=mock.Mock(side_effect=lambda path,remaining:['shell','native-observer-model',path]))
+        prepare=mock.Mock(return_value=driver)
+        def process(parts,**options):
+            action=parts[3:];calls.append((action,options['timeout']));clock.value+=.25
+            if action[:2]==['shell','native-observer-model']:
+                return CAPTURE.subprocess.CompletedProcess(parts,0,('UI hierchary dumped to: '+action[2]).encode(),b'')
+            self.assertEqual(action[:2],['shell','cat'])
+            return CAPTURE.subprocess.CompletedProcess(parts,0,XML,b'')
+        with tempfile.TemporaryDirectory() as temporary:
+            path=Path(temporary)/'capture.json'
+            with mock.patch.dict(sys.modules,{'ui_hierarchy_driver':types.SimpleNamespace(prepare_driver=prepare)}):
+                capture=CAPTURE.UiVisualCapture.for_device(adb='model-adb',serial='emulator-model',source=source,diagnostics=path)
+            prepare.assert_called_once_with(adb='model-adb',serial='emulator-model',source=source,diagnostics_dir=path.parent)
+            driver.evidence['additionalNote']='changed after capture initialization'
+            self.assertNotIn('additionalNote',capture.report['acquisitionDriver'])
+            self.assertEqual(capture.report['acquisitionDriver']['sourceCommit'],source)
+            with mock.patch.object(CAPTURE.time,'monotonic',side_effect=clock.monotonic),\
+                 mock.patch.object(CAPTURE.subprocess,'run',side_effect=process):
+                self.assertEqual(capture.read(deadline=102),XML.decode())
+            self.assertEqual([timeout for _,timeout in calls],[2,1.75])
+            self.assertEqual(calls[0][0][2],calls[1][0][2])
+            driver.dump_parts.assert_called_once_with(calls[0][0][2],2)
+            self.assertEqual(capture.records[0]['existingSceneDeadline'],102)
+            self.assertEqual(capture.records[0]['xmlSha256'],hashlib.sha256(XML).hexdigest())
+            self.assertNotIn('windowInputSynchronization',capture.records[0])
+
+    def test_setup_failure_wrong_source_and_expiry_never_fall_back_or_read_old_xml(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            options=dict(adb='model-adb',serial='emulator-model',source='a'*40,diagnostics=Path(temporary)/'capture.json')
+            prepare=mock.Mock(side_effect=ValueError('Unverified compiled driver'))
+            with mock.patch.dict(sys.modules,{'ui_hierarchy_driver':types.SimpleNamespace(prepare_driver=prepare)}),\
+                 mock.patch.object(CAPTURE.subprocess,'run') as boundary:
+                with self.assertRaisesRegex(ValueError,'Unverified compiled driver'):
+                    CAPTURE.UiVisualCapture.for_device(**options)
+                boundary.assert_not_called()
+            driver=types.SimpleNamespace(evidence=dict(sourceCommit='b'*40),dump_parts=mock.Mock())
+            with self.assertRaisesRegex(ValueError,'different source'):
+                CAPTURE.UiVisualCapture(**options,acquisition_driver=driver)
+            driver.evidence['sourceCommit']='a'*40
+            capture=CAPTURE.UiVisualCapture(**options,acquisition_driver=driver)
+            with mock.patch.object(CAPTURE.time,'monotonic',return_value=102),\
+                 mock.patch.object(CAPTURE.subprocess,'run') as boundary:
+                with self.assertRaises(TimeoutError):capture.read(deadline=102)
+                boundary.assert_not_called();driver.dump_parts.assert_not_called()
+
+
+class FormatterReadinessCaptureTest(unittest.TestCase):
+    """Synthetic native process outputs; the actual prepared-command adapter remains in use."""
+    STACK = (b'java.lang.NullPointerException: synthetic API32 child boundary\n'
+             b'\tat com.android.uiautomator.core.AccessibilityNodeInfoDumper.childNafCheck(AccessibilityNodeInfoDumper.java:296)\n')
+
+    @classmethod
+    def setUpClass(cls):
+        spec = importlib.util.spec_from_file_location('formatter_capture_driver', ROOT/'tools/gecko/ui_hierarchy_driver.py')
+        cls.driver_module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(cls.driver_module)
+
+    def make_capture(self, directory, mode='native'):
+        source = 'a' * 40
+        evidence = dict(status='verified', sourceCommit=source, sourceTree='b' * 40, runId='1234', runAttempt='2',
+            installedJar=dict(remotePath='/data/local/tmp/pocketchat-ui-hierarchy-' + 'a' * 12 + '-1234-2-' + 'b' * 32 + '.jar',
+                              sha256='c' * 64), device=dict(systemJarSha256='d' * 64),
+            scope='Synthetic host preparation boundary, not Android evidence')
+        driver = self.driver_module.HierarchyDriver(evidence, Path(directory)/'driver.json')
+        if mode == 'unverified':
+            driver.evidence['status'] = 'preparing'
+        elif mode == 'generic':
+            driver = types.SimpleNamespace(evidence=evidence,
+                dump_parts=lambda path, remaining: ['shell', 'native-observer-model', path])
+        elif mode == 'legacy':
+            driver = None
+        return CAPTURE.UiVisualCapture(adb='model-adb', serial='emulator-model', source=source,
+            diagnostics=Path(directory)/'capture.json', acquisition_driver=driver)
+
+    def marker(self, remote, raw=None):
+        raw = self.STACK if raw is None else raw
+        return (self.driver_module.FORMATTER_NOT_READY + remote + ' ' + str(len(raw)) + ' '
+                + hashlib.sha256(raw).hexdigest() + '\n').encode()
+
+    def test_classified_formatter_reacquires_new_owned_xml_with_same_parent_deadline(self):
+        clock = ModelClock(); calls = []
+        def process(command, **options):
+            parts = command[3:]; calls.append((parts, options['timeout'])); clock.value += .25
+            if len(calls) == 1:
+                remote = parts[5]
+                return CAPTURE.subprocess.CompletedProcess(command, 4, self.marker(remote), self.STACK)
+            if len(calls) == 2:
+                return CAPTURE.subprocess.CompletedProcess(command, 0,
+                    ('UI hierchary dumped to: ' + parts[5] + '\n').encode(), b'')
+            self.assertEqual(parts[:2], ['shell', 'cat'])
+            return CAPTURE.subprocess.CompletedProcess(command, 0, XML, b'')
+        with tempfile.TemporaryDirectory() as directory:
+            capture = self.make_capture(directory)
+            with mock.patch.object(CAPTURE.time, 'monotonic', side_effect=clock.monotonic), \
+                 mock.patch.object(CAPTURE.time, 'sleep', side_effect=clock.sleep) as polling, \
+                 mock.patch.object(CAPTURE.subprocess, 'run', side_effect=process):
+                self.assertEqual(capture.read(deadline=102), XML.decode())
+            self.assertEqual([timeout for _, timeout in calls], [2, 1.25, 1])
+            self.assertNotEqual(calls[0][0][5], calls[1][0][5])
+            self.assertEqual(calls[2][0], ['shell', 'cat', calls[1][0][5]])
+            self.assertEqual([row['status'] for row in capture.records], ['not-ready', 'captured'])
+            self.assertEqual({row['existingSceneDeadline'] for row in capture.records}, {102})
+            first = capture.records[0]
+            self.assertEqual(len(first['commands']), 1)
+            self.assertEqual(first['commands'][0]['stderr'], capture.output(self.STACK))
+            self.assertEqual(first['commands'][0]['stdout'], capture.output(self.marker(first['remotePath'])))
+            self.assertNotIn('xmlSha256', first)
+            self.assertNotEqual(first['reason'], CAPTURE.NULL_ROOT)
+            polling.assert_called_once_with(.5)  # Existing acquisition polling only.
+
+    def test_legacy_generic_unverified_or_modified_signals_are_fatal_without_cat(self):
+        for mode in ('legacy', 'generic', 'unverified', 'wrong-exit', 'extra-stderr', 'empty-stderr',
+                     'wrong-path', 'wrong-hash', 'missing-marker', 'extra-stdout'):
+            with self.subTest(mode=mode), tempfile.TemporaryDirectory() as directory:
+                capture = self.make_capture(directory, mode)
+                calls = []
+                def process(command, **options):
+                    parts = command[3:]; calls.append(parts)
+                    remote = next(part for part in parts if part.startswith('/sdcard/pocketchat-ui-visual-'))
+                    code, raw, marker = 4, self.STACK, self.marker(remote)
+                    if mode == 'wrong-exit': code = 1
+                    if mode == 'extra-stderr': raw += b'additional cleanup failure\n'
+                    if mode == 'empty-stderr': raw = b''; marker = self.marker(remote, raw)
+                    if mode == 'wrong-path': marker = self.marker(remote.replace('-1.xml', '-2.xml'))
+                    if mode == 'wrong-hash': marker = marker[:-65] + b'0' * 64 + b'\n'
+                    if mode == 'missing-marker': marker = b''
+                    if mode == 'extra-stdout': marker += b'unknown output\n'
+                    return CAPTURE.subprocess.CompletedProcess(command, code, marker, raw)
+                with mock.patch.object(CAPTURE.time, 'monotonic', return_value=100), \
+                     mock.patch.object(CAPTURE.subprocess, 'run', side_effect=process):
+                    with self.assertRaises(CAPTURE.subprocess.CalledProcessError):
+                        capture.read(deadline=102)
+                self.assertEqual(len(calls), 1)
+                self.assertEqual(capture.records[0]['status'], 'failed')
+                self.assertNotIn('xmlSha256', capture.records[0])
+
+    def test_formatter_signal_does_not_create_a_deadline_or_accept_late_transport(self):
+        for mode in ('no-deadline', 'continuous', 'late'):
+            with self.subTest(mode=mode), tempfile.TemporaryDirectory() as directory:
+                clock = ModelClock(); capture = self.make_capture(directory); calls = []
+                deadline = None if mode == 'no-deadline' else 100.75
+                def process(command, **options):
+                    parts = command[3:]; calls.append(parts)
+                    clock.value += .75 if mode == 'late' else .25
+                    return CAPTURE.subprocess.CompletedProcess(command, 4, self.marker(parts[5]), self.STACK)
+                with mock.patch.object(CAPTURE.time, 'monotonic', side_effect=clock.monotonic), \
+                     mock.patch.object(CAPTURE.time, 'sleep', side_effect=clock.sleep), \
+                     mock.patch.object(CAPTURE.subprocess, 'run', side_effect=process):
+                    with self.assertRaises(CAPTURE.CaptureNotReady if mode == 'no-deadline' else TimeoutError):
+                        capture.read(deadline=deadline)
+                self.assertEqual(len(calls), 1)
+                self.assertEqual(capture.records[0]['existingSceneDeadline'], deadline)
+                self.assertEqual(capture.records[0]['status'], 'failed' if mode == 'late' else 'not-ready')
+                self.assertNotIn('xmlSha256', capture.records[0])
+
+
 class CompactQuickEnvironmentContractTest(unittest.TestCase):
     """Execute actual runner guards on synthetic hierarchies and input boundaries."""
     @staticmethod
@@ -642,6 +971,7 @@ _download_v1_setup = DownloadFreshObservationRunnerTest.setUp
 def _configure_download_v1_fixture(self):
     _download_v1_setup(self)
     self.namespace['UI_NAVIGATION_CONTRACT'] = 1
+    self.namespace['WORKSPACE_LAYOUT_CONTRACT'] = 1
 DownloadFreshObservationRunnerTest.setUp = _configure_download_v1_fixture
 
 

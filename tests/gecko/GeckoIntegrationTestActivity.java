@@ -82,6 +82,13 @@ public class GeckoIntegrationTestActivity extends Activity {
     boolean nativeGeometryActive,nativeGeometrySwipes,nativeGeometryStable;JSONArray nativeGeometryTrace=new JSONArray();NativeGeometry nativeGeometryPrevious,nativeGeometryExpected;
     long nativeUnchangedTouchEvents,nativeRedundantTouchSyncs,nativeFirstTouchSyncs=-1;boolean nativeFirstTouchOriginCorrect;
     @Override public String getUrl(){return chooserOrigin?MainActivity.ORIGIN:super.getUrl();}
+    @Override String photoUploadOrigin(org.mozilla.geckoview.GeckoSession source){
+      // This integration-only origin is already allowed by the controlled
+      // browser fixture. The production adapter still requires HTTPS.
+      String actual=locations.get(source);
+      if(source==current&&actual!=null&&actual.startsWith("http://127.0.0.1:8765/browser-image?"))return "http://127.0.0.1:8765";
+      return super.photoUploadOrigin(source);
+    }
     @Override public void evaluateJavascript(String code,android.webkit.ValueCallback<String> callback){
       if(queuedObservation!=null&&queuedObservation.intercept(code,callback))return;
       if(continuityTracing&&code.startsWith("window['__pocket_")){String request=code;super.evaluateJavascript(code,raw->{JSONObject value=J.parse(raw);if(value.length()>0)continuityResults.put(J.obj("at",SystemClock.elapsedRealtime(),"request",request,"result",value));if(callback!=null)callback.onReceiveValue(raw);});}
@@ -216,6 +223,7 @@ public class GeckoIntegrationTestActivity extends Activity {
     if("completion".equals(action)){completion(serial);return;}
     if("desktopImage".equals(action)){desktopImage(serial);return;}
     if("desktopOwnImage".equals(action)){desktopImage(serial,true);return;}
+    if("photoProtectionProbe".equals(action)){GeckoPhotoProtectionProbe.run(this,serial);return;}
     if("uploadLifecycle".equals(action)){GeckoUploadLifecycleIntegration.run(this,serial);return;}
     if("localDraftPolicy".equals(action)){GeckoLocalDraftIntegration.run(this,serial);return;}
     if("pageContinuity".equals(action)){ChatPageContinuityIntegration.run(this,serial);return;}
@@ -374,7 +382,12 @@ public class GeckoIntegrationTestActivity extends Activity {
   // Only the origin is adapted for the loopback fixture. The production chooser,
   // pending guard, SAF result and Gecko file preparation all run unchanged.
   void desktopImage(long serial){desktopImage(serial,false);}
+  int desktopImagePriorPrivacy=-1;
   void desktopImage(long serial,boolean ownProvider){
+    desktopImagePriorPrivacy=session.privacy.level();
+    int photoPrivacy=getIntent().getIntExtra("photoPrivacy",desktopImagePriorPrivacy);
+    if(photoPrivacy<0||photoPrivacy>2)throw new IllegalArgumentException("Invalid controlled photo privacy level");
+    session.prefs.edit().putInt("privacyLevel",photoPrivacy).commit();
     session.reading.configure(true);session.web.configure(true,session.privacy.level());
     final JSONObject held=J.obj("kind","web","confirmed",true);
     FixtureView view=(FixtureView)session.web;final boolean[] chooser={false},mime={false};
@@ -390,7 +403,7 @@ public class GeckoIntegrationTestActivity extends Activity {
     view.setHost(host);
     android.webkit.WebChromeClient production=host.attachments.chrome();
     view.setWebChromeClient(new android.webkit.WebChromeClient(){@Override public boolean onShowFileChooser(WebView web,android.webkit.ValueCallback<android.net.Uri[]> callback,FileChooserParams params){view.chooserOrigin=true;try{return production.onShowFileChooser(web,callback,params);}finally{view.chooserOrigin=false;}}});
-    final String target="http://127.0.0.1:8765/browser-image?command="+serial+"&nonce="+eventStore.nonce;
+    final String target="http://127.0.0.1:8765/browser-image?command="+serial+"&nonce="+eventStore.nonce+"&privacy="+photoPrivacy+"&mode=select";
     view.loadUrl(target);
     session.handler.postDelayed(()->desktopImageReady(serial,SystemClock.elapsedRealtime()+25000,host,held,chooser,mime,false,target),200);
   }
@@ -399,17 +412,18 @@ public class GeckoIntegrationTestActivity extends Activity {
     // Both image cases share a pathname. A retained previous document can
     // still contain its successful upload while the next navigation starts.
     // Accept readiness and results only from this invocation's exact URL.
-    session.web.evaluateJavascript("(()=>({ready:location.href==="+JSONObject.quote(target)+"&&!!document.getElementById('upload'),value:document.getElementById('upload-result')?.textContent||''}))()",raw->{
+    session.web.evaluateJavascript("(()=>({ready:location.href==="+JSONObject.quote(target)+"&&!!document.getElementById('upload')&&['true','selected'].includes(document.documentElement.dataset.photoReady),value:document.getElementById('upload-result')?.textContent||'',photoEvidence:JSON.parse(document.getElementById('photo-evidence')?.textContent||'null')}))()",raw->{
       if(serial!=run)return;
       JSONObject current=J.parse(raw);String value=current.optString("value");boolean touched=tapped;
-      if(!touched&&current.optBoolean("ready")&&session.web.hasVisibleDocument()&&!session.navigating){session.pending=held;tapElement(serial,"upload");touched=true;}
+      if(!touched&&current.optBoolean("ready")&&session.web.hasVisibleDocument()&&!session.navigating){session.pending=held;GeckoPhotoTap.begin(this,serial,target,deadline);touched=true;}
       final boolean next=touched;
-      if(current.optBoolean("ready")&&value.startsWith("ok:")){boolean retained=session.pending==held;session.pending=null;finishDesktopImageHost(host);event(serial,"desktopImage",J.obj("productionChooserOpened",chooser[0],"imageMimeAndMultiple",mime[0],"pendingPreserved",retained,"noPhantomUpload",session.attachments.length()==0,"upload",value,"desktop",((GeckoWebView)session.web).desktop));return;}
+      if(current.optBoolean("ready")&&value.startsWith("ok:")){boolean retained=session.pending==held;session.pending=null;GeckoWebView actual=(GeckoWebView)session.web;JSONObject result=J.obj("productionChooserOpened",chooser[0],"imageMimeAndMultiple",mime[0],"pendingPreserved",retained,"noPhantomUpload",session.attachments.length()==0,"upload",value,"desktop",actual.desktop,"nativePrivacyReady",actual.privacyReady,"nativePrivacyLevel",actual.protectionLevel,"nativeFingerprintingProtected",actual.fingerprintingProtected,"photoEvidence",current.optJSONObject("photoEvidence"));finishDesktopImageHost(host);event(serial,"desktopImage",result);return;}
+      if(value.startsWith("error:")){session.pending=null;finishDesktopImageHost(host);event(serial,"error",J.obj("error","independent photo content verification failed","result",raw,"chooser",chooser[0]));return;}
       if(SystemClock.elapsedRealtime()>deadline){session.pending=null;finishDesktopImageHost(host);event(serial,"error",J.obj("error","desktop image chooser/upload failed","result",raw,"chooser",chooser[0]));return;}
       session.handler.postDelayed(()->desktopImageReady(serial,deadline,host,held,chooser,mime,next,target),100);
     });
   }
-  void finishDesktopImageHost(MainActivity host){host.attachments.destroy();if(host.remote.displayContext.getBaseContext()==host)host.remote.setHost(this);}
+  void finishDesktopImageHost(MainActivity host){host.attachments.destroy();if(host.remote.displayContext.getBaseContext()==host)host.remote.setHost(this);if(desktopImagePriorPrivacy>=0){int restore=desktopImagePriorPrivacy;desktopImagePriorPrivacy=-1;session.prefs.edit().putInt("privacyLevel",restore).commit();session.web.configure(true,restore);}}
   void usability(long serial){
     session.reading.configure(false);session.web.configure(false,session.privacy.level());
     session.web.setWebChromeClient(new android.webkit.WebChromeClient(){

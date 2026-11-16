@@ -6,9 +6,11 @@ import pathlib
 import subprocess
 if __package__:
     from .chrome_collapse_contract import verify_auto_collapse
+    from .chrome_collapse_case_storage import load_auto_collapse_cases
     from .ui_visual_contract import verify_captures
 else:
     from chrome_collapse_contract import verify_auto_collapse
+    from chrome_collapse_case_storage import load_auto_collapse_cases
     from ui_visual_contract import verify_captures
 
 BASELINE = '835d59991218eda70c7a4fdd73ea9d7ae6052688'
@@ -46,23 +48,30 @@ def verify_performance_evidence(directory, source):
     assert [row['path'] for row in reload['fixtureRequests']] == ['/c/reload-A', '/c/reload-B', '/c/reload-B']
     assert reload['controlledProxyRoutes'] and all(row['accepted'] and row['host'] == '127.0.0.1' and row['port'] == 8765 for row in reload['controlledProxyRoutes'])
     assert len(chrome['cases']) == 3, 'All compact and large-font cases are required.'
-    if any(case.get('navigationContract') == 2 for case in chrome['cases']):
-        assert all(type(case.get('navigationContract')) is int and case['navigationContract'] == 2 for case in chrome['cases'])
-        assert {(case['viewport'], case['fontScale']) for case in chrome['cases']} == {(360, 1), (412, 1), (360, 2)}
+    versions=[case.get('navigationContract',1) for case in chrome['cases']]
+    assert all(type(v) is int and v in (1,2,3) for v in versions) and len(set(versions)) == 1
+    assert chrome['autoCollapse'].get('navigationContract',1) == versions[0], 'Compact and lifecycle evidence must use the same actual navigation contract.'
+    if versions[0] in (2,3):
+        assert {(case['viewport'],case['fontScale']) for case in chrome['cases']} == {(360,1),(412,1),(360,2)}
     for case in chrome['cases']:
-        if case.get('navigationContract') == 2 and type(case.get('navigationContract')) is int:
+        if case.get('navigationContract') == 3:
+            if __package__:
+                from .compact_chrome_layout_v3 import verify_case
+            else:
+                from compact_chrome_layout_v3 import verify_case
+            verify_case(case,require_browser_chrome=True)
+        elif case.get('navigationContract') == 2:
             if __package__:
                 from .compact_chrome_layout_v2 import verify_case
             else:
                 from compact_chrome_layout_v2 import verify_case
-            verify_case(case, require_browser_chrome=True)
+            verify_case(case,require_browser_chrome=True)
         else:
-            assert 'navigationContract' not in case or type(case['navigationContract']) is int and case['navigationContract'] == 1
             assert case['readOnlyStatus'] and len(case['actualAndroidTaps']) == 3
-            assert {tap['control'] for tap in case['actualAndroidTaps']} == {'drawer', 'environment', 'more'}
-        layout = case['layout']
+            assert {tap['control'] for tap in case['actualAndroidTaps']} == {'drawer','environment','more'}
+        layout=case['layout']
         assert layout['geckoOnly'] and layout['pageMode'] and layout['noNativeChat'] and layout['systemWebViews'] == 0
-        assert [control['name'] for control in layout['controls']] == ['drawer', 'environment', 'more']
+        assert [control['name'] for control in layout['controls']] == (['environment'] if versions[0]==3 else ['drawer','environment','more'])
         perf = case['performance']
         for phase in ('burst', 'background', 'periodic'):
             assert all(perf[phase][key] == 0 for key in MAIN_IO), (phase, perf[phase])
@@ -84,7 +93,8 @@ def verify_performance_evidence(directory, source):
     assert build['coreSourceCommit'] == source and build['comparisonMode'] == 'current-only'
     assert build['historicalUIRebuilt'] is False and build['changedForBaseline'] == []
     assert len(build['currentSha256']) == 64
-    auto_collapse = verify_auto_collapse(chrome['autoCollapse'], source, build['currentSha256'])
+    original_auto_collapse = load_auto_collapse_cases(chrome['autoCollapse'], directory, source, build['currentSha256'])
+    auto_collapse = verify_auto_collapse(original_auto_collapse, source, build['currentSha256'])
     assert visual['autoCollapse'] == chrome['autoCollapse']
 
     gecko = android('gecko-performance-results.json')

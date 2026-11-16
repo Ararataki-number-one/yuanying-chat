@@ -204,6 +204,7 @@ python tests/chromium-fingerprint-activity-host/run.py \
 python3 tools/browser/check_maintenance.py \
   --java-home /path/to/jdk17 \
   --json-jar /path/to/json-20250517.jar \
+  --android-json-jar /path/to/android-json-0.0.20131108.vaadin1.jar \
   --output work/browser-maintenance
 ```
 

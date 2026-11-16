@@ -1,0 +1,353 @@
+name: NONQUALIFYING photo and complete files diagnostics
+'on':
+  push:
+    branches:
+    - diagnostic/photo-files-2.1.6
+  workflow_dispatch: null
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: photo-files-diagnostic-${{ github.ref }}
+  cancel-in-progress: true
+env:
+  ANDROID_CAPACITY_PREFLIGHT: |
+    import json,os,pathlib,re,subprocess,sys,time
+    from fractions import Fraction
+    def require(value,message):
+        if not value:raise ValueError(message)
+    mode,scope=sys.argv[1:]
+    require(mode in ('host','guest') and re.fullmatch('[a-z0-9-]+',scope),'Invalid preflight scope')
+    job=os.environ['GITHUB_JOB'];require(re.fullmatch('[a-z0-9_-]+',job),'Invalid actual job')
+    target=pathlib.Path('work/gecko-integration')/('android-capacity-'+job+'-'+scope+'.json')
+    record={'schema':1,'status':'failed','requestedGuestCpus':4,'scope':scope,'job':job,'mode':mode}
+    passed=False
+    try:
+        identity={'sourceCommit':subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip(),
+                  'sourceTree':subprocess.check_output(['git','rev-parse','HEAD^{tree}'],text=True).strip(),
+                  'runId':os.environ['GITHUB_RUN_ID'],'runAttempt':os.environ['GITHUB_RUN_ATTEMPT']}
+        record.update(identity)
+        require(identity['sourceCommit']==os.environ['GITHUB_SHA'] and re.fullmatch('[0-9a-f]{40}',identity['sourceTree']),'Actual source identity differs')
+        require(identity['runId'].isdigit() and identity['runAttempt'].isdigit(),'Actual CI run identity required')
+        if mode=='host':
+            require(not target.exists() and not target.is_symlink(),'Repeated capacity preflight')
+            affinity=sorted(os.sched_getaffinity(0))
+            nproc=int(subprocess.check_output(['nproc'],text=True,timeout=5).strip())
+            require(affinity and nproc>0,'Actual host CPU counts unavailable')
+            record['host']={'affinityCpus':affinity,'nproc':nproc,'observedAtMonotonicNs':time.monotonic_ns()}
+            unified=[line.split(':',2)[2] for line in pathlib.Path('/proc/self/cgroup').read_text().splitlines() if line.startswith('0::')]
+            mounts=[line for line in pathlib.Path('/proc/self/mountinfo').read_text().splitlines() if ' - cgroup2 ' in line]
+            record['host'].update(unifiedCgroups=unified,cgroup2Mounts=mounts)
+            require(len(unified)==1 and len(mounts)==1,'Unambiguous cgroup v2 observation required')
+            fields=mounts[0].split(' - ',1)[0].split();mount=pathlib.Path(fields[4]).resolve()
+            current=pathlib.PurePosixPath(unified[0]);root=pathlib.PurePosixPath(fields[3])
+            require(current.is_absolute() and '..' not in current.parts,'Unsupported actual cgroup path')
+            relative=[current.relative_to('/')]
+            if current.is_relative_to(root):relative.append(current.relative_to(root))
+            candidates={(mount/path).resolve() for path in relative}
+            candidates={path for path in candidates if path.is_relative_to(mount) and (path/'cgroup.procs').is_file()}
+            require(len(candidates)==1,'Current cgroup cannot be resolved unambiguously')
+            node=candidates.pop();limits=[];capacity=Fraction(min(len(affinity),nproc));observed=0
+            record['host']['cpuMax']=limits
+            while True:
+                path=node/'cpu.max'
+                try:
+                    raw=path.read_text().strip();limits.append({'path':str(path),'raw':raw});quota,period=raw.split()
+                    require(period.isdigit() and int(period)>0 and (quota=='max' or (quota.isdigit() and int(quota)>0)),'Invalid actual cpu.max')
+                    if quota!='max':capacity=min(capacity,Fraction(int(quota),int(period)))
+                    observed+=1
+                except FileNotFoundError:limits.append({'path':str(path),'raw':None,'interfacePresent':False})
+                if node==mount:break
+                node=node.parent
+            record['host'].update(unifiedCgroup=unified[0],cgroup2Mount=mounts[0],cpuMax=limits,
+                                  visibleCapacityCeilingNumerator=capacity.numerator,visibleCapacityCeilingDenominator=capacity.denominator,
+                                  capacityScope='Visible affinity/nproc/cgroup limits only; not idle CPUs or invisible outer quotas')
+            require(observed>0,'Actual cgroup CPU quota observation unavailable')
+            require(capacity>=4,'Host effective CPU capacity is below four; no fallback')
+        else:
+            previous=json.loads(target.read_text())
+            require(previous['status']=='passed' and previous['scope']==scope and previous['job']==job,'Passed host observation missing')
+            require(all(previous.get(key)==value for key,value in identity.items()),'Capacity source/run differs')
+            record=previous;record['mode']='guest'
+            raw=subprocess.check_output(['adb','-s','emulator-5554','shell','getconf','_NPROCESSORS_ONLN'],text=True,timeout=8).strip()
+            record['guest']={'serial':'emulator-5554','getconf':'_NPROCESSORS_ONLN','raw':raw,
+                             'observedAtMonotonicNs':time.monotonic_ns()}
+            require(raw=='4','Actual native-ADB guest online CPU count is not four')
+            record['guest']['onlineCpus']=4
+        record['status']='passed';passed=True
+    except BaseException as error:
+        record.update(status='failed',errorType=type(error).__name__,error=str(error))
+    if mode=='host' and (target.exists() or target.is_symlink()):
+        print('ANDROID_CAPACITY_PREFLIGHT '+json.dumps(record,sort_keys=True),flush=True);sys.exit(1)
+    target.parent.mkdir(parents=True,exist_ok=True)
+    temporary=target.with_suffix('.partial');temporary.write_text(json.dumps(record,sort_keys=True)+'\n');temporary.replace(target)
+    print('ANDROID_CAPACITY_PREFLIGHT '+json.dumps(record,sort_keys=True),flush=True)
+    sys.exit(0 if passed else 1)
+  GIT_NO_LAZY_FETCH: '1'
+jobs:
+  android:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        phase:
+        - files
+    steps:
+    - name: Check out the actual diagnostic source
+      uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      with:
+        ref: ${{ github.sha }}
+        fetch-depth: 2
+        persist-credentials: false
+    - name: Bind independent diagnostic source and run identity
+      shell: bash
+      run: |
+        set -euo pipefail
+        python3 - <<'PYCODE'
+        import hashlib,json,os,pathlib,re,subprocess,time
+        root=pathlib.Path.cwd()
+        def git(*parts):return subprocess.check_output(['git',*parts],text=True).strip()
+        source,tree=git('rev-parse','HEAD'),git('rev-parse','HEAD^{tree}')
+        assert source==os.environ['GITHUB_SHA'] and not git('status','--porcelain'), 'Clean actual diagnostic source required'
+        assert all(re.fullmatch('[0-9a-f]{40}',value) for value in (source,tree))
+        for key in ('GITHUB_RUN_ID','GITHUB_RUN_ATTEMPT'):assert re.fullmatch('[1-9][0-9]*',os.environ[key])
+        assert os.environ['GITHUB_WORKFLOW']=='NONQUALIFYING photo and complete files diagnostics'
+        assert os.environ['GITHUB_JOB']=='android'
+        assert os.environ['GITHUB_EVENT_NAME'] in ('push','workflow_dispatch')
+        output=root/'work/photo-files-diagnostic';output.mkdir(parents=True,exist_ok=False)
+        inputs=['.github/workflows/photo-files-diagnostic.yml','tests/gecko/run_device.py','tests/gecko/run_update_route.py','tests/gecko/GeckoIntegrationTestActivity.java','tools/gecko/photo_upload_contract.py']
+        value=dict(schema=1,status='started',diagnosticOnly=True,releaseAcceptance=False,allReleasePhasesComplete=False,
+         sourceCommit=source,sourceTree=tree,runId=os.environ['GITHUB_RUN_ID'],runAttempt=os.environ['GITHUB_RUN_ATTEMPT'],
+         workflow=os.environ['GITHUB_WORKFLOW'],ref=os.environ['GITHUB_REF'],job=os.environ['GITHUB_JOB'],event=os.environ['GITHUB_EVENT_NAME'],
+         originalFilesWorkload=True,startedAtUnixNs=time.time_ns(),sourceFiles={name:hashlib.sha256((root/name).read_bytes()).hexdigest() for name in inputs},
+         scope='Independent same-source compilation and the complete original files workload only; never a full release qualification or publication.')
+        (output/'diagnostic-scope.json').write_text(json.dumps(value,indent=2)+'\n')
+        PYCODE
+    - name: Verify the pinned production network core
+      shell: bash
+      run: |
+        python3 tools/build-mihomo.py --verify
+    - name: Prepare locked toolchain
+      shell: bash
+      run: |
+        set -euo pipefail
+        echo "JAVA_HOME=$JAVA_HOME_17_X64" >> "$GITHUB_ENV"
+        echo "$JAVA_HOME_17_X64/bin" >> "$GITHUB_PATH"
+        echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
+        mkdir -p work/gecko-integration
+        "$JAVA_HOME_17_X64/bin/keytool" -genkeypair -keystore work/gecko-integration/integration-test.jks -alias androiddebugkey -storepass android -keypass android -dname CN=SyntheticIntegration -keyalg RSA -validity 2
+        if ! curl -fsSL --retry 3 https://services.gradle.org/distributions/gradle-9.8.0-bin.zip -o work/gecko-integration/gradle.zip; then
+          curl -fLsS --retry 2 --max-time 240 -H 'Accept: application/octet-stream' -H 'X-GitHub-Api-Version: 2022-11-28' https://api.github.com/repos/gradle/gradle-distributions/releases/assets/586068844 -o work/gecko-integration/gradle.zip
+        fi
+        test "$(stat -c %s work/gecko-integration/gradle.zip)" = 151611662
+        echo 'bafd5ce9cfaea0fbccfdc8439a1ac42fbd4cd9c89dc9a988228d8a2639a58e6c  work/gecko-integration/gradle.zip' | sha256sum -c -
+        unzip -q work/gecko-integration/gradle.zip -d work/gecko-integration/gradle
+        curl -fsSL --retry 3 https://maven.mozilla.org/maven2/org/mozilla/geckoview/geckoview/157.0.20261005135250/geckoview-157.0.20261005135250.aar -o work/gecko-integration/geckoview.aar
+        echo '15f1edf3c58abcdaf2783f299b8c19c3a36272d348969106a9009671fef8d268  work/gecko-integration/geckoview.aar' | sha256sum -c -
+        curl -fsSL --retry 3 https://maven.mozilla.org/maven2/org/mozilla/geckoview/geckoview/157.0.20261005135250/geckoview-157.0.20261005135250.pom -o work/gecko-integration/geckoview.pom
+        curl -fsSL --retry 3 https://maven.mozilla.org/maven2/org/mozilla/geckoview/geckoview/157.0.20261005135250/geckoview-157.0.20261005135250-sources.jar -o work/gecko-integration/geckoview-sources.jar
+        python3 tools/gecko/verify_official_sdk.py --aar work/gecko-integration/geckoview.aar --pom work/gecko-integration/geckoview.pom --sources work/gecko-integration/geckoview-sources.jar --upstream-only
+        yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
+        "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'platforms;android-37.1' 'build-tools;37.0.0'
+        export JAVA_HOME="$JAVA_HOME_17_X64"
+        python3 tools/gecko/run_key_order_host.py | tee work/gecko-integration/key-order-host-results.json
+        python3 tools/gecko/run_reply_handoff_host.py --upstream-sources work/gecko-integration/geckoview-sources.jar | tee work/gecko-integration/reply-handoff-host-results.json
+        python3 tools/gecko/caret_workflow.py prepare --work work/gecko-integration
+    - name: Compile release and native regression package
+      run: |
+        set -euo pipefail
+        python3 tools/gecko/generate_appearance_fixture.py
+        work/gecko-integration/gradle/gradle-9.8.0/bin/gradle :app:assembleRelease :app:assembleIntegration :app:writeCaretResolvedArtifacts -PtestSigningKey="$PWD/work/gecko-integration/integration-test.jks" --console=plain 2>&1 | tee work/gecko-integration/build.log
+        python3 tools/gecko/verify_official_sdk.py --aar work/gecko-integration/geckoview.aar --pom work/gecko-integration/geckoview.pom --sources work/gecko-integration/geckoview-sources.jar --upstream-only | tee work/gecko-integration/official-sdk-verification.json
+        python3 tools/gecko/caret_workflow.py record --work work/gecko-integration
+        python3 tools/gecko/check_safe_idle_trust.py --integration-apk app/build/outputs/apk/integration/app-x86_64-integration.apk | tee work/gecko-integration/network-safe-idle-trust-host-results.json
+        python3 - <<'PYCODE'
+        import json,pathlib,subprocess
+        path=pathlib.Path('work/gecko-integration/network-safe-idle-trust-host-results.json')
+        report=json.loads(path.read_text()); report['sourceCommit']=subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip()
+        path.write_text(json.dumps(report,indent=2)+'\n')
+        PYCODE
+    - name: Require exact integration source stamps and release isolation
+      shell: bash
+      run: |
+        set -euo pipefail
+        python3 - <<'PYCODE'
+        import importlib.util,json,pathlib,re,subprocess,zipfile
+        root=pathlib.Path.cwd()
+        spec=importlib.util.spec_from_file_location('profile_runner',root/'tests/gecko/run_profile_features.py')
+        runner=importlib.util.module_from_spec(spec);spec.loader.exec_module(runner)
+        source=subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip()
+        tree=subprocess.check_output(['git','rev-parse','HEAD^{tree}'],text=True).strip()
+        settings=(root/'app/build.gradle').read_text()
+        version=re.search(r"versionName '([0-9]+\.[0-9]+\.[0-9]+)'",settings).group(1)
+        code=int(re.search(r'versionCode ([0-9]+)',settings).group(1))
+        integration=sorted((root/'app/build/outputs/apk/integration').glob('app-*-integration.apk'))
+        release=sorted((root/'app/build/outputs/apk/release').glob('app-*-release-unsigned.apk'))
+        assert len(integration)==2 and len(release)==2,'Both pinned ABI variants must be built'
+        identities=[runner.expected_build(apk,source,tree,version,code) for apk in integration]
+        for apk in release:
+            with zipfile.ZipFile(apk) as archive:
+                assert runner.STAMP not in archive.namelist(),'Integration source stamp leaked into release APK'
+        (root/'work/gecko-integration/integration-stamps.json').write_text(json.dumps({'status':'passed','actualAndroidExecution':False,'sourceCommit':source,'scope':'Built APK bytes and metadata only; not installed or executed','integration':identities},indent=2)+'\n')
+        PYCODE
+    - name: Prepare synthetic signed upgrade archives
+      shell: bash
+      run: |
+        set -euo pipefail
+        exec > >(tee work/gecko-integration/update-fixture-preparation.log) 2>&1
+        tools="$ANDROID_HOME/build-tools/37.0.0"
+        python3 - <<'PYCODE'
+        import pathlib,re
+        code=int(re.search(r'versionCode ([0-9]+)',pathlib.Path('app/build.gradle').read_text()).group(1))+1
+        text=pathlib.Path('tests/gecko/update-fixture.xml').read_text().replace('android:versionCode="1"',f'android:versionCode="{code}"')
+        pathlib.Path('work/gecko-integration/update-fixture.xml').write_text(text)
+        PYCODE
+        "$tools/aapt2" link -I "$ANDROID_HOME/platforms/android-37.1/android.jar" --manifest work/gecko-integration/update-fixture.xml -o work/gecko-integration/update-fixture-unsigned.apk
+        python3 - <<'PYCODE'
+        import zipfile
+        with zipfile.ZipFile('work/gecko-integration/update-fixture-unsigned.apk','a',compression=zipfile.ZIP_STORED) as archive:
+            archive.writestr('assets/resume-fixture.bin', bytes(range(256)) * 4096)
+        PYCODE
+        "$tools/apksigner" sign --ks work/gecko-integration/integration-test.jks --ks-key-alias androiddebugkey --ks-pass pass:android --key-pass pass:android --out work/gecko-integration/update-fixture.apk work/gecko-integration/update-fixture-unsigned.apk
+        keytool -genkeypair -keystore work/gecko-integration/update-wrong-key.jks -alias fixture -storepass android -keypass android -dname CN=Synthetic -keyalg RSA -validity 2
+        "$tools/apksigner" sign --ks work/gecko-integration/update-wrong-key.jks --ks-key-alias fixture --ks-pass pass:android --key-pass pass:android --out work/gecko-integration/update-wrong-signer.apk work/gecko-integration/update-fixture-unsigned.apk
+    - name: Prepare Android runtime only
+      shell: bash
+      run: |
+        set -euo pipefail
+        echo "JAVA_HOME=$JAVA_HOME_17_X64" >> "$GITHUB_ENV"
+        echo "$JAVA_HOME_17_X64/bin" >> "$GITHUB_PATH"
+        echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
+        yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
+        "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'platforms;android-37.1' 'build-tools;37.0.0'
+        python3 tools/gecko/prepare_android_image.py --component emulator --sdk-root "$ANDROID_HOME" --cache work/android-image --report work/gecko-integration/android-emulator-package-results.json
+        python3 tools/gecko/prepare_android_image.py --sdk-root "$ANDROID_HOME" --cache work/android-image --report work/gecko-integration/android-system-image-results.json
+    - name: Boot Android for native acceptance
+      id: android_boot
+      shell: bash
+      run: |
+        set -euo pipefail
+        exec > >(tee work/gecko-integration/native-test.log) 2>&1
+        export ANDROID_AVD_HOME="$PWD/work/gecko-integration/avd"
+        export ANDROID_USER_HOME="$PWD/work/gecko-integration/android-user"
+        export ANDROID_EMULATOR_HOME="$PWD/work/gecko-integration/emulator-home"
+        mkdir -p "$ANDROID_AVD_HOME" "$ANDROID_USER_HOME" "$ANDROID_EMULATOR_HOME"
+        sudo chmod a+rw /dev/kvm
+        echo no | "$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager" create avd --force -n geckoproduction -p "$ANDROID_AVD_HOME/geckoproduction.avd" -k 'system-images;android-35;google_apis;x86_64'
+        python3 tools/gecko/prepare_platform_tools.py --sdk-root "$ANDROID_HOME" --cache work/android-image --report work/gecko-integration/android-platform-tools-results.json
+        adb start-server
+        python3 -c "$ANDROID_CAPACITY_PREFLIGHT" host '${{ matrix.phase }}'
+        "$ANDROID_HOME/emulator/emulator" -avd geckoproduction -no-window -no-audio -no-snapshot -no-boot-anim -no-metrics -accel on -port 5556 -gpu swiftshader -memory 3072 -cores 4 -qemu -monitor "unix:$PWD/work/gecko-integration/qemu-monitor.sock,server=on,wait=off" > work/gecko-integration/emulator.log 2>&1 &
+        timeout 180 adb -s emulator-5556 wait-for-device
+        timeout 300 bash -c 'until [ "$(adb -s emulator-5556 shell getprop sys.boot_completed | tr -d "\r")" = "1" ]; do sleep 2; done'
+        adb -s emulator-5556 shell input keyevent 82
+        adb -s emulator-5556 install app/build/outputs/apk/integration/app-x86_64-integration.apk
+        python3 tools/gecko/prepare_cellular_adb.py --phase native --adb "$(command -v adb)" --apk app/build/outputs/apk/integration/app-x86_64-integration.apk --monitor "$PWD/work/gecko-integration/qemu-monitor.sock"
+        echo "ANDROID_SERIAL=emulator-5554" >> "$GITHUB_ENV"
+        python3 tools/gecko/prepare_cellular_adb.py --phase normal --adb "$(command -v adb)" --serial emulator-5554 --apk app/build/outputs/apk/integration/app-x86_64-integration.apk
+        python3 tools/gecko/isolate_emulator_background.py --adb "$(command -v adb)" --serial emulator-5554 --apk app/build/outputs/apk/integration/app-x86_64-integration.apk
+        python3 -c "$ANDROID_CAPACITY_PREFLIGHT" guest '${{ matrix.phase }}'
+    - name: Record bounded native setup endpoint diagnostics
+      if: always()
+      shell: bash
+      env:
+        POCKET_NATIVE_SETUP_PHASE: ${{ matrix.phase }}
+        POCKET_NATIVE_SETUP_BOOT_OUTCOME: ${{ steps.android_boot.outcome }}
+      run: python3 tests/gecko/print_native_setup11_diagnostic.py
+    - name: Verify production environments and file transfers
+      shell: bash
+      run: |
+        set -euo pipefail
+        exec > >(tee -a work/gecko-integration/native-test.log) 2>&1
+        echo "Starting phase: Verify production environments and file transfers"
+        checks_failed=0
+        adb shell am force-stop local.pocketchat.test
+        adb shell pm clear local.pocketchat.test
+        if ! python3 tests/gecko/run_device.py --adb "$(command -v adb)" --serial emulator-5554; then
+          checks_failed=1
+        fi
+        adb exec-out screencap -p > work/gecko-integration/device-screen.png
+        if ! python3 tests/gecko/run_update_route.py --adb "$(command -v adb)" --serial emulator-5554; then
+          checks_failed=1
+        fi
+        if [ "$checks_failed" -ne 0 ]; then exit 1; fi
+      if: ${{ matrix.phase == 'files' }}
+      id: files
+    - name: Preserve emulator and runner health
+      if: always()
+      shell: bash
+      run: |
+        mkdir -p work/gecko-integration
+        {
+          date -u
+          free -m
+          ps -eo pid,comm,rss --sort=-rss | sed -n '1,20p'
+          if [ -r /sys/fs/cgroup/memory.events ]; then cat /sys/fs/cgroup/memory.events; fi
+        } > work/gecko-integration/runner-health.txt
+    - name: Record original diagnostic outcomes without qualifying a release
+      if: always()
+      shell: bash
+      env:
+        DIAGNOSTIC_JOB_STATUS: ${{ job.status }}
+        FILES_STEP_OUTCOME: ${{ steps.files.outcome }}
+      run: |
+        set -euo pipefail
+        python3 - <<'PYCODE'
+        import hashlib,json,os,pathlib,subprocess,time
+        root=pathlib.Path.cwd();path=root/'work/photo-files-diagnostic/diagnostic-scope.json'
+        value=json.loads(path.read_bytes())
+        source=subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip()
+        tree=subprocess.check_output(['git','rev-parse','HEAD^{tree}'],text=True).strip()
+        assert value['sourceCommit']==source==os.environ['GITHUB_SHA'] and value['sourceTree']==tree
+        for saved,current in [('runId','GITHUB_RUN_ID'),('runAttempt','GITHUB_RUN_ATTEMPT'),('workflow','GITHUB_WORKFLOW'),('ref','GITHUB_REF'),('job','GITHUB_JOB')]:assert value[saved]==os.environ[current]
+        assert value['diagnosticOnly'] is True and value['releaseAcceptance'] is False and value['allReleasePhasesComplete'] is False
+        assert all(hashlib.sha256((root/name).read_bytes()).hexdigest()==digest for name,digest in value['sourceFiles'].items())
+        value.update(status='completed',jobStatus=os.environ['DIAGNOSTIC_JOB_STATUS'],filesStepOutcome=os.environ['FILES_STEP_OUTCOME'],completedAtUnixNs=time.time_ns())
+        assert value['jobStatus'] in ('success','failure','cancelled') and value['filesStepOutcome'] in ('success','failure','cancelled','skipped','')
+        value['originalFilesStepPassed']=value['filesStepOutcome']=='success'
+        files=[]
+        for pattern in ('photo-upload-*.png','photo-upload-results.json','device-results.json','device-native-events.txt','update-route-results.json','sdk-build-receipt.json','caret-apk-build-receipt.json','integration-stamps.json'):
+         for item in sorted((root/'work/gecko-integration').glob(pattern)):
+          assert item.is_file() and not item.is_symlink()
+          raw=item.read_bytes();files.append(dict(path=item.relative_to(root).as_posix(),bytes=len(raw),sha256=hashlib.sha256(raw).hexdigest()))
+        value['retainedOriginalFiles']=files
+        path.write_text(json.dumps(value,indent=2)+'\n')
+        PYCODE
+    - name: Retain original photos, native events and same-source SDK evidence
+      if: always()
+      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+      with:
+        name: photo-files-diagnostic-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+        if-no-files-found: error
+        retention-days: 14
+        path: |
+          work/photo-files-diagnostic/*.json
+          work/gecko-integration/*.json
+          work/gecko-integration/*.jsonl
+          work/gecko-integration/*.png
+          work/gecko-integration/*.xml
+          work/gecko-integration/*.txt
+          work/gecko-integration/*.log
+          work/gecko-integration/*.raw
+          work/native-caret-sdk/derived-sdk-compilation.json
+          work/native-caret-sdk/compile/*.log
+    - name: Retain the actual diagnostic APK bytes
+      if: always()
+      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+      with:
+        name: photo-files-diagnostic-apks-${{ github.run_id }}-${{ github.run_attempt }}
+        if-no-files-found: warn
+        retention-days: 7
+        compression-level: 0
+        path: |
+          app/build/outputs/apk/integration/app-x86_64-integration.apk
+          app/build/outputs/apk/release/app-arm64-v8a-release-unsigned.apk
+    - name: Stop only the disposable diagnostic emulator
+      if: always()
+      shell: bash
+      run: |
+        if command -v adb >/dev/null 2>&1; then
+          timeout 10 adb -s emulator-5554 emu kill || true
+          timeout 10 adb -s emulator-5556 emu kill || true
+        fi

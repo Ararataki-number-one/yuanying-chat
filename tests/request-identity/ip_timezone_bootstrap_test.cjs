@@ -7,7 +7,7 @@
 const test=require('node:test'),assert=require('node:assert/strict');
 const fs=require('node:fs'),path=require('node:path'),vm=require('node:vm'),crypto=require('node:crypto');
 const ROOT=path.resolve(__dirname,'../..');
-const FILES=['app/src/main/assets/gecko/ip-timezone-bootstrap.js','app/src/main/assets/gecko/request-headers.js','app/src/main/assets/gecko/request-identity-background.js','app/src/main/assets/gecko/native-timezone-bridge.js','app/src/main/assets/gecko/background.js','app/src/main/assets/gecko/manifest.json','tests/request-identity/ip_timezone_bootstrap_test.cjs'];
+const FILES=['app/src/main/assets/gecko/ip-timezone-bootstrap.js','app/src/main/assets/gecko/request-headers.js','app/src/main/assets/gecko/request-identity-background.js','app/src/main/assets/gecko/native-timezone-bridge.js','app/src/main/assets/gecko/native-photo-bridge.js','app/src/main/assets/gecko/background.js','app/src/main/assets/gecko/manifest.json','tests/request-identity/ip_timezone_bootstrap_test.cjs'];
 const hashes=Object.fromEntries(FILES.map(name=>[name,crypto.createHash('sha256').update(fs.readFileSync(path.join(ROOT,name))).digest('hex')]));
 const SOURCE='https://ipwho.is/?fields=success,ip,timezone.id',OWN='moz-extension://owned-background/';
 const TOKEN='a'.repeat(64),STAMP='b'.repeat(64),BODY=' {"success":true,"ip":"8.8.8.8","timezone":{"id":"Asia/Kathmandu"}}\n';
@@ -48,7 +48,7 @@ function harness(options={}){
   vm.runInContext(options.module??MODULE,h.context,{filename:FILES[0]});
   if(options.full){
     const manifest=JSON.parse(fs.readFileSync(path.join(ROOT,'app/src/main/assets/gecko/manifest.json'),'utf8'));
-    assert.deepEqual(manifest.background.scripts,['ip-timezone-bootstrap.js','request-headers.js','request-identity-background.js','native-timezone-bridge.js','background.js']);
+    assert.deepEqual(manifest.background.scripts,['ip-timezone-bootstrap.js','request-headers.js','request-identity-background.js','native-timezone-bridge.js','native-photo-bridge.js','background.js']);
     for(const name of manifest.background.scripts.slice(1))vm.runInContext(fs.readFileSync(path.join(ROOT,'app/src/main/assets/gecko',name),'utf8'),h.context,{filename:name});
   }else h.bootstrap=h.context.PocketIpTimeZoneBootstrap.create({});
   return h;
@@ -114,7 +114,7 @@ test('close removes observers, revokes authorization and cannot lend a late tran
   const {h,transport,result}=held();h.bootstrap.close();h.bootstrap.close();assert.equal(await result,null);assert.equal(h.hooks.onBeforeRequest.listeners.length,0);assert.equal(h.hooks.onBeforeRedirect.listeners.length,0);assert.equal(await h.bootstrap.lookup(lookup()),null);
   const next=h.context.PocketIpTimeZoneBootstrap.create({});assert.equal(await next.lookup(lookup({id:2})),null);assert.equal(h.fetches.length,1);transport.resolve(response());await flush();next.close();assert.equal(h.timers.size,0);
 });
-test('actual five-script startup adds no native message, lookup, content listener or timer',async()=>{
+test('actual complete manifest startup adds no native message, lookup, content listener or timer',async()=>{
   const h=harness({full:true});await flush();assert.equal(h.fetches.length,0);assert.equal(h.nativeCalls.length,0);assert.deepEqual(h.ports[0].sent,[{kind:'requestHeadersPrepared',installed:true}]);assert.equal(h.runtimeMessage.listeners.length,0);assert.equal(h.timers.size,0);assert.equal(h.proxyHooks.length,1);assert.equal(h.hooks.onBeforeSendHeaders.listeners.length,1);
   await Promise.all(h.runtimeMessage.emit(lookup()));assert.equal(h.fetches.length,0);
 });

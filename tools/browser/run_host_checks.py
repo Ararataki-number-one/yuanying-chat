@@ -148,6 +148,20 @@ def main():
     # The complete original 190 commands above retain their order and budget.
     texture_sdk_arguments=(['--sdk-classes',a.gecko_sdk_jar.resolve()] if a.gecko_sdk_jar else [])+(['--sdk-receipt',a.gecko_sdk_receipt.resolve()] if a.gecko_sdk_receipt else [])
     target=out/'gecko-texture-surface.json';add('gecko-texture-surface','tests/gecko-texture-surface-host/run.py',java+['--json-jar',desktop,'--output',target,'--require-sdk']+texture_sdk_arguments,target)
+    # 2.1.6 adds content-preserving photo uploads and the actual bottom toolbar.
+    # The complete prior 191 commands and the per-child deadline stay intact.
+    add('bottom-browser-toolbar','tests/browser_bottom_toolbar_test.py')
+    add('browser-workspace-capture','tests/browser_workspace_capture_contract_test.py')
+    add('browser-navigation-v3','tests/profile_navigation_v3_test.py')
+    add('browser-navigation-source-history','tests/profile_navigation_v3_source_history_test.py')
+    add('photo-upload-content','tests/gecko_photo_upload_contract_test.py')
+    add('gecko-photo-picker-permission','tests/gecko_photo_permission_test.py')
+    add('gecko-upload-file-integrity','tests/gecko_upload_files_test.py')
+    cases.append(('gecko-native-photo-permission',['node','--test','tests/request-identity/native_photo_permission_test.cjs'],None))
+    add('gecko-photo-native-tap','tests/gecko_photo_tap_test.py')
+    # Keep the original 200 commands and deadlines; verify the bounded archive
+    # independently before its complete device evidence is published.
+    add('chrome-collapse-archive','tests/profile_chrome_collapse_archive_test.py')
     names=subprocess.check_output(['git','ls-files','--cached','--others','--exclude-standard','app/src/main/java','app/src/main/assets','tests','tools/browser','tools/gecko','.github/workflows/browser-2_1-acceptance.yml'],cwd=ROOT,text=True).splitlines()
     files=[ROOT/name for name in sorted(set(names)) if (ROOT/name).is_file()]
     hashes={str(path.relative_to(ROOT)):hashlib.sha256(path.read_bytes()).hexdigest() for path in files}

@@ -93,9 +93,102 @@
   const canvasGetter = Context && descriptor(Context.prototype, 'canvas');
   const widthGetter = Canvas && descriptor(Canvas.prototype, 'width'), heightGetter = Canvas && descriptor(Canvas.prototype, 'height');
   const canvases = new WeakMap();
+  let photoCanvases = null;
   function width(canvas) { return apply(widthGetter.get, canvas, []); }
   function height(canvas) { return apply(heightGetter.get, canvas, []); }
   function canvasOf(context) { return canvasGetter && canvasGetter.get ? apply(canvasGetter.get, context, []) : context.canvas; }
+  function selectedPhotoCanvases() {
+    // Preserve real file-selection image processing without exempting ordinary
+    // drawing/fingerprinting canvases. This is document-local, not a site allow.
+    const Input=g.HTMLInputElement, Image=g.HTMLImageElement, Reader=g.FileReader, Blob=g.Blob;
+    const draw=Context.prototype.drawImage, createBitmap=g.createImageBitmap;
+    const filesGetter=Input&&descriptor(Input.prototype,'files')?.get;
+    const fileItem=g.FileList?.prototype.item, fileLength=g.FileList&&descriptor(g.FileList.prototype,'length')?.get;
+    const typeGetter=Blob&&descriptor(Blob.prototype,'type')?.get;
+    const sourceGetter=Image&&descriptor(Image.prototype,'currentSrc')?.get;
+    const inputType=Input&&descriptor(Input.prototype,'type')?.get;
+    const readerResult=Reader&&descriptor(Reader.prototype,'result')?.get;
+    const readData=Reader&&Reader.prototype.readAsDataURL;
+    const add=g.EventTarget?.prototype.addEventListener, remove=g.EventTarget?.prototype.removeEventListener;
+    const objectURL=g.URL?.createObjectURL, then=g.Promise?.prototype.then;
+    const filter=descriptor(Context.prototype,'filter')?.get, shadow=descriptor(Context.prototype,'shadowColor')?.get;
+    if(!draw||!filesGetter||!fileItem||!fileLength||!typeGetter||!sourceGetter||!inputType||!readerResult||!readData||!add||!remove||!objectURL||!then||!filter||!shadow)return null;
+    let files=new WeakSet(), bitmaps=new WeakSet(), states=new WeakMap(), urls=new Map(), dataURLs=new Set(), dataBytes=0, generation=0, live=true;
+    const raster=new Set(['image/png','image/jpeg','image/webp','image/gif','image/bmp','image/avif','image/heic','image/heif','image/tiff']);
+    const state=canvas=>{
+      const w=width(canvas),h=height(canvas);let value=states.get(canvas);
+      if(!value||value.width!==w||value.height!==h){value={width:w,height:h,kind:'blank',clip:false};states.set(canvas,value);}
+      return value;
+    };
+    const imageOnly=canvas=>live&&canvases.has(canvas)&&state(canvas).kind==='photo';
+    const selectedSource=source=>{
+      if(!live||!source)return false;
+      if(bitmaps.has(source)||files.has(source))return true;
+      if(canvases.has(source))return imageOnly(source);
+      try{const url=apply(sourceGetter,source,[]);return urls.has(url)||dataURLs.has(url);}catch(_){return false;}
+    };
+    apply(add,g.document,['change',event=>{
+      if(!live||event.isTrusted!==true)return;
+      try{
+        const input=event.target;if(apply(inputType,input,[])!=='file')return;
+        const chosen=apply(filesGetter,input,[]);
+        for(let i=0;i<Math.min(apply(fileLength,chosen,[]),32);i++){
+          const file=apply(fileItem,chosen,[i]);if(file&&raster.has(apply(typeGetter,file,[])))files.add(file);
+        }
+      }catch(_){}
+    },true]);
+    apply(add,g,['pagehide',()=>{live=false;generation++;files=new WeakSet();bitmaps=new WeakSet();states=new WeakMap();urls.clear();dataURLs.clear();dataBytes=0;}]);
+    apply(add,g,['pageshow',()=>{live=true;}]);
+    replace(g.URL,'createObjectURL',function(blob){
+      const url=apply(objectURL,this,arguments);
+      if(live&&files.has(blob)){if(urls.size>=128)urls.delete(urls.keys().next().value);urls.set(url,true);}
+      return url;
+    });
+    replace(Reader.prototype,'readAsDataURL',function(blob){
+      if(!live||!files.has(blob))return apply(readData,this,arguments);
+      const reader=this,selectedGeneration=generation,onload=()=>{try{
+        const url=apply(readerResult,reader,[]);
+        if(!live||selectedGeneration!==generation||typeof url!=='string'||url.length>33554432)return;
+        while(dataURLs.size&&(dataURLs.size>=8||dataBytes+url.length>33554432)){
+          const old=dataURLs.values().next().value;dataURLs.delete(old);dataBytes-=old.length;
+        }
+        if(!dataURLs.has(url)){dataURLs.add(url);dataBytes+=url.length;}
+      }catch(_){}};
+      apply(add,reader,['load',onload,{once:true}]);
+      try{return apply(readData,reader,arguments);}catch(error){apply(remove,reader,['load',onload]);throw error;}
+    });
+    if(typeof createBitmap==='function')replace(g,'createImageBitmap',function(source){
+      const selected=selectedSource(source),selectedGeneration=generation,promise=apply(createBitmap,this,arguments);
+      if(!selected)return promise;
+      return apply(then,promise,[bitmap=>{if(live&&selectedGeneration===generation)bitmaps.add(bitmap);return bitmap;}]);
+    });
+    // Unknown drawing calls invalidate the image-only provenance. Read-only and
+    // path/state APIs cannot insert pixels; clip is conservatively unsupported.
+    const harmless=new Set(['constructor','drawImage','getImageData','getTransform','createImageData','createLinearGradient',
+      'createRadialGradient','createConicGradient','createPattern','measureText','isPointInPath','isPointInStroke','getLineDash',
+      'getContextAttributes','isContextLost','save','restore','scale','rotate','translate','transform','setTransform','resetTransform',
+      'setLineDash','beginPath','closePath','moveTo','lineTo','bezierCurveTo','quadraticCurveTo','arc','arcTo','ellipse','rect','roundRect']);
+    for(const name of Object.getOwnPropertyNames(Context.prototype)){
+      const method=descriptor(Context.prototype,name)?.value;
+      if(typeof method!=='function'||harmless.has(name))continue;
+      replace(Context.prototype,name,function(){
+        const canvas=canvasOf(this),value=state(canvas);
+        if(name==='clip')value.clip=true;
+        else if(name!=='clearRect')value.kind='other';
+        const result=apply(method,this,arguments);
+        if(name==='reset'){value.kind='blank';value.clip=false;}
+        return result;
+      });
+    }
+    replace(Context.prototype,'drawImage',function(source){
+      const value=state(canvasOf(this)),args=Array.prototype.slice.call(arguments);
+      const eligible=(value.kind==='blank'||value.kind==='photo')&&!value.clip&&selectedSource(source)&&
+        [3,5,9].includes(args.length)&&args.slice(1).every(number=>typeof number==='number'&&Number.isFinite(number))&&
+        apply(filter,this,[])==='none'&&/^rgba\(0,\s*0,\s*0,\s*0\)$/.test(apply(shadow,this,[]));
+      value.kind='other';const result=apply(draw,this,args);if(eligible)value.kind='photo';return result;
+    });
+    return {track:context=>state(canvasOf(context)),imageOnly};
+  }
   function perturb(image, canvas, x, y) {
     if (!(image.data instanceof Uint8ClampedArray)) throw failure('This canvas pixel format is not covered by the privacy guard');
     const w = width(canvas), hgt = height(canvas);
@@ -123,14 +216,14 @@
       if (!Canvas || !Context || !getImageData || !putImageData || !createCanvas || !widthGetter || !heightGetter) statuses.canvas = 'unsupported';
       else {
         const toDataURL = Canvas.prototype.toDataURL, toBlob = Canvas.prototype.toBlob;
-        function guardedContext() { if (!arguments.length) return apply(getContext, this, arguments); width(this); const args = Array.prototype.slice.call(arguments); args[0] = domString(args[0]); const result = apply(getContext, this, args); if (result && args[0] === '2d') canvases.set(this, result); return result; }
+        function guardedContext() { if (!arguments.length) return apply(getContext, this, arguments); width(this); const args = Array.prototype.slice.call(arguments); args[0] = domString(args[0]); const result = apply(getContext, this, args); if (result && args[0] === '2d') { canvases.set(this, result); photoCanvases?.track(result); } return result; }
         function guardedImageData() {
           const canvas = canvasOf(this);
           if (arguments.length < 4) return apply(getImageData, this, arguments);
           const args = Array.prototype.slice.call(arguments); for (let i = 0; i < 4; i++) args[i] = (+args[i]) | 0;
           const result = apply(getImageData, this, args), w = args[2], h = args[3];
           const x = args[0] + Math.min(0, w), y = args[1] + Math.min(0, h);
-          perturb(result, canvas, x, y); return result;
+          if(!photoCanvases?.imageOnly(canvas))perturb(result, canvas, x, y); return result;
         }
         function tracked(canvas) { return canvases.has(canvas); }
         function exportArguments(args, typeIndex) { const result = Array.prototype.slice.call(args); if (result.length > typeIndex && result[typeIndex] !== undefined) result[typeIndex] = domString(result[typeIndex]); return result; }
@@ -139,16 +232,19 @@
           if (!tracked(this)) return apply(toDataURL, this, arguments);
           const args = exportArguments(arguments, 0);
           if (!width(this) || !height(this)) return apply(toDataURL, this, args);
+          if(photoCanvases?.imageOnly(this))return apply(toDataURL,this,args);
           return apply(toDataURL, cloneWithNoise(this), args);
         }
         function guardedBlob(callback) {
           if (typeof callback !== 'function' || !tracked(this)) return apply(toBlob, this, arguments);
           const args = exportArguments(arguments, 1);
           if (!width(this) || !height(this)) return apply(toBlob, this, args);
+          if(photoCanvases?.imageOnly(this))return apply(toBlob,this,args);
           return apply(toBlob, cloneWithNoise(this), args);
         }
         const ok = replace(Canvas.prototype, 'getContext', guardedContext) && replace(Context.prototype, 'getImageData', guardedImageData) &&
           replace(Canvas.prototype, 'toDataURL', guardedURL) && replace(Canvas.prototype, 'toBlob', guardedBlob);
+        if(ok)photoCanvases=selectedPhotoCanvases();
         installed.canvas = {guardedImageData, guardedURL, guardedBlob, guardedContext}; statuses.canvas = ok ? 'installed' : 'failed';
       }
     } catch (_) { statuses.canvas = 'failed'; }

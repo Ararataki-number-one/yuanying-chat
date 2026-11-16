@@ -342,6 +342,7 @@ lint 没有 error，仍有 **115 条 warning**。与父提交 `815f7fee` 的 114
 python3 tools/browser/check_maintenance.py \
   --java-home /path/to/temurin-17.0.21+9 \
   --json-jar /path/to/json-20250517.jar \
+  --android-json-jar /path/to/android-json-0.0.20131108.vaadin1.jar \
   --android-jar /path/to/android-api-37.1/android.jar \
   --webkit-jar /path/to/webkit-1.14.0/classes.jar \
   --snakeyaml-jar /path/to/snakeyaml-2.3.jar \

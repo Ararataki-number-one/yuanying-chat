@@ -18,14 +18,15 @@ class BrowserFingerprintFixtureTests(unittest.TestCase):
     def test_actual_browser_address_navigation_and_history_controls(self):
         production=ROOT/'app/src/main/java/local/pocketchat';source=(production/'GeckoAddressUi.java').read_text();main=(production/'MainActivity.java').read_text()
         spec=importlib.util.spec_from_file_location('navigation_member_parser',ROOT/'tests/gecko-navigation-host/run.py');parser=importlib.util.module_from_spec(spec);spec.loader.exec_module(parser)
-        needles=['String target(','String current(','static boolean visibleFor(','void refresh(','static boolean available(','static void home(','private void submitAddress(']
+        needles=['String target(','String current(','static boolean visibleFor(','static boolean canForward(','void refresh(','static boolean available(','static void home(','private void submitAddress(']
         members='\n'.join(parser.member_at(source,source.index(needle)) for needle in needles)
         chat=parser.member_at(main,main.index('static boolean chatUrl('))
         session_source=(production/'ChatSession.java').read_text()
         display='\n'.join(parser.member_at(session_source,session_source.index(needle)) for needle in ['boolean validBrowserTarget(','String browserDisplayUrl('])
         diagnostic_source=(production/'RequestIdentityAudit.java').read_text()
         diagnostic='\n'.join(parser.member_at(diagnostic_source,diagnostic_source.index(needle)) for needle in ['static final String PATH=','static boolean namespace(','static boolean diagnosticUrl('])
-        self.assertIn('address.setSingleLine(true)',source)
+        self.assertIn('BrowserToolbarUi.address(address)',source)
+        self.assertIn('view.setSingleLine(true)',(production/'BrowserToolbarUi.java').read_text())
         self.assertNotIn('setMinHeight(0)',source);self.assertNotIn('setMinimumHeight(0)',source)
         self.assertIn('option(d,"打开网址或搜索",()->GeckoAddressUi.show(this));',main)
         self.assertIn('if(geckoAddress!=null)geckoAddress.refresh();',parser.member_at(main,main.index('void applySession(')))
@@ -54,10 +55,10 @@ public final class AddressVisibilityHost {
   static final class BrowserPreferences {static String selected="https://chatgpt.com/";static String home(MainActivity a){return selected;}}
   static final class Uri {final URI uri;Uri(String s){uri=URI.create(s);}static Uri parse(String s){return new Uri(s);}String getScheme(){return uri.getScheme();}String getHost(){return uri.getHost();}String getUserInfo(){return uri.getUserInfo();}int getPort(){return uri.getPort();}}
   static final class MainActivity {Session session=new Session();Web remote=session.web;boolean destroyed,finishing;int reveals;GeckoAddressUi geckoAddress;MainActivity(){remote.displayContext.base=this;}boolean isFinishing(){return finishing;}void showPage(boolean b){reveals++;}@CHAT@}
-  static final class GeckoAddressUi {final MainActivity a;final Row row=new Row();final Label address=new Label(),back=new Label(),forward=new Label(),reload=new Label();String shown="";AlertDialog dialog;GeckoAddressUi(MainActivity a){this.a=a;a.geckoAddress=this;}@MEMBERS@}
+  static final class GeckoAddressUi {final MainActivity a;final Row row=new Row();final Label address=new Label(),back=new Label(),reload=new Label();String shown="";AlertDialog dialog;GeckoAddressUi(MainActivity a){this.a=a;a.geckoAddress=this;}@MEMBERS@}
   public static void main(String[] args){
     MainActivity a=new MainActivity();GeckoAddressUi ui=new GeckoAddressUi(a);
-    ui.refresh();check("Blank page keeps browser controls",ui.row.getVisibility()==View.VISIBLE);check("Initial history is disabled",!ui.back.enabled&&!ui.forward.enabled);
+    ui.refresh();check("Blank page keeps browser controls",ui.row.getVisibility()==View.VISIBLE);check("Initial history is disabled",!ui.back.enabled&&!GeckoAddressUi.canForward(a));
     check("Cold blank uses the existing resume destination",ui.current().equals(a.session.resume)&&ui.address.description.contains(a.session.resume));
     a.session.web.visible=true;ui.refresh();check("Visible blank popup keeps its real address",ui.current().equals("about:blank")&&ui.address.text.equals("about:blank"));
     a.session.web.visible=false;a.session.resume="";ui.refresh();check("Cold blank without resume uses selected home",ui.current().equals(BrowserPreferences.selected));
@@ -69,7 +70,7 @@ public final class AddressVisibilityHost {
     a.session.web.url="https://public.example/";ui.refresh();a.session.navigating=true;a.session.navigationTarget="https://chatgpt.com:443/c/new#frag";ui.refresh();check("Pending target replaces old address",ui.current().equals(a.session.navigationTarget));check("Pending target is visibly identified",ui.address.description.contains(a.session.navigationTarget));check("Loading has stop action",ui.reload.glyph.equals("close")&&ui.reload.description.equals("停止加载"));
     a.session.navigationTarget="http://next.example/";ui.refresh();check("HTTP target stays explicit",ui.address.text.startsWith("http://"));
     int layouts=ui.row.writes,texts=ui.address.writes;for(int i=0;i<100;i++)ui.refresh();check("Repeated frame refresh avoids layout churn",ui.row.writes==layouts&&ui.address.writes==texts);
-    a.session.navigating=false;a.remote.back=true;a.remote.forward=false;ui.refresh();check("History reflects native back state",ui.back.enabled&&!ui.forward.enabled);a.remote.forward=true;ui.refresh();check("History reflects native forward state",ui.forward.enabled);check("Ready page has reload action",ui.reload.glyph.equals("refresh")&&ui.reload.description.equals("刷新网页"));
+    a.session.navigating=false;a.remote.back=true;a.remote.forward=false;ui.refresh();check("History reflects native back state",ui.back.enabled&&!GeckoAddressUi.canForward(a));a.remote.forward=true;ui.refresh();check("History reflects native forward menu state",GeckoAddressUi.canForward(a));check("Ready page has reload action",ui.reload.glyph.equals("refresh")&&ui.reload.description.equals("刷新网页"));
     for(String url:new String[]{"", "about:blank","javascript:void(0)","http://127.0.0.1/private","file:///private"}){a.session.web.url=url;ui.refresh();check("Displayed URL never hides navigation controls",ui.row.getVisibility()==View.VISIBLE);}
     a.session.web.url=null;ui.refresh();check("Empty live URL uses saved resume prefill",ui.current().equals(a.session.resume));a.session.web.url="https://public.example/";a.session.navigating=true;a.session.navigationTarget="";ui.refresh();check("Unknown history target keeps current address",ui.current().equals(a.session.web.url));a.session=null;BrowserPreferences.selected="https://homepage.example/";ui.refresh();check("No-session startup keeps home address",ui.current().equals(BrowserPreferences.selected));check("No-session menu unavailable",!GeckoAddressUi.available(a));
     a.session=new Session();a.remote=a.session.web;a.remote.displayContext.base=a;a.session.web.url="https://public.example/";ui.refresh();BrowserPreferences.selected="https://chatgpt.com/";GeckoAddressUi.home(a);check("Home retains normal browser toolbar",ui.row.getVisibility()==View.VISIBLE&&a.reveals==1&&a.session.navigationTarget.equals(BrowserPreferences.selected));check("Home immediately updates visible target",ui.address.description.contains(BrowserPreferences.selected));
@@ -111,7 +112,7 @@ public final class AddressVisibilityHost {
             def execute(body):
                 path.write_text(body);built=subprocess.run([javac,'--release','17','-encoding','UTF-8','-d',str(classes),str(path),str(production/'BrowserAddressPolicy.java'),str(production/'GeckoNavigationPolicy.java')],capture_output=True,text=True,timeout=30);self.assertEqual(built.returncode,0,built.stderr);return subprocess.run([java,'-cp',str(classes),'local.pocketchat.AddressVisibilityHost'],capture_output=True,text=True,timeout=20)
             passed=execute(program);self.assertEqual(passed.returncode,0,passed.stderr);result=json.loads(passed.stdout);self.assertGreaterEqual(result['checks'],40)
-            mutations=[('row.setVisibility(View.VISIBLE)','row.setVisibility(View.GONE)','Blank page keeps browser controls'),('a.session.browserDisplayUrl()','a.session.web.getUrl()','Pending target replaces old address'),('a.remote!=null&&a.remote.canGoForward()','false','History reflects native forward state'),('a.session!=null&&a.session.navigating','false','Loading has stop action'),('!a.session.web.hasVisibleDocument()','true','Visible blank popup keeps its real address'),('"about:blank".equals(url)&&a.session!=null&&!a.session.web.hasVisibleDocument()','false','Cold blank uses the existing resume destination')]
+            mutations=[('row.setVisibility(View.VISIBLE)','row.setVisibility(View.GONE)','Blank page keeps browser controls'),('a.session.browserDisplayUrl()','a.session.web.getUrl()','Pending target replaces old address'),('available(a)&&a.remote.canGoForward()','false','History reflects native forward menu state'),('a.session!=null&&a.session.navigating','false','Loading has stop action'),('!a.session.web.hasVisibleDocument()','true','Visible blank popup keeps its real address'),('"about:blank".equals(url)&&a.session!=null&&!a.session.web.hasVisibleDocument()','false','Cold blank uses the existing resume destination')]
             mutations.append(('if(a.session.browse(url,"正在打开网页…")){','if(a.session.browse(url,"正在打开网页…")&&a.session.navigating){','Accepted address closes form even before loading starts'))
             mutations.append(('browserNavigationChosen&&navigationFailed&&navigationTarget.equals(browsingUrl)','false','Accepted offline destination stays editable'))
             mutations.append(('&&a.remote==a.session.web','','Detached address surface cannot navigate the current session'))
@@ -124,9 +125,9 @@ public final class AddressVisibilityHost {
             print(json.dumps(dict(scope='Exact current address presentation and submission methods on explicit JVM boundaries; real address policies; no Android or Gecko execution',**result,mutationControls=len(mutations))))
 
     def test_actual_browser_address_row_reflows_without_recreating_controls(self):
-        source=(ROOT/'app/src/main/java/local/pocketchat/GeckoAddressUi.java').read_text()
+        source=(ROOT/'app/src/main/java/local/pocketchat/BrowserToolbarUi.java').read_text()
         spec=importlib.util.spec_from_file_location('address_row_parser',ROOT/'tests/gecko-navigation-host/run.py');parser=importlib.util.module_from_spec(spec);spec.loader.exec_module(parser)
-        row=parser.member_at(source,source.index('static final class BrowserAddressRow'))
+        row=parser.member_at(source,source.index('static final class NavigationBar'))
         template=(ROOT/'tests/browser-address-host/BrowserAddressLayoutHost.java.in').read_text()
         program=template.replace('/* PRODUCTION_ROW */',row)
         java_home=Path(os.environ.get('JAVA_HOME',str(ROOT/'work/browser-ci-jdk/jdk-17.0.21+9')))
@@ -139,15 +140,15 @@ public final class AddressVisibilityHost {
                 return subprocess.run([str(java_home/'bin/java'),'-cp',str(classes),'local.pocketchat.BrowserAddressLayoutHost'],capture_output=True,text=True,timeout=20)
             passed=execute(program);self.assertEqual(passed.returncode,0,passed.stderr)
             report=json.loads(passed.stdout);self.assertGreaterEqual(report['checks'],180)
-            mutations=[('stacked=available-4*action<minimum;','stacked=false;'),
-                       ('text.substring(0,end)+"…"','"chatgpt.com…"'),
-                       ('int action=dp(48),minimum=readableAddressWidth();','int action=dp(44),minimum=readableAddressWidth();'),
+            mutations=[('stacked=available<4*action+2*gap+minimum;','stacked=false;'),
+                       ('if(getLayoutDirection()==View.LAYOUT_DIRECTION_RTL)view.layout','if(false)view.layout'),
+                       ('int action=dp(48),gap=dp(4),minimum=dp(72);','int action=dp(44),gap=dp(4),minimum=dp(72);'),
                        ('setMeasuredDimension(width,resolveSize(getPaddingTop()+content+getPaddingBottom(),heightSpec));','setMeasuredDimension(width,resolveSize(getPaddingTop()+content+getPaddingBottom(),heightSpec));requestLayout();')]
             for before,after in mutations:
                 self.assertEqual(program.count(before),1)
                 failed=execute(program.replace(before,after,1));self.assertNotEqual(failed.returncode,0);self.assertIn('AssertionError:',failed.stderr)
-            self.assertEqual((ROOT/'app/src/main/java/local/pocketchat/GeckoAddressUi.java').read_text(),source)
-            print(json.dumps(dict(scope='Exact production BrowserAddressRow measure/layout against explicit JVM text and View boundaries; native font rendering remains device evidence',**report,mutationControls=len(mutations))))
+            self.assertEqual((ROOT/'app/src/main/java/local/pocketchat/BrowserToolbarUi.java').read_text(),source)
+            print(json.dumps(dict(scope='Exact shared production browser bottom-bar measure/layout against explicit JVM text and View boundaries; native font rendering remains device evidence',**report,mutationControls=len(mutations))))
 
     def test_native_browser_toolbar_geometry_requires_complete_inline_or_stacked_rows(self):
         sys.path.insert(0,str(ROOT/'tools/gecko'))
@@ -170,7 +171,8 @@ public final class AddressVisibilityHost {
                     'text':'chatgpt.com/c/example' if name=='address' else '',
                     'bounds':f'[{box[0]},{box[1]}][{box[2]},{box[3]}]'})
             return tree
-        def observed(tree):return capture.browser_toolbar_geometry(ET.tostring(tree,encoding='unicode'))
+        # Frozen v2 top-address observations keep their original strict checker.
+        def observed(tree):return capture.legacy_browser_toolbar_geometry(ET.tostring(tree,encoding='unicode'))
         def node(tree,name):return next(item for item in tree if item.get('content-desc')==descriptions[name])
         for density in (1,3):
             for stacked in (False,True):

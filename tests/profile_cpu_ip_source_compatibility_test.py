@@ -14,6 +14,7 @@ from unittest.mock import patch
 import cpu_ip_source_compatibility as layer
 from tls_cpu_ip_source_compatibility import source_input as tls_source_input
 from final_browser_source_compatibility import metadata_input as final_metadata_input
+import photo_background_source_compatibility as photo_background
 
 ROOT=Path(__file__).resolve().parents[1]
 SHA=lambda raw:hashlib.sha256(raw).hexdigest()
@@ -123,7 +124,47 @@ class CpuIpHistoricalPreparation(unittest.TestCase):
             'GeckoTimeZoneController','GeckoTimeZonePolicy','GeckoTimeZoneUi','GeckoIpTimeZonePolicy','GeckoIpRouteWatch','GeckoPopupNavigationUi')]
         paths+=['app/src/main/assets/gecko/'+name for name in ('background.js','ip-timezone-bootstrap.js','request-headers.js','native-timezone-api.js','native-timezone-bridge.js')]
         for relative in paths:
-            with self.subTest(path=relative):self.assertEqual((ROOT/relative).read_bytes(),git('show',layer.BASE_COMMIT+':'+relative))
+            with self.subTest(path=relative):
+                raw=(ROOT/relative).read_bytes()
+                if relative==photo_background.PATH:
+                    raw=photo_background.source_input(raw,relative)
+                self.assertEqual(raw,git('show',layer.BASE_COMMIT+':'+relative))
+
+    def test_photo_inverse_restores_the_real_complete_original_without_changing_other_guards(self):
+        relative=photo_background.PATH
+        before=git('show',layer.BASE_COMMIT+':'+relative);current=(ROOT/relative).read_bytes()
+        self.assertEqual((len(before),SHA(before)),(photo_background.PREVIOUS_BYTES,photo_background.PREVIOUS_SHA256))
+        self.assertEqual((len(current),SHA(current)),(photo_background.CURRENT_BYTES,photo_background.CURRENT_SHA256))
+        self.assertEqual(photo_background.source_input(before,relative),before)
+        self.assertEqual(photo_background.source_input(current,relative),before)
+        forward=before
+        for new,old in photo_background.DELTAS:
+            self.assertEqual(forward.count(old),1);forward=forward.replace(old,new,1)
+        self.assertEqual(forward,current)
+
+    def test_photo_inverse_rejects_changed_old_guard_or_missing_duplicate_moved_new_route(self):
+        relative=photo_background.PATH;current=(ROOT/relative).read_bytes()
+        mutations=[current+b'\n',current[:-1],current.replace(b'if(port!==host)',b'if(false)',1)]
+        for part in (photo_background.PHOTO_ROUTE,photo_background.PHOTO_DISCONNECT):
+            self.assertEqual(current.count(part),1)
+            removed=current.replace(part,b'',1)
+            mutations.extend((removed,removed+part,current.replace(part,part+part,1),current.replace(part,part+b' ',1)))
+        for raw in mutations:
+            self.assertNotEqual(raw,current)
+            with self.assertRaises(ValueError):photo_background.source_input(raw,relative)
+        self.assertEqual(len(mutations),11)
+        for raw in (None,current.decode(),bytearray(current),current[:200]):
+            with self.assertRaises(ValueError):photo_background.source_input(raw,relative)
+        for path in (None,Path(relative),'./'+relative,'/'+relative,'app/src/main/assets/gecko/native-photo-api.js'):
+            with self.assertRaises(ValueError):photo_background.source_input(current,path)
+
+    def test_photo_inverse_never_reaches_production_or_actual_photo_behavior_hosts(self):
+        paths=list((ROOT/'app').rglob('*.py'))+list((ROOT/'tools').rglob('*.py'))
+        paths+=[ROOT/'tests/gecko_photo_permission_test.py',ROOT/'tests/gecko_upload_files_test.py',ROOT/'tests/gecko/run_device.py',ROOT/'tests/chromium-photo-browser/run.py']
+        for path in paths:
+            for node in ast.walk(ast.parse(path.read_text())):
+                if isinstance(node,ast.ImportFrom):self.assertNotEqual(node.module,'photo_background_source_compatibility',str(path))
+                elif isinstance(node,ast.Import):self.assertNotIn('photo_background_source_compatibility',[entry.name for entry in node.names],str(path))
 
     def test_no_runtime_or_behavior_consumer_imports_this_historical_layer(self):
         for folder in ('app','tools','tests/gecko-cpu-host','tests/gecko-cpu-controller-host','tests/gecko-cpu-ui-host','tests/gecko-ip-transport-host'):

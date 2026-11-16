@@ -203,9 +203,13 @@ def verify_scene_renderers(before, after, device_api, pids):
                 or value.get('activityClass')!='local.pocketchat.CompactChromeIntegrationActivity'
                 or type(value.get('activityRef')) is not int or value['activityRef']==0):
             raise ValueError('Current Activity renderer receipt identity differs')
+        contract=value.get('navigationContract',2)
+        if type(contract) is not int or contract not in (2,3):
+            raise ValueError('Current renderer navigation contract is unsupported')
         docks=value.get('docks')
-        if type(docks) is not list or [row.get('role') for row in docks]!=['conversation','workspace']:
-            raise ValueError('Both actual current dock materials are required')
+        roles=['workspace'] if contract==3 else ['conversation','workspace']
+        if type(docks) is not list or [row.get('role') for row in docks]!=roles:
+            raise ValueError('Every actual dock material for this navigation contract is required')
         for row in docks:
             if (any(row.get(key) is not True for key in ('attached','currentActivityRoot','ownerBound','backdropBound'))
                     or row.get('gpuBroken') is not False
@@ -224,6 +228,8 @@ def verify_scene_renderers(before, after, device_api, pids):
                     or device_api<33 and present):
                 raise ValueError('Actual renderer branch is inconsistent')
     if before['activityRef']!=after['activityRef']:raise ValueError('Renderer observation changed Activity')
+    if before.get('navigationContract',2)!=after.get('navigationContract',2):
+        raise ValueError('Renderer observation changed navigation contract')
     for first,last in zip(before['docks'],after['docks']):
         if any(first[key]!=last[key] for key in ('dockRef','drawableRef')):
             raise ValueError('Renderer observation changed the current dock material')
@@ -231,7 +237,7 @@ def verify_scene_renderers(before, after, device_api, pids):
                            or not any(row['nativeBackdropRecorded'] for row in after['docks'])):
         raise ValueError('The current scene materials did not actually render AGSL/native backdrop')
     return dict(currentActivityRef=after['activityRef'],currentAppPid=after['pid'],
-        beforeDocks=before['docks'],afterDocks=after['docks'],verified=True)
+        navigationContract=after.get('navigationContract',2),beforeDocks=before['docks'],afterDocks=after['docks'],verified=True)
 
 
 def capture_ready_failure(out, case, identity, adb, start_output):
@@ -882,7 +888,7 @@ def prepare_background(case, adb, out, *, package, component, pid):
 
 def capture_acceptance_suite(args, report, capture, adb, wait_for, tap, screenshot, api):
     """Fail closed on route/configuration failures; save every original observation."""
-    result = report['glassUiAcceptance'] = dict(schema=1, status='started',
+    result = report['glassUiAcceptance'] = dict(schema=1, navigationContract=3,status='started',
         sourceCommit=report['buildIdentity']['sourceCommit'],
         sourceTree=report['buildIdentity']['sourceTree'],
         apkSha256=report['installedApk']['sha256'], runNonce=report['runNonce'],
@@ -931,9 +937,20 @@ def capture_acceptance_suite(args, report, capture, adb, wait_for, tap, screensh
 
     def chat(xml):
         observed = geometry(xml)
-        return (observed is not None and observed['layout'] == 'conversation-split'
+        return (observed is not None and observed['layout'] == 'browser-bottom'
                 and nav(xml) is not None and capsule(xml) is not None
                 and not text(xml, '打开网址') and not text(xml, '快速切换环境'))
+
+    def open_menu_action(case,xml,label,stem):
+        deadline=time.monotonic()+20
+        tap(api['browser_menu_node'](xml),'Open the actual browser menu for '+label)
+        menu_stem=case['name']+'-'+stem
+        xml=wait_for(capture,api['browser_menu_open'],menu_stem+'-opened',
+                     seconds=max(.001,deadline-time.monotonic()))
+        xml,action=api['menu_action'](capture,adb,xml,label,args.out,menu_stem,deadline,report['inputs'])
+        if time.monotonic()>=deadline:
+            raise TimeoutError('Existing browser menu deadline expired before action: '+label)
+        tap(action,'Activate the current observed browser menu action '+label)
 
     def key(case, code, reason):
         report['inputs'].append(dict(action='keyevent', keyCode=code, phase=case['name'],
@@ -1057,6 +1074,10 @@ def capture_acceptance_suite(args, report, capture, adb, wait_for, tap, screensh
             nativeBackdropRecorded=any('native backdrop recorded' in row['text'] for row in messages))
         # Transitioning Activities may share a PID. Their old material logs
         # cannot qualify current objects in the nonce-owned native receipts.
+        for stage in ('ready','after-interactions'):
+            renderer=case['documentObservations'][stage].get('glassRenderer')
+            if type(renderer) is not dict or renderer.get('navigationContract')!=3:
+                raise ValueError('Current browser scene requires navigation contract 3 renderer ownership')
         observation['sceneRenderers']=verify_scene_renderers(
             case['documentObservations']['ready'].get('glassRenderer'),
             case['documentObservations']['after-interactions'].get('glassRenderer'),args.device_api,pids)
@@ -1133,7 +1154,7 @@ def capture_acceptance_suite(args, report, capture, adb, wait_for, tap, screensh
         initial = case['documentObservations']['ready']
         if initial.get('visibleDocument') is not True or initial.get('loadingCoverVisibility') != 8:
             raise ValueError('The actual production callback did not reveal the controlled Gecko document')
-        tap(capsule(xml), 'Tap the observed environment capsule to open only the native URL editor')
+        tap(api['browser_address_node'](xml), 'Tap the observed bottom browser address to open only the native URL editor')
         url_keyboard_deadline = time.monotonic() + 30
         xml = artifact(case, 'url-keyboard', lambda value: text(value, '打开网址')
                        and button(value, '取消') is not None and not text(value, '快速切换环境'))
@@ -1180,20 +1201,20 @@ def capture_acceptance_suite(args, report, capture, adb, wait_for, tap, screensh
             raise ValueError('Expected one observed environment sheet close control')
         tap(closes[0], 'Dismiss the environment picker without changing environment')
         xml = artifact(case, 'environment-cancelled', chat, photograph=False)
-        for label in ('下载', '网络'):
-            tap(button(xml, label), 'Open the actual native ' + label + ' workspace')
+        for label,action in (('下载','下载管理'),('网络','当前环境网络')):
+            open_menu_action(case,xml,action,'open-'+label)
             xml = artifact(case, label, lambda value: api['selected_navigation'](value, label))
             key(case, 4, 'Return from the native workspace to the retained Gecko document')
             xml = artifact(case, label + '-returned', chat, photograph=False)
-        tap(button(xml, '环境'), 'Open the actual environment management destination')
+        open_menu_action(case,xml,'管理全部环境','open-environments')
         artifact(case, 'environments', lambda value: api['selected_navigation'](value, '环境'))
         key(case, 4, 'Return from environment management to the retained conversation')
         xml = artifact(case, 'environments-returned', chat, photograph=False)
         for exit_method in ('button', 'back'):
-            tap(button(xml, '阅读'), 'Enter actual focus reading with a usable Gecko document')
+            open_menu_action(case,xml,'进入专注阅读','open-reading-'+exit_method)
             xml = artifact(case, 'reading-entered-' + exit_method,
                 lambda value: button(value, '退出阅读') is not None and capsule(value) is None
-                and all(button(value, label) is None for label in api['LABELS']))
+                and nav(value) is None and api['browser_toolbar_geometry'](value) is None)
             if exit_method == 'button':
                 quiet(case, 'glass-hidden-reading', 2)
                 tap(button(xml, '退出阅读'), 'Exit focus reading through its actual native exit control')
@@ -1248,7 +1269,7 @@ def capture_acceptance_suite(args, report, capture, adb, wait_for, tap, screensh
                         sourceCommit=identity['sourceCommit'],sourceTree=identity['sourceTree'],apkSha256=identity['apkSha256'],
                         runNonce=case['runNonce'],applicationAcceptance=False)
                     start_output = adb('shell', 'am', 'start', '-W', '--activity-clear-task', '-n', component,
-                        '--es', 'compactAction', 'collapseStart', '--ei', 'chromeNavigationVersion', '2',
+                        '--es', 'compactAction', 'collapseStart', '--ei', 'chromeNavigationVersion', '3',
                         '--es', 'eventNonce', case['runNonce'], '--ez', 'longName', 'false',
                         '--ez', 'observeGlassRenderer', 'true')
                     try:

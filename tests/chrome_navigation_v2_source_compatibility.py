@@ -1,9 +1,9 @@
-"""Two exact historical source ports for the explicit Chrome v2 dispatcher.
+"""Exact historical source ports for the explicit Chrome v2 dispatcher.
 
 The Android workload and current v2 negative controls never use this module.
 The existing first-tap/HOME guard keeps its original fixtures, whole-file pins,
-assertions and test methods. Only the reviewed append and its UI read port are
-reversed here; unknown whole inputs fail before any old inverse is applied.
+assertions and test methods. Only the reviewed append, UI read port and two
+helper-owner binding edits are reversed; unknown whole inputs fail first.
 """
 import hashlib
 from pathlib import Path
@@ -24,7 +24,11 @@ LEGACY = {
 CURRENT = {
     RUNNER: (16350, 'edaa810f470717a45092cce966d451506d2817f9a41def33d62a1d83ed200acf'),
     GUARD: (17471, 'b3b9a6aa3f929bc04a629238c56d02c169450dd50a2110bba04c5b08df958676'),
+    HEADER: (19613, '81cde91c664eee5cd0fb95dab9da756e9ff4ac69b7c27ce82be925d1c4257adf'),
 }
+HEADER_HELPER_ADDITION = b"CURRENT_HELPER_SHA = '68958f1e2c8aeaa675463a62d15f245923b53b4e54b8c5d4745a60b9286d3a98'\n"
+HEADER_HELPER_CURRENT = b"    need(hashes[HELPER] in (HELPER_SHA, CURRENT_HELPER_SHA), 'source-unverified')\n"
+HEADER_HELPER_ORIGINAL = b"    need(hashes[HELPER] == HELPER_SHA, 'source-unverified')\n"
 APPEND = b'''
 
 def run_versioned(adb,adb_bytes,source,trace,out,focus,*,navigation_contract):
@@ -66,6 +70,11 @@ def source_input(raw, relative):
         if raw.count(PORT_IMPORT) != 1 or raw.count(NEW_SHARED) != 1 or OLD_SHARED in raw:
             reject()
         restored = raw.replace(PORT_IMPORT, b'', 1).replace(NEW_SHARED, OLD_SHARED, 1)
+    elif relative == HEADER:
+        if (raw.count(HEADER_HELPER_ADDITION) != 1 or raw.count(HEADER_HELPER_CURRENT) != 1
+                or HEADER_HELPER_ORIGINAL in raw):
+            reject()
+        restored = raw.replace(HEADER_HELPER_ADDITION, b'', 1).replace(HEADER_HELPER_CURRENT, HEADER_HELPER_ORIGINAL, 1)
     else:
         reject()
     if pin(restored) != LEGACY[relative][0]:

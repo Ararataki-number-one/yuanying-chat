@@ -15,6 +15,7 @@ import sys
 import time
 
 ROOT = Path(__file__).resolve().parents[2]
+ANDROID_JSON_SHA256 = 'dfb7bae2f404cfe0b72b4d23944698cb716b7665171812a0a4d0f5926c0fac79'
 INPUT_PATHS = ('app/src', 'app/build.gradle', 'tests', 'tools', 'third-party',
                '.github/workflows', 'build.gradle', 'settings.gradle', 'gradle.properties')
 
@@ -34,6 +35,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--java-home', required=True, type=Path)
     parser.add_argument('--json-jar', required=True, type=Path)
+    parser.add_argument('--android-json-jar', required=True, type=Path)
     parser.add_argument('--output', type=Path, default=ROOT/'work/browser-maintenance')
     parser.add_argument('--android-jar', type=Path, help='Optional actual Android API compile; requires both dependency jars below.')
     parser.add_argument('--webkit-jar', type=Path)
@@ -42,17 +44,20 @@ def main():
     native = [args.android_jar, args.webkit_jar, args.snakeyaml_jar]
     if any(native) and not all(native):
         parser.error('Native compilation requires --android-jar, --webkit-jar and --snakeyaml-jar together')
-    java_home, jar, out = args.java_home.resolve(), args.json_jar.resolve(), args.output.resolve()
-    for path in [java_home/'bin/java', java_home/'bin/javac', jar, *[p for p in native if p]]:
+    java_home, jar, android_json, out = args.java_home.resolve(), args.json_jar.resolve(), args.android_json_jar.resolve(), args.output.resolve()
+    for path in [java_home/'bin/java', java_home/'bin/javac', jar, android_json, *[p for p in native if p]]:
         if not path.is_file():
             parser.error('Missing dependency: '+str(path))
+    if android_json.stat().st_size != 18279 or digest(android_json) != ANDROID_JSON_SHA256:
+        parser.error('The photo native-tap check requires the pinned Android JSON runtime')
     compiler = subprocess.check_output([str(java_home/'bin/javac'), '-version'], stderr=subprocess.STDOUT, text=True).strip()
     if not compiler.startswith('javac 17.'):
         parser.error('The maintenance checks require JDK 17')
     runtime = subprocess.check_output([str(java_home/'bin/java'), '-version'], stderr=subprocess.STDOUT, text=True).strip()
     out.mkdir(parents=True, exist_ok=True)
     env = dict(os.environ, JAVA_HOME=str(java_home), PROFILE_JAVA=str(java_home/'bin/java'),
-               PROFILE_JSON_JAR=str(jar), BROWSER_ENTRY_REPORT=str(out/'environment-entry.json'))
+               PROFILE_JSON_JAR=str(jar), PROFILE_ANDROID_JSON_JAR=str(android_json),
+               BROWSER_ENTRY_REPORT=str(out/'environment-entry.json'))
     env['PATH'] = str(java_home/'bin')+os.pathsep+env.get('PATH', '')
     jobs = []
     java = ['--java-home', str(java_home)]
@@ -105,11 +110,21 @@ def main():
     jobs.append(('display-acceptance', [
         [sys.executable, 'tests/gecko_glass_navigation_capture_test.py'],
         [sys.executable, 'tests/glass_ui_validation_test.py'],
+        [sys.executable, 'tests/browser_bottom_toolbar_test.py'],
+        [sys.executable, 'tests/browser_workspace_capture_contract_test.py'],
+        [sys.executable, 'tests/profile_navigation_v3_test.py'],
+        [sys.executable, 'tests/gecko_photo_upload_contract_test.py'],
         [sys.executable, 'tests/browser_workspace_device_configuration_test.py'],
         [sys.executable, 'tests/profile_ui_device_preparation_test.py']], None))
     jobs.append(('event-transport', [
         [sys.executable, 'tests/gecko_event_transfer_test.py'],
         [sys.executable, 'tests/profile_event_journal_discovery_test.py']], None))
+    jobs.append(('photo-upload-permission', [
+        [sys.executable, 'tests/gecko_photo_permission_test.py'],
+        [sys.executable, 'tests/gecko_upload_files_test.py'],
+        [sys.executable, 'tests/gecko_photo_tap_test.py'],
+        ['node', '--test', 'tests/request-identity/native_photo_permission_test.cjs'],
+        ['node', '--test', 'tests/chromium-fingerprint-script.test.cjs']], None))
     host('address-ui', 'tests/browser_fingerprint_fixture_test.py', [
         'BrowserFingerprintFixtureTests.test_actual_browser_address_navigation_and_history_controls',
         'BrowserFingerprintFixtureTests.test_actual_browser_address_row_reflows_without_recreating_controls'], report=False)
@@ -130,7 +145,7 @@ def main():
             '--classpath-jar', str(args.snakeyaml_jar.resolve()), '--output', str(target)]], target/'receipt.json'))
 
     hashes = {str(path.relative_to(ROOT)): digest(path) for path in source_inputs()}
-    dependencies = {str(path.resolve()): digest(path) for path in [jar, *[p for p in native if p]]}
+    dependencies = {str(path.resolve()): digest(path) for path in [jar, android_json, *[p for p in native if p]]}
     commit = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip()
     tree = subprocess.check_output(['git', 'rev-parse', 'HEAD^{tree}'], cwd=ROOT, text=True).strip()
     dirty = bool(subprocess.check_output(['git', 'status', '--porcelain'], cwd=ROOT, text=True).strip())

@@ -5,7 +5,7 @@ CPU checker and its extracted validator execute; installed APK verification is
 an equality-only boundary because these controls contain no APK or SDK.
 """
 import ast
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 import copy
 import hashlib
 import importlib
@@ -53,6 +53,7 @@ class CpuPublicationTests(unittest.TestCase):
         return (ROOT/path).read_bytes()
 
     def fixture(self,directory):
+        self.evidence_directory=directory
         raw=directory/RAW;raw.mkdir()
         summary,expected=self.factory.evidence_fixture(raw)
         payload=(json.dumps(summary,indent=2)+'\n').encode()
@@ -92,11 +93,43 @@ class CpuPublicationTests(unittest.TestCase):
             return {'scope':'explicit CPU host combination metadata boundary; no native or Android proof'}
         combo.verify_gecko_cpu_ip_combo_evidence=verify_combo;modules[combo_name]=combo
         result={'buildIdentity':{},'checks':[{}],'provider':{'package':'synthetic','version':'fixture'}}
+        directory=self.evidence_directory
+        expected=json.loads((directory/'device-results.json').read_text())['eventTransport']['buildIdentity']
+        if tuple(map(int,expected['version'].split('.'))) >= (2,1,6):
+            # Keep the old CPU test methods and their prior-gate boundary. A
+            # current version needs complete, nonempty v3 navigation input;
+            # qualify that synthetic fixture with the actual behavior reader.
+            import browser_evidence_test as browser_controls
+            browser=browser_controls.BrowserEvidenceTests().current_document()
+            browser['expectedBuildIdentity']=expected
+            browser['result']['buildIdentity']=expected
+            browser['sourceFiles']={name:hashlib.sha256(self.reader(SOURCE,name)).hexdigest()
+                                    for name in self.gate.SOURCE_INPUTS}
+            result=self.gate.validate_behavior(browser,SOURCE,self.reader)
+            self.assertEqual([row['orientation'] for row in result['layoutObservations']],[2,1])
+        missing_summary=not (directory/REPORT).exists() and not (directory/'results.json').exists()
+        cpu_calls=[];cpu_rejections=[];actual_cpu=self.cpu.verify_gecko_cpu_evidence
+        def observe_cpu(actual_directory,source,identity,reader):
+            cpu_calls.append((Path(actual_directory),source,identity))
+            try:
+                return actual_cpu(actual_directory,source,identity,reader=reader)
+            except ValueError as error:
+                cpu_rejections.append(error)
+                raise
+        observer=(patch.object(self.cpu,'verify_gecko_cpu_evidence',side_effect=observe_cpu)
+                  if missing_summary else nullcontext())
         with patch.object(self.gate,'validate_behavior',return_value=result),\
                 patch.object(self.gate,'verify_installed',side_effect=lambda actual,expected:None),\
                 patch.object(self.cpu,'verify_installed',side_effect=lambda actual,expected:self.assertEqual(actual,expected)),\
-                patch.dict(sys.modules,modules):
+                patch.dict(sys.modules,modules),observer:
             yield calls
+        if missing_summary:
+            # An earlier navigation/IP failure must not satisfy the unchanged
+            # missing-CPU assertion. The real reader must reject its own input.
+            self.assertEqual(cpu_calls,[(directory,SOURCE,expected)])
+            self.assertEqual(len(cpu_rejections),1)
+            self.assertIs(type(cpu_rejections[0]),ValueError)
+            self.assertEqual(str(cpu_rejections[0]),'Gecko CPU acceptance: Original bounded CPU summary required')
 
     def browser_block(self):
         tree=ast.parse((ROOT/'tools/publish-gecko-release.py').read_text())

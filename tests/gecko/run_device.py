@@ -13,6 +13,7 @@ from profile_invocation_contract import expected_build, verify_installed
 from page_continuity_contract import verify_page_continuity
 from local_draft_contract import verify_local_draft_policy
 from download_resume_contract import verify_download_resume
+from photo_upload_contract import CASES as PHOTO_CASES, PhotoUploadLedger, MAX_PNG_BYTES, verify_photo_upload_evidence
 def collect_readiness(log,identity,invocations):
     """Diagnostic sidecar only. Never feeds a business decoder or acceptance gate."""
     owners={value['runNonce']:value for value in invocations};observations=[];counts={}
@@ -75,7 +76,7 @@ class HttpProxy(socketserver.BaseRequestHandler):
             header,remaining=raw.split(b'\r\n\r\n',1)
             lines=header.decode('iso-8859-1').split('\r\n');method,target,version=lines[0].split(' ',2)
             address=urllib.parse.urlparse('//'+target if method=='CONNECT' else target)
-            accepted=method in ['GET','CONNECT'] and address.hostname in ['127.0.0.1','remote-probe.invalid'] and address.port==8765
+            accepted=(method in ['GET','CONNECT'] or method=='POST' and address.path=='/image-received') and address.hostname in ['127.0.0.1','remote-probe.invalid'] and address.port==8765
             fixture.TRACE.append({'kind':'httpProxy','route':'environment-2-http','method':method,'host':address.hostname,'port':address.port,'accepted':accepted})
             if not accepted:client.sendall(b'HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\n\r\n');return
             with socket.create_connection(('127.0.0.1',8765),timeout=10) as upstream:
@@ -137,6 +138,7 @@ class Fixture(fixture.Fixture):
     update_transfer_counts={}
     update_transfer_lock=threading.Lock()
     pause_barrier=None
+    photo_ledger=None
     def update_transfer(self,scenario):
         if scenario not in {'cut','pause','ignore-range','bad-range','changed-etag','short-length','oversize','bad-hash','bad-signer','queued-cancel','cancel-restart'}:
             self.send_error(404);return
@@ -186,9 +188,19 @@ class Fixture(fixture.Fixture):
         finally:trace['returnedBytes']=trace['sentBytes']
         return
     def do_POST(self):
-        body=self.rfile.read(int(self.headers.get('Content-Length','0')))
-        ok=self.path=='/image-received' and b'filename="photo-123.png"' in body and b'Content-Type: image/png' in body and b'\x89PNG\r\n\x1a\n' in body
-        self.send_response(200 if ok else 400);self.send_header('Content-Length','0');self.end_headers()
+        try:
+            address=urllib.parse.urlparse(self.path);query=urllib.parse.parse_qs(address.query,strict_parsing=True)
+            assert address.path=='/image-received' and set(query)=={'nonce','command','phase'} and all(len(v)==1 for v in query.values())
+            nonce=query['nonce'][0];command=query['command'][0]
+            assert re.fullmatch('[0-9a-f]{32}',nonce) and re.fullmatch('[1-9][0-9]{0,18}',command)
+            length=self.headers.get('Content-Length','');assert re.fullmatch('[1-9][0-9]{0,5}',length)
+            length=int(length);assert length<=MAX_PNG_BYTES+4096
+            body=self.rfile.read(length);assert len(body)==length and self.photo_ledger is not None
+            receipt=self.photo_ledger.receive(nonce,int(command),query['phase'][0],self.headers.get('Content-Type',''),body)
+            response=json.dumps(receipt,separators=(',',':')).encode()
+            self.send_response(200);self.send_header('Content-Type','application/json');self.send_header('Content-Length',str(len(response)));self.end_headers();self.wfile.write(response)
+        except Exception as error:
+            self.send_error(422,'Independent photo content rejected: '+type(error).__name__)
     def do_GET(self):
         address=urllib.parse.urlparse(self.path);query=urllib.parse.parse_qs(address.query)
         if address.path.startswith('/update-transfer/'):
@@ -206,7 +218,21 @@ class Fixture(fixture.Fixture):
             body=b'name,value\nsynthetic,42\n'
             self.send_response(200);self.send_header('Content-Type','text/csv');self.send_header('Content-Disposition','attachment; filename="generated.csv"');self.send_header('Content-Length',str(len(body)));self.end_headers();self.wfile.write(body);return
         if address.path=='/browser-image':
-            body=b'''<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><h1>Desktop image fixture</h1><input id="upload" type="file" accept="image/*" multiple><p id="upload-result"></p><script>upload.onchange=async e=>{try{const f=e.target.files[0],image=await createImageBitmap(f),bytes=new Uint8Array(await f.arrayBuffer());if(f.type!=='image/png'||image.width!==4||image.height!==3||bytes[0]!==137||bytes[1]!==80)throw Error('image bytes or MIME lost');const form=new FormData();form.append('file',f);const response=await fetch('/image-received',{method:'POST',body:form});if(!response.ok)throw Error('upload rejected');document.getElementById('upload-result').textContent='ok:'+f.name+':'+f.type+':4x3';}catch(error){document.getElementById('upload-result').textContent='error:'+error.message;}};</script>'''
+            try:
+                assert set(query)=={'nonce','command','privacy','mode'} and all(len(v)==1 for v in query.values())
+                nonce=query['nonce'][0];command=query['command'][0];privacy=query['privacy'][0];mode=query['mode'][0]
+                assert re.fullmatch('[0-9a-f]{32}',nonce) and re.fullmatch('[1-9][0-9]{0,18}',command) and privacy in ('1','2') and mode in ('select','probe')
+                assert self.photo_ledger is not None
+                owner=self.photo_ledger.document(nonce,int(command),int(privacy),mode)
+                config={key:owner[key] for key in ('runNonce','command','privacyLevel','mode')}
+                body=(ROOT/'tests/gecko/assets/photo-upload-fixture.html').read_bytes()
+                assert body.count(b'__PHOTO_CONFIG__')==1
+                body=body.replace(b'__PHOTO_CONFIG__',json.dumps(config,separators=(',',':')).encode())
+            except Exception as error:
+                self.send_error(422,'Invalid photo document owner: '+type(error).__name__);return
+        elif address.path=='/photo-pattern.png':
+            body=(ROOT/'tests/gecko/assets/photo-upload-pattern.png').read_bytes()
+            self.send_response(200);self.send_header('Content-Type','image/png');self.send_header('Content-Length',str(len(body)));self.send_header('Cache-Control','no-store');self.end_headers();self.wfile.write(body);return
         elif address.path=='/browser-continuity':
             body=b'''<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><h1>Controlled page continuity</h1><textarea id="prompt-textarea"></textarea><button id="stop" data-testid="stop-button">Stop</button><script>window.__continuitySends=0;</script>'''
         elif address.path=='/browser-usability':
@@ -274,6 +300,7 @@ def main():
     if subprocess.check_output(['git','status','--porcelain'],cwd=ROOT,text=True):raise ValueError('Device evidence requires clean committed APK/source')
     gradle=(ROOT/'app/build.gradle').read_text();version=re.search(r"versionName '([^']+)'",gradle).group(1);code=int(re.search(r'versionCode (\d+)',gradle).group(1))
     identity=expected_build(args.apk.resolve(),source,tree,version,code)
+    Fixture.photo_ledger=PhotoUploadLedger(OUT,identity)
     event_transfers=[]
     package='local.pocketchat.test'
     servers=[fixture.http.server.ThreadingHTTPServer(('127.0.0.1',8765),Fixture),Server(('127.0.0.1',1080),Socks),Server(('127.0.0.1',1081),HttpProxy)]
@@ -291,9 +318,14 @@ def main():
     has_pixel_launcher=launcher in adb('shell','pm','list','packages',launcher)
     if diagnostic and has_pixel_launcher:adb('shell','am','force-stop',launcher) # First-boot workaround only once for a diagnostic subset.
     steps=[];logs=[];update_report=None;surface_gestures={}
-    def run(context,action,kind='fixture',extra=()):
+    def run(context,action,kind='fixture',extra=(),photo=None):
         adb('logcat','-c')
         nonce=uuid.uuid4().hex
+        if photo is not None:
+            name,slot,privacy,mode,photo_action=photo
+            assert context-1==slot and action==photo_action
+            Fixture.photo_ledger.register(name,nonce,slot,privacy,mode,action)
+            extra=(*extra,'--ei','photoPrivacy',str(privacy))
         transfer_record=dict(runNonce=nonce,fixtureAction=action,processSlot=context-1,events=[],scope='Complete owned synthetic event bytes; no replacement of original device assertions')
         event_transfers.append(transfer_record)
         def fetch_event(uri):
@@ -374,6 +406,8 @@ def main():
                     logs.append(output);raise AssertionError(event)
                 if event.get('kind')==kind:
                     result=event['result']
+                    if photo is not None:
+                        Fixture.photo_ledger.complete(nonce,result,transfer.records)
                     if action=='downloadResume':
                         report.setdefault('savedFileDeletion',{})['downloadResume']=result
                     assert 'error' not in result,event
@@ -631,10 +665,16 @@ def main():
             update_transfers();report.update(status='passed',scope='Diagnostic subset only: all 28 real transfer checks. Not full release evidence.');return
         usability=run(1,'usability','usability');assert usability['documentPreserved'] and usability['mobileVisible'] and usability['upload']=='sample.txt:synthetic-upload' and usability['csv']=='name,value\nsynthetic,42\n' and usability['blob']==usability['csv'],usability
         report['browserUsability']=usability
-        image=run(1,'desktopImage','desktopImage');assert all(image[k] for k in ['productionChooserOpened','imageMimeAndMultiple','pendingPreserved','noPhantomUpload','desktop']) and image['upload']=='ok:photo-123.png:image/png:4x3',image
-        report['desktopImageUpload']=image
-        own_image=run(1,'desktopOwnImage','desktopImage');assert all(own_image[k] for k in ['productionChooserOpened','imageMimeAndMultiple','pendingPreserved','noPhantomUpload','desktop']) and own_image['upload']=='ok:photo-123.png:image/png:4x3',own_image
-        report['ownProviderImageUpload']=own_image
+        for photo in PHOTO_CASES:
+            name,slot,privacy,mode,photo_action=photo
+            image=run(slot+1,photo_action,'desktopImage' if mode=='select' else 'photoProtectionProbe',photo=photo)
+            if mode=='select':
+                assert all(image[k] is True for k in ['productionChooserOpened','imageMimeAndMultiple','pendingPreserved','noPhantomUpload','desktop']) and image['upload']=='ok:photo-123.png:image/png:64x48',image
+            if name=='standard-external':report['desktopImageUpload']=image
+            elif name=='standard-own':report['ownProviderImageUpload']=image
+        photo_report=Fixture.photo_ledger.report()
+        report['photoImageContent']=verify_photo_upload_evidence(OUT,source,photo_report)
+        (OUT/'photo-upload-results.json').write_text(json.dumps(photo_report,indent=2)+'\n')
         upload_lifecycle=run(1,'uploadLifecycle','uploadLifecycle')
         assert all(upload_lifecycle[k] is True for k in ['atomicHandoff','dismissedOnce','closedPromptResultIgnored','preparationCleanup']),upload_lifecycle
         report['uploadPromptLifecycle']=upload_lifecycle
@@ -750,15 +790,17 @@ def main():
         report['closedBootstrapCleanup']=restored_bootstrap
         check(run(2,'read'),2,True)
         # Exercise the real outer Activity after moving its retained Gecko surface.
+        from ui_visual_capture import UiVisualCapture
+        navigation_capture=UiVisualCapture.for_device(adb=args.adb,serial=args.serial,source=source,
+            diagnostics=OUT/'production-navigation-capture.json')
         adb('logcat','-c')
         adb('shell','am','start','-n',package+'/local.pocketchat.MainActivity','--es','openWindowAction','native-smoke')
         time.sleep(4)
         assert adb('shell','pidof',package).strip(),'Production Activity exited'
-        adb('shell','uiautomator','dump','/sdcard/gecko-production.xml')
-        hierarchy=adb('shell','cat','/sdcard/gecko-production.xml')
+        hierarchy=navigation_capture.read(deadline=time.monotonic()+30)
         (OUT/'production-ui.xml').write_text(hierarchy)
-        from workspace_navigation_contract import exercise_workspace_roundtrip
-        report['productionNavigation']=exercise_workspace_roundtrip(adb,hierarchy,lambda name,xml:(OUT/name).write_text(xml),package,browser=True)
+        from workspace_navigation_contract_v3 import exercise_workspace_roundtrip
+        report['productionNavigation']=exercise_workspace_roundtrip(adb,hierarchy,lambda name,xml:(OUT/name).write_text(xml),package,browser=True,capture=navigation_capture)
         assert not any(node.attrib.get('text') in ['简洁','原网页'] for node in ET.fromstring(hierarchy).iter('node')),hierarchy
         assert 'FATAL EXCEPTION' not in adb('logcat','-d','-s','AndroidRuntime:E','*:S')
         update_checks=[]
@@ -851,6 +893,8 @@ def main():
                 if required:persistence_errors.append(error)
         def write_reports():
             artifact(device_report_name,lambda:(OUT/device_report_name).write_text(json.dumps(report,indent=2)+'\n'),True)
+            if Fixture.photo_ledger.cases:
+                artifact('photo-upload-results.json',lambda:(OUT/'photo-upload-results.json').write_text(json.dumps(Fixture.photo_ledger.report(),indent=2)+'\n'),True)
             if update_report is not None:
                 update_report['artifactErrors']=artifact_errors
                 artifact(update_report_name,lambda:(OUT/update_report_name).write_text(json.dumps(update_report,indent=2)+'\n'),True)

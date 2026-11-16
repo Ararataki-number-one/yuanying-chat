@@ -13,6 +13,26 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class ChromeNavigationHistoricalPorts(unittest.TestCase):
+    def test_current_header_only_adds_the_two_exact_reviewed_helper_binding_changes(self):
+        current = (ROOT/view.HEADER).read_bytes()
+        old = historical_bytes(view.HEADER)
+        self.assertEqual(view.pin(old), view.LEGACY[view.HEADER][0])
+        self.assertEqual(view.source_input(current, view.HEADER), old)
+        self.assertEqual(current.replace(view.HEADER_HELPER_ADDITION, b'', 1)
+                         .replace(view.HEADER_HELPER_CURRENT, view.HEADER_HELPER_ORIGINAL, 1), old)
+        changed = (current + b' ',
+            current.replace(view.HEADER_HELPER_ADDITION, b'', 1),
+            current.replace(view.HEADER_HELPER_ADDITION, view.HEADER_HELPER_ADDITION * 2, 1),
+            current.replace(view.HEADER_HELPER_CURRENT, view.HEADER_HELPER_ORIGINAL, 1),
+            current.replace(b'hashes[HELPER] in (HELPER_SHA, CURRENT_HELPER_SHA)', b'True', 1),
+            current.replace(b'preparation_deadline = min(started+20, action_deadline-.320)',
+                            b'preparation_deadline = min(started+21, action_deadline-.320)', 1),
+            current.replace(b"'320'", b"'321'", 1))
+        for raw in changed:
+            with self.subTest(sha256=hashlib.sha256(raw).hexdigest()), self.assertRaises(ValueError):
+                self.assertNotEqual(raw, current)
+                view.source_input(raw, view.HEADER)
+
     def test_only_fixed_complete_inputs_restore_the_unmodified_old_pins(self):
         old = first.manifest()['files']
         for relative in (view.RUNNER, view.GUARD, view.HEADER):

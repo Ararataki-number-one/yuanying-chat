@@ -78,6 +78,9 @@ jobs:
               from browser.tls_publication import TLS_SOURCE_ONLY_TOOLS
               for name in TLS_SOURCE_ONLY_TOOLS:
                   assert pathlib.Path(name).read_bytes()==subprocess.check_output(['git','show',m['sourceCommit']+':'+name]),'TLS checker/support differs from tested source: '+name
+          if m['versionCode']>=108:
+              for name in ('tools/gecko/photo_upload_contract.py','tools/gecko/compact_chrome_layout_v3.py','tools/gecko/chrome_collapse_contract_v3.py','tools/gecko/workspace_navigation_contract_v3.py','tools/gecko/ui_hierarchy_driver.py','tools/gecko/chrome_collapse_case_storage.py'):
+                  assert pathlib.Path(name).read_bytes()==subprocess.check_output(['git','show',m['sourceCommit']+':'+name]),'Photo/browser checker differs from tested source: '+name
           subprocess.run(['python3','tools/gecko/release_channel_contract_test.py'],check=True)
           from tools.gecko.release_channel_contract import release_tag, requires_manual_acceptance, verify_manual_acceptance, verify_direct_release
           release_tag(m)
@@ -105,6 +108,25 @@ jobs:
               subprocess.run(['git','fetch','--no-tags','--depth=1','--filter=blob:none','origin',m['sourceCommit']],check=True)
           report=json.loads(pathlib.Path('device-results.json').read_text())
           assert report['sourceCommit']==m['sourceCommit'] and report['status']=='passed' and report['actualAndroidExecution'] and report['releaseMode']
+          if m['versionCode']>=108:
+              from tools.gecko.photo_upload_contract import verify_photo_upload_evidence
+              from tools.gecko.profile_invocation_contract import verify_installed
+              assert verify_photo_upload_evidence(pathlib.Path('.'),m['sourceCommit'])==m['photoUploadContentRegression']
+              photo=json.loads(pathlib.Path('photo-upload-results.json').read_text())
+              verify_installed(photo['buildIdentity'],report['eventTransport']['buildIdentity'])
+              chrome=json.loads(pathlib.Path('compact-chrome-results.json').read_text())
+              assert all(case['navigationContract']==3 for case in chrome['cases']) and chrome['autoCollapse']['navigationContract']==3
+          if m['versionCode']>=108:
+              from tools.gecko.workspace_navigation_contract_v3 import verify_workspace_roundtrip
+              navigation_report_raw=pathlib.Path('device-results.json').read_bytes()
+              assert json.loads(navigation_report_raw)==report,'Native navigation must use the original checked device report.'
+              navigation=dict(sourceCommit=m['sourceCommit'],deviceReportSha256=hashlib.sha256(navigation_report_raw).hexdigest(),
+                  roundtrip=verify_workspace_roundtrip(report['productionNavigation'],'local.pocketchat.test',source=m['sourceCommit']))
+              navigation_identity=report['eventTransport']['buildIdentity']
+              assert navigation['roundtrip']['sourceTree']==navigation_identity['sourceTree'],'Native navigation and installed APK source trees differ.'
+              for key in ('runId','runAttempt'):
+                  assert navigation['roundtrip'][key]==navigation_identity['sdkBuildIdentity'][key],'Native navigation and installed APK build runs differ: '+key
+              assert navigation==m['productionNavigationRegression']
           if m['versionCode']>=59:
               raw=pathlib.Path('appearance-results.json').read_bytes();a=json.loads(raw)
               assert a['status']=='passed' and a['actualAndroidExecution'] and a['systemModeEvents']

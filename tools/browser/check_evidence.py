@@ -69,9 +69,18 @@ def validate_behavior(report,source,reader=source_bytes):
     switch=switches[0];require(type(switch.get('browserTaskId')) is int and type(switch.get('enhancedTaskId')) is int and switch['browserTaskId']!=switch['enhancedTaskId'] and result.get('taskId')==switch['browserTaskId'],'independent task identity and browser return required')
     rotations=[a for a in actions if a.get('kind')=='rotation'];require([(a.get('stage'),a.get('value')) for a in rotations]==[('rotate-landscape',1),('rotate-portrait',0)],'both actual Android orientation changes required')
     layouts=result.get('layoutObservations',[]);require(len(layouts)==2 and [v.get('orientation') for v in layouts]==[2,1],'both measured native orientations required')
+    versions=[layout.get('navigationContract',1) for layout in layouts]
+    require(all(type(value) is int and value in (1,3) for value in versions) and len(set(versions))==1,'one recognized native browser layout contract required')
     for layout in layouts:
         require(isinstance(layout.get('fontScale'),(int,float)) and layout['fontScale']>=1.9,'large-font measurement required')
-        controls=layout.get('controls',[]);require(len(controls)==5 and {c.get('name') for c in controls}=={'address','back','forward','tabs','reload'},'all native control bounds required')
+        controls=layout.get('controls',[])
+        if versions[0]==3:
+            require([c.get('name') for c in controls]==['back','home','address','reload','menu'],'all current bottom browser controls required in order')
+            density=layout.get('density')
+            require(type(density) in (int,float) and 0<density<=16,'actual display density required')
+            require(all(c.get('minimum')==int(48*density+0.5) for c in controls),'current browser actions require the actual 48 dp minimum')
+        else:
+            require(len(controls)==5 and {c.get('name') for c in controls}=={'address','back','forward','tabs','reload'},'all native control bounds required')
         require(all(c.get('shown') is True and type(c.get('minimum')) is int and c['minimum']>0 and c.get('visibleWidth',0)>=c['minimum'] and c.get('visibleHeight',0)>=c['minimum'] for c in controls),'native control targets are clipped')
     leases=result.get('leaseObservations',[])
     expected_leases=[('first-surface',1,0),('two-surfaces',2,0),('download-in-flight',2,1),('download-complete',2,0),('route-blocked',0,0),('route-restored',1,0),('engine-roundtrip',1,0)]
@@ -97,6 +106,9 @@ def verify_browser_evidence(directory,source,reader=source_bytes):
     checked=dict(sourceCommit=source,sourceTree=expected['sourceTree'],integrationApkSha256=expected['apkSha256'],runId=sdk['runId'],runAttempt=sdk['runAttempt'],reportSha256=hashlib.sha256(raw).hexdigest(),checkCount=len(result['checks']),actualAndroidExecution=True,actualAndroidWebViewExecution=True,provider=result['provider'],physicalPhoneAcceptance=False,scope='Same source, run-bound SDK and exact integration APK as original Gecko acceptance; controlled Android WebView browser workload, no public website or device-speed claim')
     version=expected.get('version','')
     require(isinstance(version,str) and re.fullmatch(r'[0-9]+\.[0-9]+\.[0-9]+',version),'reference build version required')
+    if tuple(map(int,version.split('.'))) >= (2,1,6):
+        require(all(layout.get('navigationContract')==3 for layout in result['layoutObservations']),'current APK requires current bottom browser controls')
+        checked['browserNavigationContract']=3
     if tuple(map(int,version.split('.'))) >= (2,1,1):
         from browser.check_fingerprint_evidence import verify_fingerprint_evidence
         checked['fingerprintRegression']=verify_fingerprint_evidence(directory,source,expected,reader=reader)

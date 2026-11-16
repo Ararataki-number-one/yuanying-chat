@@ -28,6 +28,7 @@ STUBS = {
     'android/view/Window.java': 'package android.view; public class Window {}',
     'android/app/Activity.java': '''package android.app; public class Activity {
       public static final int RESULT_OK=-1; public android.view.Window getWindow(){return new android.view.Window();}
+      public android.content.Intent getIntent(){return new android.content.Intent();}
       public void startActivityForResult(android.content.Intent i,int r){}
     }''',
     'android/net/Uri.java': '''package android.net; public class Uri {
@@ -37,6 +38,7 @@ STUBS = {
       public static final String ACTION_OPEN_DOCUMENT="open",EXTRA_ALLOW_MULTIPLE="multiple";
       public android.net.Uri uri;public String getAction(){return ACTION_OPEN_DOCUMENT;}
       public String getType(){return "image/*";}public boolean getBooleanExtra(String k,boolean d){return true;}
+      public int getIntExtra(String k,int d){return d;}
       public Intent setData(android.net.Uri v){uri=v;return this;}
     }''',
     'android/webkit/WebView.java': 'package android.webkit; public class WebView {}',
@@ -52,11 +54,12 @@ HOST = r'''import org.json.*;
 import android.app.Activity;import android.content.Intent;import android.os.SystemClock;
 import android.webkit.WebView;import android.widget.TextView;
 final class GeckoIntegrationTestActivity extends Activity {
-  long run=1;final Session session=new Session();final EventStore eventStore=new EventStore();
+  long run=1,expectedDeadline;final Session session=new Session();final EventStore eventStore=new EventStore();
   JSONObject result;String resultKind;int taps,evals;boolean defer,ready=true;Runnable deferred;
   static final class J {static JSONObject held;static JSONObject obj(Object... pairs){JSONObject o=new JSONObject();for(int i=0;i<pairs.length;i+=2)o.put((String)pairs[i],pairs[i+1]);if("web".equals(o.optString("kind")))held=o;return o;}static JSONObject parse(String s){return new JSONObject(s);}}
   static final class EventStore{String nonce="controlled-nonce";}
   static final class Privacy{int level(){return 0;}}
+  static final class Prefs{Prefs edit(){return this;}Prefs putInt(String key,int value){return this;}boolean commit(){return true;}}
   static final class Reading{void configure(boolean v){}}
   static final class Handler{
     final java.util.ArrayDeque<Runnable> work=new java.util.ArrayDeque<>();
@@ -65,8 +68,8 @@ final class GeckoIntegrationTestActivity extends Activity {
     void next(){check(!work.isEmpty(),"scheduled work required");SystemClock.now+=delays.remove();work.remove().run();}
   }
   final class Session{final Reading reading=new Reading();final Privacy privacy=new Privacy();final Handler handler=new Handler();
-    final FixtureView web=new FixtureView();JSONObject pending;boolean navigating;Object prefs=new Object();JSONArray attachments=new JSONArray();}
-  class GeckoWebView extends WebView{boolean desktop;}
+    final FixtureView web=new FixtureView();JSONObject pending;boolean navigating;Prefs prefs=new Prefs();JSONArray attachments=new JSONArray();}
+  class GeckoWebView extends WebView{boolean desktop,privacyReady=true,fingerprintingProtected;int protectionLevel;}
   final class DisplayContext{Object base;Object getBaseContext(){return base;}}
   final class FixtureView extends GeckoWebView{
     boolean chooserOrigin,visible;String target,upload="";MainActivity host;android.webkit.WebChromeClient chrome;
@@ -100,9 +103,14 @@ final class GeckoIntegrationTestActivity extends Activity {
     check(session.pending==J.held,"held pending must precede first actual upload tap");
     taps++;session.web.chrome.onShowFileChooser(session.web,value->{},new android.webkit.WebChromeClient.FileChooserParams());
   }
+  // Timing controls keep the real native geometry in its separately compiled
+  // helper suite; this edge represents its eventual single Android input.
+  static final class GeckoPhotoTap {static void begin(GeckoIntegrationTestActivity a,long serial,String target,long deadline){
+    check(target.equals(a.session.web.target)&&deadline==a.expectedDeadline,"photo tap retains exact target and original deadline");a.tapElement(serial,"upload");
+  }}
   static void check(boolean ok,String message){if(!ok)throw new AssertionError(message);}
   void visible(){session.web.visible=true;session.navigating=false;}
-  void start(boolean own){desktopImage(1,own);check(session.pending==null,"navigation has cleared pending");check(session.handler.delays.peek()==200L,"original initial polling interval");visible();}
+  void start(boolean own){expectedDeadline=SystemClock.now+25200;desktopImage(1,own);check(session.pending==null,"navigation has cleared pending");check(session.handler.delays.peek()==200L,"original initial polling interval");visible();}
   void finish(boolean own){for(int i=0;i<5&&result==null;i++)session.handler.next();
     check(taps==1,"exactly one upload tap");check("desktopImage".equals(resultKind),"real completion callback");
     for(String k:new String[]{"productionChooserOpened","imageMimeAndMultiple","pendingPreserved","noPhantomUpload","desktop"})check(result.optBoolean(k),k);
@@ -193,7 +201,7 @@ class DesktopImagePendingTest(unittest.TestCase):
 
     def test_seven_compiled_semantic_changes_fail_their_behavior_control(self):
         changes=(
-            ('session.pending=held;tapElement(serial,"upload")','tapElement(serial,"upload")','ordinary'),
+            ('session.pending=held;GeckoPhotoTap.begin(this,serial,target,deadline)','GeckoPhotoTap.begin(this,serial,target,deadline)','ordinary'),
             ('      if(serial!=run)return;\n','','stale'),
             ('!touched&&current.optBoolean("ready")','!touched','gates'),
             ('&&session.web.hasVisibleDocument()','','gates'),

@@ -1,0 +1,336 @@
+package local.pocketchat.hierarchydriver;
+
+import android.app.UiAutomation;
+import android.graphics.Point;
+import android.os.Build;
+import android.os.Process;
+import android.os.SystemClock;
+import android.view.Display;
+import android.view.accessibility.AccessibilityNodeInfo;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.InputStream;
+import java.io.PrintStream;
+import java.lang.reflect.InvocationTargetException;
+import java.security.MessageDigest;
+import java.util.Enumeration;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipFile;
+import org.json.JSONObject;
+
+/** Read-only emulator hierarchy capture using the installed AOSP formatter. */
+public final class NativeHierarchyCapture {
+  static final String ENTRY = "local.pocketchat.hierarchydriver.NativeHierarchyCapture";
+  static final String SYSTEM_JAR = "/system/framework/uiautomator.jar";
+  static final String STAMP = "hierarchy-driver-build.json";
+  static final String SOURCE = "sources/NativeHierarchyCapture.java";
+  static final String NULL_ROOT = "ERROR: null root node returned by UiTestAutomationBridge.";
+  static final String FORMATTER_NOT_READY = "NOT_READY: native hierarchy formatter null child: ";
+  static final int FORMATTER_NOT_READY_EXIT = 4;
+  static final String NULL_CHILD_MESSAGE = "Attempt to invoke virtual method 'java.lang.CharSequence "
+      + "android.view.accessibility.AccessibilityNodeInfo.getContentDescription()' on a null object reference";
+  static final long ROOT_POLL_MILLIS = 1000;
+  static final long MAX_BUDGET_MILLIS = 90000;
+
+  private NativeHierarchyCapture() {}
+
+  static void require(boolean condition, String message) {
+    if (!condition) throw new IllegalArgumentException(message);
+  }
+
+  static void supportedEnvironment() throws Exception {
+    require(Process.myUid() == 2000, "Hierarchy capture requires shell UID 2000");
+    require(Build.VERSION.SDK_INT == 32 || Build.VERSION.SDK_INT == 35,
+        "Hierarchy capture supports only API 32 and 35");
+    Class<?> properties = Class.forName("android.os.SystemProperties");
+    String qemu = (String) properties.getMethod("get", String.class).invoke(null, "ro.kernel.qemu");
+    require("1".equals(qemu) && ("ranchu".equals(Build.HARDWARE) || "goldfish".equals(Build.HARDWARE)),
+        "Hierarchy capture requires a supported Android emulator");
+  }
+
+  static String hash(InputStream stream, long maximum) throws Exception {
+    MessageDigest digest = MessageDigest.getInstance("SHA-256");
+    byte[] buffer = new byte[32768];
+    long count = 0;
+    for (int n; (n = stream.read(buffer)) != -1;) {
+      count += n;
+      require(count <= maximum, "Hierarchy dependency exceeds its bound");
+      digest.update(buffer, 0, n);
+    }
+    StringBuilder result = new StringBuilder();
+    for (byte value : digest.digest()) result.append(String.format(java.util.Locale.ROOT, "%02x", value & 255));
+    return result.toString();
+  }
+
+  static String hash(File file, long maximum) throws Exception {
+    try (InputStream stream = new FileInputStream(file)) { return hash(stream, maximum); }
+  }
+
+  static byte[] bytes(InputStream stream, int maximum) throws Exception {
+    ByteArrayOutputStream output = new ByteArrayOutputStream();
+    byte[] buffer = new byte[4096];
+    for (int n; (n = stream.read(buffer)) != -1;) {
+      require(output.size() + n <= maximum, "Hierarchy metadata exceeds its bound");
+      output.write(buffer, 0, n);
+    }
+    return output.toByteArray();
+  }
+
+  static JSONObject verifyStamp(ZipFile archive, String source, String tree, String run, String attempt)
+      throws Exception {
+    int entries = 0;
+    for (Enumeration<? extends ZipEntry> all = archive.entries(); all.hasMoreElements();) {
+      String name = all.nextElement().getName();
+      require(name.equals("classes.dex") || name.equals(STAMP) || name.equals(SOURCE),
+          "Unexpected hierarchy driver archive entry");
+      entries++;
+    }
+    require(entries == 3 && archive.getEntry("classes.dex") != null && archive.getEntry(STAMP) != null
+        && archive.getEntry(SOURCE) != null, "Incomplete hierarchy driver archive");
+    JSONObject stamp;
+    try (InputStream input = archive.getInputStream(archive.getEntry(STAMP))) {
+      stamp = new JSONObject(new String(bytes(input, 131072), "UTF-8"));
+    }
+    require(stamp.getInt("schema") == 1 && ENTRY.equals(stamp.getString("entryPoint"))
+        && stamp.getInt("executionUid") == 2000 && stamp.getBoolean("readOnly")
+        && source.equals(stamp.getString("sourceCommit")) && tree.equals(stamp.getString("sourceTree"))
+        && run.equals(stamp.getString("runId")) && attempt.equals(stamp.getString("runAttempt")),
+        "Hierarchy driver embedded source/run identity differs from preparation");
+    String expected = stamp.getJSONObject("inputs").getString("tests/ui-hierarchy-driver/NativeHierarchyCapture.java");
+    try (InputStream input = archive.getInputStream(archive.getEntry(SOURCE))) {
+      require(hash(input, 131072).equals(expected), "Hierarchy driver embedded Java source differs from Git bytes");
+    }
+    return stamp;
+  }
+
+  static void verifyArchive(String expectedHash, String source, String tree, String run, String attempt,
+      String expectedSystemHash) throws Exception {
+    require(expectedHash.matches("[0-9a-f]{64}") && expectedSystemHash.matches("[0-9a-f]{64}")
+        && source.matches("[0-9a-f]{40}") && tree.matches("[0-9a-f]{40}")
+        && run.matches("[1-9][0-9]*") && attempt.matches("[1-9][0-9]*"), "Invalid hierarchy driver identity");
+    String classpath = System.getenv("CLASSPATH");
+    require(classpath != null && classpath.matches("/data/local/tmp/pocketchat-ui-hierarchy-"
+        + source.substring(0, 12) + "-" + run + "-" + attempt + "-[0-9a-f]{32}\\.jar:"
+        + SYSTEM_JAR.replace(".", "\\.")), "Unexpected hierarchy driver classpath");
+    File jar = new File(classpath.substring(0, classpath.indexOf(':')));
+    require(jar.isFile() && jar.getAbsolutePath().equals(jar.getCanonicalPath()), "Hierarchy driver jar is not a regular owned path");
+    require(hash(jar, 2097152).equals(expectedHash), "Installed hierarchy driver SHA-256 mismatch");
+    require(hash(new File(SYSTEM_JAR), 33554432).equals(expectedSystemHash), "AOSP hierarchy dependency changed");
+    try (ZipFile archive = new ZipFile(jar)) { verifyStamp(archive, source, tree, run, attempt); }
+  }
+
+  static AccessibilityNodeInfo root(UiAutomation automation, long deadline) {
+    long limit = Math.min(deadline, SystemClock.uptimeMillis() + ROOT_POLL_MILLIS);
+    while (SystemClock.uptimeMillis() < limit) {
+      AccessibilityNodeInfo node = automation.getRootInActiveWindow();
+      if (node != null) {
+        if (SystemClock.uptimeMillis() >= deadline) {
+          node.recycle();
+          throw new IllegalStateException("Hierarchy deadline expired during root acquisition");
+        }
+        return node;
+      }
+      long remaining = limit - SystemClock.uptimeMillis();
+      if (remaining > 0) SystemClock.sleep(Math.min(40, remaining));
+    }
+    return null;
+  }
+
+  static Point displaySize(Display display, int api) {
+    Point size = new Point();
+    require(api == 32 || api == 35, "Unsupported hierarchy display API");
+    // Accessibility bounds are screen coordinates. App size excludes system
+    // insets and would clip real controls on API 32 with cutout/three-button UI.
+    display.getRealSize(size);
+    require(size.x > 0 && size.y > 0, "Invalid hierarchy display size");
+    return size;
+  }
+
+  static boolean syncWindowRequested(String[] args) {
+    require(args.length == 8 || args.length == 9,
+        "Expected hierarchy path, budget, jar/source/tree/run/attempt and system identity");
+    require(args.length == 8 || "sync-window-input".equals(args[8]),
+        "Unknown hierarchy capture mode");
+    return args.length == 9;
+  }
+
+  static void syncWindowInput(UiAutomation automation, long deadline) throws Exception {
+    require(SystemClock.uptimeMillis() < deadline,
+        "Hierarchy deadline expired before window input synchronization");
+    // This public TestApi exists on the supported API 32/35 runtimes, but is
+    // absent from the public compile SDK. Its void return is not proof that
+    // every animation completed; retain the caller's deadline and fresh root.
+    UiAutomation.class.getMethod("syncInputTransactions").invoke(automation);
+    require(SystemClock.uptimeMillis() < deadline,
+        "Hierarchy deadline expired during window input synchronization");
+  }
+
+  static final class FormatterNotReady extends Exception {
+    final File output;
+    final long deadline;
+    FormatterNotReady(Throwable cause, File output, long deadline) {
+      super("AOSP formatter encountered an unavailable child during NAF inspection", cause);
+      this.output = output;
+      this.deadline = deadline;
+    }
+  }
+
+  static boolean knownFormatterNullChild(Throwable error) {
+    // API 32's original childNafCheck dereferences getChild() without a null check.
+    // Recognize only the observed formatter call chain, never arbitrary NPEs.
+    if (Build.VERSION.SDK_INT != 32 || error == null || error.getClass() != NullPointerException.class
+        || !NULL_CHILD_MESSAGE.equals(error.getMessage())
+        || error.getCause() != null || error.getSuppressed().length != 0) return false;
+    StackTraceElement[] frames = error.getStackTrace();
+    String[] methods = {"childNafCheck", "nafCheck", "dumpNodeRec"};
+    if (frames.length < methods.length) return false;
+    for (int i = 0; i < methods.length; i++) {
+      if (!"com.android.uiautomator.core.AccessibilityNodeInfoDumper".equals(frames[i].getClassName())
+          || !methods[i].equals(frames[i].getMethodName())
+          || !"AccessibilityNodeInfoDumper.java".equals(frames[i].getFileName())) return false;
+    }
+    return true;
+  }
+
+  static void discardFailedOutput(File output, Exception error) {
+    try {
+      require(!output.exists() || output.delete(), "Cannot remove failed hierarchy attempt");
+      require(!output.exists(), "Failed hierarchy attempt remains after cleanup");
+    } catch (Exception cleanup) {
+      error.addSuppressed(cleanup);
+    }
+  }
+
+  static int reportFailure(Throwable error, PrintStream diagnostics, PrintStream protocol) {
+    if (error instanceof FormatterNotReady) {
+      FormatterNotReady pending = (FormatterNotReady) error;
+      try {
+        require(error.getSuppressed().length == 0 && knownFormatterNullChild(error.getCause()),
+            "Formatter readiness cannot hide another failure");
+        require(!pending.output.exists(), "Failed hierarchy attempt remains before readiness signal");
+        require(SystemClock.uptimeMillis() < pending.deadline,
+            "Hierarchy deadline expired before formatter readiness signal");
+        ByteArrayOutputStream original = new ByteArrayOutputStream();
+        try (PrintStream trace = new PrintStream(original, false, "UTF-8")) {
+          error.getCause().printStackTrace(trace);
+        }
+        byte[] raw = original.toByteArray();
+        String digest = hash(new ByteArrayInputStream(raw), raw.length);
+        diagnostics.write(raw, 0, raw.length);
+        require(!diagnostics.checkError(), "Cannot preserve original formatter diagnostics");
+        require(SystemClock.uptimeMillis() < pending.deadline,
+            "Hierarchy deadline expired during formatter diagnostics");
+        protocol.println(FORMATTER_NOT_READY + pending.output.getPath() + " " + raw.length + " " + digest);
+        return protocol.checkError() ? 1 : FORMATTER_NOT_READY_EXIT;
+      } catch (Exception rejected) {
+        error.addSuppressed(rejected);
+        error.printStackTrace(diagnostics);
+        return 1;
+      }
+    }
+    Throwable cause = error;
+    // Do not discard a wrapper's cleanup failure while exposing the original cause.
+    while (cause instanceof InvocationTargetException && cause.getCause() != null
+        && cause.getSuppressed().length == 0) cause = cause.getCause();
+    cause.printStackTrace(diagnostics);
+    return 1;
+  }
+
+  static boolean capture(File output, long deadline) throws Exception {
+    return capture(output, deadline, false);
+  }
+
+  static boolean capture(File output, long deadline, boolean syncWindow) throws Exception {
+    require(!output.exists(), "Refusing to replace an existing hierarchy attempt");
+    Class<?> wrapperType = Class.forName("com.android.uiautomator.core.UiAutomationShellWrapper");
+    Object wrapper = wrapperType.getConstructor().newInstance();
+    AccessibilityNodeInfo node = null;
+    boolean connected = false;
+    Exception failure = null;
+    try {
+      wrapperType.getMethod("connect").invoke(wrapper);
+      connected = true;
+      wrapperType.getMethod("setCompressedLayoutHierarchy", boolean.class).invoke(wrapper, false);
+      UiAutomation automation = (UiAutomation) wrapperType.getMethod("getUiAutomation").invoke(wrapper);
+      if (syncWindow) syncWindowInput(automation, deadline);
+      node = root(automation, deadline);
+      if (node == null) return false;
+      Class<?> managerType = Class.forName("android.hardware.display.DisplayManagerGlobal");
+      Object manager = managerType.getMethod("getInstance").invoke(null);
+      Display display = (Display) managerType.getMethod("getRealDisplay", int.class).invoke(manager, Display.DEFAULT_DISPLAY);
+      require(display != null, "Default display is unavailable");
+      Point size = displaySize(display, Build.VERSION.SDK_INT);
+      require(SystemClock.uptimeMillis() < deadline, "Hierarchy deadline expired before formatting");
+      try {
+        Class.forName("com.android.uiautomator.core.AccessibilityNodeInfoDumper")
+            .getMethod("dumpWindowToFile", AccessibilityNodeInfo.class, File.class, int.class, int.class, int.class)
+            .invoke(null, node, output, display.getRotation(), size.x, size.y);
+      } catch (InvocationTargetException error) {
+        if (error.getSuppressed().length == 0 && knownFormatterNullChild(error.getCause()))
+          throw new FormatterNotReady(error.getCause(), output, deadline);
+        throw error;
+      }
+      require(output.isFile() && output.length() > 0, "AOSP formatter did not create the current hierarchy");
+      require(SystemClock.uptimeMillis() < deadline, "Hierarchy deadline expired during formatting");
+      return true;
+    } catch (Exception error) {
+      failure = error;
+      discardFailedOutput(output, error);
+      throw error;
+    } finally {
+      Exception cleanup = null;
+      try { if (node != null) node.recycle(); } catch (Exception error) { cleanup = error; }
+      try { if (connected) wrapperType.getMethod("disconnect").invoke(wrapper); }
+      catch (Exception error) {
+        if (cleanup == null) cleanup = error;
+        else cleanup.addSuppressed(error);
+      }
+      if (cleanup != null) {
+        if (failure != null) failure.addSuppressed(cleanup);
+        else {
+          discardFailedOutput(output, cleanup);
+          throw cleanup;
+        }
+      }
+    }
+  }
+
+  public static void main(String[] args) {
+    int exit = 1;
+    Thread watchdog = null;
+    try {
+      boolean syncWindow = syncWindowRequested(args);
+      require(args[0].matches("/sdcard/pocketchat-ui-visual-[0-9a-f]{32}-[1-9][0-9]*\\.xml"),
+          "Invalid current-attempt hierarchy path");
+      require(args[1].matches("[1-9][0-9]*"), "Invalid hierarchy budget");
+      long budget = Long.parseLong(args[1]);
+      require(budget <= MAX_BUDGET_MILLIS, "Hierarchy budget exceeds caller limit");
+      final long deadline = SystemClock.uptimeMillis() + budget;
+      watchdog = new Thread(() -> {
+        long remaining;
+        while ((remaining = deadline - SystemClock.uptimeMillis()) > 0) {
+          try { Thread.sleep(remaining); } catch (InterruptedException finished) { return; }
+        }
+        System.err.println("ERROR: native hierarchy deadline expired.");
+        System.exit(3);
+      }, "hierarchy-deadline");
+      watchdog.setDaemon(true);
+      watchdog.start();
+      supportedEnvironment();
+      verifyArchive(args[2], args[3], args[4], args[5], args[6], args[7]);
+      File output = new File(args[0]);
+      boolean captured = capture(output, deadline, syncWindow);
+      require(SystemClock.uptimeMillis() < deadline, "Hierarchy deadline expired before acknowledgement");
+      if (captured) System.out.println("UI hierchary dumped to: " + args[0]);
+      else System.err.println(NULL_ROOT);
+      exit = 0;
+    } catch (Throwable error) {
+      exit = reportFailure(error, System.err, System.out);
+    } finally {
+      if (watchdog != null) watchdog.interrupt();
+    }
+    System.exit(exit);
+  }
+}

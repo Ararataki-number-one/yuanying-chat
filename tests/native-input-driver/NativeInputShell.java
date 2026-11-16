@@ -14,6 +14,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.regex.*;
 import java.util.zip.ZipFile;
+import org.json.JSONArray;
 import org.json.JSONObject;
 
 /** API35 emulator-only shell process. Never attaches instrumentation to the AUT. */
@@ -91,7 +92,7 @@ public final class NativeInputShell {
       if(SystemClock.uptimeMillis()+profile.duration>expires)throw new IllegalStateException("Original deadline expired during setup");
       final int systemUiUid=info("com.android.systemui",0).applicationInfo.uid;
       NativePreEmitReadiness.Clock readinessClock=new NativePreEmitReadiness.Clock(){public long now(){return SystemClock.uptimeMillis();}public void sleep(long millis){SystemClock.sleep(millis);}};
-      NativePreEmitReadiness.Result readiness=NativePreEmitReadiness.await(readinessClock,new NativePreEmitReadiness.Probe(){
+      NativePreEmitReadiness.Result readiness=NativePreEmitReadiness.awaitInput(readinessClock,new NativePreEmitReadiness.Probe(){
         public void verifyIdentity()throws Exception{
           JSONObject currentProcess=process(expectedPid,targetUid,TARGET);PackageInfo current=info(TARGET,0);
           if(!targetProcess.getString("startTicks").equals(currentProcess.getString("startTicks"))||current.applicationInfo.uid!=targetUid
@@ -101,10 +102,14 @@ public final class NativeInputShell {
               ||info("com.android.systemui",0).applicationInfo.uid!=systemUiUid)throw new IllegalStateException("Pre-emit identity changed");
         }
         public String window(long latest)throws Exception{return NativePreEmitReadiness.capture(new ProcessBuilder("/system/bin/dumpsys","window").start(),readinessClock,latest);}
-      },expires,profile.duration,targetUid,systemUiUid);
-      report.put("preEmitReadiness",new JSONObject().put("schema",1).put("status",readiness.passed?"passed":"failed").put("reason",readiness.reason)
+        public String input(long latest)throws Exception{return NativePreEmitReadiness.capture(new ProcessBuilder("/system/bin/dumpsys","input").start(),readinessClock,latest);}
+      },expires,profile.duration,targetUid,systemUiUid,Integer.parseInt(expectedPid));
+      JSONArray inputWindows=new JSONArray();for(java.util.Map<String,Object> row:readiness.inputObservations)inputWindows.put(new JSONObject(row));
+      report.put("preEmitReadiness",new JSONObject().put("schema",2).put("status",readiness.passed?"passed":"failed").put("reason",readiness.reason)
         .put("preEmitOnly",readiness.preEmitOnly).put("observations",readiness.observations).put("elapsedMs",readiness.elapsedMs).put("shadeObserved",readiness.shadeObserved)
-        .put("originalExpiresUptimeMs",expires).put("reservedGestureDurationMs",profile.duration).put("scope","known-notification-shade-before-t0"));
+        .put("originalExpiresUptimeMs",expires).put("reservedGestureDurationMs",profile.duration).put("scope","known-notification-shade-before-t0")
+        .put("observationBackend","wm-and-input-dispatcher-v1").put("inputObservationCount",inputWindows.length())
+        .put("inputShadeObserved",readiness.inputShadeObserved).put("inputObservations",inputWindows));
       if(!readiness.passed)throw new IllegalStateException("Pre-emit readiness: "+readiness.reason);
       if(SystemClock.uptimeMillis()+profile.duration>expires)throw new IllegalStateException("Original deadline expired during readiness");
       long ready=SystemClock.uptimeMillis();report.put("readyUptimeMs",ready).put("startupMs",ready-started);

@@ -53,6 +53,9 @@ PUBLISHER_METADATA_PINS = {
 }
 CPU_PUBLICATION_PATH = 'tests/browser_cpu_publish_gate_test.py'
 CPU_PUBLICATION_SHA = '49e19922d9e253976fc2da4b0092f4701db14a00cb52cb7d32e3f949dccb6301'
+# The approved current fixture supplies complete v3 navigation before the
+# unchanged CPU missing-summary controls; retain both whole-image identities.
+CURRENT_CPU_PUBLICATION_FIXTURE_SHA = '13922902ef64cd2dc25fbff14c71d78b46972c4e8efde85d3db9e4b619728253'
 CPU_PUBLICATION_BODY_SHA = '8304bd6a9a4acf95aeb64a2f5caa1a97491dfed46b76b02c4e1816414a75e8cb'
 B_PATHS = frozenset((GV, 'tests/ip_timezone_source_compatibility.py',
     'tests/profile_ip_timezone_source_compatibility_test.py',
@@ -684,7 +687,11 @@ class FinalBrowserHistoricalSources(unittest.TestCase):
         pins = {**PUBLISHER_METADATA_PINS, CPU_PUBLICATION_PATH: CPU_PUBLICATION_SHA}
         for relative, reviewed_sha in pins.items():
             current = (ROOT/relative).read_bytes()
-            self.assertEqual(SHA(current), reviewed_sha)
+            if relative == CPU_PUBLICATION_PATH:
+                self.assertEqual(SHA(historical_bytes(relative)), reviewed_sha)
+                self.assertEqual(SHA(current), CURRENT_CPU_PUBLICATION_FIXTURE_SHA)
+            else:
+                self.assertEqual(SHA(current), reviewed_sha)
             for node in ast.walk(ast.parse(current)):
                 if isinstance(node, ast.ImportFrom):
                     self.assertNotIn((node.module or '').split('.')[-1], histories, relative)
@@ -728,7 +735,8 @@ class FinalBrowserHistoricalSources(unittest.TestCase):
         self.assertEqual(text.count(needle), 1)
         self.assertNotEqual(digest(bodies(text.replace(needle,
             'self.assertEqual(len(dependencies),2,', 1))), CPU_PUBLICATION_BODY_SHA)
-        self.assertEqual(SHA((ROOT/CPU_PUBLICATION_PATH).read_bytes()), CPU_PUBLICATION_SHA)
+        self.assertEqual(SHA(historical_bytes(CPU_PUBLICATION_PATH)), CPU_PUBLICATION_SHA)
+        self.assertEqual(SHA((ROOT/CPU_PUBLICATION_PATH).read_bytes()), CURRENT_CPU_PUBLICATION_FIXTURE_SHA)
 
     def test_worker_producer_hooks_strip_to_whole_S_and_preserve_all_original_oracles(self):
         relative = 'tests/worker_timezone_source_compatibility.py'

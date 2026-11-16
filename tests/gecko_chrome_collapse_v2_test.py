@@ -354,13 +354,16 @@ class ChromeCollapseV2Controls(unittest.TestCase):
     def test_dispatcher_requires_explicit_version_and_keeps_v1_callable(self):
         args = (None, None, None, None, None, None)
         with self.assertRaises(TypeError): runner.run_versioned(*args)
-        for version in (None, True, '2', 2.0, 0, 3):
+        for version in (None, True, '2', 2.0, 0, 4):
             with self.assertRaises(ValueError): runner.run_versioned(*args, navigation_contract=version)
         with patch.object(runner, 'run', return_value='legacy') as old:
             self.assertEqual(runner.run_versioned(*args, navigation_contract=1), 'legacy'); old.assert_called_once_with(*args)
         fake=types.ModuleType('run_chrome_collapse_v2'); fake.run_v2=lambda *a:('v2', a)
         with patch.dict(sys.modules, {'run_chrome_collapse_v2': fake}), patch.object(runner, 'run', side_effect=AssertionError('legacy dispatch')):
             self.assertEqual(runner.run_versioned(*args, navigation_contract=2), ('v2', args))
+        current=types.ModuleType('run_chrome_collapse_v3'); current.run_v3=lambda *a:('v3',a)
+        with patch.dict(sys.modules,{'run_chrome_collapse_v3':current}):
+            self.assertEqual(runner.run_versioned(*args,navigation_contract=3),('v3',args))
 
     def test_cancel_uses_only_the_fresh_post_snapshot_geometry_with_one_original_budget(self):
         sample = self.report['cases'][0]['observations']['initialAddress']

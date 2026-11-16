@@ -82,11 +82,28 @@ def run(adb,binary,source,out,dump):
     def dashboard(xml):return any(n.get('content-desc')=='环境仪表盘' for n in tree(xml))
     def browser(xml):
         assert not dashboard(xml),'Direct browser entry unexpectedly opened environment details'
-        return any(n.get('content-desc')=='进入专注阅读模式' for n in tree(xml)) and any('长按切换环境' in n.get('content-desc','') for n in tree(xml))
-    def wait(predicate,label,timeout=35):
+        from workspace_navigation_contract_v3 import navigation,bounds
+        nodes=tree(xml)
+        suffix='，点按输入网址，长按切换环境'
+        capsules=[n for n in nodes if n.get('package')==PACKAGE
+                  and n.get('content-desc','').startswith('当前环境：')
+                  and n.get('content-desc','').endswith(suffix)]
+        try:
+            assert len(capsules)==1
+            capsule=capsules[0];name=capsule.get('content-desc')[len('当前环境：'):-len(suffix)]
+            assert name and capsule.get('text')==name and capsule.get('class')=='android.widget.Button'
+            assert capsule.get('enabled')==capsule.get('clickable')==capsule.get('long-clickable')=='true'
+            assert capsule.get('visible-to-user')!='false'
+            current=navigation(xml,PACKAGE,conversation=True)
+            l,t,r,b=bounds(capsule);left,top,right,bottom=current['toolbarBounds']
+            assert 0<=left<=l<r<=right and 0<=t<b<top<bottom and min(r-l,b-t)>=144
+            return True
+        except AssertionError:
+            return False
+    def wait(predicate,label,timeout=35,*,sync_window=False):
         deadline=time.monotonic()+timeout
         while True:
-            xml=dump(deadline=deadline)
+            xml=dump(deadline=deadline,sync_window=True) if sync_window else dump(deadline=deadline)
             crash=adb('logcat','-d','-s','AndroidRuntime:E','*:S')
             assert 'FATAL EXCEPTION' not in crash,(label,crash[-4000:])
             if time.monotonic()>=deadline:raise AssertionError((label,'wait budget expired',xml[-5000:]))
@@ -205,7 +222,7 @@ def run(adb,binary,source,out,dump):
             adb('shell','am','start','-W','-n',PACKAGE+'/local.pocketchat.WindowHomeActivity')
             xml=wait(lambda x:'环境管理' in x and '设置' in x,'manager settings entry')
             click(xml,'设置')
-            xml=wait(settings_workspace,'settings workspace')
+            xml=wait(settings_workspace,'settings workspace',sync_window=True)
             click(xml,'浏览器');wait(browser,'workspace opens browser directly')
             events.append(dict(name='settings-browser-tab-has-no-dashboard',passed=True))
             xml=open_details('资料整理');snapshot('workspace-chat',xml)
@@ -237,7 +254,7 @@ def main():
     sys.path.insert(0,str(root/'tools/gecko'))
     from ui_visual_capture import UiVisualCapture
     from ui_settings_services_device11 import prepare_workflow,finish_workflow
-    capture=UiVisualCapture(adb=args.adb,serial=args.serial,source=source,diagnostics=out/'dashboard-capture-attempts.json')
+    capture=UiVisualCapture.for_device(adb=args.adb,serial=args.serial,source=source,diagnostics=out/'dashboard-capture-attempts.json')
     lease=prepare_workflow(adb,serial=args.serial,environment=os.environ,root=root,source=source,record_path=out/'dashboard-settings-services-isolation.json')
     report={'status':'failed','sourceCommit':source,'physicalPhoneAcceptance':False}
     try:

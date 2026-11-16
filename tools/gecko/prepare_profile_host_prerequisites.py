@@ -445,6 +445,61 @@ def prepare_released_history(root=ROOT, *, source_commit, environment=None):
                 scope='Setup-only fixed 2.1.4 owner/tree identity and complete object presence; actual historical reads separately verify every input blob; no source projection or ref update.')
 
 
+BROWSER_V2_GROUP = {'commit': '24cb3f2f2bbc13fa4727ecf81e367108a1513ddf',
+ 'tree': 'b645b32f1febcd9bfce38b66a485e480a36da3b1',
+ 'files': {'tests/gecko/CompactChromeIntegrationActivity.java': {'mode': '100644',
+                                                                 'blob': '442b06d49e5d14730c9d9b842407aa5f1bd1e7af',
+                                                                 'bytes': 47416,
+                                                                 'sha256': '083568a2f7e9b44e63e05d40a2bd029c7ee0934488c3509bceeb2b69ad2801ac'},
+           'tests/gecko/run_ui_visuals.py': {'mode': '100644',
+                                             'blob': 'ea96f0ba7397386d10e40120ae660953690cb6d1',
+                                             'bytes': 48019,
+                                             'sha256': 'e9734a12bf90967e0291796e370acad2a4aef7beeda0a818c94a0c103b9f5cfb'},
+           'tests/gecko/compact_chrome_v2.py': {'mode': '100644',
+                                                'blob': 'a2314e1579a9b275c8298587005d53ebb94d54ce',
+                                                'bytes': 5056,
+                                                'sha256': 'ebe76fe131789973abd3668d454edcaaac40ddfc64c7193a0e374d4b90f732ab'},
+           'tests/gecko/run_chrome_collapse.py': {'mode': '100644',
+                                                  'blob': '812a4adc545da644f9b4330a0567ca09b957ebe3',
+                                                  'bytes': 16350,
+                                                  'sha256': 'edaa810f470717a45092cce966d451506d2817f9a41def33d62a1d83ed200acf'},
+           'tests/gecko/run_device.py': {'mode': '100644',
+                                        'blob': '18602c1fd558701ccc1431e5f58060d8a127a4e6',
+                                        'bytes': 90076,
+                                        'sha256': '46fda925531c631c35b1e852c65e27479f3d4bdbda654f9ab74df595566bb6a1'},
+           'tests/gecko/GeckoIntegrationTestActivity.java': {'mode': '100644',
+                                                           'blob': '8e325648839cf471e564b8584e526da34cfafe58',
+                                                           'bytes': 126554,
+                                                           'sha256': 'c3c8bd12a8ab7c86ec45255d5f2542a4e45b03463c2739cbf4af7e6e1c0cb8a4'},
+           'tools/gecko/publish_ci.py': {'mode': '100644',
+                                         'blob': '8c0d79e07c00f040cd64ed7ff3ceede98cbd235e',
+                                         'bytes': 12853,
+                                         'sha256': 'ae0d9c8dfdd7ada4ae0e824c45e5f199c9c06f6fb08ef2f157e8831e84f9216e'}}}
+
+
+def prepare_browser_v2_history(root=ROOT, *, source_commit, environment=None):
+    """Prepare the exact released v2 fixture bytes before retained tests run."""
+    root=Path(root).resolve(); environment=os.environ if environment is None else environment
+    before=history.checkout_state(root)
+    require(before['sourceCommit']==source_commit, 'v2 history source differs from checkout')
+    fetched=[]
+    try:
+        observed=history.verify_group(root,BROWSER_V2_GROUP)
+    except history.MissingHistoricalObject:
+        authorize_fetch(root,source_commit,environment)
+        require(history.checkout_state(root)==before,'checkout changed before v2 history fetch')
+        try:
+            history.checked(root,'fetch','--refetch','--no-tags','--depth=1','--no-write-fetch-head','--no-filter','origin',BROWSER_V2_GROUP['commit'])
+        finally:
+            require(history.checkout_state(root)==before,'v2 history fetch changed checkout')
+        fetched.append(BROWSER_V2_GROUP['commit'])
+        observed=history.verify_group(root,BROWSER_V2_GROUP)
+    require(history.checkout_state(root)==before,'v2 history verification changed checkout')
+    return dict(schema=1,status='passed',sourceCommit=source_commit,sourceTree=before['sourceTree'],
+                historicalProofOnly=True,currentSourceReplacement=False,group=observed,
+                fetchedCommits=fetched,checkoutUnchanged=True,testsExecuted=False,actualAndroidExecution=False)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--source-commit', required=True)
@@ -456,6 +511,7 @@ def main():
     value['supplementalHistory'] = prepare_supplemental_history(args.root, source_commit=args.source_commit)
     value['releasedHistory'] = prepare_released_history(args.root, source_commit=args.source_commit)
     value['uiHistory'] = prepare_ui_history(args.root, source_commit=args.source_commit)
+    value['browserV2History'] = prepare_browser_v2_history(args.root, source_commit=args.source_commit)
     raw = json.dumps(value, sort_keys=True, indent=2) + '\n'
     if args.output:
         args.output.parent.mkdir(parents=True, exist_ok=True)

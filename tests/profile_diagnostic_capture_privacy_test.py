@@ -570,7 +570,10 @@ class DiagnosticPublicationPrivacyTest(unittest.TestCase):
                 self.assertNotEqual(body,changed)
                 with self.assertRaises(AssertionError):
                     verify_accepted_bundle_source(bundle.replace(body,changed,1))
-        publisher=(ROOT/'tools/gecko/publish_ci.py').read_text()
+        # The unchanged original publication inverse is a historical proof.
+        # Current copy behavior is exercised independently by the CI tests.
+        from historical_source_inputs import browser_v2_bytes
+        publisher=browser_v2_bytes('tools/gecko/publish_ci.py').decode()
         original=accepted_publisher_inverse(publisher)
         self.assertEqual(digest(original),ACCEPTED_PUBLISHER_TEXT_SHA256)
         mutations=[publisher.replace('manifest[\'artifacts\'].append(artifact)',

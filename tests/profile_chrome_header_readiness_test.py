@@ -25,9 +25,34 @@ ROOT = Path(__file__).resolve().parents[1]
 HELPER = ROOT / 'tests/native-input-driver/NativePreEmitReadiness.java'
 CLI = ROOT / 'tests/native-input-readiness-host/NativePreEmitReadinessCli.java'
 HELPER_SHA = '40130991cd673e5b38a5e1ca18c3bcca71cff74ec69550126cd6303ef0b66348'
+CURRENT_HELPER_SHA = '68958f1e2c8aeaa675463a62d15f245923b53b4e54b8c5d4745a60b9286d3a98'
 COMPONENT = 'local.pocketchat.test/local.pocketchat.CompactChromeIntegrationActivity'
 TOKEN = '44918a3'
 PRIVATE = 'PRIVATE_HEADER_READINESS_SENTINEL_14589'
+
+
+def original_helper(raw):
+    """Exact current additive helper inverse, used only for the retained source proof."""
+    if type(raw) is not bytes or hashlib.sha256(raw).hexdigest() != CURRENT_HELPER_SHA:
+        raise ValueError('Unreviewed pre-emission helper source')
+    added = [b'import java.security.MessageDigest;\n', b'import java.util.Arrays;\n',
+             b'import java.util.HashSet;\n', b'import java.util.LinkedHashMap;\n',
+             b'import java.util.Map;\n', b'import java.util.Set;\n',
+             b'    default String input(long latestUptimeMs) throws Exception {\n'
+             b'      throw new IllegalStateException("input-observation-unavailable");\n    }\n',
+             b'    public boolean inputShadeObserved;\n'
+             b'    public final ArrayList<Map<String,Object>> inputObservations=new ArrayList<>();\n']
+    for chunk in added:
+        if raw.count(chunk) != 1:
+            raise ValueError('Unreviewed pre-emission helper addition')
+        raw = raw.replace(chunk, b'', 1)
+    start, end = b'  static String currentInputState(String raw){\n', b'  static final class Capture extends Thread {\n'
+    if raw.count(start) != 1 or raw.count(end) != 1 or raw.index(start) >= raw.index(end):
+        raise ValueError('Unreviewed current input observer members')
+    raw = raw[:raw.index(start)] + raw[raw.index(end):]
+    if hashlib.sha256(raw).hexdigest() != HELPER_SHA:
+        raise ValueError('Original parser, await, capture or helper contract changed')
+    return raw
 
 
 def window_block(index, token, title, uid, package, visible):
@@ -50,6 +75,24 @@ def window(shade=False):
             'WINDOW MANAGER TRACE (dumpsys window trace)\nStatus: Disabled\n')
 
 
+class OriginalHelperPreservationTest(unittest.TestCase):
+    def test_current_additions_restore_the_complete_real_original_helper(self):
+        from historical_source_inputs import historical_bytes, historical_identity
+        relative = 'tests/native-input-driver/NativePreEmitReadiness.java'
+        old = historical_bytes(relative)
+        self.assertEqual(historical_identity(relative)['sha256'], HELPER_SHA)
+        self.assertEqual(hashlib.sha256(old).hexdigest(), HELPER_SHA)
+        self.assertEqual(original_helper(HELPER.read_bytes()), old)
+        current = HELPER.read_bytes()
+        for changed in (current + b'\n', current.replace(b'MAX_OBSERVATIONS=101', b'MAX_OBSERVATIONS=102', 1),
+                        current.replace(b'long latest=expires-duration;', b'long latest=expires;', 1),
+                        current.replace(b'child.destroy();', b'child.destroyForcibly();', 1),
+                        current.replace(b'public static State parse(', b'public static State bypass(', 1),
+                        current.replace(b'input-observation-unavailable', b'unknown-observation', 1)):
+            with self.subTest(sha256=hashlib.sha256(changed).hexdigest()), self.assertRaises(ValueError):
+                original_helper(changed)
+
+
 class ChromeHeaderReadinessCliTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -60,8 +103,10 @@ class ChromeHeaderReadinessCliTest(unittest.TestCase):
             raise AssertionError('A real JDK is required; no skipped acceptance')
         cls.before = {path: hashlib.sha256(path.read_bytes()).hexdigest()
                       for path in (HELPER, CLI)}
-        if cls.before[HELPER] != HELPER_SHA:
-            raise AssertionError('The original helper bytes must remain unchanged')
+        from historical_source_inputs import historical_bytes
+        legacy = historical_bytes('tests/native-input-driver/NativePreEmitReadiness.java')
+        if hashlib.sha256(legacy).hexdigest() != HELPER_SHA or original_helper(HELPER.read_bytes()) != legacy:
+            raise AssertionError('The complete original helper must remain byte-for-byte preserved')
         cls.temporary = tempfile.TemporaryDirectory(prefix='chrome-header-readiness-host-')
         cls.addClassCleanup(cls.temporary.cleanup)
         compiled = subprocess.run([str(javac), '-encoding', 'UTF-8', '-d', cls.temporary.name,
@@ -70,6 +115,16 @@ class ChromeHeaderReadinessCliTest(unittest.TestCase):
             raise AssertionError((compiled.stdout + compiled.stderr).decode('utf-8', 'replace'))
         cls.command = [str(java), '-cp', cls.temporary.name,
                        'local.pocketchat.inputdriver.NativePreEmitReadinessCli']
+        legacy_source = Path(cls.temporary.name)/'legacy-source/NativePreEmitReadiness.java'
+        legacy_source.parent.mkdir()
+        legacy_source.write_bytes(legacy)
+        legacy_classes = Path(cls.temporary.name)/'legacy-classes'
+        compiled = subprocess.run([str(javac), '-encoding', 'UTF-8', '-d', str(legacy_classes),
+                                   str(legacy_source), str(CLI)], capture_output=True, timeout=30)
+        if compiled.returncode:
+            raise AssertionError((compiled.stdout + compiled.stderr).decode('utf-8', 'replace'))
+        cls.legacy_command = [str(java), '-cp', str(legacy_classes),
+                              'local.pocketchat.inputdriver.NativePreEmitReadinessCli']
 
     @classmethod
     def tearDownClass(cls):
@@ -80,9 +135,12 @@ class ChromeHeaderReadinessCliTest(unittest.TestCase):
     def run_cli(self, raw, args=None):
         if isinstance(raw, str):
             raw = raw.encode('utf-8')
-        return subprocess.run(self.command + (args if args is not None else
-                              ['10209', '10181', COMPONENT, TOKEN]),
-                              input=raw, capture_output=True, timeout=5)
+        arguments = args if args is not None else ['10209', '10181', COMPONENT, TOKEN]
+        current = subprocess.run(self.command + arguments, input=raw, capture_output=True, timeout=5)
+        legacy = subprocess.run(self.legacy_command + arguments, input=raw, capture_output=True, timeout=5)
+        self.assertEqual((current.returncode, current.stdout, current.stderr),
+                         (legacy.returncode, legacy.stdout, legacy.stderr))
+        return current
 
     def reject(self, raw, args=None):
         result = self.run_cli(raw, args)
@@ -503,7 +561,7 @@ class ChromeHeaderReadinessControllerTest(unittest.TestCase):
             identity = dict(sourceCommit=source, sourceTree=tree)
             deadline = time.monotonic()+20
             binding = self.adapter._source_bindings(root, source, identity, deadline)
-            self.assertEqual(binding['sourceSha256'][self.adapter.HELPER], HELPER_SHA)
+            self.assertEqual(binding['sourceSha256'][self.adapter.HELPER], CURRENT_HELPER_SHA)
             command, compiled = self.adapter._compile_parser(root, binding, deadline)
             files = list((compiled['cache']/'classes').rglob('*.class'))
             mtimes = {str(path): path.stat().st_mtime_ns for path in files}
@@ -550,6 +608,35 @@ class ChromeHeaderReadinessControllerTest(unittest.TestCase):
             with self.assertRaises(self.adapter.HeaderReadinessFailure) as failure:
                 self.adapter._source_bindings(root, source, identity, deadline)
             self.assertEqual(failure.exception.reason, 'source-unverified')
+
+    def test_clean_committed_helper_must_be_one_of_the_two_exact_reviewed_whole_files(self):
+        with tempfile.TemporaryDirectory(prefix='chrome-header-helper-pin-') as temporary:
+            root = Path(temporary)
+            def git(*parts):
+                return subprocess.check_output(['git', '-c', 'core.hooksPath=/dev/null',
+                    '-c', 'commit.gpgsign=false', *parts], cwd=root, stderr=subprocess.PIPE).decode().strip()
+            for name in (self.adapter.HELPER, self.adapter.CLI, self.adapter.ADAPTER):
+                target = root/name; target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_bytes((ROOT/name).read_bytes())
+            git('init', '--quiet'); git('config', 'user.name', 'Host Pin Control')
+            git('config', 'user.email', 'host-control@example.invalid')
+            current = (root/self.adapter.HELPER).read_bytes()
+            legacy = original_helper(current)
+            for number, (raw, accepted) in enumerate(((current, CURRENT_HELPER_SHA),
+                    (current + b'\n// unreviewed committed helper\n', None),
+                    (legacy, HELPER_SHA),
+                    (legacy.replace(b'MAX_OBSERVATIONS=101', b'MAX_OBSERVATIONS=102', 1), None))):
+                (root/self.adapter.HELPER).write_bytes(raw)
+                git('add', '.'); git('commit', '--quiet', '--no-verify', '-m', 'Synthetic helper pin ' + str(number))
+                source, tree = git('rev-parse', 'HEAD'), git('rev-parse', 'HEAD^{tree}')
+                with self.subTest(helper=hashlib.sha256(raw).hexdigest()):
+                    if accepted is None:
+                        with self.assertRaises(self.adapter.HeaderReadinessFailure) as failure:
+                            self.adapter._source_bindings(root, source, dict(sourceCommit=source, sourceTree=tree), time.monotonic()+5)
+                        self.assertEqual(failure.exception.reason, 'source-unverified')
+                    else:
+                        binding = self.adapter._source_bindings(root, source, dict(sourceCommit=source, sourceTree=tree), time.monotonic()+5)
+                        self.assertEqual(binding['sourceSha256'][self.adapter.HELPER], accepted)
 
 
 class ChromeIdentityBatchTest(unittest.TestCase):

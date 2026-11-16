@@ -224,8 +224,8 @@ final class ChromeCollapseIntegration {
   void pauseObservers(){a.handler.removeCallbacks(a.ticker);a.session.remove(a.sessionObserver);a.session.handler.removeCallbacks(a.session.tick);}
   Object visibleCenter(View view){return view!=null&&view.isShown()&&view.getWidth()>0&&view.getHeight()>0?a.center(view):JSONObject.NULL;}
   Object navigationCenter(int compactIndex,int workspaceIndex){
-    boolean conversation=a.hub.page==AppHub.CHAT;View[] buttons=conversation?a.hub.tabs:a.hub.workspaceTabs;
-    int index=conversation?compactIndex:workspaceIndex;
+    boolean conversation=a.hub.page==AppHub.CHAT;if(conversation)return JSONObject.NULL;View[] buttons=a.hub.workspaceTabs;
+    int index=workspaceIndex;
     // Workspace indexes are display order: chat, environments, downloads, network, settings.
     // Reading exists only on the conversation dock; absent or hidden targets stay null.
     return index<0||index>=buttons.length?JSONObject.NULL:visibleCenter(buttons[index]);
@@ -256,8 +256,8 @@ final class ChromeCollapseIntegration {
   void start(){
     // Keep the historical v1 evidence/runner intact. Its fixed six-tap path
     // cannot exercise the URL dialog and four-action dock without a new contract.
-    if(a.getIntent().getIntExtra("chromeNavigationVersion",1)!=2){
-      emit("error",J.obj("navigationContract",2,"error","Chrome navigation contract v2 required: the v1 collapse runner targets removed Chat/Settings tabs and assumes capsule taps only expand. Version the address-dialog/menu/back workload before running this fixture."));return;
+    if(a.getIntent().getIntExtra("chromeNavigationVersion",1)!=3){
+      emit("error",J.obj("navigationContract",3,"error","Chrome navigation contract v3 required: the v1 collapse runner targets removed Chat/Settings tabs and assumes capsule taps only expand. Version the address-dialog/menu/back workload before running this fixture."));return;
     }
     web().diagnostic=this;diagnostic("start-before");a.handler.postDelayed(diagnosticTick,1000);
     pauseObservers();
@@ -273,11 +273,24 @@ final class ChromeCollapseIntegration {
     }});
     diagnostic("load-before");a.remote.loadUrl(CompactChromeIntegrationActivity.ReloadView.LOCAL+"c/reload-collapse");diagnostic("load-return");
   }
+  /** Admit the actual owned loopback route through the production connection lease. */
+  boolean admitFixtureNetwork(){
+    CollapseView current=web();
+    if(a.session.web!=current||!current.hasVisibleDocument()||!current.protectionAllowsNetwork()
+      ||!TARGET.equals(current.getUrl())||!(CompactChromeIntegrationActivity.ReloadView.LOCAL+"c/reload-collapse").equals(current.rawUrl())
+      ||current.inputDocument(nonce,events.buildIdentity.optString("sourceCommit")).isEmpty()
+      ||a.session.internalNetwork()||!"socks://127.0.0.1:1080".equals(a.session.prefs.getString("proxy","")))return false;
+    try{
+      long lease=a.session.beginNetworkApplication(ProfileCatalog.get(a).identity(Profiles.slot(a)));
+      return a.session.adoptNetworkApplication(lease,null);
+    }catch(java.io.IOException invalid){return false;}
+  }
   void ready(long deadline){
     readyEvaluations++;if(readyEvaluations==1)diagnostic("ready-evaluate");
     a.remote.evaluateJavascript("(()=>{const t="+TELEMETRY+";return {ready:!!document.getElementById('prompt-textarea')&&!!document.documentElement.dataset.reloadDocument,fixtureDocument:document.documentElement.dataset.reloadDocument,telemetryReady:"+TELEMETRY_READY+"};})()",raw->{
       readyCallbacks++;if(readyCallbacks==1)diagnostic("ready-callback");
-      if(!J.parse(raw).optBoolean("ready")||!J.parse(raw).optBoolean("telemetryReady")||!a.remote.hasVisibleDocument()){if(SystemClock.elapsedRealtime()>deadline){emit("error",J.obj("error","Controlled chrome document or shared-DOM telemetry timeout"));return;}a.handler.postDelayed(()->ready(deadline),100);return;}
+      if(!J.parse(raw).optBoolean("ready")||!J.parse(raw).optBoolean("telemetryReady")||!a.remote.hasVisibleDocument()||!a.remote.protectionAllowsNetwork()||web().inputDocument(nonce,events.buildIdentity.optString("sourceCommit")).isEmpty()){if(SystemClock.elapsedRealtime()>deadline){emit("error",J.obj("error","Controlled chrome document, native protection or shared-DOM telemetry timeout"));return;}a.handler.postDelayed(()->ready(deadline),100);return;}
+      if(!admitFixtureNetwork()){emit("error",J.obj("error","Controlled chrome route did not pass production network admission"));return;}
       final String fixtureDocument=J.parse(raw).optString("fixtureDocument");
       a.remote.evaluateJavascript("("+REPLY_PROGRESS_SCRIPT+")("+JSONObject.quote(fixtureDocument)+")",progressRaw->{
       JSONObject progress=J.parse(progressRaw);
@@ -295,10 +308,10 @@ final class ChromeCollapseIntegration {
     snapshotEvaluations++;diagnostic("snapshot-evaluate");pauseObservers();
     a.remote.evaluateJavascript("(()=>{const t="+TELEMETRY+";return {draft:document.getElementById('prompt-textarea').value,cookie:document.cookie,sendCount:Number(document.getElementById('send-count').textContent),path:location.pathname,document:document.documentElement.dataset.reloadDocument,scrollY:scrollY,innerWidth:innerWidth,innerHeight:innerHeight,trusted:t?.events||[],fixtureInputTelemetry:t,telemetryReady:"+TELEMETRY_READY+"};})()",raw->{
       snapshotCallbacks++;diagnostic("snapshot-callback");JSONObject result=J.parse(raw);int[] location=new int[2];a.remote.getLocationOnScreen(location);
-      try{result.put("command",command).put("navigationContract",2).put("navigationLayout",a.hub.page==AppHub.CHAT?"conversation-compact":"workspace-five").put("expanded",a.designChrome.expanded()).put("toolbarVisibility",a.toolbar.getVisibility()).put("toolbarHeight",a.toolbar.getHeight())
+      try{result.put("command",command).put("navigationContract",3).put("navigationLayout",a.hub.page==AppHub.CHAT?"browser-bottom":"workspace-five").put("expanded",a.designChrome.expanded()).put("toolbarVisibility",a.toolbar.getVisibility()).put("toolbarHeight",a.toolbar.getHeight())
         .put("compactVisibility",a.designChrome.compact.getVisibility()).put("compactHeight",a.designChrome.compact.getHeight())
         .put("compactName",a.designChrome.compactTitle.getText().toString()).put("environmentName",Profiles.display(a,Profiles.slot(a)))
-        .put("compactTap",visibleCenter(a.designChrome.compact)).put("topVisibility",a.designChrome.top.getVisibility()).put("networkVisibility",a.designChrome.networkRow.getVisibility())
+        .put("compactTap",visibleCenter(a.designChrome.compact)).put("topVisibility",a.designChrome.top.getVisibility()).put("networkVisibility",a.designChrome.networkRow.getVisibility()).put("networkShown",a.designChrome.networkRow.isShown()).put("networkInHeader",a.designChrome.networkRow.getParent()==a.toolbar)
         .put("webWidth",a.remote.getWidth()).put("webHeight",a.remote.getHeight()).put("webX",location[0]).put("webY",location[1])
         .put("surface",System.identityHashCode(a.remote)).put("sdkSession",System.identityHashCode(a.remote.current)).put("attachedSession",System.identityHashCode(a.remote.surface.getSession()))
         .put("loads",web().loads).put("stops",web().stops).put("documents",documents).put("page",a.hub.page).put("keyboard",a.keyboardVisible)
@@ -309,11 +322,11 @@ final class ChromeCollapseIntegration {
         .put("touches",web().touchesObserved).put("nativeTouches",nativeTouches).put("toolbarBounds",a.bounds(a.toolbar))
         .put("environmentTap",navigationCenter(WorkspaceNavigation.ENVIRONMENTS,1)).put("networkTap",navigationCenter(WorkspaceNavigation.NETWORK,3))
         .put("downloadsTap",navigationCenter(WorkspaceNavigation.DOWNLOADS,2)).put("readingTap",navigationCenter(WorkspaceNavigation.READING,-1))
-        .put("addressTap",visibleCenter(a.designChrome.title)).put("moreTap",visibleCenter(a.designChrome.more))
-        .put("drawerTap",visibleCenter(a.navigation)).put("readingExitTap",visibleCenter(a.focusExit))
+        .put("environmentCapsuleTap",visibleCenter(a.designChrome.expanded()?a.designChrome.title:a.designChrome.compact)).put("browserAddressTap",visibleCenter(a.geckoAddress.address)).put("addressTap",visibleCenter(a.designChrome.title)).put("moreTap",visibleCenter(a.geckoAddress.menu))
+        .put("drawerTap",JSONObject.NULL).put("readingExitTap",visibleCenter(a.focusExit))
         .put("readingRequested",a.focusReading).put("readingActive",a.focusActive()).put("readingExitVisibility",a.focusExit.getVisibility())
         .put("navigationVisibility",a.hub.bar.getVisibility()).put("navigationHeight",a.hub.bar.getHeight())
-        .put("workspaceHeight",a.hub.workspace.getHeight()).put("addressDialog",addressDialog());
+        .put("browserToolbarShown",a.geckoAddress.row.isShown()).put("browserToolbarBounds",a.bounds(a.geckoAddress.row)).put("workspaceHeight",a.hub.workspace.getHeight()).put("addressDialog",addressDialog());
         if(a.getIntent().getBooleanExtra("observeGlassRenderer",false))result.put("glassRenderer",glassRendererObservation());
         if(a.designChrome.expanded()){
           java.lang.reflect.Method method=DesignChrome.class.getDeclaredMethod("touchBounds",View.class);method.setAccessible(true);
@@ -326,8 +339,8 @@ final class ChromeCollapseIntegration {
   }
   JSONObject glassRendererObservation() throws Exception {
     JSONArray docks=new JSONArray();
-    View[] views={(View)a.hub.tabs[0].getParent(),(View)a.hub.workspaceTabs[0].getParent()};
-    String[] roles={"conversation","workspace"};View root=a.getWindow().getDecorView();
+    View[] views={(View)a.hub.workspaceTabs[0].getParent()};
+    String[] roles={"workspace"};View root=a.getWindow().getDecorView();
     for(int i=0;i<views.length;i++){
       View dock=views[i];LiquidGlassDrawable drawable=glassMaterial(dock.getBackground());
       if(!(dock instanceof GlassDock)||drawable==null)throw new IllegalStateException("Actual glass dock required");
@@ -345,7 +358,7 @@ final class ChromeCollapseIntegration {
         "lastSourcePresent",lastSource!=null,"lastSourceCurrent",lastSource==a.hub.panel,
         "nativeBackdropRecorded",renderer!=null&&Boolean.TRUE.equals(glassField(renderer,"reportedBackdrop"))));
     }
-    return J.obj("schema",1,"deviceApi",Build.VERSION.SDK_INT,"pid",android.os.Process.myPid(),
+    return J.obj("schema",1,"navigationContract",3,"deviceApi",Build.VERSION.SDK_INT,"pid",android.os.Process.myPid(),
       "activityRef",System.identityHashCode(a),"activityClass",a.getClass().getName(),
       "mainThread",Looper.myLooper()==Looper.getMainLooper(),"docks",docks);
   }

@@ -12,7 +12,7 @@ import tempfile
 import types
 import unittest
 
-from historical_source_inputs import historical_bytes
+from historical_source_inputs import historical_bytes, browser_v2_bytes
 
 ROOT=Path(__file__).resolve().parents[1]
 def load(name,path):
@@ -127,7 +127,8 @@ class ReadinessObservationControls(unittest.TestCase):
     def test_original_startup_methods_and_callbacks_preserved(self):
         original=SOURCE.read_text()
         for needle,sha in ORIGINAL_METHODS.items():
-            source=released_startup_source(original,needle) if needle in ('synchronized void command(','protected void onDestroy()') else original
+            source=(browser_v2_bytes('tests/gecko/GeckoIntegrationTestActivity.java').decode('utf-8') if needle=='void waitReady(long serial)'
+                    else released_startup_source(original,needle) if needle in ('synchronized void command(','protected void onDestroy()') else original)
             with self.subTest(member=needle):self.assertTrue(verify_startup_member(source,needle))
 
     def test_current_callbacks_cannot_hide_changes_behind_released_history(self):
@@ -144,24 +145,25 @@ class ReadinessObservationControls(unittest.TestCase):
                     released_startup_source(changed,needle)
 
     def test_preservation_guard_detects_timeout_and_admission_mutants(self):
-        original=SOURCE.read_text();needle='void waitReady(long serial)'
+        original=browser_v2_bytes('tests/gecko/GeckoIntegrationTestActivity.java').decode('utf-8');needle='void waitReady(long serial)'
         for candidate in [original.replace('initialRouteSamples<3','initialRouteSamples<1'),original.replace('!web.ready','false'),original.replace('waitReady(serial),200','waitReady(serial),1000')]:
             self.assertNotEqual(hashlib.sha256(unobserve(member(candidate,needle)).encode()).hexdigest(),ORIGINAL_METHODS[needle])
 
     def test_original_runner_consumer_preserved(self):
-        self.assertTrue(verify_runner_consumer((ROOT/'tests/gecko/run_device.py').read_text()))
+        self.assertTrue(verify_runner_consumer(browser_v2_bytes('tests/gecko/run_device.py').decode('utf-8')))
 
     def test_exact_new_cases_preserve_original_goldens_and_allow_python_formatting(self):
-        original=(ROOT/'tests/gecko/run_device.py').read_text()
+        original=browser_v2_bytes('tests/gecko/run_device.py').decode('utf-8')
+        released_fixture=browser_v2_bytes('tests/gecko/GeckoIntegrationTestActivity.java').decode('utf-8')
         self.assertTrue(verify_runner_consumer('# harmless comment\n'+original.replace("action=='downloadResume'", 'action == "downloadResume"')))
-        self.assertTrue(verify_startup_member(SOURCE.read_text().replace('GeckoLocalDraftIntegration.run(this,serial);','GeckoLocalDraftIntegration.run(this, serial);'),'void waitReady(long serial)'))
-        self.assertTrue(verify_startup_member(SOURCE.read_text().replace('if("localDraftPolicy".equals(action)){GeckoLocalDraftIntegration.run(this,serial);return;}',
+        self.assertTrue(verify_startup_member(released_fixture.replace('GeckoLocalDraftIntegration.run(this,serial);','GeckoLocalDraftIntegration.run(this, serial);'),'void waitReady(long serial)'))
+        self.assertTrue(verify_startup_member(released_fixture.replace('if("localDraftPolicy".equals(action)){GeckoLocalDraftIntegration.run(this,serial);return;}',
             'if ( "localDraftPolicy" . equals ( action ) ) {\n GeckoLocalDraftIntegration . run ( this , serial ) ;\n return ; }'),'void waitReady(long serial)'))
         self.assertEqual(ORIGINAL_RUN_AST,'6408387c50d14aa180be171f999763cff35d618698937f5601c2f3b0c55be5ed')
         self.assertEqual(ORIGINAL_METHODS['void waitReady(long serial)'],'cac08fc6d5c0bb7092bb87905c6547efd5187b7ddb168277fba0690230fa3772')
 
     def test_f04_cannot_bypass_change_duplicate_or_reorder_original_readiness(self):
-        original=SOURCE.read_text();needle='void waitReady(long serial)'
+        original=browser_v2_bytes('tests/gecko/GeckoIntegrationTestActivity.java').decode('utf-8');needle='void waitReady(long serial)'
         line='    if("localDraftPolicy".equals(action)){GeckoLocalDraftIntegration.run(this,serial);return;}\n'
         mutants=[original.replace(line,''),original.replace(line,line+line),
                  original.replace('"localDraftPolicy"','"local DraftPolicy"'),
@@ -179,7 +181,7 @@ class ReadinessObservationControls(unittest.TestCase):
             with self.subTest(mutant=i),self.assertRaises(ValueError):verify_startup_member(candidate,needle)
 
     def test_appearance_dispatch_cannot_bypass_change_duplicate_or_reorder_original_readiness(self):
-        original=SOURCE.read_text();needle='void waitReady(long serial)'
+        original=browser_v2_bytes('tests/gecko/GeckoIntegrationTestActivity.java').decode('utf-8');needle='void waitReady(long serial)'
         line='    if("appearanceSync".equals(action)){GeckoAppearanceIntegration.run(this,serial);return;}\n'
         self.assertEqual(original.count(line),1)
         formatted='    if ( "appearanceSync" . equals ( action ) ) {\n GeckoAppearanceIntegration . run ( this , serial ) ;\n return ; }\n'
@@ -196,7 +198,7 @@ class ReadinessObservationControls(unittest.TestCase):
             with self.subTest(mutant=i),self.assertRaises(ValueError):verify_startup_member(candidate,needle)
 
     def test_f06_cannot_change_original_consumer_or_new_case_ownership(self):
-        original=(ROOT/'tests/gecko/run_device.py').read_text()
+        original=browser_v2_bytes('tests/gecko/run_device.py').decode('utf-8')
         select="        if action=='downloadResume':\n            assert context==8\n            activity='DownloadResumeIntegrationActivity'\n"
         retained="                    if action=='downloadResume':\n                        report.setdefault('savedFileDeletion',{})['downloadResume']=result\n"
         mutants=[original.replace(select,''),original.replace(select,select+select),
@@ -213,7 +215,7 @@ class ReadinessObservationControls(unittest.TestCase):
             with self.subTest(mutant=i),self.assertRaises(ValueError):verify_runner_consumer(candidate)
 
     def test_sequence_diagnostics_cannot_change_consumer_calls_actions_or_deadline(self):
-        original=(ROOT/'tests/gecko/run_device.py').read_text()
+        original=browser_v2_bytes('tests/gecko/run_device.py').decode('utf-8')
         wrapper='event=read_with_sequence_failure_diagnostics(transfer,receipt,filtered_log=output,out=OUT,adb=args.adb,serial=args.serial)'
         mutants=[original.replace(wrapper,'event=transfer.read(receipt)'),
                  original.replace(wrapper,wrapper+';event=transfer.read(receipt)'),
@@ -228,6 +230,32 @@ class ReadinessObservationControls(unittest.TestCase):
         for i,candidate in enumerate(mutants):
             self.assertNotEqual(candidate,original)
             with self.subTest(mutant=i),self.assertRaises(ValueError):verify_runner_consumer(candidate)
+
+    def test_current_photo_dispatch_executes_only_after_original_readiness_and_route_gates(self):
+        from gecko_photo_readiness_host import execute_current_photo_path
+        # Historical goldens above use actual fixed Git inputs. This compiles
+        # the current action's entire executed Java path without an inverse.
+        observed=execute_current_photo_path(member(SOURCE.read_text(),'void waitReady(long serial)'))
+        self.assertEqual(observed.returncode,0,observed.stdout+observed.stderr)
+        self.assertEqual(observed.stdout.strip(),'photoReadinessChecks=46')
+
+    def test_current_photo_readiness_rejects_early_dispatch_and_changed_original_gates(self):
+        from gecko_photo_readiness_host import PHOTO_DISPATCH, execute_current_photo_path
+        original=member(SOURCE.read_text(),'void waitReady(long serial)')
+        early=original.replace(PHOTO_DISPATCH,'',1).replace('if(!activityResumed',PHOTO_DISPATCH+'\n    if(!activityResumed',1)
+        mutations=(early,original.replace('if(!web.ready)','if(false)',1),
+                   original.replace('initialRouteSamples<3','initialRouteSamples<1',1),
+                   original.replace('now-initialRouteStableSince<500','now-initialRouteStableSince<0',1),
+                   original.replace('waitReady(serial),200','waitReady(serial),1000',1),
+                   original.replace('session.internalNetwork()','false',1))
+        for index,changed in enumerate(mutations):
+            self.assertNotEqual(changed,original)
+            # Every mutant must still compile; only the actual JVM behavior
+            # assertion may reject it, not an invalid Java snippet.
+            observed=execute_current_photo_path(changed)
+            with self.subTest(mutant=index):
+                self.assertNotEqual(observed.returncode,0,observed.stdout)
+                self.assertIn('java.lang.AssertionError',observed.stderr)
 
     def test_command_entry_precedes_wait_and_only_read_is_observed(self):
         command=member(SOURCE.read_text(),'synchronized void command(')

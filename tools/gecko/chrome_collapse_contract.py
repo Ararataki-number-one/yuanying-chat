@@ -24,7 +24,13 @@ NAMES={
 def verify_auto_collapse(report,source,apk_sha):
     if 'navigationContract' in report:
         version=report['navigationContract']
-        assert type(version) is int and version in (1,2), 'Unknown Chrome navigation contract'
+        assert type(version) is int and version in (1,2,3), 'Unknown Chrome navigation contract'
+        if version==3:
+            if __package__:
+                from .chrome_collapse_contract_v3 import verify_auto_collapse_v3
+            else:
+                from chrome_collapse_contract_v3 import verify_auto_collapse_v3
+            return verify_auto_collapse_v3(report,source,apk_sha)
         if version==2:
             if __package__:
                 from .chrome_collapse_contract_v2 import verify_auto_collapse_v2

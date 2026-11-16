@@ -721,7 +721,9 @@ class GlassUrlKeyboardInteractionTest(unittest.TestCase):
                     documentObservations={'ready': dict(visibleDocument=True, loadingCoverVisibility=8)})
         state = dict(editor=False, ime=False, currentReads=0, deadlines=[], events=[], cancelled=False)
         chat_xml = ('<hierarchy screen="chat"><node package="' + capture.PACKAGE
-                    + '" content-desc="environment" bounds="[1098,78][1578,234]" /></hierarchy>')
+                    + '" content-desc="environment" bounds="[1098,78][1578,234]" />'
+                    + '<node package="'+capture.PACKAGE+'" content-desc="bottom-address" '
+                    + 'bounds="[300,900][2376,1044]" /></hierarchy>')
         old_xml = self.editor(self.BEFORE_IME)
         current = self.editor() if current is None else current
 
@@ -770,11 +772,15 @@ class GlassUrlKeyboardInteractionTest(unittest.TestCase):
             (self.out / name).write_bytes(b'original model screenshot')
 
         def geometry(xml):
-            return dict(layout='conversation-split') if ET.fromstring(xml).get('screen') == 'chat' else None
+            return dict(layout='browser-bottom') if ET.fromstring(xml).get('screen') == 'chat' else None
 
         def capsule(xml):
             found = capture.nodes(xml, lambda node: node.get('content-desc') == 'environment')
             return found[0] if found else None
+
+        def address(xml):
+            found=capture.nodes(xml,lambda node:node.get('content-desc')=='bottom-address')
+            return found[0] if len(found)==1 else None
 
         bindings = dict(args=SimpleNamespace(out=self.out), report=report,
             capture=SimpleNamespace(read=read), adb=adb, screenshot=screenshot,
@@ -783,7 +789,8 @@ class GlassUrlKeyboardInteractionTest(unittest.TestCase):
             re=validation.re, sha=capture.sha, write=capture.write,
             bounds=capture.bounds, nodes=capture.nodes, button=capture.button,
             geometry=geometry, observed_navigation_geometry=geometry,
-            capsule=capsule, nav=lambda xml: capsule(xml), api={'WIDTH': 2676})
+            current_observed_navigation_geometry=geometry,
+            capsule=capsule, nav=lambda xml: capsule(xml), api={'WIDTH': 2676,'browser_address_node':address})
         functions = []
         for owner, names in ((validation.capture_acceptance_suite,
                               {'save', 'artifact', 'text', 'chat', 'interactions'}),
@@ -814,6 +821,8 @@ class GlassUrlKeyboardInteractionTest(unittest.TestCase):
         failure, state, report, case, old_xml, current = self.run_interaction()
         self.assertIsNone(failure)
         self.assertTrue(state['cancelled'])
+        self.assertEqual(report['inputs'][0]['observedBounds'],[300,900,2376,1044],
+                         'Current editor entry must come from the bottom address, not the environment capsule')
         self.assertEqual(report['inputs'][-1]['observedBounds'], list(self.AFTER_IME))
         self.assertEqual((report['inputs'][-1]['x'], report['inputs'][-1]['y']), (2110, 369))
         self.assertGreater(480, self.AFTER_IME[3], 'The old tap must miss the observed current control')
@@ -1381,7 +1390,7 @@ class GlassRendererAttributionTest(unittest.TestCase):
 
     def native(self,api=35,*,recorded=True):
         rows=[]
-        for index,role in enumerate(('conversation','workspace')):
+        for index,role in enumerate(('workspace',)):
             present=api>=33
             rows.append(dict(role=role,dockRef=100+index,drawableRef=200+index,
                 attached=True,currentActivityRoot=True,ownerBound=True,backdropBound=True,gpuBroken=False,
@@ -1389,7 +1398,7 @@ class GlassRendererAttributionTest(unittest.TestCase):
                 rendererClass='local.pocketchat.GlassLensRenderer' if present else '',agslReady=present,
                 nativeBackdropRecorded=present and recorded,hadBackdrop=present,
                 lastSourcePresent=present,lastSourceCurrent=present))
-        return dict(schema=1,deviceApi=api,pid=4321,mainThread=True,
+        return dict(schema=1,navigationContract=3,deviceApi=api,pid=4321,mainThread=True,
             activityClass='local.pocketchat.CompactChromeIntegrationActivity',activityRef=1234,docks=rows)
 
     def observe(self,raw,before=None,after=None,api=35):
@@ -1512,15 +1521,15 @@ public class RendererHost {
   RendererHost host=new RendererHost();JSONObject report=host.glassRendererObservation();
   require(report.getBoolean("mainThread"),"actual main thread boundary");
   require(report.getString("activityClass").equals("local.pocketchat.CompactChromeIntegrationActivity"),"actual activity class");
-  JSONArray docks=report.getJSONArray("docks");require(docks.length()==2,"both actual docks");
-  for(int i=0;i<2;i++){
+  JSONArray docks=report.getJSONArray("docks");require(docks.length()==1,"the actual workspace dock; browser bar is not a dock");
+  for(int i=0;i<1;i++){
    JSONObject row=docks.getJSONObject(i);
    for(String key:new String[]{"attached","currentActivityRoot","ownerBound","backdropBound"})require(row.getBoolean(key),key);
    require(row.getBoolean("agslReady")== (Build.VERSION.SDK_INT>=33),"actual guarded renderer branch");
    require(row.getBoolean("nativeBackdropRecorded")== (Build.VERSION.SDK_INT>=33),"actual recording flag");
    require(row.getBoolean("lastSourceCurrent")== (Build.VERSION.SDK_INT>=33),"actual source identity");
   }
-  host.first.owner(new Object());require(!host.glassRendererObservation().getJSONArray("docks").getJSONObject(0).getBoolean("ownerBound"),"foreign owner rejected");
+  host.second.owner(new Object());require(!host.glassRendererObservation().getJSONArray("docks").getJSONObject(0).getBoolean("ownerBound"),"foreign owner rejected");
   try {glassMaterial(new LayerDrawable(new Drawable[]{host.first,host.second}));throw new AssertionError("ambiguous material accepted");}
   catch(IllegalStateException expected){}
   require(glassMaterial(new InsetDrawable(new LayerDrawable(new Drawable[]{host.second})))==host.second,"layered actual object identity");

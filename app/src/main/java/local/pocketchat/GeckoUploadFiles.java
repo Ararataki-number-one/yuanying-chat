@@ -27,7 +27,7 @@ final class GeckoUploadFiles {
     int directories,files,unknownEntries;long bytes;boolean complete=true;
   }
   static final class Selection {
-    final File directory;final Uri[] files;
+    final File directory;final Uri[] files;boolean containsImage;
     Selection(File directory,Uri[] files){this.directory=directory;this.files=files;}
     Cleanup delete(){
       int removed=0,failed=0;long bytes=0;
@@ -45,6 +45,19 @@ final class GeckoUploadFiles {
   }
   static void checkCancelled(BooleanSupplier cancelled)throws Cancelled {
     if(Thread.currentThread().isInterrupted()||cancelled.getAsBoolean())throw new Cancelled(new Cleanup(0,0,0));
+  }
+  /** Only a signature read; selected photo bytes are never decoded or re-encoded here. */
+  static boolean rasterImage(byte[] header,int count){
+    if(count>=8&&header[0]==(byte)137&&header[1]==80&&header[2]==78&&header[3]==71&&header[4]==13&&header[5]==10&&header[6]==26&&header[7]==10)return true;
+    if(count>=3&&header[0]==(byte)255&&header[1]==(byte)216&&header[2]==(byte)255)return true;
+    if(count>=6&&header[0]=='G'&&header[1]=='I'&&header[2]=='F'&&header[3]=='8'&&(header[4]=='7'||header[4]=='9')&&header[5]=='a')return true;
+    if(count>=2&&header[0]=='B'&&header[1]=='M')return true;
+    if(count>=12&&header[0]=='R'&&header[1]=='I'&&header[2]=='F'&&header[3]=='F'&&header[8]=='W'&&header[9]=='E'&&header[10]=='B'&&header[11]=='P')return true;
+    if(count>=12&&header[4]=='f'&&header[5]=='t'&&header[6]=='y'&&header[7]=='p'){
+      String brand=new String(header,8,4,java.nio.charset.StandardCharsets.US_ASCII);
+      return Arrays.asList("avif","avis","heic","heix","hevc","hevx","heim","heis","mif1","msf1").contains(brand);
+    }
+    return count>=4&&(header[0]=='I'&&header[1]=='I'&&header[2]==42&&header[3]==0||header[0]=='M'&&header[1]=='M'&&header[2]==0&&header[3]==42);
   }
   static Selection prepare(Context context,Uri[] source,BooleanSupplier cancelled)throws IOException {
     if(source==null||source.length==0)throw new IOException("没有选中附件，请重新选择");
@@ -70,11 +83,14 @@ final class GeckoUploadFiles {
       String original=name;int duplicate=1,dot=original.lastIndexOf('.');while(!names.add(name)){String suffix=" ("+(++duplicate)+")";name=dot>0?original.substring(0,dot)+suffix+original.substring(dot):original+suffix;}
       File file=new File(directory,name);
       checkCancelled(cancelled);
+      byte[] signature=new byte[32];int signatureBytes=0;
       try(InputStream input=context.getContentResolver().openInputStream(uri);OutputStream output=new FileOutputStream(file)){
         if(input==null)throw new IOException("附件不可读取，请重新选择");byte[] buffer=new byte[65536];int count;
-        while(true){checkCancelled(cancelled);count=input.read(buffer);checkCancelled(cancelled);if(count==-1)break;total+=count;if(total>MAX||directory.getUsableSpace()<64L*1024*1024)throw new IOException("附件过大或剩余空间不足");output.write(buffer,0,count);}
+        while(true){checkCancelled(cancelled);count=input.read(buffer);checkCancelled(cancelled);if(count==-1)break;total+=count;if(total>MAX||directory.getUsableSpace()<64L*1024*1024)throw new IOException("附件过大或剩余空间不足");output.write(buffer,0,count);
+          int take=Math.min(count,signature.length-signatureBytes);if(take>0){System.arraycopy(buffer,0,signature,signatureBytes,take);signatureBytes+=take;}}
       }
       checkCancelled(cancelled);
+      selection.containsImage|=rasterImage(signature,signatureBytes);
       selection.files[i]=Uri.fromFile(file);
     }checkCancelled(cancelled);return selection;}catch(Exception error){Cleanup cleanup=selection.delete();if(error instanceof Cancelled)throw new Cancelled(cleanup);throw new IOException("读取附件失败："+(error.getMessage()==null?"请重新选择":error.getMessage()),error);}
   }
