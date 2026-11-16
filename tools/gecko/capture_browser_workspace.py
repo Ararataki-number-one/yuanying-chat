@@ -195,7 +195,7 @@ def main():
         for key in ('font_scale', 'accelerometer_rotation', 'user_rotation'):
             original[key] = adb('shell', 'settings', 'get', 'system', key).decode().strip()
         report['originalDisplay'] = original.copy()
-        capture = UiVisualCapture(adb=args.adb, serial=args.serial, source=source, diagnostics=args.out/'hierarchy-attempts.json')
+        capture = UiVisualCapture.for_device(adb=args.adb, serial=args.serial, source=source, diagnostics=args.out/'hierarchy-attempts.json')
         for label, width, height, scale in [('default', 412, 892, 1.0), ('narrow-large-font', 320, 640, 2.0)]:
             shared.set_display(width*3, height*3, 480)
             adb('shell', 'am', 'force-stop', PACKAGE)

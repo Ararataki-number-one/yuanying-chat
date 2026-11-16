@@ -25,6 +25,11 @@ class NavigationV3SourceHistory(unittest.TestCase):
         self.assertNotEqual(source, bad)
         with self.assertRaises(AssertionError):
             module.verify_current_compact_ui_source(bad)
+        for changed in ('UiVisualCapture(', 'UiVisualCapture.unverified('):
+            bad = source.replace('UiVisualCapture.for_device(', changed, 1)
+            self.assertNotEqual(source, bad)
+            with self.subTest(capture=changed), self.assertRaises(AssertionError):
+                module.verify_current_compact_ui_source(bad)
 
 
 if __name__ == '__main__':

@@ -131,6 +131,12 @@ def verify_current_compact_ui_source(source):
   CurrentConsumer().visit(expected['compactWorkload'])
   expected['compactImport']=ast.parse('from compact_chrome_v3 import run_case as capture_compact_v3').body[0]
   expected['UI_NAVIGATION_CONTRACT'].value=ast.Constant(value=3)
+  # The current device observer reads the same native hierarchy while content
+  # changes. Only its explicit preparation entry changes; all source/ADB/nonce
+  # arguments and the full original observation workload remain exact.
+  capture_call=expected['ui_capture'].value
+  assert isinstance(capture_call,ast.Call) and isinstance(capture_call.func,ast.Name) and capture_call.func.id=='UiVisualCapture'
+  capture_call.func=ast.Attribute(value=ast.Name(id='UiVisualCapture',ctx=ast.Load()),attr='for_device',ctx=ast.Load())
 
  for name,node in actual.items():
   assert ast.dump(node,include_attributes=False)==ast.dump(expected[name],include_attributes=False),('Current compact UI consumer changed',name)

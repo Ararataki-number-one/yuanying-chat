@@ -20,7 +20,7 @@ UI_NAVIGATION_CONTRACT=3
 WORKSPACE_LAYOUT_CONTRACT=2
 scenes=LIGHT_SCENES
 last_geometry=None
-ui_capture=UiVisualCapture(adb=args.adb,serial=args.serial,source=source,diagnostics=out/'ui-visual-capture-attempts.json')
+ui_capture=UiVisualCapture.for_device(adb=args.adb,serial=args.serial,source=source,diagnostics=out/'ui-visual-capture-attempts.json')
 def adb(*values):return subprocess.check_output([args.adb,'-s',args.serial,*values],timeout=90).decode(errors='replace')
 from ui_test_device import prepare_workflow as prepare_ui_test_device
 (out/'ui-test-device-isolation.json').write_text(json.dumps(prepare_ui_test_device(adb,serial=args.serial,environment=os.environ),sort_keys=True,indent=2)+'\n')

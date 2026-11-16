@@ -223,16 +223,34 @@ class CurrentBrowserEntryObservation(unittest.TestCase):
         self.assertTrue(current(raw.decode()))
         self.assertFalse(previous(raw.decode()))
 
-    def test_all_other_device_flow_bytes_and_original_budgets_remain_exact(self):
+    def require_original_flow(self, current):
         previous=browser_v2_bytes('tests/gecko/run_environment_dashboard.py').decode()
-        current=RUNNER.read_text()
         old=ast.get_source_segment(previous,self.functions(previous)['browser'])
         new=ast.get_source_segment(current,self.functions(current)['browser'])
         self.assertNotEqual(new,old)
         self.assertEqual(current.count(new),1)
-        self.assertEqual(current.replace(new,old,1),previous)
+        self.assertEqual(current.count('UiVisualCapture.for_device('),1)
+        self.assertNotIn('UiVisualCapture(',current)
+        restored=current.replace(new,old,1).replace('UiVisualCapture.for_device(','UiVisualCapture(',1)
+        self.assertEqual(restored,previous)
         self.assertNotIn('historical_source_inputs',current)
         self.assertNotIn('dashboard_browser_entry_compatibility',current)
+
+    def test_all_other_device_flow_bytes_and_original_budgets_remain_exact(self):
+        self.require_original_flow(RUNNER.read_text())
+
+    def test_native_observer_does_not_allow_changed_workload_source_or_budgets(self):
+        current=RUNNER.read_text()
+        for before,after in (
+                ('UiVisualCapture.for_device(', 'UiVisualCapture('),
+                ('UiVisualCapture.for_device(', 'UiVisualCapture.unverified('),
+                ('serial=args.serial,source=source,', 'serial=args.serial,source="wrong-source",'),
+                ('def wait(predicate,label,timeout=35):', 'def wait(predicate,label,timeout=36):'),
+                ('until=time.monotonic()+7', 'until=time.monotonic()+6')):
+            altered=current.replace(before,after,1)
+            self.assertNotEqual(altered,current)
+            with self.subTest(change=after),self.assertRaises(AssertionError):
+                self.require_original_flow(altered)
 
     def test_missing_foreign_clipped_hidden_disabled_and_duplicate_native_controls_never_qualify(self):
         reader=self.reader()['browser']

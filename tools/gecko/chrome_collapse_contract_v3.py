@@ -5,6 +5,9 @@ snapshot. The historical v2 reader is unchanged. Shared helpers retain the same
 single-input and original-budget readiness/document protections.
 """
 import hashlib
+import json
+import math
+from pathlib import Path
 import re
 import xml.etree.ElementTree as ET
 
@@ -12,16 +15,122 @@ if __package__:
     from .integration_event_contract import EventTransfer, event_uri
     from .workspace_navigation_contract_v3 import navigation, bounds, menu_action, verify_menu_scrolls
     from .compact_chrome_layout_v2 import address_dialog, inside, rect
+    from . import ui_hierarchy_driver as hierarchy_driver
     from .chrome_collapse_contract_v2 import (PACKAGE, ACTIVITY, ENVIRONMENT_ACTIVITY, TARGET,
         STABLE, LEGACY_BEHAVIOR_MAP, BROWSER_STARTUP_MAP, center, resumed, gesture,
-        address_cancel, make_short_target_proof, verify_short_target, modal as legacy_modal)
+        address_cancel, short_target_geometry, modal as legacy_modal)
 else:
     from integration_event_contract import EventTransfer, event_uri
     from workspace_navigation_contract_v3 import navigation, bounds, menu_action, verify_menu_scrolls
     from compact_chrome_layout_v2 import address_dialog, inside, rect
+    import ui_hierarchy_driver as hierarchy_driver
     from chrome_collapse_contract_v2 import (PACKAGE, ACTIVITY, ENVIRONMENT_ACTIVITY, TARGET,
         STABLE, LEGACY_BEHAVIOR_MAP, BROWSER_STARTUP_MAP, center, resumed, gesture,
-        address_cancel, make_short_target_proof, verify_short_target, modal as legacy_modal)
+        address_cancel, short_target_geometry, modal as legacy_modal)
+
+ROOT = Path(__file__).resolve().parents[2]
+
+
+def make_short_target_proof(*, raw_xml, activity_state, identity, nonce, android_user, before,
+                            capture_nonce, capture_record, acquisition_driver, action_started_ns,
+                            activity_started_ns, activity_completed_ns, prepared_ns):
+    """Bind the real native-driver command and fresh XML before one short input.
+
+    The v2 proof remains unchanged. This current proof preserves each of its
+    timing, byte, ownership and geometry checks while independently validating
+    the installed driver's original source/run/archive receipt. No recorded
+    app_process command is rewritten to resemble a uiautomator command.
+    """
+    assert type(raw_xml) is str and 0 < len(raw_xml.encode('utf-8')) <= 1024*1024
+    assert re.fullmatch('[0-9a-f]{40}', identity['sourceCommit']) and re.fullmatch('[0-9a-f]{40}', identity['sourceTree'])
+    assert re.fullmatch('[0-9a-f]{64}', identity['apkSha256'])
+    assert re.fullmatch('[0-9a-f]{32}', nonce) and re.fullmatch('[0-9a-f]{32}', capture_nonce)
+    assert type(android_user) is int and android_user >= 0
+    assert type(activity_state) is str and 0 < len(activity_state.encode('utf-8')) <= 1024*1024
+    assert resumed(activity_state) == {(android_user, ACTIVITY)}
+    for value in (action_started_ns, activity_started_ns, activity_completed_ns, prepared_ns):
+        assert type(value) is int and value > 0
+    preparation_deadline = action_started_ns+20_000_000_000
+    assert action_started_ns <= activity_started_ns <= activity_completed_ns <= prepared_ns < preparation_deadline
+    driver = json.loads(json.dumps(acquisition_driver, ensure_ascii=False, allow_nan=False))
+    hierarchy_driver.verify_evidence(driver, identity['sourceCommit'], root=ROOT)
+    assert driver['sourceTree'] == identity['sourceTree'], 'Hierarchy driver and installed APK source trees differ'
+    record = json.loads(json.dumps(capture_record, ensure_ascii=False, allow_nan=False))
+    assert set(record) == set(('index remotePath commands startedAtMonotonicNanos existingSceneDeadline status xmlBytes xmlSha256 completedAtMonotonicNanos').split())
+    assert type(record['index']) is int and record['index'] > 0 and record['status'] == 'captured'
+    remote = '/sdcard/pocketchat-ui-visual-'+capture_nonce+'-'+str(record['index'])+'.xml'
+    assert record['remotePath'] == remote
+    deadline = record['existingSceneDeadline']
+    assert type(deadline) in (int, float) and math.isfinite(deadline) and abs(deadline*1_000_000_000-preparation_deadline) <= 1024
+    for key in ('startedAtMonotonicNanos', 'completedAtMonotonicNanos'):
+        assert type(record[key]) is int
+    assert action_started_ns <= record['startedAtMonotonicNanos'] <= record['completedAtMonotonicNanos'] <= activity_started_ns
+    raw = raw_xml.encode('utf-8'); digest = hashlib.sha256(raw).hexdigest()
+    assert type(record['xmlBytes']) is int and record['xmlBytes'] == len(raw) and record['xmlSha256'] == digest
+    commands = record['commands']; assert type(commands) is list and len(commands) == 2
+    previous = record['startedAtMonotonicNanos']
+    for index, command in enumerate(commands):
+        assert set(command) == set(('parts startedAtWallTimeMillis startedAtMonotonicNanos timeoutSeconds exitCode stdout stderr completedAtMonotonicNanos completedAtWallTimeMillis').split())
+        assert type(command['exitCode']) is int and command['exitCode'] == 0
+        for key in ('startedAtWallTimeMillis', 'completedAtWallTimeMillis', 'startedAtMonotonicNanos', 'completedAtMonotonicNanos'):
+            assert type(command[key]) is int and command[key] > 0
+        assert previous <= command['startedAtMonotonicNanos'] <= command['completedAtMonotonicNanos'] <= record['completedAtMonotonicNanos']
+        assert command['startedAtWallTimeMillis'] <= command['completedAtWallTimeMillis']
+        remaining = (preparation_deadline-command['startedAtMonotonicNanos'])/1_000_000_000
+        timeout = command['timeoutSeconds']
+        assert type(timeout) in (int, float) and math.isfinite(timeout) and 0 < timeout <= 20 and timeout <= remaining+.002
+        if index == 0:
+            parts = command['parts']
+            assert type(parts) is list and len(parts) == 13
+            assert type(parts[6]) is str and re.fullmatch('[1-9][0-9]*', parts[6])
+            milliseconds = int(parts[6])
+            assert 0 < milliseconds <= 20000 and milliseconds/1000 <= remaining+.002
+            assert parts == ['shell', 'CLASSPATH='+driver['installedJar']['remotePath']+':'+hierarchy_driver.SYSTEM_JAR,
+                'app_process', '/system/bin', hierarchy_driver.ENTRY_POINT, remote, str(milliseconds),
+                driver['installedJar']['sha256'], driver['sourceCommit'], driver['sourceTree'],
+                driver['runId'], driver['runAttempt'], driver['device']['systemJarSha256']]
+        else:
+            assert command['parts'] == ['shell', 'cat', remote]
+        previous = command['completedAtMonotonicNanos']
+        def output(value, expected):
+            assert set(value) == {'bytes', 'sha256', 'text', 'truncated'}
+            assert type(value['bytes']) is int and value['bytes'] == len(expected)
+            assert value['sha256'] == hashlib.sha256(expected).hexdigest()
+            assert value['text'] == expected[:8192].decode('utf-8', 'replace')
+            assert value['truncated'] is (len(expected) > 8192)
+        output(command['stderr'], b'')
+        if index == 0:
+            stdout = command['stdout']['text'].encode('utf-8')
+            assert stdout.decode().strip() in ('', 'UI hierchary dumped to: '+remote, 'UI hierarchy dumped to: '+remote)
+            output(command['stdout'], stdout)
+        else: output(command['stdout'], raw)
+    geometry = short_target_geometry(raw_xml, before)
+    activity = activity_state.encode('utf-8')
+    return dict(schema=2, kind='shortSwipeTarget', phase='horizontal', preEmitOnly=True,
+        applicationAcceptance=False, sourceCommit=identity['sourceCommit'], sourceTree=identity['sourceTree'],
+        apkSha256=identity['apkSha256'], runNonce=nonce, androidUser=android_user,
+        beforeSnapshotSha256=hashlib.sha256(json.dumps(before, ensure_ascii=False, sort_keys=True, separators=(',', ':'), allow_nan=False).encode()).hexdigest(),
+        rawXml=raw_xml, xmlBytes=len(raw), xmlSha256=digest,
+        activityState=activity_state, activityBytes=len(activity), activitySha256=hashlib.sha256(activity).hexdigest(),
+        captureRunNonce=capture_nonce, captureRecord=record, acquisitionDriver=driver,
+        actionStartedAtMonotonicNanos=action_started_ns, activityStartedAtMonotonicNanos=activity_started_ns,
+        activityCompletedAtMonotonicNanos=activity_completed_ns, preparedAtMonotonicNanos=prepared_ns,
+        originalActionBudgetMs=90000, preparationBudgetMs=20000, geometry=geometry)
+
+
+def verify_short_target(proof, *, identity, nonce, android_user, before):
+    """Recompute the complete current proof, including its real driver receipt."""
+    expected = make_short_target_proof(raw_xml=proof['rawXml'], activity_state=proof['activityState'],
+        identity=identity, nonce=nonce, android_user=android_user, before=before,
+        capture_nonce=proof['captureRunNonce'], capture_record=proof['captureRecord'],
+        acquisition_driver=proof['acquisitionDriver'], action_started_ns=proof['actionStartedAtMonotonicNanos'],
+        activity_started_ns=proof['activityStartedAtMonotonicNanos'],
+        activity_completed_ns=proof['activityCompletedAtMonotonicNanos'], prepared_ns=proof['preparedAtMonotonicNanos'])
+    assert json.dumps(proof, sort_keys=True, allow_nan=False) == json.dumps(expected, sort_keys=True, allow_nan=False), 'Short target proof differs from its original read-only observations'
+    assert type(proof['schema']) is int and type(proof['geometry']['targetContract']) is int
+    assert type(proof['androidUser']) is int and type(proof['xmlBytes']) is type(proof['activityBytes']) is int
+    assert type(proof['originalActionBudgetMs']) is type(proof['preparationBudgetMs']) is int
+    return expected['geometry']
 
 PHASES = (
     'ready','initialAddress','initialChat','up','down','compactAddress','compactExpand',

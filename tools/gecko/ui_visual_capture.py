@@ -10,6 +10,7 @@ import time
 import xml.etree.ElementTree as ET
 
 NULL_ROOT = 'ERROR: null root node returned by UiTestAutomationBridge.'
+IDLE_NOT_READY = 'ERROR: could not get idle state.'
 _anr_spec = importlib.util.spec_from_file_location('ui_capture_anr_diagnostic', Path(__file__).with_name('ui_anr_diagnostic.py'))
 _anr = importlib.util.module_from_spec(_anr_spec)
 _anr_spec.loader.exec_module(_anr)
@@ -20,15 +21,30 @@ class CaptureNotReady(RuntimeError):
 
 
 class UiVisualCapture:
-    def __init__(self, *, adb, serial, source, diagnostics):
+    @classmethod
+    def for_device(cls, *, adb, serial, source, diagnostics):
+        """Prepare a source-bound read-only observer before the scene starts."""
+        from ui_hierarchy_driver import prepare_driver
+        driver = prepare_driver(adb=adb, serial=serial, source=source,
+                                diagnostics_dir=Path(diagnostics).parent)
+        return cls(adb=adb, serial=serial, source=source, diagnostics=diagnostics,
+                   acquisition_driver=driver)
+
+    def __init__(self, *, adb, serial, source, diagnostics, acquisition_driver=None):
         self.adb, self.serial = str(adb), serial
         self.diagnostics = Path(diagnostics)
+        self.acquisition_driver = acquisition_driver
         self.nonce = secrets.token_hex(16)
         self.count, self.records = 0, []
         self.anr_diagnostic_attempted = False
         self.report = dict(schema=1, sourceCommit=source, runNonce=self.nonce, serial=serial,
             scope='Read-only accessibility acquisition; no input, Activity restart, layout change or UI acceptance.',
             attemptCount=0, droppedAttempts=0, attempts=self.records)
+        if acquisition_driver is not None:
+            if (type(acquisition_driver.evidence) is not dict
+                    or acquisition_driver.evidence.get('sourceCommit') != source):
+                raise ValueError('Hierarchy acquisition driver belongs to a different source')
+            self.report['acquisitionDriver'] = json.loads(json.dumps(acquisition_driver.evidence))
         self.save()
 
     def save(self):
@@ -81,10 +97,22 @@ class UiVisualCapture:
         if len(self.records) > 256:
             del self.records[0]
         try:
-            dumped = self.command(('shell', 'uiautomator', 'dump', remote), record, deadline)
+            parts = ('shell', 'uiautomator', 'dump', remote)
+            if self.acquisition_driver is not None:
+                remaining = 90 if deadline is None else deadline - time.monotonic()
+                if remaining <= 0:
+                    raise TimeoutError('Existing UI scene deadline expired before accessibility acquisition')
+                parts = self.acquisition_driver.dump_parts(remote, remaining)
+            dumped = self.command(parts, record, deadline)
             combined = (dumped.stdout + dumped.stderr).decode('utf-8', 'strict').strip()
             if dumped.returncode in (0, 1) and combined == NULL_ROOT:
                 raise CaptureNotReady(NULL_ROOT)
+            # AOSP DumpCommand returns without writing a hierarchy when its
+            # internal idle wait expires. Keep acquisition inside the caller's
+            # existing deadline; never read this failed attempt's file.
+            if (dumped.returncode == 0 and not dumped.stdout
+                    and dumped.stderr == (IDLE_NOT_READY + '\n').encode('utf-8')):
+                raise CaptureNotReady(IDLE_NOT_READY)
             if dumped.returncode != 0:
                 raise subprocess.CalledProcessError(dumped.returncode, record['commands'][-1]['parts'],
                                                    output=dumped.stdout, stderr=dumped.stderr)

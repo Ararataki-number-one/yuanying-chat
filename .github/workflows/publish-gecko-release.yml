@@ -79,7 +79,7 @@ jobs:
               for name in TLS_SOURCE_ONLY_TOOLS:
                   assert pathlib.Path(name).read_bytes()==subprocess.check_output(['git','show',m['sourceCommit']+':'+name]),'TLS checker/support differs from tested source: '+name
           if m['versionCode']>=108:
-              for name in ('tools/gecko/photo_upload_contract.py','tools/gecko/compact_chrome_layout_v3.py','tools/gecko/chrome_collapse_contract_v3.py','tools/gecko/workspace_navigation_contract_v3.py'):
+              for name in ('tools/gecko/photo_upload_contract.py','tools/gecko/compact_chrome_layout_v3.py','tools/gecko/chrome_collapse_contract_v3.py','tools/gecko/workspace_navigation_contract_v3.py','tools/gecko/ui_hierarchy_driver.py'):
                   assert pathlib.Path(name).read_bytes()==subprocess.check_output(['git','show',m['sourceCommit']+':'+name]),'Photo/browser checker differs from tested source: '+name
           subprocess.run(['python3','tools/gecko/release_channel_contract_test.py'],check=True)
           from tools.gecko.release_channel_contract import release_tag, requires_manual_acceptance, verify_manual_acceptance, verify_direct_release

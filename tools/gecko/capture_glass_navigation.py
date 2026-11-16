@@ -1517,7 +1517,7 @@ def main():
             raise ValueError('Disposable visual fixture reset failed')
         adb('shell', 'am', 'start', '-W', '-n', COMPONENT, '--es', 'visualAction', 'chat')
         observe_display_viewport(adb, args.out, report, 'initial', WIDTH, HEIGHT, DENSITY)
-        capture = UiVisualCapture(adb=args.adb, serial=args.serial, source=source,
+        capture = UiVisualCapture.for_device(adb=args.adb, serial=args.serial, source=source,
                                   diagnostics=args.out / 'hierarchy-attempts.json')
         xml = wait_for(capture, lambda value: current_navigation(value) is not None and capsule(value) is not None,
                        'initial')

@@ -254,7 +254,7 @@ def main():
     sys.path.insert(0,str(root/'tools/gecko'))
     from ui_visual_capture import UiVisualCapture
     from ui_settings_services_device11 import prepare_workflow,finish_workflow
-    capture=UiVisualCapture(adb=args.adb,serial=args.serial,source=source,diagnostics=out/'dashboard-capture-attempts.json')
+    capture=UiVisualCapture.for_device(adb=args.adb,serial=args.serial,source=source,diagnostics=out/'dashboard-capture-attempts.json')
     lease=prepare_workflow(adb,serial=args.serial,environment=os.environ,root=root,source=source,record_path=out/'dashboard-settings-services-isolation.json')
     report={'status':'failed','sourceCommit':source,'physicalPhoneAcceptance':False}
     try:

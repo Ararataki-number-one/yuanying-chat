@@ -58,6 +58,8 @@ def short_swipe_once(*, capture, prefix, identity, nonce, android_user, before, 
     original = json.loads(capture.diagnostics.read_bytes())
     assert original['schema'] == 1 and original['sourceCommit'] == identity['sourceCommit']
     assert original['runNonce'] == capture.nonce and original['attemptCount'] == capture.count
+    assert json.dumps(original['acquisitionDriver'], sort_keys=True, allow_nan=False) == json.dumps(
+        capture.report['acquisitionDriver'], sort_keys=True, allow_nan=False), 'Saved hierarchy driver receipt differs from the active capture'
     captured = original['attempts'][-1]
     assert captured['index'] == capture.count and captured['status'] == 'captured'
     remaining = preparation_deadline - time.monotonic()
@@ -69,7 +71,7 @@ def short_swipe_once(*, capture, prefix, identity, nonce, android_user, before, 
     activity_completed_ns = time.monotonic_ns()
     proof = make_short_target_proof(raw_xml=xml, activity_state=activity, identity=identity,
         nonce=nonce, android_user=android_user, before=before, capture_nonce=capture.nonce,
-        capture_record=captured, action_started_ns=started_ns,
+        capture_record=captured, acquisition_driver=original['acquisitionDriver'], action_started_ns=started_ns,
         activity_started_ns=activity_started_ns, activity_completed_ns=activity_completed_ns,
         prepared_ns=time.monotonic_ns())
     geometry = verify_short_target(proof, identity=identity, nonce=nonce,
@@ -119,7 +121,7 @@ def run_v3(adb, adb_bytes, source, trace, out, focus):
         observations, inputs, native_ui, ui_attempts, raw_files, short_attempts = {}, [], {}, [], [], []
         menu_scrolls={phase:[] for phase in MENU_TARGETS}
         first_readiness = None; header_readiness = None; resume_readiness = None
-        capture = UiVisualCapture(adb=prefix[0], serial=prefix[2], source=source,
+        capture = UiVisualCapture.for_device(adb=prefix[0], serial=prefix[2], source=source,
                                   diagnostics=out/('chrome-v3-ui-capture-'+nonce+'.json'))
         action = 'local.pocketchat.test.CHROME_COLLAPSE'
 

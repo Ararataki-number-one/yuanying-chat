@@ -312,7 +312,7 @@ if version_code>=43:
     shutil.copy2(root/'tools/gecko/check_performance_evidence.py',stage/'tools/gecko/check_performance_evidence.py')
     shutil.copy2(root/'tools/gecko/ui_visual_contract.py',stage/'tools/gecko/ui_visual_contract.py')
     if (root/'tools/gecko/chrome_collapse_contract.py').is_file():shutil.copy2(root/'tools/gecko/chrome_collapse_contract.py',stage/'tools/gecko/chrome_collapse_contract.py')
-    for name in ('compact_chrome_layout_v2.py','chrome_collapse_contract_v2.py','workspace_navigation_contract.py','download_workspace_contract_v2.py','compact_chrome_layout_v3.py','chrome_collapse_contract_v3.py','workspace_navigation_contract_v3.py'):
+    for name in ('compact_chrome_layout_v2.py','chrome_collapse_contract_v2.py','workspace_navigation_contract.py','download_workspace_contract_v2.py','compact_chrome_layout_v3.py','chrome_collapse_contract_v3.py','workspace_navigation_contract_v3.py','ui_hierarchy_driver.py'):
         shutil.copy2(root/'tools/gecko'/name,stage/'tools/gecko'/name)
 if version_code>=108:shutil.copy2(root/'tools/gecko/photo_upload_contract.py',stage/'tools/gecko/photo_upload_contract.py')
 shutil.copy2(root/'tools/gecko/release_channel_contract.py',stage/'tools/gecko/release_channel_contract.py')
