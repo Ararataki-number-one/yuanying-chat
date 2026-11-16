@@ -4,7 +4,7 @@ Android 原生双内核浏览器。环境页是独立浏览器的入口；Gecko 
 
 本次浏览器界面改造基于正式 **v2.1.4-gecko（106）** 的源码，详见[浏览器界面改造与验证范围](docs/BROWSER-WORKSPACE.md)。
 
-后续维护版本为 **2.1.5（107）**，内容见 [2.1.5 浏览器稳定性与维护说明](docs/RELEASE-v2.1.5.md)。发布状态和可安装 APK 以 GitHub Release 为准。
+正式维护版本 **2.1.5（107）** 已于 2026-11-15 发布，[下载原签名 ARM64 安装包](https://github.com/Ararataki-number-one/yuanying-chat/releases/tag/v2.1.5-gecko)。应用更新通道已同步；改动与完整验收记录见 [2.1.5 浏览器稳定性与维护说明](docs/RELEASE-v2.1.5.md)。
 
 **正式安装包以[最新 Release](https://github.com/Ararataki-number-one/yuanying-chat/releases/latest)为准。开发分支的版本号不代表已经发布。会话、环境、下载、网络和设置五页的统一界面更新见 [2.1.4 说明](docs/RELEASE-v2.1.4.md)；Gecko 网页可见 CPU 上限候选见 [2.1.3 说明](docs/RELEASE-v2.1.3.md)；Worker、默认跟随出口 IP 与原生网页时区见 [2.1.2 说明](docs/RELEASE-v2.1.2.md)；两核网址切换与独立指纹配置见 [2.1.1 版本说明](docs/RELEASE-v2.1.1.md)，前版见 [2.1.0 说明](docs/RELEASE-v2.1.0.md)。**
 

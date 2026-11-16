@@ -679,6 +679,205 @@ class GlassCaptureCoverageTest(unittest.TestCase):
                         'A real landscape configuration is required')
 
 
+class GlassUrlKeyboardInteractionTest(unittest.TestCase):
+    """Actual interaction functions with a model of the observed API32 IME move."""
+
+    # Original API32 run 43732281389: url-keyboard XML and the nine succeeding
+    # dumps disagree because the IME moved the dialog before the old tap.
+    BEFORE_IME = (1978, 408, 2242, 552)
+    AFTER_IME = (1978, 297, 2242, 441)
+
+    def setUp(self):
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        self.out = Path(directory.name)
+        display = patch.multiple(capture, WIDTH=2676, HEIGHT=1236)
+        display.start()
+        self.addCleanup(display.stop)
+
+    def editor(self, box=AFTER_IME, *, missing=False, duplicate=False, title='打开网址', **attributes):
+        root = ET.Element('hierarchy', screen='editor')
+        common = {'package': capture.PACKAGE, 'visible-to-user': 'true'}
+        ET.SubElement(root, 'node', dict(common, text=title, bounds='[140,180][550,260]'))
+        if not missing:
+            left, top, right, bottom = box
+            values = dict(common, text='取消', bounds=f'[{left},{top}][{right},{bottom}]',
+                          enabled='true', clickable='true')
+            values['class'] = 'android.widget.Button'
+            values.update(attributes)
+            ET.SubElement(root, 'node', values)
+            if duplicate:
+                ET.SubElement(root, 'node', values)
+        return ET.tostring(root, encoding='unicode')
+
+    def run_interaction(self, *, current=None, shown=True, ime_seconds=2, read_error=None,
+                        late_return=False):
+        class BoundaryReached(Exception):
+            pass
+
+        clock = SimpleNamespace(value=0)
+        report = dict(inputs=[])
+        case = dict(name='landscape-light', observations={},
+                    documentObservations={'ready': dict(visibleDocument=True, loadingCoverVisibility=8)})
+        state = dict(editor=False, ime=False, currentReads=0, deadlines=[], events=[], cancelled=False)
+        chat_xml = ('<hierarchy screen="chat"><node package="' + capture.PACKAGE
+                    + '" content-desc="environment" bounds="[1098,78][1578,234]" /></hierarchy>')
+        old_xml = self.editor(self.BEFORE_IME)
+        current = self.editor() if current is None else current
+
+        def sleep(seconds):
+            state['events'].append(('sleep', seconds))
+            clock.value += seconds
+
+        def read(*, deadline):
+            state['deadlines'].append(deadline)
+            if clock.value >= deadline:
+                raise TimeoutError('Existing model scene deadline expired')
+            clock.value += 1
+            if not state['editor']:
+                return chat_xml
+            if not state['ime']:
+                state['editorDeadline'] = deadline
+                return old_xml
+            state['currentReads'] += 1
+            state['events'].append(('current', clock.value))
+            if read_error is not None:
+                raise read_error
+            if late_return:
+                clock.value = deadline
+            return current
+
+        def adb(*parts):
+            if parts == ('shell', 'dumpsys', 'input_method'):
+                clock.value += ime_seconds
+                state['ime'] = True
+                state['events'].append(('ime', shown))
+                return b'mInputShown=true\n' if shown else b'mInputShown=false\n'
+            self.assertEqual(parts[:3], ('shell', 'input', 'tap'))
+            point = tuple(map(int, parts[3:]))
+            state['events'].append(('tap', point, clock.value))
+            if not state['editor']:
+                state['editor'] = True
+            else:
+                left, top, right, bottom = self.AFTER_IME
+                if left <= point[0] < right and top <= point[1] < bottom:
+                    state['editor'] = False
+                    state['cancelled'] = True
+            return b''
+
+        def screenshot(name):
+            state['events'].append(('screenshot', name))
+            (self.out / name).write_bytes(b'original model screenshot')
+
+        def geometry(xml):
+            return dict(layout='conversation-split') if ET.fromstring(xml).get('screen') == 'chat' else None
+
+        def capsule(xml):
+            found = capture.nodes(xml, lambda node: node.get('content-desc') == 'environment')
+            return found[0] if found else None
+
+        bindings = dict(args=SimpleNamespace(out=self.out), report=report,
+            capture=SimpleNamespace(read=read), adb=adb, screenshot=screenshot,
+            time=SimpleNamespace(monotonic=lambda: clock.value, sleep=sleep,
+                                 time_ns=lambda: int(clock.value * 1_000_000_000)),
+            re=validation.re, sha=capture.sha, write=capture.write,
+            bounds=capture.bounds, nodes=capture.nodes, button=capture.button,
+            geometry=geometry, observed_navigation_geometry=geometry,
+            capsule=capsule, nav=lambda xml: capsule(xml), api={'WIDTH': 2676})
+        functions = []
+        for owner, names in ((validation.capture_acceptance_suite,
+                              {'save', 'artifact', 'text', 'chat', 'interactions'}),
+                             (capture.main, {'tap', 'wait_for'})):
+            body = ast.parse(inspect.getsource(owner)).body[0].body
+            selected = [node for node in body if isinstance(node, ast.FunctionDef) and node.name in names]
+            self.assertEqual({node.name for node in selected}, names)
+            functions.extend(selected)
+        exec(compile(ast.Module(body=functions, type_ignores=[]), validation.__file__, 'exec'), bindings)
+        artifact = bindings['artifact']
+
+        def until_toolbar(case, suffix, predicate, **options):
+            if suffix == 'browser-toolbar':
+                raise BoundaryReached()
+            return artifact(case, suffix, predicate, **options)
+
+        bindings['artifact'] = until_toolbar
+        failure = None
+        try:
+            bindings['interactions'](case)
+        except BoundaryReached:
+            pass
+        except Exception as error:
+            failure = error
+        return failure, state, report, case, old_xml, current
+
+    def test_ime_moved_cancel_uses_current_bounds_and_retains_original_evidence(self):
+        failure, state, report, case, old_xml, current = self.run_interaction()
+        self.assertIsNone(failure)
+        self.assertTrue(state['cancelled'])
+        self.assertEqual(report['inputs'][-1]['observedBounds'], list(self.AFTER_IME))
+        self.assertEqual((report['inputs'][-1]['x'], report['inputs'][-1]['y']), (2110, 369))
+        self.assertGreater(480, self.AFTER_IME[3], 'The old tap must miss the observed current control')
+        self.assertEqual((self.out / 'landscape-light-url-keyboard.xml').read_text(), old_xml)
+        self.assertEqual((self.out / 'landscape-light-url-keyboard.png').read_bytes(), b'original model screenshot')
+        observed = case['observations']['url-keyboard-current']
+        self.assertEqual((self.out / observed['xml']).read_text(), current)
+        self.assertEqual(observed['xmlSha256'], hashlib.sha256(current.encode()).hexdigest())
+        self.assertIn('url-cancelled', case['observations'])
+        self.assertTrue(case['keyboard']['shown'])
+
+    def test_current_read_shares_original_editor_deadline_without_an_extra_pause(self):
+        failure, state, report, _, _, _ = self.run_interaction(ime_seconds=8)
+        self.assertIsNone(failure)
+        self.assertEqual(state['currentReads'], 1)
+        self.assertEqual(state['deadlines'][1:3], [state['editorDeadline']] * 2)
+        event = next(index for index, item in enumerate(state['events']) if item[0] == 'current')
+        self.assertEqual(state['events'][event + 1], ('tap', (2110, 369), state['events'][event][1]))
+        self.assertEqual(len(report['inputs']), 2)
+
+    def test_missing_disabled_hidden_unclickable_or_ambiguous_cancel_fails_closed(self):
+        for options in (dict(missing=True), dict(enabled='false'), {'visible-to-user': 'false'},
+                        dict(clickable='false'), dict(duplicate=True), dict(bounds='[0,0][0,0]')):
+            with self.subTest(options=options):
+                failure, state, report, case, _, _ = self.run_interaction(current=self.editor(**options))
+                self.assertIsInstance(failure, ValueError)
+                self.assertEqual(state['currentReads'], 1)
+                self.assertEqual(len(report['inputs']), 1, 'Only opening the editor is permitted')
+                self.assertIn('url-keyboard-current', case['observations'])
+
+    def test_cancel_without_the_url_editor_or_inside_environment_picker_fails_closed(self):
+        for title in ('', '快速切换环境'):
+            with self.subTest(title=title):
+                failure, _, report, _, _, _ = self.run_interaction(current=self.editor(title=title))
+                self.assertIsInstance(failure, ValueError)
+                self.assertEqual(len(report['inputs']), 1)
+
+    def test_keyboard_not_observed_cannot_refresh_or_cancel(self):
+        failure, state, report, case, _, _ = self.run_interaction(shown=False)
+        self.assertIsInstance(failure, ValueError)
+        self.assertIn('keyboard was not observed', str(failure))
+        self.assertFalse(case['keyboard']['shown'])
+        self.assertEqual(state['currentReads'], 0)
+        self.assertEqual(len(report['inputs']), 1)
+
+    def test_expired_or_late_current_observation_cannot_extend_the_scene_or_tap(self):
+        for options in (dict(ime_seconds=30), dict(late_return=True)):
+            with self.subTest(options=options):
+                failure, state, report, _, _, _ = self.run_interaction(**options)
+                self.assertIsInstance(failure, TimeoutError)
+                self.assertLessEqual(state['currentReads'], 1)
+                self.assertEqual(len(report['inputs']), 1)
+                if state['currentReads']:
+                    self.assertEqual(state['deadlines'][-1], state['editorDeadline'])
+
+    def test_current_capture_failure_is_not_retried_and_cannot_use_old_bounds(self):
+        for error in (RuntimeError('capture failed'), subprocess.TimeoutExpired('uiautomator', 2)):
+            with self.subTest(error=error):
+                failure, state, report, _, _, _ = self.run_interaction(read_error=error)
+                self.assertIs(failure, error)
+                self.assertEqual(state['currentReads'], 1)
+                self.assertEqual(len(report['inputs']), 1)
+
+
 class GlassDisplayPreparationTest(unittest.TestCase):
     """Real setup helper with explicit AOSP launcher/rotation transport boundaries."""
 
