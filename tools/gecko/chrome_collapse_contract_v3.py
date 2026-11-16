@@ -90,6 +90,43 @@ INPUTS = (
 )
 
 
+def browser_menu_modal(raw):
+    """Observe the current menu before Back dismisses it without an action."""
+    tree=ET.fromstring(raw); nodes=list(tree.iter('node'))
+    parents={child:parent for parent in tree.iter() for child in parent}
+    def one(widget,field,value):
+        matches=[n for n in nodes if n.get('package')==PACKAGE
+                 and n.get('class')=='android.widget.'+widget and n.get(field)==value]
+        assert len(matches)==1, ('Missing or ambiguous current browser menu control',value)
+        node=matches[0]
+        assert node.get('visible-to-user')!='false' and node.get('enabled')=='true'
+        bounds(node)
+        return node
+    heading=one('TextView','text','浏览器菜单')
+    assert heading.get('content-desc')=='浏览器菜单'
+    close=one('Button','content-desc','关闭浏览器菜单')
+    action=one('Button','text','下载管理')
+    scroll=one('ScrollView','scrollable','true')
+    header=parents[heading]; panel=parents[header]
+    assert parents[close] is header and parents[scroll] is panel
+    assert all(n.get('package')==PACKAGE and n.get('class')=='android.widget.LinearLayout'
+               and n.get('visible-to-user')!='false' for n in (header,panel))
+    ancestor=action
+    while ancestor in parents and ancestor is not scroll:ancestor=parents[ancestor]
+    assert ancestor is scroll, 'Current browser action must belong to the actual menu scroller'
+    for node in (close,action):
+        box=bounds(node)
+        assert node.get('clickable')=='true' and min(box[2]-box[0],box[3]-box[1])>=144
+    left,top,right,bottom=bounds(scroll); al,at,ar,ab=bounds(action)
+    assert left<=al<ar<=right and top<=at<ab<=bottom
+    assert bounds(heading)[3]<=top and bounds(close)[3]<=top
+    pl,pt,pr,pb=bounds(panel)
+    for node in (header,scroll):
+        l,t,r,b=bounds(node)
+        assert pl<=l<r<=pr and pt<=t<b<=pb
+    return dict(title='浏览器菜单',closeBounds=bounds(close),closePoint=center(bounds(close)))
+
+
 def inspect_ui(raw, phase, environment, *, browser=False):
     assert browser is True
     if phase in ADDRESS_PHASES:
@@ -104,7 +141,8 @@ def inspect_ui(raw, phase, environment, *, browser=False):
                and n.get('class')=='android.widget.TextView' and n.get('text')==n.get('content-desc')=='浏览器菜单']
         assert len(title)==1
         if phase in MENU_TARGETS: return menu_action(raw,PACKAGE,MENU_TARGETS[phase])
-        return legacy_modal(raw,phase,environment,browser=True)
+        assert phase=='more'
+        return browser_menu_modal(raw)
     if phase in ('reading','readingBackMode'):
         nodes=list(ET.fromstring(raw).iter('node'))
         exits=[n for n in nodes if n.get('package')==PACKAGE and n.get('class')=='android.widget.Button'

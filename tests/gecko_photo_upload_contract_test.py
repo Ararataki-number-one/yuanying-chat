@@ -6,7 +6,9 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+import re
 import struct
+import subprocess
 import sys
 import tempfile
 import threading
@@ -82,6 +84,66 @@ def packets(case, result):
     receipt={key:envelope[key] for key in ('schema','runNonce','fixtureAction','command','sequence','nativeContext','processSlot')}
     receipt.update(kind='eventReceipt',eventKind=kind,payloadBytes=len(raw.encode()),payloadSha256=contract.digest(raw.encode()))
     return [dict(receipt=receipt,rawUtf8=raw)]
+
+
+def native_photo_poll_scripts(target):
+    """Use both actual Java call-site expressions, not a copied readback helper."""
+    scripts={}
+    for name in ('GeckoIntegrationTestActivity.java','GeckoPhotoProtectionProbe.java'):
+        lines=[line for line in (ROOT/'tests/gecko'/name).read_text().splitlines()
+               if 'evaluateJavascript(' in line and 'photoEvidence:' in line]
+        if len(lines)!=1:raise AssertionError('One native photo poll expression required: '+name)
+        match=re.fullmatch(r'\s*session\.web\.evaluateJavascript\((".*?")\+JSONObject\.quote\(target\)\+(".*"),raw->\{',lines[0])
+        if match is None:raise AssertionError('Native poll Java string structure differs: '+name)
+        scripts[name]=json.loads(match[1])+json.dumps(target)+json.loads(match[2])
+    return scripts
+
+
+REALM_CONTROL=r'''
+const assert=require('node:assert/strict'),vm=require('node:vm'),fs=require('node:fs');
+const input=JSON.parse(fs.readFileSync(0,'utf8'));
+(async()=>{
+ const outcomes=[];
+ for(const mode of ['select','probe']){
+  const config={schema:1,runNonce:'8'.repeat(32),command:7,privacyLevel:1,mode};
+  const nodes={upload:{},'upload-result':{textContent:''},'photo-evidence':{textContent:'null'}};
+  const document={documentElement:{dataset:{}},getElementById:id=>nodes[id]||null,
+   createElement:tag=>{assert.equal(tag,'canvas');return {getContext:()=>({drawImage(){}}),toBlob:callback=>callback({}),toDataURL:()=> 'data:image/png;base64,AAAA'}}};
+  const receipts=[];
+  const page={window:{},document,URLSearchParams,FormData:class{append(){}},
+   createImageBitmap:async()=>({width:64,height:48,close(){}}),
+   fetch:async(url,options)=>{
+    if(options?.method==='POST'){
+     const phase=new URL(url,'http://fixture').searchParams.get('phase');
+     const receipt={schema:1,runNonce:config.runNonce,command:7,processSlot:0,phase,
+      sha256:'a'.repeat(64),rgbaSha256:'b'.repeat(64),exactPixels:true};
+     receipts.push(receipt);return {ok:true,json:async()=>JSON.parse(JSON.stringify(receipt))};
+    }
+    return {ok:true,blob:async()=>({})};
+   }};
+  vm.createContext(page);
+  const executable=input.html.match(/<script>\s*([\s\S]*?)<\/script>/)[1].replace('__PHOTO_CONFIG__',JSON.stringify(config));
+  vm.runInContext(executable,page);
+  for(let i=0;i<30&&!document.documentElement.dataset.photoReady&&!nodes['upload-result'].textContent;i++)await new Promise(setImmediate);
+  if(mode==='select')await nodes.upload.onchange({target:{files:[{name:'photo-123.png',type:'image/png'}]}});
+  else assert.equal(nodes['upload-result'].textContent,'protected:no-selection');
+  assert.equal(receipts.length,mode==='select'?5:2);
+  assert.equal(page.window.photoEvidence.receipts.length,receipts.length);
+  const isolated={window:{},document,location:{href:input.target}};vm.createContext(isolated);
+  assert.equal(vm.runInContext('window.photoEvidence||null',isolated),null,'old expando read must reproduce the failure');
+  for(const [name,script] of Object.entries(input.scripts)){
+   const actual=JSON.parse(JSON.stringify(vm.runInContext(script,isolated)));
+   assert.deepEqual(actual.photoEvidence,{...config,receipts});
+   const node=nodes['photo-evidence'];delete nodes['photo-evidence'];
+   assert.equal(vm.runInContext(script,isolated).photoEvidence,null,'missing evidence must not be reconstructed');
+   nodes['photo-evidence']=node;const saved=node.textContent;node.textContent='{broken';
+   assert.throws(()=>vm.runInContext(script,isolated),/JSON|property|Unexpected|Expected/);
+   node.textContent=saved;outcomes.push({mode,reader:name,receipts:receipts.length});
+  }
+ }
+ console.log(JSON.stringify({status:'passed',modelOnly:true,actualBrowserExecution:false,outcomes}));
+})().catch(error=>{console.error(error);process.exitCode=1});
+'''
 
 
 class PhotoUploadContractTests(unittest.TestCase):
@@ -175,6 +237,8 @@ class PhotoUploadContractTests(unittest.TestCase):
             with self.assertRaises(AssertionError):ledger.complete(nonce,native(ledger.cases[nonce]),[])
             self.fill(ledger,nonce)
             good=native(ledger.cases[nonce])
+            missing=copy.deepcopy(good);missing.pop('photoEvidence')
+            with self.assertRaises(AssertionError):ledger.complete(nonce,missing,packets(ledger.cases[nonce],missing))
             for key in ('nativePrivacyReady','pendingPreserved','productionChooserOpened'):
                 altered=copy.deepcopy(good);altered[key]=False
                 with self.subTest(key=key),self.assertRaises(AssertionError):ledger.complete(nonce,altered,packets(ledger.cases[nonce],altered))
@@ -210,6 +274,16 @@ class PhotoUploadContractTests(unittest.TestCase):
         self.assertNotIn('getImageData',page)
         self.assertLess(page.index("await encoded(await canvasFor(await response.blob()), 'unselected-')"),
                         page.rindex("dataset.photoReady = 'true'"))
+
+    def test_both_native_readers_obtain_exact_receipts_across_isolated_realms(self):
+        target='http://fixture/browser-image?command=7&nonce='+'8'*32
+        payload=dict(target=target,scripts=native_photo_poll_scripts(target),
+                     html=(ROOT/'tests/gecko/assets/photo-upload-fixture.html').read_text())
+        result=subprocess.run(['node','-e',REALM_CONTROL],input=json.dumps(payload),text=True,
+                              capture_output=True,check=True,timeout=15)
+        observed=json.loads(result.stdout)
+        self.assertEqual(observed['status'],'passed')
+        self.assertEqual(len(observed['outcomes']),4)
 
     def test_actual_http_fixture_keeps_receiver_validation_in_the_request_path(self):
         spec=importlib.util.spec_from_file_location('actual_photo_device_runner',ROOT/'tests/gecko/run_device.py')

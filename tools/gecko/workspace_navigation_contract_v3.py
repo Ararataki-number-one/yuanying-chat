@@ -44,15 +44,53 @@ def menu_action(xml, package, label):
     return native_button(xml, package, label, field='text')
 
 
+def menu_scroll_points(viewport, target_bounds, *, coarse_start, coarse_end, minimum_target):
+    """Keep a partially visible target in view while revealing its clipped edge.
+
+    Android exposes clipped accessibility bounds. A full upward swipe can move
+    a bottom-clipped row straight past the top, so an observed partial row needs
+    a short correction in the direction of its missing edge. This only chooses
+    a real gesture; a fresh hierarchy must still prove the original touch size.
+    """
+    assert isinstance(viewport, (list, tuple)) and len(viewport) == 4
+    assert all(type(v) is int for v in viewport)
+    left, top, right, bottom = viewport
+    assert 0 <= left < right and 0 <= top < bottom
+    assert type(minimum_target) is int and minimum_target > 0
+    for point in (coarse_start, coarse_end):
+        assert isinstance(point, (list, tuple)) and len(point) == 2
+        assert all(type(v) is int for v in point)
+        assert point[0] == (left+right)//2 and top < point[1] < bottom
+    assert coarse_start[1] > coarse_end[1]
+    start, end = list(coarse_start), list(coarse_end)
+    if target_bounds is None:
+        return start, end
+    assert isinstance(target_bounds, (list, tuple)) and len(target_bounds) == 4
+    assert all(type(v) is int for v in target_bounds)
+    l, t, r, b = target_bounds
+    assert left <= l < r <= right and top <= t < b <= bottom
+    if b-t < minimum_target:
+        clipped_top, clipped_bottom = t <= top+1, b >= bottom-1
+        if clipped_top != clipped_bottom:
+            distance = min(start[1]-end[1], minimum_target, max(1, (bottom-top)//3))
+            if clipped_top:
+                start, end = list(coarse_end), [start[0], coarse_end[1]+distance]
+            else:
+                end = [start[0], start[1]-distance]
+    return start, end
+
+
 def seek_menu_action(adb, read, package, label, *, deadline, scrolls):
     """Find a real menu action with bounded, recorded Android scroll inputs."""
     for attempt in range(9):
         assert time.monotonic() < deadline, 'Original menu observation budget expired'
         xml = read(deadline=deadline)
         assert time.monotonic() < deadline, 'Original menu observation budget expired'
+        target = None
         try:
             target = menu_action(xml, package, label)
-            if target['bounds'][3]-target['bounds'][1] >= 144:
+            box = target['bounds']
+            if min(box[2]-box[0], box[3]-box[1]) >= 144:
                 return xml, target
         except AssertionError:
             pass
@@ -63,12 +101,16 @@ def seek_menu_action(adb, read, package, label, *, deadline, scrolls):
                  and n.get('class') == 'android.widget.ScrollView' and n.get('scrollable') == 'true']
         assert len(views) == 1 and attempt < 8 and len(scrolls) < 8, ('Menu action is unavailable', label)
         left, top, right, bottom = bounds(views[0])
-        start = [(left+right)//2, top+(bottom-top)*4//5]
-        end = [start[0], top+(bottom-top)//5]
+        start, end = menu_scroll_points([left, top, right, bottom],
+            target['bounds'] if target is not None else None,
+            coarse_start=[(left+right)//2, top+(bottom-top)*4//5],
+            coarse_end=[(left+right)//2, top+(bottom-top)//5], minimum_target=144)
         raw = xml.encode('utf-8')
-        scrolls.append(dict(label=label, rawXml=xml, xmlSha256=hashlib.sha256(raw).hexdigest(),
+        observation = dict(label=label, rawXml=xml, xmlSha256=hashlib.sha256(raw).hexdigest(),
                             bounds=[left,top,right,bottom], **{'from':start, 'to':end},
-                            durationMs=320, actualAndroidInput=True))
+                            durationMs=320, actualAndroidInput=True)
+        assert time.monotonic() < deadline, 'Original menu observation budget expired before scroll'
+        scrolls.append(observation)
         adb('shell', 'input', 'swipe', *map(str, start+end), '320')
     raise AssertionError(('Menu action remained unavailable', label))
 
@@ -84,7 +126,20 @@ def verify_menu_scrolls(scrolls, package, label):
         views=[n for n in nodes if n.get('package') == package and n.get('class') == 'android.widget.ScrollView' and n.get('scrollable') == 'true']
         assert len(views) == 1
         l,t,r,b=bounds(views[0]); assert value['bounds'] == [l,t,r,b]
-        assert value['from'] == [(l+r)//2,t+(b-t)*4//5] and value['to'] == [(l+r)//2,t+(b-t)//5]
+        target = None
+        try:
+            target = menu_action(xml, package, label)
+        except AssertionError:
+            pass
+        if target is not None:
+            box = target['bounds']
+            assert min(box[2]-box[0], box[3]-box[1]) < 144, 'A fully tappable menu target needs no seek gesture'
+        start, end = menu_scroll_points([l,t,r,b], target['bounds'] if target is not None else None,
+            coarse_start=[(l+r)//2,t+(b-t)*4//5], coarse_end=[(l+r)//2,t+(b-t)//5], minimum_target=144)
+        for field in ('from', 'to'):
+            assert type(value[field]) is list and len(value[field]) == 2
+            assert all(type(v) is int for v in value[field])
+        assert value['from'] == start and value['to'] == end
     return True
 
 

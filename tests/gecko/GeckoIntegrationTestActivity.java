@@ -412,7 +412,7 @@ public class GeckoIntegrationTestActivity extends Activity {
     // Both image cases share a pathname. A retained previous document can
     // still contain its successful upload while the next navigation starts.
     // Accept readiness and results only from this invocation's exact URL.
-    session.web.evaluateJavascript("(()=>({ready:location.href==="+JSONObject.quote(target)+"&&!!document.getElementById('upload')&&['true','selected'].includes(document.documentElement.dataset.photoReady),value:document.getElementById('upload-result')?.textContent||'',photoEvidence:window.photoEvidence||null}))()",raw->{
+    session.web.evaluateJavascript("(()=>({ready:location.href==="+JSONObject.quote(target)+"&&!!document.getElementById('upload')&&['true','selected'].includes(document.documentElement.dataset.photoReady),value:document.getElementById('upload-result')?.textContent||'',photoEvidence:JSON.parse(document.getElementById('photo-evidence')?.textContent||'null')}))()",raw->{
       if(serial!=run)return;
       JSONObject current=J.parse(raw);String value=current.optString("value");boolean touched=tapped;
       if(!touched&&current.optBoolean("ready")&&session.web.hasVisibleDocument()&&!session.navigating){session.pending=held;tapElement(serial,"upload");touched=true;}

@@ -34,6 +34,7 @@ import time
 import xml.etree.ElementTree as ET
 
 from ui_visual_capture import UiVisualCapture
+from workspace_navigation_contract_v3 import menu_scroll_points
 
 PACKAGE = 'local.pocketchat.test'
 COMPONENT = PACKAGE + '/local.pocketchat.UiVisualIntegrationActivity'
@@ -326,6 +327,7 @@ def menu_action(capture, adb, xml, label, out, stem, deadline, inputs, *, input_
             if time.monotonic() >= deadline:
                 raise TimeoutError('Browser menu action deadline expired while observing: '+label)
             return xml, target
+        target_bounds = box
         scrollers = nodes(xml, lambda node: node.get('class') == 'android.widget.ScrollView'
                           and node.get('scrollable') == 'true')
         if len(scrollers) != 1:
@@ -334,15 +336,17 @@ def menu_action(capture, adb, xml, label, out, stem, deadline, inputs, *, input_
         x, start, end = (box[0]+box[2])//2, box[3]-inset, box[1]+inset
         if start-end < 48*DENSITY/160:
             raise ValueError('Browser menu has no safe scrollable viewport')
+        start_point, end_point = menu_scroll_points(box, target_bounds,
+            coarse_start=[x,start], coarse_end=[x,end], minimum_target=(48*DENSITY+159)//160)
         action = dict(action='menu-scroll', reason='Reach browser menu action '+label,
-                      observedBounds=list(box), start=[x,start], end=[x,end],
+                      observedBounds=list(box), start=start_point, end=end_point,
                       durationMillis=300, hierarchy=path.name, hierarchySha256=sha(path),
                       atUnixNs=time.time_ns())
         inputs.append(action)
         remaining = deadline-time.monotonic()
         if remaining <= 0:
             raise TimeoutError('Browser menu action deadline expired before scroll: '+label)
-        adb('shell','input','touchscreen','swipe',str(x),str(start),str(x),str(end),'300',
+        adb('shell','input','touchscreen','swipe',*map(str,start_point+end_point),'300',
             timeout=min(6,remaining))
         action['completedAtUnixNs'] = time.time_ns()
         if input_complete is not None:

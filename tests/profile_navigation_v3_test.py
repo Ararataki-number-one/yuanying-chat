@@ -59,17 +59,25 @@ def browser_xml(width=360,scale=1):
     return ET.tostring(root,encoding='unicode')
 
 
-def menu_xml():
+def menu_xml(width=360):
     root=ET.Element('hierarchy')
-    previous.node(root,'TextView','浏览器菜单','浏览器菜单')
-    previous.node(root,'Button',description='关闭浏览器菜单',rectangle=(900,10,1044,154))
-    for i,label in enumerate(('打开网址或搜索','当前环境网络','管理全部环境','下载管理','进入专注阅读')):
-        previous.node(root,'Button',label,rectangle=(60,200+i*180,1020,350+i*180))
+    right=width*3-78
+    panel=previous.node(root,'LinearLayout',rectangle=(30,356,width*3-30,1812))
+    header=previous.node(panel,'LinearLayout',rectangle=(78,434,right,578))
+    previous.node(header,'TextView','浏览器菜单','浏览器菜单',rectangle=(78,434,right-144,578))
+    previous.node(header,'Button',description='关闭浏览器菜单',rectangle=(right-144,434,right,578))
+    scroll=previous.node(panel,'ScrollView',rectangle=(78,578,right,1728),scrollable='true')
+    body=previous.node(scroll,'LinearLayout',rectangle=(78,578,right,1728))
+    # Current first screen; the address editor has its own five real phases.
+    for i,label in enumerate(('前进','下载管理','进入专注阅读','快速切换环境','当前环境网络','管理全部环境','应用设置')):
+        top=600+i*163
+        previous.node(body,'Button',label,rectangle=(78,top,right,min(top+162,1728)),
+                      enabled='false' if label=='前进' else 'true')
     return ET.tostring(root,encoding='unicode')
 
 
 def case(width=360,scale=1):
-    value=layout(width,scale); raw=menu_xml(); target=navigation.menu_action(raw,previous.v2.PACKAGE,'管理全部环境')
+    value=layout(width,scale); raw=menu_xml(width); target=navigation.menu_action(raw,previous.v2.PACKAGE,'管理全部环境')
     dialog_xml=previous.xml_for('initialAddress'); dialog=compact.address_dialog(dialog_xml,previous.v2.PACKAGE)
     dialog.update(rawXml=dialog_xml,rawXmlSha256=hashlib.sha256(dialog_xml.encode()).hexdigest(),cancelled=True,actionsBefore=2,actionsAfter=2)
     status=copy.deepcopy(value); status.update(networkShown=True,actions=5,page=0)
@@ -121,7 +129,7 @@ def collapse_case(width,scale,nonce):
     native={}
     for phase in collapse.UI_PHASES:
         if phase in collapse.NORMAL_UI_PHASES:xml=browser_xml(width,scale)
-        elif phase in collapse.MENU_PHASES:xml=menu_xml()
+        elif phase in collapse.MENU_PHASES:xml=menu_xml(width)
         else:
             xml=previous.xml_for(phase,width,scale)
             if phase in ('network','downloads','environment','drawer'):xml=xml.replace('会话','浏览器')
@@ -211,6 +219,20 @@ class CollapseContractTests(unittest.TestCase):
             lambda r:r['cases'][0].update(navigationContract=2)):
             report=self.fixture();change(report)
             with self.assertRaises((AssertionError,KeyError,ValueError)):dispatch.verify_auto_collapse(report,'a'*40,'c'*64)
+
+    def test_complete_current_fixture_requires_more_controls_and_independent_address_editor(self):
+        for phase,target in (('more','heading'),('more','close'),('more','download'),('initialAddress','editor')):
+            report=self.fixture();observation=report['cases'][0]['nativeUi'][phase]
+            tree=ET.fromstring(observation['rawXml']);parents={c:p for p in tree.iter() for c in p}
+            if target=='heading':matches=[n for n in tree.iter('node') if n.get('text')=='浏览器菜单']
+            elif target=='close':matches=[n for n in tree.iter('node') if n.get('content-desc')=='关闭浏览器菜单']
+            elif target=='download':matches=[n for n in tree.iter('node') if n.get('text')=='下载管理']
+            else:matches=[n for n in tree.iter('node') if n.get('class')=='android.widget.EditText']
+            self.assertEqual(len(matches),1);parents[matches[0]].remove(matches[0])
+            raw=ET.tostring(tree,encoding='unicode');encoded=raw.encode('utf-8')
+            observation.update(rawXml=raw,xmlBytes=len(encoded),xmlSha256=hashlib.sha256(encoded).hexdigest())
+            with self.subTest(phase=phase,target=target),self.assertRaises((AssertionError,KeyError,ValueError)):
+                dispatch.verify_auto_collapse(report,'a'*40,'c'*64)
 
 
 if __name__=='__main__':unittest.main()

@@ -22,7 +22,7 @@ final class GeckoPhotoProtectionProbe {
   static void poll(GeckoIntegrationTestActivity activity,long serial,long deadline,String target,int prior,boolean[] chooser,android.webkit.WebChromeClient previous){
     if(serial!=activity.run)return;
     ChatSession session=activity.session;
-    session.web.evaluateJavascript("(()=>({ready:location.href==="+JSONObject.quote(target)+",value:document.getElementById('upload-result')?.textContent||'',photoEvidence:window.photoEvidence||null}))()",raw->{
+    session.web.evaluateJavascript("(()=>({ready:location.href==="+JSONObject.quote(target)+",value:document.getElementById('upload-result')?.textContent||'',photoEvidence:JSON.parse(document.getElementById('photo-evidence')?.textContent||'null')}))()",raw->{
       if(serial!=activity.run)return;
       JSONObject current=J.parse(raw);String value=current.optString("value");
       if(current.optBoolean("ready")&&value.equals("protected:no-selection")){

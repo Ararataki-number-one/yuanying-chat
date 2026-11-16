@@ -5,6 +5,7 @@
 <h1>Controlled photo content upload</h1>
 <input id="upload" type="file" accept="image/*" multiple>
 <p id="upload-result"></p>
+<script id="photo-evidence" type="application/json">null</script>
 <script>
 'use strict';
 const config = __PHOTO_CONFIG__;
@@ -14,6 +15,11 @@ const photoEvidence = window.photoEvidence = {
 };
 const output = document.getElementById('upload-result');
 const input = document.getElementById('upload');
+const evidence = document.getElementById('photo-evidence');
+// Native polling runs in Gecko's extension world. DOM text crosses that
+// boundary; page window expandos do not. Preserve the actual receiver JSON.
+function publishEvidence() { evidence.textContent = JSON.stringify(photoEvidence); }
+publishEvidence();
 function failure(error) {
   document.documentElement.dataset.photoReady = 'failed';
   output.textContent = 'error:' + String(error.message || error);
@@ -28,6 +34,7 @@ async function submit(phase, image) {
   if (receipt.runNonce !== config.runNonce || receipt.command !== config.command || receipt.phase !== phase)
     throw Error('Image receiver returned another invocation');
   photoEvidence.receipts.push(receipt);
+  publishEvidence();
 }
 async function canvasFor(blob) {
   const image = await createImageBitmap(blob);

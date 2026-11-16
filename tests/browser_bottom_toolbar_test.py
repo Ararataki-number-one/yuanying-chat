@@ -360,6 +360,161 @@ class MenuDeadlineTests(unittest.TestCase):
                 self.assertEqual(reader.read.call_count,1)
 
 
+class PartialMenuScrollTests(unittest.TestCase):
+    """Replay original C5 XML at mocked transport boundaries, not on Android."""
+    LABEL='管理全部环境'
+    VIEWPORT=[666,455,2010,1044]
+    HASHES={'start':'08381b45942fabf4c95bb063f9a1d84adfcd10c9ae0cc4dfddd1912d65498da6',
+        'bottom':'4a7dab9879a2e864cd840b0bcbae3d748f6be9560784cbfb9af453c60cd1236d',
+        'top':'6cf545585c452b51e7ed85bb5a01fbf04f5d00ebe67da16ded2e49ad10d1735f'}
+
+    def setUp(self):
+        self.display=capture.WIDTH,capture.HEIGHT,capture.DENSITY
+        capture.set_display(2676,1236,480)
+        self.frames={}
+        for name,digest in self.HASHES.items():
+            raw=(ROOT/'tests/browser-address-host'/('c5-menu-'+name+'.xml')).read_bytes()
+            self.assertEqual(hashlib.sha256(raw).hexdigest(),digest)
+            self.frames[name]=raw.decode('utf-8')
+
+    def tearDown(self):capture.set_display(*self.display)
+
+    def visible_host_frame(self):
+        # Explicit synthetic response after a corrective gesture. The three
+        # original failure observations above remain byte-for-byte unchanged.
+        tree=ET.Element('hierarchy')
+        node(tree,'浏览器菜单',[666,311,1866,455],text='浏览器菜单',kind='android.widget.TextView')
+        node(tree,'关闭浏览器菜单',[1866,311,2010,455])
+        scroller=node(tree,'',self.VIEWPORT,kind='android.widget.ScrollView',scrollable='true')
+        node(scroller,self.LABEL,[666,650,2010,812],text=self.LABEL)
+        return xml(tree)
+
+    def seek(self,frames):
+        reader=mock.Mock(side_effect=frames);adb=mock.Mock();scrolls=[]
+        with mock.patch.object(workspace_v3.time,'monotonic',return_value=10):
+            result=workspace_v3.seek_menu_action(adb,reader,capture.PACKAGE,self.LABEL,deadline=30,scrolls=scrolls)
+        return result,reader,adb,scrolls
+
+    def test_both_actual_producers_reobserve_the_original_clipped_sequence(self):
+        initial,bottom,top=[self.frames[k] for k in ('start','bottom','top')]
+        full=self.visible_host_frame()
+        self.assertEqual(capture.bounds(capture.button(bottom,self.LABEL)),(666,908,2010,1044))
+        self.assertEqual(capture.bounds(capture.button(top,self.LABEL)),(666,455,2010,577))
+        with tempfile.TemporaryDirectory() as directory,mock.patch.object(capture.time,'monotonic',return_value=10):
+            reader=mock.Mock();reader.read.side_effect=[bottom,top,full];adb=mock.Mock();inputs=[]
+            raw,target=capture.menu_action(reader,adb,initial,self.LABEL,directory,'c5',30,inputs)
+            self.assertEqual(raw,full);self.assertEqual(capture.bounds(target),(666,650,2010,812))
+            self.assertEqual([c.kwargs for c in reader.read.call_args_list],[{'deadline':30}]*3)
+            self.assertEqual([c.args[4:] for c in adb.call_args_list],
+                [('1338','972','1338','527','300'),('1338','972','1338','828','300'),('1338','527','1338','671','300')])
+            self.assertEqual([r['hierarchySha256'] for r in inputs],[self.HASHES[k] for k in ('start','bottom','top')])
+            for index,original in enumerate((initial,bottom,top)):
+                self.assertEqual((Path(directory)/('c5-menu-'+str(index)+'.xml')).read_text(),original)
+        (raw,target),reader,adb,scrolls=self.seek([initial,bottom,top,full])
+        self.assertEqual(raw,full);self.assertEqual(target['bounds'],[666,650,2010,812])
+        self.assertEqual([c.kwargs for c in reader.call_args_list],[{'deadline':30}]*4)
+        self.assertEqual([c.args[3:] for c in adb.call_args_list],
+            [('1338','926','1338','572','320'),('1338','926','1338','782','320'),('1338','572','1338','716','320')])
+        self.assertEqual([r['rawXml'] for r in scrolls],[initial,bottom,top])
+        self.assertTrue(workspace_v3.verify_menu_scrolls(scrolls,capture.PACKAGE,self.LABEL))
+
+    def test_shared_geometry_keeps_coarse_inputs_and_rejects_out_of_bounds_targets(self):
+        arguments=dict(coarse_start=[1338,972],coarse_end=[1338,527],minimum_target=144)
+        self.assertEqual(workspace_v3.menu_scroll_points(self.VIEWPORT,None,**arguments),([1338,972],[1338,527]))
+        for changed in ({'coarse_start':[1338,1044]},{'coarse_end':[1338,454]},
+                        {'coarse_start':[666,972]},{'minimum_target':True}):
+            with self.subTest(changed=changed),self.assertRaises(AssertionError):
+                workspace_v3.menu_scroll_points(self.VIEWPORT,None,**dict(arguments,**changed))
+        for target in ([665,908,2010,1044],[666,454,2010,577],[666,908,2010,1045],[666,577,2010,455]):
+            with self.subTest(target=target),self.assertRaises(AssertionError):
+                workspace_v3.menu_scroll_points(self.VIEWPORT,target,**arguments)
+
+    def test_reader_recomputes_directions_and_rejects_forged_touch_coordinates(self):
+        _,_,_,original=self.seek([self.frames[k] for k in ('start','bottom','top')]+[self.visible_host_frame()])
+        def replace_xml(row,value):
+            row['rawXml']=value;row['xmlSha256']=hashlib.sha256(value.encode()).hexdigest()
+        def forged_outside(row):
+            tree=ET.fromstring(row['rawXml'])
+            target=next(n for n in tree.iter('node') if n.get('text')==self.LABEL)
+            target.set('bounds','[666,908][2010,1045]')
+            replace_xml(row,xml(tree))
+        changes=[lambda r:r[1].update({'from':[1338,572],'to':[1338,716]}),
+            lambda r:r[1].update({'from':[1338,926],'to':[1338,572]}),
+            lambda r:r[1].update({'to':[1338,1045]}),
+            lambda r:r[1].update({'from':[1338.0,926]}),
+            lambda r:r[1].update(bounds=[666,455,2010,1045]),
+            lambda r:r[1].update(xmlSha256='0'*64),
+            lambda r:r[1].update(durationMs=300),
+            lambda r:r[1].update(actualAndroidInput=False),
+            lambda r:replace_xml(r[1],self.frames['top']),
+            lambda r:replace_xml(r[1],self.visible_host_frame()),
+            lambda r:forged_outside(r[1]),lambda r:r.extend(copy.deepcopy(r)*2)]
+        for index,change in enumerate(changes):
+            rows=copy.deepcopy(original);change(rows)
+            with self.subTest(mutation=index),self.assertRaises((AssertionError,ValueError)):
+                workspace_v3.verify_menu_scrolls(rows,capture.PACKAGE,self.LABEL)
+
+    def test_late_corrected_hierarchy_cannot_extend_either_original_deadline(self):
+        for engine in ('glass','workspace'):
+            clock=[10];adb=mock.Mock();reads=[];inputs=[]
+            frames=[self.frames['bottom'],self.visible_host_frame()]
+            def read(*,deadline):
+                reads.append(deadline)
+                if len(reads)==(1 if engine=='glass' else 2):clock[0]=30.1
+                return frames.pop(0) if engine=='workspace' else self.visible_host_frame()
+            with tempfile.TemporaryDirectory() as directory,mock.patch.object(capture.time,'monotonic',side_effect=lambda:clock[0]):
+                with self.subTest(engine=engine),self.assertRaises((TimeoutError,AssertionError)):
+                    if engine=='glass':
+                        capture.menu_action(SimpleNamespace(read=read),adb,self.frames['bottom'],self.LABEL,
+                            directory,'late-correction',30,inputs)
+                    else:
+                        workspace_v3.seek_menu_action(adb,read,capture.PACKAGE,self.LABEL,deadline=30,scrolls=inputs)
+                self.assertEqual(adb.call_count,1);self.assertEqual(reads,[30]*(1 if engine=='glass' else 2))
+
+
+class CurrentMoreModalTests(unittest.TestCase):
+    """Current reader replay of the identical cold/after-reload C5 modal XML."""
+    def setUp(self):
+        raw=(ROOT/'tests/browser-address-host/c5-menu-more.xml').read_bytes()
+        self.assertEqual(hashlib.sha256(raw).hexdigest(),
+            '5117b7fd7f21633272bc63d1b1d9d122ed4bb3b18a5ecd67f684974e2b7288b1')
+        self.raw=raw.decode('utf-8')
+
+    def test_current_more_observes_actual_menu_without_an_offscreen_address_row(self):
+        self.assertFalse(any(n.get('text')=='打开网址或搜索' for n in ET.fromstring(self.raw).iter('node')))
+        result=collapse_v3.inspect_ui(self.raw,'more','Controlled environment',browser=True)
+        self.assertEqual(result,dict(title='浏览器菜单',closeBounds=[858,434,1002,578],closePoint=[930,506]))
+        # The actual historical reader retains its original address-row proof.
+        with self.assertRaises(AssertionError) as failure:
+            collapse_v3.legacy_modal(self.raw,'more','Controlled environment',browser=True)
+        self.assertIn('打开网址或搜索',str(failure.exception))
+
+    def test_current_more_rejects_missing_foreign_clipped_or_unowned_controls(self):
+        for change in ('heading','close','download','duplicate-close','foreign','hidden-close','disabled',
+                       'unclickable','small-close','small-download','outside-scroller','hidden-scroller',
+                       'clipped-scroller','wrong-heading'):
+            tree=ET.fromstring(self.raw);parents={c:p for p in tree.iter() for c in p}
+            heading=next(n for n in tree.iter('node') if n.get('text')=='浏览器菜单')
+            close=next(n for n in tree.iter('node') if n.get('content-desc')=='关闭浏览器菜单')
+            download=next(n for n in tree.iter('node') if n.get('text')=='下载管理')
+            scroll=next(n for n in tree.iter('node') if n.get('class')=='android.widget.ScrollView')
+            if change in ('heading','close','download'):
+                target={'heading':heading,'close':close,'download':download}[change];parents[target].remove(target)
+            elif change=='duplicate-close':parents[close].append(copy.deepcopy(close))
+            elif change=='foreign':download.set('package','other.application')
+            elif change=='hidden-close':close.set('visible-to-user','false')
+            elif change=='disabled':download.set('enabled','false')
+            elif change=='unclickable':download.set('clickable','false')
+            elif change=='small-close':close.set('bounds','[858,434][1002,577]')
+            elif change=='small-download':download.set('bounds','[78,814][1002,957]')
+            elif change=='outside-scroller':parents[download].remove(download);parents[scroll].append(download)
+            elif change=='hidden-scroller':scroll.set('visible-to-user','false')
+            elif change=='clipped-scroller':scroll.set('bounds','[78,578][1002,975]')
+            elif change=='wrong-heading':heading.set('content-desc','另一个窗口')
+            with self.subTest(change=change),self.assertRaises((AssertionError,KeyError)):
+                collapse_v3.inspect_ui(xml(tree),'more','Controlled environment',browser=True)
+
+
 class MotionProtocolTests(unittest.TestCase):
     """Execute the actual recorder protocol with explicit process/ADB boundaries."""
     def run_motion(self,*,recorder_dies_on_scroll=False,cancel_opens_menu=False):

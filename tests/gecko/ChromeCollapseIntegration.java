@@ -273,11 +273,24 @@ final class ChromeCollapseIntegration {
     }});
     diagnostic("load-before");a.remote.loadUrl(CompactChromeIntegrationActivity.ReloadView.LOCAL+"c/reload-collapse");diagnostic("load-return");
   }
+  /** Admit the actual owned loopback route through the production connection lease. */
+  boolean admitFixtureNetwork(){
+    CollapseView current=web();
+    if(a.session.web!=current||!current.hasVisibleDocument()||!current.protectionAllowsNetwork()
+      ||!TARGET.equals(current.getUrl())||!(CompactChromeIntegrationActivity.ReloadView.LOCAL+"c/reload-collapse").equals(current.rawUrl())
+      ||current.inputDocument(nonce,events.buildIdentity.optString("sourceCommit")).isEmpty()
+      ||a.session.internalNetwork()||!"socks://127.0.0.1:1080".equals(a.session.prefs.getString("proxy","")))return false;
+    try{
+      long lease=a.session.beginNetworkApplication(ProfileCatalog.get(a).identity(Profiles.slot(a)));
+      return a.session.adoptNetworkApplication(lease,null);
+    }catch(java.io.IOException invalid){return false;}
+  }
   void ready(long deadline){
     readyEvaluations++;if(readyEvaluations==1)diagnostic("ready-evaluate");
     a.remote.evaluateJavascript("(()=>{const t="+TELEMETRY+";return {ready:!!document.getElementById('prompt-textarea')&&!!document.documentElement.dataset.reloadDocument,fixtureDocument:document.documentElement.dataset.reloadDocument,telemetryReady:"+TELEMETRY_READY+"};})()",raw->{
       readyCallbacks++;if(readyCallbacks==1)diagnostic("ready-callback");
-      if(!J.parse(raw).optBoolean("ready")||!J.parse(raw).optBoolean("telemetryReady")||!a.remote.hasVisibleDocument()){if(SystemClock.elapsedRealtime()>deadline){emit("error",J.obj("error","Controlled chrome document or shared-DOM telemetry timeout"));return;}a.handler.postDelayed(()->ready(deadline),100);return;}
+      if(!J.parse(raw).optBoolean("ready")||!J.parse(raw).optBoolean("telemetryReady")||!a.remote.hasVisibleDocument()||!a.remote.protectionAllowsNetwork()||web().inputDocument(nonce,events.buildIdentity.optString("sourceCommit")).isEmpty()){if(SystemClock.elapsedRealtime()>deadline){emit("error",J.obj("error","Controlled chrome document, native protection or shared-DOM telemetry timeout"));return;}a.handler.postDelayed(()->ready(deadline),100);return;}
+      if(!admitFixtureNetwork()){emit("error",J.obj("error","Controlled chrome route did not pass production network admission"));return;}
       final String fixtureDocument=J.parse(raw).optString("fixtureDocument");
       a.remote.evaluateJavascript("("+REPLY_PROGRESS_SCRIPT+")("+JSONObject.quote(fixtureDocument)+")",progressRaw->{
       JSONObject progress=J.parse(progressRaw);
