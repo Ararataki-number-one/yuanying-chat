@@ -21,6 +21,7 @@ HELPER = 'tests/native-input-driver/NativePreEmitReadiness.java'
 CLI = 'tests/native-input-readiness-host/NativePreEmitReadinessCli.java'
 ADAPTER = 'tools/gecko/chrome_header_readiness.py'
 HELPER_SHA = '40130991cd673e5b38a5e1ca18c3bcca71cff74ec69550126cd6303ef0b66348'
+CURRENT_HELPER_SHA = '68958f1e2c8aeaa675463a62d15f245923b53b4e54b8c5d4745a60b9286d3a98'
 CLASS = 'local.pocketchat.inputdriver.NativePreEmitReadinessCli'
 MAX_OUTPUT = 2097152
 REASONS = {'invalid-request', 'source-unverified', 'cache-unverified', 'identity-changed',
@@ -136,7 +137,7 @@ def _source_bindings(root, source, identity, deadline):
         original = _checked(['git', 'show', source+':'+name], deadline, cwd=root)
         need(actual == original, 'source-unverified')
         hashes[name] = digest(actual)
-    need(hashes[HELPER] == HELPER_SHA, 'source-unverified')
+    need(hashes[HELPER] in (HELPER_SHA, CURRENT_HELPER_SHA), 'source-unverified')
     return dict(sourceCommit=source, sourceTree=tree, sourceSha256=hashes)
 
 

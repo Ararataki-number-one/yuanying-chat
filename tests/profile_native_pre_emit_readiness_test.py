@@ -20,6 +20,34 @@ SHELL = ROOT / 'tests/native-input-driver/NativeInputShell.java'
 PROTOCOL = ROOT / 'tests/native-input-driver/NativeGestureProtocol.java'
 PROTOCOL_SHA = 'ad7245417be77830d16f2170de992cea0f224284b49f66e161f8b2d5a1f8fdf3'
 LEGACY_FOCUS_SHA = '6734a1f21a7347ad0fd7b3e6958332fb01646af379acfd327075d4f1b51c37ed'
+# Entire actual NativeInputShell.java at reviewed commit 00726effd30c023d54a4e201b7d2b2038fb6fdb8.
+C14_SHELL_SHA = 'd1fc5f73b51cb373e52a1495668b4445a47864a3da6302b7de2310189af78c97'
+
+
+def original_shell(current):
+    """The only current delta is the mandatory input observation before the old gate."""
+    changes = [
+        ('import org.json.JSONArray;\n', ''),
+        ('NativePreEmitReadiness.Result readiness=NativePreEmitReadiness.awaitInput(readinessClock,',
+         'NativePreEmitReadiness.Result readiness=NativePreEmitReadiness.await(readinessClock,'),
+        ('        public String input(long latest)throws Exception{return NativePreEmitReadiness.capture(new ProcessBuilder("/system/bin/dumpsys","input").start(),readinessClock,latest);}\n', ''),
+        ('      },expires,profile.duration,targetUid,systemUiUid,Integer.parseInt(expectedPid));',
+         '      },expires,profile.duration,targetUid,systemUiUid);'),
+        ('      JSONArray inputWindows=new JSONArray();for(java.util.Map<String,Object> row:readiness.inputObservations)inputWindows.put(new JSONObject(row));\n', ''),
+        ('report.put("preEmitReadiness",new JSONObject().put("schema",2)',
+         'report.put("preEmitReadiness",new JSONObject().put("schema",1)'),
+        ('.put("originalExpiresUptimeMs",expires).put("reservedGestureDurationMs",profile.duration).put("scope","known-notification-shade-before-t0")\n'
+         '        .put("observationBackend","wm-and-input-dispatcher-v1").put("inputObservationCount",inputWindows.length())\n'
+         '        .put("inputShadeObserved",readiness.inputShadeObserved).put("inputObservations",inputWindows));',
+         '.put("originalExpiresUptimeMs",expires).put("reservedGestureDurationMs",profile.duration).put("scope","known-notification-shade-before-t0"));'),
+    ]
+    for added, prior in changes:
+        if current.count(added) != 1:
+            raise ValueError('Unreviewed shell input readiness binding')
+        current = current.replace(added, prior, 1)
+    if hashlib.sha256(current.encode()).hexdigest() != C14_SHELL_SHA:
+        raise ValueError('Original shell input/failure/deadline behavior changed')
+    return current
 
 
 def focus_member(source):
@@ -61,6 +89,25 @@ def focus_member(source):
 
 
 class NativePreEmitReadinessTest(unittest.TestCase):
+    def test_current_shell_requires_input_observation_before_the_original_gate_and_gesture(self):
+        source = SHELL.read_text()
+        self.assertEqual(hashlib.sha256(original_shell(source).encode()).hexdigest(), C14_SHELL_SHA)
+        for name, changed in [
+            ('legacy-only wait', source.replace('NativePreEmitReadiness.awaitInput(', 'NativePreEmitReadiness.await(', 1)),
+            ('missing input command', source.replace('"/system/bin/dumpsys","input"', '"/system/bin/dumpsys","window"', 1)),
+            ('bypassed failure gate', source.replace('if(!readiness.passed)throw new IllegalStateException("Pre-emit readiness: "+readiness.reason);', '', 1)),
+            ('extended deadline', source.replace('},expires,profile.duration,targetUid,systemUiUid,Integer.parseInt(expectedPid));',
+                                                '},expires+5000,profile.duration,targetUid,systemUiUid,Integer.parseInt(expectedPid));', 1)),
+            ('different target pid', source.replace('Integer.parseInt(expectedPid));', '1);', 1)),
+            ('extra gesture', source.replace('      report.put("trace",NativeInputInstrumentation.json(trace));',
+                                             '      NativeGestureProtocol.run(clock,this::inject,t->observed=t,profile,expires,x,from,to);\n'
+                                             '      report.put("trace",NativeInputInstrumentation.json(trace));', 1)),
+        ]:
+            with self.subTest(name=name):
+                self.assertNotEqual(changed, source)
+                with self.assertRaises(ValueError):
+                    original_shell(changed)
+
     def test_helper_is_bound_into_actual_driver_build_inputs(self):
         from gecko_native_input_driver_test import C, receipt
         self.assertEqual(Path(C.__file__).resolve(), (ROOT / 'tools/gecko/native_input_contract.py').resolve())

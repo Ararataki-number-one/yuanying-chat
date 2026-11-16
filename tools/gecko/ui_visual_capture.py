@@ -114,6 +114,14 @@ class UiVisualCapture:
                     parts = self.acquisition_driver.dump_parts(remote, remaining)
             dumped = self.command(parts, record, deadline)
             combined = (dumped.stdout + dumped.stderr).decode('utf-8', 'strict').strip()
+            # Only the prepared, source-bound native observer emits this protocol
+            # after exact AOSP classification, cleanup and deadline checks. Keep
+            # its complete stack in the command record and never cat this path.
+            classify = getattr(self.acquisition_driver, 'formatter_not_ready_reason', None)
+            if classify is not None:
+                reason = classify(remote, parts, dumped)
+                if reason is not None:
+                    raise CaptureNotReady(reason)
             if dumped.returncode in (0, 1) and combined == NULL_ROOT:
                 raise CaptureNotReady(NULL_ROOT)
             # AOSP DumpCommand returns without writing a hierarchy when its

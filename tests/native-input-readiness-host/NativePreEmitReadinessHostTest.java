@@ -156,8 +156,136 @@ public final class NativePreEmitReadinessHostTest {
     Child expired=new Child(clean,new byte[0],0,false);captureFails("already expired child budget",expired,new Clock(),1000);check(expired.waits.equals(Arrays.asList(100L)),"expired snapshot only gets bounded cleanup wait");
     Child excessive=new Child(clean,new byte[0],0,false);captureFails("child budget larger than original20s",excessive,new Clock(),22000);check(excessive.waits.equals(Arrays.asList(100L)),"oversized snapshot budget never enters child wait");
   }
+  // Synthetic records follow the pinned API35 FocusResolver/WindowInfo dump
+  // format. They are not a captured input snapshot from the failed T0.
+  static String inputRow(int index,String name,int uid,int pid,String flags){
+    return "      "+index+": name="+name+", id="+(100+index)+", displayId=0, inputConfig="+flags
+      +", alpha=1, frame=[0,36][320,604], globalScale=1, applicationInfo.name=controlled"
+      +", applicationInfo.token=0x123, touchableRegion=[0,36][320,604], ownerPid="+pid
+      +", ownerUid="+uid+", dispatchingTimeout=5000ms, token=0x456, touchOcclusionMode=BLOCK_UNTRUSTED\n"
+      +"    transform (ROT_0) (IDENTITY)\n";
+  }
+  static String input(boolean shade){
+    return "Input Reader State:\n  controlled unrelated reader state\nInput Dispatcher State:\n"
+      +"  DispatchEnabled: true\n  DispatchFrozen: false\n  InputFilterEnabled: false\n  FocusedDisplayId: 0\n"
+      +"  FocusedApplications:\n    displayId=0, name='controlled', dispatchingTimeout=5000ms\n"
+      +"  FocusedWindows:\n    displayId=0, name='4491833 "+COMPONENT+"'\n"
+      +"  FocusRequests:\n    displayId=0, name='old request is not focus' result='OK'\n"
+      +"  Pointer Capture Requested: false\n  Current Window with Pointer Capture: None\n"
+      +"  TouchStates: <no displays touched>\n  Display: 0\n    logicalSize=1080x1920\n"
+      +"        transform (ROT_0) (IDENTITY)\n    Windows:\n"
+      +inputRow(0,"8594b28 StatusBar",SYSTEM_UI_UID,991,"NOT_FOCUSABLE | TRUSTED_OVERLAY")
+      +inputRow(1,"4491833 "+COMPONENT,TARGET_UID,1234,"0x0")
+      +(shade?inputRow(2,"9b057bb NotificationShade",SYSTEM_UI_UID,991,"NOT_FOCUSABLE | TRUSTED_OVERLAY"):"")
+      +"  Global Monitors: <none>\n  RecentQueue: <empty>\n  PendingEvent: <none>\n"
+      +"  InboundQueue: <empty>\n  CommandQueue: <empty>\n  Connections:\n"
+      +"    461: channelName='9b057bb NotificationShade (server)', status=NORMAL, monitor=false, responsive=true\n"
+      +"      OutboundQueue: <empty>\n      WaitQueue: <empty>\n"
+      +"  Configuration:\n    KeyRepeatDelay: 50ms\n";
+  }
+  static java.util.Map<String,Object> parseInput(String raw){
+    return NativePreEmitReadiness.parseInput(raw,window(false),TARGET_UID,SYSTEM_UI_UID,1234);
+  }
+  static String oldAnr(String raw){return "\nInput Dispatcher State at time of last ANR:\n"+raw.substring(raw.indexOf("Input Dispatcher State:\n")+"Input Dispatcher State:\n".length());}
+  static void inputParserControls(){
+    String clean=input(false),shown=input(true),target=inputRow(1,"4491833 "+COMPONENT,TARGET_UID,1234,"0x0");
+    check(parseInput(clean).get("state").equals("CLEAR"),"residual Connections shade channel is not an active window");
+    check(parseInput(clean.replace("\n","\r\n")).get("state").equals("CLEAR"),"complete CRLF input dump");
+    check(parseInput(shown).get("state").equals("SHADE_VISIBLE"),"WM clear cannot override actual input shade");
+    check(parseInput(clean+oldAnr(shown)).get("state").equals("CLEAR"),"old ANR shade cannot block a current clear window");
+    check(parseInput(shown+oldAnr(clean)).get("state").equals("SHADE_VISIBLE"),"old ANR clear cannot override current shade");
+    invalid("current missing target cannot borrow old ANR",()->parseInput(clean.replace(target,"")+oldAnr(clean)));
+    invalid("null input",()->parseInput(null));invalid("empty input",()->parseInput(""));
+    invalid("NUL input",()->parseInput(clean+'\0'));
+    invalid("oversized input",()->parseInput(new String(new char[NativePreEmitReadiness.MAX_BYTES+1]).replace('\0','x')));
+    invalid("missing current header",()->parseInput(clean.replace("Input Dispatcher State:\n","")));
+    invalid("duplicate current header",()->parseInput(clean+clean));
+    invalid("historical-only section",()->parseInput(oldAnr(clean)));
+    invalid("duplicate historical section",()->parseInput(clean+oldAnr(clean)+oldAnr(clean)));
+    invalid("disabled dispatch",()->parseInput(clean.replace("DispatchEnabled: true","DispatchEnabled: false")));
+    invalid("frozen dispatch",()->parseInput(clean.replace("DispatchFrozen: false","DispatchFrozen: true")));
+    invalid("input filter active",()->parseInput(clean.replace("InputFilterEnabled: false","InputFilterEnabled: true")));
+    invalid("unknown dispatch flag",()->parseInput(clean.replace("DispatchEnabled: true","DispatchEnabled: unknown")));
+    invalid("duplicate unknown dispatch flag",()->parseInput(clean.replace("DispatchEnabled: true","DispatchEnabled: true\n  DispatchEnabled: unknown")));
+    invalid("wrong focused display",()->parseInput(clean.replace("FocusedDisplayId: 0","FocusedDisplayId: 1")));
+    invalid("duplicate focused display",()->parseInput(clean.replace("FocusedDisplayId: 0","FocusedDisplayId: 0\n  FocusedDisplayId: 0")));
+    invalid("missing current focus",()->parseInput(clean.replace("  FocusedWindows:\n    displayId=0, name='4491833 "+COMPONENT+"'\n","  FocusedWindows: <none>\n")));
+    invalid("wrong current focus token",()->parseInput(clean.replace("name='4491833 "+COMPONENT+"'","name='abcd "+COMPONENT+"'")));
+    invalid("duplicate focus",()->parseInput(clean.replace("  FocusRequests:","    displayId=0, name='4491833 "+COMPONENT+"'\n  FocusRequests:")));
+    invalid("missing active display0",()->parseInput(clean.replace("  Display: 0","  Display: 1")));
+    invalid("duplicate active display0",()->parseInput(clean.replace("  Global Monitors:","  Display: 0\n    Windows: <none>\n  Global Monitors:")));
+    invalid("unknown active display",()->parseInput(clean.replace("  Global Monitors:","  Display: unknown\n    Windows: <none>\n  Global Monitors:")));
+    invalid("missing display geometry",()->parseInput(clean.replace("    logicalSize=1080x1920\n","")));
+    invalid("empty active windows",()->parseInput(clean.replace("    Windows:\n","    Windows: <none>\n")));
+    invalid("unknown display boundary cannot hide active shade",()->parseInput(shown.replace("      2: name=","  UnknownSection: unexpected\n      2: name=")));
+    invalid("duplicate active windows heading with none",()->parseInput(clean.replace("    Windows:\n","    Windows:\n    Windows: <none>\n")));
+    invalid("wrong target uid",()->parseInput(clean.replace(target,target.replace("ownerUid=10209","ownerUid=10210"))));
+    invalid("wrong target pid",()->parseInput(clean.replace(target,target.replace("ownerPid=1234","ownerPid=1235"))));
+    invalid("duplicate target uid",()->parseInput(clean.replace(target,target.replace("ownerUid=10209","ownerUid=10209, ownerUid=10209"))));
+    invalid("null target pid",()->parseInput(clean.replace(target,target.replace("ownerPid=1234","ownerPid=null"))));
+    invalid("row display differs",()->parseInput(clean.replace(target,target.replace("displayId=0","displayId=1"))));
+    invalid("duplicate target window",()->parseInput(clean.replace(target,target+target.replace("      1:","      2:"))));
+    invalid("malformed row",()->parseInput(clean.replace("      1: name=","      1: broken=")));
+    invalid("nonsequential rows",()->parseInput(clean.replace("      1: name=","      3: name=")));
+    invalid("unknown target flag",()->parseInput(clean.replace(target,target.replace("inputConfig=0x0","inputConfig=FUTURE_UNKNOWN"))));
+    invalid("nonzero unknown bits",()->parseInput(clean.replace(target,target.replace("inputConfig=0x0","inputConfig=0x200000"))));
+    invalid("duplicate target flags",()->parseInput(clean.replace(target,target.replace("inputConfig=0x0","inputConfig=WATCH_OUTSIDE_TOUCH | WATCH_OUTSIDE_TOUCH"))));
+    for(String flag:Arrays.asList("NO_INPUT_CHANNEL","NOT_VISIBLE","NOT_FOCUSABLE","NOT_TOUCHABLE","IS_WALLPAPER",
+        "PAUSE_DISPATCHING","DROP_INPUT","DROP_INPUT_IF_OBSCURED","SPY","GLOBAL_STYLUS_BLOCKS_TOUCH"))
+      invalid("blocked target "+flag,()->parseInput(clean.replace(target,target.replace("inputConfig=0x0","inputConfig="+flag))));
+    invalid("transparent target",()->parseInput(clean.replace(target,target.replace("alpha=1","alpha=0"))));
+    invalid("unknown target alpha",()->parseInput(clean.replace(target,target.replace("alpha=1","alpha=NaN"))));
+    invalid("empty target region",()->parseInput(clean.replace(target,target.replace("touchableRegion=[0,36][320,604]","touchableRegion=<empty>"))));
+    String shade=inputRow(2,"9b057bb NotificationShade",SYSTEM_UI_UID,991,"NOT_FOCUSABLE | TRUSTED_OVERLAY");
+    invalid("wrong shade owner",()->parseInput(shown.replace(shade,shade.replace("ownerUid=10181","ownerUid=10209"))));
+    invalid("malformed shade name",()->parseInput(shown.replace(shade,shade.replace("9b057bb NotificationShade","NotificationShade"))));
+    invalid("unknown shade flag",()->parseInput(shown.replace(shade,shade.replace("TRUSTED_OVERLAY","UNKNOWN_FLAG"))));
+    for(String flag:Arrays.asList("DROP_INPUT","NO_INPUT_CHANNEL","PAUSE_DISPATCHING"))
+      check(parseInput(shown.replace(shade,shade.replace("TRUSTED_OVERLAY",flag))).get("state").equals("SHADE_VISIBLE"),"shade "+flag+" cannot declare a safe route");
+    for(String flag:Arrays.asList("NOT_VISIBLE","NOT_TOUCHABLE"))
+      check(parseInput(shown.replace(shade,shade.replace("TRUSTED_OVERLAY",flag))).get("state").equals("CLEAR"),"non-targetable shade "+flag+" is observed explicitly");
+    invalid("truncated display block",()->parseInput(clean.substring(0,clean.indexOf("  Global Monitors:"))));
+  }
+  static final class DispatchProbe implements NativePreEmitReadiness.Probe {
+    final Probe wm;final List<String> values;final List<Long> inputLimits=new ArrayList<>();int reads;boolean fails;long finishesAt=-1;
+    DispatchProbe(Clock clock,String[] windows,String... input){wm=new Probe(clock,windows);values=Arrays.asList(input);}
+    public void verifyIdentity()throws Exception{wm.verifyIdentity();}
+    public String window(long latest)throws Exception{return wm.window(latest);}
+    public String input(long latest)throws Exception{inputLimits.add(latest);reads++;if(fails)throw new Exception(SENTINEL);if(finishesAt>=0)wm.clock.value=finishesAt;return values.get(Math.min(reads-1,values.size()-1));}
+  }
+  static NativePreEmitReadiness.Result currentWait(Clock c,NativePreEmitReadiness.Probe p,long expires){
+    return NativePreEmitReadiness.awaitInput(c,p,expires,300,TARGET_UID,SYSTEM_UI_UID,1234);
+  }
+  static void inputWaitControls(){
+    Clock c=new Clock();DispatchProbe p=new DispatchProbe(c,new String[]{window(false)},input(false));
+    NativePreEmitReadiness.Result r=currentWait(c,p,5000);result(r,true,"clear",1);
+    check(p.reads==1&&p.wm.windows==1&&p.wm.identities==3&&c.sleeps.isEmpty(),"one actual input observation between stable owner checks, no extra settle sleep");
+    check(p.inputLimits.equals(Arrays.asList(4700L))&&p.wm.limits.equals(Arrays.asList(4700L)),"both processes share original latest deadline");
+    java.util.Map<String,Object> proof=r.inputObservations.get(0);
+    check(proof.get("targetPid").equals(1234)&&proof.get("targetUid").equals(TARGET_UID)&&proof.get("state").equals("CLEAR"),"receipt includes actual parsed target state");
+    check(proof.get("sha256").equals(NativePreEmitReadiness.snapshotSha(input(false)))&&proof.get("bytes").equals(input(false).getBytes(StandardCharsets.UTF_8).length),"receipt binds exact input dump bytes without retaining private text");
+    check(proof.get("startedUptimeMs").equals(1000L)&&proof.get("completedUptimeMs").equals(1000L)&&proof.get("latestUptimeMs").equals(4700L),"truthful original snapshot times");
+    c=new Clock();p=new DispatchProbe(c,new String[]{window(true),window(false)},input(false));r=currentWait(c,p,5000);result(r,true,"clear",2);
+    check(p.reads==1&&p.wm.identities==5&&r.shadeObserved&&c.sleeps.equals(Arrays.asList(200L)),"WMS shade still waits before querying input");
+    c=new Clock();p=new DispatchProbe(c,new String[]{window(false)},input(true),input(false));r=currentWait(c,p,5000);result(r,true,"clear",2);
+    check(p.reads==2&&p.wm.identities==6&&r.inputShadeObserved&&!r.shadeObserved&&c.sleeps.equals(Arrays.asList(200L)),"WM-clear/input-shade counterexample must wait in original loop");
+    check(r.inputObservations.get(0).get("state").equals("SHADE_VISIBLE")&&r.inputObservations.get(1).get("state").equals("CLEAR"),"receipt preserves both differing actual states");
+    c=new Clock();p=new DispatchProbe(c,new String[]{window(false)},input(true));r=currentWait(c,p,1450);result(r,false,"deadline",1);
+    check(p.reads==1&&c.value==1150&&c.sleeps.equals(Arrays.asList(150L)),"stuck input shade never extends original budget");
+    c=new Clock();p=new DispatchProbe(c,new String[]{window(false)},input(false));r=currentWait(c,p,1300);result(r,false,"deadline",0);check(p.reads==0&&p.wm.windows==0,"expired current path does not observe or emit");
+    c=new Clock();p=new DispatchProbe(c,new String[]{window(false)},input(false));p.wm.snapshotFinishesAt=4700;r=currentWait(c,p,5000);result(r,false,"deadline",1);check(p.reads==0,"late WMS never starts input read");
+    c=new Clock();p=new DispatchProbe(c,new String[]{window(false)},input(false));p.finishesAt=4700;r=currentWait(c,p,5000);result(r,false,"deadline",1);check(p.reads==1&&c.sleeps.isEmpty(),"late input clear cannot pass");
+    c=new Clock();p=new DispatchProbe(c,new String[]{window(false)},input(false));p.wm.failIdentityAt=2;r=currentWait(c,p,5000);result(r,false,"identity-changed",1);check(p.reads==0,"owner change before input prevents read");
+    c=new Clock();p=new DispatchProbe(c,new String[]{window(false)},input(false));p.wm.failIdentityAt=3;r=currentWait(c,p,5000);result(r,false,"identity-changed",1);check(p.reads==1&&c.sleeps.isEmpty(),"owner change after input prevents admission");
+    c=new Clock();p=new DispatchProbe(c,new String[]{window(false)},input(false));p.fails=true;r=currentWait(c,p,5000);result(r,false,"observation-failed",1);check(p.reads==1&&c.sleeps.isEmpty(),"failed input command is not retried");
+    c=new Clock();p=new DispatchProbe(c,new String[]{window(false)},"unknown input state");r=currentWait(c,p,5000);result(r,false,"invalid-observation",1);check(p.reads==1&&c.sleeps.isEmpty(),"malformed input is not retried");
+    c=new Clock();p=new DispatchProbe(c,new String[]{window(false)},(String)null);r=currentWait(c,p,5000);result(r,false,"invalid-observation",1);
+    c=new Clock();Probe legacy=new Probe(c,window(false));r=currentWait(c,legacy,5000);result(r,false,"observation-failed",1);check(c.sleeps.isEmpty(),"legacy WM-only probe cannot satisfy current readiness");
+    c=new Clock();c.frozen=true;p=new DispatchProbe(c,new String[]{window(false)},input(true));r=currentWait(c,p,21000);result(r,false,"observation-limit",101);
+    check(p.reads==101&&p.wm.windows==101&&p.wm.identities==303&&p.inputLimits.stream().allMatch(x->x==20700L),"new input reads share the original101-loop/absolute deadline limit");
+  }
   public static void main(String[] args)throws Exception{
-    parserControls();waitControls();captureControls();
+    parserControls();waitControls();captureControls();inputParserControls();inputWaitControls();
     System.out.println("{\"status\":\"passed\",\"checks\":"+checks+",\"passed\":"+checks+",\"actualAndroidExecution\":false,\"nativeInputEmitted\":false,\"releaseAcceptance\":false,\"failedInstantWindowCapture\":false}");
   }
   private NativePreEmitReadinessHostTest(){}

@@ -199,6 +199,29 @@ class DriverPreparationTest(unittest.TestCase):
             with self.subTest(value=value), self.assertRaises(ValueError):
                 driver.dump_parts(prefix + str(index) + '.xml', 2.5, sync_window=value)
 
+    def test_formatter_readiness_binds_current_prepared_command_path_and_complete_stderr(self):
+        driver = self.prepare()
+        remote = '/sdcard/pocketchat-ui-visual-' + 'a' * 32 + '-1.xml'
+        parts = driver.dump_parts(remote, 2.5)
+        raw = b'java.lang.NullPointerException: synthetic formatter boundary\n\tat synthetic.host.Frame.run(Frame.java:1)\n'
+        marker = (DRIVER.FORMATTER_NOT_READY + remote + ' ' + str(len(raw)) + ' '
+                  + hashlib.sha256(raw).hexdigest() + '\n').encode()
+        result = subprocess.CompletedProcess(parts, DRIVER.FORMATTER_NOT_READY_EXIT, marker, raw)
+        self.assertEqual(driver.formatter_not_ready_reason(remote, parts, result), DRIVER.FORMATTER_NOT_READY + remote)
+        for changed in (parts[:-1], parts + ['unknown-mode'], parts[:5] + [remote.replace('-1.xml', '-2.xml')] + parts[6:]):
+            with self.subTest(parts=changed):
+                self.assertIsNone(driver.formatter_not_ready_reason(remote, changed, result))
+        self.assertIsNone(driver.formatter_not_ready_reason(remote.replace('-1.xml', '-2.xml'), parts, result))
+        for code, stdout, stderr in ((0, marker, raw), (1, marker, raw), (3, marker, raw),
+                                    (4, b'', raw), (4, marker, b''), (4, marker, raw + b'additional failure\n'),
+                                    (4, b'prefix' + marker, raw), (4, marker + b'extra\n', raw),
+                                    (4, marker[:-1], raw)):
+            with self.subTest(code=code, stdout=stdout, stderr=stderr):
+                self.assertIsNone(driver.formatter_not_ready_reason(remote, parts,
+                    subprocess.CompletedProcess(parts, code, stdout, stderr)))
+        driver.evidence['status'] = 'failed'
+        self.assertIsNone(driver.formatter_not_ready_reason(remote, parts, result))
+
     def test_receipt_mutations_cannot_substitute_source_run_device_or_commands(self):
         baseline = self.prepare().evidence
         mutations = [
@@ -276,22 +299,44 @@ public class Display {public static final int DEFAULT_DISPLAY=0;public static in
  public void getRealSize(Point p){real++;p.x=320;p.y=640;}
  public int getRotation(){return 3;}}
 ''',
-    'android/view/accessibility/AccessibilityNodeInfo.java': 'package android.view.accessibility; public class AccessibilityNodeInfo {public int recycled;public void recycle(){recycled++;}}',
+    'android/view/accessibility/AccessibilityNodeInfo.java': '''package android.view.accessibility;
+public class AccessibilityNodeInfo {public int recycled;public static boolean recycleFail;public static long recycleAdvance;
+public CharSequence getContentDescription(){return null;}
+public void recycle(){recycled++;android.os.SystemClock.now+=recycleAdvance;if(recycleFail)throw new IllegalStateException("recycle failure");}}''',
     'android/hardware/display/DisplayManagerGlobal.java': '''package android.hardware.display;import android.view.Display;
 public class DisplayManagerGlobal {public static DisplayManagerGlobal getInstance(){return new DisplayManagerGlobal();}
 public Display getRealDisplay(int id){if(id!=Display.DEFAULT_DISPLAY)throw new AssertionError();return new Display();}}''',
     'com/android/uiautomator/core/UiAutomationShellWrapper.java': '''package com.android.uiautomator.core; import android.app.UiAutomation;
-public class UiAutomationShellWrapper {public static int connected,disconnected;public static Boolean compressed;
-public void connect(){connected++;} public void disconnect(){disconnected++;}
+public class UiAutomationShellWrapper {public static int connected,disconnected;public static Boolean compressed;public static boolean disconnectFail;
+public void connect(){connected++;} public void disconnect(){disconnected++;if(disconnectFail)throw new IllegalStateException("disconnect failure");}
 public void setCompressedLayoutHierarchy(boolean value){compressed=value;}
 public UiAutomation getUiAutomation(){return new UiAutomation();}}''',
     'com/android/uiautomator/core/AccessibilityNodeInfoDumper.java': '''package com.android.uiautomator.core;
 import android.view.accessibility.AccessibilityNodeInfo;import java.io.*;
 public class AccessibilityNodeInfoDumper {public static int width,height,rotation;public static AccessibilityNodeInfo root;public static String mode="normal";
+private static void childNafCheck(){
+ if(mode.equals("child-other-type"))throw new IllegalStateException("unknown child inspection failure");
+ if(mode.equals("child-late"))android.os.SystemClock.now+=2000;
+ try{AccessibilityNodeInfo child=null;child.getContentDescription();}
+ catch(NullPointerException error){
+  // Model Android's exact platform message; keep the actual Java dereference stack.
+  if(!mode.equals("child-unknown-message")){
+   NullPointerException platform=new NullPointerException("Attempt to invoke virtual method 'java.lang.CharSequence android.view.accessibility.AccessibilityNodeInfo.getContentDescription()' on a null object reference");
+   platform.setStackTrace(error.getStackTrace());error=platform;
+  }
+  if(mode.equals("child-suppressed"))error.addSuppressed(new IllegalStateException("additional formatter failure"));
+  if(mode.equals("child-cause"))error.initCause(new IllegalStateException("additional formatter cause"));
+  throw error;
+ }
+}
+private static void nafCheck(){childNafCheck();}
+private static void dumpNodeRec(){nafCheck();}
 public static void dumpWindowToFile(AccessibilityNodeInfo node,File file,int r,int w,int h)throws Exception {
 android.app.UiAutomation.trace.append("format;");
 root=node;width=w;height=h;rotation=r;if(mode.equals("missing"))return;
 try(FileOutputStream out=new FileOutputStream(file)){out.write("<hierarchy rotation=\\\"3\\\"><node content-desc=\\\"live countdown\\\" bounds=\\\"[1,2][3,4]\\\"/></hierarchy>".getBytes("UTF-8"));}
+if(mode.startsWith("child-"))dumpNodeRec();
+if(mode.equals("other-null")){AccessibilityNodeInfo child=null;child.getContentDescription();}
 if(mode.equals("late"))android.os.SystemClock.now+=2000;}}
 ''',
 }
@@ -301,8 +346,65 @@ import java.io.*;import java.nio.file.*;import java.util.zip.*;import android.ap
 import com.android.uiautomator.core.*;
 public class NativeHierarchyHost {
  static void check(boolean ok){if(!ok)throw new AssertionError();}
+ static final class FailedDelete extends File {
+  final boolean throwsFailure;
+  FailedDelete(String path,boolean throwsFailure){super(path);this.throwsFailure=throwsFailure;}
+  @Override public boolean delete(){if(throwsFailure)throw new SecurityException("delete failure");return false;}
+ }
  public static void main(String[] args)throws Exception {
  String scenario=args[0];File file=new File(args[1]);long deadline=SystemClock.now+2000;
+ if(scenario.startsWith("formatter-")){
+  Build.VERSION.SDK_INT=scenario.equals("formatter-api35")?35:32;
+  AccessibilityNodeInfoDumper.mode="child-null";
+  if(scenario.equals("formatter-unknown")||scenario.equals("formatter-unknown-delete"))AccessibilityNodeInfoDumper.mode="other-null";
+  if(scenario.equals("formatter-unknown-message"))AccessibilityNodeInfoDumper.mode="child-unknown-message";
+  if(scenario.equals("formatter-other-type"))AccessibilityNodeInfoDumper.mode="child-other-type";
+  if(scenario.equals("formatter-suppressed"))AccessibilityNodeInfoDumper.mode="child-suppressed";
+  if(scenario.equals("formatter-cause"))AccessibilityNodeInfoDumper.mode="child-cause";
+  if(scenario.equals("formatter-late"))AccessibilityNodeInfoDumper.mode="child-late";
+  if(scenario.equals("formatter-delete")||scenario.equals("formatter-delete-throws")||scenario.equals("formatter-unknown-delete"))
+   file=new FailedDelete(args[1],scenario.equals("formatter-delete-throws"));
+  if(scenario.equals("formatter-recycle")||scenario.equals("formatter-both-cleanups"))
+   android.view.accessibility.AccessibilityNodeInfo.recycleFail=true;
+  if(scenario.equals("formatter-disconnect")||scenario.equals("formatter-both-cleanups"))
+   UiAutomationShellWrapper.disconnectFail=true;
+  if(scenario.equals("formatter-late-recycle"))android.view.accessibility.AccessibilityNodeInfo.recycleAdvance=2000;
+  Exception failure;
+  try{NativeHierarchyCapture.capture(file,deadline);throw new AssertionError();}catch(Exception error){failure=error;}
+  check(UiAutomation.calls==1&&UiAutomation.syncCalls==0&&UiAutomation.node.recycled==1);
+  check(UiAutomationShellWrapper.connected==1&&UiAutomationShellWrapper.disconnected==1);
+  boolean deleteFailed=scenario.equals("formatter-delete")||scenario.equals("formatter-delete-throws")||scenario.equals("formatter-unknown-delete");
+  check(file.exists()==deleteFailed);
+  if(scenario.equals("formatter-reappeared"))Files.write(file.toPath(),"late partial".getBytes("UTF-8"));
+  ByteArrayOutputStream errors=new ByteArrayOutputStream(),protocol=new ByteArrayOutputStream();
+  PrintStream diagnostics=new PrintStream(errors);
+  if(scenario.equals("formatter-late-diagnostics"))diagnostics=new PrintStream(errors){
+   @Override public void write(byte[] bytes,int offset,int length){super.write(bytes,offset,length);SystemClock.now+=2000;}
+  };
+  int code=NativeHierarchyCapture.reportFailure(failure,diagnostics,new PrintStream(protocol));
+  String stderr=errors.toString("UTF-8"),stdout=protocol.toString("UTF-8");
+  check(!stderr.contains(NativeHierarchyCapture.NULL_ROOT)&&!stderr.contains("UI hierchary dumped"));
+  if(scenario.equals("formatter-known")){
+   check(code==NativeHierarchyCapture.FORMATTER_NOT_READY_EXIT);
+   String digest=NativeHierarchyCapture.hash(new ByteArrayInputStream(errors.toByteArray()),errors.size());
+   check(stdout.equals(NativeHierarchyCapture.FORMATTER_NOT_READY+file.getPath()+" "+errors.size()+" "+digest+"\\n"));
+   check(stderr.startsWith("java.lang.NullPointerException:")&&stderr.contains("AccessibilityNodeInfoDumper.childNafCheck"));
+   check(stderr.contains("AccessibilityNodeInfoDumper.nafCheck")&&stderr.contains("AccessibilityNodeInfoDumper.dumpNodeRec"));
+   check(stderr.contains("NativeHierarchyCapture.capture")&&!stderr.contains("Suppressed:"));
+  }else{
+   check(code==1&&stdout.isEmpty());
+   if(scenario.equals("formatter-delete")||scenario.equals("formatter-unknown-delete"))check(stderr.contains("Cannot remove failed hierarchy attempt"));
+   if(scenario.equals("formatter-unknown-delete"))check(stderr.contains("java.lang.reflect.InvocationTargetException")&&stderr.contains("Suppressed:"));
+   if(scenario.equals("formatter-delete-throws"))check(stderr.contains("delete failure"));
+   if(scenario.equals("formatter-recycle")||scenario.equals("formatter-both-cleanups"))check(stderr.contains("recycle failure"));
+   if(scenario.equals("formatter-disconnect")||scenario.equals("formatter-both-cleanups"))check(stderr.contains("disconnect failure"));
+   if(scenario.startsWith("formatter-late"))check(stderr.contains("Hierarchy deadline expired"));
+   if(scenario.equals("formatter-reappeared"))check(stderr.contains("remains before readiness signal"));
+   if(scenario.equals("formatter-suppressed"))check(stderr.contains("additional formatter failure"));
+   if(scenario.equals("formatter-cause"))check(stderr.contains("additional formatter cause"));
+  }
+  System.out.println("OK");return;
+ }
  if(scenario.equals("modes")){
   check(!NativeHierarchyCapture.syncWindowRequested(new String[8]));
   String[] opted=new String[9];opted[8]="sync-window-input";
@@ -435,6 +537,28 @@ class NativeReadOnlyDriverTest(unittest.TestCase):
 
     def test_api32_formatter_receives_real_screen_size(self):
         self.scenario('api32')
+
+    def test_known_api32_child_null_keeps_original_stack_and_emits_only_owned_readiness_signal(self):
+        # Synthetic Java dumper reproduces the observed C14 API32 exception chain;
+        # this is a host boundary check, not a replacement Android observation.
+        self.scenario('formatter-known')
+
+    def test_unconfirmed_api_or_other_formatter_errors_remain_fatal(self):
+        for scenario in ('formatter-api35', 'formatter-unknown', 'formatter-unknown-message', 'formatter-other-type',
+                         'formatter-suppressed', 'formatter-cause'):
+            with self.subTest(scenario=scenario):
+                self.scenario(scenario)
+
+    def test_formatter_readiness_never_hides_cleanup_or_resource_failure(self):
+        for scenario in ('formatter-delete', 'formatter-delete-throws', 'formatter-unknown-delete', 'formatter-recycle',
+                         'formatter-disconnect', 'formatter-both-cleanups', 'formatter-reappeared'):
+            with self.subTest(scenario=scenario):
+                self.scenario(scenario)
+
+    def test_formatter_readiness_cannot_extend_the_original_deadline(self):
+        for scenario in ('formatter-late', 'formatter-late-recycle', 'formatter-late-diagnostics'):
+            with self.subTest(scenario=scenario):
+                self.scenario(scenario)
 
     def test_native_optional_mode_parser_rejects_unknown_or_extra_arguments(self):
         self.scenario('modes')

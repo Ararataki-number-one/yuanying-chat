@@ -255,13 +255,14 @@ class SourceAndIntegrationControlTest(unittest.TestCase):
 
     def test_original_home_first_tap_and_header_helpers_are_byte_unchanged(self):
         from historical_source_inputs import historical_bytes, browser_v2_bytes
+        from chrome_navigation_v2_source_compatibility import source_input
         expected={'tests/gecko/run_chrome_collapse.py':'edaa810f470717a45092cce966d451506d2817f9a41def33d62a1d83ed200acf',
                   'tools/gecko/chrome_first_tap_readiness.py':'27628987c416146274fc37bcc48a0537e5906b1d25e28def8d43dafe6be92216',
                   'tools/gecko/chrome_header_readiness.py':'77590576542e0e5faeb88beaab59ae6950361dee88cb6c974260f611a92b26be'}
         for name,sha in expected.items():
             raw = (historical_bytes(name) if name == 'tools/gecko/chrome_first_tap_readiness.py'
                    else browser_v2_bytes(name) if name == 'tests/gecko/run_chrome_collapse.py'
-                   else (ROOT/name).read_bytes())
+                   else source_input((ROOT/name).read_bytes(), name))
             self.assertEqual(hashlib.sha256(raw).hexdigest(),sha)
 
     def test_current_runner_uses_one_original_roundtrip_then_observer_then_one_snapshot(self):

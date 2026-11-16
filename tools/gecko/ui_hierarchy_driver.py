@@ -25,6 +25,8 @@ SYSTEM_JAR = '/system/framework/uiautomator.jar'
 STAMP = 'hierarchy-driver-build.json'
 EMBEDDED_SOURCE = 'sources/NativeHierarchyCapture.java'
 BACKEND = 'aosp-shell-root-without-global-idle-v1'
+FORMATTER_NOT_READY = 'NOT_READY: native hierarchy formatter null child: '
+FORMATTER_NOT_READY_EXIT = 4
 REMOTE_XML = re.compile(r'/sdcard/pocketchat-ui-visual-[0-9a-f]{32}-[1-9][0-9]*\.xml')
 
 
@@ -187,7 +189,7 @@ class HierarchyDriver:
         self._remote = evidence['installedJar']['remotePath']
         self._jar_sha = evidence['installedJar']['sha256']
         self._system_sha = evidence['device']['systemJarSha256']
-        self._attempts = set()
+        self._attempts = {}
 
     def dump_parts(self, remote, remaining, *, sync_window=False):
         require(type(sync_window) is bool, 'Window input synchronization must be an explicit boolean')
@@ -198,14 +200,24 @@ class HierarchyDriver:
         milliseconds = math.floor(min(90, remaining) * 1000)
         if milliseconds <= 0:
             raise TimeoutError('Existing UI scene deadline has less than one millisecond remaining')
-        self._attempts.add(remote)
         identity = self._identity
         parts = ['shell', 'CLASSPATH=' + self._remote + ':' + SYSTEM_JAR, 'app_process', '/system/bin', ENTRY_POINT,
                 remote, str(milliseconds), self._jar_sha, identity['sourceCommit'], identity['sourceTree'],
                 identity['runId'], identity['runAttempt'], self._system_sha]
         if sync_window:
             parts.append('sync-window-input')
+        self._attempts[remote] = tuple(parts)
         return parts
+
+    def formatter_not_ready_reason(self, remote, parts, result):
+        """Accept only our current native command and its exact original stack bytes."""
+        if (self.evidence.get('status') != 'verified'
+                or self._attempts.get(remote) != tuple(parts)
+                or result.returncode != FORMATTER_NOT_READY_EXIT or not result.stderr):
+            return None
+        marker = (FORMATTER_NOT_READY + remote + ' ' + str(len(result.stderr)) + ' '
+                  + hashlib.sha256(result.stderr).hexdigest() + '\n').encode('utf-8')
+        return FORMATTER_NOT_READY + remote if result.stdout == marker else None
 
 
 def prepare_driver(adb, serial, source, diagnostics_dir):

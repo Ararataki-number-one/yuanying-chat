@@ -717,6 +717,116 @@ class DeviceHierarchyAdapterTest(unittest.TestCase):
                 boundary.assert_not_called();driver.dump_parts.assert_not_called()
 
 
+class FormatterReadinessCaptureTest(unittest.TestCase):
+    """Synthetic native process outputs; the actual prepared-command adapter remains in use."""
+    STACK = (b'java.lang.NullPointerException: synthetic API32 child boundary\n'
+             b'\tat com.android.uiautomator.core.AccessibilityNodeInfoDumper.childNafCheck(AccessibilityNodeInfoDumper.java:296)\n')
+
+    @classmethod
+    def setUpClass(cls):
+        spec = importlib.util.spec_from_file_location('formatter_capture_driver', ROOT/'tools/gecko/ui_hierarchy_driver.py')
+        cls.driver_module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(cls.driver_module)
+
+    def make_capture(self, directory, mode='native'):
+        source = 'a' * 40
+        evidence = dict(status='verified', sourceCommit=source, sourceTree='b' * 40, runId='1234', runAttempt='2',
+            installedJar=dict(remotePath='/data/local/tmp/pocketchat-ui-hierarchy-' + 'a' * 12 + '-1234-2-' + 'b' * 32 + '.jar',
+                              sha256='c' * 64), device=dict(systemJarSha256='d' * 64),
+            scope='Synthetic host preparation boundary, not Android evidence')
+        driver = self.driver_module.HierarchyDriver(evidence, Path(directory)/'driver.json')
+        if mode == 'unverified':
+            driver.evidence['status'] = 'preparing'
+        elif mode == 'generic':
+            driver = types.SimpleNamespace(evidence=evidence,
+                dump_parts=lambda path, remaining: ['shell', 'native-observer-model', path])
+        elif mode == 'legacy':
+            driver = None
+        return CAPTURE.UiVisualCapture(adb='model-adb', serial='emulator-model', source=source,
+            diagnostics=Path(directory)/'capture.json', acquisition_driver=driver)
+
+    def marker(self, remote, raw=None):
+        raw = self.STACK if raw is None else raw
+        return (self.driver_module.FORMATTER_NOT_READY + remote + ' ' + str(len(raw)) + ' '
+                + hashlib.sha256(raw).hexdigest() + '\n').encode()
+
+    def test_classified_formatter_reacquires_new_owned_xml_with_same_parent_deadline(self):
+        clock = ModelClock(); calls = []
+        def process(command, **options):
+            parts = command[3:]; calls.append((parts, options['timeout'])); clock.value += .25
+            if len(calls) == 1:
+                remote = parts[5]
+                return CAPTURE.subprocess.CompletedProcess(command, 4, self.marker(remote), self.STACK)
+            if len(calls) == 2:
+                return CAPTURE.subprocess.CompletedProcess(command, 0,
+                    ('UI hierchary dumped to: ' + parts[5] + '\n').encode(), b'')
+            self.assertEqual(parts[:2], ['shell', 'cat'])
+            return CAPTURE.subprocess.CompletedProcess(command, 0, XML, b'')
+        with tempfile.TemporaryDirectory() as directory:
+            capture = self.make_capture(directory)
+            with mock.patch.object(CAPTURE.time, 'monotonic', side_effect=clock.monotonic), \
+                 mock.patch.object(CAPTURE.time, 'sleep', side_effect=clock.sleep) as polling, \
+                 mock.patch.object(CAPTURE.subprocess, 'run', side_effect=process):
+                self.assertEqual(capture.read(deadline=102), XML.decode())
+            self.assertEqual([timeout for _, timeout in calls], [2, 1.25, 1])
+            self.assertNotEqual(calls[0][0][5], calls[1][0][5])
+            self.assertEqual(calls[2][0], ['shell', 'cat', calls[1][0][5]])
+            self.assertEqual([row['status'] for row in capture.records], ['not-ready', 'captured'])
+            self.assertEqual({row['existingSceneDeadline'] for row in capture.records}, {102})
+            first = capture.records[0]
+            self.assertEqual(len(first['commands']), 1)
+            self.assertEqual(first['commands'][0]['stderr'], capture.output(self.STACK))
+            self.assertEqual(first['commands'][0]['stdout'], capture.output(self.marker(first['remotePath'])))
+            self.assertNotIn('xmlSha256', first)
+            self.assertNotEqual(first['reason'], CAPTURE.NULL_ROOT)
+            polling.assert_called_once_with(.5)  # Existing acquisition polling only.
+
+    def test_legacy_generic_unverified_or_modified_signals_are_fatal_without_cat(self):
+        for mode in ('legacy', 'generic', 'unverified', 'wrong-exit', 'extra-stderr', 'empty-stderr',
+                     'wrong-path', 'wrong-hash', 'missing-marker', 'extra-stdout'):
+            with self.subTest(mode=mode), tempfile.TemporaryDirectory() as directory:
+                capture = self.make_capture(directory, mode)
+                calls = []
+                def process(command, **options):
+                    parts = command[3:]; calls.append(parts)
+                    remote = next(part for part in parts if part.startswith('/sdcard/pocketchat-ui-visual-'))
+                    code, raw, marker = 4, self.STACK, self.marker(remote)
+                    if mode == 'wrong-exit': code = 1
+                    if mode == 'extra-stderr': raw += b'additional cleanup failure\n'
+                    if mode == 'empty-stderr': raw = b''; marker = self.marker(remote, raw)
+                    if mode == 'wrong-path': marker = self.marker(remote.replace('-1.xml', '-2.xml'))
+                    if mode == 'wrong-hash': marker = marker[:-65] + b'0' * 64 + b'\n'
+                    if mode == 'missing-marker': marker = b''
+                    if mode == 'extra-stdout': marker += b'unknown output\n'
+                    return CAPTURE.subprocess.CompletedProcess(command, code, marker, raw)
+                with mock.patch.object(CAPTURE.time, 'monotonic', return_value=100), \
+                     mock.patch.object(CAPTURE.subprocess, 'run', side_effect=process):
+                    with self.assertRaises(CAPTURE.subprocess.CalledProcessError):
+                        capture.read(deadline=102)
+                self.assertEqual(len(calls), 1)
+                self.assertEqual(capture.records[0]['status'], 'failed')
+                self.assertNotIn('xmlSha256', capture.records[0])
+
+    def test_formatter_signal_does_not_create_a_deadline_or_accept_late_transport(self):
+        for mode in ('no-deadline', 'continuous', 'late'):
+            with self.subTest(mode=mode), tempfile.TemporaryDirectory() as directory:
+                clock = ModelClock(); capture = self.make_capture(directory); calls = []
+                deadline = None if mode == 'no-deadline' else 100.75
+                def process(command, **options):
+                    parts = command[3:]; calls.append(parts)
+                    clock.value += .75 if mode == 'late' else .25
+                    return CAPTURE.subprocess.CompletedProcess(command, 4, self.marker(parts[5]), self.STACK)
+                with mock.patch.object(CAPTURE.time, 'monotonic', side_effect=clock.monotonic), \
+                     mock.patch.object(CAPTURE.time, 'sleep', side_effect=clock.sleep), \
+                     mock.patch.object(CAPTURE.subprocess, 'run', side_effect=process):
+                    with self.assertRaises(CAPTURE.CaptureNotReady if mode == 'no-deadline' else TimeoutError):
+                        capture.read(deadline=deadline)
+                self.assertEqual(len(calls), 1)
+                self.assertEqual(capture.records[0]['existingSceneDeadline'], deadline)
+                self.assertEqual(capture.records[0]['status'], 'failed' if mode == 'late' else 'not-ready')
+                self.assertNotIn('xmlSha256', capture.records[0])
+
+
 class CompactQuickEnvironmentContractTest(unittest.TestCase):
     """Execute actual runner guards on synthetic hierarchies and input boundaries."""
     @staticmethod

@@ -7,10 +7,12 @@ import android.os.Process;
 import android.os.SystemClock;
 import android.view.Display;
 import android.view.accessibility.AccessibilityNodeInfo;
+import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.InputStream;
+import java.io.PrintStream;
 import java.lang.reflect.InvocationTargetException;
 import java.security.MessageDigest;
 import java.util.Enumeration;
@@ -25,6 +27,10 @@ public final class NativeHierarchyCapture {
   static final String STAMP = "hierarchy-driver-build.json";
   static final String SOURCE = "sources/NativeHierarchyCapture.java";
   static final String NULL_ROOT = "ERROR: null root node returned by UiTestAutomationBridge.";
+  static final String FORMATTER_NOT_READY = "NOT_READY: native hierarchy formatter null child: ";
+  static final int FORMATTER_NOT_READY_EXIT = 4;
+  static final String NULL_CHILD_MESSAGE = "Attempt to invoke virtual method 'java.lang.CharSequence "
+      + "android.view.accessibility.AccessibilityNodeInfo.getContentDescription()' on a null object reference";
   static final long ROOT_POLL_MILLIS = 1000;
   static final long MAX_BUDGET_MILLIS = 90000;
 
@@ -161,6 +167,77 @@ public final class NativeHierarchyCapture {
         "Hierarchy deadline expired during window input synchronization");
   }
 
+  static final class FormatterNotReady extends Exception {
+    final File output;
+    final long deadline;
+    FormatterNotReady(Throwable cause, File output, long deadline) {
+      super("AOSP formatter encountered an unavailable child during NAF inspection", cause);
+      this.output = output;
+      this.deadline = deadline;
+    }
+  }
+
+  static boolean knownFormatterNullChild(Throwable error) {
+    // API 32's original childNafCheck dereferences getChild() without a null check.
+    // Recognize only the observed formatter call chain, never arbitrary NPEs.
+    if (Build.VERSION.SDK_INT != 32 || error == null || error.getClass() != NullPointerException.class
+        || !NULL_CHILD_MESSAGE.equals(error.getMessage())
+        || error.getCause() != null || error.getSuppressed().length != 0) return false;
+    StackTraceElement[] frames = error.getStackTrace();
+    String[] methods = {"childNafCheck", "nafCheck", "dumpNodeRec"};
+    if (frames.length < methods.length) return false;
+    for (int i = 0; i < methods.length; i++) {
+      if (!"com.android.uiautomator.core.AccessibilityNodeInfoDumper".equals(frames[i].getClassName())
+          || !methods[i].equals(frames[i].getMethodName())
+          || !"AccessibilityNodeInfoDumper.java".equals(frames[i].getFileName())) return false;
+    }
+    return true;
+  }
+
+  static void discardFailedOutput(File output, Exception error) {
+    try {
+      require(!output.exists() || output.delete(), "Cannot remove failed hierarchy attempt");
+      require(!output.exists(), "Failed hierarchy attempt remains after cleanup");
+    } catch (Exception cleanup) {
+      error.addSuppressed(cleanup);
+    }
+  }
+
+  static int reportFailure(Throwable error, PrintStream diagnostics, PrintStream protocol) {
+    if (error instanceof FormatterNotReady) {
+      FormatterNotReady pending = (FormatterNotReady) error;
+      try {
+        require(error.getSuppressed().length == 0 && knownFormatterNullChild(error.getCause()),
+            "Formatter readiness cannot hide another failure");
+        require(!pending.output.exists(), "Failed hierarchy attempt remains before readiness signal");
+        require(SystemClock.uptimeMillis() < pending.deadline,
+            "Hierarchy deadline expired before formatter readiness signal");
+        ByteArrayOutputStream original = new ByteArrayOutputStream();
+        try (PrintStream trace = new PrintStream(original, false, "UTF-8")) {
+          error.getCause().printStackTrace(trace);
+        }
+        byte[] raw = original.toByteArray();
+        String digest = hash(new ByteArrayInputStream(raw), raw.length);
+        diagnostics.write(raw, 0, raw.length);
+        require(!diagnostics.checkError(), "Cannot preserve original formatter diagnostics");
+        require(SystemClock.uptimeMillis() < pending.deadline,
+            "Hierarchy deadline expired during formatter diagnostics");
+        protocol.println(FORMATTER_NOT_READY + pending.output.getPath() + " " + raw.length + " " + digest);
+        return protocol.checkError() ? 1 : FORMATTER_NOT_READY_EXIT;
+      } catch (Exception rejected) {
+        error.addSuppressed(rejected);
+        error.printStackTrace(diagnostics);
+        return 1;
+      }
+    }
+    Throwable cause = error;
+    // Do not discard a wrapper's cleanup failure while exposing the original cause.
+    while (cause instanceof InvocationTargetException && cause.getCause() != null
+        && cause.getSuppressed().length == 0) cause = cause.getCause();
+    cause.printStackTrace(diagnostics);
+    return 1;
+  }
+
   static boolean capture(File output, long deadline) throws Exception {
     return capture(output, deadline, false);
   }
@@ -171,6 +248,7 @@ public final class NativeHierarchyCapture {
     Object wrapper = wrapperType.getConstructor().newInstance();
     AccessibilityNodeInfo node = null;
     boolean connected = false;
+    Exception failure = null;
     try {
       wrapperType.getMethod("connect").invoke(wrapper);
       connected = true;
@@ -185,18 +263,37 @@ public final class NativeHierarchyCapture {
       require(display != null, "Default display is unavailable");
       Point size = displaySize(display, Build.VERSION.SDK_INT);
       require(SystemClock.uptimeMillis() < deadline, "Hierarchy deadline expired before formatting");
-      Class.forName("com.android.uiautomator.core.AccessibilityNodeInfoDumper")
-          .getMethod("dumpWindowToFile", AccessibilityNodeInfo.class, File.class, int.class, int.class, int.class)
-          .invoke(null, node, output, display.getRotation(), size.x, size.y);
+      try {
+        Class.forName("com.android.uiautomator.core.AccessibilityNodeInfoDumper")
+            .getMethod("dumpWindowToFile", AccessibilityNodeInfo.class, File.class, int.class, int.class, int.class)
+            .invoke(null, node, output, display.getRotation(), size.x, size.y);
+      } catch (InvocationTargetException error) {
+        if (error.getSuppressed().length == 0 && knownFormatterNullChild(error.getCause()))
+          throw new FormatterNotReady(error.getCause(), output, deadline);
+        throw error;
+      }
       require(output.isFile() && output.length() > 0, "AOSP formatter did not create the current hierarchy");
       require(SystemClock.uptimeMillis() < deadline, "Hierarchy deadline expired during formatting");
       return true;
     } catch (Exception error) {
-      if (output.exists() && !output.delete()) error.addSuppressed(new IllegalStateException("Cannot remove failed hierarchy attempt"));
+      failure = error;
+      discardFailedOutput(output, error);
       throw error;
     } finally {
-      if (node != null) node.recycle();
-      if (connected) wrapperType.getMethod("disconnect").invoke(wrapper);
+      Exception cleanup = null;
+      try { if (node != null) node.recycle(); } catch (Exception error) { cleanup = error; }
+      try { if (connected) wrapperType.getMethod("disconnect").invoke(wrapper); }
+      catch (Exception error) {
+        if (cleanup == null) cleanup = error;
+        else cleanup.addSuppressed(error);
+      }
+      if (cleanup != null) {
+        if (failure != null) failure.addSuppressed(cleanup);
+        else {
+          discardFailedOutput(output, cleanup);
+          throw cleanup;
+        }
+      }
     }
   }
 
@@ -230,9 +327,7 @@ public final class NativeHierarchyCapture {
       else System.err.println(NULL_ROOT);
       exit = 0;
     } catch (Throwable error) {
-      Throwable cause = error;
-      while (cause instanceof InvocationTargetException && cause.getCause() != null) cause = cause.getCause();
-      cause.printStackTrace(System.err);
+      exit = reportFailure(error, System.err, System.out);
     } finally {
       if (watchdog != null) watchdog.interrupt();
     }
