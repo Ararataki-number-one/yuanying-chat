@@ -32,8 +32,8 @@ def runner_functions(*names):
     assert {n.name for n in functions} == set(names)
     if 'capture' in names:
         declarations = [n for n in tree.body if isinstance(n, ast.Assign)
-                        and any(isinstance(t, ast.Name) and t.id == 'UI_NAVIGATION_CONTRACT' for t in n.targets)]
-        assert len(declarations) == 1, 'Actual capture navigation declaration required'
+                        and any(isinstance(t, ast.Name) and t.id in ('UI_NAVIGATION_CONTRACT', 'WORKSPACE_LAYOUT_CONTRACT') for t in n.targets)]
+        assert len(declarations) == 2, 'Actual browser and workspace declarations required'
         functions.extend(copy.deepcopy(declarations))
     return ast.Module(body=functions, type_ignores=[])
 
@@ -642,6 +642,7 @@ _download_v1_setup = DownloadFreshObservationRunnerTest.setUp
 def _configure_download_v1_fixture(self):
     _download_v1_setup(self)
     self.namespace['UI_NAVIGATION_CONTRACT'] = 1
+    self.namespace['WORKSPACE_LAYOUT_CONTRACT'] = 1
 DownloadFreshObservationRunnerTest.setUp = _configure_download_v1_fixture
 
 

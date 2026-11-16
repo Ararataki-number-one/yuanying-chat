@@ -23,6 +23,8 @@ PACKAGE = 'local.pocketchat.test'
 NAME = '长文阅读与文件整理和日常会话的完整环境名称测试'
 URL = 'http://browser-fixture.example/native-ui-smoke'
 WAITING = '请先在环境网络中配置浏览器线路'
+ENVIRONMENT = '当前环境：'+NAME+'，点按输入网址，长按切换环境'
+BOTTOM_CONTROLS = ('后退', '打开当前环境主页', '网址或搜索词', '刷新网页', '浏览器菜单')
 
 
 def only(xml, predicate, label):
@@ -47,19 +49,29 @@ def browser_geometry(xml, density):
     address = control(xml, '网址或搜索词', density)
     if address.get('text') != URL:
         raise ValueError('Controlled HTTP address differs')
-    name = only(xml, lambda n: n.get('text') == NAME and n.get('class') == 'android.widget.TextView', 'complete environment name')
-    caption = only(xml, lambda n: n.get('text') == 'Chromium · HTTP · 不安全', 'HTTP caption')
+    name = control(xml, ENVIRONMENT, density)
+    if name.get('text') != NAME or name.get('enabled') != 'true' or name.get('long-clickable') != 'true':
+        raise ValueError('The retained environment capsule lost its complete name or switch action')
     notice = only(xml, lambda n: n.get('text') == WAITING, 'unconfigured-route notice')
-    descriptions = ['当前环境：'+NAME+'；打开环境管理', '刷新网页', '后退', '前进',
-                    '打开主页', '1 个标签页，点击管理', '浏览器菜单']
-    controls = [control(xml, value, density) for value in descriptions]
-    name_box, caption_box = shared.bounds(name), shared.bounds(caption)
-    if name_box[3] > caption_box[1] or shared.bounds(address)[3] > name_box[1]:
-        raise ValueError('Environment, caption and address rows overlap')
-    bottom = [shared.bounds(n) for n in controls[2:]]
+    controls = [control(xml, value, density) for value in BOTTOM_CONTROLS]
+    name_box = shared.bounds(name)
+    bottom = [shared.bounds(n) for n in controls]
+    if name_box[3] > shared.bounds(notice)[1]:
+        raise ValueError('The top environment capsule overlaps the page notice')
+    if shared.nodes(xml, lambda n: n.get('text') == 'Chromium · HTTP · 不安全'
+                    or n.get('content-desc') in ('前进', '打开主页', '1 个标签页，点击管理')
+                    or n.get('text') in ('环境', '网络', '下载', '阅读')):
+        raise ValueError('The browser still exposes a retired top row or management dock')
     for before, after in zip(bottom, bottom[1:]):
         if before[2] > after[0]:
             raise ValueError('Bottom browser controls overlap or change order')
+    if shared.bounds(address)[2]-shared.bounds(address)[0] < 72*density:
+        raise ValueError('The bottom address has no usable editing width')
+    if any(abs((box[1]+box[3])-(bottom[0][1]+bottom[0][3])) > 1 for box in bottom):
+        raise ValueError('Current browser actions and address must share one row')
+    for box in (bottom[0], bottom[1], bottom[3], bottom[4]):
+        if box[2]-box[0] != 48*density or box[3]-box[1] != 48*density:
+            raise ValueError('Browser action geometry differs from the fixed 48dp targets')
     if shared.bounds(notice)[3] >= min(box[1] for box in bottom):
         raise ValueError('Native chrome leaves no visible content area')
     # The production root directly owns its empty FrameLayout content slot.
@@ -67,8 +79,19 @@ def browser_geometry(xml, density):
     tree = ET.fromstring(xml)
     parents = {child: parent for parent in tree.iter() for child in parent}
     raw_address = next(n for n in tree.iter('node') if n.get('content-desc') == '网址或搜索词')
-    root = parents.get(parents.get(raw_address))
-    slots = [] if root is None else [n for n in root if n.get('class') == 'android.widget.FrameLayout']
+    raw_name = next(n for n in tree.iter('node') if n.get('content-desc') == ENVIRONMENT)
+    root = parents.get(raw_address)
+    while root is not None and not any(n is raw_name for n in root.iter()):
+        root = parents.get(root)
+    if root is None or shared.bounds(root) is None:
+        raise ValueError('The address and environment have no visible shared native root')
+    root_box = shared.bounds(root)
+    if abs(name_box[0]+name_box[2]-root_box[0]-root_box[2]) > 1:
+        raise ValueError('The retained environment capsule is not horizontally centered')
+    # The new top capsule has its own FrameLayout. Only the other direct
+    # FrameLayout is the actual content slot; do not mistake the header for it.
+    slots = [n for n in root if n.get('class') == 'android.widget.FrameLayout'
+             and not any(child is raw_name for child in n.iter())]
     slot = None
     if slots:
         if len(slots) != 1 or shared.bounds(slots[0]) is None:
@@ -76,8 +99,9 @@ def browser_geometry(xml, density):
         slot = shared.bounds(slots[0])
         if slot[1] < shared.bounds(notice)[3] or slot[3] > min(box[1] for box in bottom):
             raise ValueError('Native content slot overlaps browser controls')
-    return dict(environmentName=NAME, environmentBounds=name_box, captionBounds=caption_box,
+    return dict(navigationContract=3, environmentName=NAME, environmentBounds=name_box,
                 addressBounds=shared.bounds(address), contentBounds=slot,
+                addressAtBottom=True, topAddressAbsent=True, environmentCapsuleRetained=True,
                 contentSlotObserved=slot is not None, nativeGlyphMetricsMeasured=False,
                 controls=[dict(description=n.get('content-desc'), bounds=shared.bounds(n),
                                enabled=n.get('enabled')) for n in controls])
@@ -198,10 +222,26 @@ def main():
             case['geometry'] = browser_geometry(xml, 3)
             case['screenshots'].append(screenshot(label+'-browser.png'))
             tap(control(xml, '浏览器菜单', 3), 'Open actual Chromium menu')
-            xml = wait_for(lambda value: shared.button(value, '环境管理') is not None
-                           and shared.button(value, '新标签页') is not None, label+'-menu')
+            xml = wait_for(lambda value: shared.button(value, '标签页 · 1') is not None
+                           and present(value, lambda n: n.get('text') == 'Chromium · HTTP · 不安全'), label+'-menu')
+            forward = only(xml, lambda n: n.get('text') == '前进' and n.get('class') == 'android.widget.Button', 'forward menu action')
+            if forward.get('enabled') != 'false':
+                raise ValueError('Forward must remain disabled without actual history')
             case['screenshots'].append(screenshot(label+'-menu.png'))
+            tap(shared.button(xml, '标签页 · 1'), 'Open actual tab management from the browser menu')
+            xml = wait_for(lambda value: present(value, lambda n: n.get('text') == '标签页 · 1/8')
+                           and shared.button(value, '返回') is not None, label+'-tabs')
+            case['screenshots'].append(screenshot(label+'-tabs.png'))
+            tap(shared.button(xml, '返回'), 'Return from actual tab management without changing tabs')
+            xml = wait_for(lambda value: present(value, lambda n: n.get('text') == WAITING)
+                           and present(value, lambda n: n.get('content-desc') == '浏览器菜单')
+                           and not present(value, lambda n: n.get('text') == '标签页 · 1/8'), label+'-tabs-returned')
+            case['returnedGeometry'] = browser_geometry(xml, 3)
+            tap(control(xml, '浏览器菜单', 3), 'Reopen the browser menu after the tab sheet')
+            xml = wait_for(lambda value: shared.button(value, '标签页 · 1') is not None, label+'-menu-reopened')
+            observed_actions = set()
             for attempt in range(10):
+                observed_actions.update(value for value in ('环境管理', '新标签页') if shared.button(xml, value) is not None)
                 tail = shared.button(xml, '内核信息')
                 if tail is not None:
                     break
@@ -217,12 +257,16 @@ def main():
                 (args.out/(label+'-menu-tail.xml')).write_text(xml)
             else:
                 raise ValueError('Original engine-information action is not reachable')
+            if observed_actions != {'环境管理', '新标签页'}:
+                raise ValueError('Original environment and new-tab menu actions are not reachable')
             (args.out/(label+'-menu-tail.xml')).write_text(xml)
             case['screenshots'].append(screenshot(label+'-menu-tail.png'))
             tap(tail, 'Open original engine-information action')
             wait_for(lambda value: present(value, lambda n: n.get('text') == 'Chromium 内核'), label+'-engine-info')
             case['screenshots'].append(screenshot(label+'-engine-info.png'))
-            case.update(status='passed', actualMenuAndTailTaps=True, noRouteNoticeObserved=True)
+            case.update(status='passed', actualMenuAndTailTaps=True, actualTabSheetRoundtrip=True,
+                        forwardDisabledWithoutHistory=True, httpCaptionObservedInMenu=True,
+                        originalEnvironmentAndNewTabActionsReachable=True, noRouteNoticeObserved=True)
         if git('rev-parse', 'HEAD') != source or git('status', '--porcelain') or shared.sha(args.apk) != identity['apkSha256']:
             raise ValueError('Source or APK changed during capture')
         report['status'] = 'passed'

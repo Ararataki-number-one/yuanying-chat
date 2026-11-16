@@ -38,7 +38,7 @@ public class MainActivity extends ThemedActivity {
   ChatDownloadProgressUi chatDownloadProgress;
   Button focusExit;boolean focusReading;Bundle downloadUiState;
   TextView status,exitIpLine,networkLine; LinearLayout toolbar;
-  AlertDialog networkDialog; Ui.IconButton navigation; Dialog drawer;
+  AlertDialog networkDialog; Dialog drawer;
   ReferenceUi.Modal reloadDialog;boolean reloadChecking;
   interface Result {void accept(JSONObject value);}
   void chooseEnvironment(){EnvironmentSwitcherUi.show(this);}
@@ -187,6 +187,9 @@ public class MainActivity extends ThemedActivity {
   TextView label(String text,int size,int color){TextView v=new TextView(this);v.setText(text);v.setTextSize(size);v.setTextColor(AppAppearance.text(color));return v;}
   void moreSheet(){
     ReferenceUi.Modal d=new ReferenceUi.Modal(this,"浏览器菜单").asSheet();
+    designChrome.addMenuStatus(d);
+    Button forward=ReferenceUi.menuAction(d,"前进",()->{d.dismiss();browserHistory(1);});
+    forward.setEnabled(GeckoAddressUi.canForward(this));
     option(d,"打开网址或搜索",()->GeckoAddressUi.show(this));
     option(d,"打开主页",()->GeckoAddressUi.home(this));
     option(d,"复制当前网址",()->{String url=remote.getUrl();if(url==null||url.isEmpty())return;((ClipboardManager)getSystemService(CLIPBOARD_SERVICE)).setPrimaryClip(ClipData.newPlainText("网址",url));Toast.makeText(this,"已复制网址",Toast.LENGTH_SHORT).show();});

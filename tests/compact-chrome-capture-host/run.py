@@ -84,7 +84,7 @@ history_path=ROOT/'tests/historical_source_inputs.py'
 history_spec=importlib.util.spec_from_file_location('compact_capture_history',history_path);history=importlib.util.module_from_spec(history_spec);history_spec.loader.exec_module(history)
 spec=importlib.util.spec_from_file_location('chrome_production_extractor',ROOT/'tests/chrome-network-state-host/run.py');extract=importlib.util.module_from_spec(spec);spec.loader.exec_module(extract);member=extract.member
 
-def compact_ui_members(source):
+def compact_ui_members(source,version=2):
  """Select the current complete compact workload, not the unrelated scene capture."""
  tree=ast.parse(source.encode('utf-8'));one=contract.exactly_one
  result={name:one((node for node in ast.walk(tree) if isinstance(node,ast.FunctionDef) and node.name==name),name)
@@ -93,10 +93,10 @@ def compact_ui_members(source):
                any(contract.assignment(child,'compact') for child in node.body)),'compact workload')
  start=one((index for index,node in enumerate(workload.body) if contract.assignment(node,'compact')),'compact records')
  end=one((index for index,node in enumerate(workload.body) if isinstance(node,ast.For) and
-           any(isinstance(call,ast.Call) and isinstance(call.func,ast.Name) and call.func.id=='capture_compact_v2' for call in ast.walk(node))),'complete compact capture loop')
+           any(isinstance(call,ast.Call) and isinstance(call.func,ast.Name) and call.func.id=='capture_compact_v'+str(version) for call in ast.walk(node))),'complete compact capture loop')
  assert start<end,'Compact initialization must precede its complete loop'
  result['compactWorkload']=ast.Module(body=workload.body[start:end+1],type_ignores=[])
- result['compactImport']=one((node for node in tree.body if isinstance(node,ast.ImportFrom) and node.module=='compact_chrome_v2'),'compact consumer import')
+ result['compactImport']=one((node for node in tree.body if isinstance(node,ast.ImportFrom) and node.module=='compact_chrome_v'+str(version)),'compact consumer import')
  for name in ('UI_NAVIGATION_CONTRACT','ui_capture'):
   result[name]=one((node for node in tree.body if contract.assignment(node,name)),name)
  return result
@@ -106,19 +106,39 @@ def verify_current_compact_ui_source(source):
  # The old whole-file inverse proves immutable release history only. Actual
  # helper methods and the complete compact loop are compared directly below.
  receipt=contract.verify_shared_ui_source(released)
- actual=compact_ui_members(source);expected=compact_ui_members(released)
+ version_node=contract.exactly_one((n for n in ast.parse(source).body if contract.assignment(n,'UI_NAVIGATION_CONTRACT')),'current navigation contract')
+ assert isinstance(version_node.value,ast.Constant) and type(version_node.value.value) is int and version_node.value.value in (2,3)
+ version=version_node.value.value
+ actual=compact_ui_members(source,version);expected=compact_ui_members(released)
  menu=contract.exactly_one((node for node in ast.walk(expected['compactWorkload']) if contract.assignment(node,'label')),'compact menu label')
  assert isinstance(menu.value,ast.Constant) and menu.value.value=='会话选项','Released compact menu identity changed'
  # Explicit current product wording; no current source is normalized into the
  # historical whole-file inverse, and every other compact AST node must match.
  menu.value=ast.Constant(value='浏览器菜单')
+ if version==3:
+  # Change only the declared consumer/protocol. The full original observation
+  # helpers, deadlines, performance checks and retained legacy loop stay exact.
+  class CurrentConsumer(ast.NodeTransformer):
+   def visit_Name(self,node):
+    if node.id=='capture_compact_v2':node.id='capture_compact_v3'
+    return node
+   def visit_If(self,node):
+    self.generic_visit(node)
+    if isinstance(node.test,ast.Compare) and isinstance(node.test.left,ast.Name) and node.test.left.id=='UI_NAVIGATION_CONTRACT':
+     assert len(node.test.comparators)==1 and isinstance(node.test.comparators[0],ast.Constant) and node.test.comparators[0].value==2
+     node.test.comparators[0].value=3
+    return node
+  CurrentConsumer().visit(expected['compactWorkload'])
+  expected['compactImport']=ast.parse('from compact_chrome_v3 import run_case as capture_compact_v3').body[0]
+  expected['UI_NAVIGATION_CONTRACT'].value=ast.Constant(value=3)
+
  for name,node in actual.items():
   assert ast.dump(node,include_attributes=False)==ast.dump(expected[name],include_attributes=False),('Current compact UI consumer changed',name)
  receipt.update(historicalSource=history.historical_identity(path),historicalProofOnly=True,
                 currentCompactSourceSha256=hashlib.sha256(source.encode('utf-8')).hexdigest(),
                 currentCompactMembersAstSha256={name:contract.digest(node) for name,node in actual.items()},
                 currentCompactWorkloadPreserved=True,currentMenuLabel='浏览器菜单',
-                currentWholeUiWorkloadClaimed=False,actualAndroidExecution=False)
+                currentWholeUiWorkloadClaimed=False,currentNavigationContract=version,actualAndroidExecution=False)
  return receipt
 
 def main():
@@ -143,7 +163,8 @@ def main():
  java=(HERE/'CompactChromeCaptureHost.java').read_text().replace('/* CHROME_METHODS */','\n'.join(member(chrome,n) for n in methods)).replace('/* INITIAL_METADATA */','\n'.join(initial)).replace('/* STATE_FIELDS */',fields).replace('/* STATE_METHODS */','\n'.join(member(state,n) for n in ['WindowNetworkState(Context c,','int color(','String mainline(','String strip('])).replace('/* FIXTURE_METHODS */','\n'.join(member(fixture,n) for n in fixture_methods))
  java=java.replace('/* CATALOG_EXIT_ID */',member(selected[PROD+'NetworkCatalog.java'],'static String exitId(')).replace('/* NATIVE_METHODS */','\n'.join(member(selected[PROD+'NativeNetwork.java'],n) for n in ['static boolean subscribedExit(','static String exitIdentity(','static String hash(']))
  java=java.replace('/* STATE_IDENTITY */',member(state,'static boolean sameEnvironment(') if 'static boolean sameEnvironment(' in state else '')
- final_report=historical_report_body(member(fixture,'void report(String event,')).replace('"syntheticPresentation",true,"actualLatencyMeasurement",false,','')
+ historical_fixture=fixture if a.before_ref else history.browser_v2_bytes('tests/gecko/CompactChromeIntegrationActivity.java').decode('utf-8')
+ final_report=historical_report_body(member(historical_fixture,'void report(String event,')).replace('"syntheticPresentation",true,"actualLatencyMeasurement",false,','')
  assert hashlib.sha256(final_report.encode()).hexdigest()==ORIGINAL_REPORT_SHA256,'Original geometry/touch/text report body changed'
  runner_contract=contract.verify_shared_ui_source(selected['tests/gecko/run_ui_visuals.py']) if a.before_ref else verify_current_compact_ui_source(selected['tests/gecko/run_ui_visuals.py'])
  snapshot=member(fixture,'void snapshot(');assert '"delay",42,"delayAt",now' in snapshot and '"latencyRemaining",120000' in snapshot
@@ -157,7 +178,7 @@ def main():
   run=subprocess.run([str(a.java_home/'bin/java'),'-Dbefore='+str(not current).lower(),'-cp',str(classes)+':'+str(a.json_jar),'local.pocketchat.CompactChromeCaptureHost'],text=True,capture_output=True)
   if not run.stdout:raise RuntimeError(run.stderr)
   report=json.loads(run.stdout)
- report.update(sourceCommit=subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip(),sourceDirty=bool(subprocess.check_output(['git','status','--porcelain'],cwd=ROOT,text=True)),selectedProductionRef=a.before_ref or 'working-tree',selectedSourceSha256={name:hashlib.sha256(text.encode()).hexdigest() for name,text in selected.items()},sourceFiles=hashes,executionInputsUnchanged=all(hashlib.sha256((ROOT/path).read_bytes()).hexdigest()==digest for path,digest in hashes.items()),jsonJarSha256=hashlib.sha256(a.json_jar.read_bytes()).hexdigest(),actualAndroidExecution=False,actualLatencyMeasurement=False,originalGeometryReportPreserved=True,originalAndroidRunnerPreserved=True,originalAndroidRunnerHistoricalProofOnly=True,original42Ms120SecondSamplePreserved=True,originalPreparationIntervalsPreserved=True,extractedFixtureMethods=fixture_methods,extractedChromeMethods=methods,scope='Actual complete fixture snapshot/capture/presentation/lifecycle methods, complete test-only capture helper, actual production chrome render/showNetwork/metadata methods and network-state constructor. Controlled Handler/View/ViewTreeObserver/layout/catalogue/runtime adapters. The full geometry report body is byte-checked. The old complete Android runner AST proof uses explicit historical input; current mode directly checks the complete compact loop, helpers and bindings with the current browser menu label. Neither source check executes the Android runner or claims current unrelated scene acceptance. Metrics-maintenance and persistence references are controlled unused boundaries here; the separate chat-chrome-performance-host suite executes those production methods. No real Android frame, Gecko, native network or latency execution.')
+ report.update(sourceCommit=subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip(),sourceDirty=bool(subprocess.check_output(['git','status','--porcelain'],cwd=ROOT,text=True)),selectedProductionRef=a.before_ref or 'working-tree',selectedSourceSha256={name:hashlib.sha256(text.encode()).hexdigest() for name,text in selected.items()},sourceFiles=hashes,executionInputsUnchanged=all(hashlib.sha256((ROOT/path).read_bytes()).hexdigest()==digest for path,digest in hashes.items()),jsonJarSha256=hashlib.sha256(a.json_jar.read_bytes()).hexdigest(),actualAndroidExecution=False,actualLatencyMeasurement=False,originalGeometryReportPreserved=True,originalGeometryReportHistoricalProofOnly=True,originalAndroidRunnerPreserved=True,originalAndroidRunnerHistoricalProofOnly=True,original42Ms120SecondSamplePreserved=True,originalPreparationIntervalsPreserved=True,extractedFixtureMethods=fixture_methods,extractedChromeMethods=methods,scope='Actual complete fixture snapshot/capture/presentation/lifecycle methods, complete test-only capture helper, actual production chrome render/showNetwork/metadata methods and network-state constructor. Controlled Handler/View/ViewTreeObserver/layout/catalogue/runtime adapters. The actual released v2 geometry report body is byte-checked as history; current bottom-toolbar geometry uses the separate v3 Android producer and reader. The old complete Android runner AST proof uses explicit historical input; current mode directly checks the complete compact loop, helpers and bindings with the current browser menu label. Neither source check executes the Android runner or claims current unrelated scene acceptance. Metrics-maintenance and persistence references are controlled unused boundaries here; the separate chat-chrome-performance-host suite executes those production methods. No real Android frame, Gecko, native network or latency execution.')
  report['androidRunnerSourceContract']=runner_contract
  if not report['executionInputsUnchanged']:report['status']='source-changed'
  a.output.parent.mkdir(parents=True,exist_ok=True);a.output.write_text(json.dumps(report,ensure_ascii=False,indent=2)+'\n');print(json.dumps({'status':report['status'],'passed':report['passed'],'total':report['total'],'output':str(a.output)}))

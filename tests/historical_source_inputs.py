@@ -62,3 +62,16 @@ def historical_bytes(relative):
 def historical_identity(relative):
     """Return a copy so consumers cannot mutate the cached provenance."""
     return dict(_verified_source(ROOT, relative, COMMIT, TREE)[1])
+
+
+BROWSER_V2_COMMIT = '24cb3f2f2bbc13fa4727ecf81e367108a1513ddf'
+BROWSER_V2_TREE = 'b645b32f1febcd9bfce38b66a485e480a36da3b1'
+
+
+def browser_v2_bytes(relative):
+    """Read actual released 2.1.5 source for retained v2 proofs, never v3 code."""
+    return _verified_source(ROOT, relative, BROWSER_V2_COMMIT, BROWSER_V2_TREE)[0]
+
+
+def browser_v2_identity(relative):
+    return dict(_verified_source(ROOT, relative, BROWSER_V2_COMMIT, BROWSER_V2_TREE)[1])

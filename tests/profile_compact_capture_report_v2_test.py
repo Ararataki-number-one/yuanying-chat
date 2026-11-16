@@ -1,4 +1,4 @@
-"""Strict source-only inverse controls; no Android or latency execution."""
+"""Retained actual 2.1.5 source-only v2 inverse controls; no current Android claim."""
 import ast
 import hashlib
 import importlib.util
@@ -16,7 +16,7 @@ ORIGINAL_SHA256 = '200192382212fee9889cd9905b837d551a27c75fcc4b777acdab3dd9982e6
 
 
 def current_body():
-    return capture.member((ROOT / 'tests/gecko/CompactChromeIntegrationActivity.java').read_text(),
+    return capture.member(capture.history.browser_v2_bytes('tests/gecko/CompactChromeIntegrationActivity.java').decode('utf-8'),
                           'void report(String event,')
 
 
@@ -285,7 +285,7 @@ class CompactCaptureReportV2Tests(unittest.TestCase):
                          ('historical_report_body', 'restore_v2_report_body')]
         self.assertEqual(len(inverse_calls), 1)
         self.assertEqual(ast.unparse(inverse_calls[0]),
-                         "historical_report_body(member(fixture, 'void report(String event,'))")
+                         "historical_report_body(member(historical_fixture, 'void report(String event,'))")
         self.assertIn(inverse_calls[0], list(ast.walk(final)))
         java = [node for node in assignments if any(isinstance(target, ast.Name) and target.id == 'java'
                                                    for target in node.targets)]
@@ -302,7 +302,7 @@ class CompactCaptureReportV2Tests(unittest.TestCase):
 
     def test_current_compact_consumer_and_fixed_history_are_separate_proofs(self):
         path = 'tests/gecko/run_ui_visuals.py'
-        source = (ROOT / path).read_text()
+        source = capture.history.browser_v2_bytes(path).decode('utf-8')
         released = capture.history.historical_bytes(path).decode('utf-8')
         with patch.object(capture.contract, 'verify_shared_ui_source',
                           wraps=capture.contract.verify_shared_ui_source) as old_proof:
@@ -322,7 +322,7 @@ class CompactCaptureReportV2Tests(unittest.TestCase):
                           'compactWorkload', 'compactImport', 'UI_NAVIGATION_CONTRACT', 'ui_capture'})
 
     def test_current_compact_deadlines_touches_labels_and_callback_wiring_reject_drift(self):
-        source = (ROOT / 'tests/gecko/run_ui_visuals.py').read_text()
+        source = capture.history.browser_v2_bytes('tests/gecko/run_ui_visuals.py').decode('utf-8')
         changes = (
             ('def chrome_event(command,event):\n        deadline=time.monotonic()+20',
              'def chrome_event(command,event):\n        deadline=time.monotonic()+21'),

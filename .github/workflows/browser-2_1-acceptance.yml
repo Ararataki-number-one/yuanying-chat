@@ -14,6 +14,8 @@ name: Dual browser and complete original Gecko acceptance
     - release/browser-2.1.4-*
     - release/browser-2.1.5
     - release/browser-2.1.5-*
+    - release/browser-2.1.6
+    - release/browser-2.1.6-*
     paths:
     - app/**
     - tests/**
@@ -234,6 +236,12 @@ jobs:
         browser_fingerprint_binary="$(command -v google-chrome || command -v chromium)"
         python3 tests/chromium-fingerprint-browser/run.py --chromium "$browser_fingerprint_binary" --output work/browser-native-semantics
         python3 tests/chromium-worker-browser/run.py --chromium "$browser_fingerprint_binary" --output work/browser-worker-native-semantics
+    - name: Verify selected-photo pixels and fingerprint controls in actual Chromium
+      shell: bash
+      run: |
+        set -euo pipefail
+        browser_fingerprint_binary="$(command -v google-chrome || command -v chromium)"
+        python3 tests/chromium-photo-browser/run.py --chromium "$browser_fingerprint_binary" --output work/browser-photo-native-semantics
     - name: Preserve source-bound host and historical-baseline receipts
       if: always()
       uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
@@ -252,6 +260,9 @@ jobs:
           work/browser-worker-native-semantics/chromium.stdout.log
           work/browser-worker-native-semantics/chromium.stderr.log
           work/browser-worker-native-semantics/controller.stderr.log
+          work/browser-photo-native-semantics/*.json
+          work/browser-photo-native-semantics/*.log
+          work/browser-photo-native-semantics/*.png
           work/browser-baselines/results.json
         if-no-files-found: warn
         retention-days: 7
@@ -1067,6 +1078,21 @@ jobs:
         for check in (verify_performance_evidence,verify_connection_evidence,verify_interaction_transfer_evidence,verify_profile_evidence,verify_template_evidence,verify_resource_evidence,verify_chain_evidence,verify_client_evidence,verify_sdk_build_evidence,verify_caret_evidence):
             check(directory,source)
             print(check.__name__+': passed',flush=True)
+        PYCODE
+    - name: Require actual photo contents from the same installed Android build
+      shell: bash
+      run: |
+        set -euo pipefail
+        python3 - <<'PYCODE'
+        import json,os,pathlib,sys
+        sys.path.insert(0,'tools')
+        from gecko.photo_upload_contract import verify_photo_upload_evidence
+        from gecko.profile_invocation_contract import verify_installed
+        directory=pathlib.Path('work/gecko-integration/public');source=os.environ['GITHUB_SHA']
+        verify_photo_upload_evidence(directory,source)
+        photo=json.loads((directory/'photo-upload-results.json').read_text())
+        device=json.loads((directory/'device-results.json').read_text())
+        verify_installed(photo['buildIdentity'],device['eventTransport']['buildIdentity'])
         PYCODE
 
     - name: Collect the actual browser workload from the same build and run

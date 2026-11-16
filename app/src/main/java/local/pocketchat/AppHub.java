@@ -8,7 +8,6 @@ import java.util.WeakHashMap;
 /** Navigation preserves the live chat document while displaying native workspaces. */
 final class AppHub {
   static final int CHAT=0, DOWNLOADS=1, ENVIRONMENTS=2, SETTINGS=3, NETWORK=4;
-  private static final int[] DESTINATIONS={ENVIRONMENTS,NETWORK,DOWNLOADS};
   final MainActivity a;
   final LinearLayout root,bar,conversationBar,workspaceBar,feedbackBar,footer;
   final TextView feedbackText;
@@ -20,9 +19,8 @@ final class AppHub {
   String rendered="";
   private boolean feedbackError;
   private final boolean feedbackFallbackLineSpacing;
-  private int markedPage=-1;private boolean markedFocus,markedDark,marked;
+  private int markedPage=-1;private boolean markedDark,marked;
   private final WeakHashMap<ScrollView,ScrollPadding> scrollPadding=new WeakHashMap<>();
-  final Button[] tabs=new Button[DesignUi.NAV.length];
   final Button[] workspaceTabs=new Button[5];
   final NetworkWorkspaceUi networkWorkspace;
   final SettingsWorkspaceUi settingsWorkspace;
@@ -39,8 +37,8 @@ final class AppHub {
     footer=DesignUi.column(a);
     footer.setClipChildren(false);footer.setClipToPadding(false);
     workspace.addView(footer,new FrameLayout.LayoutParams(-1,-2,Gravity.BOTTOM));
-    // Chat keeps its original measured navigation slot. Native pages put
-    // content behind their five-item bar; neither control group changes parent.
+    // Browser controls keep a measured bottom slot. Native management pages
+    // retain their own five-item navigation without reparenting the browser.
     root.addView(workspace,new LinearLayout.LayoutParams(-1,-2));
     feedbackBar=DesignUi.row(a);feedbackBar.setPadding(a.dp(14),a.dp(4),a.dp(14),a.dp(4));feedbackBar.setVisibility(View.GONE);
     // Footer-based pages overlay content; the notice's empty area must not
@@ -54,7 +52,8 @@ final class AppHub {
     footer.addView(feedbackBar,new LinearLayout.LayoutParams(-1,-2));
     divider=new View(a);footer.addView(divider,new LinearLayout.LayoutParams(-1,0));
     bar=DesignUi.column(a);bar.setClipChildren(false);bar.setClipToPadding(false);
-    conversationBar=ReferenceUi.nav(a,-1,n->{if(n==WorkspaceNavigation.READING)a.setFocusReading(!a.focusActive());else select(DESTINATIONS[n]);},tabs);
+    conversationBar=DesignUi.column(a);
+    conversationBar.addView(a.geckoAddress.row,new LinearLayout.LayoutParams(-1,-2));
     workspaceBar=ReferenceUi.workspaceNav(a,CHAT,this::select,workspaceTabs);workspaceBar.setVisibility(View.GONE);
     bar.addView(conversationBar,new LinearLayout.LayoutParams(-1,-2));
     bar.addView(workspaceBar,new LinearLayout.LayoutParams(-1,-2));
@@ -123,9 +122,9 @@ final class AppHub {
   }
   void keyboard(){a.applyFocusLayout();}
   void mark(){
-    boolean focused=page==CHAT&&a.focusActive(),dark=AppAppearance.dark();
-    if(marked&&markedPage==page&&markedFocus==focused&&markedDark==dark)return;
-    marked=true;markedPage=page;markedFocus=focused;markedDark=dark;
+    boolean dark=AppAppearance.dark();
+    if(marked&&markedPage==page&&markedDark==dark)return;
+    marked=true;markedPage=page;markedDark=dark;
     conversationBar.setVisibility(page==CHAT?View.VISIBLE:View.GONE);
     workspaceBar.setVisibility(page==CHAT?View.GONE:View.VISIBLE);
     // Keep the native scroll edge consistent outside and inside the clear lens.
@@ -137,11 +136,7 @@ final class AppHub {
     panel.setScrollEdge(page==CHAT?null:bar);
     // Faded rows must not be activated through the empty gaps in the dock.
     bar.setClickable(page!=CHAT);bar.setFocusable(false);
-    int selected=-1;for(int i=0;i<DESTINATIONS.length;i++)if(DESTINATIONS[i]==page)selected=i;
-    if(focused)selected=WorkspaceNavigation.READING;
-    ReferenceUi.markNav(tabs,selected);
     ReferenceUi.markWorkspaceNav(workspaceTabs,page);
-    tabs[WorkspaceNavigation.READING].setContentDescription(focused?"退出专注阅读模式":"进入专注阅读模式");
   }
   LinearLayout layout(String title){
     return layout(title,false);

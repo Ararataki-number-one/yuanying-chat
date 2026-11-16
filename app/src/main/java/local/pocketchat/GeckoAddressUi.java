@@ -1,12 +1,10 @@
 package local.pocketchat;
 
 import android.app.AlertDialog;
-import android.content.Context;
 import android.text.InputType;
 import android.text.TextUtils;
 import android.view.KeyEvent;
 import android.view.View;
-import android.view.ViewGroup;
 import android.view.ViewTreeObserver;
 import android.view.WindowManager;
 import android.view.inputmethod.EditorInfo;
@@ -15,19 +13,17 @@ import android.widget.*;
 
 /** Native address controls; never inspect or modify the website's inputs. */
 final class GeckoAddressUi {
-  final MainActivity a;final BrowserAddressRow row;final Button address,home,back,forward,reload;
+  final MainActivity a;final BrowserToolbarUi.NavigationBar row;final Button address,home,back,reload,menu;
   private AlertDialog dialog;private EditText editor;private String shown="";
   GeckoAddressUi(MainActivity activity){
     a=activity;
     back=BrowserToolbarUi.action(a,"back","后退",()->a.browserHistory(-1));
-    forward=BrowserToolbarUi.action(a,"chevron-right","前进",()->a.browserHistory(1));
-    address=DesignUi.button(a,"网址或搜索",false,()->show(a));address.setAllCaps(false);address.setTextSize(14);address.setSingleLine(true);address.setEllipsize(TextUtils.TruncateAt.END);address.setGravity(android.view.Gravity.CENTER_VERTICAL);address.setPadding(a.dp(12),a.dp(8),a.dp(12),a.dp(8));
-    address.setMinWidth(0);address.setMinimumWidth(0);address.setMinHeight(a.dp(48));address.setIncludeFontPadding(true);address.setBackground(DesignUi.glass(a,24));GlassMotion.press(address,false);
-    address.setOnLongClickListener(v->{a.chooseEnvironment();return true;});
+    address=DesignUi.button(a,"网址或搜索",false,()->show(a));address.setAllCaps(false);address.setEllipsize(TextUtils.TruncateAt.END);address.setGravity(android.view.Gravity.CENTER_VERTICAL);
+    BrowserToolbarUi.address(address);GlassMotion.press(address,false);
     reload=BrowserToolbarUi.action(a,"refresh","刷新网页",a::browserReloadOrStop);
     home=BrowserToolbarUi.action(a,"home","打开当前环境主页",()->home(a));
-    row=new BrowserAddressRow(a,address,back,forward,reload,home);
-    row.setPadding(0,a.dp(3),0,a.dp(7));row.setClipChildren(false);row.setClipToPadding(false);refresh();
+    menu=BrowserToolbarUi.action(a,"more","浏览器菜单",a::moreSheet);
+    row=new BrowserToolbarUi.NavigationBar(a,address,back,home,reload,menu);refresh();
   }
   String target(){if(a.session==null)return "";String url=a.session.browserDisplayUrl();return url==null?"":url;}
   String current(){
@@ -41,55 +37,13 @@ final class GeckoAddressUi {
     return url;
   }
 
-  /** Reflow the existing controls without rebuilding views or changing text size. */
-  static final class BrowserAddressRow extends ViewGroup {
-    final Button address;final Button[] actions;boolean stacked;
-    BrowserAddressRow(Context context,Button address,Button back,Button forward,Button reload,Button home){
-      super(context);this.address=address;actions=new Button[]{back,forward,reload,home};
-      addView(back);addView(forward);addView(address);addView(reload);addView(home);
-    }
-    private int dp(int value){return Math.round(value*getResources().getDisplayMetrics().density);}
-    int readableAddressWidth(){
-      String text=address.getText().toString();int start=text.indexOf("://");start=start<0?0:start+3;
-      int end=text.length();for(char separator:new char[]{'/', '?', '#'}){int index=text.indexOf(separator,start);if(index>=0)end=Math.min(end,index);}
-      // Reserve the ellipsis too, so a long path cannot consume the last host
-      // characters. The actual TextPaint already includes Android font scaling.
-      int host=(int)Math.ceil(address.getPaint().measureText(text.substring(0,end)+"…"));
-      return Math.max(dp(160),host+address.getCompoundPaddingLeft()+address.getCompoundPaddingRight());
-    }
-    @Override protected void onMeasure(int widthSpec,int heightSpec){
-      int action=dp(48),minimum=readableAddressWidth();
-      int width=resolveSize(getPaddingLeft()+getPaddingRight()+4*action+minimum,widthSpec);
-      int available=Math.max(0,width-getPaddingLeft()-getPaddingRight());
-      stacked=available-4*action<minimum;
-      int addressWidth=stacked?available:available-4*action;
-      address.measure(MeasureSpec.makeMeasureSpec(addressWidth,MeasureSpec.EXACTLY),MeasureSpec.makeMeasureSpec(0,MeasureSpec.UNSPECIFIED));
-      int actionSpec=MeasureSpec.makeMeasureSpec(action,MeasureSpec.EXACTLY);
-      for(Button button:actions)button.measure(actionSpec,actionSpec);
-      int content=stacked?address.getMeasuredHeight()+dp(4)+action:Math.max(address.getMeasuredHeight(),action);
-      setMeasuredDimension(width,resolveSize(getPaddingTop()+content+getPaddingBottom(),heightSpec));
-    }
-    @Override protected void onLayout(boolean changed,int left,int top,int right,int bottom){
-      int start=getPaddingLeft(),end=right-left-getPaddingRight(),y=getPaddingTop();
-      int action=actions[0].getMeasuredWidth(),addressHeight=address.getMeasuredHeight();
-      int content=stacked?addressHeight:Math.max(addressHeight,action);
-      int addressTop=y+(content-addressHeight)/2;
-      int addressLeft=stacked?start:start+2*action;
-      address.layout(addressLeft,addressTop,stacked?end:end-2*action,addressTop+addressHeight);
-      int actionTop=stacked?y+addressHeight+dp(4):y+(content-action)/2;
-      for(int i=0;i<actions.length;i++){
-        int x=i<2?start+i*action:end-(4-i)*action;
-        actions[i].layout(x,actionTop,x+action,actionTop+action);
-      }
-    }
-  }
   // ChatGPT is the default website in this browser, so it has the same controls.
   static boolean visibleFor(String url){return true;}
+  static boolean canForward(MainActivity a){return available(a)&&a.remote.canGoForward();}
   void refresh(){
     String url=current();if(row.getVisibility()!=View.VISIBLE)row.setVisibility(View.VISIBLE);
     if(!shown.equals(url)){shown=url;String text=url.startsWith("https://")?url.substring(8):url;address.setText(text.isEmpty()?"网址或搜索":text);address.setContentDescription("当前网址 "+url+"，点击输入网址或搜索");address.setTooltipText(url);}
     BrowserToolbarUi.enabled(back,a.remote!=null&&a.remote.canGoBack());
-    BrowserToolbarUi.enabled(forward,a.remote!=null&&a.remote.canGoForward());
     boolean loading=a.session!=null&&a.session.navigating;
     BrowserToolbarUi.action(reload,loading?"close":"refresh",loading?"停止加载":"刷新网页");
   }

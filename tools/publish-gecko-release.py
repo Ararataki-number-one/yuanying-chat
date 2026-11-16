@@ -36,11 +36,14 @@ def verify_compact_touch_evidence(chrome, source):
     assert chrome['status']=='passed' and chrome['actualAndroidExecution'] and chrome['sourceCommit']==source and len(chrome['cases'])==3,message
     cases=chrome['cases']
     versions=[case.get('navigationContract',1) for case in cases]
-    assert all(type(version) is int and version in (1,2) for version in versions),message
+    assert all(type(version) is int and version in (1,2,3) for version in versions),message
     assert len(set(versions))==1,'Compact chrome cannot mix navigation contract versions.'
-    if versions[0]==2:
+    if versions[0] in (2,3):
         assert chrome['actualAndroidExecution'] is True,message
-        from gecko.compact_chrome_layout_v2 import verify_case
+        if versions[0]==3:
+            from gecko.compact_chrome_layout_v3 import verify_case
+        else:
+            from gecko.compact_chrome_layout_v2 import verify_case
         assert {(case['viewport'],case['fontScale']) for case in cases}=={(360,1),(412,1),(360,2)},message
         for case in cases:verify_case(case,require_browser_chrome=True)
     else:
@@ -140,11 +143,20 @@ if version_code>=40:
 if version_code>=41:
     image=report.get('desktopImageUpload',{})
     assert all(image.get(k) for k in ['productionChooserOpened','imageMimeAndMultiple','pendingPreserved','noPhantomUpload','desktop']),'Desktop image upload regression is required.'
+photo_upload=None
+if version_code>=108:
+    from gecko.photo_upload_contract import verify_photo_upload_evidence
+    from gecko.profile_invocation_contract import verify_installed
+    photo_upload=verify_photo_upload_evidence(args.evidence,args.source)
+    verify_installed(json.loads((args.evidence/'photo-upload-results.json').read_text())['buildIdentity'],report['eventTransport']['buildIdentity'])
 if version_code>=42:
     quiet=json.loads((args.evidence/'quiet-notification-results.json').read_text())
     chrome=json.loads((args.evidence/'compact-chrome-results.json').read_text())
     assert quiet['status']=='passed' and quiet['actualAndroidExecution'] and quiet['sourceCommit']==args.source and quiet['checkCount']>=24 and all(c['pass'] for c in quiet['checks']),'Quiet service and completion reminder regression is required.'
     verify_compact_touch_evidence(chrome,args.source)
+    if version_code>=108:
+        assert all(case['navigationContract']==3 for case in chrome['cases']),'Current bottom browser toolbar evidence is required.'
+        assert chrome['autoCollapse']['navigationContract']==3,'Current menu/navigation lifecycle evidence is required.'
     if version_code>=68:
         from gecko.check_interaction_transfer_evidence import verify_display_sampling
         verify_display_sampling(network)
@@ -219,6 +231,7 @@ if requires_manual_acceptance(manifest):
         authorization_raw=args.direct_release_authorization.read_bytes()
         manifest['releaseAuthorization']=verify_direct_release(json.loads(authorization_raw),manifest)
         manifest['releaseAuthorizationArtifact']=dict(file='release-authorization.json',bytes=len(authorization_raw),sha256=hashlib.sha256(authorization_raw).hexdigest())
+if photo_upload is not None:manifest['photoUploadContentRegression']=photo_upload
 if version_code>=43:manifest['performanceRegression']=performance
 if version_code>=44:manifest['connectionRecoveryRegression']=connection
 if version_code>=45:manifest['interactionTransferRegression']=interaction_transfer
@@ -257,6 +270,7 @@ if version_code>=40:shutil.copy2(args.evidence/'network-performance-results.json
 if version_code>=42:
     for name in ['quiet-notification-results.json','compact-chrome-results.json']:shutil.copy2(args.evidence/name,stage/name)
 performance_files=['gecko-performance-results.json','snapshot-host-results.json','reply-observation-host-results.json','ui-visual-results.json','ui-build-comparison.json'] if version_code>=43 else []
+if photo_upload is not None:performance_files.extend(['photo-upload-results.json',*photo_upload['files']])
 if version_code>=44:performance_files.append('reply-binding-host-results.json')
 if version_code>=44:performance_files.append('network-client-binding-results.json')
 if version_code>=45:performance_files.extend(['update-transfer-results.json','update-transfer-host-results.json','interaction-host-results.json'])
@@ -298,8 +312,9 @@ if version_code>=43:
     shutil.copy2(root/'tools/gecko/check_performance_evidence.py',stage/'tools/gecko/check_performance_evidence.py')
     shutil.copy2(root/'tools/gecko/ui_visual_contract.py',stage/'tools/gecko/ui_visual_contract.py')
     if (root/'tools/gecko/chrome_collapse_contract.py').is_file():shutil.copy2(root/'tools/gecko/chrome_collapse_contract.py',stage/'tools/gecko/chrome_collapse_contract.py')
-    for name in ('compact_chrome_layout_v2.py','chrome_collapse_contract_v2.py','workspace_navigation_contract.py','download_workspace_contract_v2.py'):
+    for name in ('compact_chrome_layout_v2.py','chrome_collapse_contract_v2.py','workspace_navigation_contract.py','download_workspace_contract_v2.py','compact_chrome_layout_v3.py','chrome_collapse_contract_v3.py','workspace_navigation_contract_v3.py'):
         shutil.copy2(root/'tools/gecko'/name,stage/'tools/gecko'/name)
+if version_code>=108:shutil.copy2(root/'tools/gecko/photo_upload_contract.py',stage/'tools/gecko/photo_upload_contract.py')
 shutil.copy2(root/'tools/gecko/release_channel_contract.py',stage/'tools/gecko/release_channel_contract.py')
 shutil.copy2(root/'tools/gecko/network_scope_artifacts.py',stage/'tools/gecko/network_scope_artifacts.py')
 shutil.copy2(root/'tools/gecko/release_channel_contract_test.py',stage/'tools/gecko/release_channel_contract_test.py')

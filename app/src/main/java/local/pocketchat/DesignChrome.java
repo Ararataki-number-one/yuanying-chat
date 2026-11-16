@@ -19,7 +19,6 @@ final class DesignChrome {
   final FrameLayout compact;
   final LinearLayout top,networkRow;
   final LinearLayout modes=null; // Historical tests may inspect the retired control.
-  final Button more;
   final LinearLayout diagnosticRow;
   final Button diagnosticBack,diagnosticResults;
   private final View[] actions;
@@ -72,8 +71,6 @@ final class DesignChrome {
     int compactHeight=Math.max(a.dp(48),textHeight(compactTitle)+a.dp(8));
     a.toolbar.addView(compact,new LinearLayout.LayoutParams(-1,compactHeight));
     top=DesignUi.row(a);
-    a.navigation=new Ui.IconButton(a,"hamburger","管理环境",false);
-    a.navigation.setOnClickListener(v->a.showDrawer());
     title=ReferenceUi.text(a,compactTitle.getText().toString(),16,DesignUi.GLASS_INK,true);
     ReferenceUi.readable(title);
     profileName=title.getText().toString();
@@ -87,11 +84,9 @@ final class DesignChrome {
     title.setContentDescription("当前环境："+profileName+"，点按输入网址，长按切换环境");
     addressCapsule(title);
 
-    more=ReferenceUi.more(a,()->a.moreSheet());
     int capsuleHeight=Math.max(a.dp(52),textHeight(title)+a.dp(12));
     int topHeight=Math.max(a.dp(56),capsuleHeight+a.dp(4));
     top.setClipChildren(false);top.setClipToPadding(false);
-    top.addView(headerAction(a.navigation),new LinearLayout.LayoutParams(a.dp(56),topHeight));
     // The visual capsule stays compact while its existing touch delegate keeps
     // a 48 dp action. AT_MOST child measurement also fits narrow windows.
     FrameLayout capsuleHost=new FrameLayout(a);
@@ -99,9 +94,9 @@ final class DesignChrome {
     capsuleHost.setPadding(a.dp(4),0,a.dp(4),0);
     capsuleHost.addView(title,new FrameLayout.LayoutParams(-2,capsuleHeight,Gravity.CENTER));
     top.addView(capsuleHost,new LinearLayout.LayoutParams(0,topHeight,1));
-    top.addView(headerAction(more),new LinearLayout.LayoutParams(a.dp(56),topHeight));
     a.toolbar.addView(top,new LinearLayout.LayoutParams(-1,topHeight));
-    a.geckoAddress=new GeckoAddressUi(a);a.toolbar.addView(a.geckoAddress.row,new LinearLayout.LayoutParams(-1,-2));
+    // AppHub owns the bottom browser controls; the header contains only identity.
+    a.geckoAddress=new GeckoAddressUi(a);
 
     dot=ReferenceUi.text(a,"●",9,ReferenceUi.MUTED,false);
     dot.setTextSize(android.util.TypedValue.COMPLEX_UNIT_DIP,9);
@@ -120,30 +115,25 @@ final class DesignChrome {
     for(TextView text:new TextView[]{dot,a.networkLine,latencyWord,stateWord})lineHeight=Math.max(lineHeight,textHeight(text)+a.dp(2));
     networkRow=new NetworkStatusRow(lineHeight);
     networkRow.setPadding(a.dp(6),0,a.dp(6),a.dp(4));
-    // This is a read-only status line. Network navigation remains in the bottom bar.
+    // Details remain current, but occupy space only when the browser menu opens.
     networkRow.setClickable(false);
     networkRow.setFocusable(false);
-    a.toolbar.addView(networkRow,new LinearLayout.LayoutParams(-1,-2));
     diagnosticRow=DesignUi.row(a);diagnosticBack=new Button(a);diagnosticBack.setText("返回原聊天");diagnosticResults=new Button(a);diagnosticResults.setText("查看自检结果");
     diagnosticBack.setOnClickListener(v->{if(!a.session.audit.returnRequestIdentity())EnvironmentAuditUi.show(a);});diagnosticResults.setOnClickListener(v->EnvironmentAuditUi.show(a));
     diagnosticRow.addView(diagnosticBack,new LinearLayout.LayoutParams(0,-2,1));diagnosticRow.addView(diagnosticResults,new LinearLayout.LayoutParams(0,-2,1));diagnosticRow.setVisibility(View.GONE);a.toolbar.addView(diagnosticRow,new LinearLayout.LayoutParams(-1,-2));
     compact.setVisibility(View.GONE);top.setVisibility(View.VISIBLE);networkRow.setVisibility(View.VISIBLE);
     root.addView(a.toolbar,new LinearLayout.LayoutParams(-1,-2));
-    actions=new View[]{a.navigation,title,more};
+    actions=new View[]{title};
     a.toolbar.addOnLayoutChangeListener((v,l,t,r,b,ol,ot,or,ob)->layoutTouchTargets());
     a.toolbar.post(this::layoutTouchTargets);
   }
 
-  /** Equal side frames keep the independent address capsule on the screen centre. */
-  private FrameLayout headerAction(Button button){
-    button.setMinHeight(0);button.setMinimumHeight(0);
-    button.setPadding(0,0,0,0);
-    button.setBackground(DesignUi.glass(a,26));
-    GlassMotion.press(button,false);
-    FrameLayout frame=new FrameLayout(a);
-    frame.setClipChildren(false);frame.setClipToPadding(false);
-    frame.addView(button,new FrameLayout.LayoutParams(a.dp(52),a.dp(52),Gravity.CENTER));
-    return frame;
+  /** Reuse the current status views without retaining an earlier menu's parent. */
+  void addMenuStatus(ReferenceUi.Modal menu){
+    if(networkRow.getParent() instanceof ViewGroup)((ViewGroup)networkRow.getParent()).removeView(networkRow);
+    menu.body.addView(networkRow,new LinearLayout.LayoutParams(-1,-2));
+    menu.setOnDismissListener(ignored->{if(networkRow.getParent()==menu.body)menu.body.removeView(networkRow);});
+    updateMetrics();
   }
 
   /** Wrap at the measured width, including split-screen and enlarged native text. */
@@ -246,8 +236,6 @@ final class DesignChrome {
       if(!visible){
         if(title!=null)GlassMotion.reset(title);
         if(compactTitle!=null)GlassMotion.reset(compactTitle);
-        if(a.navigation!=null)GlassMotion.reset(a.navigation);
-        if(more!=null)GlassMotion.reset(more);
       }
     }
     @Override public boolean dispatchTouchEvent(MotionEvent event){
@@ -265,7 +253,6 @@ final class DesignChrome {
   private void setCollapsed(boolean value){
     if(collapsed==value)return;collapsed=value;
     GlassMotion.reset(title);GlassMotion.reset(compactTitle);
-    GlassMotion.reset(a.navigation);GlassMotion.reset(more);
     // Never leave hidden expanded controls' touch delegates over the compact label.
     touchTargets=null;a.toolbar.setTouchDelegate(null);
     compact.setVisibility(value?View.VISIBLE:View.GONE);
@@ -273,7 +260,6 @@ final class DesignChrome {
     View visible=value?compact:top;
     visible.animate().cancel();
     if(android.animation.ValueAnimator.areAnimatorsEnabled()){visible.setAlpha(.65f);visible.animate().alpha(1f).setDuration(140).start();}else visible.setAlpha(1f);
-    networkRow.setVisibility(View.VISIBLE);
     a.toolbar.post(this::layoutTouchTargets);
     a.applyFocusLayout();
   }
@@ -383,7 +369,7 @@ final class DesignChrome {
 
   private void layoutTouchTargets(){
     if(collapsed){touchTargets=null;a.toolbar.setTouchDelegate(null);return;}
-    if(a.toolbar.getWidth()<=0||networkRow.getHeight()<=0)return;
+    if(a.toolbar.getWidth()<=0||top.getHeight()<=0)return;
     Rect[] visible=new Rect[actions.length],expanded=new Rect[actions.length];
     int[] toolbarAt=new int[2],actionAt=new int[2];
     a.toolbar.getLocationOnScreen(toolbarAt);
@@ -393,7 +379,7 @@ final class DesignChrome {
       int left=actionAt[0]-toolbarAt[0],top=actionAt[1]-toolbarAt[1];
       visible[i]=new Rect(left,top,left+actions[i].getWidth(),top+actions[i].getHeight());
     }
-    int touchBottom=Math.min(a.toolbar.getHeight(),networkRow.getTop()+networkRow.getHeight()/2);
+    int touchBottom=top.getBottom();
     for(int i=0;i<actions.length;i++){
       Rect bounds=visible[i];
       int left=i==0?0:(visible[i-1].right+bounds.left)/2;

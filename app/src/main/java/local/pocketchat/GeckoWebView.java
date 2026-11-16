@@ -632,6 +632,7 @@ class GeckoWebView extends FrameLayout {
           if("cookies".equals(data.optString("kind")))cookieCallbacks.complete(incoming,data.optInt("id"),data.optBoolean("error")?null:data.optString("value"));
           if("requestIdentityScopeResult".equals(data.optString("kind")))cookieCallbacks.complete(incoming,data.optInt("id"),data.optString("result","null"));
           if("timezoneReady".equals(data.optString("kind")))cookieCallbacks.complete(incoming,data.optInt("id"),data.optString("result","null"));
+          if("photoCanvasReady".equals(data.optString("kind")))cookieCallbacks.complete(incoming,data.optInt("id"),data.optString("result","null"));
           if("timezoneIpReady".equals(data.optString("kind"))){IpLookup claim=ipLookup;if(claim!=null&&claim.sent&&claim.port==incoming&&claim.id==data.optInt("id"))cookieCallbacks.complete(incoming,claim.id,data.optString("result","null"));}
         }
         @Override public void onDisconnect(WebExtension.Port incoming){if(routePort==incoming){closeExitIpPage();routePort=null;retireTimeZones();requestHeadersInstalled=false;retireRequestHeaderPolicy();routePrepared=false;cancelProtectionTasks();nativeProtection.disconnected();protectionRequest=nativeProtection.token();privacyReady=false;fingerprintingProtected=false;metadata.policyAcknowledged=false;metadata.rfpAcknowledged=false;if(owner.privacy.level()>=2)owner.setStatus(protectionSummary());owner.changed();}cookieCallbacks.cancel(incoming);}
@@ -869,11 +870,13 @@ class GeckoWebView extends FrameLayout {
           @Override public Intent createIntent(){return new Intent(Intent.ACTION_OPEN_DOCUMENT).setType("*/*").addCategory(Intent.CATEGORY_OPENABLE);}
         };
         final long uploadEpoch=owner.navigationEpoch;owner.resourceFileWork(true,true);
+        final GeckoPhotoPermission photo=new GeckoPhotoPermission(GeckoWebView.this,s);
         java.util.concurrent.atomic.AtomicBoolean selected=new java.util.concurrent.atomic.AtomicBoolean();
         java.util.concurrent.atomic.AtomicBoolean cancelled=new java.util.concurrent.atomic.AtomicBoolean();
         ValueCallback<Uri[]> selection=uris->{
           if(!selected.compareAndSet(false,true))return;
           if(uris==null||uris.length==0||destroyed||cancelled.get()||prompt.isComplete()){
+            photo.cancel();
             owner.resourceFileWork(true,false);if(!prompt.isComplete())result.complete(prompt.dismiss());return;
           }
           // The picker puts the Activity in the background. Transfer ownership
@@ -883,19 +886,20 @@ class GeckoWebView extends FrameLayout {
           final String beforePreparation=owner.status;owner.setStatus("准备附件…");
           try{uploadWorker.execute(()->{try{
             GeckoUploadFiles.Selection files=GeckoUploadFiles.prepare(owner.context,uris,cancelled::get);
-            owner.handler.post(()->{try{
-              if(destroyed||cancelled.get()||s!=current||!s.isOpen()||uploadEpoch!=owner.navigationEpoch||prompt.isComplete()){retireUnhandedUpload(files);if(!prompt.isComplete())result.complete(prompt.dismiss());return;}
+            owner.handler.post(()->photo.allow(files.containsImage,issue->{try{
+              if(!issue.isEmpty()||destroyed||cancelled.get()||s!=current||!s.isOpen()||uploadEpoch!=owner.navigationEpoch||prompt.isComplete()){photo.cancel();retireUnhandedUpload(files);if(!prompt.isComplete())result.complete(prompt.dismiss());if(!issue.isEmpty()&&!destroyed&&!cancelled.get())owner.setStatus(issue);return;}
               PromptResponse response;
               try{response=prompt.confirm(owner.context,files.files);}
-              catch(RuntimeException error){retireUnhandedUpload(files);if(!prompt.isComplete())result.complete(prompt.dismiss());owner.setStatus("附件未能交给网页，请重新选择");return;}
-              uploadFiles.add(files);owner.resourceFilesPrepared(files.files,uploadEpoch);result.complete(response);
-            }finally{uploadPreparationFinished(beforePreparation);}});
-          }catch(IOException error){if(error instanceof GeckoUploadFiles.Cancelled)lastUploadCleanup=((GeckoUploadFiles.Cancelled)error).cleanup;owner.handler.post(()->{uploadPreparationFinished(beforePreparation);if(!prompt.isComplete())result.complete(prompt.dismiss());if(!destroyed&&!cancelled.get())owner.setStatus(error.getMessage());});}});}
-          catch(RejectedExecutionException error){uploadPreparationFinished(beforePreparation);if(!prompt.isComplete())result.complete(prompt.dismiss());if(!destroyed)owner.setStatus("附件读取已结束，请重新打开文件选择器");}
+              catch(RuntimeException error){photo.cancel();retireUnhandedUpload(files);if(!prompt.isComplete())result.complete(prompt.dismiss());owner.setStatus("附件未能交给网页，请重新选择");return;}
+              uploadFiles.add(files);owner.resourceFilesPrepared(files.files,uploadEpoch);photo.handedOff();result.complete(response);
+            }finally{uploadPreparationFinished(beforePreparation);}}));
+          }catch(IOException error){if(error instanceof GeckoUploadFiles.Cancelled)lastUploadCleanup=((GeckoUploadFiles.Cancelled)error).cleanup;owner.handler.post(()->{photo.cancel();uploadPreparationFinished(beforePreparation);if(!prompt.isComplete())result.complete(prompt.dismiss());if(!destroyed&&!cancelled.get())owner.setStatus(error.getMessage());});}});}
+          catch(RejectedExecutionException error){photo.cancel();uploadPreparationFinished(beforePreparation);if(!prompt.isComplete())result.complete(prompt.dismiss());if(!destroyed)owner.setStatus("附件读取已结束，请重新打开文件选择器");}
         };
         prompt.setDelegate(new PromptInstanceDelegate(){
           @Override public void onPromptDismiss(BasePrompt ignored){
             cancelled.set(true);
+            photo.cancel();
             // Gecko dismisses an obsolete prompt without completing BasePrompt.
             // Complete it once and close only the picker belonging to this request.
             if(requestChrome instanceof Attachments.Chrome)((Attachments.Chrome)requestChrome).dismissFilePrompt(selection);
@@ -903,10 +907,13 @@ class GeckoWebView extends FrameLayout {
             if(!prompt.isComplete())result.complete(prompt.dismiss());
           }
         });
-        boolean handled;
-        try{handled=requestChrome.onShowFileChooser(null,selection,params);}
-        catch(RuntimeException error){selection.onReceiveValue(null);owner.setStatus("文件选择器未能打开，请重试");return result;}
-        if(!handled)selection.onReceiveValue(null);return result;
+        photo.capture(()->{
+          if(!photo.current()||cancelled.get()||prompt.isComplete()){selection.onReceiveValue(null);return;}
+          boolean handled;
+          try{handled=requestChrome.onShowFileChooser(null,selection,params);}
+          catch(RuntimeException error){selection.onReceiveValue(null);owner.setStatus("文件选择器未能打开，请重试");return;}
+          if(!handled)selection.onReceiveValue(null);
+        });return result;
       }
     });
     session.setPermissionDelegate(new GeckoSession.PermissionDelegate(){
@@ -916,6 +923,8 @@ class GeckoWebView extends FrameLayout {
     });
     return session;
   }
+
+  String photoUploadOrigin(GeckoSession session){return SitePermissions.origin(locations.get(session));}
   final WebExtension.MessageDelegate pageMessages=new WebExtension.MessageDelegate(){
     @Override public void onConnect(WebExtension.Port port){
       GeckoSession source=port.sender.session;

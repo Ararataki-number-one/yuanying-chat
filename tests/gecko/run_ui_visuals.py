@@ -12,11 +12,12 @@ sys.path.insert(0,str(root/'tools/gecko'))
 from ui_visual_capture import UiVisualCapture
 from diagnostic_capture_privacy import checked_text
 from ui_visual_contract import LIGHT_SCENES, LARGE_SCENES, DARK_SCENES, LANDSCAPE_SCENES, required_captures, verify_captures, verify_download_location
-from workspace_navigation_contract import conversation_header
-from compact_chrome_v2 import run_case as capture_compact_v2
+from workspace_navigation_contract_v3 import conversation_header
+from compact_chrome_v3 import run_case as capture_compact_v3
 from workspace_ui_v2 import capture_selection as capture_environment_selection
 from download_workspace_v2 import capture as capture_download_workspace
-UI_NAVIGATION_CONTRACT=2
+UI_NAVIGATION_CONTRACT=3
+WORKSPACE_LAYOUT_CONTRACT=2
 scenes=LIGHT_SCENES
 last_geometry=None
 ui_capture=UiVisualCapture(adb=args.adb,serial=args.serial,source=source,diagnostics=out/'ui-visual-capture-attempts.json')
@@ -98,12 +99,12 @@ def capture(variant,width,height,scale,scene,theme='light'):
     label_nonce=uuid.uuid4().hex if scene=='downloads' else None
     launch=['shell','am','start','-W','-n',package+'/local.pocketchat.UiVisualIntegrationActivity','--es','visualAction',scene]
     if label_nonce:launch.extend(['--es','visualNonce',label_nonce])
-    if label_nonce and UI_NAVIGATION_CONTRACT==2:launch.extend(['--ei','visualDownloadContract','2'])
+    if label_nonce and WORKSPACE_LAYOUT_CONTRACT==2:launch.extend(['--ei','visualDownloadContract','2'])
     adb(*launch)
     required={'chat':'会话','environments':'环境管理','network':'固定测试出口','proxy':'代理地址','entries':'选择入口','browser':'基本信息','preferences':'基本信息','settings':'启动与界面','network-menu':'导入网络',
       'environment-picker':'切换环境','downloads':'项目资料与界面设计说明.pdf','feedback':'一句话说明','appearance':'白天与黑夜','default-entry':'默认环境与启动入口',
       'subscription-form':'订阅名称','exit-form':'SOCKS5 服务器','route-editor':'保存并应用','import':'选择分享文件','brand':'元婴期院士','templates':'选择模板','zoom':'网页缩放','update':'当前安装版本','audit':'环境自检与变更','file-preview':'双指缩放 · 拖动查看','delete-file':'删除文件','share-preview':'分享整条线路'}[scene]
-    if UI_NAVIGATION_CONTRACT==2:required={'chat':'当前环境：日常会话','settings':'启动与外观'}.get(scene,required)
+    if WORKSPACE_LAYOUT_CONTRACT==2:required={'chat':'当前环境：日常会话','settings':'启动与外观'}.get(scene,required)
     deadline=time.monotonic()+35;readiness_scrolls=0;download_observation_history=None
     while True:
         xml=dump(deadline=deadline)
@@ -117,7 +118,7 @@ def capture(variant,width,height,scale,scene,theme='light'):
                 adb('shell','input','swipe',str(x),str(top+(bottom-top)*4//5),str(x),str(top+(bottom-top)//5),'350');readiness_scrolls+=1
         if time.monotonic()>deadline:raise AssertionError((variant,scene,'screen did not appear',xml[-2000:]))
         time.sleep(.5)
-    if scene=='downloads' and readiness_scrolls and UI_NAVIGATION_CONTRACT!=2:
+    if scene=='downloads' and readiness_scrolls and WORKSPACE_LAYOUT_CONTRACT!=2:
         # The file cards share a real ScrollView with the discovery controls.
         # Retain the first clipped native observation; after actual user input,
         # request a fresh read of the same laid-out button without rebuilding UI.
@@ -149,7 +150,7 @@ def capture(variant,width,height,scale,scene,theme='light'):
             adb('shell','input','swipe',str(x),str(top+(bottom-top)*4//5),str(x),str(top+(bottom-top)//5),'350')
         assert seen==expected,(variant,scene,'Preference controls missing or unexpected',sorted(seen))
         preference_check={'preferenceControls':sorted(seen),'removedNoticeControlsAbsent':True,'scrollFrames':len(collected),'tabScrolls':tab_scrolls}
-    if scene=='chat' and UI_NAVIGATION_CONTRACT==2:
+    if scene=='chat' and UI_NAVIGATION_CONTRACT==3:
         time.sleep(2.5);xml=dump()
         conversation_header(xml,package,width,height,scale,'日常会话',browser=True)
     elif scene=='chat':
@@ -179,7 +180,7 @@ def capture(variant,width,height,scale,scene,theme='light'):
     density=int(re.findall(r'density: (\d+)',adb('shell','wm','density'))[-1]);assert density==480,density
     (shots/(stem+'.png')).write_bytes(raw)
     record={'variant':variant,'theme':theme,'logicalViewport':f'{width}x{height}','actualPixels':list(pixels),'densityDpi':density,'fontScale':scale,'scene':scene,'image':stem+'.png','xml':stem+'.xml','readinessScrolls':readiness_scrolls}
-    if scene=='downloads' and UI_NAVIGATION_CONTRACT==2:
+    if scene=='downloads' and WORKSPACE_LAYOUT_CONTRACT==2:
         capture_download_workspace(adb_scene,dump,lambda limit:subprocess.check_output([args.adb,'-s',args.serial,'exec-out','screencap','-p'],timeout=min(30,limit-time.monotonic())),source,label_nonce,shots,stem,record)
     elif scene=='downloads':
         # Small native payload from this exact Activity invocation; never infer
@@ -201,7 +202,7 @@ def capture(variant,width,height,scale,scene,theme='light'):
         (shots/(stem+'-download-location.json')).write_text(payloads[0]+'\n')
         verify_download_location(record,source)
     if scene=='preferences':record.update(preference_check)
-    if scene=='environments' and UI_NAVIGATION_CONTRACT==2:
+    if scene=='environments' and WORKSPACE_LAYOUT_CONTRACT==2:
         capture_environment_selection(adb,lambda *parts:subprocess.check_output([args.adb,'-s',args.serial,*parts],timeout=90),dump,xml,package,width,height,shots,stem,record)
     elif scene=='environments':
         # Exercise the real multi-select footer, including doubled accessibility text.
@@ -328,8 +329,8 @@ try:
         return {'title':'快速切换环境','searchDescription':'搜索要切换的环境','closeDescription':'关闭快速切换环境','currentSlot':slot,
                 'titleBounds':bounds(title[0]),'searchBounds':bounds(search[0]),'currentBounds':bounds(current[0]),'closeBounds':bounds(close[0])}
     for width,scale in [(360,1),(412,1),(360,2)]:
-        if UI_NAVIGATION_CONTRACT==2:
-            compact.append(capture_compact_v2(adb,lambda *parts:subprocess.check_output([args.adb,'-s',args.serial,*parts],timeout=90),dump,chrome_event,focus,visible,quick_environment_sheet,shots,package,width,scale))
+        if UI_NAVIGATION_CONTRACT==3:
+            compact.append(capture_compact_v3(adb,lambda *parts:subprocess.check_output([args.adb,'-s',args.serial,*parts],timeout=90),dump,chrome_event,focus,visible,quick_environment_sheet,shots,package,width,scale))
             continue
         adb('shell','am','force-stop',package);adb('logcat','-c')
         adb('shell','wm','size',f'{width*3}x1920');adb('shell','wm','density','480');adb('shell','settings','put','system','font_scale',str(scale))
@@ -491,7 +492,7 @@ try:
         (out/'ui-reload-confirmation.json').write_text(json.dumps(reload_confirmation,ensure_ascii=False,indent=2)+'\n')
         (out/'ui-reload-log.txt').write_text(checked_text(adb('logcat','-d'))[0])
         from run_chrome_collapse import run_versioned as run_chrome_collapse
-        auto_collapse=run_chrome_collapse(adb,lambda *parts:subprocess.check_output([args.adb,'-s',args.serial,*parts],timeout=90),source,reload_loopback.TRACE,out,focus,navigation_contract=2)
+        auto_collapse=run_chrome_collapse(adb,lambda *parts:subprocess.check_output([args.adb,'-s',args.serial,*parts],timeout=90),source,reload_loopback.TRACE,out,focus,navigation_contract=UI_NAVIGATION_CONTRACT)
     finally:
         (out/'ui-collapse-server-trace.json').write_text(json.dumps({'sourceCommit':source,'diagnosticOnly':True,'releaseAcceptance':False,'events':reload_loopback.TRACE},ensure_ascii=False,indent=2)+'\n')
         reload_http.shutdown();reload_socks.shutdown()

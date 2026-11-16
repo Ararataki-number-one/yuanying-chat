@@ -28,6 +28,7 @@ STUBS = {
     'android/view/Window.java': 'package android.view; public class Window {}',
     'android/app/Activity.java': '''package android.app; public class Activity {
       public static final int RESULT_OK=-1; public android.view.Window getWindow(){return new android.view.Window();}
+      public android.content.Intent getIntent(){return new android.content.Intent();}
       public void startActivityForResult(android.content.Intent i,int r){}
     }''',
     'android/net/Uri.java': '''package android.net; public class Uri {
@@ -37,6 +38,7 @@ STUBS = {
       public static final String ACTION_OPEN_DOCUMENT="open",EXTRA_ALLOW_MULTIPLE="multiple";
       public android.net.Uri uri;public String getAction(){return ACTION_OPEN_DOCUMENT;}
       public String getType(){return "image/*";}public boolean getBooleanExtra(String k,boolean d){return true;}
+      public int getIntExtra(String k,int d){return d;}
       public Intent setData(android.net.Uri v){uri=v;return this;}
     }''',
     'android/webkit/WebView.java': 'package android.webkit; public class WebView {}',
@@ -57,6 +59,7 @@ final class GeckoIntegrationTestActivity extends Activity {
   static final class J {static JSONObject held;static JSONObject obj(Object... pairs){JSONObject o=new JSONObject();for(int i=0;i<pairs.length;i+=2)o.put((String)pairs[i],pairs[i+1]);if("web".equals(o.optString("kind")))held=o;return o;}static JSONObject parse(String s){return new JSONObject(s);}}
   static final class EventStore{String nonce="controlled-nonce";}
   static final class Privacy{int level(){return 0;}}
+  static final class Prefs{Prefs edit(){return this;}Prefs putInt(String key,int value){return this;}boolean commit(){return true;}}
   static final class Reading{void configure(boolean v){}}
   static final class Handler{
     final java.util.ArrayDeque<Runnable> work=new java.util.ArrayDeque<>();
@@ -65,8 +68,8 @@ final class GeckoIntegrationTestActivity extends Activity {
     void next(){check(!work.isEmpty(),"scheduled work required");SystemClock.now+=delays.remove();work.remove().run();}
   }
   final class Session{final Reading reading=new Reading();final Privacy privacy=new Privacy();final Handler handler=new Handler();
-    final FixtureView web=new FixtureView();JSONObject pending;boolean navigating;Object prefs=new Object();JSONArray attachments=new JSONArray();}
-  class GeckoWebView extends WebView{boolean desktop;}
+    final FixtureView web=new FixtureView();JSONObject pending;boolean navigating;Prefs prefs=new Prefs();JSONArray attachments=new JSONArray();}
+  class GeckoWebView extends WebView{boolean desktop,privacyReady=true,fingerprintingProtected;int protectionLevel;}
   final class DisplayContext{Object base;Object getBaseContext(){return base;}}
   final class FixtureView extends GeckoWebView{
     boolean chooserOrigin,visible;String target,upload="";MainActivity host;android.webkit.WebChromeClient chrome;

@@ -265,9 +265,9 @@ public final class BrowserIntegrationActivity extends BrowserActivity {
     ChromiumRouteLease.Snapshot value=ChromiumRouteLease.snapshot();leaseObservations.put(new JSONObject().put("stage",name).put("surfaces",value.surfaces).put("downloads",value.downloads).put("changes",value.changes).put("held",ChromiumRouteLease.held()).put("nativeRouteBusy",NativeNetwork.get(this).routeBusy()));return value;
   }
   boolean controlsVisible()throws JSONException{
-    JSONArray controls=new JSONArray();boolean available=true;String[] names={"address","back","forward","tabs","reload"};int at=0;
-    for(android.view.View view:new android.view.View[]{address,back,forward,tabCount,reload}){android.graphics.Rect rect=new android.graphics.Rect();boolean shown=view.isShown()&&view.getGlobalVisibleRect(rect);controls.put(new JSONObject().put("name",names[at++]).put("shown",shown).put("visibleWidth",rect.width()).put("visibleHeight",rect.height()).put("minimum",dp(40)));if(!shown||rect.width()<dp(40)||rect.height()<dp(40))available=false;}
-    layoutObservations.put(new JSONObject().put("orientation",getResources().getConfiguration().orientation).put("fontScale",getResources().getConfiguration().fontScale).put("rootWidth",root.getWidth()).put("rootHeight",root.getHeight()).put("controls",controls));return available;
+    JSONArray controls=new JSONArray();boolean available=true;String[] names={"back","home","address","reload","menu"};int at=0;
+    for(android.view.View view:new android.view.View[]{back,home,address,reload,menu}){android.graphics.Rect rect=new android.graphics.Rect();boolean shown=view.isShown()&&view.getGlobalVisibleRect(rect);controls.put(new JSONObject().put("name",names[at++]).put("shown",shown).put("visibleWidth",rect.width()).put("visibleHeight",rect.height()).put("minimum",dp(48)));if(!shown||rect.width()<dp(48)||rect.height()<dp(48))available=false;}
+    layoutObservations.put(new JSONObject().put("navigationContract",3).put("orientation",getResources().getConfiguration().orientation).put("fontScale",getResources().getConfiguration().fontScale).put("density",getResources().getDisplayMetrics().density).put("rootWidth",root.getWidth()).put("rootHeight",root.getHeight()).put("controls",controls));return available;
   }
   void orientations(Step after)throws Exception{
     step("rotate-landscape");await("landscape at large font",()->getResources().getConfiguration().orientation==android.content.res.Configuration.ORIENTATION_LANDSCAPE&&root.getWidth()>root.getHeight(),()->{

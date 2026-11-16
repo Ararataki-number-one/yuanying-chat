@@ -105,11 +105,20 @@ def main():
     jobs.append(('display-acceptance', [
         [sys.executable, 'tests/gecko_glass_navigation_capture_test.py'],
         [sys.executable, 'tests/glass_ui_validation_test.py'],
+        [sys.executable, 'tests/browser_bottom_toolbar_test.py'],
+        [sys.executable, 'tests/browser_workspace_capture_contract_test.py'],
+        [sys.executable, 'tests/profile_navigation_v3_test.py'],
+        [sys.executable, 'tests/gecko_photo_upload_contract_test.py'],
         [sys.executable, 'tests/browser_workspace_device_configuration_test.py'],
         [sys.executable, 'tests/profile_ui_device_preparation_test.py']], None))
     jobs.append(('event-transport', [
         [sys.executable, 'tests/gecko_event_transfer_test.py'],
         [sys.executable, 'tests/profile_event_journal_discovery_test.py']], None))
+    jobs.append(('photo-upload-permission', [
+        [sys.executable, 'tests/gecko_photo_permission_test.py'],
+        [sys.executable, 'tests/gecko_upload_files_test.py'],
+        ['node', '--test', 'tests/request-identity/native_photo_permission_test.cjs'],
+        ['node', '--test', 'tests/chromium-fingerprint-script.test.cjs']], None))
     host('address-ui', 'tests/browser_fingerprint_fixture_test.py', [
         'BrowserFingerprintFixtureTests.test_actual_browser_address_navigation_and_history_controls',
         'BrowserFingerprintFixtureTests.test_actual_browser_address_row_reflows_without_recreating_controls'], report=False)

@@ -176,6 +176,12 @@ const handleHostMessage=async(message,port)=>{
     catch(_){result={schema:1,status:'failed',nativeSettingReadback:false,reason:'native-operation-failed'};}
     postHost(port,{kind:'timezoneReady',id:message.id,result:JSON.stringify(result)});return;
   }
+  if(['photoCanvasCapture','photoCanvasGrant','photoCanvasRelease'].includes(message.kind)&&Number.isInteger(message.id)&&message.id>0){
+    let result;
+    try{result=await globalThis.PocketNativePhotoBridge?.handle(message)??{schema:1,status:'failed'};}
+    catch(_){result={schema:1,status:'failed'};}
+    postHost(port,{kind:'photoCanvasReady',id:message.id,result:JSON.stringify(result)});return;
+  }
   if(message.kind==='prepare'){
     const claim=claimProtection(message,port);
     try{
@@ -228,6 +234,7 @@ const connectHost=()=>{
     if(port!==host)return;
     host=null;latestProtection=currentProtectionRequest=confirmedProtection=null;
     timezoneIp?.close();timezoneIp=null;
+    globalThis.PocketNativePhotoBridge?.clear();
     globalThis.PocketGeckoRequestHeaders?.clear(port);
     try{globalThis.PocketRequestIdentityBackground?.clear();}catch(_){}
     if(protectionPending?.port===port){finishProtection(protectionPending,false,false,'bridge-disconnected');protectionPending=null;}

@@ -53,12 +53,21 @@ class BrowserHostRegistryTests(unittest.TestCase):
         current = declared_cases(raw, self.out)
         self.assertEqual(len(original), 190)
         self.assertEqual(current[:190], original)
-        self.assertEqual(len(current), 191)
-        name, command, report = current[-1]
+        self.assertEqual(len(current), 198)
+        name, command, report = current[190]
         self.assertEqual(name, 'gecko-texture-surface')
         self.assertEqual(command[1], 'tests/gecko-texture-surface-host/run.py')
         self.assertIn('--require-sdk', command)
         self.assertEqual(report, str(self.out / 'gecko-texture-surface.json'))
+        self.assertEqual(current[191:], [
+            ('bottom-browser-toolbar', [sys.executable, 'tests/browser_bottom_toolbar_test.py'], None),
+            ('browser-workspace-capture', [sys.executable, 'tests/browser_workspace_capture_contract_test.py'], None),
+            ('browser-navigation-v3', [sys.executable, 'tests/profile_navigation_v3_test.py'], None),
+            ('photo-upload-content', [sys.executable, 'tests/gecko_photo_upload_contract_test.py'], None),
+            ('gecko-photo-picker-permission', [sys.executable, 'tests/gecko_photo_permission_test.py'], None),
+            ('gecko-upload-file-integrity', [sys.executable, 'tests/gecko_upload_files_test.py'], None),
+            ('gecko-native-photo-permission', ['node', '--test', 'tests/request-identity/native_photo_permission_test.cjs'], None),
+        ])
         self.assertEqual(len({row[0] for row in current}), len(current))
         executions = [node for node in ast.walk(ast.parse(raw)) if isinstance(node, ast.Call)
                       and isinstance(node.func, ast.Attribute) and node.func.attr == 'run'
@@ -74,7 +83,7 @@ class BrowserHostRegistryTests(unittest.TestCase):
 
     def test_explicit_local_sdk_paths_reach_the_same_required_control(self):
         cases = declared_cases(self.current, self.out, sdk=True)
-        command = cases[-1][1]
+        command = next(row[1] for row in cases if row[0] == 'gecko-texture-surface')
         self.assertEqual(command[command.index('--sdk-classes') + 1], str(self.out / 'actual-sdk.jar'))
         self.assertEqual(command[command.index('--sdk-receipt') + 1], str(self.out / 'actual-sdk-receipt.json'))
         self.assertIn('--require-sdk', command)
@@ -88,6 +97,14 @@ class BrowserHostRegistryTests(unittest.TestCase):
                 self.assertNotEqual(changed, self.current)
                 with self.assertRaises(AssertionError):
                     self.preserved(changed)
+
+    def test_removed_new_photo_or_browser_control_is_rejected(self):
+        for marker in (b"add('bottom-browser-toolbar',", b"add('photo-upload-content',",
+                       b"add('gecko-photo-picker-permission',", b"add('gecko-upload-file-integrity',",
+                       b"cases.append(('gecko-native-photo-permission',"):
+            line = next(line for line in self.current.splitlines(keepends=True) if marker in line)
+            with self.subTest(control=marker), self.assertRaises(AssertionError):
+                self.preserved(self.current.replace(line, b'', 1))
 
 
 if __name__ == '__main__':

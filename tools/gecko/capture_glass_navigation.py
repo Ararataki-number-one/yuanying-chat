@@ -177,7 +177,7 @@ def button(xml, label):
 
 
 def navigation_geometry(xml):
-    """Measure the actual default-screen touch views, independent of selection.
+    """Historical v2 default-screen geometry, retained for recorded evidence.
 
     The first three buttons have symmetric padding within their shared capsule.
     Their union therefore measures that group's horizontal screen alignment;
@@ -274,11 +274,149 @@ def capsule(xml):
 
 
 def expanded(xml):
-    return len(nodes(xml, lambda node: node.get('content-desc') == '管理环境'
-                     and node.get('clickable') == 'true')) == 1
+    # The expanded environment TextView supplies text; the compact FrameLayout
+    # exposes the same action description and hides its child's duplicate text.
+    title = capsule(xml)
+    return title is not None and bool(title.get('text'))
+
+
+def browser_menu_node(xml):
+    found = nodes(xml, lambda node: node.get('content-desc') == '浏览器菜单'
+                  and node.get('class') == 'android.widget.Button'
+                  and node.get('clickable') == 'true' and node.get('enabled') == 'true')
+    return found[0] if len(found) == 1 else None
+
+
+def browser_menu_open(xml):
+    return len(nodes(xml, lambda node: node.get('content-desc') == '关闭浏览器菜单'
+                     and node.get('class') == 'android.widget.Button'
+                     and node.get('clickable') == 'true' and node.get('enabled') == 'true')) == 1
+
+
+def menu_action(capture, adb, xml, label, out, stem, deadline, inputs, *, input_complete=None):
+    """Find one real, fully tappable menu item inside one existing deadline.
+
+    Every scroll and replacement hierarchy is retained. No cached off-screen
+    coordinates, increased deadline, or inferred action can satisfy this lookup.
+    """
+    out = Path(out)
+    for attempt in range(12):
+        if time.monotonic() >= deadline:
+            raise TimeoutError('Browser menu action deadline expired: ' + label)
+        path = out / (stem + '-menu-' + str(attempt) + '.xml')
+        path.write_text(xml)
+        if not browser_menu_open(xml):
+            raise ValueError('The observed browser menu is no longer open')
+        target = button(xml, label)
+        box = bounds(target)
+        if box is not None and min(box[2]-box[0], box[3]-box[1]) >= 48*DENSITY/160-1:
+            if time.monotonic() >= deadline:
+                raise TimeoutError('Browser menu action deadline expired while observing: '+label)
+            return xml, target
+        scrollers = nodes(xml, lambda node: node.get('class') == 'android.widget.ScrollView'
+                          and node.get('scrollable') == 'true')
+        if len(scrollers) != 1:
+            raise ValueError('One observed native browser menu scroller is required')
+        box = bounds(scrollers[0]); inset = max(1, round(24*DENSITY/160))
+        x, start, end = (box[0]+box[2])//2, box[3]-inset, box[1]+inset
+        if start-end < 48*DENSITY/160:
+            raise ValueError('Browser menu has no safe scrollable viewport')
+        action = dict(action='menu-scroll', reason='Reach browser menu action '+label,
+                      observedBounds=list(box), start=[x,start], end=[x,end],
+                      durationMillis=300, hierarchy=path.name, hierarchySha256=sha(path),
+                      atUnixNs=time.time_ns())
+        inputs.append(action)
+        remaining = deadline-time.monotonic()
+        if remaining <= 0:
+            raise TimeoutError('Browser menu action deadline expired before scroll: '+label)
+        adb('shell','input','touchscreen','swipe',str(x),str(start),str(x),str(end),'300',
+            timeout=min(6,remaining))
+        action['completedAtUnixNs'] = time.time_ns()
+        if input_complete is not None:
+            input_complete(action)
+        xml = capture.read(deadline=deadline)
+    raise ValueError('Browser menu action was not reachable in 12 observed scrolls: '+label)
 
 
 def browser_toolbar_geometry(xml):
+    """Current v3 bottom bar: back, home, address, reload/stop and menu."""
+    actions = {}
+    for name, descriptions in (('back', ('后退',)), ('home', ('打开当前环境主页',)),
+                               ('reload', ('刷新网页', '停止加载')), ('menu', ('浏览器菜单',))):
+        found = nodes(xml, lambda node: node.get('content-desc') in descriptions
+                      and node.get('class') == 'android.widget.Button'
+                      and node.get('clickable') == 'true')
+        if len(found) != 1 or found[0].get('enabled') not in ('true','false'):
+            return None
+        node=found[0]; box=bounds(node)
+        if min(box[2]-box[0],box[3]-box[1]) < 48*DENSITY/160-1:
+            return None
+        if name != 'back' and node.get('enabled') != 'true':
+            return None
+        actions[name]=dict(bounds=list(box),enabled=node.get('enabled')=='true',description=node.get('content-desc'))
+    prefix,suffix='当前网址 ','，点击输入网址或搜索'
+    addresses=nodes(xml,lambda node:node.get('content-desc','').startswith(prefix)
+                    and node.get('content-desc','').endswith(suffix)
+                    and node.get('class')=='android.widget.Button'
+                    and node.get('clickable')=='true' and node.get('enabled')=='true')
+    if len(addresses)!=1 or not addresses[0].get('text'):
+        return None
+    address=addresses[0];current_url=address.get('content-desc')[len(prefix):-len(suffix)]
+    address_box=list(bounds(address))
+    if not current_url or address_box[2]-address_box[0]<72*DENSITY/160-1 or address_box[3]-address_box[1]<48*DENSITY/160-1:
+        return None
+    action_boxes=[actions[name]['bounds'] for name in ('back','home','reload','menu')]
+    ltr=all(left[2]<=right[0] for left,right in zip(action_boxes,action_boxes[1:]))
+    rtl=all(left[0]>=right[2] for left,right in zip(action_boxes,action_boxes[1:]))
+    if (max(box[1] for box in action_boxes)-min(box[1] for box in action_boxes)>1
+            or max(box[3] for box in action_boxes)-min(box[3] for box in action_boxes)>1
+            or ltr==rtl):
+        return None
+    boxes=[action_boxes[0],action_boxes[1],address_box,action_boxes[2],action_boxes[3]]
+    ordered=boxes if ltr else list(reversed(boxes))
+    inline=(max(box[1] for box in boxes)<min(box[3] for box in boxes)
+            and all(left[2]<=right[0] for left,right in zip(ordered,ordered[1:]))
+            and abs(sum(address_box[1::2])-sum(action_boxes[0][1::2]))<=2)
+    stacked=(address_box[3]+4*DENSITY/160-1<=min(box[1] for box in action_boxes)
+             and abs(address_box[0]-min(box[0] for box in action_boxes))<=1
+             and abs(address_box[2]-max(box[2] for box in action_boxes))<=1)
+    if inline==stacked:
+        return None
+    # A current browser bar cannot coexist with the retired four destinations.
+    legacy=navigation_geometry(xml)
+    if legacy is not None and legacy['valid']:
+        return None
+    return dict(navigationContract=3,currentUrl=current_url,addressText=address.get('text'),
+                addressDescription=address.get('content-desc'),addressBounds=address_box,
+                actions=actions,singleHorizontalRow=inline,addressOwnRow=stacked,
+                layoutMode='inline' if inline else 'stacked',layoutDirection='ltr' if ltr else 'rtl',minimumAddressWidthDp=72,
+                minimumActionTouchDp=48,nativeGlyphVisibilityClaimed=False,navigationExecutionClaimed=False)
+
+
+def browser_navigation_geometry(xml):
+    toolbar=browser_toolbar_geometry(xml)
+    if toolbar is None:
+        return None
+    boxes={name:value['bounds'] for name,value in toolbar['actions'].items()}
+    boxes['address']=toolbar['addressBounds']
+    return dict(layout='browser-bottom',navigationContract=3,coordinateSpace='native XML screen pixels',
+                screenWidthPx=WIDTH,configuredDensityDpi=DENSITY,
+                bounds=boxes,selected={name:'false' for name in boxes},
+                checks=dict(fiveBrowserControls=True,retiredDestinationsAbsent=True,minimumTouchTargets=True),
+                valid=True,browserToolbar=toolbar)
+
+
+def current_navigation(xml):
+    geometry=browser_navigation_geometry(xml)
+    return geometry['bounds'] if geometry is not None and geometry['valid'] else None
+
+
+def current_observed_navigation_geometry(xml):
+    browser,workspace=browser_navigation_geometry(xml),workspace_navigation_geometry(xml)
+    return None if browser is not None and workspace is not None else browser or workspace
+
+
+def legacy_browser_toolbar_geometry(xml):
     """Observe actual native browser controls, including disabled history actions.
 
     This checks geometry and reported availability. It never interprets a
@@ -555,7 +693,7 @@ def capture_motion(args, report, capture, adb, wait_for):
     """Optional, bounded recording of actual controls after the original PNG.
 
     The 60-second hard cap allows bounded hierarchy acquisition. A successful
-    clip stops after all four inputs and their release tail, with a 20-second
+    clip stops after all five actions, necessary menu scrolls and their release tail, with a 20-second
     wall-time floor. The encoded MP4 duration is reported independently.
 
     Official screenrecord options: https://developer.android.com/tools/adb#screenrecord
@@ -564,6 +702,7 @@ def capture_motion(args, report, capture, adb, wait_for):
     """
     motion = report['motionReport']
     motion.update(status='started', startedAtUnixNs=time.time_ns(),
+                  navigationContract=3,
                   runNonce=report['runNonce'], sourceCommit=report['buildIdentity']['sourceCommit'],
                   apkSha256=report['installedApk']['sha256'],
                   requestedWidth=MOTION_WIDTH, requestedHeight=MOTION_HEIGHT,
@@ -609,12 +748,15 @@ def capture_motion(args, report, capture, adb, wait_for):
                        if during_recording else MOTION_OBSERVATION_SECONDS)
         if during_recording:
             active_seconds()
-        geometry = observed_navigation_geometry(xml)
+        geometry = current_observed_navigation_geometry(xml)
+        if geometry is None and not browser_menu_open(xml):
+            raise ValueError('Motion observed neither current browser/navigation nor its native menu')
         motion['observations'].append(dict(file=name + '.xml', sha256=sha(args.out / (name + '.xml')),
             observedAtUnixNs=time.time_ns(),
             recorderStillRunning=process.poll() is None,
-            selectedNavigation=[label for label,value in geometry['selected'].items() if value == 'true'],
-            bounds=geometry['bounds'], geometry=geometry))
+            selectedNavigation=[] if geometry is None else [label for label,value in geometry['selected'].items() if value == 'true'],
+            bounds={} if geometry is None else geometry['bounds'], geometry=geometry,
+            browserMenuOpen=browser_menu_open(xml)))
         save()
         return xml
 
@@ -627,14 +769,14 @@ def capture_motion(args, report, capture, adb, wait_for):
         end_x, end_y, duration = x, y, 140
         if cancel:
             if node.get('long-clickable') != 'false':
-                raise ValueError('The observed reading button must explicitly disable long clicks')
+                raise ValueError('The observed browser menu button must explicitly disable long clicks')
             # Trace the material hotspot from 25% to 80% of the observed width,
-            # releasing 16 dp above the button to cancel its reading action.
+            # releasing 16 dp above the button to cancel opening its menu.
             width = box[2] - box[0]
             x, end_x = box[0] + width // 4, box[0] + width * 4 // 5
             end_y, duration = max(0, box[1] - DENSITY // 10), 900
         if cancel and end_y >= box[1]:
-            raise ValueError('No safe point outside the observed reading button')
+            raise ValueError('No safe point outside the observed browser menu button')
         action = dict(action='swipe-to-cancel' if cancel else 'short-press', reason=reason,
                       start=[x, y], end=[end_x, end_y], durationMillis=duration,
                       observedBounds=list(box), atUnixNs=time.time_ns())
@@ -687,10 +829,10 @@ def capture_motion(args, report, capture, adb, wait_for):
                 pass  # Preserve unset/non-numeric values without guessing a runtime default.
         motion['animationEvidenceScope'] = ('System animation scale is zero; no visible-animation validation claimed'
             if motion['zeroAnimationScales'] else 'Recorded for visual review; settings unchanged; animation not automatically verified')
-        xml = wait_for(capture, lambda value: navigation(value) is not None and expanded(value)
+        xml = wait_for(capture, lambda value: current_navigation(value) is not None and expanded(value)
                        and capsule(value) is not None, 'motion-initial', seconds=MOTION_OBSERVATION_SECONDS)
         motion['initialHierarchySha256'] = sha(args.out / 'motion-initial.xml')
-        initial_reading_bounds = bounds(button(xml, '阅读'))
+        initial_menu_bounds = bounds(browser_menu_node(xml))
         # The remote shell becomes screenrecord, preserving the exact owned PID.
         shell = ('echo $$ > ' + shlex.quote(pid_file) + '; exec ' + shlex.join([
             'screenrecord', '--verbose', '--size', f'{MOTION_WIDTH}x{MOTION_HEIGHT}',
@@ -715,7 +857,15 @@ def capture_motion(args, report, capture, adb, wait_for):
         motion['recorderPid'] = device_pid
         motion['firstInputIndex'] = len(report['inputs'])
         active_seconds()
-        swipe(button(xml, '下载'), 'Open downloads with an actual 140 ms native short press')
+        menu_deadline = min(time.monotonic()+20,stop_deadline-.4)
+        swipe(browser_menu_node(xml), 'Open the actual browser menu with a 140 ms native short press')
+        xml = observe(browser_menu_open, 'motion-browser-menu')
+        def recorded_scroll(action):
+            active_seconds();action['completedWhileRecorderRunning']=True
+        xml, download = menu_action(capture,adb,xml,'下载管理',args.out,'motion-downloads',
+                                    menu_deadline,report['inputs'],input_complete=recorded_scroll)
+        active_seconds()
+        swipe(download, 'Open downloads with an actual 140 ms native short press')
         xml = observe(lambda value: selected_navigation(value, '下载'), 'motion-downloads')
         time.sleep(.55)
         swipe(button(xml, '网络'), 'Move the shared selected background from downloads to network')
@@ -731,23 +881,23 @@ def capture_motion(args, report, capture, adb, wait_for):
         active_seconds()
         back_input.update(completedAtUnixNs=time.time_ns(), completedWhileRecorderRunning=True)
         time.sleep(.55)
-        chat = lambda value: (navigation(value) is not None and expanded(value)
+        chat = lambda value: (current_navigation(value) is not None and expanded(value)
                               and capsule(value) is not None
                               and not nodes(value, lambda node: node.get('text') == '退出阅读'))
         # The network page has a different bar. Acquire the restored chat's
         # actual node after Back; never reuse bounds from the hidden chat bar.
-        xml = observe(chat, 'motion-chat-before-reading')
-        reading = button(xml, '阅读')
-        if bounds(reading) != initial_reading_bounds:
-            raise ValueError('The restored chat reading control differs from the initial chat layout')
-        motion['readingBoundsSource'] = dict(hierarchy='motion-chat-before-reading.xml',
-            matchesInitialChatHierarchy=True, observedBounds=list(bounds(reading)), observedAfterBack=True)
-        swipe(reading, 'Move the reading material hotspot diagonally, releasing outside to cancel the action', cancel=True)
+        xml = observe(chat, 'motion-chat-before-menu')
+        menu = browser_menu_node(xml)
+        if bounds(menu) != initial_menu_bounds:
+            raise ValueError('The restored browser menu control differs from the initial browser layout')
+        motion['menuBoundsSource'] = dict(hierarchy='motion-chat-before-menu.xml',
+            matchesInitialChatHierarchy=True, observedBounds=list(bounds(menu)), observedAfterBack=True)
+        swipe(menu, 'Move the browser menu material hotspot diagonally, releasing outside to cancel the action', cancel=True)
         sequence = report['inputs'][motion['firstInputIndex']:]
-        if ([item['action'] for item in sequence] !=
-                ['short-press', 'short-press', 'keyevent', 'swipe-to-cancel']
+        if ([item['action'] for item in sequence if item['action']!='menu-scroll'] !=
+                ['short-press', 'short-press', 'short-press', 'keyevent', 'swipe-to-cancel']
                 or not all(item.get('completedWhileRecorderRunning') for item in sequence)):
-            raise ValueError('The four actual inputs did not all complete inside the recording')
+            raise ValueError('The five browser actions and every required menu scroll did not all complete inside the recording')
         motion['lastGestureCompletedAtUnixNs'] = sequence[-1]['completedAtUnixNs']
         # Uiautomator needs time to observe the real route transitions. Give it
         # bounded headroom, but do not fill a successful movie with idle time.
@@ -759,7 +909,7 @@ def capture_motion(args, report, capture, adb, wait_for):
         motion['postGestureWaitSeconds'] = settle
         time.sleep(settle)
         active_seconds()
-        motion['recorderStopReason'] = 'four-input-sequence-and-release-tail-completed'
+        motion['recorderStopReason'] = 'five-browser-action-sequence-and-release-tail-completed'
         motion['recordingWallSecondsAtStopRequest'] = time.monotonic() - recording_started
         if not signal_owned('INT'):
             raise RuntimeError('The completed recording no longer has its verified owned recorder')
@@ -769,13 +919,13 @@ def capture_motion(args, report, capture, adb, wait_for):
         motion['recorderStoppedAtUnixNs'] = recorder_row['completedAtUnixNs']
         if process.returncode != 0:
             raise RuntimeError('Screenrecord exited with code ' + str(process.returncode))
-        # Only this final state check runs after muxer finalization. All four
+        # Only this final state check runs after muxer finalization. All five
         # inputs and the release tail were checked while the recorder was live.
         # This remains a real hierarchy assertion, not video-frame inspection.
-        observe(chat, 'motion-reading-cancelled', during_recording=False)
+        observe(chat, 'motion-menu-cancelled', during_recording=False)
         motion['interactionsComplete'] = True
         motion['lastInputIndexExclusive'] = len(report['inputs'])
-        motion['readingGestureReleasedOutsideObservedButton'] = True
+        motion['menuGestureReleasedOutsideObservedButton'] = True
         motion['returnedToOrdinaryChat'] = True
         motion['finalStateVerifiedAfterRecorderStop'] = True
     except Exception as error:
@@ -860,12 +1010,12 @@ def capture_native_backdrop_preview(args, report, capture, adb, wait_for, tap, s
     network_observed = False
 
     def chat(xml):
-        return (navigation(xml) is not None and expanded(xml) and capsule(xml) is not None
+        return (current_navigation(xml) is not None and expanded(xml) and capsule(xml) is not None
                 and not nodes(xml, lambda node: node.get('text') in ('打开网址', '退出阅读')))
 
     def known_screen(xml):
         return (chat(xml) or selected_navigation(xml, '网络') or selected_navigation(xml, '下载')
-                or selected_navigation(xml, '设置'))
+                or selected_navigation(xml, '设置') or browser_menu_open(xml))
 
     def back_to_chat(reason, name):
         action = dict(action='keyevent', keyCode=4, reason=reason,
@@ -889,8 +1039,12 @@ def capture_native_backdrop_preview(args, report, capture, adb, wait_for, tap, s
             initial_name = 'native-backdrop-chat-before.xml'
             preview['restoredChatBeforePreview'] = True
         preview['initialChatHierarchy'] = dict(file=initial_name, sha256=sha(args.out / initial_name))
-        tap(button(xml, '网络'), 'Open the actual native network workspace for a separate backdrop screenshot')
+        menu_deadline=time.monotonic()+20
+        tap(browser_menu_node(xml), 'Open the browser menu for the separate network backdrop screenshot')
         network_tapped = True
+        xml=wait_for(capture,browser_menu_open,'native-backdrop-browser-menu',seconds=max(.001,menu_deadline-time.monotonic()))
+        xml,network=menu_action(capture,adb,xml,'当前环境网络',args.out,'native-backdrop-network',menu_deadline,report['inputs'])
+        tap(network, 'Open the actual native network workspace for a separate backdrop screenshot')
         xml = wait_for(capture, lambda value: selected_navigation(value, '网络'),
                        'native-backdrop-network-selected', seconds=15)
         network_observed = True
@@ -987,7 +1141,7 @@ def capture_native_backdrop_preview(args, report, capture, adb, wait_for, tap, s
                 sha256=sha(args.out / 'native-settings-navigation.xml'), geometry=settings_geometry),
             screenshot=dict(report['screenshots'][-1]), selectedNavigation='设置', activity=settings_owner,
             settingsObservation=settings_observation(xml, workspace_navigation_geometry))
-        tap(button(xml, '浏览器'), 'Return through the actual browser destination and restore the split reading bar')
+        tap(button(xml, '浏览器'), 'Return through the actual browser destination and restore its bottom address bar')
         wait_for(capture, chat, 'native-backdrop-returned-chat', seconds=15)
         preview['returnedViaConversationTab'] = True
         preview['returnedToOrdinaryChat'] = True
@@ -1065,14 +1219,14 @@ def capture_navigation_typography(args, report, capture, adb, wait_for, tap, scr
     def main_activity(name):
         adb('shell', 'am', 'force-stop', PACKAGE)
         adb('shell', 'am', 'start', '-W', '-n', COMPONENT, '--es', 'visualAction', 'chat')
-        xml = wait_for(capture, lambda value: navigation(value) is not None and capsule(value) is not None,
+        xml = wait_for(capture, lambda value: current_navigation(value) is not None and capsule(value) is not None,
                        name + '-initial', seconds=30)
         if not expanded(xml):
             tap(capsule(xml), 'Expand the native browser header before measuring its enlarged-font controls')
             editor_xml = wait_for(capture, lambda value: button(value, '取消') is not None,
                                   name + '-editor', seconds=15)
             tap(button(editor_xml, '取消'), 'Close the native address editor without changing the website')
-        xml = wait_for(capture, lambda value: navigation(value) is not None and capsule(value) is not None
+        xml = wait_for(capture, lambda value: current_navigation(value) is not None and capsule(value) is not None
                        and browser_toolbar_geometry(value) is not None
                        and not nodes(value, lambda node: node.get('text') == '打开网址'), name, seconds=20)
         raw = adb('shell', 'dumpsys', 'activity', 'activities').decode('utf-8', 'replace')
@@ -1082,7 +1236,7 @@ def capture_navigation_typography(args, report, capture, adb, wait_for, tap, scr
         if not any(PACKAGE + '/local.pocketchat.MainActivity' in line for line in resumed):
             raise ValueError('The production MainActivity is not resumed after typography observation')
         return dict(file=name + '.xml', sha256=sha(args.out / (name + '.xml')),
-                    geometry=navigation_geometry(xml), browserToolbar=browser_toolbar_geometry(xml),
+                    geometry=browser_navigation_geometry(xml), browserToolbar=browser_toolbar_geometry(xml),
                     resumedActivity=resumed)
 
     try:
@@ -1276,7 +1430,7 @@ def main():
         while time.monotonic() < deadline:
             xml = capture.read(deadline=deadline)
             (args.out / (name + '.xml')).write_text(xml)
-            geometry = observed_navigation_geometry(xml)
+            geometry = current_observed_navigation_geometry(xml)
             # Keep the latest real geometry, including a failing/incomplete
             # layout, without accepting its route predicate. Null geometry also
             # prevents an earlier observation from referring to a replaced XML.
@@ -1348,7 +1502,7 @@ def main():
         observe_display_viewport(adb, args.out, report, 'initial', WIDTH, HEIGHT, DENSITY)
         capture = UiVisualCapture(adb=args.adb, serial=args.serial, source=source,
                                   diagnostics=args.out / 'hierarchy-attempts.json')
-        xml = wait_for(capture, lambda value: navigation(value) is not None and capsule(value) is not None,
+        xml = wait_for(capture, lambda value: current_navigation(value) is not None and capsule(value) is not None,
                        'initial')
         report['initialNativeRootBounds'] = native_root_bounds(xml)
         if not expanded(xml):
@@ -1359,7 +1513,7 @@ def main():
                            and bool(nodes(value, lambda node: node.get('text') == '打开网址')), 'address-editor')
             screenshot('address-editor.png')
             tap(button(xml, '取消'), 'Cancel URL input without navigating')
-        xml = wait_for(capture, lambda value: navigation(value) is not None and expanded(value)
+        xml = wait_for(capture, lambda value: current_navigation(value) is not None and expanded(value)
                        and capsule(value) is not None
                        and not nodes(value, lambda node: node.get('text') == '打开网址'), 'glass-navigation')
         activity = adb('shell', 'dumpsys', 'activity', 'activities').decode('utf-8', 'replace')
@@ -1369,11 +1523,11 @@ def main():
         if not any(PACKAGE + '/local.pocketchat.MainActivity' in line for line in resumed):
             raise ValueError('The actual production MainActivity is not resumed')
         report['resumedActivity'] = resumed
-        report['nativeControls'] = dict(navigation=navigation(xml),
-            geometry=navigation_geometry(xml),
+        report['nativeControls'] = dict(navigation=current_navigation(xml),
+            geometry=browser_navigation_geometry(xml),
             capsuleBounds=list(bounds(capsule(xml))), capsuleDescription=capsule(xml).get('content-desc'),
             rootBounds=native_root_bounds(xml),
-            expandedHeader=True, readingIsSeparateSquareControl=True,
+            expandedHeader=True, navigationContract=3,readingAvailableInMenu=True,
             ordinaryConversationHasSelectedNavigation=False)
         report['display'] = dict(size=adb('shell', 'wm', 'size').decode().strip(),
             density=adb('shell', 'wm', 'density').decode().strip(),
@@ -1404,7 +1558,7 @@ def main():
             hierarchySha256=sha(args.out / 'browser-address-editor.xml'),
             scope='Actual Android toolbar geometry, reported action availability and current-URL editor input. No live website, history navigation or network connection is inferred.')
         tap(button(editor_xml, '取消'), 'Cancel the browser address check without navigation or editing website data')
-        xml = wait_for(capture, lambda value: navigation(value) is not None and expanded(value)
+        xml = wait_for(capture, lambda value: current_navigation(value) is not None and expanded(value)
                        and browser_toolbar_geometry(value) is not None
                        and not nodes(value, lambda node: node.get('text') == '打开网址'),
                        'browser-toolbar-restored', seconds=20)
@@ -1475,7 +1629,8 @@ def main():
         if args.acceptance_suite:
             from glass_ui_validation import capture_acceptance_suite
             capture_acceptance_suite(args, report, capture, adb, wait_for, tap, screenshot,
-                                     globals())
+                                     dict(globals(),navigation=current_navigation,navigation_geometry=browser_navigation_geometry,
+                                          observed_navigation_geometry=current_observed_navigation_geometry))
         print(json.dumps(dict(status=report['status'], sourceCommit=source,
             apkSha256=installed_sha, image='glass-navigation.png',
             motionStatus=report['motionReport']['status'],

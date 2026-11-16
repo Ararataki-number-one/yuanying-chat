@@ -8,7 +8,7 @@ import types
 import unittest
 from unittest.mock import patch
 from ui_visual_preservation_contract import verify_shared_ui_source
-from historical_source_inputs import historical_bytes
+from historical_source_inputs import historical_bytes, browser_v2_bytes
 from ui_workspace_v2_source_compatibility import historical_input as shared_history_input
 
 ROOT=pathlib.Path(__file__).resolve().parents[1]
@@ -212,7 +212,7 @@ class HomeResumeTests(unittest.TestCase):
 
     def test_original_shared_runner_and_remaining_workload_preserved(self):
         self.assertTrue(verify_shared_ui_source(historical_shared_text())['originalWorkloadSemanticsPreserved'])
-        tree=ast.parse(original_header_runner(RUNNER.read_text()));run=next(n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name=='run')
+        tree=ast.parse(original_header_runner(browser_v2_bytes('tests/gecko/run_chrome_collapse.py').decode()));run=next(n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name=='run')
         loop=next(n for n in run.body if isinstance(n,ast.For))
         replacements=[i for i,n in enumerate(loop.body) if isinstance(n,ast.Expr) and isinstance(n.value,ast.Call) and isinstance(n.value.func,ast.Name) and n.value.func.id=='resume_after_home']
         self.assertEqual(len(replacements),1);at=replacements[0]
@@ -221,7 +221,7 @@ class HomeResumeTests(unittest.TestCase):
         self.assertEqual(hashlib.sha256(ast.dump(run,include_attributes=False).encode()).hexdigest(),'b663b22628d1868c5348434823505d2ce23956cbe228a08d3c6e4043f39e83d8')
 
     def test_header_inverse_rejects_changed_action_or_workload(self):
-        source = RUNNER.read_text()
+        source = browser_v2_bytes('tests/gecko/run_chrome_collapse.py').decode()
         changes = [
             ('from chrome_header_readiness import header_up_once', 'from other_module import header_up_once'),
             ('start=start,end=end', 'start=end,end=start'),
