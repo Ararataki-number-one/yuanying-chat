@@ -155,7 +155,8 @@ class PhotoPublicationGateTests(unittest.TestCase):
         stage.mkdir(exist_ok=True)
         namespace.update(stage=stage, root=ROOT, shutil=shutil, roadmap_release=False, sdk_build=None,
                          caret=None, template_release=False, resource_release=False, browser_release=False,
-                         fingerprint_release=False, worker_timezone_release=False, chain_files=[])
+                         fingerprint_release=False, worker_timezone_release=False, chain_files=[],
+                         chrome={'autoCollapse': {'cases': [], 'scope': 'Unrelated inline staging fixture only'}})
         start = one((index for index, node in enumerate(tree.body) if isinstance(node, ast.Assign)
                      and any(isinstance(target, ast.Name) and target.id == 'performance_files' for target in node.targets)),
                     'publication file-list initializer')

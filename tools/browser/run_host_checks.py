@@ -159,6 +159,9 @@ def main():
     add('gecko-upload-file-integrity','tests/gecko_upload_files_test.py')
     cases.append(('gecko-native-photo-permission',['node','--test','tests/request-identity/native_photo_permission_test.cjs'],None))
     add('gecko-photo-native-tap','tests/gecko_photo_tap_test.py')
+    # Keep the original 200 commands and deadlines; verify the bounded archive
+    # independently before its complete device evidence is published.
+    add('chrome-collapse-archive','tests/profile_chrome_collapse_archive_test.py')
     names=subprocess.check_output(['git','ls-files','--cached','--others','--exclude-standard','app/src/main/java','app/src/main/assets','tests','tools/browser','tools/gecko','.github/workflows/browser-2_1-acceptance.yml'],cwd=ROOT,text=True).splitlines()
     files=[ROOT/name for name in sorted(set(names)) if (ROOT/name).is_file()]
     hashes={str(path.relative_to(ROOT)):hashlib.sha256(path.read_bytes()).hexdigest() for path in files}

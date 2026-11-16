@@ -80,6 +80,12 @@ for name in ['chrome-network-state-desktop-host-results.json', 'chrome-network-s
 for pattern in ['photo-upload-results.json','photo-upload-*.png']:
     for item in out.glob(pattern):
         if item.is_file() and not item.is_symlink():shutil.copy2(item,stage/item.name)
+for name in ('chrome-collapse-case-360-1.json','chrome-collapse-case-412-1.json','chrome-collapse-case-360-2.json'):
+    item=out/name
+    if item.exists() or item.is_symlink():
+        assert item.is_file() and not item.is_symlink(),'Chrome collapse case evidence must be a regular file.'
+        assert not (stage/name).is_symlink(),'Chrome collapse case destination must not be redirected.'
+        shutil.copy2(item,stage/name)
 copy_network_scope_evidence(out, stage)
 for name in ['caret-document-observer-host-results.json','resource-observer-host-results.json','resource-pressure-host-results.json','resource-pressure-results.json','resource-pressure-runner-log.json','emulator-bootstrap-results.json','profile-host-results.json','identity-controller-host-results.json','deferred-browser-host-results.json','identity-bridge-host-results.json','environment-intent-host-results.json','gecko-proxy-route-host-results.json','environment-spec-results.json','environment-intent-results.json','gecko-identity-prototype-results.json','gecko-template-results.json','gecko-template-runner-log.json','environment-spec-runner-log.json','environment-intent-runner-log.json','gecko-identity-prototype-runner-log.json']:
     if (out/name).exists():shutil.copy2(out/name,stage/name)

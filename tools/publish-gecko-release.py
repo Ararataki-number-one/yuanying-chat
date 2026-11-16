@@ -284,6 +284,9 @@ if version_code>=42:
     for name in ['quiet-notification-results.json','compact-chrome-results.json']:shutil.copy2(args.evidence/name,stage/name)
 performance_files=['gecko-performance-results.json','snapshot-host-results.json','reply-observation-host-results.json','ui-visual-results.json','ui-build-comparison.json'] if version_code>=43 else []
 if photo_upload is not None:performance_files.extend(['photo-upload-results.json',*photo_upload['files']])
+if version_code>=108:
+    from gecko.chrome_collapse_case_storage import case_file_names
+    performance_files.extend(case_file_names(chrome['autoCollapse']))
 if version_code>=44:performance_files.append('reply-binding-host-results.json')
 if version_code>=44:performance_files.append('network-client-binding-results.json')
 if version_code>=45:performance_files.extend(['update-transfer-results.json','update-transfer-host-results.json','interaction-host-results.json'])
@@ -325,7 +328,7 @@ if version_code>=43:
     shutil.copy2(root/'tools/gecko/check_performance_evidence.py',stage/'tools/gecko/check_performance_evidence.py')
     shutil.copy2(root/'tools/gecko/ui_visual_contract.py',stage/'tools/gecko/ui_visual_contract.py')
     if (root/'tools/gecko/chrome_collapse_contract.py').is_file():shutil.copy2(root/'tools/gecko/chrome_collapse_contract.py',stage/'tools/gecko/chrome_collapse_contract.py')
-    for name in ('compact_chrome_layout_v2.py','chrome_collapse_contract_v2.py','workspace_navigation_contract.py','download_workspace_contract_v2.py','compact_chrome_layout_v3.py','chrome_collapse_contract_v3.py','workspace_navigation_contract_v3.py','ui_hierarchy_driver.py'):
+    for name in ('compact_chrome_layout_v2.py','chrome_collapse_contract_v2.py','workspace_navigation_contract.py','download_workspace_contract_v2.py','compact_chrome_layout_v3.py','chrome_collapse_contract_v3.py','workspace_navigation_contract_v3.py','ui_hierarchy_driver.py','chrome_collapse_case_storage.py'):
         shutil.copy2(root/'tools/gecko'/name,stage/'tools/gecko'/name)
 if version_code>=108:shutil.copy2(root/'tools/gecko/photo_upload_contract.py',stage/'tools/gecko/photo_upload_contract.py')
 shutil.copy2(root/'tools/gecko/release_channel_contract.py',stage/'tools/gecko/release_channel_contract.py')

@@ -6,9 +6,11 @@ import pathlib
 import subprocess
 if __package__:
     from .chrome_collapse_contract import verify_auto_collapse
+    from .chrome_collapse_case_storage import load_auto_collapse_cases
     from .ui_visual_contract import verify_captures
 else:
     from chrome_collapse_contract import verify_auto_collapse
+    from chrome_collapse_case_storage import load_auto_collapse_cases
     from ui_visual_contract import verify_captures
 
 BASELINE = '835d59991218eda70c7a4fdd73ea9d7ae6052688'
@@ -91,7 +93,8 @@ def verify_performance_evidence(directory, source):
     assert build['coreSourceCommit'] == source and build['comparisonMode'] == 'current-only'
     assert build['historicalUIRebuilt'] is False and build['changedForBaseline'] == []
     assert len(build['currentSha256']) == 64
-    auto_collapse = verify_auto_collapse(chrome['autoCollapse'], source, build['currentSha256'])
+    original_auto_collapse = load_auto_collapse_cases(chrome['autoCollapse'], directory, source, build['currentSha256'])
+    auto_collapse = verify_auto_collapse(original_auto_collapse, source, build['currentSha256'])
     assert visual['autoCollapse'] == chrome['autoCollapse']
 
     gecko = android('gecko-performance-results.json')

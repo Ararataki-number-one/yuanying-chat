@@ -496,6 +496,11 @@ try:
     finally:
         (out/'ui-collapse-server-trace.json').write_text(json.dumps({'sourceCommit':source,'diagnosticOnly':True,'releaseAcceptance':False,'events':reload_loopback.TRACE},ensure_ascii=False,indent=2)+'\n')
         reload_http.shutdown();reload_socks.shutdown()
+    from chrome_collapse_contract import verify_auto_collapse
+    from chrome_collapse_case_storage import store_auto_collapse_cases
+    collapse_apk_sha=json.loads((out/'ui-build-comparison.json').read_text())['currentSha256']
+    verify_auto_collapse(auto_collapse,source,collapse_apk_sha)
+    auto_collapse=store_auto_collapse_cases(auto_collapse,out,source,collapse_apk_sha)
     (out/'compact-chrome-results.json').write_text(json.dumps({'status':'passed','actualAndroidExecution':True,'sourceCommit':source,'cases':compact,'reloadConfirmation':reload_confirmation,'autoCollapse':auto_collapse},ensure_ascii=False,separators=(',',':'))+'\n')
     verify_captures(records,source)
     build=json.loads((out/'ui-build-comparison.json').read_text())
