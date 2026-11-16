@@ -82,7 +82,24 @@ def run(adb,binary,source,out,dump):
     def dashboard(xml):return any(n.get('content-desc')=='环境仪表盘' for n in tree(xml))
     def browser(xml):
         assert not dashboard(xml),'Direct browser entry unexpectedly opened environment details'
-        return any(n.get('content-desc')=='进入专注阅读模式' for n in tree(xml)) and any('长按切换环境' in n.get('content-desc','') for n in tree(xml))
+        from workspace_navigation_contract_v3 import navigation,bounds
+        nodes=tree(xml)
+        suffix='，点按输入网址，长按切换环境'
+        capsules=[n for n in nodes if n.get('package')==PACKAGE
+                  and n.get('content-desc','').startswith('当前环境：')
+                  and n.get('content-desc','').endswith(suffix)]
+        try:
+            assert len(capsules)==1
+            capsule=capsules[0];name=capsule.get('content-desc')[len('当前环境：'):-len(suffix)]
+            assert name and capsule.get('text')==name and capsule.get('class')=='android.widget.Button'
+            assert capsule.get('enabled')==capsule.get('clickable')==capsule.get('long-clickable')=='true'
+            assert capsule.get('visible-to-user')!='false'
+            current=navigation(xml,PACKAGE,conversation=True)
+            l,t,r,b=bounds(capsule);left,top,right,bottom=current['toolbarBounds']
+            assert 0<=left<=l<r<=right and 0<=t<b<top<bottom and min(r-l,b-t)>=144
+            return True
+        except AssertionError:
+            return False
     def wait(predicate,label,timeout=35):
         deadline=time.monotonic()+timeout
         while True:

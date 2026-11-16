@@ -5,17 +5,21 @@ remain. Browser entry is now direct, and dashboard checks explicitly choose
 environment details. The inverse pins every deliberate port and rejects any
 unrelated change to the accepted runner.
 """
+import ast
 import copy
 import hashlib
 import importlib.util
 from pathlib import Path
 import subprocess
+import sys
 import unittest
 import xml.etree.ElementTree as ET
 import dashboard_browser_entry_compatibility as browser_ports
+from historical_source_inputs import browser_v2_bytes
 
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT/'tools/gecko'))
 RUNNER = ROOT / 'tests/gecko/run_environment_dashboard.py'
 BASE_COMMIT = 'c244835a4c1e3629909b2b1ce132ca5987a97d9a'
 BASE_SHA256 = '99b0298e0dc5f45c744d8086d0f9fe51b1c4d0fa63cd08f50037a2196cd05064'
@@ -95,10 +99,12 @@ class DashboardPresentation(unittest.TestCase):
         previous = subprocess.check_output(
             ['git', 'show', BASE_COMMIT+':tests/gecko/run_environment_dashboard.py'], cwd=ROOT)
         self.assertEqual((len(previous), hashlib.sha256(previous).hexdigest()), (12001, BASE_SHA256))
-        self.assertEqual(original_flow(RUNNER.read_bytes()), previous)
+        # This retained inverse describes the actual released v2 navigation.
+        # Current v3 behavior and every other runner byte are checked below.
+        self.assertEqual(original_flow(browser_v2_bytes('tests/gecko/run_environment_dashboard.py')), previous)
 
     def test_original_flow_changes_missing_or_duplicate_selector_ports_reject(self):
-        current = RUNNER.read_bytes()
+        current = browser_v2_bytes('tests/gecko/run_environment_dashboard.py')
         for old, new, count in browser_ports.HUNKS:
             for candidate in (current.replace(new.encode(), b'', 1),
                               current.replace(new.encode(), new.encode()*2, 1)):
@@ -191,6 +197,94 @@ class DashboardPresentation(unittest.TestCase):
         tree = settings_tree();tree.append(copy.deepcopy(tree[0]))
         with self.assertRaises(AssertionError):
             RUN.settings_workspace(xml(tree))
+
+
+class CurrentBrowserEntryObservation(unittest.TestCase):
+    RAW = ROOT/'tests/browser-address-host/c5-launcher-browser.xml'
+
+    @staticmethod
+    def functions(source):
+        module=ast.parse(source)
+        run=next(n for n in module.body if isinstance(n,ast.FunctionDef) and n.name=='run')
+        return {n.name:n for n in run.body if isinstance(n,ast.FunctionDef)}
+
+    def reader(self,source=None,**boundaries):
+        functions=self.functions(source or RUNNER.read_text())
+        namespace=dict(vars(RUN),**boundaries)
+        selected=[copy.deepcopy(functions[name]) for name in ('tree','dashboard','browser','wait')]
+        exec(compile(ast.Module(body=selected,type_ignores=[]),str(RUNNER)+':actual-entry-observer','exec'),namespace)
+        return namespace
+
+    def test_current_selector_accepts_the_original_c5_browser_and_old_selector_reproduces_failure(self):
+        raw=self.RAW.read_bytes()
+        self.assertEqual(hashlib.sha256(raw).hexdigest(),'e574e7e3731d5d5f1b21195ac4e6691550bd636ef8cc9bd5cb0d9f517bdb340f')
+        current=self.reader()['browser']
+        previous=self.reader(browser_v2_bytes('tests/gecko/run_environment_dashboard.py').decode())['browser']
+        self.assertTrue(current(raw.decode()))
+        self.assertFalse(previous(raw.decode()))
+
+    def test_all_other_device_flow_bytes_and_original_budgets_remain_exact(self):
+        previous=browser_v2_bytes('tests/gecko/run_environment_dashboard.py').decode()
+        current=RUNNER.read_text()
+        old=ast.get_source_segment(previous,self.functions(previous)['browser'])
+        new=ast.get_source_segment(current,self.functions(current)['browser'])
+        self.assertNotEqual(new,old)
+        self.assertEqual(current.count(new),1)
+        self.assertEqual(current.replace(new,old,1),previous)
+        self.assertNotIn('historical_source_inputs',current)
+        self.assertNotIn('dashboard_browser_entry_compatibility',current)
+
+    def test_missing_foreign_clipped_hidden_disabled_and_duplicate_native_controls_never_qualify(self):
+        reader=self.reader()['browser']
+        labels=('后退','打开当前环境主页','当前网址','刷新网页','浏览器菜单','当前环境：')
+        for label in labels:
+            for change in ('missing','foreign','wrong-class','hidden','clipped','duplicate'):
+                tree=ET.fromstring(self.RAW.read_text());parents={c:p for p in tree.iter() for c in p}
+                target=next(n for n in tree.iter('node') if n.get('content-desc','').startswith(label))
+                if change=='missing':parents[target].remove(target)
+                elif change=='foreign':target.set('package','foreign.package')
+                elif change=='wrong-class':target.set('class','android.widget.TextView')
+                elif change=='hidden':target.set('visible-to-user','false')
+                elif change=='clipped':target.set('bounds','[10,10][11,11]')
+                else:parents[target].append(copy.deepcopy(target))
+                with self.subTest(label=label,change=change):self.assertFalse(reader(xml(tree)))
+        for label in labels[1:]:
+            tree=ET.fromstring(self.RAW.read_text())
+            target=next(n for n in tree.iter('node') if n.get('content-desc','').startswith(label))
+            target.set('enabled','false')
+            with self.subTest(label=label,change='disabled'):self.assertFalse(reader(xml(tree)))
+
+    def test_old_reading_label_alone_and_wrong_environment_capsule_do_not_qualify(self):
+        reader=self.reader()['browser']
+        original=ET.fromstring(self.RAW.read_text())
+        capsule=next(n for n in original.iter('node') if n.get('content-desc','').startswith('当前环境：'))
+        decoy=ET.Element('hierarchy');decoy.append(copy.deepcopy(capsule))
+        node(decoy,'android.widget.Button',description='进入专注阅读模式',clickable='true')
+        self.assertFalse(reader(xml(decoy)))
+        for attribute,value in (('text','另一个环境'),('long-clickable','false'),('clickable','false')):
+            tree=copy.deepcopy(original)
+            changed=next(n for n in tree.iter('node') if n.get('content-desc','').startswith('当前环境：'))
+            changed.set(attribute,value)
+            with self.subTest(attribute=attribute):self.assertFalse(reader(xml(tree)))
+        node(original,'android.widget.TextView',description='环境仪表盘')
+        with self.assertRaisesRegex(AssertionError,'unexpectedly opened environment details'):reader(xml(original))
+
+    def test_actual_startup_wait_accepts_only_before_its_original_deadline(self):
+        raw=self.RAW.read_text()
+        for duration in (0,35,36):
+            class Clock:
+                now=0
+                def monotonic(self):return self.now
+                def sleep(self,seconds):self.now+=seconds
+            clock=Clock();calls=[]
+            def dump(*,deadline):
+                calls.append(deadline);clock.now+=duration;return raw
+            namespace=self.reader(time=clock,dump=dump,adb=lambda *parts:'')
+            if duration==0:self.assertEqual(namespace['wait'](namespace['browser'],'actual launcher browser'),raw)
+            else:
+                with self.assertRaisesRegex(AssertionError,'wait budget expired'):
+                    namespace['wait'](namespace['browser'],'actual launcher browser')
+            self.assertEqual(calls,[35])
 
 
 if __name__ == '__main__':

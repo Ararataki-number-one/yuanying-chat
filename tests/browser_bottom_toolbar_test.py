@@ -17,10 +17,12 @@ import xml.etree.ElementTree as ET
 
 ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT/'tools/gecko'))
+sys.path.insert(0,str(ROOT/'tests/gecko'))
 import capture_glass_navigation as capture
 import glass_ui_validation as validation
 import workspace_navigation_contract_v3 as workspace_v3
 import chrome_collapse_contract_v3 as collapse_v3
+import compact_chrome_v3 as compact_runner
 
 
 def xml(tree):return ET.tostring(tree,encoding='unicode')
@@ -513,6 +515,150 @@ class CurrentMoreModalTests(unittest.TestCase):
             elif change=='wrong-heading':heading.set('content-desc','另一个窗口')
             with self.subTest(change=change),self.assertRaises((AssertionError,KeyError)):
                 collapse_v3.inspect_ui(xml(tree),'more','Controlled environment',browser=True)
+
+
+class CompactMenuVisibilityTests(unittest.TestCase):
+    """Replay the original C5 modal/closed frames through the current observer."""
+    def setUp(self):
+        fixture=ROOT/'tests/browser-address-host'
+        self.opened=(fixture/'c5-compact-menu-open.xml').read_text()
+        self.closed=(fixture/'c5-compact-menu-closed.xml').read_text()
+        self.assertEqual(hashlib.sha256(self.opened.encode()).hexdigest(),
+            '159ed416d90e6f623a60669fc2f3e0d61b83542afadc7e6e8f4a1295a83209fe')
+        self.assertEqual(hashlib.sha256(self.closed.encode()).hexdigest(),
+            '4472ac8f27c648fe65bc44983320013db9bbe799f40e4d7d9f169ceb92190abf')
+        raw=(fixture/'c5-compact-menu-closed-frames.json').read_bytes()
+        self.assertEqual(hashlib.sha256(raw).hexdigest(),
+            '3913c602c2ab1547ebecccc8df6607af1eed29cc2cc65cbdc4ecefb25763eb38')
+        self.receipts=json.loads(raw)['frames']
+
+    def observe(self,raw,present,*,late=False):
+        clock=[10.0];deadlines=[]
+        def read(*,deadline):
+            deadlines.append(deadline)
+            clock[0]=deadline if late else clock[0]+.1
+            return raw
+        with mock.patch.object(compact_runner.time,'monotonic',side_effect=lambda:clock[0]),\
+             mock.patch.object(compact_runner.time,'sleep',side_effect=lambda delay:clock.__setitem__(0,clock[0]+delay)):
+            try:return compact_runner.observe_browser_menu(read,capture.PACKAGE,present)
+            finally:
+                self.assertTrue(deadlines)
+                self.assertEqual(set(deadlines),{30})
+                self.assertLessEqual(clock[0],30.100001)
+
+    def test_original_open_and_all_ten_closed_observations_are_distinct(self):
+        self.assertEqual(self.observe(self.opened,True),self.opened)
+        self.assertEqual([row['index'] for row in self.receipts],list(range(217,227)))
+        self.assertEqual([row['completedAtWallTimeMillis'] for row in self.receipts],
+            [1794817324202,1794817326489,1794817328755,1794817330997,1794817333249,
+             1794817335481,1794817337725,1794817339968,1794817342216,1794817345541])
+        for receipt in self.receipts:
+            with self.subTest(originalAttempt=receipt['index']):
+                self.assertEqual(receipt['sha256'],hashlib.sha256(self.closed.encode()).hexdigest())
+                self.assertEqual(receipt['bytes'],len(self.closed.encode()))
+                self.assertEqual(self.observe(self.closed,False),self.closed)
+        # Exercise the unmodified historical helper, not a textual imitation:
+        # its broad label semantics still see the permanent browser button.
+        source=ast.parse((ROOT/'tests/gecko/run_ui_visuals.py').read_text())
+        legacy=next(n for n in ast.walk(source) if isinstance(n,ast.FunctionDef) and n.name=='visible')
+        namespace={'time':compact_runner.time,'ET':ET,'dump':lambda:self.closed}
+        exec(compile(ast.Module(body=[legacy],type_ignores=[]),'actual-legacy-visible','exec'),namespace)
+        clock=[10.0]
+        with mock.patch.object(compact_runner.time,'monotonic',side_effect=lambda:clock[0]),\
+             mock.patch.object(compact_runner.time,'sleep',side_effect=lambda delay:clock.__setitem__(0,clock[0]+delay)):
+            with self.assertRaises(TimeoutError):namespace['visible']('浏览器菜单',False)
+
+    def test_persistent_same_name_and_unsettled_modal_cannot_pass_the_wrong_direction(self):
+        with self.assertRaises(TimeoutError):self.observe(self.closed,True)
+        with self.assertRaises(TimeoutError):self.observe(self.opened,False)
+        for change in ('heading','close','duplicate-heading','duplicate-close','foreign-heading','foreign-close',
+                       'hidden-heading','hidden-close','disabled-close','unclickable-close','class-close',
+                       'wrong-description','wrong-parent','small-close','outside-header','overlap'):
+            tree=ET.fromstring(self.opened);parents={c:p for p in tree.iter() for c in p}
+            heading=next(n for n in tree.iter('node') if n.get('text')=='浏览器菜单')
+            close=next(n for n in tree.iter('node') if n.get('content-desc')=='关闭浏览器菜单')
+            if change in ('heading','close'):
+                target=heading if change=='heading' else close;parents[target].remove(target)
+            elif change=='duplicate-heading':parents[heading].append(copy.deepcopy(heading))
+            elif change=='duplicate-close':parents[close].append(copy.deepcopy(close))
+            elif change=='foreign-heading':heading.set('package','other.application')
+            elif change=='foreign-close':close.set('package','other.application')
+            elif change=='hidden-heading':heading.set('visible-to-user','false')
+            elif change=='hidden-close':close.set('visible-to-user','false')
+            elif change=='disabled-close':close.set('enabled','false')
+            elif change=='unclickable-close':close.set('clickable','false')
+            elif change=='class-close':close.set('class','android.widget.TextView')
+            elif change=='wrong-description':heading.set('content-desc','other modal')
+            elif change=='wrong-parent':parents[close].remove(close);parents[parents[heading]].append(close)
+            elif change=='small-close':close.set('bounds','[858,434][1002,577]')
+            elif change=='outside-header':close.set('bounds','[1002,434][1146,578]')
+            elif change=='overlap':heading.set('bounds','[78,434][900,578]')
+            raw=xml(tree)
+            for present in (True,False):
+                with self.subTest(change=change,present=present),self.assertRaises(TimeoutError):
+                    self.observe(raw,present)
+
+    def test_closed_requires_the_actual_complete_native_toolbar(self):
+        for change in ('missing','foreign','hidden','disabled','class','partial-modal','fake-same-name'):
+            tree=ET.fromstring(self.closed);parents={c:p for p in tree.iter() for c in p}
+            target=next(n for n in tree.iter('node') if n.get('content-desc','').startswith('当前网址 '))
+            if change=='missing':parents[target].remove(target)
+            elif change=='foreign':target.set('package','other.application')
+            elif change=='hidden':target.set('visible-to-user','false')
+            elif change=='disabled':target.set('enabled','false')
+            elif change=='class':target.set('class','android.widget.TextView')
+            else:
+                source=ET.fromstring(self.opened)
+                original=next(n for n in source.iter('node') if n.get('content-desc')==
+                    ('关闭浏览器菜单' if change=='partial-modal' else '浏览器菜单'))
+                extra=copy.deepcopy(original)
+                if change=='fake-same-name':extra.set('package','other.application')
+                tree.append(extra)
+            with self.subTest(change=change),self.assertRaises(TimeoutError):self.observe(xml(tree),False)
+
+    def test_late_open_or_closed_frame_cannot_extend_the_original_window(self):
+        for present,raw in ((True,self.opened),(False,self.closed)):
+            with self.subTest(present=present),self.assertRaises(TimeoutError):
+                self.observe(raw,present,late=True)
+
+    def test_actual_compact_menu_phase_observes_both_states_and_uses_one_back(self):
+        source=ast.parse((ROOT/'tests/gecko/compact_chrome_v3.py').read_text())
+        function=next(n for n in source.body if isinstance(n,ast.FunctionDef) and n.name=='run_case')
+        start=next(i for i,n in enumerate(function.body) if isinstance(n,ast.Assign)
+                   and isinstance(n.value,ast.Call) and isinstance(n.value.func,ast.Name)
+                   and n.value.func.id=='snapshot' and n.value.args[0].value=='menu')
+        end=next(i for i,n in enumerate(function.body) if i>start and isinstance(n,ast.AugAssign)
+                 and isinstance(n.target,ast.Name) and n.target.id=='command')
+        phase=ast.Module(body=function.body[start:end],type_ignores=[])
+        state={'xml':self.closed};inputs=[];deadlines=[]
+        def tap(name,point,box):
+            inputs.append((name,point,box))
+            if name=='menu-status':state['xml']=self.opened
+        def adb(*parts):
+            inputs.append(parts)
+            self.assertEqual(parts,('shell','input','keyevent','KEYCODE_BACK'))
+            state['xml']=self.closed
+        def dump(**options):
+            if 'deadline' in options:deadlines.append(options['deadline'])
+            return state['xml']
+        control=dict(tap=[996,1752],bounds=[924,1680,1068,1824])
+        status=dict(networkTap=[500,610],bounds=[78,578,1002,650],stateTap=[950,610],
+                    texts=[{}, {},dict(bounds=[900,578,1002,650])])
+        def snapshot(name):
+            if name=='menu':return dict(browserAddressRow=dict(controls=[None]*4+[control]))
+            return dict(networkMetrics=status)
+        with tempfile.TemporaryDirectory() as directory:
+            namespace=dict(vars(compact_runner),snapshot=snapshot,tap=tap,adb=adb,dump=dump,
+                visible=mock.Mock(side_effect=AssertionError('Legacy visibility cannot qualify the current menu')),
+                shots=Path(directory),stem='original-menu-replay',package=capture.PACKAGE,
+                adb_bytes=lambda *parts:b'host image boundary; not Android evidence')
+            with mock.patch.object(compact_runner.time,'monotonic',return_value=10):
+                exec(compile(phase,'actual-compact-menu-phase','exec'),namespace)
+            self.assertEqual(deadlines,[30,30])
+            self.assertEqual(sum(parts==('shell','input','keyevent','KEYCODE_BACK') for parts in inputs),1)
+            self.assertEqual((Path(directory)/'original-menu-replay-menu-open.xml').read_text(),self.opened)
+            self.assertEqual((Path(directory)/'original-menu-replay-menu-closed.xml').read_text(),self.closed)
+            namespace['visible'].assert_not_called()
 
 
 class MotionProtocolTests(unittest.TestCase):
