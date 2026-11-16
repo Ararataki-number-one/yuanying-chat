@@ -34,7 +34,7 @@ import time
 import xml.etree.ElementTree as ET
 
 from ui_visual_capture import UiVisualCapture
-from workspace_navigation_contract_v3 import menu_scroll_points
+from workspace_navigation_contract_v3 import menu_body_ready, menu_scroll_points
 
 PACKAGE = 'local.pocketchat.test'
 COMPONENT = PACKAGE + '/local.pocketchat.UiVisualIntegrationActivity'
@@ -314,13 +314,18 @@ def menu_action(capture, adb, xml, label, out, stem, deadline, inputs, *, input_
     coordinates, increased deadline, or inferred action can satisfy this lookup.
     """
     out = Path(out)
-    for attempt in range(12):
+    attempt = scroll_count = 0
+    while True:
         if time.monotonic() >= deadline:
             raise TimeoutError('Browser menu action deadline expired: ' + label)
         path = out / (stem + '-menu-' + str(attempt) + '.xml')
         path.write_text(xml)
+        attempt += 1
         if not browser_menu_open(xml):
             raise ValueError('The observed browser menu is no longer open')
+        if not menu_body_ready(xml, PACKAGE):
+            xml = capture.read(deadline=deadline)
+            continue
         target = button(xml, label)
         box = bounds(target)
         if box is not None and min(box[2]-box[0], box[3]-box[1]) >= 48*DENSITY/160-1:
@@ -348,11 +353,15 @@ def menu_action(capture, adb, xml, label, out, stem, deadline, inputs, *, input_
             raise TimeoutError('Browser menu action deadline expired before scroll: '+label)
         adb('shell','input','touchscreen','swipe',*map(str,start_point+end_point),'300',
             timeout=min(6,remaining))
+        scroll_count += 1
         action['completedAtUnixNs'] = time.time_ns()
         if input_complete is not None:
             input_complete(action)
         xml = capture.read(deadline=deadline)
-    raise ValueError('Browser menu action was not reachable in 12 observed scrolls: '+label)
+        # Preserve the former range(12) boundary: its final scroll was read
+        # for evidence, but that thirteenth nonempty frame was never accepted.
+        if scroll_count >= 12:
+            raise ValueError('Browser menu action was not reachable in 12 observed scrolls: '+label)
 
 
 def browser_toolbar_geometry(xml):

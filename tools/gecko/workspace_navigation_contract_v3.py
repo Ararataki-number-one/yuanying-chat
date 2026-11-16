@@ -77,6 +77,53 @@ def menu_action(xml, package, label):
     return native_button(xml, package, label, field='text')
 
 
+def menu_body_ready(xml, package):
+    """A newly shown native sheet may expose its header before its actions.
+
+    An empty action subtree is an incomplete observation, not evidence that the
+    requested action is below the viewport. Only a real visible button within
+    the owned scroll body can authorize searching that body with a gesture.
+    """
+    tree = ET.fromstring(xml)
+    nodes = list(tree.iter('node'))
+    parents = {child: parent for parent in tree.iter() for child in parent}
+    headings = [n for n in nodes if n.get('package') == package
+                and n.get('class') == 'android.widget.TextView'
+                and n.get('text') == n.get('content-desc') == '浏览器菜单'
+                and n.get('visible-to-user') != 'false']
+    close = [n for n in nodes if n.get('package') == package
+             and n.get('class') == 'android.widget.Button'
+             and n.get('content-desc') == '关闭浏览器菜单'
+             and n.get('clickable') == n.get('enabled') == 'true'
+             and n.get('visible-to-user') != 'false']
+    scrollers = [n for n in nodes if n.get('package') == package
+                 and n.get('class') == 'android.widget.ScrollView'
+                 and n.get('scrollable') == n.get('enabled') == 'true'
+                 and n.get('visible-to-user') != 'false']
+    assert len(headings) == len(close) == len(scrollers) == 1, 'Expected the actual native browser menu'
+    scroller = scrollers[0]
+    left, top, right, bottom = bounds(scroller)
+    assert 0 <= left < right and 0 <= top < bottom, 'Native menu scroller has no visible bounds'
+    for node in scroller.iter('node'):
+        if not (node.get('package') == package and node.get('class') == 'android.widget.Button'
+                and node.get('text') and node.get('clickable') == node.get('enabled') == 'true'
+                and node.get('visible-to-user') != 'false'):
+            continue
+        l, t, r, b = bounds(node)
+        if not (left <= l < r <= right and top <= t < b <= bottom):
+            continue
+        ancestor = parents.get(node)
+        while ancestor is not scroller:
+            if (ancestor is None or ancestor.get('package') != package
+                    or ancestor.get('visible-to-user') == 'false'
+                    or ancestor.get('class') == 'android.webkit.WebView'):
+                break
+            ancestor = parents.get(ancestor)
+        if ancestor is scroller:
+            return True
+    return False
+
+
 def menu_scroll_points(viewport, target_bounds, *, coarse_start, coarse_end, minimum_target):
     """Keep a partially visible target in view while revealing its clipped edge.
 
@@ -116,10 +163,12 @@ def menu_scroll_points(viewport, target_bounds, *, coarse_start, coarse_end, min
 def seek_menu_action(adb, read, package, label, *, deadline, scrolls, density_evidence=None):
     """Find a real menu action with bounded, recorded Android scroll inputs."""
     minimum = minimum_touch_pixels(density_evidence)
-    for attempt in range(9):
+    while True:
         assert time.monotonic() < deadline, 'Original menu observation budget expired'
         xml = read(deadline=deadline)
         assert time.monotonic() < deadline, 'Original menu observation budget expired'
+        if not menu_body_ready(xml, package):
+            continue
         target = None
         try:
             target = menu_action(xml, package, label)
@@ -133,7 +182,7 @@ def seek_menu_action(adb, read, package, label, *, deadline, scrolls, density_ev
                    for n in tree.iter('node')), 'Cannot scroll a window other than the actual browser menu'
         views = [n for n in tree.iter('node') if n.get('package') == package
                  and n.get('class') == 'android.widget.ScrollView' and n.get('scrollable') == 'true']
-        assert len(views) == 1 and attempt < 8 and len(scrolls) < 8, ('Menu action is unavailable', label)
+        assert len(views) == 1 and len(scrolls) < 8, ('Menu action is unavailable', label)
         left, top, right, bottom = bounds(views[0])
         start, end = menu_scroll_points([left, top, right, bottom],
             target['bounds'] if target is not None else None,
@@ -146,7 +195,6 @@ def seek_menu_action(adb, read, package, label, *, deadline, scrolls, density_ev
         assert time.monotonic() < deadline, 'Original menu observation budget expired before scroll'
         scrolls.append(observation)
         adb('shell', 'input', 'swipe', *map(str, start+end), '320')
-    raise AssertionError(('Menu action remained unavailable', label))
 
 
 def verify_menu_scrolls(scrolls, package, label, *, density_evidence=None):
@@ -156,6 +204,7 @@ def verify_menu_scrolls(scrolls, package, label, *, density_evidence=None):
         assert value['label'] == label and value['actualAndroidInput'] is True and value['durationMs'] == 320
         xml=value['rawXml']; assert type(xml) is str and 0 < len(xml.encode()) <= 1024*1024
         assert value['xmlSha256'] == hashlib.sha256(xml.encode()).hexdigest()
+        assert menu_body_ready(xml, package), 'An incomplete menu body cannot authorize a scroll'
         nodes=list(ET.fromstring(xml).iter('node'))
         assert any(n.get('package') == package and n.get('text') == n.get('content-desc') == '浏览器菜单' for n in nodes)
         views=[n for n in nodes if n.get('package') == package and n.get('class') == 'android.widget.ScrollView' and n.get('scrollable') == 'true']

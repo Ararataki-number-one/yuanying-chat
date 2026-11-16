@@ -60,6 +60,7 @@ def menu_xml(dpi=420, *, partial=False, above=False):
     tree = ET.Element('hierarchy')
     panel = node(tree, 'LinearLayout', (0,0,1080,1920))
     node(panel, 'TextView', (100,200,900,350), text='浏览器菜单', description='浏览器菜单')
+    node(panel, 'Button', (900,206,1044,350), description='关闭浏览器菜单')
     scroll = node(panel, 'ScrollView', (100,400,980,1600), scrollable='true')
     box = (100,400,980,450) if above else (100,1550,980,1600) if partial else (100,600,980,744)
     node(scroll, 'Button', box, text='管理全部环境')

@@ -318,9 +318,13 @@ class MenuDeadlineTests(unittest.TestCase):
 
     def menu(self,action=False,*,enabled=True,clipped=False):
         tree=ET.Element('hierarchy')
+        node(tree,'浏览器菜单',[8,120,264,168],text='浏览器菜单',kind='android.widget.TextView')
         node(tree,'关闭浏览器菜单',[264,120,312,168])
-        node(tree,'',[8,170,312,600],kind='android.widget.ScrollView',scrollable='true')
-        if action:node(tree,'下载管理',[20,210,300,230 if clipped else 266],text='下载管理',enabled=enabled)
+        scroller=node(tree,'',[8,170,312,600],kind='android.widget.ScrollView',scrollable='true')
+        # A declared host menu with a real action body, including when the
+        # requested action is absent from this viewport.
+        node(scroller,'快速切换环境',[20,300,300,356],text='快速切换环境')
+        if action:node(scroller,'下载管理',[20,210,300,230 if clipped else 266],text='下载管理',enabled=enabled)
         return xml(tree)
 
     def run_menu(self,initial,read,*,now=10,deadline=30):
@@ -758,9 +762,11 @@ class CollapseMenuReobservationTests(unittest.TestCase):
     @staticmethod
     def menu(box=None):
         tree=ET.Element('hierarchy')
-        node(tree,'浏览器菜单',[36,72,972,216],text='浏览器菜单',kind='android.widget.TextView')
+        node(tree,'浏览器菜单',[36,72,864,216],text='浏览器菜单',kind='android.widget.TextView')
+        node(tree,'关闭浏览器菜单',[864,72,1008,216])
         scroller=node(tree,'',[24,216,1008,1728],kind='android.widget.ScrollView',scrollable='true')
         if box is not None:node(scroller,'当前环境网络',box,text='当前环境网络')
+        else:node(scroller,'下载管理',[36,480,972,642],text='下载管理')
         return xml(tree)
 
     def execute(self,*,snapshot_seconds=3,fresh_read_seconds=.25,late_ui_return=False):
