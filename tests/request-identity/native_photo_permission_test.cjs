@@ -82,3 +82,47 @@ test('cancelled picker, expired capture and standard mode never create a grant',
 test('a native write that throws after mutation is still retired and never leaks a failed grant',async()=>{
  const h=harness(),w=h.window();await h.capture(w,'a');h.state.afterWrite=()=>{throw Error('uncertain setter completion');};await assert.rejects(h.grant(w,'a'),/uncertain/);assert.equal(h.perms.testPermissionFromPrincipal(w.principal,'canvas'),0);assert.equal(h.state.timers.size,0);
 });
+
+test('actual photo bridge rejects malformed requests and native receipts without creating a permission',async()=>{
+ const h=harness(),w=h.window(),calls=[],listeners=[];
+ const api=Object.fromEntries(['captureSession','grantSession','releaseSession','releaseAll'].map(name=>[name,(...args)=>{calls.push({name,args});return h.api[name](...args);}]))
+ const context=vm.createContext({browser:{pocketNativePhoto:api,runtime:{onMessage:{addListener(fn){listeners.push(fn);}}}}});
+ const bridgeSource=fs.readFileSync(path.join(ROOT,'app/src/main/assets/gecko/native-photo-bridge.js'),'utf8');
+ vm.runInContext(bridgeSource,context,{filename:'native-photo-bridge.js'});const bridge=context.PocketNativePhotoBridge;
+ const selected={kind:'photoCanvasCapture',id:1,sessionId:w.name,requestToken:'native-picker',origin:w.principal.originNoSuffix};
+ const grant={kind:'photoCanvasGrant',id:2,sessionId:w.name,requestToken:'native-picker'};
+ for(const bad of [null,[],{}, {...selected,kind:'from-page'},... [0,-1,1.5,2147483648,'1'].map(id=>({...selected,id})),
+  {...selected,requestToken:'wrong\ntoken'},{...selected,sessionId:'https://private.example/'},{...selected,documentId:'page-supplied'},
+  {...grant,origin:selected.origin},{...selected,origin:null}])assert.equal((await bridge.handle(bad)).status,'failed');
+ assert.equal(calls.length,0);assert.equal(listeners.length,0);assert.equal(Object.isFrozen(bridge),true);
+ const captured=await bridge.handle(selected);assert.equal(captured.status,'captured');assert.equal(h.state.writes.length,0);
+ assert.deepEqual(calls,[{name:'captureSession',args:[w.name,w.principal.originNoSuffix,'native-picker']}]);
+ for(const change of [{requestToken:'another-picker'},{sessionId:'another-session'},{documentId:'0'},{scope:'whole-runtime'},{origin:'https://foreign.example'},{expiresAt:1.5}]){
+  api.captureSession=async()=>({...captured,...change});assert.equal((await bridge.handle(selected)).status,'failed');
+ }
+ assert.equal(h.state.writes.length,0);await bridge.clear();assert.equal(h.state.timers.size,0);
+});
+
+test('actual bundled background routes photos only from the current native port and clears leases on disconnect',async()=>{
+ const h=harness(),w=h.window(),plain=value=>JSON.parse(JSON.stringify(value));
+ const event=()=>({listeners:[],addListener(fn){this.listeners.push(fn);},async emit(...args){return Promise.all(this.listeners.map(fn=>fn(...args)));}});
+ const ports=[],publicMessages=event(),timers=new Map();let timerId=0;
+ const browser={pocketNativePhoto:h.api,runtime:{getURL:()=> 'moz-extension://own-runtime/',onMessage:publicMessages,connectNative(app){assert.equal(app,'pocketroute');const port={sent:[],onMessage:event(),onDisconnect:event(),postMessage(value){this.sent.push(plain(value));}};ports.push(port);return port;},sendNativeMessage(){throw Error('No network in photo host-route controls');}},webRequest:{},proxy:{onRequest:{addListener(){}}},cookies:{onChanged:event(),async getAll(){return [];},async set(){throw Error('No cookie restore in photo fixture');}},storage:{local:{async get(){return {};},async set(){}}},privacy:{websites:{resistFingerprinting:{onChange:event(),async set(){},async get(){return {value:false};}}}}};
+ for(const name of ['onBeforeRequest','onBeforeSendHeaders','onHeadersReceived'])browser.webRequest[name]={addListener(){},removeListener(){}};
+ const context=vm.createContext({browser,URL,Intl,Date,AbortController,TextDecoder,Uint8Array,setTimeout(fn,delay){const id=++timerId;timers.set(id,{fn,delay});return id;},clearTimeout(id){timers.delete(id);},fetch(){throw Error('No network in photo host-route controls');}});
+ const manifest=JSON.parse(fs.readFileSync(path.join(ROOT,'app/src/main/assets/gecko/manifest.json'),'utf8'));
+ for(const name of manifest.background.scripts)vm.runInContext(fs.readFileSync(path.join(ROOT,'app/src/main/assets/gecko',name),'utf8'),context,{filename:name});
+ assert.equal(ports.length,1);assert.equal(publicMessages.listeners.length,0);const first=ports[0];
+ const capture={kind:'photoCanvasCapture',id:31,sessionId:w.name,requestToken:'selected-file',origin:w.principal.originNoSuffix};
+ const grant={kind:'photoCanvasGrant',id:32,sessionId:w.name,requestToken:'selected-file'};
+ await publicMessages.emit(capture,{id:'browser@pocketchat.local',url:'https://photos.example'});assert.equal(w.listeners.size,0);
+ await first.onMessage.emit(capture);assert.equal(first.sent.at(-1).kind,'photoCanvasReady');assert.equal(first.sent.at(-1).id,31);
+ assert.equal(JSON.parse(first.sent.at(-1).result).status,'captured');assert.equal(h.state.writes.length,0);
+ await first.onMessage.emit({...grant,origin:w.principal.originNoSuffix});assert.equal(JSON.parse(first.sent.at(-1).result).status,'failed');assert.equal(h.state.writes.length,0);
+ await first.onMessage.emit(grant);assert.equal(first.sent.at(-1).id,32);assert.equal(JSON.parse(first.sent.at(-1).result).status,'granted');assert.equal(h.perms.testPermissionFromPrincipal(w.principal,'canvas'),1);
+ await first.onDisconnect.emit();assert.equal(h.perms.testPermissionFromPrincipal(w.principal,'canvas'),0);assert.equal(h.state.timers.size,0);assert.equal(w.listeners.size,0);
+ const reconnect=[...timers].find(([,timer])=>timer.delay===500);assert.ok(reconnect);timers.delete(reconnect[0]);reconnect[1].fn();assert.equal(ports.length,2);
+ const previous=first.sent.length;await first.onMessage.emit(capture);assert.equal(first.sent.length,previous);assert.equal(w.listeners.size,0);
+ const second=ports[1];await second.onMessage.emit(capture);await second.onMessage.emit(grant);assert.equal(JSON.parse(second.sent.at(-1).result).status,'granted');
+ await second.onMessage.emit({...grant,kind:'photoCanvasRelease',id:33});assert.equal(JSON.parse(second.sent.at(-1).result).status,'released');assert.equal(h.perms.testPermissionFromPrincipal(w.principal,'canvas'),0);assert.equal(publicMessages.listeners.length,0);
+});

@@ -53,7 +53,7 @@ class BrowserHostRegistryTests(unittest.TestCase):
         current = declared_cases(raw, self.out)
         self.assertEqual(len(original), 190)
         self.assertEqual(current[:190], original)
-        self.assertEqual(len(current), 198)
+        self.assertEqual(len(current), 199)
         name, command, report = current[190]
         self.assertEqual(name, 'gecko-texture-surface')
         self.assertEqual(command[1], 'tests/gecko-texture-surface-host/run.py')
@@ -63,6 +63,7 @@ class BrowserHostRegistryTests(unittest.TestCase):
             ('bottom-browser-toolbar', [sys.executable, 'tests/browser_bottom_toolbar_test.py'], None),
             ('browser-workspace-capture', [sys.executable, 'tests/browser_workspace_capture_contract_test.py'], None),
             ('browser-navigation-v3', [sys.executable, 'tests/profile_navigation_v3_test.py'], None),
+            ('browser-navigation-source-history', [sys.executable, 'tests/profile_navigation_v3_source_history_test.py'], None),
             ('photo-upload-content', [sys.executable, 'tests/gecko_photo_upload_contract_test.py'], None),
             ('gecko-photo-picker-permission', [sys.executable, 'tests/gecko_photo_permission_test.py'], None),
             ('gecko-upload-file-integrity', [sys.executable, 'tests/gecko_upload_files_test.py'], None),

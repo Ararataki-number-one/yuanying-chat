@@ -23,7 +23,10 @@ env=dict(os.environ)
 # User-supplied original test keystore uses the project's documented local passwords.
 env['POCKET_STORE_PASSWORD']='android';env['POCKET_KEY_PASSWORD']='android'
 subprocess.run([str(args.tools/'zipalign'),'-f','-P','16','4',str(args.apk),str(aligned)],check=True)
-subprocess.run([str(java),'-jar',str(signer),'sign','--ks',str(args.key),'--ks-key-alias','local',
+# zipalign already established the required 16 KiB native-library alignment.
+# Preserve it while signing so publication can transport the unchanged APK
+# prefix and the bounded signature tail without repacking application entries.
+subprocess.run([str(java),'-jar',str(signer),'sign','--alignment-preserved','true','--ks',str(args.key),'--ks-key-alias','local',
     '--ks-pass','env:POCKET_STORE_PASSWORD','--key-pass','env:POCKET_KEY_PASSWORD','--out',str(args.output),str(aligned)],check=True,env=env)
 cert=subprocess.check_output([str(java),'-jar',str(signer),'verify','--verbose','--print-certs',str(args.output)],text=True)
 digests=re.findall(r'certificate SHA-256 digest: ([0-9a-f]{64})',cert)

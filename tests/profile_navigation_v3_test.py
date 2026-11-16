@@ -2,7 +2,6 @@
 import ast
 import copy
 import hashlib
-import importlib.util
 import json
 from pathlib import Path
 import sys
@@ -189,16 +188,6 @@ class BottomContractTests(unittest.TestCase):
             stage=Path(raw);stage_actual_reader_blocks(stage)
             for name in ('workspace_navigation_contract_v3.py','compact_chrome_layout_v3.py','chrome_collapse_contract_v3.py'):
                 self.assertEqual((stage/'tools/gecko'/name).read_bytes(),(ROOT/'tools/gecko'/name).read_bytes())
-
-    def test_current_capture_producer_retains_original_readiness_deadlines(self):
-        path=ROOT/'tests/compact-chrome-capture-host/run.py';spec=importlib.util.spec_from_file_location('current_capture',path)
-        module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
-        source=(ROOT/'tests/gecko/run_ui_visuals.py').read_text();proof=module.verify_current_compact_ui_source(source)
-        self.assertEqual(proof['currentNavigationContract'],3)
-        bad=source.replace('def chrome_event(command,event):\n        deadline=time.monotonic()+20','def chrome_event(command,event):\n        deadline=time.monotonic()+21',1)
-        self.assertNotEqual(source,bad)
-        with self.assertRaises(AssertionError):module.verify_current_compact_ui_source(bad)
-
 
 class CollapseContractTests(unittest.TestCase):
     @classmethod

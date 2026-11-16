@@ -153,6 +153,7 @@ def main():
     add('bottom-browser-toolbar','tests/browser_bottom_toolbar_test.py')
     add('browser-workspace-capture','tests/browser_workspace_capture_contract_test.py')
     add('browser-navigation-v3','tests/profile_navigation_v3_test.py')
+    add('browser-navigation-source-history','tests/profile_navigation_v3_source_history_test.py')
     add('photo-upload-content','tests/gecko_photo_upload_contract_test.py')
     add('gecko-photo-picker-permission','tests/gecko_photo_permission_test.py')
     add('gecko-upload-file-integrity','tests/gecko_upload_files_test.py')

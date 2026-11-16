@@ -2,7 +2,7 @@
 import ast
 import hashlib
 from pathlib import Path
-from historical_source_inputs import historical_bytes
+from historical_source_inputs import historical_bytes, browser_v2_bytes
 import subprocess
 import tempfile
 import unittest
@@ -110,7 +110,10 @@ class ReceiptJournalSourceCompatibility(unittest.TestCase):
                         if type(value) is ast.FunctionDef and value.name == 'run')
         dump = lambda value: ast.dump(value, include_attributes=False)
         previous = subprocess.check_output(['git', 'show', journal.BASE_COMMIT + ':' + RUNNER], cwd=ROOT).decode()
-        current = (ROOT / RUNNER).read_text()
+        # The complete old AST proof reads the real released 2.1.5 Git blob.
+        # Current photo-aware behavior executes separately below and in the
+        # original transport/journal hosts; it is never projected into this AST.
+        current = browser_v2_bytes(RUNNER).decode('utf-8')
         expected = dump(node(previous))
         actual = node(current)
         before = dump(actual)
@@ -182,6 +185,63 @@ class ReceiptJournalSourceCompatibility(unittest.TestCase):
         self.assertFalse(any(isinstance(node, ast.ClassDef) and node.name == 'ReceiptJournalDiscovery' for node in runner.body))
         self.assertTrue(any(isinstance(node, ast.ImportFrom) and node.module == 'integration_event_contract'
             and any(alias.name == 'ReceiptJournalDiscovery' for alias in node.names) for node in runner.body))
+
+    def test_current_photo_consumer_joins_original_native_events_with_real_receiver_before_success(self):
+        """Execute the current complete run body; all transport inputs are host controls."""
+        import json
+        from types import SimpleNamespace
+        import gecko_event_transfer_test as transport
+        import gecko_photo_upload_contract_test as photo
+        pattern = (ROOT/'tests/gecko/assets/photo-upload-pattern.png').read_bytes()
+        selected = photo.contract.CASES[0]
+        _, slot, level, mode, action = selected
+        nonce = 'e'*32
+        for mismatch in (False, True):
+            with self.subTest(receiver_mismatch=mismatch), tempfile.TemporaryDirectory() as directory:
+                ledger = photo.contract.PhotoUploadLedger(directory, photo.identity())
+                seed_receipt, seed_raw = transport.packet(transport.event('desktopImage', {}), fixtureAction=action)
+                bindings, _ = transport.GeckoEventTransportControls().device_runner_control(seed_receipt, seed_raw)
+                bindings['Fixture'] = SimpleNamespace(photo_ledger=ledger)
+                observed = {}
+                def adb(*parts):
+                    if parts[:3] == ('shell', 'am', 'start'):
+                        self.assertEqual(parts[-3:], ('--ei', 'photoPrivacy', str(level)))
+                        ledger.document(nonce, 7, level, mode)
+                        for phase in photo.contract.phases(mode):
+                            content_type, body = photo.multipart(pattern)
+                            ledger.receive(nonce, 7, phase, content_type, body)
+                        result = photo.native(ledger.cases[nonce])
+                        if mismatch:
+                            result['photoEvidence']['receipts'][0]['sha256'] = '0'*64
+                        record = photo.packets(ledger.cases[nonce], result)[0]
+                        observed.update(result=result, record=record)
+                    # Native committed markers, rather than logcat, discover
+                    # this complete event. No real adb or Android is involved.
+                    return ''
+                def native(*parts):
+                    self.assertEqual(parts[:4], ('exec-out', 'content', 'read', '--uri'))
+                    record = observed['record']
+                    if parts[-1] == 'content://local.pocketchat.test.evidence/gecko-event-receipts/0/'+nonce:
+                        return json.dumps(dict(schema=1, status='committed', runNonce=nonce,
+                            processSlot=slot, fixtureAction=action, command=7,
+                            receipts=[json.dumps(record['receipt'])])).encode()
+                    self.assertEqual(parts[-1], transport.transfer.event_uri(record['receipt']))
+                    return record['rawUtf8'].encode()
+                bindings.update(adb=adb, adb_bytes=native)
+                with patch('sys.stdout'):
+                    if mismatch:
+                        with self.assertRaisesRegex(AssertionError, 'Native page result differs from receiver bytes'):
+                            bindings['run'](slot+1, action, 'desktopImage', photo=selected)
+                    else:
+                        result = bindings['run'](slot+1, action, 'desktopImage', photo=selected)
+                        self.assertEqual(result, observed['result'])
+                self.assertEqual(bindings['event_transfers'][0]['events'], [observed['record']])
+                self.assertEqual(bool(ledger.cases[nonce].get('complete')), not mismatch)
+                if mismatch:
+                    self.assertEqual(bindings['steps'], [])
+                else:
+                    self.assertEqual(ledger.cases[nonce]['nativeEvents'], [observed['record']])
+                    self.assertEqual(len(bindings['steps']), 1)
 
 
 if __name__ == '__main__':

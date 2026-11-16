@@ -100,12 +100,20 @@ class ProfileUiHistoryPrerequisitesTests(unittest.TestCase):
                     ('prepare_supplemental_history', 'supplemental'),
                     ('prepare_released_history', 'released')):
                 stack.enter_context(patch.object(setup, function, side_effect=stage(name)))
+            # The newer v2 family has a separate real-Git prerequisite suite.
+            # Keep this original UI family's transport and call oracle exact.
+            def browser_v2_boundary(root, *, source_commit):
+                self.assertEqual((root, source_commit), (self.root, self.source))
+                return dict(status='passed', controlledBoundary='browser-v2')
+            browser_v2 = stack.enter_context(patch.object(setup, 'prepare_browser_v2_history',
+                side_effect=browser_v2_boundary))
             stack.enter_context(patch.object(setup.history, 'verify_group', side_effect=verify))
             stack.enter_context(patch.object(setup.history, 'git', side_effect=transport or self.transport))
             stack.enter_context(patch.dict(os.environ, self.environment))
             stack.enter_context(patch.object(sys, 'argv', ['prepare', '--root', str(self.root),
                 '--source-commit', self.source, '--output', str(output)]))
             setup.main()
+            browser_v2.assert_called_once_with(self.root, source_commit=self.source)
             self.assertEqual(os.environ['GITHUB_SHA'], self.environment['GITHUB_SHA'])
 
     def test_actual_default_cli_restores_missing_ui_owners_after_existing_setup(self):
