@@ -134,10 +134,10 @@ public final class NativeHierarchyCapture {
 
   static Point displaySize(Display display, int api) {
     Point size = new Point();
-    // Match each supported AOSP DumpCommand; do not alter its viewport semantics.
-    if (api == 32) display.getSize(size);
-    else if (api == 35) display.getRealSize(size);
-    else throw new IllegalArgumentException("Unsupported hierarchy display API");
+    require(api == 32 || api == 35, "Unsupported hierarchy display API");
+    // Accessibility bounds are screen coordinates. App size excludes system
+    // insets and would clip real controls on API 32 with cutout/three-button UI.
+    display.getRealSize(size);
     require(size.x > 0 && size.y > 0, "Invalid hierarchy display size");
     return size;
   }

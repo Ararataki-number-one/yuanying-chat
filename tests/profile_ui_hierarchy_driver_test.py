@@ -120,11 +120,15 @@ class DriverPreparationTest(unittest.TestCase):
             self.assertEqual(archive.read(DRIVER.EMBEDDED_SOURCE), expected)
         self.assertEqual(base64.b64decode(value['installedJar']['readbackBase64']), self.pushed)
 
-    def test_api32_preserves_its_original_viewport(self):
+    def test_api32_uses_real_screen_coordinates_despite_system_insets(self):
         self.api = '32'
         driver = self.prepare()
-        self.assertEqual(driver.evidence['device']['viewportMode'], 'getSize')
+        self.assertEqual(driver.evidence['device']['viewportMode'], 'getRealSize')
         DRIVER.verify_evidence(driver.evidence, self.source, root=self.repo)
+        clipped = copy.deepcopy(driver.evidence)
+        clipped['device']['viewportMode'] = 'getSize'
+        with self.assertRaisesRegex(ValueError, 'formatter semantics'):
+            DRIVER.verify_evidence(clipped, self.source, root=self.repo)
 
     def test_unsupported_devices_never_compile_or_push(self):
         for field, value in (('api', '34'), ('api', '36'), ('uid', '0'), ('qemu', '0'), ('hardware', 'physical')):
@@ -309,9 +313,9 @@ public class NativeHierarchyHost {
   if(scenario.equals("null")){check(!captured&&!file.exists()&&SystemClock.now==deadline);}
   else{check(captured&&AccessibilityNodeInfoDumper.root==UiAutomation.node&&UiAutomation.node.recycled==1);
    check(AccessibilityNodeInfoDumper.rotation==3&&AccessibilityNodeInfoDumper.width==320);
-   check(AccessibilityNodeInfoDumper.height==(Build.VERSION.SDK_INT==32?600:640));
-   check(android.view.Display.ordinary==(Build.VERSION.SDK_INT==32?1:0));
-   check(android.view.Display.real==(Build.VERSION.SDK_INT==35?1:0));
+   check(AccessibilityNodeInfoDumper.height==640);
+   check(android.view.Display.ordinary==0);
+   check(android.view.Display.real==1);
    if(scenario.equals("startup"))check(UiAutomation.calls==3&&SystemClock.now==180);
    String xml=new String(Files.readAllBytes(file.toPath()),"UTF-8");check(xml.contains("content-desc=\\\"live countdown\\\""));
   }
@@ -367,8 +371,31 @@ class NativeReadOnlyDriverTest(unittest.TestCase):
     def test_real_driver_reads_dynamic_root_through_the_original_formatter(self):
         self.scenario('dynamic')
 
-    def test_each_api_keeps_its_original_viewport_mode(self):
+    def test_api32_formatter_receives_real_screen_size(self):
         self.scenario('api32')
+
+    def test_compiled_api32_app_size_mutant_cannot_clip_screen_coordinates(self):
+        original = (ROOT/DRIVER.JAVA_SOURCE).read_text()
+        self.assertEqual(original.count('display.getRealSize(size);'), 1)
+        changed = original.replace('display.getRealSize(size);',
+            'if (api == 32) display.getSize(size); else display.getRealSize(size);')
+        source = self.work/'app-size-mutant/NativeHierarchyCapture.java'
+        source.parent.mkdir()
+        source.write_text(changed)
+        classes = self.work/'app-size-mutant-classes'
+        classpath = str(self.classes) + os.pathsep + str(self.json_jar)
+        result = subprocess.run([str(Path(self.java).parent/'javac'), '-encoding', 'UTF-8',
+            '-classpath', classpath, '-d', str(classes), str(source)],
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=30)
+        self.assertEqual(result.returncode, 0, result.stderr.decode())
+        # Run the same actual capture/formatter path and API 32 assertion with
+        # app size 320x600 versus screen size 320x640. Only the mutant changes.
+        result = subprocess.run([self.java, '-classpath', str(classes) + os.pathsep + classpath,
+            'local.pocketchat.hierarchydriver.NativeHierarchyHost', 'api32', str(self.work/'mutant-api32.xml')],
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=5)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn(b'AssertionError', result.stderr)
+        self.assertEqual(result.stdout, b'')
 
     def test_null_root_polls_only_within_original_remainder(self):
         self.scenario('null')

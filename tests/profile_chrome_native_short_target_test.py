@@ -45,7 +45,7 @@ def controlled_evidence(directory, source, tree):
     selected = dict(sourceCommit=source, sourceTree=tree, runId=run, runAttempt=attempt, inputs=inputs)
     stamp = dict(schema=1, **selected, backend=driver.BACKEND, entryPoint=driver.ENTRY_POINT,
         executionUid=2000, readOnly=True, toolchain=compiler, supportedApis=[32, 35],
-        viewportModes={'32': 'getSize', '35': 'getRealSize'}, compressedHierarchy=False,
+        viewportModes={'32': 'getRealSize', '35': 'getRealSize'}, compressedHierarchy=False,
         globalIdleWait=False, rootPollLimitMillis=1000)
     build_dir = directory/'host-only-compile'
     build_dir.mkdir()

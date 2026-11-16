@@ -1,8 +1,8 @@
 """Prepare a source-bound, read-only shell hierarchy driver for the two CI emulators.
 
-The driver uses the device's AOSP XML formatter and viewport semantics. Only the
-global idle wait is replaced by bounded non-null-root acquisition. The caller
-still executes each returned command within its original absolute deadline.
+The driver uses the device's AOSP XML formatter with real screen dimensions for
+its screen-coordinate bounds. Bounded non-null-root acquisition replaces the
+global idle wait; the caller retains its original absolute deadline.
 """
 import base64
 import hashlib
@@ -174,7 +174,7 @@ def device_properties(run, adb, serial):
     match = re.fullmatch(r'([0-9a-f]{64})  ' + re.escape(SYSTEM_JAR), checksum)
     require(match is not None, 'Cannot bind the device AOSP hierarchy formatter')
     values.update(systemJar=SYSTEM_JAR, systemJarSha256=match.group(1),
-                  viewportMode='getSize' if values['api'] == '32' else 'getRealSize',
+                  viewportMode='getRealSize',
                   compressedHierarchy=False, globalIdleWait=False)
     return values
 
@@ -223,7 +223,7 @@ def prepare_driver(adb, serial, source, diagnostics_dir):
         dex = compile_driver(ROOT/JAVA_SOURCE, output, paths, run)
         stamp = dict(schema=1, **selected, backend=BACKEND, entryPoint=ENTRY_POINT, executionUid=2000,
                      readOnly=True, toolchain=compiler, supportedApis=[32, 35],
-                     viewportModes={'32': 'getSize', '35': 'getRealSize'}, compressedHierarchy=False,
+                     viewportModes={'32': 'getRealSize', '35': 'getRealSize'}, compressedHierarchy=False,
                      globalIdleWait=False, rootPollLimitMillis=1000)
         jar = output/'hierarchy-driver.jar'
         stamp_hash = package_driver(jar, dex, ROOT/JAVA_SOURCE, stamp)
@@ -283,7 +283,7 @@ def verify_evidence(evidence, source, *, root=None):
     require(device['uid'] == '2000' and device['api'] in ('32', '35') and device['qemu'] == '1'
             and device['hardware'] in ('ranchu', 'goldfish') and device['systemJar'] == SYSTEM_JAR
             and re.fullmatch('[0-9a-f]{64}', device['systemJarSha256'])
-            and device['viewportMode'] == ('getSize' if device['api'] == '32' else 'getRealSize')
+            and device['viewportMode'] == 'getRealSize'
             and device['compressedHierarchy'] is False and device['globalIdleWait'] is False,
             'Hierarchy receipt changes native device/formatter semantics')
     require(compiler['platform'] == 'android-37.1' and compiler['buildTools'] == '37.0.0'
@@ -308,7 +308,7 @@ def verify_evidence(evidence, source, *, root=None):
             and installed['readbackSha256'] == digest, 'Hierarchy build and actual device readback differ')
     expected_stamp = dict(schema=1, sourceCommit=source, sourceTree=tree, runId=run, runAttempt=attempt,
         inputs=inputs, backend=BACKEND, entryPoint=ENTRY_POINT, executionUid=2000, readOnly=True,
-        toolchain=compiler, supportedApis=[32, 35], viewportModes={'32': 'getSize', '35': 'getRealSize'},
+        toolchain=compiler, supportedApis=[32, 35], viewportModes={'32': 'getRealSize', '35': 'getRealSize'},
         compressedHierarchy=False, globalIdleWait=False, rootPollLimitMillis=1000)
     with zipfile.ZipFile(io.BytesIO(raw)) as archive:
         require(archive.namelist() == ['classes.dex', STAMP, EMBEDDED_SOURCE], 'Unexpected hierarchy archive contents')
