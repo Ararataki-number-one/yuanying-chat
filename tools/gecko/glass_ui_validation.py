@@ -1269,7 +1269,7 @@ def capture_acceptance_suite(args, report, capture, adb, wait_for, tap, screensh
                         sourceCommit=identity['sourceCommit'],sourceTree=identity['sourceTree'],apkSha256=identity['apkSha256'],
                         runNonce=case['runNonce'],applicationAcceptance=False)
                     start_output = adb('shell', 'am', 'start', '-W', '--activity-clear-task', '-n', component,
-                        '--es', 'compactAction', 'collapseStart', '--ei', 'chromeNavigationVersion', '2',
+                        '--es', 'compactAction', 'collapseStart', '--ei', 'chromeNavigationVersion', '3',
                         '--es', 'eventNonce', case['runNonce'], '--ez', 'longName', 'false',
                         '--ez', 'observeGlassRenderer', 'true')
                     try:

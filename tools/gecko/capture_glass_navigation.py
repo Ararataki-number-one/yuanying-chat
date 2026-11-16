@@ -20,6 +20,7 @@ using the existing controlled Gecko document fixture; those remain explicitly
 test-signed integration evidence with original device pixels for visual review.
 """
 import argparse
+from collections import ChainMap
 import hashlib
 import json
 import math
@@ -57,6 +58,18 @@ def set_display(width, height, density=DENSITY, *, requested=None):
         raise ValueError('Positive integral requested display geometry required')
     WIDTH, HEIGHT, DENSITY = width, height, density
     DISPLAY_REQUEST = tuple(requested)
+
+
+def current_acceptance_api():
+    """Select current controls while keeping observed display geometry live.
+
+    The suite changes orientation, width and density through set_display. A
+    copied globals dictionary keeps stale dimensions even when the selectors
+    already read the new dimensions from this module.
+    """
+    return ChainMap(dict(navigation=current_navigation,
+                         navigation_geometry=browser_navigation_geometry,
+                         observed_navigation_geometry=current_observed_navigation_geometry), globals())
 
 
 def window_display_viewport(raw):
@@ -1629,8 +1642,7 @@ def main():
         if args.acceptance_suite:
             from glass_ui_validation import capture_acceptance_suite
             capture_acceptance_suite(args, report, capture, adb, wait_for, tap, screenshot,
-                                     dict(globals(),navigation=current_navigation,navigation_geometry=browser_navigation_geometry,
-                                          observed_navigation_geometry=current_observed_navigation_geometry))
+                                     current_acceptance_api())
         print(json.dumps(dict(status=report['status'], sourceCommit=source,
             apkSha256=installed_sha, image='glass-navigation.png',
             motionStatus=report['motionReport']['status'],

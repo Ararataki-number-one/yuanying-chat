@@ -119,6 +119,150 @@ class CurrentBottomBarTests(unittest.TestCase):
         self.assertIn("api['browser_address_node'](xml)",inspect.getsource(validation.capture_acceptance_suite))
 
 
+class GlassFixtureLaunchTests(unittest.TestCase):
+    """Run the actual launch/ready boundary; the native event is a host mock."""
+    def boundary(self):
+        tree=ast.parse(inspect.getsource(validation.capture_acceptance_suite))
+        sequences=[]
+        for owner in ast.walk(tree):
+            for _,statements in ast.iter_fields(owner):
+                if not isinstance(statements,list):continue
+                for index,statement in enumerate(statements):
+                    if isinstance(statement,ast.Assign) and any(isinstance(t,ast.Name)
+                            and t.id=='start_output' for t in statement.targets):
+                        sequences.append(statements[index:index+2])
+        self.assertEqual(len(sequences),1)
+        launch,ready=sequences[0]
+        self.assertIsInstance(ready,ast.Try)
+        self.assertEqual(ast.dump(ready.body[0],include_attributes=False),ast.dump(
+            ast.parse("observed_event(case,'ready',request=False)").body[0],include_attributes=False))
+        return ast.Module(body=copy.deepcopy([launch,ready]),type_ignores=[])
+
+    def run_boundary(self,module):
+        nonce='e'*32;case=dict(name='actual-launch-host',runNonce=nonce)
+        identity=dict(sourceCommit='f'*40);start=b'controlled native launch output\n'
+        transport=mock.Mock(return_value=start);collector=mock.Mock()
+        unsupported=ValueError('Host native boundary rejects a non-v3 launch')
+        accepted=[]
+        def observe(actual_case,command,*,request):
+            self.assertIs(actual_case,case)
+            self.assertEqual((command,request),('ready',False))
+            parts=transport.call_args.args
+            values=[parts[index+1] for index,value in enumerate(parts) if value=='chromeNavigationVersion']
+            if values!=['3']:raise unsupported
+            accepted.append(command)
+        observer=mock.Mock(side_effect=observe)
+        component=capture.PACKAGE+'/local.pocketchat.CompactChromeIntegrationActivity'
+        namespace=dict(adb=transport,component=component,case=case,
+            observed_event=observer,capture_ready_failure=collector,
+            args=SimpleNamespace(out=Path('controlled-launch-output')),identity=identity)
+        error=None
+        try:exec(compile(module,validation.__file__,'exec'),namespace)
+        except Exception as failure:error=failure
+        return SimpleNamespace(namespace=namespace,error=error,unsupported=unsupported,
+            transport=transport,collector=collector,observer=observer,accepted=accepted,start=start)
+
+    def test_actual_current_launcher_passes_v3_nonce_and_renderer_options(self):
+        result=self.run_boundary(self.boundary())
+        self.assertIsNone(result.error)
+        result.transport.assert_called_once_with('shell','am','start','-W','--activity-clear-task',
+            '-n',result.namespace['component'],'--es','compactAction','collapseStart',
+            '--ei','chromeNavigationVersion','3','--es','eventNonce','e'*32,
+            '--ez','longName','false','--ez','observeGlassRenderer','true')
+        self.assertEqual(result.accepted,['ready'])
+        self.assertIs(result.namespace['start_output'],result.start)
+        result.collector.assert_not_called()
+
+    def test_previous_v2_launch_cannot_bypass_ready_failure_or_its_diagnostics(self):
+        module=self.boundary();arguments=module.body[0].value.args
+        at=[i for i,arg in enumerate(arguments) if isinstance(arg,ast.Constant)
+            and arg.value=='chromeNavigationVersion']
+        self.assertEqual(len(at),1)
+        self.assertEqual(arguments[at[0]+1].value,'3')
+        arguments[at[0]+1].value='2'
+        result=self.run_boundary(module)
+        self.assertIs(result.error,result.unsupported)
+        self.assertEqual(result.accepted,[])
+        self.assertEqual(result.transport.call_count,1)
+        result.observer.assert_called_once_with(result.namespace['case'],'ready',request=False)
+        result.collector.assert_called_once_with(result.namespace['args'].out,result.namespace['case'],
+            result.namespace['identity'],result.transport,result.start)
+
+
+class CurrentAcceptanceGeometryTests(unittest.TestCase):
+    """Current producer bindings and geometry checks across real API boundaries."""
+    def setUp(self):
+        self.display=capture.WIDTH,capture.HEIGHT,capture.DENSITY
+        self.request=capture.DISPLAY_REQUEST
+        capture.set_display(1236,2676,480)
+    def tearDown(self):capture.set_display(*self.display,requested=self.request)
+
+    def actual_api(self):
+        calls=[n for n in ast.walk(ast.parse(inspect.getsource(capture.main)))
+               if isinstance(n,ast.Call) and isinstance(n.func,ast.Name)
+               and n.func.id=='capture_acceptance_suite']
+        self.assertEqual(len(calls),1)
+        module=ast.fix_missing_locations(ast.Module(body=[ast.Assign(
+            targets=[ast.Name(id='bound_api',ctx=ast.Store())],value=copy.deepcopy(calls[0]))],type_ignores=[]))
+        namespace=dict(capture.__dict__,args=object(),report=object(),capture=object(),
+            adb=object(),wait_for=object(),tap=object(),screenshot=object(),capture_acceptance_suite=lambda *args:args[-1])
+        exec(compile(module,capture.__file__,'exec'),namespace)
+        return namespace['bound_api']
+
+    def landscape(self):
+        tree=ET.Element('hierarchy')
+        frame=node(tree,'',[0,0,2676,1236],kind='android.widget.FrameLayout')
+        capsule=node(frame,'当前环境：日常会话，点按输入网址，长按切换环境',
+            [1098,78,1578,234],text='日常会话',kind='android.widget.TextView')
+        scroller=node(frame,'',[84,258,2592,960],kind='android.widget.ScrollView',scrollable='true')
+        row=node(scroller,'',[1026,456,1650,636],kind='android.widget.LinearLayout')
+        actions=[node(row,label,box,text=label) for label,box in (
+            ('检查网络',[1026,492,1320,636]),('重新加载',[1356,492,1650,636]))]
+        for label,box in (
+            ('后退',[12,996,156,1140]),('打开当前环境主页',[156,996,300,1140]),
+            ('当前网址 https://chatgpt.com/，点击输入网址或搜索',[312,996,2364,1140]),
+            ('刷新网页',[2376,996,2520,1140]),('浏览器菜单',[2520,996,2664,1140])):
+            node(frame,label,box,text='chatgpt.com/' if label.startswith('当前网址 ') else '',enabled=label!='后退')
+        return tree,capsule,scroller,actions
+
+    def test_actual_suite_bindings_follow_rotation_width_and_density_changes(self):
+        api=self.actual_api()
+        self.assertIs(api['navigation'],capture.current_navigation)
+        self.assertIs(api['navigation_geometry'],capture.browser_navigation_geometry)
+        self.assertIs(api['observed_navigation_geometry'],capture.current_observed_navigation_geometry)
+        for display in ((2676,1236,480),(960,1920,480),(720,1280,320),(1236,2676,480)):
+            with self.subTest(display=display):
+                api['set_display'](*display)
+                self.assertEqual(tuple(api[key] for key in ('WIDTH','HEIGHT','DENSITY')),display)
+                self.assertEqual((capture.WIDTH,capture.HEIGHT,capture.DENSITY),display)
+                self.assertEqual(api['DISPLAY_REQUEST'],display)
+
+    def test_old_copied_globals_negative_preserves_the_observed_rotation_failure(self):
+        api=self.actual_api();stale=dict(api)
+        api['set_display'](2676,1236,480)
+        tree,*_=self.landscape()
+        current=validation.loading_actions_geometry(xml(tree),api)
+        self.assertTrue(current['valid'])
+        self.assertEqual((current['screenWidthPx'],current['screenHeightPx']),(2676,1236))
+        self.assertEqual(current['topCapsuleCenterOffsetPx'],0)
+        old=validation.loading_actions_geometry(xml(tree),stale)
+        self.assertFalse(old['valid'])
+        self.assertEqual(old['topCapsuleCenterOffsetPx'],720)
+        self.assertFalse(old['checks']['topCapsuleCentered'])
+        self.assertTrue(all(value for key,value in old['checks'].items() if key!='topCapsuleCentered'))
+
+    def test_live_bindings_still_reject_real_off_center_clipped_or_small_actions(self):
+        api=self.actual_api();api['set_display'](2676,1236,480)
+        for failure in ('off-center','clipped','small-target'):
+            tree,capsule,scroller,actions=self.landscape()
+            if failure=='off-center':capsule.set('bounds','[1128,78][1608,234]')
+            elif failure=='clipped':scroller.set('bounds','[84,258][1600,960]')
+            else:actions[0].set('bounds','[1026,492][1320,635]')
+            with self.subTest(failure=failure):
+                value=validation.loading_actions_geometry(xml(tree),api)
+                self.assertIsNotNone(value);self.assertFalse(value['valid'])
+
+
 class MenuDeadlineTests(unittest.TestCase):
     def setUp(self):
         self.display=capture.WIDTH,capture.HEIGHT,capture.DENSITY
