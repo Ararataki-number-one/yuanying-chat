@@ -1,12 +1,29 @@
 # 元婴期院士 · Yuanying Chat
 
+## 最新正式版 2.1.6（108）
+
+本版修复照片经网页处理后变成纯色的问题，并将网址和常用浏览器操作移到底部，顶部保留环境胶囊。
+
+- [下载 2.1.6 正式安装包（Android ARM64）](https://github.com/Ararataki-number-one/yuanying-chat/releases/download/v2.1.6-gecko/PocketChat-2.1.6-gecko-arm64.apk)
+- [正式发布说明与校验信息](https://github.com/Ararataki-number-one/yuanying-chat/releases/tag/v2.1.6-gecko)
+- [2.1.6 对应源码](https://github.com/Ararataki-number-one/yuanying-chat/tree/v2.1.6-gecko)
+- [详细变更与验证范围](https://github.com/Ararataki-number-one/yuanying-chat/blob/6fdae6bafa0bdeb73d9d37d22a1708e286549d43/RELEASE.md)
+
+安装包沿用原应用签名；使用原签名正式版的用户可覆盖升级。开发和构建请使用上方对应的源码标签。
+
+---
+
+## 1.5.20 历史说明
+
+**历史文档范围：以下全部段落均沿用 1.5.20 及更早版本的历史资料，其中的功能、导航、内核和验证结论不代表 2.1.6 当前状态。2.1.6 的功能与验证范围以上方正式发布说明及对应源码为准。**
+
 使用 Mozilla 官方 GeckoView 的 Android ChatGPT 网页客户端。聊天、模型选择、历史记录和消息操作由 ChatGPT 官方网页提供；应用负责独立环境、网络、文件下载、阅读缩放和可选后台提醒。
 
-**当前正式版本：1.5.20（versionCode 46），仅 GeckoView 与官方网页。**
+**历史版本：1.5.20（versionCode 46），当时仅使用 GeckoView 与官方网页。**
 
 ## 下载与安装
 
-- [下载当前正式应用 1.5.20 APK（ARM64）](https://github.com/Ararataki-number-one/yuanying-chat/releases/download/v1.5.20-gecko/PocketChat-1.5.20-gecko-arm64.apk)
+- [下载历史版本 1.5.20 APK（ARM64）](https://github.com/Ararataki-number-one/yuanying-chat/releases/download/v1.5.20-gecko/PocketChat-1.5.20-gecko-arm64.apk)
 - [上一版 1.5.19 正式应用 APK（ARM64）](https://github.com/Ararataki-number-one/yuanying-chat/releases/download/v1.5.19-gecko/PocketChat-1.5.19-gecko-arm64.apk)
 - [上一版 1.5.13 正式应用 APK（ARM64）](https://github.com/Ararataki-number-one/yuanying-chat/releases/download/v1.5.13-gecko/PocketChat-1.5.13-gecko-arm64.apk)
 - [上一版 1.5.12 正式应用 APK（ARM64）](https://github.com/Ararataki-number-one/yuanying-chat/releases/download/v1.5.12-gecko/PocketChat-1.5.12-gecko-arm64.apk)
@@ -129,3 +146,4 @@
 ## 许可
 
 第三方组件保留各自许可与署名，见 [third-party](third-party/README.md)。本项目自有源码暂未另行声明开源许可证。
+
