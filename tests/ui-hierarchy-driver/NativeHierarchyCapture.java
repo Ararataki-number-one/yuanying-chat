@@ -142,7 +142,30 @@ public final class NativeHierarchyCapture {
     return size;
   }
 
+  static boolean syncWindowRequested(String[] args) {
+    require(args.length == 8 || args.length == 9,
+        "Expected hierarchy path, budget, jar/source/tree/run/attempt and system identity");
+    require(args.length == 8 || "sync-window-input".equals(args[8]),
+        "Unknown hierarchy capture mode");
+    return args.length == 9;
+  }
+
+  static void syncWindowInput(UiAutomation automation, long deadline) throws Exception {
+    require(SystemClock.uptimeMillis() < deadline,
+        "Hierarchy deadline expired before window input synchronization");
+    // This public TestApi exists on the supported API 32/35 runtimes, but is
+    // absent from the public compile SDK. Its void return is not proof that
+    // every animation completed; retain the caller's deadline and fresh root.
+    UiAutomation.class.getMethod("syncInputTransactions").invoke(automation);
+    require(SystemClock.uptimeMillis() < deadline,
+        "Hierarchy deadline expired during window input synchronization");
+  }
+
   static boolean capture(File output, long deadline) throws Exception {
+    return capture(output, deadline, false);
+  }
+
+  static boolean capture(File output, long deadline, boolean syncWindow) throws Exception {
     require(!output.exists(), "Refusing to replace an existing hierarchy attempt");
     Class<?> wrapperType = Class.forName("com.android.uiautomator.core.UiAutomationShellWrapper");
     Object wrapper = wrapperType.getConstructor().newInstance();
@@ -153,6 +176,7 @@ public final class NativeHierarchyCapture {
       connected = true;
       wrapperType.getMethod("setCompressedLayoutHierarchy", boolean.class).invoke(wrapper, false);
       UiAutomation automation = (UiAutomation) wrapperType.getMethod("getUiAutomation").invoke(wrapper);
+      if (syncWindow) syncWindowInput(automation, deadline);
       node = root(automation, deadline);
       if (node == null) return false;
       Class<?> managerType = Class.forName("android.hardware.display.DisplayManagerGlobal");
@@ -180,7 +204,7 @@ public final class NativeHierarchyCapture {
     int exit = 1;
     Thread watchdog = null;
     try {
-      require(args.length == 8, "Expected hierarchy path, budget, jar/source/tree/run/attempt and system identity");
+      boolean syncWindow = syncWindowRequested(args);
       require(args[0].matches("/sdcard/pocketchat-ui-visual-[0-9a-f]{32}-[1-9][0-9]*\\.xml"),
           "Invalid current-attempt hierarchy path");
       require(args[1].matches("[1-9][0-9]*"), "Invalid hierarchy budget");
@@ -200,7 +224,7 @@ public final class NativeHierarchyCapture {
       supportedEnvironment();
       verifyArchive(args[2], args[3], args[4], args[5], args[6], args[7]);
       File output = new File(args[0]);
-      boolean captured = capture(output, deadline);
+      boolean captured = capture(output, deadline, syncWindow);
       require(SystemClock.uptimeMillis() < deadline, "Hierarchy deadline expired before acknowledgement");
       if (captured) System.out.println("UI hierchary dumped to: " + args[0]);
       else System.err.println(NULL_ROOT);

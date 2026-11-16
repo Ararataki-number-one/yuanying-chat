@@ -86,12 +86,18 @@ class UiVisualCapture:
             row['completedAtMonotonicNanos'] = time.monotonic_ns()
             row['completedAtWallTimeMillis'] = time.time_ns() // 1_000_000
 
-    def attempt(self, deadline):
+    def attempt(self, deadline, *, sync_window=False):
+        if type(sync_window) is not bool:
+            raise ValueError('Window input synchronization must be an explicit boolean')
+        if sync_window and (self.acquisition_driver is None or deadline is None):
+            raise ValueError('Window input synchronization requires the prepared driver and existing scene deadline')
         self.count += 1
         remote = '/sdcard/pocketchat-ui-visual-' + self.nonce + '-' + str(self.count) + '.xml'
         record = dict(index=self.count, remotePath=remote, commands=[],
                       startedAtMonotonicNanos=time.monotonic_ns(),
                       existingSceneDeadline=deadline, status='failed')
+        if sync_window:
+            record['windowInputSynchronization'] = 'UiAutomation.syncInputTransactions'
         # Retain a bounded suffix, explicitly accounting for every dropped row.
         self.records.append(record)
         if len(self.records) > 256:
@@ -102,7 +108,10 @@ class UiVisualCapture:
                 remaining = 90 if deadline is None else deadline - time.monotonic()
                 if remaining <= 0:
                     raise TimeoutError('Existing UI scene deadline expired before accessibility acquisition')
-                parts = self.acquisition_driver.dump_parts(remote, remaining)
+                if sync_window:
+                    parts = self.acquisition_driver.dump_parts(remote, remaining, sync_window=True)
+                else:
+                    parts = self.acquisition_driver.dump_parts(remote, remaining)
             dumped = self.command(parts, record, deadline)
             combined = (dumped.stdout + dumped.stderr).decode('utf-8', 'strict').strip()
             if dumped.returncode in (0, 1) and combined == NULL_ROOT:
@@ -156,13 +165,22 @@ class UiVisualCapture:
             record['completedAtMonotonicNanos'] = time.monotonic_ns()
             self.save()
 
-    def read(self, deadline=None):
+    def read(self, deadline=None, *, sync_window=False):
+        """Optionally synchronize a window transition before a fresh hierarchy.
+
+        The opt-in uses the prepared native observer and this same deadline.
+        It neither changes animation settings nor sends or repeats an input.
+        """
+        if type(sync_window) is not bool:
+            raise ValueError('Window input synchronization must be an explicit boolean')
         if deadline is not None and (type(deadline) not in (int, float) or not math.isfinite(deadline)):
             raise ValueError('Existing finite UI scene deadline required')
         while True:
             if deadline is not None and time.monotonic() >= deadline:
                 raise TimeoutError('Existing UI scene deadline expired during accessibility readiness')
             try:
+                if sync_window:
+                    return self.attempt(deadline, sync_window=True)
                 return self.attempt(deadline)
             except CaptureNotReady:
                 if deadline is None:

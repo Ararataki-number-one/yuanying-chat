@@ -100,10 +100,10 @@ def run(adb,binary,source,out,dump):
             return True
         except AssertionError:
             return False
-    def wait(predicate,label,timeout=35):
+    def wait(predicate,label,timeout=35,*,sync_window=False):
         deadline=time.monotonic()+timeout
         while True:
-            xml=dump(deadline=deadline)
+            xml=dump(deadline=deadline,sync_window=True) if sync_window else dump(deadline=deadline)
             crash=adb('logcat','-d','-s','AndroidRuntime:E','*:S')
             assert 'FATAL EXCEPTION' not in crash,(label,crash[-4000:])
             if time.monotonic()>=deadline:raise AssertionError((label,'wait budget expired',xml[-5000:]))
@@ -222,7 +222,7 @@ def run(adb,binary,source,out,dump):
             adb('shell','am','start','-W','-n',PACKAGE+'/local.pocketchat.WindowHomeActivity')
             xml=wait(lambda x:'环境管理' in x and '设置' in x,'manager settings entry')
             click(xml,'设置')
-            xml=wait(settings_workspace,'settings workspace')
+            xml=wait(settings_workspace,'settings workspace',sync_window=True)
             click(xml,'浏览器');wait(browser,'workspace opens browser directly')
             events.append(dict(name='settings-browser-tab-has-no-dashboard',passed=True))
             xml=open_details('资料整理');snapshot('workspace-chat',xml)

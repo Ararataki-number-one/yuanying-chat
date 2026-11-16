@@ -189,7 +189,8 @@ class HierarchyDriver:
         self._system_sha = evidence['device']['systemJarSha256']
         self._attempts = set()
 
-    def dump_parts(self, remote, remaining):
+    def dump_parts(self, remote, remaining, *, sync_window=False):
+        require(type(sync_window) is bool, 'Window input synchronization must be an explicit boolean')
         require(isinstance(remote, str) and REMOTE_XML.fullmatch(remote), 'Invalid current-attempt hierarchy path')
         require(remote not in self._attempts, 'Hierarchy driver cannot reuse a prior attempt path')
         require(type(remaining) in (int, float) and math.isfinite(remaining) and remaining > 0,
@@ -199,9 +200,12 @@ class HierarchyDriver:
             raise TimeoutError('Existing UI scene deadline has less than one millisecond remaining')
         self._attempts.add(remote)
         identity = self._identity
-        return ['shell', 'CLASSPATH=' + self._remote + ':' + SYSTEM_JAR, 'app_process', '/system/bin', ENTRY_POINT,
+        parts = ['shell', 'CLASSPATH=' + self._remote + ':' + SYSTEM_JAR, 'app_process', '/system/bin', ENTRY_POINT,
                 remote, str(milliseconds), self._jar_sha, identity['sourceCommit'], identity['sourceTree'],
                 identity['runId'], identity['runAttempt'], self._system_sha]
+        if sync_window:
+            parts.append('sync-window-input')
+        return parts
 
 
 def prepare_driver(adb, serial, source, diagnostics_dir):

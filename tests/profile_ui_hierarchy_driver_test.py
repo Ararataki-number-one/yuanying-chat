@@ -184,6 +184,21 @@ class DriverPreparationTest(unittest.TestCase):
         with self.assertRaises(TimeoutError): driver.dump_parts(remote.replace('-1.xml', '-2.xml'), .0009)
         self.assertEqual(driver.dump_parts(remote.replace('-1.xml', '-3.xml'), 120)[6], '90000')
 
+    def test_window_sync_is_an_explicit_strict_boolean_argument(self):
+        driver = self.prepare()
+        prefix = '/sdcard/pocketchat-ui-visual-' + 'a' * 32 + '-'
+        default = driver.dump_parts(prefix + '1.xml', 2.5)
+        requested = driver.dump_parts(prefix + '2.xml', 2.5, sync_window=True)
+        explicit_default = driver.dump_parts(prefix + '3.xml', 2.5, sync_window=False)
+        self.assertEqual(requested[6:-1], default[6:])
+        self.assertEqual(requested[-1], 'sync-window-input')
+        self.assertEqual(len(requested), len(default) + 1)
+        self.assertEqual(explicit_default[6:], default[6:])
+        self.assertNotIn('sync-window-input', default)
+        for index, value in enumerate((None, 0, 1, 'true', []), 4):
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                driver.dump_parts(prefix + str(index) + '.xml', 2.5, sync_window=value)
+
     def test_receipt_mutations_cannot_substitute_source_run_device_or_commands(self):
         baseline = self.prepare().evidence
         mutations = [
@@ -239,9 +254,14 @@ ANDROID_BOUNDARIES = {
     'android/app/UiAutomation.java': '''package android.app;
 import android.view.accessibility.AccessibilityNodeInfo;
 public class UiAutomation {
- public static int calls, readyAfter=1; public static boolean fail, late;
+ public static int calls, readyAfter=1, syncCalls; public static boolean fail, late, syncFail, requireSync;
+ public static long syncAdvance; public static StringBuilder trace=new StringBuilder();
  public static AccessibilityNodeInfo node=new AccessibilityNodeInfo();
- public AccessibilityNodeInfo getRootInActiveWindow(){calls++; if(fail)throw new IllegalStateException("unknown root failure");
+ public void syncInputTransactions(){syncCalls++;trace.append("sync;");
+  if(syncFail)throw new IllegalStateException("window transaction failure");android.os.SystemClock.now+=syncAdvance;}
+ public AccessibilityNodeInfo getRootInActiveWindow(){trace.append("root;");
+  if(requireSync&&syncCalls!=1)throw new AssertionError("root acquired before requested synchronization");
+  calls++; if(fail)throw new IllegalStateException("unknown root failure");
   if(late)android.os.SystemClock.now+=2000; return calls>=readyAfter?node:null;}
  public void waitForIdle(long a,long b){throw new AssertionError("Global idle wait must never execute");}
 }''',
@@ -269,6 +289,7 @@ public UiAutomation getUiAutomation(){return new UiAutomation();}}''',
 import android.view.accessibility.AccessibilityNodeInfo;import java.io.*;
 public class AccessibilityNodeInfoDumper {public static int width,height,rotation;public static AccessibilityNodeInfo root;public static String mode="normal";
 public static void dumpWindowToFile(AccessibilityNodeInfo node,File file,int r,int w,int h)throws Exception {
+android.app.UiAutomation.trace.append("format;");
 root=node;width=w;height=h;rotation=r;if(mode.equals("missing"))return;
 try(FileOutputStream out=new FileOutputStream(file)){out.write("<hierarchy rotation=\\\"3\\\"><node content-desc=\\\"live countdown\\\" bounds=\\\"[1,2][3,4]\\\"/></hierarchy>".getBytes("UTF-8"));}
 if(mode.equals("late"))android.os.SystemClock.now+=2000;}}
@@ -282,6 +303,19 @@ public class NativeHierarchyHost {
  static void check(boolean ok){if(!ok)throw new AssertionError();}
  public static void main(String[] args)throws Exception {
  String scenario=args[0];File file=new File(args[1]);long deadline=SystemClock.now+2000;
+ if(scenario.equals("modes")){
+  check(!NativeHierarchyCapture.syncWindowRequested(new String[8]));
+  String[] opted=new String[9];opted[8]="sync-window-input";
+  check(NativeHierarchyCapture.syncWindowRequested(opted));
+  for(String[] invalid:new String[][]{new String[7],new String[10],new String[9]}){
+   try{NativeHierarchyCapture.syncWindowRequested(invalid);throw new AssertionError();}catch(IllegalArgumentException expected){}
+  }
+  for(String value:new String[]{"","true","SYNC-WINDOW-INPUT","sync-window-input; input tap 1 1"}){
+   opted[8]=value;try{NativeHierarchyCapture.syncWindowRequested(opted);throw new AssertionError();}catch(IllegalArgumentException expected){}
+  }
+  check(UiAutomationShellWrapper.connected==0&&UiAutomation.calls==0&&UiAutomation.syncCalls==0);
+  System.out.println("OK");return;
+ }
  if(scenario.equals("stamp")){
   try(ZipFile archive=new ZipFile(file)){NativeHierarchyCapture.verifyStamp(archive,args[2],args[3],args[4],args[5]);}
   System.out.println("OK");return;
@@ -294,6 +328,33 @@ public class NativeHierarchyHost {
  if(scenario.equals("missing"))AccessibilityNodeInfoDumper.mode="missing";
  if(scenario.equals("late-format"))AccessibilityNodeInfoDumper.mode="late";
  if(scenario.equals("stale"))Files.write(file.toPath(),"old".getBytes("UTF-8"));
+ if(scenario.startsWith("sync-")){
+  UiAutomation.requireSync=true;
+  if(scenario.equals("sync-expired"))deadline=SystemClock.now;
+  if(scenario.equals("sync-late"))UiAutomation.syncAdvance=2000;
+  if(scenario.equals("sync-fail"))UiAutomation.syncFail=true;
+  if(scenario.equals("sync-null")){deadline=SystemClock.now+250;UiAutomation.syncAdvance=100;UiAutomation.readyAfter=Integer.MAX_VALUE;}
+  boolean rejected=scenario.equals("sync-expired")||scenario.equals("sync-late")
+    ||scenario.equals("sync-fail")||scenario.equals("sync-missing");
+  if(rejected){
+   try{NativeHierarchyCapture.capture(file,deadline,true);throw new AssertionError();}catch(Exception expected){}
+   check(!file.exists()&&UiAutomation.calls==0&&AccessibilityNodeInfoDumper.root==null);
+   check(UiAutomation.syncCalls==((scenario.equals("sync-expired")||scenario.equals("sync-missing"))?0:1));
+  }else{
+   boolean captured=NativeHierarchyCapture.capture(file,deadline,true);
+   check(UiAutomation.syncCalls==1);
+   if(scenario.equals("sync-null")){
+    check(!captured&&!file.exists()&&SystemClock.now==deadline);
+    check(UiAutomation.calls==4&&AccessibilityNodeInfoDumper.root==null);
+   }else{
+    check(captured&&UiAutomation.trace.toString().equals("sync;root;format;"));
+    check(AccessibilityNodeInfoDumper.root==UiAutomation.node&&UiAutomation.node.recycled==1);
+   }
+  }
+  check(UiAutomationShellWrapper.connected==1&&UiAutomationShellWrapper.disconnected==1);
+  check(Boolean.FALSE.equals(UiAutomationShellWrapper.compressed));
+  System.out.println("OK");return;
+ }
  if(scenario.startsWith("deny-")){
   if(scenario.equals("deny-uid"))android.os.Process.uid=0;
   if(scenario.equals("deny-api"))Build.VERSION.SDK_INT=34;
@@ -320,6 +381,7 @@ public class NativeHierarchyHost {
    String xml=new String(Files.readAllBytes(file.toPath()),"UTF-8");check(xml.contains("content-desc=\\\"live countdown\\\""));
   }
  }
+ check(UiAutomation.syncCalls==0);
  System.out.println("OK");
  }
 }
@@ -373,6 +435,42 @@ class NativeReadOnlyDriverTest(unittest.TestCase):
 
     def test_api32_formatter_receives_real_screen_size(self):
         self.scenario('api32')
+
+    def test_native_optional_mode_parser_rejects_unknown_or_extra_arguments(self):
+        self.scenario('modes')
+
+    def test_opt_in_sync_precedes_fresh_root_and_original_formatter(self):
+        self.scenario('sync-success')
+
+    def test_window_sync_failure_or_deadline_expiry_cannot_read_or_format(self):
+        for name in ('sync-expired', 'sync-late', 'sync-fail'):
+            with self.subTest(name=name):
+                self.scenario(name)
+
+    def test_sync_and_root_poll_share_the_original_remaining_deadline(self):
+        self.scenario('sync-null')
+
+    def test_missing_platform_sync_method_fails_only_for_requested_mode(self):
+        stub = ANDROID_BOUNDARIES['android/app/UiAutomation.java']
+        self.assertEqual(stub.count('public void syncInputTransactions()'), 1)
+        source = self.work/'missing-sync-source/android/app/UiAutomation.java'
+        source.parent.mkdir(parents=True)
+        source.write_text(stub.replace('public void syncInputTransactions()',
+                                      'public void unavailableSyncInputTransactions()'))
+        classes = self.work/'missing-sync-classes'
+        classpath = str(self.classes) + os.pathsep + str(self.json_jar)
+        result = subprocess.run([str(Path(self.java).parent/'javac'), '-encoding', 'UTF-8',
+            '-classpath', classpath, '-d', str(classes), str(source)],
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=30)
+        self.assertEqual(result.returncode, 0, result.stderr.decode())
+        for scenario in ('sync-missing', 'dynamic'):
+            with self.subTest(scenario=scenario):
+                result = subprocess.run([self.java, '-classpath', str(classes) + os.pathsep + classpath,
+                    'local.pocketchat.hierarchydriver.NativeHierarchyHost', scenario,
+                    str(self.work/('missing-platform-' + scenario + '.xml'))],
+                    stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=5)
+                self.assertEqual(result.returncode, 0, result.stderr.decode())
+                self.assertEqual(result.stdout, b'OK\n')
 
     def test_compiled_api32_app_size_mutant_cannot_clip_screen_coordinates(self):
         original = (ROOT/DRIVER.JAVA_SOURCE).read_text()

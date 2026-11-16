@@ -606,6 +606,68 @@ class RecordedIdleAcquisitionTest(unittest.TestCase):
 
 class DeviceHierarchyAdapterTest(unittest.TestCase):
     """Execute the current adapter; only preparation and OS processes are model boundaries."""
+    def test_window_sync_is_opt_in_and_fresh_read_uses_only_the_remaining_budget(self):
+        source='a'*40;clock=ModelClock();calls=[]
+        driver=types.SimpleNamespace(evidence=dict(status='verified',sourceCommit=source),
+            dump_parts=mock.Mock(side_effect=lambda path,remaining,*,sync_window:
+                ['shell','native-observer-model',path,'sync-window-input'] if sync_window else []))
+        def process(parts,**options):
+            action=parts[3:];calls.append((action,options['timeout']))
+            if action[1]=='native-observer-model':
+                self.assertEqual(action[-1],'sync-window-input');clock.value+=1.25
+                return CAPTURE.subprocess.CompletedProcess(parts,0,('UI hierchary dumped to: '+action[2]).encode(),b'')
+            self.assertEqual(action[:2],['shell','cat']);clock.value+=.25
+            return CAPTURE.subprocess.CompletedProcess(parts,0,XML,b'')
+        with tempfile.TemporaryDirectory() as temporary:
+            capture=CAPTURE.UiVisualCapture(adb='model-adb',serial='emulator-model',source=source,
+                diagnostics=Path(temporary)/'capture.json',acquisition_driver=driver)
+            with mock.patch.object(CAPTURE.time,'monotonic',side_effect=clock.monotonic),\
+                 mock.patch.object(CAPTURE.subprocess,'run',side_effect=process):
+                self.assertEqual(capture.read(deadline=102,sync_window=True),XML.decode())
+            driver.dump_parts.assert_called_once_with(calls[0][0][2],2,sync_window=True)
+            self.assertEqual([timeout for _,timeout in calls],[2,.75])
+            self.assertEqual(calls[0][0][2],calls[1][0][2])
+            row=capture.records[0]
+            self.assertEqual(row['existingSceneDeadline'],102)
+            self.assertEqual(row['windowInputSynchronization'],'UiAutomation.syncInputTransactions')
+            self.assertEqual(row['xmlSha256'],hashlib.sha256(XML).hexdigest())
+
+    def test_failed_or_expired_window_sync_never_reads_a_hierarchy(self):
+        for outcome in ('failed','expired','timeout'):
+            with self.subTest(outcome=outcome),tempfile.TemporaryDirectory() as temporary:
+                clock=ModelClock();calls=[]
+                driver=types.SimpleNamespace(evidence=dict(sourceCommit='a'*40),
+                    dump_parts=mock.Mock(return_value=['shell','native-observer-model','owned.xml','sync-window-input']))
+                capture=CAPTURE.UiVisualCapture(adb='model-adb',serial='emulator-model',source='a'*40,
+                    diagnostics=Path(temporary)/'capture.json',acquisition_driver=driver)
+                def process(parts,**options):
+                    calls.append(parts);self.assertEqual(options['timeout'],2)
+                    if outcome=='timeout':raise CAPTURE.subprocess.TimeoutExpired(parts,options['timeout'])
+                    if outcome=='failed':return CAPTURE.subprocess.CompletedProcess(parts,1,b'',b'window sync failed')
+                    clock.value=102
+                    return CAPTURE.subprocess.CompletedProcess(parts,0,b'',b'')
+                expected={'failed':CAPTURE.subprocess.CalledProcessError,'expired':TimeoutError,
+                          'timeout':CAPTURE.subprocess.TimeoutExpired}[outcome]
+                with mock.patch.object(CAPTURE.time,'monotonic',side_effect=clock.monotonic),\
+                     mock.patch.object(CAPTURE.subprocess,'run',side_effect=process):
+                    with self.assertRaises(expected):capture.read(deadline=102,sync_window=True)
+                self.assertEqual(len(calls),1)
+                self.assertNotIn('xmlSha256',capture.records[0])
+                self.assertEqual(capture.records[0]['status'],'failed')
+
+    def test_window_sync_requires_an_explicit_mode_driver_and_existing_deadline(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            options=dict(adb='model-adb',serial='emulator-model',source='a'*40,
+                diagnostics=Path(temporary)/'capture.json')
+            driver=types.SimpleNamespace(evidence=dict(sourceCommit='a'*40),dump_parts=mock.Mock())
+            for prepared,deadline,mode in ((None,102,True),(driver,None,True),(driver,102,1),
+                                          (driver,102,'true'),(driver,102,None)):
+                capture=CAPTURE.UiVisualCapture(**options,acquisition_driver=prepared)
+                with mock.patch.object(CAPTURE.time,'monotonic',return_value=100),\
+                     mock.patch.object(CAPTURE.subprocess,'run') as boundary:
+                    with self.assertRaises(ValueError):capture.read(deadline=deadline,sync_window=mode)
+                    boundary.assert_not_called();driver.dump_parts.assert_not_called()
+
     def test_prepared_native_command_and_fresh_xml_use_the_same_parent_deadline(self):
         source='a'*40;clock=ModelClock();calls=[]
         driver=types.SimpleNamespace(evidence=dict(status='verified',sourceCommit=source,sourceTree='b'*40),
@@ -633,6 +695,7 @@ class DeviceHierarchyAdapterTest(unittest.TestCase):
             driver.dump_parts.assert_called_once_with(calls[0][0][2],2)
             self.assertEqual(capture.records[0]['existingSceneDeadline'],102)
             self.assertEqual(capture.records[0]['xmlSha256'],hashlib.sha256(XML).hexdigest())
+            self.assertNotIn('windowInputSynchronization',capture.records[0])
 
     def test_setup_failure_wrong_source_and_expiry_never_fall_back_or_read_old_xml(self):
         with tempfile.TemporaryDirectory() as temporary:
