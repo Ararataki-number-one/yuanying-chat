@@ -1095,6 +1095,26 @@ jobs:
         verify_installed(photo['buildIdentity'],device['eventTransport']['buildIdentity'])
         PYCODE
 
+    - name: Require native browser workspace roundtrip at the actual display density
+      shell: bash
+      run: |
+        set -euo pipefail
+        python3 - <<'PYCODE'
+        import json,os,pathlib,re,sys
+        sys.path.insert(0,'tools')
+        from gecko.workspace_navigation_contract_v3 import verify_workspace_roundtrip
+        version_code=int(re.search(r'versionCode ([0-9]+)',pathlib.Path('app/build.gradle').read_text()).group(1))
+        if version_code>=108:
+            source=os.environ['GITHUB_SHA']
+            device=json.loads(pathlib.Path('work/gecko-integration/public/device-results.json').read_bytes())
+            assert device['sourceCommit']==source and device['status']=='passed' and device['actualAndroidExecution'] is True and device['releaseMode'] is True
+            navigation=verify_workspace_roundtrip(device['productionNavigation'],'local.pocketchat.test',source=source)
+            identity=device['eventTransport']['buildIdentity']
+            assert navigation['sourceTree']==identity['sourceTree'],'Native navigation and installed APK source trees differ.'
+            for key in ('runId','runAttempt'):
+                assert navigation[key]==identity['sdkBuildIdentity'][key],'Native navigation and installed APK build runs differ: '+key
+        PYCODE
+
     - name: Collect the actual browser workload from the same build and run
       uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0
       with:

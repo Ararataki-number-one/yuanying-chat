@@ -5,6 +5,8 @@ is translated into this contract: all five targets must exist in native XML.
 """
 import re
 import hashlib
+import json
+import math
 import time
 import xml.etree.ElementTree as ET
 
@@ -16,6 +18,37 @@ else:
 VERSION = 3
 MENU_ACTIONS = ('前进', '打开网址或搜索', '快速切换环境', '进入专注阅读',
                 '当前环境网络', '管理全部环境', '下载管理')
+
+
+def display_density_evidence(raw):
+    """Keep Android's independent density readback, never infer it from a target."""
+    assert type(raw) is str and 0 < len(raw.encode('utf-8')) <= 1024
+    match = re.fullmatch(r'Physical density: ([1-9][0-9]*)(?:\r?\nOverride density: ([1-9][0-9]*))?\r?\n?', raw)
+    assert match is not None, 'Expected one complete Android wm density readback'
+    physical = int(match.group(1))
+    override = int(match.group(2)) if match.group(2) is not None else None
+    assert 72 <= physical <= 10000 and (override is None or 72 <= override <= 10000)
+    encoded = raw.encode('utf-8')
+    return dict(schema=1, command=['shell', 'wm', 'density'], rawStdout=raw,
+                stdoutBytes=len(encoded), stdoutSha256=hashlib.sha256(encoded).hexdigest(),
+                physicalDpi=physical, overrideDpi=override, effectiveDpi=override or physical)
+
+
+def display_density(evidence=None):
+    # Existing chrome cohorts independently configure 480 dpi and keep their
+    # original contract. The general file runner supplies a device readback.
+    if evidence is None:
+        return 3.0
+    assert type(evidence) is dict and type(evidence.get('schema')) is int
+    assert type(evidence.get('stdoutBytes')) is int and type(evidence.get('physicalDpi')) is int
+    assert type(evidence.get('effectiveDpi')) is int
+    assert evidence.get('overrideDpi') is None or type(evidence['overrideDpi']) is int
+    assert evidence == display_density_evidence(evidence['rawStdout']), 'Android density evidence changed'
+    return evidence['effectiveDpi']/160
+
+
+def minimum_touch_pixels(evidence=None):
+    return int(48*display_density(evidence)+.5)
 
 
 def center(rectangle):
@@ -80,8 +113,9 @@ def menu_scroll_points(viewport, target_bounds, *, coarse_start, coarse_end, min
     return start, end
 
 
-def seek_menu_action(adb, read, package, label, *, deadline, scrolls):
+def seek_menu_action(adb, read, package, label, *, deadline, scrolls, density_evidence=None):
     """Find a real menu action with bounded, recorded Android scroll inputs."""
+    minimum = minimum_touch_pixels(density_evidence)
     for attempt in range(9):
         assert time.monotonic() < deadline, 'Original menu observation budget expired'
         xml = read(deadline=deadline)
@@ -90,7 +124,7 @@ def seek_menu_action(adb, read, package, label, *, deadline, scrolls):
         try:
             target = menu_action(xml, package, label)
             box = target['bounds']
-            if min(box[2]-box[0], box[3]-box[1]) >= 144:
+            if min(box[2]-box[0], box[3]-box[1]) >= minimum:
                 return xml, target
         except AssertionError:
             pass
@@ -104,7 +138,7 @@ def seek_menu_action(adb, read, package, label, *, deadline, scrolls):
         start, end = menu_scroll_points([left, top, right, bottom],
             target['bounds'] if target is not None else None,
             coarse_start=[(left+right)//2, top+(bottom-top)*4//5],
-            coarse_end=[(left+right)//2, top+(bottom-top)//5], minimum_target=144)
+            coarse_end=[(left+right)//2, top+(bottom-top)//5], minimum_target=minimum)
         raw = xml.encode('utf-8')
         observation = dict(label=label, rawXml=xml, xmlSha256=hashlib.sha256(raw).hexdigest(),
                             bounds=[left,top,right,bottom], **{'from':start, 'to':end},
@@ -115,7 +149,8 @@ def seek_menu_action(adb, read, package, label, *, deadline, scrolls):
     raise AssertionError(('Menu action remained unavailable', label))
 
 
-def verify_menu_scrolls(scrolls, package, label):
+def verify_menu_scrolls(scrolls, package, label, *, density_evidence=None):
+    minimum = minimum_touch_pixels(density_evidence)
     assert type(scrolls) is list and len(scrolls) <= 8
     for value in scrolls:
         assert value['label'] == label and value['actualAndroidInput'] is True and value['durationMs'] == 320
@@ -133,9 +168,9 @@ def verify_menu_scrolls(scrolls, package, label):
             pass
         if target is not None:
             box = target['bounds']
-            assert min(box[2]-box[0], box[3]-box[1]) < 144, 'A fully tappable menu target needs no seek gesture'
+            assert min(box[2]-box[0], box[3]-box[1]) < minimum, 'A fully tappable menu target needs no seek gesture'
         start, end = menu_scroll_points([l,t,r,b], target['bounds'] if target is not None else None,
-            coarse_start=[(l+r)//2,t+(b-t)*4//5], coarse_end=[(l+r)//2,t+(b-t)//5], minimum_target=144)
+            coarse_start=[(l+r)//2,t+(b-t)*4//5], coarse_end=[(l+r)//2,t+(b-t)//5], minimum_target=minimum)
         for field in ('from', 'to'):
             assert type(value[field]) is list and len(value[field]) == 2
             assert all(type(v) is int for v in value[field])
@@ -143,7 +178,7 @@ def verify_menu_scrolls(scrolls, package, label):
     return True
 
 
-def navigation(xml, package, *, conversation, selected=None, browser=False):
+def navigation(xml, package, *, conversation, selected=None, browser=False, density_evidence=None):
     assert type(conversation) is bool and type(browser) is bool
     assert type(package) is str and package.endswith('.test')
     if not conversation:
@@ -191,9 +226,10 @@ def navigation(xml, package, *, conversation, selected=None, browser=False):
     assert len({(b[2]-b[0], b[3]-b[1]) for b in action_boxes}) == 1
     action_size = back[2]-back[0]
     assert action_size == back[3]-back[1]
-    density = action_size / 48
-    assert abs(density-3) < .01, 'Native browser action must retain the actual 48 dp target'
-    assert address[2]-address[0] >= 48*density and address[3]-address[1] >= 48*density
+    density = display_density(density_evidence)
+    minimum = minimum_touch_pixels(density_evidence)
+    assert action_size == minimum, 'Native browser action must retain the actual 48 dp target'
+    assert address[2]-address[0] >= minimum and address[3]-address[1] >= minimum
     assert all(a[2] <= b[0] for a, b in zip(action_boxes, action_boxes[1:])), 'Browser actions overlap or reorder'
     if address[3] <= back[1]:
         layout = 'stacked'
@@ -233,10 +269,150 @@ def conversation_header(xml, package, width, height, scale, environment, *, brow
     return result
 
 
-def exercise_workspace_roundtrip(adb, initial_xml, save, package, *, browser=False):
+def captured_observation(xml, capture):
+    encoded = xml.encode('utf-8')
+    row = capture.report['attempts'][-1]
+    assert row['status'] == 'captured' and row['xmlBytes'] == len(encoded)
+    assert row['xmlSha256'] == hashlib.sha256(encoded).hexdigest()
+    return dict(rawXml=xml, xmlBytes=len(encoded), xmlSha256=row['xmlSha256'], captureIndex=row['index'])
+
+
+def verify_workspace_roundtrip(record, package, *, source=None, root=None):
+    """Re-read actual XML, Android density and the original observer receipts."""
+    if __package__:
+        from . import ui_hierarchy_driver as driver
+    else:
+        import ui_hierarchy_driver as driver
+    assert type(record['schema']) is int and record['schema'] == 1
+    assert type(record['navigationContract']) is int and record['navigationContract'] == VERSION
+    source = record['sourceCommit'] if source is None else source
+    assert record['sourceCommit'] == source
+    capture = record['hierarchyCapture']
+    assert capture['sourceCommit'] == source
+    evidence = capture['acquisitionDriver']
+    driver.verify_evidence(evidence, source, root=root)
+    assert record['sourceTree'] == evidence['sourceTree']
+    assert capture['serial'] == evidence['serial']
+    nonce = capture['runNonce']
+    assert type(nonce) is str and re.fullmatch('[0-9a-f]{32}', nonce)
+    attempts = capture['attempts']
+    assert type(attempts) is list and 0 < len(attempts) <= 256
+    for field in ('attemptCount', 'droppedAttempts'):
+        assert type(capture[field]) is int and capture[field] >= 0
+    assert capture['attemptCount'] == len(attempts)+capture['droppedAttempts']
+    assert [a['index'] for a in attempts] == list(range(capture['droppedAttempts']+1, capture['attemptCount']+1))
+    rows = {a['index']: a for a in attempts}
+
+    def raw_observation(value, *, budget=20):
+        xml = value['rawXml']
+        assert type(xml) is str and 0 < len(xml.encode('utf-8')) <= 1024*1024
+        raw = xml.encode('utf-8'); digest = hashlib.sha256(raw).hexdigest()
+        assert type(value['xmlBytes']) is int and value['xmlBytes'] == len(raw)
+        assert value['xmlSha256'] == digest and type(value['captureIndex']) is int
+        row = rows[value['captureIndex']]
+        assert row['status'] == 'captured' and row['xmlBytes'] == len(raw) and row['xmlSha256'] == digest
+        remote = '/sdcard/pocketchat-ui-visual-'+nonce+'-'+str(row['index'])+'.xml'
+        assert row['remotePath'] == remote
+        start, end = row['startedAtMonotonicNanos'], row['completedAtMonotonicNanos']
+        deadline = row['existingSceneDeadline']
+        assert type(start) is type(end) is int and 0 < start < end
+        assert type(deadline) in (int, float) and math.isfinite(deadline)
+        assert start/1e9 < end/1e9 < deadline and deadline-start/1e9 <= budget
+        commands = row['commands']; assert type(commands) is list and len(commands) == 2
+        previous = start
+        for index, command in enumerate(commands):
+            cs, ce = command['startedAtMonotonicNanos'], command['completedAtMonotonicNanos']
+            assert type(cs) is type(ce) is int and previous <= cs < ce <= end
+            previous = ce
+            timeout = command['timeoutSeconds']
+            assert type(timeout) in (int, float) and math.isfinite(timeout) and 0 < timeout <= min(90, deadline-start/1e9)
+            assert type(command['exitCode']) is int and command['exitCode'] == 0
+            parts = command['parts']
+            if index == 0:
+                assert len(parts) == 13 and type(parts[6]) is str and re.fullmatch('[1-9][0-9]*', parts[6])
+                millis = int(parts[6]); assert 0 < millis <= min(90000, math.ceil((deadline-start/1e9)*1000))
+                assert parts == ['shell', 'CLASSPATH='+evidence['installedJar']['remotePath']+':'+driver.SYSTEM_JAR,
+                    'app_process', '/system/bin', driver.ENTRY_POINT, remote, str(millis),
+                    evidence['installedJar']['sha256'], source, evidence['sourceTree'], evidence['runId'],
+                    evidence['runAttempt'], evidence['device']['systemJarSha256']]
+                stdout = ('UI hierchary dumped to: '+remote+'\n').encode()
+            else:
+                assert parts == ['shell', 'cat', remote]
+                stdout = raw
+            for field, data in (('stdout', stdout), ('stderr', b'')):
+                expected = dict(bytes=len(data), sha256=hashlib.sha256(data).hexdigest(),
+                                text=data[:8192].decode('utf-8', 'replace'), truncated=len(data)>8192)
+                actual = command[field]
+                assert type(actual['bytes']) is int and type(actual['truncated']) is bool
+                assert actual == expected, 'Native observation output differs from its original command'
+        return xml
+
+    native = record['nativeUi']
+    assert set(native) == {'initial', 'menu', 'environments', 'chat'}
+    xml = {name: raw_observation(native[name], budget=30 if name == 'initial' else 20)
+           for name in ('initial', 'menu', 'environments', 'chat')}
+    indexes = [native[name]['captureIndex'] for name in ('initial', 'menu', 'environments', 'chat')]
+    assert all(a < b for a, b in zip(indexes, indexes[1:])), 'Roundtrip observations must keep their real acquisition order'
+    density = record['densityEvidence']
+    minimum = minimum_touch_pixels(density)
+    initial = navigation(xml['initial'], package, conversation=True, browser=True, density_evidence=density)
+    final = navigation(xml['chat'], package, conversation=True, browser=True, density_evidence=density)
+    workspace = navigation(xml['environments'], package, conversation=False, selected='环境', browser=True)
+    assert record['initial'] == initial and record['observations'] == [workspace, final]
+    def capsule(raw):
+        nodes = [n for n in ET.fromstring(raw).iter('node') if n.get('package') == package
+                 and n.get('content-desc', '').startswith('当前环境：')]
+        assert len(nodes) == 1 and nodes[0].get('class') == 'android.widget.Button'
+        assert nodes[0].get('clickable') == nodes[0].get('long-clickable') == 'true'
+        return nodes[0].get('content-desc')
+    assert capsule(xml['initial']) == capsule(xml['chat'])
+    management = menu_action(xml['menu'], package, '管理全部环境')
+    assert min(management['bounds'][2]-management['bounds'][0], management['bounds'][3]-management['bounds'][1]) >= minimum
+    menu_tree = ET.fromstring(xml['menu'])
+    parents = {child: parent for parent in menu_tree.iter() for child in parent}
+    target = next(n for n in menu_tree.iter('node') if n.get('package') == package
+                  and n.get('class') == 'android.widget.Button' and n.get('text') == '管理全部环境')
+    l, t, r, b = bounds(target)
+    scroll_ancestors = 0
+    while parents.get(target) is not None and parents[target].tag == 'node':
+        target = parents[target]
+        assert target.get('package') == package and target.get('visible-to-user') != 'false'
+        al, at, ar, ab = bounds(target)
+        assert al <= l < r <= ar and at <= t < b <= ab, 'Management action is clipped by its native menu'
+        if target.get('class') == 'android.widget.ScrollView':
+            assert target.get('scrollable') == 'true'
+            scroll_ancestors += 1
+    assert scroll_ancestors == 1, 'Management action must belong to the actual browser menu scroller'
+    verify_menu_scrolls(record['menuScrolls'], package, '管理全部环境', density_evidence=density)
+    for scroll in record['menuScrolls']:
+        matching = [row for row in attempts if row.get('status') == 'captured' and row.get('xmlSha256') == scroll['xmlSha256']
+                    and indexes[0] < row['index'] < indexes[1]]
+        assert matching, 'Menu scroll must refer to an original native hierarchy in this phase'
+        raw_observation(dict(rawXml=scroll['rawXml'], xmlBytes=len(scroll['rawXml'].encode('utf-8')),
+                             xmlSha256=scroll['xmlSha256'], captureIndex=matching[-1]['index']))
+    targets = [initial['controls'][-1], management, next(row for row in workspace['controls'] if row['label'] == '浏览器')]
+    inputs = record['inputs']; assert type(inputs) is list and len(inputs) == 3
+    for index, (item, target, label) in enumerate(zip(inputs, targets, ('浏览器菜单', '管理全部环境', '浏览器'))):
+        assert item['label'] == label and item['actualAndroidTap'] is True
+        assert item['bounds'] == target['bounds'] and item['point'] == center(target['bounds'])
+        assert item['captureIndex'] == indexes[index]
+        started = item['startedAtMonotonicNanos']; assert type(started) is int
+        assert rows[indexes[index]]['completedAtMonotonicNanos'] <= started < rows[indexes[index+1]]['startedAtMonotonicNanos']
+    assert type(record['actualAndroidTaps']) is int and record['actualAndroidTaps'] == 3
+    for field in ('browserWorkspace', 'allFiveWorkspaceDestinationsVisible', 'returnedToSameEnvironment'):
+        assert record[field] is True
+    return dict(schema=1, navigationContract=VERSION, sourceCommit=source, sourceTree=evidence['sourceTree'],
+                runId=evidence['runId'], runAttempt=evidence['runAttempt'],
+                densityDpi=density['effectiveDpi'], minimumActionTouchDp=48, minimumActionTouchPx=minimum,
+                actualAndroidTaps=3)
+
+
+def exercise_workspace_roundtrip(adb, initial_xml, save, package, *, browser=False, capture):
     """Enter management through the actual menu, then return to the live browser."""
     assert browser is True, 'The v3 product uses direct browser entry'
-    initial = navigation(initial_xml, package, conversation=True, browser=True)
+    density = display_density_evidence(adb('shell', 'wm', 'density'))
+    initial = navigation(initial_xml, package, conversation=True, browser=True, density_evidence=density)
+    native = dict(initial=captured_observation(initial_xml, capture))
     capsule = [n.get('content-desc') for n in ET.fromstring(initial_xml).iter('node')
                if n.get('package') == package and n.get('content-desc', '').startswith('当前环境：')]
     assert len(capsule) == 1
@@ -244,25 +420,17 @@ def exercise_workspace_roundtrip(adb, initial_xml, save, package, *, browser=Fal
 
     def tap(target, label):
         point = center(target['bounds'])
+        started = time.monotonic_ns()
         adb('shell', 'input', 'tap', *map(str, point))
-        receipts.append(dict(label=label, point=point, bounds=target['bounds'], actualAndroidTap=True))
+        receipts.append(dict(label=label, point=point, bounds=target['bounds'], actualAndroidTap=True,
+                             captureIndex=capture.report['attempts'][-1]['index'], startedAtMonotonicNanos=started))
 
     menu_scrolls=[]
 
     def read_frame(*, deadline):
-        remote='/sdcard/gecko-navigation-v3.xml'
-        while time.monotonic() < deadline:
-            output=adb('shell','rm -f '+remote+' && uiautomator dump '+remote+' 2>&1')
-            print(output,end='',flush=True)
-            assert time.monotonic() < deadline, 'Original native navigation budget expired'
-            if output.strip() == 'ERROR: null root node returned by UiTestAutomationBridge.':
-                time.sleep(min(.2,max(0,deadline-time.monotonic())))
-                continue
-            assert output.strip() == 'UI hierchary dumped to: '+remote
-            xml=adb('shell','cat',remote)
-            assert time.monotonic() < deadline, 'Original native navigation budget expired'
-            return xml
-        raise TimeoutError('Original native navigation budget expired')
+        xml = capture.read(deadline=deadline)
+        assert time.monotonic() < deadline, 'Original native navigation budget expired'
+        return xml
 
     def observe(name, reader):
         deadline=time.monotonic()+20
@@ -281,18 +449,25 @@ def exercise_workspace_roundtrip(adb, initial_xml, save, package, *, browser=Fal
 
     tap(initial['controls'][-1], '浏览器菜单')
     deadline=time.monotonic()+20
-    xml,target=seek_menu_action(adb,read_frame,package,'管理全部环境',deadline=deadline,scrolls=menu_scrolls)
+    xml,target=seek_menu_action(adb,read_frame,package,'管理全部环境',deadline=deadline,scrolls=menu_scrolls,density_evidence=density)
     save('production-navigation-menu.xml',xml)
     assert time.monotonic() < deadline, 'Original native menu budget expired after save'
+    native['menu'] = captured_observation(xml, capture)
+    assert time.monotonic() < deadline, 'Original native menu budget expired before input'
     tap(target, '管理全部环境')
-    _, workspace = observe('environments', lambda xml: navigation(xml, package, conversation=False, selected='环境', browser=True))
+    xml, workspace = observe('environments', lambda xml: navigation(xml, package, conversation=False, selected='环境', browser=True))
+    native['environments'] = captured_observation(xml, capture)
     observations.append(workspace)
     target = next(row for row in workspace['controls'] if row['label'] == '浏览器')
     tap(target, '浏览器')
-    xml, final = observe('chat', lambda xml: navigation(xml, package, conversation=True, browser=True))
+    xml, final = observe('chat', lambda xml: navigation(xml, package, conversation=True, browser=True,density_evidence=density))
+    native['chat'] = captured_observation(xml, capture)
     assert [n.get('content-desc') for n in ET.fromstring(xml).iter('node')
             if n.get('package') == package and n.get('content-desc', '').startswith('当前环境：')] == capsule
     observations.append(final)
-    return dict(navigationContract=VERSION, actualAndroidTaps=3, inputs=receipts, browserWorkspace=True,
+    result = dict(schema=1, navigationContract=VERSION, actualAndroidTaps=3, inputs=receipts, browserWorkspace=True,
                 initial=initial, observations=observations, menuScrolls=menu_scrolls, allFiveWorkspaceDestinationsVisible=True,
-                returnedToSameEnvironment=True)
+                returnedToSameEnvironment=True, densityEvidence=density, nativeUi=native,
+                sourceCommit=capture.report['sourceCommit'], sourceTree=capture.report['acquisitionDriver']['sourceTree'],
+                hierarchyCapture=json.loads(json.dumps(capture.report)))
+    return result

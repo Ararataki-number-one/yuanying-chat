@@ -790,15 +790,17 @@ def main():
         report['closedBootstrapCleanup']=restored_bootstrap
         check(run(2,'read'),2,True)
         # Exercise the real outer Activity after moving its retained Gecko surface.
+        from ui_visual_capture import UiVisualCapture
+        navigation_capture=UiVisualCapture.for_device(adb=args.adb,serial=args.serial,source=source,
+            diagnostics=OUT/'production-navigation-capture.json')
         adb('logcat','-c')
         adb('shell','am','start','-n',package+'/local.pocketchat.MainActivity','--es','openWindowAction','native-smoke')
         time.sleep(4)
         assert adb('shell','pidof',package).strip(),'Production Activity exited'
-        adb('shell','uiautomator','dump','/sdcard/gecko-production.xml')
-        hierarchy=adb('shell','cat','/sdcard/gecko-production.xml')
+        hierarchy=navigation_capture.read(deadline=time.monotonic()+30)
         (OUT/'production-ui.xml').write_text(hierarchy)
         from workspace_navigation_contract_v3 import exercise_workspace_roundtrip
-        report['productionNavigation']=exercise_workspace_roundtrip(adb,hierarchy,lambda name,xml:(OUT/name).write_text(xml),package,browser=True)
+        report['productionNavigation']=exercise_workspace_roundtrip(adb,hierarchy,lambda name,xml:(OUT/name).write_text(xml),package,browser=True,capture=navigation_capture)
         assert not any(node.attrib.get('text') in ['简洁','原网页'] for node in ET.fromstring(hierarchy).iter('node')),hierarchy
         assert 'FATAL EXCEPTION' not in adb('logcat','-d','-s','AndroidRuntime:E','*:S')
         update_checks=[]

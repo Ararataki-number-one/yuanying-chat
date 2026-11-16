@@ -149,6 +149,17 @@ if version_code>=108:
     from gecko.profile_invocation_contract import verify_installed
     photo_upload=verify_photo_upload_evidence(args.evidence,args.source)
     verify_installed(json.loads((args.evidence/'photo-upload-results.json').read_text())['buildIdentity'],report['eventTransport']['buildIdentity'])
+production_navigation=None
+if version_code>=108:
+    from gecko.workspace_navigation_contract_v3 import verify_workspace_roundtrip
+    navigation_report_raw=(args.evidence/'device-results.json').read_bytes()
+    assert json.loads(navigation_report_raw)==report,'Native navigation must use the original checked device report.'
+    production_navigation=dict(sourceCommit=args.source,deviceReportSha256=hashlib.sha256(navigation_report_raw).hexdigest(),
+        roundtrip=verify_workspace_roundtrip(report['productionNavigation'],'local.pocketchat.test',source=args.source))
+    navigation_identity=report['eventTransport']['buildIdentity']
+    assert production_navigation['roundtrip']['sourceTree']==navigation_identity['sourceTree'],'Native navigation and installed APK source trees differ.'
+    for key in ('runId','runAttempt'):
+        assert production_navigation['roundtrip'][key]==navigation_identity['sdkBuildIdentity'][key],'Native navigation and installed APK build runs differ: '+key
 if version_code>=42:
     quiet=json.loads((args.evidence/'quiet-notification-results.json').read_text())
     chrome=json.loads((args.evidence/'compact-chrome-results.json').read_text())
@@ -232,6 +243,7 @@ if requires_manual_acceptance(manifest):
         manifest['releaseAuthorization']=verify_direct_release(json.loads(authorization_raw),manifest)
         manifest['releaseAuthorizationArtifact']=dict(file='release-authorization.json',bytes=len(authorization_raw),sha256=hashlib.sha256(authorization_raw).hexdigest())
 if photo_upload is not None:manifest['photoUploadContentRegression']=photo_upload
+if production_navigation is not None:manifest['productionNavigationRegression']=production_navigation
 if version_code>=43:manifest['performanceRegression']=performance
 if version_code>=44:manifest['connectionRecoveryRegression']=connection
 if version_code>=45:manifest['interactionTransferRegression']=interaction_transfer
@@ -265,7 +277,8 @@ for number,part in enumerate(manifest['parts']):(stage/part['file']).write_bytes
 (stage/'release-manifest.json').write_text(json.dumps(manifest,indent=2)+'\n')
 if manual_raw is not None:(stage/'manual-acceptance.json').write_bytes(manual_raw)
 if authorization_raw is not None:(stage/'release-authorization.json').write_bytes(authorization_raw)
-(stage/'device-results.json').write_text(json.dumps(report,indent=2)+'\n')
+if version_code>=108:(stage/'device-results.json').write_bytes(navigation_report_raw)
+else:(stage/'device-results.json').write_text(json.dumps(report,indent=2)+'\n')
 if version_code>=40:shutil.copy2(args.evidence/'network-performance-results.json',stage/'network-performance-results.json')
 if version_code>=42:
     for name in ['quiet-notification-results.json','compact-chrome-results.json']:shutil.copy2(args.evidence/name,stage/name)
