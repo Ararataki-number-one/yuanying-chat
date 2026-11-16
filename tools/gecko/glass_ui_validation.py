@@ -1134,6 +1134,7 @@ def capture_acceptance_suite(args, report, capture, adb, wait_for, tap, screensh
         if initial.get('visibleDocument') is not True or initial.get('loadingCoverVisibility') != 8:
             raise ValueError('The actual production callback did not reveal the controlled Gecko document')
         tap(capsule(xml), 'Tap the observed environment capsule to open only the native URL editor')
+        url_keyboard_deadline = time.monotonic() + 30
         xml = artifact(case, 'url-keyboard', lambda value: text(value, '打开网址')
                        and button(value, '取消') is not None and not text(value, '快速切换环境'))
         ime = adb('shell', 'dumpsys', 'input_method').decode('utf-8', 'replace')
@@ -1143,7 +1144,23 @@ def capture_acceptance_suite(args, report, capture, adb, wait_for, tap, screensh
             shown=bool(re.search(r'(?:mInputShown|mIsInputViewShown|isInputViewShown)=true\b', ime)))
         if not case['keyboard']['shown']:
             raise ValueError('The actual native URL keyboard was not observed')
-        tap(button(xml, '取消'), 'Cancel native URL editing without navigating')
+        # The IME can move the dialog after its original XML was captured. Read
+        # current bounds within that same 30-second editor window; retain both
+        # observations and do not add another screenshot/sleep before the tap.
+        if time.monotonic() >= url_keyboard_deadline:
+            raise TimeoutError('Existing native URL editor deadline expired before current observation')
+        xml = capture.read(deadline=url_keyboard_deadline)
+        path = args.out / (case['name'] + '-url-keyboard-current.xml')
+        path.write_text(xml)
+        case['observations']['url-keyboard-current'] = dict(xml=path.name, xmlSha256=sha(path),
+            geometry=geometry(xml), observedAtUnixNs=time.time_ns())
+        save()
+        cancel = button(xml, '取消')
+        if cancel is None or not text(xml, '打开网址') or text(xml, '快速切换环境'):
+            raise ValueError('The current native URL editor cancel control was not observed')
+        if time.monotonic() >= url_keyboard_deadline:
+            raise TimeoutError('Existing native URL editor deadline expired before cancellation')
+        tap(cancel, 'Cancel native URL editing without navigating')
         xml = artifact(case, 'url-cancelled', chat, photograph=False)
         # The same controls must remain available on the actual controlled
         # ChatGPT document, including narrow/large-font and legacy Android cases.

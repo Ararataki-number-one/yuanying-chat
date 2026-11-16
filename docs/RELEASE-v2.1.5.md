@@ -2,6 +2,18 @@
 
 版本 `2.1.5`，版本代码 `107`，从正式 `v2.1.4-gecko / 106` 继续维护。本次整合已确认的浏览器界面调整与后续稳定性修复。正式安装包、原签名和绑定源码的验收结果以 GitHub Release 为准。
 
+## 正式发布记录
+
+[v2.1.5-gecko 正式版](https://github.com/Ararataki-number-one/yuanying-chat/releases/tag/v2.1.5-gecko) 已于 **2026-11-15 15:54:52 UTC** 发布；[应用更新通道](https://raw.githubusercontent.com/Ararataki-number-one/yuanying-chat/app-updates/latest.json) 已同步至 `2.1.5 / 107`。安装包源码固定为 [`24cb3f2f2bbc13fa4727ecf81e367108a1513ddf`](https://github.com/Ararataki-number-one/yuanying-chat/commit/24cb3f2f2bbc13fa4727ecf81e367108a1513ddf)。
+
+- [完整同源验收 43721227833 / attempt 1](https://github.com/Ararataki-number-one/yuanying-chat/actions/runs/43721227833)：13/13 作业成功，含构建、原回归、双内核、五个 Android 阶段、独立输入样本、TLS 与最终发布资格检查。
+- [同源 API32/35 界面验收 43722342585 / attempt 1](https://github.com/Ararataki-number-one/yuanying-chat/actions/runs/43722342585)：两 API 各 7/7 玻璃场景及各 2/2 Chromium 场景通过。
+- [同源 Profile 与 SDK 检查 43722348437 / attempt 1](https://github.com/Ararataki-number-one/yuanying-chat/actions/runs/43722348437) 和[正式发布流程 43732421615 / attempt 1](https://github.com/Ararataki-number-one/yuanying-chat/actions/runs/43732421615) 均成功。
+
+公开 ARM64 APK 为 **119820586 bytes**，SHA-256 为 `e19fe7c2b40a476e26af1c69666438bbfda48cf922c6daf69a9bbc88614156a7`，原签名证书摘要为 `f0afa2ef2b9ac68020b374276318b12d2bb4de65d2a3b788194de551356b9434`。公开下载、版本与包名、原签名、16 KiB 对齐及更新入口已核对。[PR #7](https://github.com/Ararataki-number-one/yuanying-chat/pull/7) 已合并，其[合并后完整验收 43732805539 / attempt 1](https://github.com/Ararataki-number-one/yuanying-chat/actions/runs/43732805539) 另行完成 13/13 作业；发布 APK 的资格仍绑定上列原始源码与运行。
+
+实体手机和真实账户验收尚未报告；受控 Android 运行不替代这两项现场验证。
+
 ## 浏览器与环境入口
 
 原“会话”页按浏览器组织，环境卡片作为进入相应浏览器环境的入口。Gecko 常显地址入口，保留后退、前进、刷新／停止与主页操作；顶部环境胶囊仍可点按输入网址、长按切换环境。主页默认仍为 ChatGPT，已有主页偏好继续保留。
