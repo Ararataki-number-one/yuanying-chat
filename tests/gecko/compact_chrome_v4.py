@@ -161,7 +161,7 @@ def run_case(adb, adb_bytes, dump, event, focus, visible, quick_sheet, shots, pa
     assert status is not None
     (shots/(stem+'-status.xml')).write_text(dump()); (shots/(stem+'-status.png')).write_bytes(adb_bytes('exec-out','screencap','-p'))
     details=[]
-    for name,point,box in (('network-status',status['networkTap'],status['bounds']),('network-state',status['stateTap'],status['texts'][2]['bounds'])):
+    for name,point,box in (('network-status',status['networkTap'],status['bounds']),('network-state',status['stateTap'],status['texts'][2]['bounds']))+((('network-expanded',status['expandedTap'],status['expandedTouch']),) if 'expandedTouch' in status else ()):
         tap(name,point,box); raw=observe_network_dialog(dump,package,True)
         (shots/(stem+'-'+name+'.xml')).write_text(raw)
         adb('shell','input','keyevent','KEYCODE_BACK'); observe_network_dialog(dump,package,False)

@@ -202,7 +202,17 @@ def verify_status(layout):
     assert dot['fontHeight'] <= dot['contentHeight']+1
     address_height=max(texts[0]['bounds'][3]-texts[0]['bounds'][1],dot['height'])
     metrics_height=max(v['bounds'][3]-v['bounds'][1] for v in texts[1:])
-    assert 47.9*density <= box[3]-box[1] <= max(48*density,address_height+metrics_height+4*density+2)
+    if 'expandedTouch' in status:
+        target=rect(status['expandedTouch']); header=rect(layout['toolbar'])
+        capsule=rect(layout['controls'][0]['touch'])
+        assert target[2]-target[0]>=47.9*density and target[3]-target[1]>=47.9*density
+        assert header[0]<=target[0]<target[2]<=header[2] and header[1]<=target[1]<target[3]<=header[3]
+        assert target[2]<=capsule[0] or capsule[2]<=target[0] or target[3]<=capsule[1] or capsule[3]<=target[1]
+        assert target[3]==box[3] and target[2]==box[2]
+        inside(status['expandedTap'],status['expandedTouch'])
+        assert 31.9*density <= box[3]-box[1] <= max(48*density,address_height+metrics_height+4*density+2)
+    else:
+        assert 47.9*density <= box[3]-box[1] <= max(48*density,address_height+metrics_height+4*density+2)
     inside(status['networkTap'],status['bounds']); inside(status['stateTap'],texts[2]['bounds'])
 
 
@@ -213,7 +223,7 @@ def verify_case(case, *, require_browser_chrome=True):
     verify_layout(case['layout'],case['viewport'],case['fontScale'])
     assert case['layout']['networkShown'] is True and case['layout']['networkMetrics'] is not None
     taps=case['actualAndroidTaps']
-    assert [v['control'] for v in taps] == ['menu-management','management','address','cancel-address','environment','windows','tools','network-status','network-state']
+    assert [v['control'] for v in taps] == ['menu-management','management','address','cancel-address','environment','windows','tools','network-status','network-state']+(['network-expanded'] if 'expandedTouch' in case['layout']['networkMetrics'] else [])
     for value in taps:
         assert value['actualAndroidTap'] is True; inside(value['point'],value['bounds'])
     for tap_index,control_index in ((0,4),(2,2),(5,1),(6,3)):
@@ -262,7 +272,9 @@ def verify_case(case, *, require_browser_chrome=True):
     assert taps[7]['point'] == status['networkTap'] and taps[7]['bounds'] == status['bounds']
     assert taps[8]['point'] == status['stateTap'] and taps[8]['bounds'] == status['texts'][2]['bounds']
     assert case['networkDetailsFromHeader'] is case['environmentDismissedByBack'] is True
-    details=case['networkDetails']; assert len(details)==2
+    if 'expandedTouch' in status:
+        assert taps[9]['point']==status['expandedTap'] and taps[9]['bounds']==status['expandedTouch']
+    details=case['networkDetails']; assert len(details)==(3 if 'expandedTouch' in status else 2)
     for value in details:
         raw=value['rawXml']; assert value['rawXmlSha256'] == hashlib.sha256(raw.encode()).hexdigest()
         assert network_dialog_visible(raw,'local.pocketchat.test') is True

@@ -485,7 +485,8 @@ public final class CompactChromeIntegrationActivity extends MainActivity {
       JSONObject networkMetrics=null;
       if(designChrome.networkRow.isShown()){
         TextView dot=designChrome.dot;Paint.FontMetrics font=dot.getPaint().getFontMetrics();
-        networkMetrics=J.obj("bounds",bounds(designChrome.networkRow),"networkTap",center(designChrome.networkRow),"stateTap",center(designChrome.stateWord),
+        Rect networkHit=(Rect)touch.invoke(designChrome,designChrome.networkRow);networkHit.offset(origin[0],origin[1]);
+        networkMetrics=J.obj("expandedTouch",rect(networkHit),"expandedTap",J.arr(networkHit.centerX(),networkHit.top+1),"bounds",bounds(designChrome.networkRow),"networkTap",center(designChrome.networkRow),"stateTap",center(designChrome.stateWord),
           "clickable",designChrome.networkRow.isClickable(),"focusable",designChrome.networkRow.isFocusable(),
           "background",designChrome.networkRow.getBackground()==null?"none":designChrome.networkRow.getBackground().getClass().getName(),
           "description",String.valueOf(designChrome.networkRow.getContentDescription()),

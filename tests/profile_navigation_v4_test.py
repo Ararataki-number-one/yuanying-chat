@@ -578,4 +578,22 @@ class ProductionNetworkDialogTests(unittest.TestCase):
                 self.assertIn('AssertionError',result.stderr)
 
 
+class CompactNetworkTargetTests(unittest.TestCase):
+    def test_compact_status_keeps_disjoint_48dp_target(self):
+        value=layout(412,1);status=value['networkMetrics'];box=status['bounds']
+        box[3]=box[1]+96
+        value['toolbar'][3]=box[3]
+        status['networkTap']=navigation.center(box)
+        status['expandedTouch']=[box[2]-144,box[3]-144,box[2],box[3]]
+        status['expandedTap']=[box[2]-72,box[3]-143]
+        compact.verify_status(value)
+        for kind in ('short','webpage','capsule','point','missing'):
+            bad=copy.deepcopy(value);target=bad['networkMetrics']['expandedTouch']
+            if kind=='short':target[1]+=1
+            elif kind=='webpage':target[3]+=1
+            elif kind=='capsule':target[0]=bad['controls'][0]['touch'][0]
+            elif kind=='point':bad['networkMetrics']['expandedTap']=[-1,-1]
+            else:del bad['networkMetrics']['expandedTouch']
+            with self.subTest(kind=kind),self.assertRaises(AssertionError):compact.verify_status(bad)
+
 if __name__=='__main__':unittest.main()
