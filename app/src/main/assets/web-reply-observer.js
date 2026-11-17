@@ -166,6 +166,7 @@
       }, 50);
     }
     function begin() {
+      if (!confirmationAllowed()) return;
       const input = api.composer(), send = api.sendButton();
       if (!input || !send || send.disabled || send.getAttribute('aria-disabled') === 'true' || api.busy()) return;
       const prompt = api.draft(input), beforeKeys = api.messages('user').map(api.key);

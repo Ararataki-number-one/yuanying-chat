@@ -29,7 +29,7 @@ final class WebReplyObserver {
   }
 
   void pageReady() {
-    if (!script.isEmpty() && session.web.resourcePage(session.web.getUrl())) session.web.evaluateJavascript("window.__pocketReplyObservationAllowed="+session.replyObservationAllowed()+";\n"+script+"\nwindow.__pocketReadDriver('observe-install',"+J.obj("resourceBinding",session.resourceObserverBinding)+");window.__pocketWebReplyObserver?.setObservationAllowed?.("+session.replyObservationAllowed()+");", null);
+    if (!script.isEmpty() && session.web.resourcePage(session.web.getUrl())) session.web.evaluateJavascript("window.__pocketReplyObservationAllowed="+session.sendObservationAllowed()+";\n"+script+"\nwindow.__pocketReadDriver('observe-install',"+J.obj("resourceBinding",session.resourceObserverBinding)+");window.__pocketWebReplyObserver?.setObservationAllowed?.("+session.sendObservationAllowed()+");", null);
   }
 
   void restorePending() {
@@ -95,7 +95,7 @@ final class WebReplyObserver {
           session.navigating && session.targetMatches(url)) session.wakePolling();
       return;
     }
-    if(!currentEvent(event,port)||!session.replyObservationAllowed())return;
+    if(!currentEvent(event,port)||!session.sendObservationAllowed())return;
     try {
       if ("intent".equals(type)) {
         if (!session.webPerformance() || session.submitting || session.operation && !session.configurationCapture ||
