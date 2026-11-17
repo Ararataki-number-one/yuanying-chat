@@ -164,6 +164,9 @@ final class NativeProtectionControllerHost {
     void failure(String value){failed=true;owner.status=value;}
     String internalPoolKey(NativeNetwork n){return "synthetic-pool";}
     boolean allowedUrl(String value){return value!=null&&value.startsWith("https://");}
+    // Blob admission is a separate current-method scope. Legacy protection
+    // cases cannot claim a document download or fabricate successful transfer.
+    boolean downloadBlobPopup(GeckoSession source,String target){throw new AssertionError("Blob downloads are outside the native-protection host");}
     __PRODUCTION_METHODS__
     __MAYBE_OPEN__
     __BLOCKED__

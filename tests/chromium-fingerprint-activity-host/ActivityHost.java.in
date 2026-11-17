@@ -23,6 +23,9 @@ public final class ActivityHost {
   void retire(Tab tab){throw new AssertionError("Unexpected WebView settings failure");}
   void ensureFingerprintBinding(Tab tab){bindingRequests++;}void loadFingerprintState(){throw new AssertionError("Unexpected policy reload boundary");}
   void hideKeyboard(){}void closeFind(){}void updateChrome(){}void showSelected(){if(selected!=null&&selected.web!=null)startFingerprintSurface(selected,selected.web);}void newTab(String url){throw new AssertionError("Unexpected new tab");}
+  // This fixture exercises HTTP navigation. The separate browser-blob host
+  // executes the actual Blob entry methods; an accidental call here must fail.
+  boolean downloadBlobNavigation(Tab tab,WebView source,String target,String disposition,String mime,long bytes){throw new AssertionError("Unexpected Blob transport boundary in HTTP navigation fixture");}
   __TAB__
   __CHOICE__
   __METHODS__

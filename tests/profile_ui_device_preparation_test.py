@@ -289,8 +289,13 @@ class WorkspaceCapacityTests(unittest.TestCase):
         self.assertEqual(hashlib.sha256(self.program.encode()).hexdigest(),
                          '6cceab4542155328df5f61444742de7d289c9f5ee59b937fca93dd82218aaa63')
         # C4 b0f0ffb5758b943ccafa082569e7c767438d4d2a whole workflow bytes.
-        # Undo only this resource-provisioning change; every old action/budget remains.
+        # Undo only the declared resource provisioning and 2.1.8 branch triggers;
+        # every old action/budget remains bound to the original workflow hash.
         before=self.raw
+        current_branches="    branches: ['codex/browser-workspace-20261111', 'release/browser-2.1.7', 'release/browser-2.1.7-*', 'release/browser-2.1.8', 'release/browser-2.1.8-*']\n"
+        old_branches=current_branches.replace(", 'release/browser-2.1.8', 'release/browser-2.1.8-*'",'')
+        self.assertEqual(before.count(current_branches),1)
+        before=before.replace(current_branches,old_branches,1)
         block='env:\n  ANDROID_CAPACITY_PREFLIGHT: |\n'+''.join('    '+line for line in self.program.splitlines(keepends=True))
         self.assertEqual(before.count(block),1);before=before.replace(block,'',1)
         for added in (

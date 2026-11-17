@@ -101,6 +101,7 @@ def execute(source_override=None):
                   auxiliaryPageBoundary='Default absent; close returns false only while absent, and any auxiliary freshness/close behavior fails explicitly. Real auxiliary lifecycle is not exercised.',
                   actualRequestHeaderPolicyExecution=False,actualTimeZonePolicyExecution=False,
                   actualIpTransportExecution=False,actualBlockedPopupUiExecution=False,
+                  actualBlobDownloadExecution=False,blobDownloadBoundary='The current popup body is extracted unchanged. downloadBlobPopup throws on every call in this native-protection-only host; actual Blob admission is exercised by gecko-download-navigation-host and gecko-addon-lifecycle-host, and no file transfer is modeled here.',
                   ipTransportBoundary='Original cases explicitly select manual timezone. The unrelated IP claim defaults absent and cannot be constructed; no successful lookup, route admission or native IP proof is modeled.',
                   blockedPopupUiBoundary='Counted UI offer only; this boundary cannot open a popup, create a native session or change a route. Actual popup UI is a separate current-method scope.',
                   actualAddonLifecycleExecution=False,addonBoundary='The original 98 protection cases explicitly assume an enabled independent add-on. Separate checks execute the current byte-extracted disabled-navigation guard and its original call sites against counted application/SDK boundaries; no real add-on lifecycle or native navigation is exercised.',

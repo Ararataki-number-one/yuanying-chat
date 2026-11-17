@@ -264,7 +264,7 @@ public class MainActivity extends ThemedActivity {
     if(draft&&!LocalDraftPolicy.enabled(session.context)){confirmIndependentReload(target,"本机草稿保存已关闭，当前输入不会自动暂存或恢复。");return;}
     if(!interrupted&&!draft){reloadCurrent(target,page);return;}
     ReferenceUi.Modal d=new ReferenceUi.Modal(this,"重新加载网页？");reloadDialog=d;
-    d.note(interrupted?"重新加载可能中断正在生成的回复、上传或其他网页操作；未发送的输入可能无法自动恢复。它不会自动重发提问。":"重新加载会关闭当前网页，未发送的输入可能无法自动恢复。");
+    d.note(interrupted?"重新加载可能中断正在生成的回复、上传或其他网页操作；未发送的输入可能无法自动恢复。":"重新加载会关闭当前网页，未发送的输入可能无法自动恢复。");
     if(draft)d.note("当前输入会先暂存。正在回复时，恢复后的网页不会自动填入这份草稿，可从暂存草稿中复制。");
     if(session.resourceFilesUncertain())d.note("附件状态待确认。请先核对网页中的附件；继续重新加载可能中断上传，需重新选择文件。");
     d.setOnDismissListener(unused->{if(reloadDialog==d)reloadDialog=null;});
@@ -273,7 +273,7 @@ public class MainActivity extends ThemedActivity {
   void confirmIndependentReload(ChatSession.ReloadTarget target,String reason){
     reloadChecking=false;if(!reloadMatches(target))return;
     ReferenceUi.Modal d=new ReferenceUi.Modal(this,"手动保存后重新加载？");reloadDialog=d;
-    d.note(reason+"\n\n请先取消并复制需要保留的输入。继续会关闭当前网页，未保存的草稿、表单或正在进行的回复、上传可能丢失；不会自动重发提问。");
+    d.note(reason+"\n\n请先取消并复制需要保留的输入。继续会关闭当前网页，未保存的草稿、表单或正在进行的回复、上传可能丢失。");
     if(session.resourceFilesUncertain())d.note("附件状态待确认。请先核对网页中的附件；继续重新加载可能中断上传，需重新选择文件。");
     d.setOnDismissListener(unused->{if(reloadDialog==d)reloadDialog=null;});
     d.buttons("取消，先保存",d::dismiss,"已保存，重新加载",()->{d.dismiss();if(reloadMatches(target))session.reloadConfirmed(target,null,true);});d.show();

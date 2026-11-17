@@ -145,7 +145,7 @@ def main():
     resume_fixture_inputs={ROOT/'tests/profile_download_resume_fixture_test.py',ROOT/'tests/download-resume-fixture-host/CookieFixtureHost.java.in',
         ROOT/'tests/download-resume-fixture-host/fixture-preservation.json',ROOT/'tests/gecko/DownloadResumeIntegrationActivity.java',
         ROOT/'app/src/main/java/local/pocketchat/GeckoWebView.java',ROOT/'app/src/main/java/local/pocketchat/FileDownloads.java',
-        ROOT/'app/src/main/java/local/pocketchat/J.java',ROOT/'app/src/main/java/local/pocketchat/DownloadRange.java',ROOT/'app/src/main/java/local/pocketchat/SealedFileIo.java',
+        ROOT/'app/src/main/java/local/pocketchat/J.java',ROOT/'app/src/main/java/local/pocketchat/DownloadRange.java',ROOT/'app/src/main/java/local/pocketchat/SealedFileIo.java',ROOT/'app/src/main/java/local/pocketchat/DownloadFileInfo.java',
         ROOT/'tests/download-resume-host/run.py',ROOT/'tests/sealed-file-host/android/util/AtomicFile.java',ROOT/'tests/download-recovery-host/android/os/Handler.java',
         ROOT/'tests/download-recovery-host/android/os/Looper.java',ROOT/'tests/download-recovery-host/android/net/Uri.java',
         ROOT/'tests/download-resume-host/stubs/android/util/Base64.java',ROOT/'tests/download-resume-host/stubs/android/os/SystemClock.java'}

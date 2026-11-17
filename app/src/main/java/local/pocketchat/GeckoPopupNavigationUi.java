@@ -105,7 +105,7 @@ final class GeckoPopupNavigationUi {
   void confirm(Attempt value){
     if(!valid(value,false)){fail(value,changedMessage());return;}
     MainActivity activity=value.target.activity;ReferenceUi.Modal confirm=new ReferenceUi.Modal(activity,"在当前页打开链接？");dialog=confirm;
-    confirm.note("新窗口已拦截。继续会用目标网页替换当前页，不会自动重发提问，也不能保证网站的登录跳转结果。");confirm.note(value.target.target);
+    confirm.note("新窗口已拦截。继续会用目标网页替换当前页，不能保证网站的登录跳转结果。");confirm.note(value.target.target);
     if(value.manual)confirm.note("请先结束网站正在进行的回复、上传或其他操作，并手动保存表单和输入。继续表示已完成这些操作并保留所需内容。"+(value.page!=null?"本机草稿保存已关闭，本次不会保存草稿副本。":""));
     else if(value.page!=null&&PageMemory.hasDraft(value.page))confirm.note("当前 ChatGPT 草稿会先暂存到本机并再次核对；若输入变化或无法暂存，当前网页会保留。");
     confirm.cancel=()->fail(value,"已取消，当前网页已保留");confirm.setOnDismissListener(ignored->{if(dialog==confirm){dialog=null;fail(value,"已取消，当前网页已保留");}});

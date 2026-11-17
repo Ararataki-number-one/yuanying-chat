@@ -92,7 +92,7 @@ final class GeckoTimeZoneUi {
   private static void confirm(MainActivity a,ChatSession s,GeckoTimeZoneStore.State expected,GeckoTimeZoneSpec wanted,Fence fence,JSONObject page,boolean manual,Consumer<String> done){
     if(!activity(a,s)||!fence.current(s)){done.accept("当前网页已变化，未保存时区");return;}
     ReferenceUi.Modal confirm=new ReferenceUi.Modal(a,"应用当前环境时区？");
-    confirm.note("保存为“"+wanted.label()+"”后将重新加载当前网页，并关闭此环境已打开的弹窗。不会自动重发提问。");
+    confirm.note("保存为“"+wanted.label()+"”后将重新加载当前网页，并关闭此环境已打开的弹窗。");
     if(!wanted.followsSystem())confirm.note("Service Worker 仍可读取系统时区，不能提供完整时区隔离。原生设置回读不代表当前页面或 Worker 已通过验证。");
     if(page==null&&s.web.hasVisibleDocument()||manual&&page!=null)confirm.note("当前网站的回复、上传、输入或表单不能完整自动核对与保留。请先取消并结束网站操作、手动保存；继续表示已结束相关操作并保留需要的内容。");
     else if(page!=null&&PageMemory.hasDraft(page))confirm.note("当前 ChatGPT 草稿会先暂存并再次核对。若输入变化或无法暂存，将保留网页并停止应用。");
