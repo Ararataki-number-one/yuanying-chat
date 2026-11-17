@@ -8,7 +8,9 @@
 - 下载经过重定向后，使用最终响应提供的文件名和类型；支持 `filename*` 的中文文件名，保留文件名中的加号。
 - Blob 临时文件在生成它的原网页内读取，按块传递原始字节。Gecko 的同源 Blob 新窗口请求不再因普通弹窗策略直接丢失；Chromium 的临时文件也不再被交给无法访问原网页内存的外部浏览器。
 - 原网页、环境或线路失效时停止依赖它的临时文件读取。一般 HTTP 下载仍沿用既有冻结线路和目标独立 Cookie 规则。
-- 保存前检查 PDF 的基本完整性和 Office ZIP 容器类型；登录 HTML、错误 JSON、截断的 PDF 或错配的 Office 文档不会被当作成功下载的文档发布。
+- 保存前检查 PDF 的基本完整性，以及 Office 包内主部件关系和内容类型；登录 HTML、错误 JSON、截断的 PDF 或错配的 Office 文档不会被当作成功下载的文档发布。
+- Word、Excel、PowerPoint 的普通文档、宏文档、模板和放映格式按内部类型保留正确后缀及 MIME，兼容主部件的 `Override` 和 `Default` 类型声明。
+- 密码保护的 Office 文件检查 OLE/CFB 容器与加密数据流后按原名、原字节保存；其内部文档类型沿用明确的文件名和 MIME。浏览器不解密，也不把外层结构检查当作密码或内部文档正确性的证明。
 - 文件内容不会被重新编码；文件名、扩展名和供 Android 打开的 MIME 类型一起校正。文件格式检查不等同于完整 Word 或 PDF 渲染器的验证。
 - 下载失败会在当前界面显示原因，并保留下载记录。
 
@@ -26,6 +28,8 @@
 
 ## 验证范围
 
-新增检查覆盖最终响应元数据、中文文件名、原字节保留、错误文档拒绝、同源 Blob 读取、旧文档失效、顶部实际触摸几何和检测功能移除后的行为。因产品功能删除而退役的发送检测用例须明确迁移；原有上传、下载、页面归属、线路和文件发布检查继续保留。
+新增检查覆盖最终响应元数据、中文文件名、原字节保留、Office 变体与加密容器、错误文档拒绝、同源 Blob 读取、旧文档失效、顶部实际触摸几何和检测功能移除后的行为。加密容器同时使用构造的边界样本和固定来源的真实 Office 样本检查。因产品功能删除而退役的发送检测用例须明确迁移；原有上传、下载、页面归属、线路和文件发布检查继续保留。
 
 主机测试、真实 Android API 编译、受控 Android 验收和用户实体手机验证分别记录。只有完成当前源码的必要构建与验收后，才可把对应安装包视为发布候选；本文本身不声明真实账号或所有网站已验证。
+
+格式依据：[Microsoft Office 扩展名说明](https://learn.microsoft.com/en-us/office/compatibility/xml-file-name-extension-reference-for-office)、[MS-OFFCRYPTO 加密包结构](https://learn.microsoft.com/en-us/openspecs/office_file_formats/ms-offcrypto/b60c8b35-2db2-4409-8710-59d88a793f83)、[MS-CFB 流目录与兼容规则](https://learn.microsoft.com/en-us/openspecs/windows_protocols/ms-cfb/b37413bb-f3ef-4adc-b18e-29bddd62c26e)。
