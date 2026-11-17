@@ -2,7 +2,7 @@
 import re
 
 
-def verify_queued_changes46(result, source, nonce):
+def verify_queued_changes46(result, source, nonce, *, producer_source=None):
     def require(ok, reason):
         if not ok:
             raise ValueError('Queued changes evidence: ' + reason)
@@ -13,6 +13,29 @@ def verify_queued_changes46(result, source, nonce):
 
     def integer(value, minimum=0):
         return type(value) is int and value >= minimum
+
+    # The caller supplies the producer from the installed build's Git commit.
+    # A report cannot opt itself into the retired-reply/native-file migration.
+    file_preparation = False
+    if producer_source is not None:
+        require(type(producer_source) is bytes and 0 < len(producer_source) <= 4 * 1024 * 1024, 'committed producer source')
+        markers = (
+            b'void beginSyntheticFileWork(){session.resourceFileWork(false,true);}',
+            b'void finishSyntheticFileWork(){session.resourceFileWork(false,false);}',
+            b'beginSyntheticFileWork();session.navigating=false;session.connecting=false;session.state=J.obj("busy",false);',
+            b'DeferredBrowserSettings.cancel(session);finishSyntheticFileWork();session.changed();',
+            b'"savedWhileFileBusy",ok,"oldRouteKept",kept',
+            b'"fileWorkCleared",session.resourceFilePreparations==0&&session.pending==null',
+        )
+        counts = [producer_source.count(marker) for marker in markers]
+        if any(counts):
+            require(all(count == 1 for count in counts), 'complete committed file-preparation producer')
+            file_preparation = True
+    if file_preparation:
+        require(all(result.get(key) is True for key in (
+            'savedWhileFileBusy', 'oldRouteKept', 'browserSavedWithoutApplying',
+            'fileWorkCleared', 'appliedWhenIdle', 'vpnGuardBlocksWithoutVpn')),
+            'original native file deferral and application assertions')
 
     require(type(source) is str and re.fullmatch('[0-9a-f]{40}', source) is not None, 'source')
     require(type(nonce) is str and re.fullmatch('[0-9a-f]{32}', nonce) is not None, 'current nonce')
@@ -112,7 +135,9 @@ def verify_queued_changes46(result, source, nonce):
     document, sequence = None, 0
     for row in observations:
         row = obj(row, 'SDK observation')
-        require(row.get('known') is True and type(row.get('busy')) is bool and type(row.get('fileBusy')) is bool and row.get('fileBusy') is False, 'actual known task observation')
+        require(row.get('known') is True and type(row.get('busy')) is bool and type(row.get('fileBusy')) is bool, 'actual known task observation')
+        if not file_preparation:
+            require(row['fileBusy'] is False, 'legacy observation has no native file work')
         require(type(row.get('documentId')) is str and re.fullmatch('[a-zA-Z0-9-]{16,80}', row['documentId']) is not None, 'actual document identity')
         if document is None:
             document = row['documentId']
@@ -120,4 +145,19 @@ def verify_queued_changes46(result, source, nonce):
         require(integer(row.get('sequence'), 1) and row['sequence'] > sequence, 'monotonic actual observer sequence')
         sequence = row['sequence']
     require(observations[0]['busy'] is True and observations[-1]['busy'] is False, 'actual busy-to-idle transition')
+    if file_preparation:
+        require(observations[0]['fileBusy'] is False and observations[-1]['fileBusy'] is False,
+                'native file work starts and finishes within the observed document')
+        file_seen, file_finished, idle_seen = False, False, False
+        for row in observations:
+            require(not idle_seen or row['busy'] is False, 'document remains idle after file completion')
+            if row['fileBusy']:
+                require(row['busy'] is True and not file_finished, 'one native file preparation while the document is busy')
+                file_seen = True
+            elif file_seen:
+                file_finished = True
+            if row['busy'] is False:
+                require(file_finished, 'document idle follows actual native file preparation')
+                idle_seen = True
+        require(file_seen and file_finished and idle_seen, 'observed native file preparation and final idle')
     return result

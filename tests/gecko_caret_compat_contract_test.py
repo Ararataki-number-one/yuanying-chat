@@ -317,6 +317,34 @@ def burst_bundle(data, report=None):
                 sdk_raw=data['sdk_raw'], artifact_root=data['artifact_root'], source_reader=data['source_reader'])
 
 
+def browser_burst(data, *, select_source=True):
+    """Fictional v2 producer/report controls, never Android execution evidence."""
+    if select_source:
+        protected = data['artifact_root'] / 'tests/gecko'
+        (protected / 'run_gecko_performance.py').write_text(
+            '# synthetic selected v2 runner\n'
+            'from browser_observation_contract_v2 import verify_browser_observation\n'
+            'verify_browser_observation(report)\n')
+        (protected / 'GeckoPerformanceIntegrationActivity.java').write_text(
+            '// synthetic selected v2 activity\n'
+            'J.obj("browserObservationContract",2,"actualGeckoBrowserLifecycleExecution",true);\n')
+    spec = importlib.util.spec_from_file_location('synthetic_browser_contract',
+        C.ROOT / 'tools/gecko/browser_observation_contract_v2.py')
+    contract = importlib.util.module_from_spec(spec); spec.loader.exec_module(contract)
+    value = burst(None)
+    value.pop('actualGeckoBindingRegressionExecution')
+    value.update(browserObservationContract=2, actualGeckoBrowserLifecycleExecution=True,
+                 actualAppearanceRoundtrip=True)
+    value['checks'] = [dict(name=name, **{'pass': True}) for name in sorted(contract.ANDROID_CHECKS)]
+    value['checkCount'] = len(value['checks'])
+    value['measurements'] = [dict(variant=variant, action=action, samples=12,
+        bridgeResponseBytes=size, domReadChars=size,
+        observationBefore=dict(derivedBuilt=12, messageListsBuilt=2),
+        observationAfter=dict(derivedBuilt=12, messageListsBuilt=2))
+        for variant, action, size in [('baseline', 'historical-poll', 100000), ('current', 'web-inspect', 1000)]]
+    return value
+
+
 class ContractControls(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(prefix='caret-contract-controls-')
@@ -940,6 +968,75 @@ class ContractControls(unittest.TestCase):
         value = burst(self.data['report']['buildIdentity'])
         result = self.verify_burst(value)
         self.assertEqual(result['orderedTrustedKeys'], 11)
+
+    def test_selected_browser_source_accepts_v2_without_retired_binding_claim(self):
+        value = browser_burst(self.data)
+        self.assertNotIn('actualGeckoBindingRegressionExecution', value)
+        result = self.verify_burst(value)
+        self.assertEqual(result['orderedTrustedKeys'], 11)
+        self.assertEqual(result['fullPerformanceChecks'], value['checkCount'])
+
+    def test_report_v2_claim_cannot_select_contract_for_historical_source(self):
+        value = browser_burst(self.data, select_source=False)
+        with self.assertRaisesRegex(ValueError, 'actual original strict burst execution missing'):
+            self.verify_burst(value)
+        value['actualGeckoBindingRegressionExecution'] = True
+        self.assertTrue(self.verify_burst(value)['originalSingleBurst'])
+
+    def test_selected_browser_source_cannot_fall_back_to_legacy_report(self):
+        browser_burst(self.data)
+        with self.assertRaisesRegex(ValueError, 'browser observation v2 contract invalid'):
+            self.verify_burst(burst(None))
+        for key, replacement in [('browserObservationContract', None), ('browserObservationContract', True),
+                                 ('browserObservationContract', 1), ('actualGeckoBrowserLifecycleExecution', False),
+                                 ('actualAppearanceRoundtrip', False)]:
+            with self.subTest(key=key, replacement=replacement):
+                value = browser_burst(self.data)
+                value['actualGeckoBindingRegressionExecution'] = True
+                value[key] = replacement
+                with self.assertRaisesRegex(ValueError, 'browser observation v2 contract invalid'):
+                    self.verify_burst(value)
+
+    def test_partial_selected_browser_source_is_rejected_even_with_legacy_claim(self):
+        paths = ['run_gecko_performance.py', 'GeckoPerformanceIntegrationActivity.java']
+        for path in paths:
+            with self.subTest(path=path):
+                value = browser_burst(self.data)
+                value['actualGeckoBindingRegressionExecution'] = True
+                (self.data['artifact_root'] / 'tests/gecko' / path).write_text('// synthetic legacy producer\n')
+                with self.assertRaisesRegex(ValueError, 'selected original browser observation source contract incomplete'):
+                    self.verify_burst(value)
+
+    def test_selected_browser_contract_retains_its_complete_checks_and_measurements(self):
+        mutations = [lambda v: v['checks'][0].update(name='Retired reply completion claim'),
+                     lambda v: v['checks'][0].update(**{'pass': False}),
+                     lambda v: v['measurements'][1].update(action='poll'),
+                     lambda v: v['measurements'][1].update(samples=11),
+                     lambda v: v['measurements'][1].update(bridgeResponseBytes=6000),
+                     lambda v: v['measurements'][1]['observationAfter'].update(derivedBuilt=13)]
+        for index, mutate in enumerate(mutations):
+            with self.subTest(mutation=index):
+                value = browser_burst(self.data); mutate(value)
+                with self.assertRaisesRegex(ValueError, 'browser observation v2 contract invalid'):
+                    self.verify_burst(value)
+
+    def test_selected_browser_contract_retains_strict_input_and_sidecar_gates(self):
+        mutations = [lambda v: v['actualAndroidTextInputs'][0].update(imeVisible=False),
+                     lambda v: v['actualAndroidTextInputs'][0].update(settledMs=599),
+                     lambda v: v['actualAndroidTextInputs'].append(copy.deepcopy(v['actualAndroidTextInputs'][0])),
+                     lambda v: v['actualTrustedInputEvents'][0].update(trusted=False),
+                     lambda v: v['actualTrustedInputEvents'][0].update(key='u'),
+                     lambda v: v.update(actualNativeInputTrace=[{'observer': True}])]
+        for index, mutate in enumerate(mutations):
+            with self.subTest(mutation=index):
+                value = browser_burst(self.data); mutate(value)
+                with self.assertRaises(ValueError): self.verify_burst(value)
+        value = browser_burst(self.data)
+        for key, replacement in [('invocationCount', 2), ('runnerSha256', 'f' * 64),
+                                 ('activitySha256', 'f' * 64), ('rawReportSha256', 'f' * 64)]:
+            with self.subTest(sidecar=key):
+                data = burst_bundle(self.data, value); data['sidecar'][key] = replacement
+                with self.assertRaises(ValueError): C.verify_original_burst(**data)
 
     def test_original_burst_matches_shared_installed_identity(self):
         shared = self.data['report']['commonInstalledIdentity']

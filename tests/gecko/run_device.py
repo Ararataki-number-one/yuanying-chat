@@ -857,7 +857,8 @@ def main():
         report['queuedChangesVpnPermission']=dict(package=package,setRaw=queued_vpn_permission,getRaw=adb('shell','appops','get',package,'ACTIVATE_VPN'))
         queued=run(2,'queuedChanges','queuedChanges');assert all(queued[key] for key in ['savedWhileFileBusy','oldRouteKept','browserSavedWithoutApplying','fileWorkCleared','appliedWhenIdle','vpnGuardBlocksWithoutVpn']),queued
         from queued_changes46 import verify_queued_changes46
-        verify_queued_changes46(queued,identity['sourceCommit'],event_transfers[-1]['runNonce'])
+        queued_producer=subprocess.check_output(['git','show',identity['sourceCommit']+':tests/gecko/GeckoIntegrationTestActivity.java'],cwd=ROOT)
+        verify_queued_changes46(queued,identity['sourceCommit'],event_transfers[-1]['runNonce'],producer_source=queued_producer)
         foreign_before=run(1,'foreignPreferences','foreignPreferences');assert foreign_before['marker']=='prime-target',foreign_before
         deletion=management('deleteOne')
         foreign_after=run(1,'foreignPreferences','foreignPreferences');assert not foreign_after['marker'],foreign_after

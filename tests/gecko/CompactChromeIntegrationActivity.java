@@ -178,13 +178,24 @@ public final class CompactChromeIntegrationActivity extends MainActivity {
       handler.removeCallbacks(ticker);
       session.remove(sessionObserver);
       reporting=true;
-      status("对话已改变，请检查上次发送；不会自动重发");
-      if(status.getVisibility()!=View.GONE||status.isClickable())throw new AssertionError("Conversation change banner must be quiet");
-      status("发送失败，请检查网络");
-      if(status.getVisibility()!=View.VISIBLE||!status.isClickable())throw new AssertionError("Real send errors must remain visible");
-      status("");
+      browserStatusRegression();
       snapshot("ready");
     },600);
+  }
+
+  void browserStatusRegression(){
+    assertNoNativeReplyTask();
+    status("已连接");
+    if(status.getVisibility()!=View.GONE||status.isClickable())throw new AssertionError("Normal browser connection must be quiet");
+    status("网页连接失败，请检查网络");
+    if(status.getVisibility()!=View.VISIBLE||!status.isClickable()||!android.text.TextUtils.equals(status.getText(),"网页连接失败，请检查网络"))throw new AssertionError("Real browser errors must remain visible");
+    status("");
+    if(status.getVisibility()!=View.GONE||status.isClickable())throw new AssertionError("Cleared browser errors must be quiet");
+    assertNoNativeReplyTask();
+  }
+
+  void assertNoNativeReplyTask(){
+    if(session.pending!=null||session.prefs.contains("pending")||!session.activeDeliveryId.isEmpty()||session.submitting||ChatService.running)throw new AssertionError("Browser status must not create or retain a native reply task");
   }
 
   @Override void startNetwork(){}
