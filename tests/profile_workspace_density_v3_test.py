@@ -282,7 +282,7 @@ class RoundtripEvidenceTests(unittest.TestCase):
                     current.exercise_workspace_roundtrip(capture.adb,raw,capture.save,PACKAGE,browser=True,capture=capture)
             self.assertEqual([call[:3] for call in capture.calls],[('shell','wm','density'),('shell','input','tap')])
 
-    def test_real_file_runner_prepares_owned_capture_before_current_scene(self):
+    def current_file_runner(self, *, legacy_input=False):
         tree=ast.parse((ROOT/'tests/gecko/run_device.py').read_text())
         def owner(nodes):
             for parent in ast.walk(tree):
@@ -293,7 +293,12 @@ class RoundtripEvidenceTests(unittest.TestCase):
         start=next(i for i,n in enumerate(body) if isinstance(n,ast.ImportFrom) and n.module=='ui_visual_capture')
         end=next(i for i,n in enumerate(body) if isinstance(n,ast.Assign) and any(isinstance(t,ast.Subscript) and isinstance(t.slice,ast.Constant) and t.slice.value=='productionNavigation' for t in n.targets))
         actual=compile(ast.fix_missing_locations(ast.Module(body=body[start:end+1],type_ignores=[])),'actual-file-navigation-entry','exec')
-        value=self.fixture();evidence=value['hierarchyCapture']['acquisitionDriver'];initial=value['nativeUi']['initial']['rawXml']
+        value=self.fixture();evidence=value['hierarchyCapture']['acquisitionDriver']
+        # Keep the v3 roundtrip fixtures above intact. Current device-runner AST
+        # receives separately constructed v4 XML, never relabelled old evidence.
+        from profile_navigation_v4_test import browser_xml as browser_v4_xml
+        import workspace_navigation_contract_v4 as latest
+        initial=value['nativeUi']['initial']['rawXml'] if legacy_input else scale_xml(browser_v4_xml(),420)
         capture=ControlledCapture(evidence,[initial,menu_xml(),workspace_xml(),initial]);capture.density_raw='Physical density: 420\n'
         events=[]
         def factory(**options):
@@ -309,13 +314,32 @@ class RoundtripEvidenceTests(unittest.TestCase):
                 mock.patch.object(current.time,'sleep',side_effect=lambda seconds:setattr(capture,'clock',capture.clock+seconds)):
             namespace=dict(args=types.SimpleNamespace(adb='host-adb',serial=evidence['serial']),source=self.source,
                 OUT=Path(out),adb=adb,package=PACKAGE,time=current.time,report={})
-            exec(actual,namespace)
-            self.verify(namespace['report']['productionNavigation'])
+            if legacy_input:
+                with self.assertRaisesRegex(AssertionError,'Missing or ambiguous native browser control.*windows'):
+                    exec(actual,namespace)
+                self.assertNotIn('productionNavigation',namespace['report'])
+                self.assertEqual(capture.calls,[('shell','wm','density')])
+            else:
+                exec(actual,namespace)
+                record=namespace['report']['productionNavigation']
+                self.assertEqual(record['navigationContract'],4)
+                summary=latest.verify_workspace_roundtrip(record,PACKAGE,source=self.source,root=self.repository)
+                self.assertEqual(summary['minimumActionTouchPx'],126)
+                self.assertEqual(summary['densityDpi'],420)
+                self.assertEqual([call[:3] for call in capture.calls],[('shell','wm','density')]+[('shell','input','tap')]*3)
+                for index,row in enumerate(record['hierarchyCapture']['attempts']):
+                    self.assertLessEqual(row['existingSceneDeadline']-row['startedAtMonotonicNanos']/1e9,30 if index==0 else 20)
         self.assertEqual(events[0][0],'prepare')
         self.assertEqual(events[0][1]['source'],self.source)
         self.assertEqual(events[0][1]['serial'],evidence['serial'])
         self.assertEqual(events[0][1]['diagnostics'].name,'production-navigation-capture.json')
-        self.assertEqual(len(capture.deadlines),4)
+        self.assertEqual(len(capture.deadlines),1 if legacy_input else 4)
+
+    def test_real_file_runner_prepares_owned_capture_before_current_scene(self):
+        self.current_file_runner()
+
+    def test_current_file_runner_rejects_old_v3_controls_before_any_native_tap(self):
+        self.current_file_runner(legacy_input=True)
 
 
 if __name__ == '__main__':unittest.main()

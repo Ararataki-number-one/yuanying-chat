@@ -99,10 +99,11 @@ final class ReadinessHost {
   static final class J{static JSONObject obj(Object...p){JSONObject o=new JSONObject();for(int i=0;i<p.length;i+=2)o.put((String)p[i],p[i+1]);return o;}}
   static final class Events{JSONObject buildIdentity=J.obj("sourceCommit","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","sourceTree","bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","apkSha256","cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc");}
   static final class Chrome{boolean expanded=true;View title=new View(252,78,828,234),compact=new View(0,72,0,72);Chrome(){compact.visibility=8;compact.shown=false;compact.laidOut=false;compact.requested=true;}boolean expanded(){return expanded;}}
+  static final class Address{View address=new View(312,1680,768,1824),row=new View(0,1656,1080,1848);}
   static final class Session{JSONObject pending=J.obj("id","controlled-pending","confirmed",true);}
   static final class Hub{int page;}
   static final class Window{View decor=new View(0,0,1080,1920);View getDecorView(){return decor;}}
-  static final class Host{Chrome designChrome=new Chrome();Session session=new Session();Hub hub=new Hub();Window window=new Window();View toolbar=new View(0,72,1080,642);String packageName="local.pocketchat.test";
+  static final class Host{Chrome designChrome=new Chrome();Address geckoAddress=new Address();Session session=new Session();Hub hub=new Hub();Window window=new Window();View toolbar=new View(0,72,1080,642);String packageName="local.pocketchat.test";
     String getPackageName(){return packageName;}boolean hasWindowFocus(){return true;}Window getWindow(){return window;}
     JSONArray bounds(View v){return new JSONArray(new int[]{v.l+v.rx,v.t+v.ry,v.r+v.rx,v.b+v.ry});}
     JSONArray center(View v){return new JSONArray(new int[]{(v.l+v.r)/2+v.rx,(v.t+v.b)/2+v.ry});}
@@ -119,10 +120,10 @@ __METHODS__
   static int checks;static void check(boolean value,String message){if(!value)throw new AssertionError(message);checks++;}
   static JSONObject last(){return new JSONObject(android.util.Log.lines.get(android.util.Log.lines.size()-1));}
   public static void main(String[] args){ReadinessHost h=new ReadinessHost();JSONObject pending=h.a.session.pending;h.inputReadiness(h.nonce+"-1",true);JSONObject v=last();
-    check(v.getInt("schema")==2&&v.getString("target").equals("address"),"explicit address schema");
-    check(v.getJSONArray("targetBounds").toString().equals("[252,78,828,234]"),"actual expanded title bounds");
-    check(v.getJSONArray("point").toString().equals("[540,156]"),"actual expanded title center");
-    check(v.getJSONArray("visibleBounds").toString().equals("[252,78,828,234]"),"actual target visible rectangle");
+    check(v.getInt("schema")==2&&v.getString("target").equals("address")&&v.getJSONArray("toolbarBounds").toString().equals("[0,1656,1080,1848]"),"explicit address schema and actual bottom toolbar");
+    check(v.getJSONArray("targetBounds").toString().equals("[312,1680,768,1824]"),"actual bottom address bounds");
+    check(v.getJSONArray("point").toString().equals("[540,1752]"),"actual bottom address center");
+    check(v.getJSONArray("visibleBounds").toString().equals("[312,1680,768,1824]"),"actual target visible rectangle");
     check(v.getBoolean("shown")&&v.getBoolean("laidOut")&&!v.getBoolean("layoutRequested")&&v.getInt("compactVisibility")==8&&v.getJSONArray("compactBounds").toString().equals("[0,72,0,72]"),"hidden compact cannot supply address readiness");
     check(v.getInt("sdkSession")==v.getInt("attachedSession")&&v.getInt("documentPort")==v.getInt("currentPort")&&v.getInt("currentPort")>0,"native identity bindings");
     check(v.getInt("sequence")==1&&v.getLong("observedAtElapsedRealtime")==1000,"bounded native observation sequence");
@@ -130,8 +131,8 @@ __METHODS__
     h.inputReadiness("invalid",true);check(android.util.Log.lines.size()==1,"invalid nonce ignored");
     h.a.packageName="foreign";h.inputReadiness(h.nonce+"-2",true);check(android.util.Log.lines.size()==1,"foreign package ignored");h.a.packageName="local.pocketchat.test";
     h.inputReadinessSequence=128;h.inputReadiness(h.nonce+"-2",true);check(android.util.Log.lines.size()==1,"bounded snapshot count");h.inputReadinessSequence=1;
-    h.a.designChrome.title.rx=17;h.a.designChrome.title.ry=29;h.inputReadiness(h.nonce+"-2",true);v=last();
-    check(v.getJSONArray("visibleBounds").toString().equals("[269,107,845,263]")&&v.getJSONArray("point").toString().equals("[557,185]"),"nonzero root origin");
+    h.a.geckoAddress.address.rx=17;h.a.geckoAddress.address.ry=29;h.inputReadiness(h.nonce+"-2",true);v=last();
+    check(v.getJSONArray("visibleBounds").toString().equals("[329,1709,785,1853]")&&v.getJSONArray("point").toString().equals("[557,1781]"),"nonzero root origin");
     h.a.designChrome.expanded=false;View c=h.a.designChrome.compact;c.r=1080;c.b=156;c.visibility=0;c.shown=true;c.laidOut=true;c.requested=false;
     h.inputReadiness(h.nonce+"-3");v=last();check(v.getInt("schema")==1&&!v.has("target")&&!v.has("targetBounds"),"legacy overload preserves schema one");
     check(v.getJSONArray("point").toString().equals("[540,114]")&&v.getBoolean("shown")&&!v.getBoolean("expanded"),"legacy compact geometry and state");
@@ -275,7 +276,7 @@ class BrowserColdStartTest(unittest.TestCase):
         runtime=compiler.with_name('java');jar=Path(os.environ.get('PROFILE_JSON_JAR',ROOT/'work/gecko-integration/catalog-json.jar'))
         self.assertTrue(compiler.is_file() and runtime.is_file() and jar.is_file(),'Real JDK and JSON jar required')
         variants=[('current',methods,True)]
-        for name,old,new in [('wrong-view','target=address?a.designChrome.title:compact','target=compact'),
+        for name,old,new in [('wrong-view','target=address?a.geckoAddress.address:compact','target=compact'),
                 ('wrong-bounds','value.put("target","address").put("targetBounds",a.bounds(target))',
                  'value.put("target","address").put("targetBounds",a.bounds(compact))')]:
             self.assertEqual(methods.count(old),1);variants.append((name,methods.replace(old,new,1),False))
@@ -288,7 +289,7 @@ class BrowserColdStartTest(unittest.TestCase):
                 self.assertEqual(result.returncode,0,result.stderr)
                 result=subprocess.run([str(runtime),'-cp',str(output)+os.pathsep+str(jar),'ReadinessHost'],capture_output=True,text=True,timeout=10)
                 if positive:self.assertEqual(result.returncode,0,result.stderr);self.assertEqual(result.stdout.strip(),'15 actual native readiness controls')
-                else:self.assertNotEqual(result.returncode,0);self.assertIn('actual expanded title bounds',result.stderr)
+                else:self.assertNotEqual(result.returncode,0);self.assertIn('actual bottom address bounds',result.stderr)
 
     def test_current_android_consumer_explicitly_selects_browser_and_preserves_one_home(self):
         tree=ast.parse((ROOT/'tests/gecko/run_chrome_collapse_v2.py').read_text())

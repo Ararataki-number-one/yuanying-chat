@@ -17,6 +17,7 @@ from unittest.mock import patch
 
 import profile_host_prerequisites_test as original
 import profile_host_supplemental_prerequisites_test as supplemental
+import profile_browser_v2_history_prerequisites_test as browser_history_controls
 
 ROOT, setup = original.ROOT, original.setup
 sys.path.insert(0, str(ROOT / 'tools/browser'))
@@ -107,6 +108,11 @@ class ProfileUiHistoryPrerequisitesTests(unittest.TestCase):
                 return dict(status='passed', controlledBoundary='browser-v2')
             browser_v2 = stack.enter_context(patch.object(setup, 'prepare_browser_v2_history',
                 side_effect=browser_v2_boundary))
+            def browser_v3_boundary(root, *, source_commit):
+                self.assertEqual((root, source_commit), (self.root, self.source))
+                return dict(status='passed', controlledBoundary='browser-v3')
+            browser_v3 = stack.enter_context(patch.object(setup, 'prepare_browser_v3_history',
+                side_effect=browser_v3_boundary))
             stack.enter_context(patch.object(setup.history, 'verify_group', side_effect=verify))
             stack.enter_context(patch.object(setup.history, 'git', side_effect=transport or self.transport))
             stack.enter_context(patch.dict(os.environ, self.environment))
@@ -114,6 +120,7 @@ class ProfileUiHistoryPrerequisitesTests(unittest.TestCase):
                 '--source-commit', self.source, '--output', str(output)]))
             setup.main()
             browser_v2.assert_called_once_with(self.root, source_commit=self.source)
+            browser_v3.assert_called_once_with(self.root, source_commit=self.source)
             self.assertEqual(os.environ['GITHUB_SHA'], self.environment['GITHUB_SHA'])
 
     def test_actual_default_cli_restores_missing_ui_owners_after_existing_setup(self):
@@ -130,6 +137,7 @@ class ProfileUiHistoryPrerequisitesTests(unittest.TestCase):
         self.assertEqual(calls, ['original', 'compatibility', 'supplemental', 'released', 'ui'])
         self.assertEqual(report['uiHistory']['groups'], observed)
         self.assertEqual(report['uiHistory']['fetchedCommits'], self.expected_missing)
+        self.assertEqual(report['browserV3History'],dict(status='passed',controlledBoundary='browser-v3'))
         self.assertEqual([len(group['files']) for group in observed], [13, 10])
         self.assertEqual(before, setup.history.checkout_state(self.root))
         self.assertTrue((self.root / '.git/shallow').is_file())
@@ -256,6 +264,79 @@ class ProfileUiHistoryPrerequisitesTests(unittest.TestCase):
             'tests/baselines/public-source-history.json', 'tests/fixtures/profile-fixture-root-source-deltas.json',
             'tools/browser/prepare_ui_workspace_history.py', ui_history.MANIFEST)})
         self.assertNotIn('input_paths', namespace)
+
+
+class BrowserV3HistoryPrerequisitesTests(unittest.TestCase):
+    """Reuse the real disposable Git transport; do not replace owner/blob checks."""
+    def setUp(self):
+        self.control=browser_history_controls.BrowserV2HistoryPrerequisitesTests()
+        self.control.setUp();self.addCleanup(self.control.doCleanups)
+        self.control.group=setup.BROWSER_V3_GROUP
+
+    def prepare(self, **overrides):
+        control=self.control
+        with patch.object(setup.history,'git',side_effect=overrides.pop('transport',control.transport)):
+            return setup.prepare_browser_v3_history(control.root,
+                source_commit=overrides.pop('source',control.source),
+                environment=overrides.pop('environment',control.environment))
+
+    def test_exact_two_real_observers_prepare_without_ref_changes_then_verify_offline(self):
+        control=self.control;before=setup.history.checkout_state(control.root)
+        refs=control.git('for-each-ref','--format=%(refname) %(objectname)')
+        report=self.prepare();observed=setup.history.verify_group(control.root,setup.BROWSER_V3_GROUP)
+        self.assertEqual(report['group'],observed)
+        self.assertEqual({row['path'] for row in observed['files']},{'tests/gecko/run_environment_dashboard.py','tools/gecko/capture_glass_navigation.py'})
+        self.assertEqual(report['fetchedCommits'],[setup.BROWSER_V3_GROUP['commit']])
+        self.assertEqual(len(control.fetches),1)
+        self.assertEqual(before,setup.history.checkout_state(control.root))
+        self.assertEqual(refs,control.git('for-each-ref','--format=%(refname) %(objectname)'))
+        self.assertFalse((control.root/'.git/FETCH_HEAD').exists())
+        self.assertTrue(report['historicalProofOnly']);self.assertFalse(report['currentSourceReplacement'])
+        self.assertFalse(report['testsExecuted']);self.assertFalse(report['actualAndroidExecution'])
+        (control.root/'anchor.txt').write_text('Existing tracked edit remains untouched\n')
+        dirty=setup.history.checkout_state(control.root)
+        with patch.object(setup,'authorize_fetch',side_effect=AssertionError('Present v3 history stays offline')):
+            offline=self.prepare(environment={})
+        self.assertEqual(offline['fetchedCommits'],[])
+        self.assertEqual(dirty,setup.history.checkout_state(control.root))
+
+    def test_wrong_source_event_origin_and_dirty_checkout_reject_before_fetch(self):
+        control=self.control
+        with self.assertRaisesRegex(RuntimeError,'v3 history source differs'):self.prepare(source='a'*40)
+        with self.assertRaisesRegex(RuntimeError,'fixed repository GitHub CI'):self.prepare(environment={})
+        control.event['pull_request']['head']['sha']='a'*40;control.write_event()
+        with self.assertRaisesRegex(RuntimeError,'head or base repository differs'):self.prepare()
+        control.event['pull_request']['head']['sha']=control.source;control.write_event()
+        control.git('remote','set-url','origin','https://github.com/foreign/repository.git')
+        with self.assertRaisesRegex(RuntimeError,'fixed public GitHub origin'):self.prepare()
+        control.git('remote','set-url','origin',setup.history.ORIGINS[1])
+        (control.root/'anchor.txt').write_text('Dirty before a fetch\n')
+        with self.assertRaisesRegex(RuntimeError,'tracked checkout must be clean'):self.prepare()
+        self.assertEqual(control.fetches,[])
+
+    def test_failed_incomplete_or_checkout_changing_fetch_cannot_report_success(self):
+        control=self.control;before=setup.history.checkout_state(control.root)
+        for returncode in (1,0):
+            def incomplete(root,*arguments):
+                if arguments[:1]==('fetch',):return subprocess.CompletedProcess(arguments,returncode,b'',b'Controlled incomplete transport')
+                return control.real_git(root,*arguments)
+            with self.subTest(returncode=returncode),self.assertRaises(RuntimeError):self.prepare(transport=incomplete)
+            self.assertEqual(before,setup.history.checkout_state(control.root))
+        def changed(root,*arguments):
+            result=control.transport(root,*arguments)
+            if arguments[:1]==('fetch',):(control.root/'anchor.txt').write_text('Changed during real object fetch\n')
+            return result
+        with self.assertRaisesRegex(RuntimeError,'v3 history fetch changed checkout'):self.prepare(transport=changed)
+        self.assertEqual(control.git('rev-parse','HEAD').decode().strip(),control.source)
+
+    def test_mismatched_declared_observer_bytes_are_not_treated_as_missing(self):
+        control=self.control;control.seed()
+        before=setup.history.checkout_state(control.root)
+        altered=copy.deepcopy(setup.BROWSER_V3_GROUP)
+        altered['files']['tools/gecko/capture_glass_navigation.py']['sha256']='f'*64
+        with patch.object(setup,'BROWSER_V3_GROUP',altered),self.assertRaises(RuntimeError):self.prepare(environment={})
+        self.assertEqual(control.fetches,[])
+        self.assertEqual(before,setup.history.checkout_state(control.root))
 
 
 if __name__ == '__main__':

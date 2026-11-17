@@ -1,5 +1,9 @@
 """Current Chromium native-layout parser controls; no Android execution claims."""
 from pathlib import Path
+import ast
+import hashlib
+import inspect
+import json
 import sys
 import unittest
 import xml.etree.ElementTree as ET
@@ -7,6 +11,8 @@ import xml.etree.ElementTree as ET
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT/'tools/gecko'))
 import capture_browser_workspace as capture
+
+ORIGINAL = ROOT/'tests/browser-workspace-capture/c1-api32-initial-browser.xml'
 
 
 def node(parent, kind, bounds, *, text='', description='', enabled=True, clickable=False, long_clickable=False):
@@ -96,6 +102,61 @@ class ChromiumBrowserCaptureContractTests(unittest.TestCase):
             else:
                 next(n for n in tree[0] if n.get('class')=='android.widget.FrameLayout' and n.get('bounds')=='[0,444][1236,2400]').set('bounds','[0,444][1236,2450]')
             with self.subTest(kind=kind),self.assertRaises(ValueError):capture.browser_geometry(xml(tree),3)
+
+    def test_original_failed_capture_has_one_capsule_action_and_two_visual_name_nodes(self):
+        raw=ORIGINAL.read_bytes()
+        provenance=json.loads(ORIGINAL.with_suffix('.json').read_text())
+        self.assertEqual(provenance['status'],'failed')
+        self.assertEqual(provenance['sourceCommit'],'9f05ea4ce48d4ccae482b6fcdecb637d3b60cce2')
+        self.assertEqual(provenance['sourceTree'],'fd22328ce911a6fc73c7fe95d136da53a824e761')
+        self.assertEqual(provenance['runId'],44010184393)
+        self.assertEqual(provenance['runAttempt'],1)
+        self.assertEqual(provenance['xmlBytes'],len(raw))
+        self.assertEqual(provenance['xmlSha256'],hashlib.sha256(raw).hexdigest())
+        value=raw.decode('utf-8')
+        matches=capture.shared.nodes(value,lambda n:n.get('text')==capture.NAME)
+        self.assertEqual([n.get('class') for n in matches],['android.widget.Button','android.widget.TextView'])
+        self.assertFalse(len(matches)==1)  # The exact retired readiness condition.
+        self.assertTrue(capture.environment_ready(value,3))
+        self.assertEqual(capture.browser_geometry(value,3)['navigationContract'],4)
+
+    def test_real_initial_wait_uses_the_capsule_action_without_changing_other_requirements(self):
+        # Execute the actual producer's pure local predicate, including present().
+        tree=ast.parse(inspect.getsource(capture.main))
+        present=next(n for n in ast.walk(tree) if isinstance(n,ast.FunctionDef) and n.name=='present')
+        call=next(n for n in ast.walk(tree) if isinstance(n,ast.Call) and isinstance(n.func,ast.Name)
+                  and n.func.id=='wait_for' and len(n.args)>1 and isinstance(n.args[1],ast.BinOp)
+                  and isinstance(n.args[1].right,ast.Constant) and n.args[1].right.value=='-browser')
+        namespace=dict(capture.__dict__)
+        exec(compile(ast.fix_missing_locations(ast.Module(body=[present],type_ignores=[])),str(capture.__file__),'exec'),namespace)
+        predicate=eval(compile(ast.Expression(body=call.args[0]),str(capture.__file__),'eval'),namespace)
+        value=ORIGINAL.read_text()
+        self.assertTrue(predicate(value))
+        for kind in ('missing-notice','missing-network','missing-capsule'):
+            root=ET.fromstring(value)
+            for n in root.iter('node'):
+                if kind=='missing-notice' and n.get('text')==capture.WAITING:n.set('text','')
+                if kind=='missing-network' and n.get('content-desc')==capture.NETWORK:n.set('content-desc','')
+                if kind=='missing-capsule' and n.get('content-desc')==capture.ENVIRONMENT:n.set('content-desc','')
+            with self.subTest(kind=kind):self.assertFalse(predicate(xml(root)))
+
+    def test_capsule_readiness_rejects_duplicate_foreign_disabled_hidden_or_short_action(self):
+        for kind in ('duplicate','foreign','disabled','unclickable','hidden','wrong-name','wrong-description',
+                     'text-only','long-click','short-width','short-height','outside-display'):
+            tree=ET.fromstring(ORIGINAL.read_bytes())
+            action=next(n for n in tree.iter('node') if n.get('content-desc')==capture.ENVIRONMENT)
+            if kind=='duplicate':tree.append(ET.fromstring(ET.tostring(action)))
+            else:
+                key,value={
+                    'foreign':('package','foreign.package'), 'disabled':('enabled','false'),
+                    'unclickable':('clickable','false'), 'hidden':('visible-to-user','false'),
+                    'wrong-name':('text','truncated'), 'wrong-description':('content-desc','当前环境'),
+                    'text-only':('class','android.widget.TextView'), 'long-click':('long-clickable','true'),
+                    'short-width':('bounds','[330,72][473,216]'), 'short-height':('bounds','[330,72][906,215]'),
+                    'outside-display':('bounds','[330,2533][906,2677]'),
+                }[kind]
+                action.set(key,value)
+            with self.subTest(kind=kind):self.assertFalse(capture.environment_ready(xml(tree),3))
 
 
 if __name__=='__main__':unittest.main(verbosity=2)

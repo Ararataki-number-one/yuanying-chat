@@ -47,6 +47,19 @@ def control(xml, description, density):
     return node
 
 
+def environment_ready(xml, density):
+    """Match the capsule's action, not its repeated visual child label."""
+    found = shared.nodes(xml, lambda n: n.get('class') == 'android.widget.Button'
+                         and n.get('content-desc') == ENVIRONMENT)
+    if len(found) != 1:
+        return False
+    node = found[0]
+    box = shared.bounds(node)
+    return (node.get('text') == NAME and node.get('enabled') == 'true'
+            and node.get('clickable') == 'true' and node.get('long-clickable') != 'true'
+            and box[2]-box[0] >= 48*density and box[3]-box[1] >= 48*density)
+
+
 def browser_geometry(xml, density):
     address = control(xml, '网址或搜索词', density)
     if address.get('text') != URL:
@@ -228,7 +241,7 @@ def main():
             adb('shell', 'am', 'force-stop', PACKAGE)
             adb('shell', 'am', 'start', '-W', '-n', PACKAGE+'/local.pocketchat.BrowserActivity', '--es', 'url', URL)
             xml = wait_for(lambda value: present(value, lambda n: n.get('text') == WAITING)
-                           and present(value, lambda n: n.get('text') == NAME)
+                           and environment_ready(value, 3)
                            and present(value, lambda n: n.get('content-desc') == NETWORK), label+'-browser')
             case['geometry'] = browser_geometry(xml, 3)
             case['screenshots'].append(screenshot(label+'-browser.png'))

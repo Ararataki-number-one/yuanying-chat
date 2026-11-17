@@ -4,6 +4,7 @@ This host check does not execute the Android UI or a Gecko permission request.
 The release APK's complete compilation and controlled-device checks remain separate.
 """
 import hashlib
+import importlib.util
 import json
 import os
 from pathlib import Path
@@ -66,7 +67,11 @@ class SitePermissionsUiTest(unittest.TestCase):
         for unwanted in ['getAllPermissions(', 'clearData(', 'fromJson(', 'setPrivateBrowsingPermanentPermission(', 'toJson(']:
             self.assertNotIn(unwanted, native)
         activity = (PRODUCTION / 'MainActivity.java').read_text()
-        self.assertEqual(activity.count('option(d,"站点权限",()->SitePermissionsUi.show(this));'), 1)
+        entry = 'tools.action("shield","站点权限",()->SitePermissionsUi.show(this));'
+        self.assertEqual(activity.count(entry), 1)
+        spec = importlib.util.spec_from_file_location('site_permissions_member_parser', ROOT / 'tests/gecko-navigation-host/run.py')
+        parser = importlib.util.module_from_spec(spec); spec.loader.exec_module(parser)
+        self.assertEqual(parser.member_at(activity, activity.index('void toolsSheet(')).count(entry), 1)
         self.assertIn('web.identityPolicyRevision', native)
         self.assertIn('web.appearanceLoads.getOrDefault(session,0L)', native)
         self.assertIn('owner.lastDocumentId+"\\n"+web.locations.get(session)', native)
