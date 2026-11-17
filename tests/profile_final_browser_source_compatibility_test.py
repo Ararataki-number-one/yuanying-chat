@@ -53,9 +53,10 @@ PUBLISHER_METADATA_PINS = {
 }
 CPU_PUBLICATION_PATH = 'tests/browser_cpu_publish_gate_test.py'
 CPU_PUBLICATION_SHA = '49e19922d9e253976fc2da4b0092f4701db14a00cb52cb7d32e3f949dccb6301'
-# The approved current fixture supplies complete v3 navigation before the
-# unchanged CPU missing-summary controls; retain both whole-image identities.
-CURRENT_CPU_PUBLICATION_FIXTURE_SHA = '13922902ef64cd2dc25fbff14c71d78b46972c4e8efde85d3db9e4b619728253'
+# The current prerequisite uses v4 for >=2.1.7 and retains v3 for 2.1.6;
+# preserve the previous whole image and all unchanged CPU test bodies.
+PREVIOUS_CPU_PUBLICATION_FIXTURE_SHA = '13922902ef64cd2dc25fbff14c71d78b46972c4e8efde85d3db9e4b619728253'
+CURRENT_CPU_PUBLICATION_FIXTURE_SHA = '998135a5975d12854dd993e6613d535ba1aa9079643bfc4c1c68102b9d496279'
 CPU_PUBLICATION_BODY_SHA = '8304bd6a9a4acf95aeb64a2f5caa1a97491dfed46b76b02c4e1816414a75e8cb'
 B_PATHS = frozenset((GV, 'tests/ip_timezone_source_compatibility.py',
     'tests/profile_ip_timezone_source_compatibility_test.py',
@@ -737,6 +738,83 @@ class FinalBrowserHistoricalSources(unittest.TestCase):
             'self.assertEqual(len(dependencies),2,', 1))), CPU_PUBLICATION_BODY_SHA)
         self.assertEqual(SHA(historical_bytes(CPU_PUBLICATION_PATH)), CPU_PUBLICATION_SHA)
         self.assertEqual(SHA((ROOT/CPU_PUBLICATION_PATH).read_bytes()), CURRENT_CPU_PUBLICATION_FIXTURE_SHA)
+
+    def test_current_cpu_navigation_prerequisite_is_an_exact_v4_fixture_delta(self):
+        from historical_source_inputs import browser_v3_bytes
+        previous = browser_v3_bytes(CPU_PUBLICATION_PATH)
+        self.assertEqual(SHA(previous), PREVIOUS_CPU_PUBLICATION_FIXTURE_SHA)
+        current = (ROOT/CPU_PUBLICATION_PATH).read_bytes()
+        deltas = ((
+            """        if tuple(map(int,expected['version'].split('.'))) >= (2,1,6):
+            # Keep the old CPU test methods and their prior-gate boundary. A
+            # current version needs complete, nonempty v3 navigation input;
+            # qualify that synthetic fixture with the actual behavior reader.
+""",
+            """        version=tuple(map(int,expected['version'].split('.')))
+        if version >= (2,1,6):
+            # Keep the old CPU test methods and their prior-gate boundary. A
+            # current version needs its complete, nonempty navigation input;
+            # qualify these synthetic observations with the actual reader.
+"""), (
+            """            browser=browser_controls.BrowserEvidenceTests().current_document()
+""",
+            """            browser=browser_controls.BrowserEvidenceTests().current_document()
+            if version >= (2,1,7):
+                # The shared v3 fixture remains an unchanged historical control.
+                # These separate host-only v4 observations include the native
+                # action descriptions and complete bounds required before CPU.
+                descriptions=('打开当前环境主页','网页窗口','网址或搜索词','网页工具','浏览器菜单')
+                layouts=[]
+                for orientation,width,height in ((2,1920,1080),(1,1080,1920)):
+                    top=height-168
+                    boxes=((12,top,156,top+144),(156,top,300,top+144),
+                           (312,top,width-312,top+144),(width-300,top,width-156,top+144),
+                           (width-156,top,width-12,top+144))
+                    controls=[dict(name=name,description=description,shown=True,minimum=144,
+                                   visibleWidth=box[2]-box[0],visibleHeight=box[3]-box[1],bounds=list(box))
+                              for name,description,box in zip(('home','windows','address','tools','menu'),descriptions,boxes)]
+                    layouts.append(dict(navigationContract=4,orientation=orientation,fontScale=2.0,density=3.0,
+                                        rootBounds=[0,0,width,height],controls=controls))
+                browser['result']['layoutObservations']=layouts
+"""), (
+            """            self.assertEqual([row['orientation'] for row in result['layoutObservations']],[2,1])
+""",
+            """            self.assertEqual([row['orientation'] for row in result['layoutObservations']],[2,1])
+            self.assertEqual([row['navigationContract'] for row in result['layoutObservations']],
+                             [4,4] if version >= (2,1,7) else [3,3])
+"""))
+
+        def restore_fixture(raw):
+            if SHA(raw) != CURRENT_CPU_PUBLICATION_FIXTURE_SHA:
+                raise ValueError('Current CPU fixture requires its exact whole image')
+            restored = raw
+            for before, after in reversed(deltas):
+                before, after = before.encode(), after.encode()
+                if restored.count(after) != 1:
+                    raise ValueError('CPU navigation fixture inverse must be unique')
+                restored = restored.replace(after, before, 1)
+            if SHA(restored) != PREVIOUS_CPU_PUBLICATION_FIXTURE_SHA or restored != previous:
+                raise ValueError('CPU navigation fixture must restore the exact v3 image')
+            return restored
+
+        self.assertEqual(restore_fixture(current), previous)
+        replay = previous
+        for before, after in deltas:
+            before, after = before.encode(), after.encode()
+            self.assertEqual(replay.count(before), 1)
+            replay = replay.replace(before, after, 1)
+        self.assertEqual(replay, current)
+        changes = (
+            (b'return actual_cpu(actual_directory,source,identity,reader=reader)', b'return {}'),
+            (b'self.assertEqual(len(dependencies),1,', b'self.assertEqual(len(dependencies),2,'),
+            (b'navigationContract=4,orientation=orientation', b'navigationContract=3,orientation=orientation'),
+            (b"cpu_calls,[(directory,SOURCE,expected)]", b'cpu_calls,[]'),
+        )
+        for original, changed in changes:
+            with self.subTest(mutation=original.decode()):
+                self.assertEqual(current.count(original), 1)
+                with self.assertRaises(ValueError):
+                    restore_fixture(current.replace(original, changed, 1))
 
     def test_worker_producer_hooks_strip_to_whole_S_and_preserve_all_original_oracles(self):
         relative = 'tests/worker_timezone_source_compatibility.py'

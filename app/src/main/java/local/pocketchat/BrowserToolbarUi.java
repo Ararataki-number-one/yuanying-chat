@@ -4,7 +4,10 @@ import android.content.Context;
 import android.text.TextUtils;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.Gravity;
+import android.view.accessibility.AccessibilityNodeInfo;
 import android.widget.Button;
+import android.widget.FrameLayout;
 import android.widget.TextView;
 
 /** Native browser actions share the existing glass material and press feedback. */
@@ -32,6 +35,22 @@ final class BrowserToolbarUi {
     if(button.isEnabled()!=enabled)button.setEnabled(enabled);
   }
 
+  /** The small glass face and its larger native hit region have separate geometry. */
+  static final class EnvironmentButton extends FrameLayout {
+    final TextView label;
+    EnvironmentButton(Context context,TextView label,Runnable choose){
+      super(context);this.label=label;setMinimumHeight(ReferenceUi.dp(context,48));
+      setPadding(0,ReferenceUi.dp(context,2),0,ReferenceUi.dp(context,10));
+      setClipChildren(false);setClipToPadding(false);setFocusable(true);setLongClickable(false);
+      label.setDuplicateParentStateEnabled(true);label.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+      addView(label,new FrameLayout.LayoutParams(-2,-2,Gravity.TOP|Gravity.CENTER_HORIZONTAL));
+      setOnClickListener(view->choose.run());
+    }
+    @Override public void drawableHotspotChanged(float x,float y){super.drawableHotspotChanged(x,y);if(label!=null&&label.getBackground()!=null)label.getBackground().setHotspot(x-label.getLeft(),y-label.getTop());}
+    @Override public CharSequence getAccessibilityClassName(){return Button.class.getName();}
+    @Override public void onInitializeAccessibilityNodeInfo(AccessibilityNodeInfo info){super.onInitializeAccessibilityNodeInfo(info);info.setText(label.getText());info.addAction(new AccessibilityNodeInfo.AccessibilityAction(AccessibilityNodeInfo.ACTION_CLICK,"切换环境"));}
+  }
+
   /** Both engines share the same address material and system font scaling. */
   static void address(TextView view){
     Context context=view.getContext();
@@ -51,9 +70,9 @@ final class BrowserToolbarUi {
    */
   static final class NavigationBar extends ViewGroup {
     final TextView address;final Button[] actions;boolean stacked;
-    NavigationBar(Context context,TextView address,Button back,Button home,Button reload,Button menu){
-      super(context);this.address=address;actions=new Button[]{back,home,reload,menu};
-      addView(back);addView(home);addView(address);addView(reload);addView(menu);
+    NavigationBar(Context context,TextView address,Button home,Button windows,Button tools,Button menu){
+      super(context);this.address=address;actions=new Button[]{home,windows,tools,menu};
+      addView(home);addView(windows);addView(address);addView(tools);addView(menu);
       setPadding(dp(4),dp(6),dp(4),dp(8));setClipChildren(false);setClipToPadding(false);
       setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
     }

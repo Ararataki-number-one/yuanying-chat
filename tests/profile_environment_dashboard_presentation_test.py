@@ -16,7 +16,7 @@ import sys
 import unittest
 import xml.etree.ElementTree as ET
 import dashboard_browser_entry_compatibility as browser_ports
-from historical_source_inputs import browser_v2_bytes
+from historical_source_inputs import browser_v2_bytes, browser_v3_bytes, browser_v3_identity
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -216,6 +216,20 @@ class CurrentBrowserEntryObservation(unittest.TestCase):
     RAW = ROOT/'tests/browser-address-host/c5-launcher-browser.xml'
 
     @staticmethod
+    def historical_source():
+        relative='tests/gecko/run_environment_dashboard.py'
+        raw=browser_v3_bytes(relative);identity=browser_v3_identity(relative)
+        assert hashlib.sha256(raw).hexdigest()==identity['sha256']=='0f02755864ebfd989acca1bc12dbca7901d434b1057992a3ee74213a9b7f69b0'
+        assert identity['historicalProofOnly'] is True and identity['currentSourceReplacement'] is False
+        return raw.decode()
+
+    @staticmethod
+    def synthetic_v4_browser():
+        # New host-model input only; the real C5/C13 observations stay unchanged.
+        from profile_navigation_v4_test import browser_xml
+        return browser_xml()
+
+    @staticmethod
     def functions(source):
         module=ast.parse(source)
         run=next(n for n in module.body if isinstance(n,ast.FunctionDef) and n.name=='run')
@@ -228,13 +242,18 @@ class CurrentBrowserEntryObservation(unittest.TestCase):
         exec(compile(ast.Module(body=selected,type_ignores=[]),str(RUNNER)+':actual-entry-observer','exec'),namespace)
         return namespace
 
-    def test_current_selector_accepts_the_original_c5_browser_and_old_selector_reproduces_failure(self):
+    def test_historical_v3_selector_accepts_original_c5_and_older_selector_reproduces_failure(self):
         raw=self.RAW.read_bytes()
         self.assertEqual(hashlib.sha256(raw).hexdigest(),'e574e7e3731d5d5f1b21195ac4e6691550bd636ef8cc9bd5cb0d9f517bdb340f')
-        current=self.reader()['browser']
+        historical=self.reader(self.historical_source())['browser']
         previous=self.reader(browser_v2_bytes('tests/gecko/run_environment_dashboard.py').decode())['browser']
-        self.assertTrue(current(raw.decode()))
+        self.assertTrue(historical(raw.decode()))
         self.assertFalse(previous(raw.decode()))
+
+    def test_current_v4_selector_accepts_synthetic_input_and_rejects_original_c5(self):
+        current=self.reader()['browser']
+        self.assertTrue(current(self.synthetic_v4_browser()))
+        self.assertFalse(current(self.RAW.read_text()))
 
     def require_original_flow(self, current):
         previous=browser_v2_bytes('tests/gecko/run_environment_dashboard.py').decode()
@@ -288,7 +307,7 @@ class CurrentBrowserEntryObservation(unittest.TestCase):
                 self.require_original_flow(current.replace(before,after,1))
 
     def test_missing_foreign_clipped_hidden_disabled_and_duplicate_native_controls_never_qualify(self):
-        reader=self.reader()['browser']
+        reader=self.reader(self.historical_source())['browser']
         labels=('后退','打开当前环境主页','当前网址','刷新网页','浏览器菜单','当前环境：')
         for label in labels:
             for change in ('missing','foreign','wrong-class','hidden','clipped','duplicate'):
@@ -308,7 +327,7 @@ class CurrentBrowserEntryObservation(unittest.TestCase):
             with self.subTest(label=label,change='disabled'):self.assertFalse(reader(xml(tree)))
 
     def test_old_reading_label_alone_and_wrong_environment_capsule_do_not_qualify(self):
-        reader=self.reader()['browser']
+        reader=self.reader(self.historical_source())['browser']
         original=ET.fromstring(self.RAW.read_text())
         capsule=next(n for n in original.iter('node') if n.get('content-desc','').startswith('当前环境：'))
         decoy=ET.Element('hierarchy');decoy.append(copy.deepcopy(capsule))
@@ -322,8 +341,41 @@ class CurrentBrowserEntryObservation(unittest.TestCase):
         node(original,'android.widget.TextView',description='环境仪表盘')
         with self.assertRaisesRegex(AssertionError,'unexpectedly opened environment details'):reader(xml(original))
 
-    def test_actual_startup_wait_accepts_only_before_its_original_deadline(self):
-        raw=self.RAW.read_text()
+    def test_current_v4_controls_reject_missing_foreign_hidden_clipped_and_duplicate_nodes(self):
+        reader=self.reader()['browser']
+        labels=('打开当前环境主页','网页窗口','当前网址','网页工具','浏览器菜单','当前环境：')
+        for label in labels:
+            for change in ('missing','foreign','wrong-class','hidden','clipped','duplicate','disabled'):
+                tree=ET.fromstring(self.synthetic_v4_browser());parents={c:p for p in tree.iter() for c in p}
+                target=next(n for n in tree.iter('node') if n.get('content-desc','').startswith(label))
+                if change=='missing':parents[target].remove(target)
+                elif change=='foreign':target.set('package','foreign.package')
+                elif change=='wrong-class':target.set('class','android.widget.TextView')
+                elif change=='hidden':target.set('visible-to-user','false')
+                elif change=='clipped':target.set('bounds','[10,10][11,11]')
+                elif change=='disabled':target.set('enabled','false')
+                else:parents[target].append(copy.deepcopy(target))
+                with self.subTest(label=label,change=change):self.assertFalse(reader(xml(tree)))
+
+    def test_current_v4_capsule_requires_tap_only_and_network_row_below_it(self):
+        reader=self.reader()['browser']
+        for attribute,value in (('text','another environment'),('long-clickable','true'),('clickable','false')):
+            tree=ET.fromstring(self.synthetic_v4_browser())
+            capsule=next(n for n in tree.iter('node') if n.get('content-desc','').startswith('当前环境：'))
+            capsule.set(attribute,value)
+            with self.subTest(attribute=attribute):self.assertFalse(reader(xml(tree)))
+        for change in ('missing','duplicate','disabled','unclickable','above-capsule','short'):
+            tree=ET.fromstring(self.synthetic_v4_browser());parents={c:p for p in tree.iter() for c in p}
+            status=next(n for n in tree.iter('node') if n.get('content-desc','').startswith('当前环境网络：'))
+            if change=='missing':parents[status].remove(status)
+            elif change=='duplicate':parents[status].append(copy.deepcopy(status))
+            elif change=='disabled':status.set('enabled','false')
+            elif change=='unclickable':status.set('clickable','false')
+            elif change=='above-capsule':status.set('bounds','[0,0][1080,144]')
+            else:status.set('bounds','[0,216][1080,359]')
+            with self.subTest(change=change):self.assertFalse(reader(xml(tree)))
+
+    def check_startup_deadline(self,raw,source):
         for duration in (0,35,36):
             class Clock:
                 now=0
@@ -332,12 +384,18 @@ class CurrentBrowserEntryObservation(unittest.TestCase):
             clock=Clock();calls=[]
             def dump(*,deadline):
                 calls.append(deadline);clock.now+=duration;return raw
-            namespace=self.reader(time=clock,dump=dump,adb=lambda *parts:'')
+            namespace=self.reader(source,time=clock,dump=dump,adb=lambda *parts:'')
             if duration==0:self.assertEqual(namespace['wait'](namespace['browser'],'actual launcher browser'),raw)
             else:
                 with self.assertRaisesRegex(AssertionError,'wait budget expired'):
                     namespace['wait'](namespace['browser'],'actual launcher browser')
             self.assertEqual(calls,[35])
+
+    def test_historical_startup_wait_accepts_only_before_its_original_deadline(self):
+        self.check_startup_deadline(self.RAW.read_text(),self.historical_source())
+
+    def test_current_startup_wait_accepts_only_before_its_original_deadline(self):
+        self.check_startup_deadline(self.synthetic_v4_browser(),RUNNER.read_text())
 
 
 class SettingsWindowReadiness(unittest.TestCase):
@@ -349,13 +407,13 @@ class SettingsWindowReadiness(unittest.TestCase):
         self.raw=self.RAW.read_text()
         self.observation=json.loads(self.OBSERVATION.read_text())
 
-    def flow(self,*,barrier_seconds=0,barrier_error=None,settings_xml=None,logcat_delay=0):
+    def flow(self,*,barrier_seconds=0,barrier_error=None,settings_xml=None,logcat_delay=0,current_v4=False):
         class Clock:
             now=0
             def monotonic(self):return self.now
             def sleep(self,seconds):self.now+=seconds
         clock=Clock();reads=[];inputs=[];taps=[];state={'page':'settings','synchronized':False}
-        browser_xml=CurrentBrowserEntryObservation.RAW.read_text()
+        browser_xml=CurrentBrowserEntryObservation.synthetic_v4_browser() if current_v4 else CurrentBrowserEntryObservation.RAW.read_text()
         def dump(**kwargs):
             reads.append(dict(kwargs))
             if kwargs.get('sync_window') is True:
@@ -373,7 +431,7 @@ class SettingsWindowReadiness(unittest.TestCase):
             # This model does not claim how Android delivered the original tap.
             if state['synchronized']:state['page']='browser'
             return ''
-        source=RUNNER.read_text();module=ast.parse(source)
+        source=RUNNER.read_text() if current_v4 else CurrentBrowserEntryObservation.historical_source();module=ast.parse(source)
         run=next(n for n in module.body if isinstance(n,ast.FunctionDef) and n.name=='run')
         functions={n.name:n for n in run.body if isinstance(n,ast.FunctionDef)}
         selected=[copy.deepcopy(functions[name]) for name in ('tree','dashboard','browser','wait','click')]
@@ -405,6 +463,12 @@ class SettingsWindowReadiness(unittest.TestCase):
 
     def test_actual_settings_flow_syncs_then_emits_the_one_original_tap(self):
         model=self.flow(barrier_seconds=.4);model['execute']()
+        self.assertEqual(model['reads'],[{'deadline':35,'sync_window':True},{'deadline':35.4}])
+        self.assertEqual(model['inputs'],[dict(parts=('shell','input','tap','148','1704'),at=.4,synchronized=True)])
+        self.assertEqual(model['taps'],[self.observation['actualAndroidTaps'][-1]])
+
+    def test_current_v4_settings_flow_keeps_the_one_original_tap_and_deadline(self):
+        model=self.flow(barrier_seconds=.4,current_v4=True);model['execute']()
         self.assertEqual(model['reads'],[{'deadline':35,'sync_window':True},{'deadline':35.4}])
         self.assertEqual(model['inputs'],[dict(parts=('shell','input','tap','148','1704'),at=.4,synchronized=True)])
         self.assertEqual(model['taps'],[self.observation['actualAndroidTaps'][-1]])

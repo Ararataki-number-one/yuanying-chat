@@ -95,18 +95,38 @@ class CpuPublicationTests(unittest.TestCase):
         result={'buildIdentity':{},'checks':[{}],'provider':{'package':'synthetic','version':'fixture'}}
         directory=self.evidence_directory
         expected=json.loads((directory/'device-results.json').read_text())['eventTransport']['buildIdentity']
-        if tuple(map(int,expected['version'].split('.'))) >= (2,1,6):
+        version=tuple(map(int,expected['version'].split('.')))
+        if version >= (2,1,6):
             # Keep the old CPU test methods and their prior-gate boundary. A
-            # current version needs complete, nonempty v3 navigation input;
-            # qualify that synthetic fixture with the actual behavior reader.
+            # current version needs its complete, nonempty navigation input;
+            # qualify these synthetic observations with the actual reader.
             import browser_evidence_test as browser_controls
             browser=browser_controls.BrowserEvidenceTests().current_document()
+            if version >= (2,1,7):
+                # The shared v3 fixture remains an unchanged historical control.
+                # These separate host-only v4 observations include the native
+                # action descriptions and complete bounds required before CPU.
+                descriptions=('打开当前环境主页','网页窗口','网址或搜索词','网页工具','浏览器菜单')
+                layouts=[]
+                for orientation,width,height in ((2,1920,1080),(1,1080,1920)):
+                    top=height-168
+                    boxes=((12,top,156,top+144),(156,top,300,top+144),
+                           (312,top,width-312,top+144),(width-300,top,width-156,top+144),
+                           (width-156,top,width-12,top+144))
+                    controls=[dict(name=name,description=description,shown=True,minimum=144,
+                                   visibleWidth=box[2]-box[0],visibleHeight=box[3]-box[1],bounds=list(box))
+                              for name,description,box in zip(('home','windows','address','tools','menu'),descriptions,boxes)]
+                    layouts.append(dict(navigationContract=4,orientation=orientation,fontScale=2.0,density=3.0,
+                                        rootBounds=[0,0,width,height],controls=controls))
+                browser['result']['layoutObservations']=layouts
             browser['expectedBuildIdentity']=expected
             browser['result']['buildIdentity']=expected
             browser['sourceFiles']={name:hashlib.sha256(self.reader(SOURCE,name)).hexdigest()
                                     for name in self.gate.SOURCE_INPUTS}
             result=self.gate.validate_behavior(browser,SOURCE,self.reader)
             self.assertEqual([row['orientation'] for row in result['layoutObservations']],[2,1])
+            self.assertEqual([row['navigationContract'] for row in result['layoutObservations']],
+                             [4,4] if version >= (2,1,7) else [3,3])
         missing_summary=not (directory/REPORT).exists() and not (directory/'results.json').exists()
         cpu_calls=[];cpu_rejections=[];actual_cpu=self.cpu.verify_gecko_cpu_evidence
         def observe_cpu(actual_directory,source,identity,reader):

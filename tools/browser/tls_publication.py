@@ -10,7 +10,7 @@ RAW_FILES=tuple(CASE_FILES)
 MAX_SUMMARY_BYTES=4194304
 MAX_RAW_BYTES=262144
 TLS_RELEASE_TOOLS=('tools/browser/tls_publication.py',)
-TLS_SOURCE_ONLY_TOOLS=('tools/browser/check_gecko_tls_evidence.py','tools/browser/run_gecko_tls_integration.py',
+TLS_SOURCE_ONLY_TOOLS=('tools/gecko/tls_fixture_trust.py','tools/browser/check_gecko_tls_evidence.py','tools/browser/run_gecko_tls_integration.py',
  'tools/gecko/run_gecko_tls_acceptance.py','tools/gecko/tls_acceptance_contract.py','tools/gecko/tls_acceptance_server.py',
  'tools/browser/native_tls_probe_server.py','tools/browser/fingerprint_fixture_server.py',
  'tools/gecko/profile_invocation_contract.py','tools/gecko/sdk_identity_contract.py','tools/gecko/tls_fixture_scope_contract.py','tools/gecko/tls_cpu_ip_combo_contract.py','tools/gecko/tls_cpu_ip_combo_server.py','tools/gecko/run_gecko_tls_cpu_ip_combo.py','tools/browser/ip_timezone_fixture_server.py','tools/browser/newworker_fixture_server.py','tools/browser/check_gecko_ip_timezone_evidence.py','tools/browser/check_gecko_cpu_ip_combo_evidence.py','tools/gecko/check_gecko_tls_package.py','tools/gecko/check_native_tls_package.py')

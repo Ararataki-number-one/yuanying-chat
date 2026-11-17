@@ -165,7 +165,7 @@ class UiWorkspaceV2SourceControls(unittest.TestCase):
         names = ('UI_NAVIGATION_CONTRACT', 'WORKSPACE_LAYOUT_CONTRACT')
         declarations = [n for n in actual.body if isinstance(n, ast.Assign)
                         and any(isinstance(t, ast.Name) and t.id in names for t in n.targets)]
-        expected = ast.parse('UI_NAVIGATION_CONTRACT=3\nWORKSPACE_LAYOUT_CONTRACT=2\n').body
+        expected = ast.parse('UI_NAVIGATION_CONTRACT=4\nWORKSPACE_LAYOUT_CONTRACT=2\n').body
         def dumps(nodes):return [ast.dump(n, include_attributes=False) for n in nodes]
         # Current browser navigation and retained native workspace layouts have
         # separate versions. Both actual declarations keep their exact order.
@@ -177,17 +177,18 @@ class UiWorkspaceV2SourceControls(unittest.TestCase):
             self.assertEqual(dumps(candidate.body), dumps([captures[0], *expected]))
             self.assertEqual(candidate.type_ignores, [])
             namespace = {};exec(compile(candidate, 'actual-current-capture-host', 'exec'), namespace)
-            self.assertEqual(namespace['UI_NAVIGATION_CONTRACT'], 3)
+            self.assertEqual(namespace['UI_NAVIGATION_CONTRACT'], 4)
             self.assertEqual(namespace['WORKSPACE_LAYOUT_CONTRACT'], 2)
         verify(module)
         for mutation in ('missing-browser', 'missing-workspace', 'duplicate', 'reordered',
-                         'browser-downgrade', 'workspace-upgrade', 'capture-moved', 'capture-changed'):
+                         'browser-downgrade', 'browser-v3-downgrade', 'workspace-upgrade', 'capture-moved', 'capture-changed'):
             candidate = copy.deepcopy(module)
             if mutation == 'missing-browser':del candidate.body[1]
             elif mutation == 'missing-workspace':del candidate.body[2]
             elif mutation == 'duplicate':candidate.body.append(copy.deepcopy(candidate.body[1]))
             elif mutation == 'reordered':candidate.body[1], candidate.body[2] = candidate.body[2], candidate.body[1]
             elif mutation == 'browser-downgrade':candidate.body[1].value.value = 2
+            elif mutation == 'browser-v3-downgrade':candidate.body[1].value.value = 3
             elif mutation == 'workspace-upgrade':candidate.body[2].value.value = 3
             elif mutation == 'capture-moved':candidate.body[0], candidate.body[1] = candidate.body[1], candidate.body[0]
             else:candidate.body[0].body.append(ast.parse('pass').body[0])

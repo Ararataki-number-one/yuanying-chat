@@ -17,6 +17,7 @@ public class GeckoTlsAcceptanceActivity extends MainActivity {
   final ExecutorService observer=Executors.newSingleThreadExecutor();
   final JSONArray events=new JSONArray();
   JSONObject manualScope=new JSONObject();
+  GeckoTlsFixtureTrust trust;JSONObject trustInput;
   JSONObject build,security=new JSONObject(),host=new JSONObject(),storage=new JSONObject(),seed=new JSONObject(),uiBefore=new JSONObject(),uiAfter=new JSONObject();
   String run,invocation,mode,target,leaf,stage="seed",failure="";int slot,peerPort,loadCalls,starts,stops,successfulStops,errorCategory=-1,errorCode=-1;
   boolean rfp,retain,staleUser,service,expectSuccess,terminal,started,located,titleMatched,targetRequested,targetDispatched,admitted,observerBusy,enterpriseRoots,uiRequested,uiCompleted;
@@ -24,6 +25,7 @@ public class GeckoTlsAcceptanceActivity extends MainActivity {
   @Override public void onCreate(Bundle state){try{
     if(!"local.pocketchat.test".equals(getPackageName()))throw new SecurityException("IntegrationOnly");
     run=getIntent().getStringExtra("runNonce");build=IntegrationBuildIdentity.read(this);slot=Profiles.slot(this);bind(getIntent(),false);
+    trustInput=new JSONObject(getIntent().getStringExtra("fixtureTrustInput"));
     final Throwable[] error={null};Thread writer=new Thread(()->{try{
       manualScope=GeckoTlsFixtureScopes.admitCase(this,build.getString("sourceCommit"),run,slot,getClass().getName(),invocation,null);
       pauseFixtureUpdateChecks(this);
@@ -81,7 +83,7 @@ public class GeckoTlsAcceptanceActivity extends MainActivity {
     int port=intent.getIntExtra("peerPort",-1);String nextLeaf=intent.getStringExtra("expectedLeafSha256");
     if(run==null||!run.matches("[0-9a-f]{32}")||!run.equals(intent.getStringExtra("runNonce"))||fresh==null||!fresh.matches("[0-9a-f]{32}")||fresh.equals(invocation)
         ||source==null||!source.equals(build.getString("sourceCommit"))||!Arrays.asList("default","tls13").contains(nextMode)||port<42000||port>=62000||slot<1||slot>2||nextLeaf==null||!nextLeaf.matches("[0-9a-f]{64}"))throw new SecurityException("ExactCaseBinding");
-    if(resumed&&(!mode.equals(nextMode)||intent.getBooleanExtra("rfp",false)!=rfp||!leaf.equals(nextLeaf)))throw new SecurityException("ImmutableBootDiffers");
+    if(resumed&&(!mode.equals(nextMode)||intent.getBooleanExtra("rfp",false)!=rfp||!leaf.equals(nextLeaf)||!GeckoTlsFixtureTrustState.same(trustInput,new JSONObject(intent.getStringExtra("fixtureTrustInput")))))throw new SecurityException("ImmutableBootDiffers");
     invocation=fresh;mode=nextMode;peerPort=port;leaf=nextLeaf;rfp=intent.getBooleanExtra("rfp",false);retain=intent.getBooleanExtra("retain",false);staleUser=intent.getBooleanExtra("staleUser",false);service=intent.getBooleanExtra("service",false);expectSuccess=intent.getBooleanExtra("expectSuccess",false);uiRequested=intent.getBooleanExtra("saveDefault",false);
     if(!resumed&&uiRequested)throw new SecurityException("PendingSaveRequiresExistingRuntime");
     target="https://fp-a.pocketchat.test:"+peerPort+"/tls-product/slot"+slot+"/page?run="+run+"&case="+invocation+"&source="+source;
@@ -91,6 +93,7 @@ public class GeckoTlsAcceptanceActivity extends MainActivity {
     bind(intent,true);
     Future<JSONObject> scoped=observer.submit(()->{JSONObject own=GeckoTlsFixtureScopes.admitCase(this,build.getString("sourceCommit"),run,slot,getClass().getName(),invocation,manualScope.getString("claimNonce"));pauseFixtureUpdateChecks(this);return own;});
     manualScope=scoped.get(8000,TimeUnit.MILLISECONDS);super.onNewIntent(intent);setIntent(intent);terminal=false;failure="";resetObservation();deadline=SystemClock.elapsedRealtime()+120000;
+    if(trust==null)throw new IOException("FixtureTrust:resample-without-boot");trust.resample(invocation);
     if(uiRequested){
       stage="saving-pending-default";GeckoTlsStore.State expected=session.tls.snapshot();uiBefore=taskSnapshot();publish();
       GeckoTlsUi.saveDesired(this,session,expected,GeckoTlsSpec.defaults(),message->{try{
@@ -103,12 +106,19 @@ public class GeckoTlsAcceptanceActivity extends MainActivity {
   }catch(Throwable error){fail(error);}}
   void resetObservation(){started=located=titleMatched=targetRequested=targetDispatched=admitted=observerBusy=uiCompleted=false;errorCategory=errorCode=-1;starts=stops=successfulStops=0;security=new JSONObject();host=new JSONObject();seed=new JSONObject();uiBefore=new JSONObject();uiAfter=new JSONObject();while(events.length()>0)events.remove(events.length()-1);}
   JSONObject taskSnapshot()throws Exception{JSONObject policy=session.tls.status();return J.obj("pid",android.os.Process.myPid(),"runtimeNonce",policy.optString("runtimeNonce"),"processNonce",policy.optString("processNonce"),"navigationEpoch",session.navigationEpoch,"connectionEpoch",session.connectionEpoch,"loadCalls",loadCalls,"urlSha256",BrowserFingerprintFixture.sha(remote.getUrl().getBytes(StandardCharsets.UTF_8)),"pendingSha256",BrowserFingerprintFixture.sha((session.pending==null?"null":session.pending.toString()).getBytes(StandardCharsets.UTF_8)),"submitting",session.submitting,"operation",session.operation,"transferActive",session.transferActive,"resourceChoosers",session.resourceChoosers,"resourceFilePreparations",session.resourceFilePreparations,"fileWorkActive",session.fileWorkActive());}
-  void dispatch(){if(terminal||targetDispatched)return;stage="owned-target";targetDispatched=true;session.browse(target,"TLS 原生协议与受控网络观察");}
+  void dispatch(){if(terminal||targetDispatched||trust==null||!trust.caseReady(invocation))return;stage="owned-target";targetDispatched=true;session.browse(target,"TLS 原生协议与受控网络观察");}
   final class ObservedGecko extends GeckoWebView {
     ObservedGecko(Context context,ChatSession owner){super(context,owner);}
     @Override public void loadUrl(String url){loadCalls++;super.loadUrl(url);}
+    void ensureTrust(){
+      if(trust!=null||terminal||runtime==null||!identityPrepared||deadline<=0||SystemClock.elapsedRealtime()>=deadline||!super.protectionAllowsNetwork())return;
+      try{trust=new GeckoTlsFixtureTrust(GeckoTlsAcceptanceActivity.this,this,build,run,invocation,leaf,trustInput,()->deadline,
+        ()->{if(!destroyed&&!owner.deleted&&identityPrepared&&!ready)identityConfigurationReady();},GeckoTlsAcceptanceActivity.this::trustFailed);trust.start();}
+      catch(Throwable error){trustFailed(error);}
+    }
+    @Override boolean protectionAllowsNetwork(){boolean allowed=super.protectionAllowsNetwork();if(allowed)ensureTrust();return allowed&&trust!=null&&trust.bootReady();}
     @Override GeckoSession newSession(){
-      runtime.getSettings().setEnterpriseRootsEnabled(true);enterpriseRoots=runtime.getSettings().getEnterpriseRootsEnabled();
+      enterpriseRoots=runtime.getSettings().getEnterpriseRootsEnabled();
       GeckoSession sdk=super.newSession();GeckoSession.ProgressDelegate progress=sdk.getProgressDelegate();
       sdk.setProgressDelegate(new GeckoSession.ProgressDelegate(){
         public void onPageStart(GeckoSession s,String url){if(target.equals(url)){started=true;starts++;}event("start",target.equals(url),null,null);progress.onPageStart(s,url);}
@@ -144,6 +154,7 @@ public class GeckoTlsAcceptanceActivity extends MainActivity {
   void event(String name,boolean owned,String error,Boolean ready){if(events.length()<128)events.put(J.obj("event",name,"targetOwned",owned,"error",error==null?JSONObject.NULL:error,"admissionReady",ready==null?JSONObject.NULL:ready,"nativeUrlAvailable",!"stop".equals(name)));}
   void tick(){if(terminal)return;try{
     if(SystemClock.elapsedRealtime()>deadline)throw new IOException("WorkloadTimeout");
+    if(remote instanceof ObservedGecko)((ObservedGecko)remote).ensureTrust();
     if(session!=null&&remote instanceof ObservedGecko&&remote.ready&&session.networkReady&&!session.connecting){
       JSONObject policy=session.tls.status();if("failed".equals(policy.optString("state")))throw new IOException("ProductionTlsFailed");
       boolean nativeReady="ready".equals(policy.optString("state"))&&policy.optBoolean("nativeSettingReadback")&&policy.optBoolean("startupReconciled")&&policy.opt("rfpPriority") instanceof Boolean&&policy.getBoolean("rfpPriority")==rfp;
@@ -159,13 +170,15 @@ public class GeckoTlsAcceptanceActivity extends MainActivity {
     }
     publish();poll.postDelayed(this::tick,100);
   }catch(Throwable error){fail(error);}}
-  void fail(Throwable error){if(terminal)return;terminal=true;stage="failed";String value=error.getMessage();failure=error instanceof IOException&&value!=null&&Arrays.asList("WorkloadTimeout","ProductionTlsFailed","OwnedTargetLoadError","UiSaveChangedLiveWork").contains(value)?value:error.getClass().getSimpleName();try{publish();}catch(Exception ignored){}}
+  void trustFailed(Throwable error){if(terminal&&failure.isEmpty())terminal=false;fail(error);}
+  void fail(Throwable error){if(terminal)return;terminal=true;stage="failed";String value=error.getMessage();failure=error instanceof IOException&&value!=null&&(value.startsWith("FixtureTrust:")||Arrays.asList("WorkloadTimeout","ProductionTlsFailed","OwnedTargetLoadError","UiSaveChangedLiveWork").contains(value))?value:error.getClass().getSimpleName();try{publish();}catch(Exception ignored){}}
   void publish()throws Exception{if(build==null||invocation==null)return;
     JSONObject policy=session==null?new JSONObject():session.tls.status(),cpu=session==null?new JSONObject():session.cpu.status();
     JSONObject report=J.obj("schema",1,"fixtureType","gecko-production-tls-v1","status",terminal?(failure.isEmpty()?"passed":"failed"):"running","stage",stage,"failure",failure,"diagnosticOnly",true,"releaseAcceptance",false,"sourceCommit",build.getString("sourceCommit"),"sourceTree",build.getString("sourceTree"),"runNonce",run,"caseNonce",invocation,"slot",slot,"mode",mode,"peerPort",peerPort,"rfpRequested",rfp,"retainedProfile",retain,"staleUserPrefSeeded",staleUser,"serviceRequested",service,"expectedSuccess",expectSuccess,"target",target,"buildIdentity",build,"process",J.obj("pid",android.os.Process.myPid(),"uid",android.os.Process.myUid(),"name",android.app.Application.getProcessName()),"tlsPolicy",policy,"cpuPolicy",cpu,"storagePathEvidence",storage,"manualScope",manualScope,"startupPreparation",remote==null||remote.tlsBoot==null?new JSONObject():remote.tlsBoot.preparation.evidence(),"seed",seed,"security",security,"navigation",J.obj("targetStarted",started,"targetLocation",located,"titleMatched",titleMatched,"targetRequestObserved",targetRequested,"productionAdmissionReady",admitted,"targetError",errorCategory>=0,"errorCategory",errorCategory,"errorCode",errorCode,"nativeErrorUrlMatched",errorCategory>=0,"nativeStopOwnershipVerified",false,"nativeSecurityUrlOwnershipVerified",false,"stopCallbacks",stops,"successfulStopCallbacks",successfulStops),"nativeEvents",events,"uiSaveInvoked",uiRequested,"uiSaveCompleted",uiCompleted,"uiBefore",uiBefore,"uiAfter",uiAfter,"serviceObservation",host.optJSONObject("serviceObservation")==null?JSONObject.NULL:host.getJSONObject("serviceObservation"),"actualAndroidExecution",true,"actualGeckoExecution",remote!=null&&remote.runtime!=null,"productionChatSession",session!=null&&session.web==remote&&remote instanceof ObservedGecko,"productionTlsBootstrap",policy.optBoolean("nativeSettingReadback")&&policy.optBoolean("startupReconciled"),"javascriptTlsOverrideUsed",false,"debuggingEndpointUsed",false,"nativeSettingReadbackIsWireProof",false,"workerCoverageVerified",false,"serviceWorkerCoverageVerified",false,"fullTlsFingerprintEmulation",false,"quicWireVerified",false);
+    report.put("fixtureTrust",trust==null?new JSONObject():trust.evidence());
     if((report.toString()+"\n").getBytes(StandardCharsets.UTF_8).length>262144)throw new IOException("ReportBound");BrowserFingerprintIntegrationActivity.write(this,"tls-acceptance-"+invocation+".json",report);
   }
-  @Override protected void onDestroy(){poll.removeCallbacksAndMessages(null);observer.shutdownNow();super.onDestroy();}
+  @Override protected void onDestroy(){if(trust!=null)trust.close();poll.removeCallbacksAndMessages(null);observer.shutdownNow();super.onDestroy();}
   public static final class Profile1 extends GeckoTlsAcceptanceActivity {}
   public static final class Profile2 extends GeckoTlsAcceptanceActivity {}
 }

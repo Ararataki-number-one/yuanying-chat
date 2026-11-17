@@ -23,8 +23,10 @@ PACKAGE = 'local.pocketchat.test'
 NAME = '长文阅读与文件整理和日常会话的完整环境名称测试'
 URL = 'http://browser-fixture.example/native-ui-smoke'
 WAITING = '请先在环境网络中配置浏览器线路'
-ENVIRONMENT = '当前环境：'+NAME+'，点按输入网址，长按切换环境'
-BOTTOM_CONTROLS = ('后退', '打开当前环境主页', '网址或搜索词', '刷新网页', '浏览器菜单')
+ENVIRONMENT = '当前环境：'+NAME+'，点按切换环境'
+BOTTOM_CONTROLS = ('打开当前环境主页', '网页窗口', '网址或搜索词', '网页工具', '浏览器菜单')
+NETWORK_SUMMARY = '出口 IP 未核验 · 延迟未测 · 未连接'
+NETWORK = '当前环境网络：'+NETWORK_SUMMARY
 
 
 def only(xml, predicate, label):
@@ -45,19 +47,38 @@ def control(xml, description, density):
     return node
 
 
+def environment_ready(xml, density):
+    """Match the capsule's action, not its repeated visual child label."""
+    found = shared.nodes(xml, lambda n: n.get('class') == 'android.widget.Button'
+                         and n.get('content-desc') == ENVIRONMENT)
+    if len(found) != 1:
+        return False
+    node = found[0]
+    box = shared.bounds(node)
+    return (node.get('text') == NAME and node.get('enabled') == 'true'
+            and node.get('clickable') == 'true' and node.get('long-clickable') != 'true'
+            and box[2]-box[0] >= 48*density and box[3]-box[1] >= 48*density)
+
+
 def browser_geometry(xml, density):
     address = control(xml, '网址或搜索词', density)
     if address.get('text') != URL:
         raise ValueError('Controlled HTTP address differs')
     name = control(xml, ENVIRONMENT, density)
-    if name.get('text') != NAME or name.get('enabled') != 'true' or name.get('long-clickable') != 'true':
+    if name.get('text') != NAME or name.get('enabled') != 'true' or name.get('long-clickable') == 'true':
         raise ValueError('The retained environment capsule lost its complete name or switch action')
+    network = control(xml, NETWORK, density)
+    if network.get('text') != '●  '+NETWORK_SUMMARY or network.get('enabled') != 'true':
+        raise ValueError('The unconfigured Chromium header must report its own unverified network state')
     notice = only(xml, lambda n: n.get('text') == WAITING, 'unconfigured-route notice')
     controls = [control(xml, value, density) for value in BOTTOM_CONTROLS]
+    if any(n.get('enabled') != 'true' for n in controls):
+        raise ValueError('Every current bottom browser destination must remain enabled')
     name_box = shared.bounds(name)
+    network_box = shared.bounds(network)
     bottom = [shared.bounds(n) for n in controls]
-    if name_box[3] > shared.bounds(notice)[1]:
-        raise ValueError('The top environment capsule overlaps the page notice')
+    if name_box[3] > network_box[1] or network_box[3] > shared.bounds(notice)[1]:
+        raise ValueError('The capsule, network row and page notice are not separate ordered header controls')
     if shared.nodes(xml, lambda n: n.get('text') == 'Chromium · HTTP · 不安全'
                     or n.get('content-desc') in ('前进', '打开主页', '1 个标签页，点击管理')
                     or n.get('text') in ('环境', '网络', '下载', '阅读')):
@@ -99,7 +120,9 @@ def browser_geometry(xml, density):
         slot = shared.bounds(slots[0])
         if slot[1] < shared.bounds(notice)[3] or slot[3] > min(box[1] for box in bottom):
             raise ValueError('Native content slot overlaps browser controls')
-    return dict(navigationContract=3, environmentName=NAME, environmentBounds=name_box,
+    return dict(navigationContract=4, environmentName=NAME, environmentBounds=name_box,
+                networkBounds=network_box, networkText=network.get('text'),
+                unverifiedNetworkStateObserved=True,
                 addressBounds=shared.bounds(address), contentBounds=slot,
                 addressAtBottom=True, topAddressAbsent=True, environmentCapsuleRetained=True,
                 contentSlotObserved=slot is not None, nativeGlyphMetricsMeasured=False,
@@ -218,30 +241,59 @@ def main():
             adb('shell', 'am', 'force-stop', PACKAGE)
             adb('shell', 'am', 'start', '-W', '-n', PACKAGE+'/local.pocketchat.BrowserActivity', '--es', 'url', URL)
             xml = wait_for(lambda value: present(value, lambda n: n.get('text') == WAITING)
-                           and present(value, lambda n: n.get('text') == NAME), label+'-browser')
+                           and environment_ready(value, 3)
+                           and present(value, lambda n: n.get('content-desc') == NETWORK), label+'-browser')
             case['geometry'] = browser_geometry(xml, 3)
             case['screenshots'].append(screenshot(label+'-browser.png'))
-            tap(control(xml, '浏览器菜单', 3), 'Open actual Chromium menu')
-            xml = wait_for(lambda value: shared.button(value, '标签页 · 1') is not None
-                           and present(value, lambda n: n.get('text') == 'Chromium · HTTP · 不安全'), label+'-menu')
+            tap(control(xml, ENVIRONMENT, 3), 'Tap the small environment capsule to open only the environment picker')
+            xml = wait_for(lambda value: present(value, lambda n: n.get('text') == '快速切换环境')
+                           and present(value, lambda n: n.get('content-desc') == '关闭快速切换环境')
+                           and not present(value, lambda n: n.get('text') == '打开网址'), label+'-environment')
+            case['screenshots'].append(screenshot(label+'-environment.png'))
+            tap(control(xml, '关闭快速切换环境', 3), 'Close the environment picker without switching the current page')
+            xml = wait_for(lambda value: present(value, lambda n: n.get('text') == WAITING)
+                           and present(value, lambda n: n.get('content-desc') == NETWORK), label+'-environment-returned')
+            case['environmentReturnedGeometry'] = browser_geometry(xml, 3)
+            tap(control(xml, NETWORK, 3), 'Open the actual Chromium network details from the header row')
+            xml = wait_for(lambda value: present(value, lambda n: n.get('text') == '网络情况')
+                           and present(value, lambda n: n.get('content-desc') == '关闭网络情况')
+                           and present(value, lambda n: n.get('text', '').startswith(NETWORK_SUMMARY+'\n\n')),
+                           label+'-network')
+            case['screenshots'].append(screenshot(label+'-network.png'))
+            tap(control(xml, '关闭网络情况', 3), 'Close network details without changing route configuration')
+            xml = wait_for(lambda value: present(value, lambda n: n.get('text') == WAITING)
+                           and present(value, lambda n: n.get('content-desc') == NETWORK), label+'-network-returned')
+            case['networkReturnedGeometry'] = browser_geometry(xml, 3)
+            tap(control(xml, '网页工具', 3), 'Open actual Chromium webpage tools')
+            xml = wait_for(lambda value: shared.browser_tools_open(value)
+                           and present(value, lambda n: n.get('text') == 'Chromium · HTTP · 不安全')
+                           and present(value, lambda n: n.get('text') == '前进'
+                                       and n.get('class') == 'android.widget.Button'), label+'-tools')
             forward = only(xml, lambda n: n.get('text') == '前进' and n.get('class') == 'android.widget.Button', 'forward menu action')
             if forward.get('enabled') != 'false':
                 raise ValueError('Forward must remain disabled without actual history')
-            case['screenshots'].append(screenshot(label+'-menu.png'))
-            tap(shared.button(xml, '标签页 · 1'), 'Open actual tab management from the browser menu')
-            xml = wait_for(lambda value: present(value, lambda n: n.get('text') == '标签页 · 1/8')
-                           and shared.button(value, '返回') is not None, label+'-tabs')
+            case['screenshots'].append(screenshot(label+'-tools.png'))
+            tap(control(xml, '关闭网页工具', 3), 'Close actual webpage tools without navigating')
+            xml = wait_for(lambda value: present(value, lambda n: n.get('text') == WAITING)
+                           and not shared.browser_tools_open(value), label+'-tools-returned')
+            case['toolsReturnedGeometry'] = browser_geometry(xml, 3)
+            tap(control(xml, '网页窗口', 3), 'Open actual tabs from the second browser button')
+            xml = wait_for(lambda value: present(value, lambda n: n.get('text') == '网页窗口')
+                           and present(value, lambda n: n.get('text') == NAME+' · 1/8 个标签页')
+                           and shared.button(value, '返回') is not None
+                           and shared.button(value, '新标签页') is not None, label+'-tabs')
             case['screenshots'].append(screenshot(label+'-tabs.png'))
             tap(shared.button(xml, '返回'), 'Return from actual tab management without changing tabs')
             xml = wait_for(lambda value: present(value, lambda n: n.get('text') == WAITING)
                            and present(value, lambda n: n.get('content-desc') == '浏览器菜单')
-                           and not present(value, lambda n: n.get('text') == '标签页 · 1/8'), label+'-tabs-returned')
+                           and not present(value, lambda n: n.get('text') == NAME+' · 1/8 个标签页'), label+'-tabs-returned')
             case['returnedGeometry'] = browser_geometry(xml, 3)
             tap(control(xml, '浏览器菜单', 3), 'Reopen the browser menu after the tab sheet')
-            xml = wait_for(lambda value: shared.button(value, '标签页 · 1') is not None, label+'-menu-reopened')
+            xml = wait_for(lambda value: shared.browser_menu_open(value)
+                           and shared.menu_body_ready(value, PACKAGE), label+'-menu-reopened')
             observed_actions = set()
             for attempt in range(10):
-                observed_actions.update(value for value in ('环境管理', '新标签页') if shared.button(xml, value) is not None)
+                observed_actions.update(value for value in ('环境管理',) if shared.button(xml, value) is not None)
                 tail = shared.button(xml, '内核信息')
                 if tail is not None:
                     break
@@ -257,16 +309,19 @@ def main():
                 (args.out/(label+'-menu-tail.xml')).write_text(xml)
             else:
                 raise ValueError('Original engine-information action is not reachable')
-            if observed_actions != {'环境管理', '新标签页'}:
-                raise ValueError('Original environment and new-tab menu actions are not reachable')
+            if observed_actions != {'环境管理'}:
+                raise ValueError('Original environment management menu action is not reachable')
             (args.out/(label+'-menu-tail.xml')).write_text(xml)
             case['screenshots'].append(screenshot(label+'-menu-tail.png'))
             tap(tail, 'Open original engine-information action')
             wait_for(lambda value: present(value, lambda n: n.get('text') == 'Chromium 内核'), label+'-engine-info')
             case['screenshots'].append(screenshot(label+'-engine-info.png'))
             case.update(status='passed', actualMenuAndTailTaps=True, actualTabSheetRoundtrip=True,
-                        forwardDisabledWithoutHistory=True, httpCaptionObservedInMenu=True,
-                        originalEnvironmentAndNewTabActionsReachable=True, noRouteNoticeObserved=True)
+                        actualEnvironmentCapsuleTapRoundtrip=True, actualHeaderNetworkRoundtrip=True,
+                        actualWebpageToolsRoundtrip=True,
+                        forwardDisabledWithoutHistory=True, httpCaptionObservedInTools=True,
+                        environmentManagementActionReachable=True, newTabActionInWindowsReachable=True,
+                        noRouteNoticeObserved=True)
         if git('rev-parse', 'HEAD') != source or git('status', '--porcelain') or shared.sha(args.apk) != identity['apkSha256']:
             raise ValueError('Source or APK changed during capture')
         report['status'] = 'passed'

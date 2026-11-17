@@ -17,6 +17,7 @@ import tempfile
 import types
 import unittest
 from unittest import mock
+import xml.etree.ElementTree as ET
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path[:0] = [str(ROOT/'tools/gecko'), str(ROOT/'tests/gecko')]
@@ -25,6 +26,8 @@ import chrome_collapse_contract_v3 as current
 import run_chrome_collapse_v3 as runner
 import ui_hierarchy_driver as driver
 import profile_chrome_short_target_test as old_fixture
+import chrome_collapse_contract_v4 as v4
+import run_chrome_collapse_v4 as v4_runner
 
 
 def output(raw):
@@ -365,6 +368,296 @@ class CurrentNativeShortTargetTests(unittest.TestCase):
                     self.assertEqual(diagnostic['inputInvocations'], 1)
                     self.assertEqual(diagnostic['status'], 'input-command-failed')
                     self.assertEqual(diagnostic['deliveryStatus'], 'not-established')
+
+
+def v4_owner(activity_token='abc', pid=4321, process_token='def', window_token='123'):
+    """Declared host-only dumpsys shape, not an observed Android instance."""
+    activity = 'ActivityRecord{'+activity_token+' u0 '+v4.ACTIVITY+' t8}'
+    window = 'Window{'+window_token+' u0 '+v4.ACTIVITY+'}'
+    return ('ACTIVITY MANAGER ACTIVITIES (dumpsys activity activities)\n'
+        'Display #0 (activities from top to bottom):\n'
+        '    topResumedActivity='+activity+'\n'
+        '    * Hist  #0: '+activity+'\n'
+        '      app=ProcessRecord{'+process_token+' '+str(pid)+':'+v4.PACKAGE+'/u0a209}\n'
+        '      windows=['+window+']\n'
+        '  ResumedActivity: '+activity+'\n'
+        '  mCurrentFocus='+window+'\n'
+        '  mFocusedApp='+activity+'\n')
+
+
+def v4_short_before():
+    return dict(command='horizontal', expanded=True, keyboard=False, windowFocus=True,
+        page=0, addressDialog={'showing': False}, webX=0, webY=361, webWidth=1080, webHeight=1301,
+        toolbarBounds=[0,72,1080,361], browserToolbarBounds=[0,1662,1080,1848],
+        environmentName='Host controlled environment')
+
+
+def v4_short_xml(*, pending=False):
+    """Synthetic current native chrome with the observed empty-container shape."""
+    tree = ET.Element('hierarchy', rotation='0')
+    def node(parent, kind, box, **extra):
+        attrs = {'class':kind, 'package':v4.PACKAGE, 'enabled':'true',
+            'clickable':'false', 'long-clickable':'false', 'focusable':'false', 'checkable':'false',
+            'bounds':f'[{box[0]},{box[1]}][{box[2]},{box[3]}]'}
+        attrs.update(extra)
+        return ET.SubElement(parent, 'node', attrs)
+    owner = tree
+    for resource in ('', '', 'android:id/content'):
+        owner = node(owner, 'android.widget.FrameLayout', [0,0,1080,1920], **{'resource-id':resource})
+    main = node(owner, 'android.widget.LinearLayout', [0,0,1080,1920])
+    header = node(main, 'android.widget.LinearLayout', [0,72,1080,361])
+    node(header, 'android.widget.Button', [252,78,828,186], text='Host controlled environment',
+        **{'content-desc':'当前环境：Host controlled environment，点按切换环境','clickable':'true'})
+    node(header, 'android.widget.Button', [48,216,1032,360],
+        **{'content-desc':'当前环境网络：Host controlled status','clickable':'true'})
+    outer = node(main, 'android.widget.FrameLayout', [0,361,1080,1662])
+    inner = node(outer, 'android.widget.FrameLayout', [0,361,1080,1662])
+    if not pending:
+        web = node(inner, 'android.webkit.WebView', [0,361,1080,1662], focusable='true')
+        node(web, 'android.widget.EditText', [24,1150,971,1580], clickable='true', focusable='true')
+    footer = node(main, 'android.widget.FrameLayout', [0,1662,1080,1848])
+    row = node(footer, 'android.view.ViewGroup', [0,1662,1080,1848])
+    for description, box in zip(('打开当前环境主页','网页窗口',
+            '当前网址 https://chatgpt.com/c/reload-collapse，点击输入网址或搜索','网页工具','浏览器菜单'),
+            ([12,1680,156,1824],[156,1680,300,1824],[312,1680,768,1824],
+             [780,1680,924,1824],[924,1680,1068,1824])):
+        node(row, 'android.widget.Button', box, **{'content-desc':description,'clickable':'true','focusable':'true'})
+    return ET.tostring(tree, encoding='unicode')
+
+
+class CurrentV4ShortReadinessTests(unittest.TestCase):
+    """Run actual v4 readers/loop against explicit host-only transport and clock."""
+    setUpClass = classmethod(CurrentNativeShortTargetTests.setUpClass.__func__)
+    tearDownClass = classmethod(CurrentNativeShortTargetTests.tearDownClass.__func__)
+    identity = CurrentNativeShortTargetTests.identity
+
+    def setUp(self):
+        self.addCleanup(mock.patch.stopall)
+        mock.patch.object(v4, 'ROOT', self.repository).start()
+        mock.patch.object(current, 'ROOT', self.repository).start()
+
+    def invoke(self, frames=None, *, failure=None, owners=None, parsed_late=False, target_late=False):
+        frames = [v4_short_xml(pending=True), v4_short_xml()] if frames is None else frames
+        clock = types.SimpleNamespace(ns=100_000_000_000)
+        clock.monotonic = lambda:clock.ns/1e9
+        clock.monotonic_ns = lambda:clock.ns
+        clock.sleep = lambda seconds:setattr(clock, 'ns', clock.ns+int(seconds*1e9))
+        reads, commands, diagnostic = [], [], {}
+        with tempfile.TemporaryDirectory() as directory:
+            capture = types.SimpleNamespace(nonce='e'*32, count=0, diagnostics=Path(directory)/'capture.json',
+                report={'acquisitionDriver':copy.deepcopy(self.evidence)})
+            records = []
+            def read(*, deadline):
+                reads.append(deadline)
+                if failure == 'capture': raise OSError('declared host-only capture failure')
+                xml = frames[min(len(reads)-1,len(frames)-1)]
+                capture.count += 1
+                remote = '/sdcard/pocketchat-ui-visual-'+capture.nonce+'-'+str(capture.count)+'.xml'
+                start = clock.ns; clock.ns += 50_000_000
+                observer = driver.HierarchyDriver(copy.deepcopy(self.evidence), self.repository/'unused.json')
+                def command(parts, raw, first, last):
+                    return dict(parts=parts, startedAtMonotonicNanos=first, completedAtMonotonicNanos=last,
+                        startedAtWallTimeMillis=first//1_000_000, completedAtWallTimeMillis=last//1_000_000,
+                        timeoutSeconds=deadline-first/1e9, exitCode=0, stdout=output(raw), stderr=output(b''))
+                parts = observer.dump_parts(remote, deadline-clock.monotonic())
+                first = command(parts, ('UI hierchary dumped to: '+remote+'\n').encode(),clock.ns,clock.ns+50_000_000)
+                clock.ns += 60_000_000
+                last = command(['shell','cat',remote], xml.encode(),clock.ns,clock.ns+50_000_000)
+                clock.ns += 60_000_000
+                row = dict(index=capture.count, remotePath=remote, commands=[first,last],
+                    startedAtMonotonicNanos=start, completedAtMonotonicNanos=clock.ns,
+                    existingSceneDeadline=deadline,status='captured',xmlBytes=len(xml.encode()),
+                    xmlSha256=hashlib.sha256(xml.encode()).hexdigest())
+                if failure == 'raw-hash': row['xmlSha256'] = 'f'*64
+                if failure == 'command-path': row['commands'][1]['parts'][-1] += '-old'
+                if failure == 'command-output': row['commands'][0]['stderr'] = output(b'unknown actual error')
+                if failure == 'same-index' and len(reads)>1:
+                    capture.count -= 1; row = copy.deepcopy(records[-1])
+                records.append(row)
+                value = dict(schema=1,sourceCommit=self.source,runNonce=capture.nonce,
+                    attemptCount=capture.count,attempts=copy.deepcopy(records),acquisitionDriver=copy.deepcopy(self.evidence))
+                capture.diagnostics.write_text(json.dumps(value)+'\n')
+                if failure == 'late-xml':clock.ns=120_000_000_000
+                return xml
+            capture.read = read
+            def command(parts, **kwargs):
+                commands.append((parts,kwargs))
+                if parts[3:] == ['shell','dumpsys','activity','activities']:
+                    if failure == 'activity': raise subprocess.TimeoutExpired(parts,kwargs['timeout'])
+                    clock.ns += 50_000_000
+                    if failure == 'late-activity':clock.ns=120_000_000_000
+                    if failure == 'activity-utf8':return b'\xffdeclared-invalid-utf8'
+                    values = [v4_owner()] if owners is None else owners
+                    return values[min(len(reads)-1,len(values)-1)].encode()
+                self.assertEqual(parts[3:6],['shell','input','swipe'])
+                if failure == 'input':raise subprocess.TimeoutExpired(parts,kwargs['timeout'])
+                clock.ns += 320_000_000
+                return b''
+            original_pending = v4.short_webview_pending
+            def pending(*args):
+                value=original_pending(*args)
+                if parsed_late:clock.ns=120_000_000_000
+                return value
+            original_verify = v4.verify_short_target
+            def verify(*args,**kwargs):
+                value=original_verify(*args,**kwargs)
+                if target_late:clock.ns=120_000_000_000
+                return value
+            result, error = None, None
+            with mock.patch.object(v4_runner,'time',clock), \
+                 mock.patch.object(v4_runner,'subprocess',types.SimpleNamespace(check_output=command)), \
+                 mock.patch.object(v4_runner,'short_webview_pending',pending), \
+                 mock.patch.object(v4_runner,'verify_short_target',verify):
+                try:
+                    result=v4_runner.short_swipe_once(capture=capture,prefix=['host-only-adb','-s','host-only-serial'],
+                        identity=self.identity(),nonce='d'*32,android_user=0,before=v4_short_before(),
+                        owner_activity=v4_owner(),diagnostic=diagnostic)
+                except Exception as caught:error=caught
+            return result,error,reads,commands,diagnostic
+
+    def test_current_ready_proof_matches_every_original_schema2_value(self):
+        result,error,reads,commands,diagnostic=self.invoke([v4_short_xml()])
+        self.assertIsNone(error); geometry,proof=result
+        old=current.make_short_target_proof(raw_xml=proof['rawXml'],activity_state=proof['activityState'],
+            identity=self.identity(),nonce='d'*32,android_user=0,before=v4_short_before(),
+            capture_nonce=proof['captureRunNonce'],capture_record=proof['captureRecord'],
+            acquisition_driver=proof['acquisitionDriver'],action_started_ns=proof['actionStartedAtMonotonicNanos'],
+            activity_started_ns=proof['activityStartedAtMonotonicNanos'],
+            activity_completed_ns=proof['activityCompletedAtMonotonicNanos'],prepared_ns=proof['preparedAtMonotonicNanos'])
+        self.assertEqual(proof,old);self.assertEqual(proof['schema'],2)
+        self.assertEqual((proof['preparationBudgetMs'],proof['originalActionBudgetMs'],geometry['durationMs']),(20000,90000,320))
+        self.assertEqual(reads,[120.0]);self.assertEqual(len(commands),2)
+
+    def test_current_observation_retains_all_original_proof_assertions_and_live_owner_source(self):
+        def function(path,name):
+            return next(n for n in ast.parse(path.read_bytes()).body if isinstance(n,ast.FunctionDef) and n.name==name)
+        old=function(ROOT/'tools/gecko/chrome_collapse_contract_v3.py','make_short_target_proof')
+        new=function(ROOT/'tools/gecko/chrome_collapse_contract_v4.py','short_target_observation')
+        assertions=lambda node:Counter(ast.dump(n.test,include_attributes=False) for n in ast.walk(node) if isinstance(n,ast.Assert))
+        self.assertEqual(assertions(new),assertions(old))
+        run=function(ROOT/'tests/gecko/run_chrome_collapse_v4.py','run_v4')
+        call=next(n for n in ast.walk(run) if isinstance(n,ast.Call) and isinstance(n.func,ast.Name) and n.func.id=='short_swipe_once')
+        self.assertEqual(ast.unparse(next(v.value for v in call.keywords if v.arg=='owner_activity')),
+                         "native_ui['compactExpand']['activityState']")
+
+    def test_empty_then_ready_retains_both_original_frames_and_sends_once_from_latest(self):
+        result,error,reads,commands,diagnostic=self.invoke()
+        self.assertIsNone(error);geometry,proof=result
+        self.assertEqual(reads,[120.0,120.0])
+        self.assertEqual([p['status'] for p in diagnostic['preparationSamples']],['not-ready','prepared'])
+        self.assertEqual(diagnostic['preparationSamples'][0]['rawXml'],v4_short_xml(pending=True))
+        self.assertEqual(diagnostic['preparationSamples'][0]['reason'],'owned-empty-web-content')
+        self.assertEqual(diagnostic['preparationSamples'][1]['rawXml'],v4_short_xml())
+        self.assertEqual(proof['captureRecord']['index'],2)
+        self.assertEqual(proof['rawXml'],v4_short_xml())
+        self.assertEqual(len([c for c in commands if c[0][3:6]==['shell','input','swipe']]),1)
+        self.assertEqual(len([c for c in commands if c[0][3:]==['shell','dumpsys','activity','activities']]),2)
+        self.assertEqual(diagnostic['inputInvocations'],1)
+        for sample in diagnostic['preparationSamples']:
+            self.assertEqual(sample['activityState'],v4_owner())
+            self.assertEqual(sample['captureRecord']['existingSceneDeadline'],120.0)
+            self.assertFalse(sample['applicationAcceptance'])
+
+    def test_persistent_empty_view_expires_without_input_or_latest_frame_overwrite(self):
+        result,error,reads,commands,diagnostic=self.invoke([v4_short_xml(pending=True)])
+        self.assertIsNone(result);self.assertIsInstance(error,TimeoutError)
+        self.assertTrue(reads and len(reads)<64);self.assertEqual(set(reads),{120.0})
+        self.assertEqual(len(diagnostic['preparationSamples']),len(reads))
+        self.assertEqual(diagnostic['inputInvocations'],0)
+        self.assertTrue(all(c[0][3:]==['shell','dumpsys','activity','activities'] for c in commands))
+        self.assertTrue(all(s['status']=='not-ready' for s in diagnostic['preparationSamples']))
+
+    def test_repeated_webview_foreign_owner_and_unknown_subtree_are_not_pending(self):
+        for change in ('duplicate-web','foreign-web','foreign-ready-sibling','extra-ready-window',
+                       'foreign-root','foreign-header','missing-content',
+                       'extra-window','extra-overlay','nonempty-inner','wrong-content-bounds','short-footer',
+                       'disabled-content','unknown-class','missing-flags','bad-xml'):
+            tree=ET.fromstring(v4_short_xml(pending=change not in
+                ('duplicate-web','foreign-web','foreign-ready-sibling','extra-ready-window')))
+            nodes=list(tree.iter('node'));parents={c:p for p in tree.iter() for c in p}
+            content=next(n for n in nodes if n.get('resource-id')=='android:id/content')
+            main=content[0];outer=main[1];inner=outer[0]
+            if change=='duplicate-web':inner.append(copy.deepcopy(inner[0]))
+            elif change=='foreign-web':inner[0].set('package','foreign.test')
+            elif change=='foreign-ready-sibling':main[2][0][0].set('package','foreign.test')
+            elif change=='extra-ready-window':tree.append(copy.deepcopy(tree[0]))
+            elif change=='foreign-root':tree[0].set('package','foreign.test')
+            elif change=='foreign-header':main[0][0].set('package','foreign.test')
+            elif change=='missing-content':content.set('resource-id','')
+            elif change=='extra-window':tree.append(copy.deepcopy(tree[0]))
+            elif change=='extra-overlay':main.append(copy.deepcopy(main[2]))
+            elif change=='nonempty-inner':inner.append(copy.deepcopy(main[0][0]))
+            elif change=='wrong-content-bounds':inner.set('bounds','[0,362][1080,1662]')
+            elif change=='short-footer':main[2][0][0].set('bounds','[12,1680][155,1824]')
+            elif change=='disabled-content':inner.set('enabled','false')
+            elif change=='unknown-class':inner.set('class','android.view.View')
+            elif change=='missing-flags':inner.attrib.pop('focusable')
+            raw='not XML' if change=='bad-xml' else ET.tostring(tree,encoding='unicode')
+            with self.subTest(change=change):
+                result,error,reads,commands,diagnostic=self.invoke([raw,v4_short_xml()])
+                self.assertIsNone(result);self.assertIsNotNone(error);self.assertEqual(len(reads),1)
+                self.assertEqual(diagnostic['inputInvocations'],0)
+
+    def test_changed_activity_process_or_window_owner_cannot_rebind_during_wait(self):
+        changed=(v4_owner(activity_token='abd'),v4_owner(pid=4322),v4_owner(process_token='ded'),
+            v4_owner(window_token='124'),v4_owner().replace('/u0a209','/u0a210'),
+            v4_owner().replace('t8','t9'),v4_owner().replace('u0','u1'),
+            v4_owner().replace('      app=ProcessRecord{def 4321:'+v4.PACKAGE+'/u0a209}\n',''),
+            v4_owner().replace('      app=', '      app=UNKNOWN\n      app='),
+            v4_owner().replace('      windows=', '      windows=[UNKNOWN]\n      windows='),
+            v4_owner().replace('mCurrentFocus=Window','mCurrentFocus=OtherWindow'))
+        for state in changed:
+            with self.subTest(state=state):
+                result,error,reads,commands,diagnostic=self.invoke(owners=[v4_owner(),state])
+                self.assertIsNone(result);self.assertIsNotNone(error);self.assertEqual(len(reads),2)
+                self.assertEqual(diagnostic['inputInvocations'],0)
+                self.assertEqual(diagnostic['preparationSamples'][0]['status'],'not-ready')
+                self.assertEqual(diagnostic['preparationSamples'][-1]['activityState'],state)
+
+    def test_capture_activity_raw_data_or_unknown_errors_do_not_retry(self):
+        for failure in ('capture','raw-hash','command-path','command-output','activity','activity-utf8'):
+            with self.subTest(failure=failure):
+                result,error,reads,commands,diagnostic=self.invoke(failure=failure)
+                self.assertIsNone(result);self.assertIsNotNone(error);self.assertEqual(len(reads),1)
+                self.assertEqual(diagnostic['inputInvocations'],0)
+                if failure!='capture':self.assertEqual(diagnostic['preparationSamples'][0]['rawXml'],v4_short_xml(pending=True))
+                if failure=='activity-utf8':
+                    sample=diagnostic['preparationSamples'][0]
+                    self.assertEqual(bytes.fromhex(sample['activityRawHex']),b'\xffdeclared-invalid-utf8')
+                    self.assertEqual(sample['activitySha256'],hashlib.sha256(bytes.fromhex(sample['activityRawHex'])).hexdigest())
+
+    def test_pending_evidence_limit_fails_without_dropping_any_acquired_frame(self):
+        state=v4_owner()+'  Declared host-only long detail: '+'x'*260000+'\n'
+        result,error,reads,commands,diagnostic=self.invoke([v4_short_xml(pending=True)],owners=[state])
+        self.assertIsNone(result);self.assertIsInstance(error,RuntimeError)
+        self.assertIn('evidence byte limit',str(error));self.assertEqual(diagnostic['inputInvocations'],0)
+        self.assertEqual(len(diagnostic['preparationSamples']),len(reads))
+        self.assertLess(len(reads),64)
+        self.assertTrue(all(s['rawXml']==v4_short_xml(pending=True) and s['activityState']==state
+                            for s in diagnostic['preparationSamples']))
+        self.assertTrue(all(s['status']=='not-ready' for s in diagnostic['preparationSamples'][:-1]))
+        self.assertEqual(diagnostic['preparationSamples'][-1]['status'],'failed')
+
+    def test_same_capture_index_cannot_reuse_a_previous_empty_frame(self):
+        result,error,reads,commands,diagnostic=self.invoke(failure='same-index')
+        self.assertIsNone(result);self.assertIsNotNone(error);self.assertEqual(len(reads),2)
+        self.assertEqual(diagnostic['inputInvocations'],0)
+
+    def test_late_xml_activity_parse_and_target_validation_cannot_extend_twenty_seconds(self):
+        for options in ({'failure':'late-xml'},{'failure':'late-activity'},
+                        {'parsed_late':True},{'target_late':True}):
+            with self.subTest(options=options):
+                result,error,reads,commands,diagnostic=self.invoke([v4_short_xml()],**options)
+                self.assertIsNone(result);self.assertIsNotNone(error);self.assertEqual(reads,[120.0])
+                self.assertEqual(diagnostic['inputInvocations'],0)
+                self.assertEqual(diagnostic['preparationSamples'][0]['rawXml'],v4_short_xml())
+
+    def test_input_failure_is_never_retried_after_valid_fresh_target(self):
+        result,error,reads,commands,diagnostic=self.invoke(failure='input')
+        self.assertIsNone(result);self.assertIsInstance(error,subprocess.TimeoutExpired)
+        self.assertEqual(reads,[120.0,120.0]);self.assertEqual(diagnostic['inputInvocations'],1)
+        self.assertEqual(diagnostic['status'],'input-command-failed')
+        self.assertEqual(len([c for c in commands if c[0][3:6]==['shell','input','swipe']]),1)
 
 
 if __name__ == '__main__':

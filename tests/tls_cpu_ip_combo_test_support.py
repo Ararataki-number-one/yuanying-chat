@@ -21,6 +21,8 @@ sys.path.insert(0, str(ROOT / 'tools/gecko'))
 import gecko_cpu_ip_combo_evidence_test as old_model
 import tls_cpu_ip_combo_contract as contract
 import tls_acceptance_contract as tls
+from tls_fixture_trust import fixture_trust_input
+from tls_product_test_support import model_trust
 from ip_timezone_fixture_server import IpFixtureCertificates, IpTimeZoneFleet, GEO_HOST, GEO_TARGET, exact_bytes
 from tls_cpu_ip_combo_server import TlsCpuIpCapture
 
@@ -99,6 +101,7 @@ class HostComboModelEvidence:
         self.binding = dict(sourceCommit=source, sourceTree=tree, runNonce=run,
             integrationApkSha256=identity['apkSha256'], sdkRunId=sdk['runId'], sdkRunAttempt=sdk['runAttempt'])
         self.certificates = IpFixtureCertificates()
+        self.trust_input = fixture_trust_input(self.certificates)
         fleet = None
         try:
             capture = TlsCpuIpCapture(self.certificates, self.binding)
@@ -164,10 +167,11 @@ class HostComboModelEvidence:
             trustInstallation=install)
         sample = dict(schema=1, sourceCommit=source, sourceTree=tree, runNonce=run, slot=6,
             processName=self.device['process']['name'], expectedPid=pid, observedPid=str(pid), shellUid=2000)
+        self.device['fixtureTrust'] = model_trust(self.device['tlsPolicy'], self.trust_input, run, run, source, tree, run)
         self.original_bytes = (json.dumps(self.device, indent=1, sort_keys=True)+'\n').encode()
         self.envelope = dict(schema=1, label='combined-cpu-ip-tls13', status='passed',
             report=contract.CASE_FILE, reportSha256=hashlib.sha256(self.original_bytes).hexdigest(),
-            prelaunchSetup=setup, processSample=sample, routeReceipts=routes, hostTls=trust,
+            prelaunchSetup=setup, processSample=sample, routeReceipts=routes, hostTls=trust, fixtureTrustInput=self.trust_input,
             systemTimeZone=dict(before='UTC', after='UTC'), wire=copy.deepcopy(self.wire),
             cleanup=dict(appStopped=True, scopeCleared=True, reverseRemoved=True, caRemoved=True,
                 privateMaterialRemoved=True, serverQuiesced=True, appDataCleared=True, shellUidRestored=True))

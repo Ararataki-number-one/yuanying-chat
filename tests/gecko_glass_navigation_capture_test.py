@@ -5,7 +5,7 @@ from pathlib import Path
 import sys
 import tempfile
 import unittest
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 import xml.etree.ElementTree as ET
 
 ROOT=Path(__file__).resolve().parents[1]
@@ -269,6 +269,89 @@ class NavigationCaptureModesTest(unittest.TestCase):
         root.extend(hierarchy(CAPTURE.LABELS,self.compact))
         self.assertIsNone(CAPTURE.observed_navigation_geometry(xml(root)))
         self.assertFalse(CAPTURE.selected_navigation(xml(root),'网络'))
+
+
+class CurrentBrowserToolsCaptureTest(unittest.TestCase):
+    """Synthetic v4 sheets; original v3/C10 recording tests stay independent."""
+
+    def setUp(self):
+        self.display = CAPTURE.WIDTH, CAPTURE.HEIGHT, CAPTURE.DENSITY
+        CAPTURE.set_display(1236, 2676, 480)
+
+    def tearDown(self):
+        CAPTURE.set_display(*self.display)
+
+    def panel(self, *, title='网页工具', complete=True, target_height=144):
+        root = ET.Element('hierarchy')
+
+        def node(parent, kind, box, **attributes):
+            values = {'package': CAPTURE.PACKAGE, 'class': 'android.widget.'+kind,
+                      'visible-to-user': 'true', 'enabled': 'true',
+                      'bounds': '[{},{}][{},{}]'.format(*box)}
+            values.update(attributes)
+            return ET.SubElement(parent, 'node', values)
+
+        frame = node(root, 'FrameLayout', (0, 600, 1236, 2600))
+        node(frame, 'TextView', (60, 630, 900, 750), text=title, **{'content-desc': title})
+        node(frame, 'Button', (1008, 618, 1152, 762), clickable='true',
+             **{'content-desc': '关闭'+title})
+        scroll = node(frame, 'ScrollView', (60, 800, 1176, 2500), scrollable='true')
+        if complete:
+            node(scroll, 'Button', (84, 900, 1152, 900+target_height),
+                 text='进入专注阅读', clickable='true')
+        return xml(root)
+
+    def test_tools_wait_for_owned_action_body_with_same_deadline_and_original_xml(self):
+        incomplete, full = self.panel(complete=False), self.panel()
+        with tempfile.TemporaryDirectory() as directory, patch.object(CAPTURE.time, 'monotonic', return_value=100):
+            read, adb, inputs = MagicMock(return_value=full), MagicMock(), []
+            capture = MagicMock(read=read)
+            raw, target = CAPTURE.menu_action(capture, adb, incomplete, '进入专注阅读',
+                directory, 'tools', 120, inputs, sheet='tools')
+            self.assertEqual(raw, full)
+            self.assertEqual(CAPTURE.bounds(target), (84, 900, 1152, 1044))
+            read.assert_called_once_with(deadline=120)
+            adb.assert_not_called()
+            self.assertEqual(inputs, [])
+            self.assertEqual((Path(directory)/'tools-menu-0.xml').read_text(), incomplete)
+            self.assertEqual((Path(directory)/'tools-menu-1.xml').read_text(), full)
+
+    def test_menu_and_tools_cannot_substitute_for_each_other(self):
+        for title, sheet in (('浏览器菜单', 'tools'), ('网页工具', 'menu')):
+            with self.subTest(title=title), tempfile.TemporaryDirectory() as directory, \
+                    patch.object(CAPTURE.time, 'monotonic', return_value=100):
+                transport, adb, inputs = MagicMock(), MagicMock(), []
+                with self.assertRaises(ValueError):
+                    CAPTURE.menu_action(transport, adb, self.panel(title=title), '进入专注阅读',
+                        directory, 'wrong-sheet', 120, inputs, sheet=sheet)
+                transport.read.assert_not_called()
+                adb.assert_not_called()
+                self.assertEqual(inputs, [])
+
+    def test_tools_cannot_accept_small_target_after_the_original_twelve_scroll_limit(self):
+        clipped, full = self.panel(target_height=100), self.panel()
+        with tempfile.TemporaryDirectory() as directory, patch.object(CAPTURE.time, 'monotonic', return_value=100):
+            read = MagicMock(side_effect=[clipped]*11+[full])
+            adb, inputs = MagicMock(), []
+            with self.assertRaisesRegex(ValueError, '12 observed scrolls'):
+                CAPTURE.menu_action(MagicMock(read=read), adb, clipped, '进入专注阅读',
+                    directory, 'clipped', 120, inputs, sheet='tools')
+            self.assertEqual(read.call_count, 12)
+            self.assertEqual(adb.call_count, 12)
+            self.assertEqual(len(inputs), 12)
+            self.assertTrue(all(call.kwargs == {'deadline': 120} for call in read.call_args_list))
+
+    def test_capsule_has_only_current_native_tap_semantics(self):
+        root = hierarchy(('日常会话',), ((330, 90, 906, 234),))
+        root[0].set('content-desc', '当前环境：日常会话，点按切换环境')
+        root[0].set('long-clickable', 'false')
+        self.assertIsNotNone(CAPTURE.capsule(xml(root)))
+        for key, value in (('long-clickable', 'true'), ('class', 'android.widget.TextView'),
+                           ('content-desc', '当前环境：日常会话，点按输入网址，长按切换环境')):
+            changed = ET.fromstring(xml(root))
+            changed[0].set(key, value)
+            with self.subTest(key=key):
+                self.assertIsNone(CAPTURE.capsule(xml(changed)))
 
 
 if __name__=='__main__':unittest.main()

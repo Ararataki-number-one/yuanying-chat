@@ -9,9 +9,9 @@ from zipfile import ZipFile
 from caret_build_identity import dex_definitions
 from check_native_tls_package import audit_key_entries
 ROOT=Path(__file__).resolve().parents[2]
-TEST_CLASSES={'Llocal/pocketchat/GeckoTlsFixtureScopes;','Llocal/pocketchat/GeckoTlsCpuIpComboIntegrationActivity;','Llocal/pocketchat/GeckoTlsCpuIpComboEvidenceProvider;','Llocal/pocketchat/GeckoTlsAcceptanceActivity;','Llocal/pocketchat/GeckoTlsAcceptanceActivity$Profile1;','Llocal/pocketchat/GeckoTlsAcceptanceActivity$Profile2;','Llocal/pocketchat/GeckoTlsAcceptanceProvider;'}
+TEST_CLASSES={'Llocal/pocketchat/GeckoTlsFixtureTrust;','Llocal/pocketchat/GeckoTlsFixtureTrustState;','Llocal/pocketchat/GeckoTlsFixtureScopes;','Llocal/pocketchat/GeckoTlsCpuIpComboIntegrationActivity;','Llocal/pocketchat/GeckoTlsCpuIpComboEvidenceProvider;','Llocal/pocketchat/GeckoTlsAcceptanceActivity;','Llocal/pocketchat/GeckoTlsAcceptanceActivity$Profile1;','Llocal/pocketchat/GeckoTlsAcceptanceActivity$Profile2;','Llocal/pocketchat/GeckoTlsAcceptanceProvider;'}
 PRODUCTION_CLASSES={'Llocal/pocketchat/GeckoTls'+name+';' for name in ('Spec','Store','Ui','Controller','Profile','Native')}
-ASSETS={'assets/tls-acceptance-page.js','assets/tls-acceptance-worker.js','assets/tls-cpu-ip-combo-page.js'}
+ASSETS={'assets/tls-acceptance-page.js','assets/tls-acceptance-worker.js','assets/tls-cpu-ip-combo-page.js',*('assets/tls-fixture-trust/'+name for name in ('manifest.json','schema.json','background.js','parent.js'))}
 
 def require(value,message):
     if not value:raise ValueError('Product TLS package: '+message)
@@ -22,7 +22,7 @@ def components(definitions,manifest,assets,integration):
         require(TEST_CLASSES<=definitions and ASSETS<=assets,'actual integration gate class definitions and assets')
         for text in ('GeckoTlsAcceptanceActivity$Profile1','GeckoTlsAcceptanceActivity$Profile2','GeckoTlsAcceptanceProvider','local.pocketchat.test.tls-acceptance',':profile1',':profile2','GeckoTlsCpuIpComboIntegrationActivity','GeckoTlsCpuIpComboEvidenceProvider','local.pocketchat.test.gecko-tls-cpu-ip-combo-evidence',':profile6',':ip_timezone_setup'):require(text in manifest,'actual integration manifest '+text)
     else:
-        require(not any(name.startswith(('Llocal/pocketchat/GeckoTlsAcceptance','Llocal/pocketchat/GeckoTlsFixtureScopes','Llocal/pocketchat/GeckoTlsCpuIpCombo')) for name in definitions) and 'GeckoTlsAcceptance' not in manifest and 'GeckoTlsCpuIpCombo' not in manifest and 'local.pocketchat.test.tls-acceptance' not in manifest and not ASSETS.intersection(assets),'no test definitions/components/assets in release')
+        require(not any(name.startswith(('Llocal/pocketchat/GeckoTlsAcceptance','Llocal/pocketchat/GeckoTlsFixtureScopes','Llocal/pocketchat/GeckoTlsFixtureTrust','Llocal/pocketchat/GeckoTlsCpuIpCombo')) for name in definitions) and 'GeckoTlsAcceptance' not in manifest and 'GeckoTlsCpuIpCombo' not in manifest and 'local.pocketchat.test.tls-acceptance' not in manifest and not ASSETS.intersection(assets) and not any(name.startswith('assets/tls-fixture-trust/') for name in assets),'no test definitions/components/assets in release')
 
 def main():
     p=argparse.ArgumentParser(description=__doc__)

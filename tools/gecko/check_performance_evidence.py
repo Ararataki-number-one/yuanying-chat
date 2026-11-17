@@ -49,12 +49,18 @@ def verify_performance_evidence(directory, source):
     assert reload['controlledProxyRoutes'] and all(row['accepted'] and row['host'] == '127.0.0.1' and row['port'] == 8765 for row in reload['controlledProxyRoutes'])
     assert len(chrome['cases']) == 3, 'All compact and large-font cases are required.'
     versions=[case.get('navigationContract',1) for case in chrome['cases']]
-    assert all(type(v) is int and v in (1,2,3) for v in versions) and len(set(versions)) == 1
+    assert all(type(v) is int and v in (1,2,3,4) for v in versions) and len(set(versions)) == 1
     assert chrome['autoCollapse'].get('navigationContract',1) == versions[0], 'Compact and lifecycle evidence must use the same actual navigation contract.'
-    if versions[0] in (2,3):
+    if versions[0] in (2,3,4):
         assert {(case['viewport'],case['fontScale']) for case in chrome['cases']} == {(360,1),(412,1),(360,2)}
     for case in chrome['cases']:
-        if case.get('navigationContract') == 3:
+        if case.get('navigationContract') == 4:
+            if __package__:
+                from .compact_chrome_layout_v4 import verify_case
+            else:
+                from compact_chrome_layout_v4 import verify_case
+            verify_case(case,require_browser_chrome=True)
+        elif case.get('navigationContract') == 3:
             if __package__:
                 from .compact_chrome_layout_v3 import verify_case
             else:
@@ -71,7 +77,7 @@ def verify_performance_evidence(directory, source):
             assert {tap['control'] for tap in case['actualAndroidTaps']} == {'drawer','environment','more'}
         layout=case['layout']
         assert layout['geckoOnly'] and layout['pageMode'] and layout['noNativeChat'] and layout['systemWebViews'] == 0
-        assert [control['name'] for control in layout['controls']] == (['environment'] if versions[0]==3 else ['drawer','environment','more'])
+        assert [control['name'] for control in layout['controls']] == (['environment'] if versions[0] in (3,4) else ['drawer','environment','more'])
         perf = case['performance']
         for phase in ('burst', 'background', 'periodic'):
             assert all(perf[phase][key] == 0 for key in MAIN_IO), (phase, perf[phase])

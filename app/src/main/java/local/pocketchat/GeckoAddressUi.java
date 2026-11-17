@@ -13,17 +13,17 @@ import android.widget.*;
 
 /** Native address controls; never inspect or modify the website's inputs. */
 final class GeckoAddressUi {
-  final MainActivity a;final BrowserToolbarUi.NavigationBar row;final Button address,home,back,reload,menu;
+  final MainActivity a;final BrowserToolbarUi.NavigationBar row;final Button address,home,windows,tools,menu;
   private AlertDialog dialog;private EditText editor;private String shown="";
   GeckoAddressUi(MainActivity activity){
     a=activity;
-    back=BrowserToolbarUi.action(a,"back","后退",()->a.browserHistory(-1));
     address=DesignUi.button(a,"网址或搜索",false,()->show(a));address.setAllCaps(false);address.setEllipsize(TextUtils.TruncateAt.END);address.setGravity(android.view.Gravity.CENTER_VERTICAL);
     BrowserToolbarUi.address(address);GlassMotion.press(address,false);
-    reload=BrowserToolbarUi.action(a,"refresh","刷新网页",a::browserReloadOrStop);
     home=BrowserToolbarUi.action(a,"home","打开当前环境主页",()->home(a));
+    windows=BrowserToolbarUi.action(a,"window","网页窗口",a::windowsSheet);
+    tools=BrowserToolbarUi.action(a,"grid","网页工具",a::toolsSheet);
     menu=BrowserToolbarUi.action(a,"more","浏览器菜单",a::moreSheet);
-    row=new BrowserToolbarUi.NavigationBar(a,address,back,home,reload,menu);refresh();
+    row=new BrowserToolbarUi.NavigationBar(a,address,home,windows,tools,menu);refresh();
   }
   String target(){if(a.session==null)return "";String url=a.session.browserDisplayUrl();return url==null?"":url;}
   String current(){
@@ -43,9 +43,6 @@ final class GeckoAddressUi {
   void refresh(){
     String url=current();if(row.getVisibility()!=View.VISIBLE)row.setVisibility(View.VISIBLE);
     if(!shown.equals(url)){shown=url;String text=url.startsWith("https://")?url.substring(8):url;address.setText(text.isEmpty()?"网址或搜索":text);address.setContentDescription("当前网址 "+url+"，点击输入网址或搜索");address.setTooltipText(url);}
-    BrowserToolbarUi.enabled(back,a.remote!=null&&a.remote.canGoBack());
-    boolean loading=a.session!=null&&a.session.navigating;
-    BrowserToolbarUi.action(reload,loading?"close":"refresh",loading?"停止加载":"刷新网页");
   }
   static boolean available(MainActivity a){
     // A retained session can already belong to a replacement Activity while
@@ -54,7 +51,7 @@ final class GeckoAddressUi {
       &&a.remote==a.session.web&&a.remote.displayContext.getBaseContext()==a;
   }
   static void show(MainActivity a){
-    if(!available(a))return;GeckoAddressUi owner=a.geckoAddress;if(owner==null)return;if(owner.dialog!=null&&owner.dialog.isShowing()){owner.focusEditor(false);return;}
+    if(!available(a))return;GeckoAddressUi owner=a.geckoAddress;if(owner==null)return;if(a.designChrome!=null)a.designChrome.reveal();if(owner.dialog!=null&&owner.dialog.isShowing()){owner.focusEditor(false);return;}
     LinearLayout box=DesignUi.column(a);box.setPadding(a.dp(18),a.dp(8),a.dp(18),a.dp(12));
     EditText input=DesignUi.input(box,"",owner.current(),"输入网址或搜索内容");input.setContentDescription("网址或搜索");input.setInputType(InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_URI);input.setSingleLine(true);input.setImeOptions(EditorInfo.IME_ACTION_GO|EditorInfo.IME_FLAG_NO_EXTRACT_UI);
     TextView notice=DesignUi.text(a,"",13,DesignUi.RED);notice.setVisibility(View.GONE);notice.setAccessibilityLiveRegion(android.view.View.ACCESSIBILITY_LIVE_REGION_POLITE);box.addView(notice);

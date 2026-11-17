@@ -75,3 +75,16 @@ def browser_v2_bytes(relative):
 
 def browser_v2_identity(relative):
     return dict(_verified_source(ROOT, relative, BROWSER_V2_COMMIT, BROWSER_V2_TREE)[1])
+
+
+BROWSER_V3_COMMIT = '12ffbd2d01175f83fefd7f8af40d0582ad08f3a5'
+BROWSER_V3_TREE = '89665dd73e968b71528eab611c14fc14d148354f'
+
+
+def browser_v3_bytes(relative):
+    """Read actual released 2.1.6 source for retained v3 observations, never v4 code."""
+    return _verified_source(ROOT, relative, BROWSER_V3_COMMIT, BROWSER_V3_TREE)[0]
+
+
+def browser_v3_identity(relative):
+    return dict(_verified_source(ROOT, relative, BROWSER_V3_COMMIT, BROWSER_V3_TREE)[1])

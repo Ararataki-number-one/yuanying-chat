@@ -35,6 +35,7 @@ import xml.etree.ElementTree as ET
 
 from ui_visual_capture import UiVisualCapture
 from workspace_navigation_contract_v3 import menu_body_ready, menu_scroll_points
+from workspace_navigation_contract_v4 import menu_body_ready as current_menu_body_ready
 
 PACKAGE = 'local.pocketchat.test'
 COMPONENT = PACKAGE + '/local.pocketchat.UiVisualIntegrationActivity'
@@ -282,8 +283,10 @@ def navigation(xml):
 
 def capsule(xml):
     found = nodes(xml, lambda node: node.get('content-desc', '').startswith('当前环境：')
-                  and '点按输入网址，长按切换环境' in node.get('content-desc', '')
-                  and node.get('clickable') == 'true' and node.get('enabled') == 'true')
+                  and node.get('content-desc', '').endswith('，点按切换环境')
+                  and node.get('class') == 'android.widget.Button'
+                  and node.get('clickable') == 'true' and node.get('enabled') == 'true'
+                  and node.get('long-clickable') != 'true')
     return found[0] if len(found) == 1 else None
 
 
@@ -307,12 +310,32 @@ def browser_menu_open(xml):
                      and node.get('clickable') == 'true' and node.get('enabled') == 'true')) == 1
 
 
-def menu_action(capture, adb, xml, label, out, stem, deadline, inputs, *, input_complete=None):
+def browser_tools_node(xml):
+    found = nodes(xml, lambda node: node.get('content-desc') == '网页工具'
+                  and node.get('class') == 'android.widget.Button'
+                  and node.get('clickable') == 'true' and node.get('enabled') == 'true')
+    return found[0] if len(found) == 1 else None
+
+
+def browser_tools_open(xml):
+    return len(nodes(xml, lambda node: node.get('content-desc') == '关闭网页工具'
+                     and node.get('class') == 'android.widget.Button'
+                     and node.get('clickable') == 'true' and node.get('enabled') == 'true')) == 1
+
+
+def menu_action(capture, adb, xml, label, out, stem, deadline, inputs, *, input_complete=None, sheet='menu'):
     """Find one real, fully tappable menu item inside one existing deadline.
 
     Every scroll and replacement hierarchy is retained. No cached off-screen
     coordinates, increased deadline, or inferred action can satisfy this lookup.
     """
+    if sheet not in ('menu', 'tools'):
+        raise ValueError('Unknown native browser action sheet: ' + sheet)
+    opened = browser_menu_open if sheet == 'menu' else browser_tools_open
+    # Keep the historical menu reader for original v3/C10 observations. A v4
+    # tools sheet is validated in its own right, never relabelled as old XML.
+    body_ready = (lambda value: menu_body_ready(value, PACKAGE)) if sheet == 'menu' else (
+        lambda value: current_menu_body_ready(value, PACKAGE, panel='网页工具'))
     out = Path(out)
     attempt = scroll_count = 0
     while True:
@@ -321,9 +344,9 @@ def menu_action(capture, adb, xml, label, out, stem, deadline, inputs, *, input_
         path = out / (stem + '-menu-' + str(attempt) + '.xml')
         path.write_text(xml)
         attempt += 1
-        if not browser_menu_open(xml):
-            raise ValueError('The observed browser menu is no longer open')
-        if not menu_body_ready(xml, PACKAGE):
+        if not opened(xml):
+            raise ValueError('The observed browser action sheet is no longer open')
+        if not body_ready(xml):
             xml = capture.read(deadline=deadline)
             continue
         target = button(xml, label)
@@ -365,10 +388,10 @@ def menu_action(capture, adb, xml, label, out, stem, deadline, inputs, *, input_
 
 
 def browser_toolbar_geometry(xml):
-    """Current v3 bottom bar: back, home, address, reload/stop and menu."""
+    """Current v4 bottom bar: home, windows, address, tools and menu."""
     actions = {}
-    for name, descriptions in (('back', ('后退',)), ('home', ('打开当前环境主页',)),
-                               ('reload', ('刷新网页', '停止加载')), ('menu', ('浏览器菜单',))):
+    for name, descriptions in (('home', ('打开当前环境主页',)), ('windows', ('网页窗口',)),
+                               ('tools', ('网页工具',)), ('menu', ('浏览器菜单',))):
         found = nodes(xml, lambda node: node.get('content-desc') in descriptions
                       and node.get('class') == 'android.widget.Button'
                       and node.get('clickable') == 'true')
@@ -377,7 +400,7 @@ def browser_toolbar_geometry(xml):
         node=found[0]; box=bounds(node)
         if min(box[2]-box[0],box[3]-box[1]) < 48*DENSITY/160-1:
             return None
-        if name != 'back' and node.get('enabled') != 'true':
+        if node.get('enabled') != 'true':
             return None
         actions[name]=dict(bounds=list(box),enabled=node.get('enabled')=='true',description=node.get('content-desc'))
     prefix,suffix='当前网址 ','，点击输入网址或搜索'
@@ -391,7 +414,7 @@ def browser_toolbar_geometry(xml):
     address_box=list(bounds(address))
     if not current_url or address_box[2]-address_box[0]<72*DENSITY/160-1 or address_box[3]-address_box[1]<48*DENSITY/160-1:
         return None
-    action_boxes=[actions[name]['bounds'] for name in ('back','home','reload','menu')]
+    action_boxes=[actions[name]['bounds'] for name in ('home','windows','tools','menu')]
     ltr=all(left[2]<=right[0] for left,right in zip(action_boxes,action_boxes[1:]))
     rtl=all(left[0]>=right[2] for left,right in zip(action_boxes,action_boxes[1:]))
     if (max(box[1] for box in action_boxes)-min(box[1] for box in action_boxes)>1
@@ -412,7 +435,7 @@ def browser_toolbar_geometry(xml):
     legacy=navigation_geometry(xml)
     if legacy is not None and legacy['valid']:
         return None
-    return dict(navigationContract=3,currentUrl=current_url,addressText=address.get('text'),
+    return dict(navigationContract=4,currentUrl=current_url,addressText=address.get('text'),
                 addressDescription=address.get('content-desc'),addressBounds=address_box,
                 actions=actions,singleHorizontalRow=inline,addressOwnRow=stacked,
                 layoutMode='inline' if inline else 'stacked',layoutDirection='ltr' if ltr else 'rtl',minimumAddressWidthDp=72,
@@ -425,7 +448,7 @@ def browser_navigation_geometry(xml):
         return None
     boxes={name:value['bounds'] for name,value in toolbar['actions'].items()}
     boxes['address']=toolbar['addressBounds']
-    return dict(layout='browser-bottom',navigationContract=3,coordinateSpace='native XML screen pixels',
+    return dict(layout='browser-bottom',navigationContract=4,coordinateSpace='native XML screen pixels',
                 screenWidthPx=WIDTH,configuredDensityDpi=DENSITY,
                 bounds=boxes,selected={name:'false' for name in boxes},
                 checks=dict(fiveBrowserControls=True,retiredDestinationsAbsent=True,minimumTouchTargets=True),
@@ -728,7 +751,7 @@ def capture_motion(args, report, capture, adb, wait_for):
     """
     motion = report['motionReport']
     motion.update(status='started', startedAtUnixNs=time.time_ns(),
-                  navigationContract=3,
+                  navigationContract=4,
                   runNonce=report['runNonce'], sourceCommit=report['buildIdentity']['sourceCommit'],
                   apkSha256=report['installedApk']['sha256'],
                   requestedWidth=MOTION_WIDTH, requestedHeight=MOTION_HEIGHT,
@@ -1534,7 +1557,7 @@ def main():
         if not expanded(xml):
             # Exercise the real tap interaction, then cancel without submitting.
             # Dismissing the editor leaves the real toolbar expanded for review.
-            tap(capsule(xml), 'Open the address editor and expand the actual header')
+            tap(browser_address_node(xml), 'Open the bottom address editor and expand the actual header')
             xml = wait_for(capture, lambda value: button(value, '取消') is not None
                            and bool(nodes(value, lambda node: node.get('text') == '打开网址')), 'address-editor')
             screenshot('address-editor.png')
@@ -1553,7 +1576,7 @@ def main():
             geometry=browser_navigation_geometry(xml),
             capsuleBounds=list(bounds(capsule(xml))), capsuleDescription=capsule(xml).get('content-desc'),
             rootBounds=native_root_bounds(xml),
-            expandedHeader=True, navigationContract=3,readingAvailableInMenu=True,
+            expandedHeader=True, navigationContract=4,readingAvailableInTools=True,
             ordinaryConversationHasSelectedNavigation=False)
         report['display'] = dict(size=adb('shell', 'wm', 'size').decode().strip(),
             density=adb('shell', 'wm', 'density').decode().strip(),
@@ -1564,7 +1587,7 @@ def main():
         screenshot('glass-navigation.png')
         toolbar = browser_toolbar_geometry(xml)
         if toolbar is None:
-            raise ValueError('Actual browser address, history, reload/stop and home controls are missing, overlapping or too small')
+            raise ValueError('Actual browser home, windows, address, tools and menu controls are missing, overlapping or too small')
         screenshot('browser-toolbar.png')
         toolbar_screenshot = dict(report['screenshots'][-1])
         tap(browser_address_node(xml), 'Open the current real URL using the persistent browser address field')

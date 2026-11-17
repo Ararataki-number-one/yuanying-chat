@@ -22,3 +22,10 @@ final class EnvironmentOverviewUi {
   static Intent browserOpening(Activity activity,int slot){return opening(activity,slot).putExtra("openBrowserDirect",true);}
   static Intent detailsOpening(Activity activity,int slot){return opening(activity,slot).putExtra("openWindowAction","overview");}
 }
+
+/** Only engine and Activity identity; no document, reload or URI API exists. */
+class BrowserActivity extends Activity {
+  final int slot;BrowserActivity(int slot){this.slot=slot;}
+  static final class Window1 extends BrowserActivity {Window1(){super(1);}}
+  static Class<?> activity(int slot){if(slot==0)return BrowserActivity.class;if(slot==1)return Window1.class;throw new AssertionError("Unconfigured Chromium boundary");}
+}

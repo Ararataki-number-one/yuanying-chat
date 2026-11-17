@@ -500,6 +500,42 @@ def prepare_browser_v2_history(root=ROOT, *, source_commit, environment=None):
                 fetchedCommits=fetched,checkoutUnchanged=True,testsExecuted=False,actualAndroidExecution=False)
 
 
+BROWSER_V3_GROUP = {'commit': '12ffbd2d01175f83fefd7f8af40d0582ad08f3a5',
+ 'tree': '89665dd73e968b71528eab611c14fc14d148354f',
+ 'files': {'tests/browser_cpu_publish_gate_test.py': {
+               'mode': '100644', 'blob': 'bd8ec6895967e6802f70e7ab8543646153da7456',
+               'bytes': 21943, 'sha256': '13922902ef64cd2dc25fbff14c71d78b46972c4e8efde85d3db9e4b619728253'},
+           'tests/gecko/run_environment_dashboard.py': {
+               'mode': '100644', 'blob': '4047282b4d71c1f1137c0205b63238f020c2a595',
+               'bytes': 20188, 'sha256': '0f02755864ebfd989acca1bc12dbca7901d434b1057992a3ee74213a9b7f69b0'},
+           'tools/gecko/capture_glass_navigation.py': {
+               'mode': '100644', 'blob': 'a6137bca3d6c6aa0d75331f3ec30a2fffb631867',
+               'bytes': 103967, 'sha256': '2cd0099d5bc054f41e6cbef694f7d041e0fe6ec2e0b0bfb107794a6d6da97c4e'}}}
+
+
+def prepare_browser_v3_history(root=ROOT, *, source_commit, environment=None):
+    """Prepare exact v3 observers and the retained CPU publication fixture."""
+    root=Path(root).resolve(); environment=os.environ if environment is None else environment
+    before=history.checkout_state(root)
+    require(before['sourceCommit']==source_commit, 'v3 history source differs from checkout')
+    fetched=[]
+    try:
+        observed=history.verify_group(root,BROWSER_V3_GROUP)
+    except history.MissingHistoricalObject:
+        authorize_fetch(root,source_commit,environment)
+        require(history.checkout_state(root)==before,'checkout changed before v3 history fetch')
+        try:
+            history.checked(root,'fetch','--refetch','--no-tags','--depth=1','--no-write-fetch-head','--no-filter','origin',BROWSER_V3_GROUP['commit'])
+        finally:
+            require(history.checkout_state(root)==before,'v3 history fetch changed checkout')
+        fetched.append(BROWSER_V3_GROUP['commit'])
+        observed=history.verify_group(root,BROWSER_V3_GROUP)
+    require(history.checkout_state(root)==before,'v3 history verification changed checkout')
+    return dict(schema=1,status='passed',sourceCommit=source_commit,sourceTree=before['sourceTree'],
+                historicalProofOnly=True,currentSourceReplacement=False,group=observed,
+                fetchedCommits=fetched,checkoutUnchanged=True,testsExecuted=False,actualAndroidExecution=False)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--source-commit', required=True)
@@ -512,6 +548,7 @@ def main():
     value['releasedHistory'] = prepare_released_history(args.root, source_commit=args.source_commit)
     value['uiHistory'] = prepare_ui_history(args.root, source_commit=args.source_commit)
     value['browserV2History'] = prepare_browser_v2_history(args.root, source_commit=args.source_commit)
+    value['browserV3History'] = prepare_browser_v3_history(args.root, source_commit=args.source_commit)
     raw = json.dumps(value, sort_keys=True, indent=2) + '\n'
     if args.output:
         args.output.parent.mkdir(parents=True, exist_ok=True)

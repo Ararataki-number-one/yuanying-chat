@@ -799,7 +799,7 @@ def main():
         assert adb('shell','pidof',package).strip(),'Production Activity exited'
         hierarchy=navigation_capture.read(deadline=time.monotonic()+30)
         (OUT/'production-ui.xml').write_text(hierarchy)
-        from workspace_navigation_contract_v3 import exercise_workspace_roundtrip
+        from workspace_navigation_contract_v4 import exercise_workspace_roundtrip
         report['productionNavigation']=exercise_workspace_roundtrip(adb,hierarchy,lambda name,xml:(OUT/name).write_text(xml),package,browser=True,capture=navigation_capture)
         assert not any(node.attrib.get('text') in ['简洁','原网页'] for node in ET.fromstring(hierarchy).iter('node')),hierarchy
         assert 'FATAL EXCEPTION' not in adb('logcat','-d','-s','AndroidRuntime:E','*:S')

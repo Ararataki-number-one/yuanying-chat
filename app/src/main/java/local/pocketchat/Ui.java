@@ -162,6 +162,7 @@ final class Ui {
         case "menu":canvas.drawLine(4,8,20,8,p);canvas.drawLine(4,15,14,15,p);break;
         case "new":path.moveTo(13,5);path.lineTo(6,5);path.quadTo(4,5,4,7);path.lineTo(4,18);path.quadTo(4,20,6,20);path.lineTo(17,20);path.quadTo(19,20,19,18);path.lineTo(19,12);canvas.drawPath(path,p);path.reset();path.moveTo(10,14);path.lineTo(11,10);path.lineTo(18,3);path.lineTo(21,6);path.lineTo(14,13);path.close();canvas.drawPath(path,p);break;
         case "more":p.setStyle(Paint.Style.FILL);for(int x:new int[]{5,12,19})canvas.drawCircle(x,12,1.5f,p);break;
+        case "grid":for(int x:new int[]{4,14})for(int y:new int[]{4,14})canvas.drawRoundRect(new RectF(x,y,x+6,y+6),1.5f,1.5f,p);break;
         case "plus":canvas.drawLine(5,12,19,12,p);canvas.drawLine(12,5,12,19,p);break;
         case "arrow":canvas.drawLine(12,18,12,5,p);path.moveTo(6,11);path.lineTo(12,5);path.lineTo(18,11);canvas.drawPath(path,p);break;
         case "home":path.moveTo(3,10.5f);path.lineTo(12,3);path.lineTo(21,10.5f);path.moveTo(5,9);path.lineTo(5,21);path.lineTo(10,21);path.lineTo(10,14);path.lineTo(14,14);path.lineTo(14,21);path.lineTo(19,21);path.lineTo(19,9);canvas.drawPath(path,p);break;

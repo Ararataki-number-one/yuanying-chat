@@ -1,13 +1,86 @@
 name: Browser workspace UI validation
 on:
   push:
-    branches: ['codex/browser-workspace-20261111']
+    branches: ['codex/browser-workspace-20261111', 'release/browser-2.1.7', 'release/browser-2.1.7-*']
   workflow_dispatch:
 permissions:
   contents: read
 concurrency:
   group: browser-workspace-validation-${{ github.ref }}
   cancel-in-progress: true
+env:
+  ANDROID_CAPACITY_PREFLIGHT: |
+    import json,os,pathlib,re,subprocess,sys,time
+    from fractions import Fraction
+    def require(value,message):
+        if not value:raise ValueError(message)
+    mode,scope=sys.argv[1:]
+    require(mode in ('host','guest') and re.fullmatch('[a-z0-9-]+',scope),'Invalid preflight scope')
+    job=os.environ['GITHUB_JOB'];require(re.fullmatch('[a-z0-9_-]+',job),'Invalid actual job')
+    target=pathlib.Path('work/gecko-integration')/('android-capacity-'+job+'-'+scope+'.json')
+    record={'schema':1,'status':'failed','requestedGuestCpus':4,'scope':scope,'job':job,'mode':mode}
+    passed=False
+    try:
+        identity={'sourceCommit':subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip(),
+                  'sourceTree':subprocess.check_output(['git','rev-parse','HEAD^{tree}'],text=True).strip(),
+                  'runId':os.environ['GITHUB_RUN_ID'],'runAttempt':os.environ['GITHUB_RUN_ATTEMPT']}
+        record.update(identity)
+        require(identity['sourceCommit']==os.environ['GITHUB_SHA'] and re.fullmatch('[0-9a-f]{40}',identity['sourceTree']),'Actual source identity differs')
+        require(identity['runId'].isdigit() and identity['runAttempt'].isdigit(),'Actual CI run identity required')
+        if mode=='host':
+            require(not target.exists() and not target.is_symlink(),'Repeated capacity preflight')
+            affinity=sorted(os.sched_getaffinity(0))
+            nproc=int(subprocess.check_output(['nproc'],text=True,timeout=5).strip())
+            require(affinity and nproc>0,'Actual host CPU counts unavailable')
+            record['host']={'affinityCpus':affinity,'nproc':nproc,'observedAtMonotonicNs':time.monotonic_ns()}
+            unified=[line.split(':',2)[2] for line in pathlib.Path('/proc/self/cgroup').read_text().splitlines() if line.startswith('0::')]
+            mounts=[line for line in pathlib.Path('/proc/self/mountinfo').read_text().splitlines() if ' - cgroup2 ' in line]
+            record['host'].update(unifiedCgroups=unified,cgroup2Mounts=mounts)
+            require(len(unified)==1 and len(mounts)==1,'Unambiguous cgroup v2 observation required')
+            fields=mounts[0].split(' - ',1)[0].split();mount=pathlib.Path(fields[4]).resolve()
+            current=pathlib.PurePosixPath(unified[0]);root=pathlib.PurePosixPath(fields[3])
+            require(current.is_absolute() and '..' not in current.parts,'Unsupported actual cgroup path')
+            relative=[current.relative_to('/')]
+            if current.is_relative_to(root):relative.append(current.relative_to(root))
+            candidates={(mount/path).resolve() for path in relative}
+            candidates={path for path in candidates if path.is_relative_to(mount) and (path/'cgroup.procs').is_file()}
+            require(len(candidates)==1,'Current cgroup cannot be resolved unambiguously')
+            node=candidates.pop();limits=[];capacity=Fraction(min(len(affinity),nproc));observed=0
+            record['host']['cpuMax']=limits
+            while True:
+                path=node/'cpu.max'
+                try:
+                    raw=path.read_text().strip();limits.append({'path':str(path),'raw':raw});quota,period=raw.split()
+                    require(period.isdigit() and int(period)>0 and (quota=='max' or (quota.isdigit() and int(quota)>0)),'Invalid actual cpu.max')
+                    if quota!='max':capacity=min(capacity,Fraction(int(quota),int(period)))
+                    observed+=1
+                except FileNotFoundError:limits.append({'path':str(path),'raw':None,'interfacePresent':False})
+                if node==mount:break
+                node=node.parent
+            record['host'].update(unifiedCgroup=unified[0],cgroup2Mount=mounts[0],cpuMax=limits,
+                                  visibleCapacityCeilingNumerator=capacity.numerator,visibleCapacityCeilingDenominator=capacity.denominator,
+                                  capacityScope='Visible affinity/nproc/cgroup limits only; not idle CPUs or invisible outer quotas')
+            require(observed>0,'Actual cgroup CPU quota observation unavailable')
+            require(capacity>=4,'Host effective CPU capacity is below four; no fallback')
+        else:
+            previous=json.loads(target.read_text())
+            require(previous['status']=='passed' and previous['scope']==scope and previous['job']==job,'Passed host observation missing')
+            require(all(previous.get(key)==value for key,value in identity.items()),'Capacity source/run differs')
+            record=previous;record['mode']='guest'
+            raw=subprocess.check_output(['adb','-s','emulator-5554','shell','getconf','_NPROCESSORS_ONLN'],text=True,timeout=8).strip()
+            record['guest']={'serial':'emulator-5554','getconf':'_NPROCESSORS_ONLN','raw':raw,
+                             'observedAtMonotonicNs':time.monotonic_ns()}
+            require(raw=='4','Actual native-ADB guest online CPU count is not four')
+            record['guest']['onlineCpus']=4
+        record['status']='passed';passed=True
+    except BaseException as error:
+        record.update(status='failed',errorType=type(error).__name__,error=str(error))
+    if mode=='host' and (target.exists() or target.is_symlink()):
+        print('ANDROID_CAPACITY_PREFLIGHT '+json.dumps(record,sort_keys=True),flush=True);sys.exit(1)
+    target.parent.mkdir(parents=True,exist_ok=True)
+    temporary=target.with_suffix('.partial');temporary.write_text(json.dumps(record,sort_keys=True)+'\n');temporary.replace(target)
+    print('ANDROID_CAPACITY_PREFLIGHT '+json.dumps(record,sort_keys=True),flush=True)
+    sys.exit(0 if passed else 1)
 jobs:
   current-maintenance:
     name: Current browser and network maintenance
@@ -175,6 +248,8 @@ jobs:
             python3 tools/gecko/prepare_android_image.py --sdk-root "$ANDROID_HOME" --cache work/glass-navigation/packages --report work/glass-navigation/system-image.json
           fi
           python3 tools/gecko/prepare_platform_tools.py --sdk-root "$ANDROID_HOME" --cache work/glass-navigation/packages --report work/glass-navigation/platform-tools.json
+          export PATH="$ANDROID_HOME/platform-tools:$PATH"
+          test "$(command -v adb)" = "$ANDROID_HOME/platform-tools/adb"
           export ANDROID_AVD_HOME="$PWD/work/glass-navigation/avd"
           export ANDROID_USER_HOME="$PWD/work/glass-navigation/android-user"
           export ANDROID_EMULATOR_HOME="$PWD/work/glass-navigation/emulator-home"
@@ -193,11 +268,12 @@ jobs:
           Path('work/glass-navigation/avd-config.txt').write_bytes(path.read_bytes())
           print(path.read_text(), end='')
           PY
+          python3 -c "$ANDROID_CAPACITY_PREFLIGHT" host 'workspace-api${{ matrix.device-api }}'
           cat > work/glass-navigation/emulator-supervisor.sh <<'SH'
           set -uo pipefail
           # ANGLE supplies GLES to Android HWUI. API 32 exercises the app's
           # CPU fallback; software GLES on API 35 is still the HWUI glass path.
-          "$ANDROID_HOME/emulator/emulator" -avd glassnavigation -no-window -no-audio -no-snapshot -no-boot-anim -no-metrics -accel on -port 5554 -gpu swangle -feature -Vulkan -memory 3072 -cores 2 < /dev/null > work/glass-navigation/emulator.log 2>&1 &
+          "$ANDROID_HOME/emulator/emulator" -avd glassnavigation -no-window -no-audio -no-snapshot -no-boot-anim -no-metrics -accel on -port 5554 -gpu swangle -feature -Vulkan -memory 3072 -cores 4 < /dev/null > work/glass-navigation/emulator.log 2>&1 &
           task_glass_pid=$!
           printf '%s\n' "$task_glass_pid" > work/glass-navigation/emulator.pid
           printf 'emulator_pid=%s\n' "$task_glass_pid"
@@ -217,6 +293,7 @@ jobs:
             kill -0 "$task_glass_pid"
             test ! -f work/glass-navigation/emulator-exit.txt
             if [ "$(timeout 5 "$ANDROID_HOME/platform-tools/adb" -s emulator-5554 shell getprop sys.boot_completed | tr -d '\r')" = 1 ]; then
+              python3 -c "$ANDROID_CAPACITY_PREFLIGHT" guest 'workspace-api${{ matrix.device-api }}'
               task_glass_booted=true
               break
             fi
@@ -290,6 +367,7 @@ jobs:
             work/glass-navigation/**/*.json
             work/glass-navigation/**/*.log
             work/glass-navigation/**/*.txt
+            work/gecko-integration/android-capacity-*.json
       - name: Preserve build logs and lint report
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02

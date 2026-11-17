@@ -22,10 +22,12 @@ public final class GeckoTlsCpuIpComboIntegrationActivity extends MainActivity {
   JSONObject build,setup=new JSONObject(),cpuSetup=new JSONObject(),page=new JSONObject(),nativeProof=new JSONObject(),freshCpu=new JSONObject(),cpuStored=new JSONObject(),tlsSetup=new JSONObject(),tlsStored=new JSONObject(),freshTls=new JSONObject(),runtimeBinding=new JSONObject();
   boolean nativeStarted,nativeLocated,nativeTitle,nativeRequested,nativeAdmitted;
   String nonce,stage="startup",failure="";long deadline;boolean terminal,capturing,roots;
+  GeckoTlsFixtureTrust trust;JSONObject trustInput;
 
   @Override public void onCreate(Bundle saved){try{
     deadline=SystemClock.elapsedRealtime()+120000;BrowserFingerprintIntegrationActivity.validateIntent(this);
     nonce=getIntent().getStringExtra("runNonce");build=IntegrationBuildIdentity.read(this);
+    trustInput=new JSONObject(getIntent().getStringExtra("fixtureTrustInput"));
     if(!build.getString("sourceCommit").equals(getIntent().getStringExtra("sourceCommit")))throw new SecurityException("Installed source differs");
     IpTimeZoneFixtureScopes.requireArmed(this,build.getString("sourceCommit"),nonce);
     setup=IpTimeZoneFixtureScopes.read(this,IpTimeZoneFixtureScopes.SETUP);
@@ -85,6 +87,13 @@ static String sdkStartupRole(String target){
   final class Observed extends GeckoWebView {
     final ThreadLocal<String[]> admissionCall=new ThreadLocal<>();
     Observed(android.content.Context context,ChatSession owner){super(context,owner);}
+    void ensureTrust(){
+      if(trust!=null||terminal||runtime==null||!identityPrepared||deadline<=0||SystemClock.elapsedRealtime()>=deadline||!super.protectionAllowsNetwork())return;
+      try{trust=new GeckoTlsFixtureTrust(GeckoTlsCpuIpComboIntegrationActivity.this,this,build,nonce,nonce,getIntent().getStringExtra("expectedLeafSha256"),trustInput,()->deadline,
+        ()->{if(!destroyed&&!owner.deleted&&identityPrepared&&!ready)identityConfigurationReady();},GeckoTlsCpuIpComboIntegrationActivity.this::trustFailed);trust.start();}
+      catch(Throwable error){trustFailed(error);}
+    }
+    @Override boolean protectionAllowsNetwork(){boolean allowed=super.protectionAllowsNetwork();if(allowed)ensureTrust();return allowed&&trust!=null&&trust.bootReady();}
     @Override protected boolean allowedUrl(String target){
       String role=sdkStartupRole(target);String[] observed=admissionCall.get();
       if(observed!=null&&observed[1].isEmpty())return super.allowedUrl(target);
@@ -102,7 +111,7 @@ static String sdkStartupRole(String target){
       }finally{if(previous==null)admissionCall.remove();else admissionCall.set(previous);}
     }
     @Override GeckoSession newSession(){
-      runtime.getSettings().setEnterpriseRootsEnabled(true);roots=runtime.getSettings().getEnterpriseRootsEnabled();
+      roots=runtime.getSettings().getEnterpriseRootsEnabled();
       GeckoSession sdk=super.newSession();GeckoSession.ProgressDelegate progress=sdk.getProgressDelegate();
       sdk.setProgressDelegate(new GeckoSession.ProgressDelegate(){
         public void onPageStart(GeckoSession source,String url){if(TARGET.equals(url))nativeStarted=true;event("page-start",source,url);progress.onPageStart(source,url);}
@@ -137,6 +146,7 @@ static String sdkStartupRole(String target){
     JSONObject tls=session.tls.status();if(!"ready".equals(tls.optString("state"))||!tls.optBoolean("nativeSettingReadback")||!tls.optBoolean("startupReconciled")||!Boolean.FALSE.equals(tls.opt("rfpPriority")))return false;
     JSONObject cpu=session.cpu.status(),zone=remote.timeZoneStatus();return "ready".equals(cpu.optString("state"))&&cpu.optBoolean("nativeSettingReadback")&&cpu.optBoolean("startupReconciled")&&Boolean.FALSE.equals(cpu.opt("rfpPriority"))&&zone.optBoolean("nativeSettingReadback")&&zone.optBoolean("ipMatched");}
   void tick(){if(terminal||capturing)return;try{within();
+    if(remote instanceof Observed)((Observed)remote).ensureTrust();
     if(!ready()){publish();probe.postDelayed(this::tick,75);return;}
     capturing=true;GeckoSession sdk=remote.current;GeckoRuntime runtime=remote.runtime;GeckoWebView.TimeZoneGate gate=remote.timeZoneGates.get(sdk);long navigation=session.navigationEpoch,document=gate==null?-1:gate.documentSerial;
     remote.evaluateJavascript("document.documentElement.getAttribute('data-gecko-cpu-ip-combo')",raw->{try{
@@ -192,13 +202,15 @@ static String sdkStartupRole(String target){
     }catch(Throwable error){failed(error);}},this::failed);
   }
   void check(String id,boolean pass)throws Exception{checks.put(J.obj("id",id,"pass",pass));if(!pass)throw new AssertionError(id);}
-  void failed(Throwable error){if(terminal)return;terminal=true;failure=error.getClass().getSimpleName();for(StackTraceElement frame:error.getStackTrace())if(frame.getClassName().startsWith(getClass().getName())){failure+="@"+frame.getMethodName()+":"+frame.getLineNumber();break;}stage="failed";try{publish();}catch(Exception ignored){}}
+  void trustFailed(Throwable error){if(terminal&&failure.isEmpty())terminal=false;failed(error);}
+  void failed(Throwable error){if(terminal)return;terminal=true;failure=error instanceof IOException&&error.getMessage()!=null&&error.getMessage().startsWith("FixtureTrust:")?error.getMessage():error.getClass().getSimpleName();for(StackTraceElement frame:error.getStackTrace())if(frame.getClassName().startsWith(getClass().getName())){failure+="@"+frame.getMethodName()+":"+frame.getLineNumber();break;}stage="failed";try{publish();}catch(Exception ignored){}}
   void publish()throws Exception{if(build==null)return;JSONObject cpu=session==null?new JSONObject():session.cpu.status(),runtime=remote==null?new JSONObject():remote.nativeRuntimeCapabilities().optJSONObject("cpuPolicy");
     JSONObject value=J.obj("schema",1,"fixtureType","gecko-production-tls-cpu-ip-combo-v1","status",terminal?(failure.isEmpty()?"passed":"failed"):"running","stage",stage,"failure",failure,"sourceCommit",build.getString("sourceCommit"),"sourceTree",build.getString("sourceTree"),"runNonce",nonce,"buildIdentity",build,"activityClass",getClass().getName(),"scopeAllocationActivity",IpTimeZoneFixtureScopes.ACTIVITY,
       "setup",setup,"cpuSetup",cpuSetup,"tlsSetup",tlsSetup,"tlsStoredState",tlsStored,"freshTlsReadback",freshTls,"runtimeBinding",runtimeBinding,"tlsPolicy",session==null?new JSONObject():session.tls.status(),"runtimeTlsPolicy",remote==null?new JSONObject():remote.nativeRuntimeCapabilities().optJSONObject("tlsPolicy"),"startupPreparation",remote==null||remote.tlsBoot==null?new JSONObject():remote.tlsBoot.preparation.evidence(),"navigation",J.obj("targetStarted",nativeStarted,"targetLocation",nativeLocated,"titleMatched",nativeTitle,"targetRequestObserved",nativeRequested,"productionAdmissionReady",nativeAdmitted,"stopUsedAsCompletionOracle",false),"cpuStoredState",cpuStored,"process",J.obj("pid",android.os.Process.myPid(),"uid",android.os.Process.myUid(),"name",android.app.Application.getProcessName()),"page",page,"native",nativeProof,"cpuPolicy",cpu,"runtimeCpuPolicy",runtime==null?new JSONObject():runtime,"freshCpuReadback",freshCpu,"tls",remote==null||securities.get(remote.current)==null?new JSONObject():securities.get(remote.current),"checks",checks,"nativeEvents",events,"actualAndroidExecution",true,"actualGeckoExecution",remote!=null&&remote.runtime!=null,"productionChatSession",session!=null&&remote!=null&&session.web==remote&&remote instanceof Observed,
       "syntheticGeoService",true,"actualPublicIpGeolocationVerified",false,"workerCoverageVerified",false,"serviceWorkerCoverageVerified",false,"fingerprintProtectionVerified",false,"fullTlsFingerprintEmulation",false,"quicWireVerified",false,"rawFatalAlertPacketDecoded",false,"appIndependentTlsStacksCovered",false);
+    value.put("fixtureTrust",trust==null?new JSONObject():trust.evidence());
     byte[] raw=(value.toString()+"\n").getBytes(StandardCharsets.UTF_8);if(raw.length>524288)throw new IOException("Combined device report bound");
     AtomicFile file=new AtomicFile(new File(Profiles.global(this).getFilesDir(),FILE));FileOutputStream out=null;try{out=file.startWrite();out.write(raw);file.finishWrite(out);}catch(Exception error){if(out!=null)file.failWrite(out);throw error;}
   }
-  @Override protected void onDestroy(){probe.removeCallbacksAndMessages(null);writer.shutdownNow();super.onDestroy();}
+  @Override protected void onDestroy(){if(trust!=null)trust.close();probe.removeCallbacksAndMessages(null);writer.shutdownNow();super.onDestroy();}
 }

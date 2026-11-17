@@ -18,6 +18,7 @@ final class DesignChrome {
   final TextView title,dot,stateWord,latencyWord,compactTitle;
   final FrameLayout compact;
   final LinearLayout top,networkRow;
+  final View networkDivider;
   final LinearLayout modes=null; // Historical tests may inspect the retired control.
   final LinearLayout diagnosticRow;
   final Button diagnosticBack,diagnosticResults;
@@ -57,45 +58,47 @@ final class DesignChrome {
     Ui.Icon disclosure=new Ui.Icon("globe",DesignUi.GLASS_MUTED);disclosure.setBounds(0,0,a.dp(14),a.dp(14));
     compactTitle.setCompoundDrawables(disclosure,null,null,null);compactTitle.setCompoundDrawablePadding(a.dp(7));
     centerCapsuleContents(compactTitle,14);
-    compactTitle.setBackground(DesignUi.glass(a,20));
+    compactTitle.setBackground(DesignUi.glass(a,18));
     compactTitle.setDuplicateParentStateEnabled(true);
     compactTitle.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
     GlassMotion.press(compactTitle,false);
-    FrameLayout.LayoutParams compactLabel=new FrameLayout.LayoutParams(-2,Math.max(a.dp(40),textHeight(compactTitle)+a.dp(8)),Gravity.CENTER);
+    FrameLayout.LayoutParams compactLabel=new FrameLayout.LayoutParams(-2,Math.max(a.dp(36),textHeight(compactTitle)+a.dp(8)),Gravity.TOP|Gravity.CENTER_HORIZONTAL);
+    compactLabel.topMargin=a.dp(2);
     compactLabel.leftMargin=a.dp(16);compactLabel.rightMargin=a.dp(16);
     compact.addView(compactTitle,compactLabel);
     compact.setFocusable(true);
     compact.setDefaultFocusHighlightEnabled(false);
-    compact.setContentDescription("当前环境："+compactTitle.getText()+"，点按输入网址，长按切换环境");
-    addressCapsule(compact);
-    int compactHeight=Math.max(a.dp(48),textHeight(compactTitle)+a.dp(8));
+    compact.setContentDescription("当前环境："+compactTitle.getText()+"，点按切换环境");
+    environmentCapsule(compact);
+    int compactHeight=Math.max(a.dp(48),compactLabel.height+a.dp(4));
     a.toolbar.addView(compact,new LinearLayout.LayoutParams(-1,compactHeight));
     top=DesignUi.row(a);
-    title=ReferenceUi.text(a,compactTitle.getText().toString(),16,DesignUi.GLASS_INK,true);
+    title=ReferenceUi.text(a,compactTitle.getText().toString(),15,DesignUi.GLASS_INK,true);
     ReferenceUi.readable(title);
     profileName=title.getText().toString();
     ReferenceUi.single(title);
-    title.setMinWidth(a.dp(160));title.setMaxWidth(a.dp(192));
+    title.setMinWidth(a.dp(112));title.setMaxWidth(a.dp(192));
     Ui.Icon addressIcon=new Ui.Icon("globe",DesignUi.GLASS_MUTED);addressIcon.setBounds(0,0,a.dp(16),a.dp(16));
     title.setCompoundDrawables(addressIcon,null,null,null);title.setCompoundDrawablePadding(a.dp(8));
-    centerCapsuleContents(title,16);
-    title.setBackground(DesignUi.glass(a,26));
+    centerCapsuleContents(title,14);
+    title.setBackground(DesignUi.glass(a,18));
     GlassMotion.press(title,false);
-    title.setContentDescription("当前环境："+profileName+"，点按输入网址，长按切换环境");
-    addressCapsule(title);
+    title.setContentDescription("当前环境："+profileName+"，点按切换环境");
+    environmentCapsule(title);
 
-    int capsuleHeight=Math.max(a.dp(52),textHeight(title)+a.dp(12));
-    int topHeight=Math.max(a.dp(56),capsuleHeight+a.dp(4));
+    int capsuleHeight=Math.max(a.dp(36),textHeight(title)+a.dp(8));
+    int topHeight=Math.max(a.dp(48),capsuleHeight+a.dp(4));
     top.setClipChildren(false);top.setClipToPadding(false);
     // The visual capsule stays compact while its existing touch delegate keeps
     // a 48 dp action. AT_MOST child measurement also fits narrow windows.
     FrameLayout capsuleHost=new FrameLayout(a);
     capsuleHost.setClipChildren(false);capsuleHost.setClipToPadding(false);
     capsuleHost.setPadding(a.dp(4),0,a.dp(4),0);
-    capsuleHost.addView(title,new FrameLayout.LayoutParams(-2,capsuleHeight,Gravity.CENTER));
+    FrameLayout.LayoutParams titleParams=new FrameLayout.LayoutParams(-2,capsuleHeight,Gravity.TOP|Gravity.CENTER_HORIZONTAL);titleParams.topMargin=a.dp(2);
+    capsuleHost.addView(title,titleParams);
     top.addView(capsuleHost,new LinearLayout.LayoutParams(0,topHeight,1));
     a.toolbar.addView(top,new LinearLayout.LayoutParams(-1,topHeight));
-    // AppHub owns the bottom browser controls; the header contains only identity.
+    // AppHub owns the bottom address and actions; this header owns environment status.
     a.geckoAddress=new GeckoAddressUi(a);
 
     dot=ReferenceUi.text(a,"●",9,ReferenceUi.MUTED,false);
@@ -115,9 +118,19 @@ final class DesignChrome {
     for(TextView text:new TextView[]{dot,a.networkLine,latencyWord,stateWord})lineHeight=Math.max(lineHeight,textHeight(text)+a.dp(2));
     networkRow=new NetworkStatusRow(lineHeight);
     networkRow.setPadding(a.dp(6),0,a.dp(6),a.dp(4));
-    // Details remain current, but occupy space only when the browser menu opens.
-    networkRow.setClickable(false);
-    networkRow.setFocusable(false);
+    networkRow.setMinimumHeight(a.dp(48));networkRow.setFocusable(true);
+    networkRow.setBackground(Ui.ripple(a,Color.TRANSPARENT,8));
+    networkRow.setOnClickListener(v->NetworkMetricsUi.show(a));
+    for(TextView text:new TextView[]{dot,a.networkLine,latencyWord,stateWord})text.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+    networkRow.setAccessibilityDelegate(new View.AccessibilityDelegate(){
+      @Override public void onInitializeAccessibilityNodeInfo(View host,AccessibilityNodeInfo info){
+        super.onInitializeAccessibilityNodeInfo(host,info);info.setClassName(Button.class.getName());
+        info.setText(a.networkLine.getText()+" · "+latencyWord.getText()+" · "+stateWord.getText());
+      }
+    });
+    a.toolbar.addView(networkRow,new LinearLayout.LayoutParams(-1,-2));
+    networkDivider=new View(a);networkDivider.setBackgroundColor(ReferenceUi.LINE);networkDivider.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+    a.toolbar.addView(networkDivider,new LinearLayout.LayoutParams(-1,Math.max(1,a.dp(1)/2)));
     diagnosticRow=DesignUi.row(a);diagnosticBack=new Button(a);diagnosticBack.setText("返回原聊天");diagnosticResults=new Button(a);diagnosticResults.setText("查看自检结果");
     diagnosticBack.setOnClickListener(v->{if(!a.session.audit.returnRequestIdentity())EnvironmentAuditUi.show(a);});diagnosticResults.setOnClickListener(v->EnvironmentAuditUi.show(a));
     diagnosticRow.addView(diagnosticBack,new LinearLayout.LayoutParams(0,-2,1));diagnosticRow.addView(diagnosticResults,new LinearLayout.LayoutParams(0,-2,1));diagnosticRow.setVisibility(View.GONE);a.toolbar.addView(diagnosticRow,new LinearLayout.LayoutParams(-1,-2));
@@ -128,12 +141,9 @@ final class DesignChrome {
     a.toolbar.post(this::layoutTouchTargets);
   }
 
-  /** Reuse the current status views without retaining an earlier menu's parent. */
+  /** Menus describe their owner without stealing the always-visible status views. */
   void addMenuStatus(ReferenceUi.Modal menu){
-    if(networkRow.getParent() instanceof ViewGroup)((ViewGroup)networkRow.getParent()).removeView(networkRow);
-    menu.body.addView(networkRow,new LinearLayout.LayoutParams(-1,-2));
-    menu.setOnDismissListener(ignored->{if(networkRow.getParent()==menu.body)menu.body.removeView(networkRow);});
-    updateMetrics();
+    menu.note("当前环境："+profileName);
   }
 
   /** Wrap at the measured width, including split-screen and enlarged native text. */
@@ -172,16 +182,15 @@ final class DesignChrome {
 
   boolean expanded(){return !collapsed;}
 
-  /** Android consumes a handled long press, so releasing it cannot open the editor. */
-  private void addressCapsule(View view){
+  /** The environment capsule has one action; the bottom address owns URL input. */
+  private void environmentCapsule(View view){
     view.setFocusable(true);
-    view.setOnClickListener(v->{reveal();GeckoAddressUi.show(a);});
-    view.setOnLongClickListener(v->{cancelWebGesture();a.chooseEnvironment();return true;});
+    view.setOnClickListener(v->{reveal();a.chooseEnvironment();});
+    view.setLongClickable(false);
     view.setAccessibilityDelegate(new View.AccessibilityDelegate(){
       @Override public void onInitializeAccessibilityNodeInfo(View host,AccessibilityNodeInfo info){
         super.onInitializeAccessibilityNodeInfo(host,info);info.setClassName(Button.class.getName());
-        info.addAction(new AccessibilityNodeInfo.AccessibilityAction(AccessibilityNodeInfo.ACTION_CLICK,"输入网址"));
-        info.addAction(new AccessibilityNodeInfo.AccessibilityAction(AccessibilityNodeInfo.ACTION_LONG_CLICK,"切换环境"));
+        info.addAction(new AccessibilityNodeInfo.AccessibilityAction(AccessibilityNodeInfo.ACTION_CLICK,"切换环境"));
       }
     });
   }
@@ -257,6 +266,7 @@ final class DesignChrome {
     touchTargets=null;a.toolbar.setTouchDelegate(null);
     compact.setVisibility(value?View.VISIBLE:View.GONE);
     top.setVisibility(value?View.GONE:View.VISIBLE);
+    networkRow.setVisibility(value?View.GONE:View.VISIBLE);networkDivider.setVisibility(value?View.GONE:View.VISIBLE);
     View visible=value?compact:top;
     visible.animate().cancel();
     if(android.animation.ValueAnimator.areAnimatorsEnabled()){visible.setAlpha(.65f);visible.animate().alpha(1f).setDuration(140).start();}else visible.setAlpha(1f);
@@ -316,8 +326,8 @@ final class DesignChrome {
     if(a.destroyed||!a.active)return;UiPerfStats.chromeUpdate();refreshMetadata();
     text(title,profileName);
     text(compactTitle,profileName);
-    description(compact,"当前环境："+profileName+"，点按输入网址，长按切换环境");
-    description(title,"当前环境："+profileName+"，点按输入网址，长按切换环境");
+    description(compact,"当前环境："+profileName+"，点按切换环境");
+    description(title,"当前环境："+profileName+"，点按切换环境");
     boolean diagnostic=a.session.audit.canReturnRequestIdentity();int diagnosticVisibility=diagnostic?View.VISIBLE:View.GONE;if(diagnosticRow.getVisibility()!=diagnosticVisibility)diagnosticRow.setVisibility(diagnosticVisibility);diagnosticResults.setEnabled(!a.session.audit.running);
     NativeNetwork network=metrics?NetworkMetricsUi.maintainNow(a):NativeNetwork.get(a);
     JSONObject config=network.settings==null?new JSONObject():network.settings;

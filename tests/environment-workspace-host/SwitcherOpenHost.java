@@ -53,6 +53,23 @@ final class SwitcherOpenHost {
       caller=reset(row(slot));check(!EnvironmentSwitcherUi.open(caller,row(slot),"chat",false)&&caller.starts==0&&ProfileCatalog.instance.reads==0,"out-of-range slot rejected "+slot);
     }
     caller=reset(row(1));check(!EnvironmentSwitcherUi.open(caller,null,"chat",false)&&caller.starts==0,"missing expected environment rejected");
+    for(int activeSlot:new int[]{0,1})for(int targetSlot:new int[]{0,1}){
+      reset(row(targetSlot));BrowserActivity chromium=new BrowserActivity(activeSlot);
+      check(EnvironmentSwitcherUi.open(chromium,row(targetSlot),"chat",false),"Chromium environment switches its actual engine");
+      check(chromium.starts==1&&chromium.started.target==BrowserActivity.activity(targetSlot),"Chromium exact environment Activity starts once");
+      check(chromium.started.flags==(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_REORDER_TO_FRONT),"Chromium reuses its retained Activity");
+      check(chromium.started.extras.isEmpty()&&EnvironmentOverviewUi.openings==0,"Chromium environment switch has no URL, document replacement or overview command");
+      check(ProfileCatalog.instance.reads==2&&ProfileCatalog.instance.opened==1&&ProfileCatalog.instance.openedSlot==targetSlot,"Chromium recent use follows both identity checks");
+    }
+    reset(row(1));BrowserActivity chromium=new BrowserActivity(0);
+    ProfileCatalog.instance.replaceOnSecondRead=row(1).put("environmentId","replaced while preparing Chromium intent");
+    check(!EnvironmentSwitcherUi.open(chromium,row(1),"chat",false)&&chromium.starts==0&&ProfileCatalog.instance.opened==0,"Chromium second identity check rejects replacement");
+    reset(row(1));chromium=new BrowserActivity(0);chromium.destroyed=true;
+    check(!EnvironmentSwitcherUi.open(chromium,row(1),"chat",false)&&ProfileCatalog.instance.reads==0&&chromium.starts==0,"Destroyed Chromium caller cannot switch or read metadata");
+    reset(row(1));chromium=new BrowserActivity(0);
+    check(EnvironmentSwitcherUi.open(chromium,row(1),"edit",false)&&chromium.started.target==Profiles.activity(1)&&"edit".equals(chromium.started.extras.get("openWindowAction")),"Explicit Chromium environment edit still opens the original editor");
+    reset(row(1));chromium=new BrowserActivity(0);
+    check(EnvironmentSwitcherUi.open(chromium,row(1),"chat",true)&&EnvironmentOverviewUi.openings==1,"Explicit overview retains original routing for Chromium callers");
     return checks;
   }
 }

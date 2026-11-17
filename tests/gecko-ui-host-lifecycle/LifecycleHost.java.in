@@ -70,6 +70,16 @@ public final class LifecycleHost {
     Body body=new Body();web.content.onExternalResponse(web.current,new WebResponse(body));check(next.downloads.responses==1&&old.downloads.responses==0,"New host receives native response after old Activity destruction");
     check(!reachable(web,old),"New host never retains retired Activity through browser callbacks");next.onDestroy();
   }
+  static void toolsRetirement(){
+    fresh();MainActivity old=open();GeckoWebView web=old.remote;ChatSession session=old.session;long epoch=session.navigationEpoch;
+    BrowserToolsUi tools=new BrowserToolsUi();old.toolsPanel=tools;MainActivity next=new MainActivity();
+    tools.panel.onDismiss=()->{check(old.destroyed,"Tool dialog dismiss callback observes the retired Activity");next.createChatUi();next.toolsPanel=new BrowserToolsUi();};
+    old.onDestroy();
+    check(tools.panel.dismisses==1,"Actual Activity teardown dismisses its tool panel exactly once");
+    check(next.toolsPanel!=null&&next.toolsPanel.panel.dismisses==0&&web.displayContext.getBaseContext()==next&&web.getParent()!=null&&web.getParent().context==next,"Tool dialog dismissal reentry preserves the replacement host and its panel");
+    check(ChatSession.instance==session&&web.current.closed==0&&!web.destroyed&&session.navigationEpoch==epoch,"Tool dialog retirement preserves the retained browser document");
+    if(next.toolsPanel!=null){BrowserToolsUi replacement=next.toolsPanel;next.onDestroy();check(replacement.panel.dismisses==1,"Replacement Activity teardown dismisses only its own tool panel");}
+  }
   static void detachReentry(){
     fresh();MainActivity old=open();GeckoWebView web=old.remote;MainActivity next=new MainActivity();ViewGroup oldParent=web.getParent();oldParent.onRemove=()->next.createChatUi();old.onDestroy();
     check(web.getParent()!=null&&web.getParent()!=oldParent&&web.getParent().context==next,"Detach callback can attach newer host without subsequent removal");
@@ -150,7 +160,7 @@ public final class LifecycleHost {
   }
   static void run(String name,Runnable action,String requested){if(!"all".equals(requested)&&!name.equals(requested))return;try{action.run();}catch(Throwable error){failures.add(name+": "+error);}}
   public static void main(String[] args){String focus=args.length==0?"all":args[0];
-    run("retention",LifecycleHost::retention,focus);run("replacement",LifecycleHost::replacement,focus);run("detach",LifecycleHost::detachReentry,focus);run("popup",LifecycleHost::popupReentry,focus);run("auxiliary",LifecycleHost::auxiliaryReentry,focus);run("chooser",LifecycleHost::chooser,focus);run("chooser-reentry",LifecycleHost::chooserReentry,focus);run("independent",LifecycleHost::independentCallbacks,focus);run("parent",LifecycleHost::movedParent,focus);run("pause",LifecycleHost::pause,focus);run("pause-reentry",LifecycleHost::pauseReentry,focus);run("pause-audit",LifecycleHost::pauseAuditReentry,focus);run("pause-keyboard",LifecycleHost::pauseKeyboardReentry,focus);run("pause-traffic",LifecycleHost::pauseTrafficReentry,focus);
+    run("retention",LifecycleHost::retention,focus);run("replacement",LifecycleHost::replacement,focus);run("detach",LifecycleHost::detachReentry,focus);run("popup",LifecycleHost::popupReentry,focus);run("auxiliary",LifecycleHost::auxiliaryReentry,focus);run("chooser",LifecycleHost::chooser,focus);run("chooser-reentry",LifecycleHost::chooserReentry,focus);run("independent",LifecycleHost::independentCallbacks,focus);run("parent",LifecycleHost::movedParent,focus);run("pause",LifecycleHost::pause,focus);run("pause-reentry",LifecycleHost::pauseReentry,focus);run("pause-audit",LifecycleHost::pauseAuditReentry,focus);run("pause-keyboard",LifecycleHost::pauseKeyboardReentry,focus);run("pause-traffic",LifecycleHost::pauseTrafficReentry,focus);run("tools",LifecycleHost::toolsRetirement,focus);
     System.out.println(new JSONObject().put("status",failures.isEmpty()?"passed":"failed").put("passed",checks-failures.size()).put("checks",checks).put("failures",new JSONArray(failures)).put("actualAndroidExecution",false).put("actualGeckoExecution",false));if(!failures.isEmpty())System.exit(1);
   }
 }
@@ -158,7 +168,7 @@ public final class LifecycleHost {
 class MainActivity extends Activity {
   GeckoWebView remote;ChatSession session;/*BINDING_DECLARATION*/
   JSONObject pending;JSONArray entries;String conversation;boolean destroyed,active,keyboardVisible;int statusCalls;
-  DesignChrome designChrome;GeckoAddressUi geckoAddress;AppHub hub;EnvironmentOverviewUi environmentOverview;BrowserStartupGate browserStartup;UiFrameScheduler sessionUi;final ChatSession.Observer sessionObserver=()->requestSessionUi();
+  DesignChrome designChrome;GeckoAddressUi geckoAddress;BrowserToolsUi toolsPanel;AppHub hub;EnvironmentOverviewUi environmentOverview;BrowserStartupGate browserStartup;UiFrameScheduler sessionUi;final ChatSession.Observer sessionObserver=()->requestSessionUi();
   TextView status;Button focusExit;LoadingUi loading;Attachments attachments;FileDownloads downloads;ChatDownloadProgressUi chatDownloadProgress;Dialog reloadDialog,networkDialog;final Handler handler=new Handler();final Runnable ticker=()->{};
   TextView label(String text,int size,int color){return new TextView(this);}int dp(int value){return value;}void updateReadingLayout(){}void showStatusDetails(){}void setFocusReading(boolean value){}void applySession(){}void requestSessionUi(){}void showPage(boolean value){}void resumeChatUi(){session.foreground(true);session.add(sessionObserver);}void startNetwork(){}void startBrowserAfterOverview(){}void openNotification(Intent value){}void status(String value){statusCalls++;}
   /*ACTUAL_MAIN_METHODS*/
@@ -216,5 +226,7 @@ class UiFrameScheduler {interface Frames{void post(Runnable frame);void cancel(R
 class LoadingUi {final View cover;LoadingUi(MainActivity a){cover=new View(a);}void dismissTask(){}}
 class ChatDownloadProgressUi {ChatDownloadProgressUi(MainActivity a,LinearLayout root,FrameLayout stack,FileDownloads downloads){}void close(){}void visible(boolean value){}}
 class NativeNetwork {static NativeNetwork instance=new NativeNetwork();final Traffic traffic=new Traffic();static NativeNetwork get(MainActivity a){return instance;}static class Traffic{Runnable onWatch;int watches;void watch(boolean value){watches++;Runnable action=onWatch;onWatch=null;if(action!=null)action.run();}}}
-class Dialog {void dismiss(){}}
+// Only native dialog delivery is a boundary; the whole production onDestroy runs above.
+class BrowserToolsUi {final Dialog panel=new Dialog();}
+class Dialog {int dismisses;Runnable onDismiss;void dismiss(){dismisses++;Runnable action=onDismiss;onDismiss=null;if(action!=null)action.run();}}
 class ExitIpPageUi {static void close(MainActivity a){if(a.remote!=null)a.remote.closeExitIpPage();}}

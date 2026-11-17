@@ -36,11 +36,13 @@ def verify_compact_touch_evidence(chrome, source):
     assert chrome['status']=='passed' and chrome['actualAndroidExecution'] and chrome['sourceCommit']==source and len(chrome['cases'])==3,message
     cases=chrome['cases']
     versions=[case.get('navigationContract',1) for case in cases]
-    assert all(type(version) is int and version in (1,2,3) for version in versions),message
+    assert all(type(version) is int and version in (1,2,3,4) for version in versions),message
     assert len(set(versions))==1,'Compact chrome cannot mix navigation contract versions.'
-    if versions[0] in (2,3):
+    if versions[0] in (2,3,4):
         assert chrome['actualAndroidExecution'] is True,message
-        if versions[0]==3:
+        if versions[0]==4:
+            from gecko.compact_chrome_layout_v4 import verify_case
+        elif versions[0]==3:
             from gecko.compact_chrome_layout_v3 import verify_case
         else:
             from gecko.compact_chrome_layout_v2 import verify_case
@@ -151,7 +153,10 @@ if version_code>=108:
     verify_installed(json.loads((args.evidence/'photo-upload-results.json').read_text())['buildIdentity'],report['eventTransport']['buildIdentity'])
 production_navigation=None
 if version_code>=108:
-    from gecko.workspace_navigation_contract_v3 import verify_workspace_roundtrip
+    if version_code>=109:
+        from gecko.workspace_navigation_contract_v4 import verify_workspace_roundtrip
+    else:
+        from gecko.workspace_navigation_contract_v3 import verify_workspace_roundtrip
     navigation_report_raw=(args.evidence/'device-results.json').read_bytes()
     assert json.loads(navigation_report_raw)==report,'Native navigation must use the original checked device report.'
     production_navigation=dict(sourceCommit=args.source,deviceReportSha256=hashlib.sha256(navigation_report_raw).hexdigest(),
@@ -166,8 +171,9 @@ if version_code>=42:
     assert quiet['status']=='passed' and quiet['actualAndroidExecution'] and quiet['sourceCommit']==args.source and quiet['checkCount']>=24 and all(c['pass'] for c in quiet['checks']),'Quiet service and completion reminder regression is required.'
     verify_compact_touch_evidence(chrome,args.source)
     if version_code>=108:
-        assert all(case['navigationContract']==3 for case in chrome['cases']),'Current bottom browser toolbar evidence is required.'
-        assert chrome['autoCollapse']['navigationContract']==3,'Current menu/navigation lifecycle evidence is required.'
+        expected_navigation=4 if version_code>=109 else 3
+        assert all(case['navigationContract']==expected_navigation for case in chrome['cases']),'Current bottom browser toolbar evidence is required.'
+        assert chrome['autoCollapse']['navigationContract']==expected_navigation,'Current menu/navigation lifecycle evidence is required.'
     if version_code>=68:
         from gecko.check_interaction_transfer_evidence import verify_display_sampling
         verify_display_sampling(network)
@@ -330,6 +336,9 @@ if version_code>=43:
     if (root/'tools/gecko/chrome_collapse_contract.py').is_file():shutil.copy2(root/'tools/gecko/chrome_collapse_contract.py',stage/'tools/gecko/chrome_collapse_contract.py')
     for name in ('compact_chrome_layout_v2.py','chrome_collapse_contract_v2.py','workspace_navigation_contract.py','download_workspace_contract_v2.py','compact_chrome_layout_v3.py','chrome_collapse_contract_v3.py','workspace_navigation_contract_v3.py','ui_hierarchy_driver.py','chrome_collapse_case_storage.py'):
         shutil.copy2(root/'tools/gecko'/name,stage/'tools/gecko'/name)
+    if version_code>=109:
+        for name in ('compact_chrome_layout_v4.py','chrome_collapse_contract_v4.py','workspace_navigation_contract_v4.py'):
+            shutil.copy2(root/'tools/gecko'/name,stage/'tools/gecko'/name)
 if version_code>=108:shutil.copy2(root/'tools/gecko/photo_upload_contract.py',stage/'tools/gecko/photo_upload_contract.py')
 shutil.copy2(root/'tools/gecko/release_channel_contract.py',stage/'tools/gecko/release_channel_contract.py')
 shutil.copy2(root/'tools/gecko/network_scope_artifacts.py',stage/'tools/gecko/network_scope_artifacts.py')

@@ -128,41 +128,46 @@ def collect_v2_diagnostics(integration,destination,source,identity):
     return records
 
 
-def collect_v3_diagnostics(integration,destination,source,identity):
+def _collect_current_diagnostics(integration,destination,source,identity,version):
     """Copy only this invocation's nonce-bound originals, never a passed oracle."""
-    candidates={path.name:path for path in integration.glob('chrome-v3-*')}
+    if type(version) is not int or version not in (3,4):raise ValueError('Unsupported diagnostic contract')
+    prefix='chrome-v'+str(version)+'-'
+    candidates={path.name:path for path in integration.glob(prefix+'*')}
     if not candidates:return []
-    from chrome_collapse_contract_v3 import UI_PHASES
+    if version==4:
+        from chrome_collapse_contract_v4 import UI_PHASES
+    else:
+        from chrome_collapse_contract_v3 import UI_PHASES
     from integration_event_contract import decode_event
     phases='(?:'+'|'.join(sorted(UI_PHASES))+')'
-    partials=[path for name,path in candidates.items() if re.fullmatch(r'chrome-v3-[0-9a-f]{32}-partial\.json',name)]
-    if not 1<=len(partials)<=3:raise ValueError('Missing or excessive owned v3 diagnostic cases')
+    partials=[path for name,path in candidates.items() if re.fullmatch(prefix+r'[0-9a-f]{32}-partial\.json',name)]
+    if not 1<=len(partials)<=3:raise ValueError('Missing or excessive owned current diagnostic cases')
     selected={};cohorts=set()
     def original(path):
-        if path.is_symlink() or not path.is_file():raise ValueError('V3 diagnostic must be a regular original file')
+        if path.is_symlink() or not path.is_file():raise ValueError('Current diagnostic must be a regular original file')
         return path.read_bytes()
     def include(metadata,pattern):
         name=metadata['name']
         if type(name) is not str or re.fullmatch(pattern,name) is None:
-            raise ValueError('Unowned v3 diagnostic path')
-        if name in selected or name not in candidates:raise ValueError('Duplicate or missing v3 diagnostic file')
+            raise ValueError('Unowned current diagnostic path')
+        if name in selected or name not in candidates:raise ValueError('Duplicate or missing current diagnostic file')
         raw=original(candidates[name])
         if type(metadata['bytes']) is not int or metadata['bytes']!=len(raw) or metadata['sha256']!=hashlib.sha256(raw).hexdigest():
-            raise ValueError('V3 diagnostic original bytes changed')
+            raise ValueError('Current diagnostic original bytes changed')
         selected[name]=raw
         return raw
     for path in sorted(partials):
-        raw=original(path);value=json.loads(raw);nonce=path.name[len('chrome-v3-'):-len('-partial.json')]
-        if (type(value.get('schema')) is not int or value['schema']!=1 or type(value.get('navigationContract')) is not int or value['navigationContract']!=3
+        raw=original(path);value=json.loads(raw);nonce=path.name[len(prefix):-len('-partial.json')]
+        if (type(value.get('schema')) is not int or value['schema']!=1 or type(value.get('navigationContract')) is not int or value['navigationContract']!=version
             or value.get('runNonce')!=nonce or value.get('sourceCommit')!=source or value.get('sourceTree')!=identity['sourceTree']
             or value.get('buildIdentity')!=identity or value.get('diagnosticOnly') is not True or value.get('releaseAcceptance') is not False
             or type(value.get('caseCompleted')) is not bool):
-            raise ValueError('V3 diagnostic belongs to another source, APK or invocation')
+            raise ValueError('Current diagnostic belongs to another source, APK or invocation')
         cohort=(value.get('viewport'),value.get('fontScale'))
-        if any(type(n) is not int for n in cohort) or cohort not in ((360,1),(412,1),(360,2)) or cohort in cohorts:raise ValueError('Duplicate or undeclared v3 diagnostic cohort')
+        if any(type(n) is not int for n in cohort) or cohort not in ((360,1),(412,1),(360,2)) or cohort in cohorts:raise ValueError('Duplicate or undeclared current diagnostic cohort')
         cohorts.add(cohort)
         if value['eventTransfer']['runNonce']!=nonce or value['eventTransfer']['fixtureAction']!='chromeCollapse' or type(value['eventTransfer']['processSlot']) is not int or value['eventTransfer']['processSlot']!=0:
-            raise ValueError('V3 partial events belong to another invocation')
+            raise ValueError('Current partial events belong to another invocation')
         for row in value['eventTransfer']['events']:
             # The installed identity also contains its native explanatory scope.
             # Use the original complete transport reader: it binds every build,
@@ -171,34 +176,42 @@ def collect_v3_diagnostics(integration,destination,source,identity):
             decode_event(row['receipt'],row['rawUtf8'].encode('utf-8'),
                          identity=identity,nonce=nonce,slot=0,action='chromeCollapse')
         if any(item['runNonce']!=nonce or item['sourceCommit']!=source for item in value['nativeUi'].values()):
-            raise ValueError('V3 native UI belongs to another invocation')
-        if not re.fullmatch('[0-9a-f]{32}',value['captureRunNonce']):raise ValueError('Missing v3 acquisition nonce')
-        if type(value['captureAttemptCount']) is not int or value['captureAttemptCount']<0:raise ValueError('Missing actual v3 acquisition count')
+            raise ValueError('Current native UI belongs to another invocation')
+        if not re.fullmatch('[0-9a-f]{32}',value['captureRunNonce']):raise ValueError('Missing current acquisition nonce')
+        if type(value['captureAttemptCount']) is not int or value['captureAttemptCount']<0:raise ValueError('Missing actual current acquisition count')
         if value['captureFile'] is None:
-            if ('chrome-v3-ui-capture-'+nonce+'.json') in candidates or not isinstance(value.get('captureError'),str) or not value['captureError']:
-                raise ValueError('Missing v3 capture must retain its actual absence')
+            if (prefix+'ui-capture-'+nonce+'.json') in candidates or not isinstance(value.get('captureError'),str) or not value['captureError']:
+                raise ValueError('Missing current capture must retain its actual absence')
             if value['captureStatus']=='not-started':
                 if value['captureAttemptCount']!=0 or value['uiAttempts'] or value['rawFiles'] or value['nativeUi'] or value['caseCompleted']:
-                    raise ValueError('V3 acquisition was already started')
+                    raise ValueError('Current acquisition was already started')
             elif value['captureStatus']!='missing' or value['captureAttemptCount']==0:
-                raise ValueError('Unrecognized missing v3 capture')
+                raise ValueError('Unrecognized missing current capture')
         else:
-            if value['captureStatus']!='available':raise ValueError('V3 original capture availability differs')
-            capture=include(value['captureFile'],'chrome-v3-ui-capture-'+nonce+r'\.json')
+            if value['captureStatus']!='available':raise ValueError('Current original capture availability differs')
+            capture=include(value['captureFile'],prefix+'ui-capture-'+nonce+r'\.json')
             capture_value=json.loads(capture)
             if capture_value['sourceCommit']!=source or capture_value['runNonce']!=value['captureRunNonce'] or capture_value['attemptCount']!=value['captureAttemptCount']:
-                raise ValueError('V3 capture belongs to another source or acquisition')
+                raise ValueError('Current capture belongs to another source or acquisition')
         for metadata in value['rawFiles']:
-            include(metadata,'chrome-v3-'+nonce+'-'+phases+r'-attempt-[1-9][0-9]*\.(?:xml|activity\.txt)')
+            include(metadata,prefix+nonce+'-'+phases+r'-attempt-[1-9][0-9]*\.(?:xml|activity\.txt)')
         selected[path.name]=raw
-    if set(selected)!=set(candidates):raise ValueError('Unexpected or unowned v3 diagnostic files')
+    if set(selected)!=set(candidates):raise ValueError('Unexpected or unowned current diagnostic files')
     if any((destination/name).exists() or (destination/name).is_symlink() for name in selected):
-        raise ValueError('Pre-existing v3 destination cannot be overwritten')
+        raise ValueError('Pre-existing current destination cannot be overwritten')
     records=[]
     for name,raw in sorted(selected.items()):
         with (destination/name).open('xb') as stream:stream.write(raw)
         records.append(dict(name=name,bytes=len(raw),sha256=hashlib.sha256(raw).hexdigest()))
     return records
+
+
+def collect_v3_diagnostics(integration,destination,source,identity):
+    return _collect_current_diagnostics(integration,destination,source,identity,3)
+
+
+def collect_v4_diagnostics(integration,destination,source,identity):
+    return _collect_current_diagnostics(integration,destination,source,identity,4)
 
 
 def main():
@@ -223,12 +236,14 @@ def main():
     inputs=['tests/gecko/run_ui_visuals.py','tests/gecko/run_chrome_collapse.py','tests/gecko/run_chrome_collapse_diagnostic.py','tests/gecko/ChromeCollapseIntegration.java','tools/gecko/chrome_collapse_contract.py',
         'tests/gecko/run_chrome_collapse_v2.py','tools/gecko/chrome_collapse_contract_v2.py',
         'tests/gecko/run_chrome_collapse_v3.py','tools/gecko/chrome_collapse_contract_v3.py',
+        'tests/gecko/run_chrome_collapse_v4.py','tools/gecko/chrome_collapse_contract_v4.py',
+        'tools/gecko/workspace_navigation_contract_v4.py','tools/gecko/compact_chrome_layout_v4.py',
         'tools/gecko/workspace_navigation_contract_v3.py','tools/gecko/compact_chrome_layout_v3.py',
         'tools/gecko/workspace_navigation_contract.py','tools/gecko/compact_chrome_layout_v2.py','tools/gecko/ui_visual_capture.py',
         'tests/gecko/CompactChromeIntegrationActivity.java','tests/gecko/ReloadWindowCallbackObservation.java',
         'tools/gecko/ui_test_device.py','tests/gecko/ui_settings_services_device11.py']
     hashes={p:hashlib.sha256((ROOT/p).read_bytes()).hexdigest() for p in inputs}
-    namespace=dict(globals(),UI_NAVIGATION_CONTRACT=3,WORKSPACE_LAYOUT_CONTRACT=2,checked_text=checked_text,root=ROOT,out=integration,source=source,package=package,args=args,adb=adb,component=package+'/local.pocketchat.CompactChromeIntegrationActivity')
+    namespace=dict(globals(),UI_NAVIGATION_CONTRACT=4,WORKSPACE_LAYOUT_CONTRACT=2,checked_text=checked_text,root=ROOT,out=integration,source=source,package=package,args=args,adb=adb,component=package+'/local.pocketchat.CompactChromeIntegrationActivity')
     report=dict(status='running',diagnosticOnly=True,releaseAcceptance=False,fullUiAcceptance=False,
         actualAndroidExecution=False,sourceCommit=source,sourceTree=tree,sourceFiles=hashes,scenario=args.scenario,
         earlierUiPreludeReplayed=False,originalReloadSequenceRequested=args.scenario=='after-reload',
@@ -239,6 +254,7 @@ def main():
         if any((integration/name).exists() for name in partials):raise ValueError('Pre-existing partial UI evidence cannot join a new diagnostic invocation')
         if any(integration.glob('chrome-v2-*')):raise ValueError('Pre-existing v2 evidence cannot join a new diagnostic invocation')
         if any(integration.glob('chrome-v3-*')):raise ValueError('Pre-existing v3 evidence cannot join a new diagnostic invocation')
+        if any(integration.glob('chrome-v4-*')):raise ValueError('Pre-existing v4 evidence cannot join a new diagnostic invocation')
         # Validate installed source/APK/SDK before either selected workload starts.
         from profile_invocation_contract import expected_build,verify_installed
         gradle=(ROOT/'app/build.gradle').read_text()
@@ -276,9 +292,9 @@ def main():
                 if produced and path.is_file():
                     (args.out/name).write_bytes(path.read_bytes())
             if current_started:
-                try:report['v3DiagnosticFiles']=collect_v3_diagnostics(integration,args.out,source,identity)
+                try:report['v4DiagnosticFiles']=collect_v4_diagnostics(integration,args.out,source,identity)
                 except Exception as error:
-                    report.update(status='failed',v3DiagnosticCollectionError=repr(error))
+                    report.update(status='failed',v4DiagnosticCollectionError=repr(error))
                     if failure is None:failure=error;report['error']=repr(error)
             try:(args.out/'native-log.txt').write_text(checked_text(adb('logcat','-d'))[0])
             except Exception as error:report['nativeLogError']=type(error).__name__

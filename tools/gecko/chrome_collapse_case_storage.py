@@ -96,7 +96,7 @@ def _read(directory, name):
 
 def _identity(report, source, apk_sha):
     _require(type(report) is dict and type(report.get('navigationContract')) is int
-             and report['navigationContract'] == 3, 'external storage requires current navigation contract 3')
+             and report['navigationContract'] in (3,4), 'external storage requires a recognized current navigation contract')
     _require(_hex(source, 40) and _hex(apk_sha, 64), 'expected source and APK identity')
     _require(report.get('sourceCommit') == source, 'report belongs to another source')
     identity = report.get('buildIdentity')
@@ -112,9 +112,9 @@ def _identity(report, source, apk_sha):
     return identity
 
 
-def _owned_case(case, identity, cohort, nonce=None):
+def _owned_case(case, identity, cohort, nonce=None, *, navigation_contract=3):
     _require(type(case) is dict and type(case.get('navigationContract')) is int
-             and case['navigationContract'] == 3, 'case navigation contract differs')
+             and case['navigationContract'] == navigation_contract, 'case navigation contract differs')
     _require(all(type(case.get(key)) is int for key in ('viewport', 'fontScale'))
              and (case['viewport'], case['fontScale']) == cohort, 'case cohort or order differs')
     current_nonce = case.get('runNonce')
@@ -156,8 +156,8 @@ def case_file_names(report):
              'mixed, partial or ambiguous case storage')
     _require(type(report.get('caseStorageVersion')) is int and report['caseStorageVersion'] == 1,
              'unknown case storage version')
-    _require(type(report.get('navigationContract')) is int and report['navigationContract'] == 3,
-             'external storage is only defined for navigation contract 3')
+    _require(type(report.get('navigationContract')) is int and report['navigationContract'] in (3,4),
+             'external storage requires a recognized current navigation contract')
     references = report['caseFiles']
     _require(type(references) is list and len(references) == len(COHORTS), 'all three case references are required')
     nonces = set()
@@ -187,7 +187,7 @@ def store_auto_collapse_cases(report, directory, source, apk_sha):
     limit, scan = _privacy()
     references, originals, nonces = [], [], set()
     for case, name, cohort in zip(cases, CASE_FILES, COHORTS):
-        nonce = _owned_case(case, identity, cohort)
+        nonce = _owned_case(case, identity, cohort, navigation_contract=report['navigationContract'])
         _require(nonce not in nonces, 'duplicate case invocation')
         nonces.add(nonce)
         raw = _encoded(case)
@@ -226,7 +226,7 @@ def load_auto_collapse_cases(report, directory, source, apk_sha):
         _require(len(raw) == reference['bytes'] and hashlib.sha256(raw).hexdigest() == reference['sha256'],
                  'case original size or digest differs from its reference')
         case = _decode(raw)
-        _owned_case(case, identity, cohort, reference['runNonce'])
+        _owned_case(case, identity, cohort, reference['runNonce'], navigation_contract=report['navigationContract'])
         cases.append(case)
     result = copy.deepcopy(report)
     for key in STORAGE_KEYS:

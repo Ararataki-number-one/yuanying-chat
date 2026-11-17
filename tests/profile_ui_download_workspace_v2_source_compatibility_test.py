@@ -172,7 +172,7 @@ class DownloadWorkspaceHistoricalInputs(unittest.TestCase):
         self.assertEqual(ast.dump(compiled.body[0], include_attributes=False), ast.dump(actual, include_attributes=False))
         self.assertEqual(len(compiled.body), 3)
         namespace = {};exec(compile(compiled, 'actual-current-capture', 'exec'), namespace)
-        self.assertEqual(namespace['UI_NAVIGATION_CONTRACT'], 3)
+        self.assertEqual(namespace['UI_NAVIGATION_CONTRACT'], 4)
         self.assertEqual(namespace['WORKSPACE_LAYOUT_CONTRACT'], 2)
         case = host.DownloadFreshObservationRunnerTest();case.setUp()
         self.assertEqual(case.namespace['UI_NAVIGATION_CONTRACT'], 1)

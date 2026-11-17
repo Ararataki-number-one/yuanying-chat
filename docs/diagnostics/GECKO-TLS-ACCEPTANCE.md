@@ -39,6 +39,16 @@ The earlier standalone probe restored absent USER values and established the exi
 
 The runner requires the selected clean source, exact installed APK/SDK identity, API35 emulator, four real guest CPUs and shell UID2000. It installs a temporary domain-scoped public CA for the controlled integration hosts and verifies the exact native leaf without a certificate exception. App data is integration-only and starts fresh; retained-profile cases do not clear that profile between their two measurements.
 
+### Native completion of the fixture CA import
+
+The two TLS fixture Activities now keep their original production network gate closed until the exact temporary CA has completed native import. The integration-only `tls-fixture-trust` builtin has only native messaging and GeckoView addon permissions: no content script, website permission, request, certificate insertion or trust override. Its privileged parent registers `psm:enterprise-certs-imported` while the native enterprise-roots preference is false and has no USER value. Only after the private `armed` response does Java perform the existing public SDK enable call, exactly once for that runtime.
+
+In the [pinned Firefox 157.0.1 NSS implementation](https://github.com/mozilla-firefox/firefox/blob/0c469c2352451630bc69fc328c9f0c589c6c534d/security/manager/ssl/nsNSSComponent.cpp), the completion notification follows both root import and the certificate-verifier update. The callback then reads the actual native `nsINSSComponent.getEnterpriseRoots()` collection and requires exactly one root with the runner's original CA DER SHA-256. Cached Java preference readback and the presence of an Android certificate file are not this acknowledgement. A profile `user.js` flag alone is also insufficient: this engine explicitly permits NSS initialization before user preferences load.
+
+Every receipt binds source/tree, run, current case, boot case, process, slot, runtime and a fresh private challenge. Foreign, duplicate, retired and late callbacks fail closed. Resamples keep the same completed boot import and issue a read-only native membership challenge for the new case before the original `dispatch`; they do not re-enable trust, recreate a runtime or reload a failed target. The ordinary 120-second Activity budget includes the acknowledgement; its outer runner budgets and all eleven plus one original workloads remain unchanged. The initial SDK window still has no page load, display or page bridge, and denies every navigation.
+
+`fixtureTrustInput` retains only public CA/leaf hashes, validity dates and host UTC. The native receipt adds actual guest UTC and the imported root's native validity dates. Guest time outside the original CA or leaf interval fails preparation without changing the clock. All existing trusted-leaf, exact navigation, negative-protocol, independent ClientHello/HTTP, cleanup and package-separation requirements still apply. The original C6 unknown-CA failure remains a failure; the missing import barrier is established, while the original artifacts alone do not determine whether import timing was its sole cause.
+
 ```sh
 python3 tools/gecko/run_gecko_tls_acceptance.py \
   --adb ADB --serial emulator-5554 --apk EXACT_INTEGRATION_APK \
@@ -70,6 +80,8 @@ python3 tests/gecko_tls_acceptance_test.py --output HOST_CONTROLS.json
 ```
 
 These controls use real host OpenSSL sockets plus explicitly modeled Android/process/SW/CA-install metadata to exercise parser, selected-source and late-callback boundaries. They do not execute Android, Gecko native preferences, real Service Workers or a product release. Store/Ui/controller/profile hosts and actual SDK compilation are separately reported. The diagnostic-only workflow is `.github/workflows/gecko-tls-acceptance.yml`, restricted to `diagnostics/gecko-tls-*` with `contents: read`; it has no publication step.
+
+The same existing host suite also executes the actual import observer/background scripts with counterfeit native events, and compiles the actual Java import protocol against the existing pinned Android JSON host dependency. These controls cover missing root/event, wrong owner or case, repeated enable, teardown, resample, deadline crossing and GeckoBundle's safe integral Double representation. They remain host fault injection, not native Gecko acceptance; the fixed-source emulator diagnostic must establish builtin/API interoperability.
 
 
 The integrated 2.1.4 preview retains the eleven original TLS workloads and adds

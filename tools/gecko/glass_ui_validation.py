@@ -204,10 +204,10 @@ def verify_scene_renderers(before, after, device_api, pids):
                 or type(value.get('activityRef')) is not int or value['activityRef']==0):
             raise ValueError('Current Activity renderer receipt identity differs')
         contract=value.get('navigationContract',2)
-        if type(contract) is not int or contract not in (2,3):
+        if type(contract) is not int or contract not in (2,3,4):
             raise ValueError('Current renderer navigation contract is unsupported')
         docks=value.get('docks')
-        roles=['workspace'] if contract==3 else ['conversation','workspace']
+        roles=['workspace'] if contract in (3,4) else ['conversation','workspace']
         if type(docks) is not list or [row.get('role') for row in docks]!=roles:
             raise ValueError('Every actual dock material for this navigation contract is required')
         for row in docks:
@@ -888,7 +888,7 @@ def prepare_background(case, adb, out, *, package, component, pid):
 
 def capture_acceptance_suite(args, report, capture, adb, wait_for, tap, screenshot, api):
     """Fail closed on route/configuration failures; save every original observation."""
-    result = report['glassUiAcceptance'] = dict(schema=1, navigationContract=3,status='started',
+    result = report['glassUiAcceptance'] = dict(schema=1, navigationContract=4,status='started',
         sourceCommit=report['buildIdentity']['sourceCommit'],
         sourceTree=report['buildIdentity']['sourceTree'],
         apkSha256=report['installedApk']['sha256'], runNonce=report['runNonce'],
@@ -941,13 +941,15 @@ def capture_acceptance_suite(args, report, capture, adb, wait_for, tap, screensh
                 and nav(xml) is not None and capsule(xml) is not None
                 and not text(xml, '打开网址') and not text(xml, '快速切换环境'))
 
-    def open_menu_action(case,xml,label,stem):
+    def open_menu_action(case,xml,label,stem,*,sheet='menu'):
         deadline=time.monotonic()+20
-        tap(api['browser_menu_node'](xml),'Open the actual browser menu for '+label)
+        node = 'browser_tools_node' if sheet == 'tools' else 'browser_menu_node'
+        opened = 'browser_tools_open' if sheet == 'tools' else 'browser_menu_open'
+        tap(api[node](xml),'Open the actual browser '+sheet+' sheet for '+label)
         menu_stem=case['name']+'-'+stem
-        xml=wait_for(capture,api['browser_menu_open'],menu_stem+'-opened',
+        xml=wait_for(capture,api[opened],menu_stem+'-opened',
                      seconds=max(.001,deadline-time.monotonic()))
-        xml,action=api['menu_action'](capture,adb,xml,label,args.out,menu_stem,deadline,report['inputs'])
+        xml,action=api['menu_action'](capture,adb,xml,label,args.out,menu_stem,deadline,report['inputs'],sheet=sheet)
         if time.monotonic()>=deadline:
             raise TimeoutError('Existing browser menu deadline expired before action: '+label)
         tap(action,'Activate the current observed browser menu action '+label)
@@ -999,6 +1001,8 @@ def capture_acceptance_suite(args, report, capture, adb, wait_for, tap, screensh
                     if value['kind'] == 'error':
                         raise ValueError('Controlled document fixture failed: ' + str(value))
                     if value['kind'] == 'collapseSnapshot' and value['result'].get('command') == command:
+                        if type(value['result'].get('navigationContract')) is not int or value['result']['navigationContract'] != 4:
+                            raise ValueError('Current document observation requires navigation contract 4')
                         case.setdefault('documentObservations', {})[command] = value['result']
                         return value['result']
                 time.sleep(min(.2, remaining()))
@@ -1076,8 +1080,8 @@ def capture_acceptance_suite(args, report, capture, adb, wait_for, tap, screensh
         # cannot qualify current objects in the nonce-owned native receipts.
         for stage in ('ready','after-interactions'):
             renderer=case['documentObservations'][stage].get('glassRenderer')
-            if type(renderer) is not dict or renderer.get('navigationContract')!=3:
-                raise ValueError('Current browser scene requires navigation contract 3 renderer ownership')
+            if type(renderer) is not dict or renderer.get('navigationContract')!=4:
+                raise ValueError('Current browser scene requires navigation contract 4 renderer ownership')
         observation['sceneRenderers']=verify_scene_renderers(
             case['documentObservations']['ready'].get('glassRenderer'),
             case['documentObservations']['after-interactions'].get('glassRenderer'),args.device_api,pids)
@@ -1189,10 +1193,7 @@ def capture_acceptance_suite(args, report, capture, adb, wait_for, tap, screensh
         xml = artifact(case, 'browser-toolbar', lambda value: chat(value)
                        and api['browser_toolbar_geometry'](value) is not None)
         case['browserToolbar'] = api['browser_toolbar_geometry'](xml)
-        box = bounds(capsule(xml)); x, y = (box[0] + box[2]) // 2, (box[1] + box[3]) // 2
-        report['inputs'].append(dict(action='long-press', phase=case['name'], observedBounds=list(box),
-            point=[x, y], durationMillis=850, atUnixNs=time.time_ns()))
-        adb('shell', 'input', 'touchscreen', 'swipe', str(x), str(y), str(x), str(y), '850')
+        tap(capsule(xml), 'Tap the environment capsule to open only the environment picker')
         xml = artifact(case, 'environment-sheet', lambda value: text(value, '快速切换环境')
                        and not text(value, '打开网址'))
         closes = nodes(xml, lambda node: node.get('content-desc') == '关闭快速切换环境'
@@ -1211,7 +1212,7 @@ def capture_acceptance_suite(args, report, capture, adb, wait_for, tap, screensh
         key(case, 4, 'Return from environment management to the retained conversation')
         xml = artifact(case, 'environments-returned', chat, photograph=False)
         for exit_method in ('button', 'back'):
-            open_menu_action(case,xml,'进入专注阅读','open-reading-'+exit_method)
+            open_menu_action(case,xml,'进入专注阅读','open-reading-'+exit_method,sheet='tools')
             xml = artifact(case, 'reading-entered-' + exit_method,
                 lambda value: button(value, '退出阅读') is not None and capsule(value) is None
                 and nav(value) is None and api['browser_toolbar_geometry'](value) is None)
@@ -1269,7 +1270,7 @@ def capture_acceptance_suite(args, report, capture, adb, wait_for, tap, screensh
                         sourceCommit=identity['sourceCommit'],sourceTree=identity['sourceTree'],apkSha256=identity['apkSha256'],
                         runNonce=case['runNonce'],applicationAcceptance=False)
                     start_output = adb('shell', 'am', 'start', '-W', '--activity-clear-task', '-n', component,
-                        '--es', 'compactAction', 'collapseStart', '--ei', 'chromeNavigationVersion', '3',
+                        '--es', 'compactAction', 'collapseStart', '--ei', 'chromeNavigationVersion', '4',
                         '--es', 'eventNonce', case['runNonce'], '--ez', 'longName', 'false',
                         '--ez', 'observeGlassRenderer', 'true')
                     try:

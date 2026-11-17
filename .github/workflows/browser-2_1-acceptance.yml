@@ -16,6 +16,8 @@ name: Dual browser and complete original Gecko acceptance
     - release/browser-2.1.5-*
     - release/browser-2.1.6
     - release/browser-2.1.6-*
+    - release/browser-2.1.7
+    - release/browser-2.1.7-*
     paths:
     - app/**
     - tests/**
@@ -1102,9 +1104,12 @@ jobs:
         python3 - <<'PYCODE'
         import json,os,pathlib,re,sys
         sys.path.insert(0,'tools')
-        from gecko.workspace_navigation_contract_v3 import verify_workspace_roundtrip
         version_code=int(re.search(r'versionCode ([0-9]+)',pathlib.Path('app/build.gradle').read_text()).group(1))
         if version_code>=108:
+            if version_code>=109:
+                from gecko.workspace_navigation_contract_v4 import verify_workspace_roundtrip
+            else:
+                from gecko.workspace_navigation_contract_v3 import verify_workspace_roundtrip
             source=os.environ['GITHUB_SHA']
             device=json.loads(pathlib.Path('work/gecko-integration/public/device-results.json').read_bytes())
             assert device['sourceCommit']==source and device['status']=='passed' and device['actualAndroidExecution'] is True and device['releaseMode'] is True

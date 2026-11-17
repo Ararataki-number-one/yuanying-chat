@@ -37,6 +37,8 @@ SOURCE_INPUTS.update({
  'tests/gecko/assets/worker-policy-page.js','tests/gecko/GeckoEnvironmentPolicyIntegrationActivity.java',
  *('app/src/main/java/local/pocketchat/'+name+'.java' for name in ('GeckoTimeZoneStore','GeckoTimeZoneSpec','GeckoTimeZonePolicy','GeckoTimeZoneController','GeckoIpTimeZonePolicy','GeckoIpRouteWatch','ProfileCatalog','SecretStore','GeckoCpuNative','GeckoCpuSpec'))})
 
+SOURCE_INPUTS.update({'tests/gecko/GeckoTlsFixtureTrust.java','tests/gecko/GeckoTlsFixtureTrustState.java','tools/gecko/tls_fixture_trust.py',*('tests/gecko/assets/tls-fixture-trust/'+name for name in ('manifest.json','schema.json','background.js','parent.js'))})
+
 def require(value,message):
     if not value:raise ValueError('Selected product TLS gate: '+message)
 
@@ -57,7 +59,7 @@ def source_hashes(report,source,reader):
 def selected_contract(source,reader):
     raw=reader(source,'tools/gecko/tls_acceptance_contract.py');require(type(raw) is bytes and 0<len(raw)<=131072,'bounded actual validator source')
     parsed=ast.parse(raw);functions=[n for n in parsed.body if isinstance(n,ast.FunctionDef)]
-    names={'require','equal','integer','token','native_policy','preparation','validate_device','validate_wire','validate_cross'}
+    names={'require','equal','integer','token','native_policy','preparation','fixture_trust','validate_device','validate_wire','validate_cross'}
     require({n.name for n in functions}==names and len(functions)==len(names),'exact actual selected validator functions')
     constants=[n for n in parsed.body if isinstance(n,ast.Assign) and len(n.targets)==1 and isinstance(n.targets[0],ast.Name) and n.targets[0].id in ('PACKAGE','DEVICE_FIELDS','POLICY_FIELDS')]
     require(len(constants)==3,'selected strict native schema constants')
@@ -102,6 +104,7 @@ def trust(report,expected):
     for key,value in (('evidenceShellUid',2000),('cleanupRootUid',0),('cleanupShellUid',2000)):require(type(installation.get(key)) is int and installation[key]==value,'CA UID '+key)
     require(installation.get('ownerAndMode')=='644:1000:1000' and type(installation.get('selinuxContext')) is str and re.fullmatch('u:object_r:(?!unlabeled)[a-zA-Z0-9_]+:s0',installation['selinuxContext']),'actual CA ownership and SELinux')
     require(installation.get('subjectHashOld')==subject and installation.get('storePath')=='/data/misc/user/0/cacerts-added/'+subject+'.0' and installation.get('publicCaPemSha256')==host['caPemSha256'] and installation.get('expectedLeafDerSha256')==host['leafDerSha256'],'actual public CA installation bytes/leaf')
+    preparation=report.get('fixtureTrustInput');require(type(preparation) is dict and preparation.get('caPemSha256')==host['caPemSha256'] and preparation.get('leafDerSha256')==host['leafDerSha256'],'same original public trust input')
     return host
 
 def originals(directory):
@@ -136,7 +139,7 @@ def verify_gecko_tls_evidence(directory,source,expected,reader=source_bytes):
         seen.add(binding['caseNonce'])
         if spec[0]=='persistent-after':require(binding['port']==ports['persistent-before'],'retained worker exact origin')
         else:require(binding['port'] not in ports.values(),'fresh independent peer authority')
-        ports[spec[0]]=binding['port'];device=strict_json(packets[name]);finding=contract['validate_device'](device,spec=spec,binding=binding,run=report['runNonce'],source=source,tree=report['sourceTree'],identity=expected,leaf=host_tls['leafDerSha256'])
+        ports[spec[0]]=binding['port'];device=strict_json(packets[name]);finding=contract['validate_device'](device,spec=spec,binding=binding,run=report['runNonce'],source=source,tree=report['sourceTree'],identity=expected,leaf=host_tls['leafDerSha256'],trust_input=report['fixtureTrustInput'])
         manual['validate_manual_scope'](device,spec=spec,binding=binding,run=report['runNonce'],source=source,tree=report['sourceTree'],identity=expected)
         require(_typed_equal(row['finding'],finding),'current selected validator finding differs')
         entries.append(dict(row,device=device));hashes[spec[0]]=sha(packets[name])

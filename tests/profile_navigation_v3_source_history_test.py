@@ -1,7 +1,7 @@
-"""Compare the current v3 producer with the actual retained release workload.
+"""Compare the current navigation producer with the actual retained release workload.
 
 This source-history proof requires the fixed Git objects prepared by the full
-profile/release workflow. Current-only maintenance uses the independent v3
+profile/release workflow. Current-only maintenance uses the independent current
 behavior controls without introducing a historical checkout dependency.
 """
 import importlib.util
@@ -19,7 +19,7 @@ class NavigationV3SourceHistory(unittest.TestCase):
         spec.loader.exec_module(module)
         source = (ROOT/'tests/gecko/run_ui_visuals.py').read_text()
         proof = module.verify_current_compact_ui_source(source)
-        self.assertEqual(proof['currentNavigationContract'], 3)
+        self.assertEqual(proof['currentNavigationContract'], 4)
         bad = source.replace('def chrome_event(command,event):\n        deadline=time.monotonic()+20',
                              'def chrome_event(command,event):\n        deadline=time.monotonic()+21', 1)
         self.assertNotEqual(source, bad)

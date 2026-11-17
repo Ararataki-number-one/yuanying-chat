@@ -5,6 +5,7 @@ and fresh actual TLS13 peer sockets. Never called to replace any of eleven TLS
 cases or the independent CPU/IP gates. No external network is implemented.
 """
 import hashlib
+import json
 import re
 import shlex
 import time
@@ -15,6 +16,7 @@ from tls_cpu_ip_combo_server import TlsCpuIpCapture
 from tls_cpu_ip_combo_contract import CASE_FILE,validate_combo
 from tls_acceptance_server import strict_json,require
 from profile_invocation_contract import verify_installed
+from tls_fixture_trust import fixture_trust_input
 ROOT=Path(__file__).resolve().parents[2]
 PACKAGE='local.pocketchat.test'
 URI='content://'+PACKAGE+'.gecko-tls-cpu-ip-combo-evidence'
@@ -47,7 +49,7 @@ def run_combo(adb,output,source,tree,identity,nonce):
     require(re.fullmatch('[0-9a-f]{40}',source) and re.fullmatch('[0-9a-f]{40}',tree) and re.fullmatch('[0-9a-f]{32}',nonce),'exact independent phase tuple')
     path=Path(output)/CASE_FILE;require(not path.exists() and not path.is_symlink(),'fresh original twelfth case')
     sdk=identity['sdkBuildIdentity'];binding=dict(sourceCommit=source,sourceTree=tree,runNonce=nonce,integrationApkSha256=identity['apkSha256'],sdkRunId=sdk['runId'],sdkRunAttempt=sdk['runAttempt'])
-    certificates=server=capture=ca=None;scope=False;mappings=[];host_tls={};setup={};process={};system={};device=None;original=None;error=None;wire={};routes={}
+    certificates=server=capture=ca=None;scope=False;mappings=[];host_tls={};fixture_input={};setup={};process={};system={};device=None;original=None;error=None;wire={};routes={}
     cleanup=dict(appStopped=False,scopeCleared=False,reverseRemoved=False,caRemoved=False,privateMaterialRemoved=False,serverQuiesced=False,appDataCleared=False,shellUidRestored=False)
     def cold_stop():
         adb('shell','am','force-stop',PACKAGE)
@@ -56,7 +58,7 @@ def run_combo(adb,output,source,tree,identity,nonce):
         require(adb('shell','id','-u').stdout.strip()==b'2000' and adb('shell','getconf','_NPROCESSORS_ONLN').stdout.strip()==b'4','same controlled shell/four CPU guest')
         cold_stop();require(adb('shell','pm','clear',PACKAGE).stdout.strip()==b'Success','fresh independent combined integration data')
         system['before']=adb('shell','getprop','persist.sys.timezone').stdout.decode('ascii').strip()
-        certificates=IpFixtureCertificates();capture=TlsCpuIpCapture(certificates,binding)
+        certificates=IpFixtureCertificates();fixture_input=fixture_trust_input(certificates);capture=TlsCpuIpCapture(certificates,binding)
         server=IpTimeZoneFleet(certificates,(ROOT/'tests/gecko/assets/worker-policy-page.js').read_text(),(ROOT/'tests/gecko/assets/tls-cpu-ip-combo-page.js').read_text(),binding).start()
         server.control(dict(sourceCommit=source,runNonce=nonce,action='stage',case='default-socks'))
         ca=AndroidUserCa(adb,certificates);ca.install();host_tls=dict(certificates.public,binding=binding)
@@ -70,6 +72,7 @@ def run_combo(adb,output,source,tree,identity,nonce):
         setup=strict_json(adb('exec-out','content','read','--uri',URI+'/setup').stdout)
         require(setup.get('sourceCommit')==source and setup.get('sourceTree')==tree and setup.get('runNonce')==nonce and setup.get('integrationApkSha256')==identity['apkSha256'] and setup.get('slot')==6 and setup.get('timezoneSealedRecordMissing') is True and setup.get('actualDefaultStoreLoadYet') is False and setup.get('manualSeedAppliedToIpScope') is False,'actual missing timezone before first profile use')
         command=['am','start','-W','-n',ACTIVITY,'--es','sourceCommit',source,'--es','runNonce',nonce,'--es','expectedLeafSha256',certificates.leaf_sha]
+        command+=['--es','fixtureTrustInput',json.dumps(fixture_input,separators=(',',':'))]
         deadline=time.monotonic()+180;adb('shell',shlex.join(command))
         while time.monotonic()<deadline:
             remaining=deadline-time.monotonic()
@@ -112,10 +115,9 @@ def run_combo(adb,output,source,tree,identity,nonce):
         if original is not None:
             require(0<len(original)<=262144,'bounded original combined device bytes')
             with path.open('xb') as out:out.write(original)
-    envelope=dict(schema=1,label='combined-cpu-ip-tls13',status='passed' if error is None and all(cleanup.values()) else 'failed',report=CASE_FILE,reportSha256=hashlib.sha256(original).hexdigest() if original is not None else None,prelaunchSetup=setup,processSample=process,routeReceipts=routes,hostTls=host_tls,systemTimeZone=system,cleanup=cleanup,wire=wire)
+    envelope=dict(schema=1,label='combined-cpu-ip-tls13',status='passed' if error is None and all(cleanup.values()) else 'failed',report=CASE_FILE,reportSha256=hashlib.sha256(original).hexdigest() if original is not None else None,prelaunchSetup=setup,processSample=process,routeReceipts=routes,hostTls=host_tls,fixtureTrustInput=fixture_input,systemTimeZone=system,cleanup=cleanup,wire=wire)
     if error is not None:raise ComboFailure(envelope,error) from error
     engine=re.findall(r'^\s*static final String VERSION=("(?:[^"\\]|\\.)*");',(ROOT/'app/src/main/java/local/pocketchat/GeckoWebView.java').read_text(),re.M);require(len(engine)==1,'exact actual Gecko version')
-    import json
     try:finding=validate_combo(device,envelope,source=source,expected=identity,run=nonce,engine=json.loads(engine[0]))
     except Exception as failure:raise ComboFailure(envelope,failure) from failure
     return envelope,finding
