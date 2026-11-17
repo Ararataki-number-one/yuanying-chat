@@ -13,11 +13,14 @@ import re
 import struct
 import subprocess
 import time
+import uuid
 import xml.etree.ElementTree as ET
 
 import capture_glass_navigation as shared
 from profile_invocation_contract import expected_build, verify_installed
 from ui_visual_capture import UiVisualCapture
+from browser_header_contract_v5 import verify_header, network_extension
+from workspace_browser_header_v5 import native_observation
 
 PACKAGE = 'local.pocketchat.test'
 NAME = '长文阅读与文件整理和日常会话的完整环境名称测试'
@@ -47,6 +50,56 @@ def control(xml, description, density):
     return node
 
 
+def header_packet(log, nonce, source):
+    """Read one nonce-owned native packet; a malformed or duplicate packet fails."""
+    def pairs(values):
+        result = {}
+        for key, value in values:
+            if key in result:
+                raise ValueError('Duplicate native header field: '+key)
+            result[key] = value
+        return result
+    selected = []
+    for line in log.splitlines():
+        if '{' not in line:
+            continue
+        raw = line[line.index('{'):]
+        value = json.loads(raw, object_pairs_hook=pairs,
+                           parse_constant=lambda _: (_ for _ in ()).throw(ValueError('Nonfinite header field')))
+        if value.get('nonce') == nonce:
+            selected.append(raw)
+    if not selected:
+        return None
+    if len(selected) != 1:
+        raise ValueError('Expected one owned native header observation')
+    value = native_observation(selected[0], nonce, source)
+    if value['engine'] != 'chromium' or value['activityClass'] != 'local.pocketchat.BrowserActivity':
+        raise ValueError('Header observation is not from the actual Chromium activity')
+    return selected[0], value
+
+
+def network_control(xml, density, native_header=None):
+    if native_header is None:
+        # Historical XML-only observations retain their original visible 48dp rule.
+        return control(xml, NETWORK, density)
+    try:
+        verify_header(native_header['layout'])
+    except (AssertionError, KeyError, TypeError) as error:
+        raise ValueError('Invalid live native header touch geometry') from error
+    if (native_header['engine'] != 'chromium'
+            or native_header['activityClass'] != 'local.pocketchat.BrowserActivity'
+            or native_header['density'] != density):
+        raise ValueError('Header owner or density differs from the current browser')
+    node = only(xml, lambda n: n.get('content-desc') == NETWORK
+                and n.get('class') == 'android.widget.Button', NETWORK)
+    box = shared.bounds(node)
+    if (node.get('clickable') != 'true' or node.get('enabled') != 'true'
+            or box[2]-box[0] < 48*density or box[3]-box[1] < 28*density
+            or list(box) != native_header['layout']['networkMetrics']['bounds']):
+        raise ValueError('Visible network row differs from its native touch delegate')
+    return node
+
+
 def environment_ready(xml, density):
     """Match the capsule's action, not its repeated visual child label."""
     found = shared.nodes(xml, lambda n: n.get('class') == 'android.widget.Button'
@@ -60,14 +113,14 @@ def environment_ready(xml, density):
             and box[2]-box[0] >= 48*density and box[3]-box[1] >= 48*density)
 
 
-def browser_geometry(xml, density):
+def browser_geometry(xml, density, native_header=None):
     address = control(xml, '网址或搜索词', density)
     if address.get('text') != URL:
         raise ValueError('Controlled HTTP address differs')
     name = control(xml, ENVIRONMENT, density)
     if name.get('text') != NAME or name.get('enabled') != 'true' or name.get('long-clickable') == 'true':
         raise ValueError('The retained environment capsule lost its complete name or switch action')
-    network = control(xml, NETWORK, density)
+    network = network_control(xml, density, native_header)
     if network.get('text') != '●  '+NETWORK_SUMMARY or network.get('enabled') != 'true':
         raise ValueError('The unconfigured Chromium header must report its own unverified network state')
     notice = only(xml, lambda n: n.get('text') == WAITING, 'unconfigured-route notice')
@@ -76,6 +129,8 @@ def browser_geometry(xml, density):
         raise ValueError('Every current bottom browser destination must remain enabled')
     name_box = shared.bounds(name)
     network_box = shared.bounds(network)
+    if native_header is not None and list(name_box) != native_header['capsuleAccessibilityBounds']:
+        raise ValueError('Native header capsule differs from the visible current activity')
     bottom = [shared.bounds(n) for n in controls]
     if name_box[3] > network_box[1] or network_box[3] > shared.bounds(notice)[1]:
         raise ValueError('The capsule, network row and page notice are not separate ordered header controls')
@@ -120,8 +175,12 @@ def browser_geometry(xml, density):
         slot = shared.bounds(slots[0])
         if slot[1] < shared.bounds(notice)[3] or slot[3] > min(box[1] for box in bottom):
             raise ValueError('Native content slot overlaps browser controls')
-    return dict(navigationContract=4, environmentName=NAME, environmentBounds=name_box,
+        if native_header is not None and list(slot) != native_header['layout']['webBounds']:
+            raise ValueError('Current content slot differs from the native header observation')
+    return dict(navigationContract=4, headerContract=5 if native_header is not None else 4,
+                environmentName=NAME, environmentBounds=name_box,
                 networkBounds=network_box, networkText=network.get('text'),
+                networkTouchBounds=native_header['layout']['networkMetrics']['touchBounds'] if native_header is not None else network_box,
                 unverifiedNetworkStateObserved=True,
                 addressBounds=shared.bounds(address), contentBounds=slot,
                 addressAtBottom=True, topAddressAbsent=True, environmentCapsuleRetained=True,
@@ -171,8 +230,8 @@ def main():
         return dict(file=name, sha256=hashlib.sha256(raw).hexdigest(),
                     actualPixelSize=list(struct.unpack('>II', raw[16:24])))
 
-    def wait_for(predicate, name, seconds=35):
-        deadline = time.monotonic()+seconds
+    def wait_for(predicate, name, seconds=35, *, deadline=None):
+        deadline = time.monotonic()+seconds if deadline is None else deadline
         while time.monotonic() < deadline:
             xml = capture.read(deadline=deadline)
             (args.out/(name+'.xml')).write_text(xml)
@@ -180,6 +239,18 @@ def main():
                 return xml
             time.sleep(.2)
         raise TimeoutError('Native Chromium UI not ready: '+name)
+
+    def observe_header(nonce, source, deadline):
+        while time.monotonic() < deadline:
+            remaining = deadline-time.monotonic()
+            if remaining <= 0:
+                break
+            raw = adb('logcat', '-d', '-s', 'PocketBrowserHeader:I', '*:S', timeout=min(30, remaining))
+            packet = header_packet(raw.decode('utf-8'), nonce, source)
+            if packet is not None:
+                return packet
+            time.sleep(min(.2, max(0, deadline-time.monotonic())))
+        raise TimeoutError('Native Chromium header did not report within the original readiness deadline')
 
     def present(xml, predicate):
         return len(shared.nodes(xml, predicate)) == 1
@@ -212,7 +283,10 @@ def main():
             raise ValueError('Installed bytes differ from the exact current-source APK')
         verified = True
         report.update(sourceCommit=source, sourceTree=tree, buildIdentity=identity,
-                      installedApkSha256=installed_sha, runnerSha256=shared.sha(__file__), actualAndroidExecution=True)
+                      installedApkSha256=installed_sha, runnerSha256=shared.sha(__file__), actualAndroidExecution=True,
+                      headerContract=5, headerReaderInputs={name:shared.sha(args.root/name) for name in (
+                          'tools/gecko/browser_header_contract_v5.py', 'tools/gecko/workspace_browser_header_v5.py',
+                          'tests/gecko/BrowserHeaderVisualEvidence.java')})
         original['size'] = adb('shell', 'wm', 'size').decode().strip()
         original['density'] = adb('shell', 'wm', 'density').decode().strip()
         for key in ('font_scale', 'accelerometer_rotation', 'user_rotation'):
@@ -239,11 +313,19 @@ def main():
             # The seed opens an editor after MainActivity's first frame. End that
             # synthetic task before opening the unchanged production browser.
             adb('shell', 'am', 'force-stop', PACKAGE)
-            adb('shell', 'am', 'start', '-W', '-n', PACKAGE+'/local.pocketchat.BrowserActivity', '--es', 'url', URL)
+            nonce = uuid.uuid4().hex
+            adb('shell', 'am', 'start', '-W', '-n', shared.COMPONENT,
+                '--es', 'visualAction', 'browser-header', '--es', 'visualHeaderNonce', nonce, '--es', 'url', URL)
+            browser_deadline = time.monotonic()+35
             xml = wait_for(lambda value: present(value, lambda n: n.get('text') == WAITING)
                            and environment_ready(value, 3)
-                           and present(value, lambda n: n.get('content-desc') == NETWORK), label+'-browser')
-            case['geometry'] = browser_geometry(xml, 3)
+                           and present(value, lambda n: n.get('content-desc') == NETWORK), label+'-browser', deadline=browser_deadline)
+            header_raw, native_header = observe_header(nonce, source, browser_deadline)
+            if native_header['fontScale'] != scale or native_header['windowBounds'] != [0, 0, width*3, height*3]:
+                raise ValueError('Native header font scale or window differs from the requested actual display')
+            case.update(headerContract=5, browserHeaderNonce=nonce, browserHeaderRaw=header_raw, browserHeaderRawXml=xml)
+            (args.out/(label+'-header.json')).write_text(header_raw+'\n')
+            case['geometry'] = browser_geometry(xml, 3, native_header)
             case['screenshots'].append(screenshot(label+'-browser.png'))
             tap(control(xml, ENVIRONMENT, 3), 'Tap the small environment capsule to open only the environment picker')
             xml = wait_for(lambda value: present(value, lambda n: n.get('text') == '快速切换环境')
@@ -253,8 +335,8 @@ def main():
             tap(control(xml, '关闭快速切换环境', 3), 'Close the environment picker without switching the current page')
             xml = wait_for(lambda value: present(value, lambda n: n.get('text') == WAITING)
                            and present(value, lambda n: n.get('content-desc') == NETWORK), label+'-environment-returned')
-            case['environmentReturnedGeometry'] = browser_geometry(xml, 3)
-            tap(control(xml, NETWORK, 3), 'Open the actual Chromium network details from the header row')
+            case['environmentReturnedGeometry'] = browser_geometry(xml, 3, native_header)
+            tap(network_control(xml, 3, native_header), 'Open the actual Chromium network details from the header row')
             xml = wait_for(lambda value: present(value, lambda n: n.get('text') == '网络情况')
                            and present(value, lambda n: n.get('content-desc') == '关闭网络情况')
                            and present(value, lambda n: n.get('text', '').startswith(NETWORK_SUMMARY+'\n\n')),
@@ -263,7 +345,26 @@ def main():
             tap(control(xml, '关闭网络情况', 3), 'Close network details without changing route configuration')
             xml = wait_for(lambda value: present(value, lambda n: n.get('text') == WAITING)
                            and present(value, lambda n: n.get('content-desc') == NETWORK), label+'-network-returned')
-            case['networkReturnedGeometry'] = browser_geometry(xml, 3)
+            case['networkReturnedGeometry'] = browser_geometry(xml, 3, native_header)
+            target = network_extension(native_header['layout'])
+            point, visible = target['point'], native_header['layout']['networkMetrics']['bounds']
+            outside = not (visible[0] <= point[0] < visible[2] and visible[1] <= point[1] < visible[3])
+            if visible[3]-visible[1] < 48*3 and not outside:
+                raise ValueError('Compact header tap must exercise the actual extension outside the visible strip')
+            report['inputs'].append(dict(kind='tap', reason='Exercise the actual native 48dp network target',
+                                        bounds=target['bounds'], point=point, headerNonce=nonce, outsideVisibleRow=outside))
+            adb('shell', 'input', 'tap', *map(str, point))
+            xml = wait_for(lambda value: present(value, lambda n: n.get('text') == '网络情况')
+                           and present(value, lambda n: n.get('content-desc') == '关闭网络情况')
+                           and present(value, lambda n: n.get('text', '').startswith(NETWORK_SUMMARY+'\n\n')),
+                           label+'-network-touch-target')
+            case['screenshots'].append(screenshot(label+'-network-touch-target.png'))
+            tap(control(xml, '关闭网络情况', 3), 'Close the network sheet opened from the native touch target')
+            xml = wait_for(lambda value: present(value, lambda n: n.get('text') == WAITING)
+                           and present(value, lambda n: n.get('content-desc') == NETWORK), label+'-network-touch-returned')
+            case['networkTouchReturnedGeometry'] = browser_geometry(xml, 3, native_header)
+            case.update(actualNativeNetworkTargetRoundtrip=True, nativeNetworkTarget=target,
+                        nativeNetworkTapOutsideVisibleRow=outside)
             tap(control(xml, '网页工具', 3), 'Open actual Chromium webpage tools')
             xml = wait_for(lambda value: shared.browser_tools_open(value)
                            and present(value, lambda n: n.get('text') == 'Chromium · HTTP · 不安全')
@@ -276,7 +377,7 @@ def main():
             tap(control(xml, '关闭网页工具', 3), 'Close actual webpage tools without navigating')
             xml = wait_for(lambda value: present(value, lambda n: n.get('text') == WAITING)
                            and not shared.browser_tools_open(value), label+'-tools-returned')
-            case['toolsReturnedGeometry'] = browser_geometry(xml, 3)
+            case['toolsReturnedGeometry'] = browser_geometry(xml, 3, native_header)
             tap(control(xml, '网页窗口', 3), 'Open actual tabs from the second browser button')
             xml = wait_for(lambda value: present(value, lambda n: n.get('text') == '网页窗口')
                            and present(value, lambda n: n.get('text') == NAME+' · 1/8 个标签页')
@@ -287,7 +388,7 @@ def main():
             xml = wait_for(lambda value: present(value, lambda n: n.get('text') == WAITING)
                            and present(value, lambda n: n.get('content-desc') == '浏览器菜单')
                            and not present(value, lambda n: n.get('text') == NAME+' · 1/8 个标签页'), label+'-tabs-returned')
-            case['returnedGeometry'] = browser_geometry(xml, 3)
+            case['returnedGeometry'] = browser_geometry(xml, 3, native_header)
             tap(control(xml, '浏览器菜单', 3), 'Reopen the browser menu after the tab sheet')
             xml = wait_for(lambda value: shared.browser_menu_open(value)
                            and shared.menu_body_ready(value, PACKAGE), label+'-menu-reopened')

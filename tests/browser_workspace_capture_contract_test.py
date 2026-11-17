@@ -1,6 +1,7 @@
 """Current Chromium native-layout parser controls; no Android execution claims."""
 from pathlib import Path
 import ast
+import copy
 import hashlib
 import inspect
 import json
@@ -43,6 +44,40 @@ def layout(width=1236, large=False, omit_empty_slot=False):
 
 
 def xml(tree):return ET.tostring(tree,encoding='unicode')
+
+
+def compact_layout(width=1236, large=False):
+    tree=layout(width,large)
+    if not large:
+        network=next(n for n in tree.iter('node') if n.get('content-desc')==capture.NETWORK)
+        network.set('bounds',f'[48,170][{width-48},254]')
+        parent=next(n for n in tree.iter('node') if network in list(n))
+        parent.set('bounds',f'[0,170][{width},256]')
+    return tree
+
+
+def native_header(tree, scale=1.0):
+    """Synthetic native-reader inputs only; never emitted as device evidence."""
+    nodes=list(tree.iter('node'));root=nodes[0];width=capture.shared.bounds(root)[2]
+    capsule=list(capture.shared.bounds(next(n for n in nodes if n.get('content-desc')==capture.ENVIRONMENT)))
+    network=list(capture.shared.bounds(next(n for n in nodes if n.get('content-desc')==capture.NETWORK)))
+    touch=[network[0],network[3]-144,network[2],network[3]]
+    if touch[1]<capsule[3]:
+        regions=[[touch[0],touch[1],capsule[0],capsule[3]],
+                 [capsule[2],touch[1],touch[2],capsule[3]],
+                 [touch[0],capsule[3],touch[2],touch[3]]]
+    else:regions=[touch.copy()]
+    return dict(schema=1,headerContract=5,status='observed',scene='chat',nonce='9'*32,
+                sourceCommit='8'*40,actualAndroidLayout=True,engine='chromium',fontScale=scale,density=3,
+                windowBounds=[0,0,width,2676],activityClass='local.pocketchat.BrowserActivity',
+                activityIdentity=123,delegateIdentity=456,windowFocused=True,layoutRequested=False,
+                capsuleAccessibilityBounds=capsule,startedUptimeMs=100,observedUptimeMs=2000,
+                layout=dict(headerContract=5,actualAndroidLayout=True,density=3,viewportDp=width/3,
+                            toolbar=[0,0,width,network[3]+2],topBounds=[0,0,width,170],
+                            webBounds=[0,444,width,2400],networkInHeader=True,networkShown=True,
+                            controls=[dict(name='environment',touch=capsule,visible=capsule)],
+                            networkMetrics=dict(bounds=network,touchBounds=touch,effectiveTouchRegions=regions,
+                                                clickable=True,focusable=True)))
 
 
 class ChromiumBrowserCaptureContractTests(unittest.TestCase):
@@ -157,6 +192,77 @@ class ChromiumBrowserCaptureContractTests(unittest.TestCase):
                 }[kind]
                 action.set(key,value)
             with self.subTest(kind=kind):self.assertFalse(capture.environment_ready(xml(tree),3))
+
+
+class ChromiumNativeHeaderCaptureTests(unittest.TestCase):
+    def setUp(self):capture.shared.set_display(1236,2676,480)
+
+    def test_compact_row_requires_native_proof_and_keeps_original_bottom_rules(self):
+        tree=compact_layout();native=json.loads(json.dumps(native_header(tree)))
+        with self.assertRaises(ValueError):capture.browser_geometry(xml(tree),3)
+        observed=capture.browser_geometry(xml(tree),3,native)
+        self.assertEqual(observed['headerContract'],5)
+        self.assertEqual(observed['navigationContract'],4)
+        self.assertEqual(observed['networkBounds'][3]-observed['networkBounds'][1],84)
+        self.assertEqual(observed['networkTouchBounds'][3]-observed['networkTouchBounds'][1],144)
+        target=capture.network_extension(native['layout']);point=target['point']
+        self.assertLess(point[1],observed['networkBounds'][1])
+        self.assertGreaterEqual(target['bounds'][2]-target['bounds'][0],144)
+        self.assertGreaterEqual(target['bounds'][3]-target['bounds'][1],144)
+        for key,value in (('bounds','[12,2424][150,2568]'),('enabled','false')):
+            altered=copy.deepcopy(tree)
+            next(n for n in altered.iter('node') if n.get('content-desc')==capture.BOTTOM_CONTROLS[0]).set(key,value)
+            with self.subTest(key=key),self.assertRaises(ValueError):capture.browser_geometry(xml(altered),3,native)
+
+    def test_large_font_keeps_full_visible_target_and_all_original_geometry(self):
+        capture.shared.set_display(960,2676,480)
+        tree=compact_layout(960,True);native=native_header(tree,2)
+        observed=capture.browser_geometry(xml(tree),3,native)
+        self.assertEqual(observed['headerContract'],5)
+        self.assertEqual(list(observed['networkBounds']),observed['networkTouchBounds'])
+        self.assertEqual(len(observed['controls']),5)
+
+    def test_native_geometry_cannot_shrink_overlap_capsule_or_disagree_with_xml(self):
+        tree=compact_layout();original=native_header(tree)
+        for kind in ('short-touch','stolen-capsule','different-visible','different-capsule','different-content','wrong-density','wrong-engine','wrong-activity'):
+            value=copy.deepcopy(original);layout=value['layout'];network=layout['networkMetrics']
+            if kind=='short-touch':network['touchBounds'][1]+=1
+            if kind=='stolen-capsule':network['effectiveTouchRegions']=[network['touchBounds'].copy()]
+            if kind=='different-visible':network['bounds'][0]+=1;network['touchBounds'][0]+=1;network['effectiveTouchRegions'][0][0]+=1;network['effectiveTouchRegions'][2][0]+=1
+            if kind=='different-capsule':value['capsuleAccessibilityBounds'][0]+=1
+            if kind=='different-content':layout['webBounds'][1]+=1
+            if kind=='wrong-density':value['density']=2
+            if kind=='wrong-engine':value['engine']='gecko'
+            if kind=='wrong-activity':value['activityClass']='local.pocketchat.MainActivity'
+            with self.subTest(kind=kind),self.assertRaises(ValueError):capture.browser_geometry(xml(tree),3,value)
+
+    def test_packet_requires_one_current_owned_native_chromium_observation(self):
+        value=native_header(compact_layout());raw=json.dumps(value)
+        self.assertEqual(capture.header_packet('I/PocketBrowserHeader: '+raw,'9'*32,'8'*40),(raw,value))
+        self.assertIsNone(capture.header_packet(raw,'a'*32,'8'*40))
+        with self.assertRaises(ValueError):capture.header_packet(raw+'\n'+raw,'9'*32,'8'*40)
+        duplicate=raw[:-1]+',"nonce":"'+('9'*32)+'"}'
+        with self.assertRaises(ValueError):capture.header_packet(duplicate,'9'*32,'8'*40)
+        for key,replacement in (('sourceCommit','a'*40),('status','failed'),('engine','gecko'),
+                                ('activityClass','local.pocketchat.MainActivity'),('delegateIdentity',0),
+                                ('windowFocused',False),('layoutRequested',True)):
+            changed=copy.deepcopy(value);changed[key]=replacement
+            with self.subTest(key=key),self.assertRaises((AssertionError,ValueError)):
+                capture.header_packet(json.dumps(changed),'9'*32,'8'*40)
+
+    def test_current_producer_uses_owned_bridge_and_native_proof_for_every_geometry(self):
+        tree=ast.parse(inspect.getsource(capture.main));calls=[n for n in ast.walk(tree) if isinstance(n,ast.Call)]
+        geometry=[n for n in calls if isinstance(n.func,ast.Name) and n.func.id=='browser_geometry']
+        self.assertEqual(len(geometry),6)
+        self.assertTrue(all(len(n.args)==3 and isinstance(n.args[2],ast.Name) and n.args[2].id=='native_header' for n in geometry))
+        raw=inspect.getsource(capture.main)
+        self.assertIn("'visualAction', 'browser-header', '--es', 'visualHeaderNonce', nonce",raw)
+        self.assertIn('browser_deadline = time.monotonic()+35',raw)
+        self.assertIn('observe_header(nonce, source, browser_deadline)',raw)
+        self.assertIn('deadline=browser_deadline',raw)
+        self.assertIn('actualNativeNetworkTargetRoundtrip=True',raw)
+        self.assertIn("adb('shell', 'input', 'tap', *map(str, point))",raw)
+        self.assertIn('nativeNetworkTapOutsideVisibleRow=outside',raw)
 
 
 if __name__=='__main__':unittest.main(verbosity=2)
