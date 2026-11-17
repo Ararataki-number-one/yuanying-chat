@@ -28,7 +28,7 @@ class FileDownloads {
     try{AppPrefs.requireDownloadNetwork(a);if(!a.session.guard.allowed())throw new IOException("受保护连接已中断，下载已暂停");}catch(IOException error){try{input.close();}catch(IOException ignored){}a.status(error.getMessage());return;}
     if(!active){String source=downloadSource();newTask("","",source);if(persistenceBlocked){try{input.close();}catch(IOException ignored){}return;}sourceId="";sourceKey="";sourceUrl=source;imageLabel="";active=true;a.session.transferActive=true;a.session.updateBrowserActivity();cancelled=false;++ticket;}
     DownloadTasks.put(task,"transferKind","gecko-response");retryUrl=response.uri;String proposed=GeckoWebView.header(response,"Content-Type"),disposition=GeckoWebView.header(response,"Content-Disposition");
-    if(sourceId.isEmpty()||name.equals("文件"))name=safeName(URLUtil.guessFileName(response.uri,disposition,proposed));mime=type(name,proposed);mark("downloading","");if(persistenceBlocked){try{input.close();}catch(IOException ignored){}return;}
+    responseMetadata(response.uri,disposition,proposed);mark("downloading","");if(persistenceBlocked){try{input.close();}catch(IOException ignored){}return;}
     response.setReadTimeoutMillis(25000);nativeInput=input;long attempt=ticket;showProgress("正在下载 "+name+"…");
     worker.execute(()->{try(InputStream stream=input){
       if(response.statusCode>=400)throw new IOException("网页未能提供文件（HTTP "+response.statusCode+"），请在原网页重新点按下载");
@@ -59,7 +59,7 @@ class FileDownloads {
     String resolved=contentType==null?"":contentType.split(";",2)[0].trim().toLowerCase(Locale.ROOT);
     if(!resolved.matches("[a-z0-9.+-]+/[a-z0-9.+-]+"))resolved="";
     boolean concrete=!resolved.isEmpty()&&!resolved.equals("application/octet-stream");
-    if(disposition!=null&&!disposition.isEmpty()||sourceId.isEmpty()&&concrete)
+    if(name.equals("文件")||disposition!=null&&!disposition.isEmpty()||sourceId.isEmpty()&&concrete)
       name=safeName(URLUtil.guessFileName(url,disposition,concrete?resolved:mime));
     mime=concrete?resolved:type(name,mime);
     if(!imageLabel.isEmpty()&&mime.startsWith("image/"))name=imageLabel+"."+imageExtension(mime);

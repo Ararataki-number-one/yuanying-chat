@@ -37,7 +37,7 @@ final class DesignSettingsUi {
   static void completionReminders(Activity a,Runnable refresh){
     LinearLayout box=DesignUi.column(a);box.setPadding(DesignUi.dp(a,18),0,DesignUi.dp(a,18),DesignUi.dp(a,14));
     Switch enabled=new Switch(a);enabled.setText("离开应用后提醒完成");NativeControls.prepare(enabled);enabled.setChecked(AppSettings.backgroundCompletionNotice(a));box.addView(enabled);
-    DesignUi.note(box,"下载完成提醒可独立使用；回复完成提醒还需开启后台回复检测。使用应用时保持安静；系统仍可能显示后台服务的静默提示。");
+    DesignUi.note(box,"下载完成后可提醒；网页回复状态请直接查看原网页。使用应用时保持安静；系统仍可能显示后台服务的静默提示。");
     enabled.setOnCheckedChangeListener((button,value)->{AppSettings.put(a,"backgroundCompletionNotice",String.valueOf(value));if(value){ChatService.channels(a);if(android.os.Build.VERSION.SDK_INT>=33&&a.checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS)!=android.content.pm.PackageManager.PERMISSION_GRANTED)a.requestPermissions(new String[]{android.Manifest.permission.POST_NOTIFICATIONS},91);}refresh.run();});
     AppAppearance.dialog(a).setTitle("后台完成提醒").setView(box).setPositiveButton("完成",null).show();
   }

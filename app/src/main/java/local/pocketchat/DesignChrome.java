@@ -117,7 +117,7 @@ final class DesignChrome {
     int lineHeight=a.dp(20);
     for(TextView text:new TextView[]{dot,a.networkLine,latencyWord,stateWord})lineHeight=Math.max(lineHeight,textHeight(text)+a.dp(2));
     networkRow=new NetworkStatusRow(lineHeight);
-    networkRow.setPadding(a.dp(6),0,a.dp(6),a.dp(4));
+    networkRow.setPadding(a.dp(6),0,a.dp(6),0);
     networkRow.setMinimumHeight(a.dp(48));networkRow.setFocusable(true);
     networkRow.setBackground(Ui.ripple(a,Color.TRANSPARENT,8));
     networkRow.setOnClickListener(v->NetworkMetricsUi.show(a));
@@ -136,7 +136,7 @@ final class DesignChrome {
     diagnosticRow.addView(diagnosticBack,new LinearLayout.LayoutParams(0,-2,1));diagnosticRow.addView(diagnosticResults,new LinearLayout.LayoutParams(0,-2,1));diagnosticRow.setVisibility(View.GONE);a.toolbar.addView(diagnosticRow,new LinearLayout.LayoutParams(-1,-2));
     compact.setVisibility(View.GONE);top.setVisibility(View.VISIBLE);networkRow.setVisibility(View.VISIBLE);
     root.addView(a.toolbar,new LinearLayout.LayoutParams(-1,-2));
-    actions=new View[]{title};
+    actions=new View[]{title,networkRow};
     a.toolbar.addOnLayoutChangeListener((v,l,t,r,b,ol,ot,or,ob)->layoutTouchTargets());
     a.toolbar.post(this::layoutTouchTargets);
   }
@@ -166,6 +166,10 @@ final class DesignChrome {
       int available=MeasureSpec.getSize(widthMeasureSpec)-getPaddingLeft()-getPaddingRight();
       int required=a.dp(12)+textWidth(a.networkLine)+textWidth(latencyWord)+textWidth(stateWord);
       boolean wrap=MeasureSpec.getMode(widthMeasureSpec)!=MeasureSpec.UNSPECIFIED&&required>available;
+      // A compact status line can share the unused side of the capsule row
+      // for its expanded touch target. Narrow/large-text layouts keep two full rows.
+      boolean compactTargets=!wrap&&title.getMeasuredWidth()>0&&available>=title.getMeasuredWidth()+a.dp(112);
+      setMinimumHeight(a.dp(compactTargets?32:48));
       if(wrap!=stacked){
         stacked=wrap;setOrientation(wrap?VERTICAL:HORIZONTAL);
         address.setLayoutParams(new LinearLayout.LayoutParams(wrap?-1:0,-2,wrap?0:1));
@@ -389,16 +393,19 @@ final class DesignChrome {
       int left=actionAt[0]-toolbarAt[0],top=actionAt[1]-toolbarAt[1];
       visible[i]=new Rect(left,top,left+actions[i].getWidth(),top+actions[i].getHeight());
     }
-    int touchBottom=top.getBottom();
-    for(int i=0;i<actions.length;i++){
-      Rect bounds=visible[i];
-      int left=i==0?0:(visible[i-1].right+bounds.left)/2;
-      int right=i==actions.length-1?a.toolbar.getWidth():(bounds.right+visible[i+1].left)/2;
-      int width=Math.min(right-left,Math.max(a.dp(48),bounds.width()));
-      int height=Math.min(touchBottom,Math.max(a.dp(48),bounds.height()));
-      int x=Math.max(left,Math.min(bounds.centerX()-width/2,right-width));
-      int y=Math.max(0,Math.min(bounds.centerY()-height/2,touchBottom-height));
-      expanded[i]=new Rect(x,y,x+width,y+height);
+    Rect capsule=visible[0],network=visible[1];
+    int width=Math.min(a.toolbar.getWidth(),Math.max(a.dp(48),capsule.width()));
+    int height=Math.min(top.getHeight(),Math.max(a.dp(48),capsule.height()));
+    int x=Math.max(0,Math.min(capsule.centerX()-width/2,a.toolbar.getWidth()-width));
+    int y=Math.max(0,Math.min(capsule.centerY()-height/2,top.getBottom()-height));
+    expanded[0]=new Rect(x,y,x+width,y+height);
+    // A separate 48 dp target on the right keeps the compact network row
+    // operable without placing invisible controls over the webpage or capsule.
+    int right=network.right,bottom=network.bottom;
+    expanded[1]=new Rect(Math.max(network.left,right-a.dp(48)),Math.max(0,bottom-a.dp(48)),right,bottom);
+    if(Rect.intersects(expanded[0],expanded[1])){
+      networkRow.setMinimumHeight(a.dp(48));networkRow.requestLayout();
+      expanded[1].top=network.top;
     }
     touchTargets=new ChromeTouchDelegate(actions,expanded);
     a.toolbar.setTouchDelegate(touchTargets);
