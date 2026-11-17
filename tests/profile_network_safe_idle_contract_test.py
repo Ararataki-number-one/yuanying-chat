@@ -46,7 +46,7 @@ def receipt():
         result = dict(environmentId=ENV, generation=0, candidateId='1' * 32, savedRevision=2,
                       appliedRevision=0, saveState='saved', applicationState='pending', scope='session',
                       message='环境已删除或尚未创建' if name == 'capture-delete' else 'saved pending')
-        state = dict(connectionEpoch=0, navigationEpoch=0, replyId='reply-' + name if sent else '',
+        state = dict(connectionEpoch=0, navigationEpoch=0, replyId='', replyTaskPersisted=False, sendObservationAllowed=False,
                      operation=False, configurationCapture=False, touchRestored=True,
                      fenced=name.startswith('complete'), confirmed=False,
                      job=dict(done=True, ok=name != 'capture-delete', message=result['message'],
@@ -87,7 +87,7 @@ def receipt():
             tap = dict(case=name, css=dict(x=10, y=20, width=320, height=600),
                        native=dict(x=0, y=0, width=320, height=600))
             events += [event('tapNeeded', tap), event('gesture', dict(case=name, trusted=True, sent=1,
-                replyId=state['replyId'], observedBy='Production Gecko extension → WebReplyObserver.receive'))]
+                replyId=state['replyId'], resourceKnown=True, resourceBusy=True, resourceSequence=1, observedBy='Production Gecko extension → ChatSession.resourceWebsiteObservation'))]
             gestures.append(dict(case=name, oneAttempt=True, bounds=copy.deepcopy(tap), x=10, y=20,
                                  command=['shell', 'input', 'tap', '10', '20']))
         elif name == 'capture-delete':
@@ -200,6 +200,14 @@ class SafeIdleContractTest(unittest.TestCase):
         self.reject(lambda r: r['cases'][4]['outcome']['job'].update(recoveryRequired=True))
         for key, value in [('transactionPresent', True), ('pendingState', 'staged'), ('operation', 'fake-delete')]:
             self.reject(lambda r, k=key, v=value: r['cases'][4]['deletionEvidence'].update({k: v}))
+
+    def test_real_send_has_resource_protection_without_native_confirmation(self):
+        for field,value in [('replyId','invented-task'),('replyTaskPersisted',True),('sendObservationAllowed',True)]:
+            self.reject(lambda r,k=field,v=value:r['cases'][0]['outcome'].update({k:v}))
+        for field,value in [('resourceKnown',False),('resourceBusy',False),('resourceSequence',0),('resourceSequence',True)]:
+            def change(r,k=field,v=value):
+                next(e['value'] for e in r['phaseEvents'] if e['kind']=='gesture')[k]=v
+            self.reject(change)
 
     def test_no_reconnect_write_fence_or_pending_reply_can_hide_as_deletion(self):
         for key in ('operation', 'configurationCapture', 'confirmed', 'fenced'):
