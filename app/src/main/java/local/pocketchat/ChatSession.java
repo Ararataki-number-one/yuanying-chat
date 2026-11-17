@@ -325,9 +325,10 @@ final class ChatSession {
     web.evaluateJavascript("window.__pocketWebReplyObserver?.requestResources?.("+JSONObject.quote(request)+")",unused->{if(epoch!=navigationEpoch||port!=resourceObserverPort){java.util.function.Consumer<TaskGuardSnapshot> waiting=taskGuardRequests.remove(request);if(waiting!=null)waiting.accept(unknownTaskGuardSnapshot());}});
   }
   boolean replyObservationAllowed(){return uiVisible||BackgroundReplyPolicy.enabledCached();}
+  boolean sendObservationAllowed(){return BrowserRuntimePolicy.observesReplies()&&replyObservationAllowed();}
   static void backgroundReplyPolicyChanged(BackgroundReplyPolicy.Snapshot policy){ChatSession session=peek();if(session==null)return;session.handler.post(()->session.replyObservationPolicyChanged());}
   void replyObservationPolicyChanged(){
-    boolean allowed=replyObservationAllowed();if(chatAutomationAllowed())web.evaluateJavascript("window.__pocketReplyObservationAllowed="+allowed+";window.__pocketWebReplyObserver?.setObservationAllowed?.("+allowed+");",null);
+    boolean allowed=sendObservationAllowed();if(chatAutomationAllowed())web.evaluateJavascript("window.__pocketReplyObservationAllowed="+allowed+";window.__pocketWebReplyObserver?.setObservationAllowed?.("+allowed+");",null);
     if(!replyObservationAllowed()){syncRun++;inFlight=false;resourceInspectionGeneration++;webObserver.resetCompletion();handler.removeCallbacks(tick);}
     updateBrowserActivity();
   }

@@ -107,6 +107,9 @@ class FileDownloads {
  // fault handling is exercised by the separate production persistence suite.
  boolean saveTask(){tasks.save();return true;}
  void transferProgress(){}void choose(long attempt){chosen++;}void fail(long attempt,String message){reason=message;}static class Tasks {boolean owned=true;void save(){}boolean owns(JSONObject row){return owned&&row!=null;}}
+ // MIME lookup is an explicit host adapter; parser behavior is covered separately.
+ static String type(String name,String fallback){return fallback;}
+ /* RESPONSE_METADATA */
  /* VALID */
  /* DOWNLOAD */
 }

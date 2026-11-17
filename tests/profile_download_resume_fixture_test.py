@@ -31,7 +31,7 @@ class DownloadResumeFixtureControls(unittest.TestCase):
         production=ROOT/'app/src/main/java/local/pocketchat'
         source=(production/'GeckoWebView.java').read_text();download=(production/'FileDownloads.java').read_text();fixture=FIXTURE.read_text()
         selected={'READ_COOKIES':member(source,'void readCookies('),'DOWNLOAD_COOKIES':member(source,'String downloadCookies('),
-                  'VALID':member(download,'boolean valid('),'DOWNLOAD':member(download,'void download('),
+                  'RESPONSE_METADATA':member(download,'void responseMetadata('),'VALID':member(download,'boolean valid('),'DOWNLOAD':member(download,'void download('),
                   'FIXTURE_VIEW':member(fixture,'static final class FixtureView'), 'ENDPOINT':member(fixture,'static final class Endpoint'), 'OLD_FIXTURE_VIEW':OLD_VIEW, 'SHA':member(fixture,'static String sha('), 'OBSERVE_FAILURE':member(fixture,'void observeRangeFailure(')}
         files=[production/n for n in ('GeckoWebView.java','FileDownloads.java','J.java','DownloadRange.java','SealedFileIo.java')]
         files += [FIXTURE,HERE/'CookieFixtureHost.java.in',HERE/'fixture-preservation.json',pathlib.Path(__file__),ROOT/'tests/download-resume-host/run.py',ROOT/'tests/sealed-file-host/android/util/AtomicFile.java',ROOT/'tests/download-recovery-host/android/os/Handler.java',ROOT/'tests/download-recovery-host/android/os/Looper.java',ROOT/'tests/download-recovery-host/android/net/Uri.java',ROOT/'tests/download-resume-host/stubs/android/util/Base64.java',ROOT/'tests/download-resume-host/stubs/android/os/SystemClock.java']

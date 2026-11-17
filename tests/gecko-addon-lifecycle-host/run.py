@@ -18,12 +18,13 @@ def main():
   if selected.count(name)!=1:raise ValueError('Unique current method required in its owning session: '+name)
   parts[name]=member_at(selected,selected.index(name))
  start=text.index('private final WebExtension.MessageDelegate routeMessages=');at=text.index('public void onDisconnect(WebExtension.Port incoming)',start);parts['route-port-onDisconnect']=member_at(text,at)
- files=[SOURCE,HERE/'AddonHost.java.in',Path(__file__).resolve(),ROOT/'app/src/main/java/local/pocketchat/J.java',ROOT/'app/src/main/java/local/pocketchat/NativeProtectionState.java'];before={str(x.relative_to(ROOT)):sha(x) for x in files};template=(HERE/'AddonHost.java.in').read_text()
+ navigation_sources=[ROOT/'app/src/main/java/local/pocketchat'/name for name in ('GeckoNavigationPolicy.java','BrowserAddressPolicy.java')]
+ files=navigation_sources+[SOURCE,HERE/'AddonHost.java.in',Path(__file__).resolve(),ROOT/'app/src/main/java/local/pocketchat/J.java',ROOT/'app/src/main/java/local/pocketchat/NativeProtectionState.java'];before={str(x.relative_to(ROOT)):sha(x) for x in files};template=(HERE/'AddonHost.java.in').read_text()
  def generated(chosen):return template.replace('@@MEMBERS@@','\n'.join(chosen.values()))
  with tempfile.TemporaryDirectory(prefix='gecko-addon-host-') as tmp:
   base=Path(tmp)
   def run(chosen,label,focus='all'):
-   folder=base/label;folder.mkdir();java=folder/'AddonHost.java';java.write_text(generated(chosen));classes=folder/'classes';compiled=subprocess.run([str(a.java_home/'bin/javac'),'-encoding','UTF-8','-cp',str(a.json_jar),'-d',str(classes),str(java),str(ROOT/'app/src/main/java/local/pocketchat/J.java'),str(ROOT/'app/src/main/java/local/pocketchat/NativeProtectionState.java')],capture_output=True,text=True)
+   folder=base/label;folder.mkdir();java=folder/'AddonHost.java';java.write_text(generated(chosen));classes=folder/'classes';compiled=subprocess.run([str(a.java_home/'bin/javac'),'-encoding','UTF-8','-cp',str(a.json_jar),'-d',str(classes),str(java),str(ROOT/'app/src/main/java/local/pocketchat/J.java'),str(ROOT/'app/src/main/java/local/pocketchat/NativeProtectionState.java'),*map(str,navigation_sources)],capture_output=True,text=True)
    if compiled.returncode:raise RuntimeError('Actual addon host compile failed: '+compiled.stderr)
    return subprocess.run([str(a.java_home/'bin/java'),'-cp',str(classes)+os.pathsep+str(a.json_jar),'local.pocketchat.AddonHost',focus],capture_output=True,text=True)
   result=run(parts,'current')

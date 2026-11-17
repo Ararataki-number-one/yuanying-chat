@@ -291,6 +291,9 @@ class WorkspaceCapacityTests(unittest.TestCase):
         # C4 b0f0ffb5758b943ccafa082569e7c767438d4d2a whole workflow bytes.
         # Undo only this resource-provisioning change; every old action/budget remains.
         before=self.raw
+        branch_addition=", 'release/browser-2.1.8', 'release/browser-2.1.8-*'"
+        self.assertEqual(before.count(branch_addition),1)
+        before=before.replace(branch_addition,'',1)
         block='env:\n  ANDROID_CAPACITY_PREFLIGHT: |\n'+''.join('    '+line for line in self.program.splitlines(keepends=True))
         self.assertEqual(before.count(block),1);before=before.replace(block,'',1)
         for added in (

@@ -15,7 +15,9 @@ final class BrowserRuntimePolicy {
   static boolean usesGecko(){return true;}
   static boolean originalWebsite(){return true;}
   static boolean allows(String action){return ACTIONS.contains(action);}
-  static boolean restoresPending(String savedEngine,String jobEngine,String kind){return "web".equals(kind)&&("gecko".equals(jobEngine)||jobEngine.isEmpty()&&"gecko".equals(savedEngine));}
+  // The browser no longer creates or restores website send-confirmation tasks.
+  static boolean observesReplies(){return false;}
+  static boolean restoresPending(String savedEngine,String jobEngine,String kind){return false;}
   static String websiteActionMessage(){return "请在 ChatGPT 原网页中操作";}
   static boolean sameDocument(String expected,String current){return expected!=null&&expected.equals(current);}
   static boolean leftConversation(String from,String to,boolean composer,boolean hasMessages){

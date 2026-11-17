@@ -62,6 +62,12 @@ def successful_result():
 
 
 class SettingsWorkspaceObservationTests(unittest.TestCase):
+    def test_retired_reply_detection_entry_is_rejected(self):
+        self.assertNotIn('后台回复检测', capture.ENTRY_TITLES)
+        root = hierarchy()
+        node(root, '后台回复检测', (60,500,1100,650))
+        self.assertIsNone(observe(root))
+
     def test_actual_route_header_actionable_rows_and_inline_notice_are_measured(self):
         value = observe(hierarchy(notice=True))
         self.assertEqual(value['selectedNavigation'], '设置')

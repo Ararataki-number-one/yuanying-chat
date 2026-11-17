@@ -32,6 +32,13 @@ jobs:
           echo "4566663c3876e022b4fa4ced8c8697c4ab1688267f090114fd92d027b32e619b  $PROFILE_ANDROID_JAR" | sha256sum -c -
           echo "PROFILE_ANDROID_JAR=$PROFILE_ANDROID_JAR" >> "$GITHUB_ENV"
           echo "JAVA_HOME=$JAVA_HOME" >> "$GITHUB_ENV"
+      - name: Check document metadata and popup response ownership
+        shell: bash
+        run: |
+          set -euo pipefail
+          node tests/browser-runtime/disabled-send-observation.test.cjs
+          python3 tests/download-response-metadata-host/run.py --java-home "$JAVA_HOME_17_X64" --output work/profile-host/download-response-metadata.json
+          python3 tests/gecko-popup-download-host/run.py --java-home "$JAVA_HOME_17_X64" --output work/profile-host/gecko-popup-download.json
       - name: Run source model, parser and protocol checks
         shell: bash
         run: |

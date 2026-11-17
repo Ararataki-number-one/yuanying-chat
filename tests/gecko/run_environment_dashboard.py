@@ -105,7 +105,9 @@ def run(adb,binary,source,out,dump):
             assert hl<=l<r<=hr and ht<=t<b<=hb
             status=[n for n in nodes if n.get('content-desc','').startswith('当前环境网络：')]
             assert len(status)==1 and status[0].get('clickable')==status[0].get('enabled')=='true'
-            sl,st,sr,sb=bounds(status[0]);assert b<=st<sb<top and sb-st>=144
+            # XML is the visible 32dp row; the independent mandatory compact
+            # fixture verifies its disjoint 48dp TouchDelegate and actual taps.
+            sl,st,sr,sb=bounds(status[0]);assert b<=st<sb<top and sb-st>=96 and sr-sl>=144
             return True
         except AssertionError:
             return False

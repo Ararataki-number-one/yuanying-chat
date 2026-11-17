@@ -13,7 +13,7 @@ ROOT=Path(__file__).resolve().parents[2];HERE=Path(__file__).resolve().parent;PR
 extractor=ROOT/'tests/gecko-navigation-host/run.py'
 spec=importlib.util.spec_from_file_location('generic_download_source_members',extractor)
 members=importlib.util.module_from_spec(spec);spec.loader.exec_module(members)
-NEEDLES=('String downloadSource(','void acceptResponse(','void accept(','static boolean https(','void newTask(','boolean sameSource(','boolean valid(','static String safeName(','static String type(','static String imageExtension(')
+NEEDLES=('void responseMetadata(','String downloadSource(','void acceptResponse(','void accept(','static boolean https(','void newTask(','boolean sameSource(','boolean valid(','static String safeName(','static String type(','static String imageExtension(')
 MUTATIONS=(
  ('native-task','void acceptResponse(','newTask("","",source)','newTask("","",a.conversation)','native','Native task records the current generic page: http://example.com/downloads'),
  ('native-source','void acceptResponse(','sourceUrl=source','sourceUrl=a.conversation','native','Native in-memory source uses the same captured page: http://example.com/downloads'),

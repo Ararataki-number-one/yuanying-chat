@@ -22,7 +22,7 @@ TITLE = '应用设置'
 SUMMARY = '启动、外观与应用偏好'
 SEARCH = '搜索设置与操作'
 ENTRY_TITLES = (
-    '默认环境与启动入口', '白天与黑夜', '此环境的浏览器与启动', '后台回复检测',
+    '默认环境与启动入口', '白天与黑夜', '此环境的浏览器与启动',
     '后台完成提醒', '通知与电池设置', '环境配置备份', '问题与建议', '应用更新',
     '关于与使用帮助', '功能支持范围',
 )
@@ -54,6 +54,8 @@ def settings_observation(xml, navigation_geometry):
     root = ET.fromstring(xml)
     nodes = [n for n in root.iter('node') if n.get('package') == PACKAGE
              and n.get('visible-to-user') != 'false' and bounds(n) is not None]
+    if any(n.get('text') == '后台回复检测' for n in nodes):
+        return None
     parents = {child: parent for parent in root.iter() for child in parent}
     scrolls = [n for n in nodes if n.get('class') == 'android.widget.ScrollView']
     navigation = [n for n in nodes if n.get('class') == 'android.widget.Button'

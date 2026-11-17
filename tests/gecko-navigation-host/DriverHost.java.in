@@ -133,7 +133,9 @@ class ChatSession {
   boolean deleted,compact=true,observe=true;long navigationEpoch=4;
   String driver="({marker:'FULL_DRIVER_MARKER',action:__ACTION__,args:__ARG__})",attachmentDriver="({marker:'ATTACHMENT_DRIVER_MARKER',action:__ACTION__,args:__ARG__})";
   boolean webPerformance(){return compact;}
-  boolean replyObservationAllowed(){return observe;}
+  /* Explicit legacy-observer boundary for isolated persistence/lifecycle checks; production browser disablement is tested by BrowserRuntimePolicyTest. */
+ boolean sendObservationAllowed(){return replyObservationAllowed();}
+ boolean replyObservationAllowed(){return observe;}
 }
 class Web {
   Object current=new Object();final Map<Object,Object> ports=new HashMap<>();String url="https://chatgpt.com/c/original";

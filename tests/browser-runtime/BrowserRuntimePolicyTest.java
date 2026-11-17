@@ -24,8 +24,8 @@ public final class BrowserRuntimePolicyTest {
       check("Native mutation is rejected: "+action,!BrowserRuntimePolicy.allows(action));
     for(String action:new String[]{"web-inspect","web-transcript","poll","page-state","page-restore","page-recover","attachment-state","file-prepare","file-point","file-followup"})
       check("Existing browser observation/recovery/file hook is retained: "+action,BrowserRuntimePolicy.allows(action));
-    check("Existing Gecko website observations can resume",BrowserRuntimePolicy.restoresPending("gecko","","web"));
-    check("A new explicit Gecko observation resumes even when an old system preference remains",BrowserRuntimePolicy.restoresPending("system","gecko","web"));
+    check("Retired Gecko website observations do not resume",!BrowserRuntimePolicy.restoresPending("gecko","","web"));
+    check("Explicit Gecko observations cannot revive removed send detection",!BrowserRuntimePolicy.restoresPending("system","gecko","web"));
     check("A system website task cannot bind to a different browser profile",!BrowserRuntimePolicy.restoresPending("system","","web"));
     check("Unknown historical website tasks remain unresolved",!BrowserRuntimePolicy.restoresPending("","","web"));
     check("Native send and regeneration tasks are never replayed",!BrowserRuntimePolicy.restoresPending("gecko","","send")&&!BrowserRuntimePolicy.restoresPending("gecko","","regenerate"));

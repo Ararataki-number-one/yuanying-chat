@@ -561,7 +561,8 @@ def verify_safe_idle(report):
         assert state['confirmed'] is False and row['reconnectAttempts'] == 0
         assert not state['operation'] and not state['configurationCapture'] and state['touchRestored'] is True
         if row['name'].endswith('send'):
-            assert row['actualTrustedGesture'] is True and row['injectedState'] == 'none' and state['replyId']
+            assert row['actualTrustedGesture'] is True and row['injectedState'] == 'none' and state['replyId'] == ''
+            assert state['replyTaskPersisted'] is False and state['sendObservationAllowed'] is False
         else:
             assert row['actualTrustedGesture'] is False and row['injectedState'] in ('transfer', 'navigation', 'delete', 'late-save')
             assert not state['replyId']
@@ -585,7 +586,9 @@ def verify_safe_idle(report):
     for gesture, observed, tap, case in zip(gestures, trusted, taps, rows[:2]):
         assert gesture['oneAttempt'] is True and gesture['bounds'] == tap
         assert observed['replyId'] == case['outcome']['replyId']
-        assert observed['observedBy'] == 'Production Gecko extension → WebReplyObserver.receive'
+        assert observed['observedBy'] == 'Production Gecko extension → ChatSession.resourceWebsiteObservation'
+        assert observed['resourceKnown'] is True and observed['resourceBusy'] is True
+        assert type(observed['resourceSequence']) is int and observed['resourceSequence'] > 0
         css, native = tap['css'], tap['native']
         assert all(isinstance(value, (int, float)) and math.isfinite(value) for value in (*css.values(), *native.values()))
         assert css['width'] > 0 and css['height'] > 0 and native['width'] > 0 and native['height'] > 0

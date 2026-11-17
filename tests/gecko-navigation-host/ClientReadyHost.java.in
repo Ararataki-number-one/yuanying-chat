@@ -12,7 +12,9 @@ public final class ClientReadyHost {
   String pageError="",connectionStage="",status="",resourceObserverBinding="synthetic-binding";
   long pageUsableAt;int awaiting,finishes,wakes,remembered,googleReads;boolean retry,navigationDispatched=true;
   boolean targetMatches(String url){return url.equals(web.url);}
-  boolean replyObservationAllowed(){return true;}
+  /* Explicit legacy-observer boundary for isolated persistence/lifecycle checks; production browser disablement is tested by BrowserRuntimePolicyTest. */
+ boolean sendObservationAllowed(){return replyObservationAllowed();}
+ boolean replyObservationAllowed(){return true;}
   void rememberBrowserLocation(String url){remembered++;}
   void awaitLogin(String message){awaiting++;status=message;}
   void finishNavigation(String message,boolean value){finishes++;pageError=message;retry=value;}

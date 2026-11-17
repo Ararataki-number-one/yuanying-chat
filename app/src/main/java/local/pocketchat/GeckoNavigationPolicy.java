@@ -8,6 +8,16 @@ final class GeckoNavigationPolicy {
   static String home(){return BrowserAddressPolicy.home();}
   static String normalizeInput(String input){return BrowserAddressPolicy.normalizeInput(input);}
   static boolean publicWeb(String url){return BrowserAddressPolicy.allowed(url);}
+  /** A new-window blob belongs to the current public document's origin. */
+  static boolean blobFrom(String target,String page){
+    if(target==null||!target.startsWith("blob:")||!publicWeb(page))return false;
+    String source=target.substring(5);
+    if(!publicWeb(source))return false;
+    try{
+      URI a=new URI(source),b=new URI(page);
+      return a.getScheme().equalsIgnoreCase(b.getScheme())&&a.getHost().equalsIgnoreCase(b.getHost())&&port(a)==port(b);
+    }catch(Exception invalid){return false;}
+  }
   static boolean restorable(String url){return publicWeb(url);}
   static boolean sameTarget(String first,String second){
     if(!publicWeb(first)||!publicWeb(second))return false;

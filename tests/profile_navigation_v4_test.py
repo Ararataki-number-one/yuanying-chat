@@ -442,6 +442,19 @@ class BottomContractTests(unittest.TestCase):
         report['cases'][1]['navigationContract']=3
         with self.assertRaises(AssertionError):load_actual_gate()(report,'a'*40)
 
+    def test_header_xml_checks_visible_row_not_native_touch_delegate(self):
+        for height,accepted in ((144,True),(96,True),(95,False)):
+            tree=ET.fromstring(browser_xml())
+            network=next(n for n in tree.iter('node') if n.get('content-desc','').startswith('当前环境网络：'))
+            l,t,r,b=navigation.bounds(network)
+            network.set('bounds',f'[{l},{t}][{r},{t+height}]')
+            xml=ET.tostring(tree,encoding='unicode')
+            if accepted:
+                self.assertEqual(navigation.conversation_header(xml,previous.v2.PACKAGE,360,640,1,'Controlled environment',browser=True)['navigationContract'],4)
+            else:
+                with self.assertRaises(AssertionError):
+                    navigation.conversation_header(xml,previous.v2.PACKAGE,360,640,1,'Controlled environment',browser=True)
+
     def test_capsule_address_or_old_long_press_claim_cannot_qualify_v4(self):
         for change in ('old-description','long-press','missing-network','short-host'):
             tree=ET.fromstring(browser_xml());parents={child:parent for parent in tree.iter() for child in parent}
@@ -577,5 +590,23 @@ class ProductionNetworkDialogTests(unittest.TestCase):
                 self.assertNotEqual(result.returncode,0,'Actual host did not reject '+before)
                 self.assertIn('AssertionError',result.stderr)
 
+
+class CompactNetworkTargetTests(unittest.TestCase):
+    def test_compact_status_keeps_disjoint_48dp_target(self):
+        value=layout(412,1);status=value['networkMetrics'];box=status['bounds']
+        box[3]=box[1]+96
+        value['toolbar'][3]=box[3]
+        status['networkTap']=navigation.center(box)
+        status['expandedTouch']=[box[2]-144,box[3]-144,box[2],box[3]]
+        status['expandedTap']=[box[2]-72,box[3]-143]
+        compact.verify_status(value)
+        for kind in ('short','webpage','capsule','point','missing'):
+            bad=copy.deepcopy(value);target=bad['networkMetrics']['expandedTouch']
+            if kind=='short':target[1]+=1
+            elif kind=='webpage':target[3]+=1
+            elif kind=='capsule':target[0]=bad['controls'][0]['touch'][0]
+            elif kind=='point':bad['networkMetrics']['expandedTap']=[-1,-1]
+            else:del bad['networkMetrics']['expandedTouch']
+            with self.subTest(kind=kind),self.assertRaises(AssertionError):compact.verify_status(bad)
 
 if __name__=='__main__':unittest.main()

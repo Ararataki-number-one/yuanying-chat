@@ -117,6 +117,8 @@ class ChatSession {
  // These reload cases observe the foreground page and have no fresh resource
  // receipt. Global reply policy and resource-freshness admission run elsewhere.
  boolean uiVisible=true,browserNavigationStopped;long resourceObservedAt;
+ /* Explicit legacy-observer boundary for isolated persistence/lifecycle checks; production browser disablement is tested by BrowserRuntimePolicyTest. */
+ boolean sendObservationAllowed(){return replyObservationAllowed();}
  boolean replyObservationAllowed(){return uiVisible;}
  boolean resourceObservationCurrent(){if(resourceObservedAt!=0)throw new AssertionError("Fresh resource observation is outside this reload host");return false;}
  // This reload-only workload stores no deferred browser candidate. Its real

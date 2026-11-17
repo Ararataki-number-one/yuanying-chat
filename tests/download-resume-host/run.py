@@ -38,7 +38,9 @@ def main():
  range_before=subprocess.check_output(['git','rev-parse',a.before_range_ref+'^{commit}'],cwd=ROOT,text=True).strip() if a.before_range_ref else None
  load_before=subprocess.check_output(['git','rev-parse',a.before_load_ref+'^{commit}'],cwd=ROOT,text=True).strip() if a.before_load_ref else None
  needles.append('private void retirePrivateCopy(')
- text=(source/'FileDownloads.java').read_text();parts=[member(text,n) for n in needles]
+ text=(source/'FileDownloads.java').read_text()
+ if 'void responseMetadata(' in text:needles.append('void responseMetadata(')
+ parts=[member(text,n) for n in needles]
  if before:
   previous=subprocess.check_output(['git','show',before+':app/src/main/java/local/pocketchat/FileDownloads.java'],cwd=ROOT,text=True)
   parts[0]=member(previous,needles[0])

@@ -316,7 +316,12 @@ def conversation_header(xml, package, width, height, scale, environment, *, brow
     assert len(status) == 1 and status[0].get('clickable') == status[0].get('enabled') == 'true'
     assert status[0].get('class') == 'android.widget.Button' and status[0].get('visible-to-user') != 'false'
     status_bounds = bounds(status[0])
-    assert min(status_bounds[2]-status_bounds[0],status_bounds[3]-status_bounds[1]) >= 48*3
+    # Accessibility XML describes visible pixels, not the TouchDelegate region.
+    # Compact status rows may be 32dp high. The mandatory compact-chrome gate
+    # separately requires the actual disjoint 48dp native target and real taps,
+    # including a tap above the visible row. This is only a visible-layout check.
+    assert status_bounds[2]-status_bounds[0] >= 48*3
+    assert status_bounds[3]-status_bounds[1] >= 32*3
     assert not any(n.get('package') == package and n.get('content-desc') in ('管理环境', '更多') for n in nodes)
     l, t, r, b = bounds(capsule)
     assert 0 <= l < r <= width*3 and 0 <= t < b < result['toolbarBounds'][1] < height*3

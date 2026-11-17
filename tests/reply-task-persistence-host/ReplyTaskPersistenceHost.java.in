@@ -193,7 +193,9 @@ class ChatSession {
   boolean webPerformance(){return true;}
   void setStatus(String message){status=message;}
   void wakeDeferredBrowserSettings(){wakes++;}
-  boolean replyObservationAllowed(){throw new AssertionError("No website observation expected");}
+  /* Explicit legacy-observer boundary for isolated persistence/lifecycle checks; production browser disablement is tested by BrowserRuntimePolicyTest. */
+ boolean sendObservationAllowed(){return replyObservationAllowed();}
+ boolean replyObservationAllowed(){throw new AssertionError("No website observation expected");}
   boolean resourceBindingMatches(JSONObject event,Object port){throw new AssertionError("No bridge events expected");}
   boolean targetMatches(String url){throw new AssertionError("No navigation expected");}
   void resourceObserverRouteReady(JSONObject event,Object port){throw new AssertionError("No bridge route expected");}

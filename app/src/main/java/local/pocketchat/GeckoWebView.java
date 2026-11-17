@@ -825,7 +825,7 @@ class GeckoWebView extends FrameLayout {
       @Override public void onCanGoBack(GeckoSession s,boolean value){if(destroyed||!locations.containsKey(s))return;backStates.put(s,value);if(s==current&&canBack!=value){canBack=value;owner.changed();}}
       @Override public void onCanGoForward(GeckoSession s,boolean value){if(destroyed||!locations.containsKey(s))return;forwardStates.put(s,value);if(s==current&&canForward!=value){canForward=value;owner.changed();}}
       @Override public GeckoResult<GeckoSession> onNewSession(GeckoSession s,String target){
-        if(destroyed||failed||addonDisabled||crashed.contains(s)||s!=current||popups.size()>=8||!protectionAllowsNetwork()||!identityRequestAllowed(target)||!owner.guard.allowed()||!(target==null||target.isEmpty()||"about:blank".equals(target)||allowedUrl(target)))return GeckoResult.fromValue(null);
+        if(destroyed||failed||addonDisabled||crashed.contains(s)||s!=current||popups.size()>=8||!protectionAllowsNetwork()||!identityRequestAllowed(target)||!owner.guard.allowed()||!(target==null||target.isEmpty()||"about:blank".equals(target)||allowedUrl(target)||GeckoNavigationPolicy.blobFrom(target,locations.get(s))))return GeckoResult.fromValue(null);
         if(!owner.timeZone.popupAllowed()){blockedPopups.offer(s,target);return GeckoResult.fromValue(null);}
         ChromiumRouteLease.Handle lease=null;if(GeckoNavigationPolicy.publicWeb(target)&&!MainActivity.chatUrl(target)){lease=ChromiumRouteLease.acquireSurface();if(lease==null){owner.setStatus("线路正在更新，请稍后重试打开链接");return GeckoResult.fromValue(null);}}
         GeckoSession popup;try{popup=newSession();}catch(RuntimeException unavailable){if(lease!=null)lease.close();owner.setStatus("新网页暂时无法打开，请稍后重试");return GeckoResult.fromValue(null);}popups.add(popup);if(lease!=null){generalSessions.add(popup);generalRoutes.put(popup,lease);}
@@ -852,8 +852,14 @@ class GeckoWebView extends FrameLayout {
       @Override public void onKill(GeckoSession s){contentStopped(s,"网页被系统关闭，点按重新加载可恢复当前环境");}
       @Override public void onFirstContentfulPaint(GeckoSession s){pageVisible(s);}
       @Override public void onExternalResponse(GeckoSession s,WebResponse response){
-        if(!destroyed&&s==current&&owner.guard.allowed()&&responseDownload!=null){pendingLoads.remove(s);loadingTargets.put(s,locations.get(s));responseDownload.receive(response);return;}
-        if(response.body!=null)try{response.body.close();}catch(IOException ignored){}
+        // A new popup's activation is queued in onNewSession. Preserve its
+        // response until that queued activation runs, then recheck ownership.
+        // Never activate an old/background popup just to deliver a download.
+        Runnable deliver=()->{
+          if(!destroyed&&!addonDisabled&&!crashed.contains(s)&&locations.containsKey(s)&&s==current&&owner.guard.allowed()&&protectionAllowsNetwork()&&responseDownload!=null){pendingLoads.remove(s);loadingTargets.put(s,locations.get(s));responseDownload.receive(response);return;}
+          if(response.body!=null)try{response.body.close();}catch(IOException ignored){}
+        };
+        if(s!=current&&popups.contains(s))owner.handler.post(deliver);else deliver.run();
       }
     });
     session.setPromptDelegate(new GeckoSession.PromptDelegate(){
