@@ -27,7 +27,7 @@ class MainActivity extends android.app.Activity{protected void onResume(){Isolat
  stubs['local/pocketchat/Collaborators.java']=support
  actual_helpers='\n'.join(methods.values())
  def wrapper(helper_text):return 'package local.pocketchat;import android.content.*;import android.os.*;import java.io.*;import java.util.*;class GeckoTlsAcceptanceActivity extends MainActivity{'+helper_text+'boolean terminal;String stage="",failure="";'+fail+'void publish(){IsolationState.failures++;}public static final class Profile1 extends GeckoTlsAcceptanceActivity{}public static final class Profile2 extends GeckoTlsAcceptanceActivity{}}'
- combo_class='package local.pocketchat;class GeckoTlsCpuIpComboIntegrationActivity extends MainActivity{'+combo_resume+'boolean terminal;String stage="",failure="";'+failed+'void publish(){IsolationState.failures++;}}'
+ combo_class='package local.pocketchat;import java.io.IOException;class GeckoTlsCpuIpComboIntegrationActivity extends MainActivity{'+combo_resume+'boolean terminal;String stage="",failure="";'+failed+'void publish(){IsolationState.failures++;}}'
  with tempfile.TemporaryDirectory(prefix='tls-scoped-update-isolation-')as temporary:
   base=Path(temporary)
   def execute(label,helper_text):
