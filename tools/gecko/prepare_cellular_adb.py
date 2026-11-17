@@ -36,6 +36,52 @@ def cellular_observation(commands, record, identity, phase):
     return index, row
 
 
+def initial_network_observation(commands, record, identity):
+    """Wait only for the observed empty startup default, under the same budget.
+
+    sys.boot_completed does not prove the freshly installed provider can see
+    a default network yet. Keep each original CM reply and require the same
+    usable API 35 default before any setup-package or Wi-Fi mutation.
+    """
+    stage = record['cellularPreparation']
+    first_index = len(record['networkObservations'])
+    stage['initialNetworkObservationIndex'] = first_index
+    while True:
+        index = len(record['networkObservations'])
+        before = normal.network_observation(commands, record, identity,
+                                            'before-network-configuration')
+        rows = record['networkObservations']
+        value = rows[index]['value']
+        if index == first_index:
+            record['initialNetworkUsable'] = before
+        require(len({row['runNonce'] for row in rows}) == len(rows),
+                'Every preparation network observation requires a fresh nonce')
+        if index != first_index:
+            require(type(value.get('schema')) is int and value['schema'] == 1,
+                    'Fresh initial network observation schema is invalid')
+        if before:
+            require(value['androidSdk'] == 35,
+                    'Actual initial API 35 default network with INTERNET required; no Wi-Fi fallback')
+            if time.monotonic() >= commands.deadline:
+                raise TimeoutError('Initial default network arrived after the original preparation budget')
+            stage['readyInitialNetworkObservationIndex'] = index
+            return index, rows[index]
+        empty_default = (type(value.get('schema')) is int and value['schema'] == 1
+                and type(value.get('androidSdk')) is int and value['androidSdk'] == 35
+                and value.get('activeNetwork') == '' and value.get('activeNetworkAfter') == ''
+                and all(value.get(key) is False for key in
+                        ('capabilitiesPresent', 'internetCapability', 'stableDuringRead', 'usable'))
+                and type(value.get('transports')) is list and value['transports'] == []
+                and type(value.get('capabilities')) is str and value['capabilities'] == '')
+        require(empty_default,
+                'Actual initial API 35 default network with INTERNET required; only exact empty startup default may wait')
+        stage.setdefault('initialEmptyDefaultNetworkObservationIndices', []).append(index)
+        remaining = commands.deadline - time.monotonic()
+        if remaining <= 0:
+            raise TimeoutError('Initial default network did not arrive within the original preparation budget')
+        time.sleep(min(.25, remaining))
+
+
 def cellular_after_setup(commands, record, identity):
     """Observe the known SDK Wi-Fi handover within the same preparation budget.
 
@@ -45,7 +91,7 @@ def cellular_after_setup(commands, record, identity):
     an empty observation is not a handover continuation.
     """
     stage = record['cellularPreparation']
-    initial = record['networkObservations'][stage['initialNetworkObservationIndex']]['value']
+    initial = record['networkObservations'][stage['readyInitialNetworkObservationIndex']]['value']
     initial_wifi = (type(initial) is dict and type(initial.get('schema')) is int and initial['schema'] == 1
                     and type(initial.get('androidSdk')) is int and initial['androidSdk'] == 35
                     and type(initial.get('transports')) is list and initial['transports'] == ['wifi']
@@ -132,13 +178,7 @@ def cellular_preflight(commands, record, identity):
         for key in ['show_ime_with_hard_keyboard', 'default_input_method', 'enabled_input_methods']:
             record['initialInputSettings'][key] = commands.run('shell', 'settings', 'get', 'secure', key)
         record['initialKeyboardLayoutProperty'] = commands.run('shell', 'getprop', 'vendor.qemu.keyboard_layout')
-        stage['initialNetworkObservationIndex'] = len(record['networkObservations'])
-        before = normal.network_observation(commands, record, identity, 'before-network-configuration')
-        record['initialNetworkUsable'] = before
-        initial_row = record['networkObservations'][stage['initialNetworkObservationIndex']]
-        initial = initial_row['value']
-        require(before and initial['androidSdk'] == 35,
-                'Actual initial API 35 default network with INTERNET required; no Wi-Fi fallback')
+        initial_network_observation(commands, record, identity)
         # The SDK setup package may own the initial Wi-Fi request. Preserve
         # its original handling before requiring the independent cellular path.
         present = commands.run('shell', 'pm', 'list', 'packages', normal.PACKAGE).splitlines()
