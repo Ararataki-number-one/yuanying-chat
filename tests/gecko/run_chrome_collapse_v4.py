@@ -22,7 +22,8 @@ from ui_visual_capture import UiVisualCapture
 from chrome_parser_preparation import prepare_parser
 from chrome_collapse_contract_v4 import (ACTIVITY, ENVIRONMENT_ACTIVITY, PACKAGE, PHASES, BROWSER_NAMES, BROWSER_STARTUP_MAP,
                                          LEGACY_BEHAVIOR_MAP, address_cancel, inspect_ui, resumed, verify_case,
-                                         make_short_target_proof, verify_short_target, MENU_TARGETS, TOOLS_PHASES)
+                                         make_short_target_proof, verify_short_target, short_target_observation,
+                                         short_webview_pending, short_activity_owner, MENU_TARGETS, TOOLS_PHASES)
 from workspace_navigation_contract_v4 import seek_menu_action
 from run_chrome_collapse import resume_after_home, resume_transport
 
@@ -39,7 +40,7 @@ def cancel_address_once(*, observe, snapshot, tap, opened, returned):
     tap(opened, returned, 'cancel', point=cancel['point'], bounds=cancel['bounds'])
 
 
-def short_swipe_once(*, capture, prefix, identity, nonce, android_user, before, diagnostic=None):
+def short_swipe_once(*, capture, prefix, identity, nonce, android_user, before, owner_activity, diagnostic=None):
     """Choose a non-editable target from fresh bytes before one original input.
 
     Accessibility and Activity observations share the first twenty seconds of
@@ -53,29 +54,92 @@ def short_swipe_once(*, capture, prefix, identity, nonce, android_user, before, 
         originalActionBudgetMs=90000, preparationBudgetMs=20000, actionStartedMonotonicNanos=started_ns)
     preparation_deadline = (started_ns + 20_000_000_000) / 1_000_000_000
     action_deadline = (started_ns + 90_000_000_000) / 1_000_000_000
-    xml = capture.read(deadline=preparation_deadline)
-    assert capture.diagnostics.is_file() and not capture.diagnostics.is_symlink()
-    original = json.loads(capture.diagnostics.read_bytes())
-    assert original['schema'] == 1 and original['sourceCommit'] == identity['sourceCommit']
-    assert original['runNonce'] == capture.nonce and original['attemptCount'] == capture.count
-    assert json.dumps(original['acquisitionDriver'], sort_keys=True, allow_nan=False) == json.dumps(
-        capture.report['acquisitionDriver'], sort_keys=True, allow_nan=False), 'Saved hierarchy driver receipt differs from the active capture'
-    captured = original['attempts'][-1]
-    assert captured['index'] == capture.count and captured['status'] == 'captured'
-    remaining = preparation_deadline - time.monotonic()
-    if remaining <= 0:
-        raise TimeoutError('Original short-swipe preparation budget expired before Activity observation')
-    activity_started_ns = time.monotonic_ns()
-    activity = subprocess.check_output(prefix + ['shell', 'dumpsys', 'activity', 'activities'],
-                                       timeout=min(90, remaining)).decode('utf-8', 'strict')
-    activity_completed_ns = time.monotonic_ns()
-    proof = make_short_target_proof(raw_xml=xml, activity_state=activity, identity=identity,
-        nonce=nonce, android_user=android_user, before=before, capture_nonce=capture.nonce,
-        capture_record=captured, acquisition_driver=original['acquisitionDriver'], action_started_ns=started_ns,
-        activity_started_ns=activity_started_ns, activity_completed_ns=activity_completed_ns,
-        prepared_ns=time.monotonic_ns())
-    geometry = verify_short_target(proof, identity=identity, nonce=nonce,
-                                   android_user=android_user, before=before)
+    diagnostic['ownerActivityState'] = owner_activity
+    owner = short_activity_owner(owner_activity, android_user)
+    diagnostic['owner'] = owner
+    samples = []; diagnostic['preparationSamples'] = samples
+    diagnostic.update(preparationSampleLimit=64, preparationEvidenceLimitBytes=4*1024*1024)
+    evidence_bytes = 0; previous_index = capture.count; previous_completed_ns = started_ns
+    while True:
+        if time.monotonic() >= preparation_deadline:
+            raise TimeoutError('Original short-swipe preparation budget expired before hierarchy observation')
+        if len(samples) >= diagnostic['preparationSampleLimit']:
+            raise RuntimeError('Short-swipe preparation evidence limit reached without a target')
+        xml = capture.read(deadline=preparation_deadline)
+        sample = dict(status='hierarchy-observed', rawXml=xml)
+        samples.append(sample)
+        try:
+            assert capture.diagnostics.is_file() and not capture.diagnostics.is_symlink()
+            original = json.loads(capture.diagnostics.read_bytes())
+            captured = original['attempts'][-1]; sample['captureRecord'] = captured
+            assert original['schema'] == 1 and original['sourceCommit'] == identity['sourceCommit']
+            assert original['runNonce'] == capture.nonce and original['attemptCount'] == capture.count
+            assert json.dumps(original['acquisitionDriver'], sort_keys=True, allow_nan=False) == json.dumps(
+                capture.report['acquisitionDriver'], sort_keys=True, allow_nan=False), 'Saved hierarchy driver receipt differs from the active capture'
+            assert captured['index'] == capture.count and captured['status'] == 'captured'
+            assert captured['index'] > previous_index and captured['startedAtMonotonicNanos'] >= previous_completed_ns
+            previous_index = captured['index']
+            remaining = preparation_deadline - time.monotonic()
+            if remaining <= 0:
+                raise TimeoutError('Original short-swipe preparation budget expired before Activity observation')
+            activity_started_ns = time.monotonic_ns(); sample['activityStartedAtMonotonicNanos'] = activity_started_ns
+            activity_raw = subprocess.check_output(prefix + ['shell', 'dumpsys', 'activity', 'activities'],
+                                                  timeout=min(90, remaining))
+            activity_completed_ns = time.monotonic_ns(); sample['activityCompletedAtMonotonicNanos'] = activity_completed_ns
+            sample.update(activityBytes=len(activity_raw), activitySha256=hashlib.sha256(activity_raw).hexdigest())
+            try: activity = activity_raw.decode('utf-8', 'strict')
+            except UnicodeDecodeError:
+                sample['activityRawHex'] = activity_raw.hex()
+                raise
+            sample['activityState'] = activity
+            assert short_activity_owner(activity, android_user) == owner, 'Short target runtime or window owner changed'
+            if time.monotonic() >= preparation_deadline:
+                raise TimeoutError('Original short-swipe preparation budget expired during Activity observation')
+            observation = short_target_observation(raw_xml=xml, activity_state=activity, identity=identity,
+                nonce=nonce, android_user=android_user, before=before, capture_nonce=capture.nonce,
+                capture_record=captured, acquisition_driver=original['acquisitionDriver'], action_started_ns=started_ns,
+                activity_started_ns=activity_started_ns, activity_completed_ns=activity_completed_ns,
+                prepared_ns=time.monotonic_ns())
+            # The complete driver receipt is already retained by the capture;
+            # bind it once per sample without duplicating its archive payload.
+            driver = observation.pop('acquisitionDriver')
+            sample.update(observation, acquisitionDriverSha256=hashlib.sha256(json.dumps(
+                driver, sort_keys=True, ensure_ascii=False, separators=(',', ':'), allow_nan=False).encode()).hexdigest())
+            pending = short_webview_pending(xml, before)
+            if time.monotonic() >= preparation_deadline:
+                raise TimeoutError('Original short-swipe preparation budget expired during hierarchy validation')
+            if pending: sample.update(status='not-ready', reason='owned-empty-web-content')
+            evidence_bytes += len(json.dumps(sample, ensure_ascii=False, separators=(',', ':'), allow_nan=False).encode())
+            diagnostic['preparationEvidenceBytes'] = evidence_bytes
+            if evidence_bytes > diagnostic['preparationEvidenceLimitBytes']:
+                # Preserve the bounded final sample too; never overwrite a
+                # pending frame with a later successful hierarchy.
+                raise RuntimeError('Short-swipe preparation evidence byte limit reached without a target')
+            if pending:
+                previous_completed_ns = time.monotonic_ns()
+                remaining = preparation_deadline-time.monotonic()
+                if remaining <= 0:
+                    raise TimeoutError('Original short-swipe preparation budget expired while awaiting WebView')
+                time.sleep(min(.5, remaining))  # Read-only polling, never input pacing.
+                continue
+            proof = make_short_target_proof(raw_xml=xml, activity_state=activity, identity=identity,
+                nonce=nonce, android_user=android_user, before=before, capture_nonce=capture.nonce,
+                capture_record=captured, acquisition_driver=original['acquisitionDriver'], action_started_ns=started_ns,
+                activity_started_ns=activity_started_ns, activity_completed_ns=activity_completed_ns,
+                prepared_ns=time.monotonic_ns())
+            geometry = verify_short_target(proof, identity=identity, nonce=nonce,
+                                           android_user=android_user, before=before)
+            if time.monotonic() >= preparation_deadline:
+                raise TimeoutError('Original short-swipe preparation budget expired during target validation')
+            sample['status'] = 'prepared'
+            diagnostic['preparationEvidenceBytes'] = sum(len(json.dumps(s, ensure_ascii=False,
+                separators=(',', ':'), allow_nan=False).encode()) for s in samples)
+            break
+        except Exception as error:
+            sample.update(status='failed', errorType=type(error).__name__, error=str(error))
+            diagnostic['preparationEvidenceBytes'] = sum(len(json.dumps(s, ensure_ascii=False,
+                separators=(',', ':'), allow_nan=False).encode()) for s in samples)
+            raise
     diagnostic.update(status='prepared', targetProof=proof)
     if time.monotonic() >= preparation_deadline:
         raise TimeoutError('Original short-swipe preparation budget expired before input')
@@ -251,7 +315,8 @@ def run_v4(adb, adb_bytes, source, trace, out, focus):
             if direction == 'short':
                 attempt = {}; short_attempts.append(attempt)
                 geometry, proof = short_swipe_once(capture=capture, prefix=prefix, identity=identity,
-                    nonce=nonce, android_user=user, before=s, diagnostic=attempt)
+                    nonce=nonce, android_user=user, before=s,
+                    owner_activity=native_ui['compactExpand']['activityState'], diagnostic=attempt)
                 start, end = geometry['from'], geometry['to']
                 extra['shortTargetProof'] = proof
             else:

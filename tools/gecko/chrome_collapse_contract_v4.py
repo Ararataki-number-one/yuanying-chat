@@ -31,10 +31,10 @@ else:
 ROOT = Path(__file__).resolve().parents[2]
 
 
-def make_short_target_proof(*, raw_xml, activity_state, identity, nonce, android_user, before,
+def short_target_observation(*, raw_xml, activity_state, identity, nonce, android_user, before,
                             capture_nonce, capture_record, acquisition_driver, action_started_ns,
                             activity_started_ns, activity_completed_ns, prepared_ns):
-    """Bind the real native-driver command and fresh XML before one short input.
+    """Validate one fresh native-driver/Activity observation before any input.
 
     The v2 proof remains unchanged. This current proof preserves each of its
     timing, byte, ownership and geometry checks while independently validating
@@ -104,9 +104,8 @@ def make_short_target_proof(*, raw_xml, activity_state, identity, nonce, android
             assert stdout.decode().strip() in ('', 'UI hierchary dumped to: '+remote, 'UI hierarchy dumped to: '+remote)
             output(command['stdout'], stdout)
         else: output(command['stdout'], raw)
-    geometry = short_target_geometry(raw_xml, before)
     activity = activity_state.encode('utf-8')
-    return dict(schema=2, kind='shortSwipeTarget', phase='horizontal', preEmitOnly=True,
+    return dict(schema=1, kind='shortSwipeObservation', phase='horizontal', preEmitOnly=True,
         applicationAcceptance=False, sourceCommit=identity['sourceCommit'], sourceTree=identity['sourceTree'],
         apkSha256=identity['apkSha256'], runNonce=nonce, androidUser=android_user,
         beforeSnapshotSha256=hashlib.sha256(json.dumps(before, ensure_ascii=False, sort_keys=True, separators=(',', ':'), allow_nan=False).encode()).hexdigest(),
@@ -115,7 +114,132 @@ def make_short_target_proof(*, raw_xml, activity_state, identity, nonce, android
         captureRunNonce=capture_nonce, captureRecord=record, acquisitionDriver=driver,
         actionStartedAtMonotonicNanos=action_started_ns, activityStartedAtMonotonicNanos=activity_started_ns,
         activityCompletedAtMonotonicNanos=activity_completed_ns, preparedAtMonotonicNanos=prepared_ns,
-        originalActionBudgetMs=90000, preparationBudgetMs=20000, geometry=geometry)
+        originalActionBudgetMs=90000, preparationBudgetMs=20000)
+
+
+def short_activity_owner(raw, android_user):
+    """Pin the real resumed instance/process/window, not just its class name."""
+    assert type(raw) is str and 0 < len(raw.encode('utf-8')) <= 1024*1024
+    assert type(android_user) is int and android_user >= 0
+    assert resumed(raw) == {(android_user, ACTIVITY)}
+    fields = re.findall(r'^\s*(?:mResumedActivity|topResumedActivity)\s*[:=]\s*(ActivityRecord\{[^{}\n]+\})\s*$', raw, re.M)
+    assert fields and len(set(fields)) == 1, 'Short target has an ambiguous resumed instance'
+    activity = fields[0]
+    match = re.fullmatch(r'ActivityRecord\{([0-9a-f]+) u([0-9]+) '+re.escape(ACTIVITY)+r' t([0-9]+)\}', activity)
+    assert match is not None and int(match[2]) == android_user
+    rows = raw.splitlines()
+    sections = [i for i, line in enumerate(rows) if re.fullmatch(r'\s*\* Hist\s+#[0-9]+: '+re.escape(activity), line)]
+    assert len(sections) == 1, 'Short target instance detail is missing or ambiguous'
+    start = sections[0]; indent = len(rows[start])-len(rows[start].lstrip()); end = start+1
+    while end < len(rows) and (not rows[end].strip() or len(rows[end])-len(rows[end].lstrip()) > indent):
+        end += 1
+    body = '\n'.join(rows[start+1:end])
+    assert len(re.findall(r'^\s*app=', body, re.M)) == 1
+    processes = re.findall(r'^\s*app=ProcessRecord\{([0-9a-f]+) ([1-9][0-9]*):'+re.escape(PACKAGE)+r'/u([0-9]+)a([0-9]+)\}\s*$', body, re.M)
+    assert len(processes) == 1 and int(processes[0][2]) == android_user, 'Short target process owner is missing or ambiguous'
+    assert len(re.findall(r'^\s*windows=', body, re.M)) == 1
+    windows = re.findall(r'^\s*windows=\[(Window\{[0-9a-f]+ u[0-9]+ '+re.escape(ACTIVITY)+r'\})\]\s*$', body, re.M)
+    assert len(windows) == 1, 'Short target native window is missing or ambiguous'
+    focus = re.findall(r'^\s*mCurrentFocus=(.*)$', raw, re.M)
+    focused_app = re.findall(r'^\s*mFocusedApp=(.*)$', raw, re.M)
+    assert focus == windows and focused_app == [activity], 'Short target window focus changed'
+    window = re.fullmatch(r'Window\{([0-9a-f]+) u([0-9]+) '+re.escape(ACTIVITY)+r'\}', windows[0])
+    assert window is not None and int(window[2]) == android_user
+    process_token, pid, _, app_id = processes[0]
+    return dict(activityToken=match[1], taskId=int(match[3]), androidUser=android_user,
+                component=ACTIVITY, processToken=process_token, pid=int(pid),
+                uid=android_user*100000+10000+int(app_id), windowToken=window[1])
+
+
+def short_webview_pending(raw_xml, before):
+    """Recognize only the observed empty owned content container.
+
+    A complete hierarchy can precede Gecko's accessibility subtree. Missing
+    or ambiguous windows, controls, owners or geometry are errors, not another
+    readiness state. An existing WebView still goes through the original full
+    target proof; no older hierarchy can supply its target.
+    """
+    assert type(raw_xml) is str and 0 < len(raw_xml.encode('utf-8')) <= 1024*1024
+    tree = ET.fromstring(raw_xml)
+    assert tree.tag == 'hierarchy'
+    nodes = list(tree.iter('node')); assert 0 < len(nodes) <= 4096
+    assert len(tree) == 1 and tree[0].tag == 'node', 'Short target must have one native window'
+    assert all(node.tag == 'node' for node in tree.iter() if node is not tree)
+    assert all(node.get('package') == PACKAGE for node in nodes), 'Short target has a foreign native node'
+    webs = [node for node in nodes if node.get('class') == 'android.webkit.WebView']
+    if len(webs) == 1:
+        return False
+    assert not webs, 'Short target has ambiguous native WebViews'
+    assert before['command'] == 'horizontal' and before['expanded'] is True
+    assert before['keyboard'] is False and before['windowFocus'] is True
+    assert type(before['page']) is int and before['page'] == 0 and before['addressDialog']['showing'] is False
+    for key in ('webX', 'webY', 'webWidth', 'webHeight'):
+        assert type(before[key]) is int and before[key] >= 0
+    expected = rect([before['webX'], before['webY'], before['webX']+before['webWidth'],
+                     before['webY']+before['webHeight']])
+    for node in nodes:
+        assert node.get('package') == PACKAGE and node.get('enabled') == 'true'
+        assert node.get('visible-to-user') != 'false' and node.get('class')
+        rect(bounds(node))
+        assert all(node.get(flag) in ('true', 'false') for flag in
+                   ('clickable', 'long-clickable', 'focusable', 'checkable'))
+    parents = {child: parent for parent in tree.iter() for child in parent}
+    for child, parent in parents.items():
+        if parent is tree: continue
+        l, t, r, b = bounds(child); pl, pt, pr, pb = bounds(parent)
+        assert pl <= l < r <= pr and pt <= t < b <= pb, 'Short target has a clipped or overlapping native descendant'
+    contents = [node for node in nodes if node.get('resource-id') == 'android:id/content']
+    assert len(contents) == 1, 'Short target content owner is missing or ambiguous'
+    content = contents[0]
+    ancestor = content
+    while ancestor is not tree[0]:
+        parent = parents[ancestor]
+        assert parent.tag == 'node' and parent.get('class') == 'android.widget.FrameLayout'
+        assert list(parent) == [ancestor], 'Short target has an additional native window or overlay'
+        al, at, ar, ab = bounds(parent); l, t, r, b = bounds(ancestor)
+        assert al <= l < r <= ar and at <= t < b <= ab
+        ancestor = parent
+    assert content.get('class') == 'android.widget.FrameLayout' and len(content) == 1
+    main = content[0]
+    assert main.get('class') == 'android.widget.LinearLayout' and len(main) == 3
+    header, outer, footer = list(main)
+    assert header.get('class') == 'android.widget.LinearLayout'
+    assert footer.get('class') == outer.get('class') == 'android.widget.FrameLayout'
+    assert bounds(header) == before['toolbarBounds']
+    assert bounds(footer) == before['browserToolbarBounds']
+    assert bounds(outer) == list(expected) and len(outer) == 1
+    inner = outer[0]
+    assert inner.get('class') == 'android.widget.FrameLayout' and bounds(inner) == list(expected)
+    assert len(inner) == 0, 'Short target content is not the observed empty container'
+    for node in (content, main, outer, inner):
+        assert all(node.get(flag) == 'false' for flag in ('clickable', 'long-clickable', 'focusable', 'checkable'))
+    left, top, right, bottom = expected
+    assert bounds(header)[3] == top and bounds(footer)[1] == bottom
+    for node in (main, content):
+        l, t, r, b = bounds(node)
+        assert l <= left < right <= r and t <= bounds(header)[1] < bounds(footer)[3] <= b
+    capsule = [node for node in header.iter('node') if node.get('content-desc', '').startswith('当前环境：')]
+    network = [node for node in header.iter('node') if node.get('content-desc', '').startswith('当前环境网络：')]
+    assert len(capsule) == len(network) == 1
+    assert capsule[0].get('text') == before['environmentName']
+    assert capsule[0].get('content-desc') == '当前环境：'+before['environmentName']+'，点按切换环境'
+    for node in (capsule[0], network[0]):
+        assert node.get('class') == 'android.widget.Button' and node.get('clickable') == 'true'
+    observed = navigation(raw_xml, PACKAGE, conversation=True, browser=True)
+    assert observed['toolbarBounds'] == before['browserToolbarBounds']
+    return True
+
+
+def make_short_target_proof(*, raw_xml, activity_state, identity, nonce, android_user, before,
+                            capture_nonce, capture_record, acquisition_driver, action_started_ns,
+                            activity_started_ns, activity_completed_ns, prepared_ns):
+    observation = short_target_observation(raw_xml=raw_xml, activity_state=activity_state,
+        identity=identity, nonce=nonce, android_user=android_user, before=before,
+        capture_nonce=capture_nonce, capture_record=capture_record, acquisition_driver=acquisition_driver,
+        action_started_ns=action_started_ns, activity_started_ns=activity_started_ns,
+        activity_completed_ns=activity_completed_ns, prepared_ns=prepared_ns)
+    geometry = short_target_geometry(raw_xml, before)
+    return dict(observation, schema=2, kind='shortSwipeTarget', geometry=geometry)
 
 
 def verify_short_target(proof, *, identity, nonce, android_user, before):
