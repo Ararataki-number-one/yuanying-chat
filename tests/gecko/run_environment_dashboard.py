@@ -109,6 +109,40 @@ def run(adb,binary,source,out,dump):
             return True
         except AssertionError:
             return False
+    def browser_header_v5(xml):
+        """Current page readiness only; XML does not prove expanded touch regions."""
+        assert not dashboard(xml),'Direct browser entry unexpectedly opened environment details'
+        from workspace_navigation_contract_v4 import navigation,bounds
+        nodes=tree(xml)
+        suffix='，点按切换环境'
+        capsules=[n for n in nodes if n.get('package')==PACKAGE
+                  and n.get('content-desc','').startswith('当前环境：')
+                  and n.get('content-desc','').endswith(suffix)]
+        try:
+            assert len(capsules)==1
+            capsule=capsules[0];name=capsule.get('content-desc')[len('当前环境：'):-len(suffix)]
+            assert name and capsule.get('text')==name and capsule.get('class')=='android.widget.Button'
+            assert capsule.get('enabled')==capsule.get('clickable')=='true' and capsule.get('long-clickable')=='false'
+            assert capsule.get('visible-to-user')!='false'
+            current=navigation(xml,PACKAGE,conversation=True)
+            l,t,r,b=bounds(capsule);left,top,right,bottom=current['toolbarBounds']
+            assert 0<=left<=l<r<=right and 0<=t<b<top<bottom and min(r-l,b-t)>=108
+            hierarchy=ET.fromstring(xml); owners={child:parent for parent in hierarchy.iter() for child in parent}
+            observed=next(n for n in hierarchy.iter('node') if n.get('content-desc')==capsule.get('content-desc'))
+            host=owners[observed];hl,ht,hr,hb=bounds(host)
+            assert host.get('class')=='android.widget.FrameLayout' and min(hr-hl,hb-ht)>=144
+            assert hl<=l<r<=hr and ht<=t<b<=hb
+            status=[n for n in nodes if n.get('content-desc','').startswith('当前环境网络：')]
+            assert len(status)==1 and status[0].get('clickable')==status[0].get('enabled')=='true'
+            assert status[0].get('package')==PACKAGE and status[0].get('class')=='android.widget.Button'
+            assert status[0].get('visible-to-user')!='false'
+            sl,st,sr,sb=bounds(status[0])
+            # The v5 strip is 28 dp high. Its separate native-delegate gate,
+            # not this XML readiness reader, verifies the 48 dp touch regions.
+            assert b<=st<sb<top and sr-sl>=48*3 and sb-st>=28*3
+            return True
+        except AssertionError:
+            return False
     def wait(predicate,label,timeout=35,*,sync_window=False):
         deadline=time.monotonic()+timeout
         while True:
@@ -172,7 +206,7 @@ def run(adb,binary,source,out,dump):
             adb('shell','am','start','-W','-n',PACKAGE+'/local.pocketchat.UiVisualIntegrationActivity','--es','visualAction','environments')
             wait(lambda x:'环境管理' in x,name+' existing environment seed')
             adb('shell','am','start','-W','-n',PACKAGE+'/local.pocketchat.BrandLaunchActivity')
-            wait(browser,name+' actual launcher browser')
+            wait(browser_header_v5,name+' actual launcher browser')
             events.append(dict(name=name+'-launcher-opens-browser-directly',passed=True))
             xml=open_details('日常会话')
             node=next(n for n in tree(xml) if n.get('text')=='继续浏览' and n.get('enabled')=='true')
@@ -200,16 +234,16 @@ def run(adb,binary,source,out,dump):
             adb('shell','input','keyevent','KEYCODE_HOME')
             adb('shell','am','start','-W','-n',PACKAGE+'/local.pocketchat.MainActivity','--activity-reorder-to-front')
             xml=wait(dashboard,'dashboard retained over Home');snapshot('home-return',xml)
-            click(xml,'继续浏览');wait(browser,'explicit return to browser')
+            click(xml,'继续浏览');wait(browser_header_v5,'explicit return to browser')
             adb('shell','input','keyevent','KEYCODE_HOME')
             adb('shell','am','start','-W','-n',PACKAGE+'/local.pocketchat.MainActivity','--activity-reorder-to-front')
-            wait(browser,'ordinary resume has no dashboard')
+            wait(browser_header_v5,'ordinary resume has no dashboard')
             events.append(dict(name='home-retains-open-dashboard-and-chat-resume-does-not-reinsert',passed=True))
             # Real list button, same existing environment/Activity instance.
             entry_taps=len(taps)
             adb('shell','am','start','-W','-n',PACKAGE+'/local.pocketchat.WindowHomeActivity')
             xml=wait(lambda x:environment_action_description(x,'日常会话') is not None,'environment list button')
-            click(xml,description=environment_action_description(xml,'日常会话'));wait(browser,'warm list opens browser directly')
+            click(xml,description=environment_action_description(xml,'日常会话'));wait(browser_header_v5,'warm list opens browser directly')
             events.append(dict(name='warm-list-opens-browser-without-dashboard',passed=True))
             xml=open_details('日常会话');snapshot('warm-list',xml)
             click(xml,'继续浏览');wait(lambda x:not dashboard(x),'warm explicit entry')
@@ -222,7 +256,7 @@ def run(adb,binary,source,out,dump):
                 scroll=next(n for n in tree(xml) if n.get('class')=='android.widget.ScrollView' and n.get('scrollable')=='true')
                 l,t,r,b=map(int,re.findall(r'\d+',scroll.get('bounds')));x=(l+r)//2
                 adb('shell','input','swipe',str(x),str(t+(b-t)*4//5),str(x),str(t+(b-t)//5),'300');xml=dump()
-            click(xml,description=environment_action_description(xml,'资料整理'));wait(lambda x:browser(x) and '资料整理' in x,'separate process second browser')
+            click(xml,description=environment_action_description(xml,'资料整理'));wait(lambda x:browser_header_v5(x) and '资料整理' in x,'separate process second browser')
             events.append(dict(name='second-process-opens-browser-without-dashboard',passed=True))
             xml=open_details('资料整理');snapshot('second-environment',xml,profileProcess='profile1',slot=1)
             click(xml,'继续浏览');wait(lambda x:not dashboard(x),'second environment explicit entry')
@@ -232,7 +266,7 @@ def run(adb,binary,source,out,dump):
             xml=wait(lambda x:'环境管理' in x and '设置' in x,'manager settings entry')
             click(xml,'设置')
             xml=wait(settings_workspace,'settings workspace',sync_window=True)
-            click(xml,'浏览器');wait(browser,'workspace opens browser directly')
+            click(xml,'浏览器');wait(browser_header_v5,'workspace opens browser directly')
             events.append(dict(name='settings-browser-tab-has-no-dashboard',passed=True))
             xml=open_details('资料整理');snapshot('workspace-chat',xml)
             events.append(dict(name='warm-list-second-process-and-settings-chat-entry',actualAndroidTaps=len(taps)-entry_taps,passed=True))

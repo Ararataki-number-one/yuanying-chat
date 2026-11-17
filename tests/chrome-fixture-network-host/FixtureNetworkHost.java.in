@@ -75,9 +75,13 @@ public final class FixtureNetworkHost {
     check(s.web.loads==1,"retention cannot override an explicit different browser destination");
   }
   static void readiness(){
-    ChromeCollapseIntegration f=fresh();f.ready(16000);
+    ChromeCollapseIntegration f=fresh();f.a.session.manualAttention=true;f.ready(16000);
     check(f.a.session.appliedIdentity.equals("external:socks://127.0.0.1:1080"),"actual ready callback admits before creating the retention task");
-    check(f.a.session.deliveries.starts==1&&f.a.remote.progressCalls==1&&f.a.remote.tracking,"actual ready callback prepares the original measured workload");
+    check(f.a.remote.progressCalls==1&&f.a.remote.tracking,"actual ready callback prepares the controlled page resource workload");
+    check(f.task.matches("legacy-collapse-[0-9a-f-]{36}")&&f.a.session.pending!=null&&f.a.session.pending.optString("id").equals(f.task)&&f.a.session.pending.optBoolean("confirmed")&&f.a.session.pending.optBoolean("webSuspended")&&f.a.session.pending.optString("expectedUrl").equals(ChromeCollapseIntegration.TARGET),"actual ready callback retains its owned suspended legacy cursor");
+    check(f.a.session.conversation.equals(ChromeCollapseIntegration.TARGET)&&f.a.session.prefs.getString("pending","").equals(f.a.session.pending.toString())&&f.a.session.prefs.getString("conversation","").equals(ChromeCollapseIntegration.TARGET),"actual ready callback persists the same retained document cursor");
+    check(f.a.session.deliveries.starts==0,"actual ready callback never starts a reply delivery worker");
+    check(!f.a.session.manualAttention&&f.a.loading.updates==1,"actual usable page dismisses its loading cover");
     check(f.snapshots==0&&f.a.handler.tasks.size()==1&&f.a.handler.tasks.get(0).delay==300,"original first ready snapshot delay remains 300 ms");
     f.a.handler.runNext();check(f.snapshots==1&&f.errors.isEmpty(),"snapshot follows successful production admission");
     for(String prerequisite:new String[]{"DOM","telemetry","visible","protection","binding"}){
@@ -97,6 +101,14 @@ public final class FixtureNetworkHost {
     check(f.snapshots==1&&f.a.session.networkReady,"late real protection readiness can complete within the original budget");
     f=fresh();f.a.catalog.identity=new EnvironmentSpec.Identity(0,5,ChatSession.ENVIRONMENT);f.ready(16000);
     check(f.errors.size()==1&&f.snapshots==0&&f.a.remote.progressCalls==0&&f.a.session.deliveries.starts==0,"wrong owner cannot emit a ready receipt");
+    for(String invalid:new String[]{"not-installed","foreign-document","expired"}){
+      f=fresh();JSONObject previous=f.a.session.pending;
+      if(invalid.equals("not-installed"))f.a.remote.progressInstalled=false;
+      if(invalid.equals("foreign-document"))f.a.remote.progressDocument="foreign-document";
+      if(invalid.equals("expired"))f.a.remote.progressAt=16001;
+      f.ready(16000);
+      check(f.errors.size()==1&&f.snapshots==0&&f.task.isEmpty()&&f.a.session.pending==previous&&!f.a.session.prefs.values.containsKey("pending")&&f.a.handler.tasks.isEmpty()&&!f.a.remote.tracking&&f.a.loading.updates==0&&f.a.session.deliveries.starts==0,"unusable or stale page resource proof cannot publish retention: "+invalid);
+    }
   }
   public static void main(String[] args){
     String focus=args.length==0?"all":args[0];
@@ -116,7 +128,8 @@ class ChromeCollapseIntegration {
   void snapshot(String kind){if(!kind.equals("ready")||a.session.appliedIdentity.isEmpty()||!a.session.networkReady)throw new AssertionError("Ready without admitted route");snapshots++;}
   @FIXTURE_MEMBERS@
   static class CollapseView {
-    boolean visible=true,protection=true,bound=true,domReady=true,telemetryReady=true,tracking;
+    boolean visible=true,protection=true,bound=true,domReady=true,telemetryReady=true,tracking,progressInstalled=true;
+    String progressDocument="owned-document";long progressAt;
     String url=TARGET,raw=CompactChromeIntegrationActivity.ReloadView.LOCAL+"c/reload-collapse",boundNonce="owned-nonce",boundSource="controlled-source";
     final Object current=new Object();final Map<Object,Object> ports=new IdentityHashMap<>();int loads,stops,exitPageCloses,progressCalls;
     CollapseView(){ports.put(current,new Object());}
@@ -125,7 +138,7 @@ class ChromeCollapseIntegration {
     void closeExitIpPage(){exitPageCloses++;}void stopLoading(){stops++;}void loadUrl(String value){loads++;url=value;}
     void evaluateJavascript(String script,Consumer<String> callback){
       if(script.contains("fixtureDocument:"))callback.accept(J.obj("ready",domReady,"telemetryReady",telemetryReady,"fixtureDocument","owned-document").toString());
-      else if(script.startsWith("("+REPLY_PROGRESS_SCRIPT+")")){progressCalls++;callback.accept(J.obj("installed",true,"document","owned-document").toString());}
+      else if(script.startsWith("("+REPLY_PROGRESS_SCRIPT+")")){progressCalls++;if(progressAt>0)SystemClock.now=progressAt;callback.accept(J.obj("installed",progressInstalled,"document",progressDocument).toString());}
       else throw new AssertionError("Unexpected JavaScript boundary");
     }
   }
@@ -165,7 +178,7 @@ class PrivacyBoundary {boolean canNavigate(){return true;}}
 class TraceBoundary {long visible,usable;void begin(){}void network(Object value){if(value!=null)throw new AssertionError("No internal route");}void page(String label){}}
 class ObserverBoundary {int readyCalls;void pageReady(){readyCalls++;}}
 class DeliveryBoundary {int starts;String begin(String url,String prompt,JSONArray attachments,String kind,Object callback){starts++;return "controlled-native-task";}}
-class LoadingBoundary {void update(){}}
+class LoadingBoundary {int updates;void update(){updates++;}}
 class HandlerBoundary {static class Task {final Runnable action;final long delay;Task(Runnable action,long delay){this.action=action;this.delay=delay;}}final List<Task> tasks=new ArrayList<>();void postDelayed(Runnable task,long delay){tasks.add(new Task(task,delay));}void runNext(){Task task=tasks.remove(0);SystemClock.now+=task.delay;task.action.run();}}
 class SystemClock {static long now=1000;static long elapsedRealtime(){return now;}}
 class ContextBoundary {}

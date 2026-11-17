@@ -189,6 +189,59 @@ def browser_geometry(xml, density, native_header=None):
                                enabled=n.get('enabled')) for n in controls])
 
 
+def menu_swipe_plan(xml):
+    """Start on an observed empty divider, never an actionable menu row."""
+    if not shared.browser_menu_open(xml):
+        raise ValueError('The actual browser menu must be open before scrolling')
+    tree = ET.fromstring(xml)
+    parents = {child: parent for parent in tree.iter() for child in parent}
+    def visible(node):
+        while node is not None:
+            if node.get('visible-to-user') == 'false':
+                return False
+            node = parents.get(node)
+        return True
+    shown = [node for node in tree.iter('node') if visible(node)]
+    scrolls = [node for node in shown if node.get('package') == PACKAGE
+               and node.get('class') == 'android.widget.ScrollView']
+    if len(scrolls) != 1:
+        raise ValueError('Expected one visible native menu scroller')
+    scroll = scrolls[0]
+    box = shared.bounds(scroll)
+    if (box is None or scroll.get('enabled') != 'true' or scroll.get('scrollable') != 'true'
+            or scroll.get('clickable') != 'false' or scroll.get('long-clickable') != 'false'):
+        raise ValueError('Menu scroller cannot safely own the gesture')
+    blocked = []
+    for node in shown:
+        if node.get('clickable') == 'true' or node.get('long-clickable') == 'true':
+            rectangle = shared.bounds(node)
+            if rectangle is None:
+                raise ValueError('An actionable native node has unproven bounds')
+            blocked.append(rectangle)
+    candidates = []
+    for node in scroll.iter('node'):
+        if (not visible(node) or node.get('package') != PACKAGE or list(node)
+                or node.get('class') != 'android.view.View' or node.get('text') or node.get('content-desc')
+                or node.get('enabled') != 'true' or node.get('clickable') != 'false'
+                or node.get('long-clickable') != 'false' or node.get('focusable') == 'true'):
+            continue
+        rectangle = shared.bounds(node)
+        if (rectangle is None or not (box[0] <= rectangle[0] < rectangle[2] <= box[2]
+                                      and box[1] <= rectangle[1] < rectangle[3] <= box[3])):
+            continue
+        x, y = (rectangle[0]+rectangle[2])//2, (rectangle[1]+rectangle[3])//2
+        if not (box[0]+48 <= x < box[2]-48 and box[1]+96 <= y <= box[3]-48):
+            continue
+        if any(left <= x < right and top <= y < bottom for left, top, right, bottom in blocked):
+            continue
+        candidates.append((y, x, rectangle))
+    if not candidates:
+        raise ValueError('No observed noninteractive menu divider can start a safe swipe')
+    y, x, rectangle = max(candidates)
+    return dict(bounds=list(box), start=[x, y], end=[x, box[1]+48],
+                noninteractiveStartBounds=list(rectangle))
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--root', type=Path, default=Path(__file__).resolve().parents[2])
@@ -398,13 +451,14 @@ def main():
                 tail = shared.button(xml, '内核信息')
                 if tail is not None:
                     break
-                scroll = only(xml, lambda n: n.get('class') == 'android.widget.ScrollView', 'menu scroller')
-                box = shared.bounds(scroll)
-                x, start, end = (box[0]+box[2])//2, box[3]-48, box[1]+48
-                if start <= end:
-                    raise ValueError('Menu has no scrollable viewport')
+                plan = menu_swipe_plan(xml)
+                box = plan['bounds']
+                x, start = plan['start']
+                end = plan['end'][1]
                 report['inputs'].append(dict(kind='swipe', reason='Reach existing menu tail', bounds=box,
-                                             start=[x, start], end=[x, end]))
+                                             start=[x, start], end=[x, end],
+                                             noninteractiveStartBounds=plan['noninteractiveStartBounds'],
+                                             sourceHierarchySha256=hashlib.sha256(xml.encode('utf-8')).hexdigest()))
                 adb('shell', 'input', 'swipe', str(x), str(start), str(x), str(end), '300')
                 xml = capture.read(deadline=time.monotonic()+15)
                 (args.out/(label+'-menu-tail.xml')).write_text(xml)

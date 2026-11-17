@@ -8,6 +8,7 @@ import shutil
 import subprocess
 import tempfile
 import unittest
+from unittest.mock import patch
 
 ROOT=Path(__file__).resolve().parents[1]
 FIXTURE=ROOT/'tests/gecko/GeckoPerformanceIntegrationActivity.java'
@@ -24,7 +25,24 @@ public final class ManualSnapshotHost{
  static int checks;static void check(boolean value){if(!value)throw new AssertionError("manual diagnostic control "+checks);checks++;}
  static String code="window.__pocketReadDriver(\"page-state\",{})";
  static JSONObject snapshot(String draft){return J.obj("ok",true,"draft",draft,"draftLength",draft.length(),"draftComplete",true,"documentId","secret-document","url","https://secret.test/page","reason","secret-reason");}
+ static void heldInspectionControls()throws Exception{
+  ChatSession owner=new ChatSession();FixtureView view=new FixtureView(owner);int[] callbacks={0};String raw=J.obj("ok",true,"busy",false).toString();
+  String inspection="window.__pocketReadDriver(\"web-inspect\",{})";
+  view.holdNextInspection=true;view.evaluateJavascript(inspection,value->{check(raw.equals(value));callbacks[0]++;});view.deliver(raw);
+  check(view.calls==1&&callbacks[0]==0&&!view.holdNextInspection);
+  check(view.heldInspection!=null&&raw.equals(view.heldInspectionRaw)&&view.productionInspect.optBoolean("ok"));
+  check(view.pageStateReads==0&&view.manualSnapshotLast.length()==0&&Log.messages.length()==0&&SystemClock.calls==0);
+  view.heldInspection.onReceiveValue(view.heldInspectionRaw);check(callbacks[0]==1);
+  view.heldInspection=null;view.heldInspectionRaw=null;view.evaluateJavascript(inspection,value->callbacks[0]++);view.deliver(raw);
+  check(view.calls==2&&callbacks[0]==2&&view.heldInspection==null&&view.heldInspectionRaw==null);
+  view.holdNextInspection=true;view.evaluateJavascript(code,value->callbacks[0]++);view.deliver(snapshot("secret-draft").toString());
+  check(view.calls==3&&callbacks[0]==3&&view.holdNextInspection&&view.pageStateReads==1&&view.pageStateDraft.equals("secret-draft"));
+  view.evaluateJavascript(inspection,null);view.deliver(raw);
+  check(view.calls==4&&callbacks[0]==3&&!view.holdNextInspection&&view.heldInspection==null&&raw.equals(view.heldInspectionRaw));
+  System.out.println(J.obj("status","passed","checks",checks,"actualAndroidExecution",false,"newBridgeReads",false,"scope","Current extracted callback with explicit synthetic Gecko response boundary"));
+ }
  public static void main(String[]args)throws Exception{
+  if(args.length==1&&"held-inspection".equals(args[0])){heldInspectionControls();return;}
   ChatSession owner=new ChatSession();FixtureView view=new FixtureView(owner);int[] callbacks={0};JSONObject original=snapshot("secret-draft");
   view.evaluateJavascript(code,raw->{callbacks[0]++;check(raw.equals(original.toString()));});view.deliver(original.toString());
   check(view.calls==1&&callbacks[0]==1&&view.pageStateReads==1&&view.pageStateDraft.equals("secret-draft"));
@@ -56,6 +74,7 @@ public final class ManualSnapshotHost{
 }
 class FixtureView extends GeckoWebView{
  boolean semanticRoute=true,inspectPending,inputTracing,manualSnapshotDiagnostics;JSONObject productionPoll,productionInspect,manualSnapshotLast=new JSONObject();int pageStateReads,stableBeforeInspectedPoll,completionBeforeInspectedPoll,inputEvaluateSequence;String pageStateDraft="";
+ boolean holdNextInspection;android.webkit.ValueCallback<String> heldInspection;String heldInspectionRaw;
  FixtureView(ChatSession owner){super(owner);}void inputEvaluation(String phase,int sequence,String code){}
  __METHODS__
 }
@@ -72,7 +91,9 @@ class PageMemory{__COMPLETE__}
 class ManualSnapshotDiagnosticTests(unittest.TestCase):
  def test_added_observations_reverse_to_the_entire_original_fixture(self):
   from dual_browser_source_compatibility import source_input
-  source=source_input(FIXTURE.read_bytes(),'tests/gecko/GeckoPerformanceIntegrationActivity.java').decode('utf-8')
+  from browser_observation_v2_performance_source_compatibility import source_input as performance_input
+  relative='tests/gecko/GeckoPerformanceIntegrationActivity.java'
+  source=source_input(performance_input(FIXTURE.read_bytes(),relative),relative).decode('utf-8')
   additions=[
    '    // Scalar observations exist only while the two manual-recovery races run.\n    boolean manualSnapshotDiagnostics;JSONObject manualSnapshotLast=new JSONObject();\n',
    '      JSONObject observedManualIssue=null;\n      if(manualSnapshotDiagnostics&&semanticRoute&&code.contains("window.__pocketReadDriver(\\"page-state\\","))try{observedManualIssue=manualSnapshotState(owner);}catch(RuntimeException ignored){}\n      final JSONObject manualIssue=observedManualIssue;\n',
@@ -105,9 +126,62 @@ class ManualSnapshotDiagnosticTests(unittest.TestCase):
     compiled=subprocess.run(command,cwd=ROOT,capture_output=True,text=True,timeout=30);self.assertEqual(compiled.returncode,0,compiled.stdout+compiled.stderr)
     run=subprocess.run([java,'-cp',name+os.pathsep+str(jar),'local.pocketchat.ManualSnapshotHost'],capture_output=True,text=True,timeout=15);self.assertEqual(run.returncode,0,run.stdout+run.stderr)
     report=json.loads(run.stdout);self.assertEqual(report['status'],'passed');self.assertEqual(report['checks'],18);self.assertIs(report['newBridgeReads'],False)
-    rows.append(dict(jsonSha256=digest,compileStdout=compiled.stdout,compileStderr=compiled.stderr,stdout=run.stdout,stderr=run.stderr))
+    held=subprocess.run([java,'-cp',name+os.pathsep+str(jar),'local.pocketchat.ManualSnapshotHost','held-inspection'],capture_output=True,text=True,timeout=15);self.assertEqual(held.returncode,0,held.stdout+held.stderr)
+    held_report=json.loads(held.stdout);self.assertEqual(held_report['status'],'passed');self.assertEqual(held_report['checks'],8);self.assertIs(held_report['newBridgeReads'],False);self.assertIs(held_report['actualAndroidExecution'],False)
+    rows.append(dict(jsonSha256=digest,compileStdout=compiled.stdout,compileStderr=compiled.stderr,stdout=run.stdout,stderr=run.stderr,heldInspectionStdout=held.stdout,heldInspectionStderr=held.stderr))
   output=ROOT/'work/manual-snapshot-host';output.mkdir(parents=True,exist_ok=True)
   (output/'results.json').write_text(json.dumps(dict(status='passed',sourceSha256=hashlib.sha256(fixture.encode()).hexdigest(),actualAndroidExecution=False,runs=rows),indent=2)+'\n')
+
+
+class BrowserObservationPerformanceInputs(unittest.TestCase):
+ def test_exact_whole_source_inverse_and_forward_keep_both_versions(self):
+  import browser_observation_v2_performance_source_compatibility as compatibility
+  current=FIXTURE.read_bytes();value=compatibility.manifest();previous=compatibility.source_input(current,compatibility.SOURCE_PATH)
+  self.assertEqual((len(current),hashlib.sha256(current).hexdigest()),(84404,'8a4c44e37338cdda817b5428dcf8672f93441af11af45f76447a8103eaeb79ed'))
+  self.assertEqual((len(previous),hashlib.sha256(previous).hexdigest()),(105250,'13062ecb571592ceb8fb7347dbfd18223ec848328657fa54df0addc55896c36f'))
+  self.assertEqual(compatibility.source_input(previous,compatibility.SOURCE_PATH),previous)
+  self.assertEqual(len(value['deltas']),10)
+  forward=previous
+  for delta in value['deltas']:
+   before,after=delta['previous'].encode(),delta['current'].encode()
+   self.assertEqual((previous.count(before),current.count(after),forward.count(before)),(1,1,1))
+   self.assertEqual((hashlib.sha256(before).hexdigest(),hashlib.sha256(after).hexdigest()),(delta['previousSha256'],delta['currentSha256']))
+   forward=forward.replace(before,after,1)
+  self.assertEqual(forward,current)
+  self.assertEqual(compatibility.source_input(forward,compatibility.SOURCE_PATH),previous)
+
+ def test_missing_duplicate_mutated_relocated_and_unknown_sources_rejected(self):
+  import browser_observation_v2_performance_source_compatibility as compatibility
+  current=FIXTURE.read_bytes();rejected=0
+  for delta in compatibility.manifest()['deltas']:
+   chunk=delta['current'].encode();self.assertEqual(current.count(chunk),1)
+   missing=current.replace(chunk,b'',1);moved=missing+chunk
+   if moved==current:moved=chunk+missing
+   for candidate in (missing,current.replace(chunk,chunk*2,1),current.replace(chunk,chunk+b' ',1),moved):
+    with self.subTest(context=delta['id'],mutant=hashlib.sha256(candidate).hexdigest()):
+     self.assertNotEqual(candidate,current)
+     with self.assertRaises(ValueError):compatibility.source_input(candidate,compatibility.SOURCE_PATH)
+     rejected+=1
+  for candidate in (current+b' ',current[:80],b'unknown performance source'):
+   with self.assertRaises(ValueError):compatibility.source_input(candidate,compatibility.SOURCE_PATH)
+   rejected+=1
+  self.assertEqual(rejected,43)
+
+ def test_types_paths_and_changed_fixture_cannot_expand_the_version_scope(self):
+  import browser_observation_v2_performance_source_compatibility as compatibility
+  current=FIXTURE.read_bytes()
+  for relative in (compatibility.SOURCE_PATH+'.other','../'+compatibility.SOURCE_PATH,'/'+compatibility.SOURCE_PATH,Path(compatibility.SOURCE_PATH),None):
+   with self.subTest(path=relative),self.assertRaises(ValueError):compatibility.source_input(current,relative)
+  for value in (current.decode(),bytearray(current),None):
+   with self.assertRaises(ValueError):compatibility.source_input(value,compatibility.SOURCE_PATH)
+  raw=compatibility.DELTA_PATH.read_bytes()
+  changed=raw.replace(b'"browserObservationContract": 2',b'"browserObservationContract": 3',1)
+  self.assertNotEqual(changed,raw);self.assertEqual(len(changed),len(raw))
+  with tempfile.TemporaryDirectory(prefix='performance-v2-source-negative-')as directory:
+   path=Path(directory)/'deltas.json'
+   for candidate in (raw+b' ',raw[:-1],changed):
+    path.write_bytes(candidate)
+    with patch.object(compatibility,'DELTA_PATH',path),self.assertRaises(ValueError):compatibility.source_input(current,compatibility.SOURCE_PATH)
 
 
 if __name__=='__main__':unittest.main()

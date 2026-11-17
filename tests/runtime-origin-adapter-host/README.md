@@ -15,11 +15,26 @@ real subframes. The callback facade supplies synthetic JSON only to drive
 script generation; it does not establish Android or Gecko behavior.
 
 The controls cover the performance fixture's separate historical/current asset
-guards, completion polling, compact reload expected URLs in both normal and
+guards, retired completion commands, compact reload expected URLs in both normal and
 slash-escaped JSON, and the fingerprint followup's exact HTTPS source URL.
 Wrong host, port, scheme, subframe and expected document remain rejected. The
 historical performance assets are checked against their existing `source.json`
 byte counts and hashes and remain unchanged.
+
+The immutable before completion method still emits its original four bridge
+calls. Its origin-refusal negative control uses the exact final 2.1.7 production
+page driver from 5bf46502f37ffe8f3c6f17054a2a7c9ec7d53df5, frozen byte-for-byte
+in fixtures/completion-driver-2.1.7.js. Its adjacent source receipt pins the
+commit, tree, blob, byte count and complete-file SHA256; the receipt itself also
+has a fixed SHA256. This introduces no Git history fetch during execution.
+The current driver rejects the removed poll and latest
+commands before any DOM/origin inspection, so it cannot reproduce that retired
+polling failure. The after method emits its actual two rejection calls and
+uses only current driver bytes. Its receipt checks no task/service, while JSDOM
+independently verifies rejection without DOM reads, draft changes or scheduled
+work, including exact-origin and foreign documents and real subframes.
+Current page-state origin, expected-path and subframe guards remain exercised
+by the performance, compact and fingerprint captures.
 
 Run each JSON implementation separately:
 

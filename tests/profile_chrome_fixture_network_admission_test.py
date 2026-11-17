@@ -3,6 +3,8 @@
 The C5 API 32 Wi-Fi loss remains a failed Android observation. These controls
 prove the missing fixture route identity and the narrow prerequisite repair;
 they do not emulate a protected Android network or qualify device continuity.
+The current fixture retains its explicit suspended legacy cursor and controlled
+page workload, but must never recreate the removed reply delivery worker.
 """
 import hashlib
 import importlib.util
@@ -69,6 +71,10 @@ class ChromeFixtureNetworkAdmissionTests(unittest.TestCase):
             ('retention-without-identity', 'SESSION', 'keepPageCandidate&&sameIdentity&&', 'keepPageCandidate&&', 'recovery', 'original missing applied identity actually dispatches replacement navigation'),
             ('suppressed-network-stop', 'SESSION', '    web.stopLoading();', '    /* removed original stop */', 'recovery', 'actual network switch still stops and blocks the route: false'),
             ('premature-ready', 'FIXTURE', '||!a.remote.protectionAllowsNetwork()', '', 'readiness', 'original bounded readiness polling remains 100 ms: protection'),
+            ('missing-retained-cursor', 'FIXTURE', 'a.session.pending=J.obj("id",task,"kind","web","engine","gecko","confirmed",true,"webSuspended",true,"userKey","id:reload-user","prompt","already sent fixture question","confirmedUrl",TARGET,"expectedUrl",TARGET);', 'a.session.pending=J.obj("id","foreign","confirmed",true,"webSuspended",true,"expectedUrl",TARGET);', 'readiness', 'actual ready callback retains its owned suspended legacy cursor'),
+            ('missing-retained-storage', 'FIXTURE', '.putString("pending",a.session.pending.toString())', '', 'readiness', 'actual ready callback persists the same retained document cursor'),
+            ('reply-worker-restored', 'FIXTURE', 'task="legacy-collapse-"+java.util.UUID.randomUUID();', 'task="legacy-collapse-"+java.util.UUID.randomUUID();a.session.deliveries.begin(TARGET,"unexpected reply",new JSONArray(),"web",null);', 'readiness', 'actual ready callback never starts a reply delivery worker'),
+            ('foreign-resource-proof', 'FIXTURE', '||!fixtureDocument.equals(progress.optString("document"))', '', 'readiness', 'unusable or stale page resource proof cannot publish retention: foreign-document'),
         ]
         with tempfile.TemporaryDirectory(prefix='chrome-fixture-network-') as temporary:
             base = Path(temporary)
@@ -111,10 +117,11 @@ class ChromeFixtureNetworkAdmissionTests(unittest.TestCase):
         output.parent.mkdir(parents=True, exist_ok=True)
         output.write_text(json.dumps({
             'schema': 1, 'status': 'passed', 'checks': receipt['checks'], 'controls': controls,
+            'contract': 'browser-result-removal-v1',
             'sourceFiles': hashes, 'executionInputsUnchanged': True,
             'actualAndroidExecution': False, 'actualGeckoExecution': False, 'nativeReadbackVerified': False,
             'selectedSessionMembers': list(SESSION_MEMBERS),
-            'scope': 'Verbatim current Java fixture ready/admission and production lease/recovery/proxy members; full environment identity and address/runtime/login policies. Explicit catalogue, preferences, SDK document/protection, Handler, native core, navigation-dispatch, file-import, observer and diagnostic-probe boundaries. Original missing-identity baseline dispatches navigation; same admitted route preserves it while real network invalidation still stops. No Android, SDK, actual network, native privacy or measured document-continuity acceptance.',
+            'scope': 'Verbatim current Java fixture ready/admission and production lease/recovery/proxy members; full environment identity and address/runtime/login policies. Explicit catalogue, preferences, SDK document/protection, Handler, native core, navigation-dispatch, file-import, resource observer and diagnostic-probe boundaries. The actual fixture preserves its suspended legacy retention cursor and page resource workload without starting a reply delivery worker; stale or unusable resource proof cannot publish readiness. Original missing-identity baseline dispatches navigation; same admitted route preserves it while real network invalidation still stops. No Android, SDK, actual network, native privacy or measured document-continuity acceptance.',
         }, ensure_ascii=False, indent=2) + '\n')
 
 

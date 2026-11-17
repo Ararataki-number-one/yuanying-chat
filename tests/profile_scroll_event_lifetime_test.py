@@ -198,9 +198,14 @@ def host_source(source):
 class ScrollEventLifetimeTest(unittest.TestCase):
     def test_original_workload_and_oracle_are_preserved(self):
         source = ACTIVITY.read_text()
+        # Only the three versioned historical method hashes use this inverse.
+        # The unchanged listeners and actual Java/JS replay still use raw source.
+        from browser_observation_v2_performance_source_compatibility import source_input
+        historical = source_input(ACTIVITY.read_bytes(), 'tests/gecko/GeckoPerformanceIntegrationActivity.java').decode('utf-8')
         for signature, expected in PROTECTED.items():
-            with self.subTest(signature=signature): self.assertEqual(sha(block(source, '  ' + signature)), expected)
-        measured = block(source, '  void measured()')
+            versioned = historical if signature in ('void waitScroll(', 'void sample()') else source
+            with self.subTest(signature=signature): self.assertEqual(sha(block(versioned, '  ' + signature)), expected)
+        measured = block(historical, '  void measured()')
         before = 'evaluate(scrollTelemetryScript(domPhase),false,telemetry->{\n      finishScrollDomTail(domPhase,telemetry.optJSONObject("scrollDomTail"));'
         self.assertEqual(measured.count(before), 1)
         measured = measured.replace('ScrollPhase domPhase=scrollDomTail;', '', 1).replace(before, 'evaluate("window.__fixtureTelemetry()",false,telemetry->{', 1)

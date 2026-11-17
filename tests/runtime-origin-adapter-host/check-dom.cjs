@@ -23,12 +23,36 @@ function blocked(value){return value?.ok===false&&typeof value.error==='string'&
  win=page(performanceUrl,true);check('Current performance denies actual subframe',win!==win.top&&blocked(invoke(performance,win,{expectedUrl:performanceUrl})));
  win=page(performanceUrl);check('Current performance keeps expectedUrl origin rejection',blocked(invoke(performance,win,{expectedUrl:'https://chatgpt.com/c/source'})));
  check('Current performance keeps expectedUrl pathname rejection',invoke(performance,win,{expectedUrl:'http://127.0.0.1:8767/other'}).ok===false);
- for(const mode of ['before','after']){win=page('http://127.0.0.1:8765/fixture');win.eval(read(mode,'completion-setup.js'));result=win.eval(read(mode,'completion-poll.js'));
-   if(mode==='before')check('Original completion adapter reproduces current-origin refusal',blocked(result));
-   else {check('Current completion poll recognizes exact controlled reply',result.submitted===true&&result.terminal===true&&result.busy===false&&result.userKey==='id:synthetic-user');win.eval(read(mode,'completion-prior.js'));result=win.eval(read(mode,'completion-poll.js'));check('Current completion still rejects prior-message copy controls as terminal',result.terminal!==true);}
+ win=page('http://127.0.0.1:8765/fixture');win.eval(read('before','completion-setup.js'));result=win.eval(read('before','completion-poll.js'));
+ check('Original completion adapter reproduces released-driver origin refusal',blocked(result));
+ for(const url of ['https://chatgpt.com/c/source','http://127.0.0.1:8765/fixture','http://localhost:8765/fixture','http://127.0.0.1:8766/fixture']){
+   for(const frame of [false,true]){
+     win=page(url,frame);win.eval(read('before','completion-setup.js'));
+     win.document.querySelector('#prompt-textarea').value='preserved unsent draft';
+     const body=win.document.body.innerHTML,document=win.document,reads=[];
+     const originals={};
+     for(const name of ['querySelector','querySelectorAll','getElementById']){
+       originals[name]=document[name];document[name]=function(){reads.push(name);throw new Error('Retired command read DOM');};
+     }
+     let callbacks=0;const oldTimeout=win.setTimeout,oldInterval=win.setInterval;
+     win.setTimeout=win.setInterval=()=>{callbacks++;throw new Error('Retired command scheduled work');};
+     try{
+       for(const action of ['poll','latest']){
+         result=win.eval(read('after','completion-'+action+'.js'));
+         check('Current '+action+' rejects before page observation '+url+' frame='+frame,
+           result.ok===false&&result.reason==='请在 ChatGPT 原网页中操作'&&Object.keys(result).sort().join(',')==='ok,reason');
+       }
+     }finally{
+       for(const name of Object.keys(originals))document[name]=originals[name];
+       win.setTimeout=oldTimeout;win.setInterval=oldInterval;
+     }
+     check('Retired completion keeps DOM draft and schedules no work '+url+' frame='+frame,
+       document.body.innerHTML===body&&document.querySelector('#prompt-textarea').value==='preserved unsent draft'&&reads.length===0&&callbacks===0);
+   }
  }
- for(const url of ['http://localhost:8765/fixture','http://127.0.0.1:8766/fixture']){win=page(url);win.eval(read('after','completion-setup.js'));check('Current completion rejects wrong origin '+url,blocked(win.eval(read('after','completion-poll.js'))));}
- win=page('http://127.0.0.1:8765/fixture',true);win.eval(read('after','completion-setup.js'));check('Current completion rejects actual subframe',win!==win.top&&blocked(win.eval(read('after','completion-poll.js'))));
+ win=page('https://chatgpt.com/c/source');win.eval(read('before','completion-setup.js'));win.eval(read('before','completion-prior.js'));
+ result=win.eval(read('after','completion-poll.js'));
+ check('Prior-message copy controls cannot revive retired completion',result.ok===false&&!('terminal' in result)&&!('submitted' in result));
  for(const escaped of ['plain','escaped']){const name='compact-'+escaped+'-valid.js';win=page('http://127.0.0.1:8765/c/reload-A');check('Original compact adapter reproduces trailing-slash origin mismatch '+escaped,blocked(win.eval(read('before',name))));result=win.eval(read('after',name));check('Current compact adapter reaches real DOM with '+escaped+' expectedUrl',result.ok===true&&result.draft==='preserved unsent draft');
    check('Current compact preserves expectedUrl wrong-origin guard '+escaped,blocked(win.eval(read('after','compact-'+escaped+'-wrong-origin.js'))));check('Current compact preserves expectedUrl wrong-path guard '+escaped,win.eval(read('after','compact-'+escaped+'-wrong-path.js')).ok===false);
  }
@@ -38,5 +62,5 @@ function blocked(value){return value?.ok===false&&typeof value.error==='string'&
  for(const url of ['http://fixture.example.test:9443/c/source?fixture=1','https://fixture.example.test:9443/c/source?fixture=2','https://fixture.example.test:9443/c/other?fixture=1','https://fixture.example.test:9444/c/source?fixture=1']){win=page(url);check('Current followup preserves HTTPS plus exact source href '+url,blocked(win.eval(read('after','followup-source.js'))));}
  win=page(source,true);check('Current followup rejects actual subframe',win!==win.top&&blocked(win.eval(read('after','followup-source.js'))));
  check('All controlled documents remain local host DOM without network',true);
- console.log(JSON.stringify({status:'passed',passed:checks.length,total:checks.length,checks,actualAndroidExecution:false,actualGeckoExecution:false,actualNetworkExecution:false,scope:'Captured JS emitted by verbatim original/preview Java fixture methods, executed in actual JSDOM documents/subframes. No Android, Gecko bridge, network or end-to-end release acceptance.'}));
+ console.log(JSON.stringify({status:'passed',contract:'browser-result-removal-v1',passed:checks.length,total:checks.length,checks,actualAndroidExecution:false,actualGeckoExecution:false,actualNetworkExecution:false,scope:'Captured JS emitted by verbatim historical/current Java fixture methods, executed in actual JSDOM documents/subframes. Historical completion uses the pinned released polling driver only as a negative control; current commands reject before DOM reads or scheduling. No Android, Gecko bridge, network or end-to-end release acceptance.'}));
 }finally{for(const win of windows)win.close();}})().catch(error=>{console.error(error);process.exitCode=1;});

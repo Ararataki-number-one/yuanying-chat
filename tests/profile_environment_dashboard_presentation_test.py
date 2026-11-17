@@ -58,6 +58,46 @@ WINDOW_INPUT_PORTS = (
 )
 
 
+HEADER_V5_PREVIOUS = (20960, '081e18a7de4714c1cce0ba8ee60e86400e4d7ee183d76bb8d70ea479eba6f9df')
+HEADER_V5_CURRENT = (23374, '7ba2a0a81af2a83561ddd391a0cce53860037a2f9c855564cc9b7cd144017fac')
+HEADER_V5_READER_SHA256 = '49014e9f3c0209279fcffc98b8ab0b1af383d741a7a637b355728632c51ab3f9'
+HEADER_V5_CALL_PORTS = (
+    ("wait(browser,name+' actual launcher browser')", "wait(browser_header_v5,name+' actual launcher browser')"),
+    ("wait(browser,'explicit return to browser')", "wait(browser_header_v5,'explicit return to browser')"),
+    ("wait(browser,'ordinary resume has no dashboard')", "wait(browser_header_v5,'ordinary resume has no dashboard')"),
+    ("wait(browser,'warm list opens browser directly')", "wait(browser_header_v5,'warm list opens browser directly')"),
+    ("lambda x:browser(x) and '资料整理' in x", "lambda x:browser_header_v5(x) and '资料整理' in x"),
+    ("wait(browser,'workspace opens browser directly')", "wait(browser_header_v5,'workspace opens browser directly')"),
+)
+
+
+def header_v5_input(source):
+    """Test-only exact inverse; Android executes the raw current v5 reader."""
+    assert type(source) is str, 'Complete dashboard source text required'
+    raw=source.encode();identity=(len(raw),hashlib.sha256(raw).hexdigest())
+    if identity==HEADER_V5_PREVIOUS:return source
+    assert identity==HEADER_V5_CURRENT, 'Unreviewed v5 dashboard source'
+    run=next(n for n in ast.parse(source).body if isinstance(n,ast.FunctionDef) and n.name=='run')
+    readers=[n for n in run.body if isinstance(n,ast.FunctionDef) and n.name=='browser_header_v5']
+    assert len(readers)==1
+    reader=readers[0];added=''.join(source.splitlines(keepends=True)[reader.lineno-1:reader.end_lineno])
+    assert len(added.encode())==2354 and hashlib.sha256(added.encode()).hexdigest()==HEADER_V5_READER_SHA256
+    assert source.count(added)==1
+    restored=source.replace(added,'',1)
+    for before,after in reversed(HEADER_V5_CALL_PORTS):
+        assert restored.count(after)==1
+        restored=restored.replace(after,before,1)
+    raw=restored.encode();assert (len(raw),hashlib.sha256(raw).hexdigest())==HEADER_V5_PREVIOUS
+    anchor='    def wait(predicate,label,timeout=35,*,sync_window=False):\n'
+    assert restored.count(anchor)==1
+    forward=restored.replace(anchor,added+anchor,1)
+    for before,after in HEADER_V5_CALL_PORTS:
+        assert forward.count(before)==1
+        forward=forward.replace(before,after,1)
+    assert forward==source
+    return restored
+
+
 def original_selector_flow(raw):
     if type(raw) is not bytes:
         raise ValueError('Complete dashboard source bytes required')
@@ -238,7 +278,7 @@ class CurrentBrowserEntryObservation(unittest.TestCase):
     def reader(self,source=None,**boundaries):
         functions=self.functions(source or RUNNER.read_text())
         namespace=dict(vars(RUN),**boundaries)
-        selected=[copy.deepcopy(functions[name]) for name in ('tree','dashboard','browser','wait')]
+        selected=[copy.deepcopy(functions[name]) for name in ('tree','dashboard','browser','browser_header_v5','wait') if name in functions]
         exec(compile(ast.Module(body=selected,type_ignores=[]),str(RUNNER)+':actual-entry-observer','exec'),namespace)
         return namespace
 
@@ -256,6 +296,7 @@ class CurrentBrowserEntryObservation(unittest.TestCase):
         self.assertFalse(current(self.RAW.read_text()))
 
     def require_original_flow(self, current):
+        current=header_v5_input(current)
         previous=browser_v2_bytes('tests/gecko/run_environment_dashboard.py').decode()
         restored=current
         for old_port,new_port in reversed(WINDOW_INPUT_PORTS):
@@ -298,9 +339,9 @@ class CurrentBrowserEntryObservation(unittest.TestCase):
         for before,after in (
                 ('*,sync_window=False', '*,sync_window=True'),
                 ('if sync_window else dump(deadline=deadline)', 'if True else dump(deadline=deadline)'),
-                ("wait(browser,'workspace opens browser directly')",
-                 "wait(browser,'workspace opens browser directly',sync_window=True)"),
-                ("click(xml,'浏览器');wait(browser,", "click(xml,'浏览器');click(xml,'浏览器');wait(browser,"),
+                ("wait(browser_header_v5,'workspace opens browser directly')",
+                 "wait(browser_header_v5,'workspace opens browser directly',sync_window=True)"),
+                ("click(xml,'浏览器');wait(browser_header_v5,", "click(xml,'浏览器');click(xml,'浏览器');wait(browser_header_v5,"),
                 ('time.sleep(.2)', 'time.sleep(.5)')):
             self.assertEqual(current.count(before),1)
             with self.subTest(change=after),self.assertRaises(AssertionError):
@@ -375,7 +416,7 @@ class CurrentBrowserEntryObservation(unittest.TestCase):
             else:status.set('bounds','[0,216][1080,359]')
             with self.subTest(change=change):self.assertFalse(reader(xml(tree)))
 
-    def check_startup_deadline(self,raw,source):
+    def check_startup_deadline(self,raw,source,reader_name='browser'):
         for duration in (0,35,36):
             class Clock:
                 now=0
@@ -385,10 +426,10 @@ class CurrentBrowserEntryObservation(unittest.TestCase):
             def dump(*,deadline):
                 calls.append(deadline);clock.now+=duration;return raw
             namespace=self.reader(source,time=clock,dump=dump,adb=lambda *parts:'')
-            if duration==0:self.assertEqual(namespace['wait'](namespace['browser'],'actual launcher browser'),raw)
+            if duration==0:self.assertEqual(namespace['wait'](namespace[reader_name],'actual launcher browser'),raw)
             else:
                 with self.assertRaisesRegex(AssertionError,'wait budget expired'):
-                    namespace['wait'](namespace['browser'],'actual launcher browser')
+                    namespace['wait'](namespace[reader_name],'actual launcher browser')
             self.assertEqual(calls,[35])
 
     def test_historical_startup_wait_accepts_only_before_its_original_deadline(self):
@@ -396,6 +437,69 @@ class CurrentBrowserEntryObservation(unittest.TestCase):
 
     def test_current_startup_wait_accepts_only_before_its_original_deadline(self):
         self.check_startup_deadline(self.synthetic_v4_browser(),RUNNER.read_text())
+
+
+class HeaderV5DashboardReadiness(unittest.TestCase):
+    """Synthetic XML readiness, never an Android run or native touch-region proof."""
+    @staticmethod
+    def compact_xml():
+        tree=ET.fromstring(CurrentBrowserEntryObservation.synthetic_v4_browser())
+        status=next(n for n in tree.iter('node') if n.get('content-desc','').startswith('当前环境网络：'))
+        from workspace_navigation_contract_v4 import bounds
+        left,top,right,_=bounds(status)
+        status.set('bounds',f'[{left},{top}][{right},{top+84}]')
+        return xml(tree)
+
+    def test_current_visible_strip_qualifies_without_relaxing_the_old_48dp_reader(self):
+        current=RUNNER.read_text();readers=CurrentBrowserEntryObservation().reader()
+        original=ast.get_source_segment(current,CurrentBrowserEntryObservation.functions(current)['browser'])
+        self.assertEqual(hashlib.sha256(original.encode()).hexdigest(),
+                         'a5deb7d58ab37a3cdf38a415f40dc110a7c536a13233ff3f0887164bb338bdce')
+        self.assertFalse(readers['browser'](self.compact_xml()))
+        self.assertIs(readers['browser_header_v5'](self.compact_xml()),True)
+        self.assertIs(readers['browser_header_v5'](CurrentBrowserEntryObservation.synthetic_v4_browser()),True)
+        tree=ET.fromstring(self.compact_xml());status=next(n for n in tree.iter('node') if n.get('content-desc','').startswith('当前环境网络：'))
+        from workspace_navigation_contract_v4 import bounds
+        left,top,right,_=bounds(status);status.set('bounds',f'[{left},{top}][{right},{top+83}]')
+        self.assertFalse(readers['browser_header_v5'](xml(tree)))
+        status.set('bounds',f'[{left},{top}][{left+143},{top+84}]')
+        self.assertFalse(readers['browser_header_v5'](xml(tree)))
+
+    def test_v5_native_nodes_reject_missing_foreign_hidden_clipped_disabled_and_duplicate_controls(self):
+        reader=CurrentBrowserEntryObservation().reader()['browser_header_v5']
+        labels=('打开当前环境主页','网页窗口','当前网址','网页工具','浏览器菜单','当前环境：','当前环境网络：')
+        for label in labels:
+            for change in ('missing','foreign','wrong-class','hidden','clipped','duplicate','disabled'):
+                tree=ET.fromstring(self.compact_xml());parents={c:p for p in tree.iter() for c in p}
+                target=next(n for n in tree.iter('node') if n.get('content-desc','').startswith(label))
+                if change=='missing':parents[target].remove(target)
+                elif change=='foreign':target.set('package','foreign.package')
+                elif change=='wrong-class':target.set('class','android.widget.TextView')
+                elif change=='hidden':target.set('visible-to-user','false')
+                elif change=='clipped':target.set('bounds','[10,10][11,11]')
+                elif change=='disabled':target.set('enabled','false')
+                else:parents[target].append(copy.deepcopy(target))
+                with self.subTest(label=label,change=change):self.assertFalse(reader(xml(tree)))
+
+    def test_v5_exact_inverse_preserves_all_other_runner_bytes_and_rejects_changes(self):
+        current=RUNNER.read_text();restored=header_v5_input(current)
+        self.assertEqual((len(restored.encode()),hashlib.sha256(restored.encode()).hexdigest()),HEADER_V5_PREVIOUS)
+        self.assertEqual(header_v5_input(restored),restored)
+        reader=CurrentBrowserEntryObservation.functions(current)['browser_header_v5']
+        added=''.join(current.splitlines(keepends=True)[reader.lineno-1:reader.end_lineno])
+        for before,after in HEADER_V5_CALL_PORTS:
+            for altered in (current.replace(after,before,1),current.replace(after,after*2,1),
+                            current.replace(after,'',1)+after):
+                with self.assertRaises(AssertionError):header_v5_input(altered)
+        for altered in (current.replace(added,'',1),current+added,
+                        current.replace(added,'',1)+added,current.replace('>=28*3','>=27*3',1),
+                        current.replace('timeout=35','timeout=36',1),current+'\n'):
+            self.assertNotEqual(altered,current)
+            with self.assertRaises(AssertionError):header_v5_input(altered)
+
+    def test_v5_startup_keeps_the_original_35_second_deadline(self):
+        CurrentBrowserEntryObservation().check_startup_deadline(self.compact_xml(),RUNNER.read_text(),
+                                                               reader_name='browser_header_v5')
 
 
 class SettingsWindowReadiness(unittest.TestCase):
@@ -434,7 +538,7 @@ class SettingsWindowReadiness(unittest.TestCase):
         source=RUNNER.read_text() if current_v4 else CurrentBrowserEntryObservation.historical_source();module=ast.parse(source)
         run=next(n for n in module.body if isinstance(n,ast.FunctionDef) and n.name=='run')
         functions={n.name:n for n in run.body if isinstance(n,ast.FunctionDef)}
-        selected=[copy.deepcopy(functions[name]) for name in ('tree','dashboard','browser','wait','click')]
+        selected=[copy.deepcopy(functions[name]) for name in ('tree','dashboard','browser','browser_header_v5','wait','click') if name in functions]
         namespace=dict(vars(RUN),time=clock,dump=dump,adb=adb,taps=taps)
         exec(compile(ast.Module(body=selected,type_ignores=[]),str(RUNNER)+':actual-settings-functions','exec'),namespace)
         guarded=next(n for n in run.body if isinstance(n,ast.Try))

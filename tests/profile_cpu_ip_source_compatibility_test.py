@@ -20,6 +20,125 @@ ROOT=Path(__file__).resolve().parents[1]
 SHA=lambda raw:hashlib.sha256(raw).hexdigest()
 
 
+# Only the reviewed removal of automatic-resend wording is normalized for
+# historical whole-file comparisons. Runtime and host code use current files.
+BROWSER_COPY_CHANGES = {'app/src/main/java/local/pocketchat/GeckoTimeZoneUi.java': {'previous': (14385,
+                                                                          '8a10db4213ebca20f247b9425f90037cd33db227e517a95a44d59094a8a1c6a3'),
+                                                             'current': (14358,
+                                                                         '640d28f48251f297970c17ba6df6bf2d8b60f6f697d0167162e8e20a22a4eeb2'),
+                                                             'deltas': [('  private static void '
+                                                                         'confirm(MainActivity a,ChatSession '
+                                                                         's,GeckoTimeZoneStore.State '
+                                                                         'expected,GeckoTimeZoneSpec '
+                                                                         'wanted,Fence fence,JSONObject '
+                                                                         'page,boolean '
+                                                                         'manual,Consumer<String> done){\n'
+                                                                         '    '
+                                                                         'if(!activity(a,s)||!fence.current(s)){done.accept("当前网页已变化，未保存时区");return;}\n'
+                                                                         '    ReferenceUi.Modal confirm=new '
+                                                                         'ReferenceUi.Modal(a,"应用当前环境时区？");\n'
+                                                                         '    '
+                                                                         'confirm.note("保存为“"+wanted.label()+"”后将重新加载当前网页，并关闭此环境已打开的弹窗。");\n'
+                                                                         '    '
+                                                                         'if(!wanted.followsSystem())confirm.note("Service '
+                                                                         'Worker '
+                                                                         '仍可读取系统时区，不能提供完整时区隔离。原生设置回读不代表当前页面或 '
+                                                                         'Worker 已通过验证。");\n'
+                                                                         '    '
+                                                                         'if(page==null&&s.web.hasVisibleDocument()||manual&&page!=null)confirm.note("当前网站的回复、上传、输入或表单不能完整自动核对与保留。请先取消并结束网站操作、手动保存；继续表示已结束相关操作并保留需要的内容。");\n'
+                                                                         '    else '
+                                                                         'if(page!=null&&PageMemory.hasDraft(page))confirm.note("当前 '
+                                                                         'ChatGPT '
+                                                                         '草稿会先暂存并再次核对。若输入变化或无法暂存，将保留网页并停止应用。");\n',
+                                                                         '  private static void '
+                                                                         'confirm(MainActivity a,ChatSession '
+                                                                         's,GeckoTimeZoneStore.State '
+                                                                         'expected,GeckoTimeZoneSpec '
+                                                                         'wanted,Fence fence,JSONObject '
+                                                                         'page,boolean '
+                                                                         'manual,Consumer<String> done){\n'
+                                                                         '    '
+                                                                         'if(!activity(a,s)||!fence.current(s)){done.accept("当前网页已变化，未保存时区");return;}\n'
+                                                                         '    ReferenceUi.Modal confirm=new '
+                                                                         'ReferenceUi.Modal(a,"应用当前环境时区？");\n'
+                                                                         '    '
+                                                                         'confirm.note("保存为“"+wanted.label()+"”后将重新加载当前网页，并关闭此环境已打开的弹窗。不会自动重发提问。");\n'
+                                                                         '    '
+                                                                         'if(!wanted.followsSystem())confirm.note("Service '
+                                                                         'Worker '
+                                                                         '仍可读取系统时区，不能提供完整时区隔离。原生设置回读不代表当前页面或 '
+                                                                         'Worker 已通过验证。");\n'
+                                                                         '    '
+                                                                         'if(page==null&&s.web.hasVisibleDocument()||manual&&page!=null)confirm.note("当前网站的回复、上传、输入或表单不能完整自动核对与保留。请先取消并结束网站操作、手动保存；继续表示已结束相关操作并保留需要的内容。");\n'
+                                                                         '    else '
+                                                                         'if(page!=null&&PageMemory.hasDraft(page))confirm.note("当前 '
+                                                                         'ChatGPT '
+                                                                         '草稿会先暂存并再次核对。若输入变化或无法暂存，将保留网页并停止应用。");\n')]},
+ 'app/src/main/java/local/pocketchat/GeckoPopupNavigationUi.java': {'previous': (15727,
+                                                                                 '39ae6f65c3eb957fe5f7a8b0f1e2a01ef85177abe0e11a71a5d721ae6e39392b'),
+                                                                    'current': (15697,
+                                                                                'ec792da8d55a3e6ebab857ebed1ff32605785a63425475856d70e1e4e5d61fb2'),
+                                                                    'deltas': [('  void confirm(Attempt '
+                                                                                'value){\n'
+                                                                                '    '
+                                                                                'if(!valid(value,false)){fail(value,changedMessage());return;}\n'
+                                                                                '    MainActivity '
+                                                                                'activity=value.target.activity;ReferenceUi.Modal '
+                                                                                'confirm=new '
+                                                                                'ReferenceUi.Modal(activity,"在当前页打开链接？");dialog=confirm;\n'
+                                                                                '    '
+                                                                                'confirm.note("新窗口已拦截。继续会用目标网页替换当前页，不能保证网站的登录跳转结果。");confirm.note(value.target.target);\n'
+                                                                                '    '
+                                                                                'if(value.manual)confirm.note("请先结束网站正在进行的回复、上传或其他操作，并手动保存表单和输入。继续表示已完成这些操作并保留所需内容。"+(value.page!=null?"本机草稿保存已关闭，本次不会保存草稿副本。":""));\n'
+                                                                                '    else '
+                                                                                'if(value.page!=null&&PageMemory.hasDraft(value.page))confirm.note("当前 '
+                                                                                'ChatGPT '
+                                                                                '草稿会先暂存到本机并再次核对；若输入变化或无法暂存，当前网页会保留。");\n'
+                                                                                '    '
+                                                                                'confirm.cancel=()->fail(value,"已取消，当前网页已保留");confirm.setOnDismissListener(ignored->{if(dialog==confirm){dialog=null;fail(value,"已取消，当前网页已保留");}});\n',
+                                                                                '  void confirm(Attempt '
+                                                                                'value){\n'
+                                                                                '    '
+                                                                                'if(!valid(value,false)){fail(value,changedMessage());return;}\n'
+                                                                                '    MainActivity '
+                                                                                'activity=value.target.activity;ReferenceUi.Modal '
+                                                                                'confirm=new '
+                                                                                'ReferenceUi.Modal(activity,"在当前页打开链接？");dialog=confirm;\n'
+                                                                                '    '
+                                                                                'confirm.note("新窗口已拦截。继续会用目标网页替换当前页，不会自动重发提问，也不能保证网站的登录跳转结果。");confirm.note(value.target.target);\n'
+                                                                                '    '
+                                                                                'if(value.manual)confirm.note("请先结束网站正在进行的回复、上传或其他操作，并手动保存表单和输入。继续表示已完成这些操作并保留所需内容。"+(value.page!=null?"本机草稿保存已关闭，本次不会保存草稿副本。":""));\n'
+                                                                                '    else '
+                                                                                'if(value.page!=null&&PageMemory.hasDraft(value.page))confirm.note("当前 '
+                                                                                'ChatGPT '
+                                                                                '草稿会先暂存到本机并再次核对；若输入变化或无法暂存，当前网页会保留。");\n'
+                                                                                '    '
+                                                                                'confirm.cancel=()->fail(value,"已取消，当前网页已保留");confirm.setOnDismissListener(ignored->{if(dialog==confirm){dialog=null;fail(value,"已取消，当前网页已保留");}});\n')]}}
+
+def browser_copy_input(raw, relative):
+    if relative not in BROWSER_COPY_CHANGES:
+        return raw
+    item=BROWSER_COPY_CHANGES[relative]
+    assert type(raw) is bytes
+    identity=(len(raw),SHA(raw))
+    if identity==item["previous"]:
+        return raw
+    assert identity==item["current"],"Unreviewed browser copy source"
+    restored=raw
+    for current,previous in item["deltas"]:
+        current,previous=current.encode(),previous.encode()
+        assert restored.count(current)==1
+        restored=restored.replace(current,previous,1)
+    assert (len(restored),SHA(restored))==item["previous"]
+    forward=restored
+    for current,previous in item["deltas"]:
+        current,previous=current.encode(),previous.encode()
+        assert forward.count(previous)==1
+        forward=forward.replace(previous,current,1)
+    assert forward==raw
+    return restored
+
+
 def git(*args):
     return subprocess.check_output(['git','--no-replace-objects',*args],cwd=ROOT,
         env=dict(os.environ,GIT_NO_LAZY_FETCH='1',GIT_OPTIONAL_LOCKS='0'))
@@ -125,10 +244,24 @@ class CpuIpHistoricalPreparation(unittest.TestCase):
         paths+=['app/src/main/assets/gecko/'+name for name in ('background.js','ip-timezone-bootstrap.js','request-headers.js','native-timezone-api.js','native-timezone-bridge.js')]
         for relative in paths:
             with self.subTest(path=relative):
-                raw=(ROOT/relative).read_bytes()
+                raw=browser_copy_input((ROOT/relative).read_bytes(),relative)
                 if relative==photo_background.PATH:
                     raw=photo_background.source_input(raw,relative)
                 self.assertEqual(raw,git('show',layer.BASE_COMMIT+':'+relative))
+
+    def test_browser_copy_inverse_only_admits_reviewed_complete_files(self):
+        for relative,item in BROWSER_COPY_CHANGES.items():
+            current=(ROOT/relative).read_bytes();restored=browser_copy_input(current,relative)
+            self.assertEqual((len(restored),SHA(restored)),item['previous'])
+            self.assertEqual(browser_copy_input(restored,relative),restored)
+            part=item['deltas'][0][0].encode();self.assertEqual(current.count(part),1)
+            mutations=(current+b'\n',current[:-1],current.replace(part,b'',1),
+                       current.replace(part,part+part,1),current.replace(part,b'',1)+part,
+                       current.replace(b'if(',b'if(false&&',1))
+            for changed in mutations:
+                self.assertNotEqual(changed,current)
+                with self.subTest(path=relative),self.assertRaises(AssertionError):
+                    browser_copy_input(changed,relative)
 
     def test_photo_inverse_restores_the_real_complete_original_without_changing_other_guards(self):
         relative=photo_background.PATH
