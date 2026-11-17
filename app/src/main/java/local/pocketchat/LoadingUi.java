@@ -59,7 +59,7 @@ final class LoadingUi {
     LinearLayout.LayoutParams actionBlock=new LinearLayout.LayoutParams(-2,-2);actionBlock.topMargin=a.dp(16);content.addView(actions,actionBlock);
     arrangeActions(false);
     cover.addOnLayoutChangeListener((v,l,t,r,b,ol,ot,or,ob)->layoutActions());
-    guidance=ReferenceUi.workspaceText(a,"点按顶部输入网址，长按切换环境",ReferenceUi.SECONDARY_SIZE,Ui.MUTED,false);guidance.setGravity(Gravity.CENTER);
+    guidance=ReferenceUi.workspaceText(a,"点按底部网址栏输入网址，点按顶部切换环境",ReferenceUi.SECONDARY_SIZE,Ui.MUTED,false);guidance.setGravity(Gravity.CENTER);
     LinearLayout.LayoutParams guide=new LinearLayout.LayoutParams(-1,-2);guide.topMargin=a.dp(24);content.addView(guidance,guide);
   }
   void layoutCover(int availableHeight){

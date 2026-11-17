@@ -2,7 +2,7 @@
 import hashlib
 import time
 import xml.etree.ElementTree as ET
-from compact_chrome_layout_v4 import address_dialog, verify_layout, verify_case
+from compact_chrome_layout_v4 import address_dialog, network_dialog_visible, verify_layout, verify_case
 from workspace_navigation_contract_v4 import bounds, navigation, seek_menu_action
 
 
@@ -64,6 +64,29 @@ def observe_browser_panel(dump, package, title, present):
             break
         time.sleep(min(.2,remaining))
     raise TimeoutError(('Current browser menu visibility did not settle',present,problem,xml[-3000:]))
+
+
+def observe_network_dialog(dump, package, present):
+    """Keep each native network-dialog transition within its original 20 seconds."""
+    assert type(present) is bool
+    deadline=time.monotonic()+20
+    xml=''; problem=None
+    while time.monotonic()<deadline:
+        xml=dump(deadline=deadline)
+        if time.monotonic()>=deadline:
+            break
+        try:
+            found=network_dialog_visible(xml,package)
+        except (AssertionError,KeyError,ET.ParseError) as error:
+            problem=str(error)
+        else:
+            if found is present and time.monotonic()<deadline:
+                return xml
+        remaining=deadline-time.monotonic()
+        if remaining<=0:
+            break
+        time.sleep(min(.2,remaining))
+    raise TimeoutError(('Native network dialog visibility did not settle',present,problem,xml[-3000:]))
 
 
 def run_case(adb, adb_bytes, dump, event, focus, visible, quick_sheet, shots, package, width, scale):
@@ -139,9 +162,9 @@ def run_case(adb, adb_bytes, dump, event, focus, visible, quick_sheet, shots, pa
     (shots/(stem+'-status.xml')).write_text(dump()); (shots/(stem+'-status.png')).write_bytes(adb_bytes('exec-out','screencap','-p'))
     details=[]
     for name,point,box in (('network-status',status['networkTap'],status['bounds']),('network-state',status['stateTap'],status['texts'][2]['bounds'])):
-        tap(name,point,box); visible('网络情况'); raw=dump()
+        tap(name,point,box); raw=observe_network_dialog(dump,package,True)
         (shots/(stem+'-'+name+'.xml')).write_text(raw)
-        adb('shell','input','keyevent','KEYCODE_BACK'); visible('网络情况',False)
+        adb('shell','input','keyevent','KEYCODE_BACK'); observe_network_dialog(dump,package,False)
         details.append(dict(rawXml=raw,rawXmlSha256=hashlib.sha256(raw.encode()).hexdigest(),dismissedByBack=True))
     after_status=snapshot('status-after')
     command+='-performance'

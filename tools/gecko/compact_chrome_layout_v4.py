@@ -9,10 +9,72 @@ import xml.etree.ElementTree as ET
 
 if __package__:
     from .compact_chrome_layout_v2 import address_dialog, inside, rect
-    from .workspace_navigation_contract_v4 import menu_action, verify_menu_scrolls
+    from .workspace_navigation_contract_v4 import bounds, menu_action, navigation, verify_menu_scrolls
 else:
     from compact_chrome_layout_v2 import address_dialog, inside, rect
-    from workspace_navigation_contract_v4 import menu_action, verify_menu_scrolls
+    from workspace_navigation_contract_v4 import bounds, menu_action, navigation, verify_menu_scrolls
+
+
+def network_dialog_visible(xml, package):
+    """Read NetworkMetricsUi's native AlertDialog, not a custom browser sheet."""
+    tree=ET.fromstring(xml); nodes=list(tree.iter('node'))
+    parents={child:parent for parent in tree.iter() for child in parent}
+    ids=('alertTitle','parentPanel','topPanel','customPanel','buttonPanel','button1','button2','button3')
+    markers=[n for n in nodes if n.get('resource-id') in ('android:id/'+v for v in ids)
+             or n.get('text')=='网络情况' or n.get('content-desc')=='网络情况']
+    if not markers:
+        navigation(xml,package,conversation=True)
+        return False
+
+    def unique(identifier):
+        found=[n for n in nodes if n.get('resource-id')=='android:id/'+identifier]
+        assert len(found)==1, 'The native network dialog must own one '+identifier
+        return found[0]
+
+    def contained(node, ancestor, *, enabled=True):
+        current=node
+        while True:
+            assert current.get('package')==package and current.get('visible-to-user')!='false'
+            assert current.get('enabled') in ('true','false')
+            if enabled or current is not node:
+                assert current.get('enabled')=='true'
+            l,t,r,b=bounds(current)
+            if current is ancestor:
+                return
+            parent=parents.get(current); assert parent is not None and parent.tag=='node'
+            pl,pt,pr,pb=bounds(parent)
+            assert pl<=l<r<=pr and pt<=t<b<=pb, 'Native dialog controls must remain in their actual window'
+            current=parent
+
+    panel=unique('parentPanel'); top=unique('topPanel'); body=unique('customPanel'); buttons=unique('buttonPanel')
+    window=panel
+    while parents.get(window) is not None and parents[window].tag=='node':
+        window=parents[window]
+    assert parents.get(window) is tree and tree.tag=='hierarchy'
+    contained(panel,window)
+    assert panel.get('class')==top.get('class')=='android.widget.LinearLayout'
+    assert body.get('class')=='android.widget.FrameLayout'
+    assert buttons.get('class') in ('android.widget.ScrollView','android.widget.LinearLayout')
+    for part in (top,body,buttons):
+        assert parents.get(part) is panel
+        contained(part,panel)
+    assert bounds(top)[3]<=bounds(body)[1]<bounds(body)[3]<=bounds(buttons)[1]
+    title=unique('alertTitle')
+    headings=[n for n in nodes if n.get('text')=='网络情况' or n.get('content-desc')=='网络情况']
+    assert len(headings)==1 and headings[0] is title
+    assert title.get('class')=='android.widget.TextView' and title.get('text')=='网络情况'
+    # Android's alertTitle has no redundant content-description in the original
+    # device XML. Its text, resource id, role and native window establish identity.
+    contained(title,top)
+    for identifier,labels in (('button1',('测一下延迟','正在测量…')),('button2',('关闭',)),('button3',('连接详情',))):
+        control=unique(identifier)
+        assert control.get('class')=='android.widget.Button' and control.get('text') in labels
+        assert control.get('clickable')=='true'
+        contained(control,buttons,enabled=identifier=='button2')
+        if identifier=='button2':
+            l,t,r,b=bounds(control)
+            assert min(r-l,b-t)>=144, 'The native close control retains its 48 dp target'
+    return True
 
 
 def text_metrics(value, lines):
@@ -188,6 +250,6 @@ def verify_case(case, *, require_browser_chrome=True):
     details=case['networkDetails']; assert len(details)==2
     for value in details:
         raw=value['rawXml']; assert value['rawXmlSha256'] == hashlib.sha256(raw.encode()).hexdigest()
-        headings=[n for n in ET.fromstring(raw).iter('node') if n.get('package') == 'local.pocketchat.test' and n.get('class') == 'android.widget.TextView' and n.get('text') == n.get('content-desc') == '网络情况']
-        assert len(headings)==1 and value['dismissedByBack'] is True
+        assert network_dialog_visible(raw,'local.pocketchat.test') is True
+        assert value['dismissedByBack'] is True
     return True

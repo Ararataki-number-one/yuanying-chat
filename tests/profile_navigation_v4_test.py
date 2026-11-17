@@ -102,6 +102,22 @@ def window_xml(width=360):
     return ET.tostring(root,encoding='unicode')
 
 
+def network_xml(width=360,scale=1):
+    """Observed native structure; other sizes are explicitly host-only variants."""
+    raw=(ROOT/'tests/fixtures/compact-network-dialog-c4.xml').read_text()
+    if (width,scale)==(360,1):
+        return raw
+    tree=ET.fromstring(raw)
+    # Exercise relative window containment without pretending these variants
+    # were captured on Android or borrowing the custom browser-sheet schema.
+    for node in tree.iter('node'):
+        l,t,r,b=navigation.bounds(node)
+        ys=1.15 if scale==2 else 1
+        node.set('bounds',f'[{round(l*width/360)},{round(960+(t-960)*ys)}]'
+                          f'[{round(r*width/360)},{round(960+(b-960)*ys)}]')
+    return ET.tostring(tree,encoding='unicode')
+
+
 def case(width=360,scale=1):
     value=layout(width,scale); raw=menu_xml(width); target=navigation.menu_action(raw,previous.v2.PACKAGE,'管理全部环境')
     dialog_xml=previous.xml_for('initialAddress'); dialog=compact.address_dialog(dialog_xml,previous.v2.PACKAGE)
@@ -128,7 +144,7 @@ def case(width=360,scale=1):
         environmentSelection=dict(action='environment',inputKind='tap',addressDialogOpened=False,actionsBefore=2,actionsAfter=3),
         environmentSheet=dict(title='快速切换环境',currentSlot=0,searchDescription='搜索要切换的环境',closeDescription='关闭快速切换环境'),
         windowSheet=modal(window_xml(width)),toolsSheet=modal(menu_xml(width,'网页工具')),
-        networkDetails=[modal(menu_xml(width,'网络情况')),modal(menu_xml(width,'网络情况'))],networkDetailsFromHeader=True,
+        networkDetails=[modal(network_xml(width,scale)),modal(network_xml(width,scale))],networkDetailsFromHeader=True,
         statusObservation=dict(before=status,after=copy.deepcopy(status)),environmentDismissedByBack=True)
 
 
@@ -210,6 +226,134 @@ def collapse_case(width,scale,nonce):
     old['firstTapReadiness'].update(target='address',scope='chrome-initial-address-tap-only')
     previous.seal(old,previous.identity())
     return old
+
+
+class NativeNetworkDialogTests(unittest.TestCase):
+    def test_original_failed_capture_has_native_title_without_redundant_description(self):
+        record=json.loads((ROOT/'tests/fixtures/compact-network-dialog-c4-provenance.json').read_text())
+        self.assertIs(record['recordedFailureOnly'],True)
+        self.assertEqual(record['originalStatus'],'failed')
+        self.assertEqual(record['sourceCommit'],'b0f0ffb5758b943ccafa082569e7c767438d4d2a')
+        self.assertEqual(record['checkpointCommit'],'efa7d88f8270d61329f05a20ab90c03697d4f03e')
+        for row in record['files']:
+            raw=(ROOT/'tests/fixtures'/row['fixture']).read_bytes()
+            self.assertEqual(len(raw),row['bytes'])
+            self.assertEqual(hashlib.sha256(raw).hexdigest(),row['sha256'])
+            self.assertEqual(hashlib.sha1(b'blob '+str(len(raw)).encode()+b'\0'+raw).hexdigest(),row['gitBlob'])
+        self.assertEqual(record['secondNetworkEntryGitBlob'],record['files'][0]['gitBlob'])
+        raw=network_xml();nodes=list(ET.fromstring(raw).iter('node'))
+        title=[n for n in nodes if n.get('resource-id')=='android:id/alertTitle']
+        self.assertEqual(len(title),1);self.assertEqual(title[0].get('content-desc'),'')
+        old=[n for n in nodes if n.get('package')==previous.v2.PACKAGE and n.get('class')=='android.widget.TextView'
+             and n.get('text')==n.get('content-desc')=='网络情况']
+        self.assertEqual(old,[], 'The former custom-sheet predicate rejects this actual native title')
+        self.assertEqual(next(n for n in nodes if n.get('resource-id')=='android:id/button1').get('enabled'),'false')
+        self.assertTrue(compact.network_dialog_visible(raw,previous.v2.PACKAGE))
+        closed=(ROOT/'tests/fixtures/compact-network-dialog-c4-closed.xml').read_text()
+        self.assertFalse(compact.network_dialog_visible(closed,previous.v2.PACKAGE))
+
+    def test_native_identity_geometry_and_half_modal_cannot_be_forged(self):
+        changes=('duplicate-title','foreign-title','foreign-panel','hidden-title','hidden-panel','wrong-role',
+                 'wrong-id','missing-close','disabled-close','unclickable-close','short-close','title-outside',
+                 'close-outside','foreign-window','detached-close','panel-outside-window',
+                 'missing-connection','missing-measure','title-only','close-only')
+        for change in changes:
+            tree=ET.fromstring(network_xml());parents={child:parent for parent in tree.iter() for child in parent}
+            def get(identifier):return next(n for n in tree.iter('node') if n.get('resource-id')=='android:id/'+identifier)
+            title=get('alertTitle');close=get('button2');panel=get('parentPanel')
+            if change=='duplicate-title':parents[title].append(copy.deepcopy(title))
+            elif change=='foreign-title':title.set('package','foreign.app')
+            elif change=='foreign-panel':panel.set('package','foreign.app')
+            elif change=='hidden-title':title.set('visible-to-user','false')
+            elif change=='hidden-panel':panel.set('visible-to-user','false')
+            elif change=='wrong-role':title.set('class','android.widget.Button')
+            elif change=='wrong-id':title.set('resource-id','foreign:id/alertTitle')
+            elif change=='missing-close':parents[close].remove(close)
+            elif change=='disabled-close':close.set('enabled','false')
+            elif change=='unclickable-close':close.set('clickable','false')
+            elif change=='short-close':close.set('bounds','[417,1303][560,1447]')
+            elif change=='title-outside':title.set('bounds','[126,459][954,547]')
+            elif change=='close-outside':close.set('bounds','[417,1459][681,1603]')
+            elif change=='foreign-window':next(iter(tree)).set('package','foreign.app')
+            elif change=='detached-close':
+                parents[close].remove(close)
+                other=previous.node(tree,'FrameLayout',rectangle=(0,0,1080,1920));other.append(close)
+            elif change=='panel-outside-window':parents[panel].set('bounds','[54,461][1026,1459]')
+            elif change in ('missing-connection','missing-measure'):
+                node=get('button3' if change=='missing-connection' else 'button1');parents[node].remove(node)
+            else:
+                only=copy.deepcopy(title if change=='title-only' else close);tree=ET.Element('hierarchy');tree.append(only)
+            with self.subTest(change=change),self.assertRaises((AssertionError,ValueError)):
+                compact.network_dialog_visible(ET.tostring(tree,encoding='unicode'),previous.v2.PACKAGE)
+        with self.assertRaises(AssertionError):
+            compact.network_dialog_visible(menu_xml(title='网络情况'),previous.v2.PACKAGE)
+
+    def test_report_still_requires_both_original_raw_hashes_and_back_results(self):
+        for change in ('hash','back','one-entry','custom-sheet'):
+            value=case()
+            if change=='hash':value['networkDetails'][0]['rawXml']+=' '
+            elif change=='back':value['networkDetails'][1]['dismissedByBack']=False
+            elif change=='one-entry':value['networkDetails'].pop()
+            else:
+                raw=menu_xml(title='网络情况')
+                value['networkDetails'][0].update(rawXml=raw,rawXmlSha256=hashlib.sha256(raw.encode()).hexdigest())
+            with self.subTest(change=change),self.assertRaises(AssertionError):compact.verify_case(value)
+
+    def test_observer_rejects_late_open_and_closed_frames_at_original_deadline(self):
+        closed=(ROOT/'tests/fixtures/compact-network-dialog-c4-closed.xml').read_text()
+        for shown,raw in ((True,network_xml()),(False,closed)):
+            clock=[10.];deadlines=[]
+            def read(*,deadline):
+                deadlines.append(deadline);clock[0]=deadline+.001;return raw
+            with patch.object(producer.time,'monotonic',side_effect=lambda:clock[0]),self.assertRaises(TimeoutError):
+                producer.observe_network_dialog(read,previous.v2.PACKAGE,shown)
+            self.assertEqual(deadlines,[30.])
+            original=producer.network_dialog_visible
+            for completed in (30.,30.001):
+                clock[0]=10.;deadlines.clear()
+                def timely_read(*,deadline):deadlines.append(deadline);return raw
+                def parsed_at_deadline(xml,package):
+                    result=original(xml,package);clock[0]=completed;return result
+                with patch.object(producer.time,'monotonic',side_effect=lambda:clock[0]),patch.object(producer,'network_dialog_visible',side_effect=parsed_at_deadline),self.assertRaises(TimeoutError):
+                    producer.observe_network_dialog(timely_read,previous.v2.PACKAGE,shown)
+                self.assertEqual(deadlines,[30.])
+
+    def run_actual_network_segment(self, *, ignore_back=False):
+        source=(ROOT/'tests/gecko/compact_chrome_v4.py').read_text();tree=ast.parse(source)
+        run=next(n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name=='run_case')
+        index=next(i for i,n in enumerate(run.body) if isinstance(n,ast.For) and ast.unparse(n.target)=='(name, point, box)')
+        fragment=ast.Module(body=run.body[index-1:index+1],type_ignores=[])
+        self.assertEqual(ast.unparse(fragment.body[0]),'details = []')
+        clock=[10.];opened=[False];commands=[];deadlines=[]
+        raw=network_xml();closed=(ROOT/'tests/fixtures/compact-network-dialog-c4-closed.xml').read_text()
+        def tap(*args):commands.append(('tap',)+args);opened[0]=True
+        def adb(*args):
+            self.assertEqual(args,('shell','input','keyevent','KEYCODE_BACK'));commands.append(('adb',)+args)
+            if not ignore_back:opened[0]=False
+        def dump(*,deadline):deadlines.append(deadline);return raw if opened[0] else closed
+        def sleep(seconds):clock[0]+=seconds
+        with tempfile.TemporaryDirectory() as d,patch.object(producer.time,'monotonic',side_effect=lambda:clock[0]),patch.object(producer.time,'sleep',side_effect=sleep):
+            scope=dict(status=layout()['networkMetrics'],tap=tap,adb=adb,dump=dump,package=previous.v2.PACKAGE,
+                       observe_network_dialog=producer.observe_network_dialog,hashlib=hashlib,shots=Path(d),stem='controlled')
+            if ignore_back:
+                with self.assertRaises(TimeoutError):exec(compile(fragment,'<actual-network-transitions>','exec'),scope)
+                self.assertEqual(len(commands),2);self.assertEqual(scope['details'],[])
+                self.assertTrue(all(deadline==30. for deadline in deadlines))
+                self.assertEqual(clock[0],30.)
+            else:
+                exec(compile(fragment,'<actual-network-transitions>','exec'),scope)
+                self.assertEqual([v[0:2] for v in commands],[('tap','network-status'),('adb','shell'),('tap','network-state'),('adb','shell')])
+                self.assertEqual(deadlines,[30.]*4)
+                self.assertEqual(len(scope['details']),2)
+                for name,value in zip(('network-status','network-state'),scope['details']):
+                    self.assertEqual((Path(d)/('controlled-'+name+'.xml')).read_text(),raw)
+                    self.assertEqual(value,dict(rawXml=raw,rawXmlSha256=hashlib.sha256(raw.encode()).hexdigest(),dismissedByBack=True))
+
+    def test_actual_two_network_inputs_keep_separate_open_one_back_and_closed_observations(self):
+        self.run_actual_network_segment()
+
+    def test_a_back_that_leaves_the_modal_open_cannot_qualify_or_retry_input(self):
+        self.run_actual_network_segment(ignore_back=True)
 
 
 class BottomContractTests(unittest.TestCase):
