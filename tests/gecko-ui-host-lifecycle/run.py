@@ -34,6 +34,7 @@ MUTATIONS = (
     ('pause-audit-reentry', 'main', 'session.audit.cancel();\n    if(!browserUi.current())return;', 'session.audit.cancel();', 'pause-audit', 'Pause cannot clear keyboard or foreground after audit callback binds a newer host'),
     ('pause-reading-reentry', 'main', 'session.reading.keyboard(false);\n    if(!browserUi.current())return;', 'session.reading.keyboard(false);', 'pause-keyboard', 'Pause cannot background a newer host created by reading callback'),
     ('pause-observer-ownership', 'main', 'if(session!=null)session.remove(sessionObserver);\n    if(session==null', 'if(browserUi!=null&&browserUi.current()&&session!=null)session.remove(sessionObserver);\n    if(session==null', 'pause', 'Old pause removes only its exact observer even after host replacement'),
+    ('destroy-tool-panel', 'main', 'if(toolsPanel!=null)toolsPanel.panel.dismiss();', '', 'tools', 'Actual Activity teardown dismisses its tool panel exactly once'),
 )
 
 
