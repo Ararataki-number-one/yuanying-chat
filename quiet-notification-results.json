@@ -1,0 +1,260 @@
+{
+  "status": "passed",
+  "notificationContract": 2,
+  "actualAndroidExecution": true,
+  "checkCount": 33,
+  "error": "",
+  "foregroundEvidence": {
+    "known": true,
+    "foreground": true,
+    "actualActivityStartedCount": 1,
+    "visibilitySource": "activity-start-stop",
+    "processes": [
+      {
+        "process": "local.pocketchat.test:profile7",
+        "pid": 5092,
+        "importance": 100,
+        "known": true,
+        "actualActivityStartedCount": 1,
+        "visible": true,
+        "activityStarts": 1,
+        "activityStops": 0,
+        "revision": 1,
+        "lastEventAt": 128897
+      },
+      {
+        "process": "local.pocketchat.test",
+        "pid": 5135,
+        "importance": 400,
+        "known": true,
+        "actualActivityStartedCount": 0,
+        "visible": false,
+        "activityStarts": 0,
+        "activityStops": 0,
+        "revision": 0,
+        "lastEventAt": 0
+      }
+    ]
+  },
+  "homeEvidence": {
+    "known": true,
+    "foreground": false,
+    "actualActivityStartedCount": 0,
+    "visibilitySource": "activity-start-stop",
+    "processes": [
+      {
+        "process": "local.pocketchat.test:profile7",
+        "pid": 5092,
+        "importance": 400,
+        "known": true,
+        "actualActivityStartedCount": 0,
+        "visible": false,
+        "activityStarts": 1,
+        "activityStops": 1,
+        "revision": 2,
+        "lastEventAt": 133125
+      },
+      {
+        "process": "local.pocketchat.test",
+        "pid": 5135,
+        "importance": 400,
+        "known": true,
+        "actualActivityStartedCount": 0,
+        "visible": false,
+        "activityStarts": 0,
+        "activityStops": 0,
+        "revision": 0,
+        "lastEventAt": 0
+      }
+    ]
+  },
+  "proxyEvidence": {
+    "owner": {
+      "slot": 7,
+      "generation": 0,
+      "environmentId": "9359fd10-9558-4d87-824b-34f58b84f4d6"
+    },
+    "started": {
+      "slot": 7,
+      "state": "starting",
+      "alive": true,
+      "generation": "58ead51b-1a39-4a51-835f-a7021befd87d",
+      "pid": 5210,
+      "servicePid": 5190,
+      "configuration": "b3906414b4ac52f1ccc70cb7680087792a5aa0bfcfac1e95975387f93cfcf9a0",
+      "controllerPort": 36021,
+      "proxyPort": 40111,
+      "webProbePort": 37173
+    },
+    "ready": {
+      "slot": 7,
+      "state": "running",
+      "alive": true,
+      "generation": "58ead51b-1a39-4a51-835f-a7021befd87d",
+      "pid": 5210,
+      "servicePid": 5190,
+      "configuration": "b3906414b4ac52f1ccc70cb7680087792a5aa0bfcfac1e95975387f93cfcf9a0",
+      "controllerPort": 36021,
+      "proxyPort": 40111,
+      "webProbePort": 37173
+    },
+    "controllerReady": true,
+    "loopbackListenersConfigured": true,
+    "denyAllConfigured": true,
+    "fixtureRemoteRequests": false,
+    "stopped": {
+      "slot": 7,
+      "state": "closed",
+      "alive": false,
+      "generation": "aea3b5dc-a183-42ab-bb6b-4c8d1deb1023",
+      "pid": 0,
+      "servicePid": 5190,
+      "configuration": "b3906414b4ac52f1ccc70cb7680087792a5aa0bfcfac1e95975387f93cfcf9a0",
+      "controllerPort": 36021,
+      "proxyPort": 40111,
+      "webProbePort": 37173
+    }
+  },
+  "replyRetirementEvidence": {
+    "legacyPolicyMigratedOff": true,
+    "legacyPendingArchived": true,
+    "requestedService": "local.pocketchat.test/local.pocketchat.ProfileChatService7",
+    "serviceStopped": true
+  },
+  "scope": "Real Activity lifecycle, obsolete service start, disabled legacy reply policy, owned loopback-only deny-all Mihomo core, real Home, file notification opt-in/deduplication/environment routing and a published MediaStore file; no account, remote route or network download",
+  "checks": [
+    {
+      "name": "Background file completion reminders are off by default",
+      "pass": true
+    },
+    {
+      "name": "Browser and network child processes cannot count as visible UI",
+      "pass": true
+    },
+    {
+      "name": "An enabled legacy reply policy is migrated off without enabling result detection",
+      "pass": true
+    },
+    {
+      "name": "Upgrade removes old noisy foreground channels",
+      "pass": true
+    },
+    {
+      "name": "Upgrade removes retired reply cards across environments",
+      "pass": true
+    },
+    {
+      "name": "A real visible app Activity suppresses file completion reminders",
+      "pass": true
+    },
+    {
+      "name": "An already running default process exposes real zero-Activity lifecycle over private IPC",
+      "pass": true
+    },
+    {
+      "name": "A visible Activity is proved by real started lifecycle count",
+      "pass": true
+    },
+    {
+      "name": "A private visibility endpoint rejects an obsolete process PID",
+      "pass": true
+    },
+    {
+      "name": "Foreground downloads stay quiet even after opting in",
+      "pass": true
+    },
+    {
+      "name": "Already visible file completions are remembered without posting",
+      "pass": true
+    },
+    {
+      "name": "An upgraded pending reply becomes history without a live detection task",
+      "pass": true
+    },
+    {
+      "name": "Android accepts the obsolete service restart intent for the real profile owner",
+      "pass": true
+    },
+    {
+      "name": "An obsolete reply service restart cannot resume detection or post a foreground card",
+      "pass": true
+    },
+    {
+      "name": "A real local-only deny-all core owns the proxy foreground service",
+      "pass": true
+    },
+    {
+      "name": "network-background-quiet-v2 remains silent at MIN or system-required LOW",
+      "pass": true
+    },
+    {
+      "name": "Network service keeps a legitimate foreground notification",
+      "pass": true
+    },
+    {
+      "name": "The proxy foreground notice stays off the lock screen",
+      "pass": true
+    },
+    {
+      "name": "Proxy service does not revive reply detection",
+      "pass": true
+    },
+    {
+      "name": "Real Home leaves the UI in background while required services keep running",
+      "pass": true
+    },
+    {
+      "name": "Real Home is proved by stopped Activity lifecycle despite browser process priority",
+      "pass": true
+    },
+    {
+      "name": "Home retains the real proxy without creating a reply observation service",
+      "pass": true
+    },
+    {
+      "name": "Background file completion stays quiet until the user opts in",
+      "pass": true
+    },
+    {
+      "name": "Explicit file notification opt-in is admitted after real Home",
+      "pass": true
+    },
+    {
+      "name": "Foreground file completions never become delayed background alerts",
+      "pass": true
+    },
+    {
+      "name": "File opt-in never enables result detection or reply notifications",
+      "pass": true
+    },
+    {
+      "name": "Stopping the owned proxy generation closes the real fixture core",
+      "pass": true
+    },
+    {
+      "name": "An empty proxy service withdraws its foreground card without stopping a proxy",
+      "pass": true
+    },
+    {
+      "name": "Opted-in background file completion opens the exact saved task",
+      "pass": true
+    },
+    {
+      "name": "The notified local file is fully published and readable",
+      "pass": true
+    },
+    {
+      "name": "Independent environments retain distinct file notification routes",
+      "pass": true
+    },
+    {
+      "name": "A saved download cannot re-alert after dismissal",
+      "pass": true
+    },
+    {
+      "name": "Opting out removes file completion cards across environments",
+      "pass": true
+    }
+  ],
+  "sourceCommit": "2cb38b9a5cb4763775948caaafd4cde58f29a5d8"
+}
