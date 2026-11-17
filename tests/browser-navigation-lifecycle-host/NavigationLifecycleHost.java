@@ -116,7 +116,9 @@ class ChatSession {
   boolean deleted,submitting,operation,configurationCapture,networkReady=true,navigationDispatched=true,offline,navigating,observedReplyHasFiles,transferActive,replyStalled;
   void runDriver(String action,JSONObject args,Consumer<JSONObject> result){if(!action.equals("page-state"))throw new AssertionError(action);results.add(result);}
   void asyncDriver(String action,JSONObject args,long timeout,Consumer<JSONObject> result){throw new AssertionError("Unexpected restoration command: "+action);}
-  boolean webPerformance(){return true;}boolean replyObservationAllowed(){return true;}boolean targetMatches(String url){return url.equals(web.url);}
+  boolean webPerformance(){return true;}/* Explicit legacy-observer boundary for isolated persistence/lifecycle checks; production browser disablement is tested by BrowserRuntimePolicyTest. */
+ boolean sendObservationAllowed(){return replyObservationAllowed();}
+ boolean replyObservationAllowed(){return true;}boolean targetMatches(String url){return url.equals(web.url);}
   boolean resourceBindingMatches(JSONObject value,Object port){return port!=null&&port==resourceObserverPort&&resourceObserverBinding.equals(value.optString("resourceBinding"));}
   void resourceObserverRouteReady(JSONObject value,Object port){}void resourceWebsiteObservation(JSONObject value,Object port){}
   void wakePolling(){}void resetReplyStability(){}void setStatus(String value){status=value;}

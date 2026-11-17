@@ -251,6 +251,8 @@ public class PageRecoveryHost {
 class ChatSession {
  // Declared host boundary: legacy capture scenarios are foreground-only;
  // the global background-reply policy is exercised by its separate hosts.
+ /* Explicit legacy-observer boundary for isolated persistence/lifecycle checks; production browser disablement is tested by BrowserRuntimePolicyTest. */
+ boolean sendObservationAllowed(){return replyObservationAllowed();}
  boolean replyObservationAllowed(){return uiVisible;}
  final WebReplyObserver webObserver=new WebReplyObserver(this);final Object context=new Object();final int environmentGeneration=4;final String environmentId="environment-one";final Web web=new Web();final Guard guard=new Guard();final Memory pageMemory=new Memory();final Prefs prefs=new Prefs();final Trace trace=new Trace();final Mirror webMirror=new Mirror();final Store webStore=new Store();final Cache cache=new Cache();final Handler handler=new Handler(this);final Audit audit=new Audit();final Privacy privacy=new Privacy();final Identity identity=new Identity();final TimeZoneBoundary timeZone=new TimeZoneBoundary();Result driverResult;
  String navigationLabel="";long navigationStarted,navigationMono,firstPageVisible;boolean documentNavigationSeen,browserNavigationStopped,browserNavigationChosen;

@@ -140,7 +140,7 @@ class Cookies {final List<WebExtension.Port> cancelled=new ArrayList<>();void ca
 class Store {final Executor io=task->{throw new AssertionError("Unexpected checkpoint writer dispatch");};}
 class LocalDraftPolicy {static boolean enabled(Object context){return true;}static long revision(Object context){return 7;}static String checkpoint(String value,boolean draft){return value;}}
 class MainActivity {static final String ORIGIN="https://chatgpt.com";static boolean chatUrl(String target){return false;}}
-class GeckoNavigationPolicy {static boolean publicWeb(String target){return target!=null&&target.startsWith("https:");}}
+
 class ChromiumRouteLease {static final class Handle{void close(){}}static Handle acquireSurface(){return new Handle();}}
 class GeckoResult<T> {final T value;GeckoResult(T value){this.value=value;}static <T>GeckoResult<T> fromValue(T value){return new GeckoResult<>(value);}}
 enum AllowOrDeny {ALLOW,DENY}
