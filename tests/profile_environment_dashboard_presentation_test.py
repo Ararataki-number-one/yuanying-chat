@@ -6,6 +6,7 @@ environment details. The inverse pins every deliberate port and rejects any
 unrelated change to the accepted runner.
 """
 import ast
+import re
 import copy
 import hashlib
 import importlib.util
@@ -255,6 +256,15 @@ class CurrentBrowserEntryObservation(unittest.TestCase):
         self.assertTrue(current(self.synthetic_v4_browser()))
         self.assertFalse(current(self.RAW.read_text()))
 
+    def test_visible_compact_status_does_not_hide_browser_entry(self):
+        current=self.reader()['browser']
+        for height,accepted in ((144,True),(96,True),(95,False)):
+            root=ET.fromstring(self.synthetic_v4_browser())
+            status=next(n for n in root.iter('node') if n.get('content-desc','').startswith('当前环境网络：'))
+            l,t,r,b=map(int,re.findall(r'\d+',status.get('bounds')))
+            status.set('bounds',f'[{l},{t}][{r},{t+height}]')
+            self.assertEqual(current(ET.tostring(root,encoding='unicode')),accepted)
+
     def require_original_flow(self, current):
         previous=browser_v2_bytes('tests/gecko/run_environment_dashboard.py').decode()
         restored=current
@@ -372,7 +382,7 @@ class CurrentBrowserEntryObservation(unittest.TestCase):
             elif change=='disabled':status.set('enabled','false')
             elif change=='unclickable':status.set('clickable','false')
             elif change=='above-capsule':status.set('bounds','[0,0][1080,144]')
-            else:status.set('bounds','[0,216][1080,359]')
+            else:status.set('bounds','[0,216][1080,311]')
             with self.subTest(change=change):self.assertFalse(reader(xml(tree)))
 
     def check_startup_deadline(self,raw,source):

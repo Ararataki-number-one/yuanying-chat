@@ -442,6 +442,19 @@ class BottomContractTests(unittest.TestCase):
         report['cases'][1]['navigationContract']=3
         with self.assertRaises(AssertionError):load_actual_gate()(report,'a'*40)
 
+    def test_header_xml_checks_visible_row_not_native_touch_delegate(self):
+        for height,accepted in ((144,True),(96,True),(95,False)):
+            tree=ET.fromstring(browser_xml())
+            network=next(n for n in tree.iter('node') if n.get('content-desc','').startswith('当前环境网络：'))
+            l,t,r,b=navigation.bounds(network)
+            network.set('bounds',f'[{l},{t}][{r},{t+height}]')
+            xml=ET.tostring(tree,encoding='unicode')
+            if accepted:
+                self.assertEqual(navigation.conversation_header(xml,previous.v2.PACKAGE,360,640,1,'Controlled environment',browser=True)['navigationContract'],4)
+            else:
+                with self.assertRaises(AssertionError):
+                    navigation.conversation_header(xml,previous.v2.PACKAGE,360,640,1,'Controlled environment',browser=True)
+
     def test_capsule_address_or_old_long_press_claim_cannot_qualify_v4(self):
         for change in ('old-description','long-press','missing-network','short-host'):
             tree=ET.fromstring(browser_xml());parents={child:parent for parent in tree.iter() for child in parent}
