@@ -11,8 +11,8 @@ FIXTURE_TYPE='gecko-production-tls-cpu-ip-combo-v1'
 ACTIVITY='local.pocketchat.GeckoTlsCpuIpComboIntegrationActivity'
 CASE_FILE='case-combined-cpu-ip-tls13.json'
 CHECKS=cpu.CHECKS+('production.tls-desired-durable','production.fresh-tls-native','production.native-url-title-admission')
-ACTIVITY_FIELDS=set('schema fixtureType status stage failure sourceCommit sourceTree runNonce buildIdentity activityClass scopeAllocationActivity setup cpuSetup tlsSetup tlsStoredState freshTlsReadback runtimeBinding tlsPolicy runtimeTlsPolicy startupPreparation navigation cpuStoredState process page native cpuPolicy runtimeCpuPolicy freshCpuReadback tls checks nativeEvents actualAndroidExecution actualGeckoExecution productionChatSession syntheticGeoService actualPublicIpGeolocationVerified workerCoverageVerified serviceWorkerCoverageVerified fingerprintProtectionVerified fullTlsFingerprintEmulation quicWireVerified rawFatalAlertPacketDecoded appIndependentTlsStacksCovered'.split())
-ENVELOPE_FIELDS=set('schema label status report reportSha256 prelaunchSetup processSample routeReceipts hostTls systemTimeZone cleanup wire'.split())
+ACTIVITY_FIELDS=set('schema fixtureType status stage failure sourceCommit sourceTree runNonce buildIdentity activityClass scopeAllocationActivity setup cpuSetup tlsSetup tlsStoredState freshTlsReadback runtimeBinding tlsPolicy runtimeTlsPolicy startupPreparation fixtureTrust navigation cpuStoredState process page native cpuPolicy runtimeCpuPolicy freshCpuReadback tls checks nativeEvents actualAndroidExecution actualGeckoExecution productionChatSession syntheticGeoService actualPublicIpGeolocationVerified workerCoverageVerified serviceWorkerCoverageVerified fingerprintProtectionVerified fullTlsFingerprintEmulation quicWireVerified rawFatalAlertPacketDecoded appIndependentTlsStacksCovered'.split())
+ENVELOPE_FIELDS=set('schema label status report reportSha256 prelaunchSetup processSample routeReceipts hostTls fixtureTrustInput systemTimeZone cleanup wire'.split())
 
 def require(value,message):
     if not value:raise ValueError('TLS CPU IP evidence: '+message)
@@ -48,6 +48,8 @@ def validate_combo(activity,report,*,source,expected,run,engine):
     cpu.process_sample(report['processSample'],activity['process'],source,expected_build['sourceTree'],run)
 
     tls_policy=tls.native_policy(activity['tlsPolicy'],mode='tls13',rfp=False,slot=6,pid=activity['process']['pid'],pending=False)
+    trust_input=report['fixtureTrustInput'];require(type(trust_input) is dict and trust_input.get('caPemSha256')==report['hostTls']['caPemSha256'] and trust_input.get('leafDerSha256')==report['hostTls']['leafDerSha256'],'same combined public trust input')
+    tls.fixture_trust(activity['fixtureTrust'],expected=trust_input,run=run,case=run,source=source,tree=expected['sourceTree'],policy=tls_policy,resample=False)
     equal(activity['tlsPolicy'],activity['runtimeTlsPolicy'],'same actual TLS runtime snapshot')
     equal(tls_policy['environmentId'],owner['environmentId'],'CPU/TLS/IP UUID differs');equal(tls_policy['environmentGeneration'],owner['generation'],'CPU/TLS/IP generation differs')
     equal(tls_policy['activeBootRevision'],2,'cold saved strict TLS revision');equal(tls_policy['desiredRevision'],2,'durable strict TLS revision')

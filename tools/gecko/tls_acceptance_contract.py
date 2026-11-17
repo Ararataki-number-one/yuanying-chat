@@ -7,7 +7,7 @@ from native_tls_probe_server import parse_client_hello
 from profile_invocation_contract import verify_installed
 
 PACKAGE='local.pocketchat.test'
-DEVICE_FIELDS=set('schema fixtureType status stage failure diagnosticOnly releaseAcceptance sourceCommit sourceTree runNonce caseNonce slot mode peerPort rfpRequested retainedProfile staleUserPrefSeeded serviceRequested expectedSuccess target buildIdentity process tlsPolicy cpuPolicy storagePathEvidence manualScope startupPreparation seed security navigation nativeEvents uiSaveInvoked uiSaveCompleted uiBefore uiAfter serviceObservation actualAndroidExecution actualGeckoExecution productionChatSession productionTlsBootstrap javascriptTlsOverrideUsed debuggingEndpointUsed nativeSettingReadbackIsWireProof workerCoverageVerified serviceWorkerCoverageVerified fullTlsFingerprintEmulation quicWireVerified'.split())
+DEVICE_FIELDS=set('schema fixtureType status stage failure diagnosticOnly releaseAcceptance sourceCommit sourceTree runNonce caseNonce slot mode peerPort rfpRequested retainedProfile staleUserPrefSeeded serviceRequested expectedSuccess target buildIdentity process tlsPolicy cpuPolicy storagePathEvidence manualScope startupPreparation fixtureTrust seed security navigation nativeEvents uiSaveInvoked uiSaveCompleted uiBefore uiAfter serviceObservation actualAndroidExecution actualGeckoExecution productionChatSession productionTlsBootstrap javascriptTlsOverrideUsed debuggingEndpointUsed nativeSettingReadbackIsWireProof workerCoverageVerified serviceWorkerCoverageVerified fullTlsFingerprintEmulation quicWireVerified'.split())
 POLICY_FIELDS=set('schema engine desiredRevision desiredMode activeBootRevision activeBootMode state issue failureCode pendingColdStart defaultMin defaultMax configuredMin configuredMax hasUserMin hasUserMax rfpPriority h2Enabled h3Enabled nativeSettingReadback startupReconciled scope processNonce pid runtimeNonce environmentId environmentGeneration slot wireObservationVerified fullTlsFingerprintEmulation quicWireVerified persistentWorkerColdStartVerified connectionScope independentDownloaderTlsCovered connectionCheckTlsCovered proxyEntranceTlsCovered'.split())
 
 def require(value,message):
@@ -48,7 +48,29 @@ def preparation(value,mode,stale_user):
     require((value['configBeforeSha256']==value['configAfterSha256']) is (mode=='default'),'default is unmodified config, strict appends only actual range')
     if stale_user:require(value['removedOwnedBytes']>0,'actual nonempty old USER lines reconciled')
 
-def validate_device(value,*,spec,binding,run,source,tree,identity,leaf):
+def fixture_trust(value,*,expected,run,case,source,tree,policy,resample):
+    fields=set('schema status binding enableCalls observerArmedBeforeEnable bootImportAcknowledged caseReadOnly armedAtElapsed enabledAtElapsed importAckAtElapsed caseAckAtElapsed deadlineElapsed nativeReceipt'.split())
+    inputs=set('caPemSha256 caDerSha256 leafDerSha256 caNotBeforeMs caNotAfterMs leafNotBeforeMs leafNotAfterMs hostUtcMs'.split())
+    require(type(expected) is dict and set(expected)==inputs and all(token(expected[k],64) for k in ('caPemSha256','caDerSha256','leafDerSha256')),'exact expected public trust identity')
+    for key in inputs-{'caPemSha256','caDerSha256','leafDerSha256'}:require(integer(expected[key],1),'public certificate UTC '+key)
+    require(expected['caNotBeforeMs']<expected['caNotAfterMs'] and expected['leafNotBeforeMs']<expected['leafNotAfterMs'],'original certificate validity intervals')
+    require(type(value) is dict and set(value)==fields and equal(value['schema'],1) and value['status']=='ready' and equal(value['enableCalls'],1),'one completed native import, never a retried enable')
+    for key in ('observerArmedBeforeEnable','bootImportAcknowledged'):require(value[key] is True,'native import phase '+key)
+    require(value['caseReadOnly'] is resample,'same-runtime read-only resample')
+    binding=value['binding'];keys=set('sourceCommit sourceTree runNonce caseNonce bootCaseNonce runtimeNonce processNonce challengeNonce expectedCaDerSha256 pid slot'.split())
+    require(type(binding) is dict and set(binding)==keys,'exact trust invocation binding')
+    for key,wanted in dict(sourceCommit=source,sourceTree=tree,runNonce=run,caseNonce=case,runtimeNonce=policy['runtimeNonce'],processNonce=policy['processNonce'],expectedCaDerSha256=expected['caDerSha256'],pid=policy['pid'],slot=policy['slot']).items():require(equal(binding[key],wanted),'native trust tuple '+key)
+    require(token(binding['bootCaseNonce']) and token(binding['challengeNonce']) and (binding['bootCaseNonce']!=case) is resample,'cold boot versus current case binding')
+    for key in ('armedAtElapsed','enabledAtElapsed','importAckAtElapsed','caseAckAtElapsed','deadlineElapsed'):require(integer(value[key],1),'native trust monotonic time '+key)
+    require(value['armedAtElapsed']<=value['enabledAtElapsed']<=value['importAckAtElapsed']<=value['caseAckAtElapsed']<value['deadlineElapsed'],'listener before enable, import before original target within original budget')
+    native=value['nativeReceipt'];keys=set('schema binding importEventCount importedEventObserved importTopic importedAtUtcMs nativeEffective nativeHasUserValue nativeGetEnterpriseRoots rootMatches caDerSha256 caNotBeforeMs caNotAfterMs nativeReadUtcMs'.split())
+    require(type(native) is dict and set(native)==keys and equal(native['binding'],binding) and equal(native['schema'],1),'actual private parent callback')
+    for key in ('importedEventObserved','nativeEffective','nativeGetEnterpriseRoots'):require(native[key] is True,'actual native import receipt '+key)
+    require(native['nativeHasUserValue'] is False and native['importTopic']=='psm:enterprise-certs-imported' and equal(native['importEventCount'],1) and equal(native['rootMatches'],1) and native['caDerSha256']==expected['caDerSha256'],'completed verifier update and exact imported CA membership')
+    for key in ('caNotBeforeMs','caNotAfterMs'):require(equal(native[key],expected[key]),'native root validity equals original public certificate '+key)
+    require(integer(native['importedAtUtcMs'],1) and integer(native['nativeReadUtcMs'],native['importedAtUtcMs']) and expected['caNotBeforeMs']<=native['nativeReadUtcMs']<=expected['caNotAfterMs'] and expected['leafNotBeforeMs']<=native['nativeReadUtcMs']<=expected['leafNotAfterMs'],'observed guest clock within exact CA and leaf validity')
+
+def validate_device(value,*,spec,binding,run,source,tree,identity,leaf,trust_input):
     label,slot,mode,rfp,retain,stale_user,resample,protocol,success,service=spec;pending=label=='pending-default-tls12'
     require(type(value) is dict and set(value)==DEVICE_FIELDS and type(value['schema']) is int and value['schema']==1 and value['fixtureType']=='gecko-production-tls-v1' and value['status']=='passed' and value['stage']=='complete' and value['failure']=='','complete exact production packet')
     for key,wanted in dict(runNonce=run,caseNonce=binding['caseNonce'],sourceCommit=source,sourceTree=tree,slot=slot,mode=mode,peerPort=binding['port'],rfpRequested=rfp,retainedProfile=retain,staleUserPrefSeeded=stale_user,serviceRequested=service,expectedSuccess=success).items():require(equal(value.get(key),wanted),'original packet tuple '+key)
@@ -57,6 +79,8 @@ def validate_device(value,*,spec,binding,run,source,tree,identity,leaf):
     for key in ('releaseAcceptance','javascriptTlsOverrideUsed','debuggingEndpointUsed','nativeSettingReadbackIsWireProof','workerCoverageVerified','serviceWorkerCoverageVerified','fullTlsFingerprintEmulation','quicWireVerified'):require(value[key] is False,'unverified scope '+key)
     process=value['process'];require(type(process) is dict and set(process)=={'pid','uid','name'} and integer(process['pid'],1,2**31-1) and integer(process['uid'],10000,99999) and process['name']==PACKAGE+':profile'+str(slot),'actual environment process')
     policy=native_policy(value['tlsPolicy'],mode=mode,rfp=rfp,slot=slot,pid=process['pid'],pending=pending)
+    require(trust_input.get('leafDerSha256')==leaf,'same native trust leaf input')
+    fixture_trust(value['fixtureTrust'],expected=trust_input,run=run,case=binding['caseNonce'],source=source,tree=tree,policy=policy,resample=resample)
     cpu=value['cpuPolicy'];require(type(cpu) is dict and cpu.get('state')=='ready' and cpu.get('nativeSettingReadback') is True and cpu.get('startupReconciled') is True and cpu.get('scope')=='runtime-wide' and equal(cpu.get('slot'),slot) and equal(cpu.get('pid'),process['pid']) and cpu.get('environmentId')==policy['environmentId'] and equal(cpu.get('environmentGeneration'),policy['environmentGeneration']),'independent actual CPU bootstrap remains admitted')
     require(cpu.get('workerCoverageVerified') is False and cpu.get('serviceWorkerCoverageVerified') is False,'CPU scope remains independent')
     storage=value['storagePathEvidence'];fields=set('schema status slot frameworkDataAncestorAlias globalNoBackupAncestorAlias environmentRootAncestorAlias noBackupWithinDataAnchor rootMatchesSlot privateComponentsNoSymlinks validatedPrivateComponents runtimePathsCanonical'.split())
@@ -167,6 +191,11 @@ def validate_cross(entries,process_checks):
     one,two,again=get('concurrent-strict-tls13'),get('concurrent-default-tls12'),get('concurrent-strict-resample-tls12')
     for k in ('pid','environmentId','processNonce','runtimeNonce'):require(one[k]!=two[k],'concurrent environment separation '+k)
     for k in ('pid','environmentId','environmentGeneration','processNonce','runtimeNonce','activeBootRevision'):require(equal(one[k],again[k]),'strict environment remains unchanged after default peer '+k)
+    for first,later in (('strict-tls12','strict-tls13'),('strict-tls12','pending-default-tls12'),('concurrent-strict-tls13','concurrent-strict-resample-tls12')):
+        boot,current=by[first]['device']['fixtureTrust'],by[later]['device']['fixtureTrust']
+        require(current['binding']['bootCaseNonce']==boot['binding']['caseNonce'] and current['binding']['challengeNonce']!=boot['binding']['challengeNonce'],'fresh case challenge of original imported runtime')
+        for key in ('armedAtElapsed','enabledAtElapsed','importAckAtElapsed'):require(equal(current[key],boot[key]),'resample cannot rearm or reenable '+key)
+        require(equal(current['nativeReceipt']['importedAtUtcMs'],boot['nativeReceipt']['importedAtUtcMs']),'same original completed import on resample')
     require(type(process_checks) is list and len(process_checks)==4,'both actual concurrent processes checked before and after resample')
     expected=[('both-resident',one),('both-resident',two),('after-resample',one),('after-resample',two)]
     for row,(stage,finding) in zip(process_checks,expected):require(type(row) is dict and set(row)=={'stage','slot','expectedPid','observedPid','shellUid'} and row['stage']==stage and equal(row['slot'],finding['slot']) and equal(row['expectedPid'],finding['pid']) and row['observedPid']==str(finding['pid']) and equal(row['shellUid'],2000),'actual shell PID residency')

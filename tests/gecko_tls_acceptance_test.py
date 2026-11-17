@@ -10,6 +10,7 @@ import os
 from pathlib import Path
 import socket
 import shlex
+import shutil
 import ssl
 import subprocess
 import sys
@@ -62,6 +63,26 @@ def manifest_before_reviewed_ui_additions(raw):
         raise ValueError('Entire pre-UI manifest did not restore')
     return restored
 
+
+class NativeTrustProtocolControls(unittest.TestCase):
+    def test_actual_privileged_observer_and_private_port_faults(self):
+        result=subprocess.run(['node',str(ROOT/'tests/gecko_tls_fixture_trust_test.cjs')],check=True,capture_output=True,text=True)
+        report=json.loads(result.stdout);self.assertEqual(report['status'],'passed');self.assertGreaterEqual(report['checks'],49)
+        self.assertIs(report['actualAndroidExecution'],False);self.assertIs(report['actualGeckoExecution'],False)
+
+    def test_actual_java_protocol_with_android_json_and_owner_clock_faults(self):
+        candidates=[ROOT/'work/native-tls-host-deps/android-json.jar',ROOT/'work/browser-host-deps/android-json.jar',ROOT/'work/profile-host/android-json.jar']
+        jar=next((path for path in candidates if path.is_file()),None)
+        self.assertIsNotNone(jar,'The existing pinned Android JSON host dependency is required')
+        self.assertEqual(hashlib.sha256(jar.read_bytes()).hexdigest(),'dfb7bae2f404cfe0b72b4d23944698cb716b7665171812a0a4d0f5926c0fac79')
+        java_home=os.environ.get('JAVA_HOME_17_X64') or os.environ.get('JAVA_HOME')
+        if not java_home:
+            compiler=shutil.which('javac');self.assertIsNotNone(compiler,'The existing JDK17 host toolchain is required');java_home=str(Path(compiler).resolve().parent.parent)
+        with tempfile.TemporaryDirectory(prefix='tls-import-state-') as directory:
+            result=subprocess.run([sys.executable,str(ROOT/'tests/gecko-tls-fixture-trust-host/run.py'),'--java-home',java_home,'--json-jar',str(jar),'--output',str(Path(directory)/'receipt.json')],capture_output=True,text=True)
+            self.assertEqual(result.returncode,0,result.stdout+result.stderr)
+            report=json.loads(result.stdout);self.assertEqual(report['status'],'passed');self.assertTrue(report['executionInputsUnchanged'])
+            self.assertIs(report['actualAndroidExecution'],False);self.assertIs(report['actualGeckoExecution'],False)
 
 class ReviewedUiManifestControls(unittest.TestCase):
     @classmethod
@@ -150,7 +171,7 @@ class ProductTlsControls(unittest.TestCase):
     def validate(self,value,index=0):
         entry=self.evidence.entries[index]
         with patch.object(contract,'verify_installed',side_effect=lambda actual,expected:self.assertEqual(actual,expected)):
-            return contract.validate_device(value,spec=CASE_SPECS[index],binding=entry['binding'],run=RUN,source=SOURCE,tree=TREE,identity=self.evidence.identity,leaf=self.evidence.leaf)
+            return contract.validate_device(value,spec=CASE_SPECS[index],binding=entry['binding'],run=RUN,source=SOURCE,tree=TREE,identity=self.evidence.identity,leaf=self.evidence.leaf,trust_input=self.evidence.trust_input)
     def rejected(self,name,call):
         with self.subTest(name=name):
             with self.assertRaises((ValueError,AssertionError,KeyError,TypeError)):call()
@@ -246,9 +267,28 @@ class ProductTlsControls(unittest.TestCase):
             entry=self.evidence.entries[index]
             # This compile-success/runtime-accept result means the false state
             # escapes only after removing the exact current production guard.
-            finding=namespace['validate_device'](bad,spec=CASE_SPECS[index],binding=entry['binding'],run=RUN,source=SOURCE,tree=TREE,identity=self.evidence.identity,leaf=self.evidence.leaf)
+            finding=namespace['validate_device'](bad,spec=CASE_SPECS[index],binding=entry['binding'],run=RUN,source=SOURCE,tree=TREE,identity=self.evidence.identity,leaf=self.evidence.leaf,trust_input=self.evidence.trust_input)
             self.assertEqual(finding['label'],entry['label'])
             NEGATIVE_CONTROLS.append('compiled semantic guard mutant '+label);SEMANTIC_MUTANTS.append(label)
+
+    def test_native_import_ack_requires_exact_root_event_owner_and_original_deadline(self):
+        changes=[('metadata-only',lambda t:t.update(bootImportAcknowledged=False)),
+            ('no listener',lambda t:t.update(observerArmedBeforeEnable=False)),
+            ('repeated enable',lambda t:t.update(enableCalls=2)),
+            ('late ACK',lambda t:t.update(caseAckAtElapsed=t['deadlineElapsed'])),
+            ('foreign run',lambda t:t['binding'].update(runNonce='0'*32)),
+            ('different root',lambda t:t['nativeReceipt'].update(caDerSha256='0'*64)),
+            ('no native event',lambda t:t['nativeReceipt'].update(importedEventObserved=False)),
+            ('USER override',lambda t:t['nativeReceipt'].update(nativeHasUserValue=True)),
+            ('untrusted root membership',lambda t:t['nativeReceipt'].update(rootMatches=0)),
+            ('clock before validity',lambda t:t['nativeReceipt'].update(nativeReadUtcMs=1)),
+            ('wrong native date',lambda t:t['nativeReceipt'].update(caNotAfterMs=1)),
+            ('invented resample',lambda t:t.update(caseReadOnly=True))]
+        for label,change in changes:
+            value=self.device();change(value['fixtureTrust']);self.rejected('native fixture trust '+label,lambda value=value:self.validate(value))
+        entries=copy.deepcopy(self.evidence.entries)
+        entries[2]['device']['fixtureTrust']['nativeReceipt']['importedAtUtcMs']+=1
+        self.rejected('resample replaced actual native import',lambda:contract.validate_cross(entries,self.evidence.process_checks))
 
     def test_source_bound_checker_executes_all_original_packets(self):
         with tempfile.TemporaryDirectory() as temp:
@@ -558,6 +598,12 @@ class ProducerBoundaryControls(unittest.TestCase):
         components(PRODUCTION_CLASSES|TEST_CLASSES,integration,ASSETS,True);components(PRODUCTION_CLASSES,'release',set(),False)
         for definitions,manifest,assets,flag in ((PRODUCTION_CLASSES|TEST_CLASSES,'release',set(),False),(PRODUCTION_CLASSES,'GeckoTlsAcceptanceProvider',set(),False),(PRODUCTION_CLASSES,'release',ASSETS,False),(PRODUCTION_CLASSES,integration,ASSETS,True),(TEST_CLASSES,integration,ASSETS,True)):
             with self.assertRaises(ValueError):components(definitions,manifest,assets,flag)
+        for asset in ASSETS:
+            with self.assertRaises(ValueError):components(PRODUCTION_CLASSES,'release',{asset},False)
+            with self.assertRaises(ValueError):components(PRODUCTION_CLASSES|TEST_CLASSES,integration,ASSETS-{asset},True)
+        with self.assertRaises(ValueError):components(PRODUCTION_CLASSES,'release',{'assets/tls-fixture-trust/unexpected.js'},False)
+        for name in ('GeckoTlsFixtureTrust','GeckoTlsFixtureTrustState'):
+            with self.assertRaises(ValueError):components(PRODUCTION_CLASSES|{'Llocal/pocketchat/'+name+';'},'release',set(),False)
     def test_new_workflow_is_diagnostic_only_same_build_source_and_no_writes(self):
         value=yaml.safe_load((ROOT/'.github/workflows/gecko-tls-acceptance.yml').read_text());self.assertEqual(value['permissions'],{'contents':'read'});self.assertEqual(value['on']['push']['branches'],['diagnostics/gecko-tls-*']);self.assertEqual(set(value['jobs']),{'build','gecko_tls_acceptance'});self.assertEqual(value['jobs']['gecko_tls_acceptance']['needs'],'build')
         text='\n'.join(str(step.get('run','')) for d in value['jobs'].values() for step in d['steps'])
@@ -567,7 +613,7 @@ class ProducerBoundaryControls(unittest.TestCase):
 
 if __name__=='__main__':
     parser=argparse.ArgumentParser();parser.add_argument('--output',type=Path);args,extra=parser.parse_known_args()
-    inputs=set(checker.SOURCE_INPUTS)|{'tests/gecko_tls_acceptance_test.py','tests/tls_product_test_support.py','tests/tls_cpu_ip_combo_test_support.py','tests/gecko_cpu_ip_combo_evidence_test.py','tests/gecko_ip_timezone_evidence_test.py','docs/diagnostics/GECKO-TLS-ACCEPTANCE.md'}
+    inputs=set(checker.SOURCE_INPUTS)|{'tests/gecko_tls_fixture_trust_test.cjs','tests/gecko-tls-fixture-trust-host/run.py','tests/gecko-tls-fixture-trust-host/TrustStateHost.java','tests/gecko_tls_acceptance_test.py','tests/tls_product_test_support.py','tests/tls_cpu_ip_combo_test_support.py','tests/gecko_cpu_ip_combo_evidence_test.py','tests/gecko_ip_timezone_evidence_test.py','docs/diagnostics/GECKO-TLS-ACCEPTANCE.md'}
     source_files={name:hashlib.sha256((ROOT/name).read_bytes()).hexdigest() for name in sorted(inputs)}
     suite=unittest.defaultTestLoader.loadTestsFromModule(sys.modules[__name__]);result=unittest.TextTestRunner(verbosity=2).run(suite)
     stable=all((ROOT/name).is_file() and not (ROOT/name).is_symlink() and hashlib.sha256((ROOT/name).read_bytes()).hexdigest()==value for name,value in source_files.items())

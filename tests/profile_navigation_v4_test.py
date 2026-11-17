@@ -3,6 +3,9 @@ import ast
 import copy
 import hashlib
 import json
+import os
+import shutil
+import subprocess
 from pathlib import Path
 import sys
 import tempfile
@@ -103,13 +106,22 @@ def window_xml(width=360):
 
 
 def network_xml(width=360,scale=1):
-    """Observed native structure; other sizes are explicitly host-only variants."""
-    raw=(ROOT/'tests/fixtures/compact-network-dialog-c4.xml').read_text()
-    if (width,scale)==(360,1):
-        return raw
-    tree=ET.fromstring(raw)
-    # Exercise relative window containment without pretending these variants
-    # were captured on Android or borrowing the custom browser-sheet schema.
+    """Host-only current layout derived from the preserved native window shape."""
+    tree=ET.fromstring((ROOT/'tests/fixtures/compact-network-dialog-c4.xml').read_text())
+    parents={child:parent for parent in tree.iter() for child in parent}
+    def get(identifier):return next(n for n in tree.iter('node') if n.get('resource-id')=='android:id/'+identifier)
+    custom=get('customPanel');scroll=next(n for n in custom.iter('node') if n.get('class')=='android.widget.ScrollView')
+    scroll.set('content-desc','当前环境网络详情');body=next(iter(scroll))
+    # The real producer now reserves the native footer for Close; optional
+    # actions belong to the body. These coordinates are a declared host model,
+    # never a claim that the changed dialog has already run on Android.
+    body.clear();body.attrib.update({'class':'android.widget.LinearLayout','package':previous.v2.PACKAGE,
+        'enabled':'true','bounds':'[54,602][1026,1291]'})
+    previous.node(body,'TextView','Controlled network details',rectangle=(54,602,1026,850))
+    for identifier,description,top in (('button1','测一下网络延迟',850),('button3','查看当前网络连接详情',1000)):
+        action=get(identifier);parents[action].remove(action);action.set('resource-id','');action.set('content-desc',description)
+        action.set('bounds',f'[54,{top}][1026,{top+150}]');body.append(action)
+    # Relative window containment and 48 dp remain checked for all cohorts.
     for node in tree.iter('node'):
         l,t,r,b=navigation.bounds(node)
         ys=1.15 if scale==2 else 1
@@ -241,14 +253,16 @@ class NativeNetworkDialogTests(unittest.TestCase):
             self.assertEqual(hashlib.sha256(raw).hexdigest(),row['sha256'])
             self.assertEqual(hashlib.sha1(b'blob '+str(len(raw)).encode()+b'\0'+raw).hexdigest(),row['gitBlob'])
         self.assertEqual(record['secondNetworkEntryGitBlob'],record['files'][0]['gitBlob'])
-        raw=network_xml();nodes=list(ET.fromstring(raw).iter('node'))
+        raw=(ROOT/'tests/fixtures/compact-network-dialog-c4.xml').read_text();nodes=list(ET.fromstring(raw).iter('node'))
         title=[n for n in nodes if n.get('resource-id')=='android:id/alertTitle']
         self.assertEqual(len(title),1);self.assertEqual(title[0].get('content-desc'),'')
         old=[n for n in nodes if n.get('package')==previous.v2.PACKAGE and n.get('class')=='android.widget.TextView'
              and n.get('text')==n.get('content-desc')=='网络情况']
         self.assertEqual(old,[], 'The former custom-sheet predicate rejects this actual native title')
         self.assertEqual(next(n for n in nodes if n.get('resource-id')=='android:id/button1').get('enabled'),'false')
-        self.assertTrue(compact.network_dialog_visible(raw,previous.v2.PACKAGE))
+        with self.assertRaises(AssertionError):
+            compact.network_dialog_visible(raw,previous.v2.PACKAGE)
+        self.assertTrue(compact.network_dialog_visible(network_xml(),previous.v2.PACKAGE))
         closed=(ROOT/'tests/fixtures/compact-network-dialog-c4-closed.xml').read_text()
         self.assertFalse(compact.network_dialog_visible(closed,previous.v2.PACKAGE))
 
@@ -256,7 +270,9 @@ class NativeNetworkDialogTests(unittest.TestCase):
         changes=('duplicate-title','foreign-title','foreign-panel','hidden-title','hidden-panel','wrong-role',
                  'wrong-id','missing-close','disabled-close','unclickable-close','short-close','title-outside',
                  'close-outside','foreign-window','detached-close','panel-outside-window',
-                 'missing-connection','missing-measure','title-only','close-only')
+                 'missing-body','duplicate-body','foreign-body','body-outside','wrong-body-role',
+                 'connection-in-footer','measure-in-footer','duplicate-measure','wrong-measure','disabled-connection',
+                 'extra-footer-button','title-only','close-only')
         for change in changes:
             tree=ET.fromstring(network_xml());parents={child:parent for parent in tree.iter() for child in parent}
             def get(identifier):return next(n for n in tree.iter('node') if n.get('resource-id')=='android:id/'+identifier)
@@ -279,14 +295,59 @@ class NativeNetworkDialogTests(unittest.TestCase):
                 parents[close].remove(close)
                 other=previous.node(tree,'FrameLayout',rectangle=(0,0,1080,1920));other.append(close)
             elif change=='panel-outside-window':parents[panel].set('bounds','[54,461][1026,1459]')
-            elif change in ('missing-connection','missing-measure'):
-                node=get('button3' if change=='missing-connection' else 'button1');parents[node].remove(node)
+            elif change in ('missing-body','duplicate-body','foreign-body','body-outside','wrong-body-role'):
+                node=next(n for n in tree.iter('node') if n.get('content-desc')=='当前环境网络详情')
+                if change=='missing-body':node.set('content-desc','')
+                elif change=='duplicate-body':parents[node].append(copy.deepcopy(node))
+                elif change=='foreign-body':node.set('package','foreign.app')
+                elif change=='body-outside':node.set('bounds','[54,602][1026,1292]')
+                else:node.set('class','android.widget.LinearLayout')
+            elif change in ('connection-in-footer','measure-in-footer','duplicate-measure','wrong-measure','disabled-connection'):
+                desc='查看当前网络连接详情' if 'connection' in change else '测一下网络延迟'
+                node=next(n for n in tree.iter('node') if n.get('content-desc')==desc)
+                if change.endswith('in-footer'):
+                    parents[node].remove(node);get('buttonPanel').append(node)
+                elif change=='duplicate-measure':parents[node].append(copy.deepcopy(node))
+                elif change=='wrong-measure':node.set('class','android.widget.TextView')
+                else:node.set('enabled','false')
+            elif change=='extra-footer-button':
+                duplicate=copy.deepcopy(close);duplicate.set('resource-id','');get('buttonPanel').append(duplicate)
             else:
                 only=copy.deepcopy(title if change=='title-only' else close);tree=ET.Element('hierarchy');tree.append(only)
             with self.subTest(change=change),self.assertRaises((AssertionError,ValueError)):
                 compact.network_dialog_visible(ET.tostring(tree,encoding='unicode'),previous.v2.PACKAGE)
         with self.assertRaises(AssertionError):
             compact.network_dialog_visible(menu_xml(title='网络情况'),previous.v2.PACKAGE)
+
+    def test_scroll_body_actions_may_be_outside_first_viewport_but_footer_cannot_be(self):
+        tree=ET.fromstring(network_xml());parents={child:parent for parent in tree.iter() for child in parent}
+        for node in list(tree.iter('node')):
+            if node.get('content-desc') in ('测一下网络延迟','查看当前网络连接详情'):
+                parents[node].remove(node)
+        self.assertTrue(compact.network_dialog_visible(ET.tostring(tree,encoding='unicode'),previous.v2.PACKAGE))
+        close=next(n for n in tree.iter('node') if n.get('resource-id')=='android:id/button2')
+        close.set('bounds','[417,1303][681,1381]')
+        with self.assertRaisesRegex(AssertionError,'48 dp'):
+            compact.network_dialog_visible(ET.tostring(tree,encoding='unicode'),previous.v2.PACKAGE)
+
+    def test_original_c6_clipped_close_remains_failed_and_does_not_lower_target(self):
+        record=json.loads((ROOT/'tests/fixtures/compact-network-dialog-c6-clipped-provenance.json').read_text())
+        raw=(ROOT/'tests/fixtures'/record['fixture']).read_bytes()
+        self.assertIs(record['recordedFailureOnly'],True);self.assertEqual(record['originalStatus'],'failed')
+        self.assertEqual(record['sourceCommit'],'bdd3b3adffcc6e726fd7fe35872519063adc06ad')
+        self.assertEqual(record['checkpointCommit'],'db44a3cb6d853ead46ef015926c6a8a502cd0b6d')
+        self.assertEqual(len(raw),record['bytes']);self.assertEqual(hashlib.sha256(raw).hexdigest(),record['sha256'])
+        self.assertEqual(hashlib.sha1(b'blob '+str(len(raw)).encode()+b'\0'+raw).hexdigest(),record['gitBlob'])
+        node=next(n for n in ET.fromstring(raw).iter('node') if n.get('resource-id')=='android:id/button2')
+        box=list(navigation.bounds(node));self.assertEqual(box,record['observedCloseBounds'])
+        self.assertEqual(box[3]-box[1],78);self.assertLess(box[3]-box[1],144)
+        with self.assertRaises(AssertionError):compact.network_dialog_visible(raw.decode(),previous.v2.PACKAGE)
+        # The same observed 78 px target also fails in the current, otherwise
+        # valid host layout; the failure is not hidden by the schema change.
+        tree=ET.fromstring(network_xml());close=next(n for n in tree.iter('node') if n.get('resource-id')=='android:id/button2')
+        close.set('bounds','[417,1303][681,1381]')
+        with self.assertRaisesRegex(AssertionError,'48 dp'):
+            compact.network_dialog_visible(ET.tostring(tree,encoding='unicode'),previous.v2.PACKAGE)
 
     def test_report_still_requires_both_original_raw_hashes_and_back_results(self):
         for change in ('hash','back','one-entry','custom-sheet'):
@@ -470,6 +531,51 @@ class CollapseContractTests(unittest.TestCase):
             observation.update(rawXml=raw,xmlBytes=len(encoded),xmlSha256=hashlib.sha256(encoded).hexdigest())
             with self.subTest(phase=phase,target=target),self.assertRaises((AssertionError,KeyError,ValueError)):
                 dispatch.verify_auto_collapse(report,'a'*40,'c'*64)
+
+
+class ProductionNetworkDialogTests(unittest.TestCase):
+    def execute_show(self, method):
+        from profile_gecko_window_selection_test import member
+        java_home=os.environ.get('JAVA_HOME')
+        java=Path(os.environ.get('PROFILE_JAVA') or (str(Path(java_home)/'bin/java') if java_home else '') or shutil.which('java') or '')
+        javac=java.with_name('javac')
+        self.assertTrue(java.is_file() and javac.is_file(),'A complete JDK with javac is required')
+        template=(ROOT/'tests/network-metrics-dialog-host/NetworkMetricsDialogHost.java.in').read_text()
+        self.assertEqual(template.count('/* ACTUAL_SHOW */'),1)
+        with tempfile.TemporaryDirectory(prefix='network-dialog-host-') as directory:
+            work=Path(directory);source=work/'NetworkMetricsDialogHost.java'
+            source.write_text(template.replace('/* ACTUAL_SHOW */',method))
+            compiled=subprocess.run([str(javac),'-encoding','UTF-8','-d',str(work),str(source)],capture_output=True,text=True,timeout=45)
+            self.assertEqual(compiled.returncode,0,compiled.stdout+compiled.stderr)
+            return subprocess.run([str(java),'-cp',str(work),'local.pocketchat.NetworkMetricsDialogHost'],capture_output=True,text=True,timeout=20)
+
+    def production_show(self):
+        from profile_gecko_window_selection_test import member
+        return member((ROOT/'app/src/main/java/local/pocketchat/NetworkMetricsUi.java').read_text(),' static void show(MainActivity a){')
+
+    def test_actual_single_footer_and_original_network_callbacks_tick_and_cleanup(self):
+        result=self.execute_show(self.production_show())
+        self.assertEqual(result.returncode,0,result.stdout+result.stderr)
+        report=json.loads(result.stdout)
+        self.assertEqual(report['status'],'passed');self.assertGreaterEqual(report['checks'],55)
+        self.assertIs(report['actualAndroidExecution'],False)
+
+    def test_actual_host_rejects_footer_regression_cooldown_and_owner_cleanup_changes(self):
+        actual=self.production_show()
+        changes=(
+            ('.setNegativeButton("关闭",null)', '.setPositiveButton("测一下延迟",null).setNegativeButton("关闭",null)'),
+            ('SystemClock.elapsedRealtime()-n.lastManualProbe>=5000','SystemClock.elapsedRealtime()-n.lastManualProbe>=0'),
+            ('a.handler.removeCallbacks(tick);',''),
+            ('if(a.networkDialog==dialog)a.networkDialog=null;','a.networkDialog=null;'),
+            ('dialog.dismiss();NetworkStatusUi.show(a);','NetworkStatusUi.show(a);dialog.dismiss();'),
+            ('measure.setEnabled(false);',''),
+        )
+        for before,after in changes:
+            self.assertEqual(actual.count(before),1)
+            with self.subTest(mutation=before):
+                result=self.execute_show(actual.replace(before,after))
+                self.assertNotEqual(result.returncode,0,'Actual host did not reject '+before)
+                self.assertIn('AssertionError',result.stderr)
 
 
 if __name__=='__main__':unittest.main()

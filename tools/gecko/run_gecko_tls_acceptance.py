@@ -16,6 +16,7 @@ from profile_invocation_contract import expected_build,verify_installed
 from tls_acceptance_server import TlsAcceptanceServer,CASE_SPECS,GUEST_PORT,strict_json,require
 from tls_acceptance_contract import validate_device,validate_wire,validate_cross
 from tls_fixture_scope_contract import validate_manual_scope,validate_manual_cross
+from tls_fixture_trust import fixture_trust_input
 from run_gecko_tls_cpu_ip_combo import run_combo,ComboFailure
 ROOT=Path(__file__).resolve().parents[2]
 sys.path.insert(0,str(ROOT/'tools/browser'))
@@ -182,7 +183,7 @@ def main():
     output=a.output.absolute();require(not output.exists() and all(not q.is_symlink() for q in (output,*output.parents)),'fresh ordinary output')
     gradle=(ROOT/'app/build.gradle').read_text();identity=expected_build(a.apk,source,tree,re.search(r"versionName '([^']+)'",gradle)[1],int(re.search(r'versionCode ([0-9]+)',gradle)[1]))
     before=snapshot();output.mkdir(parents=True);run=uuid.uuid4().hex
-    server=certificates=ca=None;reversed_port=False;entries=[];process_checks=[];errors=[];host_tls={};guest={};checked=None;manual_checks=[];combined=None;combined_finding=None;fixture_process_observations=[];observation_context=['initial',''];failed_main_start=None
+    server=certificates=ca=None;reversed_port=False;entries=[];process_checks=[];errors=[];host_tls={};fixture_input={};guest={};checked=None;manual_checks=[];combined=None;combined_finding=None;fixture_process_observations=[];observation_context=['initial',''];failed_main_start=None
     cleanup=dict(appStopped=False,appDataCleared=False,reverseRemoved=False,serverClosed=False,serverThreadsJoined=False,caRemoved=False,privateMaterialRemoved=False,shellUidRestored=False)
     def adb(*parts,check=True,timeout=25):
         fixed_pidof=len(parts)==3 and parts[:2]==('shell','pidof') and parts[2] in scope_processes()
@@ -210,6 +211,7 @@ def main():
         case=uuid.uuid4().hex;binding=server.begin(label,case)
         entry=dict(label=label,binding=binding,status='failed');entries.append(entry)
         command=['am','start','-W','-n',PACKAGE+'/local.pocketchat.GeckoTlsAcceptanceActivity$Profile'+str(slot),'--es','runNonce',run,'--es','caseNonce',case,'--es','sourceCommit',source,'--es','tlsMode',mode,'--es','expectedLeafSha256',certificates.leaf_sha,'--ei','peerPort',str(binding['port'])]
+        command+=['--es','fixtureTrustInput',json.dumps(fixture_input,separators=(',',':'))]
         for key,value in dict(rfp=rfp,retain=retain,staleUser=stale,resample=resample,expectSuccess=success,service=service,saveDefault=label=='pending-default-tls12').items():command+=['--ez',key,str(value).lower()]
         adb('shell',shlex.join(command));deadline=time.monotonic()+150;device=None
         while time.monotonic()<deadline:
@@ -222,7 +224,7 @@ def main():
             time.sleep(.25)
         require(device is not None,'workload did not terminate; timeout is not protocol rejection')
         entry['device']=device
-        finding=validate_device(device,spec=spec,binding=binding,run=run,source=source,tree=tree,identity=identity,leaf=certificates.leaf_sha)
+        finding=validate_device(device,spec=spec,binding=binding,run=run,source=source,tree=tree,identity=identity,leaf=certificates.leaf_sha,trust_input=fixture_input)
         validate_manual_scope(device,spec=spec,binding=binding,run=run,source=source,tree=tree,identity=identity)
         require(adb('shell','pidof',PACKAGE+':profile'+str(slot)).stdout.decode('ascii').strip()==str(finding['pid']),'actual native report PID owner')
         entry.update(status='passed',finding=finding)
@@ -239,7 +241,7 @@ def main():
         guest=dict(actualEmulator=True,api=35,onlineCpus=4,evidenceShellUid=2000)
         verify_installed(strict_json(adb('exec-out','content','read','--uri','content://'+PACKAGE+'.evidence/build-identity').stdout),identity)
         require(not any('tcp:'+str(GUEST_PORT) in line.split() for line in adb('reverse','--list').stdout.decode('ascii').splitlines()),'existing guest mapping cannot be replaced')
-        certificates=EphemeralCertificates();ca=AndroidUserCa(adb,certificates);ca.install()
+        certificates=EphemeralCertificates();fixture_input=fixture_trust_input(certificates);ca=AndroidUserCa(adb,certificates);ca.install()
         host_tls=dict(certificates.public,trustInstallation=ca.receipt,guestPort=GUEST_PORT,binding=dict(sourceCommit=source,sourceTree=tree,runNonce=run,integrationApkSha256=identity['apkSha256'],sdkRunId=identity['sdkBuildIdentity']['runId'],sdkRunAttempt=identity['sdkBuildIdentity']['runAttempt']))
         server=TlsAcceptanceServer(certificates,run,source,(ROOT/'tests/gecko/assets/tls-acceptance-page.js').read_text(),(ROOT/'tests/gecko/assets/tls-acceptance-worker.js').read_text()).start()
         adb('reverse','tcp:'+str(GUEST_PORT),'tcp:'+str(server.port));reversed_port=True
@@ -270,6 +272,7 @@ def main():
     stable=snapshot()==before;passed=checked is not None and combined_finding is not None and not errors and all(cleanup.values()) and stable
     public_entries=[{k:v for k,v in e.items() if k!='device'} for e in entries]
     result=dict(schema=1,kind='gecko-production-tls-v1',status='passed' if passed else 'failed',diagnosticOnly=True,releaseAcceptance=False,sourceCommit=source,sourceTree=tree,runId=os.environ.get('GITHUB_RUN_ID'),runAttempt=os.environ.get('GITHUB_RUN_ATTEMPT'),runNonce=run,expectedBuildIdentity=identity,guest=guest,caseRecords=public_entries,processChecks=process_checks,manualScopeChecks=manual_checks,fixtureProcessObservations=fixture_process_observations,fixtureMainStartDiagnostic=failed_main_start,combinedCase=combined,combinedFinding=combined_finding,coldCpuIpTlsCombinationMeasured=passed,hostTls=host_tls,host=host,cleanup=cleanup,errors=errors,checked=checked,sourceFiles=before,executionInputsUnchanged=stable,actualAndroidExecution=any(e['status']=='passed' for e in entries),actualGeckoExecution=any(e['status']=='passed' for e in entries),productionGeckoWebTlsWorkloadPassed=passed,persistentServiceWorkerTlsMeasured=passed,workerCoverageVerified=False,serviceWorkerCoverageVerified=False,fullTlsFingerprintEmulation=False,quicWireVerified=False,rawFatalAlertPacketDecoded=False,appIndependentTlsStacksCovered=False,scope='Actual production Gecko web connections under per-environment cold native TLS policy, exact native DEFAULT/effective readback, trusted controlled TLS12/TLS13 peers and original ClientHello bytes. Real desired-only UI pending state, nonempty old USER reconciliation, retained registration with separately measured Service Worker fetch across true cold start, and simultaneous isolated environments. Independent app downloader/connection checks/proxy entrance Java or other TLS stacks, arbitrary TLS fingerprints and QUIC are not covered.')
+    result['fixtureTrustInput']=fixture_input
     raw=(json.dumps(result,ensure_ascii=False,indent=2)+'\n').encode();require(len(raw)<=4*1024*1024,'bounded final original summary');(output/'results.json').write_bytes(raw)
     print(json.dumps({k:result[k] for k in ('status','sourceCommit','productionGeckoWebTlsWorkloadPassed','executionInputsUnchanged')}));return 0 if passed else 1
 

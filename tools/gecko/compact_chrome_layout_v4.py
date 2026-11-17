@@ -66,14 +66,29 @@ def network_dialog_visible(xml, package):
     # Android's alertTitle has no redundant content-description in the original
     # device XML. Its text, resource id, role and native window establish identity.
     contained(title,top)
-    for identifier,labels in (('button1',('测一下延迟','正在测量…')),('button2',('关闭',)),('button3',('连接详情',))):
-        control=unique(identifier)
-        assert control.get('class')=='android.widget.Button' and control.get('text') in labels
-        assert control.get('clickable')=='true'
-        contained(control,buttons,enabled=identifier=='button2')
-        if identifier=='button2':
-            l,t,r,b=bounds(control)
-            assert min(r-l,b-t)>=144, 'The native close control retains its 48 dp target'
+    details=[n for n in nodes if n.get('content-desc')=='当前环境网络详情']
+    assert len(details)==1 and details[0].get('class')=='android.widget.ScrollView'
+    contained(details[0],body)
+    # Native footer contains only the exit action. Optional network actions live
+    # in the real scrollable body and may be outside its first visible viewport.
+    assert not any(n.get('resource-id') in ('android:id/button1','android:id/button3') for n in nodes)
+    close=unique('button2')
+    assert close.get('class')=='android.widget.Button' and close.get('text')=='关闭'
+    assert close.get('clickable')=='true'
+    contained(close,buttons)
+    footer_controls=[n for n in buttons.iter('node') if n.get('class')=='android.widget.Button']
+    assert footer_controls==[close], 'The native footer must expose only its close action'
+    l,t,r,b=bounds(close)
+    assert min(r-l,b-t)>=144, 'The native close control retains its 48 dp target'
+    for description,labels in (('测一下网络延迟',('测一下延迟','正在测量…')),
+                               ('查看当前网络连接详情',('连接详情',))):
+        visible=[n for n in nodes if n.get('content-desc')==description or n.get('text') in labels]
+        assert len(visible)<=1
+        if visible:
+            control=visible[0]
+            assert control.get('class')=='android.widget.Button' and control.get('text') in labels
+            assert control.get('content-desc')==description and control.get('clickable')=='true'
+            contained(control,details[0],enabled=description=='查看当前网络连接详情')
     return True
 
 
