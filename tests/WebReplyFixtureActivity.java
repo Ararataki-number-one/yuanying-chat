@@ -26,7 +26,7 @@ abstract class WebReplyFixtureActivity extends MainActivity {
     }
     super.onCreate(b);handler.postDelayed(()->awaitReady(0),700);
   }
-  void awaitReady(int count){remote.evaluateJavascript("!!window.fixture&&!!window.__pocketWebReplyObserver",r->{if("true".equals(r)){check("Origin-scoped observer installed on Android WebView",session.webObserver.supported);begin();}else if(count<30)handler.postDelayed(()->awaitReady(count+1),200);else{check("Observer installation timed out",false);report("web-reply-results.json");}});}
+  void awaitReady(int count){remote.evaluateJavascript("!!window.fixture&&!!window.__pocketWebReplyObserver",r->{if("true".equals(r)){check("Origin-scoped browser resource observer installed",session.webObserver.supported);begin();}else if(count<30)handler.postDelayed(()->awaitReady(count+1),200);else{check("Observer installation timed out",false);report("web-reply-results.json");}});}
   abstract void begin();
   void js(String code,Runnable next){remote.evaluateJavascript(code,r->handler.postDelayed(next,80));}
   void waitFor(String name,BooleanSupplier condition,int remaining,Runnable next){if(condition.getAsBoolean()){check(name,true);next.run();}else if(remaining>0)handler.postDelayed(()->waitFor(name,condition,remaining-1,next),200);else{check(name,false);next.run();}}
@@ -34,5 +34,5 @@ abstract class WebReplyFixtureActivity extends MainActivity {
   void compose(String text,Runnable next){js("document.querySelector('textarea').value="+JSONObject.quote(text),next);}
   long completionPost(){for(android.service.notification.StatusBarNotification n:getSystemService(android.app.NotificationManager.class).getActiveNotifications())if(n.getId()==4102)return n.getPostTime();return 0;}
   void noResend(String name,int expected,Runnable next){remote.evaluateJavascript("window.sendCount",r->{check(name,Integer.toString(expected).equals(r));next.run();});}
-  void reset(String options,Runnable next){if(session.pending!=null)session.abandonWait();js("fixture.reset("+options+")",next);}
+  void reset(String options,Runnable next){if(session.pending!=null)session.webObserver.restorePending();js("fixture.reset("+options+")",next);}
 }

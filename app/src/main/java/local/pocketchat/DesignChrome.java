@@ -1,6 +1,5 @@
 package local.pocketchat;
 
-import android.annotation.TargetApi;
 import android.graphics.*;
 import android.os.SystemClock;
 import android.text.TextUtils;
@@ -23,7 +22,7 @@ final class DesignChrome {
   final LinearLayout diagnosticRow;
   final Button diagnosticBack,diagnosticResults;
   private final View[] actions;
-  private ChromeTouchDelegate touchTargets;
+  private BrowserHeaderTouchDelegate touchTargets;
   private static final ExecutorService metadataReader=Executors.newSingleThreadExecutor(r->{Thread t=new Thread(r,"ChromeMetadata");t.setPriority(Thread.MIN_PRIORITY);return t;});
   private final Runnable render=this::renderLatest;
   private boolean queued,metricsPending,metadataPending;
@@ -117,7 +116,7 @@ final class DesignChrome {
     int lineHeight=a.dp(20);
     for(TextView text:new TextView[]{dot,a.networkLine,latencyWord,stateWord})lineHeight=Math.max(lineHeight,textHeight(text)+a.dp(2));
     networkRow=new NetworkStatusRow(lineHeight);
-    networkRow.setPadding(a.dp(6),0,a.dp(6),a.dp(4));
+    networkRow.setPadding(a.dp(6),a.dp(1),a.dp(6),a.dp(1));
     networkRow.setMinimumHeight(a.dp(48));networkRow.setFocusable(true);
     networkRow.setBackground(Ui.ripple(a,Color.TRANSPARENT,8));
     networkRow.setOnClickListener(v->NetworkMetricsUi.show(a));
@@ -136,7 +135,7 @@ final class DesignChrome {
     diagnosticRow.addView(diagnosticBack,new LinearLayout.LayoutParams(0,-2,1));diagnosticRow.addView(diagnosticResults,new LinearLayout.LayoutParams(0,-2,1));diagnosticRow.setVisibility(View.GONE);a.toolbar.addView(diagnosticRow,new LinearLayout.LayoutParams(-1,-2));
     compact.setVisibility(View.GONE);top.setVisibility(View.VISIBLE);networkRow.setVisibility(View.VISIBLE);
     root.addView(a.toolbar,new LinearLayout.LayoutParams(-1,-2));
-    actions=new View[]{title};
+    actions=new View[]{title,networkRow};
     a.toolbar.addOnLayoutChangeListener((v,l,t,r,b,ol,ot,or,ob)->layoutTouchTargets());
     a.toolbar.post(this::layoutTouchTargets);
   }
@@ -166,6 +165,9 @@ final class DesignChrome {
       int available=MeasureSpec.getSize(widthMeasureSpec)-getPaddingLeft()-getPaddingRight();
       int required=a.dp(12)+textWidth(a.networkLine)+textWidth(latencyWord)+textWidth(stateWord);
       boolean wrap=MeasureSpec.getMode(widthMeasureSpec)!=MeasureSpec.UNSPECIFIED&&required>available;
+      int minimum=wrap?a.dp(48):BrowserHeaderLayout.networkMinimumHeight(
+        MeasureSpec.getSize(widthMeasureSpec),title.getMeasuredWidth(),a.dp(48),a.dp(28));
+      if(getMinimumHeight()!=minimum)setMinimumHeight(minimum);
       if(wrap!=stacked){
         stacked=wrap;setOrientation(wrap?VERTICAL:HORIZONTAL);
         address.setLayoutParams(new LinearLayout.LayoutParams(wrap?-1:0,-2,wrap?0:1));
@@ -389,18 +391,14 @@ final class DesignChrome {
       int left=actionAt[0]-toolbarAt[0],top=actionAt[1]-toolbarAt[1];
       visible[i]=new Rect(left,top,left+actions[i].getWidth(),top+actions[i].getHeight());
     }
-    int touchBottom=top.getBottom();
-    for(int i=0;i<actions.length;i++){
-      Rect bounds=visible[i];
-      int left=i==0?0:(visible[i-1].right+bounds.left)/2;
-      int right=i==actions.length-1?a.toolbar.getWidth():(bounds.right+visible[i+1].left)/2;
-      int width=Math.min(right-left,Math.max(a.dp(48),bounds.width()));
-      int height=Math.min(touchBottom,Math.max(a.dp(48),bounds.height()));
-      int x=Math.max(left,Math.min(bounds.centerX()-width/2,right-width));
-      int y=Math.max(0,Math.min(bounds.centerY()-height/2,touchBottom-height));
-      expanded[i]=new Rect(x,y,x+width,y+height);
-    }
-    touchTargets=new ChromeTouchDelegate(actions,expanded);
+    int touchBottom=top.getBottom();Rect capsule=visible[0];
+    int width=Math.min(a.toolbar.getWidth(),Math.max(a.dp(48),capsule.width()));
+    int height=Math.min(touchBottom,Math.max(a.dp(48),capsule.height()));
+    int x=Math.max(0,Math.min(capsule.centerX()-width/2,a.toolbar.getWidth()-width));
+    int y=Math.max(0,Math.min(capsule.centerY()-height/2,touchBottom-height));
+    expanded[0]=new Rect(x,y,x+width,y+height);
+    expanded[1]=BrowserHeaderTouchDelegate.networkBounds(visible[1],top.getTop(),a.dp(48));
+    touchTargets=new BrowserHeaderTouchDelegate(title,networkRow,expanded[0],expanded[1]);
     a.toolbar.setTouchDelegate(touchTargets);
   }
 
@@ -410,31 +408,14 @@ final class DesignChrome {
     return new Rect();
   }
 
-  private static final class ChromeTouchDelegate extends TouchDelegate {
-    final Rect[] bounds;
-    final TouchDelegate[] delegates;
-    final View[] targets;
-    TouchDelegate active;
-    ChromeTouchDelegate(View[] targets,Rect[] bounds){
-      super(new Rect(),targets[0]);
-      this.targets=targets;this.bounds=bounds;delegates=new TouchDelegate[targets.length];
-      for(int i=0;i<targets.length;i++)delegates[i]=new TouchDelegate(bounds[i],targets[i]);
+  /** Exact nonoverlapping regions exposed through Android's TouchDelegateInfo. */
+  List<Rect> touchRegions(View view){
+    List<Rect> result=new ArrayList<>();
+    if(touchTargets!=null)for(int i=0;i<actions.length;i++)if(actions[i]==view){
+      RegionIterator iterator=new RegionIterator(touchTargets.region(i));Rect piece=new Rect();
+      while(iterator.next(piece))result.add(new Rect(piece));
     }
-    @Override public boolean onTouchEvent(MotionEvent event){
-      int action=event.getActionMasked();
-      if(action==MotionEvent.ACTION_DOWN){
-        active=null;
-        for(int i=0;i<bounds.length;i++)if(bounds[i].contains((int)event.getX(),(int)event.getY())){active=delegates[i];break;}
-      }
-      boolean handled=active!=null&&active.onTouchEvent(event);
-      if(action==MotionEvent.ACTION_UP||action==MotionEvent.ACTION_CANCEL)active=null;
-      return handled;
-    }
-    @TargetApi(29)
-    @Override public AccessibilityNodeInfo.TouchDelegateInfo getTouchDelegateInfo(){
-      Map<Region,View> map=new LinkedHashMap<>();
-      for(int i=0;i<targets.length;i++)map.put(new Region(bounds[i]),targets[i]);
-      return new AccessibilityNodeInfo.TouchDelegateInfo(map);
-    }
+    return result;
   }
+
 }

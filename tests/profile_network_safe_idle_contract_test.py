@@ -123,6 +123,27 @@ def receipt():
         cases=rows, **C.SAFE_IDLE_TRUST_HASHES)
 
 
+def browser_receipt():
+    """New product contract input; still only a synthetic verifier fixture."""
+    report = receipt()
+    report['safeIdleContract'] = 2
+    for index, row in enumerate(report['cases'][:2]):
+        row['outcome']['replyId'] = ''
+        resource = dict(current=True, busy=True, sequence=12, sequenceBeforeGesture=10,
+            binding='aaaaaaaa-aaaa-4aaa-8aaa-%012d' % index,
+            documentId='bbbbbbbb-bbbb-4bbb-8bbb-%012d' % index,
+            navigationEpoch=row['outcome']['navigationEpoch'], pendingPresent=False, pendingStored=False)
+        row['outcome']['resource'] = resource
+        for event in report['phaseEvents']:
+            if event['kind'] == 'gesture' and event['value']['case'] == row['name']:
+                event['value'].pop('replyId')
+                event['value'].update(resource=dict(resource, sequence=11), websiteBusy=True,
+                    observedBy='Production Gecko extension → resource-work → WebReplyObserver.receive')
+            if event['kind'] == 'case' and event['value']['name'] == row['name']:
+                event['value'] = copy.deepcopy(row)
+    return report
+
+
 def sync_case(report):
     """Do not let duplicate-event mismatch mask an inner-field negative control."""
     row = report['cases'][4]
@@ -237,6 +258,50 @@ class SafeIdleContractTest(unittest.TestCase):
     def test_complete_delete_keeps_original_success_and_rollback_contract(self):
         self.reject(lambda r: r['cases'][5]['outcome']['job'].update(ok=False))
         self.reject(lambda r: r['cases'][5].update(activeAfterHash='f' * 64))
+
+
+class BrowserSafeIdleContractTest(unittest.TestCase):
+    def check_rejected(self, mutate):
+        report = browser_receipt()
+        mutate(report)
+        # Keep raw case mirrors equal so an unrelated mirror mismatch cannot
+        # hide a missing resource-owner assertion in the new reader.
+        for event in report['phaseEvents']:
+            if event['kind'] == 'case':
+                event['value'] = copy.deepcopy(next(row for row in report['cases'] if row['name'] == event['value']['name']))
+        with self.assertRaises((AssertionError, KeyError, TypeError)):
+            C.verify_safe_idle(report)
+
+    def test_current_browser_contract_and_legacy_contract_both_preserve_seven_transaction_races(self):
+        for report in (receipt(), browser_receipt()):
+            before = copy.deepcopy(report)
+            result = C.verify_safe_idle(report)
+            self.assertEqual(result['safeIdleCases'], 7)
+            self.assertEqual(result['actualTrustedGestures'], 2)
+            self.assertEqual(report, before)
+
+    def test_browser_gesture_requires_actual_busy_resource_evidence(self):
+        for key in ('current', 'busy'):
+            self.check_rejected(lambda r, k=key: r['cases'][0]['outcome']['resource'].update({k: False}))
+        for key in ('pendingPresent', 'pendingStored'):
+            self.check_rejected(lambda r, k=key: r['cases'][0]['outcome']['resource'].update({k: True}))
+        self.check_rejected(lambda r: r['cases'][0]['outcome'].update(replyId='retired-task'))
+        self.check_rejected(lambda r: r['cases'][0]['outcome']['resource'].update(sequence=10))
+        self.check_rejected(lambda r: r['cases'][0]['outcome']['resource'].update(navigationEpoch=99))
+
+    def test_gesture_and_post_transaction_resource_owner_must_match(self):
+        for key in ('binding', 'documentId', 'navigationEpoch', 'sequenceBeforeGesture'):
+            def mutate(report, field=key):
+                event = next(e['value'] for e in report['phaseEvents'] if e['kind'] == 'gesture')
+                event['resource'][field] = 'different-owner' if field in ('binding', 'documentId') else 99
+            self.check_rejected(mutate)
+        for field, value in (('sequence', 10), ('sequence', 13), ('pendingPresent', True), ('pendingStored', True), ('current', False), ('busy', False)):
+            self.check_rejected(lambda r, k=field, v=value: next(e['value'] for e in r['phaseEvents'] if e['kind'] == 'gesture')['resource'].update({k: v}))
+        self.check_rejected(lambda r: next(e['value'] for e in r['phaseEvents'] if e['kind'] == 'gesture').update(websiteBusy=False))
+
+    def test_unknown_contract_cannot_choose_a_weaker_reader(self):
+        for contract in (0, 3, '2', True):
+            self.check_rejected(lambda r, value=contract: r.update(safeIdleContract=value))
 
 
 if __name__ == '__main__':

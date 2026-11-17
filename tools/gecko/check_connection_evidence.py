@@ -215,31 +215,39 @@ def verify_connection_evidence(directory, source):
         return report
 
     gecko = android('gecko-performance-results.json')
-    assert gecko['actualGeckoExecution'] and gecko['actualGeckoBindingRegressionExecution']
+    assert gecko['actualGeckoExecution']
     inputs = gecko['actualAndroidTextInputs']
     assert len(inputs) == 1 and inputs[0]['id'] == 'current-input'
     assert inputs[0]['composerFocused'] and inputs[0]['nativeFocused'] and inputs[0]['acceptingText']
     assert inputs[0]['stableFocusSamples'] >= 2
-    assert gecko['checkCount'] == len(gecko['checks']) >= 125
-    names = {check['name'] for check in gecko['checks']}
-    assert {
-        'Same-route empty DOM waits without losing the confirmed task or accumulating terminal samples',
-        'Virtualizing only the bound user waits even while other historical messages remain',
-        'Homepage allocation rejects the same user ID when its prompt no longer matches',
-        'Homepage conversation allocation preserves the exact user identity and persists the new route',
-        'A genuine different conversation is rejected even if its visible message IDs match',
-        'A neutral homepage shell during restoration waits without declaring another conversation',
-        'SPA restoration and websocket faults never resubmit and preserve the typed draft and synthetic login',
-        'Actual native inspection recognizes the website socket fault before polling and resets terminal stability',
-        'A rendered historical reply socket alert and retry control do not invalidate the current task',
-        'Website errors clear native stable samples and never finish or clear the persisted task',
-        'A restored bound reply completes only after three fresh actual samples and two seconds',
-        'Manual website recovery durably archives its captured draft before checking newer typing',
-        'Typing while manual recovery saves aborts reload and preserves the newer draft and original pending task',
-        'Manual website recovery durably archives its captured draft even when the pending task changes',
-        'Changing the pending task while manual recovery saves aborts stale reload and preserves the new task',
-        'Connection invalidation resets native terminal samples without submitting or clearing browser data',
-    } <= names, 'Actual Gecko loading and route binding regression is required.'
+    if 'browserObservationContract' in gecko:
+        if __package__:
+            from .browser_observation_contract_v2 import verify_browser_observation
+        else:
+            from browser_observation_contract_v2 import verify_browser_observation
+        verify_browser_observation(gecko)
+    else:
+        assert gecko['actualGeckoBindingRegressionExecution']
+        assert gecko['checkCount'] == len(gecko['checks']) >= 125
+        names = {check['name'] for check in gecko['checks']}
+        assert {
+            'Same-route empty DOM waits without losing the confirmed task or accumulating terminal samples',
+            'Virtualizing only the bound user waits even while other historical messages remain',
+            'Homepage allocation rejects the same user ID when its prompt no longer matches',
+            'Homepage conversation allocation preserves the exact user identity and persists the new route',
+            'A genuine different conversation is rejected even if its visible message IDs match',
+            'A neutral homepage shell during restoration waits without declaring another conversation',
+            'SPA restoration and websocket faults never resubmit and preserve the typed draft and synthetic login',
+            'Actual native inspection recognizes the website socket fault before polling and resets terminal stability',
+            'A rendered historical reply socket alert and retry control do not invalidate the current task',
+            'Website errors clear native stable samples and never finish or clear the persisted task',
+            'A restored bound reply completes only after three fresh actual samples and two seconds',
+            'Manual website recovery durably archives its captured draft before checking newer typing',
+            'Typing while manual recovery saves aborts reload and preserves the newer draft and original pending task',
+            'Manual website recovery durably archives its captured draft even when the pending task changes',
+            'Changing the pending task while manual recovery saves aborts stale reload and preserves the new task',
+            'Connection invalidation resets native terminal samples without submitting or clearing browser data',
+        } <= names, 'Actual Gecko loading and route binding regression is required.'
 
     network = android('network-performance-results.json')
     assert network['actualMihomoExecution']
@@ -294,14 +302,21 @@ def verify_connection_evidence(directory, source):
     cold_probe = verify_cold_website_probe_diagnostics(network)
 
     host = json.loads((directory / 'reply-binding-host-results.json').read_text())
-    assert host['passed'] == host['total'] >= 41 and all(check['pass'] for check in host['checks'])
-    names = {check['name'] for check in host['checks']}
-    assert {
-        'A visible historical assistant alert cannot interrupt the current healthy reply',
-        'A user-quoted alert cannot become an active website failure during inspection',
-        'A real current-turn alert beside its reply body remains recoverable',
-        'Read-only waiting, recovery and assignment never resend the question',
-    } <= names, 'Current website errors must remain distinct from historical or quoted content.'
+    if gecko.get('browserObservationContract') == 2:
+        if __package__:
+            from .browser_observation_contract_v2 import verify_lifecycle_host
+        else:
+            from browser_observation_contract_v2 import verify_lifecycle_host
+        verify_lifecycle_host(host)
+    else:
+        assert host['passed'] == host['total'] >= 41 and all(check['pass'] for check in host['checks'])
+        names = {check['name'] for check in host['checks']}
+        assert {
+            'A visible historical assistant alert cannot interrupt the current healthy reply',
+            'A user-quoted alert cannot become an active website failure during inspection',
+            'A real current-turn alert beside its reply body remains recoverable',
+            'Read-only waiting, recovery and assignment never resend the question',
+        } <= names, 'Current website errors must remain distinct from historical or quoted content.'
     framework_binding = verify_framework_binding_files(directory, source)
     return {'actualAndroidExecution': True, 'actualGeckoExecution': True,
             'actualMihomoExecution': True, 'geckoChecks': gecko['checkCount'],

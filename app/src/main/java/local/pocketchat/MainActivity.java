@@ -44,7 +44,7 @@ public class MainActivity extends ThemedActivity {
   void chooseEnvironment(){EnvironmentSwitcherUi.show(this);}
   void showStatusDetails(){
     if(session==null||!NetworkStatusUi.current(this,session))return;
-    if(session.pending!=null||session.websiteConnectionIssue||session.replyStalled||!session.pageError.isEmpty())ReplyState.show(this);
+    if(session.websiteConnectionIssue||!session.pageError.isEmpty())PageConnectionUi.show(this);
     else NetworkStatusUi.show(this);
   }
   int dp(int n){return (int)(getResources().getDisplayMetrics().density*n+.5f);}
@@ -53,19 +53,14 @@ public class MainActivity extends ThemedActivity {
     String message=value==null?"":value;lastUiStatus=message;
     if(status==null)return;
     boolean quiet=message.isEmpty()||message.startsWith("已连接")||message.startsWith("正在")||message.startsWith("准备连接")||message.equals("回复完成")||message.equals("已停止")||message.equals("已停止生成")||message.equals("已停止回复")||message.equals("已取消");
-    // Keep binding diagnostics in the delivery record, without a persistent
-    // banner or off-page feedback when the conversation changes.
-    quiet|=message.equals("对话已改变，请检查上次发送；不会自动重发");
     boolean current=session!=null&&TextUtils.equals(message,session.status);
     boolean sessionError=current&&(session.websiteConnectionIssue||!session.pageError.isEmpty()||!session.networkIssue.isEmpty()&&TextUtils.equals(message,session.networkIssue)&&(session.offline||!session.networkReady&&!session.connecting));
-    boolean waiting=current&&session.replyStalled;
-    if(waiting)quiet=false;
-    boolean error=waiting||!quiet&&(sessionError||message.startsWith("网页反馈：")||message.matches(".*(失败|错误|无法|未能|不可用|未完成|待确认|断开|中断|过期|失效|未通过|请检查|请先|暂未|未添加|需要重新|没有可用).*"));
+    boolean error=!quiet&&(sessionError||message.startsWith("网页反馈：")||message.matches(".*(失败|错误|无法|未能|不可用|未完成|待确认|断开|中断|过期|失效|未通过|请检查|请先|暂未|未添加|需要重新|没有可用).*"));
     boolean fileProgress=session!=null&&session.resourceFilePreparations>0&&message.equals("准备附件…");
-    if(error||fileProgress){if(!TextUtils.equals(status.getText(),message))status.setText(message);status.setTextColor(error&&!waiting?DesignUi.RED:DesignUi.MUTED);}
+    if(error||fileProgress){if(!TextUtils.equals(status.getText(),message))status.setText(message);status.setTextColor(error?DesignUi.RED:DesignUi.MUTED);}
     status.setClickable(error);status.setContentDescription(fileProgress?"正在准备所选附件":"网页或网络错误，点按查看详情");
     status.setVisibility((error||fileProgress)&&hub!=null&&hub.page==AppHub.CHAT?View.VISIBLE:View.GONE);
-    if(error&&!waiting&&hub!=null&&hub.page!=AppHub.CHAT)hub.feedback(message,true);
+    if(error&&hub!=null&&hub.page!=AppHub.CHAT)hub.feedback(message,true);
   }
   @Override protected void attachBaseContext(Context base){super.attachBaseContext(new ProfileContext(base,Profiles.processSlot()));}
   @Override public void onCreate(Bundle state){
@@ -197,7 +192,7 @@ public class MainActivity extends ThemedActivity {
     tools.action("browser","网页显示方式",()->EnvironmentEditorUi.editTab(this,EnvironmentEditorUi.BROWSER));
     tools.action("shield","站点权限",()->SitePermissionsUi.show(this));
     if(session.privacy.desktop&&BrowserReadingPolicy.chat(remote.getUrl()))tools.action("search","网页缩放",()->BrowserReadingUi.show(this));
-    if(session.websiteConnectionIssue||session.replyStalled||!session.pageError.isEmpty())tools.action("refresh","恢复网页连接",()->ReplyState.websiteConnection(this));
+    if(session.websiteConnectionIssue||!session.pageError.isEmpty())tools.action("refresh","恢复网页连接",()->PageConnectionUi.show(this));
     if(LoginPagePolicy.google(remote.getUrl()))tools.action("info","登录帮助",()->LoginHelpUi.show(this));
     tools.show();
   }

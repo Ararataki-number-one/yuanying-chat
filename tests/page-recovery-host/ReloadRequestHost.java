@@ -1,169 +1,143 @@
 package local.pocketchat;
-import java.util.*;import org.json.*;
-/** Exact production reload/archival members; callbacks and widgets are controlled host adapters. */
+import java.util.*;import java.net.URI;import org.json.*;import android.net.Uri;
+/** Exact current reload and upgrade-migration methods; controlled browser/storage/UI edges. */
 public class ReloadRequestHost {
  static final JSONArray checks=new JSONArray();
- static void check(String name,boolean passed){checks.put(J.obj("name",name,"passed",passed));}
- static ChatSession route(){ReferenceUi.Modal.shows=0;LocalDraftPolicy.allowed=true;ProfileCatalog.generation=4;ProfileCatalog.environmentId="environment-one";ProfileCatalog.available=true;ProfileCatalog.deleting=false;ProfileCatalog.resetting=false;Profiles.slot=2;ChatService.ends=0;ChatSession session=new ChatSession();session.resourceObserverEpoch=session.navigationEpoch;session.resourceObserverPort=session.web.ports.get(session.web.current);session.resourceObserverBinding="reload-host-binding";return session;}
- static JSONObject job(String id,String path){return J.obj("id",id,"kind","web","confirmed",true,"confirmedUrl","https://chatgpt.com/c/"+path,"expectedUrl","https://chatgpt.com/c/"+path,"prompt","already sent fixture question","userKey","id:user");}
- static JSONObject inspect(ChatSession s){return J.obj("url",s.web.url,"documentId",s.lastDocumentId,"composer",true,"hasMessages",true,"busy",true);}
- static JSONObject gesture(String token){return J.obj("url","https://chatgpt.com/c/B","documentId","gesture-document-0001","token",token,"type","intent","capturedAt",System.currentTimeMillis(),"prompt","controlled new user gesture","beforeKeys",new JSONArray(),"resourceBinding","reload-host-binding");}
- static JSONObject snapshot(ChatSession s){return J.obj("ok",true,"url",s.web.url,"documentId",s.lastDocumentId,"draft","unsent controlled browser draft","draftComplete",true,"draftLength",31);}
- static void inspect(MainActivity a){a.session.driverResult.accept(inspect(a.session));}
- static void page(MainActivity a){if(a.session.lastAction.equals("page-state"))a.session.driverResult.accept(snapshot(a.session));}
- static void mutate(ChatSession s,int n){switch(n){case 0:s.navigationEpoch++;break;case 1:s.web.url="https://chatgpt.com/c/C";break;case 2:s.lastDocumentId="replacement-document";break;case 3:s.web.current=new Object();break;case 4:s.appliedIdentity="route-other";break;case 5:s.fileWorkGeneration++;s.fileBusy=true;break;case 6:s.state=inspect(s);s.stateEpoch=s.navigationEpoch;break;case 7:ProfileCatalog.generation++;break;case 8:ProfileCatalog.environmentId="environment-other";break;case 9:ProfileCatalog.deleting=true;break;case 10:ProfileCatalog.resetting=true;break;case 11:Profiles.slot++;break;case 12:s.deleted=true;break;case 13:s.pending=job("new-job","B");break;case 14:s.pending=job("old-job","B");break;}}
- public static void main(String[] args)throws Exception{
-  ChatSession s=route();s.pending=job("old-job","A");JSONObject old=s.pending;MainActivity a=new MainActivity(s);a.requestReload();inspect(a);page(a);
-  JSONObject reproduction=J.obj("currentUrl",s.web.url,"cachedConversation",s.conversation,"oldJob",old.optString("id"),"pendingAfter",s.pending==null?JSONObject.NULL:s.pending.optString("id"),"lastAction",s.lastAction,"modalPresent",a.reloadDialog!=null,"reloadChecking",a.reloadChecking,"reloadCalls",a.reloadCalls,"archiveCommits",s.prefs.commits,"deliveryState",s.deliveryState);
-  check("Production requestReload archives old A observation and still confirms current B",a.reloadDialog!=null&&a.reloadDialog.shown&&a.reloadDialog.positiveLabel.equals("重新加载")&&a.reloadDialog.negativeLabel.equals("取消")&&s.pending==null&&s.prefs.commits==1&&s.deliveryState.equals("uncertain")&&a.reloadCalls==0);
-  check("Archival preserves original old job and cached resume URL",s.prefs.values.get("archivedWebObservation").equals(old.toString())&&s.conversation.endsWith("/A")&&s.web.url.endsWith("/B"));
-  if(a.reloadDialog!=null)a.reloadDialog.negative.run();check("Host cancel keeps draft and performs no reload",a.reloadDialog==null&&a.reloadCalls==0&&s.draft.equals("unsent controlled browser draft"));
-  for(int mutation=0;mutation<15;mutation++){s=route();s.pending=job("old-job","A");a=new MainActivity(s);a.requestReload();mutate(s,mutation);inspect(a);page(a);check("Stale target before inspect is rejected field "+mutation,a.reloadDialog==null&&a.reloadCalls==0&&s.prefs.commits==0);}
-  for(int mutation=0;mutation<15;mutation++){s=route();s.pending=job("old-job","A");final ChatSession owner=s;final int changed=mutation;s.prefs.listener=()->mutate(owner,changed);a=new MainActivity(s);a.requestReload();inspect(a);page(a);check("Archival listener change cannot rebind confirmation field "+mutation,a.reloadDialog==null&&a.reloadCalls==0&&(mutation<13||s.pending!=null));}
-  for(String id:new String[]{"new-job","old-job"}){s=route();s.pending=job("old-job","A");final ChatSession owner=s;JSONObject replacement=job(id,"B");s.prefs.listener=()->{owner.pending=replacement;owner.activeDeliveryId=id;owner.prefs.edit().putString("pending",replacement.toString()).commit();};a=new MainActivity(s);a.requestReload();inspect(a);page(a);check("Reentrant persisted replacement survives without ending its service "+id,s.pending==replacement&&s.prefs.values.get("pending").equals(replacement.toString())&&s.activeDeliveryId.equals(id)&&s.deliveryState.isEmpty()&&ChatService.ends==0&&a.reloadDialog==null&&a.reloadCalls==0);}
-  s=route();a=new MainActivity(s);a.requestReload();inspect(a);page(a);check("No pending job uses the original confirmation without archival",a.reloadDialog!=null&&s.prefs.commits==0);
-  s=route();s.pending=job("old-job","B");a=new MainActivity(s);a.requestReload();inspect(a);page(a);check("Current B pending job retains original busy confirmation without archival",a.reloadDialog!=null&&s.pending!=null&&s.prefs.commits==0);
-  s=route();s.pending=job("old-job","A");s.prefs.commitOk=false;a=new MainActivity(s);a.requestReload();inspect(a);page(a);check("Failed archive does not clear pending or bypass ordinary confirmation",a.reloadDialog!=null&&s.pending!=null&&s.deliveryState.isEmpty());
-  s=route();s.pending=job("old-job","A");a=new MainActivity(s);final MainActivity reentrant=a;s.prefs.listener=reentrant::requestReload;a.requestReload();inspect(a);page(a);check("Reentrant reload request cannot start another inspection",s.asyncCalls==2&&a.reloadDialog!=null&&s.prefs.commits==1);
-  for(int mutation=0;mutation<15;mutation++){s=route();s.pending=job("old-job","A");a=new MainActivity(s);a.requestReload();inspect(a);mutate(s,mutation);page(a);check("Rebound target still rejects changes before page callback field "+mutation,a.reloadDialog==null&&a.reloadCalls==0);}
-  s=route();s.pending=job("old-job","A");a=new MainActivity(s);a.requestReload();inspect(a);a.destroyed=true;page(a);check("Activity destruction rejects page callback",a.reloadDialog==null&&a.reloadCalls==0);
-  // Additional checks preserve the original 55 cases and their order above.
-  s=route();s.pending=job("old-job","A");old=s.pending;a=new MainActivity(s);a.requestReload();boolean archived=s.archiveWebsiteNavigation(inspect(s));inspect(a);page(a);
-  check("Concurrent exact old-job archival can converge without another reload request",archived&&a.reloadDialog!=null&&s.pending==null&&s.webObserver.lastNavigationArchivedJob==old&&s.prefs.commits==1&&s.asyncCalls==2&&a.reloadCalls==0);
-  s=route();s.lastDocumentId="";a=new MainActivity(s);a.requestReload();s.lastDocumentId="registered-document-0001";inspect(a);page(a);
-  check("First registration on the captured native port converges before confirmation",a.reloadDialog!=null&&s.lastDocumentId.equals("registered-document-0001")&&s.asyncCalls==2&&a.reloadCalls==0);
-  s=route();s.lastDocumentId="";s.pending=job("old-job","A");a=new MainActivity(s);a.requestReload();s.lastDocumentId="registered-document-0001";archived=s.archiveWebsiteNavigation(inspect(s));inspect(a);page(a);
-  check("First document registration and exact archival must both converge",archived&&a.reloadDialog!=null&&s.pending==null&&s.prefs.commits==1&&a.reloadCalls==0);
-  s=route();s.lastDocumentId="";a=new MainActivity(s);a.requestReload();JSONObject observed=inspect(s).put("documentId","registered-document-0001");s.driverResult.accept(observed);page(a);
-  check("Inspection itself registers a proven first document before final target capture",a.reloadDialog!=null&&s.lastDocumentId.equals("registered-document-0001")&&a.reloadCalls==0);
-  for(int change=0;change<10;change++){s=route();s.lastDocumentId="";s.pending=job("old-job","A");a=new MainActivity(s);a.requestReload();s.lastDocumentId="registered-document-0001";observed=inspect(s);switch(change){
-   case 0:s.web.ports.put(s.web.current,new Object());break;case 1:s.web.ports.remove(s.web.current);break;case 2:observed.put("documentId","other-document-0002");break;case 3:observed.put("url","https://chatgpt.com/c/C");break;case 4:s.web.visible=false;break;case 5:s.webWorkGeneration++;break;case 6:s.fileWorkGeneration++;break;case 7:s.pending=job("old-job","A");break;case 8:s.navigationEpoch++;break;case 9:s.web.current=new Object();break;
-  }s.driverResult.accept(observed);page(a);check("First document convergence rejects unproven observation field "+change,a.reloadDialog==null&&a.reloadCalls==0&&s.prefs.commits==0);}
-  for(int change=0;change<6;change++){s=route();s.pending=job("old-job","A");a=new MainActivity(s);a.requestReload();s.archiveWebsiteNavigation(inspect(s));switch(change){case 0:s.webWorkGeneration++;break;case 1:s.web.ports.put(s.web.current,new Object());break;case 2:s.lastDocumentId="other-document-0002";break;case 3:s.fileWorkGeneration++;break;case 4:s.state=inspect(s);s.stateEpoch=s.navigationEpoch;break;case 5:s.webObserver.navigationArchiveSequence++;break;}inspect(a);page(a);check("Concurrent archival does not excuse changed safety field "+change,a.reloadDialog==null&&a.reloadCalls==0);}
-  s=route();s.pending=job("old-job","A");old=s.pending;s.archiveWebsiteNavigation(inspect(s));s.pending=old;a=new MainActivity(s);a.requestReload();s.pending=null;inspect(a);page(a);
-  check("A prior archive receipt cannot authorize a later unexplained retirement",a.reloadDialog==null&&a.reloadCalls==0&&s.prefs.commits==1);
-  s=route();s.pending=job("old-job","A");a=new MainActivity(s);a.requestReload();s.pending=null;inspect(a);page(a);
-  check("Pending disappearance without exact successful archive proof is rejected",a.reloadDialog==null&&a.reloadCalls==0&&s.prefs.commits==0);
-  for(int change=0;change<3;change++){s=route();s.lastDocumentId="";a=new MainActivity(s);a.requestReload();observed=inspect(s).put("documentId",change==0?"short":"registered-document-0001");if(change==1)s.web.ports.remove(s.web.current);if(change==2)observed.put("url","https://chatgpt.com/c/C");s.driverResult.accept(observed);page(a);check("Initial document assignment needs valid ID native port and exact URL field "+change,s.lastDocumentId.isEmpty()&&a.reloadDialog==null&&a.reloadCalls==0);}
-  for(int change=0;change<3;change++){s=route();a=new MainActivity(s);a.requestReload();inspect(a);switch(change){case 0:s.web.ports.put(s.web.current,new Object());break;case 1:s.webWorkGeneration++;break;case 2:s.web.visible=false;break;}page(a);check("Final frozen target rejects later native or work change field "+change,a.reloadDialog==null&&a.reloadCalls==0);}
-  s=route();s.pending=job("old-job","A");old=s.pending;a=new MainActivity(s);a.requestReload();s.archiveWebsiteNavigation(inspect(s));JSONObject event=gesture("gesture-A-00000001");s.webObserver.receive(event,s.web.ports.get(s.web.current));s.pending=null;s.webObserver.receive(gesture("gesture-B-00000002"),s.web.ports.get(s.web.current));s.pending=null;s.webObserver.receive(event,s.web.ports.get(s.web.current));s.pending=null;inspect(a);page(a);
-  check("Production accepted A B A gestures cannot revive an old confirmation after all new jobs finish",s.webWorkGeneration==3&&s.prefs.getString("lastWebGesture","").endsWith("gesture-A-00000001")&&s.webObserver.lastNavigationArchivedJob==old&&a.reloadDialog==null&&a.reloadCalls==0);
-  s=route();a=new MainActivity(s);a.requestReload();s.prefs.commitOk=false;s.webObserver.receive(gesture("gesture-A-00000001"),s.web.ports.get(s.web.current));inspect(a);page(a);
-  check("Production valid new intent invalidates old reload even when persistence fails",s.webWorkGeneration==1&&s.pending==null&&a.reloadDialog==null&&a.reloadCalls==0);
-  for(int ending=0;ending<2;ending++){s=route();s.pending=job("old-job","A");a=new MainActivity(s);a.requestReload();if(ending==0)s.completeReply(s.pending,J.obj("url",s.web.url,"userKey","id:user"));else s.abandonWait();inspect(a);page(a);check("Only archival may retire a captured job not production completion or abandonment "+ending,s.pending==null&&s.webObserver.navigationArchiveSequence==0&&a.reloadDialog==null&&a.reloadCalls==0);}
-  s=route();s.pending=job("old-job","A");a=new MainActivity(s);a.requestReload();s.archiveWebsiteNavigation(inspect(s));s.navigationEpoch++;s.lastDocumentId="same-url-new-document-0001";inspect(a);page(a);
-  check("An archived job cannot authorize a new document at the same URL",a.reloadDialog==null&&a.reloadCalls==0&&s.web.url.equals("https://chatgpt.com/c/B"));
-  s=route();s.pending=job("old-job","A");a=new MainActivity(s);a.requestReload();s.pending.put("id","mutated-in-place");s.archiveWebsiteNavigation(inspect(s));inspect(a);page(a);
-  check("Archive proof still requires the captured job ID not only its object",a.reloadDialog==null&&a.reloadCalls==0);
-  s=route();a=new MainActivity(s);a.requestReload();s.driverResult.accept(J.obj("ok",false,"reason","bridge unavailable"));s.driverResult.accept(J.obj("ok",false,"reason","bridge unavailable"));
-  check("Missing inspection preserves the existing explicit loss confirmation for an unchanged target",a.reloadDialog!=null&&a.reloadDialog.positiveLabel.equals("已保存，重新加载")&&a.reloadCalls==0);
-  s=route();s.pending=job("old-job","A");final ChatSession concurrent=s;final JSONObject beforeListener=s.pending;s.prefs.listener=()->{concurrent.webObserver.receive(gesture("gesture-listener-0001"),concurrent.web.ports.get(concurrent.web.current));concurrent.pending=beforeListener;};a=new MainActivity(s);a.requestReload();inspect(a);page(a);
-  check("A real new intent during archive persistence invalidates reload even if old object returns",s.webWorkGeneration==1&&a.reloadDialog==null&&a.reloadCalls==0);
-  s=route();s.lastDocumentId="";s.stateEpoch=s.navigationEpoch;s.pending=job("old-job","A");old=s.pending;boolean initialReplyUnknown=!(s.state.opt("busy") instanceof Boolean)&&s.resourceWebsiteEpoch!=s.navigationEpoch;ChatSession.ReloadTarget beforeFirstObservation=s.reloadTarget();a=new MainActivity(s);a.requestReload();observed=inspect(s).put("documentId","first-observed-document-0001");s.lastDocumentId=observed.optString("documentId");s.state=observed;s.stateEpoch=s.navigationEpoch;archived=s.archiveWebsiteNavigation(observed);boolean strictOriginalTarget=!beforeFirstObservation.matches(s);s.driverResult.accept(observed);page(a);
-  JSONObject actualTraceReproduction=J.obj("initialDocumentEmpty",beforeFirstObservation.document.isEmpty(),"initialReplyObserved",!initialReplyUnknown,"initialReplyActive",beforeFirstObservation.replyActive,"currentReplyActive",s.currentReplyActive(),"resourceWebsiteEpoch",s.resourceWebsiteEpoch,"oldJobArchived",archived&&s.webObserver.lastNavigationArchivedJob==old,"oldTargetRejected",strictOriginalTarget,"modalPresent",a.reloadDialog!=null,"archiveCommits",s.prefs.commits,"reloadCalls",a.reloadCalls);
-  check("Actual first sync document busy and exact archival converge to an interrupted confirmation",strictOriginalTarget&&archived&&s.currentReplyActive()&&initialReplyUnknown&&a.reloadDialog!=null&&a.reloadDialog.positiveLabel.equals("重新加载")&&s.prefs.commits==1&&a.reloadCalls==0);
-  s=route();s.lastDocumentId="";a=new MainActivity(s);a.requestReload();observed=inspect(s).put("documentId","first-observed-document-0001");s.driverResult.accept(observed);s.state=observed;s.stateEpoch=s.navigationEpoch;page(a);
-  check("A proven first busy snapshot remains valid when native sync arrives after final capture",s.currentReplyActive()&&a.reloadDialog!=null&&a.reloadCalls==0);
-  for(int timing=0;timing<2;timing++){s=route();s.lastDocumentId="";s.state=inspect(s).put("busy",false);s.stateEpoch=s.navigationEpoch;a=new MainActivity(s);a.requestReload();observed=inspect(s).put("documentId","first-observed-document-0001");if(timing==1){s.state=observed;s.lastDocumentId=observed.optString("documentId");}s.driverResult.accept(observed);page(a);check("Known idle cannot become accepted busy through inspection timing "+timing,a.reloadDialog==null&&a.reloadCalls==0);}
-  for(int changed=0;changed<12;changed++){s=route();s.lastDocumentId="";a=new MainActivity(s);a.requestReload();observed=inspect(s).put("documentId","first-observed-document-0001");s.state=J.parse(observed.toString());s.stateEpoch=s.navigationEpoch;s.lastDocumentId=observed.optString("documentId");switch(changed){case 0:s.state.put("busy",false);break;case 1:s.state.put("documentId","another-document-0002");break;case 2:observed.put("busy","true");break;case 3:s.web.ports.put(s.web.current,new Object());break;case 4:s.fileWorkGeneration++;break;case 5:s.webWorkGeneration++;break;case 6:s.pending=job("new-job","B");break;case 7:s.resourceWebsiteEpoch=s.navigationEpoch;break;case 8:s.state.put("url","https://chatgpt.com/c/C");break;case 9:s.stateEpoch--;break;case 10:s.state.put("documentId","");break;case 11:s.state.put("busy","true");break;}s.driverResult.accept(observed);page(a);check(changed==8||changed==9?"First busy ignores a noncurrent native observation field "+changed:"First busy convergence rejects conflicting observation or new work field "+changed,(changed==8||changed==9?a.reloadDialog!=null:a.reloadDialog==null)&&a.reloadCalls==0);}
-  s=route();s.lastDocumentId="";s.resourceWebsiteEpoch=s.navigationEpoch;s.resourceObserverEpoch=s.navigationEpoch;s.resourceObserverPort=s.web.ports.get(s.web.current);s.resourceObserverBinding="fixture-binding";s.resourceObserverDocument="resource-document-0001";s.resourceObserverUrl=s.web.url;a=new MainActivity(s);a.requestReload();observed=inspect(s).put("documentId","first-observed-document-0001");s.driverResult.accept(observed);page(a);
-  check("A current resource idle observation cannot masquerade as unknown reply state",a.reloadDialog==null&&a.reloadCalls==0);
-  for(int stale=0;stale<2;stale++){s=route();s.lastDocumentId="";s.state=J.obj("url",stale==0?"https://chatgpt.com/c/A":s.web.url,"documentId","stale-native-document-0001","busy",false);s.stateEpoch=stale==0?s.navigationEpoch:s.navigationEpoch-1;JSONObject staleState=s.state;a=new MainActivity(s);a.requestReload();observed=inspect(s).put("documentId","first-observed-document-0001");s.driverResult.accept(observed);boolean keptStale=s.state==staleState;s.state=observed;s.stateEpoch=s.navigationEpoch;page(a);check("Inspect first may bind unknown busy while unrelated stale native state is preserved field "+stale,keptStale&&s.currentReplyActive()&&a.reloadDialog!=null&&a.reloadCalls==0);}
-  JSONObject idleNavigationReproduction=new JSONObject();
-  for(int order=0;order<2;order++){s=route();s.state=inspect(s);s.stateEpoch=s.navigationEpoch;String previous=s.lastDocumentId;long previousEpoch=s.navigationEpoch;s.beginNavigation(s.web.url,"reload previous page");boolean unregistered=s.lastDocumentId.isEmpty(),preserved=s.priorDocumentId.equals(previous)&&s.awaitNewDocument;s.web.ports.put(s.web.current,new Object());s.navigating=false;a=new MainActivity(s);a.requestReload();observed=inspect(s).put("documentId","new-native-document-0002").put("busy",false);if(order==1){s.lastDocumentId=observed.optString("documentId");s.state=observed;s.stateEpoch=s.navigationEpoch;s.awaitNewDocument=false;}s.driverResult.accept(observed);if(s.lastAction.equals("page-state"))s.driverResult.accept(J.obj("ok",true,"url",s.web.url,"documentId","new-native-document-0002","draft","   ","draftLength",3,"draftComplete",true));check("Idle reload after real beginNavigation accepts only the new document callback order "+order,unregistered&&preserved&&s.navigationEpoch==previousEpoch+1&&s.lastDocumentId.equals("new-native-document-0002")&&a.reloadDialog==null&&a.reloadCalls==1);if(order==0)idleNavigationReproduction=J.obj("oldDocumentPreservedAsPrior",preserved,"currentDocumentClearedAtNavigation",unregistered,"epochAdvanced",s.navigationEpoch==previousEpoch+1,"newDocumentRegistered",s.lastDocumentId.equals("new-native-document-0002"),"modalPresent",a.reloadDialog!=null,"reloadCalls",a.reloadCalls,"pendingPresent",s.pending!=null);}
-  s=route();old=job("unchanged-job","B");s.pending=old;String previous=s.lastDocumentId;s.beginNavigation(s.web.url,"first navigation");s.beginNavigation(s.web.url,"superseding navigation");check("Repeated navigation retains the original prior document until a new one is observed",s.lastDocumentId.isEmpty()&&s.priorDocumentId.equals(previous)&&s.awaitNewDocument&&s.pending==old);
-  s=route();s.lastDocumentId="previous-native-document-0001";previous=s.lastDocumentId;s.beginNavigation(s.web.url,"navigation still waiting");a=new MainActivity(s);a.requestReload();s.driverResult.accept(inspect(s).put("documentId",previous).put("busy",false));page(a);check("Reload observation cannot register the prior document while navigation awaits its replacement",a.reloadDialog==null&&a.reloadCalls==0&&s.lastDocumentId.isEmpty()&&s.awaitNewDocument);
-  s=route();s.beginNavigation(s.web.url,"new document");s.lastDocumentId="registered-current-document-0002";s.awaitNewDocument=false;s.navigating=false;a=new MainActivity(s);a.requestReload();s.lastDocumentId="unexpected-replacement-document-0003";inspect(a);page(a);check("A nonempty document replacement within the same navigation epoch still rejects reload",a.reloadDialog==null&&a.reloadCalls==0);
-  s=route();LocalDraftPolicy.allowed=false;a=new MainActivity(s);a.requestReload();inspect(a);page(a);
-  check("Disabled local saving still captures input and requires independent loss confirmation",s.asyncCalls==2&&a.reloadDialog!=null&&a.reloadDialog.positiveLabel.equals("已保存，重新加载")&&a.reloadCalls==0&&s.draft.equals("unsent controlled browser draft"));
-  if(a.reloadDialog!=null)a.reloadDialog.negative.run();check("Cancelling disabled-saving reload keeps current input and document",a.reloadDialog==null&&a.reloadCalls==0&&s.draft.equals("unsent controlled browser draft"));
-  s=route();LocalDraftPolicy.allowed=false;a=new MainActivity(s);a.requestReload();inspect(a);s.driverResult.accept(snapshot(s).put("draft",JSONObject.NULL).put("draftComplete",false).put("draftOmittedReason","too-long").put("draftLength",600000));
-  check("Disabled saving never turns an oversized unknown draft into empty reload permission",a.reloadDialog!=null&&a.reloadDialog.positiveLabel.equals("已保存，重新加载")&&a.reloadCalls==0&&s.draft.equals("unsent controlled browser draft"));
-  LocalDraftPolicy.allowed=true;
-  // Exact native trace: the same already-known document changes from stale SPA A
-  // state to the first current-route busy observation, without a new user action.
-  JSONArray knownDocumentConvergence=new JSONArray();
-  for(int order=0;order<2;order++){
-    ChatSession flow=route();flow.lastDocumentId="known-current-document-0001";flow.state=J.obj("url","https://chatgpt.com/c/A","documentId",flow.lastDocumentId,"busy",false);flow.stateEpoch=flow.navigationEpoch;flow.pending=job("captured-old-A","A");JSONObject capturedJob=flow.pending;
-    ChatSession.ReloadTarget captured=flow.reloadTarget();MainActivity activity=new MainActivity(flow);activity.requestReload();JSONObject firstCurrent=inspect(flow);
-    if(order==0){flow.state=firstCurrent;flow.stateEpoch=flow.navigationEpoch;flow.archiveWebsiteNavigation(firstCurrent);}
-    flow.driverResult.accept(firstCurrent);
-    if(order==1){flow.state=firstCurrent;flow.stateEpoch=flow.navigationEpoch;flow.archiveWebsiteNavigation(firstCurrent);}
-    page(activity);
-    boolean archivedOnce=flow.pending==null&&flow.webObserver.lastNavigationArchivedJob==capturedJob&&flow.webObserver.navigationArchiveSequence==1;
-    boolean nativeStable=captured.sameNativePage(flow)&&captured.samePort(flow)&&captured.unchangedWork(flow)&&captured.document.equals(flow.lastDocumentId);
-    boolean strictOldTargetRejected=!captured.matches(flow);
-    check("Known document first SPA busy observation converges to one confirmation without reload order "+order,!captured.document.isEmpty()&&!captured.replyObserved&&!captured.replyActive&&archivedOnce&&nativeStable&&strictOldTargetRejected&&flow.currentReplyActive()&&activity.reloadDialog!=null&&activity.reloadDialog.shown&&ReferenceUi.Modal.shows==1&&activity.reloadCalls==0&&flow.asyncCalls==2&&!activity.reloadChecking);
-    knownDocumentConvergence.put(J.obj("order",order,"capturedDocumentKnown",!captured.document.isEmpty(),"capturedReplyObserved",captured.replyObserved,"capturedReplyActive",captured.replyActive,"nativeOwnerPortDocumentWorkStable",nativeStable,"exactOldJobArchivedOnce",archivedOnce,"currentReplyActive",flow.currentReplyActive(),"strictOldTargetRejected",strictOldTargetRejected,"modalCount",ReferenceUi.Modal.shows,"reloadCalls",activity.reloadCalls,"asyncCalls",flow.asyncCalls));
-  }
-  {
-    ChatSession flow=route();flow.lastDocumentId="known-current-document-0001";flow.state=inspect(flow);flow.stateEpoch=flow.navigationEpoch;flow.pending=job("old-A","A");MainActivity activity=new MainActivity(flow);activity.requestReload();inspect(activity);page(activity);
-    check("Already current busy state on a known document retains one confirmation",activity.reloadDialog!=null&&activity.reloadDialog.shown&&ReferenceUi.Modal.shows==1&&activity.reloadCalls==0);
-    flow=route();flow.lastDocumentId="";flow.state=J.obj("url","https://chatgpt.com/c/A","busy",false);flow.stateEpoch=flow.navigationEpoch;flow.pending=job("old-A","A");activity=new MainActivity(flow);activity.requestReload();JSONObject firstCurrent=inspect(flow).put("documentId","known-current-document-0001");flow.lastDocumentId=firstCurrent.optString("documentId");flow.state=firstCurrent;flow.stateEpoch=flow.navigationEpoch;flow.archiveWebsiteNavigation(firstCurrent);flow.driverResult.accept(firstCurrent);page(activity);
-    check("Empty document first busy observation retains one confirmation",activity.reloadDialog!=null&&activity.reloadDialog.shown&&ReferenceUi.Modal.shows==1&&activity.reloadCalls==0);
-    flow=route();flow.lastDocumentId="known-current-document-0001";flow.state=inspect(flow).put("busy",false);flow.stateEpoch=flow.navigationEpoch;activity=new MainActivity(flow);activity.requestReload();firstCurrent=inspect(flow);flow.state=firstCurrent;flow.driverResult.accept(firstCurrent);page(activity);
-    check("Known current idle cannot be promoted to newly busy on the same document",activity.reloadDialog==null&&ReferenceUi.Modal.shows==0&&activity.reloadCalls==0);
-  }
-  for(int mutation=0;mutation<8;mutation++){
-    ChatSession flow=route();flow.lastDocumentId="known-current-document-0001";flow.state=J.obj("url","https://chatgpt.com/c/A","documentId",flow.lastDocumentId,"busy",false);flow.stateEpoch=flow.navigationEpoch;flow.pending=job("old-A","A");MainActivity activity=new MainActivity(flow);activity.requestReload();JSONObject firstCurrent=inspect(flow);flow.state=firstCurrent;flow.stateEpoch=flow.navigationEpoch;flow.archiveWebsiteNavigation(firstCurrent);
-    switch(mutation){case 0:activity.session=route();break;case 1:flow.lastDocumentId="different-current-document-0002";firstCurrent.put("documentId",flow.lastDocumentId);break;case 2:flow.webWorkGeneration++;flow.pending=job("new-user-intent","B");break;case 3:flow.web.ports.put(flow.web.current,new Object());break;case 4:flow.navigationEpoch++;break;case 5:ProfileCatalog.generation++;break;case 6:ProfileCatalog.available=false;break;case 7:flow.web.url="https://chatgpt.com/c/C";firstCurrent.put("url",flow.web.url);break;}
-    flow.driverResult.accept(firstCurrent);page(activity);
-    check("Known-document confirmation retains owner doc interaction port epoch catalogue availability route fence "+mutation,activity.reloadDialog==null&&ReferenceUi.Modal.shows==0&&activity.reloadCalls==0);
-  }
-  boolean pass=true;for(int i=0;i<checks.length();i++)pass&=checks.getJSONObject(i).getBoolean("passed");System.out.println(J.obj("status",pass?"passed":"failed","checks",checks.length(),"results",checks,"reproduction",reproduction,"actualTraceReproduction",actualTraceReproduction,"idleNavigationReproduction",idleNavigationReproduction,"knownDocumentConvergence",knownDocumentConvergence));if(!pass)System.exit(1);
+ static void check(String name,boolean passed){checks.put(J.obj("name",name,"passed",passed));if(!passed)throw new AssertionError(name);}
+ static JSONObject job(String kind){return J.obj("id","old-upgrade-record","kind",kind,"expectedUrl","https://chatgpt.com/c/A","confirmed",true);}
+ static ChatSession route(){ReferenceUi.Modal.shows=0;LocalDraftPolicy.allowed=true;LocalDraftPolicy.revision=1;DraftArchive.saved=true;DraftArchive.writes=0;ProfileCatalog.generation=4;ProfileCatalog.environmentId="environment-one";ProfileCatalog.available=true;ProfileCatalog.deleting=false;ProfileCatalog.resetting=false;Profiles.slot=2;ChatService.ends=0;ChatSession s=new ChatSession();s.state=inspect(s,false);s.stateEpoch=s.navigationEpoch;return s;}
+ static JSONObject inspect(ChatSession s,boolean busy){return J.obj("url",s.web.url,"documentId",s.lastDocumentId,"composer",true,"busy",busy);}
+ static JSONObject snapshot(ChatSession s,String draft){return J.obj("ok",true,"url",s.web.url,"documentId",s.lastDocumentId,"draft",draft,"draftComplete",true,"draftLength",draft.length());}
+ static void respond(ChatSession s,JSONObject value){ChatSession.Result callback=s.driverResult;s.driverResult=null;if(callback==null)throw new AssertionError("Missing production driver callback");callback.accept(value);}
+ static void inspect(MainActivity a,boolean busy){respond(a.session,inspect(a.session,busy));}
+ static void page(MainActivity a,String draft){if(a.session.driverResult!=null&&a.session.lastAction.equals("page-state"))respond(a.session,snapshot(a.session,draft));}
+ static void start(MainActivity a,boolean busy,String draft){a.requestReload();inspect(a,busy);page(a,draft);}
+ static void mutate(ChatSession s,int n){switch(n){
+   case 0:s.navigationEpoch++;break;case 1:s.web.url="https://chatgpt.com/c/C";break;case 2:s.lastDocumentId="replacement-document-0002";break;case 3:s.web.current=new Browser();break;
+   case 4:s.appliedIdentity="different-route";break;case 5:s.fileWorkGeneration++;s.fileBusy=true;break;case 6:s.state=inspect(s,true);s.stateEpoch=s.navigationEpoch;break;
+   case 7:ProfileCatalog.generation++;break;case 8:ProfileCatalog.environmentId="different-environment";break;case 9:ProfileCatalog.deleting=true;break;case 10:ProfileCatalog.resetting=true;break;
+   case 11:Profiles.slot++;break;case 12:s.deleted=true;break;case 13:s.pending=job("web");break;case 14:try{s.pending.put("id","mutated-legacy-record");}catch(Exception error){throw new RuntimeException(error);}break;
+   case 15:s.webWorkGeneration++;break;case 16:s.web.ports.put(s.web.current,new Object());break;case 17:s.web.ports.clear();break;case 18:s.web.visible=false;break;
+ }}
+ static void migration()throws Exception {
+   for(String kind:new String[]{"web","native"}){
+     ChatSession s=route();JSONObject old=job(kind);s.pending=old;s.activeDeliveryId=old.optString("id");s.prefs.values.put("pending",old.toString());s.prefs.values.put("lastWebGesture","legacy-gesture");s.webObserver.restorePending();
+     check("Upgrade archives old record without resuming observation "+kind,s.pending==null&&s.activeDeliveryId.isEmpty()&&s.prefs.getString(kind.equals("web")?"retiredWebObservation":"legacyPending","").equals(old.toString())&&!s.prefs.values.containsKey("pending")&&!s.prefs.values.containsKey("lastWebGesture")&&ChatService.ends==1&&s.asyncCalls==0&&s.reloads==0);
+     int writes=s.prefs.commits;s.webObserver.restorePending();check("Migration is inert after active record retired "+kind,s.prefs.commits==writes&&ChatService.ends==1);
+   }
+   for(boolean throwsWrite:new boolean[]{false,true}){
+     ChatSession s=route();s.pending=job("web");String disk=s.pending.toString();s.prefs.values.put("pending",disk);s.prefs.commitOk=false;s.prefs.throwCommit=throwsWrite;s.webObserver.restorePending();
+     check("Failed upgrade storage cannot reactivate result checking "+throwsWrite,s.pending==null&&s.prefs.getString("pending","").equals(disk)&&s.asyncCalls==0&&ChatService.ends==1);
+   }
+   ChatSession s=route();s.pending=job("web");JSONObject replacement=job("native");final ChatSession current=s;s.prefs.listener=()->{current.pending=replacement;current.activeDeliveryId="replacement";};s.webObserver.restorePending();
+   check("Synchronous storage listener keeps replacement task identity",s.pending==replacement&&s.activeDeliveryId.equals("replacement")&&ChatService.ends==0);
+   s=route();for(String type:new String[]{"intent","bound","uncertain","stop","complete"})s.webObserver.receive(J.obj("type",type,"url",s.web.url,"documentId",s.lastDocumentId,"token","old-document-token"),s.web.ports.get(s.web.current));
+   check("Old send events create no native task or notification",s.pending==null&&s.prefs.commits==0&&s.webWorkGeneration==0&&s.asyncCalls==0&&ChatService.ends==0);
+   s.webObserver.receive(J.obj("type","resource-route","url",s.web.url,"documentId",s.lastDocumentId),s.web.ports.get(s.web.current));s.webObserver.receive(J.obj("type","resource-work","url",s.web.url,"documentId",s.lastDocumentId),s.web.ports.get(s.web.current));
+   check("Resource route and file safety events remain connected",s.routeEvents==1&&s.workEvents==1&&s.pending==null);
+ }
+ public static void main(String[] args)throws Exception {
+   migration();
+   ChatSession s=route();s.state=inspect(s,true);MainActivity a=new MainActivity(s);start(a,true,"unsent draft");
+   check("Busy browser page requires explicit reload confirmation",a.reloadDialog!=null&&a.reloadDialog.shown&&a.reloadDialog.positiveLabel.equals("重新加载")&&s.reloads==0&&s.pending==null&&s.prefs.commits==0);
+   a.reloadDialog.negative.run();check("Cancel retains draft and original document",a.reloadDialog==null&&s.reloads==0&&s.lastDocumentId.equals("current-document-0001"));
+   s=route();a=new MainActivity(s);start(a,false,"");check("Idle empty page still requires final draft verification",a.reloadDialog==null&&s.reloads==0&&s.asyncCalls==3);page(a,"");check("Current verified idle page reloads without a send task",s.reloads==1&&s.pending==null&&s.pageMemory.remembered!=null&&!s.lastCapture);
+   s=route();a=new MainActivity(s);start(a,false,"keep this draft");a.reloadDialog.positive.run();page(a,"keep this draft");check("Explicit reload archives and verifies the unchanged draft",s.reloads==1&&DraftArchive.writes==1&&s.pageMemory.remembered.optString("draft").equals("keep this draft")&&s.pageMemory.restorePending);
+   s=route();a=new MainActivity(s);start(a,false,"first draft");a.reloadDialog.positive.run();page(a,"changed draft");check("Changed input blocks reload after the save callback",s.reloads==0&&s.status.contains("输入已变化"));
+   s=route();a=new MainActivity(s);start(a,false,"keep this draft");DraftArchive.saved=false;a.reloadDialog.positive.run();check("Failed draft archive asks for independent loss confirmation",s.reloads==0&&a.reloadDialog!=null&&a.reloadDialog.positiveLabel.equals("已保存，重新加载"));
+   s=route();a=new MainActivity(s);start(a,false,"draft");a.reloadDialog.positive.run();LocalDraftPolicy.revision++;page(a,"draft");check("Changed local-draft revision cannot reuse old archive permission",s.reloads==0&&a.reloadDialog!=null&&a.reloadDialog.positiveLabel.equals("已保存，重新加载"));
+
+   for(int phase=0;phase<3;phase++)for(int mutation=0;mutation<19;mutation++){
+     s=route();s.pending=job("web");a=new MainActivity(s);a.requestReload();
+     if(phase>0)inspect(a,false);
+     if(phase==2)page(a,"protected draft");
+     mutate(s,mutation);
+     if(phase==0){if(s.driverResult!=null)inspect(a,false);page(a,"protected draft");}
+     else if(phase==1)page(a,"protected draft");
+     else if(a.reloadDialog!=null)a.reloadDialog.positive.run();
+     check("Current reload retains identity fence phase "+phase+" field "+mutation,s.reloads==0&&(phase==2||a.reloadDialog==null)&&s.prefs.commits==0&&s.driverResult==null);
+   }
+   for(int phase=0;phase<2;phase++)for(int mutation=0;mutation<3;mutation++){
+     s=route();a=new MainActivity(s);a.requestReload();if(phase>0)inspect(a,false);ChatSession.Result callback=s.driverResult;s.driverResult=null;
+     if(mutation==0)a.destroyed=true;else if(mutation==1)a.session=route();else a.remote=route().web;
+     callback.accept(phase==0?inspect(s,false):snapshot(s,"draft"));
+     check("Activity and remote replacement rejects callback phase "+phase+" field "+mutation,s.reloads==0&&a.reloadDialog==null&&!a.reloadChecking);
+   }
+   s=route();a=new MainActivity(s);a.requestReload();a.requestReload();check("Repeated reload click coalesces the inspection",s.asyncCalls==1);inspect(a,false);page(a,"draft");a.requestReload();check("Visible confirmation blocks another reload inspection",s.asyncCalls==2);
+
+   for(int order=0;order<2;order++)for(boolean busy:new boolean[]{false,true}){
+     s=route();s.lastDocumentId="";s.state=new JSONObject();s.stateEpoch=-1;a=new MainActivity(s);a.requestReload();JSONObject first=inspect(s,busy).put("documentId","registered-document-0002");
+     if(order==1){s.lastDocumentId=first.optString("documentId");s.state=first;s.stateEpoch=s.navigationEpoch;}
+     respond(s,first);page(a,"draft");
+     check("Initial document registration converges on exact native port order "+order+" busy "+busy,s.lastDocumentId.equals("registered-document-0002")&&a.reloadDialog!=null&&s.asyncCalls==2&&s.reloads==0);
+   }
+   for(int invalid=0;invalid<6;invalid++){
+     s=route();s.lastDocumentId="";s.state=new JSONObject();s.stateEpoch=-1;a=new MainActivity(s);a.requestReload();JSONObject first=inspect(s,true).put("documentId","registered-document-0002");
+     switch(invalid){case 0:first.put("documentId","short");break;case 1:s.web.ports.clear();break;case 2:first.put("url","https://chatgpt.com/c/C");break;case 3:s.web.visible=false;break;case 4:first.put("busy","true");break;case 5:s.resourceWebsiteEpoch=s.navigationEpoch;break;}
+     respond(s,first);page(a,"draft");check("First busy observation cannot bypass document proof "+invalid,s.lastDocumentId.isEmpty()&&a.reloadDialog==null&&s.reloads==0);
+   }
+   s=route();a=new MainActivity(s);a.requestReload();s.state=inspect(s,true);respond(s,s.state);page(a,"draft");check("Known idle document cannot silently acquire new busy work",a.reloadDialog==null&&s.reloads==0);
+   for(int order=0;order<2;order++){
+     s=route();String prior=s.lastDocumentId;long epoch=s.navigationEpoch;s.beginNavigation(s.web.url,"new page");s.beginNavigation(s.web.url,"superseding page");
+     check("Repeated real navigation retains original prior-document proof "+order,s.lastDocumentId.isEmpty()&&s.priorDocumentId.equals(prior)&&s.awaitNewDocument&&s.navigationEpoch==epoch+2);
+     s.navigating=false;s.web.ports.put(s.web.current,new Object());a=new MainActivity(s);a.requestReload();JSONObject observed=inspect(s,false).put("documentId","new-document-observed-0003");if(order==1){s.lastDocumentId=observed.optString("documentId");s.state=observed;s.stateEpoch=s.navigationEpoch;s.awaitNewDocument=false;}
+     respond(s,observed);page(a,"draft");check("Reload binds only current replacement document callback order "+order,a.reloadDialog!=null&&s.lastDocumentId.equals("new-document-observed-0003")&&s.reloads==0);
+   }
+   s=route();String prior=s.lastDocumentId;s.beginNavigation(s.web.url,"still waiting");a=new MainActivity(s);a.requestReload();respond(s,inspect(s,false).put("documentId",prior));page(a,"draft");check("Prior document cannot register during an unfinished navigation",a.reloadDialog==null&&s.reloads==0&&s.lastDocumentId.isEmpty()&&s.awaitNewDocument);
+
+   for(int incomplete=0;incomplete<3;incomplete++){
+     s=route();a=new MainActivity(s);a.requestReload();inspect(a,false);JSONObject page=snapshot(s,"draft");if(incomplete==0)page.put("draftComplete",false);else if(incomplete==1)page.put("draft",JSONObject.NULL).put("draftComplete",false).put("draftLength",600000).put("draftOmittedReason","too-long");else page.put("documentId","another-document-0004");respond(s,page);
+     check("Unknown or incomplete input requires explicit independent confirmation "+incomplete,a.reloadDialog!=null&&a.reloadDialog.positiveLabel.equals("已保存，重新加载")&&s.reloads==0);a.reloadDialog.negative.run();check("Cancel independent confirmation retains current page "+incomplete,a.reloadDialog==null&&s.reloads==0);
+   }
+   s=route();LocalDraftPolicy.allowed=false;a=new MainActivity(s);start(a,false,"user draft");check("Disabled local saving requires manual loss acknowledgement",a.reloadDialog!=null&&a.reloadDialog.positiveLabel.equals("已保存，重新加载")&&DraftArchive.writes==0&&s.reloads==0);a.reloadDialog.positive.run();check("Explicit independent acknowledgement reaches actual reload",s.reloads==1&&s.pageMemory.forgot==1&&!s.pageMemory.restorePending);
+   s=route();s.web.visible=false;a=new MainActivity(s);a.requestReload();check("Absent page cannot start driver capture",s.asyncCalls==0&&a.reloadDialog!=null);s.navigationEpoch++;a.reloadDialog.positive.run();check("Independent old confirmation cannot reload a replacement document",s.reloads==0);
+   s=route();s.web.url="https://example.com/form";a=new MainActivity(s);a.requestReload();check("Generic webpage uses manual preservation before browser reload",s.asyncCalls==0&&a.reloadDialog!=null);a.reloadDialog.positive.run();check("Explicit generic-page reload uses existing native browser",s.web.current.reloads==1&&s.reloads==0);
+   for(int blocked=0;blocked<5;blocked++){
+     s=route();s.web.visible=false;a=new MainActivity(s);a.requestReload();switch(blocked){case 0:s.networkReady=false;break;case 1:s.offline=true;break;case 2:s.connecting=true;break;case 3:s.recoveryScheduled=true;break;case 4:s.guard.allowed=false;break;}a.reloadDialog.positive.run();check("Independent confirmation cannot bypass route guard "+blocked,s.reloads==0&&s.status.contains("网络未就绪"));
+   }
+   System.out.println(J.obj("status","passed","checks",checks.length(),"results",checks,"actualAndroidExecution",false));
  }
 }
 class ChatSession {
- // These reload cases observe the foreground page and have no fresh resource
- // receipt. Global reply policy and resource-freshness admission run elsewhere.
- boolean uiVisible=true,browserNavigationStopped;long resourceObservedAt;
- boolean replyObservationAllowed(){return uiVisible;}
- boolean resourceObservationCurrent(){if(resourceObservedAt!=0)throw new AssertionError("Fresh resource observation is outside this reload host");return false;}
- // This reload-only workload stores no deferred browser candidate. Its real
- // event scheduler and draft checks execute in deferred-browser-wake-host.
- void wakeDeferredBrowserSettings(){if(prefs.values.containsKey("nextPrivacyLevel"))throw new AssertionError("Deferred browser candidate outside reload host scope");}
- // No audit is running in this reload-only host workload.
- static final class Audit {void retirePageCheck(){}}Audit audit;
- final Trace trace=new Trace();final Handler handler=new Handler();boolean navigationFailed,websiteConnectionIssue,spaTransition,documentNavigationSeen,awaitNewDocument;boolean navigationDispatched=true;String navigationTarget="",navigationLabel="",priorDocumentId="",spaSignature="";int spaStable;long navigationStarted,navigationMono,firstPageVisible,pageUsableAt;void navigationTimeout(long epoch){}
- // Current navigation invalidates read-only inspection leases. This host does
- // not execute the website driver or resource worker behind those leases.
- long syncRun,resourceUploadCheckGeneration,resourceInspectionGeneration;boolean resourceUploadChecking,backgroundAttachmentCheck,inFlight;int backgroundAttachmentStable;
- final Deliveries deliveries=new Deliveries(this);final JSONArray attachments=new JSONArray();boolean submitting,operation,configurationCapture,networkReady=true,offline,navigating,replyStalled;String replyHealthStatus="";int stableTicks;long webConfirmationVersion;String stableReply="";
- final Object context=new Object();final int environmentGeneration=4;final String environmentId="environment-one";final Web web=new Web();final Prefs prefs=new Prefs();final WebReplyObserver webObserver=new WebReplyObserver(this);final Store webStore=new Store();
- long navigationEpoch=7,fileWorkGeneration,webWorkGeneration,stateEpoch=-1,resourceWebsiteEpoch=-1,resourceObserverEpoch=-1;JSONObject state=new JSONObject();boolean resourceWebsiteBusy;Object resourceObserverPort;String resourceObserverBinding="",resourceObserverDocument="",resourceObserverUrl="";boolean fileBusy,replyBusy,deleted,observedReplyHasFiles;String lastDocumentId="document-one",appliedIdentity="route-one",conversation="https://chatgpt.com/c/A",activeDeliveryId="old-job",observedReplyJob="",observedReplyUrl="",observedReplyKey="",observedReplyRevision="",observedReplyMarkdown="",status="",deliveryState="",draft="unsent controlled browser draft",lastAction="";JSONObject pending;Result driverResult;int asyncCalls;
- boolean webPerformance(){return true;}void resourceObserverRouteReady(JSONObject x,Object p){}void resourceWebsiteObservation(JSONObject x,Object p){}boolean targetMatches(String u){return true;}void wakePolling(){}
- interface Result{void accept(JSONObject value);}void asyncDriver(String action,JSONObject args,long ms,Result callback){lastAction=action;asyncCalls++;driverResult=callback;}boolean fileWorkActive(){return fileBusy;}boolean resourceFilesUncertain(){return false;}void setStatus(String s){status=s;}void resetReplyStability(){}void delivery(String id,String state,String detail,boolean attempted,String key,String url){deliveryState=state;}
+ final Object context=new Object();final int environmentGeneration=4;final String environmentId="environment-one";
+ final Web web=new Web();final Prefs prefs=new Prefs();final WebReplyObserver webObserver=new WebReplyObserver(this);final Store webStore=new Store();final Memory pageMemory=new Memory();final Guard guard=new Guard();final Handler handler=new Handler();final Trace trace=new Trace();Audit audit;
+ boolean deleted,uiVisible=true,navigating,navigationFailed,websiteConnectionIssue,websiteRecovering,spaTransition,documentNavigationSeen,awaitNewDocument,browserNavigationStopped;
+ boolean navigationDispatched=true,networkReady=true,offline,connecting,recoveryScheduled,submitting,operation,transferActive,configurationCapture,fileBusy,inFlight,resourceUploadChecking,backgroundAttachmentCheck,resourceWebsiteBusy;
+ long navigationEpoch=7,fileWorkGeneration,webWorkGeneration,stateEpoch=-1,resourceWebsiteEpoch=-1,resourceObserverEpoch=-1,resourceObservedAt,syncRun,resourceUploadCheckGeneration,resourceInspectionGeneration,navigationStarted,navigationMono,firstPageVisible,pageUsableAt;
+ int spaStable,backgroundAttachmentStable,asyncCalls,reloads,routeEvents,workEvents;boolean lastCapture=true;
+ String lastDocumentId="current-document-0001",appliedIdentity="route-one",conversation="https://chatgpt.com/c/A",navigationTarget="",navigationLabel="",priorDocumentId="",spaSignature="",resourceObserverBinding="",resourceObserverDocument="",resourceObserverUrl="",activeDeliveryId="",websiteProbeIssue="",status="",lastAction="";
+ JSONObject pending,state=new JSONObject();Object resourceObserverPort;Result driverResult;
+ interface Result{void accept(JSONObject value);}void asyncDriver(String action,JSONObject args,long ms,Result callback){lastAction=action;asyncCalls++;driverResult=callback;}
+ boolean fileWorkActive(){return fileBusy;}boolean resourceFilesUncertain(){return false;}boolean resourceObservationCurrent(){return false;}boolean webPerformance(){return true;}boolean targetMatches(String url){return navigationTarget.equals(url);}void wakePolling(){}
+ void resourceObserverRouteReady(JSONObject event,Object port){routeEvents++;}void resourceWebsiteObservation(JSONObject event,Object port){workEvents++;}
+ void setStatus(String text){status=text;}void navigationTimeout(long epoch){}
+ boolean navigate(String url,String label,boolean capture){lastCapture=capture;reloads++;return true;}
  /* CHAT */
 }
 class MainActivity {
- ChatSession session;Web remote;boolean destroyed,reloadChecking;ReferenceUi.Modal reloadDialog;int reloadCalls;MainActivity(ChatSession s){session=s;remote=s.web;}static boolean chatUrl(String u){return u!=null&&u.startsWith("https://chatgpt.com/");}void reloadCurrent(ChatSession.ReloadTarget t,JSONObject p){if(reloadMatches(t)&&t.matchesSnapshot(p))reloadCalls++;}
+ ChatSession session;Web remote;boolean destroyed,reloadChecking;ReferenceUi.Modal reloadDialog;final Handler handler=new Handler();
+ MainActivity(ChatSession s){session=s;remote=s.web;}
  /* MAIN */
 }
-class WebReplyObserver {JSONObject lastNavigationArchivedJob;long navigationArchiveSequence;final ChatSession session;WebReplyObserver(ChatSession s){session=s;}/* OBSERVER */}
+class WebReplyObserver {final ChatSession session;WebReplyObserver(ChatSession s){session=s;}/* OBSERVER */}
 class BrowserRuntimePolicy {/* POLICY */}
 class BrowserSettingsPolicy {/* REPLY_POLICY */}
 class PageMemory {/* MEMORY */}
+class ProfileUi {/* PROFILE */}
 class ReferenceUi {static class Modal{static int shows;Runnable positive,negative;String positiveLabel,negativeLabel;boolean shown;java.util.function.Consumer<Object> dismiss;Modal(Object c,String title){}void note(String s){}void setOnDismissListener(java.util.function.Consumer<Object> c){dismiss=c;}void dismiss(){shown=false;if(dismiss!=null)dismiss.accept(this);}void buttons(String a,Runnable x,String b,Runnable y){negativeLabel=a;negative=x;positiveLabel=b;positive=y;}void show(){shown=true;shows++;}}}
-class Web{boolean visible=true;String url="https://chatgpt.com/c/B";Object current=new Object();final Map<Object,Object> ports=new IdentityHashMap<>();Web(){ports.put(current,new Object());}String getUrl(){return url;}boolean resourcePage(String url){return MainActivity.chatUrl(url);}boolean hasVisibleDocument(){return visible;}}
+class Browser {int reloads;boolean isOpen(){return true;}void reload(){reloads++;}}
+class Web {boolean visible=true;String url="https://chatgpt.com/c/B";Browser current=new Browser();final Map<Object,Object> ports=new IdentityHashMap<>();Web(){ports.put(current,new Object());}String getUrl(){return url;}boolean resourcePage(String url){return MainActivity.chatUrl(url);}boolean hasVisibleDocument(){return visible;}}
 class Profiles{static int slot=2;static int slot(Object c){return slot;}}
 class ProfileCatalog{static int generation=4;static String environmentId="environment-one";static boolean available=true,deleting,resetting;static ProfileCatalog get(Object c){return new ProfileCatalog();}JSONObject item(int slot){return J.obj("created",available,"generation",generation,"environmentId",environmentId,"deleting",deleting,"resetting",resetting);}}
-class Prefs{final Map<String,String>values=new HashMap<>();Runnable listener;boolean commitOk=true;int commits;String getString(String key,String fallback){return values.getOrDefault(key,fallback);}Prefs edit(){return this;}Prefs putString(String k,String v){values.put(k,v);return this;}Prefs remove(String k){values.remove(k);return this;}boolean commit(){commits++;if(listener!=null){Runnable once=listener;listener=null;once.run();}return commitOk;}}
-class Store{final java.util.concurrent.Executor worker=r->{};}
-class DraftArchive{static DraftArchive get(Object c){return new DraftArchive();}boolean save(String u,String t,String k){return true;}boolean save(String u,String t,String k,long revision){return save(u,t,k);}}
-class ChatService{static int ends;static void begin(Object c){}static void completed(Object c,String id,String url){}static void end(Object c){ends++;}}
-class ProfileUi{static boolean working(ChatSession s){return s.pending!=null||s.fileWorkActive()||s.currentReplyActive();}}
-class LoginPagePolicy{static boolean login(String u){return false;}}
-class SystemClock{static long elapsedRealtime(){return 1000;}}class Trace{void page(String label){}}class Handler{void postDelayed(Runnable work,long delay){}void post(Runnable work){throw new AssertionError("Cold restoration is outside this reload host");}}
-class Deliveries{
- final ChatSession owner;Deliveries(ChatSession owner){this.owner=owner;}
- int next;String begin(String u,String p,JSONArray a,String k,Object unused){return "new-production-job-"+(++next);}
- // Explicit acknowledged storage boundary; actual failures and durable recovery
- // execute with the full production store in reply-task-persistence-host.
- boolean update(String id,String state,String detail,boolean attempted,String key,String url){
-  if(owner.pending==null||!id.equals(owner.pending.optString("id"))||!attempted||!Arrays.asList("completed","stopped","uncertain").contains(state))throw new AssertionError("Unsupported reload-host delivery outcome");
-  owner.deliveryState=state;return true;
- }
-}
-class J{static JSONObject parse(String value){try{return new JSONObject(value);}catch(Exception e){return new JSONObject();}}static JSONObject obj(Object...v){JSONObject o=new JSONObject();try{for(int i=0;i<v.length;i+=2)o.put((String)v[i],v[i+1]);}catch(Exception e){throw new RuntimeException(e);}return o;}}
-
-class LocalDraftPolicy{static boolean allowed=true;static boolean enabled(Object c){return allowed;}static long revision(Object c){return 0;}}
+class Prefs{final Map<String,String> values=new HashMap<>();Runnable listener;boolean commitOk=true,throwCommit;int commits;String getString(String key,String fallback){return values.getOrDefault(key,fallback);}Editor edit(){return new Editor();}final class Editor{final Map<String,String> edits=new HashMap<>();final Set<String> removed=new HashSet<>();Editor putString(String k,String v){edits.put(k,v);return this;}Editor remove(String k){removed.add(k);return this;}boolean commit(){commits++;if(throwCommit)throw new RuntimeException("controlled unavailable storage");if(!commitOk)return false;for(String key:removed)values.remove(key);values.putAll(edits);Runnable once=listener;listener=null;if(once!=null)once.run();return true;}}}
+class Memory{JSONObject remembered;int forgot;boolean restorePending;void forget(String url){forgot++;remembered=null;}void remember(String scope,String url,JSONObject state){remembered=state;}String scope(){return "environment-one";}}
+class Store{final java.util.concurrent.Executor worker=Runnable::run;}
+class DraftArchive{static boolean saved=true;static int writes;static DraftArchive get(Object c){return new DraftArchive();}boolean save(String url,String text,String kind,long revision){writes++;return saved;}}
+class LocalDraftPolicy{static boolean allowed=true;static long revision=1;static boolean enabled(Object c){return allowed;}static long revision(Object c){return revision;}static String unavailable(Object c){return "草稿保存失败";}}
+class ChatService{static int ends;static void end(Object c){ends++;}}
+class Guard{boolean allowed=true;boolean allowed(){return allowed;}}
+class Audit{void retirePageCheck(){}}
+class Trace{void page(String label){}}
+class Handler{void post(Runnable work){work.run();}void postDelayed(Runnable work,long delay){}}
+class SystemClock{static long elapsedRealtime(){return 1000;}}
+class J{static JSONObject obj(Object...v){JSONObject o=new JSONObject();try{for(int i=0;i<v.length;i+=2)o.put((String)v[i],v[i+1]);}catch(Exception e){throw new RuntimeException(e);}return o;}}

@@ -12,6 +12,7 @@ public final class EnvironmentConfigBackupHost {
     EnvironmentConfigBackup.Config config=sample();char[] password="sensitive-password-123".toCharArray();byte[] one=EnvironmentConfigBackup.encrypt(config,password),two=EnvironmentConfigBackup.encrypt(config,password);
     check("fresh salt IV and ciphertext for repeated backup",!Arrays.equals(one,two));
     EnvironmentConfigBackup.Config restored=EnvironmentConfigBackup.decrypt(one,password);
+    check("Portable legacy reply preferences remain disabled after encryption and restore",!restored.preferences().getBoolean("backgroundWait")&&!restored.preferences().getBoolean("replyNotice"));
     check("name survives",restored.name.equals(config.name));check("complete browser template survives",restored.browser.json().toString().equals(config.browser.json().toString()));
     check("language order retained",restored.browser.locales.equals(Arrays.asList("zh-CN","en-US")));check("preference types and values retained",restored.preferences().getBoolean("saveDraft")&&!restored.preferences().getBoolean("wifiDownloads"));
     String serialized=new String(config.bytes(),StandardCharsets.UTF_8);for(String key:new String[]{"network","Cookie","cookie","draftRaw","environmentId","generation","deviceKey","appliedRevision","exit","subscription","proxy"})check("payload excludes "+key,!serialized.contains('"'+key+'"'));

@@ -25,6 +25,7 @@ final class BrowserFiles {
   final BrowserDownloadStore store;
   Pending pending;long choiceGeneration;volatile boolean destroyed;
   volatile BrowserDownloadTransfer transfer;
+  volatile BrowserBlobDownload blobTransfer;volatile WebView blobOwner;
   AlertDialog externalDialog,downloadsDialog;
   static final class Pending {
     final WebView owner;final ValueCallback<Uri[]> callback;final int request;final String url;final boolean multiple;
@@ -92,16 +93,17 @@ final class BrowserFiles {
       return activity.checkUriPermission(uri,android.os.Process.myPid(),android.os.Process.myUid(),Intent.FLAG_GRANT_READ_URI_PERMISSION)==android.content.pm.PackageManager.PERMISSION_GRANTED;
     }catch(RuntimeException failure){return false;}
   }
-  void cancelFor(WebView owner){if(pending!=null&&pending.owner==owner)cancel();}
+  void cancelFor(WebView owner){if(pending!=null&&pending.owner==owner)cancel();BrowserBlobDownload blob=blobTransfer;if(blob!=null&&blobOwner==owner)blob.cancel();}
   void cancel(){++choiceGeneration;clear(pending,true);}
-  boolean hasActiveDownload(){return transfer!=null;}
-  void cancelActiveDownload(){BrowserDownloadTransfer selected=transfer;if(selected!=null)selected.cancel();}
+  boolean hasActiveDownload(){return transfer!=null||blobTransfer!=null;}
+  void cancelActiveDownload(){BrowserDownloadTransfer selected=transfer;if(selected!=null)selected.cancel();BrowserBlobDownload blob=blobTransfer;if(blob!=null)blob.cancel();}
   static boolean webAddress(String url){try{BrowserDownloadTransfer.address(url);return true;}catch(IOException invalid){return false;}}
   void download(String url,String agent,String disposition,String mime,long size){download(null,url,agent,disposition,mime,size);}
   void download(WebView source,String url,String agent,String disposition,String mime,long size){
     if(destroyed)return;
+    if(url!=null&&url.startsWith("blob:")){downloadBlob(source,url,disposition,mime,size);return;}
     if(!webAddress(url)){handoff(source,source==null?"":source.getUrl(),"此临时文件不能直接保存。可在外部浏览器打开原网页后重新下载。");return;}
-    if(transfer!=null){message("已有文件正在下载，可在浏览器下载列表中取消");return;}
+    if(hasActiveDownload()){message("已有文件正在下载，可在浏览器下载列表中取消");return;}
     try{AppPrefs.requireDownloadNetwork(activity);}catch(IOException restricted){message(restricted.getMessage());return;}
     ChromiumRuntime.DownloadRoute route=runtime==null?null:runtime.downloadRoute();
     if(route==null||!route.current()){message("浏览器连接尚未确认，未开始下载");return;}
@@ -115,12 +117,58 @@ final class BrowserFiles {
           public java.net.HttpURLConnection open(URL target)throws IOException{return route.open(target);}
         };
         result=selected.fetch(url,agent,disposition,mime,size,activity.getCacheDir(),protectedRoute,target->CookieManager.getInstance().getCookie(target),(received,total)->main.post(()->{if(!destroyed&&transfer==selected)message("正在下载 · "+bytes(received)+(total>0?" / "+bytes(total):""));}));
-        String name=BrowserDownloadStore.safeName(URLUtil.guessFileName(result.url,result.disposition,result.mime));
-        JSONObject saved=store.save(result,name,()->!destroyed&&!selected.cancelled&&protectedRoute.current());
+        DownloadFileInfo.Info info=DownloadFileInfo.resolve(result.url,result.disposition,result.mime,"");
+        DownloadFileInfo.Info verified=DownloadFileInfo.inspect(result.file,info.name,info.mime);
+        BrowserDownloadTransfer.Result checked=new BrowserDownloadTransfer.Result(result.file,result.url,result.disposition,verified.mime,result.bytes);
+        JSONObject saved=store.save(checked,verified.name,()->!destroyed&&!selected.cancelled&&protectedRoute.current());
         main.post(()->{if(transfer==selected){transfer=null;message("已保存 · "+saved.optString("name")+" · 可在浏览器下载列表打开");}});
       }catch(Exception error){String reason=selected.cancelled&&!(error instanceof BrowserDownloadStore.Unconfirmed)?"下载已取消":error.getMessage()==null?"下载失败，未保存文件":error.getMessage();main.post(()->{if(transfer==selected){transfer=null;message(reason);}});}
       finally{try{if(result!=null)result.file.delete();}finally{if(lease!=null)lease.close();}}
     });}catch(RejectedExecutionException closed){transfer=null;message("浏览器已关闭，下载未开始");}
+  }
+  void downloadBlob(WebView source,String url,String disposition,String mime,long size){
+    final String sourceUrl;
+    try{sourceUrl=source==null?null:source.getUrl();}catch(RuntimeException closed){message("原网页已关闭，请重新下载");return;}
+    downloadBlob(source,url,disposition,mime,size,sourceUrl,()->source!=null&&Objects.equals(sourceUrl,source.getUrl()));
+  }
+  void downloadBlob(WebView source,String url,String disposition,String mime,long size,String sourceUrl,java.util.function.BooleanSupplier documentCurrent){
+    if(destroyed)return;
+    if(hasActiveDownload()){message("已有文件正在下载，可在浏览器下载列表中取消");return;}
+    if(source==null||documentCurrent==null||!documentCurrent.getAsBoolean()||!GeckoDownloadNavigation.sameOriginBlob(sourceUrl,url)){message("临时文件不属于当前网页，请在生成文件的原网页下载");return;}
+    if(size>BrowserDownloadTransfer.MAX_BYTES){message("文件超过 512 MB 下载限额");return;}
+    try{AppPrefs.requireDownloadNetwork(activity);}catch(IOException restricted){message(restricted.getMessage());return;}
+    ChromiumRuntime.DownloadRoute route=runtime==null?null:runtime.downloadRoute();
+    if(route==null||!route.current()){message("浏览器连接尚未确认，未开始下载");return;}
+    BrowserBlobDownload selected=new BrowserBlobDownload();blobOwner=source;blobTransfer=selected;message("正在读取网页文件…");
+    BrowserBlobDownload.Page page=new BrowserBlobDownload.Page(){
+      public boolean current(){
+        if(destroyed||blobTransfer!=selected||blobOwner!=source||!route.current())return false;
+        try{AppPrefs.requireDownloadNetwork(activity);return true;}catch(IOException restricted){return false;}
+      }
+      public void evaluate(String script,Consumer<String> done){
+        if(!current()||!documentCurrent.getAsBoolean()){done.accept(null);return;}
+        source.evaluateJavascript(script,done::accept);
+      }
+      public void discard(String script){
+        if(!destroyed&&documentCurrent.getAsBoolean())source.evaluateJavascript(script,null);
+      }
+    };
+    try{worker.execute(()->{
+      BrowserBlobDownload.Result result=null;ChromiumRouteLease.Handle lease=ChromiumRouteLease.acquireDownload();
+      try{
+        if(lease==null)throw new IOException("正在应用环境线路，下载尚未开始");
+        result=selected.fetch(sourceUrl,url,activity.getCacheDir(),page,main::post,(received,total)->main.post(()->{if(blobTransfer==selected)message("正在下载 · "+bytes(received)+" / "+bytes(total));}));
+        String actualMime=DownloadFileInfo.BINARY.equals(result.mime)?mime:result.mime;
+        DownloadFileInfo.Info proposed=DownloadFileInfo.resolve(url,disposition,actualMime,"");
+        DownloadFileInfo.Info checked=DownloadFileInfo.inspect(result.file,proposed.name,proposed.mime);
+        BrowserDownloadTransfer.Result file=new BrowserDownloadTransfer.Result(result.file,url,disposition,checked.mime,result.bytes);
+        JSONObject saved=store.save(file,checked.name,()->!selected.cancelled&&page.current());
+        main.post(()->{if(blobTransfer==selected){blobTransfer=null;blobOwner=null;message("已保存 · "+saved.optString("name")+" · 可在浏览器下载列表打开");}});
+      }catch(Exception error){
+        String reason=selected.cancelled&&!(error instanceof BrowserDownloadStore.Unconfirmed)?"下载已取消":error.getMessage()==null?"下载失败，未保存文件":error.getMessage();
+        main.post(()->{if(blobTransfer==selected){blobTransfer=null;blobOwner=null;message(reason);}});
+      }finally{try{if(result!=null)result.file.delete();}finally{if(lease!=null)lease.close();}}
+    });}catch(RejectedExecutionException closed){blobTransfer=null;blobOwner=null;message("浏览器已关闭，下载未开始");}
   }
   static String bytes(long value){if(value<1024)return value+" B";return String.format(Locale.ROOT,value<1048576?"%.1f KB":"%.1f MB",value/(value<1048576?1024.0:1048576.0));}
   void handoff(WebView source,String url,String explanation){
@@ -143,11 +191,11 @@ final class BrowserFiles {
       if(destroyed)return;if(downloadsDialog!=null)downloadsDialog.dismiss();
       String[] labels=new String[saved.length()];for(int i=0;i<labels.length;i++){JSONObject row=saved.optJSONObject(i);long size=DownloadMetadataValues.bytes(row);labels[i]=row.optString("name")+" · "+(size>=0?bytes(size):row.has("bytes")?bytes(row.optLong("bytes")):"大小未知");}
       AlertDialog.Builder builder=new AlertDialog.Builder(activity).setTitle("浏览器下载");
-      if(labels.length==0)builder.setMessage(transfer==null?"暂无已保存文件":"文件正在下载，完成后会显示在这里");
+      if(labels.length==0)builder.setMessage(hasActiveDownload()?"文件正在下载，完成后会显示在这里":"暂无已保存文件");
       else builder.setItems(labels,(dialog,index)->open(saved.optJSONObject(index)));
-      builder.setPositiveButton("关闭",null);if(transfer!=null)builder.setNegativeButton("取消当前下载",(dialog,which)->{BrowserDownloadTransfer active=transfer;if(active!=null){active.cancel();message("正在取消下载…");}});downloadsDialog=builder.show();
+      builder.setPositiveButton("关闭",null);if(hasActiveDownload())builder.setNegativeButton("取消当前下载",(dialog,which)->{cancelActiveDownload();message("正在取消下载…");});downloadsDialog=builder.show();
     });});}catch(RejectedExecutionException ignored){}
   }
   void open(JSONObject row){if(row==null)return;try{Uri uri=Uri.parse(row.optString("uri"));if(!"content".equals(uri.getScheme())){message("文件地址不可用");return;}Intent intent=new Intent(Intent.ACTION_VIEW).setDataAndType(uri,row.optString("mime","application/octet-stream")).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);intent.setClipData(ClipData.newRawUri(row.optString("name","文件"),uri));activity.startActivity(intent);}catch(ActivityNotFoundException unavailable){message("没有可打开此类文件的应用，文件仍保留在下载目录");}catch(SecurityException denied){message("文件无法访问，可能已被移除");}}
-  void destroy(){destroyed=true;cancel();BrowserDownloadTransfer active=transfer;if(active!=null)active.cancel();worker.shutdownNow();metadata.shutdownNow();main.removeCallbacksAndMessages(null);if(externalDialog!=null)externalDialog.dismiss();if(downloadsDialog!=null)downloadsDialog.dismiss();}
+  void destroy(){destroyed=true;cancel();cancelActiveDownload();worker.shutdownNow();metadata.shutdownNow();main.removeCallbacksAndMessages(null);if(externalDialog!=null)externalDialog.dismiss();if(downloadsDialog!=null)downloadsDialog.dismiss();}
 }

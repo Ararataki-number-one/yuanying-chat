@@ -36,7 +36,7 @@ class DeferredBrowserWake46Tests(unittest.TestCase):
             self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
             report = json.loads(target.read_text())
             self.assertEqual(report['status'], 'passed')
-            self.assertEqual(report['count'], 30)
+            self.assertEqual(report['count'], 34)
             self.assertTrue(all(row['pass'] for row in report['checks']))
             self.assertFalse(report['actualAndroidExecution'])
             self.assertFalse(report['backgroundReplyDetection'])
@@ -46,7 +46,7 @@ class DeferredBrowserWake46Tests(unittest.TestCase):
         self.assertEqual(hashlib.sha256(source.read_bytes()).hexdigest(), before)
         output.mkdir(parents=True, exist_ok=True)
         (output / 'profile-results.json').write_text(json.dumps(dict(
-            status='passed', runs=2, checksPerRun=30, sourceSha256=before,
+            status='passed', runs=2, checksPerRun=34, sourceSha256=before,
             actualAndroidExecution=False, actualGeckoExecution=False,
             backgroundReplyDetectionEnabled=False, actualPhysicalPhoneAcceptance=False,
             scope='Actual ChatSession work-ending methods and one-shot wake, complete DeferredBrowserSettings and TaskGuardSnapshot on explicit DOM/looper/storage/service edges.'), indent=2) + '\n')

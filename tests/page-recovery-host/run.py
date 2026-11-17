@@ -24,22 +24,23 @@ def member(text,needle):
         i+=1
     raise ValueError('Unclosed member: '+needle)
 def main():
-    p=argparse.ArgumentParser();p.add_argument('--json-jar',required=True,type=pathlib.Path);a=p.parse_args()
+    p=argparse.ArgumentParser();p.add_argument('--json-jar',required=True,type=pathlib.Path);p.add_argument('--java-home',type=pathlib.Path);a=p.parse_args()
+    binary=lambda name:str(a.java_home/'bin'/name) if a.java_home else name
     source=ROOT/'app/src/main/java/local/pocketchat'
     selections={
-      'CHAT':('ChatSession.java',['boolean chatAutomationAllowed(','private long invalidateBrowserPageWork(','long prepareBrowserNavigation(','long beginNavigation(','void resourceObserverConnected(','void awaitLogin(','boolean pageMayReportConnected(','void inspectPageStatus(','void sync(','void networkStatus(','void navigationTimeout(','void finishNavigation(String error,boolean retry)','void scheduleRecovery(','void runRecovery(','void acceptTranscript(','static final class ReloadTarget','ReloadTarget reloadTarget(','void reloadConfirmed(','void observeReplyProgress(','void diagnoseStalledReply(','void observeWebsiteProbe(','boolean retainExistingConnection(']),
+      'CHAT':('ChatSession.java',['boolean chatAutomationAllowed(','private long invalidateBrowserPageWork(','long prepareBrowserNavigation(','long beginNavigation(','void resourceObserverConnected(','void awaitLogin(','boolean pageMayReportConnected(','void inspectPageStatus(','void sync(','void networkStatus(','void navigationTimeout(','void finishNavigation(String error,boolean retry)','void scheduleRecovery(','void runRecovery(','void acceptTranscript(','static final class ReloadTarget','ReloadTarget reloadTarget(','void reloadConfirmed(','void observeWebsiteProbe(','boolean retainExistingConnection(']),
       'PROVIDER':('NetworkUiProvider.java',['void captureTransition(']),
       'DEFERRED':('DeferredBrowserSettings.java',['static void drain(','static void release(']),
       'EDITOR':('EnvironmentEditorUi.java',['static void applySafely(MainActivity a,JSONObject value,EditText name,java.util.function.BooleanSupplier current,java.util.function.Consumer<Boolean> done)']),
       'CAPTURE':('PageMemory.java',['void remember(','void capture(']),
       'MEMORY':('PageMemory.java',['static boolean completeDraft(','static boolean hasDraft(']),
       'MAIN':('MainActivity.java',['static boolean chatUrl(','void status(','void showStatusDetails(','boolean reloadMatches(','void confirmIndependentReload(']),
-      'REPLY':('ReplyState.java',['static String describe(','static long elapsedSeconds(','static void show(','static void checkWithoutRecovery(','static void websiteConnection(']),
-      'NETWORK':('NetworkStatusUi.java',['static boolean current(','static boolean connectionReady(','static String pageStatus(','static String sendStatus(']),
+      'PAGE_CONNECTION':('PageConnectionUi.java',['static void show(']),
+      'NETWORK':('NetworkStatusUi.java',['static boolean current(','static boolean connectionReady(','static String pageStatus(']),
       'LOGIN':('LoginPagePolicy.java',['static String host(','static boolean login(']),
       'LIFECYCLE':('GeckoWebView.java',['void forgetGeneralRoute(','private boolean navigationCurrent(','void timezoneConfigurationChanged(','private void contentStopped(','private boolean canRecoverAutomatically(','boolean recoverClosed(','private boolean closePopup(GeckoSession old)','private boolean closePopup(GeckoSession old,boolean returnNavigation)','boolean closeWebsitePages(','static final class TimeZoneGate {','void retireTimeZone(','void retireTimeZones(','void completeTimeZoneProofs(','void completeTimeZoneRequests(','void releaseIpRoute(','public void onResume(','boolean hasVisibleDocument(','private void failure('])}
     fixture=pathlib.Path(__file__).parent/'PageRecoveryHost.java'
-    inputs={source/name for name,_ in selections.values()}|{source/name for name in ('WebReplyObserver.java','ReplyTaskPersistence.java','BrowserRuntimePolicy.java','BrowserSettingsPolicy.java','BrowserBridgeRequests.java','ChromiumRouteLease.java','GeckoNavigationPolicy.java','BrowserAddressPolicy.java')}|{fixture,pathlib.Path(__file__).resolve(),fixture.with_name('ReloadRequestHost.java'),fixture.with_name('reload_request.py'),fixture.with_name('README.md')}
+    inputs={source/name for name,_ in selections.values()}|{source/name for name in ('WebReplyObserver.java','BrowserRuntimePolicy.java','BrowserSettingsPolicy.java','BrowserBridgeRequests.java','ChromiumRouteLease.java','GeckoNavigationPolicy.java','BrowserAddressPolicy.java')}|{fixture,pathlib.Path(__file__).resolve(),fixture.with_name('ReloadRequestHost.java'),fixture.with_name('reload_request.py'),fixture.with_name('README.md')}
     hashes={str(path.relative_to(ROOT)):hashlib.sha256(path.read_bytes()).hexdigest() for path in sorted(inputs)}
     commit=subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip()
     text=fixture.read_text()
@@ -65,9 +66,9 @@ def main():
         complete=[source/name for name in ('BrowserBridgeRequests.java','ChromiumRouteLease.java','GeckoNavigationPolicy.java','BrowserAddressPolicy.java')]
         def execute(generated,label):
             selected=tmp/label;selected.mkdir();selected_java=selected/'PageRecoveryHost.java';selected_java.write_text(generated)
-            built=subprocess.run(['javac','-encoding','UTF-8','-cp',str(a.json_jar.resolve()),'-d',str(selected),str(selected_java),str(uri),str(clock),*map(str,complete)],capture_output=True,text=True)
+            built=subprocess.run([binary('javac'),'-encoding','UTF-8','-cp',str(a.json_jar.resolve()),'-d',str(selected),str(selected_java),str(uri),str(clock),*map(str,complete)],capture_output=True,text=True)
             if built.returncode:raise RuntimeError('Current source host compilation failed: '+built.stderr)
-            return subprocess.run(['java','-cp',str(selected)+os.pathsep+str(a.json_jar.resolve()),'local.pocketchat.PageRecoveryHost'],text=True,capture_output=True)
+            return subprocess.run([binary('java'),'-cp',str(selected)+os.pathsep+str(a.json_jar.resolve()),'local.pocketchat.PageRecoveryHost'],text=True,capture_output=True)
         result=execute(text,'current')
         if result.returncode:
             print(result.stderr,file=sys.stderr);result.check_returncode()
@@ -91,7 +92,7 @@ def main():
             controls.append(dict(name=label,compiled=True,exitCode=failed.returncode,expectedAssertion=expected,generatedHostSha256=hashlib.sha256(counterfeit.encode()).hexdigest(),stderrSha256=hashlib.sha256(failed.stderr.encode()).hexdigest()))
         report['compiledCounterfeits']=controls
         from reload_request import run as run_reload_request
-        report['reloadRequest']=run_reload_request(a.json_jar)
+        report['reloadRequest']=run_reload_request(a.json_jar,a.java_home)
         if report['reloadRequest']['status']!='passed' or not report['reloadRequest']['executionInputsUnchanged']:
             report['status']='failed-reload-request'
         unchanged=all(hashlib.sha256((ROOT/path).read_bytes()).hexdigest()==digest for path,digest in hashes.items())

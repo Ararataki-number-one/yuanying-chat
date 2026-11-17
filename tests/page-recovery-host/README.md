@@ -1,73 +1,73 @@
-This host executes the selected current production recovery, capture, reload and
-status methods with controlled Android, UI, network and SDK-session boundaries.
-It does not execute Android, Gecko, real network recovery or a full app.
+# Page recovery and explicit browser reload host
 
-The current content-exit and close-all consumers execute the actual
-`retireTimeZone` method and its waiting-callback delivery. The native controller
-retirement is a counted, synthetic default-system collaborator; custom-zone
-execution throws. It does not execute GeckoTimeZoneController, native time-zone
-settings, Date, Intl or engine behavior. Original recovery assertions and
-compiled counterfeits remain unchanged.
+This host executes exact current production recovery, capture, reload and status
+methods with controlled Android, UI, network and SDK-session boundaries. It does
+not execute Android, Gecko, real network recovery, a website, or the full app.
+
+The sending/result-detection feature has been removed. The current fixture uses
+`PageConnectionUi` for explicit page-error recovery and retains the original
+network retry, draft preservation, navigation ownership and stale-callback
+checks. Assertions for old `ReplyState` banners, reply progress diagnostics and
+result-confirmation status were retired with that feature. They are not replaced
+by a simulated sending lifecycle.
+
+## Recovery and native ownership
 
 The URL dependency runs the actual `ChatSession.chatAutomationAllowed` and
-`MainActivity.chatUrl` methods with a `java.net.URI` implementation of the
-existing Android Uri boundary. Complete production `GeckoNavigationPolicy` and
-`BrowserAddressPolicy` classes prove that an ordinary public HTTP(S) destination
-can be valid for browsing while remaining ineligible for ChatGPT synchronization.
+`MainActivity.chatUrl` methods with a `java.net.URI` implementation of the Android
+Uri boundary. Complete `GeckoNavigationPolicy` and `BrowserAddressPolicy` classes
+keep ordinary public HTTP(S) browsing separate from ChatGPT synchronization.
 
 Content-process exit runs actual `contentStopped` and `forgetGeneralRoute`,
-actual desired/deferred identity collections, and the complete production
-`ChromiumRouteLease` registry. Initial route ownership is controlled input.
-Checks require that a stopped session loses its own desired/deferred state and
-real lease, while another page and native download retain their independent
-leases. This is cleanup coverage, not Gecko route-admission or provider proof.
+actual desired/deferred identity collections, and complete production
+`ChromiumRouteLease`. A stopped session loses only its own desired/deferred state
+and route lease; another page and a native download retain their leases. Initial
+route ownership is controlled input, not Gecko admission/provider evidence.
 
-All original 105 checks, including 15 content-lifecycle checks, remain. The 19 additional
-URL/cleanup checks must also reject three compiled counterfeits: generic-site
-ChatGPT synchronization, omitted desired-session retirement and omitted real
-lease close. The existing independent reload-request host still runs afterward.
+The current content-exit and close-all consumers execute actual `retireTimeZone`
+and waiting-callback delivery. Native controller retirement is a counted default
+system collaborator; custom-zone use throws. There is no execution of
+GeckoTimeZoneController, native time-zone settings, Date or Intl.
 
-The 25 navigation-ownership checks execute current `timezoneConfigurationChanged`,
-`recoverClosed`, `contentStopped`, `closePopup` and their shared stateless ownership
-predicate. The current `beginNavigation` runs against one-shot status callbacks
-that replace the epoch, replace the native surface or delete the owner. Normal
-recovery and checkpoint paths remain covered. Popup cases require old-surface
-cleanup and its real route lease release even when activation or page-commit
-callbacks start a newer navigation; a separate download lease must survive.
-Native reopen, activation, load and checkpoint application are counted SDK
-collaborator boundaries, not actual Gecko operations. A fourth compiled
-counterfeit that ignores navigation ownership must fail the new semantic checks.
+Navigation-ownership checks execute `timezoneConfigurationChanged`,
+`recoverClosed`, `contentStopped`, `closePopup`, `prepareBrowserNavigation`,
+`beginNavigation` and `closeWebsitePages`. Reentrant status, bridge, native-stop
+and time-zone callbacks replace a navigation epoch or surface, or delete an
+owner. The older action must stop without erasing the newer document. Cleanup
+still closes old popups and preserves independent downloads. Native allocation,
+activation, load and checkpoint restoration are counted SDK boundaries.
 
-The additional 12 close-all checks execute actual `closeWebsitePages`, both
-popup-closing modes, `prepareBrowserNavigation` and `beginNavigation`. Multiple
-popups must close without an intermediate return-navigation epoch so the caller
-can issue one final ChatGPT navigation. Actual `BrowserBridgeRequests.cancel`
-callbacks, a native-stop callback boundary and the actual time-zone gate's
-waiting callback each start a newer navigation; the old close-all must stop
-before clearing or reopening that document. Completed popup cleanup and real
-download leases survive. A refused native reopen returns failure to the caller.
-Three further compiled counterfeits independently check intermediate navigation,
-the native-stop fence and the gate-retirement fence. The Android dialog itself
-is not rendered or driven by this host.
+Seven compiled negative controls check generic-site synchronization, desired
+session retirement, route lease close, navigation ownership, intermediate popup
+navigation, native-stop fencing and time-zone-retirement fencing. Each control
+must fail its specific behavioral assertion; no production file is changed.
 
-The maintenance update selects the current `long beginNavigation` and its exact
-`invalidateBrowserPageWork` helper. Its read-lease fields are explicit host
-state. The recovery host's navigation-start observation collaborator is limited
-to the no-pending-task cases actually executed here and throws if that boundary
-is crossed. The independent reload-request host executes the real
-`WebReplyObserver.navigationStarted`, archival, `currentEvent`, and
-`ChatSession.resourceBindingMatches` methods. Its genuine gesture fixtures now
-carry the current resource binding and native port; no acceptance guard is
-stubbed to return true. All 131 reload-request assertions retain their original
-meaning and order. No historical source projection or semantic relaxation is
-used for this API alignment.
+## Reload and upgrade migration
 
-Run once with each real JSON implementation using JDK 17 on PATH:
+The independent reload host runs afterward. It extracts current production
+`requestReload`, `ReloadTarget`, `reloadTargetAfterInspection`, `confirmReload`,
+`confirmIndependentReload`, `reloadCurrent`, `verifyReloadDraft`, and
+`reloadConfirmed`. Explicit confirmation, fresh draft rechecking, profile/route
+identity, native port and document generations all remain exercised. A new
+navigation or changed input cannot borrow an earlier reload acknowledgement.
+Driver responses, preferences, draft archive writes, navigation and UI widgets
+are explicit controlled boundaries; the host does not claim disk durability or
+native button/touch execution.
+
+Legacy pending records are tested only through actual
+`WebReplyObserver.restorePending`: preserve history, clear active result checking,
+never restart it after storage failure, and retain a synchronous replacement
+owner. Actual `receive` rejects retired intent/bound/uncertain/stop/complete
+messages while preserving resource-route and resource-work dispatch. Reload no
+longer performs old send-result archival or treats it as permission to rebind a
+stale callback.
+
+Run with either supported JSON implementation:
 
 ```sh
-python3 tests/page-recovery-host/run.py --json-jar path/to/json.jar
+python3 tests/page-recovery-host/run.py --java-home path/to/jdk --json-jar path/to/json.jar
 ```
 
-The single JSON stdout report records current source/dependency hashes, exact
-selected members and compiled-negative outcomes. It makes no Android, Gecko,
-physical-phone performance or complete browser protection claim.
+The JSON report records exact selected members, source/dependency hashes,
+compiled-negative outcomes and the reload subreport. The same runner's `member`
+extractor is imported by other host suites and remains available.

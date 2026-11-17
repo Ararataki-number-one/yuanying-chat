@@ -57,11 +57,11 @@ def main():
         raise AssertionError('Expected production query/read workload reduction missing')
     for report in reports.values():
         report['measured'].pop('outputs')
-    payload={'schema':1,'status':'passed','baselineCommit':baseline,'productionSourceSha256':hashes,
+    payload={'schema':2,'contract':'browser-result-removal-v1','status':'passed','baselineCommit':baseline,'productionSourceSha256':hashes,
         'harnessSha256':{str(path.relative_to(ROOT)):hashlib.sha256(path.read_bytes()).hexdigest()
             for path in (Path(__file__).resolve(),Path(__file__).with_name('workload.cjs'))},
         'observationParity':True,'sourceUnchangedDuringChecks':True,'reports':reports,
-        'scope':'Actual prior/current production JavaScript in JSDOM; operation counts only; no Android/Gecko/FPS/real website performance claim',
+        'scope':'Actual prior/current production JavaScript executing the retained page-readiness and transcript resource workload in JSDOM; operation counts only. Retired reply classification is excluded explicitly; no Android/Gecko/FPS/real website performance claim',
         'actualAndroidExecution':False,'actualGeckoExecution':False,'actualFrameTiming':False}
     args.output.parent.mkdir(parents=True,exist_ok=True)
     args.output.write_text(json.dumps(payload,ensure_ascii=False,indent=2)+'\n')

@@ -82,7 +82,7 @@ public final class ResourceRecoveryHost {
     JSONObject pending=J.obj("id","same-page-web","kind","web","confirmed",true,"confirmedUrl",target,"attempted",true);
     host.owner.pending=pending;String bytes=pending.toString();host.owner.prefs.edit().putString("pending",bytes).commit();
     host.view.retryResourceStart();host.owner.handler.until(200);
-    check("Same-page ChatGPT recovery retains its actual web task through asynchronous CPU and TLS admission",host.owner.pending==pending&&host.owner.prefs.getString("pending","").equals(bytes)&&host.view.runtime!=null&&host.owner.resources.created==1&&host.view.resourceAdmission==ResourcePressureController.Admission.RECOVERY&&host.owner.beginCount==1);
+    check("Same-page recovery preserves an independent legacy cursor through asynchronous CPU and TLS admission",host.owner.pending==pending&&host.owner.prefs.getString("pending","").equals(bytes)&&host.view.runtime!=null&&host.owner.resources.created==1&&host.view.resourceAdmission==ResourcePressureController.Admission.RECOVERY&&host.owner.beginCount==1);
   }
   public static void main(String[] args)throws Exception{admitted();deferredAndStopped();continuation(true);continuation(false);absoluteDeadline();int originalChecks=checks.length();navigationOwners();System.out.println(J.obj("status","passed","passed",checks.length(),"originalChecks",originalChecks,"checks",checks));}
 }
@@ -140,10 +140,7 @@ class GeckoSession{}
 class WebObserver {
   final Owner session;WebObserver(Owner owner){session=owner;}
   @WEB_JOB@
-  @WEB_NAVIGATION@
   @SAME@
-  @BINDING_ROUTE@
-  boolean archiveNavigation(JSONObject job){throw new AssertionError("Cross-page web archival belongs to the page-lifecycle host");}
 }
 class MainActivity {@CHAT_URL@}
 class Uri {

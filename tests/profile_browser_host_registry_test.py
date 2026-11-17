@@ -53,7 +53,7 @@ class BrowserHostRegistryTests(unittest.TestCase):
         current = declared_cases(raw, self.out)
         self.assertEqual(len(original), 190)
         self.assertEqual(current[:190], original)
-        self.assertEqual(len(current), 204)
+        self.assertEqual(len(current), 211)
         name, command, report = current[190]
         self.assertEqual(name, 'gecko-texture-surface')
         self.assertEqual(command[1], 'tests/gecko-texture-surface-host/run.py')
@@ -71,10 +71,24 @@ class BrowserHostRegistryTests(unittest.TestCase):
             ('gecko-photo-native-tap', [sys.executable, 'tests/gecko_photo_tap_test.py'], None),
             ('chrome-collapse-archive', [sys.executable, 'tests/profile_chrome_collapse_archive_test.py'], None),
         ])
-        self.assertEqual(current[201:], [
+        self.assertEqual(current[201:204], [
             ('browser-navigation-v4', [sys.executable, 'tests/profile_navigation_v4_test.py'], None),
             ('browser-navigation-v4-publication', [sys.executable, 'tests/profile_navigation_v4_publication_test.py'], None),
             ('gecko-window-selection', [sys.executable, 'tests/profile_gecko_window_selection_test.py'], None),
+        ])
+        java = ['--java-home', str(self.out / 'java-home')]
+        json_jar = str(self.out / 'json-jar')
+        def host(name, script, extra=()):
+            target = str(self.out / (name + '.json'))
+            return (name, [sys.executable, script, *java, *extra, '--output', target], target)
+        self.assertEqual(current[204:], [
+            host('browser-header-layout', 'tests/browser-header-layout-host/run.py'),
+            ('browser-header-v5', [sys.executable, 'tests/profile_browser_header_v5_test.py'], None),
+            ('browser-header-native-evidence-v5', [sys.executable, 'tests/profile_browser_header_evidence_v5_test.py'], None),
+            ('browser-observation-v2', [sys.executable, 'tests/profile_browser_observation_v2_test.py'], None),
+            host('download-content', 'tests/download-content-host/run.py'),
+            host('gecko-download-navigation', 'tests/gecko-download-navigation-host/run.py'),
+            host('browser-blob', 'tests/browser-blob-host/run.py', ['--json-jar', json_jar]),
         ])
         self.assertEqual(len({row[0] for row in current}), len(current))
         executions = [node for node in ast.walk(ast.parse(raw)) if isinstance(node, ast.Call)
@@ -114,6 +128,16 @@ class BrowserHostRegistryTests(unittest.TestCase):
                        b"add('browser-navigation-v4-publication',", b"add('gecko-window-selection',"):
             line = next(line for line in self.current.splitlines(keepends=True) if marker in line)
             with self.subTest(control=marker), self.assertRaises(AssertionError):
+                self.preserved(self.current.replace(line, b'', 1))
+
+
+    def test_removed_download_header_or_retirement_control_is_rejected(self):
+        for name in ('browser-header-layout', 'browser-header-v5',
+                     'browser-header-native-evidence-v5', 'browser-observation-v2',
+                     'download-content', 'gecko-download-navigation', 'browser-blob'):
+            marker = ("add('" + name + "',").encode()
+            line = next(line for line in self.current.splitlines(keepends=True) if marker in line)
+            with self.subTest(control=name), self.assertRaises(AssertionError):
                 self.preserved(self.current.replace(line, b'', 1))
 
 

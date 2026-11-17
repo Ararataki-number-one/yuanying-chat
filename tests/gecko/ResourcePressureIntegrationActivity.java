@@ -65,7 +65,7 @@ public final class ResourcePressureIntegrationActivity extends GeckoIdentityProt
     // This synthetic task tests native resource admission, not a ChatGPT send.
     // A ChatGPT web observation cannot remain attached to the localhost fixture.
     view.queued="";owner.pending=J.obj("id","resource-"+run,"kind","resource-recovery","engine","gecko","attempted",true,"webSuspended",true,"expectedUrl",target,"prompt","synthetic resource recovery");pendingBytes=owner.pending.toString();
-    if(!owner.prefs.edit().putString("pending",pendingBytes).commit())throw new IOException("Controlled pending persistence failed");owner.deliveries.recover(owner.pending);
+    if(!owner.prefs.edit().putString("pending",pendingBytes).commit())throw new IOException("Controlled pending persistence failed");
     owner.updateBrowserActivity();owner.handler.removeCallbacks(owner.tick);
     awaitRecoveryAllocation(oldEpoch);
   }

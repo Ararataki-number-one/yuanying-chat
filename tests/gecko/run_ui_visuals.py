@@ -12,8 +12,8 @@ sys.path.insert(0,str(root/'tools/gecko'))
 from ui_visual_capture import UiVisualCapture
 from diagnostic_capture_privacy import checked_text
 from ui_visual_contract import LIGHT_SCENES, LARGE_SCENES, DARK_SCENES, LANDSCAPE_SCENES, required_captures, verify_captures, verify_download_location
-from workspace_navigation_contract_v4 import conversation_header
-from compact_chrome_v4 import run_case as capture_compact_v4
+from workspace_browser_header_v5 import conversation_header, native_observation
+from compact_chrome_v5 import run_case as capture_compact_v5
 from workspace_ui_v2 import capture_selection as capture_environment_selection
 from download_workspace_v2 import capture as capture_download_workspace
 UI_NAVIGATION_CONTRACT=4
@@ -97,8 +97,11 @@ def capture(variant,width,height,scale,scene,theme='light'):
         if 'com.google.android.apps.nexuslauncher' in adb('shell','pm','list','packages','com.google.android.apps.nexuslauncher'):adb('shell','am','force-stop','com.google.android.apps.nexuslauncher')
         adb('shell','wm','size',f'{width*3}x{height*3}');adb('shell','wm','density','480');adb('shell','settings','put','system','font_scale',str(scale));last_geometry=geometry
     label_nonce=uuid.uuid4().hex if scene=='downloads' else None
+    header_nonce=uuid.uuid4().hex if scene=='chat' else None
+    header_raw=None
     launch=['shell','am','start','-W','-n',package+'/local.pocketchat.UiVisualIntegrationActivity','--es','visualAction',scene]
     if label_nonce:launch.extend(['--es','visualNonce',label_nonce])
+    if header_nonce:launch.extend(['--es','visualHeaderNonce',header_nonce])
     if label_nonce and WORKSPACE_LAYOUT_CONTRACT==2:launch.extend(['--ei','visualDownloadContract','2'])
     adb(*launch)
     required={'chat':'会话','environments':'环境管理','network':'固定测试出口','proxy':'代理地址','entries':'选择入口','browser':'基本信息','preferences':'基本信息','settings':'启动与界面','network-menu':'导入网络',
@@ -138,12 +141,12 @@ def capture(variant,width,height,scale,scene,theme='light'):
         click_editor_tab(xml,'浏览器');time.sleep(2.5);xml=dump();assert '网页显示方式' in xml
     if scene=='preferences':
         tab_scrolls=click_editor_tab(xml,'使用偏好');time.sleep(.5)
-        expected={'保存本机输入草稿','恢复网页滚动位置','允许此环境的后台回复提醒','仅在 Wi-Fi 下载文件','自动清理 30 天以上的无引用中间文件','自动检测外部网络响应'}
+        expected={'保存本机输入草稿','恢复网页滚动位置','仅在 Wi-Fi 下载文件','自动清理 30 天以上的无引用中间文件','自动检测外部网络响应'}
         seen=set();collected=[]
         for attempt in range(8):
             xml=dump();collected.append(xml)
             seen.update(n.attrib.get('text','') for n in ET.fromstring(xml).iter('node') if n.attrib.get('class')=='android.widget.CheckBox')
-            assert not any(label in xml for label in ['自动同步可见历史会话','文件保存完成通知','网络中断提醒','后台等待回复']),(variant,scene,xml)
+            assert not any(label in xml for label in ['自动同步可见历史会话','文件保存完成通知','网络中断提醒','后台等待回复','允许此环境的后台回复提醒']),(variant,scene,xml)
             if seen==expected:break
             scroll=next(n for n in ET.fromstring(xml).iter('node') if n.attrib.get('class')=='android.widget.ScrollView')
             left,top,right,bottom=map(int,re.findall(r'\d+',scroll.attrib['bounds']));x=(left+right)//2
@@ -152,7 +155,10 @@ def capture(variant,width,height,scale,scene,theme='light'):
         preference_check={'preferenceControls':sorted(seen),'removedNoticeControlsAbsent':True,'scrollFrames':len(collected),'tabScrolls':tab_scrolls}
     if scene=='chat' and UI_NAVIGATION_CONTRACT==4:
         time.sleep(2.5);xml=dump()
-        conversation_header(xml,package,width,height,scale,'日常会话',browser=True)
+        packets=download_label_packets(adb_scene(deadline,'logcat','-d','-s','PocketBrowserHeader:I','*:S'),header_nonce)
+        assert len(packets)==1,('Missing or duplicate native header observation',packets)
+        header_raw=packets[0];native=native_observation(header_raw,header_nonce,source)
+        conversation_header(xml,package,width,height,scale,'日常会话',browser=True,native=native)
     elif scene=='chat':
         time.sleep(2.5);xml=dump();assert all(label in xml for label in ['浏览器','环境','下载','网络','设置'])
         assert not any(n.attrib.get('text') in ['简洁','原网页'] for n in ET.fromstring(xml).iter('node')),xml
@@ -180,6 +186,7 @@ def capture(variant,width,height,scale,scene,theme='light'):
     density=int(re.findall(r'density: (\d+)',adb('shell','wm','density'))[-1]);assert density==480,density
     (shots/(stem+'.png')).write_bytes(raw)
     record={'variant':variant,'theme':theme,'logicalViewport':f'{width}x{height}','actualPixels':list(pixels),'densityDpi':density,'fontScale':scale,'scene':scene,'image':stem+'.png','xml':stem+'.xml','readinessScrolls':readiness_scrolls}
+    if scene=='chat':record.update(headerContract=5,browserHeaderNonce=header_nonce,browserHeaderRaw=header_raw,browserHeaderRawXml=xml)
     if scene=='downloads' and WORKSPACE_LAYOUT_CONTRACT==2:
         capture_download_workspace(adb_scene,dump,lambda limit:subprocess.check_output([args.adb,'-s',args.serial,'exec-out','screencap','-p'],timeout=min(30,limit-time.monotonic())),source,label_nonce,shots,stem,record)
     elif scene=='downloads':
@@ -330,7 +337,7 @@ try:
                 'titleBounds':bounds(title[0]),'searchBounds':bounds(search[0]),'currentBounds':bounds(current[0]),'closeBounds':bounds(close[0])}
     for width,scale in [(360,1),(412,1),(360,2)]:
         if UI_NAVIGATION_CONTRACT==4:
-            compact.append(capture_compact_v4(adb,lambda *parts:subprocess.check_output([args.adb,'-s',args.serial,*parts],timeout=90),dump,chrome_event,focus,visible,quick_environment_sheet,shots,package,width,scale))
+            compact.append(capture_compact_v5(adb,lambda *parts:subprocess.check_output([args.adb,'-s',args.serial,*parts],timeout=90),dump,chrome_event,focus,visible,quick_environment_sheet,shots,package,width,scale))
             continue
         adb('shell','am','force-stop',package);adb('logcat','-c')
         adb('shell','wm','size',f'{width*3}x1920');adb('shell','wm','density','480');adb('shell','settings','put','system','font_scale',str(scale))

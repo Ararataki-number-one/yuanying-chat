@@ -19,8 +19,7 @@ final class DesignSettingsUi {
     group(a,environment,"此环境的浏览器与启动",Profiles.display(a,Profiles.slot(a))+" · "+(BrowserPreferences.startBrowser(a)?"Chromium 指纹浏览器":"Gecko 指纹浏览器"),"browser",()->BrowserSettingsUi.show(a,refresh));
     SettingsWorkspaceStyle.section(box,"提醒与后台","全局");
     LinearLayout background=SettingsWorkspaceStyle.group(a);box.addView(background);
-    group(a,background,"后台回复检测",BackgroundReplySettingsUi.summary(a),"chat",()->BackgroundReplySettingsUi.open(a,refresh));
-    group(a,background,"后台完成提醒",AppSettings.backgroundCompletionNotice(a)?"离开应用后提醒回复和下载完成":"已关闭 · 使用时保持安静","bell",()->completionReminders(a,refresh));
+    group(a,background,"后台完成提醒",AppSettings.backgroundCompletionNotice(a)?"离开应用后提醒下载完成":"已关闭 · 使用时保持安静","bell",()->completionReminders(a,refresh));
     group(a,background,"通知与电池设置","通知提醒与后台运行权限","battery",()->FeatureDialogs.backgroundSettings(a));
     SettingsWorkspaceStyle.section(box,"配置备份","");
     LinearLayout backup=SettingsWorkspaceStyle.group(a);box.addView(backup);
@@ -33,12 +32,12 @@ final class DesignSettingsUi {
     group(a,help,"功能支持范围","查看支持的功能","shield",()->capabilities(a));
   }
   static void group(Activity a,LinearLayout box,String title,String detail,String icon,Runnable click){SettingsWorkspaceStyle.row(a,box,title,detail,icon,click);}
-  static void about(Activity a){DesignUi.message(a,"元婴期院士 · "+AppVersion.name(a),"Android 双内核指纹浏览器\n\nGecko 与 Chromium 都能输入网址或搜索，默认网站仍为 https://chatgpt.com/。Gecko 在 ChatGPT 网页额外提供草稿救援、回复检测和离线会话检索。\n\n每个环境分别保存登录、网络和指纹配置；两个内核的 Cookie 与指纹配置独立。Gecko 使用原生隐私模板，Chromium 使用原生 UA / UA-CH 和文档开始时的指纹保护，具体范围可分别查看设置与自检。\n\nChromium 基于 Android System WebView，提供多标签、收藏与历史、页内查找和文件上传下载。可选择每个环境的启动内核和两个内核共用的默认网站。\n\n后台完成提醒默认关闭，可在应用设置中开启。登录数据保存在本机，网络凭据及 Chromium 指纹配置由 Android Keystore 加密。第三方许可随源码提供。");}
-  static void capabilities(Activity a){DesignUi.message(a,"功能支持范围","• 两个内核：切换网址、搜索、独立登录、环境指纹配置与自检\n• Gecko：原生隐私模板；在 ChatGPT 网页提供草稿救援、离线会话检索与回复检测\n• Chromium：原生 UA / UA-CH 设置，页面及框架的 Canvas、WebGL 调试显卡标识、音频复制读出和 WebRTC 构造器保护\n• Chromium 浏览：多标签、收藏与历史、页内查找、手机版／电脑版、文件上传下载\n• 最多 8 个独立环境，支持分组、备注、收藏和删除\n\nChromium 的 Worker、Service Worker、OffscreenCanvas、独立时区、字体、硬件及网络协议指纹未覆盖。Chrome 扩展尚不支持。请在各内核的设置中查看实际支持和确认状态；设置回读不代表完整指纹已验证。\n\nChromium 可按当前 HTTPS 网站的请求逐次授权相机、麦克风和大致位置，不保存网站的长期允许记录。页面 WebRTC 限制不覆盖 Worker；HTTP 代理不能代替设备 VPN。应用不会自动开启 VPN。\n\nGecko 原生模板的范围：\n\n"+NativeCapabilityManifest.officialGecko().unsupportedSummary()+"\n\n后台完成提醒需主动开启。多环境同时运行容量尚未测量。");}
+  static void about(Activity a){DesignUi.message(a,"元婴期院士 · "+AppVersion.name(a),"Android 双内核指纹浏览器\n\nGecko 与 Chromium 都能输入网址或搜索，默认网站仍为 https://chatgpt.com/。Gecko 在 ChatGPT 网页额外提供草稿救援和离线会话检索。\n\n每个环境分别保存登录、网络和指纹配置；两个内核的 Cookie 与指纹配置独立。Gecko 使用原生隐私模板，Chromium 使用原生 UA / UA-CH 和文档开始时的指纹保护，具体范围可分别查看设置与自检。\n\nChromium 基于 Android System WebView，提供多标签、收藏与历史、页内查找和文件上传下载。可选择每个环境的启动内核和两个内核共用的默认网站。\n\n后台完成提醒默认关闭，可在应用设置中开启。登录数据保存在本机，网络凭据及 Chromium 指纹配置由 Android Keystore 加密。第三方许可随源码提供。");}
+  static void capabilities(Activity a){DesignUi.message(a,"功能支持范围","• 两个内核：切换网址、搜索、独立登录、环境指纹配置与自检\n• Gecko：原生隐私模板；在 ChatGPT 网页提供草稿救援与离线会话检索\n• Chromium：原生 UA / UA-CH 设置，页面及框架的 Canvas、WebGL 调试显卡标识、音频复制读出和 WebRTC 构造器保护\n• Chromium 浏览：多标签、收藏与历史、页内查找、手机版／电脑版、文件上传下载\n• 最多 8 个独立环境，支持分组、备注、收藏和删除\n\nChromium 的 Worker、Service Worker、OffscreenCanvas、独立时区、字体、硬件及网络协议指纹未覆盖。Chrome 扩展尚不支持。请在各内核的设置中查看实际支持和确认状态；设置回读不代表完整指纹已验证。\n\nChromium 可按当前 HTTPS 网站的请求逐次授权相机、麦克风和大致位置，不保存网站的长期允许记录。页面 WebRTC 限制不覆盖 Worker；HTTP 代理不能代替设备 VPN。应用不会自动开启 VPN。\n\nGecko 原生模板的范围：\n\n"+NativeCapabilityManifest.officialGecko().unsupportedSummary()+"\n\n后台完成提醒需主动开启。多环境同时运行容量尚未测量。");}
   static void completionReminders(Activity a,Runnable refresh){
     LinearLayout box=DesignUi.column(a);box.setPadding(DesignUi.dp(a,18),0,DesignUi.dp(a,18),DesignUi.dp(a,14));
     Switch enabled=new Switch(a);enabled.setText("离开应用后提醒完成");NativeControls.prepare(enabled);enabled.setChecked(AppSettings.backgroundCompletionNotice(a));box.addView(enabled);
-    DesignUi.note(box,"下载完成提醒可独立使用；回复完成提醒还需开启后台回复检测。使用应用时保持安静；系统仍可能显示后台服务的静默提示。");
+    DesignUi.note(box,"离开应用后可提醒文件下载完成。使用应用时保持安静；系统仍可能显示网络服务的静默提示。");
     enabled.setOnCheckedChangeListener((button,value)->{AppSettings.put(a,"backgroundCompletionNotice",String.valueOf(value));if(value){ChatService.channels(a);if(android.os.Build.VERSION.SDK_INT>=33&&a.checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS)!=android.content.pm.PackageManager.PERMISSION_GRANTED)a.requestPermissions(new String[]{android.Manifest.permission.POST_NOTIFICATIONS},91);}refresh.run();});
     AppAppearance.dialog(a).setTitle("后台完成提醒").setView(box).setPositiveButton("完成",null).show();
   }

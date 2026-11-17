@@ -17,9 +17,17 @@ final class ChromiumNetworkUi {
   private ReferenceUi.Modal dialog;private TextView details;
   private String explanation="";private int renderedColor;
   ChromiumNetworkUi(BrowserActivity activity){
-    this.activity=activity;row=ReferenceUi.workspaceText(activity,"",ReferenceUi.SECONDARY_SIZE,ReferenceUi.MUTED,false);
+    this.activity=activity;row=new TextView(activity){
+      @Override protected void onMeasure(int widthSpec,int heightSpec){
+        int capsuleWidth=activity.environmentTouch==null?0:activity.environmentTouch.getMeasuredWidth();
+        int minimum=BrowserHeaderLayout.networkMinimumHeight(MeasureSpec.getSize(widthSpec),capsuleWidth,activity.dp(48),activity.dp(28));
+        if(getMinimumHeight()!=minimum){setMinHeight(minimum);setMinimumHeight(minimum);}
+        super.onMeasure(widthSpec,heightSpec);
+      }
+    };
+    row.setTextSize(ReferenceUi.SECONDARY_SIZE);row.setTextColor(AppAppearance.text(ReferenceUi.MUTED));ReferenceUi.readable(row);
     row.setMinHeight(activity.dp(48));row.setMinimumHeight(activity.dp(48));row.setMaxLines(3);
-    row.setPadding(activity.dp(6),activity.dp(4),activity.dp(6),activity.dp(4));
+    row.setPadding(activity.dp(6),activity.dp(1),activity.dp(6),activity.dp(1));
     row.setGravity(android.view.Gravity.CENTER_VERTICAL);row.setFocusable(true);row.setBackground(Ui.ripple(activity,Color.TRANSPARENT,8));
     row.setOnClickListener(view->show());row.setAccessibilityDelegate(new View.AccessibilityDelegate(){
       @Override public void onInitializeAccessibilityNodeInfo(View host,AccessibilityNodeInfo info){super.onInitializeAccessibilityNodeInfo(host,info);info.setClassName(Button.class.getName());}

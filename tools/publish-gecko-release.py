@@ -40,7 +40,12 @@ def verify_compact_touch_evidence(chrome, source):
     assert len(set(versions))==1,'Compact chrome cannot mix navigation contract versions.'
     if versions[0] in (2,3,4):
         assert chrome['actualAndroidExecution'] is True,message
-        if versions[0]==4:
+        headers=[case.get('headerContract',4) for case in cases]
+        assert all(type(value) is int and value in (4,5) for value in headers) and len(set(headers))==1,'Compact chrome cannot mix header contracts.'
+        if headers[0]==5:
+            assert versions[0]==4,'Compact header preserves bottom browser navigation contract 4.'
+            from gecko.compact_chrome_layout_v5 import verify_case
+        elif versions[0]==4:
             from gecko.compact_chrome_layout_v4 import verify_case
         elif versions[0]==3:
             from gecko.compact_chrome_layout_v3 import verify_case
@@ -169,6 +174,12 @@ if version_code>=42:
     quiet=json.loads((args.evidence/'quiet-notification-results.json').read_text())
     chrome=json.loads((args.evidence/'compact-chrome-results.json').read_text())
     assert quiet['status']=='passed' and quiet['actualAndroidExecution'] and quiet['sourceCommit']==args.source and quiet['checkCount']>=24 and all(c['pass'] for c in quiet['checks']),'Quiet service and completion reminder regression is required.'
+    if 'notificationContract' in quiet:
+        from gecko.browser_observation_contract_v2 import verify_browser_notifications
+        verify_browser_notifications(quiet)
+    if version_code>=110:
+        assert quiet.get('notificationContract')==2,'Current pure-browser file/proxy notification evidence is required.'
+        assert all(case.get('headerContract')==5 for case in chrome['cases']),'Current compact header native touch evidence is required.'
     verify_compact_touch_evidence(chrome,args.source)
     if version_code>=108:
         expected_navigation=4 if version_code>=109 else 3
@@ -185,12 +196,17 @@ if version_code>=42:
 if version_code>=43:
     from gecko.check_performance_evidence import verify_performance_evidence
     performance=verify_performance_evidence(args.evidence,args.source)
+    if version_code>=110:
+        assert json.loads((args.evidence/'gecko-performance-results.json').read_text()).get('browserObservationContract')==2,'Current browser-only lifecycle evidence is required.'
+        assert all(item.get('headerContract')==5 for item in visual['screenshots'] if item['scene']=='chat'),'Current native browser header captures are required.'
 if version_code>=44:
     from gecko.check_connection_evidence import verify_connection_evidence
     connection=verify_connection_evidence(args.evidence,args.source)
 if version_code>=45:
     from gecko.check_interaction_transfer_evidence import verify_interaction_transfer_evidence
     interaction_transfer=verify_interaction_transfer_evidence(args.evidence,args.source)
+    if version_code>=110:
+        assert json.loads((args.evidence/'interaction-host-results.json').read_text()).get('contract')=='browser-result-removal-v1','Current browser-only interaction evidence is required.'
 if version_code>=46:
     from gecko.check_chain_evidence import verify_chain_evidence
     chain_performance=verify_chain_evidence(args.evidence,args.source)
@@ -336,6 +352,9 @@ if version_code>=43:
     if (root/'tools/gecko/chrome_collapse_contract.py').is_file():shutil.copy2(root/'tools/gecko/chrome_collapse_contract.py',stage/'tools/gecko/chrome_collapse_contract.py')
     for name in ('compact_chrome_layout_v2.py','chrome_collapse_contract_v2.py','workspace_navigation_contract.py','download_workspace_contract_v2.py','compact_chrome_layout_v3.py','chrome_collapse_contract_v3.py','workspace_navigation_contract_v3.py','ui_hierarchy_driver.py','chrome_collapse_case_storage.py'):
         shutil.copy2(root/'tools/gecko'/name,stage/'tools/gecko'/name)
+    if version_code>=110:
+        for name in ('browser_observation_contract_v2.py','browser_header_contract_v5.py','compact_chrome_layout_v5.py','workspace_browser_header_v5.py'):
+            shutil.copy2(root/'tools/gecko'/name,stage/'tools/gecko'/name)
     if version_code>=109:
         for name in ('compact_chrome_layout_v4.py','chrome_collapse_contract_v4.py','workspace_navigation_contract_v4.py'):
             shutil.copy2(root/'tools/gecko'/name,stage/'tools/gecko'/name)

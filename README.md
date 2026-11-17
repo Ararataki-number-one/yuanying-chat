@@ -4,9 +4,9 @@ Android 原生双内核浏览器。环境页是独立浏览器的入口；Gecko 
 
 本次浏览器界面改造基于正式 **v2.1.4-gecko（106）** 的源码，详见[浏览器界面改造与验证范围](docs/BROWSER-WORKSPACE.md)。
 
-正式维护版本 **2.1.5（107）** 已于 2026-11-15 发布，[下载原签名 ARM64 安装包](https://github.com/Ararataki-number-one/yuanying-chat/releases/tag/v2.1.5-gecko)。应用更新通道已同步；改动与完整验收记录见 [2.1.5 浏览器稳定性与维护说明](docs/RELEASE-v2.1.5.md)。
+正式版本 **2.1.7（109）** 已发布，应用内更新源已同步。[下载原签名 ARM64 安装包](https://github.com/Ararataki-number-one/yuanying-chat/releases/tag/v2.1.7-gecko)。本版使用小号环境胶囊和原玻璃底栏，五个入口为主页、网页窗口、网址／搜索、网页工具和浏览器菜单。
 
-开发版本 **2.1.6（108）** 修复照片上传后的 Canvas 变色问题，并将网址与常用浏览操作统一移到底部；顶部保留环境胶囊。具体改动和权限边界见 [2.1.6 说明](docs/RELEASE-v2.1.6.md)。正式发布状态继续以最新 Release 为准。
+开发版本 **2.1.8（110）** 修复下载跳转、临时文件保存和 Word／PDF 元数据，收紧顶部网络行，并移除发送结果检测。见 [2.1.8 修复说明](docs/RELEASE-v2.1.8.md)。开发版本尚不代表正式安装包已经发布。
 
 **正式安装包以[最新 Release](https://github.com/Ararataki-number-one/yuanying-chat/releases/latest)为准。开发分支的版本号不代表已经发布。会话、环境、下载、网络和设置五页的统一界面更新见 [2.1.4 说明](docs/RELEASE-v2.1.4.md)；Gecko 网页可见 CPU 上限候选见 [2.1.3 说明](docs/RELEASE-v2.1.3.md)；Worker、默认跟随出口 IP 与原生网页时区见 [2.1.2 说明](docs/RELEASE-v2.1.2.md)；两核网址切换与独立指纹配置见 [2.1.1 版本说明](docs/RELEASE-v2.1.1.md)，前版见 [2.1.0 说明](docs/RELEASE-v2.1.0.md)。**
 

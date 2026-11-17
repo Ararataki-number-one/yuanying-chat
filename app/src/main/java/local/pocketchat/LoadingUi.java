@@ -14,7 +14,7 @@ final class LoadingUi {
   boolean actionLayoutKnown,actionsHorizontal,actionsLandscape,compactCover;int actionsAvailable;float actionsFontScale;String actionsRetryLabel="",actionsWebsiteLabel="";
   LoadingUi(MainActivity activity){a=activity;
     band=new LinearLayout(a);band.setGravity(Gravity.CENTER_VERTICAL);band.setPadding(a.dp(22),a.dp(4),a.dp(22),a.dp(9));band.setVisibility(View.GONE);
-    band.addView(spinner(16),new LinearLayout.LayoutParams(a.dp(16),a.dp(16)));bandText=a.label("",12,Ui.MUTED);bandText.setPadding(a.dp(10),0,0,0);band.addView(bandText);band.setOnClickListener(v->{if(taskRunning)showTask();else ReplyState.show(a);});band.setContentDescription("回复状态，点按检查或恢复连接");band.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
+    band.addView(spinner(16),new LinearLayout.LayoutParams(a.dp(16),a.dp(16)));bandText=a.label("",12,Ui.MUTED);bandText.setPadding(a.dp(10),0,0,0);band.addView(bandText);band.setOnClickListener(v->{if(taskRunning)showTask();else NetworkStatusUi.show(a);});band.setContentDescription("任务状态，点按查看详情");band.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
     cover=new LinearLayout(a){
       @Override protected void onMeasure(int widthSpec,int heightSpec){
         if(MeasureSpec.getMode(heightSpec)!=MeasureSpec.UNSPECIFIED)layoutCover(MeasureSpec.getSize(heightSpec));
@@ -143,7 +143,7 @@ final class LoadingUi {
         else detail="网页尚未打开。请重新加载或检查当前环境网络。";
       }
       String stage=s.connectionStage==null||s.connectionStage.isEmpty()?"等待当前环境连接":s.connectionStage;
-      hint(waitingVpn?"网页联网已暂停。\n连接手机 VPN 后，再重新加载。":error?detail:stage+(slow?"\n可检查当前线路；登录和草稿会保留，不会自动重发消息。":"\n网页可见后自动显示"));loadingSymbol(!(error||slow));
+      hint(waitingVpn?"网页联网已暂停。\n连接手机 VPN 后，再重新加载。":error?detail:stage+(slow?"\n可检查当前线路；登录和草稿会保留。":"\n网页可见后自动显示"));loadingSymbol(!(error||slow));
       arrangeActions(waitingVpn||!error&&slow);
       MainActivity.chromeVisibility(retry,error);MainActivity.chromeVisibility(website,error||slow);
     }

@@ -508,6 +508,8 @@ def _verify_safe_idle_completion(row, events):
 def verify_safe_idle(report):
     """Replay the actual report's gestures/events without runner-global state."""
     assert report['status'] == 'passed', report.get('error')
+    contract = report.get('safeIdleContract', 1)
+    assert type(contract) is int and contract in (1, 2), 'known safe-idle product contract required'
     assert not report.get('diagnosticOnly', False)
     assert _hash(report['sourceCommit'], 40) and _hash(report['installedApkSha256'])
     assert report['installedPackage'] == 'local.pocketchat.test'
@@ -561,7 +563,18 @@ def verify_safe_idle(report):
         assert state['confirmed'] is False and row['reconnectAttempts'] == 0
         assert not state['operation'] and not state['configurationCapture'] and state['touchRestored'] is True
         if row['name'].endswith('send'):
-            assert row['actualTrustedGesture'] is True and row['injectedState'] == 'none' and state['replyId']
+            assert row['actualTrustedGesture'] is True and row['injectedState'] == 'none'
+            if contract == 1:
+                assert state['replyId']
+            else:
+                resource = state['resource']
+                assert state['replyId'] == '' and resource['pendingPresent'] is False and resource['pendingStored'] is False
+                assert resource['current'] is True and resource['busy'] is True
+                assert type(resource['sequence']) is int and type(resource['sequenceBeforeGesture']) is int
+                assert resource['sequence'] > resource['sequenceBeforeGesture'] >= 0
+                assert isinstance(resource['binding'], str) and re.fullmatch(r'[a-zA-Z0-9-]{16,80}', resource['binding'])
+                assert isinstance(resource['documentId'], str) and re.fullmatch(r'[a-zA-Z0-9-]{16,80}', resource['documentId'])
+                assert resource['navigationEpoch'] == state['navigationEpoch']
         else:
             assert row['actualTrustedGesture'] is False and row['injectedState'] in ('transfer', 'navigation', 'delete', 'late-save')
             assert not state['replyId']
@@ -584,8 +597,18 @@ def verify_safe_idle(report):
     assert len(taps) == 2
     for gesture, observed, tap, case in zip(gestures, trusted, taps, rows[:2]):
         assert gesture['oneAttempt'] is True and gesture['bounds'] == tap
-        assert observed['replyId'] == case['outcome']['replyId']
-        assert observed['observedBy'] == 'Production Gecko extension → WebReplyObserver.receive'
+        if contract == 1:
+            assert observed['replyId'] == case['outcome']['replyId']
+            assert observed['observedBy'] == 'Production Gecko extension → WebReplyObserver.receive'
+        else:
+            resource, current = observed['resource'], case['outcome']['resource']
+            assert observed['observedBy'] == 'Production Gecko extension → resource-work → WebReplyObserver.receive'
+            assert observed['websiteBusy'] is True
+            assert resource['current'] is True and resource['busy'] is True
+            assert resource['pendingPresent'] is False and resource['pendingStored'] is False
+            for field in ('binding', 'documentId', 'navigationEpoch', 'sequenceBeforeGesture'):
+                assert resource[field] == current[field], 'same browser resource owner required'
+            assert type(resource['sequence']) is int and resource['sequenceBeforeGesture'] < resource['sequence'] <= current['sequence']
         css, native = tap['css'], tap['native']
         assert all(isinstance(value, (int, float)) and math.isfinite(value) for value in (*css.values(), *native.values()))
         assert css['width'] > 0 and css['height'] > 0 and native['width'] > 0 and native['height'] > 0
@@ -607,7 +630,7 @@ def verify_safe_idle(report):
     results = [event['value'] for event in events if event.get('kind') == 'result']
     assert len(results) == 1 and results[0]['status'] == 'passed' and results[0]['checkCount'] == report['checkCount']
     return {'actualAndroidExecution': True, 'actualGeckoExecution': True, 'actualNativeParsing': True,
-            'safeIdleCases': len(rows), 'actualTrustedGestures': len(gestures), 'checks': report['checkCount'],
+            'safeIdleContract': contract, 'safeIdleCases': len(rows), 'actualTrustedGestures': len(gestures), 'checks': report['checkCount'],
             'sourceBoundInstalledApkSha256': report['installedApkSha256'], 'wanSpeedClaim': False}
 
 def _verify_source_route_join(evidence, stop, recovery, source, nonce):

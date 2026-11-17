@@ -19,6 +19,9 @@ public final class LocalDraftPolicyHost {
  static String canonical(Object value){if(value instanceof JSONObject){JSONObject o=(JSONObject)value;List<String> keys=new ArrayList<>();Iterator<?> iter=o.keys();while(iter.hasNext())keys.add((String)iter.next());Collections.sort(keys);StringBuilder s=new StringBuilder("{");for(String k:keys)s.append(JSONObject.quote(k)).append(':').append(canonical(o.opt(k))).append(',');return s.append('}').toString();}if(value instanceof JSONArray){JSONArray a=(JSONArray)value;StringBuilder s=new StringBuilder("[");for(int i=0;i<a.length();i++)s.append(canonical(a.opt(i))).append(',');return s.append(']').toString();}return String.valueOf(value);}
  static void policy()throws Exception{
   Context c=context();check("Default draft saving remains enabled at revision zero",LocalDraftPolicy.enabled(c)&&LocalDraftPolicy.revision(c)==0);
+  AppPrefs.apply(c,J.obj("backgroundWait",true,"replyNotice",true));
+  check("Imported legacy preferences cannot reenable removed reply features",!AppPrefs.enabled(c,"backgroundWait")&&!AppPrefs.enabled(c,"replyNotice")&&!c.getSharedPreferences("chat",0).getBoolean("backgroundWait",true)&&!c.getSharedPreferences("chat",0).getBoolean("replyNotice",true));
+  check("Current preference enumeration exposes no removed reply controls",!Arrays.asList(AppPrefs.KEYS).contains("backgroundWait")&&!Arrays.asList(AppPrefs.KEYS).contains("replyNotice"));
   AppPrefs.apply(c,J.obj("restoreScroll",false));check("Unrelated preference does not change draft revision",LocalDraftPolicy.revision(c)==0);
   AppPrefs.apply(c,J.obj("saveDraft","false"));check("Nonboolean setting cannot change draft policy",LocalDraftPolicy.enabled(c)&&LocalDraftPolicy.revision(c)==0);
   JSONObject original=snapshot("retain current input"),on=LocalDraftPolicy.snapshot(c,original);check("Enabled snapshot retains draft and exact revision",on.optString("draft").equals("retain current input")&&LocalDraftPolicy.mayRestore(c,on));
@@ -114,11 +117,11 @@ public final class LocalDraftPolicyHost {
    java.lang.reflect.Field singleton=DraftArchive.class.getDeclaredField("instance");singleton.setAccessible(true);singleton.set(null,null);
    Context c=context();if(mode.equals("off-then-on"))toggle(c,false);ChatSession s=new ChatSession(c);
    JSONObject job=J.obj("kind","web","id","owned-navigation-job","expectedUrl",url,"prompt","retired observation prompt");s.pending=job;
-   boolean retired=new WebReplyObserver(s).archiveNavigation(job);
+   s.prefs.edit().putString("pending",job.toString()).putString("draft","independent draft").commit();new WebReplyObserver(s).restorePending();
    if(mode.equals("off-on")){toggle(c,false);toggle(c,true);}else if(mode.equals("off-then-on"))toggle(c,true);else if(mode.equals("disabled"))toggle(c,false);
-   s.webStore.worker.runAll();int expected=mode.equals("enabled")?1:0;
-   check("Queued navigation archive respects captured draft policy "+mode,retired&&s.pending==null&&DraftArchive.get(c).list(url).length()==expected);
-   check("Draft policy never drops the independent archived send observation "+mode,c.getSharedPreferences("chat",0).getString("archivedWebObservation","").contains("owned-navigation-job"));
+   s.webStore.worker.runAll();
+   check("Retiring old result observation creates no new draft archive "+mode,s.pending==null&&DraftArchive.get(c).list(url).length()==0);
+   check("Draft policy preserves the independent retired record "+mode,c.getSharedPreferences("chat",0).getString("retiredWebObservation","").contains("owned-navigation-job"));
   }
  }
  static JSONObject timeZoneFacadeCounts(){int ready=0,prepare=0,dispatch=0;for(GeckoWebView view:views){ready+=view.timeZoneBoundary.readinessCalls;prepare+=view.timeZoneBoundary.preparationCalls;dispatch+=view.timeZoneBoundary.uriDispatches;}return J.obj("readinessCalls",ready,"preparationCalls",prepare,"uriDispatches",dispatch,"defaultSystemReady",true,"actualNativeTimeZoneExecution",false);}

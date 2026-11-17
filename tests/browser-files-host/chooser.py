@@ -230,7 +230,7 @@ def main():
     destroyed=member(source,'void destroy()')
     handoff=member(source,'void handoff(')
     chooser=prefix+'  '+handoff+'\n  '+destroyed+'\n}\n'
-    native_names=('BrowserDownloadTransfer.java','BrowserDownloadStore.java','BrowserAddressPolicy.java','DownloadMetadataValues.java','DownloadTaskRevisions.java')
+    native_names=('BrowserDownloadTransfer.java','BrowserDownloadStore.java','BrowserAddressPolicy.java','DownloadMetadataValues.java','DownloadTaskRevisions.java','BrowserBlobDownload.java','GeckoDownloadNavigation.java','DownloadFileInfo.java')
     resolver_path=PROD/'SavedDownloadProvider.java';legacy_path=PROD/'FileDownloads.java'
     resolved=member(resolver_path.read_text(),'static File resolve(')
     safe_name=member(legacy_path.read_text(),'static String safeName(')

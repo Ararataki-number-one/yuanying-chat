@@ -393,20 +393,27 @@ def verify_interaction_transfer_evidence(directory, source):
     assert host['actualHttpRequests'] and host['passed'] == host['total'] >= 28
     assert all(item['passed'] for item in host['checks']) and len(host['checks']) == host['total']
     interaction = json.loads((directory / 'interaction-host-results.json').read_text())
-    assert interaction['passed'] == interaction['total'] >= 36 and len(interaction['checks']) == interaction['total']
-    assert all(item['pass'] for item in interaction['checks'])
-    assert {
-        'First changed final capture yields during active reading without claiming completion content',
-        'Idle preparation permits complete observation while the user keeps scrolling',
-        'The fresh final capture contains the full latest body and late generated file',
-        'Changing conversation before idle prevents stale body preparation',
-        'Detached DOM is never prepared as the current final response',
-        'One mutation batch visits shared ancestors once instead of once per token',
-        'Interaction scheduling is read-only and preserves the login, draft and zero-send invariant',
-        'An unrelated trusted button gesture performs no full-page visibility/layout walk',
-        'A real send intent captures the exact draft and prior identities synchronously',
-        'The coalesced resize preserves the final actual scale and viewport width',
-    } <= {item['name'] for item in interaction['checks']}
+    if 'contract' in interaction:
+        try:
+            from .browser_observation_contract_v2 import verify_interaction_host
+        except ImportError:
+            from browser_observation_contract_v2 import verify_interaction_host
+        verify_interaction_host(interaction)
+    else:
+        assert interaction['passed'] == interaction['total'] >= 36 and len(interaction['checks']) == interaction['total']
+        assert all(item['pass'] for item in interaction['checks'])
+        assert {
+            'First changed final capture yields during active reading without claiming completion content',
+            'Idle preparation permits complete observation while the user keeps scrolling',
+            'The fresh final capture contains the full latest body and late generated file',
+            'Changing conversation before idle prevents stale body preparation',
+            'Detached DOM is never prepared as the current final response',
+            'One mutation batch visits shared ancestors once instead of once per token',
+            'Interaction scheduling is read-only and preserves the login, draft and zero-send invariant',
+            'An unrelated trusted button gesture performs no full-page visibility/layout walk',
+            'A real send intent captures the exact draft and prior identities synchronously',
+            'The coalesced resize preserves the final actual scale and viewport width',
+        } <= {item['name'] for item in interaction['checks']}
 
     device = android('device-results.json')
     local_draft = verify_local_draft_policy(device['localDraftPolicy'], device=device, source=source)

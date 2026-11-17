@@ -26,7 +26,7 @@ final class ActionSearchUi {
         add(out,"drafts","草稿救援","查找暂存输入或保存当前草稿","草稿 复制 恢复 输入 draft",()->current.accept(()->LocalDraftsUi.show(m)));
         add(out,"history","离线会话检索","搜索本机已经保存的会话内容","历史 记录 搜索 阅读 history offline",()->current.accept(()->LocalHistoryUi.show(m)));
         add(out,"focus",m.focusReading?"退出专注阅读":"进入专注阅读","收起应用工具栏与导航，扩大网页阅读空间","全屏 阅读 沉浸 focus fullscreen",()->current.accept(()->m.setFocusReading(!m.focusReading)));
-        add(out,"connection","查看连接与回复状态","检查当前环境，保留原网页","网络 状态 故障 回复 等待 connection",()->current.accept(m::showStatusDetails));
+        add(out,"connection","查看连接状态","检查当前环境，保留原网页","网络 状态 故障 connection",()->current.accept(m::showStatusDetails));
         add(out,"network","当前环境网络","打开当前环境的线路管理","线路 代理 订阅 节点 network proxy",()->current.accept(()->m.hub.networkFor(Profiles.slot(m))));
         add(out,"ip","查询当前环境 IP","查看实际出口信息","出口 地址 地区 ip",()->current.accept(()->ExitIpPageUi.open(m)));
         add(out,"edit","编辑当前环境","名称、分组、浏览器与偏好","修改 设置 环境 edit",()->current.accept(()->EnvironmentEditorUi.show(m)));

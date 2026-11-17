@@ -73,18 +73,17 @@ final class EnvironmentEditorUi {
     }));
 
     CheckBox[] options=new CheckBox[AppPrefs.KEYS.length];
-    String[] headings={"会话与恢复","回复提醒","下载与存储","连接检测"};
-    String[][] preferenceGroups={{"saveDraft","restoreScroll"},{"replyNotice"},{"wifiDownloads","cleanTemporaryCache"},{"automaticLatencyChecks"}};
+    String[] headings={"会话与恢复","下载与存储","连接检测"};
+    String[][] preferenceGroups={{"saveDraft","restoreScroll"},{"wifiDownloads","cleanTemporaryCache"},{"automaticLatencyChecks"}};
     List<String> preferenceKeys=Arrays.asList(AppPrefs.KEYS);
     for(int section=0;section<preferenceGroups.length;section++){
-      DesignUi.section(preferences,headings[section],section==3?"自动检测会访问公开测试地址；关闭可减少后台请求，仍可手动检测。":"");LinearLayout card=DesignUi.card(a);
+      DesignUi.section(preferences,headings[section],section==2?"自动检测会访问公开测试地址；关闭可减少后台请求，仍可手动检测。":"");LinearLayout card=DesignUi.card(a);
       for(String key:preferenceGroups[section]){
         int i=preferenceKeys.indexOf(key);if(i<0)continue;
         options[i]=new CheckBox(a);options[i].setText(AppPrefs.LABELS[i]);options[i].setTextColor(DesignUi.TEXT);options[i].setTextSize(14);
         options[i].setChecked(initial.has(AppPrefs.KEYS[i])?initial.optBoolean(AppPrefs.KEYS[i]):AppPrefs.enabled(a,AppPrefs.KEYS[i]));card.addView(options[i]);
       }DesignUi.addCard(preferences,card);
     }
-    DesignUi.note(preferences,"后台回复检测由应用设置统一控制；关闭检测时不会发出回复完成提醒。");
     DesignUi.action(preferences,"下载位置与存储",false,()->storage(a));
 
     java.util.function.Supplier<JSONObject> read=()->{

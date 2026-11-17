@@ -36,18 +36,19 @@ function fixture(extra='',install=true){
   if(install)call('web-transcript');
   const args={kind:'web',confirmed:true,userKey:'id:u1',prompt:'bound prompt',confirmedUrl:w.location.href,expectedUrl:w.location.href,export:true,lightObservation:true,incrementalObservation:install};
   const inspect=()=>call('web-inspect');
-  const poll=()=>call('poll',args);
+  // Both historical and current assets run the retained page-readiness workload.
+  const sample=()=>call('web-inspect');
   const settle=async()=>{await Promise.resolve();await Promise.resolve();};
   const reset=()=>{for(const key of Object.keys(counters))counters[key]=0;};
   const stop=()=>{const node=w.document.createElement('button');node.setAttribute('aria-label','Stop');w.document.body.append(node);return node;};
   const noEffects=()=>sends===0&&fetches===0&&w.document.cookie==='session=preserved'&&w.document.querySelector('textarea').value==='keep unsent draft';
-  return {w,call,args,inspect,poll,settle,reset,counters,stop,noEffects,close:()=>w.close()};
+  return {w,call,args,inspect,sample,settle,reset,counters,stop,noEffects,close:()=>w.close()};
 }
-const summary=row=>({busy:row.busy,error:row.error||'',terminal:!!row.terminal,submitted:!!row.submitted,thinking:!!row.thinking,searching:!!row.searching,hasReply:!!row.hasReply,contentObserved:row.contentObserved!==false});
+const summary=row=>({busy:row.busy,error:!!row.error,hasMessages:row.hasMessages,composer:row.composer});
 async function workload(){
   const f=fixture(Array.from({length:600},(_,i)=>'<button aria-label="'+(i%2?'Copy response':'Rename chat')+'">historical action '+i+'</button>').join(''));
   try{
-    f.stop();await f.settle();f.inspect();f.poll();f.reset();
+    f.stop();await f.settle();f.inspect();f.sample();f.reset();
     const before=f.w.__pocketWebPerformance.stats(),outputs=[];
     for(let index=0;index<40;index++){
       const paragraph=f.w.document.getElementById('answer');
@@ -55,10 +56,10 @@ async function workload(){
       else {const span=f.w.document.createElement('span');span.textContent=' streamed';paragraph.append(span);}
       f.w.document.dispatchEvent(new f.w.Event(index%2?'scroll':'input'));
       await f.settle();
-      outputs.push(summary(f.inspect()),summary(f.poll()));
+      outputs.push(summary(f.inspect()),summary(f.sample()));
     }
     const after=f.w.__pocketWebPerformance.stats();
-    check('Streaming and gestures retain exact busy/reply observation',outputs.every(row=>row.busy&&row.error===''&&(!row.submitted||!row.contentObserved)));
+    check('Streaming and gestures retain page readiness and actual busy state',outputs.every(row=>row.busy&&!row.error&&row.hasMessages&&row.composer));
     check('Read-only workload preserves the draft/cookie and never sends or fetches',f.noEffects());
     if(optimized){
       check('Forty streamed updates rebuild no page-wide control collection',after.controlListsBuilt===before.controlListsBuilt);
@@ -104,13 +105,14 @@ async function sameTaskControls(install){
     const section=f.w.document.querySelector('section');
     section.insertAdjacentHTML('beforeend','<div id="retry-context"><span>Something went wrong</span><button aria-label="Retry">Retry</button></div>');
     const retry=f.w.document.querySelector('#retry-context button');
-    let row=f.poll();check('Same-task retry insertion reports current response error',!!row.error);observations.push({name:'retry-insert',error:row.error});
-    retry.setAttribute('aria-label','Copy');row=f.poll();check('Same-task retry relabelling clears response error',row.error==='');
-    retry.removeAttribute('aria-label');retry.textContent='Try again';row=f.poll();check('Text-only retry is evaluated live',!!row.error);
-    retry.textContent='Copy';row=f.poll();check('Text-only retry mutation clears response error',row.error==='');
-    retry.textContent='Retry';f.w.document.getElementById('retry-context').firstChild.textContent='Everything is ready';row=f.poll();check('Retry context is reevaluated without control membership changes',row.error==='');
+    let row=f.sample();check('Same-task retry insertion reports current response error',!!row.error);observations.push({name:'retry-insert',hasError:!!row.error});
+    retry.setAttribute('aria-label','Copy');row=f.sample();check('Same-task retry relabelling clears response error',row.error==='');
+    retry.removeAttribute('aria-label');retry.textContent='Try again';row=f.sample();check('Text-only retry is evaluated live',!!row.error);
+    retry.textContent='Copy';row=f.sample();check('Text-only retry mutation clears response error',row.error==='');
+    retry.textContent='Retry';f.w.document.getElementById('retry-context').firstChild.textContent='Everything is ready';row=f.sample();check('Retry context is reevaluated without control membership changes',row.error==='');
     f.w.document.getElementById('retry-context').remove();
-    row=f.poll();check('Actual response completion remains immediate with current-turn actions',row.terminal&&!row.busy&&row.contentObserved!==false&&row.markdown==='original answer');
+    row=f.sample();const transcript=f.call('transcript');check('Page readiness and transcript remain available after a website error clears',!row.busy&&!row.error&&transcript.entries.some(entry=>entry.id==='id:a1'&&entry.text==='original answer'));
+    if(optimized)check('Retired result commands cannot classify a response',f.call('poll',f.args).ok===false&&f.call('latest',f.args).ok===false);
     check('Same-task control changes preserve draft/cookie and perform no page action',f.noEffects());
     return observations;
   }finally{f.close();}
@@ -129,18 +131,18 @@ async function resourcesAndDrain(){
     check('Same-task resource and upload ends remain immediately detectable',!row.busy&&!row.uploading);
     f.inspect();f.w.document.getElementById('answer').textContent='new final answer';f.inspect();
     if(!optimized)await f.settle(); // Prior source has no synchronous drain.
-    const final=f.poll();check(optimized?'Draining candidate records also invalidates final-body transcript memos':'Prior observer delivery invalidates final-body transcript memos',final.markdown==='new final answer');
+    const final=f.call('web-transcript'),finalMarkdown=final.changes.find(entry=>entry.id==='id:a1')?.text;check(optimized?'Draining candidate records also invalidates changed transcript memos':'Prior observer delivery invalidates changed transcript memos',finalMarkdown==='new final answer');
     const delta=f.call('web-transcript');check('Candidate reads retain the transcript update',delta.changes.some(entry=>entry.id==='id:a1'&&entry.text==='new final answer'));
     delete f.w.__pocketWebPerformance.controlCandidates;
     check('An already installed older helper safely falls back to live control queries',f.inspect().busy===false);
     const legacyStop=f.stop();check('The older-helper fallback observes newly inserted Stop controls',f.inspect().busy===true);legacyStop.remove();
     check('Resource/drain checks preserve draft/cookie and perform no page action',f.noEffects());
-    return {busyTransitions:[false,true,false],uploadTransitions:[false,true,false],finalMarkdown:final.markdown};
+    return {busyTransitions:[false,true,false],uploadTransitions:[false,true,false],finalMarkdown};
   }finally{f.close();}
 }
 (async()=>{
   const measured=await workload();
   const controls=await sameTaskControls(true),fallback=await sameTaskControls(false);
   const resources=await resourcesAndDrain();
-  console.log(JSON.stringify({status:'passed',passed:checks.length,checks,measured,controls,fallback,resources,scope:'Actual unmodified production assets in JSDOM with explicit innerText/geometry adapters; deterministic DOM/query counters, not elapsed time, Gecko, Android, FPS or real website measurements'},null,2));
+  console.log(JSON.stringify({contract:'browser-result-removal-v1',retiredSemantics:['reply completion classification'],status:'passed',passed:checks.length,checks,measured,controls,fallback,resources,scope:'Actual unmodified production assets in JSDOM with explicit innerText/geometry adapters; deterministic DOM/query counters, not elapsed time, Gecko, Android, FPS or real website measurements'},null,2));
 })().catch(error=>{console.error(error);process.exitCode=1;});

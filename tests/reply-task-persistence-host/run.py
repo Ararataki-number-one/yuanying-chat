@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run current task persistence with file-backed host storage and reentrant fault injection."""
+"""Historical send-result persistence fixture, retired by browser-result-removal-v1."""
 import argparse
 import hashlib
 import json
@@ -22,6 +22,8 @@ def main():
     parser.add_argument('--java-home', type=Path)
     parser.add_argument('--output', type=Path, required=True)
     args = parser.parse_args()
+    if not (PROD / "DeliveryStore.java").is_file():
+        raise SystemExit("Retired send-result feature: this historical receipt suite is not a current release gate. Run browser-navigation-lifecycle-host and background-reply-runtime-host for the replacement retirement contract; see tests/browser-result-removal-contract.md.")
     java = lambda name: str(args.java_home / 'bin' / name) if args.java_home else name
     selected = ['void delivery(', 'void completeReply(', 'void abandonWait(']
     chat = PROD / 'ChatSession.java'

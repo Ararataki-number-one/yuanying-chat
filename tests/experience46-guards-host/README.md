@@ -18,15 +18,18 @@ proof/current-route checks and the activity-policy hook. `System.currentTimeMill
 is replaced only by the declared wall-clock boundary. No Android, Gecko, real
 network proof, physical phone or webpage execution is claimed.
 
-The native trusted-intent event boundary changes `webWorkGeneration` and clears
-`resourceObservedAt`, matching a source-checked production `WebReplyObserver`
-block. `WebReplyObserver.receive` itself is not run here. The finite JavaScript
-resource protocol has separate existing JS coverage; this test does not repeat it.
+Resource busy/idle fixtures call the exact `resourceWebsiteObservation` method.
+A newer busy sequence prevents an older idle packet from acknowledging a pending
+nonce, and a later real idle packet is distinct work evidence. No synthetic
+trusted-send handler or native result task is recreated. `WebReplyObserver.receive`
+is not executed here. The finite JavaScript resource protocol has separate JS
+coverage; this host does not repeat it.
 
 Coverage includes finite nonce delivery and timeout, concurrent requests, retired
-ports/bindings/documents, old observations, trusted and file work arriving during
-a request, new idle evidence with a stale preserved pending record, disabled
-optional reply polling/capture with independent file guards retained, and network
+ports/bindings/documents, old observations, resource busy and file work arriving during
+a request, new idle evidence with a stale preserved pending record, foreground-only
+page observation with independent file guards retained (the legacy background
+option cannot restore sending/result detection), and network
 begin/adopt ownership/proof/lease checks without navigation or automatic sending.
 The identity acknowledgment hook is an explicit double that records successful
 protected-admission ordering and performs no model/task/browser-data mutation.

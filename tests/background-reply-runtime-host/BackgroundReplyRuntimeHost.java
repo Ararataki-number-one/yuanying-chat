@@ -37,7 +37,7 @@ public final class BackgroundReplyRuntimeHost {
     check("Unrelated and null broadcasts do not trigger authority reads",AppSettings.reads==before);
     AppSettings.authority=new BackgroundReplyPolicy.Snapshot(true,true,5,0);
     receiver.receiver.onReceive(root,new Intent(BackgroundReplyPolicy.action(root)).putExtra("revision",Long.MAX_VALUE));
-    check("A broadcast revision is only a hint and the authority grants enable",matches(true,5,0)&&noCreation(root));
+    check("A stale enable broadcast is migrated off rather than granting detection",matches(false,6,0)&&!AppSettings.authority.enabled&&noCreation(root));
     AppSettings.authority=new BackgroundReplyPolicy.Snapshot(true,false,6,0);
     receiver.receiver.onReceive(root,new Intent(BackgroundReplyPolicy.action(root)).putExtra("revision",0));
     check("A lower broadcast hint still reloads the newer disabled authority",matches(false,6,0));
@@ -49,40 +49,41 @@ public final class BackgroundReplyRuntimeHost {
 
   static void disable()throws Exception {
     Application root=setup(4,true,10,0);ChatSession session=new ChatSession();ChatSession.instance=session;
-    BackgroundReplyPolicy.Snapshot value=BackgroundReplyPolicy.setEnabled(root,false);
+    BackgroundReplyPolicy.policyChanged(root,10);
     Set<Class<?>> targets=new HashSet<>();for(Intent intent:root.stopped)targets.add(intent.target);
-    check("Global disable targets each of the eight ChatServices exactly once",root.stopped.size()==8&&targets.size()==8&&targets.equals(new HashSet<>(Arrays.asList(Profiles.SERVICES))));
-    check("Global disable never targets the independent proxy transport service",root.stopped.stream().noneMatch(intent->intent.target==NetworkTransportService.class));
-    check("Local disable reaches the ChatService release hook for the actual owner",ChatService.calls.size()==1&&ChatService.calls.get(0).slot==4&&!ChatService.calls.get(0).value.enabled&&!ChatService.wakeHeld&&!ChatService.running&&ChatService.releases==1);
-    check("An existing same process session receives the disabled snapshot",session.changes.size()==1&&session.changes.get(0).known&&!session.changes.get(0).enabled&&session.changes.get(0).revision==11);
-    check("Global disable clears reply cards and creates no browser or provider",QuietNotifications.clears>=1&&noCreation(root));
-    Intent hint=root.broadcasts.size()==1?root.broadcasts.get(0):null;
-    check("Policy invalidation is explicitly limited to the application package",hint!=null&&root.getPackageName().equals(hint.packageName)&&BackgroundReplyPolicy.action(root).equals(hint.action)&&hint.getLongExtra("revision",0)==value.revision&&value.revision==11);
-    root=setup(0,true,1,0);BackgroundReplyPolicy.setEnabled(root,false);
-    check("Disabling a profile without a session uses peek without constructing one",ChatSession.peeks==1&&ChatSession.instance==null&&noCreation(root));
-    root=setup(0,true,1,0);session=new ChatSession();session.deleted=true;ChatSession.instance=session;BackgroundReplyPolicy.setEnabled(root,false);
-    check("A retired session is not reactivated by policy reconciliation",session.changes.isEmpty()&&noCreation(root));
-    root=setup(2,false,3,0);BackgroundReplyPolicy.setEnabled(root,true);
-    check("Explicit enable does not stop reply or proxy services",root.stopped.isEmpty()&&matches(true,4,0)&&noCreation(root));
+    check("Retirement targets all eight legacy ChatServices without starting any",root.stopped.size()==8&&targets.size()==8&&targets.equals(new HashSet<>(Arrays.asList(Profiles.SERVICES)))&&noCreation(root));
+    check("Retirement preserves the independent proxy transport service",root.stopped.stream().noneMatch(intent->intent.target==NetworkTransportService.class));
+    check("The current owner releases the legacy service and wakelock",ChatService.calls.size()==1&&ChatService.calls.get(0).slot==4&&!ChatService.calls.get(0).value.enabled&&!ChatService.wakeHeld&&!ChatService.running&&ChatService.releases==1);
+    check("An existing session receives only disabled policy",session.changes.size()==1&&session.changes.get(0).known&&!session.changes.get(0).enabled&&session.changes.get(0).revision==11);
+    check("Retirement persists disabled authority and clears only legacy reply notices",!AppSettings.authority.enabled&&QuietNotifications.clears>=1&&root.broadcasts.isEmpty());
+    root=setup(0,true,1,0);BackgroundReplyPolicy.policyChanged(root,1);
+    check("A profile without a session stays cold during retirement",ChatSession.peeks==1&&ChatSession.instance==null&&noCreation(root));
+    root=setup(0,true,1,0);session=new ChatSession();session.deleted=true;ChatSession.instance=session;BackgroundReplyPolicy.policyChanged(root,1);
+    check("A retired session is not reactivated by cleanup",session.changes.isEmpty()&&noCreation(root));
+    boolean setter=false;for(java.lang.reflect.Method method:BackgroundReplyPolicy.class.getDeclaredMethods())setter|=method.getName().equals("setEnabled");
+    check("No runtime switch can enable removed reply detection",!setter);
   }
 
   static void unknownAndRevisions()throws Exception {
-    Application root=setup(1,true,20,0);BackgroundReplyPolicy.refresh(root);check("A current authoritative enable is cached",matches(true,20,0));
-    AppSettings.authority=new BackgroundReplyPolicy.Snapshot(true,false,21,0);BackgroundReplyPolicy.refresh(root);
-    check("A newer authoritative disable advances the cached revision",matches(false,21,0));
-    AppSettings.failReads=AppSettings.failInitialization=true;ChatSession session=new ChatSession();ChatSession.instance=session;BackgroundReplyPolicy.policyChanged(root,Long.MAX_VALUE);
-    check("Unavailable authority closes cached admission despite an enabling hint",!BackgroundReplyPolicy.snapshot().known&&!BackgroundReplyPolicy.enabledCached());
-    check("Unknown authority reaches local service and existing session as disabled",!ChatService.calls.isEmpty()&&!ChatService.calls.get(ChatService.calls.size()-1).value.enabled&&!ChatService.wakeHeld&&!session.changes.isEmpty()&&!session.changes.get(session.changes.size()-1).enabled&&QuietNotifications.clears>0&&noCreation(root));
-    AppSettings.failReads=AppSettings.failInitialization=false;AppSettings.authority=new BackgroundReplyPolicy.Snapshot(true,true,20,0);BackgroundReplyPolicy.refresh(root);
-    check("A stale enable cannot return after authority failure erased the current snapshot",!BackgroundReplyPolicy.snapshot().known&&!BackgroundReplyPolicy.enabledCached());
+    Application root=setup(1,true,20,0);BackgroundReplyPolicy.refresh(root);
+    check("An old enabled authority is upgraded to disabled",matches(false,21,0)&&!AppSettings.authority.enabled);
     AppSettings.authority=new BackgroundReplyPolicy.Snapshot(true,false,22,0);BackgroundReplyPolicy.refresh(root);
-    check("A fresh disabled revision restores known admission after an authority failure",matches(false,22,0));
-    AppSettings.authority=new BackgroundReplyPolicy.Snapshot(true,true,23,0);BackgroundReplyPolicy.refresh(root);
-    check("Only a current newer authority can reenable after failure",matches(true,23,0));
+    check("A newer disabled authority advances the cache revision",matches(false,22,0));
+    AppSettings.failReads=AppSettings.failInitialization=true;ChatSession session=new ChatSession();ChatSession.instance=session;BackgroundReplyPolicy.policyChanged(root,Long.MAX_VALUE);
+    check("Unavailable authority cannot revive detection from an enabling hint",!BackgroundReplyPolicy.snapshot().known&&!BackgroundReplyPolicy.enabledCached());
+    check("Unavailable authority still releases local legacy work",!ChatService.calls.isEmpty()&&!ChatService.calls.get(ChatService.calls.size()-1).value.enabled&&!ChatService.wakeHeld&&!session.changes.isEmpty()&&!session.changes.get(session.changes.size()-1).enabled&&QuietNotifications.clears>0&&noCreation(root));
+    AppSettings.failReads=AppSettings.failInitialization=false;AppSettings.authority=new BackgroundReplyPolicy.Snapshot(true,true,20,0);BackgroundReplyPolicy.refresh(root);
+    check("An older enabled revision cannot roll back the retired cache",!BackgroundReplyPolicy.snapshot().known&&!BackgroundReplyPolicy.enabledCached());
+    AppSettings.authority=new BackgroundReplyPolicy.Snapshot(true,false,23,0);BackgroundReplyPolicy.refresh(root);
+    check("A fresh disabled revision restores known state after authority failure",matches(false,23,0));
+    AppSettings.authority=new BackgroundReplyPolicy.Snapshot(true,true,24,0);BackgroundReplyPolicy.refresh(root);
+    check("Even a newer legacy enable is migrated off",matches(false,25,0)&&!AppSettings.authority.enabled);
     root=setup(0,true,1,0);AppSettings.authority=BackgroundReplyPolicy.Snapshot.unknown();BackgroundReplyPolicy.policyChanged(root,999);
-    check("Unknown initialization cannot be interpreted as an enable",!BackgroundReplyPolicy.enabledCached()&&!BackgroundReplyPolicy.snapshot().known&&AppSettings.initializations>0&&noCreation(root));
-    root=setup(0,true,1,0);AppSettings.failSet=AppSettings.failReads=AppSettings.failInitialization=true;boolean failed=false;try{BackgroundReplyPolicy.setEnabled(root,true);}catch(IllegalStateException expected){failed=true;}
-    check("A failed save with unavailable authority propagates failure while local capture stays off",failed&&!BackgroundReplyPolicy.enabledCached()&&!ChatService.wakeHeld&&root.broadcasts.isEmpty()&&noCreation(root));
+    check("Unknown initialization cannot reactivate removed detection",!BackgroundReplyPolicy.enabledCached()&&!BackgroundReplyPolicy.snapshot().known&&AppSettings.initializations>0&&noCreation(root));
+    root=setup(0,true,1,0);AppSettings.failSet=true;BackgroundReplyPolicy.policyChanged(root,1);
+    check("Failed durable retirement never reactivates detection",!BackgroundReplyPolicy.enabledCached()&&!ChatService.wakeHeld&&root.broadcasts.isEmpty()&&noCreation(root));
+    AppSettings.failSet=false;BackgroundReplyPolicy.refresh(root);
+    check("A later retirement retry disables the durable old setting",matches(false,2,0)&&!AppSettings.authority.enabled);
   }
 
   static void migration()throws Exception {
@@ -104,7 +105,7 @@ public final class BackgroundReplyRuntimeHost {
     root.profiles[3].preferences.commitSucceeds=true;BackgroundReplyPolicy.migrateLegacyPreferences(root);
     check("A later successful owner commit clears only its compatibility bit",AppSettings.acknowledged.equals(Collections.singletonList(3))&&AppSettings.authority.legacyPendingMask==247&&noCreation(root));
     root=setup(0,true,9,0);BackgroundReplyPolicy.migrateLegacyPreferences(root);
-    check("A completed compatibility mask causes no preference writes or policy reset",AppSettings.acknowledged.isEmpty()&&matches(true,9,0)&&root.profiles[0].preferences.edits==0);
+    check("An enabled compatibility snapshot never restores runtime admission",AppSettings.acknowledged.isEmpty()&&matches(false,9,0)&&root.profiles[0].preferences.edits==0);
     root=setup(0,false,1,255);Build.VERSION.SDK_INT=27;Application.processName="unavailable-on-old-api";root.manager.processes.clear();root.manager.processes.add(new ActivityManager.RunningAppProcessInfo(root.getPackageName(),android.os.Process.myPid(),android.os.Process.myUid()));BackgroundReplyPolicy.bootstrap(root);
     check("Legacy Android bootstrap resolves its owner from the matching process PID",AppSettings.initializations==1&&AppSettings.authority.legacyPendingMask==0&&ProfileCatalog.db.balanced());
   }
@@ -131,6 +132,6 @@ public final class BackgroundReplyRuntimeHost {
   public static void main(String[] args)throws Exception {
     receiver();disable();unknownAndRevisions();migration();queuedHook();failedStartupGate();
     int passed=0;for(int i=0;i<checks.length();i++)if(checks.optJSONObject(i).optBoolean("pass"))passed++;
-    System.out.println(J.obj("status",passed==checks.length()?"passed":"failed","passed",passed,"total",checks.length(),"checks",checks));if(passed!=checks.length())System.exit(1);
+    System.out.println(J.obj("contract","browser-result-removal-v1","status",passed==checks.length()?"passed":"failed","passed",passed,"total",checks.length(),"checks",checks));if(passed!=checks.length())System.exit(1);
   }
 }

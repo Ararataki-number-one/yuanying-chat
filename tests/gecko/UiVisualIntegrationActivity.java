@@ -56,6 +56,7 @@ public final class UiVisualIntegrationActivity extends Activity {
     }
     if("environments".equals(action)){startActivity(new Intent(this,WindowHomeActivity.class));finish();return;}
     if("browser".equals(action)||"preferences".equals(action)||"chat".equals(action)){
+      if("chat".equals(action))new BrowserHeaderVisualEvidence(this,getIntent().getStringExtra("visualHeaderNonce"));
       if("browser".equals(action))Profiles.rename(this,0,"长文阅读与文件整理和日常会话的完整环境名称测试");
       Intent target=new Intent(this,MainActivity.class).putExtra("openWindowAction","chat".equals(action)?"native-smoke":"edit");
       startActivity(target);finish();return;

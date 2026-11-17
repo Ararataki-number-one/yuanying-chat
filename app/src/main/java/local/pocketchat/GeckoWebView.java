@@ -825,8 +825,20 @@ class GeckoWebView extends FrameLayout {
       @Override public void onCanGoBack(GeckoSession s,boolean value){if(destroyed||!locations.containsKey(s))return;backStates.put(s,value);if(s==current&&canBack!=value){canBack=value;owner.changed();}}
       @Override public void onCanGoForward(GeckoSession s,boolean value){if(destroyed||!locations.containsKey(s))return;forwardStates.put(s,value);if(s==current&&canForward!=value){canForward=value;owner.changed();}}
       @Override public GeckoResult<GeckoSession> onNewSession(GeckoSession s,String target){
-        if(destroyed||failed||addonDisabled||crashed.contains(s)||s!=current||popups.size()>=8||!protectionAllowsNetwork()||!identityRequestAllowed(target)||!owner.guard.allowed()||!(target==null||target.isEmpty()||"about:blank".equals(target)||allowedUrl(target)))return GeckoResult.fromValue(null);
-        if(!owner.timeZone.popupAllowed()){blockedPopups.offer(s,target);return GeckoResult.fromValue(null);}
+        if(destroyed||failed||addonDisabled||crashed.contains(s)||s!=current||!protectionAllowsNetwork()||!identityRequestAllowed(target)||!owner.guard.allowed())return GeckoResult.fromValue(null);
+        // A new window cannot own the originating document's temporary Blob.
+        // Save it through the existing document instead of creating a blank
+        // popup or bypassing the independent-timezone popup restriction.
+        if(target!=null&&target.startsWith("blob:")){
+          if(!downloadBlobPopup(s,target))owner.setStatus("临时文件无法读取，请在生成文件的原网页重新下载");
+          return GeckoResult.fromValue(null);
+        }
+        if(popups.size()>=8||!(target==null||target.isEmpty()||"about:blank".equals(target)||allowedUrl(target)))return GeckoResult.fromValue(null);
+        if(!owner.timeZone.popupAllowed()){
+          if(target==null||target.isEmpty()||"about:blank".equals(target))owner.setStatus("此新窗口尚不能打开，请使用原网页中的直接下载链接");
+          else blockedPopups.offer(s,target);
+          return GeckoResult.fromValue(null);
+        }
         ChromiumRouteLease.Handle lease=null;if(GeckoNavigationPolicy.publicWeb(target)&&!MainActivity.chatUrl(target)){lease=ChromiumRouteLease.acquireSurface();if(lease==null){owner.setStatus("线路正在更新，请稍后重试打开链接");return GeckoResult.fromValue(null);}}
         GeckoSession popup;try{popup=newSession();}catch(RuntimeException unavailable){if(lease!=null)lease.close();owner.setStatus("新网页暂时无法打开，请稍后重试");return GeckoResult.fromValue(null);}popups.add(popup);if(lease!=null){generalSessions.add(popup);generalRoutes.put(popup,lease);}
         locations.put(popup,target==null?"":target);
@@ -992,6 +1004,16 @@ class GeckoWebView extends FrameLayout {
   JSONObject appearanceReport(){return appearanceSync.snapshot(current==null?null:ports.get(current));}
   protected boolean appearancePage(String target){return MainActivity.chatUrl(target);}
   protected boolean allowedUrl(String target){return target!=null&&BrowserNetworkGuard.publicWeb(Uri.parse(target));}
+  boolean downloadBlobPopup(GeckoSession source,String target){
+    DownloadListener receiver=download;
+    if(receiver==null||destroyed||failed||addonDisabled||owner.deleted||!owner.uiVisible||source==null||source!=current||!source.isOpen()
+        ||crashed.contains(source)||!usable.contains(source)||pendingLoads.contains(source)||owner.navigating||!owner.navigationDispatched
+        ||!Objects.equals(locations.get(source),getUrl())||!GeckoDownloadNavigation.sameOriginBlob(getUrl(),target)
+        ||ports.get(source)==null||staleAppearanceConnections.contains(ports.get(source))||!timeZoneAllows(source)
+        ||!identityRequestAllowed(target)||!protectionAllowsNetwork()||!owner.guard.allowed()||!generalRouteReady())return false;
+    receiver.onDownloadStart(target,metadata.getUserAgentString(),"","application/octet-stream",-1);
+    return true;
+  }
   boolean readingPage(String target){return BrowserReadingPolicy.chat(target)&&!LoginPagePolicy.login(target);}
   static String header(WebResponse response,String name){for(Map.Entry<String,String> entry:response.headers.entrySet())if(name.equalsIgnoreCase(entry.getKey()))return entry.getValue();return "";}
   void readCookies(String target,ValueCallback<String> callback){
@@ -1022,7 +1044,7 @@ class GeckoWebView extends FrameLayout {
     retireTimeZone(session);
     crashed.add(session);pendingLoads.remove(session);painted.remove(session);usable.remove(session);WebExtension.Port port=ports.remove(session);if(port!=null){callbacks.cancel(port);retireAppearance(port);}
     forgetGeneralRoute(session);
-    if(navigationCurrent(session,stoppedNavigation)){cancelZoom();failed=true;owner.webObserver.suspendUnconfirmed("网页进程已关闭，原发送结果需要核对");
+    if(navigationCurrent(session,stoppedNavigation)){cancelZoom();failed=true;
       if(!navigationCurrent(session,stoppedNavigation))return;
       if(owner.uiVisible&&owner.guard.allowed()&&canRecoverAutomatically()){
         owner.manualAttention=false;
