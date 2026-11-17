@@ -37,12 +37,15 @@ class MetadataHost {
   h.imageLabel="";h.sourceId="";h.name="old.bin";guessed="new.docx";
   h.responseMetadata("https://files.example/signed","attachment; filename=new.docx",null);
   check(h.name.equals("new.docx")&&h.mime.endsWith("wordprocessingml.document"),"disposition with no MIME resolves via filename");
-  System.out.println("7 metadata cases passed");
+  h.name="文件";h.mime="application/octet-stream";guessed="download.bin";
+  h.responseMetadata("https://files.example/download.bin","","application/octet-stream");
+  check(h.name.equals("download.bin"),"generic native response still obtains its initial filename");
+  System.out.println("8 metadata cases passed");
  }
 }'''.replace('__METHOD__',method)
 with tempfile.TemporaryDirectory() as folder:
  path=pathlib.Path(folder);(path/'MetadataHost.java').write_text(host)
  subprocess.run([str(a.java_home/'bin/javac'),str(path/'MetadataHost.java')],check=True)
  completed=subprocess.run([str(a.java_home/'bin/java'),'-cp',str(path),'MetadataHost'],check=True,text=True,capture_output=True)
-report=dict(status='passed',cases=7,methodSha256=hashlib.sha256(method.encode()).hexdigest(),scope=__doc__,actualAndroidExecution=False,actualDownloadBytesVerified=False,output=completed.stdout.strip())
+report=dict(status='passed',cases=8,methodSha256=hashlib.sha256(method.encode()).hexdigest(),scope=__doc__,actualAndroidExecution=False,actualDownloadBytesVerified=False,output=completed.stdout.strip())
 a.output.parent.mkdir(parents=True,exist_ok=True);a.output.write_text(json.dumps(report,indent=2)+'\n');print(json.dumps(report))
