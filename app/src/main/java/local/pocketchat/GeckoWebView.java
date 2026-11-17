@@ -1088,6 +1088,49 @@ class GeckoWebView extends FrameLayout {
     return navigationCurrent(previous,navigation)&&target!=null&&locations.containsKey(target)
         &&(!wasOpen||target.isOpen());
   }
+  /** A UI selection holds real session identities; it cannot create or reopen a page. */
+  static final class BrowserWindow {
+    final GeckoWebView owner;final GeckoRuntime runtime;final GeckoSession page,source;final long navigation;
+    final String url;final boolean primary,selected;
+    BrowserWindow(GeckoWebView owner,GeckoSession page){
+      this.owner=owner;runtime=owner.runtime;this.page=page;source=owner.current;navigation=owner.owner.navigationEpoch;
+      url=owner.locations.getOrDefault(page,"");primary=page==owner.primary;selected=page==owner.current&&!owner.hasExitIpPage();
+    }
+  }
+  private boolean browserWindowOpen(GeckoSession page){
+    return !destroyed&&!owner.deleted&&ready&&runtime!=null&&surface!=null&&page!=null&&page.isOpen()
+      &&locations.containsKey(page)&&!crashed.contains(page)&&(page==primary||popups.contains(page));
+  }
+  List<BrowserWindow> browserWindows(){
+    List<BrowserWindow> windows=new ArrayList<>();
+    if(browserWindowOpen(primary))windows.add(new BrowserWindow(this,primary));
+    for(GeckoSession popup:new ArrayList<>(popups))if(popup!=primary&&browserWindowOpen(popup))windows.add(new BrowserWindow(this,popup));
+    return windows;
+  }
+  private boolean browserWindowOwned(BrowserWindow window,MainActivity activity){
+    return window!=null&&window.owner==this&&window.runtime==runtime&&GeckoAddressUi.available(activity)
+      &&activity.remote==this&&activity.session==owner&&displayContext.getBaseContext()==activity&&browserWindowOpen(window.page);
+  }
+  boolean selectBrowserWindow(BrowserWindow window,MainActivity activity){
+    if(!browserWindowOwned(window,activity)||window.source!=current||window.navigation!=owner.navigationEpoch)return false;
+    if(window.page==current){closeExitIpPage();return browserWindowOwned(window,activity)&&navigationCurrent(window.page,window.navigation);}
+    GeckoSession target=window.page;long before=owner.navigationEpoch;
+    // Retained pages keep their existing documents and loads. The original
+    // activation path retires callbacks and rechecks ownership after callbacks.
+    activate(target);
+    if(!navigationCurrent(target,before)||!browserWindowOwned(window,activity))return false;
+    String selectedUrl=url;owner.pageError="";
+    long navigation=owner.beginNavigation(selectedUrl,"正在切换已打开的网页…");
+    if(!navigationCurrent(target,navigation)||!browserWindowOwned(window,activity))return false;
+    owner.resourceObserverConnected(ports.get(target));
+    if(client!=null&&painted.contains(target)){
+      WebViewClient receiver=client;receiver.onPageCommitVisible(null,selectedUrl);
+      if(navigationCurrent(target,navigation)&&client==receiver&&browserWindowOwned(window,activity))receiver.onPageFinished(null,selectedUrl);
+    }else if(selectedUrl.isEmpty()||"about:blank".equals(selectedUrl))owner.cancelBrowserNavigation(navigation);
+    if(!navigationCurrent(target,navigation)||!browserWindowOwned(window,activity))return false;
+    owner.changed();
+    return navigationCurrent(target,navigation)&&browserWindowOwned(window,activity);
+  }
   private void activate(GeckoSession session){
     GeckoSession previous=current;
     long navigation=owner.navigationEpoch;

@@ -30,8 +30,8 @@ from profile_event_journal_discovery_test import discovery_class
 class GlassDocumentEventDiscoveryTest(unittest.TestCase):
     """Exercise the actual glass consumer with explicit synthetic native bytes."""
 
-    def observer(self, out, *, journal_changes=None, log=None, payload=None, pending=False, delays=None):
-        result = dict(command='ready', document='controlled', applicationAcceptance=False)
+    def observer(self, out, *, journal_changes=None, log=None, payload=None, pending=False, delays=None, contract=4):
+        result = dict(command='ready', document='controlled', navigationContract=contract, applicationAcceptance=False)
         receipt, raw = event_controls.packet(
             event_controls.event('collapseSnapshot', result), fixtureAction='chromeCollapse')
         transfer = event_controls.transfer
@@ -94,6 +94,15 @@ class GlassDocumentEventDiscoveryTest(unittest.TestCase):
             self.assertEqual(len(reader.records), 1)
             self.assertFalse(any(call[:3] == ('shell', 'am', 'broadcast') for call in self.calls))
             self.assertTrue((Path(directory) / 'controlled-event-receipts.json').is_file())
+
+    def test_valid_native_transport_cannot_substitute_a_previous_navigation_contract(self):
+        for contract in (None, 2, 3, '4', True):
+            with self.subTest(contract=contract), tempfile.TemporaryDirectory() as directory:
+                observer, reader, _ = self.observer(Path(directory), contract=contract)
+                with self.assertRaisesRegex(ValueError, 'navigation contract 4'):
+                    observer(self.case, 'ready', request=False)
+                self.assertNotIn('documentObservations', self.case)
+                self.assertEqual(len(reader.records), 1, 'Keep the original valid native payload even when its contract is rejected')
 
     def test_malformed_pending_publication_never_claims_ready(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -525,8 +534,8 @@ class GlassLoadingActionsGeometryTest(unittest.TestCase):
 
         frame = view(root, 'FrameLayout', (0, 0, capture.WIDTH, capture.HEIGHT))
         header = view(frame, 'LinearLayout', (0, 72, 2676, 276))
-        view(header, 'TextView', capsule, clickable='true', enabled='true',
-             **{'content-desc': '当前环境：日常会话，点按输入网址，长按切换环境'})
+        view(header, 'Button', capsule, clickable='true', enabled='true',
+             **{'content-desc': '当前环境：日常会话，点按切换环境', 'long-clickable': 'false'})
         loading = view(frame, 'LinearLayout', cover, clickable='true')
         overflow = view(loading, 'ScrollView', scroll, scrollable='true')
         content = view(overflow, 'LinearLayout', (636, 324, 2040, 840))
@@ -538,7 +547,7 @@ class GlassLoadingActionsGeometryTest(unittest.TestCase):
         row = view(content, 'LinearLayout', row_box)
         for label, box in actions:
             view(row, 'Button', box, text=label, clickable='true', enabled='true')
-        view(content, 'TextView', (720, 810, 1956, 840), text='点按顶部输入网址，长按切换环境')
+        view(content, 'TextView', (720, 810, 1956, 840), text='点按底部网址栏输入网址，点按顶部切换环境')
         for label, box in zip(capture.LABELS, nav):
             view(frame, 'Button', box, text=label, clickable='true', enabled='true', selected='false')
         return ET.tostring(root, encoding='unicode')
@@ -1398,7 +1407,7 @@ class GlassRendererAttributionTest(unittest.TestCase):
                 rendererClass='local.pocketchat.GlassLensRenderer' if present else '',agslReady=present,
                 nativeBackdropRecorded=present and recorded,hadBackdrop=present,
                 lastSourcePresent=present,lastSourceCurrent=present))
-        return dict(schema=1,navigationContract=3,deviceApi=api,pid=4321,mainThread=True,
+        return dict(schema=1,navigationContract=4,deviceApi=api,pid=4321,mainThread=True,
             activityClass='local.pocketchat.CompactChromeIntegrationActivity',activityRef=1234,docks=rows)
 
     def observe(self,raw,before=None,after=None,api=35):
@@ -1431,6 +1440,22 @@ class GlassRendererAttributionTest(unittest.TestCase):
         value=self.observe(self.log())
         self.assertTrue(value['agslReady']);self.assertTrue(value['nativeBackdropRecorded'])
         self.assertTrue(value['sceneRenderers']['verified'])
+        self.assertEqual(value['sceneRenderers']['navigationContract'], 4)
+
+    def test_historical_renderer_readers_do_not_authorize_current_capture(self):
+        for contract in (2, 3):
+            before = self.native()
+            before['navigationContract'] = contract
+            if contract == 2:
+                conversation = dict(before['docks'][0], role='conversation', dockRef=101,
+                                    drawableRef=201, rendererRef=301)
+                before['docks'].insert(0, conversation)
+            after = copy.deepcopy(before)
+            observed = validation.verify_scene_renderers(before, after, 35, ['4321'])
+            self.assertTrue(observed['verified'])
+            self.assertEqual(observed['navigationContract'], contract)
+            with self.subTest(contract=contract), self.assertRaises(ValueError):
+                self.observe(self.log(), before, after)
 
     def test_late_old_same_pid_logs_cannot_replace_unrendered_current_material(self):
         before=self.native(recorded=False);after=self.native(recorded=False)
@@ -1519,6 +1544,7 @@ public class RendererHost {
  static void require(boolean value,String message){if(!value)throw new AssertionError(message);}
  public static void main(String[] args)throws Exception {
   RendererHost host=new RendererHost();JSONObject report=host.glassRendererObservation();
+  require(report.getInt("navigationContract")==4,"current native navigation contract");
   require(report.getBoolean("mainThread"),"actual main thread boundary");
   require(report.getString("activityClass").equals("local.pocketchat.CompactChromeIntegrationActivity"),"actual activity class");
   JSONArray docks=report.getJSONArray("docks");require(docks.length()==1,"the actual workspace dock; browser bar is not a dock");

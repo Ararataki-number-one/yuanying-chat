@@ -25,7 +25,7 @@ public class MainActivity extends ThemedActivity {
   // These references remain null; recovery reads data without creating editors.
   WebView reader; EditText input; Button send; LinearLayout composer;
   TextView nativeTab,webTab;
-  DesignChrome designChrome;GeckoAddressUi geckoAddress; AppHub hub; ChatSession session;EnvironmentOverviewUi environmentOverview;BrowserStartupGate browserStartup;
+  DesignChrome designChrome;GeckoAddressUi geckoAddress;BrowserToolsUi toolsPanel; AppHub hub; ChatSession session;EnvironmentOverviewUi environmentOverview;BrowserStartupGate browserStartup;
   UiFrameScheduler sessionUi;boolean sessionStatusDirty=true;
   final ChatSession.Observer sessionObserver=()->requestSessionUi();
   SharedPreferences prefs; JSONObject pending; JSONArray entries=new JSONArray();
@@ -178,6 +178,7 @@ public class MainActivity extends ThemedActivity {
   void applySession(){
     if(session==null||destroyed)return;syncSessionReferences();
     if(geckoAddress!=null)geckoAddress.refresh();
+    if(toolsPanel!=null)toolsPanel.navigationState(remote.canGoBack(),GeckoAddressUi.canForward(this),session.navigating);
     updateReadingLayout();
     if(sessionStatusDirty){sessionStatusDirty=false;status(session.status);}NetworkMetricsUi.update(this);if(loading!=null)loading.update();if(chatDownloadProgress!=null)chatDownloadProgress.update();
   }
@@ -185,36 +186,37 @@ public class MainActivity extends ThemedActivity {
   void requestSessionUi(){if(destroyed)return;sessionStatusDirty=true;requestPresentationUi();}
   void requestPresentationUi(){if(destroyed)return;syncSessionReferences();if(sessionUi!=null)sessionUi.request();else applySession();}
   TextView label(String text,int size,int color){TextView v=new TextView(this);v.setText(text);v.setTextSize(size);v.setTextColor(AppAppearance.text(color));return v;}
+  void windowsSheet(){GeckoWindowsUi.show(this);}
+  void toolsSheet(){
+    if(!GeckoAddressUi.available(this))return;
+    BrowserToolsUi tools=new BrowserToolsUi(this,remote.getUrl());toolsPanel=tools;
+    tools.panel.setOnDismissListener(ignored->{if(toolsPanel==tools)toolsPanel=null;});
+    tools.navigation(remote.canGoBack(),()->browserHistory(-1),GeckoAddressUi.canForward(this),()->browserHistory(1),session.navigating,this::browserReloadOrStop);
+    tools.action("clipboard","复制当前网址",()->{String url=remote.getUrl();if(url==null||url.isEmpty())return;((ClipboardManager)getSystemService(CLIPBOARD_SERVICE)).setPrimaryClip(ClipData.newPlainText("网址",url));Toast.makeText(this,"已复制网址",Toast.LENGTH_SHORT).show();});
+    tools.action("book",focusReading?"退出专注阅读":"进入专注阅读",()->setFocusReading(!focusReading));
+    tools.action("browser","网页显示方式",()->EnvironmentEditorUi.editTab(this,EnvironmentEditorUi.BROWSER));
+    tools.action("shield","站点权限",()->SitePermissionsUi.show(this));
+    if(session.privacy.desktop&&BrowserReadingPolicy.chat(remote.getUrl()))tools.action("search","网页缩放",()->BrowserReadingUi.show(this));
+    if(session.websiteConnectionIssue||session.replyStalled||!session.pageError.isEmpty())tools.action("refresh","恢复网页连接",()->ReplyState.websiteConnection(this));
+    if(LoginPagePolicy.google(remote.getUrl()))tools.action("info","登录帮助",()->LoginHelpUi.show(this));
+    tools.show();
+  }
   void moreSheet(){
     ReferenceUi.Modal d=new ReferenceUi.Modal(this,"浏览器菜单").asSheet();
     designChrome.addMenuStatus(d);
-    Button forward=ReferenceUi.menuAction(d,"前进",()->{d.dismiss();browserHistory(1);});
-    forward.setEnabled(GeckoAddressUi.canForward(this));
-    // Keep the common browser and workspace actions within a short scroll,
-    // including landscape sheets with only a few visible rows.
+    // Environment and application management stay separate from current-page tools.
     option(d,"下载管理",()->hub.select(AppHub.DOWNLOADS));
-    option(d,focusReading?"退出专注阅读":"进入专注阅读",()->setFocusReading(!focusReading));
-    option(d,"快速切换环境",()->EnvironmentSwitcherUi.show(this));
     option(d,"当前环境网络",()->hub.networkFor(Profiles.slot(this)));
     option(d,"管理全部环境",()->ProfileUi.manage(this));
     option(d,"应用设置",()->hub.select(AppHub.SETTINGS));
-    option(d,"打开网址或搜索",()->GeckoAddressUi.show(this));
-    option(d,"打开主页",()->GeckoAddressUi.home(this));
-    option(d,"复制当前网址",()->{String url=remote.getUrl();if(url==null||url.isEmpty())return;((ClipboardManager)getSystemService(CLIPBOARD_SERVICE)).setPrimaryClip(ClipData.newPlainText("网址",url));Toast.makeText(this,"已复制网址",Toast.LENGTH_SHORT).show();});
-    if(remote.hasWebsitePages())option(d,"关闭网站并返回 ChatGPT",()->GeckoAddressUi.closeSites(this));
+    option(d,"编辑当前环境",()->EnvironmentEditorUi.show(this));
+    option(d,"浏览器与启动偏好",()->BrowserSettingsUi.show(this));
     option(d,"搜索操作",()->ActionSearchUi.show(this));
     option(d,"切换到 Chromium 浏览器",()->BrowserActivity.resume(this));
-    option(d,"浏览器与启动偏好",()->BrowserSettingsUi.show(this));
-    if(session.privacy.desktop&&BrowserReadingPolicy.chat(remote.getUrl()))option(d,"网页缩放",()->BrowserReadingUi.show(this));
-    option(d,"重新加载网页",this::requestReload);
-    if(session.websiteConnectionIssue||session.replyStalled||!session.pageError.isEmpty())option(d,"恢复网页连接",()->ReplyState.websiteConnection(this));
-    option(d,"编辑当前环境",()->EnvironmentEditorUi.show(this));
-    option(d,"站点权限",()->SitePermissionsUi.show(this));
     option(d,"查询当前环境 IP",()->ExitIpPageUi.open(this));
     option(d,"暂存草稿",()->copyLegacyDraft());
     option(d,"草稿救援",()->LocalDraftsUi.show(this));
     option(d,"离线会话检索",()->LocalHistoryUi.show(this));
-    if(LoginPagePolicy.google(remote.getUrl()))option(d,"登录帮助",()->LoginHelpUi.show(this));
     d.show();
   }
   boolean reloadMatches(ChatSession.ReloadTarget target){return !destroyed&&session!=null&&target.matches(session)&&remote==session.web;}
@@ -378,7 +380,7 @@ public class MainActivity extends ThemedActivity {
     if(!browserUi.current())return;
     session.foreground(false);
   }
-  @Override protected void onDestroy(){destroyed=true;if(browserUi!=null)browserUi.close();if(sessionUi!=null)sessionUi.close();if(designChrome!=null)designChrome.cancelUpdates();if(chatDownloadProgress!=null)chatDownloadProgress.close();if(geckoAddress!=null)geckoAddress.close();if(browserStartup!=null)browserStartup.close();if(environmentOverview!=null)environmentOverview.close();if(hub!=null)hub.downloadsVisible(false);if(reloadDialog!=null)reloadDialog.dismiss();if(networkDialog!=null)networkDialog.dismiss();if(downloads!=null)downloads.destroy();if(attachments!=null)attachments.destroy();if(loading!=null)loading.dismissTask();if(hub!=null)hub.networkWorkspace.close();handler.removeCallbacksAndMessages(null);if(session!=null)session.remove(sessionObserver);super.onDestroy();}
+  @Override protected void onDestroy(){destroyed=true;if(toolsPanel!=null)toolsPanel.panel.dismiss();if(browserUi!=null)browserUi.close();if(sessionUi!=null)sessionUi.close();if(designChrome!=null)designChrome.cancelUpdates();if(chatDownloadProgress!=null)chatDownloadProgress.close();if(geckoAddress!=null)geckoAddress.close();if(browserStartup!=null)browserStartup.close();if(environmentOverview!=null)environmentOverview.close();if(hub!=null)hub.downloadsVisible(false);if(reloadDialog!=null)reloadDialog.dismiss();if(networkDialog!=null)networkDialog.dismiss();if(downloads!=null)downloads.destroy();if(attachments!=null)attachments.destroy();if(loading!=null)loading.dismissTask();if(hub!=null)hub.networkWorkspace.close();handler.removeCallbacksAndMessages(null);if(session!=null)session.remove(sessionObserver);super.onDestroy();}
   @Override protected void onSaveInstanceState(Bundle state){super.onSaveInstanceState(state);state.putBoolean("focusReading",focusReading);Bundle downloadsState=new Bundle();if(hub!=null&&hub.downloadController!=null)hub.downloadController.saveState(downloadsState);else if(downloadUiState!=null)downloadsState.putAll(downloadUiState);state.putBundle("uxDownloads",downloadsState);}
   @Override public boolean dispatchKeyEvent(KeyEvent event){
     if(event.getAction()==KeyEvent.ACTION_DOWN&&event.getRepeatCount()==0){

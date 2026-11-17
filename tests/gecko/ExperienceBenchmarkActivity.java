@@ -61,9 +61,9 @@ public final class ExperienceBenchmarkActivity extends MainActivity {
       super.onCreate(state);
       // The frozen v1 runner measures removed Chat/Settings tabs and assumes a
       // capsule tap only expands chrome. Require a separately versioned runner
-      // before collecting results for the new address editor and four actions.
-      if(getIntent().getIntExtra("chromeNavigationVersion",1)!=3){
-        fail(new IllegalStateException("Chrome navigation contract v3 required: the v1 experience runner targets removed tabs. Version the menu/back/address-dialog workload before running this fixture."));return;
+      // before collecting results for the environment-only capsule and independent page tools.
+      if(getIntent().getIntExtra("chromeNavigationVersion",1)!=4){
+        fail(new IllegalStateException("Chrome navigation contract v4 required: the v1 experience runner targets removed tabs. Version the menu/back/address-dialog workload before running this fixture."));return;
       }
       scenario=new ExperienceScenarios(this,getIntent());
       if(Build.VERSION.SDK_INT>=33)registerReceiver(control,new IntentFilter(ACTION),Context.RECEIVER_EXPORTED);else registerReceiver(control,new IntentFilter(ACTION));
@@ -171,11 +171,11 @@ public final class ExperienceBenchmarkActivity extends MainActivity {
           if(!String.valueOf(initial.opt(key)).equals(String.valueOf(page.opt(key))))throw new IllegalStateException("Page preservation failed: "+key);
         JSONObject points=J.obj("environments",navigationCenter(WorkspaceNavigation.ENVIRONMENTS,1),"network",navigationCenter(WorkspaceNavigation.NETWORK,3),
           "downloads",navigationCenter(WorkspaceNavigation.DOWNLOADS,2),"reading",navigationCenter(WorkspaceNavigation.READING,-1),
-          "compact",visibleCenter(designChrome.compact),"address",visibleCenter(geckoAddress.address),"more",visibleCenter(geckoAddress.menu));
+          "compact",visibleCenter(designChrome.compact),"address",visibleCenter(geckoAddress.address),"more",visibleCenter(geckoAddress.menu),"tools",visibleCenter(geckoAddress.tools),"windows",visibleCenter(geckoAddress.windows));
         int[] p=new int[2];remote.getLocationOnScreen(p);
         points.put("swipeFrom",J.arr(p[0]+remote.getWidth()/2,p[1]+remote.getHeight()*3/4));
         points.put("swipeTo",J.arr(p[0]+remote.getWidth()/2,p[1]+remote.getHeight()/4));
-        JSONObject value=J.obj("name",name,"navigationContract",3,"navigationLayout",hub.page==AppHub.CHAT?"browser-bottom":"workspace-five","page",page,"points",points,"hubPage",hub.page,"expanded",designChrome.expanded(),"mode",AppAppearance.mode(),
+        JSONObject value=J.obj("name",name,"navigationContract",4,"navigationLayout",hub.page==AppHub.CHAT?"browser-bottom":"workspace-five","page",page,"points",points,"hubPage",hub.page,"expanded",designChrome.expanded(),"mode",AppAppearance.mode(),
           "surface",System.identityHashCode(remote.surface),"session",System.identityHashCode(remote.current),"attachedSession",System.identityHashCode(remote.surface.getSession()),
           "visibleDocument",remote.hasVisibleDocument(),"networkReady",session.networkReady,"loadingVisibility",loading.cover.getVisibility(),
           "productionObserverCount",session.observers.size(),"scope",scope());

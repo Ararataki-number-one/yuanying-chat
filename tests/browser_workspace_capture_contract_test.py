@@ -20,16 +20,19 @@ def layout(width=1236, large=False, omit_empty_slot=False):
     tree=ET.Element('hierarchy');root=node(tree,'LinearLayout',[0,0,width,2600])
     identity=node(root,'FrameLayout',[0,0,width,170])
     node(identity,'Button',[(width-720)//2,6,(width+720)//2,162],text=capture.NAME,
-         description=capture.ENVIRONMENT,clickable=True,long_clickable=True)
-    node(root,'TextView',[0,176,width,300],text=capture.WAITING)
-    if not omit_empty_slot:node(root,'FrameLayout',[0,300,width,2400])
+         description=capture.ENVIRONMENT,clickable=True,long_clickable=False)
+    network=node(root,'LinearLayout',[0,170,width,316])
+    node(network,'Button',[48,170,width-48,314],text='●  '+capture.NETWORK_SUMMARY,
+         description=capture.NETWORK,clickable=True)
+    node(root,'TextView',[0,320,width,444],text=capture.WAITING)
+    if not omit_empty_slot:node(root,'FrameLayout',[0,444,width,2400])
     bar=node(root,'ViewGroup',[0,2400,width,2600])
     top=2424;address_top=top-9 if large else top;address_bottom=top+153 if large else top+144
     rectangles=([12,top,156,top+144],[156,top,300,top+144],[312,address_top,width-312,address_bottom],
                 [width-300,top,width-156,top+144],[width-156,top,width-12,top+144])
     for index,(description,rectangle) in enumerate(zip(capture.BOTTOM_CONTROLS,rectangles)):
         node(bar,'EditText' if index==2 else 'Button',rectangle,
-             text=capture.URL if index==2 else '',description=description,enabled=index!=0,clickable=True)
+             text=capture.URL if index==2 else '',description=description,clickable=True)
     return tree
 
 
@@ -43,11 +46,14 @@ class ChromiumBrowserCaptureContractTests(unittest.TestCase):
         for width,large in ((1236,False),(960,True)):
             capture.shared.set_display(width,2676,480)
             observed=capture.browser_geometry(xml(layout(width,large)),3)
-            self.assertEqual(observed['navigationContract'],3)
+            self.assertEqual(observed['navigationContract'],4)
             self.assertEqual([r['description'] for r in observed['controls']],list(capture.BOTTOM_CONTROLS))
             self.assertTrue(observed['addressAtBottom'] and observed['topAddressAbsent'] and observed['environmentCapsuleRetained'])
+            self.assertTrue(observed['unverifiedNetworkStateObserved'])
+            self.assertGreaterEqual(observed['networkBounds'][1], observed['environmentBounds'][3])
+            self.assertLessEqual(observed['networkBounds'][3], observed['contentBounds'][1])
             self.assertGreater(observed['addressBounds'][1],observed['contentBounds'][1])
-            self.assertEqual(observed['controls'][0]['enabled'],'false')
+            self.assertTrue(all(value['enabled']=='true' for value in observed['controls']))
 
     def test_empty_content_slot_absence_retains_existing_accessibility_limit(self):
         observed=capture.browser_geometry(xml(layout(omit_empty_slot=True)),3)
@@ -63,17 +69,24 @@ class ChromiumBrowserCaptureContractTests(unittest.TestCase):
             with self.subTest(kind=kind),self.assertRaises(ValueError):capture.browser_geometry(xml(tree),3)
 
     def test_overlap_wrong_order_small_target_or_clipped_address_cannot_pass(self):
-        for description,rectangle in (('后退','[12,2424][150,2568]'),
-                                      ('打开当前环境主页','[140,2424][284,2568]'),
+        for description,rectangle in (('打开当前环境主页','[12,2424][150,2568]'),
+                                      ('网页窗口','[140,2424][284,2568]'),
                                       ('网址或搜索词','[312,2424][500,2568]'),
                                       ('浏览器菜单','[780,2424][924,2568]')):
             tree=layout();next(n for n in tree.iter('node') if n.get('content-desc')==description).set('bounds',rectangle)
             with self.subTest(description=description),self.assertRaises(ValueError):capture.browser_geometry(xml(tree),3)
 
-    def test_capsule_requires_center_complete_name_and_long_press(self):
-        for key,value in (('text','truncated'),('long-clickable','false'),('enabled','false'),('bounds','[240,6][960,162]')):
+    def test_capsule_requires_center_complete_name_and_tap_only(self):
+        for key,value in (('text','truncated'),('long-clickable','true'),('enabled','false'),('bounds','[240,6][960,162]')):
             tree=layout();next(n for n in tree.iter('node') if n.get('content-desc')==capture.ENVIRONMENT).set(key,value)
             with self.subTest(key=key),self.assertRaises(ValueError):capture.browser_geometry(xml(tree),3)
+
+    def test_network_header_requires_own_unconfigured_state_and_separate_touch_region(self):
+        for key,value in (('text','●  127.0.0.1 · 20 ms · 已连接'), ('enabled','false'),
+                          ('bounds','[48,150][1188,294]'), ('bounds','[48,300][1188,444]'),
+                          ('bounds','[48,170][1188,310]'), ('class','android.widget.TextView')):
+            tree=layout();next(n for n in tree.iter('node') if n.get('content-desc')==capture.NETWORK).set(key,value)
+            with self.subTest(key=key,value=value),self.assertRaises(ValueError):capture.browser_geometry(xml(tree),3)
 
     def test_url_duplicate_or_content_overlap_cannot_pass(self):
         for kind in ('wrong-url','duplicate','content'):
@@ -81,7 +94,7 @@ class ChromiumBrowserCaptureContractTests(unittest.TestCase):
             if kind=='wrong-url':address.set('text','https://other.example')
             elif kind=='duplicate':tree[0].append(ET.fromstring(ET.tostring(address)))
             else:
-                next(n for n in tree[0] if n.get('class')=='android.widget.FrameLayout' and n.get('bounds')=='[0,300][1236,2400]').set('bounds','[0,300][1236,2450]')
+                next(n for n in tree[0] if n.get('class')=='android.widget.FrameLayout' and n.get('bounds')=='[0,444][1236,2400]').set('bounds','[0,444][1236,2450]')
             with self.subTest(kind=kind),self.assertRaises(ValueError):capture.browser_geometry(xml(tree),3)
 
 

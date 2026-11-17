@@ -29,7 +29,7 @@ final class EnvironmentSwitcherUi {
       message.setText(rows.isEmpty()?"没有匹配的环境":"最近使用优先 · "+rows.size()+" 个环境");Set<Integer> running=live(activity);long now=System.currentTimeMillis();
       for(JSONObject row:rows){
         int slot=row.optInt("slot");String group=row.optString("group");String detail=(group.isEmpty()?"未分组":group)+" · "+EnvironmentWorkspacePolicy.task(row,running,now);
-        boolean current=activity instanceof MainActivity&&Profiles.slot(activity)==slot;
+        boolean current=(activity instanceof MainActivity||activity instanceof BrowserActivity)&&Profiles.slot(activity)==slot;
         String label=String.format(Locale.ROOT,"%02d",slot+1)+"  "+row.optString("name")+(current?" · 当前":"")+"\n"+detail;
         Button action=DesignUi.button(activity,label,false,()->{
           if(open(activity,row,"chat",false))panel.dismiss();else message.setText("环境已变化或当前系统不支持，请关闭后重新选择。");
@@ -43,7 +43,12 @@ final class EnvironmentSwitcherUi {
     if(activity.isFinishing()||activity.isDestroyed()||!EnvironmentWorkspacePolicy.eligible(expected))return false;
     int slot=expected.optInt("slot",-1);if(slot<0||slot>=Profiles.MAX||slot>0&&Build.VERSION.SDK_INT<28)return false;
     ProfileCatalog catalog=ProfileCatalog.get(activity);if(!EnvironmentWorkspacePolicy.sameIdentity(expected,catalog.item(slot)))return false;
-    Intent target=overview&&"chat".equals(action)?EnvironmentOverviewUi.browserOpening(activity,slot):overview&&"overview".equals(action)?EnvironmentOverviewUi.detailsOpening(activity,slot):new Intent(activity,Profiles.activity(slot)).putExtra("openWindowAction",action).putExtra("returnToEnvironmentList","edit".equals(action)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_REORDER_TO_FRONT);
+    Intent target;
+    if(!overview&&"chat".equals(action)&&activity instanceof BrowserActivity){
+      // An environment switch keeps the selected engine and reorders its real
+      // Activity. Omitting a URL is the existing Chromium resume contract.
+      target=new Intent(activity,BrowserActivity.activity(slot)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_REORDER_TO_FRONT);
+    }else target=overview&&"chat".equals(action)?EnvironmentOverviewUi.browserOpening(activity,slot):overview&&"overview".equals(action)?EnvironmentOverviewUi.detailsOpening(activity,slot):new Intent(activity,Profiles.activity(slot)).putExtra("openWindowAction",action).putExtra("returnToEnvironmentList","edit".equals(action)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_REORDER_TO_FRONT);
     // The catalog row may have changed while preparing the overview intent.
     if(!EnvironmentWorkspacePolicy.sameIdentity(expected,catalog.item(slot)))return false;
     catalog.opened(slot);activity.startActivity(target);return true;

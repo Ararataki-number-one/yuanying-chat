@@ -156,8 +156,8 @@ final class ChromeIdleDrawObservation {
     if(view==a.focusExit)return "reading-exit";if(a.hub!=null&&view==a.hub.bar)return "dock";
     if(a.geckoAddress!=null){GeckoAddressUi ui=a.geckoAddress;
       if(view==ui.row)return "browser-row";if(view==ui.address)return "browser-address";
-      if(view==ui.back)return "browser-back";if(view==ui.menu)return "browser-menu";
-      if(view==ui.reload)return "browser-reload";if(view==ui.home)return "browser-home";}
+      if(view==ui.windows)return "browser-windows";if(view==ui.menu)return "browser-menu";
+      if(view==ui.tools)return "browser-tools";if(view==ui.home)return "browser-home";}
     return view.getClass().getSimpleName()+"#"+Integer.toHexString(System.identityHashCode(view));
   }
 

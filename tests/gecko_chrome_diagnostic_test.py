@@ -189,7 +189,7 @@ class V2DiagnosticOriginalsTest(unittest.TestCase):
         self.assertLess(body.index("if any(integration.glob('chrome-v2-*'))"),body.index('current_started = True'))
         self.assertLess(body.index('current_started = True'),body.index('exec(compile(program'))
         self.assertIn('if current_started:',body)
-        self.assertIn('collect_v3_diagnostics(integration, args.out, source, identity)',body)
+        self.assertIn('collect_v4_diagnostics(integration, args.out, source, identity)',body)
         self.assertLess(body.index("if any(integration.glob('chrome-v3-*'))"),body.index('current_started = True'))
 
 
@@ -319,6 +319,8 @@ class FocusedMainExecutionTest(unittest.TestCase):
                     'tests/gecko/run_chrome_collapse_diagnostic.py',
                     'tests/gecko/run_chrome_collapse_v2.py','tools/gecko/chrome_collapse_contract_v2.py',
                     'tests/gecko/run_chrome_collapse_v3.py','tools/gecko/chrome_collapse_contract_v3.py',
+                    'tests/gecko/run_chrome_collapse_v4.py','tools/gecko/chrome_collapse_contract_v4.py',
+                    'tools/gecko/workspace_navigation_contract_v4.py','tools/gecko/compact_chrome_layout_v4.py',
                     'tools/gecko/workspace_navigation_contract_v3.py','tools/gecko/compact_chrome_layout_v3.py',
                     'tools/gecko/workspace_navigation_contract.py','tools/gecko/compact_chrome_layout_v2.py','tools/gecko/ui_visual_capture.py',
                     'tests/gecko/ChromeCollapseIntegration.java','tools/gecko/chrome_collapse_contract.py','app/build.gradle',
@@ -405,7 +407,7 @@ class FocusedMainExecutionTest(unittest.TestCase):
             build.verify_installed=lambda actual,expected:self.assertEqual(actual,expected)
             runner=types.ModuleType('run_chrome_collapse')
             def run_collapse(adb_text,adb_bytes,source,actual_trace,actual_out,focus,*,navigation_contract):
-                self.assertEqual(type(navigation_contract),int);self.assertEqual(navigation_contract,3)
+                self.assertEqual(type(navigation_contract),int);self.assertEqual(navigation_contract,4)
                 self.assertIs(actual_trace,trace);self.assertEqual(actual_out,integration)
                 focus('local.pocketchat.CompactChromeIntegrationActivity');collapse.append(True)
                 return {'hostOnly':True}
@@ -457,6 +459,8 @@ class FocusedDevicePreparationTest(unittest.TestCase):
                 'tests/gecko/run_chrome_collapse_diagnostic.py','tests/gecko/ChromeCollapseIntegration.java',
                 'tests/gecko/run_chrome_collapse_v2.py','tools/gecko/chrome_collapse_contract_v2.py',
                     'tests/gecko/run_chrome_collapse_v3.py','tools/gecko/chrome_collapse_contract_v3.py',
+                    'tests/gecko/run_chrome_collapse_v4.py','tools/gecko/chrome_collapse_contract_v4.py',
+                    'tools/gecko/workspace_navigation_contract_v4.py','tools/gecko/compact_chrome_layout_v4.py',
                     'tools/gecko/workspace_navigation_contract_v3.py','tools/gecko/compact_chrome_layout_v3.py',
                 'tools/gecko/workspace_navigation_contract.py','tools/gecko/compact_chrome_layout_v2.py','tools/gecko/ui_visual_capture.py',
                 'tools/gecko/chrome_collapse_contract.py','tests/gecko/CompactChromeIntegrationActivity.java',

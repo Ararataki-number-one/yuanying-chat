@@ -12,11 +12,11 @@ sys.path.insert(0,str(root/'tools/gecko'))
 from ui_visual_capture import UiVisualCapture
 from diagnostic_capture_privacy import checked_text
 from ui_visual_contract import LIGHT_SCENES, LARGE_SCENES, DARK_SCENES, LANDSCAPE_SCENES, required_captures, verify_captures, verify_download_location
-from workspace_navigation_contract_v3 import conversation_header
-from compact_chrome_v3 import run_case as capture_compact_v3
+from workspace_navigation_contract_v4 import conversation_header
+from compact_chrome_v4 import run_case as capture_compact_v4
 from workspace_ui_v2 import capture_selection as capture_environment_selection
 from download_workspace_v2 import capture as capture_download_workspace
-UI_NAVIGATION_CONTRACT=3
+UI_NAVIGATION_CONTRACT=4
 WORKSPACE_LAYOUT_CONTRACT=2
 scenes=LIGHT_SCENES
 last_geometry=None
@@ -150,7 +150,7 @@ def capture(variant,width,height,scale,scene,theme='light'):
             adb('shell','input','swipe',str(x),str(top+(bottom-top)*4//5),str(x),str(top+(bottom-top)//5),'350')
         assert seen==expected,(variant,scene,'Preference controls missing or unexpected',sorted(seen))
         preference_check={'preferenceControls':sorted(seen),'removedNoticeControlsAbsent':True,'scrollFrames':len(collected),'tabScrolls':tab_scrolls}
-    if scene=='chat' and UI_NAVIGATION_CONTRACT==3:
+    if scene=='chat' and UI_NAVIGATION_CONTRACT==4:
         time.sleep(2.5);xml=dump()
         conversation_header(xml,package,width,height,scale,'日常会话',browser=True)
     elif scene=='chat':
@@ -329,8 +329,8 @@ try:
         return {'title':'快速切换环境','searchDescription':'搜索要切换的环境','closeDescription':'关闭快速切换环境','currentSlot':slot,
                 'titleBounds':bounds(title[0]),'searchBounds':bounds(search[0]),'currentBounds':bounds(current[0]),'closeBounds':bounds(close[0])}
     for width,scale in [(360,1),(412,1),(360,2)]:
-        if UI_NAVIGATION_CONTRACT==3:
-            compact.append(capture_compact_v3(adb,lambda *parts:subprocess.check_output([args.adb,'-s',args.serial,*parts],timeout=90),dump,chrome_event,focus,visible,quick_environment_sheet,shots,package,width,scale))
+        if UI_NAVIGATION_CONTRACT==4:
+            compact.append(capture_compact_v4(adb,lambda *parts:subprocess.check_output([args.adb,'-s',args.serial,*parts],timeout=90),dump,chrome_event,focus,visible,quick_environment_sheet,shots,package,width,scale))
             continue
         adb('shell','am','force-stop',package);adb('logcat','-c')
         adb('shell','wm','size',f'{width*3}x1920');adb('shell','wm','density','480');adb('shell','settings','put','system','font_scale',str(scale))

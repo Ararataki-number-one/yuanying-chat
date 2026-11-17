@@ -35,7 +35,7 @@ final class ChromeCollapseIntegration {
   final IntegrationEventStore events;
   String task="";
   int documents;
-  int activityStarts,menuOpens;
+  int activityStarts,menuOpens,toolsOpens,windowsOpens,environmentPickerOpens;
   int diagnosticSequence,diagnosticTicks,readyEvaluations,readyCallbacks,snapshotEvaluations,snapshotCallbacks,inputReadinessSequence;
   boolean diagnosticReady;
   ChromeIdleDrawObservation idleDraw;
@@ -96,7 +96,7 @@ final class ChromeCollapseIntegration {
   void inputReadiness(String request){inputReadiness(request,false);}
   void inputReadiness(String request,boolean address){
     if(!"local.pocketchat.test".equals(a.getPackageName())||!request.matches(nonce+"-[1-9][0-9]{0,2}")||inputReadinessSequence>=128)return;
-    CollapseView w=web();View compact=a.designChrome.compact,target=address?a.designChrome.title:compact;android.graphics.Rect visible=new android.graphics.Rect();
+    CollapseView w=web();View compact=a.designChrome.compact,target=address?a.geckoAddress.address:compact;android.graphics.Rect visible=new android.graphics.Rect();
     boolean globallyVisible=target.getGlobalVisibleRect(visible);int[] rootLocation=new int[2];target.getRootView().getLocationOnScreen(rootLocation);visible.offset(rootLocation[0],rootLocation[1]);JSONObject pending=a.session.pending;
     String url=w.getUrl(),document=w.inputDocument(nonce,events.buildIdentity.optString("sourceCommit"));InputDocumentBinding binding=w.inputBinding;
     JSONObject value=J.obj("schema",address?2:1,"kind","nativeInputReadiness","diagnosticOnly",true,"releaseAcceptance",false,
@@ -111,7 +111,7 @@ final class ChromeCollapseIntegration {
       "shown",target.isShown(),"enabled",target.isEnabled(),"clickable",target.isClickable(),"laidOut",target.isLaidOut(),"layoutRequested",target.isLayoutRequested(),
       "globallyVisible",globallyVisible,"expanded",a.designChrome.expanded(),"toolbarVisibility",a.toolbar.getVisibility(),"compactVisibility",compact.getVisibility(),
       "page",a.hub.page,"activityStarts",activityStarts,"menuOpens",menuOpens,"nativeTouchCount",nativeTouches.length(),
-      "hostBounds",a.bounds(a.getWindow().getDecorView()),"toolbarBounds",a.bounds(a.toolbar),"compactBounds",a.bounds(compact),"visibleBounds",a.rect(visible),
+      "hostBounds",a.bounds(a.getWindow().getDecorView()),"toolbarBounds",a.bounds(address?a.geckoAddress.row:a.toolbar),"compactBounds",a.bounds(compact),"visibleBounds",a.rect(visible),
       "webBounds",a.bounds(w),"point",a.center(target));
     if(address)try{value.put("target","address").put("targetBounds",a.bounds(target));}
     catch(org.json.JSONException error){throw new IllegalStateException("Address bounds observation failed",error);}
@@ -256,8 +256,8 @@ final class ChromeCollapseIntegration {
   void start(){
     // Keep the historical v1 evidence/runner intact. Its fixed six-tap path
     // cannot exercise the URL dialog and four-action dock without a new contract.
-    if(a.getIntent().getIntExtra("chromeNavigationVersion",1)!=3){
-      emit("error",J.obj("navigationContract",3,"error","Chrome navigation contract v3 required: the v1 collapse runner targets removed Chat/Settings tabs and assumes capsule taps only expand. Version the address-dialog/menu/back workload before running this fixture."));return;
+    if(a.getIntent().getIntExtra("chromeNavigationVersion",1)!=4){
+      emit("error",J.obj("navigationContract",4,"error","Chrome navigation contract v4 required: the v1 collapse runner targets removed Chat/Settings tabs and assumes capsule taps only expand. Version the address-dialog/menu/back workload before running this fixture."));return;
     }
     web().diagnostic=this;diagnostic("start-before");a.handler.postDelayed(diagnosticTick,1000);
     pauseObservers();
@@ -308,7 +308,7 @@ final class ChromeCollapseIntegration {
     snapshotEvaluations++;diagnostic("snapshot-evaluate");pauseObservers();
     a.remote.evaluateJavascript("(()=>{const t="+TELEMETRY+";return {draft:document.getElementById('prompt-textarea').value,cookie:document.cookie,sendCount:Number(document.getElementById('send-count').textContent),path:location.pathname,document:document.documentElement.dataset.reloadDocument,scrollY:scrollY,innerWidth:innerWidth,innerHeight:innerHeight,trusted:t?.events||[],fixtureInputTelemetry:t,telemetryReady:"+TELEMETRY_READY+"};})()",raw->{
       snapshotCallbacks++;diagnostic("snapshot-callback");JSONObject result=J.parse(raw);int[] location=new int[2];a.remote.getLocationOnScreen(location);
-      try{result.put("command",command).put("navigationContract",3).put("navigationLayout",a.hub.page==AppHub.CHAT?"browser-bottom":"workspace-five").put("expanded",a.designChrome.expanded()).put("toolbarVisibility",a.toolbar.getVisibility()).put("toolbarHeight",a.toolbar.getHeight())
+      try{result.put("command",command).put("navigationContract",4).put("navigationLayout",a.hub.page==AppHub.CHAT?"browser-bottom":"workspace-five").put("expanded",a.designChrome.expanded()).put("toolbarVisibility",a.toolbar.getVisibility()).put("toolbarHeight",a.toolbar.getHeight())
         .put("compactVisibility",a.designChrome.compact.getVisibility()).put("compactHeight",a.designChrome.compact.getHeight())
         .put("compactName",a.designChrome.compactTitle.getText().toString()).put("environmentName",Profiles.display(a,Profiles.slot(a)))
         .put("compactTap",visibleCenter(a.designChrome.compact)).put("topVisibility",a.designChrome.top.getVisibility()).put("networkVisibility",a.designChrome.networkRow.getVisibility()).put("networkShown",a.designChrome.networkRow.isShown()).put("networkInHeader",a.designChrome.networkRow.getParent()==a.toolbar)
@@ -318,11 +318,11 @@ final class ChromeCollapseIntegration {
         .put("visibleDocument",a.remote.hasVisibleDocument()).put("loadingCoverVisibility",a.loading.cover.getVisibility())
         .put("documentReadyEvidence",web().documentReadyEvidence)
         .put("pending",a.session.pending==null?JSONObject.NULL:new JSONObject(a.session.pending.toString())).put("pendingStored",a.session.prefs.getString("pending",""))
-        .put("activityStarts",activityStarts).put("menuOpens",menuOpens).put("windowFocus",a.hasWindowFocus())
+        .put("activityStarts",activityStarts).put("menuOpens",menuOpens).put("toolsOpens",toolsOpens).put("windowsOpens",windowsOpens).put("environmentPickerOpens",environmentPickerOpens).put("windowFocus",a.hasWindowFocus())
         .put("touches",web().touchesObserved).put("nativeTouches",nativeTouches).put("toolbarBounds",a.bounds(a.toolbar))
         .put("environmentTap",navigationCenter(WorkspaceNavigation.ENVIRONMENTS,1)).put("networkTap",navigationCenter(WorkspaceNavigation.NETWORK,3))
         .put("downloadsTap",navigationCenter(WorkspaceNavigation.DOWNLOADS,2)).put("readingTap",navigationCenter(WorkspaceNavigation.READING,-1))
-        .put("environmentCapsuleTap",visibleCenter(a.designChrome.expanded()?a.designChrome.title:a.designChrome.compact)).put("browserAddressTap",visibleCenter(a.geckoAddress.address)).put("addressTap",visibleCenter(a.designChrome.title)).put("moreTap",visibleCenter(a.geckoAddress.menu))
+        .put("environmentCapsuleTap",visibleCenter(a.designChrome.expanded()?a.designChrome.title:a.designChrome.compact)).put("browserAddressTap",visibleCenter(a.geckoAddress.address)).put("addressTap",visibleCenter(a.geckoAddress.address)).put("moreTap",visibleCenter(a.geckoAddress.menu)).put("toolsTap",visibleCenter(a.geckoAddress.tools)).put("windowsTap",visibleCenter(a.geckoAddress.windows))
         .put("drawerTap",JSONObject.NULL).put("readingExitTap",visibleCenter(a.focusExit))
         .put("readingRequested",a.focusReading).put("readingActive",a.focusActive()).put("readingExitVisibility",a.focusExit.getVisibility())
         .put("navigationVisibility",a.hub.bar.getVisibility()).put("navigationHeight",a.hub.bar.getHeight())
@@ -358,7 +358,7 @@ final class ChromeCollapseIntegration {
         "lastSourcePresent",lastSource!=null,"lastSourceCurrent",lastSource==a.hub.panel,
         "nativeBackdropRecorded",renderer!=null&&Boolean.TRUE.equals(glassField(renderer,"reportedBackdrop"))));
     }
-    return J.obj("schema",1,"navigationContract",3,"deviceApi",Build.VERSION.SDK_INT,"pid",android.os.Process.myPid(),
+    return J.obj("schema",1,"navigationContract",4,"deviceApi",Build.VERSION.SDK_INT,"pid",android.os.Process.myPid(),
       "activityRef",System.identityHashCode(a),"activityClass",a.getClass().getName(),
       "mainThread",Looper.myLooper()==Looper.getMainLooper(),"docks",docks);
   }

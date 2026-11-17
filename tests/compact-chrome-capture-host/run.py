@@ -107,7 +107,7 @@ def verify_current_compact_ui_source(source):
  # helper methods and the complete compact loop are compared directly below.
  receipt=contract.verify_shared_ui_source(released)
  version_node=contract.exactly_one((n for n in ast.parse(source).body if contract.assignment(n,'UI_NAVIGATION_CONTRACT')),'current navigation contract')
- assert isinstance(version_node.value,ast.Constant) and type(version_node.value.value) is int and version_node.value.value in (2,3)
+ assert isinstance(version_node.value,ast.Constant) and type(version_node.value.value) is int and version_node.value.value in (2,3,4)
  version=version_node.value.value
  actual=compact_ui_members(source,version);expected=compact_ui_members(released)
  menu=contract.exactly_one((node for node in ast.walk(expected['compactWorkload']) if contract.assignment(node,'label')),'compact menu label')
@@ -115,22 +115,22 @@ def verify_current_compact_ui_source(source):
  # Explicit current product wording; no current source is normalized into the
  # historical whole-file inverse, and every other compact AST node must match.
  menu.value=ast.Constant(value='浏览器菜单')
- if version==3:
+ if version in (3,4):
   # Change only the declared consumer/protocol. The full original observation
   # helpers, deadlines, performance checks and retained legacy loop stay exact.
   class CurrentConsumer(ast.NodeTransformer):
    def visit_Name(self,node):
-    if node.id=='capture_compact_v2':node.id='capture_compact_v3'
+    if node.id=='capture_compact_v2':node.id='capture_compact_v'+str(version)
     return node
    def visit_If(self,node):
     self.generic_visit(node)
     if isinstance(node.test,ast.Compare) and isinstance(node.test.left,ast.Name) and node.test.left.id=='UI_NAVIGATION_CONTRACT':
      assert len(node.test.comparators)==1 and isinstance(node.test.comparators[0],ast.Constant) and node.test.comparators[0].value==2
-     node.test.comparators[0].value=3
+     node.test.comparators[0].value=version
     return node
   CurrentConsumer().visit(expected['compactWorkload'])
-  expected['compactImport']=ast.parse('from compact_chrome_v3 import run_case as capture_compact_v3').body[0]
-  expected['UI_NAVIGATION_CONTRACT'].value=ast.Constant(value=3)
+  expected['compactImport']=ast.parse('from compact_chrome_v'+str(version)+' import run_case as capture_compact_v'+str(version)).body[0]
+  expected['UI_NAVIGATION_CONTRACT'].value=ast.Constant(value=version)
   # The current device observer reads the same native hierarchy while content
   # changes. Only its explicit preparation entry changes; all source/ADB/nonce
   # arguments and the full original observation workload remain exact.
@@ -184,7 +184,7 @@ def main():
   run=subprocess.run([str(a.java_home/'bin/java'),'-Dbefore='+str(not current).lower(),'-cp',str(classes)+':'+str(a.json_jar),'local.pocketchat.CompactChromeCaptureHost'],text=True,capture_output=True)
   if not run.stdout:raise RuntimeError(run.stderr)
   report=json.loads(run.stdout)
- report.update(sourceCommit=subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip(),sourceDirty=bool(subprocess.check_output(['git','status','--porcelain'],cwd=ROOT,text=True)),selectedProductionRef=a.before_ref or 'working-tree',selectedSourceSha256={name:hashlib.sha256(text.encode()).hexdigest() for name,text in selected.items()},sourceFiles=hashes,executionInputsUnchanged=all(hashlib.sha256((ROOT/path).read_bytes()).hexdigest()==digest for path,digest in hashes.items()),jsonJarSha256=hashlib.sha256(a.json_jar.read_bytes()).hexdigest(),actualAndroidExecution=False,actualLatencyMeasurement=False,originalGeometryReportPreserved=True,originalGeometryReportHistoricalProofOnly=True,originalAndroidRunnerPreserved=True,originalAndroidRunnerHistoricalProofOnly=True,original42Ms120SecondSamplePreserved=True,originalPreparationIntervalsPreserved=True,extractedFixtureMethods=fixture_methods,extractedChromeMethods=methods,scope='Actual complete fixture snapshot/capture/presentation/lifecycle methods, complete test-only capture helper, actual production chrome render/showNetwork/metadata methods and network-state constructor. Controlled Handler/View/ViewTreeObserver/layout/catalogue/runtime adapters. The actual released v2 geometry report body is byte-checked as history; current bottom-toolbar geometry uses the separate v3 Android producer and reader. The old complete Android runner AST proof uses explicit historical input; current mode directly checks the complete compact loop, helpers and bindings with the current browser menu label. Neither source check executes the Android runner or claims current unrelated scene acceptance. Metrics-maintenance and persistence references are controlled unused boundaries here; the separate chat-chrome-performance-host suite executes those production methods. No real Android frame, Gecko, native network or latency execution.')
+ report.update(sourceCommit=subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip(),sourceDirty=bool(subprocess.check_output(['git','status','--porcelain'],cwd=ROOT,text=True)),selectedProductionRef=a.before_ref or 'working-tree',selectedSourceSha256={name:hashlib.sha256(text.encode()).hexdigest() for name,text in selected.items()},sourceFiles=hashes,executionInputsUnchanged=all(hashlib.sha256((ROOT/path).read_bytes()).hexdigest()==digest for path,digest in hashes.items()),jsonJarSha256=hashlib.sha256(a.json_jar.read_bytes()).hexdigest(),actualAndroidExecution=False,actualLatencyMeasurement=False,originalGeometryReportPreserved=True,originalGeometryReportHistoricalProofOnly=True,originalAndroidRunnerPreserved=True,originalAndroidRunnerHistoricalProofOnly=True,original42Ms120SecondSamplePreserved=True,originalPreparationIntervalsPreserved=True,extractedFixtureMethods=fixture_methods,extractedChromeMethods=methods,scope='Actual complete fixture snapshot/capture/presentation/lifecycle methods, complete test-only capture helper, actual production chrome render/showNetwork/metadata methods and network-state constructor. Controlled Handler/View/ViewTreeObserver/layout/catalogue/runtime adapters. The actual released v2 geometry report body is byte-checked as history; current bottom-toolbar geometry uses the separate current Android producer and reader. The old complete Android runner AST proof uses explicit historical input; current mode directly checks the complete compact loop, helpers and bindings with the current browser menu label. Neither source check executes the Android runner or claims current unrelated scene acceptance. Metrics-maintenance and persistence references are controlled unused boundaries here; the separate chat-chrome-performance-host suite executes those production methods. No real Android frame, Gecko, native network or latency execution.')
  report['androidRunnerSourceContract']=runner_contract
  if not report['executionInputsUnchanged']:report['status']='source-changed'
  a.output.parent.mkdir(parents=True,exist_ok=True);a.output.write_text(json.dumps(report,ensure_ascii=False,indent=2)+'\n');print(json.dumps({'status':report['status'],'passed':report['passed'],'total':report['total'],'output':str(a.output)}))

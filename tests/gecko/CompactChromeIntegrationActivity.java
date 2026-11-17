@@ -301,7 +301,9 @@ public final class CompactChromeIntegrationActivity extends MainActivity {
     // startActivity event is the single observable action, not a second drawer.
   }
 
-  @Override void chooseEnvironment(){super.chooseEnvironment();if(reporting)event("environment");}
+  @Override void chooseEnvironment(){if(collapse!=null)collapse.environmentPickerOpens++;super.chooseEnvironment();if(reporting)event("environment");}
+  @Override void toolsSheet(){if(collapse!=null)collapse.toolsOpens++;super.toolsSheet();if(reporting)event("tools");}
+  @Override void windowsSheet(){if(collapse!=null)collapse.windowsOpens++;super.windowsSheet();if(reporting)event("windows");}
   @Override void moreSheet(){
     if(collapse!=null)collapse.menuOpens++;
     super.moreSheet();
@@ -467,8 +469,8 @@ public final class CompactChromeIntegrationActivity extends MainActivity {
       JSONArray controls=J.arr(J.obj("name","environment","visible",bounds(designChrome.title),"touch",rect(hit),
         "widthDp",hit.width()/density(),"heightDp",hit.height()/density(),"tap",J.arr(hit.centerX(),hit.centerY())));
       JSONArray browserControls=new JSONArray();
-      String[] names={"back","home","address","reload","menu"};
-      Button[] views={geckoAddress.back,geckoAddress.home,geckoAddress.address,geckoAddress.reload,geckoAddress.menu};
+      String[] names={"home","windows","address","tools","menu"};
+      Button[] views={geckoAddress.home,geckoAddress.windows,geckoAddress.address,geckoAddress.tools,geckoAddress.menu};
       for(int i=0;i<views.length;i++){
         Button view=views[i];Rect box=screenBounds(view);
         JSONObject value=J.obj("name",names[i],"bounds",rect(box),"shown",view.isShown(),"enabled",view.isEnabled(),"clickable",view.isClickable(),
@@ -495,10 +497,10 @@ public final class CompactChromeIntegrationActivity extends MainActivity {
       Log.i("PocketCompactChrome",J.obj("command",command,"event",event,"syntheticPresentation",true,"actualLatencyMeasurement",false,
         "actions",actionCount,"page",hub.page,"pageMode",pageMode,"geckoOnly",remote.enabled,"noNativeChat",noNativeChat(),
         "systemWebViews",systemWebViews(getWindow().getDecorView()),"viewportDp",getResources().getDisplayMetrics().widthPixels/density(),
-        "fontScale",getResources().getConfiguration().fontScale,"navigationContract",3,"browserChrome",true,"browserAddressRow",browserRow,
+        "fontScale",getResources().getConfiguration().fontScale,"navigationContract",4,"browserChrome",true,"browserAddressRow",browserRow,
         "toolbar",bounds(toolbar),"topBounds",bounds(designChrome.top),"toolbarHeightDp",toolbar.getHeight()/density(),
         "topHeightDp",designChrome.top.getHeight()/density(),"topChildren",designChrome.top.getChildCount(),
-        "windowBounds",bounds(getWindow().getDecorView()),"webBounds",bounds(remote),"controls",controls,"capsuleText",textMetrics(designChrome.title,16),
+        "windowBounds",bounds(getWindow().getDecorView()),"webBounds",bounds(remote),"controls",controls,"capsuleText",textMetrics(designChrome.title,15),
         "networkShown",designChrome.networkRow.isShown(),"networkInHeader",designChrome.networkRow.getParent()==toolbar,"networkMetrics",networkMetrics==null?JSONObject.NULL:networkMetrics,
         "latency",designChrome.latencyWord.getText().toString(),"expectedLatency",network.latency+network.latencyTimer).toString());
     }catch(Exception error){Log.i("PocketCompactChrome",J.obj("command",command,"event",event,"error",error.toString()).toString());}

@@ -70,15 +70,28 @@ def validate_behavior(report,source,reader=source_bytes):
     rotations=[a for a in actions if a.get('kind')=='rotation'];require([(a.get('stage'),a.get('value')) for a in rotations]==[('rotate-landscape',1),('rotate-portrait',0)],'both actual Android orientation changes required')
     layouts=result.get('layoutObservations',[]);require(len(layouts)==2 and [v.get('orientation') for v in layouts]==[2,1],'both measured native orientations required')
     versions=[layout.get('navigationContract',1) for layout in layouts]
-    require(all(type(value) is int and value in (1,3) for value in versions) and len(set(versions))==1,'one recognized native browser layout contract required')
+    require(all(type(value) is int and value in (1,3,4) for value in versions) and len(set(versions))==1,'one recognized native browser layout contract required')
     for layout in layouts:
         require(isinstance(layout.get('fontScale'),(int,float)) and layout['fontScale']>=1.9,'large-font measurement required')
         controls=layout.get('controls',[])
-        if versions[0]==3:
-            require([c.get('name') for c in controls]==['back','home','address','reload','menu'],'all current bottom browser controls required in order')
+        if versions[0] in (3,4):
+            names=['home','windows','address','tools','menu'] if versions[0]==4 else ['back','home','address','reload','menu']
+            require([c.get('name') for c in controls]==names,'all current bottom browser controls required in order')
             density=layout.get('density')
             require(type(density) in (int,float) and 0<density<=16,'actual display density required')
             require(all(c.get('minimum')==int(48*density+0.5) for c in controls),'current browser actions require the actual 48 dp minimum')
+            if versions[0]==4:
+                descriptions=['打开当前环境主页','网页窗口','网址或搜索词','网页工具','浏览器菜单']
+                require([c.get('description') for c in controls]==descriptions,'actual v4 native actions differ')
+                root=layout.get('rootBounds')
+                require(type(root) is list and len(root)==4 and all(type(n) is int for n in root),'actual browser root bounds required')
+                boxes=[c.get('bounds') for c in controls]
+                for c,box in zip(controls,boxes):
+                    require(type(box) is list and len(box)==4 and all(type(n) is int for n in box),'actual control bounds required')
+                    require(root[0]<=box[0]<box[2]<=root[2] and root[1]<=box[1]<box[3]<=root[3],'browser control lies outside root')
+                    require(box[2]-box[0]==c['visibleWidth'] and box[3]-box[1]==c['visibleHeight'],'native visible control geometry differs')
+                require(all(a[2]<=b[0] for a,b in zip(boxes,boxes[1:])),'v4 browser actions overlap or reorder')
+                require(all(abs(box[1]+box[3]-boxes[0][1]-boxes[0][3])<=1 for box in boxes),'v4 controls must share a visible bottom row')
         else:
             require(len(controls)==5 and {c.get('name') for c in controls}=={'address','back','forward','tabs','reload'},'all native control bounds required')
         require(all(c.get('shown') is True and type(c.get('minimum')) is int and c['minimum']>0 and c.get('visibleWidth',0)>=c['minimum'] and c.get('visibleHeight',0)>=c['minimum'] for c in controls),'native control targets are clipped')
@@ -106,7 +119,10 @@ def verify_browser_evidence(directory,source,reader=source_bytes):
     checked=dict(sourceCommit=source,sourceTree=expected['sourceTree'],integrationApkSha256=expected['apkSha256'],runId=sdk['runId'],runAttempt=sdk['runAttempt'],reportSha256=hashlib.sha256(raw).hexdigest(),checkCount=len(result['checks']),actualAndroidExecution=True,actualAndroidWebViewExecution=True,provider=result['provider'],physicalPhoneAcceptance=False,scope='Same source, run-bound SDK and exact integration APK as original Gecko acceptance; controlled Android WebView browser workload, no public website or device-speed claim')
     version=expected.get('version','')
     require(isinstance(version,str) and re.fullmatch(r'[0-9]+\.[0-9]+\.[0-9]+',version),'reference build version required')
-    if tuple(map(int,version.split('.'))) >= (2,1,6):
+    if tuple(map(int,version.split('.'))) >= (2,1,7):
+        require(all(layout.get('navigationContract')==4 for layout in result['layoutObservations']),'current APK requires v4 environment, windows and page tools evidence')
+        checked['browserNavigationContract']=4
+    elif tuple(map(int,version.split('.'))) >= (2,1,6):
         require(all(layout.get('navigationContract')==3 for layout in result['layoutObservations']),'current APK requires current bottom browser controls')
         checked['browserNavigationContract']=3
     if tuple(map(int,version.split('.'))) >= (2,1,1):

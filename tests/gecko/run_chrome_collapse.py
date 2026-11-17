@@ -186,10 +186,13 @@ def run(adb,adb_bytes,source,trace,out,focus):
 
 def run_versioned(adb,adb_bytes,source,trace,out,focus,*,navigation_contract):
     """Require an explicit protocol; the historical v1 workload stays intact."""
-    if type(navigation_contract) is not int or navigation_contract not in (1,2,3):
+    if type(navigation_contract) is not int or navigation_contract not in (1,2,3,4):
         raise ValueError('Explicit supported Chrome navigation contract required')
     if navigation_contract==1:
         return run(adb,adb_bytes,source,trace,out,focus)
+    if navigation_contract==4:
+        from run_chrome_collapse_v4 import run_v4
+        return run_v4(adb,adb_bytes,source,trace,out,focus)
     if navigation_contract==3:
         from run_chrome_collapse_v3 import run_v3
         return run_v3(adb,adb_bytes,source,trace,out,focus)

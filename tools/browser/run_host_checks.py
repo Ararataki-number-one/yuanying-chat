@@ -162,6 +162,10 @@ def main():
     # Keep the original 200 commands and deadlines; verify the bounded archive
     # independently before its complete device evidence is published.
     add('chrome-collapse-archive','tests/profile_chrome_collapse_archive_test.py')
+    # Preserve the complete prior 201 suites and their individual deadlines.
+    add('browser-navigation-v4','tests/profile_navigation_v4_test.py')
+    add('browser-navigation-v4-publication','tests/profile_navigation_v4_publication_test.py')
+    add('gecko-window-selection','tests/profile_gecko_window_selection_test.py')
     names=subprocess.check_output(['git','ls-files','--cached','--others','--exclude-standard','app/src/main/java','app/src/main/assets','tests','tools/browser','tools/gecko','.github/workflows/browser-2_1-acceptance.yml'],cwd=ROOT,text=True).splitlines()
     files=[ROOT/name for name in sorted(set(names)) if (ROOT/name).is_file()]
     hashes={str(path.relative_to(ROOT)):hashlib.sha256(path.read_bytes()).hexdigest() for path in files}

@@ -40,22 +40,22 @@ def toolbar(width=320,density=1,rtl=False,large=False):
     tree=ET.Element('hierarchy')
     height=60 if large else 48
     if width>=280:
-        boxes={'back':[4,520+(height-48)//2,52,568+(height-48)//2],
-               'home':[52,520+(height-48)//2,100,568+(height-48)//2],
+        boxes={'home':[4,520+(height-48)//2,52,568+(height-48)//2],
+               'windows':[52,520+(height-48)//2,100,568+(height-48)//2],
                'address':[104,520,width-104,520+height],
-               'reload':[width-100,520+(height-48)//2,width-52,568+(height-48)//2],
+               'tools':[width-100,520+(height-48)//2,width-52,568+(height-48)//2],
                'menu':[width-52,520+(height-48)//2,width-4,568+(height-48)//2]}
     else:
         boxes={'address':[4,490,width-4,490+height]}
-        for i,key in enumerate(('back','home','reload','menu')):
+        for i,key in enumerate(('home','windows','tools','menu')):
             x=4+(width-8-48)*i//3;boxes[key]=[x,494+height,x+48,542+height]
-    descriptions={'back':'后退','home':'打开当前环境主页','reload':'刷新网页','menu':'浏览器菜单',
+    descriptions={'home':'打开当前环境主页','windows':'网页窗口','tools':'网页工具','menu':'浏览器菜单',
                   'address':'当前网址 https://chatgpt.com/c/long-url，点击输入网址或搜索'}
-    for key in ('back','home','address','reload','menu'):
+    for key in ('home','windows','address','tools','menu'):
         left,top,right,bottom=boxes[key]
         if rtl:left,right=width-right,width-left
         node(tree,descriptions[key],[v*density for v in (left,top,right,bottom)],
-             text='chatgpt.com/c/long-url' if key=='address' else '',enabled=key!='back')
+             text='chatgpt.com/c/long-url' if key=='address' else '',enabled=True)
     return tree
 
 
@@ -67,15 +67,23 @@ class CurrentBrowserMenuTests(unittest.TestCase):
         parser=importlib.util.module_from_spec(spec);spec.loader.exec_module(parser)
         menu=parser.member_at(source,source.index('void moreSheet('))
         option=parser.member_at(source,source.index('void option('))
+        page_tools=parser.member_at(source,source.index('void toolsSheet('))
+        utility=(ROOT/'app/src/main/java/local/pocketchat/BrowserToolsUi.java').read_text()
+        utility_methods='\n'.join(parser.member_at(utility,utility.index(signature)) for signature in
+            ('void navigation(', 'void navigationState(', 'Button action(', 'private Button add('))
         template=(ROOT/'tests/browser-address-host/BrowserMenuHost.java.in').read_text()
         java_home=Path(os.environ.get('JAVA_HOME',str(ROOT/'work/browser-ci-jdk/jdk-17.0.21+9')))
         with tempfile.TemporaryDirectory(prefix='browser-menu-host-') as directory:
             directory=Path(directory);path=directory/'BrowserMenuHost.java';classes=directory/'classes'
-            def execute(current_menu,current_option=option):
+            drawable=directory/'android/graphics/drawable/Drawable.java';drawable.parent.mkdir(parents=True)
+            drawable.write_text('package android.graphics.drawable; public class Drawable {}')
+            def execute(current_menu,current_option=option,current_tools=page_tools,current_utility=utility_methods):
                 path.write_text(template.replace('/* PRODUCTION_MENU */',current_menu)
-                    .replace('/* PRODUCTION_OPTION */',current_option))
+                    .replace('/* PRODUCTION_OPTION */',current_option)
+                    .replace('/* PRODUCTION_TOOLS */',current_tools)
+                    .replace('/* PRODUCTION_TOOL_ACTIONS */',current_utility))
                 compiled=subprocess.run([str(java_home/'bin/javac'),'--release','17','-encoding','UTF-8',
-                    '-d',str(classes),str(path)],capture_output=True,text=True,timeout=30)
+                    '-d',str(classes),str(path),str(drawable)],capture_output=True,text=True,timeout=30)
                 self.assertEqual(compiled.returncode,0,compiled.stderr)
                 return subprocess.run([str(java_home/'bin/java'),'-cp',str(classes),
                     'local.pocketchat.BrowserMenuHost'],capture_output=True,text=True,timeout=20)
@@ -85,17 +93,21 @@ class CurrentBrowserMenuTests(unittest.TestCase):
             settings='option(d,"应用设置",()->hub.select(AppHub.SETTINGS));'
             self.assertEqual(menu.count(downloads),1);self.assertEqual(menu.count(settings),1)
             moved=menu.replace(downloads,'',1).replace('d.show();',downloads+'\n    d.show();',1)
-            controls=[(menu.replace(downloads,'',1),option,'Every original action remains exactly once'),
-                (moved,option,'Common browser and workspace actions precede secondary options'),
-                (menu.replace(settings,settings.replace('AppHub.SETTINGS','AppHub.DOWNLOADS'),1),option,
+            controls=[(menu.replace(downloads,'',1),option,page_tools,utility_methods,'Every declared action remains exactly once in its actual panel'),
+                (moved,option,page_tools,utility_methods,'Common browser and workspace actions precede secondary options'),
+                (menu.replace(settings,settings.replace('AppHub.SETTINGS','AppHub.DOWNLOADS'),1),option,page_tools,utility_methods,
                     'Every callback dismisses before its original action: 应用设置'),
-                (menu,option.replace('d.dismiss();','',1),'Every callback dismisses before its original action'),
-                (menu.replace('forward.setEnabled(GeckoAddressUi.canForward(this));','forward.setEnabled(true);',1),option,
-                    'The real forward control reflects native history')]
-            for changed_menu,changed_option,message in controls:
+                (menu,option.replace('d.dismiss();','',1),page_tools,utility_methods,'Every callback dismisses before its original action'),
+                (menu,option,page_tools,utility_methods.replace('forwardButton.setEnabled(canForward);','forwardButton.setEnabled(true);',1),
+                    'The real forward control reflects native history'),
+                (menu,option,page_tools,utility_methods.replace('panel.dismiss();','',1),'Every callback dismisses before its original action'),
+                (menu,option,page_tools.replace('session.navigating,this::browserReloadOrStop','false,this::browserReloadOrStop',1),utility_methods,'Every declared action remains exactly once in its actual panel'),
+                (menu,option,page_tools.replace('()->setFocusReading(!focusReading)','()->hub.select(AppHub.SETTINGS)',1),utility_methods,
+                    'Every callback dismisses before its original action: 进入专注阅读')]
+            for changed_menu,changed_option,changed_tools,changed_utility,message in controls:
                 with self.subTest(mutation=message):
-                    self.assertNotEqual((changed_menu,changed_option),(menu,option))
-                    failed=execute(changed_menu,changed_option)
+                    self.assertNotEqual((changed_menu,changed_option,changed_tools,changed_utility),(menu,option,page_tools,utility_methods))
+                    failed=execute(changed_menu,changed_option,changed_tools,changed_utility)
                     self.assertNotEqual(failed.returncode,0);self.assertIn('AssertionError: '+message,failed.stderr)
         self.assertEqual(source_path.read_text(),source)
 
@@ -111,11 +123,11 @@ class CurrentBottomBarTests(unittest.TestCase):
                     with self.subTest(width=width,density=density,rtl=rtl):
                         value=xml(toolbar(width,density,rtl,large=True))
                         result=capture.browser_toolbar_geometry(value)
-                        self.assertEqual(result['navigationContract'],3)
+                        self.assertEqual(result['navigationContract'],4)
                         self.assertEqual(result['layoutMode'],'stacked' if width==240 else 'inline')
                         self.assertEqual(result['layoutDirection'],'rtl' if rtl else 'ltr')
-                        self.assertEqual(set(result['actions']),{'back','home','reload','menu'})
-                        self.assertFalse(result['actions']['back']['enabled'])
+                        self.assertEqual(set(result['actions']),{'home','windows','tools','menu'})
+                        self.assertTrue(all(v['enabled'] for v in result['actions'].values()))
                         self.assertIsNotNone(capture.browser_address_node(value))
                         self.assertEqual(capture.current_observed_navigation_geometry(value)['layout'],'browser-bottom')
 
@@ -132,7 +144,7 @@ class CurrentBottomBarTests(unittest.TestCase):
                 else:target.set('bounds','[4,520][40,560]')
                 with self.subTest(index=index,change=change):
                     self.assertIsNone(capture.browser_toolbar_geometry(xml(tree)))
-        for index in (1,2,3,4):
+        for index in range(5):
             tree=toolbar();tree[index].set('enabled','false')
             self.assertIsNone(capture.browser_toolbar_geometry(xml(tree)))
 
@@ -140,7 +152,7 @@ class CurrentBottomBarTests(unittest.TestCase):
         for change in ('overlap','order','address','authority','unknown-state'):
             tree=toolbar()
             if change=='overlap':tree[3].set('bounds','[212,520][260,568]')
-            elif change=='order':tree[0].set('content-desc','打开当前环境主页');tree[0].set('enabled','true');tree[1].set('content-desc','后退')
+            elif change=='order':tree[0].set('content-desc','网页窗口');tree[1].set('content-desc','打开当前环境主页')
             elif change=='address':tree[2].set('text','')
             elif change=='authority':tree[2].set('content-desc','当前网址 ，点击输入网址或搜索')
             else:tree[0].set('enabled','unknown')
@@ -189,14 +201,14 @@ class GlassFixtureLaunchTests(unittest.TestCase):
         nonce='e'*32;case=dict(name='actual-launch-host',runNonce=nonce)
         identity=dict(sourceCommit='f'*40);start=b'controlled native launch output\n'
         transport=mock.Mock(return_value=start);collector=mock.Mock()
-        unsupported=ValueError('Host native boundary rejects a non-v3 launch')
+        unsupported=ValueError('Host native boundary rejects a non-v4 launch')
         accepted=[]
         def observe(actual_case,command,*,request):
             self.assertIs(actual_case,case)
             self.assertEqual((command,request),('ready',False))
             parts=transport.call_args.args
             values=[parts[index+1] for index,value in enumerate(parts) if value=='chromeNavigationVersion']
-            if values!=['3']:raise unsupported
+            if values!=['4']:raise unsupported
             accepted.append(command)
         observer=mock.Mock(side_effect=observe)
         component=capture.PACKAGE+'/local.pocketchat.CompactChromeIntegrationActivity'
@@ -209,24 +221,24 @@ class GlassFixtureLaunchTests(unittest.TestCase):
         return SimpleNamespace(namespace=namespace,error=error,unsupported=unsupported,
             transport=transport,collector=collector,observer=observer,accepted=accepted,start=start)
 
-    def test_actual_current_launcher_passes_v3_nonce_and_renderer_options(self):
+    def test_actual_current_launcher_passes_v4_nonce_and_renderer_options(self):
         result=self.run_boundary(self.boundary())
         self.assertIsNone(result.error)
         result.transport.assert_called_once_with('shell','am','start','-W','--activity-clear-task',
             '-n',result.namespace['component'],'--es','compactAction','collapseStart',
-            '--ei','chromeNavigationVersion','3','--es','eventNonce','e'*32,
+            '--ei','chromeNavigationVersion','4','--es','eventNonce','e'*32,
             '--ez','longName','false','--ez','observeGlassRenderer','true')
         self.assertEqual(result.accepted,['ready'])
         self.assertIs(result.namespace['start_output'],result.start)
         result.collector.assert_not_called()
 
-    def test_previous_v2_launch_cannot_bypass_ready_failure_or_its_diagnostics(self):
+    def test_previous_v3_launch_cannot_bypass_ready_failure_or_its_diagnostics(self):
         module=self.boundary();arguments=module.body[0].value.args
         at=[i for i,arg in enumerate(arguments) if isinstance(arg,ast.Constant)
             and arg.value=='chromeNavigationVersion']
         self.assertEqual(len(at),1)
-        self.assertEqual(arguments[at[0]+1].value,'3')
-        arguments[at[0]+1].value='2'
+        self.assertEqual(arguments[at[0]+1].value,'4')
+        arguments[at[0]+1].value='3'
         result=self.run_boundary(module)
         self.assertIs(result.error,result.unsupported)
         self.assertEqual(result.accepted,[])
@@ -259,17 +271,17 @@ class CurrentAcceptanceGeometryTests(unittest.TestCase):
     def landscape(self):
         tree=ET.Element('hierarchy')
         frame=node(tree,'',[0,0,2676,1236],kind='android.widget.FrameLayout')
-        capsule=node(frame,'当前环境：日常会话，点按输入网址，长按切换环境',
-            [1098,78,1578,234],text='日常会话',kind='android.widget.TextView')
+        capsule=node(frame,'当前环境：日常会话，点按切换环境',
+            [1098,78,1578,186],text='日常会话',kind='android.widget.Button')
         scroller=node(frame,'',[84,258,2592,960],kind='android.widget.ScrollView',scrollable='true')
         row=node(scroller,'',[1026,456,1650,636],kind='android.widget.LinearLayout')
         actions=[node(row,label,box,text=label) for label,box in (
             ('检查网络',[1026,492,1320,636]),('重新加载',[1356,492,1650,636]))]
         for label,box in (
-            ('后退',[12,996,156,1140]),('打开当前环境主页',[156,996,300,1140]),
+            ('打开当前环境主页',[12,996,156,1140]),('网页窗口',[156,996,300,1140]),
             ('当前网址 https://chatgpt.com/，点击输入网址或搜索',[312,996,2364,1140]),
-            ('刷新网页',[2376,996,2520,1140]),('浏览器菜单',[2520,996,2664,1140])):
-            node(frame,label,box,text='chatgpt.com/' if label.startswith('当前网址 ') else '',enabled=label!='后退')
+            ('网页工具',[2376,996,2520,1140]),('浏览器菜单',[2520,996,2664,1140])):
+            node(frame,label,box,text='chatgpt.com/' if label.startswith('当前网址 ') else '',enabled=True)
         return tree,capsule,scroller,actions
 
     def test_actual_suite_bindings_follow_rotation_width_and_density_changes(self):
@@ -671,7 +683,7 @@ class MotionProtocolTests(unittest.TestCase):
         display=capture.WIDTH,capture.HEIGHT,capture.DENSITY
         self.addCleanup(lambda:capture.set_display(*display))
         tree=toolbar()
-        node(tree,'当前环境：环境，点按输入网址，长按切换环境',[80,24,240,76],text='环境')
+        node(tree,'当前环境：环境，点按切换环境',[80,24,240,76],text='环境')
         chat=xml(tree);clock=[10.0];state={'screen':'chat','scrolled':False};calls=[]
         nonce='a'*32;remote='/data/local/tmp/pocketchat-glass-motion-'+nonce+'.mp4'
         video=b'controlled host video boundary, not an Android recording'
@@ -740,7 +752,7 @@ class MotionProtocolTests(unittest.TestCase):
         self.assertTrue(all(row['completedWhileRecorderRunning'] for row in report['inputs']))
         self.assertGreaterEqual(motion['recordingWallSecondsAtStopRequest'],20)
         self.assertTrue(motion['menuGestureReleasedOutsideObservedButton'])
-        self.assertEqual(motion['navigationContract'],3)
+        self.assertEqual(motion['navigationContract'],4)
         self.assertEqual(motion['menuBoundsSource']['observedBounds'],[268,520,316,568])
 
     def test_recorder_exit_during_scroll_cannot_claim_complete_interactions(self):
