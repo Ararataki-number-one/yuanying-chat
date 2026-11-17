@@ -117,7 +117,7 @@ public final class SessionNavigationHost {
     for(String source:new String[]{"https://source.example.com/start",GPT,"https://chatgpt.com/c/another"}){
       ChatSession s=fresh();JSONObject job=webPending(GPT,true);String original=job.toString();s.pending=job;s.prefs.values.put("pending",original);s.web.url=source;
       check("A web reply never blocks explicit URL entry: "+source,s.browse(HTTPS,"Leave reply")&&s.web.loads.equals(Arrays.asList(HTTPS)));
-      check("Session delegates page observation retirement to its observer: "+source,s.webObserver.navigationTargets.equals(Arrays.asList(HTTPS))&&s.pending==job&&original.equals(job.toString())&&s.prefs.getString("pending","").equals(original));
+      check("Browser navigation does not inspect or mutate a legacy observation record: "+source,s.pending==job&&original.equals(job.toString())&&s.prefs.getString("pending","").equals(original));
     }
     for(String source:new String[]{"https://chatgpt.com/","https://chatgpt.com/g/test-gpt/"}){
       ChatSession s=fresh();s.pending=webPending(source,false);s.web.url=source+"c/new-conversation";
@@ -150,16 +150,15 @@ public final class SessionNavigationHost {
     check("A deleted environment cannot dispatch history",!s.dispatchBrowserHistory(-1,s.navigationEpoch)&&s.prepareBrowserNavigation()==-1);
   }
   static void reentrant(){
-    for(String boundary:new String[]{"observer","audit","status","preferences","stop","script"}){
+    for(String boundary:new String[]{"audit","status","preferences","stop","script"}){
       ChatSession s=fresh();s.web.url=GPT;s.pending=J.obj("id","native-background");JSONObject nativeTask=s.pending;s.transferActive=true;
       Runnable newer=()->s.browse(HTTPS,"Newer command");
-      if(boundary.equals("observer"))s.webObserver.onNavigation=newer;
-      else if(boundary.equals("audit"))s.audit.onRetire=newer;
+      if(boundary.equals("audit"))s.audit.onRetire=newer;
       else if(boundary.equals("status"))s.onStatus=newer;
       else if(boundary.equals("preferences"))s.prefs.onApply=newer;
       else if(boundary.equals("stop"))s.web.onStop=newer;
       else s.web.onScript=newer;
-      check("Synchronous "+boundary+" callback cannot overwrite the newer browser command",s.browse(HTTP,"Older command")&&s.web.loads.equals(Arrays.asList(HTTPS))&&s.navigationTarget.equals(HTTPS)&&s.browsingUrl.equals(HTTPS)&&s.navigationDispatched&&(!boundary.equals("observer")||s.audit.retired==1));
+      check("Synchronous "+boundary+" callback cannot overwrite the newer browser command",s.browse(HTTP,"Older command")&&s.web.loads.equals(Arrays.asList(HTTPS))&&s.navigationTarget.equals(HTTPS)&&s.browsingUrl.equals(HTTPS)&&s.navigationDispatched);
       check("Synchronous "+boundary+" callback preserves independent native work",s.pending==nativeTask&&s.transferActive);
     }
     ChatSession s=fresh();s.web.onStop=()->s.browse(HTTPS,"Newer than history");long epoch=s.prepareBrowserNavigation();
@@ -288,7 +287,7 @@ class BrowserPreferences {
 }
 class WebReplyObserver {
   @OBSERVER_MEMBERS@
-  int readyCalls;final List<String> navigationTargets=new ArrayList<>();void pageReady(){readyCalls++;}Runnable onNavigation;void navigationStarted(String target){navigationTargets.add(target);Runnable callback=onNavigation;onNavigation=null;if(callback!=null)callback.run();}
+  int readyCalls;void pageReady(){readyCalls++;}
 }
 class MainActivity {static boolean chatUrl(String value){try{return BrowserRuntimePolicy.official(URI.create(value));}catch(Exception invalid){return false;}}static boolean validProxy(String value){throw new AssertionError("Nonempty proxy input is outside this host");}}
 class ContextBoundary {static final int MODE_PRIVATE=0;PrefsBoundary preferences;PrefsBoundary getSharedPreferences(String name,int mode){if(!name.equals("chat"))throw new AssertionError("Unexpected preferences scope");return preferences;}}

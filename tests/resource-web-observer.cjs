@@ -197,23 +197,20 @@ test('A queued resource sample adopts only the newest native activation binding'
   f.window.__pocketWebReplyObserver.refreshResources('x'.repeat(81));assert.equal(f.scheduled(250),0);
 });
 
-test('API without uploadBusy preserves readiness and trusted reply intent binding', async t => {
+test('API without uploadBusy keeps readiness without restoring send-result observation', async t => {
   const f = fixture({uploadApi:false}); t.after(f.close);
   assert.equal(f.install(), true); assert.equal(f.scheduled(250), 0);
   f.flush(50); assert.equal(f.posts.filter(row => row.type === 'ready').length, 1);
-  const send = f.window.document.querySelector('[data-testid="send-button"]');
-  // Explicit trusted-gesture host adapter; JSDOM does not manufacture trusted user input.
-  f.handlers.get('click')[0]({isTrusted:true, target:send});
-  const intent = f.posts.find(row => row.type === 'intent');
-  assert.ok(intent); assert.equal(intent.prompt, 'original unsent draft');
-  assert.deepEqual(intent.beforeKeys, ['id:u0']);
-  const user = f.window.document.createElement('article'); user.dataset.messageAuthorRole = 'user';
-  user.dataset.messageId = 'u1'; user.textContent = intent.prompt; f.window.document.querySelector('main').append(user);
-  await f.settle(); f.flush(30);
-  const bound = f.posts.find(row => row.type === 'bound');
-  assert.ok(bound); assert.equal(bound.token, intent.token); assert.equal(bound.userKey, 'id:u1');
-  assert.equal(f.resources().length, 0); assert.equal(f.scheduled(250), 0);
-  assert.equal(f.scheduled(45000), 0);
+  f.api.messages=()=>{throw new Error('Sending must not enumerate messages');};
+  f.api.draft=()=>{throw new Error('Sending must not capture the input');};
+  const send=f.window.document.querySelector('[data-testid="send-button"]');
+  f.handlers.get('click')[0]({isTrusted:true,target:send});
+  const user=f.window.document.createElement('article');user.dataset.messageAuthorRole='user';
+  user.dataset.messageId='u1';user.textContent='website-owned question';f.window.document.querySelector('main').append(user);
+  await f.settle();f.advance(60000);f.flush(1500);f.flush(30);f.flush(45000);
+  assert.deepEqual(f.posts.filter(row=>['intent','bound','uncertain','stop'].includes(row.type)),[]);
+  assert.equal(f.resources().length,0);assert.equal(f.scheduled(250),0);
+  assert.equal(f.scheduled(45000),0);assert.equal(f.window.document.querySelector('textarea').value,'original unsent draft');
 });
 
 test('Non ChatGPT origin never installs listeners resource timers or observer state', async t => {

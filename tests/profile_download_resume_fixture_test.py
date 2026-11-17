@@ -31,9 +31,9 @@ class DownloadResumeFixtureControls(unittest.TestCase):
         production=ROOT/'app/src/main/java/local/pocketchat'
         source=(production/'GeckoWebView.java').read_text();download=(production/'FileDownloads.java').read_text();fixture=FIXTURE.read_text()
         selected={'READ_COOKIES':member(source,'void readCookies('),'DOWNLOAD_COOKIES':member(source,'String downloadCookies('),
-                  'VALID':member(download,'boolean valid('),'DOWNLOAD':member(download,'void download('),
+                  'VALID':member(download,'boolean valid('),'DOWNLOAD':member(download,'void download('),'DOWNLOAD_TYPE':member(download,'static String type('),
                   'FIXTURE_VIEW':member(fixture,'static final class FixtureView'), 'ENDPOINT':member(fixture,'static final class Endpoint'), 'OLD_FIXTURE_VIEW':OLD_VIEW, 'SHA':member(fixture,'static String sha('), 'OBSERVE_FAILURE':member(fixture,'void observeRangeFailure(')}
-        files=[production/n for n in ('GeckoWebView.java','FileDownloads.java','J.java','DownloadRange.java','SealedFileIo.java')]
+        files=[production/n for n in ('GeckoWebView.java','FileDownloads.java','J.java','DownloadRange.java','SealedFileIo.java','DownloadFileInfo.java')]
         files += [FIXTURE,HERE/'CookieFixtureHost.java.in',HERE/'fixture-preservation.json',pathlib.Path(__file__),ROOT/'tests/download-resume-host/run.py',ROOT/'tests/sealed-file-host/android/util/AtomicFile.java',ROOT/'tests/download-recovery-host/android/os/Handler.java',ROOT/'tests/download-recovery-host/android/os/Looper.java',ROOT/'tests/download-recovery-host/android/net/Uri.java',ROOT/'tests/download-resume-host/stubs/android/util/Base64.java',ROOT/'tests/download-resume-host/stubs/android/os/SystemClock.java']
         hashes={str(p.relative_to(ROOT)):sha(p.read_bytes()) for p in files}
         with tempfile.TemporaryDirectory(prefix='f06-cookie-controls-') as temporary:
@@ -41,7 +41,7 @@ class DownloadResumeFixtureControls(unittest.TestCase):
             raw=(HERE/'CookieFixtureHost.java.in').read_text()
             for key,value in selected.items():raw=raw.replace('/* '+key+' */',value)
             (pkg/'CookieFixtureHost.java').write_text(raw)
-            for name in ('J.java','DownloadRange.java','SealedFileIo.java'):(pkg/name).write_bytes((production/name).read_bytes())
+            for name in ('J.java','DownloadRange.java','SealedFileIo.java','DownloadFileInfo.java'):(pkg/name).write_bytes((production/name).read_bytes())
             stub=out/'android/webkit/ValueCallback.java';stub.parent.mkdir(parents=True);stub.write_text('package android.webkit;public interface ValueCallback<T>{void onReceiveValue(T value);}')
             inputs=list(pkg.glob('*.java'))+[stub]+files[-6:]
             compiled=subprocess.run([java,'-m','jdk.compiler/com.sun.tools.javac.Main','-encoding','UTF-8','-cp',str(jar),'-d',str(out),*map(str,inputs)],text=True,capture_output=True,timeout=40)
@@ -53,7 +53,7 @@ class DownloadResumeFixtureControls(unittest.TestCase):
             self.assertIs(value['actualAndroidExecution'],False);self.assertIs(value['actualGeckoExecution'],False)
             value.update(sourceFiles=hashes,selectedMethodsSha256={k:sha(v.encode()) for k,v in selected.items()},jsonJarSha256=sha(jar.read_bytes()),compileStdout=compiled.stdout,compileStderr=compiled.stderr,runtimeStdout=ran.stdout,runtimeStderr=ran.stderr,
                 sourceCommit=subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip(),sourceDirty=bool(subprocess.check_output(['git','status','--porcelain'],cwd=ROOT,text=True).strip()),
-                scope='Exact production readCookies/downloadCookies/valid/download, real DownloadRange/SealedFileIo/J, actual fixture callback and endpoint on host JVM. Controlled Android/owner/publication adapters; real loopback HTTP. No Android, Gecko Cookie bridge, TLS/WAN or MediaStore acceptance.')
+                scope='Exact production readCookies/downloadCookies/valid/download/type, real DownloadRange/SealedFileIo/J/DownloadFileInfo, actual fixture callback and endpoint on host JVM. Controlled Android/owner/publication adapters, with a bin-only platform MIME lookup; real loopback HTTP. No Android, Gecko Cookie bridge, TLS/WAN or MediaStore acceptance.')
             self.assertTrue(all(sha((ROOT/p).read_bytes())==h for p,h in hashes.items()));value['inputsUnchanged']=True
             type(self).host_report=value
             report=os.environ.get('F06_COOKIE_HOST_REPORT')

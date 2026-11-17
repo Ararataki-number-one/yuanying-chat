@@ -14,7 +14,8 @@ final class EnvironmentConfigTransfer {
       EnvironmentSpecRuntime.requireIdentity(context,expected);EnvironmentSpec state=new EnvironmentSpecRepository(context).load();
       if(!state.identity.equals(expected))throw new IOException("环境已改变，请重新选择");
       JSONObject row=ProfileCatalog.get(context).item(expected.slot);
-      EnvironmentConfigBackup.Config captured=new EnvironmentConfigBackup.Config(row.optString("name"),state.desired().browser(),AppPrefs.values(context));
+      JSONObject portable=new JSONObject();for(String key:EnvironmentConfigBackup.PREFERENCES)portable.put(key,AppPrefs.enabled(context,key));
+      EnvironmentConfigBackup.Config captured=new EnvironmentConfigBackup.Config(row.optString("name"),state.desired().browser(),portable);
       EnvironmentSpecRuntime.requireIdentity(context,expected);return captured;
     });
   }

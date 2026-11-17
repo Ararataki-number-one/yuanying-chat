@@ -82,7 +82,9 @@ def main():
     }
     ui_method = declaration(editor, 'static void edit(MainActivity a,JSONObject initial,int tab)')
     start = ui_method.index('    CheckBox[] options=')
-    end = ui_method.index('    DesignUi.note(preferences,', start)
+    # The browser-only editor removed the reply-detection note. The storage
+    # action still immediately follows the complete current preference loop.
+    end = ui_method.index('    DesignUi.action(preferences,"下载位置与存储",false,()->storage(a));', start)
     selected['editor-loop'] = ui_method[start:end]
     selected['editor-read'] = field(ui_method, 'for(int i=0;i<options.length;i++)')
     template = (HERE / 'AutomaticLatencyHost.java.in').read_text()

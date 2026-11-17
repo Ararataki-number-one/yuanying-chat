@@ -178,13 +178,24 @@ public final class CompactChromeIntegrationActivity extends MainActivity {
       handler.removeCallbacks(ticker);
       session.remove(sessionObserver);
       reporting=true;
-      status("对话已改变，请检查上次发送；不会自动重发");
-      if(status.getVisibility()!=View.GONE||status.isClickable())throw new AssertionError("Conversation change banner must be quiet");
-      status("发送失败，请检查网络");
-      if(status.getVisibility()!=View.VISIBLE||!status.isClickable())throw new AssertionError("Real send errors must remain visible");
-      status("");
+      browserStatusRegression();
       snapshot("ready");
     },600);
+  }
+
+  void browserStatusRegression(){
+    assertNoNativeReplyTask();
+    status("已连接");
+    if(status.getVisibility()!=View.GONE||status.isClickable())throw new AssertionError("Normal browser connection must be quiet");
+    status("网页连接失败，请检查网络");
+    if(status.getVisibility()!=View.VISIBLE||!status.isClickable()||!android.text.TextUtils.equals(status.getText(),"网页连接失败，请检查网络"))throw new AssertionError("Real browser errors must remain visible");
+    status("");
+    if(status.getVisibility()!=View.GONE||status.isClickable())throw new AssertionError("Cleared browser errors must be quiet");
+    assertNoNativeReplyTask();
+  }
+
+  void assertNoNativeReplyTask(){
+    if(session.pending!=null||session.prefs.contains("pending")||!session.activeDeliveryId.isEmpty()||session.submitting||ChatService.running)throw new AssertionError("Browser status must not create or retain a native reply task");
   }
 
   @Override void startNetwork(){}
@@ -213,7 +224,7 @@ public final class CompactChromeIntegrationActivity extends MainActivity {
   void reloadCommand(String action){
     session.handler.removeCallbacks(session.tick);handler.removeCallbacks(ticker);
     if("prepareBusy".equals(action)){
-      String url=MainActivity.ORIGIN+"c/reload-A",id=session.deliveries.begin(url,"already sent fixture question",new JSONArray(),"web",null);session.pending=J.obj("id",id,"kind","web","engine","gecko","confirmed",true,"userKey","id:reload-user","prompt","already sent fixture question","confirmedUrl",url,"expectedUrl",url);session.conversation=url;session.prefs.edit().putString("pending",session.pending.toString()).putString("conversation",url).commit();
+      String url=MainActivity.ORIGIN+"c/reload-A",id="legacy-reload-"+java.util.UUID.randomUUID();session.pending=J.obj("id",id,"kind","web","engine","gecko","confirmed",true,"userKey","id:reload-user","prompt","already sent fixture question","confirmedUrl",url,"expectedUrl",url);session.conversation=url;session.prefs.edit().putString("pending",session.pending.toString()).putString("conversation",url).commit();
       remote.evaluateJavascript("history.replaceState(null,'','/c/reload-B');document.getElementById('composer').insertAdjacentHTML('beforeend','<button id=\"stop-button\" data-testid=\"stop-button\" aria-label=\"Stop\">Stop</button>');({ready:true})",raw->reloadSnapshot("reloadReady"));return;
     }
     if("requestReload".equals(action)){
@@ -485,7 +496,11 @@ public final class CompactChromeIntegrationActivity extends MainActivity {
       JSONObject networkMetrics=null;
       if(designChrome.networkRow.isShown()){
         TextView dot=designChrome.dot;Paint.FontMetrics font=dot.getPaint().getFontMetrics();
+        Rect networkHit=designChrome.touchBounds(designChrome.networkRow);networkHit.offset(origin[0],origin[1]);
+        JSONArray networkRegions=new JSONArray();
+        for(Rect region:designChrome.touchRegions(designChrome.networkRow)){region.offset(origin[0],origin[1]);networkRegions.put(rect(region));}
         networkMetrics=J.obj("bounds",bounds(designChrome.networkRow),"networkTap",center(designChrome.networkRow),"stateTap",center(designChrome.stateWord),
+          "touchBounds",rect(networkHit),"effectiveTouchRegions",networkRegions,
           "clickable",designChrome.networkRow.isClickable(),"focusable",designChrome.networkRow.isFocusable(),
           "background",designChrome.networkRow.getBackground()==null?"none":designChrome.networkRow.getBackground().getClass().getName(),
           "description",String.valueOf(designChrome.networkRow.getContentDescription()),
@@ -497,7 +512,7 @@ public final class CompactChromeIntegrationActivity extends MainActivity {
       Log.i("PocketCompactChrome",J.obj("command",command,"event",event,"syntheticPresentation",true,"actualLatencyMeasurement",false,
         "actions",actionCount,"page",hub.page,"pageMode",pageMode,"geckoOnly",remote.enabled,"noNativeChat",noNativeChat(),
         "systemWebViews",systemWebViews(getWindow().getDecorView()),"viewportDp",getResources().getDisplayMetrics().widthPixels/density(),
-        "fontScale",getResources().getConfiguration().fontScale,"navigationContract",4,"browserChrome",true,"browserAddressRow",browserRow,
+        "fontScale",getResources().getConfiguration().fontScale,"navigationContract",4,"headerContract",5,"actualAndroidLayout",true,"density",density(),"browserChrome",true,"browserAddressRow",browserRow,
         "toolbar",bounds(toolbar),"topBounds",bounds(designChrome.top),"toolbarHeightDp",toolbar.getHeight()/density(),
         "topHeightDp",designChrome.top.getHeight()/density(),"topChildren",designChrome.top.getChildCount(),
         "windowBounds",bounds(getWindow().getDecorView()),"webBounds",bounds(remote),"controls",controls,"capsuleText",textMetrics(designChrome.title,15),

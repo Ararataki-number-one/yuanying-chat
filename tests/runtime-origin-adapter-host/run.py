@@ -13,6 +13,9 @@ ROOT=Path(__file__).resolve().parents[2]
 HERE=Path(__file__).resolve().parent
 NAMES=['GeckoPerformanceIntegrationActivity.java','GeckoIntegrationTestActivity.java','CompactChromeIntegrationActivity.java','FingerprintFollowupIntegrationActivity.java']
 BEFORE_COMMIT='72e3bcac55285fea483e612ba4481f7e073a5422'
+COMPLETION_BEFORE_COMMIT='5bf46502f37ffe8f3c6f17054a2a7c9ec7d53df5'
+COMPLETION_BEFORE_DRIVER_SHA256='635c750bf4271cf6fd2fdd6c0ac8491e43d380fe6ada286c72d73b2407d1829a'
+COMPLETION_BEFORE_SOURCE_SHA256='7b358009f4511dbaf8bb942024ea43c57f0323094499d162331ed44116f7b874'
 BEFORE_SHA256={
     'GeckoPerformanceIntegrationActivity.java':'40d0b67983fdbd38c3fce7c8b6e97103682d63669e301a939082106772168fc9',
     'GeckoIntegrationTestActivity.java':'30b1e100831e37edca2c4a0bfd91b804a1a20691d4262bcc431c2cef1207fa7c',
@@ -65,7 +68,8 @@ def main():
         ROOT/'app/src/main/assets/page-driver.js',ROOT/'app/src/main/assets/web-performance.js',ROOT/'tests/gecko/assets/performance-baseline/page-driver.js',
         ROOT/'tests/gecko/assets/performance-baseline/web-performance.js',ROOT/'tests/gecko/assets/performance-baseline/source.json',
         ROOT/'app/src/main/java/local/pocketchat/MainActivity.java',ROOT/'app/src/main/java/local/pocketchat/J.java',
-        HERE/'OriginAdapterCaptureHost.java.in',HERE/'check-dom.cjs',HERE/'README.md',Path(__file__).resolve()]
+        HERE/'OriginAdapterCaptureHost.java.in',HERE/'check-dom.cjs',HERE/'README.md',Path(__file__).resolve(),
+        HERE/'fixtures/completion-driver-2.1.7.js',HERE/'fixtures/completion-driver-2.1.7-source.json']
     hashes={str(path.relative_to(ROOT)):sha(path.read_bytes()) for path in inputs}
     source_commit=command(['git','rev-parse','HEAD']).strip()
     # Read old fixtures only as immutable historical inputs. Current execution
@@ -73,6 +77,22 @@ def main():
     before_sources={name:command(['git','show',BEFORE_COMMIT+':tests/gecko/'+name]) for name in NAMES}
     for name,text in before_sources.items():
         if sha(text.encode())!=BEFORE_SHA256[name]:raise ValueError('Historical fixture bytes differ: '+name)
+    # A retired command now returns before the origin guard. Preserve the old
+    # completion adapter's origin-refusal control against its exact final
+    # released polling driver, never use that driver for current execution.
+    before_driver_file=HERE/'fixtures/completion-driver-2.1.7.js'
+    before_driver=before_driver_file.read_bytes()
+    before_source=(HERE/'fixtures/completion-driver-2.1.7-source.json').read_bytes()
+    if sha(before_source)!=COMPLETION_BEFORE_SOURCE_SHA256:
+        raise ValueError('Historical completion source receipt differs')
+    before_identity=json.loads(before_source)
+    if (sha(before_driver)!=COMPLETION_BEFORE_DRIVER_SHA256
+            or before_identity['sourceCommit']!=COMPLETION_BEFORE_COMMIT
+            or before_identity['sha256']!=COMPLETION_BEFORE_DRIVER_SHA256
+            or before_identity['bytes']!=len(before_driver)
+            or before_identity['historicalNegativeControlOnly'] is not True
+            or before_identity['currentRuntime'] is not False):
+        raise ValueError('Historical completion driver bytes differ')
     baseline_root=ROOT/'tests/gecko/assets/performance-baseline'
     baseline_meta=json.loads((baseline_root/'source.json').read_text())
     for name,row in baseline_meta['files'].items():
@@ -110,20 +130,22 @@ def main():
             classes=work/label
             command([args.java_home/'bin/javac','-encoding','UTF-8','-source','8','-target','8','-cp',str(args.json_jar.resolve())+os.pathsep+str(args.android_jar.resolve()),'-d',classes,generated_file,ROOT/'app/src/main/java/local/pocketchat/J.java'])
             output=captures/label;output.mkdir(exist_ok=True)
-            raw=command([args.java_home/'bin/java','-cp',str(classes)+os.pathsep+str(args.json_jar.resolve())+os.pathsep+str(args.android_jar.resolve()),'local.pocketchat.OriginAdapterCaptureHost',label,ROOT,output])
+            raw=command([args.java_home/'bin/java','-cp',str(classes)+os.pathsep+str(args.json_jar.resolve())+os.pathsep+str(args.android_jar.resolve()),'local.pocketchat.OriginAdapterCaptureHost',label,ROOT,output,before_driver_file])
             java_results[label]=json.loads(raw)
     env=dict(os.environ,JSDOM_MODULE=str(args.jsdom_module.resolve()))
     dom=json.loads(command(['node',HERE/'check-dom.cjs',captures],env))
-    stable=all(sha(path.read_bytes())==hashes[str(path.relative_to(ROOT))] for path in inputs) and command(['git','rev-parse','HEAD']).strip()==source_commit
+    stable=all(sha(path.read_bytes())==hashes[str(path.relative_to(ROOT))] for path in inputs) and command(['git','rev-parse','HEAD']).strip()==source_commit and sha(before_driver_file.read_bytes())==COMPLETION_BEFORE_DRIVER_SHA256
     passed=sum(value['passed'] for value in java_results.values())+dom['passed']
     report=dict(status='passed' if stable else 'source-changed',passed=passed,total=passed,sourceCommit=source_commit,
         sourceFiles=hashes,historicalBeforeCommit=BEFORE_COMMIT,historicalBeforeFiles=BEFORE_SHA256,
+        completionContract='browser-result-removal-v1',
+        historicalCompletionDriver=before_identity,
         extractedFragments=selected_hashes,generatedHostSha256=generated_hashes,executionInputsUnchanged=stable,
         currentSource='actual tracked tests/gecko files',trackedFilesWritten=False,
         originalHistoricalBaselineBytesVerified=True,baselineGuardCount=old_driver.count(old_guard),currentGuardCount=current_driver.count(new_guard),
         jsonJarSha256=sha(args.json_jar.read_bytes()),androidApiJarSha256=sha(args.android_jar.read_bytes()),actualAndroidValueCallbackInterface=True,
         actualAndroidExecution=False,actualGeckoExecution=False,actualNetworkExecution=False,javaCapture=java_results,dom=dom,
-        scope='Verbatim complete immutable72e3 original/current tracked Java load/completion/evaluate methods and exact followup guard/adapter/hash constants/helpers, compiled with actual Android ValueCallback interface and explicit app/Gecko/callback capture facades. Synthetic callback JSON only drives native script generation; actual captured original/current driver JavaScript is independently executed in JSDOM documents/subframes. The old fixtures are negative controls, never an old runtime substituted for current sources. No tracked source mutation, Android/Gecko/HTTP/live account/release acceptance.')
+        scope='Verbatim complete immutable72e3 original/current tracked Java load/completion/evaluate methods and exact followup guard/adapter/hash constants/helpers, compiled with actual Android ValueCallback interface and explicit app/Gecko/callback capture facades. Synthetic callback JSON only drives native script generation and checks current rejection receipts; captured JavaScript independently executes in JSDOM documents/subframes. Only the before completion negative control uses the pinned final released polling driver. Current completion executes the actual two retired-command rejections without native task/service creation. No tracked source mutation, Android/Gecko/HTTP/live account/release acceptance.')
     args.output.write_text(json.dumps(report,ensure_ascii=False,indent=2)+'\n')
     print(json.dumps(dict(status=report['status'],passed=passed,total=passed,currentSource=report['currentSource'],actualAndroidExecution=False,actualGeckoExecution=False,output=str(args.output)),ensure_ascii=False))
     if not stable:raise SystemExit(1)

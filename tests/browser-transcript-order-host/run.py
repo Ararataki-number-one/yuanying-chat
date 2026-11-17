@@ -53,11 +53,11 @@ def main():
     for report in reports.values():
         report['measured'].pop('outputs')
     paths=(Path(__file__).resolve(),Path(__file__).with_name('workload.cjs'))
-    payload={'schema':1,'status':'passed','baselineCommit':baseline,'productionSourceSha256':hashes,
+    payload={'schema':2,'contract':'browser-result-removal-v1','status':'passed','baselineCommit':baseline,'productionSourceSha256':hashes,
         'nodeVersion':subprocess.check_output(['node','--version'],text=True).strip(),
         'harnessSha256':{str(path.relative_to(ROOT)):hashlib.sha256(path.read_bytes()).hexdigest() for path in paths},
         'sourceUnchangedDuringChecks':True,'fullTranscriptDeltaParity':True,'reports':reports,
-        'scope':'Actual prior/current production scripts, deterministic JSDOM DOM operation counts; no Android/Gecko/FPS or real website performance claim',
+        'scope':'Actual prior/current production scripts executing retained transcript/page/resource behavior, deterministic JSDOM DOM operation counts. Reply binding and completion retired explicitly; no Android/Gecko/FPS or real website performance claim',
         'actualAndroidExecution':False,'actualGeckoExecution':False,'actualFrameTiming':False}
     args.output.parent.mkdir(parents=True,exist_ok=True)
     args.output.write_text(json.dumps(payload,ensure_ascii=False,indent=2)+'\n')

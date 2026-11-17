@@ -2,6 +2,7 @@
 import ast
 import copy
 import hashlib
+import importlib.util
 import os
 from pathlib import Path
 import tempfile
@@ -243,6 +244,82 @@ class DownloadWorkspaceHistoricalInputs(unittest.TestCase):
         self.assertEqual(runner['selectedSourceSha256'], current.sha(raw.encode()))
         self.assertEqual(activity['selectedFixtureSha256'], current.sha(fixture))
         self.assertTrue(activity['fourSyntheticRowsAndProductionRendererPreserved'])
+
+
+class HeaderV5HistoricalInputs(unittest.TestCase):
+    def test_complete_current_activity_restores_old_v2_and_roundtrips_exactly(self):
+        raw = (ROOT/current.ACTIVITY).read_bytes()
+        self.assertEqual((len(raw), current.sha(raw), current.blob(raw)),
+                         (14197, 'ad0c964606bbb741c12e619224bc087c7960699785309e87bf7b53ce722371dc',
+                          '247131076f45be25e483e477c52d5a458b02c8f5'))
+        before = current.header_activity_input(raw, current.ACTIVITY)
+        self.assertEqual((len(before), current.sha(before), current.blob(before)),
+                         (13769, '89914f5692e9eefbc6e379108c0f97a471eeee6002d24ee4fc79417babe693f1',
+                          '13be2e3ce783c3d745f5e346be4566868ccdd1de'))
+        restored = before
+        for previous, after in current.HEADER_ACTIVITY_DELTAS:
+            self.assertEqual(restored.count(previous), 1)
+            restored = restored.replace(previous, after, 1)
+        self.assertEqual(restored, raw)
+        self.assertEqual(current.historical_input(raw, current.ACTIVITY), current.source_input(before, current.ACTIVITY))
+        self.assertEqual(current.historical_input(before, current.ACTIVITY), current.source_input(before, current.ACTIVITY))
+        with self.assertRaises(AssertionError):current.source_input(raw, current.ACTIVITY)
+        self.assertEqual((ROOT/current.ACTIVITY).read_bytes(), raw)
+
+    def test_actual_observer_preflight_keeps_old_pins_and_extracts_current_methods(self):
+        path = ROOT/'tests/gecko-ui-download-observer-host/run.py'
+        spec = importlib.util.spec_from_file_location('current_header_observer_preflight', path)
+        host = importlib.util.module_from_spec(spec);spec.loader.exec_module(host)
+        raw = host.ACTIVITY.read_bytes();observer = host.OBSERVER.read_bytes()
+        with (patch('subprocess.check_output', side_effect=AssertionError('No historical object lookup')),
+              patch('subprocess.run', side_effect=AssertionError('No compiler or Android execution in this source check'))):
+            guarded = host._history_input.navigation_source_input(raw, current.ACTIVITY)
+            self.assertEqual({'observer':host.digest(observer), 'activity':host.digest(guarded)}, host.PINS)
+            self.assertEqual(host.PINS['activity'], '29d641025853a52cf00dbffb9fccad54126e33d04805f8f4dfe483fafb3180a5')
+            before = current.header_activity_input(raw, current.ACTIVITY)
+            for signature in ('@Override protected void onNewIntent(Intent request)',
+                              'String downloadObservationRejection(Intent request)',
+                              'void rejectDownloadObservation(String nonce,String reason)'):
+                self.assertEqual(host.member(raw.decode(), signature), host.member(before.decode(), signature))
+            import ui_visual_preservation_contract as original
+            receipt = original.verify_download_visual_fixture_source(raw)
+        self.assertEqual(receipt['selectedFixtureSha256'], current.sha(raw))
+        self.assertTrue(receipt['fourSyntheticRowsAndProductionRendererPreserved'])
+        self.assertFalse(receipt['actualAndroidExecution'])
+        self.assertEqual(host.ACTIVITY.read_bytes(), raw)
+        self.assertEqual(host.OBSERVER.read_bytes(), observer)
+
+    def test_partial_duplicate_moved_and_semantic_edits_still_fail_closed(self):
+        import ui_checkpoint_source_compatibility as navigation
+        raw = (ROOT/current.ACTIVITY).read_bytes()
+        candidates = [b'', raw[:1024], raw+b'\n']
+        for previous, after in current.HEADER_ACTIVITY_DELTAS:
+            self.assertEqual(raw.count(after), 1)
+            remaining = raw.replace(after, b'', 1)
+            candidates.extend((raw.replace(after, previous, 1), remaining,
+                               raw.replace(after, after*2, 1), remaining+after))
+        for before, after in (
+                (b'"browser-header".equals(action)', b'"chat".equals(action)'),
+                (b'getIntent().hasExtra("visualHeaderNonce")', b'true'),
+                (b'getIntent().hasExtra("visualHeaderNonce")', b'getIntent().hasExtra("otherNonce")'),
+                (b'controller.setVisible(false);', b'controller.setVisible(true);'),
+                (b'downloadObservationNonces.contains(nonce)', b'false')):
+            self.assertEqual(raw.count(before), 1)
+            candidates.append(raw.replace(before, after, 1))
+        for selected in candidates:
+            with self.subTest(sha256=current.sha(selected)):
+                with self.assertRaises(AssertionError):current.header_activity_input(selected, current.ACTIVITY)
+                self.assertIs(current.historical_input(selected, current.ACTIVITY), selected)
+                with self.assertRaises(AssertionError):navigation.navigation_source_input(selected, current.ACTIVITY)
+
+    def test_v5_inverse_rejects_wrong_types_paths_and_prior_images(self):
+        raw = (ROOT/current.ACTIVITY).read_bytes()
+        for selected in (None, raw.decode(), bytearray(raw), memoryview(raw), True,
+                         current.header_activity_input(raw, current.ACTIVITY)):
+            with self.assertRaises(AssertionError):current.header_activity_input(selected, current.ACTIVITY)
+        for path in (None, Path(current.ACTIVITY), '/'+current.ACTIVITY, '../'+current.ACTIVITY,
+                     current.RUNNER, 'tests/gecko/BrowserHeaderVisualEvidence.java'):
+            with self.assertRaises(AssertionError):current.header_activity_input(raw, path)
 
 
 if __name__ == '__main__':

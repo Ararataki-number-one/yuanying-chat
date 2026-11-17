@@ -10,6 +10,7 @@ from historical_source_inputs import historical_bytes
 from reading_zoom_trace_contract import ROOT,PATHS,trace_manifest,original_reading_fixture_bytes
 from reading45_source_compatibility import reading45_source_bytes
 from startup46_source_compatibility import startup46_source_bytes
+from browser_completion_source_compatibility import restore_completion_for_history
 FIXTURE='tests/gecko/GeckoIntegrationTestActivity.java'
 RUNNER='tests/gecko/run_device.py'
 PINS={'3ea61b2a06e31edf1c91134fe9106b0ebb16628be169f3db75bc7a2b06b45796','dfb7bae2f404cfe0b72b4d23944698cb716b7665171812a0a4d0f5926c0fac79'}
@@ -73,7 +74,23 @@ class ReadingZoomTraceControls(unittest.TestCase):
   self.assertIn('test.nativeSession!=session.web.current',added)
   baseline=original_reading_fixture_bytes(historical_bytes(FIXTURE),FIXTURE).decode();current=(ROOT/FIXTURE).read_text()
   self.assertEqual(current.count('test.priorDelegate.onScrollChanged(own,update)'),baseline.count('test.priorDelegate.onScrollChanged(own,update)'))
-  self.assertEqual(current.count('evaluateJavascript('),baseline.count('evaluateJavascript('));self.assertEqual(current.count('postDelayed('),baseline.count('postDelayed('))
+  # The optional reading observer still adds no SDK calls or scheduled work.
+  # Restore only the separately pinned retired completion method for this
+  # whole-fixture count; execution hosts continue to use the current method.
+  restored=restore_completion_for_history(current)
+  self.assertEqual(restored.count('evaluateJavascript('),baseline.count('evaluateJavascript('));self.assertEqual(restored.count('postDelayed('),baseline.count('postDelayed('))
+  completion=member(current,'  void completion(long serial)')
+  self.assertEqual(restore_completion_for_history(restored),restored)
+  for changed in (
+      current.replace(completion,'',1),current.replace(completion,completion+'\n'+completion,1),
+      current.replace(completion,completion.replace('!retired.has("terminal")','true',1),1),
+      current.replace(completion,completion.replace('JSONObject.quote("poll")','JSONObject.quote("inspect")',1),1),
+      current.replace(completion,completion[:-1],1),
+      current.replace(completion,'',1)+'\n'+completion,
+      current.replace(completion,completion.replace('    String poll=', '    session.handler.postDelayed(()->{},1);\n    String poll=',1),1),
+  ):
+   with self.subTest(retired_completion=hashlib.sha256(changed.encode()).hexdigest()),self.assertRaises(ValueError):
+    restore_completion_for_history(changed)
  def test_original_golden_guard_bodies_and_hashes_remain(self):
   path='tests/profile_reading_fit_completion_test.py';s=reading45_source_bytes(historical_bytes(path),path).decode();s=s.replace('from reading_zoom_trace_contract import original_reading_fixture_bytes\n','',1).replace("   if name in ('tests/gecko/GeckoIntegrationTestActivity.java','tests/gecko/run_device.py'):raw=original_reading_fixture_bytes(raw,name)\n",'',1)
   self.assertEqual(hashlib.sha256(s.encode()).hexdigest(),'ea2ee6f5f0a3d9c9937c6d0a6e1e39589643d1509b42250b4e2a4ecc31825806')

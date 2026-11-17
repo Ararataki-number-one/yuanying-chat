@@ -16,7 +16,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
-/** Optional reply observation, independent of the browser's work and proxy ownership. */
+/** Retires the legacy reply policy without affecting browser, file or proxy work. */
 final class BackgroundReplyPolicy {
   static final class Snapshot {
     final boolean known,enabled;final long revision;final int legacyPendingMask;
@@ -32,11 +32,11 @@ final class BackgroundReplyPolicy {
   private static synchronized void remember(Snapshot value){
     // An I/O failure closes admission. An old queued hint cannot roll back a revision.
     if(!value.known)current=value;
-    else if(value.revision>=latestRevision){latestRevision=value.revision;current=value;}
+    else if(value.revision>=latestRevision){latestRevision=value.revision;current=new Snapshot(true,false,value.revision,value.legacyPendingMask);}
   }
   static Snapshot refresh(Context c){
     Snapshot value;
-    try{value=AppSettings.readBackgroundReplyPolicy(c);if(!value.known)value=AppSettings.initializeBackgroundReplyPolicy(c);}
+    try{value=AppSettings.readBackgroundReplyPolicy(c);if(!value.known)value=AppSettings.initializeBackgroundReplyPolicy(c);if(value.enabled)value=AppSettings.setBackgroundReplyPolicy(c,false);}
     catch(RuntimeException unavailable){value=Snapshot.unknown();}
     remember(value);return current;
   }
@@ -53,7 +53,9 @@ final class BackgroundReplyPolicy {
   static void bootstrap(Context c){
     try{
       if(uiSlot(processName(c),c.getPackageName())<0)return;
-      remember(AppSettings.initializeBackgroundReplyPolicy(c));migrateLegacyPreferences(c);
+      Snapshot value=AppSettings.initializeBackgroundReplyPolicy(c);
+      if(value.enabled)value=AppSettings.setBackgroundReplyPolicy(c,false);
+      remember(value);migrateLegacyPreferences(c);
     }catch(SQLiteDatabaseLockedException gateUnavailable){
       // Providers must not proceed to cache/write prefs while another process owns
       // the migration gate. Android may retry this startup after the lock is gone.
@@ -88,16 +90,6 @@ final class BackgroundReplyPolicy {
     }
     policyChanged(application,0);
   }
-  static Snapshot setEnabled(Context c,boolean enabled){
-    Snapshot value;
-    try{value=AppSettings.setBackgroundReplyPolicy(c,enabled);remember(value);}
-    catch(RuntimeException failure){remember(Snapshot.unknown());reconcileLocal(c);throw failure;}
-    if(!value.enabled){stopAllReplyServices(c);QuietNotifications.clearReplyDetection(c);}
-    reconcileLocal(c);
-    // No manifest receiver or provider acquisition: cold profiles stay cold.
-    c.sendBroadcast(new Intent(action(c)).setPackage(c.getPackageName()).putExtra("revision",value.revision));
-    return value;
-  }
   static void policyChanged(Context c,long hintedRevision){
     // Revision is merely an invalidation hint, never permission to enable capture.
     refresh(c);reconcileLocal(c);
@@ -110,7 +102,7 @@ final class BackgroundReplyPolicy {
       Snapshot value=snapshot();
       ChatService.policyChanged(profile,value);
       ChatSession session=ChatSession.peek();if(session!=null&&!session.deleted)session.backgroundReplyPolicyChanged(value);
-      if(!value.enabled)QuietNotifications.clearReplyDetection(root);
+      stopAllReplyServices(root);QuietNotifications.clearReplyDetection(root);
     };
     if(Looper.myLooper()==Looper.getMainLooper())apply.run();else main.post(apply);
   }

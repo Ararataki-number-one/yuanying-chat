@@ -40,7 +40,7 @@ final class BrowserToolbarUi {
     final TextView label;
     EnvironmentButton(Context context,TextView label,Runnable choose){
       super(context);this.label=label;setMinimumHeight(ReferenceUi.dp(context,48));
-      setPadding(0,ReferenceUi.dp(context,2),0,ReferenceUi.dp(context,10));
+      setPadding(0,ReferenceUi.dp(context,2),0,ReferenceUi.dp(context,2));
       setClipChildren(false);setClipToPadding(false);setFocusable(true);setLongClickable(false);
       label.setDuplicateParentStateEnabled(true);label.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
       addView(label,new FrameLayout.LayoutParams(-2,-2,Gravity.TOP|Gravity.CENTER_HORIZONTAL));

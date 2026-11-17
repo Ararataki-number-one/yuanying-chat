@@ -2,7 +2,8 @@
 """Run current-source browser and network regressions without historical source views.
 
 This is a focused maintenance check, not the full release or device acceptance.
-Each child retains its original behavioral assertions and negative controls.
+Retained browser behaviors keep their assertions and negative controls. Retired send-result
+features are explicitly replaced by the 2.1.8 browser retirement contract.
 """
 import argparse
 from datetime import datetime, timezone
@@ -28,7 +29,8 @@ def source_inputs(root=ROOT):
     """Include sibling fixtures, imported runners and assets, not only argv files."""
     raw = subprocess.check_output(['git', 'ls-files', '-z', '--cached', '--others',
                                    '--exclude-standard', '--', *INPUT_PATHS], cwd=root)
-    return sorted({root / os.fsdecode(name) for name in raw.split(b'\0') if name})
+    return sorted({root / os.fsdecode(name) for name in raw.split(b'\0')
+                   if name and (root / os.fsdecode(name)).is_file()})
 
 
 def main():
@@ -71,6 +73,9 @@ def main():
 
     host('address-policy', 'tests/browser-address-host/run.py', java)
     host('browser-permissions', 'tests/browser-permissions-host/run.py', java)
+    host('download-content', 'tests/download-content-host/run.py', java)
+    host('gecko-download-navigation', 'tests/gecko-download-navigation-host/run.py', java)
+    host('browser-blob', 'tests/browser-blob-host/run.py', [*java, '--json-jar', jar])
     host('native-attachment-chooser', 'tests/native-attachment-chooser-host/run.py', [*java, '--json-jar', jar])
     for name, script in [
         ('session-navigation', 'tests/gecko-navigation-host/session_navigation.py'),
@@ -84,7 +89,10 @@ def main():
         ('ip-transport', 'tests/gecko-ip-transport-host/run.py'),
         ('resource-recovery', 'tests/resource-recovery-host/run.py'),
         ('page-lifecycle', 'tests/browser-navigation-lifecycle-host/run.py'),
-        ('reply-task-persistence', 'tests/reply-task-persistence-host/run.py'),
+        # Delivery receipt persistence retired with send-result detection.
+        # page-lifecycle checks pending migration; this suite covers disabled
+        # old policies, service cleanup, process ownership and retry failures.
+        ('reply-policy-retirement', 'tests/background-reply-runtime-host/run.py'),
         ('download-cancellation', 'tests/download-resume-host/run.py'),
         ('download-persistence', 'tests/download-persistence-host/run.py'),
         ('download-recovery', 'tests/download-recovery-host/run.py'),
@@ -115,7 +123,10 @@ def main():
         [sys.executable, 'tests/profile_navigation_v3_test.py'],
         [sys.executable, 'tests/gecko_photo_upload_contract_test.py'],
         [sys.executable, 'tests/browser_workspace_device_configuration_test.py'],
-        [sys.executable, 'tests/profile_ui_device_preparation_test.py']], None))
+        [sys.executable, 'tests/profile_ui_device_preparation_test.py'],
+        [sys.executable, 'tests/profile_browser_header_v5_test.py'],
+        [sys.executable, 'tests/profile_browser_header_evidence_v5_test.py'],
+        [sys.executable, 'tests/profile_browser_observation_v2_test.py']], None))
     jobs.append(('event-transport', [
         [sys.executable, 'tests/gecko_event_transfer_test.py'],
         [sys.executable, 'tests/profile_event_journal_discovery_test.py']], None))

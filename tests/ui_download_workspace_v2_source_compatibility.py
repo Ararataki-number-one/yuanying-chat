@@ -70,6 +70,26 @@ AST_PAIRS = {
 EDIT_IDS = ('owned-v2-capture-import', 'explicit-actual-v2-launch',
             'retained-v1-fresh-observation', 'versioned-v2-evidence-dispatch')
 
+# One complete v5 Activity image adds the explicit browser-header launch and
+# the nonce-gated chat measurement. Only historical read ports reverse them;
+# Android and the observer host still compile the current, unmodified source.
+HEADER_ACTIVITY_IDENTITY = (14197,
+    'ad0c964606bbb741c12e619224bc087c7960699785309e87bf7b53ce722371dc',
+    '247131076f45be25e483e477c52d5a458b02c8f5')
+HEADER_ACTIVITY_DELTAS = (
+    (b'      return;\n    }\n    try{seed();}',
+     b'      return;\n    }\n'
+     b'    if("browser-header".equals(action)){\n'
+     b'      new BrowserHeaderVisualEvidence(this,getIntent().getStringExtra("visualHeaderNonce"));\n'
+     b'      startActivity(new Intent(this,BrowserActivity.class).putExtra("url",getIntent().getStringExtra("url")));finish();return;\n'
+     b'    }\n    try{seed();}'),
+    (b'    if("browser".equals(action)||"preferences".equals(action)||"chat".equals(action)){\n'
+     b'      if("browser".equals(action))Profiles.rename',
+     b'    if("browser".equals(action)||"preferences".equals(action)||"chat".equals(action)){\n'
+     b'      if("chat".equals(action)&&getIntent().hasExtra("visualHeaderNonce"))new BrowserHeaderVisualEvidence(this,getIntent().getStringExtra("visualHeaderNonce"));\n'
+     b'      if("browser".equals(action))Profiles.rename'),
+)
+
 
 def sha(raw):
     return hashlib.sha256(raw).hexdigest()
@@ -128,8 +148,28 @@ def source_input(raw, path):
     return raw
 
 
+def header_activity_input(raw, path):
+    """Restore exactly the original v2 Activity before its unchanged inverses."""
+    assert type(raw) is bytes and type(path) is str and path == ACTIVITY, 'Complete owned v5 Activity source required'
+    assert (len(raw), sha(raw), blob(raw)) == HEADER_ACTIVITY_IDENTITY, 'Unreviewed complete v5 Activity source'
+    selected = raw
+    for previous, current in reversed(HEADER_ACTIVITY_DELTAS):
+        assert raw.count(current) == 1, 'V5 header source context is missing, repeated or relocated'
+        raw = raw.replace(current, previous, 1)
+    assert (len(raw), sha(raw), blob(raw)) == IDENTITIES[ACTIVITY][3:], 'Entire original v2 Activity did not restore'
+    forward = raw
+    for previous, current in HEADER_ACTIVITY_DELTAS:
+        assert forward.count(previous) == 1, 'Original v2 Activity context is not unique'
+        forward = forward.replace(previous, current, 1)
+    assert forward == selected, 'V5 Activity source roundtrip changed bytes'
+    return raw
+
+
 def historical_input(raw, path):
     """Unknown input is unchanged so the original downstream oracle rejects it."""
+    if (type(raw) is bytes and type(path) is str and path == ACTIVITY
+            and (len(raw), sha(raw), blob(raw)) == HEADER_ACTIVITY_IDENTITY):
+        raw = header_activity_input(raw, path)
     if (type(raw) is bytes and type(path) is str and path in IDENTITIES
             and (len(raw), sha(raw), blob(raw)) == IDENTITIES[path][3:]):
         return source_input(raw, path)

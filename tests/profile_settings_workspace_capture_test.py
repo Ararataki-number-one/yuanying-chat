@@ -50,18 +50,47 @@ def observe(root):
     return capture.settings_observation(ET.tostring(root, encoding='unicode'), glass.workspace_navigation_geometry)
 
 
-def successful_result():
-    return dict(errors=[], restoredDefaultFont=True, returnedToEnvironment=True,
+def successful_result(contract=2):
+    entries = capture.ENTRY_TITLES if contract == 2 else capture.LEGACY_ENTRY_TITLES
+    return dict(settingsContract=contract, expectedEntries=list(entries),
+        errors=[], restoredDefaultFont=True, returnedToEnvironment=True,
         embeddedMainActivityObservation=dict(activity=dict(actualProductionActivity=capture.MAIN_ACTIVITY),
             settingsObservation=dict(selectedNavigation='设置')),
         scenes=[dict(name=name, fontScale=scale, activity=dict(actualProductionActivity=capture.ACTIVITY))
                 for name, scale in capture.SCENES.items()],
-        largeFontFullyVisibleEntries=list(capture.ENTRY_TITLES),
+        largeFontFullyVisibleEntries=list(entries),
         bottomScrollPreview=dict(status='captured', fullyVisible=True, observedRowsMovedUp=True,
             additionalSwipeStationary=True, inputCount=3, feedbackDismissalsDuringScroll=0))
 
 
 class SettingsWorkspaceObservationTests(unittest.TestCase):
+    def test_current_entries_retire_only_reply_detection_and_old_captures_keep_their_meaning(self):
+        expected = ('默认环境与启动入口', '白天与黑夜', '此环境的浏览器与启动',
+                    '后台完成提醒', '通知与电池设置', '环境配置备份', '问题与建议',
+                    '应用更新', '关于与使用帮助', '功能支持范围')
+        self.assertEqual(capture.ENTRY_TITLES, expected)
+        self.assertEqual(capture.LEGACY_ENTRY_TITLES, expected[:3] + ('后台回复检测',) + expected[3:])
+        self.assertEqual(capture.SETTINGS_CONTRACT, 2)
+        self.assertEqual(capture.MAX_SCROLLS, 8)
+        self.assertTrue(capture.complete(successful_result()))
+        legacy = successful_result(1)
+        self.assertTrue(capture.complete(legacy))
+        legacy.pop('settingsContract')
+        self.assertTrue(capture.complete(legacy))
+        legacy['largeFontFullyVisibleEntries'].remove('后台回复检测')
+        self.assertFalse(capture.complete(legacy))
+        for version in (None, True, '2', 0, 3):
+            changed = successful_result(); changed['settingsContract'] = version
+            with self.subTest(version=version):
+                self.assertFalse(capture.complete(changed))
+        for expected_entries in (None, list(capture.LEGACY_ENTRY_TITLES), list(expected[:-1])):
+            changed = successful_result(); changed['expectedEntries'] = expected_entries
+            self.assertFalse(capture.complete(changed))
+        reintroduced = hierarchy()
+        current_row = next(n for n in reintroduced.iter('node') if n.get('text') == expected[3])
+        current_row.set('text', '后台回复检测')
+        self.assertIsNone(observe(reintroduced))
+
     def test_actual_route_header_actionable_rows_and_inline_notice_are_measured(self):
         value = observe(hierarchy(notice=True))
         self.assertEqual(value['selectedNavigation'], '设置')
@@ -158,20 +187,22 @@ class SettingsWorkspaceObservationTests(unittest.TestCase):
                 capture.activity_observation(value, capture.ACTIVITY)
 
     def test_completion_cannot_claim_no_input_visibility_as_real_scrolling(self):
-        self.assertTrue(capture.complete(successful_result()))
-        for key, values in {
-                'inputCount': (0, 1, True, capture.MAX_SCROLLS+1),
-                'observedRowsMovedUp': (False,), 'additionalSwipeStationary': (False,),
-                'fullyVisible': (False,), 'feedbackDismissalsDuringScroll': (1,)}.items():
-            for value in values:
-                changed = successful_result(); changed['bottomScrollPreview'][key] = value
-                with self.subTest(key=key, value=value):
-                    self.assertFalse(capture.complete(changed))
+        for contract in (1, 2):
+            self.assertTrue(capture.complete(successful_result(contract)))
+            for key, values in {
+                    'inputCount': (0, 1, True, capture.MAX_SCROLLS+1),
+                    'observedRowsMovedUp': (False,), 'additionalSwipeStationary': (False,),
+                    'fullyVisible': (False,), 'feedbackDismissalsDuringScroll': (1,)}.items():
+                for value in values:
+                    changed = successful_result(contract); changed['bottomScrollPreview'][key] = value
+                    with self.subTest(contract=contract, key=key, value=value):
+                        self.assertFalse(capture.complete(changed))
 
     def test_completion_requires_every_entry_both_actual_routes_all_scales_and_restore(self):
-        for title in capture.ENTRY_TITLES:
-            changed = successful_result(); changed['largeFontFullyVisibleEntries'].remove(title)
-            self.assertFalse(capture.complete(changed))
+        for contract, entries in ((1, capture.LEGACY_ENTRY_TITLES), (2, capture.ENTRY_TITLES)):
+            for title in entries:
+                changed = successful_result(contract); changed['largeFontFullyVisibleEntries'].remove(title)
+                self.assertFalse(capture.complete(changed))
         variants = []
         changed = successful_result(); changed['restoredDefaultFont'] = False; variants.append(changed)
         changed = successful_result(); changed['returnedToEnvironment'] = False; variants.append(changed)

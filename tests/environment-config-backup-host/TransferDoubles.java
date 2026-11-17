@@ -47,4 +47,4 @@ final class EnvironmentSpecRuntime {
   static void requireIdentity(Context c,EnvironmentSpec.Identity expected)throws Exception{if(!ProfileCatalog.INSTANCE.identity(((TestContext)c).slot).equals(expected))throw new IOException();}
 }
 final class EnvironmentResetActivity {static boolean rootsValid=true;static void verifyRoots(Context root,int slot)throws IOException{if(!rootsValid)throw new IOException();}}
-final class AppPrefs {static JSONObject values(Context c){JSONObject out=new JSONObject();for(String key:EnvironmentConfigBackup.PREFERENCES)try{out.put(key,true);}catch(Exception e){throw new IllegalStateException(e);}return out;}}
+final class AppPrefs {static boolean enabled(Context c,String key){return !key.equals("backgroundWait")&&!key.equals("replyNotice");}static JSONObject values(Context c){JSONObject out=new JSONObject();for(String key:EnvironmentConfigBackup.PREFERENCES)try{out.put(key,true);}catch(Exception e){throw new IllegalStateException(e);}return out;}}

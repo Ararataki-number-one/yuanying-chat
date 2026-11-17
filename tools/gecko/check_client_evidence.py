@@ -51,9 +51,16 @@ def verify_client_evidence(directory, source):
     coordinate = 'org.mozilla.geckoview:geckoview:157.0.20261005135250'
 
     quiet = report('quiet-notification-results.json')
-    assert quiet['actualAndroidExecution'] and quiet['checkCount'] == len(quiet['checks']) >= 39
-    assert all(item['pass'] for item in quiet['checks'])
-    assert QUIET_CHECKS <= {item['name'] for item in quiet['checks']}
+    if 'notificationContract' in quiet:
+        try:
+            from .browser_observation_contract_v2 import verify_browser_notifications
+        except ImportError:
+            from browser_observation_contract_v2 import verify_browser_notifications
+        verify_browser_notifications(quiet)
+    else:
+        assert quiet['actualAndroidExecution'] and quiet['checkCount'] == len(quiet['checks']) >= 39
+        assert all(item['pass'] for item in quiet['checks'])
+        assert QUIET_CHECKS <= {item['name'] for item in quiet['checks']}
     foreground, home = quiet['foregroundEvidence'], quiet['homeEvidence']
     assert foreground['known'] and foreground['foreground']
     assert any(row['visible'] and row['process'] == 'local.pocketchat.test:profile7'

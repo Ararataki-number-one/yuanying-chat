@@ -17,12 +17,11 @@ function fixture(code){
  const create=w.document.createTreeWalker.bind(w.document);w.document.createTreeWalker=(...args)=>{walkers++;nodes++;const value=create(...args),next=value.nextNode.bind(value);value.nextNode=()=>{const node=next();if(node)nodes++;return node;};return value;};
  w.document.cookie='session=preserved;path=/';w.document.querySelector('[data-testid="send-button"]').addEventListener('click',()=>sends++);w.eval(code);
  const call=(action,arg={})=>w.eval(driver.replace('__ACTION__',JSON.stringify(action)).replace('__ARG__',JSON.stringify(arg)));
- const first=call('web-transcript'),args={kind:'web',confirmed:true,userKey:'id:u',prompt:'original question',confirmedUrl:w.location.href,expectedUrl:w.location.href,export:true,lightObservation:true,incrementalObservation:true};
- const complete=call('poll',args);assert.equal(complete.contentObserved,true);
- const known={...args,knownReplyKey:complete.replyKey,knownReplyContentRevision:complete.replyContentRevision};
+ const first=call('web-transcript');
+ const cursor=value=>({documentId:value.documentId,revision:value.revision});
  const states=()=>[...cache].map(([node,value])=>({node:node.id||node.getAttribute('data-message-id'),identity:value.identity,version:value.version,dirty:value.dirty})).sort((a,b)=>a.node.localeCompare(b.node));
  const flushIdle=()=>{const jobs=[...idle.values()];idle.clear();for(const job of jobs){assert.equal(job.options.timeout,750);job.fn({didTimeout:false,timeRemaining:()=>10});}};
- return {w,call,first,args,known,states,flushIdle,perf:()=>w.__pocketWebPerformance,reset(){walkers=nodes=0;},counts:()=>({walkers,nodes}),close(){observers.forEach(x=>x.disconnect());idle.clear();w.close();},invariants(){assert.equal(sends,0);assert.equal(w.document.querySelector('textarea').value,'unsent original draft');assert.match(w.document.cookie,/session=preserved/);}};
+ return {w,call,first,cursor,states,flushIdle,perf:()=>w.__pocketWebPerformance,reset(){walkers=nodes=0;},counts:()=>({walkers,nodes}),close(){observers.forEach(x=>x.disconnect());idle.clear();w.close();},invariants(){assert.equal(sends,0);assert.equal(w.document.querySelector('textarea').value,'unsent original draft');assert.match(w.document.cookie,/session=preserved/);}};
 }
 
 async function scenario(kind,code){
@@ -36,12 +35,12 @@ async function scenario(kind,code){
    extra.probe=f.perf().memo(first,'plain',()=>first.textContent);assert.equal(extra.probe,'fresh plain');
    if(second){extra.second=f.perf().memo(second,'plain',()=>second.textContent);assert.equal(extra.second,'fresh second');}
   }else if(kind==='navigation-and-new-content-version'){
-   doc.dispatchEvent(new w.Event('scroll'));body.querySelector('p').append(' deferred candidate');await settle();const queued=f.call('poll',f.known);assert.equal(queued.captureDeferred,true);
+   doc.dispatchEvent(new w.Event('scroll'));body.querySelector('p').append(' explicit snapshot candidate');await settle();const beforeRead=f.perf().stats();assert.equal(f.call('poll').ok,false);assert.equal(f.perf().stats().capturesScheduled,beforeRead.capturesScheduled);
    body.remove();await settle();body.querySelector('p').textContent='fresh detached navigation version';before=f.states();f.reset();
    const wrapper=doc.createElement('div');wrapper.id='navigation-wrapper';doc.getElementById('answer').append(wrapper);wrapper.append(body);w.history.replaceState({},'','/c/other');await settle();immediate=f.states();
-   const prepared=f.perf().stats().capturesPrepared;f.flushIdle();assert.equal(f.perf().stats().capturesPrepared,prepared);extra.foreign=f.call('poll',f.known);assert.equal(extra.foreign.bindingLost,true);assert.equal(extra.foreign.submitted,false);
+   const prepared=f.perf().stats().capturesPrepared;f.flushIdle();assert.equal(f.perf().stats().capturesPrepared,prepared);extra.foreign=f.call('poll');assert.equal(extra.foreign.ok,false);assert.equal(extra.foreign.reason,'请在 ChatGPT 原网页中操作');
    const foreignSnapshot=f.call('web-transcript',{documentId:f.first.documentId,revision:f.first.revision});assert.equal(foreignSnapshot.reset,true);extra.foreignSnapshot={reset:foreignSnapshot.reset,url:foreignSnapshot.url};
-   w.history.replaceState({},'','/c/original');const pending=f.call('poll',f.known);assert.equal(pending.captureDeferred,true);f.flushIdle();const complete=f.call('poll',f.known);assert.ok(complete.markdown.includes('fresh detached navigation version'));extra.returned=complete.markdown;
+   w.history.replaceState({},'','/c/original');const returned=f.call('web-transcript');const entry=returned.changes.find(row=>row.id==='id:a');assert.ok(entry.text.includes('fresh detached navigation version'));extra.returned=entry.text;
   }else{
    turn.remove();await settle();body.querySelector('p').textContent='fresh detached '+kind;before=f.states();f.reset();
    if(kind==='same-object-added-repeatedly'){
@@ -63,15 +62,15 @@ async function scenario(kind,code){
    }
   }
   const counts=measuredCounts||f.counts();
-  // Finish outside active reading for these cache-only cases. The dedicated
-  // navigation case above exercises the real driver's queued ownership guard.
-  const final=f.call('poll',f.args);if(final.captureDeferred)f.flushIdle();const complete=f.call('poll',f.args);
-  if(!kind.includes('plain')&&!kind.includes('nonselector')&&kind!=='disjoint-cached-scopes'&&kind!=='navigation-and-new-content-version')assert.ok(complete.markdown.includes('fresh detached '+kind));
-  const snapshot=f.call('web-transcript');f.invariants();
+  // Explicit browser snapshots retain cache ownership; retired result polling
+  // cannot schedule automatic content conversion before or after navigation.
+  const snapshot=f.call('web-transcript'),entry=snapshot.changes.find(row=>row.id==='id:a');
+  if(!kind.includes('plain')&&!kind.includes('nonselector')&&kind!=='disjoint-cached-scopes'&&kind!=='navigation-and-new-content-version')assert.ok(entry.text.includes('fresh detached '+kind));
+  const retired=f.call('poll');assert.equal(retired.ok,false);assert.equal(retired.reason,'请在 ChatGPT 原网页中操作');f.invariants();
   const invalidated=immediate.filter(item=>item.version!==before.find(old=>old.node===item.node)?.version).map(item=>({node:item.node,from:before.find(old=>old.node===item.node)?.version,to:item.version}));
   // The native bridge transports JSON, not JSDOM window-specific Array prototypes.
   const entries=JSON.parse(JSON.stringify(snapshot.changes.map(x=>({id:x.id,role:x.role,text:x.text,downloads:x.downloads}))));
-  return {semantic:{before,immediate,invalidated,finalCache:f.states(),entries,poll:{submitted:complete.submitted,bindingLost:complete.bindingLost||false,terminal:complete.terminal,hasFiles:complete.hasFiles,markdown:complete.markdown},extra:{...extra,foreign:extra.foreign?{bindingLost:extra.foreign.bindingLost,submitted:extra.foreign.submitted}:undefined}},counts,maxWalkers};
+  return {semantic:{before,immediate,invalidated,finalCache:f.states(),entries,retiredResult:{ok:retired.ok,reason:retired.reason},extra:{...extra,foreign:extra.foreign?{ok:extra.foreign.ok,reason:extra.foreign.reason}:undefined}},counts,maxWalkers};
  }finally{f.close();}
 }
 
@@ -82,4 +81,4 @@ for(const kind of ['ancestor-before-descendant','descendant-before-ancestor','sa
   const row={kind,semanticSha256:digest(current.semantic),baselineSemanticSha256:before?digest(before.semantic):null,semantic:current.semantic,currentCounts:current.counts,baselineCounts:before?.counts||null,exactPairedSemantics:!!before};reports.push(row);t.diagnostic(JSON.stringify({kind,semanticSha256:row.semanticSha256,currentCounts:row.currentCounts,baselineCounts:row.baselineCounts,exactPairedSemantics:row.exactPairedSemantics}));
  });
 }
-test.after(()=>{if(process.env.SUBTREE_REPORT){fs.mkdirSync(path.dirname(process.env.SUBTREE_REPORT),{recursive:true});fs.writeFileSync(process.env.SUBTREE_REPORT,JSON.stringify({schema:1,scope:'Actual production cache/driver in controlled DOM; no Android timing claim',sourceSha256:digest(source),baselineSha256:baseline?digest(baseline):null,cases:reports},null,2)+'\n');}});
+test.after(()=>{if(process.env.SUBTREE_REPORT){fs.mkdirSync(path.dirname(process.env.SUBTREE_REPORT),{recursive:true});fs.writeFileSync(process.env.SUBTREE_REPORT,JSON.stringify({schema:2,contract:'browser-result-removal-v1',scope:'Actual production cache/driver in controlled DOM; no Android timing claim',sourceSha256:digest(source),baselineSha256:baseline?digest(baseline):null,cases:reports},null,2)+'\n');}});

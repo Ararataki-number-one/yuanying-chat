@@ -1,5 +1,5 @@
 """Counterfeit controls for raw owned evidence; samples are synthetic unit data."""
-import copy,hashlib,json,os
+import ast,copy,hashlib,json,os
 from pathlib import Path
 import unittest
 from gecko.queued_changes46 import verify_queued_changes46
@@ -7,6 +7,16 @@ from gecko.queued_changes46 import verify_queued_changes46
 ROOT=Path(__file__).resolve().parents[1]
 SOURCE='b'*40
 NONCE='a'*32
+NATIVE_FILE_PRODUCER = b'\n'.join((
+    b'void beginSyntheticFileWork(){session.resourceFileWork(false,true);}',
+    b'void finishSyntheticFileWork(){session.resourceFileWork(false,false);}',
+    b'beginSyntheticFileWork();session.navigating=false;session.connecting=false;session.state=J.obj("busy",false);',
+    b'DeferredBrowserSettings.cancel(session);finishSyntheticFileWork();session.changed();',
+    b'"savedWhileFileBusy",ok,"oldRouteKept",kept',
+    b'"fileWorkCleared",session.resourceFilePreparations==0&&session.pending==null',
+))
+FILE_ASSERTIONS = ('savedWhileFileBusy','oldRouteKept','browserSavedWithoutApplying',
+                   'fileWorkCleared','appliedWhenIdle','vpnGuardBlocksWithoutVpn')
 
 
 def sample():
@@ -24,6 +34,16 @@ def sample():
     vpn=dict(identity,serviceGeneration=3,beganAt=800,stopBudgetStarted=1150,originalCheckBudgetMillis=3500,actualAndroidExecution=True,physicalPhoneAcceptance=False,failure='',appliedObserved=True,closedObserved=True,expectedCandidate=candidate,events=[dict(kind=kind,value=value,at=at) for kind,value,at in [('full-vpn-settled',covered,1100),('actual-deferred-application',applied,1200),('owned-stop-dispatch',dispatched,1300),('owned-vpn-closed-and-guard-blocked',closed,2100)]],originalRouteAdmission=dict(accepted=True,lease=8,network=copy.deepcopy(network)))
     observer=dict(identity,actualSdkSampling=True,retiredAfterApplied=True,productionAdmissionChanged=False,initiallyKnown=False,resourceBinding='actual-binding-123456',url='http://127.0.0.1:8765/fixture?context=2&action=read&command=4',navigationEpoch=7,observations=[dict(known=True,busy=busy,fileBusy=False,documentId='actual-document-123456',navigationEpoch=7,sequence=seq) for seq,busy in [(1,True),(2,False)]])
     return dict(queuedVpnLifecycle=vpn,queuedDocumentObservation=observer)
+
+
+def native_file_sample():
+    """Synthetic current producer shape; never actual device evidence."""
+    value=sample();value.update({key:True for key in FILE_ASSERTIONS})
+    original=value['queuedDocumentObservation']['observations'][0]
+    value['queuedDocumentObservation']['observations']=[
+        dict(original,sequence=index+1,busy=busy,fileBusy=file_busy)
+        for index,(busy,file_busy) in enumerate(((True,False),(True,True),(True,False),(False,False),(False,False)))]
+    return value
 
 
 class QueuedReport46(unittest.TestCase):
@@ -76,6 +96,73 @@ class QueuedReport46(unittest.TestCase):
         self.assertEqual(len(mutations),68)
         output=os.environ.get('QUEUED_REPORT46_CONTROLS')
         if output:Path(output).write_text(json.dumps(dict(scope='Synthetic report verifier controls only; no Android/Gecko execution.',rejectedCounterfeits=len(mutations),verifierSha256=hashlib.sha256((ROOT/'tests/gecko/queued_changes46.py').read_bytes()).hexdigest(),actualAndroidExecution=False,actualGeckoExecution=False),indent=2)+'\n')
+
+    def test_committed_native_file_producer_accepts_observed_preparation_then_idle(self):
+        for producer in (NATIVE_FILE_PRODUCER,(ROOT/'tests/gecko/GeckoIntegrationTestActivity.java').read_bytes()):
+            value=native_file_sample()
+            self.assertIs(verify_queued_changes46(value,SOURCE,NONCE,producer_source=producer),value)
+        value=native_file_sample()
+        value['queuedDocumentObservation']['observations'][2]['fileBusy']=True
+        self.assertIs(verify_queued_changes46(value,SOURCE,NONCE,producer_source=NATIVE_FILE_PRODUCER),value)
+
+    def test_report_claim_cannot_select_native_file_contract(self):
+        for producer in (None,b'// historical reply-only producer'):
+            with self.assertRaisesRegex(ValueError,'legacy observation has no native file work'):
+                verify_queued_changes46(native_file_sample(),SOURCE,NONCE,producer_source=producer)
+        value=sample()
+        self.assertIs(verify_queued_changes46(value,SOURCE,NONCE,producer_source=b'// historical reply-only producer'),value)
+
+    def test_current_producer_cannot_use_historical_report_without_file_samples(self):
+        value=sample();value.update({key:True for key in FILE_ASSERTIONS})
+        with self.assertRaisesRegex(ValueError,'document idle follows actual native file preparation'):
+            verify_queued_changes46(value,SOURCE,NONCE,producer_source=NATIVE_FILE_PRODUCER)
+
+    def test_partial_duplicate_or_invalid_source_is_rejected(self):
+        for marker in NATIVE_FILE_PRODUCER.splitlines():
+            for producer in (NATIVE_FILE_PRODUCER.replace(marker,b'',1),NATIVE_FILE_PRODUCER+b'\n'+marker):
+                with self.subTest(marker=marker),self.assertRaisesRegex(ValueError,'complete committed file-preparation producer'):
+                    verify_queued_changes46(native_file_sample(),SOURCE,NONCE,producer_source=producer)
+        for producer in ('text',b'',bytearray(NATIVE_FILE_PRODUCER),b'x'*(4*1024*1024+1)):
+            with self.assertRaisesRegex(ValueError,'committed producer source'):
+                verify_queued_changes46(native_file_sample(),SOURCE,NONCE,producer_source=producer)
+
+    def test_native_contract_keeps_all_original_deferral_assertions_strict(self):
+        for key in FILE_ASSERTIONS:
+            for wrong in (False,1,None):
+                value=native_file_sample();value[key]=wrong
+                with self.subTest(key=key,value=wrong),self.assertRaises(ValueError):
+                    verify_queued_changes46(value,SOURCE,NONCE,producer_source=NATIVE_FILE_PRODUCER)
+
+    def test_native_work_cannot_escape_document_phase_or_reappear_after_idle(self):
+        changes=((0,'fileBusy',True),(4,'fileBusy',True),(1,'busy',False),(1,'fileBusy',False),
+                 (1,'fileBusy',1),(1,'known',False),(1,'sequence',1),(1,'documentId','foreign-document-123'),
+                 (1,'navigationEpoch',8),(3,'fileBusy',True),(3,'busy',True),(4,'busy',True))
+        for index,key,wrong in changes:
+            value=native_file_sample();value['queuedDocumentObservation']['observations'][index][key]=wrong
+            # A still-busy row before final idle is legal; make this mutation a
+            # return to busy after the document already became idle instead.
+            if index==3 and key=='busy':value['queuedDocumentObservation']['observations'][2]['busy']=False
+            with self.subTest(index=index,key=key,wrong=wrong),self.assertRaises(ValueError):
+                verify_queued_changes46(value,SOURCE,NONCE,producer_source=NATIVE_FILE_PRODUCER)
+
+    def test_native_contract_retains_same_candidate_and_owned_close(self):
+        mutations=(lambda v:v['queuedVpnLifecycle']['expectedCandidate'].update(savedRevision=5),
+                   lambda v:v['queuedVpnLifecycle']['events'][2]['value'].update(stopGeneration=4),
+                   lambda v:v['queuedVpnLifecycle']['events'][3]['value']['network'].update(guardAllowed=True),
+                   lambda v:v['queuedDocumentObservation'].update(retiredAfterApplied=False))
+        for mutate in mutations:
+            value=native_file_sample();mutate(value)
+            with self.assertRaises(ValueError):verify_queued_changes46(value,SOURCE,NONCE,producer_source=NATIVE_FILE_PRODUCER)
+
+    def test_runtime_selects_producer_from_installed_source_commit(self):
+        tree=ast.parse((ROOT/'tests/gecko/run_device.py').read_text())
+        assignment=next(node for node in ast.walk(tree) if isinstance(node,ast.Assign)
+                        and any(isinstance(target,ast.Name) and target.id=='queued_producer' for target in node.targets))
+        expected=ast.parse("queued_producer=subprocess.check_output(['git','show',identity['sourceCommit']+':tests/gecko/GeckoIntegrationTestActivity.java'],cwd=ROOT)").body[0]
+        self.assertEqual(ast.dump(assignment),ast.dump(expected))
+        calls=[node for node in ast.walk(tree) if isinstance(node,ast.Call) and isinstance(node.func,ast.Name) and node.func.id=='verify_queued_changes46']
+        self.assertEqual(len(calls),1)
+        self.assertEqual([(key.arg,ast.dump(key.value)) for key in calls[0].keywords],[('producer_source',ast.dump(ast.Name(id='queued_producer',ctx=ast.Load())))])
 
 
 if __name__=='__main__':unittest.main(verbosity=2)

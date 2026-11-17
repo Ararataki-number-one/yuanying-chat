@@ -43,7 +43,10 @@ public final class LoadingPerformanceHost {
     check("Portrait restores full-width stacked actions",empty.actions.orientation==LinearLayout.VERTICAL&&empty.retry.params.width==-1&&empty.website.params.leftMargin==0);
 
     android.os.SystemClock.now=20999;empty.update();check("Waiting hint stays normal before20seconds",empty.title.text.equals("正在连接当前线路"));
-    android.os.SystemClock.now=21000;empty.update();check("20second boundary changes loading explanation",empty.title.text.equals("连接时间较长")&&empty.hint.text.contains("不会自动重发消息")&&empty.wheel.visibility==View.GONE&&empty.website.visibility==View.VISIBLE);
+    // Preserve the historical comparison's copy; the current browser no longer
+    // describes send-result monitoring or automatic resending.
+    String slowExplanation=baseline?"不会自动重发消息":"可检查当前线路；登录和草稿会保留。";
+    android.os.SystemClock.now=21000;empty.update();check("20second boundary changes loading explanation",empty.title.text.equals("连接时间较长")&&empty.hint.text.contains(slowExplanation)&&empty.wheel.visibility==View.GONE&&empty.website.visibility==View.VISIBLE);
     check("Slow hint preserves normal retry visibility",empty.retry.visibility==View.GONE);
     empty.a.session.connecting=false;empty.a.session.networkReady=true;android.os.SystemClock.now=1000;empty.update();
     check("Clock rollback resets slow state and exposes loading stage",empty.title.text.equals("正在加载网页")&&empty.wheel.visibility==View.VISIBLE);

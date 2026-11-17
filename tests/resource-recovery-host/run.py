@@ -33,9 +33,7 @@ def main():
                'invalidate': member(session.read_text(), 'private long invalidateBrowserPageWork('),
                'navigation': member(session.read_text(), 'long beginNavigation('),
                'web_job': member(observer.read_text(), 'static boolean webJob('),
-               'web_navigation': member(observer.read_text(), 'void navigationStarted('),
                'same': member(observer.read_text(), 'static boolean same('),
-               'binding_route': member(observer.read_text(), 'static boolean bindingRoute('),
                'chat_url': member((prod/'MainActivity.java').read_text(), 'static boolean chatUrl('),
                'timeout': member(session.read_text(), 'void navigationTimeout('),
                'cold': member(activity.read_text(), 'void coldAllocation()'),
@@ -84,10 +82,10 @@ def main():
                   files=hashes, actualMethodsSha256={key:hashlib.sha256(value.encode()).hexdigest() for key,value in methods.items()},
                   startupDeadlineStatementSha256=hashlib.sha256(startup.encode()).hexdigest(),
                   actualAndroidExecution=False, actualGeckoExecution=False, actualNativeStartup=False,
-                  scope='Current production resource retry/ownership, beginNavigation/read-lease invalidation, navigationTimeout, webJob/navigationStarted and ResourcePressureController; '
+                  scope='Current production resource retry/ownership, beginNavigation/read-lease invalidation, navigationTimeout, resource-policy compatibility and ResourcePressureController; '
                         'current coldAllocation/awaitRecoveryAllocation/beginCase and original60s startup guard. '
                         'Synthetic non-web resource recovery task plus actual ChatGPT origin/route matching for same-page recovery. '
-                        'Cross-page web archival throws at this explicit observer boundary and runs in the independent page-lifecycle host; Android Uri uses java.net.URI. '
+                        'Legacy result retirement runs in the independent page-lifecycle host; navigation does not perform result classification; Android Uri uses java.net.URI. '
                         'Explicit session, Gecko-runtime creation and asynchronous CPU/TLS/looper doubles; no real native execution or capacity claim.')
     args.output.write_text(json.dumps(report, ensure_ascii=False, indent=2)+'\n')
     print(json.dumps(dict(status=report['status'], passed=report['passed'], output=str(args.output))))

@@ -1,14 +1,12 @@
 package local.pocketchat;
 
+/** The old background reply worker is retired; the website remains usable. */
 public class WebReplyBackgroundTestActivity extends WebReplyFixtureActivity {
-  boolean serviceStarted;
-  @Override void begin(){BackgroundReplyPolicy.setEnabled(this,true);reset("{delay:10000}",()->compose("网页后台通知测试",()->tap("[data-testid=send-button]",()->waitFor("Webpage gesture starts foreground waiting service",()->session.pending!=null&&session.pending.optBoolean("confirmed")&&ChatService.running,30,()->{
-    serviceStarted=ChatService.running;write("web-background-stage.json",J.obj("waiting",true,"foregroundService",serviceStarted));
-    moveTaskToBack(true);
-    waitFor("Background webpage reply completes",()->session.pending==null,100,()->{
-      check("Application stayed in background",!session.uiVisible);
-      check("Completion notification exists",completionPost()>0);
-      waitFor("Waiting service stops after completion",()->!ChatService.running,15,()->noResend("Background monitoring never resends",1,()->report("web-background-results.json")));
-    });
-  }))));}
+  @Override void begin(){AppSettings.setBackgroundReplyPolicy(this,true);BackgroundReplyPolicy.policyChanged(this,0);
+    reset("{delay:650}",()->compose("网页后台测试",()->tap("[data-testid=send-button]",()->{
+      check("Legacy background setting cannot reactivate a reply worker",!BackgroundReplyPolicy.enabledCached()&&!ChatService.running&&session.pending==null);
+      write("web-background-stage.json",J.obj("waiting",true,"foregroundService",false,"contract","browser-result-removal-v1"));moveTaskToBack(true);
+      handler.postDelayed(()->{check("Application stayed in background",!session.uiVisible);check("Background website creates no native reply status or notice",session.pending==null&&!ChatService.running&&completionPost()==0);noResend("Background browser does not repeat a send",1,()->report("web-background-results.json"));},2500);
+    })));
+  }
 }

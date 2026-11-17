@@ -34,7 +34,6 @@
        if(file.matches>0)record.seen.add(name);
        if(file.state!=='unknown'||file.matches!==0||!composerAvailable||uploading)return file;
        const evidence=window.__pocketWebReplyObserver?.attachmentEvidence?.(name,batch.selectedAt)||{};
-       if(evidence.sent)return {...file,state:'sent',reason:'网页已确认发送，输入区已无此附件或上传任务'};
        if(evidence.removed||record.seen.has(name))return {...file,state:'removed',reason:'附件已离开输入区，网页未显示上传任务'};
        return file;
      });

@@ -101,7 +101,31 @@ def compact_ui_members(source,version=2):
   result[name]=one((node for node in tree.body if contract.assignment(node,name)),name)
  return result
 
-def verify_current_compact_ui_source(source):
+def verify_v5_header_consumer(source):
+ """Keep the published v4 actions and add only the declared native header tap."""
+ original=(ROOT/'tests/gecko/compact_chrome_v4.py').read_text()
+ assert report_pin(original)==(10293,'f21b4062baa792cfb39dfa9a26898bdf804a4412f702d5c556b143ecfa58d3c5'),'Published v4 compact consumer changed'
+ # These are the exact v4 bytes from 5bf46502f37ffe8f3c6f17054a2a7c9ec7d53df5.
+ # The old consumer remains intact; this comparison never replaces device code.
+ changes=(
+  ('"""Exercise v4 environment, windows, address, tools and management inputs."""','"""Exercise v5 compact header targets with unchanged v4 bottom browser actions."""'),
+  ('from compact_chrome_layout_v4 import address_dialog, network_dialog_visible, verify_layout, verify_case',
+   'from browser_header_contract_v5 import network_extension\nfrom compact_chrome_layout_v5 import address_dialog, network_dialog_visible, verify_layout, verify_case'),
+  ("command=f'compact-v4-{width}-{scale}'","command=f'compact-v5-{width}-{scale}'"),
+  ("    for name,point,box in (('network-status',status['networkTap'],status['bounds']),('network-state',status['stateTap'],status['texts'][2]['bounds'])):",
+   "    extension=network_extension(before_status)\n    for name,point,box in (('network-status',status['networkTap'],status['bounds']),('network-state',status['stateTap'],status['texts'][2]['bounds']),('network-extension',extension['point'],extension['bounds'])):"),
+  ('case=dict(navigationContract=4,','case=dict(headerContract=5,navigationContract=4,'),
+ )
+ expected=original
+ for before,after in changes:
+  assert expected.count(before)==1,'Declared v5 compact change is ambiguous'
+  expected=expected.replace(before,after,1)
+ assert ast.dump(ast.parse(source),include_attributes=False)==ast.dump(ast.parse(expected),include_attributes=False),'Current v5 header consumer changed outside declared native tap'
+ return dict(headerContract=5,navigationContract=4,networkDialogTapCount=3,
+             priorConsumerSha256=report_pin(original)[1],currentConsumerSha256=report_pin(source)[1],
+             originalV4ActionsAndDeadlinesPreserved=True,actualAndroidExecution=False)
+
+def verify_current_compact_ui_source(source,header_consumer=None):
  path='tests/gecko/run_ui_visuals.py';released=history.historical_bytes(path).decode('utf-8')
  # The old whole-file inverse proves immutable release history only. Actual
  # helper methods and the complete compact loop are compared directly below.
@@ -109,7 +133,11 @@ def verify_current_compact_ui_source(source):
  version_node=contract.exactly_one((n for n in ast.parse(source).body if contract.assignment(n,'UI_NAVIGATION_CONTRACT')),'current navigation contract')
  assert isinstance(version_node.value,ast.Constant) and type(version_node.value.value) is int and version_node.value.value in (2,3,4)
  version=version_node.value.value
- actual=compact_ui_members(source,version);expected=compact_ui_members(released)
+ consumer_import=contract.exactly_one((n for n in ast.parse(source).body if isinstance(n,ast.ImportFrom) and n.module and n.module.startswith('compact_chrome_v')),'current compact consumer')
+ assert consumer_import.module in ('compact_chrome_v2','compact_chrome_v3','compact_chrome_v4','compact_chrome_v5'),'Unknown compact consumer'
+ consumer_version=int(consumer_import.module.removeprefix('compact_chrome_v'))
+ assert (version,consumer_version) in ((2,2),(3,3),(4,4),(4,5)),'Compact/header consumer does not match bottom navigation'
+ actual=compact_ui_members(source,consumer_version);expected=compact_ui_members(released)
  menu=contract.exactly_one((node for node in ast.walk(expected['compactWorkload']) if contract.assignment(node,'label')),'compact menu label')
  assert isinstance(menu.value,ast.Constant) and menu.value.value=='会话选项','Released compact menu identity changed'
  # Explicit current product wording; no current source is normalized into the
@@ -120,7 +148,7 @@ def verify_current_compact_ui_source(source):
   # helpers, deadlines, performance checks and retained legacy loop stay exact.
   class CurrentConsumer(ast.NodeTransformer):
    def visit_Name(self,node):
-    if node.id=='capture_compact_v2':node.id='capture_compact_v'+str(version)
+    if node.id=='capture_compact_v2':node.id='capture_compact_v'+str(consumer_version)
     return node
    def visit_If(self,node):
     self.generic_visit(node)
@@ -129,7 +157,7 @@ def verify_current_compact_ui_source(source):
      node.test.comparators[0].value=version
     return node
   CurrentConsumer().visit(expected['compactWorkload'])
-  expected['compactImport']=ast.parse('from compact_chrome_v'+str(version)+' import run_case as capture_compact_v'+str(version)).body[0]
+  expected['compactImport']=ast.parse('from compact_chrome_v'+str(consumer_version)+' import run_case as capture_compact_v'+str(consumer_version)).body[0]
   expected['UI_NAVIGATION_CONTRACT'].value=ast.Constant(value=version)
   # The current device observer reads the same native hierarchy while content
   # changes. Only its explicit preparation entry changes; all source/ADB/nonce
@@ -144,13 +172,17 @@ def verify_current_compact_ui_source(source):
                 currentCompactSourceSha256=hashlib.sha256(source.encode('utf-8')).hexdigest(),
                 currentCompactMembersAstSha256={name:contract.digest(node) for name,node in actual.items()},
                 currentCompactWorkloadPreserved=True,currentMenuLabel='浏览器菜单',
-                currentWholeUiWorkloadClaimed=False,currentNavigationContract=version,actualAndroidExecution=False)
+                currentWholeUiWorkloadClaimed=False,currentNavigationContract=version,
+                currentCompactConsumerVersion=consumer_version,actualAndroidExecution=False)
+ if consumer_version==5:
+  receipt['currentHeaderConsumer']=verify_v5_header_consumer(header_consumer if header_consumer is not None else (ROOT/'tests/gecko/compact_chrome_v5.py').read_text())
  return receipt
 
 def main():
  p=argparse.ArgumentParser();p.add_argument('--java-home',required=True,type=pathlib.Path);p.add_argument('--json-jar',required=True,type=pathlib.Path);p.add_argument('--before-ref');p.add_argument('--output',required=True,type=pathlib.Path);a=p.parse_args()
  names=['DesignChrome','WindowNetworkState','LatencyRefreshPolicy','LatencyProbePolicy','NetworkStatusPolicy','NetworkOptimizationPolicy','Sha256','NativeNetwork','NetworkCatalog']
  paths=[PROD+name+'.java' for name in names]+['tests/gecko/CompactChromeIntegrationActivity.java','tests/gecko/run_ui_visuals.py']
+ if not a.before_ref:paths+=['tests/gecko/compact_chrome_v4.py','tests/gecko/compact_chrome_v5.py']
  selected={path:(subprocess.check_output(['git','show',a.before_ref+':'+path],cwd=ROOT).decode() if a.before_ref else (ROOT/path).read_text()) for path in paths}
  helper=ROOT/'tests/gecko/CompactChromePresentationCapture.java'
  inputs=[ROOT/path for path in paths]+[helper,HERE/'CompactChromeCaptureHost.java',pathlib.Path(__file__).resolve(),ROOT/'tests/chrome-network-state-host/run.py',contract_path,history_path,ROOT/'tools/browser/source_history.py']

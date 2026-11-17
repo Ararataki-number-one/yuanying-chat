@@ -23,6 +23,10 @@ public final class UiVisualIntegrationActivity extends Activity {
       catch(Exception error){NavigationTypographyEvidence.rejected(this,error);finish();}
       return;
     }
+    if("browser-header".equals(action)){
+      new BrowserHeaderVisualEvidence(this,getIntent().getStringExtra("visualHeaderNonce"));
+      startActivity(new Intent(this,BrowserActivity.class).putExtra("url",getIntent().getStringExtra("url")));finish();return;
+    }
     try{seed();}catch(Exception e){Log.e("PocketUiVisual","fixture setup failed",e);finish();return;}
     if("environment-picker".equals(action)||"templates".equals(action)||"zoom".equals(action)||"audit".equals(action)){startActivity(new Intent(this,UiDetailsIntegrationActivity.class).putExtra("detailScene",action));finish();return;}
     if("update".equals(action)){startActivity(new Intent(this,AppUpdateActivity.class));finish();return;}
@@ -56,6 +60,7 @@ public final class UiVisualIntegrationActivity extends Activity {
     }
     if("environments".equals(action)){startActivity(new Intent(this,WindowHomeActivity.class));finish();return;}
     if("browser".equals(action)||"preferences".equals(action)||"chat".equals(action)){
+      if("chat".equals(action)&&getIntent().hasExtra("visualHeaderNonce"))new BrowserHeaderVisualEvidence(this,getIntent().getStringExtra("visualHeaderNonce"));
       if("browser".equals(action))Profiles.rename(this,0,"长文阅读与文件整理和日常会话的完整环境名称测试");
       Intent target=new Intent(this,MainActivity.class).putExtra("openWindowAction","chat".equals(action)?"native-smoke":"edit");
       startActivity(target);finish();return;

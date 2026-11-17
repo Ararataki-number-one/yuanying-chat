@@ -53,8 +53,16 @@ def verify_performance_evidence(directory, source):
     assert chrome['autoCollapse'].get('navigationContract',1) == versions[0], 'Compact and lifecycle evidence must use the same actual navigation contract.'
     if versions[0] in (2,3,4):
         assert {(case['viewport'],case['fontScale']) for case in chrome['cases']} == {(360,1),(412,1),(360,2)}
+    headers = [case.get('headerContract', 4) for case in chrome['cases']]
+    assert all(type(value) is int and value in (4, 5) for value in headers) and len(set(headers)) == 1
     for case in chrome['cases']:
-        if case.get('navigationContract') == 4:
+        if case.get('headerContract') == 5:
+            if __package__:
+                from .compact_chrome_layout_v5 import verify_case
+            else:
+                from compact_chrome_layout_v5 import verify_case
+            verify_case(case,require_browser_chrome=True)
+        elif case.get('navigationContract') == 4:
             if __package__:
                 from .compact_chrome_layout_v4 import verify_case
             else:
@@ -140,49 +148,56 @@ def verify_performance_evidence(directory, source):
     assert len(decisions) >= 2 and all(item['guardAllowed'] and item['decision']['type'] == 'socks'
                                      and item['decision']['host'] == '127.0.0.1' and item['decision']['port'] == 1087
                                      for item in decisions), 'Both comparisons must use the existing protected proxy path.'
-    assert gecko['checkCount'] == len(gecko['checks']) >= 155 and all(check['pass'] for check in gecko['checks'])
-    names = {check['name'] for check in gecko['checks']}
-    assert {
-        'A rendered historical websocket-failed alert cannot interrupt the current production reply',
-        'A rendered current websocket-failed alert is recognized by actual native inspection',
-        'Repeated websocket-failed polls preserve the pending task without completion',
-        'Actual Gecko streaming bridge payload is reduced by at least 95 percent',
-        'Actual growing-body DOM read work is reduced by at least 95 percent',
-        'Streaming metadata never rebuilds markdown or files',
-        'Text mutations preserve the cached message topology',
-        'First terminal capture keeps the entire 105k reply, both stream tails, code and file',
-        'The third stable actual body is accepted after at least two seconds',
-        'Reusing a stable message ID on a new node cannot retain the previous body',
-        'Generated file changes invalidate terminal markdown and attachment metadata',
-        'Earlier response copy controls cannot complete the current reply',
-        'Semantic checks preserve the synthetic login, draft and no-send invariant',
-        'Production stable lightweight samples finish and persist the actual reply task',
-        'The complete final body is durably saved by the production transcript worker',
-        'Actual Android tap and keyboard input preserve the existing composer draft',
-        'Sibling generated file cards invalidate the actual Gecko reply revision',
-        'Sibling file cards appear in incremental transcript downloads',
-        'Renaming a sibling file card refreshes actual Gecko metadata and transcript downloads',
-        'Removing a sibling file card invalidates the actual Gecko reply metadata',
-        'Reattaching an edited cached body refreshes actual Gecko terminal text and transcript',
-        'Original-only bridge starts with the actual existing Gecko document',
-        'Retired native actions leave the entire website DOM, composer, selection, route and login unchanged',
-        'Actual different official SPA conversation quietly archives its native observation',
-        'Quiet conversation archive retains full pending body and original delivery binding',
-        'Quiet conversation archive clears stale completion samples and settings busy state',
-        'Returning to an archived official conversation does not resurrect its old task',
-        'Matching current official conversation retains a new observation',
-        'A stale inspected URL cannot archive the current task',
-        'A new official conversation still monitors its exact bound user without native submission',
-        'An actual login route retains unresolved observation and its original binding',
-        'An actual empty homepage hydration shell does not archive a bound conversation',
-        'An interactive homepage still displaying a busy operation retains its bound observation',
-        'An actual interactive empty official homepage quietly ends the old observation',
-        'A genuine same-conversation edited question stays unresolved with its error',
-        'Quiet navigation never stops reloads resubmits or changes the browser draft and login',
-    } <= names, 'Long-reply correctness regression is required.'
-    for action in ('fill', 'submit', 'model-open', 'model-select', 'message-regenerate-submit', 'page-navigate'):
-        assert 'Public native bridge rejects retired action ' + action in names
-        assert 'Actual Gecko observation asset rejects retired action ' + action in names
+    if 'browserObservationContract' in gecko:
+        if __package__:
+            from .browser_observation_contract_v2 import verify_browser_observation
+        else:
+            from browser_observation_contract_v2 import verify_browser_observation
+        verify_browser_observation(gecko)
+    else:
+        assert gecko['checkCount'] == len(gecko['checks']) >= 155 and all(check['pass'] for check in gecko['checks'])
+        names = {check['name'] for check in gecko['checks']}
+        assert {
+            'A rendered historical websocket-failed alert cannot interrupt the current production reply',
+            'A rendered current websocket-failed alert is recognized by actual native inspection',
+            'Repeated websocket-failed polls preserve the pending task without completion',
+            'Actual Gecko streaming bridge payload is reduced by at least 95 percent',
+            'Actual growing-body DOM read work is reduced by at least 95 percent',
+            'Streaming metadata never rebuilds markdown or files',
+            'Text mutations preserve the cached message topology',
+            'First terminal capture keeps the entire 105k reply, both stream tails, code and file',
+            'The third stable actual body is accepted after at least two seconds',
+            'Reusing a stable message ID on a new node cannot retain the previous body',
+            'Generated file changes invalidate terminal markdown and attachment metadata',
+            'Earlier response copy controls cannot complete the current reply',
+            'Semantic checks preserve the synthetic login, draft and no-send invariant',
+            'Production stable lightweight samples finish and persist the actual reply task',
+            'The complete final body is durably saved by the production transcript worker',
+            'Actual Android tap and keyboard input preserve the existing composer draft',
+            'Sibling generated file cards invalidate the actual Gecko reply revision',
+            'Sibling file cards appear in incremental transcript downloads',
+            'Renaming a sibling file card refreshes actual Gecko metadata and transcript downloads',
+            'Removing a sibling file card invalidates the actual Gecko reply metadata',
+            'Reattaching an edited cached body refreshes actual Gecko terminal text and transcript',
+            'Original-only bridge starts with the actual existing Gecko document',
+            'Retired native actions leave the entire website DOM, composer, selection, route and login unchanged',
+            'Actual different official SPA conversation quietly archives its native observation',
+            'Quiet conversation archive retains full pending body and original delivery binding',
+            'Quiet conversation archive clears stale completion samples and settings busy state',
+            'Returning to an archived official conversation does not resurrect its old task',
+            'Matching current official conversation retains a new observation',
+            'A stale inspected URL cannot archive the current task',
+            'A new official conversation still monitors its exact bound user without native submission',
+            'An actual login route retains unresolved observation and its original binding',
+            'An actual empty homepage hydration shell does not archive a bound conversation',
+            'An interactive homepage still displaying a busy operation retains its bound observation',
+            'An actual interactive empty official homepage quietly ends the old observation',
+            'A genuine same-conversation edited question stays unresolved with its error',
+            'Quiet navigation never stops reloads resubmits or changes the browser draft and login',
+        } <= names, 'Long-reply correctness regression is required.'
+        for action in ('fill', 'submit', 'model-open', 'model-select', 'message-regenerate-submit', 'page-navigate'):
+            assert 'Public native bridge rejects retired action ' + action in names
+            assert 'Actual Gecko observation asset rejects retired action ' + action in names
     measurements = {case['variant']: case for case in gecko['measurements']}
     assert set(measurements) == {'baseline', 'current'}
     assert all(case['samples'] == 12 for case in measurements.values())
@@ -211,9 +226,17 @@ def verify_performance_evidence(directory, source):
         'Intervening non-saving network operations preserve the newest save ownership',
         'The latest network candidate is applied once after the stale callback is ignored',
     } <= passed, 'Multi-profile cache and main-thread disk regression is required.'
-    for name, count in [('snapshot-host-results.json', 14), ('reply-observation-host-results.json', 37)]:
-        report = json.loads((directory / name).read_text())
-        assert report['passed'] == report['total'] >= count, name
+    snapshot_host = json.loads((directory / 'snapshot-host-results.json').read_text())
+    assert snapshot_host['passed'] == snapshot_host['total'] >= 14
+    observation_host = json.loads((directory / 'reply-observation-host-results.json').read_text())
+    if gecko.get('browserObservationContract') == 2:
+        if __package__:
+            from .browser_observation_contract_v2 import verify_transcript_host
+        else:
+            from browser_observation_contract_v2 import verify_transcript_host
+        verify_transcript_host(observation_host)
+    else:
+        assert observation_host['passed'] == observation_host['total'] >= 37
     return {'actualAndroidExecution': True, 'actualGeckoExecution': True, 'geckoChecks': gecko['checkCount'],
             'compactCases': len(chrome['cases']), 'reloadConfirmationChecks': len(reload['checks']),
             'autoCollapse': auto_collapse,

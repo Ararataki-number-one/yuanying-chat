@@ -108,6 +108,7 @@ class FileDownloads {
  boolean saveTask(){tasks.save();return true;}
  void transferProgress(){}void choose(long attempt){chosen++;}void fail(long attempt,String message){reason=message;}static class Tasks {boolean owned=true;void save(){}boolean owns(JSONObject row){return owned&&row!=null;}}
  /* VALID */
+ /* DOWNLOAD_TYPE */
  /* DOWNLOAD */
 }
 class ChatSession {final Handler handler=new Handler(Looper.getMainLooper());GeckoWebView web;boolean networkReady=true,offline,navigating;final Guard guard=new Guard();}
@@ -122,6 +123,13 @@ class DownloadTasks {static void put(JSONObject row,Object...values){try{for(int
 class AppPrefs {static void requireDownloadNetwork(Context context){}}
 class BrowserNetworkGuard {static boolean publicHttps(android.net.Uri uri){return true;}}
 class URLUtil {static String guessFileName(String a,String b,String c){return "fixture.bin";}}
+// The Cookie/range fixture uses binary names only. Other platform MIME lookups
+// must not be silently accepted as file-format coverage by this controlled host.
+class MimeTypeMap {
+ static final MimeTypeMap INSTANCE=new MimeTypeMap();
+ static MimeTypeMap getSingleton(){return INSTANCE;}
+ String getMimeTypeFromExtension(String extension){if(!"bin".equals(extension))throw new AssertionError("Unsupported fixture MIME lookup: "+extension);return "application/octet-stream";}
+}
 
 // Controlled Cookie/HTTP adapter only. Production route admission and revocation
 // are exercised separately; this fixture retains its explicit loopback connection.

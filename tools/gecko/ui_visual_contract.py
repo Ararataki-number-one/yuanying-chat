@@ -32,6 +32,18 @@ def verify_captures(records, source=None):
     actual = {(item['theme'], item['logicalViewport'], item['fontScale'], item['scene']) for item in records}
     assert actual == expected, ('Native UI coverage differs', expected - actual, actual - expected)
 
+    chats = [item for item in records if item['scene'] == 'chat']
+    headers = [item.get('headerContract', 4) for item in chats]
+    assert all(type(value) is int and value in (4, 5) for value in headers) and len(set(headers)) == 1, 'Mixed native header contracts'
+    if headers[0] == 5:
+        try:
+            from .workspace_browser_header_v5 import verify_capture
+        except ImportError:
+            from workspace_browser_header_v5 import verify_capture
+        for item in chats:
+            verify_capture(item, source)
+        assert len({item['browserHeaderNonce'] for item in chats}) == len(chats), 'Headers reused an Activity invocation'
+
     downloads = [item for item in records if item['scene'] == 'downloads']
     for item in downloads:
         verify_download_location(item, source)

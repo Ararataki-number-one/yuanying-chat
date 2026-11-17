@@ -12,6 +12,8 @@ The cases cover a genuine selected-file callback both before and after resume, n
 
 Cancellation cases invoke a second browser command synchronously from the old picker or permission callback. They cover a newer address, another selected tab, a closed activity, a queued address behind the existing network gate, an obsolete native start, popup cancellation, unavailable history, independent download state, and stop. The runner compiles the shared production navigation boundary as well as its callers.
 
+The actual `Tab` and `BlobDocument` holders are included together. Blob transfer is an explicit fail-on-call boundary in this HTTP lifecycle fixture; `tests/browser-blob-host/run.py` separately executes the production Blob navigation entry methods. This suite does not claim Blob transport coverage.
+
 Eight compiled counterfeits must fail their named behavioral assertion: immediate file delivery, dropped queued address, accepting the old document callback, omitting loading at go/back/reload dispatch, starting a never-finishing load for SPA history, and allowing a cancelled outer request to overwrite a newer navigation.
 
 This is host behavior evidence. It does not execute Android lifecycle, URI permission validation, actual WebView network traffic, native UA metadata, page fingerprint APIs or AES-GCM. The separately required Android HTTPS integration supplies real engine observations.

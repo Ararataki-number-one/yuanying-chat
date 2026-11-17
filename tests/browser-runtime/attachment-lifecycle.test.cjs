@@ -46,13 +46,13 @@ test('A trusted remove captured before the first attachment poll is recognized o
   const f=fixture(t),b=f.batch(),card=f.card('report.txt','uploading');f.gesture(card.querySelector('button'));
   assert.equal(state(await f.poll([b])),'uploading','Remove intent cannot declare a still visible upload complete');card.remove();assert.equal(state(await f.poll([b])),'removed');
 });
-test('A quick send is terminal only after the production observer confirms the new user message',async t=>{
+test('A quick website send is never classified as successfully sent by the browser',async t=>{
   const f=fixture(t),b=f.batch(),card=f.card();f.gesture(f.window.document.querySelector('[data-testid="send-button"]'));card.remove();
   assert.equal(state(await f.poll([b])),'unknown','Trusted intent alone is not successful sending');
   const user=f.window.document.createElement('article');user.dataset.messageAuthorRole='user';user.dataset.messageId='u1';user.textContent=f.editor.value;f.window.document.querySelector('main').append(user);await f.settle();f.flush(30);
-  assert.ok(f.posts.some(row=>row.type==='bound'));assert.equal(state(await f.poll([b])),'sent');
+  assert.ok(!f.posts.some(row=>['intent','bound','uncertain','stop'].includes(row.type)));assert.equal(state(await f.poll([b])),'unknown','User-message rendering is not file-delivery evidence');
 });
-test('Untrusted remove and an unconfirmed send never supply terminal evidence',async t=>{
+test('Untrusted removal cannot release an unobserved attachment',async t=>{
   const f=fixture(t),b=f.batch(),card=f.card();f.gesture(card.querySelector('button'),false);card.remove();
   assert.equal(state(await f.poll([b])),'unknown');f.flush(30);assert.equal(state(await f.poll([b])),'unknown');
 });

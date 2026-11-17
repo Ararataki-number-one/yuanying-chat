@@ -770,8 +770,10 @@ def verify_original_burst(report, *, source, run_id, run_attempt, identity, side
             return subprocess.check_output(['git', 'show', commit + ':' + path], cwd=artifact_root, stderr=subprocess.PIPE)
     protected = {'runnerSha256': 'tests/gecko/run_gecko_performance.py',
                  'activitySha256': 'tests/gecko/GeckoPerformanceIntegrationActivity.java'}
+    protected_sources = {}
     for field, path in protected.items():
-        require(sidecar.get(field) == digest(source_reader(source, path)),
+        protected_sources[field] = source_reader(source, path)
+        require(sidecar.get(field) == digest(protected_sources[field]),
                 'original protected performance source bytes differ: ' + field)
     command = sidecar.get('command')
     invocation_root = sidecar.get('invocationRepositoryRoot')
@@ -812,8 +814,30 @@ def verify_original_burst(report, *, source, run_id, run_attempt, identity, side
     for field in ['actualSdkInputClockTrace', 'sdkInputWriterLogCapture']:
         require(not report.get(field), 'original burst includes SDK diagnostic observations: ' + field)
     require(all(report.get(key) is True for key in ['actualAndroidExecution', 'actualGeckoExecution',
-            'actualAndroidTouchExecution', 'actualGeckoBindingRegressionExecution', 'actualInputImeSettled', 'actualSingleInputBurst']),
+            'actualAndroidTouchExecution', 'actualInputImeSettled', 'actualSingleInputBurst']),
             'actual original strict burst execution missing')
+    # Select the retired-result contract from the committed producer bytes already
+    # bound to this sidecar, never from a report's optional version/boolean claims.
+    # A partial producer migration must not fall back to the historical contract.
+    browser_v2 = [
+        b'from browser_observation_contract_v2 import verify_browser_observation' in protected_sources['runnerSha256'],
+        b'verify_browser_observation(report)' in protected_sources['runnerSha256'],
+        b'"browserObservationContract",2' in protected_sources['activitySha256'],
+        b'"actualGeckoBrowserLifecycleExecution",true' in protected_sources['activitySha256'],
+    ]
+    if any(browser_v2):
+        require(all(browser_v2), 'selected original browser observation source contract incomplete')
+        observation_spec = importlib.util.spec_from_file_location('caret_browser_observation_contract',
+            Path(__file__).with_name('browser_observation_contract_v2.py'))
+        observation_contract = importlib.util.module_from_spec(observation_spec)
+        observation_spec.loader.exec_module(observation_contract)
+        try:
+            observation_contract.verify_browser_observation(report)
+        except (AssertionError, KeyError, TypeError, ValueError) as error:
+            raise ValueError('Caret compatibility: original browser observation v2 contract invalid: ' + str(error)) from error
+    else:
+        require(report.get('actualGeckoBindingRegressionExecution') is True,
+                'actual original strict burst execution missing')
     require(report.get('sourceCommit') == source, 'original raw performance report source mismatch')
     for field, expected in [('runId', run_id), ('runAttempt', run_attempt)]:
         require(field not in report or report[field] == expected, 'existing original report identity conflicts: ' + field)
@@ -848,7 +872,7 @@ def verify_original_burst(report, *, source, run_id, run_attempt, identity, side
             and draft.replace('-user-typed', '', 1) == request['draft'], 'original burst changed the existing draft')
     # The selected committed runner decides this requirement, never an optional
     # report flag. Older immutable evidence keeps its original input protocol.
-    if b'from native_input_driver import NativeInputDriver' in source_reader(source, protected['runnerSha256']):
+    if b'from native_input_driver import NativeInputDriver' in protected_sources['runnerSha256']:
         if __package__:
             from .native_input_contract import verify_qualification
         else:

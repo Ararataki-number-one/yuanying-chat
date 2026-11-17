@@ -282,6 +282,27 @@ public final class ChooserCases {
       android.os.Build.VERSION.SDK_INT=29;f.context.resolver.updateResult=0;f.fail(()->true,f.bytes.length);check("MediaStore publication failure deletes the unindexed pending row",f.library.adds==0&&f.context.resolver.deletes==1&&f.context.resolver.contents.isEmpty());
     }
   }
+  static void blobLifetime(){
+    try(Fixture f=new Fixture()){
+      BrowserBlobDownload blob=new BrowserBlobDownload();f.files.blobOwner=f.web;f.files.blobTransfer=blob;
+      check("A document Blob counts as the active download",f.files.hasActiveDownload());
+      f.files.cancelFor(new WebView(f.web.url));check("A same-URL different WebView cannot cancel the Blob owner",!blob.cancelled);
+      f.files.cancelFor(f.web);check("Replacing the original document cancels its Blob read",blob.cancelled);
+    }
+    try(Fixture f=new Fixture()){
+      BrowserBlobDownload blob=new BrowserBlobDownload();f.files.blobOwner=f.web;f.files.blobTransfer=blob;
+      f.files.cancelActiveDownload();check("Download-center cancel includes Blob reads",blob.cancelled);
+    }
+    try(Fixture f=new Fixture()){
+      BrowserBlobDownload blob=new BrowserBlobDownload();f.files.blobOwner=f.web;f.files.blobTransfer=blob;
+      f.files.destroy();check("Browser destruction cancels Blob reads and its worker",blob.cancelled&&f.files.worker.isShutdown());
+    }
+    try(Fixture f=new Fixture()){
+      BrowserDownloadTransfer http=new BrowserDownloadTransfer();f.files.transfer=http;
+      f.files.cancelFor(f.web);check("Ordinary HTTP transfers retain their independent navigation lifetime",!http.cancelled);
+      f.files.cancelActiveDownload();check("Download-center cancel retains HTTP behavior",http.cancelled);
+    }
+  }
   static void externalHandoff(){
     try(Fixture f=new Fixture()){
       String url="https://example.test/file.pdf?token=destination";f.files.handoff(f.web,url,"temporary export");
@@ -318,7 +339,7 @@ public final class ChooserCases {
     }
   }
   public static void main(String[] args)throws Exception {
-    staleAndMultiple();lifecycle();reentry();invalidAndLaunch();selections();grants();malformedResults();mimeAndFlags();exhaustion();storeSlots();globalSaveSuccess();globalSaveRollback();externalHandoff();
+    staleAndMultiple();lifecycle();reentry();invalidAndLaunch();selections();grants();malformedResults();mimeAndFlags();exhaustion();storeSlots();globalSaveSuccess();globalSaveRollback();externalHandoff();blobLifetime();
     System.out.println(new JSONObject().put("status","passed").put("passed",checks.size()).put("checks",new JSONArray(checks)).toString());
   }
 }

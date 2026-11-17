@@ -295,7 +295,7 @@ final class ChromeCollapseIntegration {
       a.remote.evaluateJavascript("("+REPLY_PROGRESS_SCRIPT+")("+JSONObject.quote(fixtureDocument)+")",progressRaw->{
       JSONObject progress=J.parse(progressRaw);
       if(SystemClock.elapsedRealtime()>deadline||!progress.optBoolean("installed")||!fixtureDocument.equals(progress.optString("document"))){emit("error",J.obj("error","Owned controlled reply progress setup failed"));return;}
-      task=a.session.deliveries.begin(TARGET,"already sent fixture question",new JSONArray(),"web",null);
+      task="legacy-collapse-"+java.util.UUID.randomUUID();
       // This owned task measures retention, not the independent reply worker.
       a.session.pending=J.obj("id",task,"kind","web","engine","gecko","confirmed",true,"webSuspended",true,"userKey","id:reload-user","prompt","already sent fixture question","confirmedUrl",TARGET,"expectedUrl",TARGET);
       a.session.conversation=TARGET;a.session.prefs.edit().putString("pending",a.session.pending.toString()).putString("conversation",TARGET).commit();

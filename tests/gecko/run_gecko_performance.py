@@ -341,9 +341,10 @@ def main():
                     assert len(summaries) == 1 and not summaries[0]['overflow'] and not summaries[0]['restoreError'], summaries
                     assert summaries[0]['published'] == summaries[0]['reserved'] == len(native_input_events) - 1, 'Buffered native event log is incomplete'
                     assert summaries[0]['focusedChildAttached'] and not summaries[0]['focusedChildError'], summaries
-                assert report['status'] == 'passed' and report['actualAndroidExecution'] and report['actualGeckoExecution'] and report['actualAndroidTouchExecution'] and report['actualGeckoBindingRegressionExecution'], report
+                assert report['status'] == 'passed' and report['actualAndroidExecution'] and report['actualGeckoExecution'] and report['actualAndroidTouchExecution'], report
                 assert report['baselineSource'] == BASELINE and report['checkCount'] == len(checks), report
-                assert len(checks) >= 125 and all(check['pass'] for check in checks.values()), report
+                from browser_observation_contract_v2 import verify_browser_observation
+                verify_browser_observation(report)
                 assert set(measurements) == {'baseline', 'current'}, report
                 assert all(case['samples'] == 12 for case in measurements.values()), report
                 assert set(gestures) == {'baseline-scroll', 'current-scroll', 'current-input'}, report

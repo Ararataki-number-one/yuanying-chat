@@ -39,10 +39,10 @@ class Timer {Runnable callback;long delay;int posts;void postDelayed(Runnable ta
 class ChatSession {
  static ChatSession current;static ChatSession peek(){return current;}
  final Prefs prefs=new Prefs();final Privacy privacy=new Privacy();final Web web=new Web();final Guard guard=new Guard();final Timer handler=new Timer();
- JSONObject pending=J.obj("id","preexisting"),state=J.obj("sentinel","initial");
- int environmentGeneration=3,completed,changes;String environmentId="environment-2";long navigationEpoch=7;
+ JSONObject pending,state=J.obj("sentinel","initial");
+ int environmentGeneration=3,completed,changes,resourceFilePreparations;String environmentId="environment-2";long navigationEpoch=7;
  boolean deleted,navigating=true,connecting=true;
- void changed(){changes++;}void completeReply(JSONObject job,JSONObject result){if(job!=pending||job==null)throw new AssertionError("callback replaced the reply identity");completed++;pending=null;prefs.values.remove("pending");}
+ void changed(){changes++;}void resourceFileWork(boolean chooser,boolean begin){if(chooser)throw new AssertionError("Expected file preparation owner");if(begin)resourceFilePreparations++;else{if(resourceFilePreparations!=1)throw new AssertionError("Missing exact file owner");resourceFilePreparations--;completed++;}}
 }
 class DeferredBrowserSettings {
  static int saves,cancels;static boolean save(ChatSession s,int level,boolean desktop){saves++;s.prefs.values.put("nextPrivacyLevel",level);return true;}
@@ -79,9 +79,9 @@ class GeckoQueuedChangesObservation {
 class GeckoIntegrationTestActivity {
  ChatSession session=new ChatSession();QueuedChangesVpn46 queuedVpn;int slot=1;long run=46;int events;JSONObject eventValue;
  void event(long serial,String kind,JSONObject value){if(serial!=run||!"queuedChanges".equals(kind))throw new AssertionError("foreign event");events++;eventValue=value;}
- // Durable preparation is covered by the real reply-task-persistence host.
- // This boundary keeps this host focused on the unchanged callback fences.
- JSONObject beginSyntheticReply(String label){JSONObject job=J.obj("id",label,"kind","web","confirmed",true);session.prefs.edit().putString("pending",job.toString()).commit();session.pending=job;return job;}
+ // The resource owner is a counted boundary; this suite tests callback fences.
+ void beginSyntheticFileWork(){session.resourceFileWork(false,true);}
+ void finishSyntheticFileWork(){session.resourceFileWork(false,false);}
  @READY@
 }
 public final class QueuedCallback46Host {
@@ -92,7 +92,7 @@ public final class QueuedCallback46Host {
   Case(){NetworkBridge.reset();ChatSession.current=original;vpn=new QueuedChangesVpn46(activity);activity.queuedVpn=vpn;observation=new GeckoQueuedChangesObservation(activity);}
   void start(){activity.queuedChangesReady(46,observation,vpn);}
  }
- static String state(ChatSession s){return s.prefs.edits+"|"+s.prefs.values+"|"+s.pending+"|"+s.state+"|"+s.completed+"|"+s.changes+"|"+s.navigating+"|"+s.connecting+"|"+s.handler.posts;}
+ static String state(ChatSession s){return s.prefs.edits+"|"+s.prefs.values+"|"+s.pending+"|"+s.state+"|"+s.completed+"|"+s.resourceFilePreparations+"|"+s.changes+"|"+s.navigating+"|"+s.connecting+"|"+s.handler.posts;}
  static void invalidate(Case c,String kind){
   if(kind.equals("command"))c.activity.run++;
   else if(kind.equals("destroyed"))c.original.deleted=true;
@@ -108,7 +108,7 @@ public final class QueuedCallback46Host {
  static void entry(String kind){Case c=new Case();invalidate(c,kind);String original=state(c.original),live=state(c.activity.session);c.start();check("entry/"+kind+": original and replacement state unchanged",state(c.original).equals(original)&&state(c.activity.session).equals(live));check("entry/"+kind+": no Bridge/save/cancel/completion",NetworkBridge.calls==0&&DeferredBrowserSettings.saves==0&&DeferredBrowserSettings.cancels==0&&c.original.completed==0&&c.vpn.aborts==1);android.os.SystemClock.now=100;}
  static void late(String kind){Case c=new Case();c.start();check("callback/"+kind+": original explicit deferred request",NetworkBridge.calls==1&&NetworkBridge.choices==1&&"defer".equals(NetworkBridge.selected));invalidate(c,kind);String original=state(c.original),live=state(c.activity.session);int cancelled=DeferredBrowserSettings.cancels;NetworkBridge.deliver();check("callback/"+kind+": late result cannot write either session",state(c.original).equals(original)&&state(c.activity.session).equals(live));check("callback/"+kind+": no cancel/complete/idle/stop or timer",DeferredBrowserSettings.cancels==cancelled&&c.original.completed==0&&c.observation.idles==0&&c.vpn.stops==0&&c.original.handler.posts==0&&c.vpn.aborts==1);android.os.SystemClock.now=100;}
  static void timer(String kind){Case c=new Case();c.start();NetworkBridge.deliver();check("timer/"+kind+": original next-poll delay preserved",c.original.handler.posts==1&&c.original.handler.delay==3500);invalidate(c,kind);String original=state(c.original),live=state(c.activity.session);c.original.handler.callback.run();check("timer/"+kind+": stale timer emits no event or state writes",c.activity.events==0&&state(c.original).equals(original)&&state(c.activity.session).equals(live)&&c.vpn.aborts==1);}
- static void normal(){Case c=new Case();c.start();NetworkBridge.deliver();check("normal: original completion statements run",DeferredBrowserSettings.cancels==1&&c.original.completed==1&&c.original.pending==null&&c.original.changes==2&&!c.original.state.optBoolean("busy")&&!c.original.navigating);check("normal: observer and VPN boundaries requested once with the actual callback snapshot",c.observation.idles==1&&c.vpn.stops==1&&c.vpn.snapshot==NetworkBridge.delivered&&c.original.handler.posts==1&&c.original.handler.delay==3500&&c.activity.events==0);c.original.handler.callback.run();JSONObject v=c.activity.eventValue;check("normal: original callback schema and first four native-work predicates retained",c.activity.events==1&&v.optBoolean("savedWhileReplying")&&v.optBoolean("oldRouteKept")&&v.optBoolean("browserSavedWithoutApplying")&&v.optBoolean("replyCleared"));check("normal: route and VPN acceptance deliberately remain false in this host",Boolean.FALSE.equals(v.opt("appliedWhenIdle"))&&Boolean.FALSE.equals(v.opt("vpnGuardBlocksWithoutVpn"))&&c.observation.attached==1&&c.vpn.attached==1);}
+ static void normal(){Case c=new Case();c.start();NetworkBridge.deliver();check("normal: original file-end statements run",DeferredBrowserSettings.cancels==1&&c.original.completed==1&&c.original.pending==null&&c.original.changes==2&&!c.original.state.optBoolean("busy")&&!c.original.navigating);check("normal: observer and VPN boundaries requested once with the actual callback snapshot",c.observation.idles==1&&c.vpn.stops==1&&c.vpn.snapshot==NetworkBridge.delivered&&c.original.handler.posts==1&&c.original.handler.delay==3500&&c.activity.events==0);c.original.handler.callback.run();JSONObject v=c.activity.eventValue;check("normal: original callback schema and first four native-work predicates retained",c.activity.events==1&&v.optBoolean("savedWhileFileBusy")&&v.optBoolean("oldRouteKept")&&v.optBoolean("browserSavedWithoutApplying")&&v.optBoolean("fileWorkCleared"));check("normal: route and VPN acceptance deliberately remain false in this host",Boolean.FALSE.equals(v.opt("appliedWhenIdle"))&&Boolean.FALSE.equals(v.opt("vpnGuardBlocksWithoutVpn"))&&c.observation.attached==1&&c.vpn.attached==1);}
  public static void main(String[] args){
   if(args[0].equals("all")){for(String kind:new String[]{"command","destroyed","session","port","document","failed-observation","expired","vpn-owner","url"})entry(kind);for(String kind:new String[]{"command","destroyed","session","port","document","failed-observation","expired","vpn-owner","url"})late(kind);for(String kind:new String[]{"command","destroyed","session"})timer(kind);normal();}
   else if(args[0].equals("entry"))entry("command");else if(args[0].equals("callback"))late("command");else if(args[0].equals("timer"))timer("command");else throw new AssertionError("unknown scenario");

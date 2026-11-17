@@ -103,27 +103,28 @@ async function runtimeAndFallback(){
   try{
     await f.snapshot();
     const args={kind:'web',confirmed:true,userKey:'id:u1',prompt:'bound question',confirmedUrl:f.w.location.href,expectedUrl:f.w.location.href,export:true,lightObservation:true,incrementalObservation:true};
-    let result=f.call('poll',args);check('Current-turn completion is still observed',result.terminal&&!result.busy&&result.contentObserved&&result.markdown.includes('complete answer'));
+    let result=f.call('web-inspect'),transcript=f.call('transcript');check('Current page readiness and full transcript remain available',!result.busy&&result.hasMessages&&transcript.entries.some(entry=>entry.id==='id:a1'&&entry.text.includes('complete answer')));
+    if(optimized)check('Removed result sampling is unavailable',f.call('poll',args).ok===false&&f.call('latest',args).ok===false);
     const posts=[];f.w.PocketWebReply={postMessage:packet=>posts.push(JSON.parse(packet))};f.w.eval(observerSource);f.call('observe-install',{resourceBinding:'binding-0000000001'});
     const resources=()=>{f.w.__pocketWebReplyObserver.requestResources('resource-order-test01');return posts.at(-1);};
     const stop=f.w.document.createElement('button');stop.setAttribute('data-testid','stop-button');stop.setAttribute('aria-label','Stop');f.w.document.body.append(stop);
     f.w.document.getElementById('upload-zone').setAttribute('data-upload-state','uploading');result=resources();check('Resource and upload start remain immediate',result.busy&&result.uploading);
     stop.remove();f.w.document.getElementById('upload-zone').removeAttribute('data-upload-state');result=resources();check('Resource and upload completion remain immediate',!result.busy&&!result.uploading);
     const context=f.w.document.createElement('div');context.innerHTML='<span>Browser app server websocket closed</span><button aria-label="Retry">Retry</button>';f.w.document.querySelector('section').append(context);
-    if(!optimized)await f.settle();result=f.call('poll',args);check('Current retry/socket error remains immediate',result.websiteSocketClosed&&result.errorCode==='website_socket_closed');
-    observations.push({error:result.error,errorCode:result.errorCode,websiteSocketClosed:result.websiteSocketClosed});
-    context.firstChild.textContent='Everything is ready';result=f.call('poll',args);check('Retry context remains live',result.error==='');context.remove();
-    f.w.document.querySelector('[data-user-message-bubble]').textContent='edited bound question';if(!optimized)await f.settle();result=f.call('poll',args);check('Editing the bound question still invalidates ownership',result.bindingLost===true);
-    observations.push({bindingLost:result.bindingLost,error:result.error});
+    if(!optimized)await f.settle();result=f.call('web-inspect');check('Current retry/socket error remains immediate',result.websiteSocketClosed&&result.errorCode==='website_socket_closed');
+    observations.push({hasError:!!result.error,errorCode:result.errorCode,websiteSocketClosed:result.websiteSocketClosed});
+    context.firstChild.textContent='Everything is ready';result=f.call('web-inspect');check('Retry context remains live',result.error==='');context.remove();
+    f.w.document.querySelector('[data-user-message-bubble]').textContent='edited visible question';if(!optimized)await f.settle();transcript=f.call('transcript');check('Editing visible question text updates its transcript without send binding',transcript.entries.some(entry=>entry.id==='id:u1'&&entry.text==='edited visible question'));
+    observations.push({editedQuestion:transcript.entries.find(entry=>entry.id==='id:u1').text});
     delete f.w.__pocketWebPerformance.orderedMessageNodes;f.reset();await f.snapshot();
     check('An older installed helper falls back to the original sort',f.comparisons()>0);
     delete f.w.__pocketWebPerformance;f.reset();result=f.call('transcript');check('An absent performance helper retains the original transcript path',result.ok&&result.entries.length===2&&f.comparisons()>0);
-    check('Completion/errors/upload/fallback checks preserve draft/cookie and zero page actions',f.noEffects());
+    check('Page/errors/upload/fallback checks preserve draft/cookie and zero page actions',f.noEffects());
     return observations;
   }finally{f.close();}
 }
 (async()=>{
   const measuredResult=await measured(),topologyResult=await topology(),runtime=await runtimeAndFallback();
-  console.log(JSON.stringify({status:'passed',passed:checks.length,checks,measured:measuredResult,topology:topologyResult,runtime,
+  console.log(JSON.stringify({contract:'browser-result-removal-v1',retiredSemantics:['reply completion classification','prompt binding'],status:'passed',passed:checks.length,checks,measured:measuredResult,topology:topologyResult,runtime,
     scope:'Complete unchanged production scripts in JSDOM with explicit innerText/geometry adapters; baseline permits original observer microtask, current exercises same-task topology reads. DOM operations only, no Gecko/Android/frame timing.'},null,2));
 })().catch(error=>{console.error(error);process.exitCode=1;});

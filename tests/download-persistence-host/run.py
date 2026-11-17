@@ -28,6 +28,8 @@ def main():
     optional = ['String downloadSource(', 'boolean saveTask(', 'void persistenceFailed(', 'boolean claimTask(', 'private void retirePrivateCopy(']
     needles = old_needles + extra + [n for n in optional if n in text]
     parts = [adapter.member(text, n) for n in needles]
+    if any(re.search(r'\bDownloadFileInfo\b', part) for part in parts):
+        names.append('DownloadFileInfo.java')
     inputs = [ADAPTER / 'DownloadResumeHost.java', ADAPTER / 'run.py', HERE / 'FailureCases.java.in', pathlib.Path(__file__).resolve(), RECOVERY / 'local/pocketchat/Support.java', ROOT / 'tests/sealed-file-host/android/util/AtomicFile.java'] + list((RECOVERY / 'android').rglob('*.java')) + list((ADAPTER / 'stubs').rglob('*.java'))
     hashes = {str(f.relative_to(ROOT)): hashlib.sha256(f.read_bytes()).hexdigest() for f in sorted(inputs)}
     selected = {'app/src/main/java/local/pocketchat/' + n: hashlib.sha256(source(n).encode()).hexdigest() for n in names + ['FileDownloads.java']}

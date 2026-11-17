@@ -21,8 +21,15 @@ ENVIRONMENT_ACTIVITY = PACKAGE + '/local.pocketchat.WindowHomeActivity'
 TITLE = '应用设置'
 SUMMARY = '启动、外观与应用偏好'
 SEARCH = '搜索设置与操作'
-ENTRY_TITLES = (
+# Unversioned/v1 captures retain their original eleven-entry meaning.
+LEGACY_ENTRY_TITLES = (
     '默认环境与启动入口', '白天与黑夜', '此环境的浏览器与启动', '后台回复检测',
+    '后台完成提醒', '通知与电池设置', '环境配置备份', '问题与建议', '应用更新',
+    '关于与使用帮助', '功能支持范围',
+)
+SETTINGS_CONTRACT = 2
+ENTRY_TITLES = (
+    '默认环境与启动入口', '白天与黑夜', '此环境的浏览器与启动',
     '后台完成提醒', '通知与电池设置', '环境配置备份', '问题与建议', '应用更新',
     '关于与使用帮助', '功能支持范围',
 )
@@ -54,6 +61,8 @@ def settings_observation(xml, navigation_geometry):
     root = ET.fromstring(xml)
     nodes = [n for n in root.iter('node') if n.get('package') == PACKAGE
              and n.get('visible-to-user') != 'false' and bounds(n) is not None]
+    if any(n.get('text') == '后台回复检测' for n in nodes):
+        return None
     parents = {child: parent for parent in root.iter() for child in parent}
     scrolls = [n for n in nodes if n.get('class') == 'android.widget.ScrollView']
     navigation = [n for n in nodes if n.get('class') == 'android.widget.Button'
@@ -152,6 +161,12 @@ def scroll_plan(observation):
 
 
 def complete(result):
+    contract = result.get('settingsContract', 1)
+    if type(contract) is not int or contract not in (1, SETTINGS_CONTRACT):
+        return False
+    entries = LEGACY_ENTRY_TITLES if contract == 1 else ENTRY_TITLES
+    if contract == SETTINGS_CONTRACT and result.get('expectedEntries') != list(entries):
+        return False
     scenes = result.get('scenes', [])
     scroll = result.get('bottomScrollPreview', {})
     embedded = result.get('embeddedMainActivityObservation', {})
@@ -163,7 +178,7 @@ def complete(result):
         and len(scenes) == len(SCENES) and {scene.get('name') for scene in scenes} == set(SCENES)
         and all(scene.get('fontScale') == SCENES[scene['name']]
                 and scene.get('activity', {}).get('actualProductionActivity') == ACTIVITY for scene in scenes)
-        and set(result.get('largeFontFullyVisibleEntries', [])) == set(ENTRY_TITLES)
+        and set(result.get('largeFontFullyVisibleEntries', [])) == set(entries)
         and scroll.get('status') == 'captured' and scroll.get('fullyVisible') is True
         and scroll.get('observedRowsMovedUp') is True and scroll.get('additionalSwipeStationary') is True
         and type(scroll.get('inputCount')) is int and 2 <= scroll['inputCount'] <= MAX_SCROLLS
@@ -173,7 +188,7 @@ def complete(result):
 def capture_settings_workspace(args, report, capture, adb, screenshot, *, navigation_geometry):
     result = report['settingsWorkspacePreview']
     identity = report['buildIdentity']
-    result.update(status='started', startedAtUnixNs=time.time_ns(), actualAndroidExecution=True,
+    result.update(status='started', settingsContract=SETTINGS_CONTRACT, startedAtUnixNs=time.time_ns(), actualAndroidExecution=True,
         actualProductionActivity=ACTIVITY, sourceCommit=identity['sourceCommit'], sourceTree=identity['sourceTree'],
         apkSha256=identity['apkSha256'], runNonce=report['runNonce'], runnerSha256=sha(__file__), scope=__doc__,
         syntheticEnvironmentRecords=True, injectedSettingsPresentation=False,

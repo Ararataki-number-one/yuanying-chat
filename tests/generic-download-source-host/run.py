@@ -20,7 +20,7 @@ MUTATIONS=(
  ('url-task','void accept(','newTask("","",source)','newTask("","",a.conversation)','url','URL task records the current generic page: https://www.wikipedia.org/wiki/Download'),
  ('url-source','void accept(','sourceUrl=source','sourceUrl=a.conversation','url','URL in-memory source uses the same captured page: https://www.wikipedia.org/wiki/Download'),
  ('stale-helper','String downloadSource(','return MainActivity.chatUrl(current)?a.conversation:current==null?"":current;','return a.conversation;','native','Native task records the current generic page: http://example.com/downloads'),
- ('http-activation','void accept(','if(!https(url)&&!url.startsWith("blob:https://"))','if(false)','http','URL activation still refuses HTTP or unsafe address: http://cdn.example.com/controlled.bin'),
+ ('http-activation','void accept(','if(!https(url)&&!blob)','if(false)','http','URL activation still refuses HTTP or unsafe address: http://cdn.example.com/controlled.bin'),
 )
 def sha(path):return hashlib.sha256(path.read_bytes()).hexdigest()
 
@@ -31,7 +31,7 @@ def main():
   selected=str(a.java_home/'bin'/name) if a.java_home else shutil.which(name)
   if not selected:p.error('Provide --java-home containing '+name)
   return selected
- production=PROD/'FileDownloads.java';template=HERE/'DownloadSourceHost.java.in';complete=[PROD/'J.java',PROD/'BrowserRuntimePolicy.java']
+ production=PROD/'FileDownloads.java';template=HERE/'DownloadSourceHost.java.in';complete=[PROD/'J.java',PROD/'BrowserRuntimePolicy.java',PROD/'DownloadFileInfo.java',PROD/'GeckoDownloadNavigation.java',PROD/'BrowserAddressPolicy.java']
  files=[production,template,Path(__file__).resolve(),extractor]+complete;hashes={str(path.relative_to(ROOT)):sha(path) for path in files};json_hash=sha(a.json_jar)
  raw=production.read_text();selected={needle:members.member_at(raw,raw.index(needle)) for needle in NEEDLES}
  def generate(values):

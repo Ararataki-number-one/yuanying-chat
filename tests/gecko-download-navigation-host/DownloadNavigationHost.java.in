@@ -1,0 +1,81 @@
+package local.pocketchat;
+
+import java.util.*;
+
+/** Runs the real admission method with declared native-session/bridge boundaries. */
+public final class DownloadNavigationHost {
+  static final String PAGE="https://example.com/editor",BLOB="blob:https://example.com/document-123";
+  static int checks;
+  static void check(String label,boolean value){if(!value)throw new AssertionError(label);checks++;}
+  static final class Download implements DownloadListener {
+    int calls;String url,ua,disposition,mime;long bytes;
+    public void onDownloadStart(String url,String ua,String disposition,String mime,long bytes){calls++;this.url=url;this.ua=ua;this.disposition=disposition;this.mime=mime;this.bytes=bytes;}
+  }
+  static GeckoWebView fresh(){
+    GeckoWebView web=new GeckoWebView();web.current=new GeckoSession();web.url=PAGE;
+    web.locations.put(web.current,PAGE);web.usable.add(web.current);web.ports.put(web.current,new Object());web.download=new Download();return web;
+  }
+  static void denied(String reason,java.util.function.Consumer<GeckoWebView> mutation){
+    GeckoWebView web=fresh();Download receiver=(Download)web.download;mutation.accept(web);
+    check(reason,!web.downloadBlobPopup(web.current,BLOB)&&receiver.calls==0);
+  }
+  public static void main(String[] args){
+    check("same origin blob",GeckoDownloadNavigation.sameOriginBlob(PAGE,BLOB));
+    check("explicit default port",GeckoDownloadNavigation.sameOriginBlob("https://example.com:443/editor",BLOB));
+    check("case-insensitive origin",GeckoDownloadNavigation.sameOriginBlob("HTTPS://EXAMPLE.COM/editor",BLOB));
+    check("same HTTP origin",GeckoDownloadNavigation.sameOriginBlob("http://example.com/editor","blob:http://example.com/id"));
+    for(String invalid:Arrays.asList("https://example.com/report.pdf","blob:https://other.example.com/id","blob:https://example.com:444/id","blob:http://example.com/id","blob:null/id","blob:https://user:password@example.com/id","blob:https://127.0.0.1/id","blob:https://example.com\\@other.example.com/id","blob:https://example.com/id\n","data:application/pdf;base64,AAA",null))
+      check("reject unrelated or malformed blob: "+invalid,!GeckoDownloadNavigation.sameOriginBlob(PAGE,invalid));
+    check("reject private source",!GeckoDownloadNavigation.sameOriginBlob("http://127.0.0.1/editor","blob:http://127.0.0.1/id"));
+    GeckoWebView web=fresh();GeckoSession source=web.current;Download receiver=(Download)web.download;
+    check("live blob popup delivered once",web.downloadBlobPopup(source,BLOB)&&receiver.calls==1);
+    check("original page and session kept",web.current==source&&PAGE.equals(web.getUrl())&&web.locations.size()==1);
+    check("exact blob and current user agent passed",BLOB.equals(receiver.url)&&"current-UA".equals(receiver.ua));
+    check("unknown metadata stays unknown",receiver.disposition.isEmpty()&&"application/octet-stream".equals(receiver.mime)&&receiver.bytes==-1);
+    denied("destroyed UI",w->w.destroyed=true);
+    denied("failed native view",w->w.failed=true);
+    denied("disabled bridge",w->w.addonDisabled=true);
+    denied("deleted environment",w->w.owner.deleted=true);
+    denied("hidden host",w->w.owner.uiVisible=false);
+    denied("closed native session",w->w.current.open=false);
+    denied("crashed native session",w->w.crashed.add(w.current));
+    denied("document not usable",w->w.usable.clear());
+    denied("load is pending",w->w.pendingLoads.add(w.current));
+    denied("browser navigation pending",w->w.owner.navigating=true);
+    denied("navigation not dispatched",w->w.owner.navigationDispatched=false);
+    denied("URL replaced before download",w->w.url="https://example.com/replaced");
+    denied("no document port",w->w.ports.clear());
+    denied("retired document port",w->w.staleAppearanceConnections.add(w.ports.get(w.current)));
+    denied("timezone not admitted",w->w.timezone=false);
+    denied("identity not admitted",w->w.identity=false);
+    denied("protection not admitted",w->w.protection=false);
+    denied("network denied",w->w.owner.guard.allowed=false);
+    denied("general route retired",w->w.generalRoute=false);
+    denied("download UI detached",w->w.download=null);
+    web=fresh();receiver=(Download)web.download;
+    check("other native session rejected",!web.downloadBlobPopup(new GeckoSession(),BLOB)&&receiver.calls==0);
+    check("null native session rejected",!web.downloadBlobPopup(null,BLOB)&&receiver.calls==0);
+    check("other origin cannot borrow document",!web.downloadBlobPopup(web.current,"blob:https://other.example.com/id")&&receiver.calls==0);
+    System.out.println("{\"status\":\"passed\",\"checks\":"+checks+",\"actualAndroidExecution\":false,\"actualGeckoExecution\":false}");
+  }
+}
+interface DownloadListener {void onDownloadStart(String url,String ua,String disposition,String mime,long bytes);}
+final class GeckoSession {boolean open=true;boolean isOpen(){return open;}}
+final class Owner {boolean deleted,uiVisible=true,navigating,navigationDispatched=true;final Guard guard=new Guard();}
+final class Guard {boolean allowed=true;boolean allowed(){return allowed;}}
+final class Settings {String getUserAgentString(){return "current-UA";}}
+final class GeckoWebView {
+  DownloadListener download;boolean destroyed,failed,addonDisabled;GeckoSession current;String url;
+  final Owner owner=new Owner();final Settings metadata=new Settings();
+  final Map<GeckoSession,String> locations=new IdentityHashMap<>();
+  final Map<GeckoSession,Object> ports=new IdentityHashMap<>();
+  final Set<GeckoSession> crashed=new HashSet<>(),usable=new HashSet<>(),pendingLoads=new HashSet<>();
+  final Set<Object> staleAppearanceConnections=new HashSet<>();
+  boolean timezone=true,identity=true,protection=true,generalRoute=true;
+  String getUrl(){return url;}
+  boolean timeZoneAllows(GeckoSession source){return timezone;}
+  boolean identityRequestAllowed(String target){return identity;}
+  boolean protectionAllowsNetwork(){return protection;}
+  boolean generalRouteReady(){return generalRoute;}
+  @PRODUCTION_METHOD@
+}

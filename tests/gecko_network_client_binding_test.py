@@ -16,6 +16,57 @@ SOURCE='a'*40;NONCE='d'*32;UID=10209
 ENV=dict(slot=0,generation=0,environmentId='12345678-1234-1234-1234-123456789012')
 OWNER='11111111-1111-1111-1111-111111111111';MISSING_OWNER='22222222-2222-2222-2222-222222222222'
 
+def reverse_browser_observation_connection_reader(raw):
+    """Test-only inverse of the three reviewed 2.1.8 reader changes.
+
+    Keep both exact new dispatch blocks and their historical bodies pinned. This
+    does not project a runtime reader or accept changes outside these blocks;
+    the caller still requires the original complete-reader SHA below.
+    """
+    current="    assert gecko['actualGeckoExecution']\n"
+    previous="    assert gecko['actualGeckoExecution'] and gecko['actualGeckoBindingRegressionExecution']\n"
+    if raw.count(current)!=1:
+        raise ValueError('Unique current Gecko execution assertion required')
+    raw=raw.replace(current,previous,1)
+    blocks=(
+        ("    if 'browserObservationContract' in gecko:\n", "\n    network = android('network-performance-results.json')\n",
+         "    if 'browserObservationContract' in gecko:\n"
+         "        if __package__:\n"
+         "            from .browser_observation_contract_v2 import verify_browser_observation\n"
+         "        else:\n"
+         "            from browser_observation_contract_v2 import verify_browser_observation\n"
+         "        verify_browser_observation(gecko)\n"
+         "    else:\n"
+         "        assert gecko['actualGeckoBindingRegressionExecution']\n",
+         'bfa7675288f4daf67ab1781df32fe75a320abfbda46d0bb29771e8a4e38bb22d',
+         'dd2746ec6d6c216b34cfba8702bd7f272cd870e4ac611fcb6fe35bfa0ae1897e'),
+        ("    if gecko.get('browserObservationContract') == 2:\n", '    framework_binding = verify_framework_binding_files(directory, source)\n',
+         "    if gecko.get('browserObservationContract') == 2:\n"
+         "        if __package__:\n"
+         "            from .browser_observation_contract_v2 import verify_lifecycle_host\n"
+         "        else:\n"
+         "            from browser_observation_contract_v2 import verify_lifecycle_host\n"
+         "        verify_lifecycle_host(host)\n"
+         "    else:\n",
+         '9b773763ac2db4130d61bc8d653ae0447fe77846bf7e68c75d18d5f37d610094',
+         '88c8a4e4f5a0360742f9c8d75b428e64040f0055a8072eb31b7f4b27fb620013'),
+    )
+    for start,end,prefix,current_sha,previous_sha in blocks:
+        if raw.count(start)!=1 or raw.count(end)!=1:
+            raise ValueError('Unique current browser dispatch boundaries required')
+        begin=raw.index(start);finish=raw.index(end,begin)
+        block=raw[begin:finish]
+        if hashlib.sha256(block.encode()).hexdigest()!=current_sha or not block.startswith(prefix):
+            raise ValueError('Current browser dispatch or retained legacy checks changed')
+        body=block[len(prefix):].splitlines(keepends=True)
+        if not body or any(not line.startswith('    ') for line in body):
+            raise ValueError('Expected exact historical branch indentation')
+        original=''.join(line[4:] for line in body)
+        if hashlib.sha256(original.encode()).hexdigest()!=previous_sha:
+            raise ValueError('Historical browser checks were not restored exactly')
+        raw=raw[:begin]+original+raw[finish:]
+    return raw
+
 def encoded(value):return json.dumps(value,separators=(',',':'))+'\n'
 def proof(value):
     raw=value if isinstance(value,str) else encoded(value);data=raw.encode()
@@ -303,9 +354,30 @@ class PublicWiringControls(unittest.TestCase):
     def test_connection_gate_only_adds_the_mandatory_framework_validator(self):
         path='tools/gecko/check_connection_evidence.py';raw=(ROOT/path).read_text()
         inserted='if __package__:\n    from .network_client_binding_contract import verify_framework_binding_files\nelse:\n    from network_client_binding_contract import verify_framework_binding_files\n'
-        self.assertEqual(raw.count(inserted),1)
-        restored=raw.replace(inserted,'',1).replace('    framework_binding = verify_framework_binding_files(directory, source)\n','',1).replace(", 'frameworkClientBinding': framework_binding",'',1)
-        self.assertEqual(hashlib.sha256(restored.encode()).hexdigest(),'075b666ae597ecf2c4ec3d19eb3713c6a4c0b42359867197086fee1127cccd18')
+        def verify(candidate):
+            restored=reverse_browser_observation_connection_reader(candidate)
+            for addition in (inserted,'    framework_binding = verify_framework_binding_files(directory, source)\n',", 'frameworkClientBinding': framework_binding"):
+                self.assertEqual(restored.count(addition),1)
+                restored=restored.replace(addition,'',1)
+            self.assertEqual(hashlib.sha256(restored.encode()).hexdigest(),'075b666ae597ecf2c4ec3d19eb3713c6a4c0b42359867197086fee1127cccd18')
+        verify(raw)
+        # A narrow inverse must not hide a weakened new branch, legacy gate,
+        # unrelated network predicate, or missing mandatory framework call.
+        mutations=(
+            ("    if 'browserObservationContract' in gecko:\n",'    if True:\n'),
+            ('        verify_browser_observation(gecko)\n','        pass\n'),
+            ('        verify_lifecycle_host(host)\n','        pass\n'),
+            ("        assert gecko['checkCount'] == len(gecko['checks']) >= 125\n","        assert gecko['checkCount'] == len(gecko['checks']) >= 124\n"),
+            ("    assert network['actualMihomoExecution']\n",'    assert True\n'),
+            ('    framework_binding = verify_framework_binding_files(directory, source)\n',''),
+            (", 'frameworkClientBinding': framework_binding",''),
+        )
+        for before,after in mutations:
+            self.assertEqual(raw.count(before),1)
+            with self.subTest(counterfeit=before),self.assertRaises((AssertionError,ValueError)):
+                verify(raw.replace(before,after,1))
+        with self.assertRaises((AssertionError,ValueError)):
+            verify(raw+"    if 'browserObservationContract' in gecko:\n")
     def test_publisher_actual_selected_ast_copies_report_and_pure_contract(self):
         import ast
         import types

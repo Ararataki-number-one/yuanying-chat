@@ -1584,5 +1584,128 @@ public class RendererHost {
                 self.assertEqual(ran.returncode,0,ran.stdout+ran.stderr);self.assertEqual(json.loads(ran.stdout),dict(passed=True,api=api))
 
 
+class GlassVisualHeaderInvocationTest(unittest.TestCase):
+    """Actual fixture launch branches and observer constructor; host adapters only."""
+
+    def test_legacy_launch_and_owned_header_launch_keep_distinct_contracts(self):
+        root = Path(__file__).resolve().parents[1]
+        java_home = Path(os.environ['JAVA_HOME'])
+        source = (root/'tests/gecko/UiVisualIntegrationActivity.java').read_text()
+        observer = (root/'tests/gecko/BrowserHeaderVisualEvidence.java').read_text()
+        # Reuse the existing balanced Java member reader. Compile the unchanged
+        # pre-seed dispatch and chat/browser dispatch, with explicit seed,
+        # Intent, Application registration and main-handler boundaries.
+        tree = ast.parse((root/'tests/loading-performance-host/run.py').read_text())
+        functions = [node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == 'member']
+        self.assertEqual(len(functions), 1)
+        scope = {}; exec(compile(ast.Module(body=functions, type_ignores=[]), '<java-member-reader>', 'exec'), scope)
+        member = scope['member']
+        on_create = member(source, '  @Override public void onCreate(')
+        branches = on_create[:on_create.index('    try{seed();}')]
+        branches += '    seed();\n'+member(on_create, '    if("browser".equals(action)||"preferences".equals(action)||"chat".equals(action))')+'\n  }'
+        constructor = member(observer, '  BrowserHeaderVisualEvidence(Activity launcher,String nonce)')
+        java = r'''package local.pocketchat;
+import java.util.*;
+class Bundle {}
+class Intent {
+ final Map<String,String> extras=new HashMap<>();Class<?> target;
+ Intent(){} Intent(Activity owner,Class<?> target){this.target=target;}
+ Intent putExtra(String key,String value){extras.put(key,value);return this;}
+ String getStringExtra(String key){return extras.get(key);}
+ boolean hasExtra(String key){return extras.containsKey(key);}
+}
+class Application {
+ int registrations;BrowserHeaderVisualEvidence registered;
+ void registerActivityLifecycleCallbacks(BrowserHeaderVisualEvidence value){registrations++;registered=value;Events.values.add("register");}
+}
+class Handler {void postDelayed(Runnable value,long delay){Events.values.add("post:"+delay);}}
+class Events {static final List<String> values=new ArrayList<>();}
+class Activity {
+ Intent intent=new Intent(),started;Application application=new Application();String packageName="local.pocketchat.test";
+ boolean finished;int launches;
+ void onCreate(Bundle state){} Intent getIntent(){return intent;}String getPackageName(){return packageName;}
+ Application getApplication(){return application;}
+ void startActivity(Intent target){started=target;launches++;Events.values.add("launch:"+target.target.getSimpleName());}
+ void finish(){finished=true;Events.values.add("finish");}
+}
+class MainActivity {} class BrowserActivity {}
+class NavigationTypographyEvidence {NavigationTypographyEvidence(Activity a){}static void rejected(Activity a,Exception e){}}
+class Profiles {static int renames;static void rename(Activity a,int slot,String name){renames++;}}
+class BrowserHeaderVisualEvidence implements Runnable {
+ final Application application;final String nonce;final Handler handler=new Handler();
+ CONSTRUCTOR
+ public void run(){throw new AssertionError("Host launch test must not synthesize native observations");}
+}
+public class HeaderInvocationHost extends Activity {
+ NavigationTypographyEvidence navigationTypographyEvidence;int seeds;
+ void seed(){seeds++;Events.values.add("seed");}
+ BRANCHES
+ static int checks;static void require(boolean value,String message){checks++;if(!value)throw new AssertionError(message);}
+ static HeaderInvocationHost request(String action,boolean provided,String nonce){
+  Events.values.clear();Profiles.renames=0;HeaderInvocationHost value=new HeaderInvocationHost();
+  value.intent.putExtra("visualAction",action).putExtra("url","http://browser-fixture.example/native-ui-smoke");
+  if(provided)value.intent.putExtra("visualHeaderNonce",nonce);return value;
+ }
+ static void rejected(String action,boolean provided,String nonce,boolean foreign){
+  HeaderInvocationHost value=request(action,provided,nonce);if(foreign)value.packageName="local.pocketchat";
+  try{value.onCreate(null);throw new AssertionError("Header invocation accepted missing or invalid ownership");}
+  catch(IllegalArgumentException expected){}
+  require(value.application.registrations==0&&value.launches==0,"Rejected header cannot register or launch");
+  if(action.equals("browser-header"))require(value.seeds==0&&Profiles.renames==0,"Rejected bridge cannot seed or rename");
+ }
+ public static void main(String[] args){
+  String nonce="0123456789abcdef0123456789abcdef";
+  for(String action:new String[]{"chat","browser","preferences"}){
+   HeaderInvocationHost value=request(action,false,null);
+   try{value.onCreate(null);}catch(IllegalArgumentException failure){throw new AssertionError("Legacy launch without header ownership must remain usable",failure);}
+   require(value.seeds==1&&value.launches==1&&value.finished,"Legacy launch keeps original seed and finish");
+   require(value.started.target==MainActivity.class&&value.started.getStringExtra("openWindowAction").equals(action.equals("chat")?"native-smoke":"edit"),"Legacy target/action unchanged");
+   require(value.application.registrations==0,"Legacy launch cannot claim a native header observation");
+  }
+  HeaderInvocationHost chat=request("chat",true,nonce);chat.onCreate(null);
+  require(chat.seeds==1&&chat.application.registrations==1&&chat.started.target==MainActivity.class,"Owned chat registers the real observer");
+  require(chat.application.registered.nonce.equals(nonce)&&Events.values.equals(Arrays.asList("seed","register","post:100","launch:MainActivity","finish")),"Owned chat keeps nonce and registration order");
+  HeaderInvocationHost browser=request("browser-header",true,nonce);browser.onCreate(null);
+  require(browser.seeds==0&&Profiles.renames==0&&browser.launches==1&&browser.finished,"Header bridge never seeds or renames");
+  require(browser.application.registrations==1&&browser.application.registered.nonce.equals(nonce)&&browser.started.target==BrowserActivity.class,"Header bridge observes the original browser");
+  require(browser.started.getStringExtra("url").equals("http://browser-fixture.example/native-ui-smoke"),"Header bridge preserves the original URL");
+  require(Events.values.equals(Arrays.asList("register","post:100","launch:BrowserActivity","finish")),"Header bridge installs observation before launch");
+  rejected("browser-header",false,null,false);
+  for(String action:new String[]{"chat","browser-header"}){
+   for(String bad:new String[]{null,"","short","0123456789abcdef0123456789abcde","0123456789abcdef0123456789abcdef0","G123456789abcdef0123456789abcdef"})rejected(action,true,bad,false);
+   rejected(action,true,nonce,true);
+  }
+  System.out.println("Host launch/nonce boundaries passed: "+checks+"; actualAndroidExecution=false");
+ }
+}
+'''
+        variants = [('current', branches, constructor, None),
+                    ('original-missing-nonce-crash', branches.replace('&&getIntent().hasExtra("visualHeaderNonce")', ''),
+                     constructor, 'Legacy launch without header ownership must remain usable'),
+                    ('removed-nonce-guard', branches,
+                     constructor.replace('||nonce==null||!nonce.matches("[0-9a-f]{32}")', ''),
+                     'Header invocation accepted missing or invalid ownership')]
+        self.assertNotEqual(variants[0][1], variants[1][1])
+        self.assertNotEqual(variants[0][2], variants[2][2])
+        with tempfile.TemporaryDirectory(prefix='visual-header-launch-') as temporary:
+            work = Path(temporary)
+            for name, selected_branches, selected_constructor, failure in variants:
+                with self.subTest(variant=name):
+                    target = work/'HeaderInvocationHost.java'
+                    target.write_text(java.replace('CONSTRUCTOR', selected_constructor).replace('BRANCHES', selected_branches))
+                    classes = work/name
+                    compiled = subprocess.run([str(java_home/'bin/javac'), '-encoding', 'UTF-8', '-d', str(classes), str(target)],
+                                              capture_output=True, text=True, timeout=30)
+                    self.assertEqual(compiled.returncode, 0, compiled.stdout+compiled.stderr)
+                    result = subprocess.run([str(java_home/'bin/java'), '-cp', str(classes), 'local.pocketchat.HeaderInvocationHost'],
+                                            capture_output=True, text=True, timeout=10)
+                    if failure is None:
+                        self.assertEqual(result.returncode, 0, result.stdout+result.stderr)
+                        self.assertIn('actualAndroidExecution=false', result.stdout)
+                    else:
+                        self.assertNotEqual(result.returncode, 0, result.stdout)
+                        self.assertIn('AssertionError: '+failure, result.stderr)
+
+
 if __name__ == '__main__':
     unittest.main()

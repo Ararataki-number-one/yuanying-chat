@@ -84,6 +84,9 @@ jobs:
           if m['versionCode']>=109:
               for name in ('tools/gecko/compact_chrome_layout_v4.py','tools/gecko/chrome_collapse_contract_v4.py','tools/gecko/workspace_navigation_contract_v4.py'):
                   assert pathlib.Path(name).read_bytes()==subprocess.check_output(['git','show',m['sourceCommit']+':'+name]),'Current navigation checker differs from tested source: '+name
+          if m['versionCode']>=110:
+              for name in ('tools/gecko/browser_observation_contract_v2.py','tools/gecko/browser_header_contract_v5.py','tools/gecko/compact_chrome_layout_v5.py','tools/gecko/workspace_browser_header_v5.py'):
+                  assert pathlib.Path(name).read_bytes()==subprocess.check_output(['git','show',m['sourceCommit']+':'+name]),'Current browser/header checker differs from tested source: '+name
           subprocess.run(['python3','tools/gecko/release_channel_contract_test.py'],check=True)
           from tools.gecko.release_channel_contract import release_tag, requires_manual_acceptance, verify_manual_acceptance, verify_direct_release
           release_tag(m)
@@ -120,6 +123,13 @@ jobs:
               chrome=json.loads(pathlib.Path('compact-chrome-results.json').read_text())
               expected_navigation=4 if m['versionCode']>=109 else 3
               assert all(case['navigationContract']==expected_navigation for case in chrome['cases']) and chrome['autoCollapse']['navigationContract']==expected_navigation
+          if m['versionCode']>=110:
+              quiet=json.loads(pathlib.Path('quiet-notification-results.json').read_text())
+              assert quiet['sourceCommit']==m['sourceCommit'],'Current notification evidence differs from tested source.'
+              assert quiet.get('notificationContract')==2,'Current pure-browser file/proxy notification evidence is required.'
+              from tools.gecko.browser_observation_contract_v2 import verify_browser_notifications
+              verify_browser_notifications(quiet)
+              assert all(case.get('headerContract')==5 for case in chrome['cases']),'Current compact header native touch evidence is required.'
           if m['versionCode']>=108:
               if m['versionCode']>=109:
                   from tools.gecko.workspace_navigation_contract_v4 import verify_workspace_roundtrip
@@ -147,12 +157,18 @@ jobs:
           if m['versionCode']>=43:
               from tools.gecko.check_performance_evidence import verify_performance_evidence
               assert verify_performance_evidence(pathlib.Path('.'),m['sourceCommit'])==m['performanceRegression']
+              if m['versionCode']>=110:
+                  assert json.loads(pathlib.Path('gecko-performance-results.json').read_text()).get('browserObservationContract')==2,'Current browser-only lifecycle evidence is required.'
+                  visual=json.loads(pathlib.Path('ui-visual-results.json').read_text())
+                  assert all(item.get('headerContract')==5 for item in visual['screenshots'] if item['scene']=='chat'),'Current native browser header captures are required.'
           if m['versionCode']>=44:
               from tools.gecko.check_connection_evidence import verify_connection_evidence
               assert verify_connection_evidence(pathlib.Path('.'),m['sourceCommit'])==m['connectionRecoveryRegression']
           if m['versionCode']>=45:
               from tools.gecko.check_interaction_transfer_evidence import verify_interaction_transfer_evidence
               assert verify_interaction_transfer_evidence(pathlib.Path('.'),m['sourceCommit'])==m['interactionTransferRegression']
+              if m['versionCode']>=110:
+                  assert json.loads(pathlib.Path('interaction-host-results.json').read_text()).get('contract')=='browser-result-removal-v1','Current browser-only interaction evidence is required.'
           if m['versionCode']>=46:
               from tools.gecko.check_chain_evidence import verify_chain_evidence
               assert verify_chain_evidence(pathlib.Path('.'),m['sourceCommit'])==m['chainPerformanceRegression']

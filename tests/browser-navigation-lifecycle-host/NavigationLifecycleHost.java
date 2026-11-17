@@ -57,53 +57,43 @@ public final class NavigationLifecycleHost {
   }
 
   static void eventOwnership(){
-    ChatSession s=fresh();WebReplyObserver observer=new WebReplyObserver(s);Object port=s.resourceObserverPort;
-    observer.receive(event("intent"),port);
-    check("A current document gesture still creates one observed request",s.pending!=null&&s.deliveries.begins==1&&s.context.serviceBegins==1);
-    observer.receive(event("intent"),port);check("Duplicate gesture remains deduplicated",s.deliveries.begins==1);
-    for(String change:new String[]{"epoch","capture","port","binding","document","route","deleted"}){
-      s=fresh();observer=new WebReplyObserver(s);port=s.resourceObserverPort;JSONObject intent=event("intent");
-      if(change.equals("epoch"))s.navigationEpoch++;else if(change.equals("capture"))s.navigationDispatched=false;else if(change.equals("port"))s.web.ports.put(s.web.current,new Object());else if(change.equals("binding"))intent=J.obj("type","intent","url",CHAT,"documentId",DOCUMENT,"resourceBinding","stale-binding","token",TOKEN,"capturedAt",System.currentTimeMillis(),"prompt","old","beforeKeys",new JSONArray());else if(change.equals("document"))s.resourceObserverDocument="document-newer-0002";else if(change.equals("route"))s.web.url=OTHER;else s.deleted=true;
-      observer.receive(intent,port);check("A stale "+change+" event cannot resurrect a webpage observation",s.pending==null&&s.deliveries.begins==0&&s.context.serviceBegins==0);
+    for(String type:new String[]{"intent","bound","uncertain","stop"}){
+      ChatSession s=fresh();WebReplyObserver observer=new WebReplyObserver(s);
+      observer.receive(event(type),s.resourceObserverPort);
+      check("Retired "+type+" cannot create a native task or notification",s.pending==null&&s.context.serviceBegins==0&&s.context.serviceEnds==0&&s.prefs.values.isEmpty());
+      s.pending=job(CHAT,true);JSONObject original=s.pending;String bytes=original.toString();
+      observer.receive(event(type),s.resourceObserverPort);
+      check("Retired "+type+" never changes an existing record",s.pending==original&&bytes.equals(original.toString())&&s.prefs.values.isEmpty()&&s.context.serviceBegins==0);
     }
-    for(String type:new String[]{"bound","stop","uncertain"}){
-      s=fresh();observer=new WebReplyObserver(s);s.pending=job(CHAT,type.equals("stop"));JSONObject original=s.pending;String bytes=original.toString();s.navigationEpoch++;
-      JSONObject action=type.equals("stop")?J.obj("type","stop","url",CHAT,"documentId",DOCUMENT,"resourceBinding","binding-current","token",TOKEN,"userKey","id:original"):event(type);
-      observer.receive(action,s.resourceObserverPort);
-      check("Late "+type+" cannot modify the pending record after navigation",s.pending==original&&bytes.equals(original.toString())&&s.context.serviceEnds==0&&s.deliveries.updates.isEmpty());
+    ChatSession s=fresh();WebReplyObserver observer=new WebReplyObserver(s);s.navigating=true;
+    observer.receive(event("ready"),s.resourceObserverPort);
+    observer.receive(event("resource-route"),s.resourceObserverPort);
+    observer.receive(event("resource-work"),s.resourceObserverPort);
+    check("Page readiness and resource events retain their existing owners",s.readyEvents==2&&s.resourceEvents==1&&s.wakes==1&&s.pending==null);
+    for(String invalid:new String[]{"https://example.com/c/current","http://chatgpt.com/c/current"}){
+      JSONObject value=event("resource-work");try{value.put("url",invalid);}catch(Exception e){throw new AssertionError(e);}
+      observer.receive(value,s.resourceObserverPort);
     }
-    s=fresh();observer=new WebReplyObserver(s);s.pending=job(CHAT,false);observer.receive(event("bound"),s.resourceObserverPort);
-    check("A correctly bound receipt still confirms the current request",s.pending.optBoolean("confirmed")&&s.pending.optString("userKey").equals("id:new"));
-    observer.receive(event("stop"),s.resourceObserverPort);
-    check("A current-page stop gesture still retires its matching local observation",s.pending==null&&s.context.serviceEnds==1&&s.deliveries.updates.get(s.deliveries.updates.size()-1).optString("state").equals("stopped"));
-    s=fresh();observer=new WebReplyObserver(s);s.navigationEpoch++;s.resourceObserverEpoch=s.navigationEpoch;observer.receive(event("intent"),s.resourceObserverPort);
-    check("A newly bound observer remains usable after navigation",s.pending!=null&&s.deliveries.begins==1);
+    JSONObject invalid=event("resource-work");try{invalid.put("documentId","short");}catch(Exception e){throw new AssertionError(e);}observer.receive(invalid,s.resourceObserverPort);
+    check("Foreign origins and malformed document identities still reject resource reports",s.resourceEvents==1);
   }
 
   static void observationRetirement(){
-    ChatSession s=fresh();WebReplyObserver observer=new WebReplyObserver(s);s.pending=job(CHAT,true);JSONObject original=s.pending;String bytes=original.toString();
-    observer.navigationStarted(CHAT+"?model=auto");
-    check("A same-conversation reload keeps its confirmed observation",s.pending==original&&s.context.serviceEnds==0&&s.deliveries.updates.isEmpty());
-    s.transferActive=true;s.resourceChoosers=1;s.resourceFilePreparations=1;observer.navigationStarted("https://example.com/article");
-    check("Leaving the route archives the exact task record without claiming completion",s.pending==null&&bytes.equals(s.prefs.getString("archivedWebObservation",""))&&s.deliveries.updates.size()==1&&s.deliveries.updates.get(0).optString("state").equals("uncertain"));
-    check("The original prompt stays recoverable and native file work is untouched",s.context.drafts.size()==1&&s.context.drafts.get(0).optString("text").equals("original prompt")&&s.transferActive&&s.resourceChoosers==1&&s.resourceFilePreparations==1);
-    check("Only the local observer reminder ends; no website script is sent",s.context.serviceEnds==1&&s.web.scripts.isEmpty()&&observer.lastNavigationArchivedJob==original&&observer.navigationArchiveSequence==1);
-    observer.navigationStarted(OTHER);check("An already retired observation cannot be archived twice",s.deliveries.updates.size()==1&&s.context.serviceEnds==1);
-
-    s=fresh();observer=new WebReplyObserver(s);s.pending=job("https://chatgpt.com/",false);original=s.pending;observer.navigationStarted(CHAT);
-    check("The website first-send route transition keeps its unconfirmed binding",s.pending==original&&s.context.serviceEnds==0);
-    observer.navigationStarted("https://example.com/");check("Leaving an unconfirmed first send still permits navigation and retains its record",s.pending==null&&s.prefs.getString("archivedWebObservation","").equals(original.toString()));
-
-    s=fresh();observer=new WebReplyObserver(s);s.pending=J.obj("id","native-task","kind","native");original=s.pending;observer.navigationStarted(OTHER);
-    check("A native task is not owned or cancelled by webpage navigation",s.pending==original&&s.prefs.values.isEmpty()&&s.context.serviceEnds==0);
-    s=fresh();observer=new WebReplyObserver(s);s.pending=job(CHAT,true);original=s.pending;s.prefs.fail=true;observer.navigationStarted(OTHER);
-    check("Failed archival keeps the original task instead of losing its record",s.pending==original&&s.deliveries.updates.isEmpty()&&s.context.serviceEnds==0);
-    s=fresh();observer=new WebReplyObserver(s);s.pending=job(CHAT,true);ChatSession changing=s;JSONObject replacement=job(OTHER,true);s.prefs.onCommit=()->changing.pending=replacement;observer.navigationStarted(OTHER);
-    check("A synchronous storage listener cannot have its newer task cleared",s.pending==replacement&&s.context.serviceEnds==0);
-    s=fresh();observer=new WebReplyObserver(s);s.pending=job(CHAT,true);original=s.pending;ChatSession returning=s;s.prefs.onCommit=()->returning.navigationEpoch++;observer.navigationStarted(OTHER);
-    check("A listener navigating back to the same task keeps its exact pending record",s.pending==original&&s.prefs.getString("pending","").equals(original.toString())&&s.context.serviceEnds==0&&s.deliveries.updates.isEmpty());
-    s=fresh();observer=new WebReplyObserver(s);s.pending=job(CHAT,true);ChatSession newer=s;s.prefs.onCommit=()->{newer.navigationEpoch++;newer.prefs.values.put("pending","newer persisted record");};observer.navigationStarted(OTHER);
-    check("Retiring an older observation never overwrites a newer persisted record",s.prefs.getString("pending","").equals("newer persisted record")&&s.context.serviceEnds==0);
+    for(boolean confirmed:new boolean[]{false,true}){
+      ChatSession s=fresh();WebReplyObserver observer=new WebReplyObserver(s);s.pending=job(CHAT,confirmed);
+      String bytes=s.pending.toString();s.activeDeliveryId="original-job";s.prefs.values.put("pending",bytes);s.prefs.values.put("lastWebGesture","old-gesture");
+      s.transferActive=true;s.resourceChoosers=1;s.resourceFilePreparations=1;
+      observer.restorePending();
+      check("Upgrade retires a "+(confirmed?"confirmed":"unconfirmed")+" website task without resuming it",s.pending==null&&s.activeDeliveryId.isEmpty()&&!s.prefs.values.containsKey("pending")&&!s.prefs.values.containsKey("lastWebGesture")&&s.prefs.getString("retiredWebObservation","").equals(bytes));
+      check("Upgrade retains file ownership and never changes website input",s.transferActive&&s.resourceChoosers==1&&s.resourceFilePreparations==1&&s.web.scripts.isEmpty()&&s.context.drafts.isEmpty()&&s.context.serviceBegins==0&&s.context.serviceEnds==1);
+      observer.restorePending();check("Repeating retirement with no pending record has no effect",s.context.serviceEnds==1);
+    }
+    ChatSession s=fresh();WebReplyObserver observer=new WebReplyObserver(s);s.pending=J.obj("id","legacy-native","kind","send","prompt","saved text");String bytes=s.pending.toString();observer.restorePending();
+    check("Legacy native records remain archived without any automatic send",s.pending==null&&s.prefs.getString("legacyPending","").equals(bytes)&&s.web.scripts.isEmpty()&&s.context.serviceBegins==0);
+    s=fresh();observer=new WebReplyObserver(s);s.pending=job(CHAT,true);bytes=s.pending.toString();s.prefs.values.put("pending",bytes);s.prefs.fail=true;observer.restorePending();
+    check("Unavailable storage cannot reactivate result detection or erase the durable old record",s.pending==null&&s.prefs.getString("pending","").equals(bytes)&&s.context.serviceBegins==0&&s.context.serviceEnds==1);
+    s=fresh();observer=new WebReplyObserver(s);s.pending=job(CHAT,true);ChatSession changing=s;JSONObject replacement=J.obj("id","new-owner","kind","explicit-native");s.prefs.onCommit=()->{changing.pending=replacement;changing.prefs.values.put("pending",replacement.toString());};observer.restorePending();
+    check("A storage listener's newer record is neither cleared nor stopped",s.pending==replacement&&s.prefs.getString("pending","").equals(replacement.toString())&&s.context.serviceEnds==0);
   }
 
   public static void main(String[] args){snapshots();eventOwnership();observationRetirement();System.out.println(J.obj("status","passed","passed",checks.length(),"checks",checks,"actualAndroidExecution",false,"actualGeckoExecution",false,"actualNetworkExecution",false));}
@@ -112,14 +102,14 @@ public final class NavigationLifecycleHost {
 class ChatSession {
   final HostContext context=new HostContext();final Prefs prefs=new Prefs();final Queue handler=new Queue();final Web web=new Web();final Deliveries deliveries=new Deliveries();final Store webStore=new Store();final List<Consumer<JSONObject>> results=new ArrayList<>();
   String driver="",appliedIdentity="environment",resourceObserverBinding="binding-current",resourceObserverDocument=NavigationLifecycleHost.DOCUMENT,activeDeliveryId="",stableReply="",status="",observedReplyJob="",observedReplyUrl="",observedReplyKey="",observedReplyRevision="",observedReplyMarkdown="",replyHealthStatus="",conversation=NavigationLifecycleHost.CHAT;
-  long navigationEpoch=1,resourceObserverEpoch=1,webWorkGeneration,resourceObservedAt,webConfirmationVersion;int stableTicks,resourceChoosers,resourceFilePreparations;Object resourceObserverPort=new Object();JSONObject pending;JSONArray attachments=new JSONArray();
+  long navigationEpoch=1,resourceObserverEpoch=1,webWorkGeneration,resourceObservedAt,webConfirmationVersion;int stableTicks,resourceChoosers,resourceFilePreparations,readyEvents,resourceEvents,wakes;Object resourceObserverPort=new Object();JSONObject pending;JSONArray attachments=new JSONArray();
   boolean deleted,submitting,operation,configurationCapture,networkReady=true,navigationDispatched=true,offline,navigating,observedReplyHasFiles,transferActive,replyStalled;
   void runDriver(String action,JSONObject args,Consumer<JSONObject> result){if(!action.equals("page-state"))throw new AssertionError(action);results.add(result);}
   void asyncDriver(String action,JSONObject args,long timeout,Consumer<JSONObject> result){throw new AssertionError("Unexpected restoration command: "+action);}
   boolean webPerformance(){return true;}boolean replyObservationAllowed(){return true;}boolean targetMatches(String url){return url.equals(web.url);}
   boolean resourceBindingMatches(JSONObject value,Object port){return port!=null&&port==resourceObserverPort&&resourceObserverBinding.equals(value.optString("resourceBinding"));}
-  void resourceObserverRouteReady(JSONObject value,Object port){}void resourceWebsiteObservation(JSONObject value,Object port){}
-  void wakePolling(){}void resetReplyStability(){}void setStatus(String value){status=value;}
+  void resourceObserverRouteReady(JSONObject value,Object port){readyEvents++;}void resourceWebsiteObservation(JSONObject value,Object port){resourceEvents++;}
+  void wakePolling(){wakes++;}void resetReplyStability(){}void setStatus(String value){status=value;}
   void wakeDeferredBrowserSettings(){throw new AssertionError("Completed-task settings wake is outside this navigation host");}
   void delivery(String id,String state,String message,boolean attempted,String key,String url){deliveries.updates.add(J.obj("id",id,"state",state,"message",message,"url",url));}
 }
@@ -140,8 +130,8 @@ class Deliveries {
   int begins;final List<JSONObject> updates=new ArrayList<>();
   JSONObject get(String id){throw new AssertionError("Cold recovery storage is outside this navigation host");}
   String begin(String url,String prompt,JSONArray names,String kind,Object source){return "new-job-"+(++begins);}
-  // This host acknowledges only its current-page stop cases. Storage fault and
-  // recovery behavior execute against DeliveryStore in reply-task-persistence-host.
+  // Retired storage boundary retained only as a counter: current observation
+  // must never call it. Upgrade archival uses the actual observer and Prefs above.
   boolean update(String id,String state,String message,boolean attempted,String key,String url){
     if(id.isEmpty()||!state.equals("stopped")||!attempted)throw new AssertionError("Unsupported terminal delivery boundary");
     updates.add(J.obj("id",id,"state",state,"message",message,"url",url));return true;

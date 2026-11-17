@@ -13,6 +13,7 @@ import window_tap_readiness_contract as contract
 from profile_display_sampling_gate_test import reverse_reviewed_history_checkout_addition
 from reading_zoom_trace_contract import original_reading_fixture_bytes
 from experience46_source_compatibility import experience46_source_bytes
+from browser_completion_source_compatibility import restore_completion_for_history
 
 ROOT=Path(__file__).resolve().parents[1]
 FIXTURE=contract.FIXTURE
@@ -71,7 +72,8 @@ class WindowTapReadinessTest(unittest.TestCase):
   self.assertEqual(digest(experience46_source_bytes(historical_bytes('tests/gecko/run_device.py'),'tests/gecko/run_device.py')),'54fa412be9f89e46d61597caf61b0246e451e6c9b5eebca592e36b05686ab8a6')
   self.assertEqual(digest(reverse_reviewed_history_checkout_addition(self,historical_bytes('.github/workflows/gecko-integration.yml').decode()).encode()),'10e35f9884e6eac2ea2fc2e0e6d6f6d5d14c55dc7e776cd0128019c75ab3f2f5')
   fixture=(ROOT/FIXTURE).read_text();old=contract.strip_reviewed_window_additions(historical_bytes(FIXTURE)).decode()
-  self.assertEqual(fixture.count('evaluateJavascript('),old.count('evaluateJavascript('));self.assertEqual(fixture.count('postDelayed('),old.count('postDelayed('))
+  restored=restore_completion_for_history(fixture)
+  self.assertEqual(restored.count('evaluateJavascript('),old.count('evaluateJavascript('));self.assertEqual(restored.count('postDelayed('),old.count('postDelayed('))
   dispatch=member(fixture,'    @Override public boolean dispatchTouchEvent(android.view.MotionEvent event){');self.assertEqual(dispatch.count('super.dispatchTouchEvent(event)'),1);self.assertIn('return handled;',dispatch)
   helper=(ROOT/HELPER).read_text()
   for denied in ('input tap','window.open(','.click(','.loadUrl(','.setActive(','.setBlocked(','.setNavigationDelegate('):self.assertNotIn(denied,helper)

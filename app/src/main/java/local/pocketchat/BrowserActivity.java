@@ -47,7 +47,13 @@ public class BrowserActivity extends ThemedActivity {
     volatile boolean fingerprintReady;
     boolean fingerprintValidating,fingerprintStarted,fingerprintBindingPending,fingerprintBindingReady;
     long surfaceGeneration;String fingerprintProviderPackage="",fingerprintProviderVersion="",fingerprintError="",fingerprintNavigation;Message fingerprintPopup;
+    BlobDocument blobOpener;
     Tab(String url){this.url=url;}
+  }
+  static final class BlobDocument {
+    final Tab tab;final WebView view;final String url;final long surface,navigation;
+    final ChromiumFingerprintStore.State policy;
+    BlobDocument(Tab tab,WebView view,String url){this.tab=tab;this.view=view;this.url=url;surface=tab.surfaceGeneration;navigation=tab.generation;policy=tab.fingerprintPolicy;}
   }
   static final class FingerprintFileChoice {
     final BrowserFiles.Pending pending;final Tab tab;final WebView view;final ChromiumFingerprintStore.State policy;
@@ -108,6 +114,7 @@ public class BrowserActivity extends ThemedActivity {
     networkUi=new ChromiumNetworkUi(this);networkLine=networkUi.row;
     LinearLayout networkBand=DesignUi.column(this);networkBand.setPadding(dp(16),0,dp(16),0);networkBand.addView(networkLine,new LinearLayout.LayoutParams(-1,-2));
     View networkDivider=new View(this);networkDivider.setBackgroundColor(ReferenceUi.LINE);networkDivider.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);networkBand.addView(networkDivider,new LinearLayout.LayoutParams(-1,Math.max(1,dp(1)/2)));root.addView(networkBand,new LinearLayout.LayoutParams(-1,-2));
+    BrowserHeaderTouchDelegate.bind(root,environmentTouch,networkLine);
     progress=new ProgressBar(this,null,android.R.attr.progressBarStyleHorizontal);progress.setMax(100);progress.setVisibility(View.INVISIBLE);root.addView(progress,new LinearLayout.LayoutParams(-1,dp(2)));
     notice=ReferenceUi.text(this,"正在准备浏览器网络与指纹配置…",13,ReferenceUi.TEXT,false);notice.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);notice.setPadding(dp(12),dp(8),dp(12),dp(8));notice.setOnClickListener(v->{if(selected!=null)selected.fingerprintError="";loadFingerprintState();if(runtime!=null)runtime.refresh();});root.addView(notice);
     findBar=DesignUi.row(this);findBar.setPadding(dp(8),dp(4),dp(8),dp(4));findText=new EditText(this);findText.setSingleLine(true);findText.setTextSize(15);findText.setIncludeFontPadding(true);if(Build.VERSION.SDK_INT>=28)findText.setFallbackLineSpacing(true);findText.setMinimumHeight(dp(48));findText.setPadding(dp(10),dp(10),dp(10),dp(10));findText.setHint("在网页中查找");findText.setContentDescription("页内查找文字");findBar.addView(findText,new LinearLayout.LayoutParams(0,-2,1));
@@ -129,6 +136,41 @@ public class BrowserActivity extends ThemedActivity {
   void showEnvironments(){startActivity(new Intent(this,WindowHomeActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_REORDER_TO_FRONT));}
   WebView web(){return selected==null?null:selected.web;}
   boolean live(Tab tab,WebView source){return !destroyed&&tabs.contains(tab)&&tab.web==source;}
+  boolean blobDocumentCurrent(BlobDocument document,String target){
+    if(document==null||!live(document.tab,document.view)||document.tab.surfaceGeneration!=document.surface
+        ||document.tab.generation!=document.navigation||document.tab.fingerprintPolicy!=document.policy
+        ||fingerprintState!=document.policy)return false;
+    String current=document.view.getUrl();
+    // onPageStarted may already report the attempted Blob URL while the old
+    // document is still present. The reader also checks location and document.
+    return Objects.equals(document.url,current)||Objects.equals(target,current);
+  }
+  boolean downloadBlobNavigation(Tab tab,WebView source,String target,String disposition,String mime,long bytes){
+    if(target==null||!target.startsWith("blob:"))return false;
+    if(!live(tab,source)||!fingerprintTraffic(tab,source)||files==null)return true;
+    BlobDocument document=tab.blobOpener;
+    if(document!=null){
+      if(selected!=tab||!foreground||!blobDocumentCurrent(document,target)
+          ||!Objects.equals(document.url,document.view.getUrl())
+          ||!fingerprintTraffic(document.tab,document.view)
+          ||!GeckoDownloadNavigation.sameOriginBlob(document.url,target)){
+        message("原网页已变化，请回生成文件的网页重新下载");return true;
+      }
+      // An initial blank popup cannot read its opener's Blob. Return to the
+      // exact original surface before starting this document-owned transfer.
+      tab.blobOpener=null;select(document.tab);closeTab(tab);
+    }else{
+      String page=source.getUrl();if(!BrowserAddressPolicy.allowed(page))page=tab.url;
+      document=new BlobDocument(tab,source,page);
+    }
+    if(!blobDocumentCurrent(document,target)||!fingerprintTraffic(document.tab,document.view)
+        ||!GeckoDownloadNavigation.sameOriginBlob(document.url,target)){
+      message("临时文件不属于当前网页，请在生成文件的原网页下载");return true;
+    }
+    BlobDocument original=document;
+    files.downloadBlob(original.view,target,disposition,mime,bytes,original.url,()->blobDocumentCurrent(original,target));
+    return true;
+  }
   void message(String text){if(destroyed)return;notice.setText(text==null?"":text);notice.setVisibility(text==null||text.isEmpty()?View.GONE:View.VISIBLE);}
   static boolean sameFingerprintPolicy(ChromiumFingerprintStore.State first,ChromiumFingerprintStore.State second){return ChromiumFingerprintJobs.samePolicy(first,second);}
   String fingerprintProviderKey(){try{PackageInfo provider=WebView.getCurrentWebViewPackage();return provider==null||provider.versionName==null?"":provider.packageName+"/"+provider.versionName;}catch(RuntimeException unavailable){return "";}}
@@ -271,7 +313,8 @@ public class BrowserActivity extends ThemedActivity {
    * Retire document requests before invoking their cancellation callbacks.
    * Those callbacks may synchronously navigate, switch tabs, or close this
    * surface. The newer action owns the page and must not be overwritten.
-   * File transfers have their own lifetime; only the page's picker is cancelled.
+   * HTTP transfers keep their own lifetime. Pickers and temporary Blob reads
+   * belong to this document and are cancelled when it is replaced.
    */
   boolean beginPageNavigation(Tab tab,WebView view){
     if(!live(tab,view))return false;
@@ -490,7 +533,8 @@ public class BrowserActivity extends ThemedActivity {
     view.setWebViewClient(new WebViewClient(){
       @Override public boolean shouldOverrideUrlLoading(WebView source,WebResourceRequest request){
         if(!live(tab,source))return true;String url=request.getUrl().toString();
-        if(BrowserAddressPolicy.allowed(url))return !fingerprintTraffic(tab,source);
+        if(request.isForMainFrame()&&downloadBlobNavigation(tab,source,url,"","application/octet-stream",-1))return true;
+        if(BrowserAddressPolicy.allowed(url)){if(request.isForMainFrame())tab.blobOpener=null;return !fingerprintTraffic(tab,source);}
         if(request.isForMainFrame()&&request.hasGesture())external(url);return true;
       }
       @Override public WebResourceResponse shouldInterceptRequest(WebView source,WebResourceRequest request){
@@ -498,6 +542,9 @@ public class BrowserActivity extends ThemedActivity {
         if(!fingerprintTraffic(tab,source)||("http".equals(scheme)||"https".equals(scheme))&&!BrowserAddressPolicy.allowed(request.getUrl().toString()))return new WebResourceResponse("text/plain","UTF-8",503,"Network unavailable",Collections.emptyMap(),new java.io.ByteArrayInputStream(new byte[0]));return null;
       }
       @Override public void onPageStarted(WebView source,String url,Bitmap icon){
+        if(!live(tab,source))return;
+        if(url!=null&&url.startsWith("blob:")){if(live(tab,source))source.stopLoading();downloadBlobNavigation(tab,source,url,"","application/octet-stream",-1);return;}
+        if(!"about:blank".equals(url))tab.blobOpener=null;
         if(!beginPageNavigation(tab,source))return;tab.loading=true;tab.failed=false;if(BrowserAddressPolicy.allowed(url))tab.url=url;
         if(!fingerprintTraffic(tab,source)||!BrowserAddressPolicy.allowed(url)&&!"about:blank".equals(url)){source.stopLoading();tab.loading=false;tab.failed=true;if(tab==selected){message("网页地址、线路或指纹配置未确认，已暂停加载");updateChrome();}return;}ensureFingerprintBinding(tab);if(tab==selected){message("");updateChrome();}
       }
@@ -515,7 +562,7 @@ public class BrowserActivity extends ThemedActivity {
       @Override public boolean onShowFileChooser(WebView source,ValueCallback<Uri[]> callback,FileChooserParams params){if(!live(tab,source)||selected!=tab||!foreground||!fingerprintTraffic(tab,source)){callback.onReceiveValue(null);message("请等待原网页、线路与指纹配置确认完成后再选择文件");return true;}cancelFingerprintFileResult(null);boolean handled=files.choose(source,callback,params);if(files.pending!=null&&files.pending.owner==source)fingerprintFileChoice=new FingerprintFileChoice(files.pending,tab);return handled;}
       @Override public boolean onCreateWindow(WebView source,boolean dialog,boolean gesture,Message result){
         if(!live(tab,source)||tab!=selected||!foreground||!gesture||!fingerprintTraffic(tab,source)||tabs.size()>=MAX_TABS||result==null||!(result.obj instanceof WebView.WebViewTransport))return false;
-        Tab popup=new Tab(BrowserPreferences.home(BrowserActivity.this));popup.fingerprintPopup=result;tabs.add(popup);select(popup);return true;
+        Tab popup=new Tab(BrowserPreferences.home(BrowserActivity.this));popup.blobOpener=new BlobDocument(tab,source,source.getUrl());popup.fingerprintPopup=result;tabs.add(popup);select(popup);return true;
       }
       @Override public void onCloseWindow(WebView source){if(live(tab,source))closeTab(tab);}
       @Override public void onPermissionRequest(PermissionRequest request){if(live(tab,view)&&tab==selected&&fingerprintTraffic(tab,view))permissions.request(view,request);else request.deny();}
@@ -526,7 +573,7 @@ public class BrowserActivity extends ThemedActivity {
       @Override public void onHideCustomView(){hideCustomView();}
     });
     view.setFindListener((index,count,done)->{if(live(tab,view)&&tab==selected)findCount.setText(count==0?"0/0":(index+1)+"/"+count);});
-    view.setDownloadListener((url,ua,disposition,mime,bytes)->{if(live(tab,view)&&fingerprintTraffic(tab,view))files.download(view,url,ua,disposition,mime,bytes);});
+    view.setDownloadListener((url,ua,disposition,mime,bytes)->{if(live(tab,view)&&fingerprintTraffic(tab,view)&&!downloadBlobNavigation(tab,view,url,disposition,mime,bytes))files.download(view,url,ua,disposition,mime,bytes);});
     view.setOnLongClickListener(v->{WebView.HitTestResult hit=view.getHitTestResult();String target=hit==null?null:hit.getExtra();if(target!=null&&BrowserAddressPolicy.allowed(target)){linkMenu(target);return true;}return false;});
     validateFingerprintSurface(tab,view);
   }
@@ -598,6 +645,7 @@ public class BrowserActivity extends ThemedActivity {
     if(toolsPanel!=null)toolsPanel.navigationState(web()!=null&&web().canGoBack(),web()!=null&&web().canGoForward(),selected.loading);
   }
   void retire(Tab tab){
+    tab.blobOpener=null;
     retireFingerprintBinding(tab);if(tab==selected)invalidateFingerprintObservation();tab.fingerprintReady=false;tab.fingerprintValidating=false;tab.fingerprintStarted=false;
     ChromiumFingerprintRuntime.Prepared prepared=tab.fingerprint;tab.fingerprint=null;tab.fingerprintPolicy=null;denyFingerprintPopup(tab);
     WebView view=tab.web;ChromiumRouteLease.Handle lease=tab.routeLease;tab.routeLease=null;if(fingerprintFileChoice!=null&&fingerprintFileChoice.tab==tab)cancelFingerprintFileResult(null);if(view==null){if(prepared!=null)try{prepared.close();}catch(RuntimeException ignored){}if(lease!=null)lease.close();return;}try{tab.web=null;tab.loading=false;tab.generation++;files.cancelFor(view);permissions.onNavigation(view);

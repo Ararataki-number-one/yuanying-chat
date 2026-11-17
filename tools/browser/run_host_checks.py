@@ -166,6 +166,15 @@ def main():
     add('browser-navigation-v4','tests/profile_navigation_v4_test.py')
     add('browser-navigation-v4-publication','tests/profile_navigation_v4_publication_test.py')
     add('gecko-window-selection','tests/profile_gecko_window_selection_test.py')
+    # Keep every preceding cohort in order; qualify the new compact browser contract separately.
+    target=out/'browser-header-layout.json';add('browser-header-layout','tests/browser-header-layout-host/run.py',java+['--output',target],target)
+    add('browser-header-v5','tests/profile_browser_header_v5_test.py')
+    add('browser-header-native-evidence-v5','tests/profile_browser_header_evidence_v5_test.py')
+    add('browser-observation-v2','tests/profile_browser_observation_v2_test.py')
+    # 2.1.8 appends download controls after the retained full cohort.
+    add('download-content','tests/download-content-host/run.py',java+['--output',out/'download-content.json'],out/'download-content.json')
+    add('gecko-download-navigation','tests/gecko-download-navigation-host/run.py',java+['--output',out/'gecko-download-navigation.json'],out/'gecko-download-navigation.json')
+    add('browser-blob','tests/browser-blob-host/run.py',java+['--json-jar',desktop,'--output',out/'browser-blob.json'],out/'browser-blob.json')
     names=subprocess.check_output(['git','ls-files','--cached','--others','--exclude-standard','app/src/main/java','app/src/main/assets','tests','tools/browser','tools/gecko','.github/workflows/browser-2_1-acceptance.yml'],cwd=ROOT,text=True).splitlines()
     files=[ROOT/name for name in sorted(set(names)) if (ROOT/name).is_file()]
     hashes={str(path.relative_to(ROOT)):hashlib.sha256(path.read_bytes()).hexdigest() for path in files}

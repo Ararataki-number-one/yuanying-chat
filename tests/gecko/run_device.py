@@ -778,7 +778,7 @@ def main():
         assert run(1,'sessionRead','session')['token']=='none','Explicit profile clear restored a deleted session cookie'
         assert run(2,'sessionRead','session')['token']=='synthetic-session-2'
         privacy=run(1,'privacy','privacy');assert privacy['nativeFingerprintingEnabled'] is True,privacy
-        completion=run(1,'completion','completion');assert completion['guestActionsRecognized'] and completion['priorActionsCannotComplete'] and completion['nestedMessageIdRecognized'],completion
+        completion=run(1,'completion','completion');assert completion.get('contract')=='browser-result-removal-v1' and all(completion[key] for key in ('pollRejected','latestRejected','noNativeTask','noReplyService')),completion
         bootstrap=run(1,'disableExtension','bootstrapCheck');assert bootstrap['navigationFailed'] is True,bootstrap
         assert bootstrap['extensionId']=='browser@pocketchat.local' and bootstrap['enabledAfterDisable'] is False and bootstrap['disabledFlags']&2,bootstrap
         restored_bootstrap=run(1,'restoreExtension','bootstrapRestore')
@@ -855,9 +855,10 @@ def main():
         check(run(1,'read'),1,False);check(run(2,'read'),2,True)
         queued_vpn_permission=adb('shell','appops','set',package,'ACTIVATE_VPN','allow')
         report['queuedChangesVpnPermission']=dict(package=package,setRaw=queued_vpn_permission,getRaw=adb('shell','appops','get',package,'ACTIVATE_VPN'))
-        queued=run(2,'queuedChanges','queuedChanges');assert all(queued[key] for key in ['savedWhileReplying','oldRouteKept','browserSavedWithoutApplying','replyCleared','appliedWhenIdle','vpnGuardBlocksWithoutVpn']),queued
+        queued=run(2,'queuedChanges','queuedChanges');assert all(queued[key] for key in ['savedWhileFileBusy','oldRouteKept','browserSavedWithoutApplying','fileWorkCleared','appliedWhenIdle','vpnGuardBlocksWithoutVpn']),queued
         from queued_changes46 import verify_queued_changes46
-        verify_queued_changes46(queued,identity['sourceCommit'],event_transfers[-1]['runNonce'])
+        queued_producer=subprocess.check_output(['git','show',identity['sourceCommit']+':tests/gecko/GeckoIntegrationTestActivity.java'],cwd=ROOT)
+        verify_queued_changes46(queued,identity['sourceCommit'],event_transfers[-1]['runNonce'],producer_source=queued_producer)
         foreign_before=run(1,'foreignPreferences','foreignPreferences');assert foreign_before['marker']=='prime-target',foreign_before
         deletion=management('deleteOne')
         foreign_after=run(1,'foreignPreferences','foreignPreferences');assert not foreign_after['marker'],foreign_after

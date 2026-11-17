@@ -1,4 +1,5 @@
-/* Observe trusted website gestures. This module never fills, clicks or submits. */
+/* Observe page readiness, resource use and attachment removal only.
+ * The browser never creates or confirms a website-send task. */
 (() => {
   'use strict';
   window.__pocketInstallWebReplyObserver = (api, resourceBinding = '') => {
@@ -8,15 +9,13 @@
     const uuid = () => typeof crypto.randomUUID === 'function' ? crypto.randomUUID() :
       [...crypto.getRandomValues(new Uint8Array(16))].map(n => n.toString(16).padStart(2, '0')).join('');
     const documentId = window.__pocketAttachmentDocumentId || (window.__pocketAttachmentDocumentId = uuid());
-    let attempt = null, scheduled = false, timer = null, checkTimer = null;
-    let observationAllowed = window.__pocketReplyObservationAllowed !== false;
+    let lastGestureAt = 0, gestureUntil = 0, gestureTimer = null;
     const attachmentEvents=[];
     let readyRoute = '', readyUrl = '', readinessScheduled = false;
     let resourceScheduled=false,lastResource='',resourceSequence=0,resourceZone=null;
     const resourceSelectors='[data-testid="stop-button"],button[aria-label="Stop"],button[aria-label="Stop generating"],button[aria-label="Stop streaming"],button[aria-label="停止"],button[aria-label="停止生成"],[data-state="uploading"],[data-upload-state],[role="progressbar"],[aria-busy="true"],#prompt-textarea,[data-composer-markdown]';
     const normalized = text => String(text || '').replace(/\u00a0/g, ' ').replace(/\s+/g, ' ').trim();
     const address = url => new URL(url).origin + new URL(url).pathname;
-    const stable = key => /^(id|unit):/.test(key);
     const newChat = url => /^\/(?:g\/[^/]+\/?)?$/.test(new URL(url).pathname);
     const sameRoute = (from, to) => address(from) === address(to) ||
       (newChat(from) && /^\/(?:g\/[^/]+\/)?c\/[^/]+$/.test(new URL(to).pathname));
@@ -30,119 +29,24 @@
       }
       return [];
     }
-    function selectedAttachments(){const input=api.composer(),zone=input&&(input.closest('form')||input.parentElement?.parentElement);if(!zone)return [];return [...new Set([...zone.querySelectorAll('button,[role="button"]')].filter(removeLabel).flatMap(button=>attachmentNames(button,zone)))];}
     function attachmentFact(kind,names,at,url){if(!names.length)return;attachmentEvents.push({kind,names,at,url});if(attachmentEvents.length>64)attachmentEvents.shift();}
     function emit(type, data = {}) {
       try { window.PocketWebReply.postMessage(JSON.stringify({type, documentId, url:location.href, resourceBinding, ...data})); }
       catch (_) { /* No website behavior depends on a host callback. */ }
     }
-    const confirmationAllowed = () => observationAllowed && window.__pocketReplyObservationAllowed !== false;
-    function clearConfirmationTimers() {
-      clearTimeout(timer); timer = null;
-      clearTimeout(checkTimer); checkTimer = null; scheduled = false;
-    }
-    function sameAttemptDocument(current) {
-      return current.documentId === documentId && window.__pocketAttachmentDocumentId === documentId;
-    }
-    function invalidate(reason, includeBound = false) {
-      if (!attempt || attempt.ended || attempt.userKey && !includeBound) return;
-      attempt.ended = true; attempt.endKind = 'uncertain'; attempt.endReason = reason;
-      clearConfirmationTimers();
-      emit('uncertain', {token:attempt.token, reason});
+    // A brief interaction guard prevents configuration changes from racing a
+    // website event. It neither reads the input nor checks a send/reply result.
+    function noteInteraction() {
+      lastGestureAt = Date.now(); gestureUntil = lastGestureAt + 1500;
+      clearTimeout(gestureTimer);
+      gestureTimer = setTimeout(() => { gestureTimer = null; scheduleResources(); }, 1500);
       scheduleResources();
     }
-    function check() {
-      scheduled = false; checkTimer = null;
-      if (!confirmationAllowed()) return;
-      const current = attempt;
-      if (!current || current.ended || current.userKey) return;
-      if (!sameAttemptDocument(current)) { invalidate('网页文档已变化，原发送结果需要核对'); return; }
-      if (!sameRoute(current.url, location.href)) { invalidate('网页已切换到其他对话'); return; }
-      const users = api.messages('user');
-      const fresh = users.map((node, index) => ({node, key:api.key(node, index)}))
-        .filter(item => !current.before.has(item.key));
-      if (fresh.length > 1) { invalidate('同时出现多条消息，无法确定本次发送'); return; }
-      if (fresh.length !== 1) return;
-      const item = fresh[0];
-      if (item.node !== users[users.length - 1]) { invalidate('新出现的消息不是当前最后一条提问'); return; }
-      // Position-derived identities cannot safely survive a reload or branch change.
-      if (!stable(item.key)) { invalidate('网页没有提供可持续核对的消息标识'); return; }
-      const actual = api.userText(item.node);
-      if (current.prompt.trim() && normalized(actual) !== normalized(current.prompt)) return;
-      if (!current.prompt.trim() && !api.busy()) return;
-      current.userKey = item.key; current.boundText = actual; current.boundUrl = location.href;
-      clearConfirmationTimers();
-      attachmentFact('sent',current.attachments,current.started,current.url);
-      emit('bound', {token:current.token, userKey:item.key, prompt:actual});
-      scheduleResources();
-    }
-    function armConfirmation(current) {
-      clearTimeout(timer); timer = null;
-      if (attempt !== current || !confirmationAllowed() || current.ended || current.userKey) return;
-      const remaining = current.started + 45000 - Date.now();
-      if (remaining <= 0) { invalidate('未能确认网页接收了这次操作，请核对原消息'); return; }
-      timer = setTimeout(() => {
-        timer = null;
-        if (attempt === current) invalidate('未能确认网页接收了这次操作，请核对原消息');
-      }, remaining);
-    }
-    function replayBound(current) {
-      if (!sameAttemptDocument(current) || !sameRoute(current.boundUrl || current.url, location.href)) {
-        invalidate('网页已变化，原发送结果需要核对', true); return;
-      }
-      const users = api.messages('user');
-      const fresh = users.map((node, index) => ({node, key:api.key(node, index)}))
-        .filter(item => !current.before.has(item.key));
-      const item = fresh.length === 1 ? fresh[0] : null;
-      if (!item || !stable(item.key) || item.key !== current.userKey || item.node !== users[users.length - 1]) {
-        invalidate('原提问的网页消息标识无法重新核对', true); return;
-      }
-      const actual = api.userText(item.node);
-      if (normalized(actual) !== normalized(current.boundText) || current.prompt.trim() && normalized(actual) !== normalized(current.prompt)) {
-        invalidate('原提问的网页内容已变化，请核对原消息', true); return;
-      }
-      // The host may have disabled observation after JS bound but before receipt
-      // delivery. Replay only this revalidated receipt, never the website action.
-      current.boundUrl = location.href;
-      emit('bound', {token:current.token, userKey:item.key, prompt:actual});
-    }
-    function setObservationAllowed(allowed) {
-      if (typeof allowed !== 'boolean') return false;
-      observationAllowed = allowed;
-      window.__pocketReplyObservationAllowed = allowed;
-      clearConfirmationTimers();
-      if (!allowed) return true;
-      const current = attempt;
-      if (!current) return true;
-      if (current.ended) {
-        // An off callback can itself have been delayed. A prior timeout/pagehide
-        // receipt may have been dropped by native; it must not remain silent.
-        if (current.endKind === 'uncertain') emit('uncertain', {token:current.token, reason:current.endReason});
-        else if (current.endKind === 'stopped' && sameAttemptDocument(current) && sameRoute(current.url, location.href)) emit('stop', {token:current.token, userKey:current.stoppedUserKey || ''});
-      } else if (current.userKey) replayBound(current);
-      else {
-        // Exactly one foreground recheck, including after the old deadline.
-        // Repeated explicit native activations remain finite; no polling starts.
-        check();
-        armConfirmation(current);
-      }
-      scheduleResources();
-      return true;
-    }
-    function schedule() {
-      scheduleReadiness();
-      if (!confirmationAllowed() || !attempt || attempt.ended || attempt.userKey || scheduled) return;
-      scheduled = true;
-      const current = attempt;
-      checkTimer = setTimeout(() => {
-        checkTimer = null; scheduled = false;
-        if (attempt === current) check();
-      }, 30);
-    }
+    function resourceBusy() { return !!api.resourceBusy() || Date.now() < gestureUntil; }
     function scheduleResources(){
       if(resourceScheduled||typeof api.uploadBusy!=='function'||typeof api.resourceBusy!=='function')return;
       resourceScheduled=true;
-      setTimeout(()=>{resourceScheduled=false;const input=api.composer();resourceZone=input&&(input.closest('form')||input.parentElement?.parentElement);const busy=!!api.resourceBusy()||!!attempt&&!attempt.ended&&!attempt.userKey,uploading=!!api.uploadBusy(),signature=address(location.href)+'|'+busy+'|'+uploading;if(signature===lastResource)return;lastResource=signature;emit('resource-work',{busy,uploading,resourceSequence:++resourceSequence,capturedAt:Date.now()});},250);
+      setTimeout(()=>{resourceScheduled=false;const input=api.composer();resourceZone=input&&(input.closest('form')||input.parentElement?.parentElement);const busy=resourceBusy(),uploading=!!api.uploadBusy(),signature=address(location.href)+'|'+busy+'|'+uploading;if(signature===lastResource)return;lastResource=signature;emit('resource-work',{busy,uploading,resourceSequence:++resourceSequence,capturedAt:Date.now()});},250);
     }
     function resourceMutations(records){
       // Reply text/markdown mutations never scan page buttons or composer.
@@ -165,65 +69,32 @@
         emit('ready');
       }, 50);
     }
-    function begin() {
-      const input = api.composer(), send = api.sendButton();
-      if (!input || !send || send.disabled || send.getAttribute('aria-disabled') === 'true' || api.busy()) return;
-      const prompt = api.draft(input), beforeKeys = api.messages('user').map(api.key);
-      if (prompt.length > 300000 || beforeKeys.length > 4000) return;
-      const now = Date.now();
-      // Enter can also cause a trusted form submit. Treat both as one gesture.
-      if (attempt && !attempt.ended && !attempt.userKey && now - attempt.started < 700 &&
-          attempt.url === location.href && attempt.prompt === prompt &&
-          JSON.stringify(attempt.beforeKeys) === JSON.stringify(beforeKeys)) return;
-      clearConfirmationTimers();
-      attempt = {token:uuid(), documentId, url:location.href, prompt, beforeKeys,attachments:selectedAttachments(),
-        before:new Set(beforeKeys), started:now, userKey:'', ended:false, endKind:'', endReason:''};
-      emit('intent', {token:attempt.token, prompt, beforeKeys, capturedAt:now});
-      armConfirmation(attempt);
-      schedule();
-    }
     document.addEventListener('click', event => {
       if (!event.isTrusted) return;
       const target = event.target instanceof Element ? event.target : event.target?.parentElement;
       const button = target?.closest('button,[role="button"]');
-      const text = (button?.getAttribute('aria-label') || button?.innerText || '').trim();
-      if(button&&removeLabel(button)){const input=api.composer(),zone=input&&(input.closest('form')||input.parentElement?.parentElement);if(zone?.contains(button)){attachmentFact('removed',attachmentNames(button,zone),Date.now(),location.href);scheduleResources();}}
-      if (button && (button.matches('[data-testid="stop-button"]') ||
-          /^(停止|停止生成|Stop|Stop generating|Stop streaming)$/i.test(text))) {
-        clearConfirmationTimers();
-        const users = api.messages('user'), stoppedUserKey = users.length ? api.key(users.at(-1), users.length - 1) : '';
-        if (attempt) { attempt.ended = true; attempt.endKind = 'stopped'; attempt.stoppedUserKey = stoppedUserKey; }
-        emit('stop', {token:attempt?.token || '', userKey:stoppedUserKey});
-        return;
-      }
-      // Most clicks are model/actions/sidebar controls. Do not inspect every
-      // page button before the website handles an unrelated trusted gesture.
-      if (button && (button.matches('[data-testid="send-button"]')||/^(发送|发送消息|Send|Send prompt|Send message)$/i.test(text)) && button === api.sendButton()) { begin(); return; }
-      const link = target?.closest('a[href]');
-      if (link && attempt && !attempt.userKey) {
-        try { if (address(link.href) !== address(location.href)) invalidate('发送核对期间打开了其他页面'); } catch (_) {}
-      }
+      const input=api.composer(),zone=input&&(input.closest('form')||input.parentElement?.parentElement);
+      if (!zone?.contains(target)) return;
+      noteInteraction();
+      if(button&&removeLabel(button))attachmentFact('removed',attachmentNames(button,zone),Date.now(),location.href);
     }, true);
     document.addEventListener('keydown', event => {
-      if (!event.isTrusted || event.isComposing || event.keyCode === 229 || event.repeat ||
-          event.key !== 'Enter' || event.shiftKey || event.altKey || event.ctrlKey || event.metaKey) return;
+      if (!event.isTrusted) return;
       const input = api.composer();
-      if (input && (input === event.target || input.contains(event.target))) begin();
+      if (input && (input === event.target || input.contains(event.target))) noteInteraction();
     }, true);
-    // A script-triggered requestSubmit() can produce an isTrusted submit event.
-    // Only a trusted click/keydown is evidence of the user's send gesture.
-    window.addEventListener('popstate', () => {invalidate('发送核对期间切换了网页历史');scheduleResources();});
-    window.addEventListener('pagehide', () => invalidate('页面已离开，原发送结果需要核对'));
-    new MutationObserver(records=>{schedule();resourceMutations(records);}).observe(document, {subtree:true, childList:true, characterData:true, attributes:true});
+    window.addEventListener('popstate', () => {scheduleReadiness();scheduleResources();});
+    new MutationObserver(records=>{scheduleReadiness();resourceMutations(records);}).observe(document, {subtree:true, childList:true, attributes:true});
     document.addEventListener('DOMContentLoaded', scheduleReadiness, {once:true});
     scheduleReadiness();
     scheduleResources();
     function requestResources(request){
       if(typeof request!=='string'||!/^[a-zA-Z0-9-]{16,80}$/.test(request))return false;
-      const busy=!!api.resourceBusy()||!!attempt&&!attempt.ended&&!attempt.userKey,uploading=!!api.uploadBusy();
+      const busy=resourceBusy(),uploading=!!api.uploadBusy();
+      lastResource=address(location.href)+'|'+busy+'|'+uploading;
       emit('resource-work',{busy,uploading,guardRequestId:request,resourceSequence:++resourceSequence,capturedAt:Date.now()});return true;
     }
-    window.__pocketWebReplyObserver = Object.freeze({requestResources,setObservationAllowed,documentId,lastGestureAt:()=>attempt?.started||0,attachmentEvidence:(name,since)=>{if(!Number.isFinite(since)||since<=0)return {};const facts=attachmentEvents.filter(event=>event.at>since&&event.names.includes(name)&&sameRoute(event.url,location.href));return {sent:facts.some(event=>event.kind==='sent'),removed:facts.some(event=>event.kind==='removed')};},refreshResources:binding=>{if(typeof binding!=='string'||binding.length>80||binding===resourceBinding)return;resourceBinding=binding;lastResource='';scheduleResources();}});
+    window.__pocketWebReplyObserver = Object.freeze({requestResources,documentId,lastGestureAt:()=>lastGestureAt,attachmentEvidence:(name,since)=>{if(!Number.isFinite(since)||since<=0)return {};const facts=attachmentEvents.filter(event=>event.at>since&&event.names.includes(name)&&sameRoute(event.url,location.href));return {removed:facts.some(event=>event.kind==='removed')};},refreshResources:binding=>{if(typeof binding!=='string'||binding.length>80||binding===resourceBinding)return;resourceBinding=binding;lastResource='';scheduleResources();}});
     return true;
   };
 })();

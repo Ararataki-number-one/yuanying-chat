@@ -25,9 +25,9 @@ public final class GeckoPerformanceIntegrationActivity extends Activity {
   static final String BASELINE="835d59991218eda70c7a4fdd73ea9d7ae6052688",INPUT_MARKER="-user-typed";
   final Handler handler=new Handler(Looper.getMainLooper());
   final FrameSample frames=new FrameSample();
-  ChatSession session;String variant,driver,performanceSource;JSONObject before,known,firstFull,baselineMetrics,currentMetrics,productionJob;
-  int checkCount,samples,inputFocusSamples,directDeferredSamples,nativeDeferredSamples;boolean finished,inputRequested,directDeferralChecked,nativeDeferralChecked;long deadline,payloadBytes,payloadChars,callbackMs,scriptChars;
-  String originalDriver,manualDraft,inputDraft;JSONObject manualJob;long manualEpoch,manualConnection;
+  ChatSession session;String variant,driver,performanceSource;JSONObject before,known,firstFull,baselineMetrics,currentMetrics;
+  int checkCount,samples,inputFocusSamples;boolean finished,inputRequested;long deadline,payloadBytes,payloadChars,callbackMs,scriptChars;
+  String originalDriver,manualDraft,manualRoute,inputDraft;long manualEpoch,manualConnection;int manualLoads,manualStops;
   String inputReadinessKey="";long inputReadySince;int inputTraceOffset,inputReadinessSequence;boolean inputImeSettled;
   GeckoInputTrace nativeInputTrace;GeckoInputTrace.Buffered bufferedInputTrace;boolean inputDiagnostics,inputNativeDiagnostics;
   final JSONArray scrollDiagnosticPhases=new JSONArray();ScrollPhase scrollPhase,scrollDomTail;String scrollDiagnosticRun;
@@ -41,7 +41,7 @@ public final class GeckoPerformanceIntegrationActivity extends Activity {
   CountDownLatch archiveEntered,archiveRelease;
   @Override protected void attachBaseContext(Context c){super.attachBaseContext(new ProfileContext(c,Profiles.processSlot()));}
   static final class FixtureView extends GeckoWebView {
-    boolean semanticRoute,inspectPending,inputTracing,quietTracking;JSONObject productionPoll,productionInspect;int pageStateReads,stableBeforeInspectedPoll=-1,completionBeforeInspectedPoll=-1,inputEvaluateSequence,quietStops,quietLoads;String pageStateDraft="",navigationError="",semanticUrl=MainActivity.ORIGIN+"c/performance-fixture";
+    boolean semanticRoute,inputTracing,quietTracking,holdNextInspection;JSONObject productionInspect;android.webkit.ValueCallback<String> heldInspection;String heldInspectionRaw;int pageStateReads,inputEvaluateSequence,quietStops,quietLoads;String pageStateDraft="",navigationError="",semanticUrl=MainActivity.ORIGIN+"c/performance-fixture";
     // Scalar observations exist only while the two manual-recovery races run.
     boolean manualSnapshotDiagnostics;JSONObject manualSnapshotLast=new JSONObject();
     FixtureView(Context c,ChatSession owner){super(c,owner);}
@@ -60,15 +60,14 @@ public final class GeckoPerformanceIntegrationActivity extends Activity {
       final JSONObject manualIssue=observedManualIssue;
       int inputSequence=inputTracing?inputEvaluateSequence++:-1;
       if(inputSequence>=0)inputEvaluation("begin",inputSequence,code);
-      if(semanticRoute&&inspectPending&&code.contains("window.__pocketReadDriver(\"poll\",")){inspectPending=false;stableBeforeInspectedPoll=owner.stableTicks;completionBeforeInspectedPoll=owner.webObserver.completionSamples;}
       super.evaluateJavascript(code,raw->{
       if(inputSequence>=0)inputEvaluation("end",inputSequence,code);
-      if(semanticRoute&&code.contains("window.__pocketReadDriver(\"poll\","))productionPoll=J.parse(raw);
       if(semanticRoute&&code.contains("window.__pocketReadDriver(\"web-inspect\","))productionInspect=J.parse(raw);
       if(semanticRoute&&code.contains("window.__pocketReadDriver(\"page-state\",")){pageStateReads++;pageStateDraft=J.parse(raw).optString("draft");}
       if(manualSnapshotDiagnostics&&semanticRoute&&code.contains("window.__pocketReadDriver(\"page-state\",")){
         try{manualSnapshotLast=J.obj("issueObserved",manualIssue!=null,"issue",manualIssue==null?JSONObject.NULL:manualIssue,"callback",manualSnapshotState(owner),"callbackStage","before-production-consumer","shape",manualSnapshotShape(J.parse(raw)));}catch(RuntimeException ignored){}
       }
+      if(holdNextInspection&&code.contains("window.__pocketReadDriver(\"web-inspect\",")){holdNextInspection=false;heldInspection=callback;heldInspectionRaw=raw;return;}
       if(callback!=null)callback.onReceiveValue(raw);
     });}
     static JSONObject manualSnapshotState(ChatSession owner){
@@ -189,36 +188,19 @@ public final class GeckoPerformanceIntegrationActivity extends Activity {
       });});
     }));
   });}
-  JSONObject args(){JSONObject value=J.obj("kind","web","confirmed",true,"userKey","id:current-question","prompt","bound performance prompt", "confirmedUrl",ORIGIN+PATH+"?variant="+variant,"expectedUrl",ORIGIN+PATH+"?variant="+variant,"export",true,"lightObservation",true);if("current".equals(variant))try{value.put("incrementalObservation",true);}catch(Exception ignored){}return value;}
-  void poll(JSONObject arg,boolean measured,Result result){pollObserved(arg,measured,result,SystemClock.elapsedRealtime()+10000);}
-  boolean deferredBodyless(JSONObject value){return !value.optBoolean("contentObserved")&&!value.optBoolean("contentUnchanged")&&!value.has("markdown")&&!value.has("text")&&!value.has("prompt");}
-  void pollObserved(JSONObject arg,boolean measured,Result result,long expires){
-    evaluate("window.__fixtureReadDriver('poll',"+arg+")",measured,value->{
-      if(!value.optBoolean("captureDeferred")){result.accept(value);return;}
-      boolean bodyless=deferredBodyless(value);directDeferredSamples++;
-      if(!directDeferralChecked){check("Actual Gecko idle deferral transfers no partial final body",bodyless);directDeferralChecked=true;}
-      else if(!bodyless)throw new IllegalStateException("A deferred actual Gecko poll carried completion content");
-      if(SystemClock.elapsedRealtime()>expires)throw new IllegalStateException("Actual Gecko idle capture did not become observable");
-      // Preserve the real interaction clock and requestIdleCallback. Re-read
-      // the same driver arguments until its actual complete capture is ready.
-      later(()->pollObserved(arg,measured,result,expires),80);
-    });
-  }
-  void verifyNativeDeferral(JSONObject value)throws Exception{
-    nativeDeferredSamples++;
-    boolean safe=deferredBodyless(value)&&session.pending==productionJob&&session.prefs.contains("pending")&&
-      J.parse(session.prefs.getString("pending","{}")).optString("id").equals(productionJob.optString("id"))&&
-      session.stableTicks==0&&session.webObserver.completionSamples==0&&
-      !"completed".equals(session.deliveries.get(productionJob.optString("id")).optString("state"));
-    if(!nativeDeferralChecked){check("Actual native idle deferral preserves the persisted task with zero completion samples",safe);nativeDeferralChecked=true;}
-    else if(!safe)throw new IllegalStateException("A deferred native capture lost its task or accumulated terminal samples");
-  }
+  JSONObject baselineArgs(){return J.obj("kind","web","confirmed",true,"userKey","id:current-question","prompt","bound performance prompt","confirmedUrl",ORIGIN+PATH+"?variant="+variant,"expectedUrl",ORIGIN+PATH+"?variant="+variant,"export",true,"lightObservation",true);}
   void snapshot(JSONObject arg,Result result){evaluate("window.__fixtureReadDriver('web-transcript',"+arg+")",false,result);}
+  boolean noResultTask(){return session.pending==null&&!session.prefs.contains("pending")&&!ChatService.running;}
   void sample(){attempt(()->{
-    poll(args(),true,value->{
-      check(variant+" busy sample "+samples+" stays bound and never completes",value.optBoolean("busy")&&value.optBoolean("submitted")&&!value.optBoolean("bindingLost"));
-      if("current".equals(variant))check("Current streaming sample "+samples+" transfers only metadata",!value.optBoolean("contentObserved")&&value.optBoolean("hasReply")&&!value.has("markdown")&&!value.has("text")&&!value.has("prompt"));
-      else check("Baseline sample "+samples+" actually transfers its long body",value.optString("markdown").length()>105000&&value.optString("text").length()>105000);
+    boolean current="current".equals(variant);
+    evaluate("window.__fixtureReadDriver("+JSONObject.quote(current?"web-inspect":"poll")+","+(current?new JSONObject():baselineArgs())+")",true,value->{
+      if(current){
+        check("Current browser inspection sample "+samples+" reads page readiness without a result task",value.optBoolean("busy")&&value.optBoolean("composer")&&value.optBoolean("hasMessages")&&noResultTask());
+        check("Current browser inspection sample "+samples+" transfers no reply body or completion fields",!value.has("markdown")&&!value.has("text")&&!value.has("prompt")&&!value.has("submitted")&&!value.has("terminal")&&!value.has("bindingLost"));
+      }else{
+        check("Historical baseline sample "+samples+" executes its original bound polling workload",value.optBoolean("busy")&&value.optBoolean("submitted")&&!value.optBoolean("bindingLost"));
+        check("Baseline sample "+samples+" actually transfers its long body",value.optString("markdown").length()>105000&&value.optString("text").length()>105000);
+      }
       int done=++samples;
       if(done==4||done==8){evaluate("document.getElementById('long-body').append(' streamed-"+done+"');({mutated:true})",false,v->later(done==4?this::scrollGesture:this::nextSample,80));return;}
       later(this::nextSample,80);
@@ -304,151 +286,96 @@ public final class GeckoPerformanceIntegrationActivity extends Activity {
   void waitScroll(double previous,long expires){evaluate(scrollSnapshotScript(false),false,afterScroll->{
     recordScrollSample("after",afterScroll);
     if(afterScroll.optDouble("scrollTop")<=previous){if(SystemClock.elapsedRealtime()>expires)throw new IllegalStateException("Actual Android scroll gesture did not reach Gecko");later(()->waitScroll(previous,expires),100);return;}
-    finishScrollDiagnostics("passed");check(variant+" accepts an actual Android scroll while reply observation is active",true);later(this::nextSample,80);
+    finishScrollDiagnostics("passed");check(variant+" accepts an actual Android scroll while its versioned read workload is active",true);later(this::nextSample,80);
   });}
   void nextSample(){if(samples<12)sample();else measured();}
   void measured(){attempt(()->{
     JSONObject nativeFrames=frames.stop();ScrollPhase domPhase=scrollDomTail;evaluate(scrollTelemetryScript(domPhase),false,telemetry->{
       finishScrollDomTail(domPhase,telemetry.optJSONObject("scrollDomTail"));
-      JSONObject metrics=J.obj("variant",variant,"samples",samples,"bridgeResponseBytes",payloadBytes,"bridgeResponseChars",payloadChars,"bridgeScriptChars",scriptChars,"evaluateCallbackMs",callbackMs,"domReadChars",telemetry.optLong("readChars"),"domReadCalls",telemetry.optLong("readCalls"),"cloneCalls",telemetry.optLong("clones"),"elapsedJsMs",telemetry.optDouble("elapsedMs"),"raf",telemetry.optJSONObject("raf"),"androidChoreographer",nativeFrames,"observationBefore",before.optJSONObject("observation"),"observationAfter",telemetry.optJSONObject("observation"));
+      JSONObject metrics=J.obj("variant",variant,"action","current".equals(variant)?"web-inspect":"historical-poll","samples",samples,"bridgeResponseBytes",payloadBytes,"bridgeResponseChars",payloadChars,"bridgeScriptChars",scriptChars,"evaluateCallbackMs",callbackMs,"domReadChars",telemetry.optLong("readChars"),"domReadCalls",telemetry.optLong("readCalls"),"cloneCalls",telemetry.optLong("clones"),"elapsedJsMs",telemetry.optDouble("elapsedMs"),"raf",telemetry.optJSONObject("raf"),"androidChoreographer",nativeFrames,"observationBefore",before.optJSONObject("observation"),"observationAfter",telemetry.optJSONObject("observation"));
       event("measurement",metrics);
       check(variant+" preserves the draft, synthetic session cookie and send count",telemetry.optBoolean("draftPreserved")&&telemetry.optBoolean("cookiePreserved")&&telemetry.optInt("sendCount")==0);
       if("baseline".equals(variant)){baselineMetrics=metrics;load("current");return;}
       currentMetrics=metrics;
-      check("Actual Gecko streaming bridge payload is reduced by at least 95 percent",payloadBytes*20<baselineMetrics.optLong("bridgeResponseBytes"));
-      check("Actual growing-body DOM read work is reduced by at least 95 percent",telemetry.optLong("readChars")*20<baselineMetrics.optLong("domReadChars"));
+      check("Current browser inspection bridge payload is at least 95 percent below the historical polling workload",payloadBytes*20<baselineMetrics.optLong("bridgeResponseBytes"));
+      check("Current browser inspection DOM reads are at least 95 percent below the historical polling workload",telemetry.optLong("readChars")*20<baselineMetrics.optLong("domReadChars"));
       JSONObject initial=before.optJSONObject("observation"),after=telemetry.optJSONObject("observation");
-      check("Streaming metadata never rebuilds markdown or files",after.optLong("derivedBuilt")==initial.optLong("derivedBuilt"));
+      check("Browser readiness inspection never rebuilds markdown or files",after.optLong("derivedBuilt")==initial.optLong("derivedBuilt"));
       check("Text mutations preserve the cached message topology",after.optLong("messageListsBuilt")==initial.optLong("messageListsBuilt"));
       terminal();
     });
   });}
   void terminal(){
-    evaluate("document.getElementById('stop-button').remove();({stopped:true})",false,v->later(()->snapshot(J.obj("documentId",before.optString("documentId"),"revision",before.optLong("revision")),changed->{
-      check("Two streaming mutations rebuild only the current transcript entry",changed.optJSONArray("changes")!=null&&changed.optJSONArray("changes").length()==1&&changed.optJSONArray("changes").optJSONObject(0).optString("id").equals("id:current-answer"));
-      evaluate("({stats:window.__pocketWebPerformance.stats()})",false,stats->poll(args(),false,full->{
-        firstFull=full;String body=full.optString("markdown");
-        check("First terminal capture keeps the entire 105k reply, both stream tails, code and file",full.optBoolean("terminal")&&!full.optBoolean("busy")&&full.optBoolean("contentObserved")&&full.optBoolean("hasFiles")&&body.length()>105000&&body.startsWith("preserved reply line ".repeat(5000).trim())&&body.contains("streamed-4 streamed-8")&&body.contains("```js\nconst keep = 1;")&&body.contains("result.csv"));
+    evaluate("document.getElementById('stop-button').remove();({stopped:true})",false,v->later(()->snapshot(snapshotCursor(before),changed->{
+      check("Two streaming mutations rebuild only the current transcript entry",changed.optJSONArray("changes")!=null&&changed.optJSONArray("changes").length()==1&&currentEntry(changed).optString("id").equals("id:current-answer"));
+      firstFull=changed;known=snapshotCursor(changed);JSONObject entry=currentEntry(changed);String body=entry.optString("text");
+      check("On-demand transcript keeps the entire 105k reply, both stream tails, code and file",body.length()>105000&&body.startsWith("preserved reply line ".repeat(5000).trim())&&body.contains("streamed-4 streamed-8")&&body.contains("```js\nconst keep = 1;")&&download(entry,"result.csv")&&noResultTask());
+      evaluate("({stats:window.__pocketWebPerformance.stats()})",false,stats->snapshot(known,stable->{
+        check("An unchanged on-demand transcript returns no repeated message bodies",stable.optBoolean("ok")&&!stable.optBoolean("changed")&&!stable.has("changes")&&stable.optLong("revision")==changed.optLong("revision"));
         evaluate("({stats:window.__pocketWebPerformance.stats()})",false,after->{
-          check("Terminal poll reuses the just-built transcript markdown and file representation",after.optJSONObject("stats").optLong("derivedBuilt")==stats.optJSONObject("stats").optLong("derivedBuilt"));
-          JSONObject gate=gatePoll(full);check("A first actual terminal body cannot complete prematurely",!session.webObserver.mayComplete(gateJob(),gate));
-          known=args();known.put("knownReplyKey",full.optString("replyKey")).put("knownReplyContentRevision",full.optString("replyContentRevision"));
-          later(()->stable(1),1100);
+          check("An unchanged transcript reuses cached markdown and file metadata",after.optJSONObject("stats").optLong("derivedBuilt")==stats.optJSONObject("stats").optLong("derivedBuilt"));mutateAfterTerminal();
         });
       }));
     }),100));
   }
-  JSONObject gateJob(){return J.obj("kind","web","confirmed",true,"id","controlled-gecko-performance","userKey","id:current-question","confirmedUrl",MainActivity.ORIGIN+"c/performance-fixture");}
-  JSONObject gatePoll(JSONObject value)throws Exception{
-    // Only adapt the fixture URL for the production HTTPS-route terminal gate.
-    // The body and revision came from the actual Gecko result, never a synthetic completion string.
-    return new JSONObject(value.toString()).put("url",MainActivity.ORIGIN+"c/performance-fixture").put("markdown",firstFull.optString("markdown")).put("hasFiles",firstFull.optBoolean("hasFiles"));
-  }
-  void stable(int index){poll(known,false,same->{
-    check("Stable terminal sample "+index+" omits the 105k body using the exact content revision",same.optBoolean("contentUnchanged")&&same.optBoolean("contentObserved")&&!same.has("markdown")&&!same.has("text")&&same.optString("replyContentRevision").equals(firstFull.optString("replyContentRevision")));
-    boolean complete=session.webObserver.mayComplete(gateJob(),gatePoll(same));
-    check(index==1?"The second terminal sample remains incomplete":"The third stable actual body is accepted after at least two seconds",complete==(index==2));
-    if(index==1)later(()->stable(2),1100);else mutateAfterTerminal();
-  });}
-  void mutateAfterTerminal(){evaluate("document.getElementById('long-body').append(' final-tail-after-done');({mutated:true})",false,v->later(()->poll(known,false,full->{
-    check("A post-terminal mutation expires the omitted-body capture",!full.optBoolean("contentUnchanged")&&full.optString("markdown").contains("final-tail-after-done")&&!full.optString("replyContentRevision").equals(firstFull.optString("replyContentRevision")));
-    firstFull=full;check("A changed terminal body resets the production stable-completion gate",!session.webObserver.mayComplete(gateJob(),gatePoll(full)));
-    known.put("knownReplyKey",full.optString("replyKey")).put("knownReplyContentRevision",full.optString("replyContentRevision"));
-    evaluate("(()=>{const previous=document.getElementById('current-answer'),next=previous.cloneNode(true);next.querySelector('#long-body').textContent='replacement with same stable message ID';previous.replaceWith(next);return {replaced:true};})()",false,w->later(()->poll(known,false,replaced->{
-      check("Reusing a stable message ID on a new node cannot retain the previous body",replaced.optString("replyKey").equals(full.optString("replyKey"))&&!replaced.optBoolean("contentUnchanged")&&replaced.optString("markdown").startsWith("replacement with same stable message ID")&&!replaced.optString("replyContentRevision").equals(full.optString("replyContentRevision")));
-      known.put("knownReplyContentRevision",replaced.optString("replyContentRevision"));
-      evaluate("(()=>{const file=document.getElementById('generated-file');file.download='new-result.csv';file.textContent='new-result.csv';return {fileChanged:true};})()",false,x->later(()->poll(known,false,file->{
-        check("Generated file changes invalidate terminal markdown and attachment metadata",!file.optBoolean("contentUnchanged")&&file.optBoolean("hasFiles")&&file.optString("markdown").contains("new-result.csv"));
-        siblingFiles(file);
+  void mutateAfterTerminal(){evaluate("document.getElementById('long-body').append(' final-tail-after-done');({mutated:true})",false,v->later(()->snapshot(known,full->{
+    check("Later text changes invalidate the on-demand transcript cursor",currentEntry(full).optString("text").contains("final-tail-after-done")&&full.optLong("revision")>known.optLong("revision"));known=snapshotCursor(full);
+    evaluate("(()=>{const previous=document.getElementById('current-answer'),next=previous.cloneNode(true);next.querySelector('#long-body').textContent='replacement with same stable message ID';previous.replaceWith(next);return {replaced:true};})()",false,w->later(()->snapshot(known,replaced->{
+      check("Reusing a stable message ID on a new node cannot retain the previous body",currentEntry(replaced).optString("id").equals("id:current-answer")&&currentEntry(replaced).optString("text").startsWith("replacement with same stable message ID")&&replaced.optLong("revision")>known.optLong("revision"));known=snapshotCursor(replaced);
+      evaluate("(()=>{const file=document.getElementById('generated-file');file.download='new-result.csv';file.textContent='new-result.csv';return {fileChanged:true};})()",false,x->later(()->snapshot(known,file->{
+        check("Generated file changes invalidate on-demand attachment metadata",download(currentEntry(file),"new-result.csv")&&!download(currentEntry(file),"result.csv")&&file.optLong("revision")>known.optLong("revision"));siblingFiles(file);
       }),100));
     }),100));
   }),100));}
-  void remember(JSONObject poll)throws Exception{known.put("knownReplyKey",poll.optString("replyKey")).put("knownReplyContentRevision",poll.optString("replyContentRevision"));}
   JSONObject snapshotCursor(JSONObject snapshot){return J.obj("documentId",snapshot.optString("documentId"),"revision",snapshot.optLong("revision"));}
   JSONObject currentEntry(JSONObject snapshot){JSONArray rows=snapshot.optJSONArray("changes");for(int i=0;rows!=null&&i<rows.length();i++){JSONObject entry=rows.optJSONObject(i);if(entry!=null&&"id:current-answer".equals(entry.optString("id")))return entry;}return new JSONObject();}
   boolean download(JSONObject entry,String name){JSONArray files=entry.optJSONArray("downloads");for(int i=0;files!=null&&i<files.length();i++)if(name.equals(files.optJSONObject(i).optString("name")))return true;return false;}
   void siblingFiles(JSONObject prior)throws Exception{
-    remember(prior);evaluate("document.getElementById('current-answer').parentElement.insertAdjacentHTML('beforeend','<a id=\"sibling-file\" download=\"sibling.csv\" href=\"/backend-api/files/sibling\">sibling.csv</a>');({fileAdded:true})",false,v->later(()->poll(known,false,added->{
-      check("Sibling generated file cards invalidate the actual Gecko reply revision",!added.optBoolean("contentUnchanged")&&added.optBoolean("hasFiles")&&!added.optString("replyContentRevision").equals(prior.optString("replyContentRevision")));
-      snapshot(new JSONObject(),withFile->{
-        check("Sibling file cards appear in incremental transcript downloads",download(currentEntry(withFile),"sibling.csv"));remember(added);
-        evaluate("(()=>{const file=document.getElementById('sibling-file');file.download='renamed-sibling.csv';file.textContent='renamed-sibling.csv';return {fileRenamed:true};})()",false,w->later(()->poll(known,false,renamed->{
-          snapshot(snapshotCursor(withFile),withRenamed->{
-            check("Renaming a sibling file card refreshes actual Gecko metadata and transcript downloads",!renamed.optBoolean("contentUnchanged")&&!renamed.optString("replyContentRevision").equals(added.optString("replyContentRevision"))&&download(currentEntry(withRenamed),"renamed-sibling.csv")&&!download(currentEntry(withRenamed),"sibling.csv"));remember(renamed);
-            evaluate("document.getElementById('sibling-file').remove();({fileRemoved:true})",false,x->later(()->poll(known,false,removed->{
-              snapshot(snapshotCursor(withRenamed),withoutFile->{
-                check("Removing a sibling file card invalidates the actual Gecko reply metadata",!removed.optBoolean("contentUnchanged")&&!removed.optString("replyContentRevision").equals(renamed.optString("replyContentRevision"))&&!download(currentEntry(withoutFile),"renamed-sibling.csv")&&download(currentEntry(withoutFile),"new-result.csv"));remember(removed);detachedBody(withoutFile);
-              });
-            }),100));
-          });
+    known=snapshotCursor(prior);evaluate("document.getElementById('current-answer').parentElement.insertAdjacentHTML('beforeend','<a id=\"sibling-file\" download=\"sibling.csv\" href=\"/backend-api/files/sibling\">sibling.csv</a>');({fileAdded:true})",false,v->later(()->snapshot(known,added->{
+      check("Sibling generated file cards invalidate the actual Gecko transcript revision",added.optLong("revision")>prior.optLong("revision"));
+      check("Sibling file cards appear in incremental transcript downloads",download(currentEntry(added),"sibling.csv"));known=snapshotCursor(added);
+      evaluate("(()=>{const file=document.getElementById('sibling-file');file.download='renamed-sibling.csv';file.textContent='renamed-sibling.csv';return {fileRenamed:true};})()",false,w->later(()->snapshot(known,renamed->{
+        check("Renaming a sibling file card refreshes actual Gecko metadata and transcript downloads",renamed.optLong("revision")>added.optLong("revision")&&download(currentEntry(renamed),"renamed-sibling.csv")&&!download(currentEntry(renamed),"sibling.csv"));known=snapshotCursor(renamed);
+        evaluate("document.getElementById('sibling-file').remove();({fileRemoved:true})",false,x->later(()->snapshot(known,removed->{
+          check("Removing a sibling file card invalidates the actual Gecko transcript metadata",removed.optLong("revision")>renamed.optLong("revision")&&!download(currentEntry(removed),"renamed-sibling.csv")&&download(currentEntry(removed),"new-result.csv"));detachedBody(removed);
         }),100));
-      });
+      }),100));
     }),100));
   }
   void detachedBody(JSONObject cursor){evaluate("(()=>{const body=document.querySelector('#current-answer > .markdown');window.__fixtureDetachedBody=body;body.remove();return {detached:true};})()",false,v->later(()->{
-    evaluate("(()=>{const body=window.__fixtureDetachedBody;body.querySelector('#long-body').textContent='detached existing body edited while outside the document';document.getElementById('current-answer').append(body);delete window.__fixtureDetachedBody;return {reattached:true};})()",false,w->later(()->poll(known,false,reinserted->{
-      snapshot(snapshotCursor(cursor),after->{
-        String expected="detached existing body edited while outside the document";
-        check("Reattaching an edited cached body refreshes actual Gecko terminal text and transcript",!reinserted.optBoolean("contentUnchanged")&&reinserted.optString("markdown").startsWith(expected)&&currentEntry(after).optString("text").startsWith(expected));
-        evaluate("document.getElementById('current-copy').remove();({copyRemoved:true})",false,x->later(()->poll(args(),false,old->{
-          check("Earlier response copy controls cannot complete the current reply",!old.optBoolean("terminal"));
-          evaluate("window.__fixtureTelemetry()",false,end->{check("Semantic checks preserve the synthetic login, draft and no-send invariant",end.optBoolean("draftPreserved")&&end.optBoolean("cookiePreserved")&&end.optInt("sendCount")==0);productionLifecycle();});
-        }),100));
-      });
+    evaluate("(()=>{const body=window.__fixtureDetachedBody;body.querySelector('#long-body').textContent='detached existing body edited while outside the document';document.getElementById('current-answer').append(body);delete window.__fixtureDetachedBody;return {reattached:true};})()",false,w->later(()->snapshot(snapshotCursor(cursor),after->{
+      check("Reattaching an edited cached body refreshes the actual Gecko transcript",currentEntry(after).optString("text").startsWith("detached existing body edited while outside the document")&&after.optLong("revision")>cursor.optLong("revision"));
+      evaluate("window.__fixtureTelemetry()",false,end->{check("Semantic checks preserve the synthetic login, draft and no-send invariant",end.optBoolean("draftPreserved")&&end.optBoolean("cookiePreserved")&&end.optInt("sendCount")==0&&noResultTask());productionLifecycle();});
     }),100));
   },100));}
   void productionLifecycle(){attempt(()->{
     String canonical=MainActivity.ORIGIN+"c/performance-fixture",actual=ORIGIN+PATH+"?variant=current";
     String code="(()=>{document.getElementById('long-body').textContent='preserved reply line '.repeat(5000)+' Java retained final tail';"+
-      "document.getElementById('current-answer').parentElement.insertAdjacentHTML('beforeend','<button id=\"current-copy\" data-testid=\"copy-turn-action-button\" aria-label=\"Copy response\">Copy</button>');"+
-      "document.getElementById('composer').insertAdjacentHTML('beforeend','<button id=\"stop-button\" data-testid=\"stop-button\" aria-label=\"Stop\">Stop</button>');"+
       "window.__pocketReadDriver=(action,arg)=>{const mapped={...arg};for(const key of ['confirmedUrl','expectedUrl'])if(mapped[key]==="+JSONObject.quote(canonical)+")mapped[key]="+JSONObject.quote(actual)+";"+
       "const value=window.__fixtureReadDriver(action,mapped);if(value?.url)value.url="+JSONObject.quote(canonical)+";return value;};return {adapted:true};})()";
     evaluate(code,false,ready->{
       ((FixtureView)session.web).semanticRoute=true;session.state=J.obj("composer",true);session.navigating=false;session.navigationFailed=false;session.webMirror.reset();session.entries=new JSONArray();session.conversation=canonical;
-      String id=session.deliveries.begin(canonical,"bound performance prompt",new JSONArray(),"web",null);
-      productionJob=J.obj("id",id,"kind","web","confirmed",true,"userKey","id:current-question","prompt","bound performance prompt","confirmedUrl",canonical,"expectedUrl",canonical,"export",true,"startedAt",System.currentTimeMillis());
-      session.pending=productionJob;session.activeDeliveryId=id;session.prefs.edit().putString("pending",productionJob.toString()).commit();session.stableTicks=0;session.stableReply="";
-      later(()->productionSample(0),100);
+      later(()->inspectProduction(value->{
+        check("Production browser inspection has no send or result task",value.optBoolean("composer")&&noResultTask()&&!value.has("submitted")&&!value.has("terminal"));
+        check("Production inspection keeps the full 242-message transcript",session.entries.length()==242&&session.entries.optJSONObject(241).optString("text").length()>105000&&session.entries.optJSONObject(241).optString("text").contains("Java retained final tail"));
+        waitStored(SystemClock.elapsedRealtime()+10000);
+      }),100);
     });
   });}
-  void productionSample(int stage){productionSample(stage,SystemClock.elapsedRealtime()+10000);}
-  void productionSample(int stage,long expires){attempt(()->{
-    session.inFlight=true;long serial=++session.syncRun;((FixtureView)session.web).productionPoll=null;
-    session.pollSync(session.navigationEpoch,serial,true);
-    awaitProduction(stage,expires);
+  void inspectProduction(Result result){attempt(()->{
+    session.handler.removeCallbacks(session.tick);session.inFlight=false;((FixtureView)session.web).productionInspect=null;
+    session.sync();awaitInspection(result,SystemClock.elapsedRealtime()+10000);
   });}
-  void awaitProduction(int stage,long expires){attempt(()->{
-    if(session.inFlight){if(SystemClock.elapsedRealtime()>expires)throw new IllegalStateException("Production pollSync completion timeout at stage "+stage);later(()->awaitProduction(stage,expires),50);return;}
-    JSONObject result=((FixtureView)session.web).productionPoll;if(result==null)throw new IllegalStateException("Production ChatSession did not use the actual Gecko observation runtime");
-    if(stage==0){
-      check("Production ChatSession keeps a streaming task pending without retaining a partial body",session.pending==productionJob&&!result.optBoolean("contentObserved")&&session.observedReplyMarkdown.isEmpty());
-      evaluate("document.getElementById('stop-button').remove();({stopped:true})",false,v->later(()->productionSample(1),100));return;
-    }
-    if(result.optBoolean("captureDeferred")){
-      verifyNativeDeferral(result);
-      if(SystemClock.elapsedRealtime()>expires)throw new IllegalStateException("Production idle capture timeout at stage "+stage);
-      later(()->productionSample(stage,expires),80);return;
-    }
-    if(stage==1){
-      check("Production first terminal capture retains the entire actual Gecko body",session.pending==productionJob&&session.observedReplyMarkdown.length()>105000&&session.observedReplyMarkdown.contains("Java retained final tail")&&result.has("markdown"));
-      String savedJob=session.observedReplyJob,savedUrl=session.observedReplyUrl;
-      session.observedReplyJob="a different task";check("A different task cannot request reuse of the captured reply",!session.webPollArguments(productionJob).has("knownReplyContentRevision"));session.observedReplyJob=savedJob;
-      session.observedReplyUrl=MainActivity.ORIGIN+"c/a-different-route";check("A different route cannot request reuse of the captured reply",!session.webPollArguments(productionJob).has("knownReplyContentRevision"));session.observedReplyUrl=savedUrl;
-      later(()->productionSample(2),1100);return;
-    }
-    check("Production terminal sample "+stage+" uses actual metadata-only bridge output",result.optBoolean("contentUnchanged")&&!result.has("markdown")&&!result.has("text"));
-    check("Production terminal sample "+stage+" restores the complete cached body in Java",session.observedReplyMarkdown.length()>105000&&session.observedReplyMarkdown.contains("Java retained final tail")&&session.stableReply.equals(session.observedReplyMarkdown));
-    if(stage==2){check("Production second terminal sample still preserves the persisted pending operation",session.pending==productionJob&&session.prefs.contains("pending"));later(()->productionSample(3),1100);return;}
-    check("Production stable lightweight samples finish and persist the actual reply task",session.pending==null&&!session.prefs.contains("pending")&&"completed".equals(session.deliveries.get(productionJob.optString("id")).optString("state")));
-    check("Production completion keeps the full 242-message transcript",session.entries.length()==242&&session.entries.optJSONObject(241).optString("text").length()>105000&&session.entries.optJSONObject(241).optString("text").contains("Java retained final tail"));
-    long storageDeadline=SystemClock.elapsedRealtime()+10000;later(()->waitStored(storageDeadline),100);
+  void awaitInspection(Result result,long expires){attempt(()->{
+    if(session.inFlight){if(SystemClock.elapsedRealtime()>expires)throw new IllegalStateException("Production browser inspection timeout");later(()->awaitInspection(result,expires),50);return;}
+    JSONObject observed=((FixtureView)session.web).productionInspect;
+    if(observed==null)throw new IllegalStateException("Production ChatSession did not use the actual Gecko inspection runtime");result.accept(observed);
   });}
   void waitStored(long expires){session.webStore.worker.execute(()->{
     JSONArray saved=session.cache.messages(MainActivity.ORIGIN+"c/performance-fixture");handler.post(()->attempt(()->{
-      if(saved.length()!=242){if(SystemClock.elapsedRealtime()>expires)throw new IllegalStateException("Completed transcript was not durably stored");later(()->waitStored(expires),100);return;}
+      if(saved.length()!=242){if(SystemClock.elapsedRealtime()>expires)throw new IllegalStateException("Browser transcript was not durably stored");later(()->waitStored(expires),100);return;}
       check("The complete final body is durably saved by the production transcript worker",saved.optJSONObject(241).optString("text").length()>105000&&saved.optJSONObject(241).optString("text").contains("Java retained final tail"));
-      evaluate("window.__fixtureTelemetry()",false,end->{check("Production completion preserves the document login, unsent draft and no-send invariant",end.optBoolean("draftPreserved")&&end.optBoolean("cookiePreserved")&&end.optInt("sendCount")==0);inputGesture();});
+      evaluate("window.__fixtureTelemetry()",false,end->{check("Production browser snapshots preserve document login, unsent draft and no-send invariant",end.optBoolean("draftPreserved")&&end.optBoolean("cookiePreserved")&&end.optInt("sendCount")==0&&noResultTask());inputGesture();});
     }));
   });}
   String inputTraceInstall(){
@@ -534,151 +461,81 @@ public final class GeckoPerformanceIntegrationActivity extends Activity {
     JSONArray recorded=value.optJSONArray("inputEvents");StringBuilder keys=new StringBuilder();int inputs=0;boolean trusted=recorded!=null&&!value.optBoolean("traceOverflow");
     if(recorded!=null)for(int i=0;i<recorded.length();i++){JSONObject item=recorded.optJSONObject(i);String type=item.optString("type");if(type.equals("keydown")&&item.optString("key").length()==1)keys.append(item.optString("key"));if(type.equals("input"))inputs++;if(type.equals("keydown")||type.equals("keyup")||type.equals("beforeinput")||type.equals("input"))trusted&=item.optBoolean("trusted");}
     check("The single Android input burst delivers exact ordered trusted keys and real input events",trusted&&inputs>0&&keys.toString().equals(INPUT_MARKER));
-    check("Actual user input neither sends a message nor changes the synthetic login",value.optInt("sendCount")==0&&value.optString("cookie").contains("session=synthetic-performance"));stopInputTrace(this::bindingLifecycle);
+    check("Actual user input neither sends a message nor changes the synthetic login",value.optInt("sendCount")==0&&value.optString("cookie").contains("session=synthetic-performance"));stopInputTrace(this::browserLifecycle);
   });}
-  // Run after both immutable measurements and all existing capture/gesture checks.
-  // Preserve real SPA paths when adapting only the official host for the loopback copy.
-  void bindingLifecycle(){attempt(()->{
-    ((FixtureView)session.web).semanticUrl=MainActivity.ORIGIN+"c/binding-fixture";
-    String code="(()=>{history.replaceState(null,'','/c/binding-fixture');window.__bindingDraft=document.getElementById('prompt-textarea').value;"+
-      "window.__pocketReadDriver=(action,arg)=>{const mapped={...arg};for(const key of ['confirmedUrl','expectedUrl'])if(mapped[key]){const address=new URL(mapped[key]);if(address.origin==="+JSONObject.quote(android.net.Uri.parse(MainActivity.ORIGIN).getScheme()+"://"+android.net.Uri.parse(MainActivity.ORIGIN).getHost())+")mapped[key]="+JSONObject.quote(ORIGIN)+"+address.pathname+address.search+address.hash;}"+
+  // Browser-only lifecycle checks follow the exact original native gesture/input oracle.
+  void browserLifecycle(){attempt(()->{
+    ((FixtureView)session.web).semanticUrl=MainActivity.ORIGIN+"c/browser-fixture";
+    String code="(()=>{history.replaceState(null,'','/c/browser-fixture');window.__browserDraft=document.getElementById('prompt-textarea').value;"+
+      "window.__pocketReadDriver=(action,arg)=>{const mapped={...arg};for(const key of ['confirmedUrl','expectedUrl'])if(mapped[key]){const address=new URL(mapped[key]);if(address.origin==="+JSONObject.quote(MainActivity.ORIGIN.substring(0,MainActivity.ORIGIN.length()-1))+")mapped[key]="+JSONObject.quote(ORIGIN)+"+address.pathname+address.search+address.hash;}"+
       "const value=window.__fixtureReadDriver(action,mapped);if(value?.url)value.url="+JSONObject.quote(MainActivity.ORIGIN.substring(0,MainActivity.ORIGIN.length()-1))+"+new URL(value.url).pathname;return value;};return {adapted:true};})()";
-    evaluate(code,false,ready->{
-      String route=((FixtureView)session.web).semanticUrl,id=session.deliveries.begin(route,"bound performance prompt",new JSONArray(),"web",null);
-      productionJob=J.obj("id",id,"kind","web","confirmed",true,"userKey","id:current-question","prompt","bound performance prompt","confirmedUrl",route,"expectedUrl",route,"export",true,"startedAt",System.currentTimeMillis());
-      session.pending=productionJob;session.activeDeliveryId=id;session.prefs.edit().putString("pending",productionJob.toString()).commit();session.stableReply="";session.stableTicks=0;
-      later(()->bindingPoll(first->{
-        check("Binding regression starts with the actual full reply and one incomplete native terminal sample",first.optBoolean("submitted")&&session.pending==productionJob&&session.webObserver.completionSamples==1&&session.observedReplyMarkdown.length()>105000);
-        bindingEmptyMain();
-      }),100);
-    });
-  });}
-  void bindingPoll(Result result){bindingPoll(result,SystemClock.elapsedRealtime()+10000);}
-  void bindingPoll(Result result,long expires){attempt(()->{
-    session.handler.removeCallbacks(session.tick);session.inFlight=true;long serial=++session.syncRun;((FixtureView)session.web).productionPoll=null;
-    session.pollSync(session.navigationEpoch,serial,true);awaitBinding(result,expires);
-  });}
-  void bindingInspect(Result result){attempt(()->{
-    session.handler.removeCallbacks(session.tick);session.inFlight=false;((FixtureView)session.web).productionPoll=null;((FixtureView)session.web).productionInspect=null;((FixtureView)session.web).inspectPending=true;
-    session.sync();awaitBinding(result,SystemClock.elapsedRealtime()+10000);
-  });}
-  void awaitBinding(Result result,long expires){attempt(()->{
-    if(session.inFlight){if(SystemClock.elapsedRealtime()>expires)throw new IllegalStateException("Binding regression production poll timeout");later(()->awaitBinding(result,expires),50);return;}
-    JSONObject poll=((FixtureView)session.web).productionPoll;if(poll==null)throw new IllegalStateException("Binding regression did not execute the real Gecko driver");
-    if(poll.optBoolean("captureDeferred")){
-      verifyNativeDeferral(poll);
-      if(SystemClock.elapsedRealtime()>expires)throw new IllegalStateException("Binding regression idle capture timeout");
-      later(()->bindingPoll(result,expires),80);return;
-    }
-    result.accept(poll);
-  });}
-  boolean awaitingBinding(JSONObject value){return value.optBoolean("bindingPending")&&!value.optBoolean("bindingLost")&&!value.optBoolean("otherQuestion")&&!value.optBoolean("submitted")&&!value.optBoolean("terminal")&&!value.optBoolean("contentObserved")&&session.pending==productionJob&&session.prefs.contains("pending")&&!session.status.contains("对话已改变")&&session.stableTicks==0&&session.webObserver.completionSamples==0;}
-  void bindingMutate(String code,Result result){evaluate(code,false,unused->later(()->bindingPoll(result),100));}
-  void bindingEmptyMain(){bindingMutate("(()=>{window.__bindingMain=document.querySelector('main');window.__bindingChildren=[...window.__bindingMain.childNodes];window.__bindingMain.replaceChildren();return {detached:true};})()",missing->{
-    check("Same-route empty DOM waits without losing the confirmed task or accumulating terminal samples",awaitingBinding(missing));
-    bindingMutate("window.__bindingMain.replaceChildren(...window.__bindingChildren);({restored:true})",restored->{
-      check("Restoring the original message key and prompt rebinds the real native task",restored.optBoolean("submitted")&&!restored.optBoolean("bindingPending")&&!restored.optBoolean("bindingLost")&&"id:current-question".equals(restored.optString("userKey"))&&session.pending==productionJob);
-      bindingVirtualizedUser();
-    });
-  });}
-  void bindingVirtualizedUser(){bindingMutate("(()=>{window.__bindingUser=document.querySelector('[data-message-id=\"current-question\"]');window.__bindingUserNext=window.__bindingUser.nextSibling;window.__bindingUser.remove();return {virtualized:true};})()",missing->{
-    check("Virtualizing only the bound user waits even while other historical messages remain",awaitingBinding(missing));
-    bindingMutate("window.__bindingMain.insertBefore(window.__bindingUser,window.__bindingUserNext);({restored:true})",restored->{
-      check("Restoring a virtualized user retains its exact identity and pending operation",restored.optBoolean("submitted")&&"id:current-question".equals(restored.optString("userKey"))&&session.pending==productionJob);
-      bindingHomepageAllocation();
-    });
-  });}
-  void bindingRoute(String path,Result result){
-    ((FixtureView)session.web).semanticUrl=MainActivity.ORIGIN.substring(0,MainActivity.ORIGIN.length()-1)+path;
-    bindingMutate("history.replaceState(null,'',"+JSONObject.quote(path)+");({routeChanged:true})",result);
-  }
-  void bindingHomepageAllocation()throws Exception{
-    productionJob.put("confirmedUrl",MainActivity.ORIGIN).put("expectedUrl",MainActivity.ORIGIN);session.prefs.edit().putString("pending",productionJob.toString()).commit();
-    evaluate("document.getElementById('composer').insertAdjacentHTML('beforeend','<button id=\"stop-button\" data-testid=\"stop-button\" aria-label=\"Stop\">Stop</button>');({streaming:true})",false,unused->bindingRoute("/",home->{
-      check("A confirmed homepage prompt remains bound before the website assigns its conversation route",home.optBoolean("submitted")&&!home.optBoolean("bindingLost")&&session.pending==productionJob);
-      evaluate("window.__bindingUser.querySelector('[data-user-message-bubble]').textContent='a different prompt with the same message ID';({promptChanged:true})",false,changed->bindingRoute("/c/allocated-fixture",wrong->{
-        check("Homepage allocation rejects the same user ID when its prompt no longer matches",wrong.optBoolean("bindingLost")&&!wrong.optBoolean("submitted")&&session.pending==productionJob&&productionJob.optString("confirmedUrl").equals(MainActivity.ORIGIN));
-        bindingMutate("window.__bindingUser.querySelector('[data-user-message-bubble]').textContent='bound performance prompt';({promptRestored:true})",allocated->{
-        check("Homepage conversation allocation preserves the exact user identity and persists the new route",allocated.optBoolean("submitted")&&allocated.optBoolean("routeAssigned")&&!allocated.optBoolean("bindingLost")&&allocated.optString("error").isEmpty()&&"id:current-question".equals(allocated.optString("userKey"))&&session.pending==productionJob&&productionJob.optString("confirmedUrl").equals(((FixtureView)session.web).semanticUrl)&&J.parse(session.prefs.getString("pending","{}")).optString("confirmedUrl").equals(((FixtureView)session.web).semanticUrl));
-        bindingRoute("/c/a-different-conversation",other->{
-          check("A genuine different conversation is rejected even if its visible message IDs match",other.optBoolean("bindingLost")&&!other.optBoolean("submitted")&&session.pending==productionJob&&session.stableTicks==0&&session.webObserver.completionSamples==0);
-          bindingNeutralShell();
+    evaluate(code,false,ready->inspectProduction(first->{
+      check("Actual browser lifecycle starts with the existing document and no result task",first.optBoolean("composer")&&first.optBoolean("hasMessages")&&noResultTask());
+      browserMutate("(()=>{window.__browserMain=document.querySelector('main');window.__browserChildren=[...window.__browserMain.childNodes];window.__browserMain.replaceChildren();return {detached:true};})()",empty->{
+        check("Same-route empty DOM does not create a native send or result task",!empty.optBoolean("hasMessages")&&noResultTask());
+        browserMutate("window.__browserMain.replaceChildren(...window.__browserChildren);({restored:true})",restored->{
+          check("Restoring the same document preserves browser readiness without task binding",restored.optBoolean("hasMessages")&&noResultTask());browserVirtualizedUser();
         });
-        });
-      }));
+      });
     }));
-  }
-  void bindingNeutralShell(){
-    ((FixtureView)session.web).semanticUrl=MainActivity.ORIGIN;
-    bindingMutate("(()=>{window.__neutralChildren=[...window.__bindingMain.childNodes];window.__bindingMain.replaceChildren();document.getElementById('composer').hidden=true;history.replaceState(null,'','/');return {neutralShell:true};})()",shell->{
-      check("A neutral homepage shell during restoration waits without declaring another conversation",awaitingBinding(shell));
-      evaluate("window.__bindingMain.replaceChildren(...window.__neutralChildren);document.getElementById('composer').hidden=false;({restored:true})",false,unused->bindingRoute("/c/allocated-fixture",restored->{
-        check("Restoring the bound conversation after a neutral shell retains its pending task",restored.optBoolean("submitted")&&!restored.optBoolean("bindingLost")&&session.pending==productionJob);
-        bindingSocketError();
-      }));
-    });
-  }
-  void bindingSocketError(){bindingMutate("document.querySelector('[data-message-id=\"old-answer-0\"] .markdown p').append(' Browser app server websocket closed');({historicalText:true})",ordinary->{
-    check("Websocket error words in ordinary historical reply text do not become a website fault",ordinary.optString("error").isEmpty()&&ordinary.optString("errorCode").isEmpty()&&ordinary.optBoolean("submitted")&&session.pending==productionJob);
-    bindingMutate("document.querySelector('[data-message-id=\"old-answer-0\"]').parentElement.insertAdjacentHTML('beforeend','<div id=\"historical-socket-error\" role=\"alert\">Browser app server websocket closed <button aria-label=\"Retry\">Retry</button></div>');({historicalAlert:true})",historical->{
-      check("A rendered historical reply socket alert and retry control do not invalidate the current task",historical.optString("error").isEmpty()&&historical.optString("errorCode").isEmpty()&&historical.optBoolean("submitted")&&session.pending==productionJob);
-    bindingMutate("document.getElementById('historical-socket-error').firstChild.nodeValue='Browser app server websocket failed ';({historicalFailed:true})",historicalFailed->{
-      check("A rendered historical websocket-failed alert cannot interrupt the current production reply",historicalFailed.optString("error").isEmpty()&&historicalFailed.optString("errorCode").isEmpty()&&!historicalFailed.optBoolean("websiteSocketClosed")&&historicalFailed.optBoolean("submitted")&&session.pending==productionJob);
-    bindingMutate("document.getElementById('historical-socket-error').remove();document.getElementById('stop-button').remove();({stopped:true})",first->{
-      check("The restored real reply has only one valid terminal sample before the website error",first.optBoolean("submitted")&&session.pending==productionJob&&session.webObserver.completionSamples==1);
-      later(()->bindingPoll(second->{
-        check("Two real terminal samples still cannot finish before a website fault intervenes",session.pending==productionJob&&session.webObserver.completionSamples==2);
-        evaluate("document.getElementById('current-answer').parentElement.insertAdjacentHTML('beforeend','<div id=\"socket-error\" role=\"alert\">Browser app server websocket closed</div>');({siteError:true})",false,unused->later(()->bindingInspect(error->{
-          check("Actual native inspection recognizes the website socket fault before polling and resets terminal stability",((FixtureView)session.web).productionInspect!=null&&((FixtureView)session.web).productionInspect.optBoolean("websiteSocketClosed")&&((FixtureView)session.web).stableBeforeInspectedPoll==0&&((FixtureView)session.web).completionBeforeInspectedPoll==0&&session.stableTicks==0&&session.webObserver.completionSamples==0);
-          check("A rendered website websocket-closed alert has a recoverable error while preserving the original binding",error.optBoolean("recoverable")&&!error.optString("error").isEmpty()&&"website_socket_closed".equals(error.optString("errorCode"))&&error.optBoolean("websiteSocketClosed")&&error.optBoolean("submitted")&&!error.optBoolean("bindingLost")&&session.pending==productionJob&&productionJob.optString("userKey").equals(error.optString("userKey")));
-          check("Website errors clear native stable samples and never finish or clear the persisted task",session.stableTicks==0&&session.webObserver.completionSamples==0&&session.websiteConnectionIssue&&session.prefs.contains("pending")&&!"completed".equals(session.deliveries.get(productionJob.optString("id")).optString("state")));
-          later(()->bindingPoll(again->{
-            check("Repeated website error observations cannot accumulate completion samples",!again.optString("errorCode").isEmpty()&&session.pending==productionJob&&session.stableTicks==0&&session.webObserver.completionSamples==0);
-            bindingFailedSocketError(()->bindingMutate("document.getElementById('socket-error').remove();({restored:true})",restored->bindingFinal(1,restored)));
-          }),1100);
-        }),100));
-      }),1100);
-    });
-    });
+  });}
+  void browserMutate(String code,Result result){evaluate(code,false,unused->later(()->inspectProduction(result),100));}
+  void browserVirtualizedUser(){browserMutate("(()=>{window.__browserUser=document.querySelector('[data-message-id=\"current-question\"]');window.__browserUserNext=window.__browserUser.nextSibling;window.__browserUser.remove();return {virtualized:true};})()",missing->{
+    check("Virtualizing one user message does not create a pending result check",missing.optBoolean("hasMessages")&&noResultTask());
+    browserMutate("window.__browserMain.insertBefore(window.__browserUser,window.__browserUserNext);({restored:true})",restored->{
+      check("Restoring a virtualized user message leaves website send ownership unchanged",restored.optBoolean("hasMessages")&&noResultTask());browserRoute("/",home->{
+        check("An actual homepage route has no native send binding",home.optBoolean("composer")&&noResultTask());browserRoute("/c/allocated-fixture",allocated->{
+          check("Website conversation allocation remains browser navigation without a result task",allocated.optString("url").endsWith("/c/allocated-fixture")&&noResultTask());
+          browserRoute("/c/a-different-conversation",other->{check("A different official conversation creates no native result task",other.optString("url").endsWith("/c/a-different-conversation")&&noResultTask());browserSocketError();});
+        });
+      });
     });
   });}
-  void bindingFailedSocketError(Runnable restored){
-    evaluate("document.getElementById('socket-error').textContent='Browser app server websocket failed';({siteFailed:true})",false,unused->later(()->bindingInspect(error->{
-      check("A rendered current websocket-failed alert is recognized by actual native inspection",((FixtureView)session.web).productionInspect!=null&&((FixtureView)session.web).productionInspect.optBoolean("websiteSocketClosed")&&error.optBoolean("recoverable")&&"website_socket_closed".equals(error.optString("errorCode"))&&error.optBoolean("websiteSocketClosed")&&error.optBoolean("submitted")&&!error.optBoolean("bindingLost")&&session.pending==productionJob&&productionJob.optString("userKey").equals(error.optString("userKey"))&&session.websiteConnectionIssue&&session.stableTicks==0&&session.webObserver.completionSamples==0);
-      later(()->bindingPoll(again->{
-        check("Repeated websocket-failed polls preserve the pending task without completion",again.optBoolean("websiteSocketClosed")&&"website_socket_closed".equals(again.optString("errorCode"))&&session.pending==productionJob&&session.prefs.contains("pending")&&session.stableTicks==0&&session.webObserver.completionSamples==0&&!"completed".equals(session.deliveries.get(productionJob.optString("id")).optString("state")));
-        restored.run();
-      }),100);
-    }),100));
-  }
-  void bindingFinal(int index,JSONObject value)throws Exception{
-    check("Recovered binding terminal sample "+index+" retains the entire real final reply",value.optBoolean("submitted")&&value.optString("error").isEmpty()&&!session.websiteConnectionIssue&&session.observedReplyMarkdown.length()>105000&&session.observedReplyMarkdown.contains("Java retained final tail"));
-    if(index<3){
-      check("Recovered binding terminal sample "+index+" keeps the task pending until the fresh stability window passes",session.pending==productionJob&&session.prefs.contains("pending")&&session.webObserver.completionSamples==index);
-      later(()->bindingPoll(next->bindingFinal(index+1,next)),1100);return;
-    }
-    check("A restored bound reply completes only after three fresh actual samples and two seconds",session.pending==null&&!session.prefs.contains("pending")&&"completed".equals(session.deliveries.get(productionJob.optString("id")).optString("state")));
-    evaluate("({sendCount:Number(document.getElementById('send-count').textContent),draft:document.getElementById('prompt-textarea').value,savedDraft:window.__bindingDraft,cookie:document.cookie})",false,finalState->{
-      check("SPA restoration and websocket faults never resubmit and preserve the typed draft and synthetic login",finalState.optInt("sendCount")==0&&finalState.optString("draft").equals(finalState.optString("savedDraft"))&&finalState.optString("cookie").contains("session=synthetic-performance"));manualRecoveryRaces();
+  void browserRoute(String path,Result result){((FixtureView)session.web).semanticUrl=MainActivity.ORIGIN.substring(0,MainActivity.ORIGIN.length()-1)+path;browserMutate("history.replaceState(null,'',"+JSONObject.quote(path)+");({routeChanged:true})",result);}
+  void browserSocketError(){browserMutate("document.querySelector('[data-message-id=\"old-answer-0\"] .markdown p').append(' Browser app server websocket closed');({historicalText:true})",ordinary->{
+    check("Websocket error words in ordinary historical text remain ordinary browser content",ordinary.optString("error").isEmpty()&&!ordinary.optBoolean("websiteSocketClosed")&&noResultTask());
+    browserMutate("document.querySelector('[data-message-id=\"old-answer-0\"]').parentElement.insertAdjacentHTML('beforeend','<div id=\"historical-socket-error\" role=\"alert\">Browser app server websocket failed <button aria-label=\"Retry\">Retry</button></div>');({historicalAlert:true})",historical->{
+      check("A rendered historical socket alert does not become the current browser error",!historical.optBoolean("websiteSocketClosed")&&noResultTask());
+      browserMutate("document.getElementById('historical-socket-error').remove();document.getElementById('current-answer').parentElement.insertAdjacentHTML('beforeend','<div id=\"socket-error\" role=\"alert\">Browser app server websocket closed</div>');({siteError:true})",closed->{
+        check("Actual native inspection reports a current socket fault without monitoring a reply",closed.optBoolean("websiteSocketClosed")&&"website_socket_closed".equals(closed.optString("errorCode"))&&session.websiteConnectionIssue&&noResultTask());
+        browserMutate("document.getElementById('socket-error').textContent='Browser app server websocket failed';({siteFailed:true})",failed->{
+          check("A current websocket-failed alert remains a page error without a result task",failed.optBoolean("websiteSocketClosed")&&session.websiteConnectionIssue&&noResultTask());
+          browserMutate("document.getElementById('socket-error').remove();({restored:true})",restored->{
+            check("Clearing a page socket alert clears the browser error without creating a task",!restored.optBoolean("websiteSocketClosed")&&!session.websiteConnectionIssue&&noResultTask());
+            evaluate("({sendCount:Number(document.getElementById('send-count').textContent),draft:document.getElementById('prompt-textarea').value,savedDraft:window.__browserDraft,cookie:document.cookie})",false,end->{
+              check("SPA restoration and socket faults preserve typed draft, login and no-send state",end.optInt("sendCount")==0&&end.optString("draft").equals(end.optString("savedDraft"))&&end.optString("cookie").contains("session=synthetic-performance"));staleInspection();
+            });
+          });
+        });
+      });
     });
-  }
+  });}
+  void staleInspection(){attempt(()->{
+    FixtureView view=(FixtureView)session.web;view.holdNextInspection=true;view.heldInspection=null;view.heldInspectionRaw=null;
+    session.runDriver("web-inspect",new JSONObject(),result->attempt(()->{
+      check("A real late Gecko inspection callback is cancelled after navigation changes",result.optBoolean("cancelled")&&!result.has("composer")&&noResultTask());manualRecoveryRaces();
+    }));
+    awaitHeldInspection(SystemClock.elapsedRealtime()+10000);
+  });}
+  void awaitHeldInspection(long expires){attempt(()->{
+    FixtureView view=(FixtureView)session.web;
+    if(view.heldInspection==null){if(SystemClock.elapsedRealtime()>expires)throw new IllegalStateException("Actual Gecko inspection callback was not captured");later(()->awaitHeldInspection(expires),50);return;}
+    check("The late-callback race captures an actual readable Gecko response",J.parse(view.heldInspectionRaw).optBoolean("composer")&&J.parse(view.heldInspectionRaw).optBoolean("hasMessages"));
+    evaluate("history.replaceState(null,'','/c/newer-browser-route');({path:location.pathname})",false,value->{
+      check("The late-callback race changes the actual document route",value.optString("path").equals("/c/newer-browser-route"));
+      view.semanticUrl=MainActivity.ORIGIN+"c/newer-browser-route";session.navigationEpoch++;
+      android.webkit.ValueCallback<String> callback=view.heldInspection;String raw=view.heldInspectionRaw;view.heldInspection=null;view.heldInspectionRaw=null;callback.onReceiveValue(raw);
+    });
+  });}
   void manualRecoveryRaces()throws Exception{
-    originalDriver=session.driver;
-    ((FixtureView)session.web).manualSnapshotDiagnostics=true;
-    // page-state is still the exact real asset through the test-only host adapter.
-    // No fake snapshot or retry implementation substitutes for the production code.
-    session.driver="window.__pocketReadDriver(__ACTION__, __ARG__)";
-    String route=session.web.getUrl(),id=session.deliveries.begin(route,"bound performance prompt",new JSONArray(),"web",null);
-    manualJob=J.obj("id",id,"kind","web","confirmed",true,"userKey","id:current-question","prompt","bound performance prompt","confirmedUrl",route,"expectedUrl",route,"export",true);
-    session.pending=manualJob;session.activeDeliveryId=id;session.prefs.edit().putString("pending",manualJob.toString()).commit();
-    manualRace(1);
+    originalDriver=session.driver;((FixtureView)session.web).manualSnapshotDiagnostics=true;((FixtureView)session.web).quietTracking=true;
+    session.driver="window.__pocketReadDriver(__ACTION__, __ARG__)";manualRace(1);
   }
   void manualRace(int index){attempt(()->{
-    manualDraft=index==1?"manual recovery first draft":"manual recovery pending draft";
+    manualDraft=index==1?"manual recovery first draft":"manual recovery navigation draft";
     evaluate("document.getElementById('prompt-textarea').value="+JSONObject.quote(manualDraft)+";({draftSet:true})",false,unused->{
-      session.handler.removeCallbacks(session.tick);manualEpoch=session.navigationEpoch;manualConnection=session.connectionEpoch;
-      FixtureView view=(FixtureView)session.web;view.pageStateReads=0;view.pageStateDraft="";
-      view.manualSnapshotLast=new JSONObject();
+      session.handler.removeCallbacks(session.tick);manualEpoch=session.navigationEpoch;manualConnection=session.connectionEpoch;manualRoute=session.web.getUrl();
+      FixtureView view=(FixtureView)session.web;view.pageStateReads=0;view.pageStateDraft="";view.manualSnapshotLast=new JSONObject();manualLoads=view.quietLoads;manualStops=view.quietStops;
       archiveEntered=new CountDownLatch(1);archiveRelease=new CountDownLatch(1);CountDownLatch entered=archiveEntered,release=archiveRelease;
       session.webStore.worker.execute(()->{entered.countDown();try{release.await(30,TimeUnit.SECONDS);}catch(InterruptedException error){Thread.currentThread().interrupt();}});
       waitArchiveWorker(index,SystemClock.elapsedRealtime()+10000);
@@ -692,30 +549,27 @@ public final class GeckoPerformanceIntegrationActivity extends Activity {
     FixtureView view=(FixtureView)session.web;
     if(view.pageStateReads<1){if(SystemClock.elapsedRealtime()>expires)throw new IllegalStateException("Manual recovery did not capture the real Gecko page state");later(()->waitRecoverySnapshot(index,expires),50);return;}
     if(!session.websiteRecovering||!manualDraft.equals(view.pageStateDraft)){view.manualSnapshotFailure(index,manualDraft,manualEpoch,manualConnection);throw new IllegalStateException("Manual recovery snapshot failed before the controlled race");}
-    if(index==1){
-      evaluate("document.getElementById('prompt-textarea').value='new typing while archive waits';({draftChanged:true})",false,unused->{archiveRelease.countDown();waitRecoveryRace(index,SystemClock.elapsedRealtime()+10000);});
-    }else{
-      String id=session.deliveries.begin(session.web.getUrl(),"another pending task",new JSONArray(),"web",null);
-      manualJob=new JSONObject(manualJob.toString()).put("id",id);session.pending=manualJob;session.activeDeliveryId=id;session.prefs.edit().putString("pending",manualJob.toString()).commit();
-      archiveRelease.countDown();waitRecoveryRace(index,SystemClock.elapsedRealtime()+10000);
-    }
+    if(index==1){evaluate("document.getElementById('prompt-textarea').value='new typing while archive waits';({draftChanged:true})",false,unused->{archiveRelease.countDown();waitRecoveryRace(index,SystemClock.elapsedRealtime()+10000);});}
+    else{evaluate("history.replaceState(null,'','/c/navigation-during-archive');({path:location.pathname})",false,value->{
+      check("The recovery race navigates the actual Gecko document while its archive is pending",value.optString("path").equals("/c/navigation-during-archive"));
+      view.semanticUrl=MainActivity.ORIGIN+"c/navigation-during-archive";session.navigationEpoch++;archiveRelease.countDown();waitRecoveryRace(index,SystemClock.elapsedRealtime()+10000);
+    });}
   });}
   void waitRecoveryRace(int index,long expires){attempt(()->{
     if(session.websiteRecovering){if(SystemClock.elapsedRealtime()>expires)throw new IllegalStateException("Manual recovery did not abort the stale operation");later(()->waitRecoveryRace(index,expires),50);return;}
-    String route=session.web.getUrl(),captured=manualDraft;
+    String route=manualRoute,captured=manualDraft;
     session.webStore.worker.execute(()->{
       JSONArray drafts=DraftArchive.get(session.context).list(route);boolean stored=false;for(int i=0;i<drafts.length();i++)if(captured.equals(drafts.optJSONObject(i).optString("body")))stored=true;
       final boolean persisted=stored;handler.post(()->attempt(()->{
-        check(index==1?"Manual website recovery durably archives its captured draft before checking newer typing":"Manual website recovery durably archives its captured draft even when the pending task changes",persisted);
+        check(index==1?"Manual website recovery durably archives its captured draft before checking newer typing":"Manual website recovery durably archives the old route draft before rejecting a later navigation",persisted);
         evaluate("({draft:document.getElementById('prompt-textarea').value,sendCount:Number(document.getElementById('send-count').textContent),cookie:document.cookie})",false,end->{
-          boolean noReload=session.navigationEpoch==manualEpoch&&session.connectionEpoch==manualConnection&&!session.navigating&&session.networkReady&&session.guard.allowed()&&session.pending==manualJob&&J.parse(session.prefs.getString("pending","{}")).optString("id").equals(manualJob.optString("id"));
-          check(index==1?"Typing while manual recovery saves aborts reload and preserves the newer draft and original pending task":"Changing the pending task while manual recovery saves aborts stale reload and preserves the new task",noReload&&end.optString("draft").equals(index==1?"new typing while archive waits":captured)&&end.optInt("sendCount")==0&&end.optString("cookie").contains("session=synthetic-performance")&&((FixtureView)session.web).pageStateReads==(index==1?2:1));
+          FixtureView view=(FixtureView)session.web;boolean noReload=view.quietLoads==manualLoads&&view.quietStops==manualStops&&session.navigationEpoch==manualEpoch+(index==2?1:0)&&session.connectionEpoch==manualConnection&&!session.navigating&&session.networkReady&&session.guard.allowed()&&noResultTask();
+          check(index==1?"Typing during manual recovery prevents reload and preserves the newer browser draft":"Navigation during manual recovery prevents a stale reload and preserves the new route",noReload&&end.optString("draft").equals(index==1?"new typing while archive waits":captured)&&end.optInt("sendCount")==0&&end.optString("cookie").contains("session=synthetic-performance")&&view.pageStateReads==(index==1?2:1));
           if(index==1)manualRace(2);else{
-            ((FixtureView)session.web).manualSnapshotDiagnostics=false;
-            session.driver=originalDriver;session.pending=null;session.prefs.edit().remove("pending").commit();
-            session.stableTicks=2;session.stableReply="pre-disconnect terminal";session.webObserver.completionSamples=2;session.invalidateConnection();
+            view.manualSnapshotDiagnostics=false;session.driver=originalDriver;session.invalidateConnection();
             evaluate("({draft:document.getElementById('prompt-textarea').value,sendCount:Number(document.getElementById('send-count').textContent),cookie:document.cookie})",false,after->{
-              check("Connection invalidation resets native terminal samples without submitting or clearing browser data",session.stableTicks==0&&session.stableReply.isEmpty()&&session.webObserver.completionSamples==0&&after.optInt("sendCount")==0&&after.optString("draft").equals(captured)&&after.optString("cookie").contains("session=synthetic-performance"));originalOnlyBridge();
+              check("Connection invalidation preserves browser draft and login without result state",!session.networkReady&&session.guard.blocked&&noResultTask()&&after.optInt("sendCount")==0&&after.optString("draft").equals(captured)&&after.optString("cookie").contains("session=synthetic-performance"));
+              session.networkReady=true;session.guard.setBlocked(false);originalOnlyBridge();
             });
           }
         });
@@ -724,7 +578,7 @@ public final class GeckoPerformanceIntegrationActivity extends Activity {
   });}
   // Additional scope checks run only after every existing capture, exact input
   // burst and recovery assertion. Neither input pacing nor its oracle changes.
-  final String[] retiredActions={"fill","submit","model-open","model-select","message-regenerate-submit","page-navigate"};
+  final String[] retiredActions={"poll","latest","fill","submit","model-open","model-select","message-regenerate-submit","page-navigate"};
   void originalOnlyBridge(){evaluate("(()=>{const e=document.getElementById('prompt-textarea');window.__originalOnlyWebsite={dom:document.documentElement.outerHTML,url:location.href,draft:e.value,start:e.selectionStart,end:e.selectionEnd,cookie:document.cookie,sent:Number(document.getElementById('send-count').textContent)};return {captured:true};})()",false,value->{
     check("Original-only bridge starts with the actual existing Gecko document",value.optBoolean("captured")&&session.web.enabled&&session.web.current.isOpen());originalOnlyAction(0);
   });}
@@ -740,64 +594,42 @@ public final class GeckoPerformanceIntegrationActivity extends Activity {
       });
     }));
   }
-  JSONObject quietJob(String path)throws Exception{
-    String route=MainActivity.ORIGIN.substring(0,MainActivity.ORIGIN.length()-1)+path,id=session.deliveries.begin(route,"bound performance prompt",new JSONArray(),"web",null);
-    JSONObject job=J.obj("id",id,"kind","web","engine","gecko","confirmed",true,"userKey","id:current-question","prompt","bound performance prompt","confirmedUrl",route,"expectedUrl",route,"export",true,"startedAt",System.currentTimeMillis());
-    productionJob=job;session.pending=job;session.activeDeliveryId=id;session.prefs.edit().putString("pending",job.toString()).commit();return job;
-  }
   void quietInspect(String path,Result result){
     ((FixtureView)session.web).semanticUrl=MainActivity.ORIGIN.substring(0,MainActivity.ORIGIN.length()-1)+path;
     evaluate("history.replaceState(null,'',"+JSONObject.quote(path)+");({path:location.pathname})",false,actual->{
-      if(!path.equals(actual.optString("path")))throw new IllegalStateException("Quiet navigation did not reach the actual Gecko SPA route");
+      if(!path.equals(actual.optString("path")))throw new IllegalStateException("Browser navigation did not reach the actual Gecko SPA route");
       evaluate("window.__pocketReadDriver('web-inspect',{})",false,result);
     });
   }
   void quietNavigation()throws Exception{
-    session.handler.removeCallbacks(session.tick);((FixtureView)session.web).quietTracking=true;session.inFlight=false;
-    JSONObject old=quietJob("/c/quiet-A");session.stableReply="old terminal body";session.stableTicks=2;session.webObserver.completionSamples=2;
-    quietInspect("/c/quiet-B",actual->{
-      ((FixtureView)session.web).productionInspect=null;session.sync();waitQuietSync(old,SystemClock.elapsedRealtime()+10000);
+    session.handler.removeCallbacks(session.tick);FixtureView view=(FixtureView)session.web;view.quietTracking=true;view.quietLoads=view.quietStops=0;session.inFlight=false;
+    quietRoute(0);
+  }
+  void quietRoute(int index){
+    String[] paths={"/c/quiet-A","/c/quiet-B","/auth/login","/","/c/quiet-A"};
+    if(index==paths.length){quietEmptyHome();return;}
+    quietInspect(paths[index],actual->{
+      check("Actual browser route "+index+" does not create or restore a reply task",actual.optString("url").equals(((FixtureView)session.web).semanticUrl)&&noResultTask());
+      String document=actual.optString("documentId");
+      for(String type:new String[]{"intent","bound","uncertain","stop"}){
+        session.webObserver.receive(J.obj("type",type,"url",((FixtureView)session.web).semanticUrl,"documentId",document,"confirmed",true,"userKey","id:current-question","prompt","must stay browser-owned"));
+        check("Retired document event "+type+" on route "+index+" cannot create a result task",noResultTask());
+      }
+      quietRoute(index+1);
     });
   }
-  void waitQuietSync(JSONObject old,long expires){attempt(()->{
-    if(session.inFlight){if(SystemClock.elapsedRealtime()>expires)throw new IllegalStateException("Quiet navigation sync timeout");later(()->waitQuietSync(old,expires),50);return;}
-    JSONObject actual=((FixtureView)session.web).productionInspect,stored=session.deliveries.get(old.optString("id"));
-    check("Actual different official SPA conversation quietly archives its native observation",actual!=null&&actual.optString("url").endsWith("/c/quiet-B")&&session.pending==null&&!session.prefs.contains("pending")&&session.activeDeliveryId.isEmpty());
-    check("Quiet conversation archive retains full pending body and original delivery binding",J.parse(session.prefs.getString("archivedWebObservation","{}")).toString().equals(old.toString())&&stored!=null&&stored.optString("body").equals(old.optString("prompt"))&&stored.optString("user_key").equals(old.optString("userKey"))&&stored.optString("url").equals(old.optString("confirmedUrl"))&&stored.optString("state").equals("uncertain"));
-    check("Quiet conversation archive clears stale completion samples and settings busy state",session.stableTicks==0&&session.stableReply.isEmpty()&&session.webObserver.completionSamples==0&&!ProfileUi.working(session)&&!old.optString("id").equals(session.prefs.getString("lastCompletedId","")));
-    quietInspect("/c/quiet-A",back->{
-      check("Returning to an archived official conversation does not resurrect its old task",!session.archiveWebsiteNavigation(back)&&session.pending==null&&!session.prefs.contains("pending"));
-      quietJob("/c/quiet-B");quietInspect("/c/quiet-B",same->{
-        check("Matching current official conversation retains a new observation",!session.archiveWebsiteNavigation(same)&&session.pending==productionJob);
-        JSONObject stale=J.parse(same.toString());stale.put("url",MainActivity.ORIGIN+"c/quiet-C");
-        check("A stale inspected URL cannot archive the current task",!session.archiveWebsiteNavigation(stale)&&session.pending==productionJob);
-        evaluate("document.getElementById('composer').insertAdjacentHTML('beforeend','<button id=\"stop-button\" data-testid=\"stop-button\" aria-label=\"Stop\">Stop</button>');({busy:true})",false,unused->bindingPoll(poll->{
-          check("A new official conversation still monitors its exact bound user without native submission",poll.optBoolean("submitted")&&poll.optBoolean("busy")&&session.pending==productionJob&&poll.optString("userKey").equals("id:current-question"));quietLoginAndHome();
-        }));
-      });
-    });
-  });}
-  void quietLoginAndHome(){quietInspect("/auth/login",login->{
-    check("An actual login route retains unresolved observation and its original binding",!session.archiveWebsiteNavigation(login)&&session.pending==productionJob);
-    evaluate("(()=>{window.__quietMain=document.querySelector('main');window.__quietChildren=[...window.__quietMain.childNodes];window.__quietMain.replaceChildren();document.getElementById('composer').hidden=true;return {shell:true};})()",false,unused->quietInspect("/",shell->{
-      check("An actual empty homepage hydration shell does not archive a bound conversation",!shell.optBoolean("composer")&&!shell.optBoolean("hasMessages")&&!session.archiveWebsiteNavigation(shell)&&session.pending==productionJob);
-      evaluate("document.getElementById('composer').hidden=false;({busyHome:true})",false,ready->quietInspect("/",busy->{
-        check("An interactive homepage still displaying a busy operation retains its bound observation",busy.optBoolean("composer")&&busy.optBoolean("busy")&&!session.archiveWebsiteNavigation(busy)&&session.pending==productionJob);
-        evaluate("document.getElementById('stop-button')?.remove();({idleHome:true})",false,idle->quietInspect("/",home->{
-        check("An actual interactive empty official homepage quietly ends the old observation",home.optBoolean("composer")&&!home.optBoolean("hasMessages")&&session.archiveWebsiteNavigation(home)&&session.pending==null);
-        evaluate("window.__quietMain.replaceChildren(...window.__quietChildren);document.getElementById('stop-button')?.remove();({restored:true})",false,restored->{
-          quietJob("/c/quiet-B");quietInspect("/c/quiet-B",same->quietSameRouteError());
+  void quietEmptyHome(){evaluate("(()=>{window.__quietMain=document.querySelector('main');window.__quietChildren=[...window.__quietMain.childNodes];window.__quietMain.replaceChildren();document.getElementById('composer').hidden=true;return {shell:true};})()",false,unused->quietInspect("/",shell->{
+    check("An empty homepage hydration shell has no native result observation",!shell.optBoolean("composer")&&!shell.optBoolean("hasMessages")&&noResultTask());
+    evaluate("document.getElementById('composer').hidden=false;document.getElementById('composer').insertAdjacentHTML('beforeend','<button id=\"stop-button\" data-testid=\"stop-button\" aria-label=\"Stop\">Stop</button>');({busyHome:true})",false,ready->quietInspect("/",busy->{
+      check("A busy website composer remains browser-owned without a pending result task",busy.optBoolean("composer")&&busy.optBoolean("busy")&&noResultTask());
+      evaluate("document.getElementById('stop-button').remove();({idleHome:true})",false,idle->quietInspect("/",home->{
+        check("An interactive empty homepage creates no send completion state",home.optBoolean("composer")&&!home.optBoolean("hasMessages")&&!home.optBoolean("busy")&&noResultTask());
+        evaluate("window.__quietMain.replaceChildren(...window.__quietChildren);({draft:document.getElementById('prompt-textarea').value,saved:window.__originalOnlyWebsite.draft,cookie:document.cookie,sent:Number(document.getElementById('send-count').textContent)})",false,end->{
+          check("Browser navigation never stops, reloads, resubmits or changes draft and login",((FixtureView)session.web).quietStops==0&&((FixtureView)session.web).quietLoads==0&&end.optInt("sent")==0&&end.optString("draft").equals(end.optString("saved"))&&end.optString("cookie").contains("session=synthetic-performance")&&noResultTask());success();
         });
-      }));}));
+      }));
     }));
-  });}
-  void quietSameRouteError(){bindingMutate("document.querySelector('[data-message-id=\"current-question\"] [data-user-message-bubble]').textContent='a real edited question in the same conversation';({edited:true})",error->{
-    check("A genuine same-conversation edited question stays unresolved with its error",session.pending==productionJob&&session.prefs.contains("pending")&&!error.optString("error").isEmpty()&&!session.status.isEmpty()&&session.stableTicks==0&&session.webObserver.completionSamples==0);
-    evaluate("document.querySelector('[data-message-id=\"current-question\"] [data-user-message-bubble]').textContent='bound performance prompt';({draft:document.getElementById('prompt-textarea').value,saved:window.__originalOnlyWebsite.draft,cookie:document.cookie,sent:Number(document.getElementById('send-count').textContent)})",false,end->{
-      check("Quiet navigation never stops reloads resubmits or changes the browser draft and login",((FixtureView)session.web).quietStops==0&&((FixtureView)session.web).quietLoads==0&&end.optInt("sent")==0&&end.optString("draft").equals(end.optString("saved"))&&end.optString("cookie").contains("session=synthetic-performance"));
-      session.pending=null;session.prefs.edit().remove("pending").commit();success();
-    });
-  });}
+  }));}
   boolean appearanceChecked;
   void appearanceRegression(){
     final GeckoSession original=session.web.current;final long epoch=session.navigationEpoch;final String oldMode=AppAppearance.mode();
@@ -816,7 +648,7 @@ public final class GeckoPerformanceIntegrationActivity extends Activity {
       }),300);
     });
   }
-  void success(){if(!appearanceChecked){appearanceChecked=true;appearanceRegression();return;}finished=true;event("report",J.obj("status","passed","actualAndroidExecution",true,"actualGeckoExecution",true,"actualAndroidTouchExecution",true,"actualGeckoBindingRegressionExecution",true,"actualAppearanceRoundtrip",true,"actualInputImeSettled",inputImeSettled,"actualSingleInputBurst",true,"inputDiagnosticsEnabled",inputDiagnostics,"inputNativeDiagnosticsEnabled",inputNativeDiagnostics,"baselineSource",BASELINE,"checkCount",checkCount,"directDeferredSamples",directDeferredSamples,"nativeDeferredSamples",nativeDeferredSamples,"scope","Actual GeckoView 157, real extension-to-native payload and DOM work; actual Android scroll and keyboard input; 240 historical messages and 105k current reply. Subsequent same-route DOM restoration, exact-identity SPA allocation, website socket faults and native completion-stability regression; no real account or external site. RAF and Android Choreographer timings are descriptive, no cross-device FPS threshold.","measurements",J.arr(baselineMetrics,currentMetrics)));}
+  void success(){if(!appearanceChecked){appearanceChecked=true;appearanceRegression();return;}finished=true;event("report",J.obj("status","passed","actualAndroidExecution",true,"actualGeckoExecution",true,"actualAndroidTouchExecution",true,"browserObservationContract",2,"actualGeckoBrowserLifecycleExecution",true,"actualAppearanceRoundtrip",true,"actualInputImeSettled",inputImeSettled,"actualSingleInputBurst",true,"inputDiagnosticsEnabled",inputDiagnostics,"inputNativeDiagnosticsEnabled",inputNativeDiagnostics,"baselineSource",BASELINE,"checkCount",checkCount,"scope","Actual GeckoView 157, real extension payload and DOM work: immutable historical polling workload compared with current browser readiness inspection, 12 samples each. Original Android scroll and exact keyboard input retained; 240 historical messages and 105k current reply. Explicit transcript/file metadata, durable offline snapshots, browser navigation, real socket surfaces, delayed actual bridge callback and manual-recovery archive races; no send-result tasks, real account or external site. RAF/Choreographer remain descriptive, no cross-device FPS threshold.","measurements",J.arr(baselineMetrics,currentMetrics)));}
   String telemetryInstall(){return "(()=>{const data={readChars:0,readCalls:0,clones:0,started:performance.now(),rafCount:0,rafSum:0,rafMax:0,rafOver32:0,previous:0};"+
     "for(const [prototype,key] of [[HTMLElement.prototype,'innerText'],[Node.prototype,'textContent'],[Node.prototype,'nodeValue']]){const original=Object.getOwnPropertyDescriptor(prototype,key);if(original?.get&&original.configurable)Object.defineProperty(prototype,key,{...original,get(){const value=original.get.call(this);data.readCalls++;if(typeof value==='string')data.readChars+=value.length;return value;}});}"+
     "const clone=Node.prototype.cloneNode;Node.prototype.cloneNode=function(...args){data.clones++;return clone.apply(this,args);};"+

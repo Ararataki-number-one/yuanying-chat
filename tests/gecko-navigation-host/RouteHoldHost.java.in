@@ -242,6 +242,9 @@ class WebBoundary {
   String getUrl(){return url;}
   SettingsBoundary getSettings(){return settings;}
   boolean identityRequestAllowed(String value){return identityAllowed;}
+  // This host owns route leases and HTTP(S) popup admission only. Blob document
+  // admission executes in gecko-download-navigation-host and addon lifecycle.
+  boolean downloadBlobPopup(SessionBoundary source,String target){throw new AssertionError("Blob downloads are outside the generic-route host");}
   SessionBoundary newSession(){constructCalls++;if(failConstruction)throw new IllegalStateException("Controlled SDK constructor failure");return new SessionBoundary();}
   void activate(SessionBoundary session){activations++;current=session;}
   void restoreCheckpoint(SessionBoundary session,SessionBoundary.SessionState state,String url,long revision){throw new AssertionError("Unexpected SDK state restore boundary");}
