@@ -502,7 +502,10 @@ def prepare_browser_v2_history(root=ROOT, *, source_commit, environment=None):
 
 BROWSER_V3_GROUP = {'commit': '12ffbd2d01175f83fefd7f8af40d0582ad08f3a5',
  'tree': '89665dd73e968b71528eab611c14fc14d148354f',
- 'files': {'tests/gecko/run_environment_dashboard.py': {
+ 'files': {'tests/browser_cpu_publish_gate_test.py': {
+               'mode': '100644', 'blob': 'bd8ec6895967e6802f70e7ab8543646153da7456',
+               'bytes': 21943, 'sha256': '13922902ef64cd2dc25fbff14c71d78b46972c4e8efde85d3db9e4b619728253'},
+           'tests/gecko/run_environment_dashboard.py': {
                'mode': '100644', 'blob': '4047282b4d71c1f1137c0205b63238f020c2a595',
                'bytes': 20188, 'sha256': '0f02755864ebfd989acca1bc12dbca7901d434b1057992a3ee74213a9b7f69b0'},
            'tools/gecko/capture_glass_navigation.py': {
@@ -511,7 +514,7 @@ BROWSER_V3_GROUP = {'commit': '12ffbd2d01175f83fefd7f8af40d0582ad08f3a5',
 
 
 def prepare_browser_v3_history(root=ROOT, *, source_commit, environment=None):
-    """Prepare the two real v3 observers used to replay unchanged C5/C6/C8/C13 XML."""
+    """Prepare exact v3 observers and the retained CPU publication fixture."""
     root=Path(root).resolve(); environment=os.environ if environment is None else environment
     before=history.checkout_state(root)
     require(before['sourceCommit']==source_commit, 'v3 history source differs from checkout')

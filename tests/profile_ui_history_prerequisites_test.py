@@ -280,12 +280,12 @@ class BrowserV3HistoryPrerequisitesTests(unittest.TestCase):
                 source_commit=overrides.pop('source',control.source),
                 environment=overrides.pop('environment',control.environment))
 
-    def test_exact_two_real_observers_prepare_without_ref_changes_then_verify_offline(self):
+    def test_exact_v3_observers_and_cpu_fixture_prepare_without_ref_changes_then_verify_offline(self):
         control=self.control;before=setup.history.checkout_state(control.root)
         refs=control.git('for-each-ref','--format=%(refname) %(objectname)')
         report=self.prepare();observed=setup.history.verify_group(control.root,setup.BROWSER_V3_GROUP)
         self.assertEqual(report['group'],observed)
-        self.assertEqual({row['path'] for row in observed['files']},{'tests/gecko/run_environment_dashboard.py','tools/gecko/capture_glass_navigation.py'})
+        self.assertEqual({row['path'] for row in observed['files']},{'tests/browser_cpu_publish_gate_test.py','tests/gecko/run_environment_dashboard.py','tools/gecko/capture_glass_navigation.py'})
         self.assertEqual(report['fetchedCommits'],[setup.BROWSER_V3_GROUP['commit']])
         self.assertEqual(len(control.fetches),1)
         self.assertEqual(before,setup.history.checkout_state(control.root))
@@ -332,9 +332,10 @@ class BrowserV3HistoryPrerequisitesTests(unittest.TestCase):
     def test_mismatched_declared_observer_bytes_are_not_treated_as_missing(self):
         control=self.control;control.seed()
         before=setup.history.checkout_state(control.root)
-        altered=copy.deepcopy(setup.BROWSER_V3_GROUP)
-        altered['files']['tools/gecko/capture_glass_navigation.py']['sha256']='f'*64
-        with patch.object(setup,'BROWSER_V3_GROUP',altered),self.assertRaises(RuntimeError):self.prepare(environment={})
+        for relative in setup.BROWSER_V3_GROUP['files']:
+            altered=copy.deepcopy(setup.BROWSER_V3_GROUP)
+            altered['files'][relative]['sha256']='f'*64
+            with self.subTest(path=relative),patch.object(setup,'BROWSER_V3_GROUP',altered),self.assertRaises(RuntimeError):self.prepare(environment={})
         self.assertEqual(control.fetches,[])
         self.assertEqual(before,setup.history.checkout_state(control.root))
 
