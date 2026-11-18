@@ -67,15 +67,18 @@ public final class DownloadResumeHost{
  static void chatDownloadResponses()throws Exception{
   String address="https://chatgpt.com/backend-api/estuary/content?id=file_0123456&sig="+"a".repeat(64);
   for(String media:new String[]{"application/vnd.openxmlformats-officedocument.wordprocessingml.document","application/pdf","text/html; charset=UTF-8","application/problem+json"}){
-   FileDownloads d=fresh();JSONObject row=row(d,"http-range");
-   byte[] body=new byte[]{42,17,55};
-   d.http=new FakeHttp(200,body,null);d.http.contentType=media;
-   ui(()->{d.task=row;d.active=true;d.mime="text/html";d.mark("downloading","");return null;});
-   d.worker.execute(()->d.download(d.ticket,address,"fixture"));idle(d);
-   boolean file=media.endsWith("document")||media.equals("application/pdf");
-   check("Chat download response is saved only for document content: "+media,file
-       ?d.a.chosen==1&&d.mime.equals(media)&&Arrays.equals(Files.readAllBytes(d.temp.toPath()),body)
-       :d.a.chosen==0&&row.optString("state").equals("failed")&&d.temp.length()==0);
+   for(boolean explicitAttachment:new boolean[]{false,true}){
+    FileDownloads d=fresh();JSONObject row=row(d,"http-range");
+    byte[] body=new byte[]{42,17,55};
+    d.http=new FakeHttp(200,body,null);d.http.contentType=media;
+    if(explicitAttachment)d.http.disposition="attachment; filename=fixture";
+    ui(()->{d.task=row;d.active=true;d.mime="text/html";d.mark("downloading","");return null;});
+    d.worker.execute(()->d.download(d.ticket,address,"fixture"));idle(d);
+    boolean file=explicitAttachment||media.endsWith("document")||media.equals("application/pdf");
+    check("Chat download rejects error pages and retains explicit attachments: "+media+" "+explicitAttachment,file
+        ?d.a.chosen==1&&d.mime.equals(media.split(";",2)[0])&&Arrays.equals(Files.readAllBytes(d.temp.toPath()),body)
+        :d.a.chosen==0&&row.optString("state").equals("failed")&&d.temp.length()==0);
+   }
   }
  }
  static void staleRangeReset()throws Exception{
@@ -105,7 +108,7 @@ class LinearLayout{static final int VERTICAL=1;LinearLayout(Object a){}void setO
 class AppAppearance{static Builder last;static Builder dialog(Object a){return last=new Builder();}}
 class Builder{String positive;java.util.function.BiConsumer<Object,Integer> selected;Builder setTitle(String s){return this;}Builder setMessage(String s){return this;}Builder setView(Object o){return this;}Builder setItems(String[] names,java.util.function.BiConsumer<Object,Integer> action){return this;}Builder setPositiveButton(String s,java.util.function.BiConsumer<Object,Integer> action){positive=s;selected=action;return this;}Builder setNegativeButton(String s,java.util.function.BiConsumer<Object,Integer> action){return this;}Builder setNeutralButton(String s,java.util.function.BiConsumer<Object,Integer> action){return this;}void show(){}void dismiss(){}void clickPositive(){selected.accept(this,0);}}
 
-class FakeHttp extends HttpURLConnection{final int code;final byte[] body;final String range;String contentType="application/octet-stream";boolean blockSecond;Runnable beforeSecond;int replies;final CountDownLatch blocked=new CountDownLatch(1),release=new CountDownLatch(1);FakeHttp(int code,byte[] body,String range)throws Exception{super(new URL("https://example.test/file"));this.code=code;this.body=body;this.range=range;}public void connect(){}public void disconnect(){}public boolean usingProxy(){return false;}public int getResponseCode()throws IOException{replies++;if(replies==2&&beforeSecond!=null)beforeSecond.run();if(replies==2&&blockSecond){blocked.countDown();try{if(!release.await(5,TimeUnit.SECONDS))throw new IOException("range barrier timeout");}catch(InterruptedException e){throw new IOException(e);}}return code;}public long getContentLengthLong(){return body.length;}public String getHeaderField(String name){return name.equals("ETag")?"\"v1\"":name.equals("Content-Range")?range:null;}public String getContentEncoding(){return "identity";}public String getContentType(){return contentType;}public InputStream getInputStream(){return new ByteArrayInputStream(body);}}
+class FakeHttp extends HttpURLConnection{final int code;final byte[] body;final String range;String contentType="application/octet-stream",disposition;boolean blockSecond;Runnable beforeSecond;int replies;final CountDownLatch blocked=new CountDownLatch(1),release=new CountDownLatch(1);FakeHttp(int code,byte[] body,String range)throws Exception{super(new URL("https://example.test/file"));this.code=code;this.body=body;this.range=range;}public void connect(){}public void disconnect(){}public boolean usingProxy(){return false;}public int getResponseCode()throws IOException{replies++;if(replies==2&&beforeSecond!=null)beforeSecond.run();if(replies==2&&blockSecond){blocked.countDown();try{if(!release.await(5,TimeUnit.SECONDS))throw new IOException("range barrier timeout");}catch(InterruptedException e){throw new IOException(e);}}return code;}public long getContentLengthLong(){return body.length;}public String getHeaderField(String name){return name.equals("ETag")?"\"v1\"":name.equals("Content-Range")?range:name.equals("Content-Disposition")?disposition:null;}public String getContentEncoding(){return "identity";}public String getContentType(){return contentType;}public InputStream getInputStream(){return new ByteArrayInputStream(body);}}
 
 // Controlled continuation adapter only. Production route admission and revocation
 // are exercised separately; these existing cases retain their supplied connections.

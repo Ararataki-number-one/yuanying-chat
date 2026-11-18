@@ -103,9 +103,9 @@ class FileDownloads {
           String contentType=c.getContentType(),disposition=c.getHeaderField("Content-Disposition");
           String media=contentType==null?"":contentType.split(";",2)[0].trim().toLowerCase(Locale.ROOT);
           boolean chatFile=GeckoNavigationPolicy.chatDownloadEndpoint(initial);
-          if(media.equals("text/html")&&(chatFile||!mime.equals("text/html")))throw new IOException("文件链接返回了登录网页，请在原网页检查");
-          if(chatFile&&(media.equals("application/json")||media.endsWith("+json"))
-              &&(disposition==null||disposition.trim().isEmpty()))
+          boolean attachment=disposition!=null&&"attachment".equalsIgnoreCase(disposition.split(";",2)[0].trim());
+          if(media.equals("text/html")&&(chatFile?!attachment:!mime.equals("text/html")))throw new IOException("文件链接返回了登录网页，请在原网页检查");
+          if(chatFile&&!attachment&&(media.equals("application/json")||media.endsWith("+json")))
             throw new IOException("网页没有返回文件，请回到对话重新点按下载");
           responseMetadata(url,disposition,contentType);
           receivedBytes=base;totalBytes=total;final long initialBytes=base;final File target=local;
