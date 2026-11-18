@@ -1017,7 +1017,12 @@ class GeckoWebView extends FrameLayout {
   private void failure(String message){failed=true;closeStartupWindow();owner.pageError=message;owner.finishNavigation(message,false);}
   boolean hasVisibleDocument(){return enabled&&current!=null&&current.isOpen()&&!failed&&!crashed.contains(current)&&usable.contains(current);}
   boolean canChooseFiles(){return hasVisibleDocument()&&!pendingLoads.contains(current)&&(!owner.navigating||owner.navigationDispatched&&owner.targetMatches(getUrl()));}
-  private void uploadPreparationFinished(String previousStatus){owner.resourceFileWork(false,false);if(!destroyed&&owner.resourceFilePreparations==0&&owner.status.equals("准备附件…"))owner.setStatus(previousStatus.equals("准备附件…")?"":previousStatus);}
+  private void uploadPreparationFinished(String previousStatus){
+    owner.resourceFileWork(false,false);
+    if(destroyed||owner.resourceFilePreparations!=0)return;
+    if(owner.status.equals("准备附件…"))owner.setStatus(previousStatus.equals("准备附件…")?"":previousStatus);
+    else owner.changed();
+  }
   private void pageVisible(GeckoSession session){
     String target=loadingTargets.get(session);
     if(destroyed||addonDisabled||session!=current||target==null||"about:blank".equals(target)||crashed.contains(session)||ipNavigationFailed(session)||!painted.add(session))return;

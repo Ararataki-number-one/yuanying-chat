@@ -22,7 +22,11 @@ final class GeckoNavigationPolicy {
   static boolean chatDownloadPopup(String target,String source){
     URI page=chatHttps(source);
     if(page==null||!path(page).matches("/(g/[A-Za-z0-9_-]{1,160}/)?c/[A-Za-z0-9_-]{1,160}/?"))return false;
-    return chatDownloadEndpoint(target);
+    if(chatDownloadEndpoint(target))return true;
+    if(!blobFrom(target,source))return false;
+    URI blob=chatHttps(target.substring(5));
+    return blob!=null&&blob.getRawQuery()==null&&blob.getRawFragment()==null
+        &&path(blob).matches("/[0-9a-fA-F]{8}-(?:[0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}");
   }
   static boolean chatDownloadEndpoint(String target){
     URI file=chatHttps(target);

@@ -28,6 +28,10 @@ def git(*args):
 def original_popup_guard(raw):
     """Remove only the file handoff extension for this historical proof."""
     deltas=(
+        ('&&(targetAllowed(target)||file)&&ui.focusOwned(activity);',
+         '&&targetAllowed(target)&&ui.focusOwned(activity);'),
+        ('if(!targetAllowed(target)&&!GeckoNavigationPolicy.chatDownloadPopup(target,web.getUrl())){invalidate();return;}',
+         'if(!targetAllowed(target)){invalidate();return;}'),
         ('/** Hands off file links and offers a current-page action for blocked website popups. */',
          '/** A blocked popup offers an explicit current-page action; websites never open a modal. */'),
         ('    final boolean file;\n',

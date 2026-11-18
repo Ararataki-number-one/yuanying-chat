@@ -90,7 +90,7 @@ public final class PreparationHost {
     check("Reloaded changed policy rebuilds every tab without old saved state",changed.retired==2&&changed.created==2&&!changed.restoredOldState&&changed.tabs.stream().allMatch(tab->tab.saved==null&&tab.desktop&&tab.fingerprintPolicy==changed.fingerprintState));
 
     PreparationHost denied=fresh();denied.runtime.confirm=false;denied.loadFingerprintState();denied.drain();
-    check("Missing Worker confirmation keeps existing page network blocked",!denied.fingerprintStateReady&&denied.selected.web.settings.blocked&&denied.shown==0&&denied.lastMessage.contains("Worker"));
+    check("Missing Worker confirmation keeps existing page network blocked",!denied.fingerprintStateReady&&denied.selected.web.settings.blocked&&denied.shown==0&&denied.cancelled==1&&denied.lastMessage.contains("Worker"));
 
     PreparationHost provider=fresh();WebView old=provider.selected.web;WebView.provider.versionName="158.0";
     provider.loadFingerprintState();provider.drain();

@@ -10,7 +10,8 @@ final class GeckoPhotoPermission {
   private final GeckoWebView web;private final GeckoSession session;private final WebExtension.Port port;
   private final String token=UUID.randomUUID().toString(),sessionId,origin,location;
   private final long navigation,load;private final boolean requested;
-  private String documentId="";private boolean closed,handed;
+  private String documentId="";private boolean closed,handed,capturing;
+  private Consumer<String> afterCapture;
   GeckoPhotoPermission(GeckoWebView web,GeckoSession session){
     this.web=web;this.session=session;port=web.routePort;sessionId=AppSessionIdentity.id(session);
     origin=web.photoUploadOrigin(session);location=web.locations.get(session);navigation=web.owner.navigationEpoch;
@@ -32,16 +33,23 @@ final class GeckoPhotoPermission {
   }
   void capture(Runnable ready){
     if(!requested){ready.run();return;}
+    capturing=true;
     send("photoCanvasCapture",value->{
-      if(connected()&&bound(value)&&"captured".equals(value.optString("status")))documentId=value.optString("documentId");
-      else releaseNative();
-      // Even an unavailable photo lease must not disable ordinary file uploads.
-      ready.run();
+      capturing=false;
+      if(closed||handed)return;
+      boolean captured=connected()&&bound(value)&&"captured".equals(value.optString("status"));
+      if(captured)documentId=value.optString("documentId");
+      Consumer<String> selectedImage=afterCapture;afterCapture=null;
+      if(selectedImage!=null)allow(true,selectedImage);
+      else if(!captured)releaseNative();
     });
+    // The chooser may open while the image-only document lease is captured.
+    ready.run();
   }
   void allow(boolean containsImage,Consumer<String> complete){
     if(!current()){cancel();complete.accept("附件所属页面已变化，请重新选择");return;}
     if(!containsImage||web.owner.privacy.level()<2){releaseNative();complete.accept("");return;}
+    if(capturing){afterCapture=complete;return;}
     if(!connected()||documentId.isEmpty()){cancel();complete.accept("图片处理权限未确认，照片尚未上传；可重新选择或改用标准保护");return;}
     send("photoCanvasGrant",value->{
       String status=value.optString("status");long expires=value.optLong("expiresAt",-1),now=System.currentTimeMillis();
@@ -52,7 +60,12 @@ final class GeckoPhotoPermission {
     });
   }
   void handedOff(){handed=true;}
-  void cancel(){if(handed)return;closed=true;releaseNative();}
+  void cancel(){
+    if(handed||closed)return;
+    closed=true;releaseNative();
+    Consumer<String> selectedImage=afterCapture;afterCapture=null;
+    if(selectedImage!=null)selectedImage.accept("附件所属页面已变化，请重新选择");
+  }
   private void releaseNative(){
     if(!requested||port==null||web.routePort!=port)return;
     int id=web.cookieCallbacks.add(port,ignored->{},1500);

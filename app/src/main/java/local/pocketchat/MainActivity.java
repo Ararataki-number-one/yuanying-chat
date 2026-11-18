@@ -49,8 +49,10 @@ public class MainActivity extends ThemedActivity {
   }
   int dp(int n){return (int)(getResources().getDisplayMetrics().density*n+.5f);}
 
+  void fileFeedback(String message){if(active&&!destroyed&&!isFinishing())Toast.makeText(this,message,Toast.LENGTH_SHORT).show();}
+
   void status(String value){
-    String message=value==null?"":value;lastUiStatus=message;
+    String message=value==null?"":value;String previous=lastUiStatus;lastUiStatus=message;
     if(status==null)return;
     boolean quiet=message.isEmpty()||message.startsWith("已连接")||message.startsWith("正在")||message.startsWith("准备连接")||message.equals("回复完成")||message.equals("已停止")||message.equals("已停止生成")||message.equals("已停止回复")||message.equals("已取消");
     // Keep binding diagnostics in the delivery record, without a persistent
@@ -60,10 +62,14 @@ public class MainActivity extends ThemedActivity {
     boolean sessionError=current&&(session.websiteConnectionIssue||!session.pageError.isEmpty()||!session.networkIssue.isEmpty()&&TextUtils.equals(message,session.networkIssue)&&(session.offline||!session.networkReady&&!session.connecting));
     boolean waiting=current&&session.replyStalled;
     if(waiting)quiet=false;
-    boolean error=waiting||!quiet&&(sessionError||message.startsWith("网页反馈：")||message.matches(".*(失败|错误|无法|未能|不可用|未完成|待确认|断开|中断|过期|失效|未通过|请检查|请先|暂未|未添加|需要重新|没有可用).*"));
-    boolean fileProgress=session!=null&&session.resourceFilePreparations>0&&message.equals("准备附件…");
-    if(error||fileProgress){if(!TextUtils.equals(status.getText(),message))status.setText(message);status.setTextColor(error&&!waiting?DesignUi.RED:DesignUi.MUTED);}
-    status.setClickable(error);status.setContentDescription(fileProgress?"正在准备所选附件":"网页或网络错误，点按查看详情");
+    boolean attachmentIssue=message.startsWith("网页正在切换或尚未就绪，请稍后再添加附件")
+      ||message.startsWith("附件所属页面已变化，请重新选择")||message.startsWith("图片处理权限未确认")
+      ||message.startsWith("本站已拒绝 Canvas 图片处理");
+    if(attachmentIssue&&!message.equals(previous))fileFeedback(message);
+    boolean error=waiting||!quiet&&(sessionError||attachmentIssue||message.startsWith("网页反馈：")||message.matches(".*(失败|错误|无法|未能|不可用|未完成|待确认|断开|中断|过期|失效|未通过|请检查|请先|暂未|未添加|需要重新|没有可用).*"));
+    boolean fileProgress=session!=null&&session.resourceFilePreparations>0&&!error;
+    if(error||fileProgress){String visibleText=fileProgress?"准备附件…":message;if(!TextUtils.equals(status.getText(),visibleText))status.setText(visibleText);status.setTextColor(error&&!waiting?DesignUi.RED:DesignUi.MUTED);}
+    status.setClickable(error&&!attachmentIssue);status.setContentDescription(fileProgress?"正在准备所选附件":attachmentIssue?message:"网页或网络错误，点按查看详情");
     status.setVisibility((error||fileProgress)&&hub!=null&&hub.page==AppHub.CHAT?View.VISIBLE:View.GONE);
     if(error&&!waiting&&hub!=null&&hub.page!=AppHub.CHAT)hub.feedback(message,true);
   }

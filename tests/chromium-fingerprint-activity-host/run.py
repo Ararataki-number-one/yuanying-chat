@@ -71,8 +71,12 @@ def main():
             if executed.returncode:raise RuntimeError(name+' execution:\n'+executed.stderr)
             results.append(json.loads(executed.stdout))
             if name=='ActivityHost':
+                selected=method(source,'fingerprintFileResult')
+                queue_start=selected.index('FingerprintFileChoice choice=fingerprintFileChoice;')
+                queue_end=selected.rindex('return true;')+len('return true;')
+                queued_delivery=selected[queue_start:queue_end]
                 mutants=[
-                    ('Immediate original-style file delivery races resume recheck','fingerprintFileResult=new Intent(data);fingerprintFileRequest=request;message("正在确认原网页与指纹配置，确认后交付所选文件…");fingerprintMain.post(this::drainFingerprintFileResult);return true;','return files.result(request,result,data);','Result before resume never reaches blocked renderer'),
+                    ('Immediate original-style file delivery races resume recheck',queued_delivery,'return files.result(request,result,data);','Result before resume never reaches blocked renderer'),
                     ('Dropped explicit address during identity recheck','tab.fingerprintNavigation=url;','', 'Address entered during recheck remains queued and old DOM retained'),
                     ('Old observation callback accepts retired document','if(operation!=fingerprintObservationGeneration||!fingerprintCurrent(tab,view,state,binding)||tab.loading||!Objects.equals(url,view.getUrl()))return;','', 'Late observation cannot enqueue receipt after navigation'),
                     ('Explicit go retains previous idle state before native callback','tab.loading=true;\n        view.loadUrl(url);','view.loadUrl(url);','Explicit go marks loading before getter updates and native start callback'),

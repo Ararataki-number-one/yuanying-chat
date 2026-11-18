@@ -177,7 +177,9 @@ public class BrowserActivity extends ThemedActivity {
       if(runtime==null||!runtime.confirmWorkerPolicy(workerPolicy,state.identity,state.revision,spec.restrictWorkers())){
         fingerprintStateReady=false;
         fingerprintError="Chromium 后台 Worker 策略未获内核确认，网页联网已暂停";
-        syncFingerprintTraffic();message(fingerprintError);return;
+        syncFingerprintTraffic();
+        cancelFingerprintFileResult("指纹配置未确认，未向网页交付所选文件");
+        message(fingerprintError);return;
       }
       fingerprintStateReady=true;
       if(rebuild)for(Tab tab:new ArrayList<>(tabs))createSurface(tab);
@@ -295,13 +297,14 @@ public class BrowserActivity extends ThemedActivity {
         if(tab==selected)updateChrome();
   }
   boolean fingerprintFileChoiceCurrent(FingerprintFileChoice choice){return choice!=null&&files!=null&&files.pending==choice.pending&&selected==choice.tab&&live(choice.tab,choice.view)&&fingerprintState==choice.policy&&choice.tab.fingerprintPolicy==choice.policy&&choice.surface==choice.tab.surfaceGeneration&&choice.navigation==choice.tab.generation&&Objects.equals(choice.url,choice.view.getUrl())&&choice.providerPackage.equals(choice.tab.fingerprintProviderPackage)&&choice.providerVersion.equals(choice.tab.fingerprintProviderVersion)&&fingerprintProviderMatches(choice.tab);}
-  void cancelFingerprintFileResult(String reason){FingerprintFileChoice choice=fingerprintFileChoice;fingerprintFileChoice=null;fingerprintFileResult=null;fingerprintFileRequest=0;if(choice!=null&&files!=null&&files.pending==choice.pending){files.cancelFor(choice.view);if(reason!=null)message(reason);}}
+  void cancelFingerprintFileResult(String reason){FingerprintFileChoice choice=fingerprintFileChoice;fingerprintFileChoice=null;fingerprintFileResult=null;fingerprintFileRequest=0;if(choice!=null&&files!=null&&files.pending==choice.pending){files.cancelFor(choice.view);if(reason!=null&&files.pending==null&&fingerprintFileChoice==null)message(reason);}}
   void drainFingerprintFileResult(){
     if(fingerprintFileResult==null)return;
     FingerprintFileChoice choice=fingerprintFileChoice;
     if(!fingerprintFileChoiceCurrent(choice)){cancelFingerprintFileResult("原网页或指纹配置已改变，未交付所选文件");return;}
     if(!foreground||fingerprintLoading||fingerprintSaving||!fingerprintTraffic(choice.tab,choice.view)||!choice.tab.fingerprintBindingReady)return;
     Intent result=fingerprintFileResult;int request=fingerprintFileRequest;fingerprintFileChoice=null;fingerprintFileResult=null;fingerprintFileRequest=0;
+    if(notice!=null&&"正在确认原网页与指纹配置，确认后交付所选文件…".contentEquals(notice.getText()))message("");
     files.result(request,RESULT_OK,result);
   }
   boolean fingerprintFileResult(int request,int result,Intent data){
@@ -309,7 +312,15 @@ public class BrowserActivity extends ThemedActivity {
     if(files.pending==null||files.pending.request!=request)return files.result(request,result,data);
     if(result!=RESULT_OK||data==null){fingerprintFileChoice=null;fingerprintFileResult=null;fingerprintFileRequest=0;return files.result(request,result,data);}
     if(!fingerprintFileChoiceCurrent(fingerprintFileChoice)){cancelFingerprintFileResult("原网页或指纹配置已改变，未交付所选文件");if(files.pending!=null&&files.pending.request==request)files.result(request,RESULT_CANCELED,null);return true;}
-    fingerprintFileResult=new Intent(data);fingerprintFileRequest=request;message("正在确认原网页与指纹配置，确认后交付所选文件…");fingerprintMain.post(this::drainFingerprintFileResult);return true;
+    FingerprintFileChoice choice=fingerprintFileChoice;
+    Intent selectedFile=new Intent(data);fingerprintFileResult=selectedFile;fingerprintFileRequest=request;
+    message("正在确认原网页与指纹配置，确认后交付所选文件…");
+    fingerprintMain.post(this::drainFingerprintFileResult);
+    fingerprintMain.postDelayed(()->{
+      if(fingerprintFileChoice==choice&&fingerprintFileResult==selectedFile)
+        cancelFingerprintFileResult("网页连接或指纹配置确认超时，未添加附件，请重新选择");
+    },15000);
+    return true;
   }
   void showFingerprintSettings(){
     if(fingerprintState==null||!fingerprintStateReady){fingerprintOpenAfterLoad=true;loadFingerprintState();message(fingerprintError.isEmpty()?"正在读取此环境的 Chromium 指纹配置…":fingerprintError);return;}

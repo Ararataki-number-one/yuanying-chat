@@ -18,12 +18,13 @@ class FileDownloads {
   static final int SAVE=83;static final long MAX=512L*1024*1024;
   final MainActivity a;final ExecutorService worker=Executors.newSingleThreadExecutor();
   volatile InputStream nativeInput;volatile boolean cancelled;volatile HttpURLConnection connection;volatile File temp;volatile boolean active,destroyed;String imageLabel="",name="文件",mime="application/octet-stream",sourceId="",sourceKey="",sourceUrl="",retryUrl="",agent="",blobKey="",blobPage="";volatile long ticket=0;long blobSize,offset,ignoreUntil=0;Dialog dialog;AlertDialog noticeDialog;TextView progress;
+  private Object blobDocument;private long blobNavigation,blobConnection;
   final SavedFileActions savedActions;final DownloadTasks tasks;JSONObject task;boolean resumeRequested=false,minimized=false,completeFile=false,awaitingPicker=false,retiringPartial=false,persistenceBlocked=false;long pickerTicket=-1,lastProgressSaved;static final long PROGRESS_SAVE_INTERVAL=2000;volatile Uri savingDestination;AlertDialog manager;String resumeValidator="",resumeAddress="";volatile long receivedBytes=0,totalBytes=-1;
   FileDownloads(MainActivity a){this.a=a;savedActions=new SavedFileActions(a);tasks=new DownloadTasks(a);a.remote.setDownloadListener((url,ua,cd,type,size)->accept(url,ua,cd,type,size));a.remote.responseDownload=this::acceptResponse;}
   String downloadSource(){String current=a.remote.getUrl();return MainActivity.chatUrl(current)?a.conversation:current==null?"":current;}
   void acceptResponse(org.mozilla.geckoview.WebResponse response){
     InputStream input=response.body;
-    if(input==null){a.status("网页未提供文件内容，请重新点按下载");return;}
+    if(input==null){a.fileFeedback("网页没有提供文件内容，请重新点按下载");return;}
     if(destroyed||retiringPartial||active&&!retryUrl.isEmpty()||awaitingPicker||System.currentTimeMillis()<ignoreUntil){try{input.close();}catch(IOException ignored){}a.status("请先完成当前下载，再下载这个文件");return;}
     try{AppPrefs.requireDownloadNetwork(a);if(!a.session.guard.allowed())throw new IOException("受保护连接已中断，下载已暂停");}catch(IOException error){try{input.close();}catch(IOException ignored){}a.status(error.getMessage());return;}
     if(!active){String source=downloadSource();newTask("","",source);if(persistenceBlocked){try{input.close();}catch(IOException ignored){}return;}sourceId="";sourceKey="";sourceUrl=source;imageLabel="";active=true;a.session.transferActive=true;a.session.updateBrowserActivity();cancelled=false;++ticket;}
@@ -62,7 +63,7 @@ class FileDownloads {
     try{
       AppPrefs.requireDownloadNetwork(a);
       if(a.session.offline||!a.session.networkReady||!a.session.guard.allowed())throw new IOException("请恢复当前环境的受保护连接后再下载");
-    }catch(IOException unavailable){a.status(unavailable.getMessage());return;}
+    }catch(IOException unavailable){a.fileFeedback(unavailable.getMessage());return;}
     ignoreUntil=0;
     accept(url,a.remote.getSettings().getUserAgentString(),"","application/octet-stream",-1);
   }
@@ -125,11 +126,87 @@ class FileDownloads {
       throw new IOException("文件重定向次数过多");}
     }catch(Exception e){fail(attempt,e.getMessage());}
   }
-  void startBlob(long attempt,String url){try{Uri origin=Uri.parse(a.remote.getUrl()),blobOrigin=Uri.parse(url.substring(5));if(!Objects.equals(origin.getScheme(),blobOrigin.getScheme())||!Objects.equals(origin.getHost(),blobOrigin.getHost())||origin.getPort()!=blobOrigin.getPort())throw new IOException("文件页面已改变，请重试");if(temp!=null)temp.delete();temp=File.createTempFile("download-",".part",a.getCacheDir());DownloadTasks.put(task,"partial",temp.getName());if(!saveTask())return;resumeValidator="";blobPage=a.remote.getUrl();blobKey="__pocketFile"+UUID.randomUUID().toString().replace("-","");String key=JSONObject.quote(blobKey);a.remote.evaluateJavascript("void(fetch("+JSONObject.quote(url)+").then(r=>r.blob()).then(b=>window["+key+"]={blob:b,size:b.size,mime:b.type,ready:true}).catch(()=>window["+key+"]={error:true}))",r->pollBlob(attempt,System.currentTimeMillis()+15000));}catch(Exception e){fail(attempt,e.getMessage());}}
-  boolean blobValid(long attempt){return valid(attempt)&&Objects.equals(blobPage,a.remote.getUrl());}
-  void pollBlob(long attempt,long deadline){if(!blobValid(attempt)){fail(attempt,"文件页面已改变，请重试");return;}a.remote.evaluateJavascript("(()=>{const f=window["+JSONObject.quote(blobKey)+"];return f?{ready:f.ready,size:f.size,mime:f.mime,error:f.error}:{};})()",raw->{if(!valid(attempt))return;JSONObject f=J.parse(raw);if(f.optBoolean("error")){fail(attempt,"文件链接已失效，请重试获取");return;}if(f.optBoolean("ready")){blobSize=f.optLong("size");totalBytes=blobSize;receivedBytes=0;responseMetadata(retryUrl,"",f.optString("mime"));if(blobSize>MAX||blobSize>a.getCacheDir().getUsableSpace()-64L*1024*1024){fail(attempt,"文件超过 512 MB 或剩余空间不足");return;}offset=0;chunk(attempt);}else if(System.currentTimeMillis()<deadline)a.handler.postDelayed(()->pollBlob(attempt,deadline),120);else fail(attempt,"读取文件超时，请重试");});}
+  void startBlob(long attempt,String url){
+    try{
+      blobPage=a.remote.getUrl();
+      blobDocument=a.remote.ports.get(a.remote.current);
+      blobNavigation=a.session.navigationEpoch;blobConnection=a.session.connectionEpoch;
+      if(!GeckoNavigationPolicy.blobFrom(url,blobPage)||!blobValid(attempt))
+        throw new IOException("文件页面已改变，请重试");
+      if(temp!=null)temp.delete();
+      temp=File.createTempFile("download-",".part",a.getCacheDir());
+      DownloadTasks.put(task,"partial",temp.getName());
+      if(!saveTask())return;
+      resumeValidator="";blobKey="__pocketFile"+UUID.randomUUID().toString().replace("-","");
+      String key=JSONObject.quote(blobKey);
+      a.remote.evaluateJavascript("void(fetch("+JSONObject.quote(url)+").then(r=>{if(!r.ok)throw new Error();return r.blob();}).then(b=>window["+key+"]={blob:b,size:b.size,mime:b.type,ready:true}).catch(()=>window["+key+"]={error:true}))",
+        ignored->pollBlob(attempt,System.currentTimeMillis()+15000));
+    }catch(Exception error){fail(attempt,error.getMessage());}
+  }
+  boolean blobDocumentCurrent(){
+    return blobDocument!=null&&blobDocument==a.remote.ports.get(a.remote.current)
+        &&blobNavigation==a.session.navigationEpoch&&Objects.equals(blobPage,a.remote.getUrl());
+  }
+  boolean blobValid(long attempt){
+    return valid(attempt)&&blobDocumentCurrent()&&blobConnection==a.session.connectionEpoch&&a.session.guard.allowed();
+  }
+  void pollBlob(long attempt,long deadline){
+    if(!blobValid(attempt)){fail(attempt,"文件页面已改变，请重试");return;}
+    a.remote.evaluateJavascript("(()=>{const f=window["+JSONObject.quote(blobKey)+"];return f?{ready:f.ready,size:f.size,mime:f.mime,error:f.error}:{};})()",raw->{
+      if(!blobValid(attempt)){fail(attempt,"文件页面已改变，请重试");return;}
+      JSONObject result=J.parse(raw);
+      if(result.optBoolean("error")){fail(attempt,"文件链接已失效，请重新点按下载");return;}
+      if(!result.optBoolean("ready")){
+        if(System.currentTimeMillis()<deadline)a.handler.postDelayed(()->pollBlob(attempt,deadline),120);
+        else fail(attempt,"读取文件超时，请重试");
+        return;
+      }
+      blobSize=result.optLong("size",-1);
+      String contentType=result.optString("mime");
+      boolean pdf="application/pdf".equalsIgnoreCase(contentType)||name.toLowerCase(Locale.ROOT).endsWith(".pdf");
+      if(blobSize<0||blobSize==0&&pdf){fail(attempt,"网页没有提供有效的文件内容");return;}
+      if(blobSize>MAX||blobSize>a.getCacheDir().getUsableSpace()-64L*1024*1024){
+        fail(attempt,"文件超过 512 MB 或剩余空间不足");return;
+      }
+      totalBytes=blobSize;receivedBytes=0;
+      responseMetadata(retryUrl,"",contentType);
+      offset=0;chunk(attempt);
+    });
+  }
   void chunk(long attempt){if(!blobValid(attempt)){fail(attempt,"文件页面已改变，请重试");return;}if(offset>=blobSize){clearBlob();choose(attempt);return;}long end=Math.min(blobSize,offset+192*1024);String key=JSONObject.quote(blobKey);a.remote.evaluateJavascript("void((async()=>{const f=window["+key+"];if(!f)return;try{const bytes=new Uint8Array(await f.blob.slice("+offset+","+end+").arrayBuffer());let text='';for(let i=0;i<bytes.length;i+=8192)text+=String.fromCharCode(...bytes.subarray(i,i+8192));f.chunk=btoa(text);}catch{f.error=true;}})())",r->readChunk(attempt,end,System.currentTimeMillis()+10000));}
-  void readChunk(long attempt,long end,long deadline){if(!blobValid(attempt)){fail(attempt,"文件页面已改变，请重试");return;}a.remote.evaluateJavascript("(()=>{const f=window["+JSONObject.quote(blobKey)+"];if(!f||f.error)return {error:true};if(typeof f.chunk!=='string')return {};const chunk=f.chunk;delete f.chunk;return {chunk};})()",raw->{if(!valid(attempt))return;JSONObject f=J.parse(raw);if(f.optBoolean("error")){fail(attempt,"读取文件失败");return;}if(!f.has("chunk")){if(System.currentTimeMillis()<deadline)a.handler.postDelayed(()->readChunk(attempt,end,deadline),100);else fail(attempt,"读取文件超时");return;}File file=temp;worker.execute(()->{try{byte[] bytes=android.util.Base64.decode(f.getString("chunk"),android.util.Base64.DEFAULT);if(bytes.length!=end-offset)throw new IOException();SealedFileIo.lease(file,()->{if(!valid(attempt))throw new IOException();try(OutputStream out=new FileOutputStream(file,true)){out.write(bytes);}return null;});offset=end;receivedBytes=end;totalBytes=blobSize;a.handler.post(()->{if(valid(attempt)){transferProgress();chunk(attempt);}});}catch(Exception e){fail(attempt,"文件片段保存失败，请重试");}});});}
+  void readChunk(long attempt,long end,long deadline){
+    if(!blobValid(attempt)){fail(attempt,"文件页面已改变，请重试");return;}
+    String script="(()=>{const f=window["+JSONObject.quote(blobKey)+"];if(!f||f.error)return {error:true};if(typeof f.chunk!=='string')return {};const chunk=f.chunk;delete f.chunk;return {chunk};})()";
+    a.remote.evaluateJavascript(script,raw->{
+      if(!blobValid(attempt)){fail(attempt,"文件页面已改变，请重试");return;}
+      JSONObject result=J.parse(raw);
+      if(result.optBoolean("error")){fail(attempt,"读取文件失败");return;}
+      if(!result.has("chunk")){
+        if(System.currentTimeMillis()<deadline)a.handler.postDelayed(()->readChunk(attempt,end,deadline),100);
+        else fail(attempt,"读取文件超时");
+        return;
+      }
+      File file=temp;long start=offset;
+      worker.execute(()->{
+        try{
+          byte[] bytes=android.util.Base64.decode(result.getString("chunk"),android.util.Base64.DEFAULT);
+          if(bytes.length!=end-start)throw new IOException();
+          boolean pdfHeader=start==0&&bytes.length>=5&&bytes[0]=='%'&&bytes[1]=='P'&&bytes[2]=='D'&&bytes[3]=='F'&&bytes[4]=='-';
+          SealedFileIo.lease(file,()->{
+            if(!valid(attempt))throw new IOException();
+            try(OutputStream out=new FileOutputStream(file,true)){out.write(bytes);}
+            return null;
+          });
+          a.handler.post(()->{
+            if(!blobValid(attempt)){fail(attempt,"文件页面已改变，请重试");return;}
+            offset=end;receivedBytes=end;totalBytes=blobSize;
+            if(pdfHeader&&"application/octet-stream".equals(mime))responseMetadata(retryUrl,"","application/pdf");
+            transferProgress();chunk(attempt);
+          });
+        }catch(Exception error){fail(attempt,"文件片段保存失败，请重试");}
+      });
+    });
+  }
   void chooseManually(long attempt){if(!valid(attempt))return;if(!task.optString("pendingDestination").isEmpty()){a.status("上次保存结果待确认，请先在下载记录中重试核验");return;}completeFile=true;mark("choosing","");if(persistenceBlocked)return;dismiss();pickerTicket=attempt;awaitingPicker=true;try{a.startActivityForResult(new Intent(Intent.ACTION_CREATE_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType(mime).putExtra(Intent.EXTRA_TITLE,name),SAVE);}catch(ActivityNotFoundException e){awaitingPicker=false;fail(attempt,"设备没有文件保存器");}}
   boolean validSave(long attempt,JSONObject chosenTask){if(!valid(attempt)||task!=chosenTask||!tasks.owns(chosenTask))return false;JSONObject environment=ProfileCatalog.get(a).item(Profiles.slot(a));return environment.optBoolean("created")&&!environment.optBoolean("deleting")&&!environment.optBoolean("resetting")&&a.session.environmentId.equals(environment.optString("environmentId"))&&a.session.environmentGeneration==environment.optInt("generation");}
   void commitSaved(long attempt,JSONObject chosenTask,String generation,Uri uri,String savedName,String location,long savedBytes,JSONObject facts){
@@ -146,6 +223,7 @@ class FileDownloads {
       // Publication already committed. Notification or view failures must never
       // roll back a durable saved file, and a later transfer keeps its own state.
       if(task==chosenTask&&!active){if(temp==file)temp=null;a.session.transferActive=false;a.session.updateBrowserActivity();dismiss();}
+      a.fileFeedback("文件已保存，可在下载中查看");
       ChatService.downloaded(a,chosenTask.optString("id"),savedName);if(a.hub!=null&&a.hub.page==1)a.hub.refresh();
     }));
   }
@@ -276,7 +354,7 @@ class FileDownloads {
       });}
     });}catch(RejectedExecutionException closed){if(!destroyed)a.status("文件清理尚未开始，下载副本已保留，请稍后重试");}
   }
-  void clearBlob(){if(!blobKey.isEmpty()&&Objects.equals(blobPage,a.remote.getUrl()))a.remote.evaluateJavascript("delete window["+JSONObject.quote(blobKey)+"]",null);blobKey="";}
+  void clearBlob(){if(!blobKey.isEmpty()&&blobDocumentCurrent())a.remote.evaluateJavascript("delete window["+JSONObject.quote(blobKey)+"]",null);blobKey="";blobDocument=null;}
   void dismiss(){if(dialog!=null){dialog.dismiss();dialog=null;}}
   void destroy(){if(active)pause();if(manager!=null)manager.dismiss();if(noticeDialog!=null)noticeDialog.dismiss();destroyed=true;tasks.release();savedActions.close();worker.shutdown();}
   void newTask(String id,String key,String url){try{JSONObject created=tasks.add(id,key,url);task=created;persistenceBlocked=false;name="文件";mime="application/octet-stream";imageLabel="";completeFile=false;temp=null;resumeValidator="";resumeAddress="";receivedBytes=0;totalBytes=-1;minimized=true;}catch(DownloadTasks.PersistenceFailure failure){persistenceBlocked=true;a.status(failure.getMessage());}}
@@ -312,7 +390,7 @@ class FileDownloads {
     if(lastProgressSaved==0||now-lastProgressSaved>=PROGRESS_SAVE_INTERVAL){if(!saveTask())return;lastProgressSaved=now;}
     showProgress(name+"\n"+DownloadTasks.progress(task));
   }
-  void fail(long attempt,String reason){a.handler.post(()->{if(!valid(attempt))return;mark(reason!=null&&reason.startsWith("仅 Wi-Fi")?"paused":"failed",reason);if(persistenceBlocked)return;active=false;a.session.transferActive=false;a.session.updateBrowserActivity();dismiss();clearBlob();if(a.hub!=null&&a.hub.page==1)a.hub.refresh();});}
+  void fail(long attempt,String reason){a.handler.post(()->{if(!valid(attempt))return;mark(reason!=null&&reason.startsWith("仅 Wi-Fi")?"paused":"failed",reason);if(persistenceBlocked)return;active=false;a.session.transferActive=false;a.session.updateBrowserActivity();dismiss();clearBlob();a.fileFeedback("下载未完成，可在下载记录中查看或重试");if(a.hub!=null&&a.hub.page==1)a.hub.refresh();});}
   void pause(){if(!active)return;ignoreUntil=System.currentTimeMillis()+1500;cancelled=true;active=false;a.session.transferActive=false;a.session.updateBrowserActivity();ticket++;if(connection!=null)connection.disconnect();InputStream nativeStream=nativeInput;nativeInput=null;if(nativeStream!=null)new Thread(()->{try{nativeStream.close();}catch(IOException ignored){}},"download-close").start();clearBlob();dismiss();savingDestination=null;mark("paused",DownloadResumePolicy.paused(task,temp!=null&&temp.isFile(),requestAvailable(task)));}
   void requestCancel(){if(destroyed||retiringPartial||task==null||"saved".equals(task.optString("state")))return;JSONObject chosen=task;AppAppearance.dialog(a).setTitle("取消下载？").setMessage(DownloadResumePolicy.RESUME.equals(continuationAction(chosen))?"会清理已下载的部分。只想稍后继续，可以暂停下载。":completeFile?"会清理尚未保存的完整文件。也可保留，稍后继续保存。":"会清理本任务未完成的部分；重新下载需要回原网页再次点按。").setPositiveButton("取消并清理",(d,w)->{if(task==chosen&&!"saved".equals(chosen.optString("state")))cancel();}).setNeutralButton("暂停下载",(d,w)->{if(task==chosen)pause();}).setNegativeButton("保留下载",null).show();}
   void cancel(){

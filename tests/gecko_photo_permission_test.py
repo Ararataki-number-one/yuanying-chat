@@ -20,14 +20,26 @@ public class PhotoPermissionHost {
   JSONObject last(){return web.routePort.sent.isEmpty()?new JSONObject():web.routePort.sent.get(web.routePort.sent.size()-1);}
   JSONObject ack(JSONObject request,String status){return J.obj("schema",1,"status",status,"sessionId",request.optString("sessionId"),"requestToken",request.optString("requestToken"),"origin","https://photos.example","documentId","123456","scope","origin-and-origin-attributes","expiresAt","granted".equals(status)?System.currentTimeMillis()+120000:0);}
   void reply(JSONObject request,JSONObject value){web.cookieCallbacks.complete(web.routePort,request.optInt("id"),value.toString());}
-  void captured(){begin();reply(capture,ack(capture,"captured"));check("picker opens after capture",ready);}
+  void captured(){begin();reply(capture,ack(capture,"captured"));check("picker remains open after capture",ready);}
   JSONObject allow(){gate.allow(true,value->issue=value);return last();}
  }
  static void stale(String name,Consumer<Run> change){Run r=new Run();r.captured();JSONObject grant=r.allow();change.accept(r);r.reply(grant,r.ack(grant,"granted"));check(name+" cannot hand off a photo",r.issue!=null&&!r.issue.isEmpty());}
  public static void main(String[] args){
   Run r=new Run();r.web.owner.privacy.level=1;r.gate=new GeckoPhotoPermission(r.web,r.web.current);r.begin();r.gate.allow(true,value->rUnused(value));check("standard mode opens chooser without native permissions",r.ready&&r.web.routePort.sent.isEmpty());
-  r=new Run();r.begin();check("capture precedes picker",!r.ready&&r.capture.optString("kind").equals("photoCanvasCapture"));r.reply(r.capture,r.ack(r.capture,"captured"));check("capture does not itself grant",r.ready&&r.web.routePort.sent.size()==1);JSONObject grant=r.allow();check("actual photo asks native grant",grant.optString("kind").equals("photoCanvasGrant")&&r.issue==null);r.reply(grant,r.ack(grant,"granted"));check("bound current grant admits photo",r.issue.equals(""));int sent=r.web.routePort.sent.size();r.gate.handedOff();r.gate.cancel();check("a handed photo keeps its native document lease",r.web.routePort.sent.size()==sent);
-  r=new Run();r.captured();final Run textRun=r;r.gate.allow(false,value->textRun.issue=value);check("ordinary files never request a canvas grant",r.issue.equals("")&&r.last().optString("kind").equals("photoCanvasRelease"));
+  r=new Run();r.begin();check("picker opens while capture is pending",r.ready&&r.capture.optString("kind").equals("photoCanvasCapture"));r.reply(r.capture,r.ack(r.capture,"captured"));check("capture does not itself grant",r.ready&&r.web.routePort.sent.size()==1);JSONObject grant=r.allow();check("actual photo asks native grant",grant.optString("kind").equals("photoCanvasGrant")&&r.issue==null);r.reply(grant,r.ack(grant,"granted"));check("bound current grant admits photo",r.issue.equals(""));int sent=r.web.routePort.sent.size();r.gate.handedOff();r.gate.cancel();check("a handed photo keeps its native document lease",r.web.routePort.sent.size()==sent);
+  r=new Run();r.begin();final Run textRun=r;r.gate.allow(false,value->textRun.issue=value);
+  check("ordinary files do not wait for canvas capture or grant",r.issue.equals("")&&r.last().optString("kind").equals("photoCanvasRelease"));
+  r.gate.handedOff();r.reply(r.capture,r.ack(r.capture,"captured"));check("late capture does not grant a lease to a selected document",r.web.routePort.sent.size()==2);
+  r=new Run();r.begin();r.allow();
+  check("a photo selected before capture waits without asking for a grant",r.issue==null&&r.web.routePort.sent.size()==1);
+  r.reply(r.capture,r.ack(r.capture,"captured"));grant=r.last();
+  check("a bound capture resumes pending photo selection",grant.optString("kind").equals("photoCanvasGrant")&&r.issue==null);
+  r.reply(grant,r.ack(grant,"granted"));check("the pending photo still needs the matching grant",r.issue.equals(""));
+  r=new Run();r.begin();r.allow();r.gate.cancel();String cancelled=r.issue;
+  r.reply(r.capture,r.ack(r.capture,"captured"));
+  check("cancelling while capture is pending settles the photo and denies any late grant",cancelled!=null&&!cancelled.isEmpty()&&cancelled.equals(r.issue)&&r.web.routePort.sent.size()==2);
+  r=new Run();r.begin();r.allow();r.web.timer.fire();
+  check("capture timeout dismisses a pending image without closing the initial picker",r.ready&&r.issue!=null&&!r.issue.isEmpty()&&r.last().optString("kind").equals("photoCanvasRelease"));
   for(String status:new String[]{"denied","failed","not-required"}){r=new Run();r.captured();grant=r.allow();r.reply(grant,r.ack(grant,status));check(status+" cannot admit a photo while enhanced mode is still requested",r.issue!=null&&!r.issue.isEmpty()&&r.last().optString("kind").equals("photoCanvasRelease"));}
   for(String bad:new String[]{"documentId","origin","sessionId","requestToken","scope","expiresAt"}){r=new Run();r.captured();grant=r.allow();JSONObject ack=r.ack(grant,"granted");try{ack.put(bad,bad.equals("expiresAt")?System.currentTimeMillis()+900000:"different");}catch(Exception e){throw new AssertionError(e);}r.reply(grant,ack);check("wrong "+bad+" cannot admit a photo",r.issue!=null&&!r.issue.isEmpty());}
   stale("navigation epoch",x->x.web.owner.navigationEpoch++);stale("same URL reload",x->x.web.appearanceLoads.put(x.web.current,2L));stale("replaced page",x->x.web.locations.put(x.web.current,"https://photos.example/other"));stale("pending document load",x->x.web.pendingLoads.add(x.web.current));stale("closed session",x->x.web.current.open=false);stale("environment retired",x->x.web.owner.deleted=true);stale("browser replaced",x->x.web.owner.web=null);

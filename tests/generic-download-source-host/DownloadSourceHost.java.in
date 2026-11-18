@@ -97,6 +97,7 @@ class MainActivity {
   static boolean chatUrl(String value){try{return BrowserRuntimePolicy.official(URI.create(value));}catch(Exception invalid){return false;}}
   File getCacheDir(){return cache;}
   void status(String value){message=value;}
+  void fileFeedback(String value){message=value;}
   void runDriver(String action,JSONObject args,Object callback){driverCalls++;throw new AssertionError("Unexpected DOM driver");}
 }
 class RemoteBoundary {String url,afterRead;int reads,scripts;String getUrl(){reads++;String value=url;if(afterRead!=null){url=afterRead;afterRead=null;}return value;}}

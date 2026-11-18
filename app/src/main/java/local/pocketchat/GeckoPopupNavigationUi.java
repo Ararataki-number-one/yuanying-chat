@@ -64,7 +64,7 @@ final class GeckoPopupNavigationUi {
           &&identity==view.identityPolicyRevision&&protection==view.nativeProtection.token()&&desired>=1&&owner.timeZone.status().optLong("desiredRevision",-1)==desired
           &&slot==Profiles.slot(owner.context)&&generation==owner.environmentGeneration&&environment.equals(owner.environmentId)&&draftRevision==LocalDraftPolicy.revision(owner.context)&&drafts==LocalDraftPolicy.enabled(owner.context)
           &&work.current(owner)&&view.hasVisibleDocument()&&view.readingOwnerVisible()&&view.isShown()&&!view.ipRouteNeedsReload&&view.timeZoneAllows(sdk)
-          &&owner.guard.allowed()&&!route.isEmpty()&&route.equals(view.ipRouteStamp())&&targetAllowed(target)&&ui.focusOwned(activity);
+          &&owner.guard.allowed()&&!route.isEmpty()&&route.equals(view.ipRouteStamp())&&(targetAllowed(target)||file)&&ui.focusOwned(activity);
     }
   }
   static final class Attempt {
@@ -96,7 +96,7 @@ final class GeckoPopupNavigationUi {
 
   void offer(GeckoSession source,String target){
     if(closed||web.destroyed||source==null||source!=web.current||!source.isOpen()||!web.hasVisibleDocument())return;
-    if(!targetAllowed(target)){invalidate();return;}
+    if(!targetAllowed(target)&&!GeckoNavigationPolicy.chatDownloadPopup(target,web.getUrl())){invalidate();return;}
     Context host=web.displayContext.getBaseContext();if(!(host instanceof MainActivity))return;MainActivity activity=(MainActivity)host;
     if(web.ipRouteNeedsReload){web.owner.setStatus(changedMessage());return;}
     Target next=new Target(activity,web,source,target);if(!next.current(this))return;

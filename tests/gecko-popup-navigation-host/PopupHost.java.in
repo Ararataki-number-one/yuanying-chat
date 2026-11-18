@@ -90,7 +90,18 @@ public final class PopupHost {
     check("A trigger from a different document cannot start a download",!other.ui.downloadOnGesture(other.web.current,SessionBoundary.NavigationDelegate.file(file,GPT+"-other",true)));
     other.owner.timeZone.popups=true;
     check("System-timezone mode keeps its existing native popup flow",!other.ui.downloadOnGesture(other.web.current,SessionBoundary.NavigationDelegate.file(file,GPT,true)));
-    for(String value:Arrays.asList(DEST,file.replace("chatgpt.com","chatgpt.com.evil.example"),file.replace("https:","http:"),file+"&id=file_other",file.replace("id=","%69d="),file.replace("&sig=","&sign="),explicit.replace("/download",""),"blob:https://chatgpt.com/01234567-abcd-4321-abcd-0123456789ab")){
+    String preview="blob:https://chatgpt.com/01234567-abcd-4321-abcd-0123456789ab";
+    Scene pdf=new Scene();
+    check("A trusted same-origin preview blob takes the protected download route",pdf.ui.downloadOnGesture(pdf.web.current,SessionBoundary.NavigationDelegate.file(preview,GPT,true))
+      &&preview.equals(pdf.activity.downloads.url)&&pdf.activity.downloads.calls==1&&pdf.owner.browses==0);
+    Scene asyncPdf=new Scene();asyncPdf.ui.offer(asyncPdf.web.current,preview);
+    check("A blocked async PDF blob offers a download action",asyncPdf.ui.action!=null&&asyncPdf.ui.action.label.equals("下载文件"));
+    asyncPdf.ui.action.click();
+    check("An explicit PDF download leaves the preview open",asyncPdf.activity.downloads.calls==1&&preview.equals(asyncPdf.activity.downloads.url)&&asyncPdf.owner.browses==0);
+    Scene stalePdf=new Scene();stalePdf.ui.offer(stalePdf.web.current,preview);stalePdf.web.timeZoneGates.get(stalePdf.web.current).documentSerial++;stalePdf.ui.action.click();
+    check("The same URL with a replaced document cannot download the old blob",stalePdf.activity.downloads.calls==0);
+    check("Only a ChatGPT conversation may download a same-origin preview blob",!GeckoNavigationPolicy.chatDownloadPopup(preview,"https://chatgpt.com/"));
+    for(String value:Arrays.asList(DEST,file.replace("chatgpt.com","chatgpt.com.evil.example"),file.replace("https:","http:"),file+"&id=file_other",file.replace("id=","%69d="),file.replace("&sig=","&sign="),explicit.replace("/download",""),preview.replace("chatgpt.com","files.example.com"),preview+"#file",preview.replace("https:","http:"),"blob:https://chatgpt.com/not-a-browser-blob-id")){
       check("Unrecognized or unsafe file target does not use native download",!GeckoNavigationPolicy.chatDownloadPopup(value,GPT));
     }
     check("A non-conversation page cannot opt into this handoff",!GeckoNavigationPolicy.chatDownloadPopup(file,"https://chatgpt.com/"));

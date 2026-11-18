@@ -198,6 +198,13 @@ public class PageRecoveryHost {
    String waiting=ReplyState.describe(poll,job,0,120000);check("Long thinking text is independent of normal busy prefix",waiting.startsWith("回复长时间无进展"));
    s.replyStalled=true;s.status=waiting;a=new MainActivity(s);a.status(waiting);check("Long waiting remains visible and actionable",a.status.visibility==View.VISIBLE&&a.status.clickable);
    s.replyStalled=false;s.status="正在思考…";a.status(s.status);check("Normal short thinking stays quiet",a.status.visibility==View.GONE);
+   s=route();a=new MainActivity(s);s.resourceFilePreparations=1;s.status="已连接";a.status(s.status);
+   check("A native file preparation stays visible across quiet webpage status updates",a.status.visibility==View.VISIBLE&&!a.status.clickable&&a.status.text.equals("准备附件…"));
+   s.resourceFilePreparations=0;a.status(s.status);
+   check("Finishing local file preparation clears its native status",a.status.visibility==View.GONE);
+   String attachmentIssue="图片处理权限未确认，照片尚未上传";
+   a.status(attachmentIssue);a.status(attachmentIssue);
+   check("A native attachment rejection is visible and announced once without a network action",a.status.visibility==View.VISIBLE&&a.status.text.equals(attachmentIssue)&&!a.status.clickable&&a.feedbackCount==1);
    s=route();String previous=s.lastDocumentId;long beforeEpoch=s.navigationEpoch;ChatSession.ReloadTarget previousTarget=s.reloadTarget();s.beginNavigation(s.web.url,"new navigation");check("Production navigation moves the observed document into prior scope and invalidates the old target",s.lastDocumentId.isEmpty()&&s.priorDocumentId.equals(previous)&&s.awaitNewDocument&&s.navigationEpoch==beforeEpoch+1&&!previousTarget.matches(s));
    s.sync();ChatSession.Result oldDocument=s.driverResult;oldDocument.accept(j("url",s.web.url,"documentId",previous,"composer",true,"busy",false));check("Production sync refuses a prior document before new navigation has committed",s.lastDocumentId.isEmpty()&&s.awaitNewDocument&&!s.inFlight&&s.stateEpoch!=s.navigationEpoch);
    s.sync();s.driverResult.accept(j("url",s.web.url,"documentId","fresh-navigation-document-0002","composer",false,"busy",false));check("Production sync registers the new document in the new epoch without replacing its prior proof",s.lastDocumentId.equals("fresh-navigation-document-0002")&&s.priorDocumentId.equals(previous)&&!s.awaitNewDocument&&s.stateEpoch==s.navigationEpoch);
@@ -276,7 +283,7 @@ class ChatSession {
 class PageMemory {/* MEMORY */}
 class MainActivity {
  ChatSession session;Web remote;boolean destroyed,finishing,reloadChecking;ReferenceUi.Modal reloadDialog;Text status=new Text();AppHub hub=new AppHub();String lastUiStatus="";
- int reloadRequests,shownPages;void requestReload(){reloadRequests++;}void showPage(boolean show){shownPages++;}void clickStatus() /* STATUS_CLICK */ MainActivity(ChatSession s){session=s;remote=s.web;}boolean isDestroyed(){return destroyed;}boolean isFinishing(){return finishing;}
+ int reloadRequests,shownPages,feedbackCount;void fileFeedback(String value){feedbackCount++;}void requestReload(){reloadRequests++;}void showPage(boolean show){shownPages++;}void clickStatus() /* STATUS_CLICK */ MainActivity(ChatSession s){session=s;remote=s.web;}boolean isDestroyed(){return destroyed;}boolean isFinishing(){return finishing;}
  /* MAIN */
 }
 class ReplyState {/* REPLY */}
