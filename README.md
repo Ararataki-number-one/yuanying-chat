@@ -1,21 +1,22 @@
 # 元婴期院士 · Yuanying Chat
 
-## 最新正式版 2.1.6（108）
+## 最新正式版 2.1.9（111）
 
-本版修复照片经网页处理后变成纯色的问题，并将网址和常用浏览器操作移到底部，顶部保留环境胶囊。
+本版修复 Gecko 拦截已识别的 ChatGPT 文档下载的问题，并移除应用对 ChatGPT 网页通用错误、额度和验证提示的检测。
 
-- [下载 2.1.6 正式安装包（Android ARM64）](https://github.com/Ararataki-number-one/yuanying-chat/releases/download/v2.1.6-gecko/PocketChat-2.1.6-gecko-arm64.apk)
-- [正式发布说明与校验信息](https://github.com/Ararataki-number-one/yuanying-chat/releases/tag/v2.1.6-gecko)
-- [2.1.6 对应源码](https://github.com/Ararataki-number-one/yuanying-chat/tree/v2.1.6-gecko)
-- [详细变更与验证范围](https://github.com/Ararataki-number-one/yuanying-chat/blob/6fdae6bafa0bdeb73d9d37d22a1708e286549d43/RELEASE.md)
+- [下载 2.1.9 正式安装包（Android ARM64）](https://github.com/Ararataki-number-one/yuanying-chat/releases/download/v2.1.9-gecko/PocketChat-2.1.9-gecko-arm64.apk)
+- [正式发布说明与校验信息](https://github.com/Ararataki-number-one/yuanying-chat/releases/tag/v2.1.9-gecko)
+- [2.1.9 对应源码](https://github.com/Ararataki-number-one/yuanying-chat/tree/v2.1.9-gecko)
+- [变更说明](https://github.com/Ararataki-number-one/yuanying-chat/blob/v2.1.9-gecko/docs/RELEASE-v2.1.9.md)
+- [应用内更新清单](https://raw.githubusercontent.com/Ararataki-number-one/yuanying-chat/app-updates/latest.json)
 
-安装包沿用原应用签名；使用原签名正式版的用户可覆盖升级。开发和构建请使用上方对应的源码标签。
+安装包沿用原应用签名。使用原签名正式版的用户可以覆盖升级，开发和构建请使用上方的源码标签。
 
 ---
 
 ## 1.5.20 历史说明
 
-**历史文档范围：以下全部段落均沿用 1.5.20 及更早版本的历史资料，其中的功能、导航、内核和验证结论不代表 2.1.6 当前状态。2.1.6 的功能与验证范围以上方正式发布说明及对应源码为准。**
+**以下为 1.5.20 及更早版本的历史资料。当前正式版的功能与验证范围见上方发布说明及对应源码。**
 
 使用 Mozilla 官方 GeckoView 的 Android ChatGPT 网页客户端。聊天、模型选择、历史记录和消息操作由 ChatGPT 官方网页提供；应用负责独立环境、网络、文件下载、阅读缩放和可选后台提醒。
 
