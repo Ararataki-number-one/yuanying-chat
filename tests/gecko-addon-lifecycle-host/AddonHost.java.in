@@ -153,4 +153,4 @@ class LoginPagePolicy {static boolean login(String target){return false;}}
 class NativeNetwork {static String hash(String value){return value;}}
 
 /** Counted app-only UI collaborator; no Android rendering, status or native popup. */
-class PopupBoundary {final View web;int offers,invalidations;GeckoSession source;String target;PopupBoundary(View web){this.web=web;}void offer(GeckoSession source,String target){web.requireManualSystem();offers++;this.source=source;this.target=target;}void invalidate(){web.requireManualSystem();invalidations++;source=null;target=null;}}
+class PopupBoundary {final View web;int offers,invalidations;GeckoSession source;String target;PopupBoundary(View web){this.web=web;}boolean downloadOnGesture(GeckoSession source,LoadRequest request){return false;}void offer(GeckoSession source,String target){web.requireManualSystem();offers++;this.source=source;this.target=target;}void invalidate(){web.requireManualSystem();invalidations++;source=null;target=null;}}

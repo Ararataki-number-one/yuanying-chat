@@ -128,7 +128,12 @@ final class NativeProtectionControllerHost {
     IpLookup ipLookup=null;
     int manualIpRetryChecks;boolean ipMode;
     boolean retryFailedIpNavigation(String target){manualIpRetryChecks++;if(ipMode)throw new AssertionError("IP retry and replacement are outside the manual-system protection scope");return true;}
-    static final class BlockedPopupUiBoundary {int offers;void offer(GeckoSession source,String target){offers++;}}
+    // This protection host observes navigation admission, not file I/O.
+    static final class BlockedPopupUiBoundary {
+      int offers;
+      void offer(GeckoSession source,String target){offers++;}
+      boolean downloadOnGesture(GeckoSession source,LoadRequest request){return false;}
+    }
     final BlockedPopupUiBoundary blockedPopups=new BlockedPopupUiBoundary();
     int protectionLevel=-1,configuredProtection=2,requestedProtection=-1,opens;
     long protectionRequest;String queued="";Object surface,extension=new Object();

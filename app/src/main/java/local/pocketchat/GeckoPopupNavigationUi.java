@@ -12,7 +12,7 @@ import android.widget.FrameLayout;
 import org.json.JSONObject;
 import org.mozilla.geckoview.GeckoSession;
 
-/** A blocked popup offers an explicit current-page action; websites never open a modal. */
+/** Hands off file links and offers a current-page action for blocked website popups. */
 final class GeckoPopupNavigationUi {
   final GeckoWebView web;
   Target pending;Attempt attempt;Button action;ReferenceUi.Modal dialog;
@@ -44,10 +44,12 @@ final class GeckoPopupNavigationUi {
   static final class Target {
     final MainActivity activity;final ChatSession owner;final GeckoSession sdk;final Object runtime,gate,pagePort,routePort;
     final String source,target,environment,openEpoch,route;final int slot,generation;
+    final boolean file;
     final long document,navigation,connection,identity,protection,desired,draftRevision;final boolean drafts;
     final GeckoTimeZoneUi.Fence work;
     Target(MainActivity activity,GeckoWebView web,GeckoSession sdk,String target){
       this.activity=activity;owner=web.owner;this.sdk=sdk;this.target=target;source=web.getUrl();runtime=web.runtime;
+      file=GeckoNavigationPolicy.chatDownloadPopup(target,source);
       GeckoWebView.TimeZoneGate current=web.timeZoneGates.get(sdk);gate=current;openEpoch=current==null?"":current.epoch;document=current==null?-1:current.documentSerial;
       pagePort=web.ports.get(sdk);routePort=web.routePort;navigation=owner.navigationEpoch;connection=owner.connectionEpoch;identity=web.identityPolicyRevision;protection=web.nativeProtection.token();
       desired=owner.timeZone.status().optLong("desiredRevision",-1);slot=Profiles.slot(owner.context);environment=owner.environmentId;generation=owner.environmentGeneration;route=web.ipRouteStamp();
@@ -74,6 +76,24 @@ final class GeckoPopupNavigationUi {
   String changedMessage(){return web.ipRouteNeedsReload?"线路已变化，请先在“独立时区”中重新匹配，再重试打开链接":"网页、任务或设置已变化，当前网页已保留；请重新操作链接";}
   boolean valid(Attempt value,boolean ownCapture){return value!=null&&attempt==value&&pending==value.target&&value.target.current(this)&&value.work.current(web.owner)&&GeckoTimeZoneUi.busy(web.owner,ownCapture).isEmpty();}
 
+  boolean downloadOnGesture(GeckoSession source,GeckoSession.NavigationDelegate.LoadRequest request){
+    if(request.target!=GeckoSession.NavigationDelegate.TARGET_WINDOW_NEW||!request.hasUserGesture
+        ||request.isDirectNavigation||request.isRedirect||web.owner.timeZone.popupAllowed()
+        ||source!=web.current||!BrowserRuntimePolicy.sameDocument(request.triggerUri,web.getUrl())
+        ||!GeckoNavigationPolicy.chatDownloadPopup(request.uri,web.getUrl()))return false;
+    Context host=web.displayContext.getBaseContext();
+    if(!(host instanceof MainActivity))return false;
+    return startDownload(new Target((MainActivity)host,web,source,request.uri));
+  }
+
+  private boolean startDownload(Target target){
+    if(!target.file||!target.current(this)||target.owner.navigating||!web.canChooseFiles()
+        ||!web.protectionAllowsNetwork()||target.activity.downloads==null)return false;
+    invalidate();
+    target.activity.downloads.startPopupDownload(target.target);
+    return true;
+  }
+
   void offer(GeckoSession source,String target){
     if(closed||web.destroyed||source==null||source!=web.current||!source.isOpen()||!web.hasVisibleDocument())return;
     if(!targetAllowed(target)){invalidate();return;}
@@ -81,16 +101,19 @@ final class GeckoPopupNavigationUi {
     if(web.ipRouteNeedsReload){web.owner.setStatus(changedMessage());return;}
     Target next=new Target(activity,web,source,target);if(!next.current(this))return;
     boolean same=offeredSession==source&&offeredGate==next.gate&&offeredDocument==next.document;
-    if(same&&action==null)return;
+    if(same&&action==null&&!next.file)return;
     stopFlow();pending=next;if(!same){removeAction();offeredSession=source;offeredGate=next.gate;offeredDocument=next.document;}watchLifecycle(activity);
     if(action==null){
       action=ReferenceUi.button(activity,"弹窗已拦截 · 在当前页打开",false,this::begin);action.setTextSize(14);action.setMaxLines(2);action.setMaxWidth(DesignUi.dp(activity,360));action.setMinimumHeight(DesignUi.dp(activity,48));action.setMinimumWidth(DesignUi.dp(activity,48));action.setElevation(DesignUi.dp(activity,4));
       FrameLayout.LayoutParams layout=new FrameLayout.LayoutParams(-2,-2,Gravity.TOP|Gravity.CENTER_HORIZONTAL);layout.leftMargin=layout.rightMargin=DesignUi.dp(activity,12);layout.topMargin=DesignUi.dp(activity,8);web.addView(action,layout);
     }
-    action.setContentDescription("弹窗已拦截，在当前页打开："+target);action.setEnabled(true);action.bringToFront();
+    action.setText(next.file?"下载文件":"弹窗已拦截 · 在当前页打开");
+    action.setContentDescription(next.file?"下载文件":"弹窗已拦截，在当前页打开："+target);
+    action.setEnabled(true);action.bringToFront();
   }
   void begin(){
     Target selected=pending;if(selected==null||!selected.current(this)){invalidate();web.owner.setStatus(changedMessage());return;}
+    if(selected.file){if(!startDownload(selected)){invalidate();web.owner.setStatus(changedMessage());}return;}
     String busy=GeckoTimeZoneUi.busy(web.owner,false);if(!busy.isEmpty()){web.owner.setStatus(busy);return;}
     stopFlow();Attempt value=new Attempt(selected);attempt=value;action.setEnabled(false);
     if(!MainActivity.chatUrl(selected.source)){value.manual=true;confirm(value);return;}

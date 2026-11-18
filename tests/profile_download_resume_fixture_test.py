@@ -33,7 +33,8 @@ class DownloadResumeFixtureControls(unittest.TestCase):
         selected={'READ_COOKIES':member(source,'void readCookies('),'DOWNLOAD_COOKIES':member(source,'String downloadCookies('),
                   'RESPONSE_METADATA':member(download,'void responseMetadata('),'VALID':member(download,'boolean valid('),'DOWNLOAD':member(download,'void download('),
                   'FIXTURE_VIEW':member(fixture,'static final class FixtureView'), 'ENDPOINT':member(fixture,'static final class Endpoint'), 'OLD_FIXTURE_VIEW':OLD_VIEW, 'SHA':member(fixture,'static String sha('), 'OBSERVE_FAILURE':member(fixture,'void observeRangeFailure(')}
-        files=[production/n for n in ('GeckoWebView.java','FileDownloads.java','J.java','DownloadRange.java','SealedFileIo.java')]
+        dependencies=('J.java','DownloadRange.java','SealedFileIo.java','BrowserAddressPolicy.java','GeckoNavigationPolicy.java')
+        files=[production/n for n in ('GeckoWebView.java','FileDownloads.java',*dependencies)]
         files += [FIXTURE,HERE/'CookieFixtureHost.java.in',HERE/'fixture-preservation.json',pathlib.Path(__file__),ROOT/'tests/download-resume-host/run.py',ROOT/'tests/sealed-file-host/android/util/AtomicFile.java',ROOT/'tests/download-recovery-host/android/os/Handler.java',ROOT/'tests/download-recovery-host/android/os/Looper.java',ROOT/'tests/download-recovery-host/android/net/Uri.java',ROOT/'tests/download-resume-host/stubs/android/util/Base64.java',ROOT/'tests/download-resume-host/stubs/android/os/SystemClock.java']
         hashes={str(p.relative_to(ROOT)):sha(p.read_bytes()) for p in files}
         with tempfile.TemporaryDirectory(prefix='f06-cookie-controls-') as temporary:
@@ -41,7 +42,7 @@ class DownloadResumeFixtureControls(unittest.TestCase):
             raw=(HERE/'CookieFixtureHost.java.in').read_text()
             for key,value in selected.items():raw=raw.replace('/* '+key+' */',value)
             (pkg/'CookieFixtureHost.java').write_text(raw)
-            for name in ('J.java','DownloadRange.java','SealedFileIo.java'):(pkg/name).write_bytes((production/name).read_bytes())
+            for name in dependencies:(pkg/name).write_bytes((production/name).read_bytes())
             stub=out/'android/webkit/ValueCallback.java';stub.parent.mkdir(parents=True);stub.write_text('package android.webkit;public interface ValueCallback<T>{void onReceiveValue(T value);}')
             inputs=list(pkg.glob('*.java'))+[stub]+files[-6:]
             compiled=subprocess.run([java,'-m','jdk.compiler/com.sun.tools.javac.Main','-encoding','UTF-8','-cp',str(jar),'-d',str(out),*map(str,inputs)],text=True,capture_output=True,timeout=40)

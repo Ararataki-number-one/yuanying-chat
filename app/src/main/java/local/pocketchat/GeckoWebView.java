@@ -805,6 +805,8 @@ class GeckoWebView extends FrameLayout {
         boolean blob=request.uri!=null&&request.uri.startsWith("blob:")&&allowedUrl(request.uri.substring(5));
         boolean allowed=!destroyed&&("about:blank".equals(request.uri)||protectionAllowsNetwork()&&identityRequestAllowed(request.uri)&&owner.guard.allowed()&&(allowedUrl(request.uri)||blob));
         if(allowed&&!"about:blank".equals(request.uri)&&!timeZoneAllows(s)){if(!hasTimeZoneIntent(s))loadSessionUri(s,request.uri);allowed=false;owner.setStatus("正在确认当前环境时区…");}
+        if(allowed&&blockedPopups.downloadOnGesture(s,request))
+          return GeckoResult.fromValue(AllowOrDeny.DENY);
         if(allowed&&!"about:blank".equals(request.uri)&&!retainGeneralRoute(s,blob?request.uri.substring(5):request.uri)){deferredGeneralLoads.put(s,request.uri);allowed=false;owner.setStatus("线路正在更新，完成后继续打开网页");}
         else if(allowed)deferredGeneralLoads.remove(s);
         if(!allowed&&s==current)owner.setStatus(timeZoneLoads.containsKey(s)?"正在确认当前环境时区…":deferredGeneralLoads.containsKey(s)?"线路正在更新，完成后继续打开网页":!protectionAllowsNetwork()?protectionSummary():!identityRequestAllowed(request.uri)?"检测地址已失效，请重新开始身份检查":"连接尚未受保护，或地址不是公共网页");
