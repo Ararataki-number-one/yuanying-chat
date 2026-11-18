@@ -53,6 +53,19 @@ class FileDownloads {
   void open(String id,String key){if(retiringPartial){a.status("正在清理旧的未完成副本，请稍后再试");return;}try{AppPrefs.requireDownloadNetwork(a);}catch(IOException e){a.status(e.getMessage());return;}if(awaitingPicker){a.status("请先关闭文件保存窗口");return;}if(active){a.status("请先完成或取消当前下载");return;}if(a.session.offline||!a.session.networkReady||a.session.navigating){a.status("请联网并等待对话加载后再下载");return;}if(!resumeRequested){newTask(id,key,a.conversation);if(persistenceBlocked)return;}resumeRequested=false;retryUrl="";ignoreUntil=0;sourceId=id;sourceKey=key;sourceUrl=a.conversation;active=true;a.session.transferActive=true;a.session.updateBrowserActivity();cancelled=false;long attempt=++ticket;showProgress("正在获取文件下载链接…");a.runDriver("file-prepare",J.obj("id",id,"key",key,"expectedUrl",sourceUrl),r->{if(!valid(attempt))return;if(!r.optBoolean("ok")){fail(attempt,r.optString("reason","文件链接暂不可用"));return;}name=safeName(r.optString("name","文件"));imageLabel="image".equals(r.optString("kind"))?name:"";a.handler.postDelayed(()->point(attempt,false),120);});}
   void point(long attempt,boolean followup){if(!valid(attempt)||!sameSource()){fail(attempt,"对话已改变，请返回原对话下载");return;}a.runDriver(followup?"file-followup":"file-point",J.obj("id",sourceId,"key",sourceKey,"name",name,"expectedUrl",sourceUrl),r->{if(!valid(attempt))return;JSONObject point=r.optJSONObject("touch");if(point!=null){float x=(float)(point.optDouble("x")*a.remote.getWidth()/point.optDouble("width",1)),y=(float)(point.optDouble("y")*a.remote.getHeight()/point.optDouble("height",1));long time=android.os.SystemClock.uptimeMillis();a.remote.requestFocus();MotionEvent down=MotionEvent.obtain(time,time,MotionEvent.ACTION_DOWN,x,y,0);down.setSource(InputDevice.SOURCE_TOUCHSCREEN);a.remote.dispatchTouchEvent(down);down.recycle();a.handler.postDelayed(()->{if(!valid(attempt))return;MotionEvent up=MotionEvent.obtain(time,android.os.SystemClock.uptimeMillis(),MotionEvent.ACTION_UP,x,y,0);up.setSource(InputDevice.SOURCE_TOUCHSCREEN);a.remote.dispatchTouchEvent(up);up.recycle();},60);}if(!followup)a.handler.postDelayed(()->{if(valid(attempt)&&retryUrl.isEmpty())point(attempt,true);},1200);else a.handler.postDelayed(()->{if(valid(attempt)&&retryUrl.isEmpty())fail(attempt,"网页未提供下载，请重试或查看原网页");},8000);});}
   boolean valid(long attempt){return active&&!cancelled&&!destroyed&&attempt==ticket&&tasks.owns(task);}
+  void startPopupDownload(String url){
+    if(destroyed)return;
+    if(!GeckoNavigationPolicy.chatDownloadPopup(url,a.remote.getUrl()))return;
+    if(awaitingPicker||retiringPartial||active){
+      a.status("请先完成当前文件操作，再下载这个文件");return;
+    }
+    try{
+      AppPrefs.requireDownloadNetwork(a);
+      if(a.session.offline||!a.session.networkReady||!a.session.guard.allowed())throw new IOException("请恢复当前环境的受保护连接后再下载");
+    }catch(IOException unavailable){a.status(unavailable.getMessage());return;}
+    ignoreUntil=0;
+    accept(url,a.remote.getSettings().getUserAgentString(),"","application/octet-stream",-1);
+  }
   void accept(String url,String ua,String disposition,String proposed,long length){if(awaitingPicker||retiringPartial)return;if(System.currentTimeMillis()<ignoreUntil)return;if(active&&!retryUrl.isEmpty())return;if(!https(url)&&!url.startsWith("blob:https://")){a.status("这个下载地址暂不支持，请查看原网页");return;}if(!active){String source=downloadSource();if(!resumeRequested){newTask("","",source);if(persistenceBlocked)return;}resumeRequested=false;imageLabel="";sourceId="";sourceKey="";sourceUrl=source;active=true;a.session.transferActive=true;a.session.updateBrowserActivity();cancelled=false;++ticket;name=safeName(URLUtil.guessFileName(url,disposition,proposed));}if(length>MAX||length>a.getCacheDir().getUsableSpace()-64L*1024*1024){fail(ticket,"文件超过本机下载限额或可用空间，请使用浏览器另行下载");return;}if(name.equals("文件")||sourceId.isEmpty()||name.matches("图片 [0-9]+"))name=safeName(URLUtil.guessFileName(url,disposition,proposed));mime=type(name,proposed);if(!imageLabel.isEmpty()&&mime.startsWith("image/"))name=imageLabel+"."+imageExtension(mime);DownloadTasks.put(task,"transferKind",url.startsWith("blob:")?"blob":"http-range");retryUrl=url;agent=ua;mark("downloading","");if(persistenceBlocked)return;long attempt=ticket;showProgress("正在下载 "+name+"…");if(url.startsWith("blob:"))startBlob(attempt,url);else worker.execute(()->download(attempt,url,ua));}
   /** Resolve every final response, including documents reached through signed redirects. */
   void responseMetadata(String url,String disposition,String contentType){
@@ -87,9 +100,14 @@ class FileDownloads {
           if(total>MAX||total-base>a.getCacheDir().getUsableSpace()-64L*1024*1024)throw new IOException("文件超过本机 512 MB 限额或剩余空间不足");
           String encoding=c.getContentEncoding();if(encoding!=null&&!encoding.equalsIgnoreCase("identity"))throw new IOException("文件编码不支持安全续传，请使用原网页下载");
           String nextValidator=DownloadRange.validator(c.getHeaderField("ETag"),c.getHeaderField("Last-Modified")),nextAddress=DownloadRange.resource(url);
-          String contentType=c.getContentType();
-          if(contentType!=null&&contentType.toLowerCase(Locale.ROOT).startsWith("text/html")&&!mime.equals("text/html"))throw new IOException("文件链接返回了登录网页，请在原网页检查");
-          responseMetadata(url,c.getHeaderField("Content-Disposition"),contentType);
+          String contentType=c.getContentType(),disposition=c.getHeaderField("Content-Disposition");
+          String media=contentType==null?"":contentType.split(";",2)[0].trim().toLowerCase(Locale.ROOT);
+          boolean chatFile=GeckoNavigationPolicy.chatDownloadEndpoint(initial);
+          if(media.equals("text/html")&&(chatFile||!mime.equals("text/html")))throw new IOException("文件链接返回了登录网页，请在原网页检查");
+          if(chatFile&&(media.equals("application/json")||media.endsWith("+json"))
+              &&(disposition==null||disposition.trim().isEmpty()))
+            throw new IOException("网页没有返回文件，请回到对话重新点按下载");
+          responseMetadata(url,disposition,contentType);
           receivedBytes=base;totalBytes=total;final long initialBytes=base;final File target=local;
           long received=SealedFileIo.lease(target,()->{if(!valid(attempt))throw new IOException("下载已暂停");if(code==206&&(!target.isFile()||target.length()!=initialBytes))throw new IOException("本机部分文件已变化，请重新获取下载链接后重试");long copied=initialBytes,reported=0;
             try(InputStream in=c.getInputStream();OutputStream out=new FileOutputStream(target,code==206)){

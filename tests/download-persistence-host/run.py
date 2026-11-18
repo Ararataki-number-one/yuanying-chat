@@ -21,7 +21,7 @@ def main():
     def source(name):
         path = 'app/src/main/java/local/pocketchat/' + name
         return subprocess.check_output(['git', 'show', before + ':' + path], cwd=ROOT, text=True) if before else (ROOT / path).read_text()
-    names = ['J.java', 'DownloadTasks.java', 'DownloadTaskRevisions.java', 'DownloadResumePolicy.java', 'DownloadRange.java', 'SavedFileDeletion.java', 'SavedFilePublication.java', 'DefaultDownloads.java', 'SealedFileIo.java','DownloadMetadataValues.java']
+    names = ['J.java', 'DownloadTasks.java', 'DownloadTaskRevisions.java', 'DownloadResumePolicy.java', 'DownloadRange.java', 'SavedFileDeletion.java', 'SavedFilePublication.java', 'DefaultDownloads.java', 'SealedFileIo.java','DownloadMetadataValues.java', 'BrowserAddressPolicy.java', 'GeckoNavigationPolicy.java']
     text = source('FileDownloads.java')
     old_needles = ['void taskActions(', 'boolean requestAvailable(', 'String continuationAction(', 'void requestRedownload(', 'void discardForRedownload(', 'boolean loadTask(', 'void newTask(', 'void updateTask(', 'void mark(', 'boolean valid(', 'void acceptResponse(', 'void retry(', 'void fail(', 'void pause(', 'void destroy(', 'void download(', 'void readChunk(']
     extra = ['void transferProgress(', 'void cancel(']

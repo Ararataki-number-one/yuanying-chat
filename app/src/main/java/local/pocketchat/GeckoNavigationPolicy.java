@@ -18,6 +18,48 @@ final class GeckoNavigationPolicy {
       return a.getScheme().equalsIgnoreCase(b.getScheme())&&a.getHost().equalsIgnoreCase(b.getHost())&&port(a)==port(b);
     }catch(Exception invalid){return false;}
   }
+  /** Classify a file target only after the caller verifies the current page and user action. */
+  static boolean chatDownloadPopup(String target,String source){
+    URI page=chatHttps(source);
+    if(page==null||!path(page).matches("/(g/[A-Za-z0-9_-]{1,160}/)?c/[A-Za-z0-9_-]{1,160}/?"))return false;
+    return chatDownloadEndpoint(target);
+  }
+  static boolean chatDownloadEndpoint(String target){
+    URI file=chatHttps(target);
+    if(file==null||file.getRawFragment()!=null)return false;
+    String filePath=path(file);
+    if(filePath.equals("/backend-api/estuary/content"))return signedFileQuery(file.getRawQuery());
+    // Bare file resources can return metadata. Require the explicit download operation.
+    return filePath.matches("/backend-api/files/[A-Za-z0-9_-]{1,160}/download");
+  }
+  private static URI chatHttps(String value){
+    if(value==null||value.length()>8192)return null;
+    try{
+      URI uri=URI.create(value);
+      String authority=uri.getRawAuthority();
+      return "https".equalsIgnoreCase(uri.getScheme())
+          &&("chatgpt.com".equalsIgnoreCase(authority)||"chatgpt.com:443".equalsIgnoreCase(authority))?uri:null;
+    }catch(IllegalArgumentException invalid){return null;}
+  }
+  private static boolean signedFileQuery(String query){
+    if(query==null||query.indexOf(';')>=0)return false;
+    String id=null,signature=null;
+    for(String parameter:query.split("&",-1)){
+      int equals=parameter.indexOf('=');
+      if(equals<=0)return false;
+      String key=parameter.substring(0,equals),value=parameter.substring(equals+1);
+      if(!key.matches("[A-Za-z0-9_-]{1,32}"))return false;
+      if(key.equalsIgnoreCase("id")){
+        if(id!=null||!key.equals("id"))return false;
+        id=value;
+      }else if(key.equalsIgnoreCase("sig")){
+        if(signature!=null||!key.equals("sig"))return false;
+        signature=value;
+      }
+    }
+    return id!=null&&id.matches("file[-_][A-Za-z0-9_-]{4,160}")
+        &&signature!=null&&signature.matches("[A-Za-z0-9_-]{32,256}");
+  }
   static boolean restorable(String url){return publicWeb(url);}
   static boolean sameTarget(String first,String second){
     if(!publicWeb(first)||!publicWeb(second))return false;

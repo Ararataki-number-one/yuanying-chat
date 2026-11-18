@@ -12,6 +12,20 @@ public final class RoutingHost {
   static void check(String name,boolean value){checks.put(J.obj("name",name,"pass",value));if(!value)throw new AssertionError(name);}
   static void sdk(WebBoundary web){web.current.pending.get(web.current.pending.size()-1).complete("SDK window readiness boundary; value is not a UA proof");}
   static void allow(WebBoundary web){web.owner.timeZone.complete(web.owner.timeZone.calls.get(web.owner.timeZone.calls.size()-1),true);}
+  static void popupDownloadRequest(){
+    WebBoundary web=new WebBoundary();
+    web.blockedPopups.take=true;
+    check("Unprepared timezone still denies navigation without dispatching a download",
+        web.onLoadRequest(web.current,new LoadRequest(SITE)).value==AllowOrDeny.DENY&&web.blockedPopups.calls==0);
+    sdk(web);allow(web);
+    web.protectedNetwork=false;
+    check("An unprotected navigation does not hand off a download",
+        web.onLoadRequest(web.current,new LoadRequest(SITE)).value==AllowOrDeny.DENY&&web.blockedPopups.calls==0);
+    web.protectedNetwork=true;
+    int routeCallsBefore=web.routeCalls;
+    check("A consumed file load stops Gecko before opening a new window",
+        web.onLoadRequest(web.current,new LoadRequest(SITE)).value==AllowOrDeny.DENY&&web.blockedPopups.calls==1&&web.routeCalls==routeCallsBefore);
+  }
   static void firstLoad(){
     WebBoundary web=new WebBoundary();web.loadUrl(SITE);
     check("First navigation waits for the SDK window barrier",web.current.loads.isEmpty()&&web.current.reads==1&&web.owner.timeZone.calls.isEmpty());
@@ -324,7 +338,7 @@ public final class RoutingHost {
       case "proof-before-requests":proofBeforeRequests();break;
       case "ip-lease-close":case "ip-lease-remove":actualIpLease();break;
       default:throw new AssertionError(args[0]);
-    }}else{firstLoad();checkpoint();navigation();gate("");retired();windowChanged("window-port");windowChanged("window-session");changedEpoch();changedRestore("restore-epoch");changedRestore("restore-current");timeout();disconnected();send("all");popups();filteredRestore();filteredRecheck();guards();intentOwnership();directSendPort();secondaryNavigation();sameNativeIntent();stoppedSurface();documentRevalidation();heldRequests();for(String kind:new String[]{"navigation","connection","identity","protection","desired","port","closed","destroyed","deleted","current"})heldOwnership(kind);heldQueueBound();heldNewDocument();proofBeforeRequests();addonEntryBoundary();manualIpBoundary();actualIpLease();}
+    }}else{firstLoad();checkpoint();navigation();popupDownloadRequest();gate("");retired();windowChanged("window-port");windowChanged("window-session");changedEpoch();changedRestore("restore-epoch");changedRestore("restore-current");timeout();disconnected();send("all");popups();filteredRestore();filteredRecheck();guards();intentOwnership();directSendPort();secondaryNavigation();sameNativeIntent();stoppedSurface();documentRevalidation();heldRequests();for(String kind:new String[]{"navigation","connection","identity","protection","desired","port","closed","destroyed","deleted","current"})heldOwnership(kind);heldQueueBound();heldNewDocument();proofBeforeRequests();addonEntryBoundary();manualIpBoundary();actualIpLease();}
     System.out.println(J.obj("status","passed","passed",checks.length(),"total",checks.length(),"checks",checks,"actualAndroidExecution",false,"actualGeckoExecution",false,"nativeTimezoneReadback",false,"dateIntlEffectVerified",false,"workerEffectVerified",false).toString());
   }
 }
@@ -332,6 +346,7 @@ public final class RoutingHost {
 class WebBoundary {
   @IP_ROUTE_FIELDS@
   @METHODS@
+  final PopupDownloadBoundary blockedPopups=new PopupDownloadBoundary();
   final OwnerBoundary owner=new OwnerBoundary();final MetadataBoundary metadata=new MetadataBoundary();final StoreBoundary sessionStore=new StoreBoundary();
   final Map<SessionBoundary,TimeZoneGate> timeZoneGates=new IdentityHashMap<>();final Map<SessionBoundary,String> timeZoneLoads=new IdentityHashMap<>(),locations=new IdentityHashMap<>(),deferredGeneralLoads=new IdentityHashMap<>();
   final Map<SessionBoundary,Object> timeZoneIntents=new IdentityHashMap<>(),nativeTimeZoneIntents=new IdentityHashMap<>();
@@ -429,3 +444,9 @@ class ExitBoundary {SessionBoundary aux;}
 class LoadRequest {final String uri;LoadRequest(String uri){this.uri=uri;}}
 enum AllowOrDeny {ALLOW,DENY}
 class MainActivity {static boolean chatUrl(String value){try{return BrowserRuntimePolicy.official(java.net.URI.create(value));}catch(Exception invalid){return false;}}}
+
+// Gesture and file classification are exercised in the popup-navigation host.
+class PopupDownloadBoundary {
+  int calls;boolean take;
+  boolean downloadOnGesture(SessionBoundary source,LoadRequest request){calls++;return take;}
+}
