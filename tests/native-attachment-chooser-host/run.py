@@ -68,7 +68,7 @@ def main():
     parser.add_argument('--json-jar', type=Path, required=True)
     parser.add_argument('--output', type=Path, required=True)
     args = parser.parse_args()
-    inputs = [PROD / name for name in ['Attachments.java', 'MainActivity.java', 'J.java']]
+    inputs = [PROD / name for name in ['Attachments.java', 'AttachmentIssue.java', 'MainActivity.java', 'J.java']]
     inputs += [HERE / 'ChooserHost.java', HERE / 'android_boundary.py', Path(__file__),
                ROOT / 'tests/browser-files-host/chooser.py']
     hashes = {str(path.relative_to(ROOT)): digest(path) for path in inputs}
@@ -91,7 +91,8 @@ def main():
         temp = Path(temporary)
         package = temp / 'local/pocketchat'
         package.mkdir(parents=True)
-        (package / 'J.java').write_bytes((PROD / 'J.java').read_bytes())
+        for name in ['J.java', 'AttachmentIssue.java']:
+            (package / name).write_bytes((PROD / name).read_bytes())
         (package / 'ChooserHost.java').write_text(host)
         for name, text in boundary.stubs(base.STUBS).items():
             path = temp / name

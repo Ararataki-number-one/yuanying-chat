@@ -39,7 +39,17 @@ class BrowserWorkflowTests(unittest.TestCase):
                     else:
                         self.assertEqual(ui_job_budget_field_input(name,key,current[key]),value+['browser','tls'] if name=='verify' and key=='needs' else value)
     def test_single_pipeline_shares_actual_apk_and_gates_browser(self):
-        self.assertEqual(self.new['on']['push']['branches'],['release/browser-2.1.0','release/browser-2.1.0-*','release/browser-2.1.1','release/browser-2.1.1-*','release/browser-2.1.2','release/browser-2.1.2-*','release/browser-2.1.3','release/browser-2.1.3-*','release/browser-2.1.4','release/browser-2.1.4-*','release/browser-2.1.5','release/browser-2.1.5-*','release/browser-2.1.6','release/browser-2.1.6-*','release/browser-2.1.7','release/browser-2.1.7-*','release/browser-2.1.8','release/browser-2.1.8-*'])
+        from fnmatch import fnmatchcase
+        workspace=yaml.safe_load((ROOT/'.github/workflows/browser-workspace-validation.yml').read_text())
+        for workflow in [self.new,workspace]:
+            rules=workflow.get('on',workflow.get(True))['push']['branches']
+            matches=lambda name:any(fnmatchcase(name,rule) for rule in rules)
+            for name in ['candidate/browser-maintenance-20261118','candidate/browser-3.0.0','release/browser-2.1.8-test']:
+                self.assertTrue(matches(name),name)
+            for name in ['main','candidate/other','app-updates','docs/browser-notes']:
+                self.assertFalse(matches(name),name)
+        legacy=['release/browser-2.1.'+str(version)+suffix for version in range(9) for suffix in ('','-*')]
+        self.assertCountEqual(self.new['on']['push']['branches'],['candidate/browser-*',*legacy])
         self.assertIn('browser',self.new['jobs']['verify']['needs'])
         self.assertEqual(self.new['jobs']['browser']['needs'],'build')
         browser=self.new['jobs']['browser'];self.assertNotIn('continue-on-error',browser)

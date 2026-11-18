@@ -7,7 +7,14 @@ import java.util.concurrent.*;
 import org.json.*;
 
 /** Actual Activity method bodies; manual UI/worker queues and explicit WebView/chooser boundaries. */
-public final class ActivityHost {
+class ActivityResultParent {
+  int fallbackCount, fallbackRequest;
+  protected void onActivityResult(int request,int result,ActivityHost.Intent data) {
+    fallbackCount++;
+    fallbackRequest=request;
+  }
+}
+public final class ActivityHost extends ActivityResultParent {
   static final int RESULT_OK=-1,RESULT_CANCELED=0;
   final ArrayList<Tab> tabs=new ArrayList<>();final ManualExecutor fingerprintWorker=new ManualExecutor();final ManualHandler fingerprintMain=new ManualHandler();
   final String fingerprintRuntimeEpoch="host-runtime";final TestContext context;final ChromiumFingerprintJobs fingerprintJobs;
@@ -39,7 +46,7 @@ public final class ActivityHost {
   static String raw(String state){return JSONObject.quote(observed(state).toString());}
   static void upload()throws Exception{
     ActivityHost h=fresh();h.choose();h.foreground=false;h.fingerprintStateReady=false;h.fingerprintLoading=true;h.syncFingerprintTraffic();
-    check("Positive chooser result is accepted for deferred processing",h.fingerprintFileResult(0x5001,RESULT_OK,new Intent()));h.fingerprintMain.drain();check("Result before resume never reaches blocked renderer",h.files.deliveries==0&&h.fingerprintFileResult!=null&&h.web().settings.blocked);
+    h.onActivityResult(0x5001,RESULT_OK,new Intent());check("Chooser result is consumed by the Activity",h.fallbackCount==0);h.fingerprintMain.drain();check("Result before resume never reaches blocked renderer",h.files.deliveries==0&&h.fingerprintFileResult!=null&&h.web().settings.blocked);
     h.foreground=true;h.fingerprintLoading=false;h.fingerprintStateReady=true;h.selected.fingerprintBindingReady=false;h.syncFingerprintTraffic();h.drainFingerprintFileResult();check("Same-policy recheck still waits current native receipt",h.files.deliveries==0);
     h.selected.fingerprintBindingReady=true;h.drainFingerprintFileResult();check("Genuine result delivered once with change-fetch network open",h.files.deliveries==1&&h.files.networkOpenAtDelivery&&h.files.deliveredView==h.web()&&h.files.lastResult==RESULT_OK&&h.lastMessage.isEmpty());h.drainFingerprintFileResult();check("Deferred result cannot replay",h.files.deliveries==1&&h.fingerprintFileResult==null);
     ActivityHost resumed=fresh();resumed.choose();resumed.fingerprintFileResult(0x5001,RESULT_OK,new Intent());check("Already resumed result still posts later UI task",resumed.files.deliveries==0);resumed.fingerprintMain.drain();check("Already ready foreground delivers without extra reload",resumed.files.deliveries==1&&resumed.files.networkOpenAtDelivery);
@@ -50,7 +57,7 @@ public final class ActivityHost {
       stale.foreground=true;stale.drainFingerprintFileResult();check("Deferred selected files cancelled on changed "+mutation,stale.files.deliveries==1&&stale.files.lastResult==RESULT_CANCELED&&stale.fingerprintFileResult==null&&!stale.lastMessage.isEmpty());WebView.provider.versionName="157.0";
     }
     ActivityHost newer=fresh();newer.choose();newer.foreground=false;newer.fingerprintFileResult(0x5001,RESULT_OK,new Intent());BrowserFiles.Pending replacement=new BrowserFiles.Pending(newer.web(),0x5002);newer.files.pending=replacement;newer.drainFingerprintFileResult();check("Stale result cannot cancel newer chooser",newer.files.pending==replacement&&newer.files.deliveries==0);
-    check("Unrelated activity result passes through",!newer.fingerprintFileResult(0x2800,RESULT_OK,new Intent()));
+    newer.onActivityResult(0x2800,RESULT_OK,new Intent());check("Unrelated activity result passes through once",newer.fallbackCount==1&&newer.fallbackRequest==0x2800);
     ActivityHost timeout=fresh();timeout.choose();timeout.foreground=false;
     timeout.fingerprintFileResult(0x5001,RESULT_OK,new Intent());
     timeout.fingerprintMain.drain();

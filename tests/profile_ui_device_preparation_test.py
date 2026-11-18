@@ -290,7 +290,9 @@ class WorkspaceCapacityTests(unittest.TestCase):
                          '6cceab4542155328df5f61444742de7d289c9f5ee59b937fca93dd82218aaa63')
         # C4 b0f0ffb5758b943ccafa082569e7c767438d4d2a whole workflow bytes.
         # Undo only this resource-provisioning change; every old action/budget remains.
-        before=self.raw
+        candidate=", 'candidate/browser-*'"
+        self.assertEqual(self.raw.count(candidate),1)
+        before=self.raw.replace(candidate,'',1)
         branch_addition=", 'release/browser-2.1.8', 'release/browser-2.1.8-*'"
         self.assertEqual(before.count(branch_addition),1)
         before=before.replace(branch_addition,'',1)

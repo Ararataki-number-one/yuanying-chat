@@ -29,9 +29,9 @@ def main():
  p=argparse.ArgumentParser();p.add_argument('--json-jar',required=True,type=pathlib.Path);p.add_argument('--java-home',type=pathlib.Path);p.add_argument('--output',required=True,type=pathlib.Path);p.add_argument('--before-ref');p.add_argument('--before-writer-ref');p.add_argument('--before-range-ref');p.add_argument('--before-load-ref');a=p.parse_args()
  if sum(bool(x) for x in (a.before_ref,a.before_writer_ref,a.before_range_ref,a.before_load_ref))>1:p.error('Select one before reproduction')
  source=ROOT/'app/src/main/java/local/pocketchat';old=ROOT/'tests/download-recovery-host'
- names=['J.java','DownloadTasks.java','DownloadTaskRevisions.java','DownloadResumePolicy.java','DownloadRange.java','SavedFileDeletion.java','SavedFilePublication.java','DefaultDownloads.java','SealedFileIo.java','DownloadMetadataValues.java', 'BrowserAddressPolicy.java', 'GeckoNavigationPolicy.java']
- needles=['void taskActions(','boolean requestAvailable(','String continuationAction(','void requestRedownload(','void discardForRedownload(','boolean loadTask(','void newTask(','void updateTask(','void mark(','boolean valid(','String downloadSource(','void acceptResponse(','void retry(','void fail(','void pause(','void destroy(','void download(','void readChunk(','boolean blobDocumentCurrent(','boolean blobValid(','boolean saveTask(','void persistenceFailed(','boolean claimTask(','void cancel(']
- files=[source/n for n in names]+[source/'FileDownloads.java',HERE/'DownloadResumeHost.java',HERE/'CancelCases.java',pathlib.Path(__file__).resolve(),old/'local/pocketchat/Support.java',ROOT/'tests/sealed-file-host/android/util/AtomicFile.java']+list((old/'android').rglob('*.java'))+list((HERE/'stubs').rglob('*.java'))
+ names=['J.java','DownloadTasks.java','DownloadTaskRevisions.java','DownloadResumePolicy.java','DownloadRange.java','SavedFileDeletion.java','SavedFilePublication.java','DefaultDownloads.java','SealedFileIo.java','DownloadMetadataValues.java', 'BrowserAddressPolicy.java', 'GeckoNavigationPolicy.java', 'BlobDownload.java']
+ needles=['void taskActions(','boolean requestAvailable(','String continuationAction(','void requestRedownload(','void discardForRedownload(','boolean loadTask(','void newTask(','void updateTask(','void mark(','boolean valid(','String downloadSource(','void acceptResponse(','void retry(','void fail(','void pause(','void destroy(','void download(','void startBlob(','void clearBlob(','boolean saveTask(','void persistenceFailed(','boolean claimTask(','void cancel(']
+ files=[source/n for n in names]+[source/'FileDownloads.java',HERE/'DownloadResumeHost.java',HERE/'CancelCases.java',HERE/'BlobCases.java',HERE/'blob-scripts.cjs',pathlib.Path(__file__).resolve(),old/'local/pocketchat/Support.java',ROOT/'tests/sealed-file-host/android/util/AtomicFile.java']+list((old/'android').rglob('*.java'))+list((HERE/'stubs').rglob('*.java'))
  hashes={str(f.relative_to(ROOT)):hashlib.sha256(f.read_bytes()).hexdigest() for f in sorted(files)}
  commit=subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip();before=subprocess.check_output(['git','rev-parse',a.before_ref+'^{commit}'],cwd=ROOT,text=True).strip() if a.before_ref else None
  writer_before=subprocess.check_output(['git','rev-parse',a.before_writer_ref+'^{commit}'],cwd=ROOT,text=True).strip() if a.before_writer_ref else None
@@ -56,9 +56,9 @@ def main():
  with tempfile.TemporaryDirectory(prefix='download-resume-host-') as temporary:
   temp=pathlib.Path(temporary);package=temp/'local/pocketchat';package.mkdir(parents=True);_,boundary_hashes=boundary.emit(package)
   for n in names:(package/n).write_bytes((source/n).read_bytes())
-  (package/'CancelCases.java').write_bytes((HERE/'CancelCases.java').read_bytes())
-  fixture=(HERE/'DownloadResumeHost.java').read_text().replace('boolean blobValid(long attempt){return valid(attempt);}','')
-  for old_boundary,new_boundary in [('class Remote{','class Remote{String getUrl(){return "https://chatgpt.com/c/one";}'),('class MainActivity extends Context{','class MainActivity extends Context{static boolean chatUrl(String url){return "https://chatgpt.com/c/one".equals(url);}')]:
+  for n in ['CancelCases.java','BlobCases.java']:(package/n).write_bytes((HERE/n).read_bytes())
+  fixture=(HERE/'DownloadResumeHost.java').read_text()
+  for old_boundary,new_boundary in [('class MainActivity extends Context{','class MainActivity extends Context{static boolean chatUrl(String url){return "https://chatgpt.com/c/one".equals(url);}')]:
    if fixture.count(old_boundary)!=1:raise ValueError('Review fixed-page download-source boundary: '+old_boundary)
    fixture=fixture.replace(old_boundary,new_boundary,1)
   (package/'DownloadResumeHost.java').write_text(fixture.replace('/* FILEDOWNLOADS */','\n'.join(parts)))
@@ -72,11 +72,15 @@ def main():
   java=[*package.glob('*.java'),*stubs,ROOT/'tests/sealed-file-host/android/util/AtomicFile.java',*list((HERE/'stubs').rglob('*.java'))]
   binary=lambda name:str(a.java_home/'bin'/name) if a.java_home else name
   subprocess.run([binary('javac'),'-encoding','UTF-8','-cp',str(a.json_jar.resolve()),'-d',str(temp),*map(str,java)],check=True)
-  result=subprocess.run([binary('java'),'-Dbefore='+str(bool(before)).lower(),'-DbeforeWriter='+str(bool(writer_before)).lower(),'-DbeforeRange='+str(bool(range_before)).lower(),'-DbeforeLoad='+str(bool(load_before)).lower(),'-cp',str(temp)+os.pathsep+str(a.json_jar.resolve()),'local.pocketchat.DownloadResumeHost'],capture_output=True,text=True,timeout=45)
+  result=subprocess.run([binary('java'),'-DblobScripts='+str(temp/'blob-scripts.json'),'-Dbefore='+str(bool(before)).lower(),'-DbeforeWriter='+str(bool(writer_before)).lower(),'-DbeforeRange='+str(bool(range_before)).lower(),'-DbeforeLoad='+str(bool(load_before)).lower(),'-cp',str(temp)+os.pathsep+str(a.json_jar.resolve()),'local.pocketchat.DownloadResumeHost'],capture_output=True,text=True,timeout=45)
   if not result.stdout.strip():raise RuntimeError(result.stderr)
-  report=json.loads(result.stdout);unchanged=all(hashlib.sha256((ROOT/f).read_bytes()).hexdigest()==h for f,h in hashes.items())
+  report=json.loads(result.stdout)
+  if result.returncode==0 and not any((before, writer_before, range_before, load_before)):
+   executed=subprocess.run(['node',str(HERE/'blob-scripts.cjs'),str(temp/'blob-scripts.json')],capture_output=True,text=True,timeout=30,check=True)
+   report['blobJavaScript']=json.loads(executed.stdout)
+  unchanged=all(hashlib.sha256((ROOT/f).read_bytes()).hexdigest()==h for f,h in hashes.items())
   report.update(newMetadataProviderBoundaryAdapters=boundary_hashes,sourceCommit=commit,beforeRef=before,beforeWriterRef=writer_before,beforeRangeRef=range_before,beforeLoadRef=load_before,sourceFiles=hashes,executionInputsUnchanged=unchanged,selectedTaskActionsSha256=hashlib.sha256(parts[0].encode()).hexdigest(),selectedAcceptResponseSha256=hashlib.sha256(parts[needles.index('void acceptResponse(')].encode()).hexdigest(),selectedDownloadSha256=hashlib.sha256(parts[needles.index('void download(')].encode()).hexdigest(),selectedLoadTaskSha256=hashlib.sha256(parts[needles.index('boolean loadTask(')].encode()).hexdigest(),jsonJarSha256=hashlib.sha256(a.json_jar.read_bytes()).hexdigest(),actualAndroidExecution=False,productionClasses=names,productionMethods=needles,scope='Complete production DownloadTasks/revision/continuation/publication classes plus exact FileDownloads methods, controlled UI/Android/Gecko response adapters, real JVM workers and synthetic files. Not actual Android, native Gecko, network or user-file execution.')
-  report['downloadSourceFixtureBoundaries']=['Remote.getUrl returns only the prior fixed fixture page https://chatgpt.com/c/one','MainActivity.chatUrl accepts only equality with that prior fixed fixture page; generic/origin policy is covered separately']
+  report['downloadSourceFixtureBoundaries']=['Remote begins on https://chatgpt.com/c/one and can navigate during a pending Blob transfer','MainActivity.chatUrl accepts only equality with that prior fixed fixture page; generic/origin policy is covered separately']
   if result.stderr:report['stderr']=result.stderr
   if not unchanged:report['status']='invalid-source-changed'
   a.output.parent.mkdir(parents=True,exist_ok=True);a.output.write_text(json.dumps(report,ensure_ascii=False,indent=2)+'\n');print(json.dumps({k:report[k] for k in ['status','passed','total','executionInputsUnchanged']}))

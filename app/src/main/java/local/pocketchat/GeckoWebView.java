@@ -864,66 +864,7 @@ class GeckoWebView extends FrameLayout {
         if(s!=current&&popups.contains(s))owner.handler.post(deliver);else deliver.run();
       }
     });
-    session.setPromptDelegate(new GeckoSession.PromptDelegate(){
-      @Override public GeckoResult<PromptResponse> onFilePrompt(GeckoSession s,FilePrompt prompt){
-        GeckoResult<PromptResponse> result=new GeckoResult<>();
-        final WebChromeClient requestChrome=chrome;
-        if(destroyed||requestChrome==null||s!=current){result.complete(prompt.dismiss());return result;}
-        WebChromeClient.FileChooserParams params=new WebChromeClient.FileChooserParams(){
-          @Override public int getMode(){return prompt.type==FilePrompt.Type.MULTIPLE?MODE_OPEN_MULTIPLE:MODE_OPEN;}
-          @Override public String[] getAcceptTypes(){return prompt.mimeTypes;}
-          @Override public boolean isCaptureEnabled(){return false;}
-          @Override public CharSequence getTitle(){return prompt.title;}
-          @Override public String getFilenameHint(){return "";}
-          @Override public Intent createIntent(){return new Intent(Intent.ACTION_OPEN_DOCUMENT).setType("*/*").addCategory(Intent.CATEGORY_OPENABLE);}
-        };
-        final long uploadEpoch=owner.navigationEpoch;owner.resourceFileWork(true,true);
-        final GeckoPhotoPermission photo=new GeckoPhotoPermission(GeckoWebView.this,s);
-        java.util.concurrent.atomic.AtomicBoolean selected=new java.util.concurrent.atomic.AtomicBoolean();
-        java.util.concurrent.atomic.AtomicBoolean cancelled=new java.util.concurrent.atomic.AtomicBoolean();
-        ValueCallback<Uri[]> selection=uris->{
-          if(!selected.compareAndSet(false,true))return;
-          if(uris==null||uris.length==0||destroyed||cancelled.get()||prompt.isComplete()){
-            photo.cancel();
-            owner.resourceFileWork(true,false);if(!prompt.isComplete())result.complete(prompt.dismiss());return;
-          }
-          // The picker puts the Activity in the background. Transfer ownership
-          // before releasing it so Gecko never briefly becomes inactive here.
-          owner.resourceFileWork(false,true);
-          owner.resourceFileWork(true,false);
-          final String beforePreparation=owner.status;owner.setStatus("准备附件…");
-          try{uploadWorker.execute(()->{try{
-            GeckoUploadFiles.Selection files=GeckoUploadFiles.prepare(owner.context,uris,cancelled::get);
-            owner.handler.post(()->photo.allow(files.containsImage,issue->{try{
-              if(!issue.isEmpty()||destroyed||cancelled.get()||s!=current||!s.isOpen()||uploadEpoch!=owner.navigationEpoch||prompt.isComplete()){photo.cancel();retireUnhandedUpload(files);if(!prompt.isComplete())result.complete(prompt.dismiss());if(!issue.isEmpty()&&!destroyed&&!cancelled.get())owner.setStatus(issue);return;}
-              PromptResponse response;
-              try{response=prompt.confirm(owner.context,files.files);}
-              catch(RuntimeException error){photo.cancel();retireUnhandedUpload(files);if(!prompt.isComplete())result.complete(prompt.dismiss());owner.setStatus("附件未能交给网页，请重新选择");return;}
-              uploadFiles.add(files);owner.resourceFilesPrepared(files.files,uploadEpoch);photo.handedOff();result.complete(response);
-            }finally{uploadPreparationFinished(beforePreparation);}}));
-          }catch(IOException error){if(error instanceof GeckoUploadFiles.Cancelled)lastUploadCleanup=((GeckoUploadFiles.Cancelled)error).cleanup;owner.handler.post(()->{photo.cancel();uploadPreparationFinished(beforePreparation);if(!prompt.isComplete())result.complete(prompt.dismiss());if(!destroyed&&!cancelled.get())owner.setStatus(error.getMessage());});}});}
-          catch(RejectedExecutionException error){photo.cancel();uploadPreparationFinished(beforePreparation);if(!prompt.isComplete())result.complete(prompt.dismiss());if(!destroyed)owner.setStatus("附件读取已结束，请重新打开文件选择器");}
-        };
-        prompt.setDelegate(new PromptInstanceDelegate(){
-          @Override public void onPromptDismiss(BasePrompt ignored){
-            cancelled.set(true);
-            photo.cancel();
-            // Gecko dismisses an obsolete prompt without completing BasePrompt.
-            // Complete it once and close only the picker belonging to this request.
-            if(requestChrome instanceof Attachments.Chrome)((Attachments.Chrome)requestChrome).dismissFilePrompt(selection);
-            selection.onReceiveValue(null);
-            if(!prompt.isComplete())result.complete(prompt.dismiss());
-          }
-        });
-        photo.capture(()->{
-          if(!photo.current()||cancelled.get()||prompt.isComplete()){selection.onReceiveValue(null);return;}
-          boolean handled;
-          try{handled=requestChrome.onShowFileChooser(null,selection,params);}
-          catch(RuntimeException error){selection.onReceiveValue(null);owner.setStatus("文件选择器未能打开，请重试");return;}
-          if(!handled)selection.onReceiveValue(null);
-        });return result;
-      }
-    });
+    session.setPromptDelegate(new GeckoFilePrompts(this));
     session.setPermissionDelegate(new GeckoSession.PermissionDelegate(){
       @Override public GeckoResult<Integer> onContentPermissionRequest(GeckoSession s,ContentPermission permission){if(contentPermissions==null)contentPermissions=new GeckoContentPermissions(GeckoWebView.this);return contentPermissions.request(s,permission);}
       @Override public void onAndroidPermissionsRequest(GeckoSession s,String[] permissions,Callback callback){callback.reject();}
@@ -1017,12 +958,6 @@ class GeckoWebView extends FrameLayout {
   private void failure(String message){failed=true;closeStartupWindow();owner.pageError=message;owner.finishNavigation(message,false);}
   boolean hasVisibleDocument(){return enabled&&current!=null&&current.isOpen()&&!failed&&!crashed.contains(current)&&usable.contains(current);}
   boolean canChooseFiles(){return hasVisibleDocument()&&!pendingLoads.contains(current)&&(!owner.navigating||owner.navigationDispatched&&owner.targetMatches(getUrl()));}
-  private void uploadPreparationFinished(String previousStatus){
-    owner.resourceFileWork(false,false);
-    if(destroyed||owner.resourceFilePreparations!=0)return;
-    if(owner.status.equals("准备附件…"))owner.setStatus(previousStatus.equals("准备附件…")?"":previousStatus);
-    else owner.changed();
-  }
   private void pageVisible(GeckoSession session){
     String target=loadingTargets.get(session);
     if(destroyed||addonDisabled||session!=current||target==null||"about:blank".equals(target)||crashed.contains(session)||ipNavigationFailed(session)||!painted.add(session))return;

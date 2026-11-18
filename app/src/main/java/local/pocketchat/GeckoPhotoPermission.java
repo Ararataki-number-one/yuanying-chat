@@ -11,7 +11,7 @@ final class GeckoPhotoPermission {
   private final String token=UUID.randomUUID().toString(),sessionId,origin,location;
   private final long navigation,load;private final boolean requested;
   private String documentId="";private boolean closed,handed,capturing;
-  private Consumer<String> afterCapture;
+  private Consumer<AttachmentIssue> afterCapture;
   GeckoPhotoPermission(GeckoWebView web,GeckoSession session){
     this.web=web;this.session=session;port=web.routePort;sessionId=AppSessionIdentity.id(session);
     origin=web.photoUploadOrigin(session);location=web.locations.get(session);navigation=web.owner.navigationEpoch;
@@ -39,32 +39,32 @@ final class GeckoPhotoPermission {
       if(closed||handed)return;
       boolean captured=connected()&&bound(value)&&"captured".equals(value.optString("status"));
       if(captured)documentId=value.optString("documentId");
-      Consumer<String> selectedImage=afterCapture;afterCapture=null;
+      Consumer<AttachmentIssue> selectedImage=afterCapture;afterCapture=null;
       if(selectedImage!=null)allow(true,selectedImage);
       else if(!captured)releaseNative();
     });
     // The chooser may open while the image-only document lease is captured.
     ready.run();
   }
-  void allow(boolean containsImage,Consumer<String> complete){
-    if(!current()){cancel();complete.accept("附件所属页面已变化，请重新选择");return;}
-    if(!containsImage||web.owner.privacy.level()<2){releaseNative();complete.accept("");return;}
+  void allow(boolean containsImage,Consumer<AttachmentIssue> complete){
+    if(!current()){cancel();complete.accept(AttachmentIssue.PAGE_CHANGED);return;}
+    if(!containsImage||web.owner.privacy.level()<2){releaseNative();complete.accept(null);return;}
     if(capturing){afterCapture=complete;return;}
-    if(!connected()||documentId.isEmpty()){cancel();complete.accept("图片处理权限未确认，照片尚未上传；可重新选择或改用标准保护");return;}
+    if(!connected()||documentId.isEmpty()){cancel();complete.accept(AttachmentIssue.PHOTO_UNCONFIRMED);return;}
     send("photoCanvasGrant",value->{
       String status=value.optString("status");long expires=value.optLong("expiresAt",-1),now=System.currentTimeMillis();
       boolean granted="granted".equals(status)&&expires>now&&expires<=now+125000;
       boolean existing=("existing".equals(status)||"not-required".equals(status)&&web.owner.privacy.level()<2)&&expires==0;
-      if(connected()&&bound(value)&&documentId.equals(value.optString("documentId"))&&(granted||existing))complete.accept("");
-      else{cancel();complete.accept("denied".equals(status)?"本站已拒绝 Canvas 图片处理，照片尚未上传；可改用标准保护后重新选择":"图片处理权限未确认，照片尚未上传；可重新选择或改用标准保护");}
+      if(connected()&&bound(value)&&documentId.equals(value.optString("documentId"))&&(granted||existing))complete.accept(null);
+      else{cancel();complete.accept("denied".equals(status)?AttachmentIssue.PHOTO_DENIED:AttachmentIssue.PHOTO_UNCONFIRMED);}
     });
   }
   void handedOff(){handed=true;}
   void cancel(){
     if(handed||closed)return;
     closed=true;releaseNative();
-    Consumer<String> selectedImage=afterCapture;afterCapture=null;
-    if(selectedImage!=null)selectedImage.accept("附件所属页面已变化，请重新选择");
+    Consumer<AttachmentIssue> selectedImage=afterCapture;afterCapture=null;
+    if(selectedImage!=null)selectedImage.accept(AttachmentIssue.PAGE_CHANGED);
   }
   private void releaseNative(){
     if(!requested||port==null||web.routePort!=port)return;

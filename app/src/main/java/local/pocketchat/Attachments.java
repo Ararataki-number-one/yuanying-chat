@@ -34,9 +34,9 @@ final class Attachments {
     @Override public boolean onShowFileChooser(WebView ignored,ValueCallback<Uri[]> result,FileChooserParams params){
       if(!live()){deliver(result,null);return true;}
       String url=a.remote.getUrl();long epoch=a.session.navigationEpoch;
-      if(!MainActivity.chatUrl(url)||!a.remote.canChooseFiles()){reject(result,"网页正在切换或尚未就绪，请稍后再添加附件");return true;}
+      if(!MainActivity.chatUrl(url)||!a.remote.canChooseFiles()){reject(result,AttachmentIssue.PAGE_NOT_READY);return true;}
       int code=nextRequestCode();
-      if(code<0){reject(result,"本次运行的文件选择次数已用尽，请重启应用后再试");return true;}
+      if(code<0){reject(result,AttachmentIssue.PICKER_LIMIT);return true;}
       Pending request=new Pending(result,code,url,epoch),previous=pending;
       // Reserve before calling out: cancellation can synchronously open another
       // prompt, replace this document, or destroy its Activity.
@@ -49,9 +49,9 @@ final class Attachments {
         if(!current(request)){cancel(request);return true;}
         a.startActivityForResult(intent,request.request);
       }
-      catch(ActivityNotFoundException failure){fail(request,"设备没有可用的文件选择器");}
-      catch(SecurityException failure){fail(request,"无法打开文件选择器，请检查系统文件访问设置");}
-      catch(RuntimeException failure){android.util.Log.w("PocketChat","File chooser launch failed",failure);fail(request,"无法打开文件选择器，请稍后重试");}
+      catch(ActivityNotFoundException failure){fail(request,AttachmentIssue.NO_PICKER);}
+      catch(SecurityException failure){fail(request,AttachmentIssue.PICKER_ACCESS);}
+      catch(RuntimeException failure){android.util.Log.w("PocketChat","File chooser launch failed",failure);fail(request,AttachmentIssue.PICKER_FAILED);}
       return true;
     }
     void dismissFilePrompt(ValueCallback<Uri[]> recipient){Pending request=pending;if(request!=null&&request.callback==recipient)cancel(request);}
@@ -70,7 +70,7 @@ final class Attachments {
     Pending request=pending;if(request==null||request.request!=requestCode)return true;
     try{
       if(!live()||code!=Activity.RESULT_OK||data==null){cancel(request);return true;}
-      if(!samePage(request)){fail(request,"对话已改变，未添加附件");return true;}
+      if(!samePage(request)){fail(request,AttachmentIssue.SELECTION_MOVED);return true;}
       LinkedHashSet<Uri> selected=new LinkedHashSet<>();ClipData clip=data.getClipData();
       if(clip!=null)for(int i=0;i<clip.getItemCount();i++){Uri uri=clip.getItemAt(i).getUri();if(uri!=null)selected.add(uri);}
       if(selected.isEmpty()&&data.getData()!=null)selected.add(data.getData());
@@ -78,7 +78,7 @@ final class Attachments {
       for(Uri uri:selected){
         // DocumentsUI may return our exported DownloadsProvider. Keep accepting
         // its granted stream; provider identity is not a readability check.
-        if(uri==null||!"content".equals(uri.getScheme())||uri.getAuthority()==null){fail(request,"请选择系统文件选择器中的文件");return true;}
+        if(uri==null||!"content".equals(uri.getScheme())||uri.getAuthority()==null){fail(request,AttachmentIssue.INVALID_SELECTION);return true;}
       }
       for(Uri uri:selected){
         if(!current(request)){cancel(request);return true;}
@@ -86,7 +86,7 @@ final class Attachments {
       }
       if(!current(request)){cancel(request);return true;}
       deliver(detach(request),selected.toArray(new Uri[0]));
-    }catch(RuntimeException failure){android.util.Log.w("PocketChat","File chooser result failed",failure);fail(request,"无法读取所选文件，请重新选择");}
+    }catch(RuntimeException failure){android.util.Log.w("PocketChat","File chooser result failed",failure);fail(request,AttachmentIssue.READ_FAILED);}
     return true;
   }
   private ValueCallback<Uri[]> detach(Pending request){
@@ -106,15 +106,15 @@ final class Attachments {
     try{a.finishActivity(request.request);}catch(RuntimeException failure){android.util.Log.w("PocketChat","File chooser dismissal failed",failure);}
     deliver(callback,null);
   }
-  private void fail(Pending request,String message){
+  private void fail(Pending request,AttachmentIssue issue){
     boolean owned=pending==request;long epoch=a.session.navigationEpoch;
     cancel(request);
-    if(owned&&live()&&pending==null&&epoch==a.session.navigationEpoch)a.status(message);
+    if(owned&&live()&&pending==null&&epoch==a.session.navigationEpoch)a.attachmentStatus(issue);
   }
-  private void reject(ValueCallback<Uri[]> callback,String message){
+  private void reject(ValueCallback<Uri[]> callback,AttachmentIssue issue){
     Pending before=pending;long epoch=a.session.navigationEpoch;
     deliver(callback,null);
-    if(live()&&pending==before&&epoch==a.session.navigationEpoch)a.status(message);
+    if(live()&&pending==before&&epoch==a.session.navigationEpoch)a.attachmentStatus(issue);
   }
   void cancelChooser(){cancel(pending);}
   void destroy(){destroyed=true;cancelChooser();}

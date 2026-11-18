@@ -77,7 +77,8 @@ def main():
         for label, value in values.items():
             result = result.replace('/*' + label + '*/', value)
         return result
-    inputs = [PROD / name for name in sources] + [Path(__file__), HERE / 'android_boundary.py', HERE / 'LifecycleHost.java.in', ROOT / 'tests/gecko-navigation-host/run.py']
+    issue_type = PROD / "AttachmentIssue.java"
+    inputs = [issue_type] + [PROD / name for name in sources] + [Path(__file__), HERE / 'android_boundary.py', HERE / 'LifecycleHost.java.in', ROOT / 'tests/gecko-navigation-host/run.py']
     if binding is not None:
         inputs.append(binding_path)
     hashes = {str(path.relative_to(ROOT)): digest(path) for path in inputs}
@@ -99,7 +100,7 @@ def main():
 
         def build(values, binding_source, label):
             folder = artifacts / label;folder.mkdir(exist_ok=True)
-            generated = folder / 'LifecycleHost.java';generated.write_text(generate(values));java_paths = platform_paths + [generated]
+            generated = folder / 'LifecycleHost.java';generated.write_text(generate(values));java_paths = platform_paths + [generated, issue_type]
             if binding_source is not None:
                 generated_binding = folder / 'GeckoUiBinding.java';generated_binding.write_text(binding_source);java_paths.append(generated_binding)
             classes = work / label

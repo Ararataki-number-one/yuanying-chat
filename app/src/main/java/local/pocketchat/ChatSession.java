@@ -299,10 +299,23 @@ final class ChatSession {
   boolean targetMatches(String url){return GeckoNavigationPolicy.sameTarget(url,navigationTarget);}
   void add(Observer o){remove(o);observers.add(new WeakReference<>(o));o.changed();}
   void remove(Observer o){observers.removeIf(w->w.get()==null||w.get()==o);}
-  void changed(){if(internalNetwork()){NativeNetwork n=NativeNetwork.get(context);n.pauseBackgroundWhenBusy();}try{ProfileCatalog.get(context).heartbeat(this,false);NetworkJournal.record(this);}catch(Exception ignored){}for(WeakReference<Observer> w:new ArrayList<>(observers)){Observer o=w.get();if(o!=null)o.changed();}if(ChatService.running)ChatService.update(context,status);}
+  void changed(){
+    // Legacy status writers batch their text update before notifying observers.
+    if(attachmentIssue!=null&&!attachmentIssue.message.equals(status))attachmentIssue=null;
+    if(internalNetwork()){NativeNetwork n=NativeNetwork.get(context);n.pauseBackgroundWhenBusy();}try{ProfileCatalog.get(context).heartbeat(this,false);NetworkJournal.record(this);}catch(Exception ignored){}for(WeakReference<Observer> w:new ArrayList<>(observers)){Observer o=w.get();if(o!=null)o.changed();}if(ChatService.running)ChatService.update(context,status);}
   void delivery(String id,String stage,String detail,boolean attempted,String key,String url){String signature=id+"|"+stage+"|"+detail+"|"+attempted+"|"+key+"|"+url;if(webPerformance()&&signature.equals(lastDeliverySignature))return;try{if(deliveries.update(id,stage,detail,attempted,key,url))lastDeliverySignature=signature;}catch(Exception ignored){}}
   void sendFailure(String message){submitting=false;ChatService.end(context);delivery(activeDeliveryId,"failed",message==null?"发送前检查失败":message,false,"","");setStatus(message);}
-  void setStatus(String text){status=text==null?"网络连接未完成":text;changed();}
+  AttachmentIssue attachmentIssue;
+  void setStatus(String text){
+    attachmentIssue=null;
+    status=text==null?"网络连接未完成":text;
+    changed();
+  }
+  void setAttachmentIssue(AttachmentIssue issue){
+    attachmentIssue=issue;
+    status=issue.message;
+    changed();
+  }
   boolean uploading(){for(int i=0;i<attachments.length();i++){JSONObject file=attachments.optJSONObject(i);if(file!=null&&"uploading".equals(file.optString("state")))return true;}return false;}
   boolean currentReplyActive(){if(resourceObservationCurrent())return resourceWebsiteBusy;return BrowserSettingsPolicy.currentReply(web.resourcePage(web.getUrl()),WebReplyObserver.same(web.getUrl(),state.optString("url")),state.optBoolean("busy"),stateEpoch,navigationEpoch);}
   boolean resourceFilesUncertain(){return resourceUploads.unknown(navigationEpoch);}
