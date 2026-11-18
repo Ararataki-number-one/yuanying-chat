@@ -663,7 +663,7 @@ final class ChatSession {
   void inspectPageStatus(JSONObject inspected){
     if(pending!=null||navigating||navigationFailed||!pageMayReportConnected())return;
     if(!pageError.isEmpty())status=pageError;
-    else if(!inspected.optString("error").isEmpty())status=inspected.optString("error");
+    else if(inspected.optBoolean("websiteSocketClosed")&&!inspected.optString("error").isEmpty())status=inspected.optString("error");
     else if(inspected.optBoolean("modelKnown"))status="已连接 · "+inspected.optString("model")+(inspected.optString("effort").isEmpty()?"":" · "+inspected.optString("effort"));
     else status="请打开登录页面完成登录";
   }
@@ -675,13 +675,12 @@ final class ChatSession {
     if(LoginPagePolicy.login(web.getUrl()))return;
     if(inFlight||navigating&&!navigationDispatched)return;inFlight=true;long lease=++resourceInspectionGeneration;handler.postDelayed(()->{if(inFlight&&resourceInspectionGeneration==lease){syncRun++;finishResourceInspection();}},20000);updateBrowserActivity(false);long epoch=navigationEpoch,run=++syncRun;boolean optimized=webPerformance();
     runDriver(optimized?"web-inspect":"inspect",J.obj("navigationCheck",spaTransition),s->{
-      if(run!=syncRun)return;if(epoch!=navigationEpoch){finishResourceInspection();return;}if(navigating&&awaitNewDocument&&priorDocumentId.equals(s.optString("documentId"))){finishResourceInspection();return;}if(!s.optString("documentId").isEmpty()){lastDocumentId=s.optString("documentId");awaitNewDocument=false;}state=s;stateEpoch=epoch;if(WebReplyObserver.same(web.getUrl(),s.optString("url"))){websiteConnectionIssue=s.optBoolean("websiteSocketClosed");if(!s.optString("error").isEmpty())resetReplyStability();}
+      if(run!=syncRun)return;if(epoch!=navigationEpoch){finishResourceInspection();return;}if(navigating&&awaitNewDocument&&priorDocumentId.equals(s.optString("documentId"))){finishResourceInspection();return;}if(!s.optString("documentId").isEmpty()){lastDocumentId=s.optString("documentId");awaitNewDocument=false;}state=s;stateEpoch=epoch;if(WebReplyObserver.same(web.getUrl(),s.optString("url"))){websiteConnectionIssue=s.optBoolean("websiteSocketClosed");if(websiteConnectionIssue)resetReplyStability();}
       archiveWebsiteNavigation(s);
       inspectPageStatus(s);
       // During startup the page may be an empty shell. Inspect readiness cheaply;
       // defer transcript walks until the target composer/content is actually present.
       if(optimized&&navigating){
-        String error=s.optString("error");if(!error.isEmpty()&&!error.equals("页面尚未就绪"))finishNavigation(error,error.contains("无法连接"));
         if(!targetMatches(s.optString("url"))||!s.optBoolean("composer")||(android.net.Uri.parse(navigationTarget).getPath().contains("/c/")&&!s.optBoolean("hasMessages"))){pollSync(epoch,run,optimized);return;}
       }
       if(optimized&&spaTransition){String signature=s.optString("contentKey");boolean changed=!signature.equals(spaBefore)&&targetMatches(s.optString("url"))&&s.optBoolean("composer");if(changed&&signature.equals(spaSignature))spaStable++;else{spaSignature=signature;spaStable=changed?1:0;}if(spaStable<2){pollSync(epoch,run,optimized);return;}spaTransition=false;}
@@ -690,7 +689,6 @@ final class ChatSession {
       if(!needed){pollSync(epoch,run,optimized);return;}
       runDriver(optimized?"web-transcript":"transcript",optimized?webMirror.arguments():new JSONObject(),data->{
         if(run!=syncRun)return;if(epoch!=navigationEpoch){finishResourceInspection();return;}
-        if(navigating&&!s.optString("error").isEmpty()&&!s.optString("error").equals("页面尚未就绪"))finishNavigation(s.optString("error"),s.optString("error").contains("无法连接"));
         acceptTranscript(data,s,optimized);if(optimized){lastWebSnapshot=SystemClock.elapsedRealtime();lastWebUrl=s.optString("url");}
         pollSync(epoch,run,optimized);
       });

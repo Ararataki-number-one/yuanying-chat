@@ -34,6 +34,21 @@ function check(name,pass){assert.ok(pass,name);checks.push({name,pass:true});}
  check('Failed diagnostic preserves the original document draft and cookie',w.location.href===before&&input.value==='keep exact input'&&w.document.cookie.includes('session=synthetic')&&sends===0);
  const stop=w.document.createElement('button');stop.dataset.testid='stop-button';stop.textContent='Stop';w.document.body.append(stop);
  result=await call('page-recover',{expectedUrl:before});check('Busy page is not refreshed or probed by the page recovery check',result.ok===false&&head===1&&sends===0&&input.value==='keep exact input');stop.remove();
+ const alert=w.document.createElement('div');alert.setAttribute('role','alert');alert.className='neterror';
+ w.document.body.append(alert);
+ for(const phrase of ['Something went wrong','You have reached your usage limit','网络错误','verify you are human','Unable to load site']){
+  alert.replaceChildren(w.document.createTextNode(phrase),Object.assign(w.document.createElement('button'),{textContent:'Retry'}));
+  check('The website owns its generic alert during browser inspection: '+phrase,
+    ['inspect','web-inspect'].every(action=>{const observed=call(action);return observed.error===''&&!observed.websiteSocketClosed&&observed.composer;}));
+ }
+ w.fetch=async(url,options)=>{assert.equal(options.method,'HEAD');head++;return {ok:true};};
+ alert.firstChild.nodeValue='You have reached your usage limit';
+ result=await call('page-recover',{expectedUrl:before});
+ check('A site usage alert does not block a successful recovery probe',result.ok&&head===2&&w.location.href===before);
+ const retained=call('page-state',{expectedUrl:before});input.value='';
+ result=await call('page-restore',{expectedUrl:before,state:retained,allowDraft:true,allowScroll:false});
+ check('A site usage alert does not block the existing draft restore',result.ok&&result.restoredDraft&&input.value==='keep exact input'&&sends===0&&w.document.cookie.includes('session=synthetic'));
+ alert.remove();
  result=call('page-state',{expectedUrl:'https://chatgpt.com/c/other'});check('Wrong route cannot capture a current document',!result.ok);
  for(const direction of ['forward','backward','none']){
   input.value='0123456789';input.focus();input.setSelectionRange(direction==='none'?4:2,direction==='none'?4:5,direction);

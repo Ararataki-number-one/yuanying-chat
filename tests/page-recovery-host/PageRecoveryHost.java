@@ -141,6 +141,13 @@ public class PageRecoveryHost {
    check("Late ready DOM still updates visible page contents",!s.navigationFailed&&s.entries.length()==1&&s.pageMemory.restores==1);
    s.inspectPageStatus(j("modelKnown",true,"model","late-ready"));check("Late inspect cannot replace a disconnected status with connected",s.status.equals("service disconnected")&&s.recoveryScheduled&&s.recoveryToken==41);
    s.awaitLogin("login page ready");check("Late login callback cannot clear route error or retry token",s.recoveryScheduled&&s.recoveryToken==41&&s.manualAttention&&s.status.equals("service disconnected"));
+   s=route();s.inspectPageStatus(j("modelKnown",true,"model","test","error","Website says usage limit"));
+   check("A generic website message is not an app connection error",s.status.equals("已连接 · test")&&s.pageError.isEmpty());
+   s.inspectPageStatus(j("modelKnown",true,"model","test","error","website socket interrupted","websiteSocketClosed",true));
+   check("A concrete website socket interruption is still visible",s.status.equals("website socket interrupted"));
+   s=route();s.navigating=true;s.navigationDispatched=true;s.sync();
+   s.driverResult.accept(j("url",s.web.url,"documentId",s.lastDocumentId,"error","Website says usage limit","modelKnown",true,"model","test","composer",false));
+   check("A generic bridge message cannot fail an in-progress load",s.navigating&&!s.navigationFailed&&s.pageError.isEmpty());
    s=route();s.sync();ChatSession.Result late=s.driverResult;s.networkStatus("core disconnected",false);long retry=s.recoveryToken;String recovering=s.status;late.accept(j("url",s.web.url,"documentId",s.lastDocumentId,"modelKnown",true,"model","late","composer",true));check("Real sync callback after networkStatus preserves scheduled retry and its displayed state",s.recoveryScheduled&&s.recoveryToken==retry&&!s.networkReady&&s.networkIssue.equals("core disconnected")&&s.status.equals(recovering));
    s=route();s.networkReady=false;s.scheduleRecovery();long token=s.recoveryToken;s.finishNavigation("HTTP 403",false);
    check("Manual page error does not block pending service recovery",!s.manualAttention&&s.recoveryScheduled&&s.recoveryToken==token&&s.pageError.equals("HTTP 403")&&s.networkIssue.isEmpty());s.runRecovery(token);check("Original scheduled reconnect remains runnable",s.opened==1&&s.recoveryAttempt==1);
