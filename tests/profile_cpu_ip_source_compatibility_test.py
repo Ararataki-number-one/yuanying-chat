@@ -25,6 +25,32 @@ def git(*args):
         env=dict(os.environ,GIT_NO_LAZY_FETCH='1',GIT_OPTIONAL_LOCKS='0'))
 
 
+def original_popup_guard(raw):
+    """Remove only the file handoff extension for this historical proof."""
+    deltas=(
+        ('/** Hands off file links and offers a current-page action for blocked website popups. */',
+         '/** A blocked popup offers an explicit current-page action; websites never open a modal. */'),
+        ('    final boolean file;\n',
+         ''),
+        ('      file=GeckoNavigationPolicy.chatDownloadPopup(target,source);\n',
+         ''),
+        ('  boolean downloadOnGesture(GeckoSession source,GeckoSession.NavigationDelegate.LoadRequest request){\n    if(request.target!=GeckoSession.NavigationDelegate.TARGET_WINDOW_NEW||!request.hasUserGesture\n        ||request.isDirectNavigation||request.isRedirect||web.owner.timeZone.popupAllowed()\n        ||source!=web.current||!BrowserRuntimePolicy.sameDocument(request.triggerUri,web.getUrl())\n        ||!GeckoNavigationPolicy.chatDownloadPopup(request.uri,web.getUrl()))return false;\n    Context host=web.displayContext.getBaseContext();\n    if(!(host instanceof MainActivity))return false;\n    return startDownload(new Target((MainActivity)host,web,source,request.uri));\n  }\n\n  private boolean startDownload(Target target){\n    if(!target.file||!target.current(this)||target.owner.navigating||!web.canChooseFiles()\n        ||!web.protectionAllowsNetwork()||target.activity.downloads==null)return false;\n    invalidate();\n    target.activity.downloads.startPopupDownload(target.target);\n    return true;\n  }\n\n',
+         ''),
+        ('    if(same&&action==null&&!next.file)return;',
+         '    if(same&&action==null)return;'),
+        ('    action.setText(next.file?"下载文件":"弹窗已拦截 · 在当前页打开");\n    action.setContentDescription(next.file?"下载文件":"弹窗已拦截，在当前页打开："+target);\n    action.setEnabled(true);action.bringToFront();',
+         '    action.setContentDescription("弹窗已拦截，在当前页打开："+target);action.setEnabled(true);action.bringToFront();'),
+        ('    if(selected.file){if(!startDownload(selected)){invalidate();web.owner.setStatus(changedMessage());}return;}\n',
+         ''),
+    )
+    for current,old in deltas:
+        current,old=current.encode(),old.encode()
+        if raw.count(current)!=1:
+            raise ValueError('Current popup handoff differs from the reviewed source')
+        raw=raw.replace(current,old,1)
+    return raw
+
+
 class CpuIpHistoricalPreparation(unittest.TestCase):
     def test_complete_real_candidate_before_forward_and_inverse(self):
         self.assertEqual(git('rev-parse',layer.BASE_COMMIT+'^{tree}').decode().strip(),layer.BASE_TREE)
@@ -128,6 +154,11 @@ class CpuIpHistoricalPreparation(unittest.TestCase):
                 raw=(ROOT/relative).read_bytes()
                 if relative==photo_background.PATH:
                     raw=photo_background.source_input(raw,relative)
+                if relative.endswith('/GeckoPopupNavigationUi.java'):
+                    # The current file handoff may extend the popup UI. Recover
+                    # only its reviewed hunks before comparing every original
+                    # ownership and navigation guard byte-for-byte.
+                    raw=original_popup_guard(raw)
                 self.assertEqual(raw,git('show',layer.BASE_COMMIT+':'+relative))
 
     def test_photo_inverse_restores_the_real_complete_original_without_changing_other_guards(self):
