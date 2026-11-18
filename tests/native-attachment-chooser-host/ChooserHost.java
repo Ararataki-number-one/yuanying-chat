@@ -90,7 +90,7 @@ public final class ChooserHost {
 }
 class MainActivity extends Activity {
   static final String ORIGIN="https://chatgpt.com/";boolean destroyed;final Session session;final Page remote;final Loading loading=new Loading();final List<String> messages=new ArrayList<>();final SharedPreferences prefs=new SharedPreferences();String conversation="";Attachments attachments;FileDownloads downloads;
-  MainActivity(){this(new Session(),new Page());}MainActivity(Session session,Page page){this.session=session;remote=page;remote.displayContext.setBaseContext(this);attachments=new Attachments(this);}void status(String message){messages.add(message);}void showPage(boolean value){throw new AssertionError("Legacy preview outside picker host");}
+  MainActivity(){this(new Session(),new Page());}MainActivity(Session session,Page page){this.session=session;remote=page;remote.displayContext.setBaseContext(this);attachments=new Attachments(this);}void status(String message){messages.add(message);}void attachmentStatus(AttachmentIssue issue){messages.add(issue.message);}void showPage(boolean value){throw new AssertionError("Legacy preview outside picker host");}
   /* ACTUAL_ACTIVITY */
 }
 class Session {long navigationEpoch=3;final JSONArray attachments=new JSONArray();}

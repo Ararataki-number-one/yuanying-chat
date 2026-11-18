@@ -30,10 +30,11 @@ def main():
     scheduler=PRODUCTION/'UiFrameScheduler.java'
     progress=PRODUCTION/'ChatDownloadProgressUi.java'
     address=PRODUCTION/'GeckoAddressUi.java'
-    inputs=[source,scheduler,progress,address,HERE/'frame_binding_host.java',HERE/'focus_run.py',Path(__file__).resolve()]
+    issue_type=PRODUCTION/"AttachmentIssue.java"
+    inputs=[source,scheduler,progress,address,issue_type,HERE/'frame_binding_host.java',HERE/'focus_run.py',Path(__file__).resolve()]
     hashes={str(path.relative_to(ROOT)):digest(path.read_bytes()) for path in inputs}
     original=source.read_text()
-    selected={name:member(original,name) for name in ['void syncSessionReferences(','void requestSessionUi(','void requestPresentationUi(','void applySession(','void updateReadingLayout(']}
+    selected={name:member(original,name) for name in ['void syncSessionReferences(','void requestSessionUi(','void requestPresentationUi(','void applySession(','void showSessionStatus(','void updateReadingLayout(']}
     address_methods={name:member(address.read_text(),name) for name in ['static boolean canForward(','static boolean available(']}
     ticker=member(original,'final Runnable ticker=')+';'
     observers=[line.strip() for line in progress.read_text().splitlines() if line.strip().startswith('observer=new ContentObserver(')]
@@ -44,7 +45,7 @@ def main():
     generated=fixture.replace('/* PRODUCTION_METHODS */','\n'.join(selected.values())).replace('/* ADDRESS_METHODS */','\n'.join(address_methods.values())).replace('/* TICKER */',ticker).replace('/* DOWNLOAD_OBSERVER */',observers[0])
     with tempfile.TemporaryDirectory(prefix='frame-binding-host-') as temporary:
         work=Path(temporary);java=work/'frame_binding_host.java';java.write_text(generated);classes=work/'classes'
-        compiled=subprocess.run([tool('javac'),'-encoding','UTF-8','-source','8','-target','8','-d',str(classes),str(java),str(scheduler)],capture_output=True,text=True)
+        compiled=subprocess.run([tool('javac'),'-encoding','UTF-8','-source','8','-target','8','-d',str(classes),str(java),str(scheduler),str(issue_type)],capture_output=True,text=True)
         if compiled.returncode:raise RuntimeError(compiled.stderr)
         ran=subprocess.run([tool('java'),'-cp',str(classes),'local.pocketchat.FrameBindingHost'],capture_output=True,text=True)
         if ran.returncode:raise RuntimeError(ran.stderr)
@@ -56,7 +57,7 @@ def main():
         ]:
             if generated.count(before)!=1:raise ValueError('Expected one production mutation point for '+name)
             mutated=generated.replace(before,after,1);java.write_text(mutated)
-            compiled=subprocess.run([tool('javac'),'-encoding','UTF-8','-source','8','-target','8','-d',str(classes),str(java),str(scheduler)],capture_output=True,text=True)
+            compiled=subprocess.run([tool('javac'),'-encoding','UTF-8','-source','8','-target','8','-d',str(classes),str(java),str(scheduler),str(issue_type)],capture_output=True,text=True)
             if compiled.returncode:raise RuntimeError(name+' failed to compile: '+compiled.stderr)
             ran=subprocess.run([tool('java'),'-cp',str(classes),'local.pocketchat.FrameBindingHost'],capture_output=True,text=True)
             if ran.returncode==0 or 'AssertionError: '+expected not in ran.stderr:raise RuntimeError(name+' did not fail at its intended assertion: '+ran.stderr)

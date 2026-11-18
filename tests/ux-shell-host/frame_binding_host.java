@@ -26,6 +26,7 @@ final class FrameBindingHost {
   public static void main(String[] args){
     Frames frames=new Frames();MainActivity owner=fresh(frames);owner.sessionUi.visible(true);
     for(int event=1;event<=1000;event++){update(owner.session,event);owner.requestSessionUi();owner.chatDownloadProgress.observer.onChange(false);mirrored(owner,event);}
+    owner.session.attachmentIssue=AttachmentIssue.PAGE_CHANGED;
     owner.ticker.run();
     check(immediateSnapshots==1000,"Every one of1000 observer events synchronously exposes current download/conversation model aliases");
     check(frames.queue.size()==1&&frames.posts==1,"1000 observer notifications retain one pending presentation frame");
@@ -36,6 +37,7 @@ final class FrameBindingHost {
     frames.runOne();
     check(owner.paints==1&&owner.last.conversation.equals("conversation-1000")&&owner.last.pending==owner.session.pending&&owner.last.entries==owner.session.entries,"One frame observes final conversation and object identities");
     check(owner.last.networkReady==owner.session.networkReady&&owner.last.submitting==owner.session.submitting&&owner.last.status.equals("status-1000"),"One frame observes final flags and status");
+    check(owner.lastIssue==AttachmentIssue.PAGE_CHANGED,"The session frame carries the typed attachment reason independently of the status wording");
     check(owner.loading.updates==1&&owner.designChrome.updates==1&&owner.metrics==1,"Actual applySession invokes each presentation consumer once");
     check(owner.chatDownloadProgress.updates==1,"Session, download and periodic notifications share the same presentation frame");
     check(owner.geckoAddress.updates==1,"One coalesced frame refreshes the current address once");
@@ -105,11 +107,13 @@ final class MainActivity {
   Object pending,entries;String conversation="";Loading loading;Chrome designChrome;Address geckoAddress;ChatDownloadProgressUi chatDownloadProgress;
   Browser remote;ToolsState toolsPanel;
   int paints,metrics;Paint last;
-  void status(String value){paints++;last=new Paint(pending,entries,conversation,networkReady,submitting,value);}
+  AttachmentIssue lastIssue;
+  void renderStatus(String value,AttachmentIssue issue){lastIssue=issue;paints++;last=new Paint(pending,entries,conversation,networkReady,submitting,value);}
   /* PRODUCTION_METHODS */
   /* TICKER */
 }
 final class Session {
+  AttachmentIssue attachmentIssue;
   final Reading reading=new Reading();
   Object pending,entries;boolean networkReady,submitting,navigating;String conversation="",status="";Browser web;
 }

@@ -170,7 +170,7 @@ class MainActivity extends Activity {
   JSONObject pending;JSONArray entries;String conversation;boolean destroyed,active,keyboardVisible;int statusCalls;
   DesignChrome designChrome;GeckoAddressUi geckoAddress;BrowserToolsUi toolsPanel;AppHub hub;EnvironmentOverviewUi environmentOverview;BrowserStartupGate browserStartup;UiFrameScheduler sessionUi;final ChatSession.Observer sessionObserver=()->requestSessionUi();
   TextView status;Button focusExit;LoadingUi loading;Attachments attachments;FileDownloads downloads;ChatDownloadProgressUi chatDownloadProgress;Dialog reloadDialog,networkDialog;final Handler handler=new Handler();final Runnable ticker=()->{};
-  TextView label(String text,int size,int color){return new TextView(this);}int dp(int value){return value;}void updateReadingLayout(){}void showStatusDetails(){}void setFocusReading(boolean value){}void applySession(){}void requestSessionUi(){}void showPage(boolean value){}void resumeChatUi(){session.foreground(true);session.add(sessionObserver);}void startNetwork(){}void startBrowserAfterOverview(){}void openNotification(Intent value){}void status(String value){statusCalls++;}
+  TextView label(String text,int size,int color){return new TextView(this);}int dp(int value){return value;}void updateReadingLayout(){}void showStatusDetails(){}void setFocusReading(boolean value){}void applySession(){}void requestSessionUi(){}void showPage(boolean value){}void resumeChatUi(){session.foreground(true);session.add(sessionObserver);}void startNetwork(){}void startBrowserAfterOverview(){}void openNotification(Intent value){}void status(String value){statusCalls++;}void attachmentStatus(AttachmentIssue issue){status(issue.message);}
   /*ACTUAL_MAIN_METHODS*/
 }
 class GeckoWebView extends FrameLayout {

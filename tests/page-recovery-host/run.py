@@ -33,13 +33,13 @@ def main():
       'EDITOR':('EnvironmentEditorUi.java',['static void applySafely(MainActivity a,JSONObject value,EditText name,java.util.function.BooleanSupplier current,java.util.function.Consumer<Boolean> done)']),
       'CAPTURE':('PageMemory.java',['void remember(','void capture(']),
       'MEMORY':('PageMemory.java',['static boolean completeDraft(','static boolean hasDraft(']),
-      'MAIN':('MainActivity.java',['static boolean chatUrl(','void status(','void showStatusDetails(','boolean reloadMatches(','void confirmIndependentReload(']),
+      'MAIN':('MainActivity.java',['static boolean chatUrl(','void status(','void attachmentStatus(','void showSessionStatus(','void renderStatus(','void showStatusDetails(','boolean reloadMatches(','void confirmIndependentReload(']),
       'REPLY':('ReplyState.java',['static String describe(','static long elapsedSeconds(','static void show(','static void checkWithoutRecovery(','static void websiteConnection(']),
       'NETWORK':('NetworkStatusUi.java',['static boolean current(','static boolean connectionReady(','static String pageStatus(','static String sendStatus(']),
       'LOGIN':('LoginPagePolicy.java',['static String host(','static boolean login(']),
       'LIFECYCLE':('GeckoWebView.java',['void forgetGeneralRoute(','private boolean navigationCurrent(','void timezoneConfigurationChanged(','private void contentStopped(','private boolean canRecoverAutomatically(','boolean recoverClosed(','private boolean closePopup(GeckoSession old)','private boolean closePopup(GeckoSession old,boolean returnNavigation)','boolean closeWebsitePages(','static final class TimeZoneGate {','void retireTimeZone(','void retireTimeZones(','void completeTimeZoneProofs(','void completeTimeZoneRequests(','void releaseIpRoute(','public void onResume(','boolean hasVisibleDocument(','private void failure('])}
     fixture=pathlib.Path(__file__).parent/'PageRecoveryHost.java'
-    inputs={source/name for name,_ in selections.values()}|{source/name for name in ('WebReplyObserver.java','ReplyTaskPersistence.java','BrowserRuntimePolicy.java','BrowserSettingsPolicy.java','BrowserBridgeRequests.java','ChromiumRouteLease.java','GeckoNavigationPolicy.java','BrowserAddressPolicy.java')}|{fixture,pathlib.Path(__file__).resolve(),fixture.with_name('ReloadRequestHost.java'),fixture.with_name('reload_request.py'),fixture.with_name('README.md')}
+    inputs={source/name for name,_ in selections.values()}|{source/name for name in ('WebReplyObserver.java','ReplyTaskPersistence.java','BrowserRuntimePolicy.java','BrowserSettingsPolicy.java','BrowserBridgeRequests.java','ChromiumRouteLease.java','GeckoNavigationPolicy.java','BrowserAddressPolicy.java','AttachmentIssue.java')}|{fixture,pathlib.Path(__file__).resolve(),fixture.with_name('ReloadRequestHost.java'),fixture.with_name('reload_request.py'),fixture.with_name('README.md')}
     hashes={str(path.relative_to(ROOT)):hashlib.sha256(path.read_bytes()).hexdigest() for path in sorted(inputs)}
     commit=subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip()
     text=fixture.read_text()
@@ -62,7 +62,7 @@ def main():
         tmp=pathlib.Path(tmp);java=tmp/'local/pocketchat/PageRecoveryHost.java';java.parent.mkdir(parents=True);java.write_text(text)
         uri=tmp/'android/net/Uri.java';uri.parent.mkdir(parents=True);uri.write_text('package android.net; public class Uri { java.net.URI u; public static Uri parse(String x){Uri v=new Uri();v.u=java.net.URI.create(x);return v;}public String getPath(){return u.getPath();}public String getScheme(){return u.getScheme();}public String getHost(){return u.getHost();}public String getUserInfo(){return u.getUserInfo();}public int getPort(){return u.getPort();}}')
         clock=tmp/'android/os/SystemClock.java';clock.parent.mkdir(parents=True);clock.write_text('package android.os;public class SystemClock {public static long elapsedRealtime(){return 100000;}}')
-        complete=[source/name for name in ('BrowserBridgeRequests.java','ChromiumRouteLease.java','GeckoNavigationPolicy.java','BrowserAddressPolicy.java')]
+        complete=[source/name for name in ('BrowserBridgeRequests.java','ChromiumRouteLease.java','GeckoNavigationPolicy.java','BrowserAddressPolicy.java','AttachmentIssue.java')]
         def execute(generated,label):
             selected=tmp/label;selected.mkdir();selected_java=selected/'PageRecoveryHost.java';selected_java.write_text(generated)
             built=subprocess.run(['javac','-encoding','UTF-8','-cp',str(a.json_jar.resolve()),'-d',str(selected),str(selected_java),str(uri),str(clock),*map(str,complete)],capture_output=True,text=True)
