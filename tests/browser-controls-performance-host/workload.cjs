@@ -104,11 +104,18 @@ async function sameTaskControls(install){
     const section=f.w.document.querySelector('section');
     section.insertAdjacentHTML('beforeend','<div id="retry-context"><span>Something went wrong</span><button aria-label="Retry">Retry</button></div>');
     const retry=f.w.document.querySelector('#retry-context button');
-    let row=f.poll();check('Same-task retry insertion reports current response error',!!row.error);observations.push({name:'retry-insert',error:row.error});
-    retry.setAttribute('aria-label','Copy');row=f.poll();check('Same-task retry relabelling clears response error',row.error==='');
-    retry.removeAttribute('aria-label');retry.textContent='Try again';row=f.poll();check('Text-only retry is evaluated live',!!row.error);
-    retry.textContent='Copy';row=f.poll();check('Text-only retry mutation clears response error',row.error==='');
-    retry.textContent='Retry';f.w.document.getElementById('retry-context').firstChild.textContent='Everything is ready';row=f.poll();check('Retry context is reevaluated without control membership changes',row.error==='');
+    let row=f.poll();
+    check('Generic retry reports an error only on the historical source',!!row.error===!optimized);
+    retry.setAttribute('aria-label','Copy');row=f.poll();check('Copy relabelling clears any historical response error',row.error==='');
+    retry.removeAttribute('aria-label');retry.textContent='Try again';row=f.poll();check('Text-only generic retry follows the same source policy',!!row.error===!optimized);
+    retry.textContent='Copy';row=f.poll();check('Text-only copy mutation clears any historical response error',row.error==='');
+    const retryMessage=f.w.document.getElementById('retry-context').firstChild;
+    retry.textContent='Retry';retryMessage.textContent='Everything is ready';row=f.poll();check('A ready context remains error-free without control membership changes',row.error==='');
+    if(optimized){
+      retryMessage.textContent='Browser app server websocket closed';row=f.poll();
+      check('A specific socket interruption beside a Retry control is evaluated live',row.websiteSocketClosed===true&&row.errorCode==='website_socket_closed');
+      retry.textContent='Copy';row=f.poll();check('Relabelling the retry control clears the socket report',!row.websiteSocketClosed&&row.error==='');
+    }
     f.w.document.getElementById('retry-context').remove();
     row=f.poll();check('Actual response completion remains immediate with current-turn actions',row.terminal&&!row.busy&&row.contentObserved!==false&&row.markdown==='original answer');
     check('Same-task control changes preserve draft/cookie and perform no page action',f.noEffects());
