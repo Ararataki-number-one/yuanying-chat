@@ -1,14 +1,14 @@
 {
   "schema": 1,
   "package": "local.pocketchat",
-  "version": "2.1.9",
-  "versionCode": 111,
+  "version": "2.1.10",
+  "versionCode": 112,
   "abi": "arm64-v8a",
   "minSdk": 26,
   "bytes": 119841308,
-  "sha256": "f7e6b5f1004ce06882f0057fb9367bd73bed19bea5ea67166b71de042858d466",
+  "sha256": "f8a3433b490d7cb579e38718eb446703adfcbe4fac6b096d89cd91f430ce80a7",
   "signerSha256": "f0afa2ef2b9ac68020b374276318b12d2bb4de65d2a3b788194de551356b9434",
-  "downloadUrl": "https://github.com/Ararataki-number-one/yuanying-chat/releases/download/v2.1.9-gecko/PocketChat-2.1.9-gecko-arm64.apk",
-  "notes": "# PocketChat 2.1.9（111）\n\n- 修复 Gecko 中符合条件的 ChatGPT 文件链接被弹窗规则拦截的问题。可直接下载的链接进入下载流程，需要确认时显示「下载文件」按钮，当前对话会保留。\n- 移除应用对 ChatGPT 网页通用错误、额度和验证提示的检测。真实的网页加载失败仍由浏览器报告。\n- 避免将下载端点返回的登录页或错误响应保存为文件，支持明确声明为附件的 HTML 和 JSON。\n\n本次 ARM64 APK 使用原签名，可作为现有 PocketChat 的更新安装。",
-  "sourceCommit": "9d581d7aa0baa9bbcf69396eac4645b38e46b179"
+  "downloadUrl": "https://github.com/Ararataki-number-one/yuanying-chat/releases/download/v2.1.10-gecko/PocketChat-2.1.10-gecko-arm64.apk",
+  "notes": "# PocketChat 2.1.10（112）\n\n- Gecko 支持保存 ChatGPT 对话生成的同站临时文件。保存时保留原始文件内容，并识别使用通用文件类型声明的 PDF。\n- 在 Gecko 内添加附件时，系统文件选择器可以在图片权限核验期间打开。选择图片后，PocketChat 会在把文件交给网页前完成权限核验。\n- 文件下载完成或失败时显示提示。Chromium 在选择文件后等待网页连接和配置确认超时，会提示重新选择。\n\n自动化测试覆盖了临时文件读取和格式识别、系统文件选择器以及页面切换时的附件交接。ChatGPT 原对话的预览下载和上传仍待在真实手机上复测。",
+  "sourceCommit": "cd2c4c313104b78d80b9167d1bca7f8d9a7bb9e5"
 }
