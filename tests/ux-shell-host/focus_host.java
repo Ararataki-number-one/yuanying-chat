@@ -125,6 +125,17 @@ final class FocusIntegrationHost {
     check("Native-page Back returns to requested focused chat",a.hub.page==AppHub.CHAT&&a.focusReading&&a.focusActive()&&a.remote.historyBack==0);
     noBrowserWork("Back overlay and workspace handling preserve webpage",a);
 
+
+    a=fresh();
+    a.session=null;
+    a.remote.back=true;
+    a.hub.select(AppHub.NETWORK);
+    int networkSelections=a.hub.selections;
+    a.onBackPressed();
+    check("Standalone Network Back finishes the Activity and preserves the workspace",
+          a.finishing&&a.hub.page==AppHub.NETWORK&&a.hub.selections==networkSelections
+          &&a.remote.historyBack==0&&a.taskMoves==0);
+
     a=fresh();a.focusReading=true;a.session=null;a.applyFocusLayout();
     layout("No session leaves recovery chrome",a,View.VISIBLE,View.VISIBLE,View.GONE);
     a=fresh();a.focusReading=true;a.remote=null;a.applyFocusLayout();
@@ -150,6 +161,7 @@ final class MainActivity extends BaseActivity {
   AppHub hub;View toolbar;Button focusExit;Browser remote;Session session;Chrome designChrome;Overview environmentOverview;GeckoAddressUi geckoAddress;
   int dp(int n){return n;}
   boolean isFinishing(){return finishing;}
+  public void finish(){finishing=true;}
   void showPage(boolean value){reveals++;}
   void bindFocusExit(){/* EXIT_INITIALIZATION */}
   /* PRODUCTION_METHODS */
@@ -175,7 +187,7 @@ final class DesignUi {
   static Object glass(MainActivity a,int radius){return new Object();}
 }
 final class AppHub {
-  static final int CHAT=0,SETTINGS=3;
+  static final int CHAT=0,SETTINGS=3,NETWORK=4;
   final MainActivity a;final View bar=new View(),divider=new View();int page=CHAT,selections;
   AppHub(MainActivity a){this.a=a;}
   void select(int value){selections++;page=value;a.updateReadingLayout();}
