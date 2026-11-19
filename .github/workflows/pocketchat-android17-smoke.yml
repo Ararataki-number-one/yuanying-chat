@@ -59,7 +59,12 @@ jobs:
         # This dedicated lane needs a stable emulator new enough for API 37.
         sdkmanager="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
         "$sdkmanager" --channel=0 'platforms;android-37.1' 'build-tools;37.0.0' 'emulator' 'system-images;android-37.0;google_apis;x86_64'
-        "$ANDROID_HOME/emulator/emulator" -version > "$work/emulator-version.txt"
+        if ! ldconfig -p | grep -F 'libpulse.so.0 (libc6,x86-64)' >/dev/null; then
+          sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends libpulse0
+        fi
+        ldconfig -p | grep -F 'libpulse.so.0 (libc6,x86-64)' >/dev/null
+        "$ANDROID_HOME/emulator/emulator" -version 2>&1 | tee "$work/emulator-version.txt"
+        grep -F 'Android emulator version ' "$work/emulator-version.txt" >/dev/null
     - name: Wait for the exact original derived SDK transport
       env:
         GH_TOKEN: ${{ github.token }}
@@ -172,6 +177,7 @@ jobs:
         name: android17-${{ github.run_id }}-${{ github.run_attempt }}-smoke
         path: |
           work/chromium-delivery/android17-image.properties
+          work/chromium-delivery/emulator-version.txt
           work/chromium-delivery/android17-emulator.log
           work/chromium-delivery/android17-webview.txt
           work/chromium-delivery/android17-smoke.json
