@@ -10,8 +10,8 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     env:
-      RELEASE_SOURCE: 0e12d26d31f073e04c075eceba1073790be253ec
-      RELEASE_TREE: 3368b40275f216d6ddd525f067f7a09fed9bc9d7
+      RELEASE_SOURCE: 52bc1ece618251cdf3b160b9eb83b9497715e40f
+      RELEASE_TREE: 9b84fa89e7652c59e65b9d328420afb2100c15b1
       PYTHONDONTWRITEBYTECODE: '1'
     steps:
     - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
@@ -48,13 +48,14 @@ jobs:
         # Keep the existing Gecko matrix's pinned emulator/images unchanged.
         # Reproduce the primary API 33 runner with its missing host dependency installed.
         sdkmanager="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
-        "$sdkmanager" --channel=0 'platforms;android-37.1' 'build-tools;37.0.0' 'emulator' 'system-images;android-33;google_apis;x86_64'
-        if ! ldconfig -p | grep -F 'libpulse.so.0 (libc6,x86-64)' >/dev/null; then
-          sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends libpulse0
+        python3 tools/gecko/prepare_chromium_emulator.py --sdk-root "$ANDROID_HOME" --cache "$work/packages" --report "$work/emulator-package.json"
+        "$sdkmanager" --channel=0 'platforms;android-37.1' 'build-tools;37.0.0' 'system-images;android-33;google_apis;x86_64'
+        if ! ldconfig -p | grep -F "libpulse.so.0 " >/dev/null; then
+          sudo apt-get update -o Acquire::Retries=3
+          sudo apt-get install -y --no-install-recommends -o Acquire::Retries=3 libpulse0
         fi
-        ldconfig -p | grep -F 'libpulse.so.0 (libc6,x86-64)' >/dev/null
-        "$ANDROID_HOME/emulator/emulator" -version 2>&1 | tee "$work/emulator-version.txt"
-        grep -F 'Android emulator version ' "$work/emulator-version.txt" >/dev/null
+        "$ANDROID_HOME/emulator/emulator" -version | tee "$work/emulator-version.txt"
+        grep -Fq 'Android emulator version 37.2.13.0 (build_id 16740729)' "$work/emulator-version.txt"
     - name: Derive the official pinned Gecko SDK for this diagnostic run
       shell: bash
       run: |
@@ -137,7 +138,7 @@ jobs:
         test "$(git rev-parse HEAD)" = "$RELEASE_SOURCE"
         test "$(git rev-parse 'HEAD^{tree}')" = "$RELEASE_TREE"
         test -z "$(git status --porcelain)"
-        echo 'bb7c32d14693e4e40f1f61e9b4e1c9afee36fa06aff619ce6d60d216160d0d4c  tools/gecko/chromium_ci_device.sh' | sha256sum -c -
+        echo '9fc9f393572c15d81280f1163153d9021b06e82eea57068da997f87495bdc3a5  tools/gecko/chromium_ci_device.sh' | sha256sum -c -
         cp "$ANDROID_HOME/system-images/android-33/google_apis/x86_64/source.properties" work/chromium-delivery/android13-image.properties
         bash tools/gecko/chromium_ci_device.sh 33 routes
     - name: Preserve Android 13 diagnostic evidence
@@ -151,6 +152,7 @@ jobs:
           work/native-caret-sdk/derived-sdk-compilation.json
           work/chromium-delivery/android13-image.properties
           work/chromium-delivery/emulator-version.txt
+          work/chromium-delivery/emulator-package.json
           work/chromium-delivery/chromium-ondemand-device-results.json
           work/chromium-delivery/test-build-sha256.txt
           work/chromium-delivery/host-report.json
@@ -159,6 +161,7 @@ jobs:
           work/chromium-delivery/android13-emulator.log
           work/chromium-delivery/android13-crash.log
           work/chromium-delivery/android13-native-logcat.txt
+          work/chromium-delivery/android13-native-live.log
           work/chromium-delivery/android13-webview.txt
           work/chromium-delivery/wire-vpn.txt
           work/chromium-delivery/wire-internal.txt
