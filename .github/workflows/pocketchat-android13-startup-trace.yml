@@ -10,8 +10,8 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     env:
-      RELEASE_SOURCE: ba1f06712df4169559332e0c811301e135cefeb2
-      RELEASE_TREE: 1b72825f18f0561db746ae3e44214c8478f7aeb6
+      RELEASE_SOURCE: 91f9e42e80ab0643f726d30aa6bdbc8b5602ca8a
+      RELEASE_TREE: 4f9f3c5c3cd3444248a92eac3b3d97702733763e
       PYTHONDONTWRITEBYTECODE: '1'
     steps:
     - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
@@ -126,7 +126,7 @@ jobs:
         test "$(git rev-parse HEAD)" = "$RELEASE_SOURCE"
         test "$(git rev-parse 'HEAD^{tree}')" = "$RELEASE_TREE"
         test -z "$(git status --porcelain)"
-        echo '26c6e8718380f3ce611c499bd2f704e5368236fb2c431b74d32953ae6e36090e  tools/gecko/chromium_ci_device.sh' | sha256sum -c -
+        echo 'c0e3c55cededb8dbfc0cd5040e14b7421f8c869ba311a3a38fd931612c65a30b  tools/gecko/chromium_ci_device.sh' | sha256sum -c -
         cp "$ANDROID_HOME/system-images/android-33/google_apis/x86_64/source.properties" work/chromium-delivery/android13-image.properties
         python3 - <<'PYCODE'
         from hashlib import sha256
@@ -135,14 +135,20 @@ jobs:
         import subprocess
 
         source = Path('tools/gecko/chromium_ci_device.sh').read_bytes()
-        assert sha256(source).hexdigest() == '26c6e8718380f3ce611c499bd2f704e5368236fb2c431b74d32953ae6e36090e'
+        assert sha256(source).hexdigest() == 'c0e3c55cededb8dbfc0cd5040e14b7421f8c869ba311a3a38fd931612c65a30b'
         marker = b'\n"${adb_device[@]}" shell am force-stop local.pocketchat\n'
         assert source.count(marker) == 1
         prefix, suffix = source.split(marker)
         assert prefix.endswith(b'\n') and b'join-renderer' in prefix.splitlines()[-1] and b'join-routes' in suffix
-        assert sha256(prefix).hexdigest() == '0e30c85f79d0c7ffc3a70a7643489d812c80bf550a8c0cac24de31fcd0fc611c'
+        assert sha256(prefix).hexdigest() == '8c8913169268ce0a90cab257765a4766501532e9e08d3801d207b3896ca712a6'
         script = Path(os.environ['RUNNER_TEMP']) / 'pocketchat-android13-startup-trace.sh'
-        script.write_bytes(prefix)
+        tags = b'chromium:V Cefrium:V cefrium:V'
+        captured = tags + b' cr_LibraryLoader:V cr_ApkAssets:V cr_BundleUtils:V cr_ChildProcessConn:V'
+        assert prefix.count(tags) == 1
+        traced = prefix.replace(tags, captured, 1)
+        assert traced.replace(captured, tags, 1) == prefix
+        assert sha256(traced).hexdigest() == '6132b41543ff7ccfa4d352fd3edef5a1d7dd412136056de63a3bf075c7cfd9b4'
+        script.write_bytes(traced)
         subprocess.run(['bash', '-n', script], check=True)
         PYCODE
         bash "$RUNNER_TEMP/pocketchat-android13-startup-trace.sh" 33 routes

@@ -22,6 +22,10 @@ PACKAGES = ('local.pocketchat', 'local.pocketchat.test')
 SAFE_SCREEN = ('请先确认此环境的网络设置', '请先为此环境配置网络线路', '此环境未明确启用系统直连', '系统网络尚未连接',
                'Chromium 尚不能验证此环境的受保护线路，可在环境设置中选择 Gecko')
 FEATURE = 'chromium'
+API37_HOST_SCOPE = 'api37-debug-candidate-stock-webview-host'
+API37_RENDER_SCOPE = 'api37-debug-candidate-stock-webview-renderer'
+API37_INSTRUMENTATION_SCOPE = 'api37-debug-stock-webview-process-disabled'
+WEBVIEW_PACKAGE = r'[a-zA-Z0-9_]+(?:[.][a-zA-Z0-9_]+)+'
 
 
 def require(condition, message):
@@ -105,6 +109,7 @@ class Device:
     def __init__(self, args):
         self.args = args
         self.nonce = uuid.uuid4().hex
+        self.webview_provider = None
 
     def adb(self, *arguments, timeout=None, check=True, input=None):
         result = subprocess.run([self.args.adb, '-s', self.args.serial, *map(str, arguments)],
@@ -135,6 +140,8 @@ class Device:
         sdk = int(self.shell('getprop', 'ro.build.version.sdk'))
         require(sdk >= 29 and abi == self.args.abi and self.shell('getprop', 'sys.boot_completed') == '1',
                 'Wrong or not fully booted Android device')
+        require(not self.args.api37_compatibility or (sdk == 37 and abi == 'x86_64' and self.args.package == PACKAGES[0]),
+                'The process-disabled WebView check is limited to the API 37 debug compatibility guest')
         self.offline()
         require(self.shell('pm', 'path', 'android').startswith('package:'), 'Android Package Manager is unavailable')
         require(not self.installed_paths(), 'PocketChat already exists on this emulator. Use a fresh disposable guest')
@@ -142,8 +149,18 @@ class Device:
 
     def offline(self):
         webview = self.shell('dumpsys', 'webviewupdate')
-        require(re.search(r'Current WebView package[^\n]*(?:null|none)', webview, re.IGNORECASE),
-                'Disable WebView in the disposable device before running the acceptance')
+        if self.args.api37_compatibility:
+            provider = re.search(
+                rf'(?m)^\s*Current WebView package \(name, version\): \(({WEBVIEW_PACKAGE}), [^\r\n]+\)\s*$', webview)
+            require(provider, 'The disposable API 37 image did not report a stock WebView provider')
+            package = provider[1]
+            enabled = self.shell('pm', 'list', 'packages', '-e', '--user', '0', package).splitlines()
+            require('package:' + package in enabled and self.webview_provider in (None, package),
+                    'The stock WebView provider is disabled or changed during the API 37 test')
+            self.webview_provider = package
+        else:
+            require(re.search(r'Current WebView package[^\n]*(?:null|none)', webview, re.IGNORECASE),
+                    'Disable WebView in the disposable device before running the acceptance')
         require(self.shell('settings', 'get', 'global', 'airplane_mode_on') == '1', 'Device airplane mode is off')
         connection = self.shell('dumpsys', 'connectivity')
         require(re.search(r'(?im)^\s*Active default network:\s*(none|null)\s*$', connection),
@@ -324,11 +341,13 @@ def run(args, report):
     device.check_marker()
     device.verify_installed(artifacts)
     require(all(report[key] == value for key, value in source_state().items()), 'Host source changed during invocation')
-    report.update(systemWebViewUnavailable=True, offlineRouteRejectedBeforeNativeInitialization=True,
+    report.update(systemWebViewUnavailable=not args.api37_compatibility, offlineRouteRejectedBeforeNativeInitialization=True,
                   actualAndroidExecution=True, status='passed')
+    if args.api37_compatibility:
+        report['systemWebViewProviderPackage'] = device.webview_provider
 
 
-def joined_report(host, transcript):
+def joined_report(host, transcript, *, api37_compatibility=False):
     installed = host.get('apkSet', {})
     require(host.get('schema') == 1 and host.get('package') == 'local.pocketchat' and host.get('status') == 'passed'
             and type(host.get('sdk')) is int and host['sdk'] >= 29 and host.get('abi') == 'x86_64'
@@ -336,8 +355,14 @@ def joined_report(host, transcript):
             and host.get('sourceDirty') is False and host.get('nativeRenderer') is False,
             'Require a clean-source running Gecko/feature receipt for the exact two-APK x86_64 candidate')
     require(all(host.get(field) is True for field in ('actualAndroidExecution', 'initWithoutChromium', 'appendInstall',
-                'baseDataRetained', 'systemWebViewUnavailable', 'offlineRouteRejectedBeforeNativeInitialization')),
+                'baseDataRetained', 'offlineRouteRejectedBeforeNativeInitialization'))
+            and host.get('systemWebViewUnavailable') is (not api37_compatibility),
             'The host device acceptance gates have not all passed')
+    if api37_compatibility:
+        provider = host.get('systemWebViewProviderPackage')
+        require(host['sdk'] == 37 and host.get('testScope') == API37_HOST_SCOPE
+                and isinstance(provider, str) and re.fullmatch(WEBVIEW_PACKAGE, provider),
+                'API 37 compatibility requires the separate stock-provider host receipt')
     require(all(host.get(key) == value for key, value in source_state().items()),
             'Host receipt source does not match the active clean source')
     output = transcript.decode('utf-8')
@@ -357,6 +382,9 @@ def joined_report(host, transcript):
                 'androidExecution': 'true', 'noSystemWebViewProvider': 'true', 'localContentRendered': 'true',
                 'defaultNetworkInitiallyPresent': 'true', 'defaultNetworkLost': 'true',
                 'chromiumBrowserRetired': 'true', 'navigationAfterLossWasBlocked': 'true'}
+    if api37_compatibility:
+        expected.update(scope=API37_INSTRUMENTATION_SCOPE, noSystemWebViewProvider='false',
+                        webViewDisabledForTestProcess='true', systemWebViewProviderPackage=provider)
     require(all(re.fullmatch(r'[a-f0-9]{64}', value) for value in (base, feature))
             and re.fullmatch(r'[a-f0-9]{32}', host['runNonce'])
             and all(observed.get(key) == value for key, value in expected.items()),
@@ -381,22 +409,25 @@ def joined_report(host, transcript):
     require(observed.get('tlsFixtureVerified') == 'true', 'Upstream HTTPS TLS fixture was not verified')
     unsupported = ('publicNetworkRouteVerified', 'vpnRouteVerified', 'internalRouteVerified', 'originTlsVerified')
     require(all(observed.get(key) == 'false' for key in unsupported), 'Unexpected real network verification claim')
-    return dict(host, nativeRenderer=True, baseSha256=base, featureSha256=feature,
-                nativeRendererCount=int(observed['nativeRenderers']), chromiumVersion=observed['chromiumVersion'],
-                actualLocalRouteLoss=True, tlsFixtureVerified=True, **protected, **dict.fromkeys(unsupported, False),
-                rendererTranscriptSha256=hashlib.sha256(transcript).hexdigest(),
-                testScope='combined-debug-candidate-local-install-and-renderer',
-                sourceEvidence='Clean host invocation plus exact artifacts. No embedded debug APK source stamp.')
+    result = dict(host, nativeRenderer=True, baseSha256=base, featureSha256=feature,
+                  nativeRendererCount=int(observed['nativeRenderers']), chromiumVersion=observed['chromiumVersion'],
+                  actualLocalRouteLoss=True, tlsFixtureVerified=True, **protected, **dict.fromkeys(unsupported, False),
+                  rendererTranscriptSha256=hashlib.sha256(transcript).hexdigest(),
+                  testScope=API37_RENDER_SCOPE if api37_compatibility else 'combined-debug-candidate-local-install-and-renderer',
+                  sourceEvidence='Clean host invocation plus exact artifacts. No embedded debug APK source stamp.')
+    if api37_compatibility:
+        result['webViewDisabledForTestProcess'] = True
+    return result
 
 
-def join_main():
+def join_main(*, api37_compatibility=False):
     parser = argparse.ArgumentParser(description='Join a completed device receipt and the exact instrumentation output')
     parser.add_argument('--host-report', required=True, type=Path)
     parser.add_argument('--renderer-log', required=True, type=Path)
     parser.add_argument('--output', required=True, type=Path)
     args = parser.parse_args(sys.argv[2:])
     host = json.loads(args.host_report.read_text(encoding='utf-8'))
-    report = joined_report(host, args.renderer_log.read_bytes())
+    report = joined_report(host, args.renderer_log.read_bytes(), api37_compatibility=api37_compatibility)
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(report, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
     print(json.dumps({'status': report['status'], 'report': str(args.output)}))
@@ -419,12 +450,17 @@ def main():
     parser.add_argument('--timeout', default=300, type=int)
     parser.add_argument('--output', required=True, type=Path)
     parser.add_argument('--verify-only', action='store_true')
+    parser.add_argument('--api37-compatibility', action='store_true',
+                        help='Retain the stock provider on API 37 for a separate process-disabled renderer test')
     args = parser.parse_args()
+    if args.api37_compatibility and args.verify_only:
+        parser.error('API 37 compatibility requires actual Android execution')
     if not args.verify_only and not (args.adb and args.serial and args.disposable_emulator):
         parser.error('Running on Android requires --adb, --serial and --disposable-emulator')
     if not 10 <= args.timeout <= 900 or not re.fullmatch(r'[a-f0-9]{64}', args.signer) or args.signer == SIGNER:
         parser.error('Use a dedicated debug test signer and a bounded timeout of 10..900 seconds')
-    report = {'schema': 1, 'status': 'running', 'testScope': 'split-install-debug-candidate',
+    report = {'schema': 1, 'status': 'running',
+              'testScope': API37_HOST_SCOPE if args.api37_compatibility else 'split-install-debug-candidate',
               'actualAndroidExecution': False, 'actualOnlineSignedMetadataDownload': False,
               'actualSystemInstallerConsent': False, 'nativeRenderer': False, 'diagnosticOnly': True,
               'package': args.package, 'version': args.version, 'versionCode': args.version_code,
@@ -455,5 +491,7 @@ def main():
 if __name__ == '__main__':
     if sys.argv[1:2] == ['join-renderer']:
         join_main()
+    elif sys.argv[1:2] == ['join-api37-renderer']:
+        join_main(api37_compatibility=True)
     else:
         main()
