@@ -3,6 +3,9 @@ plugins {
     id 'com.cefrium'
 }
 
+String chromiumAbi = providers.gradleProperty('pocketChatChromiumAbi').orElse('arm64-v8a').get()
+def otherAbis = ['arm64-v8a', 'armeabi-v7a', 'riscv64', 'x86', 'x86_64'] - chromiumAbi
+
 android {
     namespace 'local.pocketchat.chromium'
     compileSdk { version = release(37) { minorApiLevel = 1 } }
@@ -14,7 +17,13 @@ android {
         sourceCompatibility JavaVersion.VERSION_17
         targetCompatibility JavaVersion.VERSION_17
     }
-    packaging { jniLibs { useLegacyPackaging = true } }
+    packaging {
+        jniLibs {
+            useLegacyPackaging = true
+            // Cefrium checks the feature's native merge before the app ABI filter.
+            excludes.addAll(otherAbis.collect { "**/${it}/**".toString() })
+        }
+    }
     sourceSets.main.assets.srcDir new File(gradle.ext.pocketChatCefriumRepository, 'notice')
 }
 
@@ -22,8 +31,7 @@ dependencies {
     implementation project(':app')
     implementation 'com.cefrium:cefrium-sdk-core:0.21.0'
     implementation 'org.jetbrains.kotlin:kotlin-stdlib:2.2.10'
-    runtimeOnly 'com.cefrium:cefrium-native-libre-arm64-v8a:0.21.0'
-    runtimeOnly 'com.cefrium:cefrium-native-libre-x86_64:0.21.0'
+    runtimeOnly "com.cefrium:cefrium-native-libre-${chromiumAbi}:0.21.0"
 }
 
 apply from: rootProject.file('gradle/chromium-manifest.gradle')
