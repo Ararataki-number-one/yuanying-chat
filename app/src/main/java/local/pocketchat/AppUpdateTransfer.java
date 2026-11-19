@@ -45,7 +45,7 @@ final class AppUpdateTransfer {
     boolean valid=false;
     if(meta.isFile())try(InputStream in=new FileInputStream(meta)){Properties p=new Properties();p.load(in);valid=request.identity().equals(p.getProperty("identity"));String saved=p.getProperty("etag","");if(strong(saved))etag=saved;
       parallel="2".equals(p.getProperty("segments"));if(parallel){for(int i=0;i<2;i++)progress[i]=durable[i]=Long.parseLong(p.getProperty("durable"+i,"-1"));long split=request.bytes/2;valid&=strong(etag)&&durable[0]>=0&&durable[0]<=split&&durable[1]>=0&&durable[1]<=request.bytes-split&&part.isFile()&&part.length()>=Math.max(durable[0],durable[1]>0?split+durable[1]:0);}
-    }catch(IOException|NumberFormatException ignored){valid=false;}
+    }catch(IOException|IllegalArgumentException invalidCheckpoint){valid=false;}
     if(!valid||received()>request.bytes||part.length()>request.bytes){clear();saveMeta();}
   }
   synchronized void saveMeta()throws IOException {
@@ -131,9 +131,9 @@ final class AppUpdateTransfer {
       checkStopped(stopped);long offset=received();HttpURLConnection connection=null;
       try{
         connection=connect(offset,stopped);int code=connection.getResponseCode();long expectedEnd=request.bytes-1;
-        String encoding=connection.getHeaderField("Content-Encoding");if(encoding!=null&&!encoding.isEmpty()&&!"identity".equalsIgnoreCase(encoding))throw new InvalidResponse("更新服务器使用了无法续传的压缩格式");
         if(code==416){String range=connection.getHeaderField("Content-Range");if(offset==request.bytes&&("bytes */"+request.bytes).equals(range))return;throw new InvalidResponse("更新服务器拒绝续传范围，请重试");}
         if(code!=200&&code!=206)throw new IOException("更新下载暂不可用（"+code+"），已保留进度");
+        String encoding=connection.getHeaderField("Content-Encoding");if(encoding!=null&&!encoding.isEmpty()&&!"identity".equalsIgnoreCase(encoding))throw new InvalidResponse("更新服务器使用了无法续传的压缩格式");
         long length=connection.getContentLengthLong();String responseEtag=connection.getHeaderField("ETag");
         if(code==206){
           Matcher range=Pattern.compile("bytes ([0-9]+)-([0-9]+)/([0-9]+)").matcher(String.valueOf(connection.getHeaderField("Content-Range")));

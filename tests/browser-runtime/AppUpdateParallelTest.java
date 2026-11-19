@@ -17,6 +17,7 @@ public final class AppUpdateParallelTest {
   static void check(boolean ok,String message){if(!ok)throw new AssertionError(message);passed++;}
   static final class Fixture implements HttpHandler {
     volatile String mode="range";volatile int delay=3;
+    volatile int segmentError;
     final AtomicInteger active=new AtomicInteger(),peak=new AtomicInteger(),bodies=new AtomicInteger();
     final List<String> ranges=Collections.synchronizedList(new ArrayList<>());
     final AtomicLong served=new AtomicLong();
@@ -25,6 +26,15 @@ public final class AppUpdateParallelTest {
       if(mode.equals("unavailable")){x.sendResponseHeaders(503,-1);x.close();return;}
       boolean supports=!mode.equals("sequential");long start=0,end=DATA.length-1;
       if(supports&&range!=null){String[] parts=range.substring(6).split("-",-1);start=Long.parseLong(parts[0]);if(!parts[1].isEmpty())end=Long.parseLong(parts[1]);}
+      int status=segmentError;
+      if(status!=0&&end>0){
+        x.getResponseHeaders().add("Content-Encoding","gzip");
+        x.sendResponseHeaders(status,0);
+        try(OutputStream error=new java.util.zip.GZIPOutputStream(x.getResponseBody())){
+          error.write("Retry later".getBytes(java.nio.charset.StandardCharsets.US_ASCII));
+        }finally{x.close();}
+        return;
+      }
       String tag=mode.equals("changed")?"\"changed\"":ETAG;
       x.getResponseHeaders().add("ETag",tag);
       boolean partial=supports&&range!=null;
@@ -66,6 +76,21 @@ public final class AppUpdateParallelTest {
       check(parallelMs<serialMs*.85,"Two actual throttled HTTP connections reduce elapsed transfer time");
       f.delay=8;File pausedDir=directory("paused");AtomicBoolean pause=new AtomicBoolean();AppUpdateTransfer paused=transfer(pausedDir,new Factory(f),(have,total,speed)->{if(have>1024*1024)pause.set(true);});interrupted(paused,pause::get);long have=paused.received();
       check(have>0&&have<DATA.length&&paused.connections.isEmpty(),"Pause closes both workers and retains partial data");
+      for(int status:new int[]{429,503}){
+        f.segmentError=status;
+        AppUpdateTransfer retry=transfer(pausedDir,new Factory(f),null);
+        try{
+          retry.run(()->false);
+          throw new AssertionError("Expected HTTP "+status+" on a segment after the successful probe");
+        }catch(IOException expected){
+          check(!(expected instanceof AppUpdateTransfer.InvalidResponse)&&expected.getMessage().contains(Integer.toString(status)),
+              "Segment HTTP "+status+" takes the retryable manager path");
+        }
+        AppUpdateTransfer reopened=transfer(pausedDir,new Factory(f),null);
+        check(reopened.parallel&&Arrays.equals(reopened.durable,paused.durable),
+            "Both durable checkpoints survive segment HTTP "+status+" and transfer recreation");
+      }
+      f.segmentError=0;
       AppUpdateTransfer restored=transfer(pausedDir,new Factory(f),null);check(restored.received()==have,"Recreated transfer reports durable segment totals, not sparse file length");int before=f.ranges.size();restored.run(()->false);exact(restored);
       List<String> resumed=new ArrayList<>(f.ranges.subList(before,f.ranges.size()));check(resumed.contains("bytes="+paused.durable[0]+"-"+(DATA.length/2-1))&&resumed.contains("bytes="+(DATA.length/2+paused.durable[1])+"-"+(DATA.length-1)),"Both segments request only missing bytes after restart");
       File legacyDir=directory("legacy");AppUpdateTransfer legacy=transfer(legacyDir,new Factory(f),null);try(FileOutputStream out=new FileOutputStream(legacy.partial())){out.write(DATA,0,100);}legacy.etag=ETAG;legacy.saveMeta();legacy.run(()->false);exact(legacy);check(legacy.parallel,"Existing sequential progress migrates to segment checkpoints");

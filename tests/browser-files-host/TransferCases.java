@@ -56,7 +56,11 @@ public final class TransferCases {
       }
       Route tooMany=new Route();for(int index=0;index<6;index++){Connection redirect=new Connection("https://first.example/file");redirect.status=302;redirect.headers.put("Location","/again"+index);tooMany.queue.add(redirect);}
       rejects("Redirect chain has a hard six-request bound",()->run(cache,new BrowserDownloadTransfer(),tooMany,target->""));yes("Redirect limit never tries a seventh route open",tooMany.opened.size()==6);
-      for(int code:new int[]{206,400,403,404,500}){Route selected=new Route();Connection failure=new Connection("https://first.example/file");failure.status=code;selected.queue.add(failure);rejects("HTTP "+code+" cannot manufacture a complete file",()->run(cache,new BrowserDownloadTransfer(),selected,target->""));yes("Rejected status reads no response body "+code,failure.streamReads==0&&failure.disconnects==1);}
+      for(int code:new int[]{204,205,206,304,400,403,404,500}){Route selected=new Route();Connection failure=new Connection("https://first.example/file");failure.status=code;if(code==204||code==205||code==304){failure.payload=new byte[0];failure.declared=0;}selected.queue.add(failure);rejects("HTTP "+code+" cannot manufacture a complete file",()->run(cache,new BrowserDownloadTransfer(),selected,target->""));yes("Rejected status reads no response body "+code,failure.streamReads==0&&failure.disconnects==1);}
+      Route emptyRoute=new Route();Connection emptyFile=new Connection("https://first.example/empty.txt");
+      emptyFile.payload=new byte[0];emptyFile.declared=0;emptyRoute.queue.add(emptyFile);
+      saved=run(cache,new BrowserDownloadTransfer(),emptyRoute,target->"");
+      yes("HTTP 200 may supply a legitimate zero-byte file",saved.file.isFile()&&saved.bytes==0&&saved.file.length()==0);saved.file.delete();
       Route unavailable=new Route();unavailable.current=false;rejects("Lost route refuses the first open",()->run(cache,new BrowserDownloadTransfer(),unavailable,target->""));yes("No direct fallback exists after route loss",unavailable.opened.isEmpty());
       Route headersChanged=new Route();Connection duringHeaders=new Connection("https://first.example/file");duringHeaders.afterHeaders=()->headersChanged.current=false;headersChanged.queue.add(duringHeaders);
       rejects("Route loss during headers aborts before body",()->run(cache,new BrowserDownloadTransfer(),headersChanged,target->""));yes("Lost-header attempt closes without reading",duringHeaders.streamReads==0&&duringHeaders.disconnects==1);

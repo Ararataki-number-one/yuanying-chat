@@ -34,6 +34,16 @@ public final class AutomaticLatencyHost {
     check("The actual environment editor renders the automatic latency checkbox",options[index]!=null&&options[index].text.equals(AppPrefs.LABELS[index])&&!options[index].isChecked());
     options[index].setChecked(true);AppPrefs.apply(s.context,PreferenceEntryBoundary.read(options));
     check("The actual editor read loop reaches the real preference apply method",AppPrefs.enabled(s.context,KEY)&&PreferenceEntryBoundary.render(s.context,new JSONObject())[index].isChecked());
+    for(boolean legacyValue:new boolean[]{true,false}){
+      AppPrefs.apply(s.context,J.obj("replyNotice",legacyValue));
+      CheckBoxBoundary[] restored=PreferenceEntryBoundary.render(s.context,J.obj("replyNotice",!legacyValue));
+      JSONObject edits=PreferenceEntryBoundary.read(restored);
+      check("Existing profiles and drafts omit the retired reply notice control ("+legacyValue+")",
+          restored[Arrays.asList(AppPrefs.KEYS).indexOf("replyNotice")]==null&&!edits.has("replyNotice"));
+      AppPrefs.apply(s.context,edits);
+      check("Editing available settings preserves the stored legacy value ("+legacyValue+")",
+          AppPrefs.enabled(s.context,"replyNotice")==legacyValue);
+    }
     ContextBoundary foreign=new ContextBoundary();
     setting(s,false);
     check("Disabling one environment leaves another environment enabled",!AppPrefs.enabled(s.context,KEY)&&AppPrefs.enabled(foreign,KEY));

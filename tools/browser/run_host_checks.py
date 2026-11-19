@@ -170,8 +170,13 @@ def main():
     files=[ROOT/name for name in sorted(set(names)) if (ROOT/name).is_file()]
     hashes={str(path.relative_to(ROOT)):hashlib.sha256(path.read_bytes()).hexdigest() for path in files}
     environment=dict(os.environ,JSDOM_MODULE=str(a.jsdom_module.resolve()),JAVA_HOME=str(a.java_home.resolve()),PROFILE_JAVA=str(a.java_home.resolve()/'bin/java'),PROFILE_JSON_JAR=str(a.json_jar.resolve()),PROFILE_ANDROID_JSON_JAR=str(a.android_json_jar.resolve()));environment['PATH']=str(a.java_home.resolve()/'bin')+os.pathsep+environment['PATH']
+    # A reused output directory can contain a successful receipt from an earlier run.
+    summary = out/'results.json'
+    summary.unlink(missing_ok=True)
     results=[]
     for name,command,report in cases:
+        if report is not None:
+            report.unlink(missing_ok=True)
         print(json.dumps(dict(suite=name,status='running')),flush=True)
         ran=subprocess.run(command,cwd=ROOT,env=environment,capture_output=True,text=True,timeout=300)
         log=out/(name+'.log');log.write_text(ran.stdout+ran.stderr)
@@ -192,7 +197,7 @@ def main():
     stable=all(path.is_file() and hashlib.sha256(path.read_bytes()).hexdigest()==hashes[str(path.relative_to(ROOT))] for path in files)
     passed=stable and len(results)==len(cases) and all(r['status']=='passed' for r in results)
     report=dict(status='passed' if passed else 'failed',sourceCommit=subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip(),executionInputsUnchanged=stable,sourceFiles=hashes,suites=results,requiredSuites=len(cases),completedSuites=len(results),dependencies={str(path.resolve()):hashlib.sha256(path.read_bytes()).hexdigest() for path in [desktop,android_json,a.android_jar,a.webkit_jar]},actualAndroidExecution=False,actualAndroidWebViewExecution=False,scope='Production Java/JavaScript host behavior and actual-API compilation with declared adapters. Includes Chromium policy storage/setting adapters/script controls, Gecko website/ChatGPT boundaries and route leases, browser files/permissions and carried shell/loading/progress/chrome/control-cache/transcript regressions. No device execution, full fingerprint protection, site compatibility or frame-rate claim.')
-    (out/'results.json').write_text(json.dumps(report,ensure_ascii=False,indent=2)+'\n');print(json.dumps(dict(status=report['status'],completed=len(results),required=len(cases),executionInputsUnchanged=stable)))
+    summary.write_text(json.dumps(report,ensure_ascii=False,indent=2)+'\n');print(json.dumps(dict(status=report['status'],completed=len(results),required=len(cases),executionInputsUnchanged=stable)))
     if not passed:raise SystemExit(1)
 
 
