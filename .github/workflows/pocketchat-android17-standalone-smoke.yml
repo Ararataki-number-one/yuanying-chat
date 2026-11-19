@@ -149,6 +149,54 @@ jobs:
         assert all(source.count(marker) == 1 for marker in (package, early_exit, integration_start))
         scoped = source.split(integration_start)[0].replace(early_exit, b'')
         scoped = scoped.replace(package, b'system-images;android-37.0;google_apis;x86_64')
+        webview_check = (
+            b'"${adb_device[@]}" shell dumpsys webviewupdate | tee "$work/$android-webview.txt"\n'
+            b"grep -Ei 'Current WebView package.*(null|none)' \"$work/$android-webview.txt\"\n")
+        wait_for_webview = br'''if ! timeout 90 bash -c '
+          set -euo pipefail
+          adb_device=("$1" -s "$2")
+          state="$3"
+          stable=0
+          while true; do
+            changed=0
+            # Android may automatically re-enable the default provider once.
+            for provider in com.android.webview com.google.android.webview com.android.chrome; do
+              if "${adb_device[@]}" shell pm list packages -e --user 0 "$provider" |
+                  tr -d "\r" | grep -Fx "package:$provider" >/dev/null; then
+                "${adb_device[@]}" shell pm disable-user --user 0 "$provider"
+                changed=1
+              fi
+            done
+            "${adb_device[@]}" shell dumpsys webviewupdate > "$state"
+            if (( changed == 0 )) && grep -Ei "Current WebView package.*(null|none)" "$state" >/dev/null; then
+              stable=$((stable + 1))
+              if (( stable == 2 )); then exit 0; fi
+            else
+              stable=0
+            fi
+            sleep 2
+          done
+        ' _ "$adb_bin" "$serial" "$work/$android-webview.txt"; then
+          if [[ -f "$work/$android-webview.txt" ]]; then cat "$work/$android-webview.txt" >&2; fi
+          echo "No stable system-WebView-free state was observed within 90 seconds." >&2
+          exit 1
+        fi
+        '''
+        assert scoped.count(webview_check) == 1
+        scoped = scoped.replace(webview_check, wait_for_webview + webview_check)
+        original_trap = b'trap stop_guest EXIT\n'
+        diagnostic_trap = br'''capture_and_stop_guest() {
+          local status=$?
+          trap - EXIT
+          timeout 15 "${adb_device[@]}" logcat -d -b crash -t 1500 -v threadtime > "$work/android17-crash.log" 2>&1 || true
+          timeout 15 "${adb_device[@]}" logcat -d -b main -b system -t 3000 -v threadtime AndroidRuntime:V libc:V linker:V DEBUG:V chromium:V Cefrium:V cefrium:V PocketChatCefriumRouteFixture:V ActivityManager:I ActivityTaskManager:I '*:S' > "$work/android17-native-logcat.txt" 2>&1 || true
+          stop_guest
+          exit "$status"
+        }
+        trap capture_and_stop_guest EXIT
+        '''
+        assert scoped.count(original_trap) == 1
+        scoped = scoped.replace(original_trap, diagnostic_trap)
         assert b'join-renderer' in scoped and b'ACTIVATE_VPN' not in scoped
         script = Path(os.environ['RUNNER_TEMP']) / 'pocketchat-android17-smoke.sh'
         script.write_bytes(scoped)
@@ -169,6 +217,8 @@ jobs:
           work/chromium-delivery/android17-image.properties
           work/chromium-delivery/emulator-version.txt
           work/chromium-delivery/android17-emulator.log
+          work/chromium-delivery/android17-crash.log
+          work/chromium-delivery/android17-native-logcat.txt
           work/chromium-delivery/android17-webview.txt
           work/chromium-delivery/android17-smoke.json
           work/chromium-delivery/chromium-debug-render.json
