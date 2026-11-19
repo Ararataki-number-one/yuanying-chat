@@ -78,6 +78,21 @@ public final class ChooserHost {
     check("A replaced but not yet destroyed Activity cannot consume its old picker result",previous.onlyNull()&&old.resolver.persisted.isEmpty()&&!old.attachments.blocked()&&fresh.calls.isEmpty());
     Probe retired=new Probe();open(old,retired);check("A replaced Activity cannot reopen its chooser before onDestroy",retired.onlyNull()&&old.requests.size()==1);deliver(next,latest(next),NEW);check("Host handoff preserves the new Activity's native chooser",fresh.only(NEW));
   }
+  static void resultRouting(){
+    MainActivity host=new MainActivity();Probe upload=new Probe();open(host,upload);int uploadRequest=latest(host);
+    host.downloads=new FileDownloads();host.nativeSavedFiles=new SavedFileActions();
+    host.nativeSavedFiles.exporting=J.obj("id","native-export");
+    deliver(host,FileDownloads.SAVE,OLD);
+    check("Gecko download result still reaches its original owner",host.downloads.results==1&&OLD.equals(host.downloads.savedTo)&&host.nativeSavedFiles.results==0);
+    host.onActivityResult(SavedFileActions.EXPORT,Activity.RESULT_CANCELED,null);
+    check("Native workspace owns its export result even on cancellation",host.nativeSavedFiles.results==1&&host.nativeSavedFiles.lastResult==Activity.RESULT_CANCELED&&host.nativeSavedFiles.exporting==null&&host.downloads.savedActions.results==0);
+    host.downloads.savedActions.exporting=J.obj("id","gecko-export");
+    deliver(host,SavedFileActions.EXPORT,OLD);
+    check("An idle native workspace leaves the Gecko export with its original owner",host.nativeSavedFiles.results==1&&host.downloads.savedActions.results==1&&OLD.equals(host.downloads.savedActions.savedTo));
+    check("Download and export results leave the active upload request untouched",upload.calls.isEmpty()&&host.attachments.blocked()&&host.resolver.persisted.isEmpty());
+    deliver(host,uploadRequest,NEW);
+    check("The upload receives only its own result after the file exports",upload.only(NEW)&&!host.attachments.blocked()&&host.downloads.results==1&&host.nativeSavedFiles.results==1&&host.downloads.savedActions.results==1);
+  }
   static void retirementAndLimit(){
     MainActivity finish=new MainActivity();Probe old=new Probe(),outer=new Probe(),fresh=new Probe();open(finish,old);int original=latest(finish);finish.onFinish=()->open(finish,fresh);open(finish,outer);check("Synchronous finishActivity reentry preserves the last admitted chooser",old.onlyNull()&&outer.onlyNull()&&fresh.calls.isEmpty()&&finish.requests.size()==2&&finish.finished.contains(original));deliver(finish,latest(finish),NEW);check("Retirement reentry leaves the new picker usable",fresh.only(NEW));
     MainActivity throwsFinish=new MainActivity();Probe callback=new Probe();open(throwsFinish,callback);throwsFinish.finishFailure=new IllegalStateException("Controlled picker close failure");Throwable failure=attempt(throwsFinish.attachments::cancelChooser);check("Failed platform picker close still settles its callback once",failure==null&&callback.onlyNull()&&!throwsFinish.attachments.blocked());
@@ -86,17 +101,29 @@ public final class ChooserHost {
     MainActivity last=new MainActivity();Probe accepted=new Probe(),rejected=new Probe(),again=new Probe();open(last,accepted);int code=latest(last);open(last,rejected);open(last,again);check("Exhausted request range refuses reuse and preserves its last active chooser",code==0x27ff&&last.requests.size()==1&&accepted.calls.isEmpty()&&rejected.onlyNull()&&again.onlyNull());deliver(last,code,NEW);check("Last valid request still completes after allocation is exhausted",accepted.only(NEW));
     try{java.lang.reflect.Field counter=Attachments.class.getDeclaredField("nextRequest");counter.setAccessible(true);check("Rejected allocations leave the exhausted counter saturated",counter.getInt(null)==0x2800);}catch(ReflectiveOperationException error){throw new AssertionError(error);}
   }
-  public static void main(String[] args){normal();admission();replaceDuringCancellation();cancellationChangesOwner();synchronousBoundaries();dismissReentry();staleResults();callbacksAndResultReentry();hostHandoff();retirementAndLimit();int passed=0;for(int i=0;i<checks.length();i++)if(checks.optJSONObject(i).optBoolean("pass"))passed++;System.out.println(J.obj("status",passed==checks.length()?"passed":"failed","passed",passed,"total",checks.length(),"checks",checks));if(passed!=checks.length())System.exit(1);}
+  public static void main(String[] args){normal();admission();replaceDuringCancellation();cancellationChangesOwner();synchronousBoundaries();dismissReentry();staleResults();callbacksAndResultReentry();hostHandoff();resultRouting();retirementAndLimit();int passed=0;for(int i=0;i<checks.length();i++)if(checks.optJSONObject(i).optBoolean("pass"))passed++;System.out.println(J.obj("status",passed==checks.length()?"passed":"failed","passed",passed,"total",checks.length(),"checks",checks));if(passed!=checks.length())System.exit(1);}
 }
 class MainActivity extends Activity {
-  static final String ORIGIN="https://chatgpt.com/";boolean destroyed;final Session session;final Page remote;final Loading loading=new Loading();final List<String> messages=new ArrayList<>();final SharedPreferences prefs=new SharedPreferences();String conversation="";Attachments attachments;FileDownloads downloads;
+  static final String ORIGIN="https://chatgpt.com/";boolean destroyed;final Session session;final Page remote;final Loading loading=new Loading();final List<String> messages=new ArrayList<>();final SharedPreferences prefs=new SharedPreferences();String conversation="";Attachments attachments;FileDownloads downloads;SavedFileActions nativeSavedFiles;
   MainActivity(){this(new Session(),new Page());}MainActivity(Session session,Page page){this.session=session;remote=page;remote.displayContext.setBaseContext(this);attachments=new Attachments(this);}void status(String message){messages.add(message);}void attachmentStatus(AttachmentIssue issue){messages.add(issue.message);}void showPage(boolean value){throw new AssertionError("Legacy preview outside picker host");}
   /* ACTUAL_ACTIVITY */
 }
 class Session {long navigationEpoch=3;final JSONArray attachments=new JSONArray();}
 class Page {final MutableContextWrapper displayContext=new MutableContextWrapper(new Context());String url="https://chatgpt.com/c/current";boolean ready=true;String getUrl(){return url;}boolean canChooseFiles(){return ready;}}
 class Loading {Runnable onDismiss;void dismissTask(){Runnable action=onDismiss;onDismiss=null;if(action!=null)action.run();}}
-class FileDownloads {static final int SAVE=83;final SavedFileActions savedActions=new SavedFileActions();void result(int result,Intent data){throw new AssertionError("Unrelated download callback received native picker result");}}
-class SavedFileActions {static final int EXPORT=85;void result(int result,Intent data){throw new AssertionError("Unrelated export callback received native picker result");}}
+class FileDownloads {
+  static final int SAVE=83;
+  final SavedFileActions savedActions=new SavedFileActions();
+  int results;
+  Uri savedTo;
+  void result(int result,Intent data){results++;savedTo=data==null?null:data.getData();}
+}
+class SavedFileActions {
+  static final int EXPORT=85;
+  JSONObject exporting;
+  int results,lastResult;
+  Uri savedTo;
+  void result(int result,Intent data){results++;lastResult=result;savedTo=data==null?null:data.getData();exporting=null;}
+}
 class Profiles {static Class<?> preview(Context context){throw new AssertionError("Legacy preview outside picker host");}}
 class BrowserRuntimePolicy {static String websiteActionMessage(){throw new AssertionError("Legacy native attachment controls outside picker host");}}

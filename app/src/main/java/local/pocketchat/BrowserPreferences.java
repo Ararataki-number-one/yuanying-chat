@@ -32,12 +32,27 @@ final class BrowserPreferences {
     String normalized=normalizeHome(address);
     return preferences(context).edit().putString(KEY_START,browser?START_BROWSER:START_CHAT).putString(KEY_HOME,normalized).commit();
   }
-  static boolean shouldOpenBrowser(Context context,Intent intent){
-    if(intent!=null){
-      if(intent.getBooleanExtra("legacyChat",false)||intent.hasExtra("openConversation")||intent.hasExtra("openDownload")||intent.getBooleanExtra("openEnvironmentEditor",false)||intent.getBooleanExtra("returnToEnvironmentList",false))return false;
-      String action=intent.getStringExtra("openWindowAction");if(action!=null&&!"chat".equals(action))return false;
-      Uri data=intent.getData();if(data!=null&&"pocketchat".equals(data.getScheme())&&("notification".equals(data.getHost())||"download".equals(data.getHost())))return false;
+  static boolean nativeOpening(Intent intent){
+    if(intent==null||Intent.ACTION_VIEW.equals(intent.getAction()))return false;
+    if(intent.hasExtra("openDownload")||intent.getBooleanExtra("openEnvironmentEditor",false)||intent.getBooleanExtra("returnToEnvironmentList",false))return true;
+    String action=intent.getStringExtra("openWindowAction");
+    if("network".equals(action)||"settings".equals(action)||"edit".equals(action)||"overview".equals(action))return true;
+    Uri data=intent.getData();
+    return data!=null&&"pocketchat".equals(data.getScheme())&&"download".equals(data.getHost());
+  }
+  static boolean shouldOpenBrowser(Context context,Intent intent){return startBrowser(context)&&!nativeOpening(intent);}
+  static String openingAddress(Intent intent){
+    if(intent==null||nativeOpening(intent))return null;
+    String url;
+    if(Intent.ACTION_VIEW.equals(intent.getAction())){
+      Uri data=intent.getData();url=data==null?null:data.toString();
+    }else{
+      url=intent.getStringExtra("url");
+      if(url==null){
+        String conversation=intent.getStringExtra("openConversation");
+        if(MainActivity.chatUrl(conversation))url=conversation;
+      }
     }
-    return startBrowser(context);
+    return BrowserAddressPolicy.allowed(url)?BrowserAddressPolicy.normalizeInput(url):null;
   }
 }

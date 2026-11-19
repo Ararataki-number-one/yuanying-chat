@@ -32,6 +32,9 @@
     <activity android:name="local.pocketchat.BrowserActivity$Profile7" android:process=":profile7" android:taskAffinity="local.pocketchat.browser7" android:exported="false" android:launchMode="singleTask" android:windowSoftInputMode="adjustResize" android:configChanges="orientation|screenSize|keyboardHidden|uiMode" />
     <meta-data android:name="local.pocketchat.UPDATE_CHANNEL" android:value="${releaseChannel}" />
     <meta-data android:name="local.pocketchat.CANDIDATE_NUMBER" android:value="${candidateNumber}" />
+    <meta-data android:name="local.pocketchat.CHROMIUM_DELIVERY" android:value="${chromiumDelivery}" />
+    <activity android:name="local.pocketchat.ChromiumModuleInstallActivity" android:exported="false" />
+    <receiver android:name="local.pocketchat.ChromiumModuleReceiver" android:exported="false" />
     <service android:name="local.pocketchat.NetworkTransportService" android:process=":network" android:exported="false" android:foregroundServiceType="specialUse"><property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE" android:value="Keeps independent per-environment proxy tunnels while the user browses and receives replies" /></service>
     <service android:name="local.pocketchat.ChatService" android:exported="false" android:foregroundServiceType="dataSync" />
     <activity android:name="local.pocketchat.MainActivity" android:launchMode="singleTask" android:exported="true" android:windowSoftInputMode="adjustResize" android:configChanges="orientation|screenSize|keyboardHidden|uiMode">

@@ -1,6 +1,6 @@
 """Real native startup methods and wait policy on explicit JVM platform doubles.
 
-Browser selection and Android task launch use explicit controlled boundaries. The actual MainActivity dispatcher and BrowserActivity.resume are executed for both cold Chromium and retained warm Gecko sessions, so environment entry cannot force a homepage over the user's current browser destination. No Android frame timing, actual Gecko initialization or phone speed is claimed.
+Browser selection and Android task launch use explicit controlled boundaries. The actual MainActivity startup, routing and Gecko link handling use exact Chromium launch methods. Checks cover overview startup, native workspace routing, work in progress, and explicit versus ordinary browser entry. No Android frame timing, Gecko or Chromium renderer execution, or phone speed is claimed.
 """
 import hashlib,json,os
 from pathlib import Path
@@ -22,9 +22,11 @@ class DashboardStartup(unittest.TestCase):
     def test_real_entry_lifecycle_and_wait_boundaries(self):
         java=Path(os.environ.get('PROFILE_JAVA') or shutil.which('java') or '')
         source=(PROD/'MainActivity.java').read_text()
-        methods='\n'.join(member(source,x) for x in ['  @Override public void onCreate(', '  void prepareBrowserAfterOverview(', '  void startBrowserAfterOverview(', '  @Override protected void onResume(', '  @Override protected void onNewIntent(', '  boolean dispatchBrowser('])
-        resume=member((PROD/'BrowserActivity.java').read_text(),'  static void resume(')
-        host=(ROOT/'tests/overview-dashboard-host/StartupHost.java').read_text().replace('/*ACTUAL_ENTRY_METHODS*/',methods).replace('/*ACTUAL_BROWSER_RESUME*/',resume)
+        methods='\n'.join(member(source,x) for x in ['  @Override public void onCreate(', '  void prepareBrowserAfterOverview(', '  void startBrowserAfterOverview(', '  @Override protected void onResume(', '  @Override protected void onNewIntent(', '  boolean dispatchBrowser(', '  void handleOpening(', '  boolean geckoWorkPending(', '  boolean nativeFileWorkPending(', '  boolean openWebsite(', '  void openNativeWorkspace(', '  void closeNativeWorkspace('])
+        chromium=(PROD/'BrowserActivity.java').read_text()
+        launches='\n'.join(member(chromium, signature) for signature in ['  static void open(', '  static void resume('])
+        template=(ROOT/'tests/overview-dashboard-host/StartupHost.java').read_text()
+        host=template.replace('/*ACTUAL_ENTRY_METHODS*/',methods).replace('/*ACTUAL_BROWSER_LAUNCHES*/',launches)
         with tempfile.TemporaryDirectory(prefix='overview-dashboard-startup-') as folder:
             folder=Path(folder);(folder/'StartupHost.java').write_text(host)
             for name in ['BrowserStartupGate.java','PageLoadingWait.java']:(folder/name).write_bytes((PROD/name).read_bytes())

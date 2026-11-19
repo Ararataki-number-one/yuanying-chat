@@ -10,6 +10,7 @@ import hashlib
 import json
 from pathlib import Path
 import re
+import shlex
 import struct
 import subprocess
 import time
@@ -20,6 +21,7 @@ from profile_invocation_contract import expected_build, verify_installed
 from ui_visual_capture import UiVisualCapture
 
 PACKAGE = 'local.pocketchat.test'
+WORKSPACE_SEED = PACKAGE+'/local.pocketchat.BrowserIntegrationActivity$WorkspaceSeed'
 NAME = '长文阅读与文件整理和日常会话的完整环境名称测试'
 URL = 'http://browser-fixture.example/native-ui-smoke'
 WAITING = '请先在环境网络中配置浏览器线路'
@@ -236,10 +238,10 @@ def main():
             adb('shell', 'am', 'start', '-W', '-n', shared.COMPONENT, '--es', 'visualAction', 'browser')
             wait_for(lambda xml: any(NAME in n.get('text', '') or NAME in n.get('content-desc', '')
                                     for n in ET.fromstring(xml).iter('node')), label+'-seed')
-            # The seed opens an editor after MainActivity's first frame. End that
-            # synthetic task before opening the unchanged production browser.
+            # The existing seed opens a Gecko editor. Close it, then save
+            # Chromium for this fixture and launch the production browser.
             adb('shell', 'am', 'force-stop', PACKAGE)
-            adb('shell', 'am', 'start', '-W', '-n', PACKAGE+'/local.pocketchat.BrowserActivity', '--es', 'url', URL)
+            adb('shell', shlex.join(['am', 'start', '-W', '-n', WORKSPACE_SEED, '--es', 'sourceCommit', source]))
             xml = wait_for(lambda value: present(value, lambda n: n.get('text') == WAITING)
                            and environment_ready(value, 3)
                            and present(value, lambda n: n.get('content-desc') == NETWORK), label+'-browser')

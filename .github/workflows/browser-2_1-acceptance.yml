@@ -23,6 +23,8 @@ name: Dual browser and complete original Gecko acceptance
     - release/browser-2.1.8-*
     paths:
     - app/**
+    - chromium/**
+    - gradle/**
     - tests/**
     - tools/**
     - third-party/**
@@ -205,6 +207,29 @@ jobs:
         report=json.loads(path.read_text()); report['sourceCommit']=subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip()
         path.write_text(json.dumps(report,indent=2)+'\n')
         PYCODE
+    - name: Bind delivery to the exact unsigned Gecko base and optional ARM64 module
+      shell: bash
+      run: |
+        set -euo pipefail
+        # Keep the existing Android regression APK. Bind its original acceptance
+        # to the exact unsigned Gecko base selected from the optional bundle.
+        test -n "${JAVA_HOME_25_X64:-}"
+        work="$PWD/work/chromium-release"
+        mkdir -p "$work/bundletool-user"
+        curl -fsSL --retry 3 https://github.com/google/bundletool/releases/download/1.18.3/bundletool-all-1.18.3.jar -o "$work/bundletool.jar"
+        echo "a099cfa1543f55593bc2ed16a70a7c67fe54b1747bb7301f37fdfd6d91028e29  $work/bundletool.jar" | sha256sum -c -
+        java25="$JAVA_HOME_25_X64/bin/java"
+        python3 gradle/prepare-cefrium-sdk.py
+        JAVA_HOME="$JAVA_HOME_25_X64" work/gecko-integration/gradle/gradle-9.8.0/bin/gradle :app:bundleRelease -PpocketChatChromiumBundle=true -PpocketChatChromiumAbi=arm64-v8a --no-daemon --max-workers=2 --console=plain 2>&1 | tee "$work/bundle-build.log"
+        bundle=app/build/outputs/bundle/release/app-release.aab
+        tools="$ANDROID_HOME/build-tools/37.0.0"
+        printf '%s\n' '{"sdkVersion":26,"supportedAbis":["arm64-v8a"],"screenDensity":320,"supportedLocales":["en","zh"]}' > "$work/device.json"
+        # bundletool otherwise discovers an existing default Android debug key.
+        env -i "$java25" -Duser.home="$work/bundletool-user" -Xmx1g -jar "$work/bundletool.jar" build-apks --aapt2="$tools/aapt2" --bundle="$bundle" --output="$work/unsigned.apks" --device-spec="$work/device.json" --max-threads=1
+        "$java25" -Xmx512m -jar "$work/bundletool.jar" extract-apks --apks="$work/unsigned.apks" --output-dir="$work/unsigned" --device-spec="$work/device.json" --modules=base,chromium
+        python3 tools/gecko/chromium_release_publication.py record --bundle "$bundle" --unsigned "$work/unsigned" --tools "$tools" --output work/gecko-integration/chromium-build.json
+        cp "$work/unsigned/base-master.apk" app/build/outputs/apk/release/app-arm64-v8a-release-unsigned.apk
+        python3 tools/gecko/caret_workflow.py record --work work/gecko-integration
     - name: Require release Android API and manifest lint
       shell: bash
       run: |
@@ -536,6 +561,17 @@ jobs:
           work/native-caret-sdk/sdk-build-receipt.json
           work/native-caret-sdk/derived-sdk-compilation.json
           work/native-caret-sdk/derived-sdk-verification.json
+        if-no-files-found: error
+        retention-days: 7
+        compression-level: 0
+    - name: Preserve the exact unsigned Chromium delivery APKs and AAB identity
+      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+      with:
+        name: browser-${{ github.run_id }}-${{ github.run_attempt }}-chromium-unsigned
+        path: |
+          work/gecko-integration/chromium-build.json
+          work/chromium-release/unsigned/base-master.apk
+          work/chromium-release/unsigned/chromium-master.apk
         if-no-files-found: error
         retention-days: 7
         compression-level: 0
@@ -1425,3 +1461,125 @@ jobs:
     - name: Stop the independent TLS emulator
       if: always()
       run: adb -s emulator-5554 emu kill || true
+  chromium-delivery:
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    permissions:
+      actions: read
+      contents: read
+    steps:
+    - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      with:
+        persist-credentials: false
+    - name: Restore the exact derived Gecko build inputs
+      uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0
+      with:
+        name: browser-${{ github.run_id }}-${{ github.run_attempt }}-derived-sdk
+        path: work/native-caret-sdk
+    - name: Prepare pinned split and Android tools
+      shell: bash
+      run: |
+        set -euo pipefail
+        test -n "${JAVA_HOME_25_X64:-}"
+        test -c /dev/kvm
+        echo "JAVA_HOME=$JAVA_HOME_25_X64" >> "$GITHUB_ENV"
+        echo "$JAVA_HOME_25_X64/bin" >> "$GITHUB_PATH"
+        echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
+        work="$PWD/work/chromium-delivery"
+        mkdir -p "$work"
+        if ! curl -fsSL --retry 3 https://services.gradle.org/distributions/gradle-9.8.0-bin.zip -o "$work/gradle.zip"; then
+          curl -fLsS --retry 2 --max-time 240 -H 'Accept: application/octet-stream' -H 'X-GitHub-Api-Version: 2022-11-28' https://api.github.com/repos/gradle/gradle-distributions/releases/assets/586068844 -o "$work/gradle.zip"
+        fi
+        echo "bafd5ce9cfaea0fbccfdc8439a1ac42fbd4cd9c89dc9a988228d8a2639a58e6c  $work/gradle.zip" | sha256sum -c -
+        unzip -q "$work/gradle.zip" -d "$work"
+        curl -fsSL --retry 3 https://github.com/google/bundletool/releases/download/1.18.3/bundletool-all-1.18.3.jar -o "$work/bundletool.jar"
+        echo "a099cfa1543f55593bc2ed16a70a7c67fe54b1747bb7301f37fdfd6d91028e29  $work/bundletool.jar" | sha256sum -c -
+        python3 gradle/prepare-cefrium-sdk.py
+        yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
+        # Keep the existing Gecko matrix's pinned emulator/images unchanged.
+        # This dedicated lane needs a stable emulator new enough for API 37.
+        sdkmanager="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+        "$sdkmanager" --channel=0 'platforms;android-37.1' 'build-tools;37.0.0' 'emulator' 'system-images;android-33;google_apis;x86_64'
+        "$ANDROID_HOME/emulator/emulator" -version > "$work/emulator-version.txt"
+        "$sdkmanager" --channel=0 --list > "$work/sdk-packages.txt"
+        if grep -Eq '^[[:space:]]*system-images;android-37;google_apis;x86_64[[:space:]]*\|' "$work/sdk-packages.txt"; then
+          echo listed > "$work/android17-image.txt"
+        else
+          echo 'not-tested: no stable API 37 x86_64 Google APIs image listed' > "$work/android17-image.txt"
+        fi
+    - name: Build x86_64 app delivery and same-signer Android fixture
+      shell: bash
+      run: |
+        set -euo pipefail
+        work="$PWD/work/chromium-delivery"
+        tools="$ANDROID_HOME/build-tools/37.0.0"
+        test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+        test -z "$(git status --porcelain)"
+        "$work/gradle-9.8.0/bin/gradle" :app:bundleDebug -PpocketChatChromiumBundle=true -PpocketChatChromiumAbi=x86_64 --no-daemon --max-workers=2 --console=plain 2>&1 | tee "$work/build.log"
+        keytool -genkeypair -keystore "$work/candidate-test.p12" -alias androiddebugkey -storetype PKCS12 -storepass android -keypass android -dname CN=SyntheticChromiumDelivery -keyalg RSA -validity 2
+        printf '%s\n' '{"sdkVersion":26,"supportedAbis":["x86_64"],"screenDensity":320,"supportedLocales":["en"]}' > "$work/device.json"
+        java -Xmx1g -jar "$work/bundletool.jar" build-apks --aapt2="$tools/aapt2" --bundle=app/build/outputs/bundle/debug/app-debug.aab --output="$work/debug.apks" --device-spec="$work/device.json" --max-threads=1 --ks="$work/candidate-test.p12" --ks-key-alias=androiddebugkey --ks-pass=pass:android --key-pass=pass:android
+        java -Xmx512m -jar "$work/bundletool.jar" extract-apks --apks="$work/debug.apks" --output-dir="$work/debug" --device-spec="$work/device.json" --modules=base,chromium
+        test -f "$work/debug/base-master.apk"
+        test -f "$work/debug/chromium-master.apk"
+        # Device-only integration harness uses the same source and test signer.
+        "$work/gradle-9.8.0/bin/gradle" :app:bundleIntegration -PpocketChatChromiumBundle=true -PpocketChatChromiumAbi=x86_64 -PtestSigningKey="$work/candidate-test.p12" --no-daemon --max-workers=2 --console=plain 2>&1 | tee "$work/integration-build.log"
+        java -Xmx1g -jar "$work/bundletool.jar" build-apks --aapt2="$tools/aapt2" --bundle=app/build/outputs/bundle/integration/app-integration.aab --output="$work/integration.apks" --device-spec="$work/device.json" --max-threads=1 --ks="$work/candidate-test.p12" --ks-key-alias=androiddebugkey --ks-pass=pass:android --key-pass=pass:android
+        java -Xmx512m -jar "$work/bundletool.jar" extract-apks --apks="$work/integration.apks" --output-dir="$work/integration" --device-spec="$work/device.json" --modules=base,chromium
+        test -f "$work/integration/base-master.apk"
+        test -f "$work/integration/chromium-master.apk"
+        cef_sdk=work/chromium-sdk/maven/com/cefrium/cefrium-sdk-core/0.21.0/cefrium-sdk-core-0.21.0.aar
+        bash tests/gecko/chromium-route-fixture/build-fixture.sh "$cef_sdk" "$work/fixture-unsigned.apk"
+        "$tools/apksigner" sign --ks "$work/candidate-test.p12" --ks-key-alias androiddebugkey --ks-pass pass:android --key-pass pass:android --out "$work/fixture.apk" "$work/fixture-unsigned.apk"
+        bash tests/gecko/chromium-route-fixture/build-fixture.sh "$cef_sdk" "$work/integration-fixture-unsigned.apk" local.pocketchat.test
+        "$tools/apksigner" sign --ks "$work/candidate-test.p12" --ks-key-alias androiddebugkey --ks-pass pass:android --key-pass pass:android --out "$work/integration-fixture.apk" "$work/integration-fixture-unsigned.apk"
+        sha256sum app/build/outputs/bundle/debug/app-debug.aab app/build/outputs/bundle/integration/app-integration.aab \
+          "$work/debug/base-master.apk" "$work/debug/chromium-master.apk" "$work/fixture.apk" \
+          "$work/integration/base-master.apk" "$work/integration/chromium-master.apk" "$work/integration-fixture.apk" > "$work/test-build-sha256.txt"
+        # The AABs and verified split APKs remain. These generated wrappers are redundant.
+        rm -- "$work/debug.apks" "$work/integration.apks" "$work/gradle.zip"
+    - name: Verify complete Chromium route acceptance on Android 13
+      shell: bash
+      run: bash tools/gecko/chromium_ci_device.sh 33 routes
+    - name: Smoke-test the exact same delivery pair on Android 17 when available
+      shell: bash
+      run: |
+        set -euo pipefail
+        availability=work/chromium-delivery/android17-image.txt
+        if grep -Fxq listed "$availability"; then
+          df -h "$PWD/work"
+          if "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --channel=0 'system-images;android-37;google_apis;x86_64'; then
+            echo 'installed stable API 37 image' > "$availability"
+            bash tools/gecko/chromium_ci_device.sh 37 smoke
+          else
+            echo 'not-tested: stable API 37 image could not be installed' > "$availability"
+          fi
+        fi
+        cat "$availability"
+    - name: Preserve Android delivery acceptance and scoped evidence
+      if: always()
+      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+      with:
+        name: browser-${{ github.run_id }}-${{ github.run_attempt }}-chromium-device
+        path: |
+          work/chromium-delivery/chromium-ondemand-device-results.json
+          work/chromium-delivery/test-build-sha256.txt
+          work/chromium-delivery/host-report.json
+          work/chromium-delivery/renderer.txt
+          work/chromium-delivery/android13-emulator.log
+          work/chromium-delivery/android17-emulator.log
+          work/chromium-delivery/android13-webview.txt
+          work/chromium-delivery/android17-webview.txt
+          work/chromium-delivery/android17-image.txt
+          work/chromium-delivery/android17-smoke.json
+          work/chromium-delivery/wire-vpn.txt
+          work/chromium-delivery/wire-internal.txt
+          work/chromium-delivery/build.log
+        if-no-files-found: warn
+        retention-days: 7
+        compression-level: 0
+    - name: Stop the disposable emulator
+      if: always()
+      run: |
+        "$ANDROID_HOME/platform-tools/adb" -s emulator-5554 emu kill || true

@@ -3,7 +3,7 @@
 import argparse,hashlib,json,pathlib,subprocess,tempfile
 p=argparse.ArgumentParser();p.add_argument('--java',default='java');p.add_argument('--json-jar',required=True,type=pathlib.Path);p.add_argument('--output',required=True,type=pathlib.Path);a=p.parse_args()
 root=pathlib.Path(__file__).resolve().parents[2];here=pathlib.Path(__file__).resolve().parent;production=root/'app/src/main/java/local/pocketchat'
-names=('ReleaseNotes','ReleaseHistoryPolicy','ReleaseHistory','AppUpdateInfo','AppUpdatePolicy','AppUpdateTransfer','Sha256')
+names=('ReleaseNotes','ReleaseHistoryPolicy','ReleaseHistory','AppUpdateInfo','AppUpdatePolicy','AppUpdateTransfer','ChromiumModulePolicy','Sha256')
 inputs=[production/(name+'.java') for name in names]+list(here.rglob('*.java'))+[production/'AppUpdateRoute.java',here/'RouteHost.java.in',pathlib.Path(__file__).resolve()]
 hashes={str(f.relative_to(root)):hashlib.sha256(f.read_bytes()).hexdigest() for f in inputs}
 source=(production/'AppUpdateRoute.java').read_text();start=source.index('  static final class Factory ');brace=source.index('{',start);depth=1;end=brace+1

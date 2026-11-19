@@ -35,7 +35,7 @@ public class MainActivity extends ThemedActivity {
   String pageError="",lastUiStatus="";
   AttachmentIssue lastAttachmentIssue;
   long shownGoogleLoginNotice=-1;
-  LoadingUi loading; Attachments attachments; FileDownloads downloads;
+  LoadingUi loading; Attachments attachments; FileDownloads downloads;SavedFileActions nativeSavedFiles;
   ChatDownloadProgressUi chatDownloadProgress;
   Button focusExit;boolean focusReading;Bundle downloadUiState;
   TextView status,exitIpLine,networkLine; LinearLayout toolbar;
@@ -94,9 +94,60 @@ public class MainActivity extends ThemedActivity {
     // Gecko and network initialization run only after that frame, while resumed.
     environmentOverview=new EnvironmentOverviewUi(this);
     LinearLayout startup=new LinearLayout(this);startup.setBackgroundColor(ReferenceUi.CHAT_BG);setContentView(startup);
-    if(environmentOverview.consume(getIntent())){
-      prepareBrowserAfterOverview();
-    }else createChatUi();
+    handleOpening(getIntent());
+  }
+  void handleOpening(Intent intent){
+    if(BrowserPreferences.startBrowser(this)&&BrowserPreferences.nativeOpening(intent)){
+      openNativeWorkspace(intent);return;
+    }
+    if(session==null){
+      if(nativeFileWorkPending()){
+        if(active)fileFeedback("请完成当前文件操作，然后重新打开此环境。");
+        return;
+      }
+      closeNativeWorkspace();
+      if(environmentOverview.consume(intent))prepareBrowserAfterOverview();
+      else if(browserStartup==null)createChatUi();
+    }else{
+      environmentOverview.consume(intent);openNotification(intent);
+    }
+  }
+  void openBoundBrowser(){startActivity(EnvironmentOverviewUi.browserOpening(this,Profiles.slot(this)));}
+  void openNativeWorkspace(Intent intent){
+    if(browserStartup!=null){browserStartup.close();browserStartup=null;}
+    if(nativeSavedFiles==null)nativeSavedFiles=new SavedFileActions(this);
+    if(hub==null){
+      LinearLayout root=DesignUi.screen(this);DesignUi.chrome(this);
+      hub=new AppHub(this,root,null);setContentView(root);
+      AppHub workspace=hub;
+      ReferenceUi.insets(this,root,keyboard->{if(hub==workspace)workspace.bar.setVisibility(keyboard?View.GONE:View.VISIBLE);});
+    }
+    String action=intent.getStringExtra("openWindowAction");
+    boolean editor="edit".equals(action)||intent.getBooleanExtra("openEnvironmentEditor",false);
+    String download=intent.getStringExtra("openDownload");
+    boolean network="network".equals(action)||"overview".equals(action);
+    if("network".equals(action))hub.networkWorkspace.focus(Profiles.slot(this));
+    hub.show(network?AppHub.NETWORK:AppHub.SETTINGS);
+    environmentOverview.consume(intent);
+    if(session!=null&&environmentOverview.owner==session)environmentOverview.close();
+    if(editor)handler.post(()->{if(!isFinishing()&&!destroyed)EnvironmentEditorUi.show(this);});
+    if(download!=null)showNativeDownload(download);
+    // Keep the native destination when Android recreates this Activity.
+    intent.putExtra("openWindowAction",network?"network":"settings");
+    intent.removeExtra("openEnvironmentEditor");intent.removeExtra("openDownload");
+  }
+  void showNativeDownload(String id){
+    JSONObject row=null;
+    try{row=DownloadTaskRevisions.find(new JSONArray(getSharedPreferences("download-tasks",MODE_PRIVATE).getString("rows","[]")),id);}
+    catch(JSONException unavailable){}
+    if(row==null){DesignUi.message(this,"下载任务","此下载任务已不可用，请查看下载记录。");return;}
+    if("saved".equals(row.optString("state"))){nativeSavedFiles.show(row);return;}
+    DesignUi.message(this,row.optString("name","下载任务"),"请在此环境的浏览器设置中选择 Gecko，然后重新打开此下载任务。");
+  }
+  void closeNativeWorkspace(){
+    if(nativeSavedFiles==null||session!=null)return;
+    hub.downloadsVisible(false);hub.networkWorkspace.close();handler.removeCallbacks(hub.tick);hub=null;
+    nativeSavedFiles.close();nativeSavedFiles=null;
   }
   void prepareBrowserAfterOverview(){
     BrowserStartupGate gate=new BrowserStartupGate(environmentOverview.state.environmentId,environmentOverview.state.slot,environmentOverview.state.generation);browserStartup=gate;gate.foreground(active);
@@ -108,6 +159,11 @@ public class MainActivity extends ThemedActivity {
     if(!ProfileCatalog.get(this).available(Profiles.slot(this))){finish();return;}
     JSONObject opening=ProfileCatalog.get(this).item(Profiles.slot(this));
     if(browserStartup!=null&&!browserStartup.matches(opening.optString("environmentId"),Profiles.slot(this),opening.optInt("generation",-1))){finish();return;}
+    if(BrowserPreferences.startBrowser(this)){
+      if(BrowserPreferences.nativeOpening(getIntent()))openNativeWorkspace(getIntent());
+      else dispatchBrowser(getIntent());
+      return;
+    }
     session=ChatSession.get(this);pending=session.pending;entries=session.entries;conversation=session.conversation;
     LinearLayout root=new LinearLayout(this);root.setOrientation(LinearLayout.VERTICAL);root.setBackgroundColor(ReferenceUi.CHAT_BG);DesignUi.chrome(this);
     ReferenceUi.insets(this,root,visible->{keyboardVisible=visible;updateReadingLayout();});
@@ -126,7 +182,7 @@ public class MainActivity extends ThemedActivity {
     hub=new AppHub(this,root,stack);setContentView(root);
     sessionUi=new UiFrameScheduler(new UiFrameScheduler.Frames(){public void post(Runnable frame){remote.postOnAnimation(frame);}public void cancel(Runnable frame){remote.removeCallbacks(frame);}},this::applySession);
     sessionUi.visible(active);
-    session.add(sessionObserver);showPage(true);if(active)resumeChatUi();else startNetwork();applySession();openNotification(getIntent());
+    session.add(sessionObserver);showPage(true);openWebsite(getIntent());if(active)resumeChatUi();else startNetwork();applySession();openNotification(getIntent());
     if(environmentOverview!=null)environmentOverview.browserReady();
   }
   static WebResourceResponse blocked(){return new WebResourceResponse("text/plain","UTF-8",new ByteArrayInputStream(new byte[0]));}
@@ -221,9 +277,8 @@ public class MainActivity extends ThemedActivity {
     option(d,"管理全部环境",()->ProfileUi.manage(this));
     option(d,"应用设置",()->hub.select(AppHub.SETTINGS));
     option(d,"编辑当前环境",()->EnvironmentEditorUi.show(this));
-    option(d,"浏览器与启动偏好",()->BrowserSettingsUi.show(this));
+    option(d,"此环境的浏览器内核",()->BrowserSettingsUi.show(this));
     option(d,"搜索操作",()->ActionSearchUi.show(this));
-    option(d,"切换到 Chromium 浏览器",()->BrowserActivity.resume(this));
     option(d,"查询当前环境 IP",()->ExitIpPageUi.open(this));
     option(d,"暂存草稿",()->copyLegacyDraft());
     option(d,"草稿救援",()->LocalDraftsUi.show(this));
@@ -351,9 +406,17 @@ public class MainActivity extends ThemedActivity {
     if(!chatUrl(url)||!GeckoAddressUi.available(this))return;
     if(session.browse(url,"正在打开对话…"))showPage(true);
   }
-  @Override protected void onActivityResult(int request,int result,Intent data){super.onActivityResult(request,result,data);if(attachments!=null&&attachments.result(request,result,data))return;if(request==FileDownloads.SAVE&&downloads!=null)downloads.result(result,data);if(request==SavedFileActions.EXPORT&&downloads!=null)downloads.savedActions.result(result,data);}
+  @Override protected void onActivityResult(int request,int result,Intent data){super.onActivityResult(request,result,data);if(attachments!=null&&attachments.result(request,result,data))return;if(request==FileDownloads.SAVE&&downloads!=null)downloads.result(result,data);if(request==SavedFileActions.EXPORT){if(nativeSavedFiles!=null&&nativeSavedFiles.exporting!=null)nativeSavedFiles.result(result,data);else if(downloads!=null)downloads.savedActions.result(result,data);}}
+  boolean openWebsite(Intent intent){
+    if(intent==null||!Intent.ACTION_VIEW.equals(intent.getAction())&&!intent.hasExtra("url"))return false;
+    String url=BrowserPreferences.openingAddress(intent);
+    if(Intent.ACTION_VIEW.equals(intent.getAction()))intent.setData(null);
+    intent.removeExtra("url");
+    if(url!=null&&(!url.equals(remote.getUrl())||session.navigationFailed)&&session.browse(url,"正在打开网页…"))showPage(true);
+    return true;
+  }
   void openNotification(Intent intent){
-    if(intent==null)return;if(intent.hasExtra("openConversation")||intent.hasExtra("openDownload")){intent.removeExtra(EnvironmentOverviewUi.NONCE);intent.removeExtra(EnvironmentOverviewUi.SOURCE);}String windowAction=intent.getStringExtra("openWindowAction");
+    if(intent==null||openWebsite(intent))return;if(intent.hasExtra("openConversation")||intent.hasExtra("openDownload")){intent.removeExtra(EnvironmentOverviewUi.NONCE);intent.removeExtra(EnvironmentOverviewUi.SOURCE);}String windowAction=intent.getStringExtra("openWindowAction");
     if(windowAction!=null){intent.removeExtra("openWindowAction");intent.removeExtra("forceWebMode");if(hub!=null){int target="settings".equals(windowAction)?AppHub.SETTINGS:"network".equals(windowAction)?AppHub.NETWORK:AppHub.CHAT;if(hub.page!=target)hub.show(target);if("network".equals(windowAction))hub.network();if("reading".equals(windowAction))setFocusReading(true);}if("edit".equals(windowAction))handler.postDelayed(()->EnvironmentEditorUi.show(this),200);}
     if(intent.getBooleanExtra("openEnvironmentEditor",false)){intent.removeExtra("openEnvironmentEditor");handler.postDelayed(()->EnvironmentEditorUi.show(this),200);}
     String download=intent.getStringExtra("openDownload");if(download!=null){intent.removeExtra("openDownload");if(hub!=null)hub.select(AppHub.DOWNLOADS);for(int i=0;i<downloads.tasks.rows.length();i++){JSONObject row=downloads.tasks.rows.optJSONObject(i);if(download.equals(row.optString("id"))){downloads.taskActions(row);break;}}return;}
@@ -368,13 +431,39 @@ public class MainActivity extends ThemedActivity {
   }
   boolean dispatchBrowser(Intent intent){
     if(!BrowserPreferences.shouldOpenBrowser(this,intent)||!ProfileCatalog.get(this).available(Profiles.slot(this)))return false;
-    BrowserActivity.resume(this);
-    // A cold open has no Gecko document to retain. A warm environment may have
-    // ongoing replies or files, so leave its existing session behind the browser.
-    if(session==null)finish();return true;
+    if(geckoWorkPending()||nativeFileWorkPending()){
+      if(active)fileFeedback("请完成当前网页或文件操作，然后重新打开此环境以使用 Chromium。");
+      return true;
+    }
+    String url=BrowserPreferences.openingAddress(intent);
+    if(ChromiumEntry.managed(this)){
+      if(ChromiumEntry.open(this,url)){finish();return true;}
+      if(environmentOverview==null)environmentOverview=new EnvironmentOverviewUi(this);
+      Intent settings=new Intent().putExtra("openWindowAction","settings");
+      setIntent(settings);openNativeWorkspace(settings);
+      String issue=ChromiumEntry.networkIssue(this);
+      hub.feedback(issue.isEmpty()?"Chromium 组件尚未就绪。请在浏览器内核设置中检查安装状态。":issue,true);
+      return true;
+    }
+    if(url==null)BrowserActivity.resume(this);else BrowserActivity.open(this,url);
+    finish();return true;
   }
-  @Override protected void onNewIntent(Intent intent){super.onNewIntent(intent);setIntent(intent);ExitIpPageUi.close(this);if(dispatchBrowser(intent))return;if(environmentOverview!=null&&environmentOverview.consume(intent)&&session==null)prepareBrowserAfterOverview();if(session!=null)openNotification(intent);}
-  @Override protected void onResume(){super.onResume();if(!ProfileCatalog.get(this).available(Profiles.slot(this))){finish();return;}active=true;if(sessionUi!=null)sessionUi.visible(true);if(environmentOverview!=null)environmentOverview.resume();if(session==null){if(browserStartup!=null){browserStartup.foreground(true);startBrowserAfterOverview();}return;}resumeChatUi();}
+  boolean nativeFileWorkPending(){return nativeSavedFiles!=null&&(nativeSavedFiles.exporting!=null||nativeSavedFiles.busy);}
+  boolean geckoWorkPending(){return session!=null&&(ProfileUi.working(session)||session.currentReplyActive()
+    ||downloads!=null&&(downloads.awaitingPicker||downloads.retiringPartial||downloads.savedActions.exporting!=null||downloads.savedActions.busy));}
+  @Override protected void onNewIntent(Intent intent){super.onNewIntent(intent);setIntent(intent);ExitIpPageUi.close(this);if(!isFinishing()&&!dispatchBrowser(intent))handleOpening(intent);}
+  @Override protected void onResume(){
+    super.onResume();if(isFinishing())return;
+    if(!ProfileCatalog.get(this).available(Profiles.slot(this))){finish();return;}
+    active=true;
+    if(session!=null&&(hub==null||hub.page==AppHub.CHAT)&&dispatchBrowser(null)&&isFinishing())return;
+    if(sessionUi!=null)sessionUi.visible(true);
+    if(environmentOverview!=null)environmentOverview.resume();
+    if(hub!=null&&session==null){hub.downloadsVisible(true);hub.refresh();handler.removeCallbacks(hub.tick);handler.post(hub.tick);return;}
+    if(session==null){if(browserStartup!=null){browserStartup.foreground(true);startBrowserAfterOverview();}return;}
+    if(hub!=null&&hub.page!=AppHub.CHAT&&BrowserPreferences.startBrowser(this)){hub.downloadsVisible(true);hub.refresh();handler.removeCallbacks(hub.tick);handler.post(hub.tick);return;}
+    resumeChatUi();
+  }
   void resumeChatUi(){AppUpdates.schedule(this);if(hub!=null)hub.downloadsVisible(true);AppPrefs.maintainCache(this);session.add(sessionObserver);session.audit.refresh(true);session.foreground(true);session.connect();if(hub!=null&&hub.page!=AppHub.CHAT){hub.refresh();handler.removeCallbacks(hub.tick);handler.postDelayed(hub.tick,2500);}handler.removeCallbacks(ticker);handler.post(ticker);}
   @Override protected void onPause(){
     super.onPause();active=false;if(sessionUi!=null)sessionUi.visible(false);if(chatDownloadProgress!=null)chatDownloadProgress.visible(false);if(browserStartup!=null)browserStartup.foreground(false);if(environmentOverview!=null)environmentOverview.pause();
@@ -391,7 +480,7 @@ public class MainActivity extends ThemedActivity {
     if(!browserUi.current())return;
     session.foreground(false);
   }
-  @Override protected void onDestroy(){destroyed=true;if(toolsPanel!=null)toolsPanel.panel.dismiss();if(browserUi!=null)browserUi.close();if(sessionUi!=null)sessionUi.close();if(designChrome!=null)designChrome.cancelUpdates();if(chatDownloadProgress!=null)chatDownloadProgress.close();if(geckoAddress!=null)geckoAddress.close();if(browserStartup!=null)browserStartup.close();if(environmentOverview!=null)environmentOverview.close();if(hub!=null)hub.downloadsVisible(false);if(reloadDialog!=null)reloadDialog.dismiss();if(networkDialog!=null)networkDialog.dismiss();if(downloads!=null)downloads.destroy();if(attachments!=null)attachments.destroy();if(loading!=null)loading.dismissTask();if(hub!=null)hub.networkWorkspace.close();handler.removeCallbacksAndMessages(null);if(session!=null)session.remove(sessionObserver);super.onDestroy();}
+  @Override protected void onDestroy(){destroyed=true;if(toolsPanel!=null)toolsPanel.panel.dismiss();if(browserUi!=null)browserUi.close();if(sessionUi!=null)sessionUi.close();if(designChrome!=null)designChrome.cancelUpdates();if(chatDownloadProgress!=null)chatDownloadProgress.close();if(geckoAddress!=null)geckoAddress.close();if(browserStartup!=null)browserStartup.close();if(environmentOverview!=null)environmentOverview.close();if(hub!=null)hub.downloadsVisible(false);if(reloadDialog!=null)reloadDialog.dismiss();if(networkDialog!=null)networkDialog.dismiss();if(downloads!=null)downloads.destroy();if(nativeSavedFiles!=null)nativeSavedFiles.close();if(attachments!=null)attachments.destroy();if(loading!=null)loading.dismissTask();if(hub!=null)hub.networkWorkspace.close();handler.removeCallbacksAndMessages(null);if(session!=null)session.remove(sessionObserver);super.onDestroy();}
   @Override protected void onSaveInstanceState(Bundle state){super.onSaveInstanceState(state);state.putBoolean("focusReading",focusReading);Bundle downloadsState=new Bundle();if(hub!=null&&hub.downloadController!=null)hub.downloadController.saveState(downloadsState);else if(downloadUiState!=null)downloadsState.putAll(downloadUiState);state.putBundle("uxDownloads",downloadsState);}
   @Override public boolean dispatchKeyEvent(KeyEvent event){
     if(event.getAction()==KeyEvent.ACTION_DOWN&&event.getRepeatCount()==0){
@@ -399,5 +488,5 @@ public class MainActivity extends ThemedActivity {
     }
     return super.dispatchKeyEvent(event);
   }
-  @Override public void onBackPressed(){if(ExitIpPageUi.back(this)||environmentOverview!=null&&environmentOverview.back())return;if(hub!=null&&hub.page!=AppHub.CHAT){hub.select(AppHub.CHAT);return;}if(focusActive()){setFocusReading(false);return;}if(remote!=null&&remote.canGoBack()){browserHistory(-1);return;}moveTaskToBack(true);}
+  @Override public void onBackPressed(){if(ExitIpPageUi.back(this)||environmentOverview!=null&&environmentOverview.back())return;if(hub!=null&&hub.page!=AppHub.CHAT){if(session==null)finish();else hub.select(AppHub.CHAT);return;}if(focusActive()){setFocusReading(false);return;}if(remote!=null&&remote.canGoBack()){browserHistory(-1);return;}moveTaskToBack(true);}
 }

@@ -57,15 +57,42 @@ public final class NativeProbeIntegrationActivity extends Activity {
   /** Both authentication and destination restrictions must succeed before any relay. */
   static final class AuthSocks extends NetworkOptimizationIntegrationActivity.LoopServer {
     final String role;final Set<Integer> allowed;final AtomicInteger authenticated=new AtomicInteger(),connections=new AtomicInteger(),denied=new AtomicInteger();
-    AuthSocks(String role,Integer... ports)throws IOException{this.role=role;allowed=new HashSet<>(Arrays.asList(ports));}
+    final ChromiumOrigin chromiumOrigin;
+    final AtomicInteger chromiumFixtureCircuits=new AtomicInteger();
+
+    /** One synthetic DNS name whose request is sent to the test's dedicated loopback listener. */
+    static final class ChromiumOrigin {
+      final String host;
+      final int port,loopbackPort;
+      ChromiumOrigin(String host,int port,int loopbackPort)throws IOException{
+        if(host==null||!host.matches("pocketchat-internal-[0-9a-f]{32}\\.invalid")||port!=8081
+            ||loopbackPort<1024||loopbackPort>65535||loopbackPort==port)
+          throw new IOException("Invalid Chromium fixture origin");
+        this.host=host;
+        this.port=port;
+        this.loopbackPort=loopbackPort;
+      }
+    }
+
+    AuthSocks(String role,Integer... ports)throws IOException{this(role,null,ports);}
+    AuthSocks(String role,ChromiumOrigin origin,Integer... ports)throws IOException{
+      this.role=role;chromiumOrigin=origin;allowed=new HashSet<>(Arrays.asList(ports));
+    }
     void handle(Socket client)throws Exception{
       client.setSoTimeout(10000);DataInputStream in=new DataInputStream(client.getInputStream());OutputStream out=client.getOutputStream();
       if(in.readUnsignedByte()!=5)return;byte[] methods=new byte[in.readUnsignedByte()];in.readFully(methods);boolean auth=false;for(byte method:methods)auth|=method==2;if(!auth){denied.incrementAndGet();out.write(new byte[]{5,(byte)255});out.flush();return;}
       Thread.sleep(10);out.write(new byte[]{5,2});out.flush();if(in.readUnsignedByte()!=1)return;byte[] user=new byte[in.readUnsignedByte()];in.readFully(user);byte[] password=new byte[in.readUnsignedByte()];in.readFully(password);
       if(!USER.equals(new String(user,StandardCharsets.US_ASCII))||!PASSWORD.equals(new String(password,StandardCharsets.US_ASCII))){denied.incrementAndGet();out.write(new byte[]{1,1});out.flush();return;}
       authenticated.incrementAndGet();Thread.sleep(10);out.write(new byte[]{1,0});out.flush();if(in.readUnsignedByte()!=5||in.readUnsignedByte()!=1)return;in.readUnsignedByte();int type=in.readUnsignedByte();byte[] address=new byte[type==1?4:type==4?16:in.readUnsignedByte()];in.readFully(address);String host=type==3?new String(address,StandardCharsets.US_ASCII):InetAddress.getByAddress(address).getHostAddress();int port=in.readUnsignedShort();
-      if(!"127.0.0.1".equals(host)||!allowed.contains(port)){denied.incrementAndGet();out.write(new byte[]{5,2,0,1,0,0,0,0,0,0});out.flush();return;}
-      try(Socket upstream=new Socket(host,port)){sockets.add(upstream);connections.incrementAndGet();Thread.sleep(10);out.write(new byte[]{5,0,0,1,127,0,0,1,0,0});out.flush();client.setSoTimeout(0);Future<?> reverse=pool.submit(()->NetworkOptimizationIntegrationActivity.Socks.copy(upstream,client));try{NetworkOptimizationIntegrationActivity.Socks.copy(client,upstream);}finally{reverse.cancel(true);sockets.remove(upstream);}}
+      boolean mapped=chromiumOrigin!=null&&type==3&&chromiumOrigin.host.equals(host)&&chromiumOrigin.port==port;
+      if(!mapped&&(!"127.0.0.1".equals(host)||!allowed.contains(port))){denied.incrementAndGet();out.write(new byte[]{5,2,0,1,0,0,0,0,0,0});out.flush();return;}
+      try(Socket upstream=new Socket("127.0.0.1",mapped?chromiumOrigin.loopbackPort:port)){
+        sockets.add(upstream);connections.incrementAndGet();
+        if(mapped)chromiumFixtureCircuits.incrementAndGet();
+        Thread.sleep(10);out.write(new byte[]{5,0,0,1,127,0,0,1,0,0});out.flush();client.setSoTimeout(0);
+        Future<?> reverse=pool.submit(()->NetworkOptimizationIntegrationActivity.Socks.copy(upstream,client));
+        try{NetworkOptimizationIntegrationActivity.Socks.copy(client,upstream);}finally{reverse.cancel(true);sockets.remove(upstream);}
+      }
     }
   }
   static final class ProbeFixture extends NetworkOptimizationIntegrationActivity.LoopServer {

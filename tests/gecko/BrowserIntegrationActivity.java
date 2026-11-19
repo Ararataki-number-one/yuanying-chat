@@ -1,5 +1,6 @@
 package local.pocketchat;
 
+import android.app.Activity;
 import android.content.Intent;
 import android.content.pm.PackageInfo;
 import android.os.*;
@@ -18,6 +19,24 @@ import org.json.*;
 public final class BrowserIntegrationActivity extends BrowserActivity {
   static final String ORIGIN="http://browser-fixture.example";
   static final String BODY="Controlled Chromium download\n";
+
+  /** The disposable workspace capture opens the production Chromium Activity. */
+  public static final class WorkspaceSeed extends Activity {
+    @Override protected void onCreate(Bundle state){
+      super.onCreate(state);
+      try{
+        JSONObject build=IntegrationBuildIdentity.read(this);
+        if(Profiles.slot(this)!=0||!build.getString("sourceCommit").equals(getIntent().getStringExtra("sourceCommit")))
+          throw new SecurityException("Workspace seed source or environment differs");
+        if(!BrowserPreferences.save(this,true,BrowserPreferences.DEFAULT_URL))
+          throw new IOException("Chromium workspace binding could not be saved");
+        BrowserActivity.open(this,ORIGIN+"/native-ui-smoke");
+      }catch(Exception failure){
+        throw new IllegalStateException("Chromium workspace fixture setup failed",failure);
+      }
+      finish();
+    }
+  }
   static final String TARGET_SCROLL_SCRIPT="function(id){const e=document.getElementById(id);if(!e)throw new Error('Missing target '+id);e.scrollIntoView({block:'center',inline:'center'});return {id:e.id};}";
   static final String TARGET_SAMPLE_SCRIPT="function(id){const e=document.getElementById(id);if(!e)throw new Error('Missing target '+id);const r=e.getBoundingClientRect(),x=r.left+r.width/2,y=r.top+r.height/2,h=document.elementFromPoint(x,y),v=window.visualViewport;return {id:e.id,x,y,left:r.left,top:r.top,right:r.right,bottom:r.bottom,viewportWidth:innerWidth,viewportHeight:innerHeight,scrollX,scrollY,devicePixelRatio,visualScale:window.visualViewport?visualViewport.scale:1,visualWidth:v&&Number.isFinite(v.width)?v.width:null,visualHeight:v&&Number.isFinite(v.height)?v.height:null,visualOffsetLeft:v&&Number.isFinite(v.offsetLeft)?v.offsetLeft:null,visualOffsetTop:v&&Number.isFinite(v.offsetTop)?v.offsetTop:null,documentFocus:document.hasFocus(),hitTarget:h===e||e.contains(h),hitId:h&&h.id||'',hitTag:h&&h.tagName||'',url:location.href};}";
   static final String PICKER_ARM_SCRIPT="function(b){const input=document.getElementById('upload');if(!input||!input.isConnected||location.href!==b.url||!/^([0-9a-f]{32})$/.test(b.nonce)||!/^([0-9a-f]{40})$/.test(b.source)||!/^([0-9a-f]{32})$/.test(b.token)||!Number.isInteger(b.ordinal)||b.ordinal<1||b.ordinal>2)throw new Error('Invalid picker document');let s=window.__fixturePickerBarrier;if(!s){if(b.ordinal!==1)throw new Error('Picker sequence did not start at one');s={nonce:b.nonce,source:b.source,url:b.url,input,completed:0,lastToken:'',active:null,rejected:0,events:[]};window.__fixturePickerBarrier=s;for(const type of ['pointerdown','pointerup','click'])document.addEventListener(type,e=>{if(e.target!==input)return;s.events.push({type:e.type,trusted:e.isTrusted,ordinal:s.active?s.active.ordinal:0,x:e.clientX,y:e.clientY,focused:document.hasFocus()});if(s.events.length>12)s.events.shift();},true);}if(s.nonce!==b.nonce||s.source!==b.source||s.url!==b.url||s.input!==input||s.active||s.completed!==b.ordinal-1||s.lastToken===b.token)throw new Error('Picker request is stale');const r={token:b.token,ordinal:b.ordinal,seen:false,afterTask:false,afterFrame:false};s.active=r;const current=()=>window.__fixturePickerBarrier===s&&s.active===r&&s.input===input&&input.isConnected&&document.getElementById('upload')===input&&location.href===s.url&&s.nonce===b.nonce&&s.source===b.source;const cancelled=e=>{s.events.push({type:e.type,trusted:e.isTrusted,ordinal:r.ordinal,focused:document.hasFocus()});if(s.events.length>12)s.events.shift();if(!current()||e.target!==input||e.isTrusted!==true||r.seen){s.rejected++;return;}r.seen=true;input.removeEventListener('cancel',cancelled);setTimeout(()=>{if(!current())return;r.afterTask=true;requestAnimationFrame(()=>{if(!current())return;r.afterFrame=true;s.completed=r.ordinal;s.lastToken=r.token;s.active=null;});},0);};input.addEventListener('cancel',cancelled);return {armed:true,ordinal:r.ordinal,token:r.token};}";
@@ -48,6 +67,7 @@ public final class BrowserIntegrationActivity extends BrowserActivity {
       if(!build.getString("sourceCommit").equals(getIntent().getStringExtra("sourceCommit")))throw new SecurityException("Installed source differs");
       fixture=new FixtureProxy();fixture.start();ProfileCatalog.get(this).created(Profiles.slot(this));
       getSharedPreferences("chat",0).edit().clear().putString("networkMode","external").putString("proxy","http://127.0.0.1:"+fixture.port()).putBoolean("networkConfigured",true).putBoolean("requireExternalVpn",false).commit();
+      if(!BrowserPreferences.save(this,true,BrowserPreferences.DEFAULT_URL))throw new IOException("Chromium fixture binding could not be saved");
       getSharedPreferences("universal-browser",0).edit().clear().commit();
       getIntent().putExtra("url",ORIGIN+"/start");
     }catch(Exception error){throw new IllegalStateException("Synthetic browser setup failed",error);}
@@ -81,7 +101,7 @@ public final class BrowserIntegrationActivity extends BrowserActivity {
   void started()throws Exception{
     check("Browser controls are created at Android font scale two",getResources().getConfiguration().fontScale>=1.9f);
     check("Default browser homepage is ChatGPT",BrowserPreferences.DEFAULT_URL.equals(BrowserPreferences.home(this)));
-    check("Enhanced Gecko entry remains the initial entry preference",!BrowserPreferences.startBrowser(this));
+    check("Chromium is the saved engine in the fixture environment",BrowserPreferences.startBrowser(this));
     check("The fixture uses the production ChromiumRuntime",runtime.getClass()==ChromiumRuntime.class);
     java.net.Proxy actualProxy=runtime.verifiedProxy();
     check("The proxy override has acknowledged the actual route",runtime.allowed()&&actualProxy!=null&&actualProxy.type()==java.net.Proxy.Type.HTTP&&actualProxy.address() instanceof InetSocketAddress&&((InetSocketAddress)actualProxy.address()).getPort()==fixture.port());
@@ -280,7 +300,15 @@ public final class BrowserIntegrationActivity extends BrowserActivity {
     });
   }
   void switchEngines()throws Exception{
-    step("switch-to-gecko");openChat();await("enhanced activity and browser task roundtrip",()->switchedAway&&foreground,()->{
+    // A second environment can use Gecko while the first retains its Chromium session.
+    int geckoSlot=1;
+    Profiles.prepare(this,geckoSlot,false);
+    android.content.Context gecko=Profiles.context(this,geckoSlot);
+    if(!gecko.getSharedPreferences("chat",0).edit().putString("networkMode","external").putString("proxy","http://127.0.0.1:"+fixture.port()).putBoolean("networkConfigured",true).putBoolean("requireExternalVpn",false).putString("geckoBrowserUrl",ORIGIN+"/start").putString("url",ORIGIN+"/start").commit())throw new IOException("Gecko fixture network could not be saved");
+    check("The other environment keeps its default Gecko binding",!BrowserPreferences.startBrowser(gecko)&&BrowserPreferences.startBrowser(this));
+    step("switch-to-gecko");
+    check("The real environment switcher opens the independent Gecko environment",EnvironmentSwitcherUi.open(this,ProfileCatalog.get(this).item(geckoSlot),"chat",false));
+    await("enhanced environment and browser task roundtrip",()->switchedAway&&foreground,()->{
       check("Returning from the actual enhanced activity retains the browser surface",web()==returnSurface&&runtime.allowed());
       check("Engine task roundtrip retains the live Chromium route lease",observeLease("engine-roundtrip").surfaces==1&&ChromiumRouteLease.held()&&NativeNetwork.get(this).routeBusy());
       js("({draft:document.getElementById('draft').value,marker:window.__fixtureRoundtrip})",returned->{try{

@@ -12,6 +12,7 @@ import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
+import java.util.function.Predicate;
 import org.json.*;
 
 /** One-shot website file requests and Chromium downloads, separate from Gecko tasks. */
@@ -59,12 +60,15 @@ final class BrowserFiles {
     return true;
   }
   static Intent chooserIntent(WebChromeClient.FileChooserParams params){
-    LinkedHashSet<String> types=new LinkedHashSet<>();String[] groups=params.getAcceptTypes();
+    return chooserIntent(params.getAcceptTypes(),params.getMode()==WebChromeClient.FileChooserParams.MODE_OPEN_MULTIPLE);
+  }
+  static Intent chooserIntent(String[] groups,boolean multiple){
+    LinkedHashSet<String> types=new LinkedHashSet<>();
     if(groups!=null)for(String group:groups){if(group==null||group.length()>4096)continue;for(String raw:group.split(",")){String type=raw.trim().toLowerCase(Locale.ROOT);if(type.startsWith("."))type=MimeTypeMap.getSingleton().getMimeTypeFromExtension(type.substring(1));if(type!=null&&type.matches("(?:[a-z0-9.+-]+/(?:[a-z0-9.+-]+|\\*)|\\*/\\*)")&&types.size()<32)types.add(type);}}
     String type=types.size()==1?types.iterator().next():"*/*";
     Intent intent=new Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType(type).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
     if(types.size()>1)intent.putExtra(Intent.EXTRA_MIME_TYPES,types.toArray(new String[0]));
-    intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE,params.getMode()==WebChromeClient.FileChooserParams.MODE_OPEN_MULTIPLE);return intent;
+    intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE,multiple);return intent;
   }
   boolean result(int request,int result,Intent data){
     if(request<FIRST_REQUEST||request>LAST_REQUEST)return false;
@@ -73,16 +77,22 @@ final class BrowserFiles {
     if(destroyed||result!=Activity.RESULT_OK||data==null){deliver(selected.callback,null);return true;}
     try{if(!Objects.equals(selected.url,selected.owner.getUrl())){deliver(selected.callback,null);message("网页已变化，未交付所选文件");return true;}}
     catch(RuntimeException gone){deliver(selected.callback,null);message("原网页已关闭，未交付所选文件");return true;}
+    try{deliver(selected.callback,selectedUris(data,selected.multiple,this::selectable));}
+    catch(IOException invalid){deliver(selected.callback,null);message(invalid.getMessage());}
+    return true;
+  }
+  static Uri[] selectedUris(Intent data,boolean multiple,Predicate<Uri> selectable)throws IOException {
     LinkedHashSet<Uri> uris=new LinkedHashSet<>();
     try{ClipData clip=data.getClipData();
-      if(clip!=null){if(clip.getItemCount()>MAX_FILES){deliver(selected.callback,null);message("一次最多选择 64 个文件");return true;}for(int i=0;i<clip.getItemCount();i++){Uri uri=clip.getItemAt(i).getUri();if(uri!=null)uris.add(uri);}}
+      if(clip!=null){if(clip.getItemCount()>MAX_FILES)throw new IOException("一次最多选择 64 个文件");for(int i=0;i<clip.getItemCount();i++){Uri uri=clip.getItemAt(i).getUri();if(uri!=null)uris.add(uri);}}
       if(uris.isEmpty()&&data.getData()!=null)uris.add(data.getData());
-    }catch(RuntimeException malformed){deliver(selected.callback,null);message("系统返回的文件信息无效，请重新选择");return true;}
-    if(uris.isEmpty()||!selected.multiple&&uris.size()!=1){deliver(selected.callback,null);message("请按网页要求重新选择文件");return true;}
-    for(Uri uri:uris)if(!selectable(uri)){deliver(selected.callback,null);message("请选择系统文件选择器中已授权的文件");return true;}
-    deliver(selected.callback,uris.toArray(new Uri[0]));return true;
+    }catch(RuntimeException malformed){throw new IOException("系统返回的文件信息无效，请重新选择",malformed);}
+    if(uris.isEmpty()||!multiple&&uris.size()!=1)throw new IOException("请按网页要求重新选择文件");
+    for(Uri uri:uris)if(!selectable.test(uri))throw new IOException("请选择系统文件选择器中已授权的文件");
+    return uris.toArray(new Uri[0]);
   }
-  boolean selectable(Uri uri){
+  boolean selectable(Uri uri){return selectable(activity,uri);}
+  static boolean selectable(Activity activity,Uri uri){
     try{
       if(uri==null||!"content".equals(uri.getScheme())||uri.getAuthority()==null||uri.toString().length()>16384)return false;
       ProviderInfo provider=activity.getPackageManager().resolveContentProvider(uri.getAuthority(),0);

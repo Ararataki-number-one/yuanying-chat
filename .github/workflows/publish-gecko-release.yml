@@ -5,15 +5,19 @@ on:
   workflow_dispatch:
 permissions:
   contents: write
+  actions: read
 concurrency:
   group: production-app-updates
   cancel-in-progress: false
 jobs:
   publish:
+    if: github.repository == 'Ararataki-number-one/yuanying-chat' && github.ref == 'refs/heads/apk/gecko-release-20261003'
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
       - name: Verify original regressions, derived SDK provenance and signed public APK
+        env:
+          GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail
@@ -51,6 +55,10 @@ jobs:
               release_files.update({'tools/browser/check_gecko_cpu_evidence.py','tools/browser/cpu_ip_combo_publication.py'})
           if tuple(map(int,m['version'].split('.'))) >= (2,1,4):
               release_files.add('tools/browser/tls_publication.py')
+          if m['versionCode']>=115:
+              release_files.update({'tools/gecko/chromium_release_publication.py','tools/gecko/stage_chromium_module.py'})
+              name='tools/gecko/caret_build_identity.py'
+              assert pathlib.Path(name).read_bytes()==subprocess.check_output(['git','show',m['sourceCommit']+':'+name]),'APK definition checker differs from tested source.'
           if tools_commit!=m['sourceCommit']:
               subprocess.run(['git','merge-base','--is-ancestor',m['sourceCommit'],tools_commit],check=True)
               changed=set(subprocess.check_output(['git','diff','--name-only',m['sourceCommit'],tools_commit],text=True).splitlines())
@@ -245,6 +253,10 @@ jobs:
           info=subprocess.check_output([str(tools/'aapt2'),'dump','badging',m['filename']],text=True)
           assert f"package: name='local.pocketchat' versionCode='{m['versionCode']}' versionName='{m['version']}'" in info
           assert 'application-debuggable' not in info
+          if m['versionCode']>=115:
+              import sys;sys.path.insert(0,'tools/gecko')
+              from chromium_release_publication import restore_verified
+              restore_verified(m,pathlib.Path('.'),tools)
           print('Verified original regressions, shipped SDK provenance, original signer, app identity, version and byte hash. Controlled caret checks remain separate from physical phone acceptance.')
           PY
       - name: Publish APK download
@@ -261,6 +273,7 @@ jobs:
           assert re.fullmatch(r'[0-9a-f]{40}',m['sourceCommit'])
           from tools.gecko.release_channel_contract import release_tag
           tag=release_tag(m)
+          modules=[asset['file'] for asset in m['chromiumDelivery']['files']] if m['versionCode']>=115 else []
           candidate=m.get('channel','stable')=='candidate'
           beta=m.get('channel','stable')=='beta'
           unstable=candidate or beta
@@ -279,7 +292,7 @@ jobs:
               qualification=[m[key]['file'] for key in ('manualAcceptanceArtifact','releaseAuthorizationArtifact') if key in m]
               if 'releaseException' in m:
                   qualification.append('known-caret-failure.json')
-              command=['gh','release','create',tag,m['filename'],'release-manifest.json',*qualification,'--target',m['sourceCommit'],
+              command=['gh','release','create',tag,m['filename'],'release-manifest.json',*modules,*qualification,'--target',m['sourceCommit'],
                   '--title',m['version']+(' · 元婴期院士候选版' if candidate else ' · 元婴期院士测试版' if beta else ' · 元婴期院士正式版'),'--notes-file','RELEASE.md','--repo',repository]
               if unstable:command.extend(['--prerelease','--latest=false'])
               else:command.append('--latest=true')
@@ -289,6 +302,7 @@ jobs:
               assert target==m['sourceCommit'],'Existing release tag belongs to another source; use a new version.'
               names=[asset['name'] for asset in existing['assets']]
               assert names.count('release-manifest.json')==1 and names.count(m['filename'])==1,'Existing release identity is incomplete; refusing replacement.'
+              assert all(names.count(name)==1 for name in modules),'Existing Chromium assets are incomplete; refusing replacement.'
               with tempfile.TemporaryDirectory(prefix='existing-gecko-release-') as directory:
                   subprocess.run(['gh','release','download',tag,'--pattern','release-manifest.json','--pattern',m['filename'],
                       '--dir',directory,'--repo',repository],check=True)
@@ -308,6 +322,10 @@ jobs:
           import hashlib,json,pathlib,subprocess,urllib.request
           from tools.gecko.release_channel_contract import release_tag, advances_update_channel
           m=json.loads(pathlib.Path('release-manifest.json').read_text())
+          if m['versionCode']>=115:
+              import sys;sys.path.insert(0,'tools/gecko')
+              from chromium_release_publication import verify_public
+              verify_public(m)
           if advances_update_channel(m):
               subprocess.run(['python3','tools/publish-update-feed.py'],check=True)
           else:

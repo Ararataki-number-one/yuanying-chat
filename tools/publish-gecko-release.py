@@ -103,10 +103,15 @@ p.add_argument('--evidence',type=pathlib.Path,default=root/'work/gecko-integrati
 p.add_argument('--channel',choices=['stable','beta','candidate'],required=True)
 p.add_argument('--candidate-number',type=int)
 p.add_argument('--stage-only',action='store_true',help='Run every original release check and prepare local files; do not inspect or update remote release refs.')
+p.add_argument('--chromium-assets',type=pathlib.Path,help='Verified original-signed Chromium APK, metadata and detached signature directory')
+p.add_argument('--chromium-build-commit',help='Immutable exact-source CI APK evidence commit')
+p.add_argument('--android-tools',type=pathlib.Path,default=pathlib.Path(os.environ.get('ANDROID_HOME','work/android-sdk'))/'build-tools/37.0.0')
 qualification=p.add_mutually_exclusive_group()
 qualification.add_argument('--manual-acceptance',type=pathlib.Path)
 qualification.add_argument('--direct-release-authorization',type=pathlib.Path)
 args=p.parse_args()
+chromium_release=version_code>=115
+assert chromium_release==(args.chromium_assets is not None and args.chromium_build_commit is not None),'This source and its optional Chromium release inputs must match.'
 channel_identity=dict(version=version,channel=args.channel,candidateNumber=args.candidate_number)
 tag=release_tag(channel_identity)
 assert args.direct_release_authorization is None or requires_manual_acceptance(channel_identity),'Direct release authorization applies only to an explicit stable roadmap release.'
@@ -127,6 +132,7 @@ if fingerprint_release:release_tool_files.update({'tools/browser/check_fingerpri
 if worker_timezone_release:release_tool_files.update({'tools/browser/check_worker_policy_evidence.py','tools/browser/check_gecko_environment_policy_evidence.py','tools/browser/ip_timezone_publication.py'})
 if cpu_release:release_tool_files.update({'tools/browser/check_gecko_cpu_evidence.py','tools/browser/cpu_ip_combo_publication.py'})
 if tls_release:release_tool_files.add('tools/browser/tls_publication.py')
+if chromium_release:release_tool_files.update({'tools/gecko/chromium_release_publication.py','tools/gecko/stage_chromium_module.py'})
 if release_tools_commit!=args.source:
     subprocess.run(['git','merge-base','--is-ancestor',args.source,release_tools_commit],cwd=root,check=True)
     changed=set(subprocess.check_output(['git','diff','--name-only',args.source,release_tools_commit],cwd=root,text=True).splitlines())
@@ -279,6 +285,15 @@ if not args.stage_only:existing_release_preflight(manifest,root)
 stage=root/'work/gecko-integration/signed-public'
 if stage.exists():shutil.rmtree(stage)
 stage.mkdir(parents=True)
+chromium_release_files=[]
+if chromium_release:
+    sys.path.insert(0,str(root/'tools/gecko'))
+    from chromium_release_publication import RUNTIME_REPORT, SIGNED_TAIL, prepare_delivery, public_names
+    delivery=prepare_delivery(manifest,build['chromiumBuild'],args.chromium_build_commit,
+                              args.evidence/RUNTIME_REPORT,args.apk,args.chromium_assets,stage,args.android_tools)
+    manifest['chromiumDelivery']=delivery
+    (stage/RUNTIME_REPORT).write_text(json.dumps(delivery['runtime'],indent=2)+'\n')
+    chromium_release_files=[RUNTIME_REPORT,SIGNED_TAIL,*public_names(manifest)[1:]]
 for number,part in enumerate(manifest['parts']):(stage/part['file']).write_bytes(raw[number*60_000_000:(number+1)*60_000_000])
 (stage/'release-manifest.json').write_text(json.dumps(manifest,indent=2)+'\n')
 if manual_raw is not None:(stage/'manual-acceptance.json').write_bytes(manual_raw)
@@ -343,6 +358,9 @@ if version_code>=108:shutil.copy2(root/'tools/gecko/photo_upload_contract.py',st
 shutil.copy2(root/'tools/gecko/release_channel_contract.py',stage/'tools/gecko/release_channel_contract.py')
 shutil.copy2(root/'tools/gecko/network_scope_artifacts.py',stage/'tools/gecko/network_scope_artifacts.py')
 shutil.copy2(root/'tools/gecko/release_channel_contract_test.py',stage/'tools/gecko/release_channel_contract_test.py')
+if chromium_release:
+    for name in ('chromium_release_publication.py','stage_chromium_module.py','caret_build_identity.py'):
+        shutil.copy2(root/'tools/gecko'/name,stage/'tools/gecko'/name)
 if roadmap_release:
     for name in ['check_profile_evidence.py','profile_invocation_contract.py']:shutil.copy2(root/'tools/gecko'/name,stage/'tools/gecko'/name)
 if sdk_build is not None:
@@ -416,7 +434,7 @@ if previous:
 subprocess.run(['git','read-tree','--empty'],cwd=root,env=env,check=True)
 if resource_release:
     for name in ['check_resource_evidence.py','resource_invocation_contract.py']:shutil.copy2(root/'tools/gecko'/name,stage/'tools/gecko'/name)
-subprocess.run(['git','add','-f','--','.github','tools',*(['tests/network_settings_internal46_contract.py','tests/network_settings_callback_source_compatibility.py','tests/fixtures/network-settings-callback-source-deltas.json'] if version_code>=70 else []),'release-manifest.json','RELEASE.md','device-results.json',*(['manual-acceptance.json'] if manual_raw is not None else []),*(['release-authorization.json'] if authorization_raw is not None else []),*(['network-performance-results.json'] if version_code>=40 else []),*(['quiet-notification-results.json','compact-chrome-results.json'] if version_code>=42 else []),*performance_files,*[x['file'] for x in manifest['parts']]],cwd=root,env=env,check=True)
+subprocess.run(['git','add','-f','--','.github','tools',*(['tests/network_settings_internal46_contract.py','tests/network_settings_callback_source_compatibility.py','tests/fixtures/network-settings-callback-source-deltas.json'] if version_code>=70 else []),'release-manifest.json','RELEASE.md','device-results.json',*(['manual-acceptance.json'] if manual_raw is not None else []),*(['release-authorization.json'] if authorization_raw is not None else []),*(['network-performance-results.json'] if version_code>=40 else []),*(['quiet-notification-results.json','compact-chrome-results.json'] if version_code>=42 else []),*performance_files,*chromium_release_files,*[x['file'] for x in manifest['parts']]],cwd=root,env=env,check=True)
 tree=subprocess.check_output(['git','write-tree'],cwd=root,env=env,text=True).strip()
 commit=subprocess.check_output(['git','commit-tree',tree,*parents,'-m','Publish original-signed production Gecko APK'],cwd=root,env=env,text=True).strip()
 subprocess.run(['git','-c','http.postBuffer=524288000','push','origin',commit+':refs/heads/'+branch],cwd=root,check=True)

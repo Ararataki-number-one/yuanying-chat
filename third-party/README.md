@@ -26,3 +26,13 @@ Mihomo 从 1.5.20 起使用本项目的探测补丁，不再将二进制描述�
 - [Mozilla 原始许可汇总，包含 MPL 2.0](licenses/Mozilla-Gecko-License.html)（汇总文本来自官方 gecko-dev 镜像；准确发行源码以上述 revision 为准）
 
 修改后的 `GeckoEditable.java` 保留了上游 MPL 2.0 声明。AndroidX 的传递依赖使用各自 Apache 2.0 许可。Mozilla、Firefox 的商标不属于本项目。
+
+## Cefrium Chromium
+
+选装 Chromium 组件使用 Cefrium 0.21.0 Libre，内核为 Chromium 156.0.8078.96。基础安装包提供 GeckoView。Cefrium 许可为 [LGPL-3.0-or-later](../chromium/src/main/assets/licenses/Cefrium-LGPL-3.0.txt)，配套 [GPL-3.0 文本](licenses/Mihomo-GPL-3.0.txt) 同时包含在基础安装包中。CEF 的原始代码采用 BSD 三条款许可。Cefrium Android 移植版权属于 Juan Manuel Mendez Rey，原 CEF 版权属于 Marshall A. Greenblatt 及贡献者。
+
+- [对应上游源码 v0.21.0](https://codeberg.org/cefrium/cef-android/archive/v0.21.0.tar.gz)
+- [上游构建说明](https://codeberg.org/cefrium/cef-android/src/tag/v0.21.0/BUILD-GUIDE-CEFRIUM.md)
+- [完整第三方声明](https://codeberg.org/cefrium/cef-android/releases/download/v0.21.0/cefrium-sdk-0.21.0-NOTICE.txt)，同一文件也包含在 Chromium 选装组件中
+
+下游 Gradle 配置和 Android 资源打包规则包含在本版本源码中。自行编译时，先按上游说明构建替换件，再更新本地 Maven 仓库和对应的构件摘要，使用 `-PpocketChatChromiumBundle=true` 构建基础包和选装组件。两份 APK 可以使用同一个自有签名密钥签名，并安装到单独的测试设备或用户环境验证。

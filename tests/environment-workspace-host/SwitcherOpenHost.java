@@ -55,10 +55,10 @@ final class SwitcherOpenHost {
     caller=reset(row(1));check(!EnvironmentSwitcherUi.open(caller,null,"chat",false)&&caller.starts==0,"missing expected environment rejected");
     for(int activeSlot:new int[]{0,1})for(int targetSlot:new int[]{0,1}){
       reset(row(targetSlot));BrowserActivity chromium=new BrowserActivity(activeSlot);
-      check(EnvironmentSwitcherUi.open(chromium,row(targetSlot),"chat",false),"Chromium environment switches its actual engine");
-      check(chromium.starts==1&&chromium.started.target==BrowserActivity.activity(targetSlot),"Chromium exact environment Activity starts once");
-      check(chromium.started.flags==(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_REORDER_TO_FRONT),"Chromium reuses its retained Activity");
-      check(chromium.started.extras.isEmpty()&&EnvironmentOverviewUi.openings==0,"Chromium environment switch has no URL, document replacement or overview command");
+      check(EnvironmentSwitcherUi.open(chromium,row(targetSlot),"chat",false),"Chromium can switch to any available environment");
+      check(chromium.starts==1&&chromium.started.target==Profiles.activity(targetSlot),"Chromium starts the target environment dispatcher exactly once");
+      check(chromium.started.flags==(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_REORDER_TO_FRONT),"Chromium switch retains normal task reordering");
+      check("chat".equals(chromium.started.extras.get("openWindowAction"))&&!chromium.started.extras.containsKey("url")&&EnvironmentOverviewUi.openings==0,"Chromium switch requests the target browser with its retained document");
       check(ProfileCatalog.instance.reads==2&&ProfileCatalog.instance.opened==1&&ProfileCatalog.instance.openedSlot==targetSlot,"Chromium recent use follows both identity checks");
     }
     reset(row(1));BrowserActivity chromium=new BrowserActivity(0);

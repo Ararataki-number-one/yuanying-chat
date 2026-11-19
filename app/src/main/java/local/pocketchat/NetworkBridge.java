@@ -3,6 +3,7 @@ import android.content.*;import android.net.Uri;import android.os.*;import org.j
 
 /** Work is dispatched without changing the visible window or constructing a browser. */
 final class NetworkBridge {
+  static final String START_CHROMIUM_INTERNAL="startChromiumInternal";
   interface Result{void done(boolean ok,String message,JSONObject state);}
   interface Decision{void required(JSONObject choice,Consumer<String> select);}
   interface ShareResult{void done(NetworkSharePreparation.Frozen frozen,NetworkSharePreparation.Failure failure);}
@@ -36,6 +37,9 @@ final class NetworkBridge {
       }catch(Exception ignored){}
       state.remove("operationResult");if(outcome!=null)NetworkCatalog.put(state,"operationResult",outcome);boolean success=ok;String text=message;JSONObject snapshot=state;main.post(()->cb.done(success,text,snapshot));
     });
+  }
+  static void startChromiumInternal(Context context,EnvironmentSpec.Identity owner,Result result){
+    run(context,owner.slot,START_CHROMIUM_INTERNAL,null,null,owner,result);
   }
   /** Scope is frozen before reads. SAVED avoids even a cold provider bind. */
   static void shareSnapshot(Context context,NetworkSharePreparation.Request request,ShareResult callback){

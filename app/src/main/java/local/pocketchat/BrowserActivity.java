@@ -73,6 +73,7 @@ public class BrowserActivity extends ThemedActivity {
     super.onCreate(state);
     if(Build.VERSION.SDK_INT>=30)getWindow().setDecorFitsSystemWindows(false);
     if(!ProfileCatalog.get(this).available(Profiles.slot(this))){finish();return;}
+    if(dispatchBoundEngine(state==null?getIntent():null))return;
     fingerprintJobs=createFingerprintJobs();
     library=new BrowserLibrary(this);
     buildUi();runtime=new ChromiumRuntime(this,this::routeChanged);files=new BrowserFiles(this,this::message,runtime);permissions=new BrowserPermissions(this,this::web,this::message);
@@ -83,12 +84,29 @@ public class BrowserActivity extends ThemedActivity {
       for(String url:urls)if(tabs.size()<MAX_TABS&&BrowserAddressPolicy.allowed(url))tabs.add(new Tab(url));
       if(!tabs.isEmpty())select(tabs.get(Math.max(0,Math.min(at,tabs.size()-1))));
     }
-    if(tabs.isEmpty())newTab(initial==null?BrowserPreferences.home(this):initial);
+    if(tabs.isEmpty()&&initial!=null)openAddress(initial);
+    if(tabs.isEmpty())newTab(BrowserPreferences.home(this));
     if(tabs.isEmpty())newTab(BrowserAddressPolicy.home());
     runtime.start();
   }
-  static String intentAddress(Intent intent){return Intent.ACTION_VIEW.equals(intent.getAction())&&intent.getData()!=null?intent.getData().toString():intent.getStringExtra("url");}
-  @Override protected void onNewIntent(Intent intent){super.onNewIntent(intent);setIntent(intent);String url=intentAddress(intent);if(url!=null){for(Tab tab:tabs)if(url.equals(tab.url)){select(tab);return;}newTab(url);}}
+  static String intentAddress(Intent intent){return BrowserPreferences.openingAddress(intent);}
+  boolean dispatchBoundEngine(Intent intent){
+    if(!ProfileCatalog.get(this).available(Profiles.slot(this))){finish();return true;}
+    boolean chromium=BrowserPreferences.startBrowser(this);
+    if(chromium&&!ChromiumEntry.managed(this))return false;
+    if(fileOperationPending()){
+      message("请完成当前文件操作，然后重新打开此环境。");return true;
+    }
+    Intent target=new Intent(this,Profiles.activity(Profiles.slot(this))).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_REORDER_TO_FRONT);
+    String url=intentAddress(intent);if(url!=null)target.putExtra("url",url);
+    startActivity(target);finish();return true;
+  }
+  void openAddress(String url){
+    if(url==null)return;
+    for(Tab tab:tabs)if(url.equals(tab.url)){select(tab);return;}
+    newTab(url);
+  }
+  @Override protected void onNewIntent(Intent intent){super.onNewIntent(intent);setIntent(intent);if(!dispatchBoundEngine(intent)&&runtime!=null)openAddress(intentAddress(intent));}
   int dp(int value){return ReferenceUi.dp(this,value);}
   void buildUi(){
     root=DesignUi.column(this);root.setBackgroundColor(ReferenceUi.CHAT_BG);root.setClipChildren(false);root.setClipToPadding(false);
@@ -637,14 +655,16 @@ public class BrowserActivity extends ThemedActivity {
     action(dialog,"下载文件",files::showDownloads);
     action(dialog,"环境管理",this::showEnvironments);
     action(dialog,"此环境的网络设置",this::openNetworkSettings);
-    action(dialog,"设置",()->startActivity(new Intent(this,AppSettingsActivity.class).addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)));
-    action(dialog,"首页与启动界面",()->BrowserSettingsUi.show(this,()->{}));
+    action(dialog,"设置",()->openWorkspace("settings"));
+    action(dialog,"此环境的浏览器内核",()->BrowserSettingsUi.show(this));
     action(dialog,"收藏夹",()->showLibrary("bookmarks","收藏夹"));action(dialog,"浏览历史",()->showLibrary("history","浏览历史"));
     action(dialog,"Chromium 指纹配置与当前网页自测",this::showFingerprintSettings);
     action(dialog,"关闭浏览器",this::confirmCloseBrowser);
-    action(dialog,"设为系统默认浏览器",this::defaultBrowser);action(dialog,"打开 Gecko 浏览器",this::openChat);action(dialog,"内核信息",this::engineInfo);dialog.show();
+    action(dialog,"设为系统默认浏览器",this::defaultBrowser);action(dialog,"内核信息",this::engineInfo);dialog.show();
   }
-  void openNetworkSettings(){startActivity(new Intent(this,Profiles.activity(Profiles.slot(this))).putExtra("openWindowAction","network").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_REORDER_TO_FRONT));}
+  boolean fileOperationPending(){return files!=null&&(files.pending!=null||files.hasActiveDownload()||fingerprintFileResult!=null);}
+  void openNetworkSettings(){openWorkspace("network");}
+  void openWorkspace(String page){startActivity(new Intent(this,Profiles.activity(Profiles.slot(this))).putExtra("openWindowAction",page).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_REORDER_TO_FRONT));}
   void action(ReferenceUi.Modal dialog,String title,Runnable run){ReferenceUi.menuAction(dialog,title,()->{dialog.dismiss();run.run();});}
   void linkMenu(String url){ReferenceUi.Modal dialog=new ReferenceUi.Modal(this,"链接").asSheet();dialog.body.addView(ReferenceUi.secondary(this,url));action(dialog,"在新标签页打开",()->newTab(url));action(dialog,"在当前标签页打开",()->go(url));action(dialog,"复制链接",()->((android.content.ClipboardManager)getSystemService(CLIPBOARD_SERVICE)).setPrimaryClip(ClipData.newPlainText("链接",url)));dialog.show();}
   void showLibrary(String key,String title){JSONArray rows=library.list(key);String[] labels=new String[rows.length()];for(int i=0;i<rows.length();i++){JSONObject row=rows.optJSONObject(i);labels[i]=row.optString("title")+"\n"+row.optString("url");}AlertDialog.Builder dialog=AppAppearance.dialog(this).setTitle(title).setNegativeButton("关闭",null);if(labels.length==0)dialog.setMessage("暂无记录");else dialog.setItems(labels,(d,index)->go(rows.optJSONObject(index).optString("url")));if("history".equals(key)&&rows.length()>0)dialog.setNeutralButton("清空",(d,w)->AppAppearance.dialog(this).setTitle("清空浏览历史？").setMessage("只删除网址记录，网站登录状态会保留。").setNegativeButton("取消",null).setPositiveButton("清空",(c,n)->library.clearHistory()).show());dialog.show();}
@@ -670,7 +690,6 @@ public class BrowserActivity extends ThemedActivity {
       }).show();
   }
   void defaultBrowser(){try{if(Build.VERSION.SDK_INT>=29){android.app.role.RoleManager roles=getSystemService(android.app.role.RoleManager.class);if(roles!=null&&roles.isRoleAvailable(android.app.role.RoleManager.ROLE_BROWSER)){if(roles.isRoleHeld(android.app.role.RoleManager.ROLE_BROWSER)){message("当前已是系统默认浏览器");return;}startActivityForResult(roles.createRequestRoleIntent(android.app.role.RoleManager.ROLE_BROWSER),0x2800);return;}}startActivity(new Intent(android.provider.Settings.ACTION_MANAGE_DEFAULT_APPS_SETTINGS));}catch(ActivityNotFoundException unavailable){message("请在系统设置中选择默认浏览器");}}
-  void openChat(){startActivity(new Intent(this,Profiles.activity(Profiles.slot(this))).putExtra("legacyChat",true).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_REORDER_TO_FRONT));}
   void external(String url){
     Uri uri;try{uri=Uri.parse(url);}catch(RuntimeException invalid){return;}String scheme=uri.getScheme();
     if(!"mailto".equalsIgnoreCase(scheme)&&!"tel".equalsIgnoreCase(scheme)&&!"sms".equalsIgnoreCase(scheme)){message("已阻止此链接类型");return;}
@@ -684,7 +703,7 @@ public class BrowserActivity extends ThemedActivity {
   void hideCustomView(){if(customView==null)return;View view=customView;customView=null;if(view.getParent() instanceof android.view.ViewGroup)((android.view.ViewGroup)view.getParent()).removeView(view);WebChromeClient.CustomViewCallback callback=customCallback;customCallback=null;if(callback!=null)callback.onCustomViewHidden();}
   @Override protected void onActivityResult(int request,int result,Intent data){if(fingerprintFileResult(request,result,data))return;super.onActivityResult(request,result,data);}
   @Override public void onRequestPermissionsResult(int request,String[] names,int[] grants){if(permissions!=null&&permissions.result(request,names,grants))return;super.onRequestPermissionsResult(request,names,grants);}
-  @Override protected void onResume(){super.onResume();foreground=true;loadFingerprintState();if(runtime!=null)runtime.refresh();if(web()!=null)web().onResume();if(permissions!=null)permissions.resume();fingerprintMain.removeCallbacks(networkTick);networkTick.run();}
+  @Override protected void onResume(){super.onResume();if(isFinishing()||runtime==null)return;foreground=true;if(dispatchBoundEngine(null)&&isFinishing())return;loadFingerprintState();if(runtime!=null)runtime.refresh();if(web()!=null)web().onResume();if(permissions!=null)permissions.resume();fingerprintMain.removeCallbacks(networkTick);networkTick.run();}
   @Override protected void onStop(){if(permissions!=null)permissions.stopped();super.onStop();}
   void saveCookies(){if(!createdSurface||!flushingCookies.compareAndSet(false,true))return;cookieWorker.execute(()->{try{CookieManager.getInstance().flush();}catch(RuntimeException unavailable){}finally{flushingCookies.set(false);}});}
   @Override protected void onPause(){foreground=false;fingerprintMain.removeCallbacks(networkTick);invalidateFingerprintObservation();if(selected!=null)retireFingerprintBinding(selected);hideCustomView();if(web()!=null)web().onPause();saveCookies();super.onPause();}

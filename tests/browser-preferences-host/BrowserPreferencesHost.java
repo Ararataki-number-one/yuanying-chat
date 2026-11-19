@@ -39,23 +39,122 @@ public final class BrowserPreferencesHost {
   }
   static void routing(){
     MainActivity a=new MainActivity();
-    check("Default enhanced route never dispatches automatically",!BrowserPreferences.shouldOpenBrowser(a,new Intent()));
+    check("Default Gecko route stays in the target environment",!BrowserPreferences.shouldOpenBrowser(a,new Intent()));
     BrowserPreferences.save(a,true,"example.com/home");
     check("Chromium preference dispatches plain and chat entry intents",BrowserPreferences.shouldOpenBrowser(a,null)&&BrowserPreferences.shouldOpenBrowser(a,new Intent())&&BrowserPreferences.shouldOpenBrowser(a,new Intent().putExtra("openWindowAction","chat")));
-    for(Intent intent:new Intent[]{new Intent().putExtra("legacyChat",true),new Intent().putExtra("openConversation","https://chatgpt.com/c/id"),new Intent().putExtra("openConversation",""),new Intent().putExtra("openDownload","task"),new Intent().putExtra("openEnvironmentEditor",true),new Intent().putExtra("returnToEnvironmentList",true),new Intent().setData(Uri.parse("pocketchat://notification/env0")),new Intent().setData(Uri.parse("pocketchat://download/env0"))})check("Original task/legacy intent bypasses Chromium: "+intent.describe(),!BrowserPreferences.shouldOpenBrowser(a,intent));
-    for(String action:new String[]{"edit","network","settings","unknown",""})check("Explicit action stays in original interface: "+action,!BrowserPreferences.shouldOpenBrowser(a,new Intent().putExtra("openWindowAction",action)));
-    check("False legacy flag and unrelated data do not block selected entry",BrowserPreferences.shouldOpenBrowser(a,new Intent().putExtra("legacyChat",false).setData(Uri.parse("pocketchat://unrelated/item"))));
+    for(Intent intent:new Intent[]{new Intent().putExtra("openDownload","task"),new Intent().putExtra("openEnvironmentEditor",true),new Intent().putExtra("returnToEnvironmentList",true),new Intent().setData(Uri.parse("pocketchat://download/env0"))})check("Native task routes stay in their owning environment: "+intent.describe(),!BrowserPreferences.shouldOpenBrowser(a,intent));
+    for(String action:new String[]{"edit","overview","network","settings"})check("Native action stays in its owning environment: "+action,!BrowserPreferences.shouldOpenBrowser(a,new Intent().putExtra("openWindowAction",action)));
+    check("A legacy Gecko override cannot change the environment binding",BrowserPreferences.shouldOpenBrowser(a,new Intent().putExtra("legacyChat",true)));
+    check("Reading keeps the browser engine binding",BrowserPreferences.shouldOpenBrowser(a,new Intent().putExtra("openWindowAction","reading")));
+    check("Unrelated data does not block selected entry",BrowserPreferences.shouldOpenBrowser(a,new Intent().setData(Uri.parse("pocketchat://unrelated/item"))));
     BrowserActivity.calls=0;boolean dispatched=a.dispatchBrowser(new Intent());
-    check("Cold Chromium dispatch resumes its environment without forcing a URL and finishes empty Main",dispatched&&BrowserActivity.calls==1&&BrowserActivity.owner==a&&!a.launched.hasExtra("url")&&BrowserActivity.url.isEmpty()&&a.finishes==1&&a.session==null);
+    check("Cold Chromium dispatch resumes the bound environment and finishes empty Main",dispatched&&BrowserActivity.calls==1&&BrowserActivity.owner==a&&!a.launched.hasExtra("url")&&BrowserActivity.url.isEmpty()&&a.finishes==1&&a.session==null);
     a=new MainActivity();BrowserPreferences.save(a,true,"https://example.com/warm");a.session=new ChatSession();ChatSession owner=a.session;BrowserActivity.calls=0;dispatched=a.dispatchBrowser(new Intent().putExtra("openWindowAction","chat"));
-    check("Warm Chromium dispatch preserves the exact running Gecko session",dispatched&&BrowserActivity.calls==1&&a.finishes==0&&a.session==owner);
-    BrowserActivity.calls=0;int reads=ProfileCatalog.reads;dispatched=a.dispatchBrowser(new Intent().putExtra("legacyChat",true));
-    check("Chromium return legacy flag cannot create a redirect loop",!dispatched&&BrowserActivity.calls==0&&a.finishes==0&&a.session==owner&&ProfileCatalog.reads==reads);
+    check("Warm Chromium dispatch releases the idle Gecko Activity without resetting its session",dispatched&&BrowserActivity.calls==1&&a.finishes==1&&a.session==owner);
+    a=new MainActivity();BrowserPreferences.save(a,true,"https://example.com/warm");a.session=new ChatSession();a.session.replyActive=true;a.active=true;
+    BrowserActivity.calls=0;dispatched=a.dispatchBrowser(new Intent().putExtra("legacyChat",true));
+    check("A running Gecko reply defers engine change even for a stale shortcut request",dispatched&&BrowserActivity.calls==0&&a.finishes==0&&a.lastMessage!=null);
+    a.session.replyActive=false;a.downloads=new FileDownloads();a.downloads.awaitingPicker=true;
+    check("A pending Gecko picker keeps its activity and prevents Chromium launch",a.dispatchBrowser(new Intent())&&BrowserActivity.calls==0&&a.finishes==0);
+    a.downloads.awaitingPicker=false;a.downloads.savedActions.busy=true;
+    check("Gecko saved-file work retains its owning activity",a.dispatchBrowser(new Intent())&&BrowserActivity.calls==0&&a.finishes==0);
+    a.downloads.savedActions.busy=false;a.nativeSavedFiles=new SavedFileActions();a.nativeSavedFiles.exporting=new Object();
+    check("A native file export keeps its activity and prevents Chromium launch",a.dispatchBrowser(new Intent())&&BrowserActivity.calls==0&&a.finishes==0);
     a.available=false;BrowserActivity.calls=0;check("Unavailable environment never dispatches or closes Main",!a.dispatchBrowser(new Intent())&&BrowserActivity.calls==0&&a.finishes==0);
-    a=new MainActivity();BrowserActivity.calls=0;check("Default cold launch remains in original enhanced Main",!a.dispatchBrowser(new Intent())&&BrowserActivity.calls==0&&a.finishes==0);
+    a=new MainActivity();BrowserActivity.calls=0;check("Default cold launch remains in original Gecko Main",!a.dispatchBrowser(new Intent())&&BrowserActivity.calls==0&&a.finishes==0);
+  }
+  static void managedChromiumRouting(){
+    ChromiumEntry.delivery=true;
+    try{
+      MainActivity fresh=new MainActivity(6,new HashMap<>());
+      check("Managed delivery still defaults fresh environments to Gecko",!fresh.dispatchBrowser(new Intent())&&fresh.launched==null);
+      BrowserPreferences.save(fresh,true,"example.com/home");
+      boolean handled=fresh.dispatchBrowser(new Intent().putExtra("url","https://example.com/pending"));
+      check("Managed delivery with Chromium absent opens native settings without WebView",handled&&fresh.launched==null&&fresh.finishes==0&&fresh.hub!=null&&fresh.hub.feedback!=null&&"settings".equals(fresh.intent.getStringExtra("openWindowAction")));
+      check("A missing module preserves the existing environment choice and homepage",BrowserPreferences.startBrowser(fresh)&&"https://example.com/home".equals(BrowserPreferences.home(fresh)));
+      ChromiumEntry.moduleReady=true;
+      String address="https://example.com/deep?view=1";
+      handled=fresh.dispatchBrowser(new Intent().setAction(Intent.ACTION_VIEW).setData(Uri.parse(address)));
+      check("Managed Chromium forwards a permitted deep link to the feature",handled&&fresh.finishes==1&&fresh.launched.target==ChromiumEntry.Feature.class&&address.equals(fresh.launched.getStringExtra("url")));
+      BrowserActivity alias=new BrowserActivity();alias.slot=6;
+      alias.onNewIntent(new Intent().setAction(Intent.ACTION_VIEW).setData(Uri.parse(address)));
+      check("The legacy exported browser redirects to the bound native entry",alias.finishes==1&&alias.launched.target==Profiles.activity(6)&&address.equals(alias.launched.getStringExtra("url"))&&alias.newTabs==0);
+      check("A native destination preserves its settings route when the module is installed",!fresh.dispatchBrowser(new Intent().putExtra("openWindowAction","settings")));
+    }finally{ChromiumEntry.delivery=false;ChromiumEntry.moduleReady=false;}
+  }
+  static void ownerStorage(){
+    Map<String,Store> storage=new HashMap<>();
+    MainActivity first=new MainActivity(0,storage),second=new MainActivity(6,storage);
+    first.store.values.put("persistedMarker","first-browser-data");second.store.values.put("persistedMarker","second-browser-data");
+    BrowserPreferences.save(first,true,"https://example.com/first");
+    check("An unset different environment still uses Gecko",!BrowserPreferences.startBrowser(second));
+    check("Opening the Gecko target does not use the Chromium source binding",!second.dispatchBrowser(new Intent().putExtra("openWindowAction","chat"))&&second.launched==null);
+    check("Opening the Chromium target uses its own slot and binding",first.dispatchBrowser(new Intent().putExtra("openWindowAction","chat"))&&first.launched.target==BrowserActivity.class);
+    BrowserPreferences.save(second,true,"https://example.com/second");
+    MainActivity restartedFirst=new MainActivity(0,storage),restartedSecond=new MainActivity(6,storage);
+    check("A fresh activity reads the existing binding and homepage in each environment",BrowserPreferences.startBrowser(restartedFirst)&&BrowserPreferences.startBrowser(restartedSecond)&&BrowserPreferences.home(restartedFirst).equals("https://example.com/first")&&BrowserPreferences.home(restartedSecond).equals("https://example.com/second"));
+    check("Environments using Chromium still launch different owner activities",restartedFirst.dispatchBrowser(new Intent())&&restartedSecond.dispatchBrowser(new Intent())&&restartedFirst.launched.target==BrowserActivity.class&&restartedSecond.launched.target==BrowserActivity.Profile6.class);
+    BrowserPreferences.save(restartedSecond,false,"https://example.com/second");
+    check("Changing one saved engine preserves both profile preference records",BrowserPreferences.startBrowser(restartedFirst)&&!BrowserPreferences.startBrowser(restartedSecond)&&restartedFirst.store.values.get("persistedMarker").equals("first-browser-data")&&restartedSecond.store.values.get("persistedMarker").equals("second-browser-data")&&storage.keySet().equals(new HashSet<>(Arrays.asList("chat","env6_chat"))));
+  }
+  static void deepLinks(){
+    MainActivity a=new MainActivity(6,new HashMap<>());BrowserPreferences.save(a,true,"https://example.com/home");
+    String requested="https://example.com/requested?x=1#section";
+    Intent view=new Intent().setAction(Intent.ACTION_VIEW).setData(Uri.parse(requested));
+    check("Android VIEW preserves the exact public web destination for Chromium",a.dispatchBrowser(view)&&a.launched.target==BrowserActivity.Profile6.class&&requested.equals(a.launched.getStringExtra("url")));
+    String conversation="https://chatgpt.com/c/id";
+    Intent notified=new Intent().putExtra("openConversation",conversation);
+    check("A valid conversation destination uses the environment binding",a.dispatchBrowser(notified)&&conversation.equals(a.launched.getStringExtra("url")));
+    for(String unsafe:new String[]{"javascript:alert(1)","file:///tmp/page","https://user:password@example.com/","http://127.0.0.1/private"}){
+      String destination=BrowserPreferences.openingAddress(new Intent().setAction(Intent.ACTION_VIEW).setData(Uri.parse(unsafe)));
+      check("Invalid VIEW data cannot be forwarded as a browser address: "+unsafe,destination==null||destination.isEmpty());
+    }
+    Intent management=new Intent().putExtra("openDownload","task").putExtra("url",requested);
+    check("Download routing retains its owning native entry even with a URL",!a.dispatchBrowser(management));
+    check("A public Android VIEW ignores unrelated management extras",requested.equals(BrowserPreferences.openingAddress(view.putExtra("openDownload","foreign"))));
+    BrowserActivity incoming=new BrowserActivity();incoming.slot=6;incoming.store.values.remove(BrowserPreferences.KEY_START);incoming.runtime=null;
+    incoming.onNewIntent(view);
+    check("The Chromium launcher hands the validated destination to the bound Gecko profile",incoming.launches==1&&incoming.launched.target==Profiles.activity(6)&&requested.equals(incoming.launched.getStringExtra("url"))&&incoming.finishes==1&&incoming.newTabs==0);
+    MainActivity gecko=new MainActivity(6,new HashMap<>());gecko.session=new ChatSession();
+    check("The Gecko owner accepts the handoff without a Chromium redirect loop",!gecko.dispatchBrowser(incoming.launched));
+    check("The Gecko destination reaches its existing browse handler exactly once",gecko.openWebsite(incoming.launched)&&requested.equals(gecko.session.browsed)&&gecko.pageReveals==1&&!incoming.launched.hasExtra("url")&&!gecko.openWebsite(incoming.launched));
+    gecko.remote.url=requested;
+    check("Sending the same website to the visible document does not reload it",gecko.openWebsite(new Intent().putExtra("url",requested))&&gecko.session.browseCalls==1&&gecko.pageReveals==1);
+    BrowserActivity interrupted=new BrowserActivity();interrupted.store.values.remove(BrowserPreferences.KEY_START);interrupted.files=new BrowserFiles();interrupted.files.pending=new Object();
+    interrupted.onNewIntent(view);
+    check("An open file operation survives a Gecko transition request",interrupted.launches==0&&interrupted.finishes==0&&interrupted.lastMessage!=null&&interrupted.newTabs==0);
+    interrupted.files.pending=null;interrupted.files.activeDownload=true;
+    check("A Chromium download delays the engine transition",interrupted.dispatchBoundEngine(null)&&interrupted.launches==0&&interrupted.finishes==0);
+    interrupted.files.activeDownload=false;interrupted.dispatchBoundEngine(null);
+    check("A later return enters bound Gecko without forcing a URL",interrupted.launches==1&&interrupted.finishes==1&&interrupted.launched.target==MainActivity.class&&!interrupted.launched.hasExtra("url"));
+    BrowserActivity removed=new BrowserActivity();removed.available=false;removed.store.values.remove(BrowserPreferences.KEY_START);removed.onNewIntent(view);
+    check("An unavailable Gecko profile cannot receive a deep link",removed.launches==0&&removed.finishes==1);
+  }
+  static void settingsDuringFileWork(){
+    MainActivity nativeHost=new MainActivity();
+    check("An idle native settings host can save its engine binding",!BrowserSettingsUi.browserWorkPending(nativeHost));
+    BrowserActivity chromium=new BrowserActivity();chromium.files=new BrowserFiles();
+    ChromiumRuntime.owner=new ChromiumRuntime(chromium);
+    chromium.files.pending=new Object();
+    check("Native engine settings respect the retained Chromium document picker",BrowserSettingsUi.browserWorkPending(nativeHost));
+    chromium.files.pending=null;chromium.files.activeDownload=true;
+    check("Native engine settings respect the retained Chromium download",BrowserSettingsUi.browserWorkPending(nativeHost));
+    ChromiumRuntime.owner.closed=true;
+    check("A closed Chromium runtime does not block native engine settings",!BrowserSettingsUi.browserWorkPending(nativeHost));
+    ChromiumRuntime.owner=null;ChromiumRouteLease.downloads=1;
+    check("The existing Chromium download lease independently blocks an engine change",BrowserSettingsUi.browserWorkPending(nativeHost));
+    ChromiumRouteLease.downloads=0;
+    nativeHost.nativeSavedFiles=new SavedFileActions();nativeHost.nativeSavedFiles.exporting=new Object();
+    check("An active native file export prevents changing the saved engine",BrowserSettingsUi.browserWorkPending(nativeHost));
+    nativeHost.nativeSavedFiles.exporting=null;
+    ChatSession.retained=new ChatSession();ChatSession.retained.replyActive=true;
+    check("A retained Gecko reply still blocks an engine change",BrowserSettingsUi.browserWorkPending(nativeHost));
+    ChatSession.retained.deleted=true;
+    check("A retired Gecko session does not block engine settings",!BrowserSettingsUi.browserWorkPending(nativeHost));
+    ChatSession.retained=null;
   }
   static void resumedDocument(){
-    MainActivity owner=new MainActivity();owner.slot=6;BrowserPreferences.save(owner,true,"https://example.com/home");
+    MainActivity owner=new MainActivity(6,new HashMap<>());BrowserPreferences.save(owner,true,"https://example.com/home");
     owner.dispatchBrowser(new Intent());Intent request=owner.launched;
     check("Resume targets the selected environment using the actual class mapping",request.owner==owner&&request.target==BrowserActivity.Profile6.class);
     check("Resume retains exactly the actual new-task and reorder flags",request.getFlags()==(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_REORDER_TO_FRONT));
@@ -111,7 +210,7 @@ public final class BrowserPreferencesHost {
     check("A page change during full-screen dismissal invalidates confirmation",
         reentered.selected.url.equals("https://example.com/reentered")&&reentered.retired.isEmpty()&&reentered.shown==0);
   }
-  public static void main(String[]args){preferences();routing();resumedDocument();sitePermissionConfirmation();int passed=0;for(int i=0;i<checks.length();i++)if(checks.optJSONObject(i).optBoolean("pass"))passed++;System.out.println(object("status",passed==checks.length()?"passed":"failed","passed",passed,"total",checks.length(),"checks",checks));if(passed!=checks.length())System.exit(1);}
+  public static void main(String[]args){preferences();routing();managedChromiumRouting();ownerStorage();deepLinks();settingsDuringFileWork();resumedDocument();sitePermissionConfirmation();int passed=0;for(int i=0;i<checks.length();i++)if(checks.optJSONObject(i).optBoolean("pass"))passed++;System.out.println(object("status",passed==checks.length()?"passed":"failed","passed",passed,"total",checks.length(),"checks",checks));if(passed!=checks.length())System.exit(1);}
 }
 
 final class Store implements SharedPreferences {
@@ -119,15 +218,91 @@ final class Store implements SharedPreferences {
   public String getString(String key,String fallback){return values.getOrDefault(key,fallback);}
   public Editor edit(){return new Editor(){final Map<String,String> staged=new HashMap<>();public Editor putString(String key,String value){staged.put(key,value);return this;}public boolean commit(){commits++;lastKeys=new HashSet<>(staged.keySet());values.putAll(staged);return commitResult;}};}
 }
+final class ProfileContext {
+  final int slot;
+  ProfileContext(int slot){this.slot=slot;}
+  /* PROFILE_STORAGE_NAME */
+}
 class MainActivity extends Activity {
-  final Store store=new Store();ChatSession session;boolean available=true;int slot;Intent launched;
+  final Store store;ChatSession session;boolean available=true,active;final int slot;Intent launched;
+  FileDownloads downloads;
+  SavedFileActions nativeSavedFiles;
+  String lastMessage;
+  int pageReveals;
+  EnvironmentOverviewUi environmentOverview;
+  AppHub hub;
+  void openNativeWorkspace(Intent settings){hub=new AppHub();}
+  final GeckoWeb remote=new GeckoWeb();
+  void showPage(boolean ignored){pageReveals++;}
+  void fileFeedback(String value){lastMessage=value;}
+  MainActivity(){this(0,new HashMap<>());}
+  MainActivity(int slot,Map<String,Store> storage){this.slot=slot;store=storage.computeIfAbsent(new ProfileContext(slot).name("chat"),key->new Store());}
   @Override public SharedPreferences getSharedPreferences(String name,int mode){if(!name.equals("chat"))throw new AssertionError("Unexpected global preference access");return store;}
   @Override public void startActivity(Intent intent){launched=intent;BrowserActivity.calls++;BrowserActivity.owner=this;BrowserActivity.url=intent.hasExtra("url")?intent.getStringExtra("url"):"";}
   /* DISPATCH_METHOD */
+  /* NATIVE_PENDING */
+  /* GECKO_PENDING */
+  /* GECKO_OPEN_WEBSITE */
+  /* CHAT_URL */
 }
-class ChatSession {}
-class Profiles {static int slot(Activity owner){return ((MainActivity)owner).slot;}}
-class ProfileCatalog {static int reads;MainActivity owner;static ProfileCatalog get(MainActivity activity){ProfileCatalog c=new ProfileCatalog();c.owner=activity;return c;}boolean available(int slot){reads++;return owner.available;}}
+class ChatSession {
+  static ChatSession retained;
+  static ChatSession peek(){return retained;}
+  boolean replyActive,navigationFailed,deleted;
+  String browsed;
+  int browseCalls;
+  boolean currentReplyActive(){return replyActive;}
+  boolean browse(String url,String notice){browsed=url;browseCalls++;return true;}
+}
+class GeckoWeb {String url;String getUrl(){return url;}}
+class ProfileUi {static boolean working(ChatSession session){return false;}}
+class FileDownloads {boolean awaitingPicker,retiringPartial;final SavedFileActions savedActions=new SavedFileActions();}
+class SavedFileActions {Object exporting;boolean busy;}
+class BrowserFiles {Object pending;boolean activeDownload;boolean hasActiveDownload(){return activeDownload;}}
+class EnvironmentOverviewUi {EnvironmentOverviewUi(MainActivity owner){}}
+class AppHub {
+  String feedback;
+  void feedback(String message,boolean warning){feedback=message;}
+}
+class ChromiumEntry {
+  static class Feature {}
+  static boolean delivery,moduleReady;
+  static String networkIssue(Activity owner){return "Chromium environment network needs configuration";}
+  static boolean managed(Activity owner){return delivery;}
+  static boolean open(Activity owner,String url){
+    if(!moduleReady)return false;
+    MainActivity main=(MainActivity)owner;
+    main.launched=new Intent(owner,Feature.class).putExtra("url",url);
+    return true;
+  }
+}
+class BrowserSettingsUi {
+  /* SETTINGS_WORK_PENDING */
+}
+class ChromiumRuntime {
+  static ChromiumRuntime owner;
+  final Activity activity;
+  boolean closed;
+  ChromiumRuntime(Activity activity){this.activity=activity;}
+}
+class ChromiumRouteLease {
+  static int downloads;
+  static Snapshot snapshot(){return new Snapshot(downloads);}
+  static final class Snapshot {
+    final int downloads;
+    Snapshot(int downloads){this.downloads=downloads;}
+  }
+}
+class Profiles {
+  static int slot(Activity owner){return owner instanceof MainActivity?((MainActivity)owner).slot:((BrowserActivity)owner).slot;}
+  static Class<?> activity(int slot){if(slot==0)return MainActivity.class;if(slot==6)return Profile6.class;throw new AssertionError("Unexpected environment slot "+slot);}
+  static final class Profile6 extends MainActivity {}
+}
+class ProfileCatalog {
+  Activity owner;
+  static ProfileCatalog get(Activity activity){ProfileCatalog c=new ProfileCatalog();c.owner=activity;return c;}
+  boolean available(int slot){if(slot!=Profiles.slot(owner))throw new AssertionError("Wrong profile availability lookup");return owner instanceof MainActivity?((MainActivity)owner).available:((BrowserActivity)owner).available;}
+}
 class BrowserActivity extends Activity {
   static int calls;static Activity owner;static String url;
   static class Profile1 extends BrowserActivity {}static class Profile2 extends BrowserActivity {}
@@ -135,11 +310,18 @@ class BrowserActivity extends Activity {
   static class Profile5 extends BrowserActivity {}static class Profile6 extends BrowserActivity {}
   static class Profile7 extends BrowserActivity {}
   static class Tab {String url;long generation;WebView web=new WebView();Object saved;Tab(String value){url=value;}}
-  final List<Tab> tabs=new ArrayList<>();Tab selected;int newTabs,selections;final Store store=new Store();
+  final List<Tab> tabs=new ArrayList<>();Tab selected;int newTabs,selections,slot;final Store store=new Store();
+  BrowserActivity(){store.values.put(BrowserPreferences.KEY_START,BrowserPreferences.START_BROWSER);}
   @Override public SharedPreferences getSharedPreferences(String name,int mode){return store;}
   void select(Tab tab){selections++;selected=tab;}
   void newTab(String url){newTabs++;selected=new Tab(url);tabs.add(selected);}
-  boolean destroyed;
+  boolean destroyed,available=true;
+  Object runtime=new Object(),fingerprintFileResult;
+  BrowserFiles files;
+  Intent launched;
+  int launches;
+  String lastMessage;
+  @Override public void startActivity(Intent value){launched=value;launches++;}
   TestDialog permissionDialog;
   Runnable customViewClosed=()->{};
   final List<Tab> retired=new ArrayList<>();
@@ -148,13 +330,17 @@ class BrowserActivity extends Activity {
   void retire(Tab tab){retired.add(tab);}
   void showSelected(){shown++;}
   void updateChrome(){}
-  void message(String value){}
+  void message(String value){lastMessage=value;}
   /* BROWSER_LIVE */
   /* BROWSER_NAVIGATION_CURRENT */
   /* BROWSER_SITE_PERMISSIONS */
   /* BROWSER_ACTIVITY */
   /* BROWSER_RESUME */
+  /* BROWSER_OPEN */
   /* BROWSER_INTENT_ADDRESS */
+  /* BROWSER_PENDING_FILE */
+  /* BROWSER_ENGINE_DISPATCH */
+  /* BROWSER_OPEN_ADDRESS */
   /* BROWSER_NEW_INTENT */
 }
 

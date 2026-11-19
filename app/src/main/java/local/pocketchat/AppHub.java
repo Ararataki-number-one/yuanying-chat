@@ -5,7 +5,7 @@ import android.view.*;
 import android.widget.*;
 import java.util.WeakHashMap;
 
-/** Navigation preserves the live chat document while displaying native workspaces. */
+/** Native workspaces can open independently or preserve an attached Gecko document. */
 final class AppHub {
   static final int CHAT=0, DOWNLOADS=1, ENVIRONMENTS=2, SETTINGS=3, NETWORK=4;
   final MainActivity a;
@@ -53,7 +53,7 @@ final class AppHub {
     divider=new View(a);footer.addView(divider,new LinearLayout.LayoutParams(-1,0));
     bar=DesignUi.column(a);bar.setClipChildren(false);bar.setClipToPadding(false);
     conversationBar=DesignUi.column(a);
-    conversationBar.addView(a.geckoAddress.row,new LinearLayout.LayoutParams(-1,-2));
+    if(a.geckoAddress!=null)conversationBar.addView(a.geckoAddress.row,new LinearLayout.LayoutParams(-1,-2));
     workspaceBar=ReferenceUi.workspaceNav(a,CHAT,this::select,workspaceTabs);workspaceBar.setVisibility(View.GONE);
     bar.addView(conversationBar,new LinearLayout.LayoutParams(-1,-2));
     bar.addView(workspaceBar,new LinearLayout.LayoutParams(-1,-2));
@@ -67,17 +67,30 @@ final class AppHub {
     if(target<CHAT||target>NETWORK)return;
     if(target==ENVIRONMENTS){a.startActivity(new Intent(a,WindowHomeActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_REORDER_TO_FRONT));return;}
     long token=++navigation;
-    if(target==CHAT){a.designChrome.reveal();if(page==CHAT)return;}
-    if(page==CHAT&&target!=CHAT)a.session.pageMemory.capture(()->{if(token==navigation)show(target);});else show(target);
+    if(target==DOWNLOADS&&(chat==null||BrowserPreferences.startBrowser(a))){
+      a.startActivity(new Intent(a,DownloadCenterActivity.class).addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT));
+      return;
+    }
+    if(target==CHAT){
+      if(chat==null||BrowserPreferences.startBrowser(a)){a.openBoundBrowser();return;}
+      a.designChrome.reveal();if(page==CHAT)return;
+    }
+    if(chat!=null&&page==CHAT&&target!=CHAT)a.session.pageMemory.capture(()->{if(token==navigation)show(target);});
+    else show(target);
   }
   void show(int target){
     if(target!=page||target==CHAT)feedbackBar.setVisibility(View.GONE);
-    page=target;placeFeedback();downloadsVisible(a.active);chat.setVisibility(page==CHAT?View.VISIBLE:View.GONE);if(page!=CHAT)a.designChrome.cancelWebGesture();
-    if(a.chatDownloadProgress!=null)a.chatDownloadProgress.update();
-    a.status.setVisibility(View.GONE);workspaceMode();
-    a.session.foreground(a.active);mark();a.updateReadingLayout();a.handler.removeCallbacks(tick);
+    page=target;placeFeedback();downloadsVisible(a.active);
+    if(chat!=null){
+      chat.setVisibility(page==CHAT?View.VISIBLE:View.GONE);
+      if(page!=CHAT)a.designChrome.cancelWebGesture();
+      if(a.chatDownloadProgress!=null)a.chatDownloadProgress.update();
+      a.status.setVisibility(View.GONE);
+      a.session.foreground(a.active&&!BrowserPreferences.startBrowser(a));
+    }
+    workspaceMode();mark();a.updateReadingLayout();a.handler.removeCallbacks(tick);
     if(page!=CHAT){a.hideKeyboard();refresh();a.handler.postDelayed(tick,2500);}
-    else{a.showSessionStatus();a.session.pageMemory.restorePending=true;if(a.session.networkReady&&MainActivity.chatUrl(a.remote.getUrl()))a.session.pageMemory.restore(a.remote.getUrl(),a.session.navigationEpoch);a.session.wakePolling();}
+    else if(chat!=null){a.showSessionStatus();a.session.pageMemory.restorePending=true;if(a.session.networkReady&&MainActivity.chatUrl(a.remote.getUrl()))a.session.pageMemory.restore(a.remote.getUrl(),a.session.navigationEpoch);a.session.wakePolling();}
   }
   private void workspaceMode(){
     boolean nativePage=page!=CHAT;
@@ -205,9 +218,10 @@ final class AppHub {
     LinearLayout box=layout("关于元婴期院士");note(box,"Android ChatGPT 网页客户端\nv"+AppVersion.name(a));
     action(box,"功能介绍",()->text("功能介绍","最多 8 个独立环境，支持分组、备注和收藏；官方 ChatGPT 网页、图片与文件上传、下载、固定出口、隐私保护与环境自检。"));
     action(box,"使用帮助",()->text("使用帮助","在环境列表新建或编辑环境。编辑页分为基本信息、网络配置、浏览器与使用偏好。\n\n环境分别登录。网络页显示所属环境；应用设置控制默认入口与系统权限。下载页汇总全部环境文件。\n\n保护等级改变后会重新加载连接。草稿保存不会应用设置。尚未开放的能力列在功能支持范围。"));
-    action(box,"第三方许可",()->text("第三方许可","源码和许可随源码包提供。内置 GeckoView、Mihomo、AndroidX 等组件保留原有许可说明。"));
+    action(box,"第三方许可",()->text("第三方许可","源码和许可随源码包提供。内置 GeckoView、Mihomo、AndroidX 等组件保留原有许可说明。"
+        +(ChromiumEntry.managed(a)?"\n\n选装 Chromium 使用 Cefrium 0.21.0（LGPL-3.0-or-later）。组件包附带原始许可声明，发布说明提供对应源码。":"")));
     action(box,"隐私说明",()->text("隐私说明","没有广告或遥测。网络配置与检查基线按环境加密保存。联网自检每次需要授权，结果只覆盖对应路径。"));
-    action(box,"复制本机耗时诊断",()->{ChatSession owner=a.session;owner.trace.copyTextAsync(a,GeckoWebView.active(a.remote),text->{
+    if(chat!=null)action(box,"复制本机耗时诊断",()->{ChatSession owner=a.session;owner.trace.copyTextAsync(a,GeckoWebView.active(a.remote),text->{
       if(a.isDestroyed()||a.isFinishing()||a.session!=owner||owner.deleted)return;
       ClipboardManager clipboard=(ClipboardManager)a.getSystemService(Context.CLIPBOARD_SERVICE);
       if(clipboard!=null){clipboard.setPrimaryClip(ClipData.newPlainText("耗时诊断",text));a.status("已复制本机耗时诊断");}

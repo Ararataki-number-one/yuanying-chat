@@ -33,6 +33,13 @@ settings=(root/'app/build.gradle').read_text()
 version=re.search(r"versionName '([0-9]+\.[0-9]+\.[0-9]+)'",settings).group(1)
 version_code=int(re.search(r'versionCode ([0-9]+)',settings).group(1))
 manifest = {'sourceCommit': source, 'runId': os.environ['GITHUB_RUN_ID'], 'runAttempt': os.environ.get('GITHUB_RUN_ATTEMPT','1'), 'version':version,'versionCode':version_code,'googleLogin': 'not-tested', 'artifacts': []}
+chromium_build = out / 'chromium-build.json'
+if chromium_build.is_file():
+    from chromium_release_publication import read_json, write_feature_chunks
+    manifest['chromiumBuild'] = read_json(chromium_build)
+    feature = root / 'work/chromium-release/unsigned/chromium-master.apk'
+    if feature.is_file():
+        manifest['chromiumFeatureChunks'] = write_feature_chunks(manifest['chromiumBuild'], feature, stage)
 for abi in ['arm64-v8a']:
     apk = root / f'app/build/outputs/apk/release/app-{abi}-release-unsigned.apk'
     if not apk.exists():
@@ -134,5 +141,8 @@ env = dict(os.environ, GIT_INDEX_FILE=str(out/'public-index'), GIT_WORK_TREE=str
 subprocess.run(['git','read-tree','--empty'], check=True, env=env)
 subprocess.run(['git','add','-f','--',*[p.name for p in stage.iterdir()]], check=True, env=env)
 tree = subprocess.check_output(['git','write-tree'], text=True, env=env).strip()
-push_tree(root=root, source=source, tree=tree, branch=branch, env=env,
-          message='Publish unsigned Gecko integration build and synthetic checks')
+artifact_commit=push_tree(root=root, source=source, tree=tree, branch=branch, env=env,
+                          message='Publish unsigned Gecko integration build and synthetic checks')
+if 'chromiumFeatureChunks' in manifest:
+    print('CHROMIUM_UNSIGNED_CI_ARTIFACT '+json.dumps(dict(commit=artifact_commit, sourceCommit=source,
+          runId=manifest['runId'], runAttempt=manifest['runAttempt'], version=version)))

@@ -5,7 +5,7 @@ import org.json.*;import java.util.*;import java.util.concurrent.*;import java.n
 
 /** Private UI-to-profile bridge. Each provider runs in the existing profile's own process. */
 public class NetworkUiProvider extends ContentProvider {
-  Context profile;AppUpdateRoute.Server updateRoutes;final Handler main=new Handler(Looper.getMainLooper());final Map<String,JSONObject> jobs=new ConcurrentHashMap<>();boolean applying,saving,drainReading;volatile boolean maintenanceStopped;long drainRevision,saveRevision;String activeApply="";volatile String modelProof="";volatile Transition activeTransition;final Runnable drain=()->{pruneJobs();observeSession();drainPending();};final ExecutorService io=Executors.newSingleThreadExecutor();
+  Context profile;AppUpdateRoute.Server updateRoutes;ChromiumProtectedOwnerLease.Server chromiumOwnerRoutes;final Handler main=new Handler(Looper.getMainLooper());final Map<String,JSONObject> jobs=new ConcurrentHashMap<>();boolean applying,saving,drainReading;volatile boolean maintenanceStopped;long drainRevision,saveRevision;String activeApply="";volatile String modelProof="";volatile Transition activeTransition;final Runnable drain=()->{pruneJobs();observeSession();drainPending();};final ExecutorService io=Executors.newSingleThreadExecutor();
   static volatile NetworkUiProvider instance;
   static void sessionAvailable(){NetworkUiProvider provider=instance;if(provider!=null)provider.main.post(()->{provider.observeSession();provider.sessionChanged();provider.drainPending();});}
   long chromiumRevision=-1;boolean chromiumUnavailable;
@@ -61,11 +61,13 @@ public class NetworkUiProvider extends ContentProvider {
   }
   static boolean taskIdle(ChatSession session,TaskGuardSnapshot guard){return !ChromiumRouteLease.held()&&guard!=null&&guard.known&&!guard.replyBusy&&!guard.fileBusy&&!guard.submitting&&!guard.downloading&&(!guard.operation||session.configurationCapture);}
   public static class Profile1 extends NetworkUiProvider{}public static class Profile2 extends NetworkUiProvider{}public static class Profile3 extends NetworkUiProvider{}public static class Profile4 extends NetworkUiProvider{}public static class Profile5 extends NetworkUiProvider{}public static class Profile6 extends NetworkUiProvider{}public static class Profile7 extends NetworkUiProvider{}
-  @Override public boolean onCreate(){profile=Profiles.context(getContext(),Profiles.processSlot());updateRoutes=new AppUpdateRoute.Server(profile);instance=this;ChromiumRouteLease.addListener(NetworkUiProvider::chromiumLeaseChanged);observeChromiumLease();return true;}
+  @Override public boolean onCreate(){profile=Profiles.context(getContext(),Profiles.processSlot());updateRoutes=new AppUpdateRoute.Server(profile);chromiumOwnerRoutes=new ChromiumProtectedOwnerLease.Server(profile,updateRoutes);instance=this;ChromiumRouteLease.addListener(NetworkUiProvider::chromiumLeaseChanged);observeChromiumLease();return true;}
   @Override public Bundle call(String method,String arg,Bundle extras){
     if(Binder.getCallingUid()!=android.os.Process.myUid())throw new SecurityException();Bundle result=new Bundle();
+    if(ChromiumProtectedOwnerLease.Server.handles(method))return chromiumOwnerRoutes.call(method,extras);
     if("stopForDelete".equals(method)||"stopForReset".equals(method)){
       if(!ProfileCatalog.get(profile).item(Profiles.slot(profile)).optBoolean("stopForReset".equals(method)?"resetting":"deleting"))throw new IllegalStateException();
+      if(!chromiumOwnerRoutes.stopForMaintenance(6000))throw new IllegalStateException("Chromium 尚未断开此环境线路，请重试");
       java.util.concurrent.CountDownLatch stopped=new java.util.concurrent.CountDownLatch(1);java.util.concurrent.atomic.AtomicBoolean confirmed=new java.util.concurrent.atomic.AtomicBoolean();main.post(()->{maintenanceStopped=true;ChromiumRuntime.stopProcess();nativeWorkEpoch++;main.removeCallbacks(drain);main.removeCallbacks(pendingWake);if(observedSession!=null)observedSession.remove(sessionObserver);retry.clear();bindings.clear();jobs.clear();drainRevision++;saveRevision++;Transition transition=activeTransition;if(transition!=null)transition.cancelled=true;ChatSession s=ChatSession.peek();if(s!=null){s.deleted=true;s.handler.removeCallbacks(s.tick);s.guard.setBlocked(true);ChatService.end(profile);s.web.destroy();}NativeNetwork n=NativeNetwork.get(profile);n.cancelMaintenance();io.execute(()->n.worker.execute(()->{try{confirmed.set(n.stopNow());}finally{stopped.countDown();}}));});
       try{if(!stopped.await(20,java.util.concurrent.TimeUnit.SECONDS))throw new IllegalStateException("停止环境超时");}catch(InterruptedException e){Thread.currentThread().interrupt();throw new IllegalStateException(e);}if(!confirmed.get()||NativeNetwork.get(profile).coreAlive())throw new IllegalStateException("独立网络尚未停止，请重试删除");result.putBoolean("stopped",true);return result;
     }
@@ -79,7 +81,42 @@ public class NetworkUiProvider extends ContentProvider {
     final EnvironmentSpec.Identity expected;
     try{if(extras!=null&&extras.containsKey("expectedIdentity")){JSONObject value=new JSONObject(extras.getString("expectedIdentity",""));expected=new EnvironmentSpec.Identity(value.getInt("slot"),value.getInt("generation"),value.getString("environmentId"));EnvironmentSpecRuntime.requireIdentity(profile,expected);}else expected=null;}
     catch(Exception changed){result.putString("json",J.obj("done",true,"ok",false,"message","此环境已改变，请重新打开网络设置").toString());return result;}
-    String id=UUID.randomUUID().toString();synchronized(jobs){pruneJobs();if(jobs.size()>=MAX_JOBS){result.putString("json",J.obj("done",true,"ok",false,"message","操作较多，请稍后重试；当前设置未改变").toString());return result;}jobs.put(id,J.obj("done",false));}main.post(()->{observeSession();if("retryApplication".equals(action))retryApplication(id,candidate,expected);else request(id,action,candidate,baseline,false,-1,"",expected);});result.putString("id",id);return result;
+    String id=UUID.randomUUID().toString();synchronized(jobs){pruneJobs();if(jobs.size()>=MAX_JOBS){result.putString("json",J.obj("done",true,"ok",false,"message","操作较多，请稍后重试；当前设置未改变").toString());return result;}jobs.put(id,J.obj("done",false));}main.post(()->{
+      if(NetworkBridge.START_CHROMIUM_INTERNAL.equals(action))startChromiumInternal(id,expected);
+      else {
+        observeSession();
+        if("retryApplication".equals(action))retryApplication(id,candidate,expected);
+        else request(id,action,candidate,baseline,false,-1,"",expected);
+      }
+    });result.putString("id",id);return result;
+  }
+  /** Starts only the already configured internal network in its owning process. */
+  private void startChromiumInternal(String id,EnvironmentSpec.Identity expected){
+    String unavailable="应用内线路尚未连接，请检查此环境的网络设置后重试";
+    if(!chromiumInternalCurrent(expected)||applying||saving){
+      recordResult(id,false,unavailable);
+      return;
+    }
+    NativeNetwork network=NativeNetwork.get(profile);
+    network.start((ok,message)->{
+      if(!ok){recordResult(id,false,unavailable);return;}
+      // This marker runs after the startup worker has released its network change fence.
+      try{
+        network.worker.execute(()->main.post(()->{
+          boolean ready=chromiumInternalCurrent(expected)&&network.connectionAdmission().usable();
+          recordResult(id,ready,ready?"应用内线路已连接":unavailable);
+        }));
+      }catch(RejectedExecutionException retired){recordResult(id,false,unavailable);}
+    });
+  }
+  private boolean chromiumInternalCurrent(EnvironmentSpec.Identity expected){
+    if(maintenanceStopped||expected==null||expected.slot!=Profiles.processSlot()||!ChromiumEntry.managed(profile))return false;
+    try{
+      EnvironmentSpecRuntime.requireIdentity(profile,expected);
+      Map<String,?> preferences=profile.getSharedPreferences("chat",Context.MODE_PRIVATE).getAll();
+      return BrowserPreferences.START_BROWSER.equals(preferences.get(BrowserPreferences.KEY_START))
+          &&Boolean.TRUE.equals(preferences.get("networkConfigured"))&&"internal".equals(preferences.get("networkMode"));
+    }catch(Exception unavailable){return false;}
   }
   Bundle shareSnapshot(Bundle extras){
     Bundle response=new Bundle();try{

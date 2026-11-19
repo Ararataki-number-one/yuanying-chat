@@ -1,8 +1,15 @@
 plugins { id 'com.android.application' }
 
+def chromiumBundle = findProject(':chromium') != null
+def chromiumAbi = providers.gradleProperty('pocketChatChromiumAbi').orElse('arm64-v8a').get()
+if (chromiumBundle && !(chromiumAbi in ['arm64-v8a', 'x86_64'])) {
+    throw new GradleException('PocketChat Chromium bundles require one ABI: arm64-v8a or x86_64')
+}
+
 def generatedManifest = layout.buildDirectory.file('generated/gecko/AndroidManifest.xml')
 tasks.register('prepareGeckoManifest') {
     inputs.file('src/main/AndroidManifest.xml')
+    inputs.property('chromiumBundle', chromiumBundle)
     outputs.file(generatedManifest)
     doLast {
         def content = file('src/main/AndroidManifest.xml').getText('UTF-8')
@@ -10,6 +17,12 @@ tasks.register('prepareGeckoManifest') {
             .replaceAll(/<uses-sdk[^>]*\/>/, '')
             .replace(' android:debuggable="false"', '')
             .replace('android:authorities="local.pocketchat.', 'android:authorities="${applicationId}.')
+        if (chromiumBundle) {
+            // Gecko retains the app-level zygote preload hook in the base. The
+            // independently installed Chromium feature owns its renderer services.
+            content = content.replace('<manifest ', '<manifest xmlns:tools="http://schemas.android.com/tools" ')
+                .replace('<application ', '<application android:zygotePreloadName="org.mozilla.gecko.process.ZygotePreload" tools:replace="android:zygotePreloadName" ')
+        }
         def services = new StringBuilder()
         for (slot in 0..<8) {
             def types = ['socket','gpu','rdd','utility','gmplugin','ipdlunittest'] + (0..<40).collect { 'tab' + it }
@@ -24,11 +37,16 @@ tasks.register('prepareGeckoManifest') {
 android {
     namespace 'local.pocketchat'
     compileSdk { version = release(37) { minorApiLevel = 1 } }
+    if (chromiumBundle) buildToolsVersion '37.0.0'
     // Core flows keep API 26 support; protected external VPN route inspection needs API 33+.
     defaultConfig {
-        applicationId 'local.pocketchat'; minSdk 26; targetSdk 35; versionCode 114; versionName '2.1.12'
+        applicationId 'local.pocketchat'; minSdk 26; targetSdk 35; versionCode 115; versionName '2.1.13'
         manifestPlaceholders = [releaseChannel: providers.gradleProperty('releaseChannel').orElse('stable').get(),
-                                candidateNumber: providers.gradleProperty('candidateNumber').orElse('0').get()]
+                                candidateNumber: providers.gradleProperty('candidateNumber').orElse('0').get(),
+                                chromiumDelivery: chromiumBundle]
+        if (chromiumBundle) {
+            ndk { abiFilters chromiumAbi }
+        }
     }
     signingConfigs { debug { if (providers.gradleProperty('testSigningKey').isPresent()) storeFile file(providers.gradleProperty('testSigningKey').get()) } }
     sourceSets {
@@ -40,7 +58,19 @@ android {
         integration { initWith release; applicationIdSuffix '.test'; signingConfig signingConfigs.debug }
     }
     packaging { jniLibs { useLegacyPackaging = true } }
-    splits { abi { enable true; reset(); include 'arm64-v8a', 'x86_64'; universalApk false } }
+    if (chromiumBundle) {
+        dynamicFeatures = [':chromium']
+        // Publish a complete Gecko base APK and a single device-ABI feature APK.
+        bundle {
+            abi { enableSplit = false }
+            density { enableSplit = false }
+            language { enableSplit = false }
+        }
+        // Bundletool uses the base configuration for assets in every split.
+        androidResources { noCompress += ['+com.cefrium+'] }
+    } else {
+        splits { abi { enable true; reset(); include 'arm64-v8a', 'x86_64'; universalApk false } }
+    }
 }
 tasks.register('verifyBrowserExtensionVersion') {
     inputs.file('src/main/assets/gecko/manifest.json')
@@ -53,6 +83,10 @@ tasks.register('verifyBrowserExtensionVersion') {
 }
 tasks.named('preBuild').configure { dependsOn 'prepareGeckoManifest', 'verifyBrowserExtensionVersion' }
 dependencies {
+    if (chromiumBundle) {
+        // Both APKs must share one SavedState implementation at runtime.
+        implementation 'androidx.savedstate:savedstate:1.4.0'
+    }
     implementation 'org.yaml:snakeyaml:2.3'
     implementation 'androidx.startup:startup-runtime:1.2.0'
     implementation 'androidx.webkit:webkit:1.14.0'
@@ -135,3 +169,5 @@ androidComponents {
         variant.sources.assets.addGeneratedSourceDirectory(prepareIntegrationIdentity) { it.outputDirectory }
     }
 }
+
+if (chromiumBundle) apply from: rootProject.file('gradle/chromium-manifest.gradle')

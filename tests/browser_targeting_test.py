@@ -987,8 +987,24 @@ sequence.dom.window.close();navigation.dom.window.close();wrongStart.dom.window.
         fixture = 'tests/gecko/BrowserIntegrationActivity.java'
         before = subprocess.check_output(['git', 'show', baseline + ':' + fixture], cwd=ROOT, text=True)
         current = (ROOT / fixture).read_text()
-        self.assertEqual(len(java_checks(before)), 49)
-        self.assertEqual(java_checks(current), java_checks(before))
+        expected_checks = java_checks(before)
+        self.assertEqual(len(expected_checks), 49)
+        old_engine = ('check("Enhanced Gecko entry remains the initial entry preference",'
+                      '!BrowserPreferences.startBrowser(this))')
+        new_engine = ('check("Chromium is the saved engine in the fixture environment",'
+                      'BrowserPreferences.startBrowser(this))')
+        expected_checks[expected_checks.index(old_engine)] = new_engine
+        before_browser_return = (
+            'check("Returning from the actual enhanced activity retains the browser surface",'
+            'web()==returnSurface&&runtime.allowed())')
+        index = expected_checks.index(before_browser_return)
+        expected_checks[index:index] = [
+            'check("The other environment keeps its default Gecko binding",'
+            '!BrowserPreferences.startBrowser(gecko)&&BrowserPreferences.startBrowser(this))',
+            'check("The real environment switcher opens the independent Gecko environment",'
+            'EnvironmentSwitcherUi.open(this,ProfileCatalog.get(this).item(geckoSlot),"chat",false))',
+        ]
+        self.assertEqual(java_checks(current), expected_checks)
         self.assertIn('double scale=nativeAfter.getInt("width")/dom.getDouble("viewportWidth")', before)
         self.assertNotIn('double scale=nativeAfter.getInt("width")/dom.getDouble("viewportWidth")', current)
         self.assertIn('double scale=nativeAfter.getDouble("nativeScale")', current)

@@ -67,7 +67,6 @@ public final class BrowserMenuHost {
   static final class LoginPagePolicy {static boolean google(String url){return extraActions;}}
   static final class ActionSearchUi {static void show(MainActivity a){a.called("search");}}
   static final class EnvironmentSwitcherUi {static void show(MainActivity a){a.called("switch-environment");}}
-  static final class BrowserActivity {static void resume(MainActivity a){a.called("chromium");}}
   static final class BrowserSettingsUi {static void show(MainActivity a){a.called("browser-settings");}}
   static final class BrowserReadingUi {static void show(MainActivity a){a.called("zoom");}}
   static final class ReplyState {static void websiteConnection(MainActivity a){a.called("recover");}}
@@ -131,8 +130,8 @@ public final class BrowserMenuHost {
     }
     rows.put("下载管理","downloads");rows.put("当前环境网络","network:7");
     rows.put("管理全部环境","manage-environments");rows.put("应用设置","settings");
-    rows.put("编辑当前环境","edit-environment");rows.put("浏览器与启动偏好","browser-settings");
-    rows.put("搜索操作","search");rows.put("切换到 Chromium 浏览器","chromium");
+    rows.put("编辑当前环境","edit-environment");rows.put("此环境的浏览器内核","browser-settings");
+    rows.put("搜索操作","search");
     rows.put("查询当前环境 IP","exit-ip");rows.put("暂存草稿","save-draft");
     rows.put("草稿救援","draft-rescue");rows.put("离线会话检索","offline-history");
     return rows;

@@ -169,8 +169,8 @@ class MainActivity extends Activity {
   GeckoWebView remote;ChatSession session;/*BINDING_DECLARATION*/
   JSONObject pending;JSONArray entries;String conversation;boolean destroyed,active,keyboardVisible;int statusCalls;
   DesignChrome designChrome;GeckoAddressUi geckoAddress;BrowserToolsUi toolsPanel;AppHub hub;EnvironmentOverviewUi environmentOverview;BrowserStartupGate browserStartup;UiFrameScheduler sessionUi;final ChatSession.Observer sessionObserver=()->requestSessionUi();
-  TextView status;Button focusExit;LoadingUi loading;Attachments attachments;FileDownloads downloads;ChatDownloadProgressUi chatDownloadProgress;Dialog reloadDialog,networkDialog;final Handler handler=new Handler();final Runnable ticker=()->{};
-  TextView label(String text,int size,int color){return new TextView(this);}int dp(int value){return value;}void updateReadingLayout(){}void showStatusDetails(){}void setFocusReading(boolean value){}void applySession(){}void requestSessionUi(){}void showPage(boolean value){}void resumeChatUi(){session.foreground(true);session.add(sessionObserver);}void startNetwork(){}void startBrowserAfterOverview(){}void openNotification(Intent value){}void status(String value){statusCalls++;}void attachmentStatus(AttachmentIssue issue){status(issue.message);}
+  TextView status;Button focusExit;LoadingUi loading;Attachments attachments;FileDownloads downloads;SavedFileActions nativeSavedFiles;ChatDownloadProgressUi chatDownloadProgress;Dialog reloadDialog,networkDialog;final Handler handler=new Handler();final Runnable ticker=()->{};
+  TextView label(String text,int size,int color){return new TextView(this);}int dp(int value){return value;}void updateReadingLayout(){}void showStatusDetails(){}void setFocusReading(boolean value){}void applySession(){}void requestSessionUi(){}void showPage(boolean value){}void resumeChatUi(){session.foreground(true);session.add(sessionObserver);}void startNetwork(){}void startBrowserAfterOverview(){}void openNotification(Intent value){}void openWebsite(Intent value){}void openNativeWorkspace(Intent value){}boolean dispatchBrowser(Intent value){return false;}void status(String value){statusCalls++;}void attachmentStatus(AttachmentIssue issue){status(issue.message);}
   /*ACTUAL_MAIN_METHODS*/
 }
 class GeckoWebView extends FrameLayout {
@@ -218,7 +218,8 @@ class ReferenceUi {static final int CHAT_BG=0;static void insets(MainActivity a,
 class DesignUi {static final int RED=1,CARD=2,LINE=3;static void chrome(MainActivity a){}static Button button(MainActivity a,String label,boolean selected,Runnable action){return new Button(a);}static Object surface(MainActivity a,int color,int radius,int line){return new Object();}}
 class DesignChrome {DesignChrome(MainActivity a,LinearLayout root){}void cancelUpdates(){}void cancelWebGesture(){}}
 class GeckoAddressUi {void close(){}}
-class AppHub {final NetworkWorkspace networkWorkspace=new NetworkWorkspace();AppHub(MainActivity a,LinearLayout root,FrameLayout stack){}void downloadsVisible(boolean value){}}
+class AppHub {static final int CHAT=0;int page=CHAT;final Runnable tick=()->{};final NetworkWorkspace networkWorkspace=new NetworkWorkspace();AppHub(MainActivity a,LinearLayout root,FrameLayout stack){}void downloadsVisible(boolean value){}void refresh(){}}
+class BrowserPreferences {static boolean startBrowser(MainActivity a){return false;}static boolean nativeOpening(Intent intent){return false;}}
 class NetworkWorkspace {void close(){}}
 class EnvironmentOverviewUi {void browserReady(){}void close(){}void pause(){}void resume(){}}
 class BrowserStartupGate {boolean matches(String environment,int slot,int generation){return true;}void close(){}void foreground(boolean value){}}

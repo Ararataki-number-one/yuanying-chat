@@ -3,6 +3,10 @@ package local.pocketchat;
 /** AndroidX Startup must run in each activity process, not only the launcher process. */
 public class EnvironmentLifecycleProvider extends androidx.startup.InitializationProvider {
   @Override public android.os.Bundle call(String method,String arg,android.os.Bundle extras){
+    if(ChromiumProfileCleanup.CALL.equals(method)){
+      if(android.os.Binder.getCallingUid()!=android.os.Process.myUid())throw new SecurityException("仅应用可清理环境资料");
+      return ChromiumProfileCleanup.dispatch(getContext(),extras);
+    }
     boolean policy="backgroundReplyPolicyChanged".equals(method);
     if(!"appVisibility".equals(method)&&!policy)return super.call(method,arg,extras);
     if(android.os.Binder.getCallingUid()!=android.os.Process.myUid())throw new SecurityException("仅应用可读取界面状态");

@@ -7,6 +7,9 @@ import java.io.*;
 import java.net.*;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
+import java.security.KeyPair;
+import java.security.KeyPairGenerator;
+import java.security.Signature;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.*;
@@ -41,6 +44,60 @@ public final class UpdateExperienceHost {
   JSONObject metadata=new JSONObject().put("schema",1).put("version","2.0.46").put("versionCode",99).put("bytes",100).put("sha256","a".repeat(64)).put("downloadUrl",AppUpdatePolicy.asset("2.0.46")).put("signerSha256",AppUpdatePolicy.SIGNER).put("package","local.pocketchat").put("abi","arm64-v8a").put("minSdk",26).put("notes","用户说明").put("notesRole","user").put("technicalDetails","真机未测");
   AppUpdateInfo info=new AppUpdateInfo(metadata);check("Additive metadata preserves candidate identity and explicit notes role",info.code==99&&info.userNotes&&info.technicalDetails.equals("真机未测"));rejected=false;try{new AppUpdateInfo(metadata.put("signerSha256","b".repeat(64)));}catch(IOException expected){rejected=true;}check("Descriptive fields cannot bypass original signer policy",rejected);
  }
+ static void chromiumPolicy() throws Exception {
+  String sha = "a".repeat(64), abi = "arm64-v8a", nativeRole = ChromiumModulePolicy.nativeSplit(abi);
+  ChromiumModulePolicy.Installed installed = new ChromiumModulePolicy.Installed("2.1.13", 115, "v2.1.13-gecko", abi, sha);
+  JSONObject feature = new JSONObject().put("name", "chromium").put("sha256",sha).put("bytes", 64);
+  JSONObject nativeConfig = new JSONObject().put("name",nativeRole).put("sha256",sha).put("bytes",32);
+  JSONObject metadata = new JSONObject().put("schema",1).put("package", "local.pocketchat").put("tag",installed.tag)
+      .put("version",installed.version).put("versionCode",installed.code).put("abi",abi).put("minSdk",29)
+      .put("baseSha256",sha).put("signerSha256",AppUpdatePolicy.SIGNER).put("nativeSplit",nativeRole)
+      .put("splits",new JSONArray().put(feature).put(nativeConfig));
+  byte[] manifest = metadata.toString().getBytes(StandardCharsets.UTF_8);
+  ChromiumModulePolicy.Release release = ChromiumModulePolicy.parse(manifest, installed);
+  check("Signed Chromium metadata binds each split and total bytes", release.splits.size() == 2 && release.totalBytes == 96);
+  String origin = ChromiumModulePolicy.metadata(installed, false);
+  check("Chromium metadata and split URLs bind the exact installed GitHub tag", ChromiumModulePolicy.officialOrigin(origin)
+      && ChromiumModulePolicy.officialOrigin(ChromiumModulePolicy.metadata(installed, true))
+      && ChromiumModulePolicy.officialOrigin(ChromiumModulePolicy.artifact(installed, release.splits.get(1)))
+      && !ChromiumModulePolicy.officialOrigin(origin.replace("/v2.1.13-gecko/", "/v2.1.14-gecko/"))
+      && !ChromiumModulePolicy.officialOrigin(origin.replace("github.com", "anything.github.com"))
+      && !ChromiumModulePolicy.officialOrigin(origin + "?token=x"));
+  byte[] single = new JSONObject(metadata.toString()).put("nativeSplit", "chromium")
+      .put("splits", new JSONArray().put(feature)).toString().getBytes(StandardCharsets.UTF_8);
+  check("Native runtime may reside in the feature master", ChromiumModulePolicy.parse(single, installed).splits.size() == 1);
+  for (JSONObject bad : Arrays.asList(
+      new JSONObject(metadata.toString()).put("baseSha256", "b".repeat(64)),
+      new JSONObject(metadata.toString()).put("versionCode", 116),
+      new JSONObject(metadata.toString()).put("tag", "v2.1.13-candidate1-gecko"),
+      new JSONObject(metadata.toString()).put("abi", "x86_64"),
+      new JSONObject(metadata.toString()).put("nativeSplit", "chromium"),
+      new JSONObject(metadata.toString()).put("splits", new JSONArray().put(feature)),
+      new JSONObject(metadata.toString()).put("splits", new JSONArray().put(feature).put(nativeConfig).put(nativeConfig)),
+      new JSONObject(metadata.toString()).put("splits", new JSONArray().put(feature).put(nativeConfig)
+          .put(new JSONObject(nativeConfig.toString()).put("name", "chromium.config.x86_64"))),
+      new JSONObject(metadata.toString()).put("splits", new JSONArray().put(feature).put(nativeConfig)
+          .put(new JSONObject(nativeConfig.toString()).put("name", "chromium.config.zh").put("bytes", AppUpdatePolicy.MAX_APK))))) {
+    boolean rejected = false;
+    try { ChromiumModulePolicy.parse(bad.toString().getBytes(StandardCharsets.UTF_8), installed); }
+    catch (IOException expected) { rejected = true; }
+    check("Chromium metadata rejects altered package identity or split set", rejected);
+  }
+  KeyPairGenerator keys = KeyPairGenerator.getInstance("RSA");
+  keys.initialize(2048);
+  KeyPair pair = keys.generateKeyPair();
+  Signature signer = Signature.getInstance("SHA256withRSA");
+  signer.initSign(pair.getPrivate());
+  signer.update("PocketChat Chromium module manifest 1\n".getBytes(StandardCharsets.US_ASCII));
+  signer.update(manifest);
+  byte[] signature = signer.sign();
+  check("Detached signature covers exact manifest bytes and domain", ChromiumModulePolicy.validSignature(manifest, signature, pair.getPublic())
+      && !ChromiumModulePolicy.validSignature(single, signature, pair.getPublic()));
+  boolean unpinned = false;
+  try { ChromiumModulePolicy.verify(manifest, signature, pair.getPublic().getEncoded(), installed); }
+  catch (IOException expected) { unpinned = true; }
+  check("New test key is rejected by production signer pin", unpinned);
+ }
  static void transport(int port)throws Exception{
   Context context=new Context(Files.createTempDirectory("history-route").toFile());AppUpdateRoute.Selection selection=AppUpdateRoute.select(context,3,null);AtomicInteger opens=new AtomicInteger();AppUpdateTransfer.ConnectionFactory direct=url->{opens.incrementAndGet();return (HttpURLConnection)new URL("http://127.0.0.1:"+port+"/history?"+url.substring(url.indexOf('?')+1)).openConnection();};
   for(AppUpdateRoute.Purpose purpose:AppUpdateRoute.Purpose.values()){String origin=purpose==AppUpdateRoute.Purpose.FEED?AppUpdatePolicy.FEED:purpose==AppUpdateRoute.Purpose.APK?AppUpdatePolicy.asset("2.0.46"):ReleaseHistoryPolicy.url(1);AppUpdateRoute.Factory factory=new AppUpdateRoute.Factory(context,selection,AppUpdateRoute.OFFICIAL,direct,origin,purpose);boolean rejected=false;try{factory.open(purpose==AppUpdateRoute.Purpose.HISTORY?AppUpdatePolicy.FEED:ReleaseHistoryPolicy.url(1));}catch(IOException expected){rejected=true;}finally{factory.finished();}check("Exact production Factory purpose separation "+purpose,rejected);}
@@ -71,5 +128,5 @@ public final class UpdateExperienceHost {
   android.util.AtomicFile.failRenameOnce=true;boolean rejected=false;try{history.writeCache(rows,4,false,System.currentTimeMillis()+1);}catch(IOException expected){rejected=true;}check("Quiet AtomicFile rename failure is reported",rejected);
   List<ReleaseHistoryPolicy.Entry> large=new ArrayList<>();for(int n=100;n>=1;n--)large.add(new ReleaseHistoryPolicy.Entry(n,"v2.0."+n+"-gecko","x".repeat(11900),0));history.writeCache(large,11,true,System.currentTimeMillis());ReleaseHistory trimmed=new ReleaseHistory(context);trimmed.readCache();check("Bounded cache trims whole notes without false EOF or skipping older pages",cache.length()<=ReleaseHistoryPolicy.MAX_BYTES&&trimmed.visible(100,"").size()<100&&!trimmed.status().getBoolean("eof")&&trimmed.nextPage==1);history.worker.shutdownNow();restored.worker.shutdownNow();corrupt.worker.shutdownNow();recovered.worker.shutdownNow();trimmed.worker.shutdownNow();
  }
- public static void main(String[] args)throws Exception{HttpServer server=HttpServer.create(new InetSocketAddress("127.0.0.1",0),0);ExecutorService serving=Executors.newCachedThreadPool(r->{Thread t=new Thread(r);t.setDaemon(true);return t;});server.setExecutor(serving);server.createContext("/history",exchange->{try{requests.incrementAndGet();String query=exchange.getRequestURI().getRawQuery();queries.add(query);int page=Integer.parseInt(query.substring(query.lastIndexOf('=')+1));if(exchange.getRequestHeaders().getFirst("Cookie")!=null||exchange.getRequestHeaders().getFirst("Authorization")!=null)throw new IOException("Unexpected credentials");if(mode.equals("held")){exchange.getResponseHeaders().set("Content-Type","application/json");exchange.sendResponseHeaders(200,0);exchange.getResponseBody().write('[');exchange.getResponseBody().flush();held.countDown();release.await(5,TimeUnit.SECONDS);exchange.getResponseBody().write(']');return;}if(mode.equals("redirect")){exchange.getResponseHeaders().set("Location","https://example.org/history");exchange.sendResponseHeaders(302,-1);return;}JSONArray rows=new JSONArray();for(int i=0;i<10;i++)rows.put(entry(45-(page-1)*10-i));if(page==1)rows.getJSONObject(9).put("draft",true);String raw=mode.equals("malformed")?"{bad":rows.toString();byte[] bytes=raw.getBytes(StandardCharsets.UTF_8);exchange.getResponseHeaders().set("Content-Type",mode.equals("mime")?"text/html":"application/json; charset=utf-8");if(mode.equals("encoding"))exchange.getResponseHeaders().set("Content-Encoding","gzip");exchange.sendResponseHeaders(200,mode.equals("oversize")?ReleaseHistoryPolicy.MAX_BYTES+1:bytes.length);exchange.getResponseBody().write(bytes);}catch(Exception ignored){}finally{exchange.close();}});server.start();try{parser();policy();transport(server.getAddress().getPort());history(server.getAddress().getPort());System.out.println(new JSONObject().put("status","passed").put("passed",checks.length()).put("checks",checks).put("actualAndroidExecution",false).put("actualManagedRouteAdmission",false).put("actualHttpExecution",true).put("scope","Production notes, history policy/info/store, exact production route Factory; narrow Android/storage/admission adapters; no phone or ChatGPT acceptance."));}finally{server.stop(0);serving.shutdownNow();}}
+ public static void main(String[] args)throws Exception{HttpServer server=HttpServer.create(new InetSocketAddress("127.0.0.1",0),0);ExecutorService serving=Executors.newCachedThreadPool(r->{Thread t=new Thread(r);t.setDaemon(true);return t;});server.setExecutor(serving);server.createContext("/history",exchange->{try{requests.incrementAndGet();String query=exchange.getRequestURI().getRawQuery();queries.add(query);int page=Integer.parseInt(query.substring(query.lastIndexOf('=')+1));if(exchange.getRequestHeaders().getFirst("Cookie")!=null||exchange.getRequestHeaders().getFirst("Authorization")!=null)throw new IOException("Unexpected credentials");if(mode.equals("held")){exchange.getResponseHeaders().set("Content-Type","application/json");exchange.sendResponseHeaders(200,0);exchange.getResponseBody().write('[');exchange.getResponseBody().flush();held.countDown();release.await(5,TimeUnit.SECONDS);exchange.getResponseBody().write(']');return;}if(mode.equals("redirect")){exchange.getResponseHeaders().set("Location","https://example.org/history");exchange.sendResponseHeaders(302,-1);return;}JSONArray rows=new JSONArray();for(int i=0;i<10;i++)rows.put(entry(45-(page-1)*10-i));if(page==1)rows.getJSONObject(9).put("draft",true);String raw=mode.equals("malformed")?"{bad":rows.toString();byte[] bytes=raw.getBytes(StandardCharsets.UTF_8);exchange.getResponseHeaders().set("Content-Type",mode.equals("mime")?"text/html":"application/json; charset=utf-8");if(mode.equals("encoding"))exchange.getResponseHeaders().set("Content-Encoding","gzip");exchange.sendResponseHeaders(200,mode.equals("oversize")?ReleaseHistoryPolicy.MAX_BYTES+1:bytes.length);exchange.getResponseBody().write(bytes);}catch(Exception ignored){}finally{exchange.close();}});server.start();try{parser();policy();chromiumPolicy();transport(server.getAddress().getPort());history(server.getAddress().getPort());System.out.println(new JSONObject().put("status","passed").put("passed",checks.length()).put("checks",checks).put("actualAndroidExecution",false).put("actualManagedRouteAdmission",false).put("actualHttpExecution",true).put("scope","Production notes, history policy/info/store, exact production route Factory; narrow Android/storage/admission adapters; no phone or ChatGPT acceptance."));}finally{server.stop(0);serving.shutdownNow();}}
 }

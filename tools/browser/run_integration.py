@@ -215,7 +215,7 @@ def main():
                     top=adb('shell','dumpsys','activity','activities').stdout.decode(errors='replace')
                     active=[line for line in top.splitlines() if 'mResumedActivity:' in line or 'topResumedActivity=' in line]
                     last_resumed=active
-                    match=next((re.search(r'\bt(\d+)\b',line) for line in active if '/local.pocketchat.MainActivity' in line),None)
+                    match=next((re.search(r'\bt(\d+)\b',line) for line in active if '/local.pocketchat.ProfileActivity1 ' in line),None)
                     if match:enhanced=True;enhanced_task=int(match.group(1));break
                     time.sleep(.2)
                 if not enhanced:raise AssertionError('The real enhanced MainActivity did not resume')

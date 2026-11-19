@@ -1,18 +1,15 @@
 # Browser startup preference and dispatch checks
 
-The runner compiles the complete production `BrowserPreferences` and
-`BrowserAddressPolicy`, the verbatim `MainActivity.dispatchBrowser` method, and
-the actual `BrowserActivity.activity`, `resume`, `intentAddress` and `onNewIntent`
-methods. The generated launch Intent is delivered to that actual receiver to
-check that environment re-entry retains the selected page, while explicit URL
-requests still select or create the requested tab.
+The runner compiles production `BrowserPreferences` and
+`BrowserAddressPolicy` alongside the exact Main and Chromium intent handlers.
+It also uses the production profile preference-name calculation with independent
+in-memory stores. The checks cover the default Gecko binding, existing choices,
+same-engine settings isolation, home and native routes, and HTTP(S) deep-link
+handoff. A launch without a URL preserves the selected Chromium tab. An open
+file operation must keep its current owner during an engine change.
 
-Android preferences, Intents, activity lifecycle calls, catalog availability and
-tab selection/creation use explicit host adapters. Real `ProfileContext`, cold
-`BrowserActivity.onCreate`, WebView construction and Android lifecycle delivery
-are outside this suite's scope. Homepage preference checks remain unchanged;
-the old dispatch-only requirement to force that homepage is replaced by the
-current resume contract, which sends no URL.
+Android preferences, Intents, activity lifecycle calls, catalog availability
+and tab actions use explicit host adapters.
 
 ```sh
 python3 tests/browser-preferences-host/run.py \

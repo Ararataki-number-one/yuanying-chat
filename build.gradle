@@ -1,1 +1,8 @@
 plugins { id 'com.android.application' version '9.4.1' apply false }
+
+if (findProject(':chromium') != null) {
+    ext.chromiumMergedManifestArtifact = com.android.build.api.artifact.SingleArtifact.MERGED_MANIFEST.INSTANCE
+    // AGP 9.4.1 exposes this pre-bundle artifact only through its internal scope.
+    ext.chromiumBundleResourceArtifact = com.android.build.gradle.internal.scope.InternalArtifactType
+        .LINKED_RESOURCES_FOR_BUNDLE_PROTO_FORMAT.INSTANCE
+}

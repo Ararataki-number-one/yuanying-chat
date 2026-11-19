@@ -25,6 +25,7 @@ final class EnvironmentBrowserData {
     if(Files.isSymbolicLink(cache.toPath())||!cache.isDirectory())throw new IOException("环境缓存目录不可用");
     File[] files=cache.listFiles();if(files==null)throw new IOException("无法读取环境缓存目录");
     for(File file:files)if(file.getName().matches("browser-download-.*[.]part")&&(Files.isSymbolicLink(file.toPath())||file.isFile()))erase(file);
+    for(File file:files)if(file.getName().matches("cefrium-download-[0-9]+"))erase(file);
   }
   static String[] chromiumNames(int slot)throws IOException{
     if(slot<0||slot>=8)throw new IOException("环境槽位无效");
