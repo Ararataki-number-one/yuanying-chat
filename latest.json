@@ -1,14 +1,14 @@
 {
   "schema": 1,
   "package": "local.pocketchat",
-  "version": "2.1.10",
-  "versionCode": 112,
+  "version": "2.1.11",
+  "versionCode": 113,
   "abi": "arm64-v8a",
   "minSdk": 26,
   "bytes": 119841308,
-  "sha256": "f8a3433b490d7cb579e38718eb446703adfcbe4fac6b096d89cd91f430ce80a7",
+  "sha256": "522aca258a30bebc64085be763fbc348048bc15e083efc2b7d631c0f5132fced",
   "signerSha256": "f0afa2ef2b9ac68020b374276318b12d2bb4de65d2a3b788194de551356b9434",
-  "downloadUrl": "https://github.com/Ararataki-number-one/yuanying-chat/releases/download/v2.1.10-gecko/PocketChat-2.1.10-gecko-arm64.apk",
-  "notes": "# PocketChat 2.1.10（112）\n\n- Gecko 支持保存 ChatGPT 对话生成的同站临时文件。保存时保留原始文件内容，并识别使用通用文件类型声明的 PDF。\n- 在 Gecko 内添加附件时，系统文件选择器可以在图片权限核验期间打开。选择图片后，PocketChat 会在把文件交给网页前完成权限核验。\n- 文件下载完成或失败时显示提示。Chromium 在选择文件后等待网页连接和配置确认超时，会提示重新选择。\n\n自动化测试覆盖了临时文件读取和格式识别、系统文件选择器以及页面切换时的附件交接。ChatGPT 原对话的预览下载和上传仍待在真实手机上复测。",
-  "sourceCommit": "cd2c4c313104b78d80b9167d1bca7f8d9a7bb9e5"
+  "downloadUrl": "https://github.com/Ararataki-number-one/yuanying-chat/releases/download/v2.1.11-gecko/PocketChat-2.1.11-gecko-arm64.apk",
+  "notes": "# PocketChat 2.1.11（113）\n\n- 改进网页临时文件下载。切换页面、连接变化或取消下载时，应用会停止读取旧文件，避免上一项任务继续写入。分段读取会核对片段长度和写入位置。\n- 整理 Gecko 附件选择流程。每次选择独立处理系统文件选择器、照片权限和结果回传，附件错误按具体原因提示。\n- 新增文件选择回调、取消下载和分段 PDF 内容的回归检查。",
+  "sourceCommit": "a5690286e80a1c9761377351b7f4278f958c66de"
 }
