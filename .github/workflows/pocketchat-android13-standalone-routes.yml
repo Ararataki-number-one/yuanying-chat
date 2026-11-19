@@ -146,7 +146,24 @@ jobs:
         echo '7c8191ee9838a82758ef4b19bf6588f3defc935dfde32b1cbb032fafbce647c1  tools/gecko/chromium_ci_device.sh' | sha256sum -c -
         cp "$ANDROID_HOME/system-images/android-33/google_apis/x86_64/source.properties" \
           work/chromium-delivery/android13-image.properties
-        bash tools/gecko/chromium_ci_device.sh 33 routes
+        python3 - <<'PYCODE'
+        from hashlib import sha256
+        from pathlib import Path
+        import os
+        import subprocess
+
+        source = Path('tools/gecko/chromium_ci_device.sh').read_bytes()
+        assert sha256(source).hexdigest() == '7c8191ee9838a82758ef4b19bf6588f3defc935dfde32b1cbb032fafbce647c1'
+        marker, capture = b'stop_guest() {\n', b'  # Read only the disposable guest logs before terminating the guest.\n  sleep 2\n  timeout 18 "${adb_device[@]}" logcat -b crash -d -t 512 -v threadtime > "$work/android13-crash.log" 2>&1 || true\n  timeout 18 "${adb_device[@]}" logcat -b main -b system -b events -d -t 1400 -v threadtime \\\n    AndroidRuntime:V libc:V linker:V DEBUG:V chromium:V Cefrium:V CEF:V \\\n    PocketChatCefriumRouteFixture:V ActivityManager:I \'*:S\' > "$work/android13-device.log" 2>&1 || true\n'
+        assert source.count(marker) == 1 and capture not in source
+        scoped = source.replace(marker, marker + capture, 1)
+        assert scoped.replace(capture, b'', 1) == source
+        assert sha256(scoped).hexdigest() == 'b64e43f1cca6b83b6759e6650b5f14b54f54e410486e4cd58a7a80090fb4a220'
+        script = Path(os.environ['RUNNER_TEMP']) / 'pocketchat-android13-crash-capture.sh'
+        script.write_bytes(scoped)
+        subprocess.run(['bash', '-n', script], check=True)
+        PYCODE
+        bash "$RUNNER_TEMP/pocketchat-android13-crash-capture.sh" 33 routes
     - name: Preserve Android 13 diagnostic evidence
       if: always()
       uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
@@ -164,6 +181,8 @@ jobs:
           work/chromium-delivery/chromium-debug-render.json
           work/chromium-delivery/renderer.txt
           work/chromium-delivery/android13-emulator.log
+          work/chromium-delivery/android13-crash.log
+          work/chromium-delivery/android13-device.log
           work/chromium-delivery/android13-webview.txt
           work/chromium-delivery/wire-vpn.txt
           work/chromium-delivery/wire-internal.txt
