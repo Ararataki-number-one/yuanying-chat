@@ -1,0 +1,544 @@
+{
+  "sourceCommit": "a5690286e80a1c9761377351b7f4278f958c66de",
+  "sourceTree": "2ccf1ca5b4f2c05b2c8f5ab0ab7d93e29b35456c",
+  "integrationApkSha256": "f2868c4cdffda4fd09f5437d3d375dfc82181b576a399b98cfa41e2996281a3c",
+  "runId": "44440709925",
+  "runAttempt": "1",
+  "reportSha256": "a62042d78fc51b11d6939d428a38131da30c76a769a6e516938e8da8a574714c",
+  "checkCount": 51,
+  "actualAndroidExecution": true,
+  "actualAndroidWebViewExecution": true,
+  "provider": {
+    "package": "com.google.android.webview",
+    "version": "124.0.6367.219"
+  },
+  "physicalPhoneAcceptance": false,
+  "scope": "Same source, run-bound SDK and exact integration APK as original Gecko acceptance; controlled Android WebView browser workload, no public website or device-speed claim",
+  "browserNavigationContract": 4,
+  "fingerprintRegression": {
+    "sourceCommit": "a5690286e80a1c9761377351b7f4278f958c66de",
+    "sourceTree": "2ccf1ca5b4f2c05b2c8f5ab0ab7d93e29b35456c",
+    "integrationApkSha256": "f2868c4cdffda4fd09f5437d3d375dfc82181b576a399b98cfa41e2996281a3c",
+    "runId": "44440709925",
+    "runAttempt": "1",
+    "reportSha256": "97d04d2ddb5c20880ce3ee5fba417b018e8d5ec4c53f1b75367137ad84451887",
+    "actualAndroidExecution": true,
+    "actualAndroidWebViewExecution": true,
+    "actualGeckoExecution": true,
+    "uaChNetworkVerified": true,
+    "checkCount": 36,
+    "fingerprintProtectionVerified": false,
+    "workerCoverageVerified": false,
+    "serviceWorkerCoverageVerified": false,
+    "scope": "Native UA/UA-CH, first-inline document/frame Canvas and origin/environment-policy separation on controlled domain-scoped user-CA HTTPS with ephemeral host-only keys; both generic URL UIs and inactive ChatGPT-only drivers. Dedicated Worker observed unprotected. ServiceWorker unsupported/unexecuted. No whole-fingerprint, public-site or phone-performance claim."
+  },
+  "workerPolicyRegression": {
+    "sourceCommit": "a5690286e80a1c9761377351b7f4278f958c66de",
+    "sourceTree": "2ccf1ca5b4f2c05b2c8f5ab0ab7d93e29b35456c",
+    "integrationApkSha256": "f2868c4cdffda4fd09f5437d3d375dfc82181b576a399b98cfa41e2996281a3c",
+    "runId": "44440709925",
+    "runAttempt": "1",
+    "reportSha256": "079823fed41207e90e0ff1eca368f0edd081ad08f5d8054ac69002cce7e7e8bf",
+    "actualAndroidExecution": true,
+    "actualAndroidWebViewExecution": true,
+    "actualNativeServiceWorkerSettingExecution": true,
+    "checkCount": 43,
+    "fingerprintProtectionVerified": false,
+    "workerCoverageVerified": false,
+    "existingExecutionControlled": false,
+    "scope": "Actual page/frame new Worker creation restriction, native ServiceWorker subsequent network block/readback and actual HTTPS request absence through policy save and route readmission; allow restoration and existing cache execution. No Worker realm spoofing, full Worker termination or in-flight cancellation claim."
+  },
+  "geckoEnvironmentPolicyRegression": {
+    "sourceCommit": "a5690286e80a1c9761377351b7f4278f958c66de",
+    "sourceTree": "2ccf1ca5b4f2c05b2c8f5ab0ab7d93e29b35456c",
+    "runNonce": "f1db0eeae1ce4af9a93f64e979af259d",
+    "integrationApkSha256": "f2868c4cdffda4fd09f5437d3d375dfc82181b576a399b98cfa41e2996281a3c",
+    "runId": "44440709925",
+    "runAttempt": "1",
+    "reportSha256": "b5e744c9c5e5aead9af360c2df6adc6f40ac2790fcded2ed0fc6d9742a14f300",
+    "checkCount": 22,
+    "sampleCount": 9,
+    "documentObservationCount": 13,
+    "actualAndroidExecution": true,
+    "actualGeckoExecution": true,
+    "actualPublicWebsiteExecution": false,
+    "workerCoverageVerified": false,
+    "serviceWorkerCoverageVerified": false,
+    "frameTimeZoneCoverageVerified": false,
+    "workerTimeZoneDifferences": [
+      {
+        "label": "new-york",
+        "role": "service",
+        "timeZone": "UTC",
+        "desiredTimeZone": "America/New_York",
+        "differentFields": [
+          "timeZone",
+          "january.hour",
+          "january.offsetMinutes",
+          "july.hour",
+          "july.offsetMinutes"
+        ],
+        "observation": {
+          "timeZone": "UTC",
+          "january": {
+            "offsetMinutes": 0,
+            "year": 2026,
+            "month": 1,
+            "day": 15,
+            "hour": 12,
+            "minute": 0
+          },
+          "july": {
+            "offsetMinutes": 0,
+            "year": 2026,
+            "month": 7,
+            "day": 15,
+            "hour": 12,
+            "minute": 0
+          }
+        },
+        "expected": {
+          "timeZone": "America/New_York",
+          "january": {
+            "offsetMinutes": 300,
+            "year": 2026,
+            "month": 1,
+            "day": 15,
+            "hour": 7,
+            "minute": 0
+          },
+          "july": {
+            "offsetMinutes": 240,
+            "year": 2026,
+            "month": 7,
+            "day": 15,
+            "hour": 8,
+            "minute": 0
+          }
+        }
+      },
+      {
+        "label": "kathmandu",
+        "role": "service",
+        "timeZone": "UTC",
+        "desiredTimeZone": "Asia/Kathmandu",
+        "differentFields": [
+          "timeZone",
+          "january.hour",
+          "january.minute",
+          "january.offsetMinutes",
+          "july.hour",
+          "july.minute",
+          "july.offsetMinutes"
+        ],
+        "observation": {
+          "timeZone": "UTC",
+          "january": {
+            "offsetMinutes": 0,
+            "year": 2026,
+            "month": 1,
+            "day": 15,
+            "hour": 12,
+            "minute": 0
+          },
+          "july": {
+            "offsetMinutes": 0,
+            "year": 2026,
+            "month": 7,
+            "day": 15,
+            "hour": 12,
+            "minute": 0
+          }
+        },
+        "expected": {
+          "timeZone": "Asia/Kathmandu",
+          "january": {
+            "offsetMinutes": -345,
+            "year": 2026,
+            "month": 1,
+            "day": 15,
+            "hour": 17,
+            "minute": 45
+          },
+          "july": {
+            "offsetMinutes": -345,
+            "year": 2026,
+            "month": 7,
+            "day": 15,
+            "hour": 17,
+            "minute": 45
+          }
+        }
+      },
+      {
+        "label": "desktop",
+        "role": "service",
+        "timeZone": "UTC",
+        "desiredTimeZone": "Asia/Kathmandu",
+        "differentFields": [
+          "timeZone",
+          "january.hour",
+          "january.minute",
+          "january.offsetMinutes",
+          "july.hour",
+          "july.minute",
+          "july.offsetMinutes"
+        ],
+        "observation": {
+          "timeZone": "UTC",
+          "january": {
+            "offsetMinutes": 0,
+            "year": 2026,
+            "month": 1,
+            "day": 15,
+            "hour": 12,
+            "minute": 0
+          },
+          "july": {
+            "offsetMinutes": 0,
+            "year": 2026,
+            "month": 7,
+            "day": 15,
+            "hour": 12,
+            "minute": 0
+          }
+        },
+        "expected": {
+          "timeZone": "Asia/Kathmandu",
+          "january": {
+            "offsetMinutes": -345,
+            "year": 2026,
+            "month": 1,
+            "day": 15,
+            "hour": 17,
+            "minute": 45
+          },
+          "july": {
+            "offsetMinutes": -345,
+            "year": 2026,
+            "month": 7,
+            "day": 15,
+            "hour": 17,
+            "minute": 45
+          }
+        }
+      },
+      {
+        "label": "mobile-restored",
+        "role": "service",
+        "timeZone": "UTC",
+        "desiredTimeZone": "Asia/Kathmandu",
+        "differentFields": [
+          "timeZone",
+          "january.hour",
+          "january.minute",
+          "january.offsetMinutes",
+          "july.hour",
+          "july.minute",
+          "july.offsetMinutes"
+        ],
+        "observation": {
+          "timeZone": "UTC",
+          "january": {
+            "offsetMinutes": 0,
+            "year": 2026,
+            "month": 1,
+            "day": 15,
+            "hour": 12,
+            "minute": 0
+          },
+          "july": {
+            "offsetMinutes": 0,
+            "year": 2026,
+            "month": 7,
+            "day": 15,
+            "hour": 12,
+            "minute": 0
+          }
+        },
+        "expected": {
+          "timeZone": "Asia/Kathmandu",
+          "january": {
+            "offsetMinutes": -345,
+            "year": 2026,
+            "month": 1,
+            "day": 15,
+            "hour": 17,
+            "minute": 45
+          },
+          "july": {
+            "offsetMinutes": -345,
+            "year": 2026,
+            "month": 7,
+            "day": 15,
+            "hour": 17,
+            "minute": 45
+          }
+        }
+      }
+    ],
+    "frameTimeZoneDifferences": [],
+    "javascriptUaDifferences": [
+      {
+        "label": "desktop",
+        "role": "shared"
+      },
+      {
+        "label": "desktop",
+        "role": "service"
+      }
+    ],
+    "rfpTimeZoneObservation": {
+      "timeZone": "Atlantic/Reykjavik",
+      "january": {
+        "offsetMinutes": 0,
+        "year": 2026,
+        "month": 1,
+        "day": 15,
+        "hour": 12,
+        "minute": 0
+      },
+      "july": {
+        "offsetMinutes": 0,
+        "year": 2026,
+        "month": 7,
+        "day": 15,
+        "hour": 12,
+        "minute": 0
+      }
+    },
+    "scope": "Actual production Gecko first-inline primary clocks, raw frame observations, current native setting receipts, per-role controlled HTTPS UA requests and lifecycle rejection. RFP-managed clocks, frame/Worker timezone and JavaScript UA differences are observations only; no complete frame/Worker effect or public-site claim."
+  },
+  "geckoIpTimeZoneRegression": {
+    "sourceCommit": "a5690286e80a1c9761377351b7f4278f958c66de",
+    "sourceTree": "2ccf1ca5b4f2c05b2c8f5ab0ab7d93e29b35456c",
+    "integrationApkSha256": "f2868c4cdffda4fd09f5437d3d375dfc82181b576a399b98cfa41e2996281a3c",
+    "runId": "44440709925",
+    "runAttempt": "1",
+    "runNonce": "16b9ae42633f4375be85e83eab85aec8",
+    "caseCount": 13,
+    "checkCount": 38,
+    "actualAndroidExecution": true,
+    "actualGeckoExecution": true,
+    "syntheticGeoService": true,
+    "actualPublicIpGeolocationVerified": false,
+    "workerCoverageVerified": false,
+    "serviceWorkerCoverageVerified": false,
+    "observedWorkerTimeZones": {
+      "classic": "America/New_York",
+      "module": "America/New_York",
+      "blob": "America/New_York",
+      "shared": "America/New_York",
+      "service": "UTC"
+    },
+    "routeProtocols": [
+      "socks5",
+      "http-connect",
+      "https-connect"
+    ],
+    "scope": "Source-bound canonical MainActivity native IP timezone and same configured proxy transport on controlled synthetic HTTPS geo responses; no public geolocation or whole-Worker timezone claim.",
+    "reportSha256": "57f827b48db003bc09c0a74d65e962cd118323be025b641fc7657604a4fd6051",
+    "caseSha256": {
+      "default-socks.json": "7cbd2074ea0709c9d48eb79729cfd6a71e0f4f61266a25bd5984bee0c9f36f89",
+      "route-switch-http.json": "52aa3b580e18307b465e9b460278603c1adff9dba93d17338671bfa94ff5a00c",
+      "https-proxy.json": "503d8dc5cff281dc84de9e585a2cf1547ee150b4f8507bc656d33495ae0ddba6",
+      "cancel-late.json": "08e81e5311cc5cdb08dfdd34124e87dd2d07719a95ed4a0849bff3bf59017e03",
+      "manual-system.json": "6ed6d28ff72647db7db40a4e13aee31197c46e94b706227951d9c33d6ca03454",
+      "manual-iana.json": "0df3811a923f2e899d91332572e6fae416ecae5629fea611070e34bbd7ad7179",
+      "rfp-priority.json": "e0b83555e2b24a8e3d2ecb4a7166c368f6a47b8fc9257ce17a0f5598bd5cccf0",
+      "manual-rfp-denied.json": "4b79e01549830cf3d239c5d4c82b8abc76f50b2f134c1d2178ccb4490bbaebb2",
+      "bootstrap-isolation.json": "ad68acd802d0acb19b3bced14e29dee24c2cfbe5311adf500c20bf4b49461089",
+      "redirect-rejected.json": "03b083f42394bcd60d04c27c293a6fa4ea57326c99085b85dd3096574c19db03",
+      "invalid-geo-rejected.json": "54f3394a666be6116e01f2690d5f579dc1375688e6426f66371964c0f38e9954",
+      "route-receipts.json": "d5d553ecba17eb9e211fb53c81114c1e833f106294165efa08567d5861bb8ebc",
+      "setup-scope.json": "7e5431f6a909b4049399ffc95bb3d6be9d6d9ba4f0dfa71af2fde0c0d5f06a0f"
+    }
+  },
+  "geckoCpuRegression": {
+    "sourceCommit": "a5690286e80a1c9761377351b7f4278f958c66de",
+    "sourceTree": "2ccf1ca5b4f2c05b2c8f5ab0ab7d93e29b35456c",
+    "runNonce": "8d057a4e09db432a9e66c11106b4d030",
+    "integrationApkSha256": "f2868c4cdffda4fd09f5437d3d375dfc82181b576a399b98cfa41e2996281a3c",
+    "runId": "44440709925",
+    "runAttempt": "1",
+    "reportSha256": "9a55d0f0d42f3800af03195d4eb5f2c09a301842d7933c8cf728523508b6627f",
+    "caseCount": 10,
+    "caseSha256": {
+      "cap1": "fff89d943bce881d213255805d4702bd461bfc3d117699c79f564848d02f87d7",
+      "cap2": "1a940d780174658dede203d341fdfed95c5aef48f07c15c269b3c4306aa8e7d4",
+      "automatic-stale-user": "1624309867559b7843609dbeaa8b8b25812e82a5a323e38583b20c302339729e",
+      "rfp": "bff2cae37417360fac5f0be1d984fba4af0e7b9ba7bc85d95127f999f27afce2",
+      "persistent-before": "1b9acdbb3144ca3e931b53e73ca50b1d808fbf919609da4a1e1afc8fccc171f8",
+      "persistent-after": "286ca87a85397e7ea3410abd92c4193732d381ccaa6086c24343147d27ee038b",
+      "concurrent-cap1": "8b6a64bee95db97b6ead4cb46058eea6f4986f05375968130a00652c2fdfd1f5",
+      "concurrent-cap2": "5ac5086883683b922e3a23a3d67ee8b25e71639800fc9e72aff41c8341db8626",
+      "concurrent-cap1-resample": "28207e6923d431649b6cb3080ea8d5107e8ff8ec9558adbf5ca3b932dc24f9b6",
+      "normal-template-rfp": "eb62c94cd109f58d75fb94379549586c0c6a4b411570a11b56af19ba3a6c3866"
+    },
+    "pageAndWorkerCounts": {
+      "cap1": {
+        "page": 1,
+        "dedicated": 1,
+        "blob": 1,
+        "shared": 1,
+        "service": 1
+      },
+      "cap2": {
+        "page": 2,
+        "dedicated": 2,
+        "blob": 2,
+        "shared": 2,
+        "service": 2
+      },
+      "automatic-stale-user": {
+        "page": 4,
+        "dedicated": 4,
+        "blob": 4,
+        "shared": 4,
+        "service": 4
+      },
+      "rfp": {
+        "page": 4,
+        "dedicated": 4,
+        "blob": 4,
+        "shared": 4,
+        "service": 4
+      },
+      "persistent-before": {
+        "page": 2,
+        "dedicated": 2,
+        "blob": 2,
+        "shared": 2,
+        "service": 2
+      },
+      "persistent-after": {
+        "page": 2,
+        "dedicated": 2,
+        "blob": 2,
+        "shared": 2,
+        "service": 2
+      },
+      "concurrent-cap1": {
+        "page": 1,
+        "dedicated": 1,
+        "blob": 1,
+        "shared": 1,
+        "service": 1
+      },
+      "concurrent-cap2": {
+        "page": 2,
+        "dedicated": 2,
+        "blob": 2,
+        "shared": 2,
+        "service": 2
+      },
+      "concurrent-cap1-resample": {
+        "page": 1,
+        "dedicated": 1,
+        "blob": 1,
+        "shared": 1,
+        "service": 1
+      },
+      "normal-template-rfp": {
+        "page": 4,
+        "dedicated": 4,
+        "blob": 4,
+        "shared": 4,
+        "service": 1
+      }
+    },
+    "rfpCapObeyed": {
+      "rfp": {
+        "page": false,
+        "dedicated": false,
+        "blob": false,
+        "shared": false,
+        "service": false
+      },
+      "normal-template-rfp": {
+        "page": false,
+        "dedicated": false,
+        "blob": false,
+        "shared": false,
+        "service": true
+      }
+    },
+    "actualAndroidExecution": true,
+    "actualGeckoExecution": true,
+    "productionColdCpuWorkloadPassed": true,
+    "workerCoverageVerified": false,
+    "serviceWorkerCoverageVerified": false,
+    "fingerprintProtectionVerified": false,
+    "scope": "Replayed original source-bound production CPU cold/default/RFP first-inline five-context packets, same-profile persistent SW cold restart, concurrent environment resample and ordinary identity template reapplication."
+  },
+  "geckoCpuIpComboRegression": {
+    "sourceCommit": "a5690286e80a1c9761377351b7f4278f958c66de",
+    "sourceTree": "2ccf1ca5b4f2c05b2c8f5ab0ab7d93e29b35456c",
+    "runId": "44440709925",
+    "runAttempt": "1",
+    "runNonce": "e4cab178c4664d98813135911eec174f",
+    "integrationApkSha256": "f2868c4cdffda4fd09f5437d3d375dfc82181b576a399b98cfa41e2996281a3c",
+    "caseCount": 1,
+    "checkCount": 8,
+    "actualAndroidExecution": true,
+    "actualGeckoExecution": true,
+    "productionColdCpuDefaultIpCombinationPassed": true,
+    "pageHardwareConcurrency": 1,
+    "pageTimeZone": "America/New_York",
+    "syntheticGeoService": true,
+    "actualPublicIpGeolocationVerified": false,
+    "workerCoverageVerified": false,
+    "serviceWorkerCoverageVerified": false,
+    "fingerprintProtectionVerified": false,
+    "scope": "One canonical profile6 cold CPUcap1 + missing-store default-IP first-inline native page on the same SDK/native context/process and controlled SOCKS/TLS synthetic geo; no public location or whole Worker claim.",
+    "reportSha256": "91dcd52f8b42ae2d7ab5eb18437ddcdafdf82e1af94e9968bf9e58d93837a231",
+    "caseSha256": {
+      "combo.json": "88ce220c99c31a9c63cf5ce261b10932b890b6899d5f03df1ab9c6df14060f8c",
+      "route-receipts.json": "af995f71d922d14a99d13a3dd005a949734cdc94b72358ce86e301c3b7602208",
+      "setup-scope.json": "d7126d96ca9ea8fcff76fc76ba7fe32fdd4b9efb35da8d5c7bf953efcddc4ece",
+      "process-sample.json": "7f6bca7d5c72d698ec0b34685b38ddb8085c82b2636cb4326f4fc09a306a11ac"
+    }
+  },
+  "geckoTlsRegression": {
+    "sourceCommit": "a5690286e80a1c9761377351b7f4278f958c66de",
+    "sourceTree": "2ccf1ca5b4f2c05b2c8f5ab0ab7d93e29b35456c",
+    "runId": "44440709925",
+    "runAttempt": "1",
+    "runNonce": "8442d00a8975458eb67b1ed003d456cc",
+    "integrationApkSha256": "f2868c4cdffda4fd09f5437d3d375dfc82181b576a399b98cfa41e2996281a3c",
+    "reportSha256": "cb246f96ae8cf1c58ed82aeb6bd96f89bb4f743e2d321309c5fa008b1314cae1",
+    "caseCount": 12,
+    "coldCpuIpTlsCombinationMeasured": true,
+    "caseSha256": {
+      "default-tls12": "33bf3b83936daf1d993c05450f965e818c47e1e705390fa115ba1183c472530b",
+      "strict-tls12": "17563c6c066747bb33ea611b4d96b9351bfeb3c0b12c43d0a415a665f7fc6544",
+      "strict-tls13": "bdf27b9e4395ae96a67235c1d14323a0c615883f6fd10e293a618d55b39024c7",
+      "pending-default-tls12": "95e273ab3aae3ce9ba5acaf9b1e09a70fcede00a53e250b1df15755a238dd3f1",
+      "restored-default-tls12": "53712fe586d37fc73fe54bb545440b35040f5a215e77702b183a818bfc7a7310",
+      "rfp-strict-tls13": "03bb72b92cf077790e414902cb326dfa1bfedf52aa79d28b6d87cb264cd9e2eb",
+      "persistent-before": "a8406dd5de01a773aa575d9a47d900186121c48af937efc69f94fc1551f3ff10",
+      "persistent-after": "5a31ee5f5708e9f368e6e0201f7c40721bfeb4996a6ca258148ad18accc50f31",
+      "concurrent-strict-tls13": "22d748ba3b827d3291f7cdfce52ed589af8026922f353d4e1d6a8c78c2f82842",
+      "concurrent-default-tls12": "c1d05dd7530a9bdf480b86695268f508fe128d827ae69f2b04efab976eb2e157",
+      "concurrent-strict-resample-tls12": "239b4894a2d483f3776c0fce6b4cc049d8ceefc9e599ccd47abe3b6b653966d2",
+      "combined-cpu-ip-tls13": "d10902eff6b3563e60727c7d2564856d677dc6a8e6337f353b16cc133786f36f"
+    },
+    "actualAndroidExecution": true,
+    "actualGeckoExecution": true,
+    "productionGeckoWebTlsWorkloadPassed": true,
+    "desiredOnlyUiPendingMeasured": true,
+    "nonemptyUserColdReconciled": true,
+    "persistentServiceWorkerTlsMeasured": true,
+    "concurrentEnvironmentsMeasured": true,
+    "connectionScope": "gecko-web-connections",
+    "independentDownloaderTlsCovered": false,
+    "connectionCheckTlsCovered": false,
+    "proxyEntranceTlsCovered": false,
+    "workerCoverageVerified": false,
+    "serviceWorkerCoverageVerified": false,
+    "fullTlsFingerprintEmulation": false,
+    "quicWireVerified": false,
+    "http2TransportVerified": false,
+    "rawFatalAlertPacketDecoded": false
+  }
+}
