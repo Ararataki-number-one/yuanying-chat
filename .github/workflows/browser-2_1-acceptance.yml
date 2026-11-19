@@ -116,7 +116,7 @@ env:
 jobs:
   build:
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    timeout-minutes: 75
     steps:
     - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
       with:
@@ -230,6 +230,33 @@ jobs:
         python3 tools/gecko/chromium_release_publication.py record --bundle "$bundle" --unsigned "$work/unsigned" --tools "$tools" --output work/gecko-integration/chromium-build.json
         cp "$work/unsigned/base-master.apk" app/build/outputs/apk/release/app-arm64-v8a-release-unsigned.apk
         python3 tools/gecko/caret_workflow.py record --work work/gecko-integration
+    # Split exact public SDK inputs so connector downloads stay below 512 MiB.
+    # Keys remain local to the build job and are never included in these paths.
+    - name: Preserve exact upstream SDK inputs
+      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+      with:
+        name: browser-${{ github.run_id }}-${{ github.run_attempt }}-official-sdk
+        path: |
+          work/gecko-integration/geckoview.aar
+          work/gecko-integration/geckoview.pom
+          work/gecko-integration/geckoview-sources.jar
+          work/gecko-integration/official-sdk-verification.json
+        if-no-files-found: error
+        retention-days: 7
+        compression-level: 0
+    - name: Preserve exact derived SDK and source receipts
+      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+      with:
+        name: browser-${{ github.run_id }}-${{ github.run_attempt }}-derived-sdk
+        path: |
+          work/native-caret-sdk/maven/
+          work/native-caret-sdk/assets/
+          work/native-caret-sdk/sdk-build-receipt.json
+          work/native-caret-sdk/derived-sdk-compilation.json
+          work/native-caret-sdk/derived-sdk-verification.json
+        if-no-files-found: error
+        retention-days: 7
+        compression-level: 0
     - name: Require release Android API and manifest lint
       shell: bash
       run: |
@@ -557,33 +584,6 @@ jobs:
         path: work/ci-build/bundle.tar.gz
         if-no-files-found: error
         retention-days: 1
-        compression-level: 0
-    # Split exact public SDK inputs so connector downloads stay below 512 MiB.
-    # Keys remain local to the build job and are never included in these paths.
-    - name: Preserve exact upstream SDK inputs
-      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-      with:
-        name: browser-${{ github.run_id }}-${{ github.run_attempt }}-official-sdk
-        path: |
-          work/gecko-integration/geckoview.aar
-          work/gecko-integration/geckoview.pom
-          work/gecko-integration/geckoview-sources.jar
-          work/gecko-integration/official-sdk-verification.json
-        if-no-files-found: error
-        retention-days: 7
-        compression-level: 0
-    - name: Preserve exact derived SDK and source receipts
-      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-      with:
-        name: browser-${{ github.run_id }}-${{ github.run_attempt }}-derived-sdk
-        path: |
-          work/native-caret-sdk/maven/
-          work/native-caret-sdk/assets/
-          work/native-caret-sdk/sdk-build-receipt.json
-          work/native-caret-sdk/derived-sdk-compilation.json
-          work/native-caret-sdk/derived-sdk-verification.json
-        if-no-files-found: error
-        retention-days: 7
         compression-level: 0
     - name: Preserve the exact unsigned Chromium delivery APKs and AAB identity
       uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02

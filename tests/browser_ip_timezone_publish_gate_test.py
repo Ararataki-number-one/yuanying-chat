@@ -158,7 +158,7 @@ class IpTimezonePublishGateTests(unittest.TestCase):
                     self.assertIs(type(expected), int)
                     self.assertEqual(expected, 40)
                     self.assertIs(type(current['jobs'][name].get(field)), int)
-                    self.assertEqual(current['jobs'][name].get(field), 60)
+                    self.assertEqual(current['jobs'][name].get(field), 75)
                 else:
                     self.assertEqual(ui_job_budget_field_input(name, field, current['jobs'][name].get(field)), expected, (name, field))
         browser = current['jobs']['browser']

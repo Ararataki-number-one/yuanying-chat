@@ -35,7 +35,7 @@ class BrowserWorkflowTests(unittest.TestCase):
                         self.assertEqual(value,40)
                         self.assertIn(key,current)
                         self.assertIs(type(current[key]),int)
-                        self.assertEqual(current[key],60)
+                        self.assertEqual(current[key],75)
                     else:
                         self.assertEqual(ui_job_budget_field_input(name,key,current[key]),value+['browser','tls'] if name=='verify' and key=='needs' else value)
     def test_single_pipeline_shares_actual_apk_and_gates_browser(self):

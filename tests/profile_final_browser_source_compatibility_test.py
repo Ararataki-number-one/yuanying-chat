@@ -1300,7 +1300,7 @@ class FinalBrowserHistoricalSources(unittest.TestCase):
         self.assertIs(type(raw_old['jobs']['build']['timeout-minutes']), int)
         self.assertEqual(raw_old['jobs']['build']['timeout-minutes'], 40)
         self.assertIs(type(raw_new['jobs']['build']['timeout-minutes']), int)
-        self.assertEqual(raw_new['jobs']['build']['timeout-minutes'], 60)
+        self.assertEqual(raw_new['jobs']['build']['timeout-minutes'], 75)
         workflow.BrowserWorkflowTests.setUpClass()
         self.assertEqual(workflow.BrowserWorkflowTests.new, raw_new)
         self.assertEqual(workflow.BrowserWorkflowTests.old, raw_old)
@@ -1328,7 +1328,7 @@ class FinalBrowserHistoricalSources(unittest.TestCase):
             for value in (39, 41, 60, 40.0, '40', None, True):
                 changed = copy.deepcopy(raw_old);changed['jobs']['build']['timeout-minutes'] = value
                 reject(kind, copy.deepcopy(raw_new), changed);negative += 1
-            for value in (40, 59, 61, 60.0, '60', None, True):
+            for value in (40, 60, 74, 76, 75.0, '75', None, True):
                 changed = copy.deepcopy(raw_new);changed['jobs']['build']['timeout-minutes'] = value
                 reject(kind, changed, copy.deepcopy(raw_old));negative += 1
             for side in ('old', 'new'):
@@ -1340,20 +1340,20 @@ class FinalBrowserHistoricalSources(unittest.TestCase):
                     ('chrome-diagnostic', 'timeout-minutes', raw_old['jobs']['chrome-diagnostic']['timeout-minutes']+1), ('verify', 'needs', ['build'])):
                 changed = copy.deepcopy(raw_new);changed['jobs'][name][field] = value
                 reject(kind, changed, copy.deepcopy(raw_old));negative += 1
-        self.assertEqual(negative, 38)
-        # Mutated guards still accept the pristine raw40/raw60 pair, but must
+        self.assertEqual(negative, 40)
+        # Mutated guards still accept the pristine raw40/raw75 pair, but must
         # fail the same strict negative oracle when they admit an invalid value.
         mutants = 0
         for kind, module, class_name, replacements in (
                 ('workflow', workflow, 'BrowserWorkflowTests', (
-                    ('self.assertEqual(current[key],60)', 'self.assertGreaterEqual(current[key],60)', 'new', 61),
+                    ('self.assertEqual(current[key],75)', 'self.assertGreaterEqual(current[key],75)', 'new', 76),
                     ('self.assertEqual(value,40)', 'self.assertGreaterEqual(value,40)', 'old', 41),
-                    ('                        self.assertIs(type(current[key]),int)\n', '', 'new', 60.0),
+                    ('                        self.assertIs(type(current[key]),int)\n', '', 'new', 75.0),
                     ('                        self.assertIs(type(value),int)\n', '', 'old', 40.0))),
                 ('ip', ip_gate, 'IpTimezonePublishGateTests', (
-                    ("self.assertEqual(current['jobs'][name].get(field), 60)", "self.assertGreaterEqual(current['jobs'][name].get(field), 60)", 'new', 61),
+                    ("self.assertEqual(current['jobs'][name].get(field), 75)", "self.assertGreaterEqual(current['jobs'][name].get(field), 75)", 'new', 76),
                     ('self.assertEqual(expected, 40)', 'self.assertGreaterEqual(expected, 40)', 'old', 41),
-                    ("                    self.assertIs(type(current['jobs'][name].get(field)), int)\n", '', 'new', 60.0),
+                    ("                    self.assertIs(type(current['jobs'][name].get(field)), int)\n", '', 'new', 75.0),
                     ('                    self.assertIs(type(expected), int)\n', '', 'old', 40.0)))):
             original = Path(module.__file__).read_text()
             for before, after, side, value in replacements:
