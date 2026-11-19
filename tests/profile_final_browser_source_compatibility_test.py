@@ -58,6 +58,68 @@ CPU_PUBLICATION_SHA = '49e19922d9e253976fc2da4b0092f4701db14a00cb52cb7d32e3f949d
 PREVIOUS_CPU_PUBLICATION_FIXTURE_SHA = '13922902ef64cd2dc25fbff14c71d78b46972c4e8efde85d3db9e4b619728253'
 CURRENT_CPU_PUBLICATION_FIXTURE_SHA = '998135a5975d12854dd993e6613d535ba1aa9079643bfc4c1c68102b9d496279'
 CPU_PUBLICATION_BODY_SHA = '8304bd6a9a4acf95aeb64a2f5caa1a97491dfed46b76b02c4e1816414a75e8cb'
+# Exact test-only additions for the v114 legacy controls after the optional split was introduced.
+PUBLISHER_OPTIONAL_GATE_INPUTS = {
+    'tests/browser_fingerprint_publish_gate_test.py': (
+        ('0f9e79690551e4d11bf2017cef29697d68d2fa421a463a97e6616533f0396aef', 6224),
+        ('40f681d0b10ea17893a93c40b6eb3519b7433196d63b4b393167a15cb8f5c9e8', 6110),
+        b"""    def test_source_allowlists_share_exact_version_threshold(self):
+        for version in ('2.0.47','2.1.0','2.1.1','2.1.2','2.1.3','2.1.4','2.2.0','3.0.0'):
+            expected=tuple(map(int,version.split('.'))) >= (2,1,1)
+            values=[]
+            for tree,name,namespace in ((self.tool,'release_tool_files',dict(version=version,browser_release=tuple(map(int,version.split('.'))) >= (2,1,0),fingerprint_release=expected,worker_timezone_release=tuple(map(int,version.split('.'))) >= (2,1,2),cpu_release=tuple(map(int,version.split('.'))) >= (2,1,3),tls_release=tuple(map(int,version.split('.'))) >= (2,1,4))),(self.workflow,'release_files',dict(m={'version':version}))):
+                nodes=[node for node in tree.body if isinstance(node,ast.Assign) and any(isinstance(t,ast.Name) and t.id==name for t in node.targets)]
+""",
+        b"""    def test_source_allowlists_share_exact_version_threshold(self):
+        version_code=114
+        for version in ('2.0.47','2.1.0','2.1.1','2.1.2','2.1.3','2.1.4','2.2.0','3.0.0'):
+            parts=tuple(map(int,version.split('.')))
+            expected=parts>=(2,1,1)
+            values=[]
+            publisher=dict(version=version,chromium_release=version_code>=115,browser_release=parts>=(2,1,0),
+                           fingerprint_release=expected,worker_timezone_release=parts>=(2,1,2),
+                           cpu_release=parts>=(2,1,3),tls_release=parts>=(2,1,4))
+            for tree,name,namespace in ((self.tool,'release_tool_files',publisher),
+                                        (self.workflow,'release_files',dict(m={'version':version,'versionCode':version_code}))):
+                nodes=[node for node in tree.body if isinstance(node,ast.Assign) and any(isinstance(t,ast.Name) and t.id==name for t in node.targets)]
+""",
+    ),
+    'tests/browser_environment_publish_gate_test.py': (
+        ('883c87e8672160740733f36501befed5b40aab0797e46f33efd52e59819029aa', 7952),
+        ('0a4e1e86f17fee638613e48980b3f426c37627826ad12f72a8533fcf47e0a97b', 7865),
+        b"""        tool=ast.parse((ROOT/'tools/publish-gecko-release.py').read_text());workflow=workflow_tree()
+        for version in ('2.1.0','2.1.1','2.1.2','2.1.3','2.1.4','3.0.0'):
+            parts=tuple(map(int,version.split('.')));values=[]
+            for tree,name,namespace in ((tool,'release_tool_files',dict(version=version,browser_release=parts>=(2,1,0),fingerprint_release=parts>=(2,1,1),worker_timezone_release=parts>=(2,1,2),cpu_release=parts>=(2,1,3),tls_release=parts>=(2,1,4))),(workflow,'release_files',dict(m={'version':version}))):
+                nodes=[n for n in tree.body if isinstance(n,ast.Assign) and any(isinstance(t,ast.Name) and t.id==name for t in n.targets)]
+""",
+        b"""        tool=ast.parse((ROOT/'tools/publish-gecko-release.py').read_text());workflow=workflow_tree()
+        version_code=114
+        for version in ('2.1.0','2.1.1','2.1.2','2.1.3','2.1.4','3.0.0'):
+            parts=tuple(map(int,version.split('.')));values=[]
+            for tree,name,namespace in ((tool,'release_tool_files',dict(version=version,chromium_release=version_code>=115,browser_release=parts>=(2,1,0),fingerprint_release=parts>=(2,1,1),worker_timezone_release=parts>=(2,1,2),cpu_release=parts>=(2,1,3),tls_release=parts>=(2,1,4))),(workflow,'release_files',dict(m={'version':version,'versionCode':version_code}))):
+                nodes=[n for n in tree.body if isinstance(n,ast.Assign) and any(isinstance(t,ast.Name) and t.id==name for t in n.targets)]
+""",
+    ),
+    'tests/browser_cpu_publish_gate_test.py': (
+        ('0002b57bab715720e7d1d807bbdb3845db8672e3d32002125c8a838096c9cfa8', 23655),
+        ('998135a5975d12854dd993e6613d535ba1aa9079643bfc4c1c68102b9d496279', 23489),
+        b"""        tool=ast.parse((ROOT/'tools/publish-gecko-release.py').read_text());workflow=workflow_tree()
+        for version in ('2.1.0','2.1.2','2.1.3','2.1.4','3.0.0'):
+            parts=tuple(map(int,version.split('.')));values=[]
+            for tree,name,namespace in ((tool,'release_tool_files',dict(version=version,browser_release=parts>=(2,1,0),fingerprint_release=parts>=(2,1,1),worker_timezone_release=parts>=(2,1,2),cpu_release=parts>=(2,1,3))),(workflow,'release_files',dict(m={'version':version}))):
+                nodes=[n for n in tree.body if isinstance(n,ast.Assign) and any(isinstance(t,ast.Name) and t.id==name for t in n.targets)]
+""",
+        b"""        tool=ast.parse((ROOT/'tools/publish-gecko-release.py').read_text());workflow=workflow_tree()
+        # Keep the semantic-version controls below the optional Chromium gate.
+        version_code=114
+        for version in ('2.1.0','2.1.2','2.1.3','2.1.4','3.0.0'):
+            parts=tuple(map(int,version.split('.')));values=[]
+            for tree,name,namespace in ((tool,'release_tool_files',dict(version=version,chromium_release=version_code>=115,browser_release=parts>=(2,1,0),fingerprint_release=parts>=(2,1,1),worker_timezone_release=parts>=(2,1,2),cpu_release=parts>=(2,1,3))),(workflow,'release_files',dict(m={'version':version,'versionCode':version_code}))):
+                nodes=[n for n in tree.body if isinstance(n,ast.Assign) and any(isinstance(t,ast.Name) and t.id==name for t in n.targets)]
+""",
+    ),
+}
 B_PATHS = frozenset((GV, 'tests/ip_timezone_source_compatibility.py',
     'tests/profile_ip_timezone_source_compatibility_test.py',
     'tests/baselines/public-source-history.json', 'tools/browser/source_history.py'))
@@ -74,6 +136,18 @@ S_PATHS = frozenset(('tests/cpu_ip_source_compatibility.py', CPU_FIXTURE,
     'tests/browser_fingerprint_publish_gate_test.py',
     'tests/browser_environment_publish_gate_test.py'))
 SHA = lambda raw: hashlib.sha256(raw).hexdigest()
+
+
+def publisher_before_optional_gate(raw, relative):
+    current, previous, before, after = PUBLISHER_OPTIONAL_GATE_INPUTS[relative]
+    if type(raw) is not bytes or (SHA(raw), len(raw)) != current:
+        raise ValueError('Optional Chromium publisher fixture requires its exact current image')
+    if raw.count(after) != 1:
+        raise ValueError('Optional Chromium publisher fixture inverse must be unique')
+    restored = raw.replace(after, before, 1)
+    if (SHA(restored), len(restored)) != previous or restored.count(before) != 1:
+        raise ValueError('Optional Chromium publisher fixture did not restore its whole previous image')
+    return restored
 
 
 def current_context(relative, row, delta):
@@ -688,11 +762,17 @@ class FinalBrowserHistoricalSources(unittest.TestCase):
         pins = {**PUBLISHER_METADATA_PINS, CPU_PUBLICATION_PATH: CPU_PUBLICATION_SHA}
         for relative, reviewed_sha in pins.items():
             current = (ROOT/relative).read_bytes()
+            reviewed = publisher_before_optional_gate(current, relative)
+            self.assertEqual(dumps(assertions(current)), dumps(assertions(reviewed)), relative)
+            self.assertEqual(test_methods(current), test_methods(reviewed), relative)
             if relative == CPU_PUBLICATION_PATH:
                 self.assertEqual(SHA(historical_bytes(relative)), reviewed_sha)
-                self.assertEqual(SHA(current), CURRENT_CPU_PUBLICATION_FIXTURE_SHA)
+                self.assertEqual(SHA(reviewed), CURRENT_CPU_PUBLICATION_FIXTURE_SHA)
             else:
-                self.assertEqual(SHA(current), reviewed_sha)
+                self.assertEqual(SHA(reviewed), reviewed_sha)
+            for changed in (current+b'unknown optional gate edit', current[:-1]):
+                with self.assertRaises(ValueError):
+                    publisher_before_optional_gate(changed, relative)
             for node in ast.walk(ast.parse(current)):
                 if isinstance(node, ast.ImportFrom):
                     self.assertNotIn((node.module or '').split('.')[-1], histories, relative)
@@ -702,7 +782,8 @@ class FinalBrowserHistoricalSources(unittest.TestCase):
                     self.assertTrue(histories.isdisjoint(alias.name.split('.')[-1] for alias in node.names), relative)
         for relative, count in (('tests/browser_fingerprint_publish_gate_test.py', 13),
                                 ('tests/browser_environment_publish_gate_test.py', 18)):
-            current, previous = (ROOT/relative).read_bytes(), git('show', S+':'+relative)
+            current = publisher_before_optional_gate((ROOT/relative).read_bytes(), relative)
+            previous = git('show', S+':'+relative)
             self.assertEqual(dumps(assertions(current)), dumps(assertions(previous)))
             self.assertEqual(len(assertions(current)), count)
             self.assertEqual(test_methods(current), test_methods(previous))
@@ -726,7 +807,7 @@ class FinalBrowserHistoricalSources(unittest.TestCase):
             self.assertEqual(len({node.name for node in methods}), 9)
             self.assertEqual(len(test_methods(raw)), 9)
             return {node.name: ast.get_source_segment(raw, node) for node in methods}
-        text = current.decode()
+        text = publisher_before_optional_gate(current, CPU_PUBLICATION_PATH).decode()
         segments = bodies(text)
         digest = lambda parts: SHA(json.dumps(parts, sort_keys=True, ensure_ascii=False).encode())
         self.assertEqual(digest(segments), CPU_PUBLICATION_BODY_SHA)
@@ -737,7 +818,7 @@ class FinalBrowserHistoricalSources(unittest.TestCase):
         self.assertNotEqual(digest(bodies(text.replace(needle,
             'self.assertEqual(len(dependencies),2,', 1))), CPU_PUBLICATION_BODY_SHA)
         self.assertEqual(SHA(historical_bytes(CPU_PUBLICATION_PATH)), CPU_PUBLICATION_SHA)
-        self.assertEqual(SHA((ROOT/CPU_PUBLICATION_PATH).read_bytes()), CURRENT_CPU_PUBLICATION_FIXTURE_SHA)
+        self.assertEqual(SHA(text.encode()), CURRENT_CPU_PUBLICATION_FIXTURE_SHA)
 
     def test_current_cpu_navigation_prerequisite_is_an_exact_v4_fixture_delta(self):
         from historical_source_inputs import browser_v3_bytes
@@ -785,9 +866,9 @@ class FinalBrowserHistoricalSources(unittest.TestCase):
 """))
 
         def restore_fixture(raw):
-            if SHA(raw) != CURRENT_CPU_PUBLICATION_FIXTURE_SHA:
+            restored = publisher_before_optional_gate(raw, CPU_PUBLICATION_PATH)
+            if SHA(restored) != CURRENT_CPU_PUBLICATION_FIXTURE_SHA:
                 raise ValueError('Current CPU fixture requires its exact whole image')
-            restored = raw
             for before, after in reversed(deltas):
                 before, after = before.encode(), after.encode()
                 if restored.count(after) != 1:
@@ -803,7 +884,7 @@ class FinalBrowserHistoricalSources(unittest.TestCase):
             before, after = before.encode(), after.encode()
             self.assertEqual(replay.count(before), 1)
             replay = replay.replace(before, after, 1)
-        self.assertEqual(replay, current)
+        self.assertEqual(replay, publisher_before_optional_gate(current, CPU_PUBLICATION_PATH))
         changes = (
             (b'return actual_cpu(actual_directory,source,identity,reader=reader)', b'return {}'),
             (b'self.assertEqual(len(dependencies),1,', b'self.assertEqual(len(dependencies),2,'),
@@ -1223,6 +1304,8 @@ class FinalBrowserHistoricalSources(unittest.TestCase):
         workflow.BrowserWorkflowTests.setUpClass()
         self.assertEqual(workflow.BrowserWorkflowTests.new, raw_new)
         self.assertEqual(workflow.BrowserWorkflowTests.old, raw_old)
+        ip_guard = 'test_ip_android_step_and_verified_raw_transfer_are_mandatory_in_existing_jobs'
+
         def run_guard(kind, new, old, selected=None):
             if kind == 'workflow':
                 selected = selected or workflow.BrowserWorkflowTests
@@ -1232,10 +1315,10 @@ class FinalBrowserHistoricalSources(unittest.TestCase):
             else:
                 selected = selected or ip_gate.IpTimezonePublishGateTests
                 with patch.object(ip_gate.yaml, 'safe_load', side_effect=[new, old]):
-                    selected('test_ip_android_step_and_verified_raw_transfer_are_mandatory_without_new_jobs').test_ip_android_step_and_verified_raw_transfer_are_mandatory_without_new_jobs()
+                    getattr(selected(ip_guard), ip_guard)()
         with patch.object(layer, 'metadata_input', side_effect=AssertionError('Actual workflow must not use historical metadata')):
             workflow.BrowserWorkflowTests('test_original_checks_retained_in_order').test_original_checks_retained_in_order()
-            ip_gate.IpTimezonePublishGateTests('test_ip_android_step_and_verified_raw_transfer_are_mandatory_without_new_jobs').test_ip_android_step_and_verified_raw_transfer_are_mandatory_without_new_jobs()
+            getattr(ip_gate.IpTimezonePublishGateTests(ip_guard), ip_guard)()
         def reject(kind, new, old, selected=None):
             with self.assertRaises(AssertionError):
                 run_guard(kind, new, old, selected)
@@ -1337,7 +1420,12 @@ class FinalBrowserHistoricalSources(unittest.TestCase):
             case.test_new_host_suites_and_exact_history_are_mandatory()
         raw = yaml.safe_load((ROOT/'.github/workflows/browser-2_1-acceptance.yml').read_text())
         self.assertEqual(workflow.BrowserWorkflowTests.new, raw)
-        self.assertEqual(len(raw['jobs']), 7)
+        original_jobs = set(workflow.BrowserWorkflowTests.old['jobs']) | {'browser', 'tls'}
+        self.assertEqual(len(original_jobs), 7)
+        self.assertEqual(set(raw['jobs']), original_jobs | {'chromium-delivery'})
+        delivery = raw['jobs']['chromium-delivery']
+        self.assertEqual(delivery['needs'], 'build')
+        self.assertNotIn('continue-on-error', delivery)
         expanded = []
         for name, job in raw['jobs'].items():
             matrix = job.get('strategy', {}).get('matrix', {})
@@ -1345,7 +1433,9 @@ class FinalBrowserHistoricalSources(unittest.TestCase):
             self.assertNotIn('exclude', matrix)
             self.assertTrue(all(type(items) is list and items for items in matrix.values()))
             expanded.extend((name, values) for values in itertools.product(*matrix.values()))
-        self.assertEqual(len(expanded), 13)
+        self.assertEqual(sum(name in original_jobs for name, _ in expanded), 13)
+        self.assertEqual([values for name, values in expanded if name=='chromium-delivery'], [()])
+        self.assertEqual(len(expanded), 14)
 
     def test_actual_publisher_stages_eleven_complete_current_files_without_projection(self):
         tree = ast.parse((ROOT/'tools/publish-gecko-release.py').read_text())
