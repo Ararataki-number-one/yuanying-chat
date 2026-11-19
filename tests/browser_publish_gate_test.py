@@ -11,21 +11,24 @@ import tempfile
 import textwrap
 import types
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 ROOT=Path(__file__).resolve().parents[1]
 PUBLISHER=ROOT/'tools/publish-gecko-release.py'
 WORKFLOW=ROOT/'.github/workflows/publish-gecko-release.yml'
 SOURCE='a'*40
 CHECKER='tools/browser/check_evidence.py'
+CHROMIUM_TOOLS={'tools/gecko/chromium_release_publication.py','tools/gecko/stage_chromium_module.py'}
+CHROMIUM_BUILD_CHECKER='tools/gecko/caret_build_identity.py'
+ORIGINAL_SIGNER='f0afa2ef2b9ac68020b374276318b12d2bb4de65d2a3b788194de551356b9434'
 
 
 def execute(nodes,namespace):
     exec(compile(ast.Module(body=nodes,type_ignores=[]),'actual-publication-statements','exec'),namespace)
 
 
-def workflow_tree():
-    source=WORKFLOW.read_text().split("python3 - <<'PY'\n",1)[1].split('\n          PY',1)[0]
+def workflow_tree(step=0):
+    source=WORKFLOW.read_text().split("python3 - <<'PY'\n")[step+1].split('\n          PY',1)[0]
     return ast.parse(textwrap.dedent(source))
 
 
@@ -125,8 +128,19 @@ class BrowserPublishGateTests(unittest.TestCase):
 
     def release_list(self,tree,name,namespace):
         assignments=[node for node in tree.body if isinstance(node,ast.Assign) and any(isinstance(target,ast.Name) and target.id==name for target in node.targets)]
-        updates=[node for node in tree.body if isinstance(node,ast.If) and any(isinstance(value,ast.Call) and ast.unparse(value.func) in (name+'.add',name+'.update') for value in ast.walk(node))]
-        self.assertEqual(len(assignments),1);self.assertEqual(len(updates),5);execute(assignments+updates,namespace);return namespace[name]
+        updates=[]
+        for node in tree.body:
+            if not isinstance(node,ast.If):
+                continue
+            mutations=[statement for statement in node.body if isinstance(statement,ast.Expr)
+                       and isinstance(statement.value,ast.Call)
+                       and ast.unparse(statement.value.func) in (name+'.add',name+'.update')]
+            if mutations:
+                updates.append(ast.copy_location(ast.If(test=node.test,body=mutations,orelse=[]),node))
+        self.assertEqual(len(assignments),1)
+        self.assertEqual(len(updates),6)
+        execute(assignments+updates,namespace)
+        return namespace[name]
 
     def test_staging_and_publisher_share_checker_source_verification_list(self):
         policies=(
@@ -137,23 +151,32 @@ class BrowserPublishGateTests(unittest.TestCase):
             ('tls_release',(2,1,4),{'tools/browser/tls_publication.py'}),
         )
         flags=[node for node in self.tool.body if isinstance(node,ast.Assign) and any(isinstance(target,ast.Name) and target.id in {name for name,_,_ in policies} for target in node.targets)]
+        chromium_flag=next(node for node in self.tool.body if isinstance(node,ast.Assign)
+                           and any(isinstance(target,ast.Name) and target.id=='chromium_release' for target in node.targets))
         self.assertEqual(len(flags),5)
         self.assertEqual({target.id for node in flags for target in node.targets},{name for name,_,_ in policies})
         base={'.github/workflows/publish-gecko-release.yml','tools/publish-gecko-release.py','tools/gecko/release_channel_contract.py','tools/gecko/release_channel_contract_test.py'}
-        for version,required in [('2.0.47',False),('2.1.0',True),('2.1.1',True),('2.1.2',True),('2.1.3',True),('2.1.4',True),('3.0.0',True)]:
-            parts=tuple(map(int,version.split('.')));namespace=dict(version=version);execute(flags,namespace)
+        versions=[('2.0.47',114,False),('2.1.0',114,True),('2.1.1',114,True),('2.1.2',114,True),
+                  ('2.1.3',114,True),('2.1.4',114,True),('3.0.0',114,True),('2.1.13',115,True)]
+        for version,version_code,required in versions:
+            parts=tuple(map(int,version.split('.')))
+            namespace=dict(version=version,version_code=version_code)
+            execute(flags+[chromium_flag],namespace)
+            self.assertIs(namespace['chromium_release'],version_code>=115)
             for flag,minimum,_ in policies:self.assertIs(namespace[flag],parts>=minimum)
             tool=self.release_list(self.tool,'release_tool_files',namespace)
-            workflow=self.release_list(self.workflow,'release_files',dict(m={'version':version}))
+            workflow=self.release_list(self.workflow,'release_files',dict(m={'version':version,'versionCode':version_code}))
             self.assertEqual(tool,workflow);self.assertEqual(CHECKER in tool,required)
             expected=set(base)
             for _,minimum,files in policies:
                 self.assertEqual(tool&files,files if parts>=minimum else set())
                 if parts>=minimum:expected.update(files)
+            if version_code>=115:
+                expected.update(CHROMIUM_TOOLS)
             self.assertEqual(tool,expected)
         checks=[node for node in self.workflow.body if isinstance(node,ast.For) and ast.unparse(node.target)=='name' and 'release_files' in ast.unparse(node.iter)]
         self.assertEqual(len(checks),1)
-        files=self.release_list(self.workflow,'release_files',dict(m={'version':'2.1.0'}));files.add('tools/publish-update-feed.py')
+        files=self.release_list(self.workflow,'release_files',dict(m={'version':'2.1.0','versionCode':114}));files.add('tools/publish-update-feed.py')
         with tempfile.TemporaryDirectory() as temporary,directory(temporary):
             expected={name:('selected commit source: '+name).encode() for name in files}
             for name,raw in expected.items():path=Path(name);path.parent.mkdir(parents=True,exist_ok=True);path.write_bytes(raw)
@@ -161,18 +184,121 @@ class BrowserPublishGateTests(unittest.TestCase):
             execute(checks,dict(release_files=files,pathlib=types.SimpleNamespace(Path=Path),subprocess=fake,tools_commit=SOURCE))
             Path(CHECKER).write_bytes(b'changed checker cannot replace publication gate')
             with self.assertRaises(AssertionError):execute(checks,dict(release_files=files,pathlib=types.SimpleNamespace(Path=Path),subprocess=fake,tools_commit=SOURCE))
-        files=self.release_list(self.workflow,'release_files',dict(m={'version':'2.1.4'}));files.add('tools/publish-update-feed.py')
-        with tempfile.TemporaryDirectory() as temporary,directory(temporary):
-            expected={name:('selected commit source: '+name).encode() for name in files}
-            for name,raw in expected.items():path=Path(name);path.parent.mkdir(parents=True,exist_ok=True);path.write_bytes(raw)
-            fake=types.SimpleNamespace(check_output=lambda command:expected[command[-1].split(':',1)[1]])
-            namespace=dict(release_files=files,pathlib=types.SimpleNamespace(Path=Path),subprocess=fake,tools_commit=SOURCE)
-            execute(checks,namespace)
-            for name,raw in expected.items():
-                with self.subTest(tampered=name):
-                    Path(name).write_bytes(b'changed release tool cannot replace selected source')
-                    with self.assertRaises(AssertionError):execute(checks,namespace)
-                    Path(name).write_bytes(raw)
+        for version,version_code in [('2.1.4',114),('2.1.13',115)]:
+            files=self.release_list(self.workflow,'release_files',dict(m={'version':version,'versionCode':version_code}))
+            files.add('tools/publish-update-feed.py')
+            with tempfile.TemporaryDirectory() as temporary,directory(temporary):
+                expected={name:('selected commit source: '+name).encode() for name in files}
+                for name,raw in expected.items():path=Path(name);path.parent.mkdir(parents=True,exist_ok=True);path.write_bytes(raw)
+                fake=types.SimpleNamespace(check_output=lambda command:expected[command[-1].split(':',1)[1]])
+                namespace=dict(release_files=files,pathlib=types.SimpleNamespace(Path=Path),subprocess=fake,tools_commit=SOURCE)
+                execute(checks,namespace)
+                for name,raw in expected.items():
+                    with self.subTest(version_code=version_code,tampered=name):
+                        Path(name).write_bytes(b'changed release tool cannot replace selected source')
+                        with self.assertRaises(AssertionError):execute(checks,namespace)
+                        Path(name).write_bytes(raw)
+
+    def test_chromium_keeps_the_original_signer_and_tested_apk_definition_checker(self):
+        pin=next(node for node in self.workflow.body if isinstance(node,ast.If)
+                 and any(isinstance(value,ast.Constant) and value.value==CHROMIUM_BUILD_CHECKER
+                         for value in ast.walk(node)))
+        signer=next(node for node in self.workflow.body if isinstance(node,ast.Assert)
+                    and any(isinstance(value,ast.Constant) and value.value==ORIGINAL_SIGNER for value in ast.walk(node)))
+        restore=next(node for node in self.workflow.body if isinstance(node,ast.If)
+                     and any(isinstance(value,ast.Call) and ast.unparse(value.func)=='restore_verified'
+                             for value in ast.walk(node)))
+        self.assertLess(signer.lineno,restore.lineno)
+        module=types.ModuleType('chromium_release_publication')
+        module.restore_verified=Mock()
+        with tempfile.TemporaryDirectory() as temporary,directory(temporary),patch.dict(sys.modules,{module.__name__:module}):
+            raw=b'APK definition checker from tested source'
+            fake=types.SimpleNamespace(check_output=Mock(return_value=raw))
+            cert='Signer #1 certificate SHA-256 digest: '+ORIGINAL_SIGNER
+            tools=Path(temporary)/'sdk'
+            namespace=dict(m={'versionCode':114,'sourceCommit':SOURCE},pathlib=types.SimpleNamespace(Path=Path),
+                           subprocess=fake,release_files=set(),cert=cert,tools=tools)
+            with patch.object(sys,'path',sys.path.copy()):
+                execute([pin,signer,restore],namespace)
+                fake.check_output.assert_not_called()
+                module.restore_verified.assert_not_called()
+
+                namespace['m']['versionCode']=115
+                path=Path(CHROMIUM_BUILD_CHECKER);path.parent.mkdir(parents=True)
+                path.write_bytes(raw)
+                execute([pin,signer,restore],namespace)
+                fake.check_output.assert_called_once_with(['git','show',SOURCE+':'+CHROMIUM_BUILD_CHECKER])
+                module.restore_verified.assert_called_once_with(namespace['m'],Path('.'),tools)
+
+                module.restore_verified.reset_mock()
+                path.write_bytes(b'untrusted tools overlay checker')
+                with self.assertRaisesRegex(AssertionError,'checker differs from tested source'):
+                    execute([pin,signer,restore],namespace)
+                path.write_bytes(raw)
+                namespace['cert']='Signer #1 certificate SHA-256 digest: '+'e'*64
+                with self.assertRaises(AssertionError):
+                    execute([pin,signer,restore],namespace)
+                module.restore_verified.assert_not_called()
+
+                namespace['cert']=cert
+                module.restore_verified.side_effect=ValueError('wrong original-signed Chromium module')
+                with self.assertRaisesRegex(ValueError,'wrong original-signed Chromium module'):
+                    execute([signer,restore],namespace)
+
+    def test_chromium_publication_wires_exact_assets_and_verifies_download_before_update(self):
+        publish,update=workflow_tree(1),workflow_tree(2)
+        modules=next(node for node in publish.body if isinstance(node,ast.Assign)
+                     and any(isinstance(target,ast.Name) and target.id=='modules' for target in node.targets))
+        create=next(node for node in publish.body if isinstance(node,ast.If) and ast.unparse(node.test)=='existing is None')
+        download=next(node for node in update.body if isinstance(node,ast.If)
+                      and any(isinstance(value,ast.Call) and ast.unparse(value.func)=='verify_public'
+                              for value in ast.walk(node)))
+        advance=next(node for node in update.body if isinstance(node,ast.If)
+                     and ast.unparse(node.test)=='advances_update_channel(m)')
+        self.assertLess(download.lineno,advance.lineno)
+        module=types.ModuleType('chromium_release_publication')
+        module.verify_public=Mock()
+        stem='PocketChat-2.1.13-chromium-arm64-v8a'
+        assets=[stem+'--chromium.apk',stem+'.json',stem+'.sig']
+        manifest=dict(version='2.1.13',versionCode=114,sourceCommit=SOURCE,filename='PocketChat-2.1.13-gecko-arm64.apk')
+        staged_paths=[node for node in ast.walk(self.tool) if isinstance(node,ast.Assign)
+                      and any(isinstance(target,ast.Name) and target.id=='chromium_release_files' for target in node.targets)]
+        self.assertEqual(len(staged_paths),2)
+        names=Mock(return_value=assets)
+        stage_namespace=dict(manifest=manifest,public_names=names,
+                             RUNTIME_REPORT='chromium-ondemand-device-results.json',SIGNED_TAIL='chromium-signed-tail.bin')
+        execute(staged_paths,stage_namespace)
+        names.assert_called_once_with(manifest)
+        self.assertEqual(stage_namespace['chromium_release_files'],[
+            'chromium-ondemand-device-results.json','chromium-signed-tail.bin',*assets[1:]])
+        run=Mock()
+        namespace=dict(m=manifest,target=None,tag='v2.1.13-gecko',existing=None,candidate=False,beta=False,unstable=False,
+                       repository='owner/repo',subprocess=types.SimpleNamespace(run=run),advances_update_channel=lambda _:True)
+        with patch.dict(sys.modules,{module.__name__:module}),patch.object(sys,'path',sys.path.copy()):
+            execute([modules,create],namespace)
+            self.assertEqual(namespace['modules'],[])
+            self.assertEqual(run.call_args.args[0][4:8],[manifest['filename'],'release-manifest.json','--target',SOURCE])
+            execute([download,advance],namespace)
+            module.verify_public.assert_not_called()
+            run.assert_called_with(['python3','tools/publish-update-feed.py'],check=True)
+
+            manifest['versionCode']=115
+            with self.assertRaises(KeyError):
+                execute([modules,create],namespace)
+            manifest['chromiumDelivery']={'files':[{'file':name} for name in assets]}
+            execute([modules,create],namespace)
+            self.assertEqual(run.call_args.args[0][4:11],
+                             [manifest['filename'],'release-manifest.json',*assets,'--target',SOURCE])
+            timeline=[]
+            module.verify_public.side_effect=lambda value:timeline.append(('verify',value))
+            run.side_effect=lambda command,**_:timeline.append(('advance',command))
+            execute([download,advance],namespace)
+            self.assertEqual(timeline,[('verify',manifest),('advance',['python3','tools/publish-update-feed.py'])])
+            run.reset_mock()
+            module.verify_public.side_effect=ValueError('public Chromium bytes differ')
+            with self.assertRaisesRegex(ValueError,'public Chromium bytes differ'):
+                execute([download,advance],namespace)
+            run.assert_not_called()
 
     def test_actual_staged_checker_imports_without_repository_fallback(self):
         copies=[node for node in self.tool.body if isinstance(node,ast.If)
@@ -231,7 +357,8 @@ print('STAGED_SETTINGS_VERIFIER_IMPORTED')
                  and isinstance(node.args[0],ast.List)
                  and any(isinstance(value,ast.Constant) and value.value=='add' for value in node.args[0].elts)]
         self.assertEqual(len(git_add),1)
-        namespace=dict(version_code=102,manual_raw=None,authorization_raw=None,performance_files=[],manifest={'parts':[]})
+        namespace=dict(version_code=102,manual_raw=None,authorization_raw=None,performance_files=[],
+                       chromium_release_files=[],manifest={'parts':[]})
         paths=eval(compile(ast.Expression(git_add[0].args[0]),'actual-public-git-paths','eval'),namespace)
         for target in dependencies[1:]:self.assertIn(target,paths)
 
