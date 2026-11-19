@@ -650,7 +650,8 @@ public final class RouteFixture extends Instrumentation {
             if (browser != null) return browser;
             SystemClock.sleep(250);
         }
-        throw new IllegalStateException("Native Chromium browser was not created");
+        String status = onMain(() -> ((TextView)field(activity, "status")).getText().toString());
+        throw new IllegalStateException("Native Chromium browser was not created. Activity status: " + status);
     }
 
     private void requireMockRender(CefriumBrowser browser, LoopbackProxy mock, String title) throws Exception {

@@ -154,6 +154,7 @@ public final class CefriumBrowserActivity extends ThemedActivity {
       surface.addView(created.getSurfaceContainer(),new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,ViewGroup.LayoutParams.MATCH_PARENT));
       return true;
     }catch(IOException|RuntimeException|LinkageError unavailable){
+      if(BuildConfig.DEBUG)android.util.Log.w("Cefrium","PocketChat could not start the selected Chromium session",unavailable);
       retireBrowser();message("Chromium 组件运行失败，请重新打开此环境");return false;
     }
   }
