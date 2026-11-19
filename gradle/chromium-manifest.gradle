@@ -34,6 +34,7 @@ abstract class SplitChromiumManifest extends DefaultTask {
                 if (component.getAttributeNS(ANDROID, 'splitName') == 'chromium'
                         || name.startsWith('com.cefrium.') || name.startsWith('org.chromium.')
                         || name == 'local.pocketchat.CefriumBrowserActivity'
+                        || name == 'local.pocketchat.CefriumSetupProvider'
                         || name == 'com.google.android.gms.cast.framework.media.MediaIntentReceiver'
                         || name == 'com.google.android.datatransport.runtime.scheduling.jobscheduling.AlarmManagerSchedulerBroadcastReceiver') {
                     application.removeChild(component)

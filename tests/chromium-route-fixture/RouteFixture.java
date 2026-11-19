@@ -76,6 +76,9 @@ public final class RouteFixture extends Instrumentation {
         try {
             Context target = getTargetContext();
             PackageInfo info = verifyInstalledCandidate(target, result);
+            Class<?> setup = target.getClassLoader().loadClass(PACKAGE + ".CefriumSetupProvider");
+            require(Boolean.TRUE.equals(invoke(setup, null, "isReady", new Class<?>[0])),
+                    "Chromium Java lifecycle was not prepared before instrumentation");
             String nonce = arguments.getString("runNonce", "");
             require(nonce.matches("[0-9a-f]{32}"), "Missing fixture nonce");
             result.putString("runNonce", nonce);

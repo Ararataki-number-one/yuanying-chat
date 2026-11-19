@@ -14,6 +14,8 @@
     <application tools:remove="android:appComponentFactory">
         <!-- Start Chromium only after verifying the chosen environment and installed module. -->
         <provider android:name="com.cefrium.CefriumInitProvider" tools:node="remove" />
+        <provider android:name="local.pocketchat.CefriumSetupProvider"
+            android:authorities="${applicationId}.cefrium-setup" android:exported="false" />
         <!-- Keep these feature-only dependencies out of the base's eager startup path. -->
         <provider android:name="com.google.mlkit.common.internal.MlKitInitProvider" tools:node="remove" />
         <provider android:name="com.google.firebase.provider.FirebaseInitProvider" tools:node="remove" />

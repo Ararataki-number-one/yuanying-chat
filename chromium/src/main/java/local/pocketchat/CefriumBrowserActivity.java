@@ -105,6 +105,7 @@ public final class CefriumBrowserActivity extends ThemedActivity {
     files.navigation(browser);message("");browser.loadUrl(url);
   }
   private boolean startEngine(){
+    if(!CefriumSetupProvider.isReady()){message("Chromium 组件运行失败，请重新打开此环境");return false;}
     try{
       ChromiumProfileCleanup.holdEngine(this);
       CefriumRoute.configureEngine();

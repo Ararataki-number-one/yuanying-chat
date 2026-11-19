@@ -66,7 +66,8 @@ class StagingTest(unittest.TestCase):
                                      b'debuggable(0x0101000f)=false\n        A: android:extractNativeLibs(0x010104ea)=false'),
                       tree().replace(b'value(0x01010024)=true', b'value(0x01010024)="true"'),
                       tree().replace(b'CHROMIUM_DELIVERY', b'SOME_OTHER_FLAG'),
-                      tree() + b'\n      E: provider\n        A: android:name="com.cefrium.CefriumInitProvider"'):
+                      tree() + b'\n      E: provider\n        A: android:name="com.cefrium.CefriumInitProvider"',
+                      tree() + b'\n      E: provider\n        A: android:name="local.pocketchat.CefriumSetupProvider"'):
             with self.subTest(value=value), patch.object(stage, 'apk_command', return_value=value):
                 with self.assertRaises(ValueError):
                     stage.manifest_role('aapt2', self.base, '2.1.13', 115, 'arm64-v8a')
@@ -81,10 +82,11 @@ class StagingTest(unittest.TestCase):
                 fake_apk(self.base, {**members, unexpected: b'Chromium'})
                 with self.assertRaisesRegex(ValueError, 'found in the Gecko base'):
                     stage.check_payload(self.base, '', 'arm64-v8a')
-        with patch.object(stage, 'dex_definitions', return_value={'Lcom/cefrium/Cefrium;'}):
-            fake_apk(self.base, members)
-            with self.assertRaisesRegex(ValueError, 'found in the Gecko base'):
-                stage.check_payload(self.base, '', 'arm64-v8a')
+        for name in ('Lcom/cefrium/Cefrium;', 'Llocal/pocketchat/CefriumSetupProvider;'):
+            with self.subTest(name=name), patch.object(stage, 'dex_definitions', return_value={name}):
+                fake_apk(self.base, members)
+                with self.assertRaisesRegex(ValueError, 'found in the Gecko base'):
+                    stage.check_payload(self.base, '', 'arm64-v8a')
 
     def test_feature_resources_require_exact_uncompressed_bytes(self):
         resource = next(iter(stage.ASSET_SHA))

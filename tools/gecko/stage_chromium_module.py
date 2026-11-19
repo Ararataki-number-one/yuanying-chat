@@ -28,7 +28,8 @@ CONFIG_NAME = re.compile(r'chromium\.config\.[A-Za-z0-9_]{1,60}')
 ABI_CONFIGS = {'arm64_v8a', 'x86_64', 'armeabi', 'armeabi_v7a', 'x86', 'riscv64', 'mips', 'mips64'}
 DEX_NAME = re.compile(r'classes(?:[2-9]|[1-9][0-9]+)?\.dex')
 ENGINE_CLASSES = ('Lcom/cefrium/', 'Lorg/chromium/base/', 'Lorg/chromium/content/',
-                  'Lorg/chromium/content_public/', 'Lorg/chromium/net/')
+                  'Lorg/chromium/content_public/', 'Lorg/chromium/net/',
+                  'Llocal/pocketchat/CefriumSetupProvider;')
 PEM_CERT = re.compile(rb'-----BEGIN CERTIFICATE-----\r?\n.*?-----END CERTIFICATE-----', re.S)
 # Cefrium 0.21.0 Libre binaries and resources from the verified SDK artifacts.
 ENGINE_SHA = {
@@ -114,7 +115,8 @@ def manifest_role(aapt2, apk, version, version_code, abi):
         require(app.get('extractNativeLibs', 'true') == 'true', 'Chromium installation requires extracted native libraries')
         capability = [entry.get('value') for entry in metadata if entry.get('name') == DELIVERY]
         require(capability == ['true'], 'Gecko base does not advertise on-demand Chromium delivery')
-        require(not re.search(r'com[.]cefrium[.]|org[.]chromium[.](?:base|content|content_public|net)[.]', xml),
+        require(not re.search(r'com[.]cefrium[.]|org[.]chromium[.](?:base|content|content_public|net)[.]'
+                              r'|local[.]pocketchat[.]CefriumSetupProvider', xml),
                 'Chromium component declared in the Gecko base APK')
     elif role == 'chromium':
         require(BASE_MIN_SDK <= int(minimum) <= MODULE_MIN_SDK and root.get('isFeatureSplit') == 'true'

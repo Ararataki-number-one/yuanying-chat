@@ -20,6 +20,14 @@ echo no | "$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager" create avd --force
 "$ANDROID_HOME/emulator/emulator" -avd chromiumdelivery -no-window -no-audio -no-snapshot -no-boot-anim -no-metrics -accel on -port 5554 -gpu swiftshader -memory 4096 -cores 4 > "$work/$android-emulator.log" 2>&1 &
 emulator_pid=$!
 stop_guest() {
+  local status=$?
+  if (( status != 0 )); then
+    timeout 15 "${adb_device[@]}" logcat -d -b crash -t 1500 -v threadtime > "$work/$android-crash.log" 2>&1 || true
+    timeout 15 "${adb_device[@]}" logcat -d -b main -b system -t 3000 -v threadtime \
+      AndroidRuntime:V libc:V linker:V DEBUG:V chromium:V Cefrium:V cefrium:V \
+      PocketChatCefriumRouteFixture:V ActivityManager:I ActivityTaskManager:I '*:S' \
+      > "$work/$android-native-logcat.txt" 2>&1 || true
+  fi
   "${adb_device[@]}" emu kill >/dev/null 2>&1 || kill "$emulator_pid" 2>/dev/null || true
   wait "$emulator_pid" || true
   # This job owns these three fresh synthetic guest directories. Keep logs outside them.
@@ -30,12 +38,37 @@ timeout 180 "${adb_device[@]}" wait-for-device
 timeout 180 bash -c 'until [ "$("$1" -s "$2" shell getprop sys.boot_completed | tr -d "\r")" = 1 ] && "$1" -s "$2" shell pm path android | grep -q "^package:"; do sleep 2; done' _ "$adb_bin" "$serial"
 test "$("${adb_device[@]}" shell getprop ro.kernel.qemu | tr -d '\r')" = 1
 test "$("${adb_device[@]}" shell getprop ro.build.version.sdk | tr -d '\r')" = "$sdk"
-"${adb_device[@]}" shell pm list packages > "$work/$android-packages.txt"
-for provider in com.android.webview com.google.android.webview com.android.chrome; do
-  if grep -Fxq "package:$provider" "$work/$android-packages.txt"; then
-    "${adb_device[@]}" shell pm disable-user --user 0 "$provider"
-  fi
-done
+# Android may automatically re-enable the default provider once. Check that the
+# guest has no current WebView provider before exercising the independent engine.
+webview_state="$work/$android-webview.txt"
+if ! timeout 90 bash -c '
+  set -euo pipefail
+  adb_device=("$1" -s "$2")
+  state="$3"
+  stable=0
+  while true; do
+    changed=0
+    for provider in com.android.webview com.google.android.webview com.android.chrome; do
+      if "${adb_device[@]}" shell pm list packages -e --user 0 "$provider" |
+          tr -d "\r" | grep -Fx "package:$provider" >/dev/null; then
+        "${adb_device[@]}" shell pm disable-user --user 0 "$provider"
+        changed=1
+      fi
+    done
+    "${adb_device[@]}" shell dumpsys webviewupdate > "$state"
+    if (( changed == 0 )) && grep -Eiq "Current WebView package.*(null|none)" "$state"; then
+      stable=$((stable + 1))
+      if (( stable == 2 )); then exit 0; fi
+    else
+      stable=0
+    fi
+    sleep 2
+  done
+' _ "$adb_bin" "$serial" "$webview_state"; then
+  if [[ -f "$webview_state" ]]; then cat "$webview_state" >&2; fi
+  echo 'No stable system-WebView-free state was observed within 90 seconds.' >&2
+  exit 1
+fi
 "${adb_device[@]}" shell dumpsys webviewupdate | tee "$work/$android-webview.txt"
 grep -Ei 'Current WebView package.*(null|none)' "$work/$android-webview.txt"
 "${adb_device[@]}" shell cmd connectivity airplane-mode enable
