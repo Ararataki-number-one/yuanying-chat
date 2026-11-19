@@ -1,6 +1,7 @@
 package local.pocketchat.chromiumfixture;
 
 import android.app.Activity;
+import android.app.Application;
 import android.app.Instrumentation;
 import android.content.Context;
 import android.content.Intent;
@@ -16,6 +17,7 @@ import android.os.Bundle;
 import android.os.ParcelFileDescriptor;
 import android.os.SystemClock;
 import android.util.Log;
+import android.webkit.WebView;
 import android.widget.TextView;
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -41,6 +43,8 @@ import java.util.concurrent.FutureTask;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import javax.net.ssl.KeyManagerFactory;
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.TrustManagerFactory;
@@ -54,11 +58,25 @@ public final class RouteFixture extends Instrumentation {
     private static final String ENTRY = PACKAGE + ".MainActivity";
     private static final String CHROMIUM = PACKAGE + ".CefriumBrowserActivity";
     private static final String ORIGIN = "https://pocketchat-route-fixture.invalid";
+    private static final String API37_MODE = "api37-process-webview-disabled";
+    private static final Pattern CURRENT_WEBVIEW = Pattern.compile(
+            "(?m)^\\s*Current WebView package \\(name, version\\): \\(([a-zA-Z0-9_]+(?:[.][a-zA-Z0-9_]+)+), [^\\r\\n]+\\)\\s*$");
     private Bundle arguments;
+    private boolean api37WebViewDisabled;
 
     @Override public void onCreate(Bundle arguments) {
         super.onCreate(arguments);
         this.arguments = arguments;
+        if (API37_MODE.equals(arguments.getString("fixtureMode"))) {
+            Context target = getTargetContext();
+            require(Build.VERSION.SDK_INT == 37 && "ranchu".equals(Build.HARDWARE)
+                            && "x86_64".equals(Build.SUPPORTED_ABIS[0]) && PACKAGE.equals(target.getPackageName())
+                            && PACKAGE.equals(Application.getProcessName())
+                            && (target.getApplicationInfo().flags & ApplicationInfo.FLAG_DEBUGGABLE) != 0,
+                    "API 37 process-level WebView control requires the disposable debug app process");
+            WebView.disableWebView();
+            api37WebViewDisabled = true;
+        }
         start();
     }
 
@@ -83,8 +101,16 @@ public final class RouteFixture extends Instrumentation {
             require(nonce.matches("[0-9a-f]{32}"), "Missing fixture nonce");
             result.putString("runNonce", nonce);
             String fixtureMode = arguments.getString("fixtureMode", "standard");
-            require(noSystemWebView(), "A system WebView provider is active");
-            result.putBoolean("noSystemWebViewProvider", true);
+            String stockWebView = null;
+            if (api37WebViewDisabled) {
+                stockWebView = enabledSystemWebViewProvider();
+                result.putString("scope", "api37-debug-stock-webview-process-disabled");
+                result.putString("systemWebViewProviderPackage", stockWebView);
+                result.putBoolean("webViewDisabledForTestProcess", true);
+            } else {
+                require(noSystemWebView(), "A system WebView provider is active");
+            }
+            result.putBoolean("noSystemWebViewProvider", !api37WebViewDisabled);
             require(hasInternetCapableNetwork(target), "Fixture needs a test-guest default Internet network");
             result.putBoolean("defaultNetworkInitiallyPresent", true);
             result.putInt("sdk", Build.VERSION.SDK_INT);
@@ -106,7 +132,7 @@ public final class RouteFixture extends Instrumentation {
                 finish(Activity.RESULT_OK, result);
                 return;
             }
-            require("standard".equals(fixtureMode), "Unexpected production fixture mode");
+            require("standard".equals(fixtureMode) || api37WebViewDisabled, "Unexpected production fixture mode");
 
             exerciseProtectedProxy(target, result, nonce, LoopbackProxy.Kind.HTTP, null);
             exerciseProtectedProxy(target, result, nonce, LoopbackProxy.Kind.SOCKS, null);
@@ -152,7 +178,12 @@ public final class RouteFixture extends Instrumentation {
                         "Navigation after network loss did not remain closed");
                 result.putString("visibleRouteStatus", blocked);
                 result.putBoolean("navigationAfterLossWasBlocked", true);
-                require(noSystemWebView(), "The WebView provider changed during Chromium test");
+                if (api37WebViewDisabled) {
+                    require(stockWebView.equals(enabledSystemWebViewProvider()),
+                            "The stock WebView provider changed during the API 37 test");
+                } else {
+                    require(noSystemWebView(), "The WebView provider changed during Chromium test");
+                }
                 result.putBoolean("androidExecution", true);
             } finally {
                 onMain(() -> {
@@ -694,6 +725,16 @@ public final class RouteFixture extends Instrumentation {
     private boolean noSystemWebView() throws Exception {
         return shell("dumpsys webviewupdate")
                 .matches("(?is).*Current WebView package[^\\n]*(?:null|none).*");
+    }
+
+    private String enabledSystemWebViewProvider() throws Exception {
+        Matcher selected = CURRENT_WEBVIEW.matcher(shell("dumpsys webviewupdate"));
+        require(selected.find(), "The disposable API 37 image did not report a stock WebView provider");
+        String provider = selected.group(1);
+        require(shell("pm list packages -e --user 0 " + provider).lines()
+                        .anyMatch(line -> line.trim().equals("package:" + provider)),
+                "The stock WebView provider is not enabled for the test user");
+        return provider;
     }
 
     private void disconnectGuestNetwork() throws Exception {

@@ -1593,19 +1593,31 @@ jobs:
           work/chromium-delivery/host-report.json
           work/chromium-delivery/renderer.txt
           work/chromium-delivery/android13-emulator.log
-          work/chromium-delivery/android17-emulator.log
           work/chromium-delivery/android13-crash.log
           work/chromium-delivery/android13-native-logcat.txt
-          work/chromium-delivery/android17-crash.log
-          work/chromium-delivery/android17-native-logcat.txt
           work/chromium-delivery/android13-webview.txt
-          work/chromium-delivery/android17-webview.txt
-          work/chromium-delivery/android17-image.txt
           work/chromium-delivery/emulator-version.txt
-          work/chromium-delivery/android17-smoke.json
           work/chromium-delivery/wire-vpn.txt
           work/chromium-delivery/wire-internal.txt
           work/chromium-delivery/build.log
+        if-no-files-found: warn
+        retention-days: 7
+        compression-level: 0
+    - name: Preserve separate Android 17 compatibility evidence
+      if: always()
+      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+      with:
+        name: browser-${{ github.run_id }}-${{ github.run_attempt }}-chromium-api37-compatibility
+        path: |
+          work/chromium-delivery/android17-emulator.log
+          work/chromium-delivery/android17-crash.log
+          work/chromium-delivery/android17-native-logcat.txt
+          work/chromium-delivery/android17-webview.txt
+          work/chromium-delivery/android17-image.txt
+          work/chromium-delivery/android17-smoke.json
+          work/chromium-delivery/android17-smoke.logcat.txt
+          work/chromium-delivery/android17-renderer.txt
+          work/chromium-delivery/android17-compatibility-results.json
         if-no-files-found: warn
         retention-days: 7
         compression-level: 0
