@@ -148,7 +148,13 @@ jobs:
         traced = prefix.replace(tags, captured, 1)
         assert traced.replace(captured, tags, 1) == prefix
         assert sha256(traced).hexdigest() == '6132b41543ff7ccfa4d352fd3edef5a1d7dd412136056de63a3bf075c7cfd9b4'
-        script.write_bytes(traced)
+        instrument = b'timeout 300 "${adb_device[@]}" shell am instrument -w '
+        reader = b'timeout 325 "${adb_device[@]}" logcat -b main -b system -v threadtime -T 1 AndroidRuntime:V libc:V linker:V DEBUG:V chromium:V Cefrium:V cefrium:V cr_LibraryLoader:V cr_ApkAssets:V cr_BundleUtils:V cr_ChildProcessConn:V PocketChatCefriumRouteFixture:V ActivityManager:I ActivityTaskManager:I \'*:S\' > "$work/android13-startup-live.log" 2>&1 &\nlive_log_pid=$!\nsleep 1\nkill -0 "$live_log_pid"\n'
+        assert traced.count(instrument) == 1
+        live = traced.replace(instrument, reader + instrument, 1)
+        assert live.replace(reader, b'', 1) == traced
+        assert sha256(live).hexdigest() == '8ec7ba291a200efda09c3df0d59b5074e6c9ee7e493bc033630394beda408fba'
+        script.write_bytes(live)
         subprocess.run(['bash', '-n', script], check=True)
         PYCODE
         bash "$RUNNER_TEMP/pocketchat-android13-startup-trace.sh" 33 routes
@@ -170,6 +176,7 @@ jobs:
           work/chromium-delivery/android13-emulator.log
           work/chromium-delivery/android13-crash.log
           work/chromium-delivery/android13-native-logcat.txt
+          work/chromium-delivery/android13-startup-live.log
           work/chromium-delivery/android13-webview.txt
           work/chromium-delivery/build.log
         if-no-files-found: warn
