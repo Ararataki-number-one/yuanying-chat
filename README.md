@@ -1,13 +1,13 @@
 # 元婴期院士 · Yuanying Chat
 
-## 最新正式版 2.1.11（113）
+## 最新正式版 2.1.12（114）
 
-本版改进网页临时文件下载和 Gecko 附件选择。切换页面或取消下载时会停止读取旧文件，分段下载会核对写入位置。从系统文件选择器返回网页时，附件错误会按具体原因提示。
+本版修复 Gecko 将截断文档交给保存流程的问题，两个内核也会识别服务器明确返回的无内容响应。应用内更新遇到暂时故障时会保留已下载的进度，续传记录损坏后可以重新下载。设置页已移除停用的后台回复提醒。
 
-- [下载 2.1.11 正式安装包（Android ARM64）](https://github.com/Ararataki-number-one/yuanying-chat/releases/download/v2.1.11-gecko/PocketChat-2.1.11-gecko-arm64.apk)
-- [正式发布说明与校验信息](https://github.com/Ararataki-number-one/yuanying-chat/releases/tag/v2.1.11-gecko)
-- [2.1.11 对应源码](https://github.com/Ararataki-number-one/yuanying-chat/tree/v2.1.11-gecko)
-- [变更说明](https://github.com/Ararataki-number-one/yuanying-chat/blob/v2.1.11-gecko/docs/RELEASE-v2.1.11.md)
+- [下载 2.1.12 正式安装包（Android ARM64）](https://github.com/Ararataki-number-one/yuanying-chat/releases/download/v2.1.12-gecko/PocketChat-2.1.12-gecko-arm64.apk)
+- [正式发布说明与校验信息](https://github.com/Ararataki-number-one/yuanying-chat/releases/tag/v2.1.12-gecko)
+- [2.1.12 对应源码](https://github.com/Ararataki-number-one/yuanying-chat/tree/v2.1.12-gecko)
+- [变更说明](https://github.com/Ararataki-number-one/yuanying-chat/blob/v2.1.12-gecko/docs/RELEASE-v2.1.12.md)
 - [应用内更新清单](https://raw.githubusercontent.com/Ararataki-number-one/yuanying-chat/app-updates/latest.json)
 
 安装包沿用原应用签名。使用原签名正式版的用户可以覆盖升级，开发和构建请使用上方的源码标签。
