@@ -96,9 +96,15 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p work/browser-maintenance-dependencies
-          curl -fsSL --retry 3 https://repo.maven.apache.org/maven2/org/json/json/20250517/json-20250517.jar -o work/browser-maintenance-dependencies/json.jar
+          curl -fsSL --retry 2 --retry-max-time 15 --connect-timeout 8 --max-time 25 \
+            https://repo.maven.apache.org/maven2/org/json/json/20250517/json-20250517.jar -o work/browser-maintenance-dependencies/json.jar ||
+            curl -fsSL --retry 2 --retry-max-time 15 --connect-timeout 8 --max-time 25 \
+              https://maven-central.storage-download.googleapis.com/maven2/org/json/json/20250517/json-20250517.jar -o work/browser-maintenance-dependencies/json.jar
           echo '3ea61b2a06e31edf1c91134fe9106b0ebb16628be169f3db75bc7a2b06b45796  work/browser-maintenance-dependencies/json.jar' | sha256sum -c -
-          curl -fsSL --retry 3 https://repo.maven.apache.org/maven2/com/vaadin/external/google/android-json/0.0.20131108.vaadin1/android-json-0.0.20131108.vaadin1.jar -o work/browser-maintenance-dependencies/android-json.jar
+          curl -fsSL --retry 2 --retry-max-time 15 --connect-timeout 8 --max-time 25 \
+            https://repo.maven.apache.org/maven2/com/vaadin/external/google/android-json/0.0.20131108.vaadin1/android-json-0.0.20131108.vaadin1.jar -o work/browser-maintenance-dependencies/android-json.jar ||
+            curl -fsSL --retry 2 --retry-max-time 15 --connect-timeout 8 --max-time 25 \
+              https://maven-central.storage-download.googleapis.com/maven2/com/vaadin/external/google/android-json/0.0.20131108.vaadin1/android-json-0.0.20131108.vaadin1.jar -o work/browser-maintenance-dependencies/android-json.jar
           echo 'dfb7bae2f404cfe0b72b4d23944698cb716b7665171812a0a4d0f5926c0fac79  work/browser-maintenance-dependencies/android-json.jar' | sha256sum -c -
       - name: Check current production behavior and compiled negative controls
         shell: bash

@@ -86,6 +86,33 @@ class ReleasedWorkflowComparisonTests(unittest.TestCase):
                 negative += 1
         self.assertEqual(negative, 16)
 
+    def test_maven_fallback_only_changes_four_reviewed_downloads(self):
+        old = yaml.safe_load(historical_bytes('.github/workflows/gecko-integration.yml'))
+        self.assertEqual(sum(map(len, comparison.MAVEN_DOWNLOADS.values())), 4)
+        for name, downloads in comparison.MAVEN_DOWNLOADS.items():
+            current = self.selected(self.current, 'build', name)
+            previous = self.selected(old, 'build', name)
+            self.assertEqual(comparison.released_toolchain_step(current), previous)
+            for coordinate, output, digest in downloads:
+                with self.subTest(coordinate=coordinate, output=output):
+                    mirror = 'https://maven-central.storage-download.googleapis.com/maven2/' + coordinate
+                    self.assertEqual(current['run'].count(mirror + ' -o ' + output), 1)
+                    self.assertEqual(current['run'].count(digest + '  ' + output), 1)
+                    for before, after in ((mirror, 'https://unreviewed.invalid/' + coordinate),
+                                          (mirror + ' -o ' + output, mirror + ' -o work/changed.jar'),
+                                          (digest, '0' * 64)):
+                        changed = copy.deepcopy(self.current)
+                        step = self.selected(changed, 'build', name)
+                        step['run'] = step['run'].replace(before, after, 1)
+                        self.assertNotEqual(step, current)
+                        with self.assertRaises(AssertionError):
+                            self.run_current_guard(changed)
+                    changed = copy.deepcopy(self.current)
+                    steps = changed['jobs']['build']['steps']
+                    steps[steps.index(self.selected(changed, 'build', name))] = previous
+                    with self.assertRaises(AssertionError):
+                        self.run_current_guard(changed)
+
     def test_only_exact_android_timeout_can_use_its_former_comparison_value(self):
         reviewed = self.current['jobs']['android']['timeout-minutes']
         self.assertEqual(comparison.released_job_field_input('android', 'timeout-minutes', reviewed), 40)
