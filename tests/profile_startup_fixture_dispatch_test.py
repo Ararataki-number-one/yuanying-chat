@@ -4,6 +4,7 @@ The pre-fix fixture only overrides startupProbe(3 args), while production search
 calls startupProbe(4 args). Execute the real dispatcher, rather than infer a
 successful hook from its signature. The native HEAD/time/cleanup checks stay
 byte-for-byte preserved outside the two override/forwarding adaptations.
+The separate optional Chromium SOCKS fixture is reviewed independently.
 """
 import hashlib
 import importlib.util
@@ -25,15 +26,46 @@ OLD_OVERRIDE='@Override RouteProbe startupProbe(String name,int index,String epo
 NEW_OVERRIDE='@Override RouteProbe startupProbe(String name,int index,String epoch,RecoveryRoute recovery){'
 OLD_FORWARD='super.startupProbe(name,index,epoch)'
 NEW_FORWARD='super.startupProbe(name,index,epoch,recovery)'
+AUTH_SOCKS='  static final class AuthSocks extends NetworkOptimizationIntegrationActivity.LoopServer {'
+ORIGINAL_AUTH_SOCKS_SHA256='c029f837c9e46f67ea1a5158b0977d81522e1cbb44addab3553555e163a8ee29'
+CHROMIUM_AUTH_SOCKS_SHA256='d83c85bb1c8d0b58f0261afc52c116d95b7bbaf11b115f4b6c4cfaef07c32cfb'
+ORIGINAL_AUTH_SOCKS_CONSTRUCTOR=(
+    '    AuthSocks(String role,Integer... ports)throws IOException'
+    '{this.role=role;allowed=new HashSet<>(Arrays.asList(ports));}\n'
+)
+ORIGINAL_AUTH_SOCKS_DESTINATION='''      if(!"127.0.0.1".equals(host)||!allowed.contains(port)){denied.incrementAndGet();out.write(new byte[]{5,2,0,1,0,0,0,0,0,0});out.flush();return;}
+      try(Socket upstream=new Socket(host,port)){sockets.add(upstream);connections.incrementAndGet();Thread.sleep(10);out.write(new byte[]{5,0,0,1,127,0,0,1,0,0});out.flush();client.setSoTimeout(0);Future<?> reverse=pool.submit(()->NetworkOptimizationIntegrationActivity.Socks.copy(upstream,client));try{NetworkOptimizationIntegrationActivity.Socks.copy(client,upstream);}finally{reverse.cancel(true);sockets.remove(upstream);}}
+    }
+  }'''
 spec=importlib.util.spec_from_file_location('startup_dispatch_extract',HELPER)
 helper=importlib.util.module_from_spec(spec);spec.loader.exec_module(helper)
 block=helper.block
 sha=lambda raw:hashlib.sha256(raw).hexdigest()
 
 
+def fixture_before_chromium_auth_socks(current):
+    if current.count(AUTH_SOCKS)!=1:
+        raise ValueError('The native fixture must contain one AuthSocks class')
+    reviewed=block(current,AUTH_SOCKS)
+    reviewed_hash=sha(reviewed.encode())
+    if reviewed_hash==ORIGINAL_AUTH_SOCKS_SHA256:
+        return current
+    if reviewed_hash!=CHROMIUM_AUTH_SOCKS_SHA256:
+        raise ValueError('Native AuthSocks must match the exact reviewed Chromium fixture')
+    constructor=reviewed.index('    final ChromiumOrigin chromiumOrigin;')
+    handler=reviewed.index('    void handle(Socket client)throws Exception{')
+    destination=reviewed.index('      boolean mapped=')
+    restored=(reviewed[:constructor]+ORIGINAL_AUTH_SOCKS_CONSTRUCTOR
+              +reviewed[handler:destination]+ORIGINAL_AUTH_SOCKS_DESTINATION)
+    if sha(restored.encode())!=ORIGINAL_AUTH_SOCKS_SHA256:
+        raise ValueError('The reviewed Chromium AuthSocks inverse did not restore the original class')
+    return current.replace(reviewed,restored,1)
+
+
 def original_fixture(current):
     if sha(current.encode())==ORIGINAL_FIXTURE_SHA256:
         return current
+    current=fixture_before_chromium_auth_socks(current)
     if current.count(NEW_OVERRIDE)!=1 or current.count(NEW_FORWARD)!=1:
         raise ValueError('Exact startup fixture adapter/forward is missing or ambiguous')
     old=current.replace(NEW_OVERRIDE,OLD_OVERRIDE,1).replace(NEW_FORWARD,OLD_FORWARD,1)
@@ -198,6 +230,19 @@ class StartupFixtureDispatchTest(unittest.TestCase):
     def test_only_the_fixture_override_and_super_forwarding_change(self):
         current=FIXTURE.read_text();self.assertEqual(current.count(NEW_OVERRIDE),1);self.assertEqual(current.count(NEW_FORWARD),1)
         self.assertEqual(sha(original_fixture(current).encode()),ORIGINAL_FIXTURE_SHA256)
+
+    def test_only_the_reviewed_chromium_proxy_fixture_is_inverted(self):
+        current=FIXTURE.read_text()
+        self.assertEqual(sha(block(current,AUTH_SOCKS).encode()),CHROMIUM_AUTH_SOCKS_SHA256)
+        previous=fixture_before_chromium_auth_socks(current)
+        self.assertEqual(sha(block(previous,AUTH_SOCKS).encode()),ORIGINAL_AUTH_SOCKS_SHA256)
+        self.assertEqual(fixture_before_chromium_auth_socks(previous),previous)
+        for old,new in [('port!=8081','port!=8082'),
+                        ('chromiumOrigin.host.equals(host)','!chromiumOrigin.host.equals(host)'),
+                        (AUTH_SOCKS,AUTH_SOCKS+'\n'+AUTH_SOCKS)]:
+            self.assertEqual(current.count(old),1)
+            with self.subTest(mutation=old),self.assertRaises(ValueError):
+                original_fixture(current.replace(old,new,1))
 
     def test_native_head_timing_and_assertion_mutations_are_rejected(self):
         current=FIXTURE.read_text()

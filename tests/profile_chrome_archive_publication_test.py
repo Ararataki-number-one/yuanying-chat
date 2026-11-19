@@ -166,8 +166,9 @@ class ArchiveTransportPublicationTests(unittest.TestCase):
                    and node.value.args and isinstance(node.value.args[0], ast.List)
                    and [getattr(v, 'value', None) for v in node.value.args[0].elts[:2]] == ['git', 'add']), 'real release git-add')
         environment = dict(os.environ, GIT_INDEX_FILE=str(self.base/'signed-index'), GIT_WORK_TREE=str(stage))
+        # This legacy release does not stage optional Chromium assets.
         namespace.update(env=environment, subprocess=subprocess, manual_raw=None,
-                         authorization_raw=None, manifest={'parts': []})
+                         authorization_raw=None, chromium_release_files=[], manifest={'parts': []})
         arguments = eval(compile(ast.Expression(add.value.args[0]), str(PUBLISHER), 'eval'), namespace)
         for name in arguments[4:]:
             if not (stage/name).exists():

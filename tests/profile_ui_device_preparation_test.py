@@ -212,6 +212,29 @@ class BroadcastPreparationTests(unittest.TestCase):
         self.assertIn('--broadcast-idle-timeout 120 --timeout 45', (ROOT/'.github/workflows/browser-workspace-validation.yml').read_text())
 
 
+def workspace_before_reviewed_maven_downloads(raw):
+    """Restore two exact download commands for the workspace's historical comparison."""
+    inputs = (
+        ('org/json/json/20250517/json-20250517.jar', 'json.jar',
+         '3ea61b2a06e31edf1c91134fe9106b0ebb16628be169f3db75bc7a2b06b45796'),
+        ('com/vaadin/external/google/android-json/0.0.20131108.vaadin1/android-json-0.0.20131108.vaadin1.jar',
+         'android-json.jar', 'dfb7bae2f404cfe0b72b4d23944698cb716b7665171812a0a4d0f5926c0fac79'),
+    )
+    curl = 'curl -fsSL --retry 2 --retry-max-time 15 --connect-timeout 8 --max-time 25'
+    primary = 'https://repo.maven.apache.org/maven2/'
+    mirror = 'https://maven-central.storage-download.googleapis.com/maven2/'
+    for coordinates, filename, digest in inputs:
+        output = 'work/browser-maintenance-dependencies/' + filename
+        checksum = f"          echo '{digest}  {output}' | sha256sum -c -\n"
+        reviewed = (f'          {curl} \\\n            {primary}{coordinates} -o {output} ||\n'
+                    f'            {curl} \\\n              {mirror}{coordinates} -o {output}\n' + checksum)
+        if raw.count(reviewed) != 1:
+            raise ValueError('Expected one exact workspace Maven fallback and checksum for ' + filename)
+        previous = f'          curl -fsSL --retry 3 {primary}{coordinates} -o {output}\n' + checksum
+        raw = raw.replace(reviewed, previous, 1)
+    return raw
+
+
 class WorkspaceCapacityTests(unittest.TestCase):
     """Run the unchanged full-workflow program at real filesystem/OS boundaries.
 
@@ -289,10 +312,11 @@ class WorkspaceCapacityTests(unittest.TestCase):
         self.assertEqual(hashlib.sha256(self.program.encode()).hexdigest(),
                          '6cceab4542155328df5f61444742de7d289c9f5ee59b937fca93dd82218aaa63')
         # C4 b0f0ffb5758b943ccafa082569e7c767438d4d2a whole workflow bytes.
-        # Undo only this resource-provisioning change; every old action/budget remains.
+        # Undo only the reviewed Maven and resource-provisioning differences.
+        before=workspace_before_reviewed_maven_downloads(self.raw)
         candidate=", 'candidate/browser-*'"
-        self.assertEqual(self.raw.count(candidate),1)
-        before=self.raw.replace(candidate,'',1)
+        self.assertEqual(before.count(candidate),1)
+        before=before.replace(candidate,'',1)
         branch_addition=", 'release/browser-2.1.8', 'release/browser-2.1.8-*'"
         self.assertEqual(before.count(branch_addition),1)
         before=before.replace(branch_addition,'',1)
@@ -310,6 +334,20 @@ class WorkspaceCapacityTests(unittest.TestCase):
         before=before.replace(' -cores 4 ',' -cores 2 ',1)
         self.assertEqual(hashlib.sha256(before.encode()).hexdigest(),
                          '4b501a5f01a1bc30a32f5fcecf74f4dc07365c21b843fa7e88bd2b4883db8f5d')
+
+    def test_workspace_historical_comparison_requires_exact_maven_fallbacks(self):
+        replacements = (
+            ('https://maven-central.storage-download.googleapis.com/maven2/', 'https://other.invalid/maven2/'),
+            ('-o work/browser-maintenance-dependencies/android-json.jar',
+             '-o work/browser-maintenance-dependencies/another.jar'),
+            ('3ea61b2a06e31edf1c91134fe9106b0ebb16628be169f3db75bc7a2b06b45796', '0'*64),
+        )
+        for before, after in replacements:
+            with self.subTest(value=before), self.assertRaisesRegex(ValueError, 'exact workspace Maven fallback'):
+                self.assertIn(before, self.raw)
+                workspace_before_reviewed_maven_downloads(self.raw.replace(before, after, 1))
+        with self.assertRaisesRegex(ValueError, 'exact workspace Maven fallback'):
+            workspace_before_reviewed_maven_downloads(workspace_before_reviewed_maven_downloads(self.raw))
 
     def test_actual_capacity_guards_precede_launch_and_original_home_with_pinned_adb(self):
         run=self.setup

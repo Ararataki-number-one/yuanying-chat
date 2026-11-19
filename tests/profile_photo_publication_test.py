@@ -191,8 +191,9 @@ class PhotoPublicationGateTests(unittest.TestCase):
         git_root = self.base/'git-root'
         subprocess.run(['git', 'init', '-q', str(git_root)], check=True, capture_output=True)
         environment = dict(os.environ, GIT_INDEX_FILE=str(self.base/'publication-index'), GIT_WORK_TREE=str(stage))
+        # This legacy release does not stage optional Chromium assets.
         namespace.update(root=git_root, env=environment, subprocess=subprocess, manual_raw=None,
-                         authorization_raw=None, manifest={'parts': []})
+                         authorization_raw=None, chromium_release_files=[], manifest={'parts': []})
         arguments = eval(compile(ast.Expression(add.value.args[0]), str(PUBLISHER), 'eval'), namespace)
         for name in arguments[4:]:
             path = stage/name

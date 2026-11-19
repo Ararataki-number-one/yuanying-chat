@@ -1,6 +1,6 @@
 """Real native startup methods and wait policy on explicit JVM platform doubles.
 
-Browser selection and Android task launch use explicit controlled boundaries. The actual MainActivity startup, routing and Gecko link handling use exact Chromium launch methods. Checks cover overview startup, native workspace routing, work in progress, and explicit versus ordinary browser entry. No Android frame timing, Gecko or Chromium renderer execution, or phone speed is claimed.
+The host uses production MainActivity startup, routing and Gecko link handling, and production legacy browser launch methods. Browser preferences, Android task launch and optional Chromium split availability use controlled boundaries. Checks cover overview startup, native workspace routing, work in progress, and explicit versus ordinary browser entry. No Android frame timing, Gecko or Chromium renderer execution, or phone speed is claimed.
 """
 import hashlib,json,os
 from pathlib import Path

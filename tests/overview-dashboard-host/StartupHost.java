@@ -55,6 +55,12 @@ public final class StartupHost {
     MainActivity chromiumLink=new MainActivity(false);chromiumLink.chromium=true;chromiumLink.intent.putExtra("url",link);chromiumLink.onCreate(null);
     check(chromiumLink.finished&&chromiumLink.creates==0&&chromiumLink.browserStarts==1&&link.equals(chromiumLink.launched.extras.get("url")),"a cold Chromium opening forwards the exact page URL instead of selecting the homepage");
     check((chromium.launched.flags&Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)!=0&&(warm.launched.flags&Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)!=0,"cold and warm entry reuse the existing browser task");
+    MainActivity installed=new MainActivity(false);installed.chromium=true;installed.managedChromium=true;installed.chromiumReady=true;installed.intent.putExtra("url",link);installed.onCreate(null);
+    check(installed.finished&&installed.creates==0&&installed.browserStarts==0&&link.equals(installed.featureUrl),"installed Chromium receives the link without launching the legacy browser or Gecko");
+    MainActivity missing=new MainActivity(false);missing.chromium=true;missing.managedChromium=true;missing.onCreate(null);missing.onResume();
+    check(!missing.finished&&missing.creates==0&&missing.browserStarts==0&&missing.hub.page==AppHub.SETTINGS&&missing.hub.noticeError&&missing.hub.notice.contains("组件尚未就绪"),"missing Chromium opens native settings with component feedback");
+    MainActivity restricted=new MainActivity(false);restricted.chromium=true;restricted.managedChromium=true;restricted.chromiumNetworkIssue="Network configuration required";restricted.onCreate(null);
+    check(!restricted.finished&&restricted.creates==0&&restricted.browserStarts==0&&restricted.hub.page==AppHub.SETTINGS&&restricted.hub.noticeError&&restricted.chromiumNetworkIssue.equals(restricted.hub.notice),"managed Chromium reports the specific network problem in native settings");
     MainActivity focused=new MainActivity(true);focused.onCreate(new Bundle(true));check(focused.focusReading&&focused.creates==0,"native focus preference restores before deferred Gecko startup");
 
     BrowserStartupGate gate=new BrowserStartupGate("A",0,1);check(gate.matches("A",0,1)&&!gate.matches("B",0,1)&&!gate.matches("A",1,1)&&!gate.matches("A",0,2),"startup identity cannot cross environment, slot or generation");check(!gate.take(),"new gate starts nothing");gate.frame();check(!gate.take(),"draw without foreground starts nothing");gate.foreground(true);check(gate.take()&&!gate.take(),"gate issues a single start");
@@ -71,6 +77,7 @@ public final class StartupHost {
 class MainActivity extends Activity {
   static final int MODE_PRIVATE=0;boolean pageMode,active,destroyed,finished,focusReading,chromium;Bundle downloadUiState;UiFrames sessionUi;int creates,resumes,content,feedback;String nativeDownload;BrowserStartupGate browserStartup;ChatSession session;EnvironmentOverviewUi environmentOverview;Intent intent;Prefs prefs;
   AppHub hub;FileDownloads downloads;SavedFileActions nativeSavedFiles;Remote remote;final Handler handler=new Handler();
+  boolean managedChromium,chromiumReady;String featureUrl,chromiumNetworkIssue="";
   MainActivity(boolean manual){intent=new Intent(manual);}
   Intent getIntent(){return intent;}void setIntent(Intent value){intent=value;}boolean isFinishing(){return finished;}void finish(){finished=true;}void setContentView(LinearLayout v){content++;}Prefs getSharedPreferences(String name,int mode){return new Prefs();}Window getWindow(){return new Window();}
   void createChatUi(){creates++;session=new ChatSession();remote=new Remote();openWebsite(getIntent());if(active)resumeChatUi();}
@@ -90,8 +97,10 @@ class EnvironmentEditorUi{static void show(MainActivity a){}}
 class AppHub{
   static final int CHAT=0,SETTINGS=3,NETWORK=4;int page,refreshes;
   final Runnable tick=()->{};final NetworkWorkspace networkWorkspace=new NetworkWorkspace();final Visibility bar=new Visibility();
+  String notice="";boolean noticeError;
   AppHub(MainActivity a,LinearLayout root,Object chat){}
   void downloadsVisible(boolean value){}void refresh(){refreshes++;}void show(int value){page=value;}
+  void feedback(String message,boolean error){if(page!=CHAT){notice=message;noticeError=error;}}
 }
 class NetworkWorkspace{int slot=-1;void focus(int value){slot=value;}void close(){}}
 class Visibility{void setVisibility(int value){}}
@@ -107,7 +116,7 @@ class Prefs{boolean getBoolean(String k,boolean v){return v;}Prefs edit(){return
 class Intent{
   static final int FLAG_ACTIVITY_NEW_TASK=1,FLAG_ACTIVITY_REORDER_TO_FRONT=2;static final String ACTION_VIEW="android.intent.action.VIEW";
   final boolean manual;Class<?> target;int flags;String action,data;final Map<String,String> extras=new HashMap<>();
-  Intent(boolean v){manual=v;}Intent(Activity a,Class<?> c){manual=false;target=c;}
+  Intent(){this(false);}Intent(boolean v){manual=v;}Intent(Activity a,Class<?> c){manual=false;target=c;}
   Intent addFlags(int f){flags|=f;return this;}Intent putExtra(String key,String value){extras.put(key,value);return this;}
   String getAction(){return action;}String getStringExtra(String name){return extras.get(name);}boolean getBooleanExtra(String name,boolean fallback){return extras.containsKey(name)?Boolean.parseBoolean(extras.get(name)):fallback;}boolean hasExtra(String key){return extras.containsKey(key);}void removeExtra(String key){extras.remove(key);}void setData(String value){data=value;}
 }
@@ -127,6 +136,17 @@ class BrowserPreferences{
   static boolean nativeOpening(Intent intent){if(intent==null)return false;String action=intent.getStringExtra("openWindowAction");return intent.hasExtra("openDownload")||"network".equals(action)||"settings".equals(action)||"downloads".equals(action);}
   static boolean shouldOpenBrowser(MainActivity activity,Intent intent){return startBrowser(activity)&&!nativeOpening(intent);}
   static String openingAddress(Intent intent){return intent==null||nativeOpening(intent)?null:Intent.ACTION_VIEW.equals(intent.getAction())?intent.data:intent.extras.get("url");}
+}
+/** The Android split availability and launch result are controlled in this host. */
+class ChromiumEntry{
+  static boolean managed(MainActivity activity){return activity.managedChromium;}
+  static boolean open(Activity host,String url){
+    MainActivity activity=(MainActivity)host;
+    if(!activity.chromiumReady)return false;
+    activity.featureUrl=url;
+    return true;
+  }
+  static String networkIssue(MainActivity activity){return activity.chromiumNetworkIssue;}
 }
 class BrowserActivity{static Class<?> activity(int slot){return BrowserActivity.class;}/*ACTUAL_BROWSER_LAUNCHES*/}
 class UiFrames{boolean visible;void visible(boolean value){visible=value;}}
