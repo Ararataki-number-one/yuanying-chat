@@ -448,9 +448,12 @@ public final class RouteFixture extends Instrumentation {
                     return null;
                 });
                 SystemClock.sleep(2_000);
+                JSONObject afterNavigation = internalControl(target, "state", null);
                 require(onMain(() -> field(retired, "browser")) == null
-                        && internalControl(target, "state", null).optInt("chromiumFixtureCircuits") == circuits,
-                        "Stopped built-in route handled a late Chromium navigation");
+                        && Boolean.FALSE.equals(afterNavigation.opt("ready"))
+                        && Boolean.FALSE.equals(afterNavigation.opt("verified"))
+                        && afterNavigation.optInt("chromiumFixtureCircuits") == circuits,
+                        "Stopped built-in route restarted or handled a late Chromium navigation");
                 origin.validate();
 
                 result.putBoolean("internalRouteVerified", true);

@@ -61,6 +61,8 @@ final class CefriumRoute implements AutoCloseable {
     private boolean observingNetwork;
     private boolean observingCatalog;
     private boolean watching;
+    // Accessed on the route reader. A lost lease must not auto-restart its core in this window.
+    private boolean internalRouteAdmitted;
     private CefriumProfile profile;
     private CefriumBrowser browser;
 
@@ -225,6 +227,7 @@ final class CefriumRoute implements AutoCloseable {
             if (!baseCurrent(attempt) || !configurationCurrent(evidence)) throw new IOException(ROUTE_LOST);
             if (!acquireOwner(attempt, evidence)) return;
             if (!verify(attempt)) return;
+            if (approved.mode == CefriumRoutePolicy.Mode.INTERNAL) internalRouteAdmitted = true;
             attempt.ready = true;
             main.post(() -> complete(attempt));
         } catch (IOException unavailable) {
@@ -245,8 +248,9 @@ final class CefriumRoute implements AutoCloseable {
                     : ChromiumProtectedOwnerLease.acquireExternal(context, identity, setting.proxyPreference,
                             setting.requireVpn, evidence.bound.toString(), revoked);
         } catch (IOException unavailable) {
-            if (setting.mode != CefriumRoutePolicy.Mode.INTERNAL || attempt.coreStartRequested
-                    || !baseCurrent(attempt) || !configurationCurrent(evidence)) throw unavailable;
+            if (setting.mode != CefriumRoutePolicy.Mode.INTERNAL || internalRouteAdmitted
+                    || attempt.coreStartRequested || !baseCurrent(attempt)
+                    || !configurationCurrent(evidence)) throw unavailable;
             attempt.coreStartRequested = true;
             failure = "正在连接此环境的应用内线路";
             NetworkBridge.startChromiumInternal(context, identity, (ok, message, state) -> {
