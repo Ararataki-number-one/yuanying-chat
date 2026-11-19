@@ -1530,9 +1530,9 @@ jobs:
         test -f "$work/integration/base-master.apk"
         test -f "$work/integration/chromium-master.apk"
         cef_sdk=work/chromium-sdk/maven/com/cefrium/cefrium-sdk-core/0.21.0/cefrium-sdk-core-0.21.0.aar
-        bash tests/gecko/chromium-route-fixture/build-fixture.sh "$cef_sdk" "$work/fixture-unsigned.apk"
+        bash tests/chromium-route-fixture/build-fixture.sh "$cef_sdk" "$work/fixture-unsigned.apk"
         "$tools/apksigner" sign --ks "$work/candidate-test.p12" --ks-key-alias androiddebugkey --ks-pass pass:android --key-pass pass:android --out "$work/fixture.apk" "$work/fixture-unsigned.apk"
-        bash tests/gecko/chromium-route-fixture/build-fixture.sh "$cef_sdk" "$work/integration-fixture-unsigned.apk" local.pocketchat.test
+        bash tests/chromium-route-fixture/build-fixture.sh "$cef_sdk" "$work/integration-fixture-unsigned.apk" local.pocketchat.test
         "$tools/apksigner" sign --ks "$work/candidate-test.p12" --ks-key-alias androiddebugkey --ks-pass pass:android --key-pass pass:android --out "$work/integration-fixture.apk" "$work/integration-fixture-unsigned.apk"
         sha256sum app/build/outputs/bundle/debug/app-debug.aab app/build/outputs/bundle/integration/app-integration.aab \
           "$work/debug/base-master.apk" "$work/debug/chromium-master.apk" "$work/fixture.apk" \

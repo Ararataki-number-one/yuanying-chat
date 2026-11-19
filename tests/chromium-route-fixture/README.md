@@ -3,7 +3,7 @@
 This instrumentation APK targets a debuggable `local.pocketchat` candidate on a disposable Android x86_64 emulator. Build and sign it with the same synthetic test key as that candidate's base and Chromium split. The test uses the installed Chromium classes rather than packaging a second engine.
 
 ```sh
-bash tests/gecko/chromium-route-fixture/build-fixture.sh \
+bash tests/chromium-route-fixture/build-fixture.sh \
   "$VERIFIED_CEFRIUM_SDK_AAR" "$OUTPUT/fixture-unsigned.apk"
 ```
 

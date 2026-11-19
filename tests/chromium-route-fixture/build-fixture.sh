@@ -17,7 +17,7 @@ esac
 work=$(mktemp -d)
 trap 'rm -rf -- "$work"' EXIT
 mkdir -p "$work/classes" "$work/dex" "$work/assets"
-cp "$fixture_dir/../assets/network-fixture.p12" "$work/assets/chromium-proxy-fixture.p12"
+cp "$fixture_dir/../gecko/assets/network-fixture.p12" "$work/assets/chromium-proxy-fixture.p12"
 
 case "$cefrium_input" in
     *.aar)
