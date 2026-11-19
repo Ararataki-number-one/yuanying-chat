@@ -138,12 +138,12 @@ def capture(variant,width,height,scale,scene,theme='light'):
         click_editor_tab(xml,'浏览器');time.sleep(2.5);xml=dump();assert '网页显示方式' in xml
     if scene=='preferences':
         tab_scrolls=click_editor_tab(xml,'使用偏好');time.sleep(.5)
-        expected={'保存本机输入草稿','恢复网页滚动位置','允许此环境的后台回复提醒','仅在 Wi-Fi 下载文件','自动清理 30 天以上的无引用中间文件','自动检测外部网络响应'}
+        expected={'保存本机输入草稿','恢复网页滚动位置','仅在 Wi-Fi 下载文件','自动清理 30 天以上的无引用中间文件','自动检测外部网络响应'}
         seen=set();collected=[]
         for attempt in range(8):
             xml=dump();collected.append(xml)
             seen.update(n.attrib.get('text','') for n in ET.fromstring(xml).iter('node') if n.attrib.get('class')=='android.widget.CheckBox')
-            assert not any(label in xml for label in ['自动同步可见历史会话','文件保存完成通知','网络中断提醒','后台等待回复']),(variant,scene,xml)
+            assert not any(label in xml for label in ['自动同步可见历史会话','文件保存完成通知','网络中断提醒','后台等待回复','允许此环境的后台回复提醒','后台回复检测由应用设置']),(variant,scene,xml)
             if seen==expected:break
             scroll=next(n for n in ET.fromstring(xml).iter('node') if n.attrib.get('class')=='android.widget.ScrollView')
             left,top,right,bottom=map(int,re.findall(r'\d+',scroll.attrib['bounds']));x=(left+right)//2

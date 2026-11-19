@@ -111,6 +111,44 @@ class DownloadReadinessRunnerTest(unittest.TestCase):
         self.assertEqual(gestures, [])
 
 
+class EnvironmentPreferencesCaptureTest(unittest.TestCase):
+    labels = ('保存本机输入草稿', '恢复网页滚动位置', '仅在 Wi-Fi 下载文件',
+              '自动清理 30 天以上的无引用中间文件', '自动检测外部网络响应')
+
+    def observe(self, frames):
+        capture = runner_functions('capture').body[0]
+        branches = [step for step in capture.body if isinstance(step, ast.If)
+                    and ast.unparse(step.test) == "scene == 'preferences'"
+                    and any(isinstance(n, ast.For) for n in step.body)]
+        self.assertEqual(len(branches), 1)
+        def dump():
+            controls, note = frames[min(len(reads), len(frames) - 1)]
+            root = ET.Element('hierarchy')
+            scroll = ET.SubElement(root, 'node', {'class':'android.widget.ScrollView', 'bounds':'[0,0][900,1600]'})
+            for label in controls:
+                ET.SubElement(scroll, 'node', {'class':'android.widget.CheckBox', 'text':label})
+            ET.SubElement(scroll, 'node', {'class':'android.widget.TextView', 'text':note})
+            reads.append(1)
+            return ET.tostring(root, encoding='unicode')
+        reads = []
+        namespace = dict(scene='preferences', variant='fixture', xml='', time=ModelClock(),
+                         click_editor_tab=lambda *args: 0, dump=dump, ET=ET, re=re, adb=lambda *args: None)
+        exec(compile(ast.Module(body=branches, type_ignores=[]), str(RUNNER), 'exec'), namespace)
+        return namespace['preference_check']
+
+    def test_actual_preferences_scene_observes_all_five_controls_across_scrolls(self):
+        result = self.observe([(self.labels[:2], ''), (self.labels[2:], '')])
+        self.assertEqual(result['preferenceControls'], sorted(self.labels))
+        self.assertEqual(result['scrollFrames'], 2)
+        self.assertTrue(result['removedNoticeControlsAbsent'])
+
+    def test_missing_controls_and_retired_reply_setting_or_explanation_fail(self):
+        for frame in ((self.labels[:-1], ''), (self.labels + ('允许此环境的后台回复提醒',), ''),
+                      (self.labels, '后台回复检测由应用设置统一控制；关闭检测时不会发出回复完成提醒。')):
+            with self.subTest(frame=frame), self.assertRaises(AssertionError):
+                self.observe([frame])
+
+
 class DownloadFreshObservationRunnerTest(unittest.TestCase):
     def setUp(self):
         self.parent_nonce = 'a'*32; self.fresh_nonce = 'b'*32; self.source = 'c'*40
