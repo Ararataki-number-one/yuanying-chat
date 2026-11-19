@@ -46,6 +46,33 @@ _UI_MANIFEST_CURRENT_CONTEXT = (
     b'    <activity android:name="local.pocketchat.UiDetailsIntegrationActivity" android:exported="true" />\n')
 
 
+_WORKSPACE_MANIFEST_BYTES = 13477
+_WORKSPACE_MANIFEST_SHA256 = '95eb38e374e8402768e91c7669f17fa93478e79c928be5f9ed1004d4ddc0d3d8'
+_WORKSPACE_BEFORE = (
+    b'    <activity android:name="local.pocketchat.BrowserIntegrationActivity" android:exported="true" '
+    b'android:launchMode="singleTask" android:taskAffinity="local.pocketchat.test.browser_probe" '
+    b'android:configChanges="orientation|screenSize|keyboardHidden|uiMode" />\n')
+_WORKSPACE_SEED = b'    <activity android:name="local.pocketchat.BrowserIntegrationActivity$WorkspaceSeed" android:exported="true" />\n'
+_WORKSPACE_AFTER = (
+    b'    <provider android:name="local.pocketchat.BrowserEvidenceProvider" '
+    b'android:authorities="local.pocketchat.test.browser-evidence" android:exported="true" />\n')
+_WORKSPACE_CONTEXT = _WORKSPACE_BEFORE + _WORKSPACE_SEED + _WORKSPACE_AFTER
+
+
+def manifest_before_reviewed_workspace_seed(raw):
+    """Restore the exact already-reviewed UI manifest for historical comparisons."""
+    if type(raw) is not bytes:
+        raise ValueError('Complete workspace manifest bytes required')
+    if (len(raw), hashlib.sha256(raw).hexdigest()) != (_WORKSPACE_MANIFEST_BYTES, _WORKSPACE_MANIFEST_SHA256):
+        raise ValueError('Exact reviewed workspace manifest required')
+    if raw.count(_WORKSPACE_CONTEXT) != 1:
+        raise ValueError('Unique reviewed workspace registration required')
+    restored = raw.replace(_WORKSPACE_CONTEXT, _WORKSPACE_BEFORE + _WORKSPACE_AFTER, 1)
+    if (len(restored), hashlib.sha256(restored).hexdigest()) != (_UI_MANIFEST_CURRENT_BYTES, _UI_MANIFEST_CURRENT_SHA256):
+        raise ValueError('Entire reviewed UI manifest did not restore')
+    return restored
+
+
 def manifest_before_reviewed_ui_additions(raw):
     """Restore one exact historical comparison input, never a runtime manifest.
 
@@ -84,10 +111,53 @@ class NativeTrustProtocolControls(unittest.TestCase):
             report=json.loads(result.stdout);self.assertEqual(report['status'],'passed');self.assertTrue(report['executionInputsUnchanged'])
             self.assertIs(report['actualAndroidExecution'],False);self.assertIs(report['actualGeckoExecution'],False)
 
+class ReviewedWorkspaceManifestControls(unittest.TestCase):
+    def setUp(self):
+        self.actual = (ROOT/'tests/gecko/AndroidManifest.xml').read_bytes()
+
+    def test_exact_workspace_seed_roundtrip_preserves_the_actual_manifest(self):
+        restored = manifest_before_reviewed_workspace_seed(self.actual)
+        self.assertEqual((len(restored), hashlib.sha256(restored).hexdigest()),
+                         (_UI_MANIFEST_CURRENT_BYTES, _UI_MANIFEST_CURRENT_SHA256))
+        self.assertEqual(restored.replace(_WORKSPACE_BEFORE + _WORKSPACE_AFTER, _WORKSPACE_CONTEXT, 1), self.actual)
+        self.assertEqual((ROOT/'tests/gecko/AndroidManifest.xml').read_bytes(), self.actual)
+
+    def test_workspace_seed_rejects_removed_moved_changed_and_duplicate_registrations(self):
+        removed = self.actual.replace(_WORKSPACE_SEED, b'', 1)
+        variants = [
+            ('legacy-without-seed', removed),
+            ('moved-seed', removed.replace(b'</application>', _WORKSPACE_SEED+b'</application>', 1)),
+            ('duplicate-seed', self.actual.replace(_WORKSPACE_SEED, _WORKSPACE_SEED*2, 1)),
+            ('changed-exported', self.actual.replace(_WORKSPACE_SEED, _WORKSPACE_SEED.replace(b'"true"', b'"false"'), 1)),
+            ('changed-process', self.actual.replace(_WORKSPACE_SEED, _WORKSPACE_SEED.replace(b' />', b' android:process=":other" />'), 1)),
+            ('changed-provider', self.actual.replace(b'test.browser-evidence"', b'test.other-evidence"', 1)),
+            ('unrelated-byte', self.actual.replace(b'xmlns:tools=', b'xmlns:toolx=', 1)),
+        ]
+        for label, raw in variants:
+            with self.subTest(label=label), self.assertRaisesRegex(ValueError, 'Exact reviewed workspace manifest required'):
+                manifest_before_reviewed_workspace_seed(raw)
+            NEGATIVE_CONTROLS.append('reviewed workspace manifest '+label)
+
+    def test_workspace_anchor_and_restored_hash_do_not_depend_on_current_pin(self):
+        variants = [
+            ('removed-anchor', self.actual.replace(_WORKSPACE_CONTEXT, _WORKSPACE_BEFORE + _WORKSPACE_AFTER, 1),
+             'Unique reviewed workspace registration required'),
+            ('restored-hash-drift', self.actual.replace(b'xmlns:tools=', b'xmlns:toolx=', 1),
+             'Entire reviewed UI manifest did not restore'),
+        ]
+        for label, raw, reason in variants:
+            with self.subTest(label=label), patch.dict(globals(), {
+                    '_WORKSPACE_MANIFEST_BYTES': len(raw), '_WORKSPACE_MANIFEST_SHA256': hashlib.sha256(raw).hexdigest()}):
+                with self.assertRaisesRegex(ValueError, reason):
+                    manifest_before_reviewed_workspace_seed(raw)
+            NEGATIVE_CONTROLS.append('reviewed workspace manifest '+label)
+
+
 class ReviewedUiManifestControls(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.current = (ROOT/'tests/gecko/AndroidManifest.xml').read_bytes()
+        cls.actual = (ROOT/'tests/gecko/AndroidManifest.xml').read_bytes()
+        cls.current = manifest_before_reviewed_workspace_seed(cls.actual)
 
     def reject(self, variants):
         for label, raw in variants:
@@ -101,7 +171,7 @@ class ReviewedUiManifestControls(unittest.TestCase):
                          (_UI_MANIFEST_PREVIOUS_BYTES, _UI_MANIFEST_PREVIOUS_SHA256))
         self.assertEqual(restored.count(_UI_MANIFEST_PREVIOUS_CONTEXT), 1)
         self.assertEqual(restored.replace(_UI_MANIFEST_PREVIOUS_CONTEXT, _UI_MANIFEST_CURRENT_CONTEXT, 1), self.current)
-        self.assertEqual((ROOT/'tests/gecko/AndroidManifest.xml').read_bytes(), self.current)
+        self.assertEqual((ROOT/'tests/gecko/AndroidManifest.xml').read_bytes(), self.actual)
 
     def test_unknown_additions_deletions_and_attribute_changes_are_rejected(self):
         unrelated = b'    <activity android:name="local.pocketchat.NetworkSourcesIntegrationActivity" android:exported="true" />\n'
@@ -586,7 +656,9 @@ class ProducerBoundaryControls(unittest.TestCase):
         stop=java[java.index('public void onPageStop'):java.index('public void onProgressChange')];self.assertNotIn('terminal=true',stop);self.assertNotIn('titleMatched=true',stop)
         self.assertIn('Binder.getCallingUid()!=2000',provider);self.assertIn('Files.isSymbolicLink',provider)
         original=subprocess.check_output(['git','show','e4a20469326f16dc8ff8cfabd4fe67bf3d0148de:tests/gecko/AndroidManifest.xml'],cwd=ROOT,text=True)
-        current=manifest_before_reviewed_ui_additions((ROOT/'tests/gecko/AndroidManifest.xml').read_bytes()).decode('utf-8')
+        current_manifest = (ROOT/'tests/gecko/AndroidManifest.xml').read_bytes()
+        reviewed_ui = manifest_before_reviewed_workspace_seed(current_manifest)
+        current = manifest_before_reviewed_ui_additions(reviewed_ui).decode('utf-8')
         filtered='\n'.join(line for line in current.split('\n') if not any(name in line for name in ('GeckoTlsAcceptance','NativeTlsProbe','GeckoTlsCpuIpCombo')))
         self.assertEqual(filtered,original)
         for name in ('tls-acceptance-page.js','tls-acceptance-worker.js'):

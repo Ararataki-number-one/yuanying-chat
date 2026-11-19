@@ -23,10 +23,16 @@ class FingerprintPublicationTests(unittest.TestCase):
         self.workflow=workflow_tree()
 
     def test_source_allowlists_share_exact_version_threshold(self):
+        version_code=114
         for version in ('2.0.47','2.1.0','2.1.1','2.1.2','2.1.3','2.1.4','2.2.0','3.0.0'):
-            expected=tuple(map(int,version.split('.'))) >= (2,1,1)
+            parts=tuple(map(int,version.split('.')))
+            expected=parts>=(2,1,1)
             values=[]
-            for tree,name,namespace in ((self.tool,'release_tool_files',dict(version=version,browser_release=tuple(map(int,version.split('.'))) >= (2,1,0),fingerprint_release=expected,worker_timezone_release=tuple(map(int,version.split('.'))) >= (2,1,2),cpu_release=tuple(map(int,version.split('.'))) >= (2,1,3),tls_release=tuple(map(int,version.split('.'))) >= (2,1,4))),(self.workflow,'release_files',dict(m={'version':version}))):
+            publisher=dict(version=version,chromium_release=version_code>=115,browser_release=parts>=(2,1,0),
+                           fingerprint_release=expected,worker_timezone_release=parts>=(2,1,2),
+                           cpu_release=parts>=(2,1,3),tls_release=parts>=(2,1,4))
+            for tree,name,namespace in ((self.tool,'release_tool_files',publisher),
+                                        (self.workflow,'release_files',dict(m={'version':version,'versionCode':version_code}))):
                 nodes=[node for node in tree.body if isinstance(node,ast.Assign) and any(isinstance(t,ast.Name) and t.id==name for t in node.targets)]
                 nodes += [node for node in tree.body if isinstance(node,ast.If) and any(isinstance(v,ast.Call) and ast.unparse(v.func) in (name+'.add',name+'.update') for v in ast.walk(node))]
                 execute(nodes,namespace);values.append(namespace[name])
