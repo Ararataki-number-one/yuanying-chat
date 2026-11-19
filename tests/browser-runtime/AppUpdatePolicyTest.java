@@ -32,6 +32,26 @@ public class AppUpdatePolicyTest {
         try{AppUpdatePolicy.copyVerified(in,file,mode==2?bytes.length-1:bytes.length,mode==0?hash:AppUpdatePolicy.hash(bytes),()->selected==3);throw new AssertionError("Corrupt/cancelled/interrupted file retained");}catch(IOException expected){ok(!file.exists());}
       }
     }finally{file.delete();}
+    File downloaded=Files.createTempFile("app-update-ready",".apk").toFile();
+    try{
+      Files.write(downloaded.toPath(),bytes);
+      java.nio.file.attribute.FileTime modification=Files.getLastModifiedTime(downloaded.toPath());
+      String digest=AppUpdatePolicy.hash(bytes);
+      AppUpdatePolicy.verifyExisting(downloaded,bytes.length,digest,()->false);
+      ok(java.util.Arrays.equals(bytes,Files.readAllBytes(downloaded.toPath())));
+      ok(modification.equals(Files.getLastModifiedTime(downloaded.toPath())));
+      for(int mode=0;mode<4;mode++){
+        final boolean cancelled=mode==3;
+        long length=mode==1?bytes.length-1:mode==2?bytes.length+1:bytes.length;
+        try{
+          AppUpdatePolicy.verifyExisting(downloaded,length,mode==0?hash:digest,()->cancelled);
+          throw new AssertionError("Accepted invalid or cancelled install verification");
+        }catch(IOException expected){
+          ok(java.util.Arrays.equals(bytes,Files.readAllBytes(downloaded.toPath())));
+          ok(modification.equals(Files.getLastModifiedTime(downloaded.toPath())));
+        }
+      }
+    }finally{downloaded.delete();}
     System.out.println("{\"checks\":"+checks+",\"status\":\"passed\"}");
   }
 }

@@ -229,6 +229,28 @@ def actual_release_assertion(message):
 
 
 class IntegrationPackagingTests(unittest.TestCase):
+    def test_signer_rejects_missing_credentials_and_optimized_python_before_writing(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary)
+            key = directory / 'fixture.jks'
+            key.touch()
+            output = directory / 'release.apk'
+            output.write_bytes(b'previous release')
+            env = {name: value for name, value in os.environ.items()
+                   if name not in ('POCKET_STORE_PASSWORD', 'POCKET_KEY_PASSWORD', 'PYTHONOPTIMIZE')}
+            command = [str(SIGNER), str(directory / 'unsigned.apk'), '--key', str(key),
+                       '--output', str(output)]
+            for flags, message in (([], 'Provide POCKET_STORE_PASSWORD'),
+                                   (['-O'], 'Run with Python assertions enabled')):
+                with self.subTest(flags=flags):
+                    result = subprocess.run([sys.executable, *flags, *command], env=env,
+                                            text=True, capture_output=True, timeout=10)
+                    self.assertEqual(result.returncode, 2)
+                    self.assertIn(message, result.stderr)
+                    self.assertEqual(output.read_bytes(), b'previous release')
+                    self.assertEqual(sorted(path.name for path in directory.iterdir()),
+                                     ['fixture.jks', 'release.apk'])
+
     def test_exact_manifest_service_permission_process_action_and_metadata(self):
         manifest=ET.parse(ROOT/'tests/gecko/AndroidManifest.xml').getroot()
         services=[node for node in manifest.findall('./application/service') if node.get(ANDROID+'name')==COMPONENT]

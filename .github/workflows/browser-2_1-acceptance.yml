@@ -119,6 +119,21 @@ jobs:
     - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
       with:
         fetch-depth: 16
+    # These checks need only the checkout and the runner browser. Run them before SDK setup and host regressions.
+    - name: Verify document script semantics against actual desktop Chromium
+      shell: bash
+      run: |
+        set -euo pipefail
+        node -e "if(typeof WebSocket!=='function')throw Error('Actual Chromium controller requires Node 22 or newer with WebSocket');console.log('Native API controller Node '+process.versions.node)"
+        browser_fingerprint_binary="$(command -v google-chrome || command -v chromium)"
+        python3 tests/chromium-fingerprint-browser/run.py --chromium "$browser_fingerprint_binary" --output work/browser-native-semantics
+        python3 tests/chromium-worker-browser/run.py --chromium "$browser_fingerprint_binary" --output work/browser-worker-native-semantics
+    - name: Verify selected-photo pixels and fingerprint controls in actual Chromium
+      shell: bash
+      run: |
+        set -euo pipefail
+        browser_fingerprint_binary="$(command -v google-chrome || command -v chromium)"
+        python3 tests/chromium-photo-browser/run.py --chromium "$browser_fingerprint_binary" --output work/browser-photo-native-semantics
     - name: Restore exact historical source baselines without checkout
       run: python3 tools/browser/prepare_baselines.py
     - name: Prepare fixed release source proof objects
@@ -233,20 +248,6 @@ jobs:
         PYCODE
         npm install --prefix work/browser-perf-host --ignore-scripts --no-audit --no-fund jsdom@26.1.0
         python3 tools/browser/run_host_checks.py --java-home "$JAVA_HOME" --json-jar work/browser-host-deps/json.jar --android-json-jar work/browser-host-deps/android-json.jar --android-jar "$ANDROID_HOME/platforms/android-37.1/android.jar" --webkit-jar work/browser-host-deps/webkit.jar --jsdom-module "$PWD/work/browser-perf-host/node_modules/jsdom" --output work/browser-host-controls
-    - name: Verify document script semantics against actual desktop Chromium
-      shell: bash
-      run: |
-        set -euo pipefail
-        node -e "if(typeof WebSocket!=='function')throw Error('Actual Chromium controller requires Node 22 or newer with WebSocket');console.log('Native API controller Node '+process.versions.node)"
-        browser_fingerprint_binary="$(command -v google-chrome || command -v chromium)"
-        python3 tests/chromium-fingerprint-browser/run.py --chromium "$browser_fingerprint_binary" --output work/browser-native-semantics
-        python3 tests/chromium-worker-browser/run.py --chromium "$browser_fingerprint_binary" --output work/browser-worker-native-semantics
-    - name: Verify selected-photo pixels and fingerprint controls in actual Chromium
-      shell: bash
-      run: |
-        set -euo pipefail
-        browser_fingerprint_binary="$(command -v google-chrome || command -v chromium)"
-        python3 tests/chromium-photo-browser/run.py --chromium "$browser_fingerprint_binary" --output work/browser-photo-native-semantics
     - name: Preserve source-bound host and historical-baseline receipts
       if: always()
       uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02

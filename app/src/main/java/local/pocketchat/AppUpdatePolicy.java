@@ -38,12 +38,33 @@ final class AppUpdatePolicy {
   static boolean feedRedirect(String url){try{URI u=new URI(url);return "https".equals(u.getScheme())&&u.getUserInfo()==null&&(u.getPort()==-1||u.getPort()==443)&&"raw.githubusercontent.com".equals(u.getHost())&&("/"+REPO+"/app-updates/latest.json").equals(u.getPath());}catch(Exception e){return false;}}
   static String hash(byte[] data){try{return Sha256.hash(data);}catch(Exception e){throw new IllegalStateException(e);}}
   static String hex(byte[] data){return Sha256.hex(data);}
+  static void verifyExisting(File source,long bytes,String hash,java.util.function.BooleanSupplier cancelled)throws IOException {
+    try(InputStream in=new FileInputStream(source)){verifyStream(in,null,bytes,hash,cancelled);}
+  }
+
   static void copyVerified(InputStream in,File target,long bytes,String hash,java.util.function.BooleanSupplier cancelled)throws IOException {
-    boolean ok=false;long count=0;
-    try(FileOutputStream out=new FileOutputStream(target)){
-      MessageDigest digest=MessageDigest.getInstance("SHA-256");byte[] buffer=new byte[65536];int read;
-      while((read=in.read(buffer))!=-1){if(cancelled.getAsBoolean())throw new IOException("下载已取消");count+=read;if(count>bytes)throw new IOException("更新文件大小不符，请重新下载");out.write(buffer,0,read);digest.update(buffer,0,read);}
-      out.getFD().sync();if(cancelled.getAsBoolean())throw new IOException("下载已取消");if(count!=bytes||!hex(digest.digest()).equals(hash))throw new IOException("更新文件不完整，请重新下载");ok=true;
-    }catch(java.security.NoSuchAlgorithmException e){throw new IOException(e);}finally{if(!ok)target.delete();}
+    boolean verified=false;
+    try {
+      try(FileOutputStream out=new FileOutputStream(target)){verifyStream(in,out,bytes,hash,cancelled);}
+      verified=true;
+    } finally {if(!verified)target.delete();}
+  }
+
+  private static void verifyStream(InputStream in,FileOutputStream copy,long bytes,String hash,java.util.function.BooleanSupplier cancelled)throws IOException {
+    try {
+      MessageDigest digest=MessageDigest.getInstance("SHA-256");
+      byte[] buffer=new byte[65536];
+      long count=0;
+      for(int read;(read=in.read(buffer))!=-1;){
+        if(cancelled.getAsBoolean())throw new IOException("下载已取消");
+        count+=read;
+        if(count>bytes)throw new IOException("更新文件大小不符，请重新下载");
+        if(copy!=null)copy.write(buffer,0,read);
+        digest.update(buffer,0,read);
+      }
+      if(copy!=null)copy.getFD().sync();
+      if(cancelled.getAsBoolean())throw new IOException("下载已取消");
+      if(count!=bytes||!hex(digest.digest()).equals(hash))throw new IOException("更新文件不完整，请重新下载");
+    } catch(java.security.NoSuchAlgorithmException impossible){throw new IOException(impossible);}
   }
 }

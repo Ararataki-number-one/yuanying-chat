@@ -8,6 +8,8 @@ import hashlib
 import importlib.util
 import json
 import os
+import re
+import sqlite3
 from pathlib import Path
 import shutil
 import subprocess
@@ -72,6 +74,39 @@ class DeleteIdentityContractTest(unittest.TestCase):
             self.assertGreaterEqual(report["passed"], 12)
             print(json.dumps({"status": "passed", "catalogueChecks": report["passed"],
                               "actualAndroidExecution": False}))
+
+    def test_batch_metadata_predicate_excludes_reused_or_unavailable_environments(self):
+        catalog = (PROD / "ProfileCatalog.java").read_text()
+        batch = host.member(catalog, "private int updateSelection(")
+        predicate = re.search(r'db\.update\("environments",values,\s*"([^"]+)"', batch)
+        self.assertIsNotNone(predicate, "The exact production SQL predicate is required")
+        with sqlite3.connect(":memory:") as db:
+            db.execute("""
+                CREATE TABLE environments(
+                    slot INTEGER PRIMARY KEY, generation INTEGER, environment_id TEXT,
+                    created INTEGER, deleting INTEGER, resetting INTEGER,
+                    group_name TEXT, favorite INTEGER
+                )
+            """)
+            original = "f08e6b7b-d1ad-4a0a-86fd-32bd9d7566d0"
+            replacement = "774668f5-ac72-4b02-ad27-d31c38884a3d"
+            statement = "UPDATE environments SET group_name=?, favorite=? WHERE " + predicate.group(1)
+            for slot, generation, identity, created, deleting, resetting, changes in [
+                (0, 4, original, 1, 0, 0, 1),
+                (1, 4, replacement, 1, 0, 0, 0),
+                (2, 5, original, 1, 0, 0, 0),
+                (3, 4, original, 0, 0, 0, 0),
+                (4, 4, original, 1, 1, 0, 0),
+                (5, 4, original, 1, 0, 1, 0),
+            ]:
+                with self.subTest(slot=slot):
+                    db.execute("INSERT INTO environments VALUES(?, ?, ?, ?, ?, ?, '', 0)",
+                               (slot, generation, identity, created, deleting, resetting))
+                    changed = db.execute(statement, ("分组", 1, slot, 4, original)).rowcount
+                    self.assertEqual(changed, changes)
+                    self.assertEqual(db.execute(
+                        "SELECT group_name, favorite FROM environments WHERE slot=?", (slot,)
+                    ).fetchone(), ("分组", 1) if changes else ("", 0))
 
     def test_production_lease_serializes_real_threads_and_processes(self):
         with tempfile.TemporaryDirectory(prefix="maintenance-lease-host-") as directory:

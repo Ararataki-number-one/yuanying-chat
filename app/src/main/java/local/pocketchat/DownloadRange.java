@@ -16,13 +16,27 @@ final class DownloadRange {
   }
   throw new IOException("网页未提供可核验的完整文件，请在原网页重新下载");
  }
+ static final class ResponseBounds {
+  final long total;
+  final long endExclusive;
+  ResponseBounds(long total,long endExclusive){this.total=total;this.endExclusive=endExclusive;}
+ }
  static long total(HttpURLConnection c,long offset,String expected)throws IOException {
-  int code=c.getResponseCode();if(code==200)return c.getContentLengthLong();
+  return responseBounds(c,offset,expected).total;
+ }
+ static ResponseBounds responseBounds(HttpURLConnection c,long offset,String expected)throws IOException {
+  int code=c.getResponseCode();
+  if(code==200){long length=c.getContentLengthLong();return new ResponseBounds(length,length);}
   if(code!=206)throw new IOException("下载响应不支持续传（HTTP "+code+"）");
   String current=validator(c.getHeaderField("ETag"),c.getHeaderField("Last-Modified"));
   if(offset<=0||expected.isEmpty()||!expected.equals(current))throw new IOException("文件版本已改变，需重新下载");
   Matcher m=Pattern.compile("bytes (\\d+)-(\\d+)/(\\d+)").matcher(String.valueOf(c.getHeaderField("Content-Range")));
   if(!m.matches())throw new IOException("续传范围无效，需重新下载");
-  try{long start=Long.parseLong(m.group(1)),end=Long.parseLong(m.group(2)),total=Long.parseLong(m.group(3)),length=c.getContentLengthLong();if(start!=offset||end<start||end>=total||(length>=0&&length!=end-start+1))throw new IOException("续传范围不匹配，需重新下载");return total;}catch(NumberFormatException e){throw new IOException("续传范围无效");}
+  try{
+   long start=Long.parseLong(m.group(1)),end=Long.parseLong(m.group(2)),total=Long.parseLong(m.group(3));
+   long length=c.getContentLengthLong();
+   if(start!=offset||end<start||end>=total||(length>=0&&length!=end-start+1))throw new IOException("续传范围不匹配，需重新下载");
+   return new ResponseBounds(total,end+1);
+  }catch(NumberFormatException e){throw new IOException("续传范围无效");}
  }
 }

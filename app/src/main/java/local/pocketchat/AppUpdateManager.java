@@ -191,12 +191,13 @@ final class AppUpdateManager {
   long verify(){final long request=verifySerial.incrementAndGet(),serial;final AppUpdateInfo release;final File source;
     synchronized(this){serial=generation.get();release=info;source=file();}
     worker.execute(()->{synchronized(this){if(release==null||verifySerial.get()!=request||generation.get()!=serial||info!=release||transferRunning||downloadRequested||!("ready".equals(state)||"verifying".equals(state)))return;change("verifying","正在核验安装包");}
-      File temp=new File(root,"install-check-"+request+".part");try{
+      try{
         if(release.code<=AppUpdateFiles.installed(context))throw new IOException("当前应用已更新，无需重复安装");
-        try(InputStream in=new FileInputStream(source)){AppUpdatePolicy.copyVerified(in,temp,release.bytes,release.sha,()->verifySerial.get()!=request||generation.get()!=serial||info!=release);}
-        AppUpdateFiles.archive(context,temp,release.code,release.version);
+        // The private final APK is never opened for writing. Its owner invalidates this check before replacement.
+        AppUpdatePolicy.verifyExisting(source,release.bytes,release.sha,()->verifySerial.get()!=request||generation.get()!=serial||info!=release);
+        AppUpdateFiles.archive(context,source,release.code,release.version);
         synchronized(this){if(verifySerial.get()!=request||generation.get()!=serial||info!=release)return;verifiedSerial=request;change("ready","");}
-      }catch(Exception error){synchronized(this){if(verifySerial.get()==request&&generation.get()==serial&&info==release){clearFiles();downloadRequested=false;received=0;change("available",readable(error,"安装包核验失败，请重新下载"));}}}finally{temp.delete();}
+      }catch(Exception error){synchronized(this){if(verifySerial.get()==request&&generation.get()==serial&&info==release){clearFiles();downloadRequested=false;received=0;change("available",readable(error,"安装包核验失败，请重新下载"));}}}
     });return request;
   }
   void settings(Bundle extras){if(extras==null)return;for(String key:new String[]{"autoCheck","autoDownload","wifiOnly"})if(extras.containsKey(key))AppSettings.put(context,"autoCheck".equals(key)?"updateAutoCheck":"autoDownload".equals(key)?"updateAutoDownload":"updateWifiOnly",String.valueOf(extras.getBoolean(key)));AppUpdates.schedule(context);if(extras.containsKey("wifiOnly")){prefs.edit().putBoolean("transferWifiOnly",extras.getBoolean("wifiOnly")).apply();synchronized(this){if(downloadRequested&&!userPaused){stopTransferJob();AppUpdates.cancelTransfer(context);AppUpdates.scheduleTransfer(context,wifiOnly(),0);}}}if(extras.containsKey("autoDownload")&&extras.getBoolean("autoDownload")&&AppSettings.bool(context,"updateAutoCheck",true)){long requestedGeneration=generation.get();worker.execute(()->downloadNow(true,requestedGeneration));}}

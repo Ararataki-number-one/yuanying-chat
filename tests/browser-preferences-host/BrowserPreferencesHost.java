@@ -71,7 +71,47 @@ public final class BrowserPreferencesHost {
     browser.onNewIntent(new Intent().setAction(Intent.ACTION_VIEW).setData(Uri.parse("https://example.com/requested")));
     check("Explicit VIEW destinations still reach actual new-tab dispatch",browser.selected.url.equals("https://example.com/requested")&&browser.tabs.size()==3&&browser.newTabs==1);
   }
-  public static void main(String[]args){preferences();routing();resumedDocument();int passed=0;for(int i=0;i<checks.length();i++)if(checks.optJSONObject(i).optBoolean("pass"))passed++;System.out.println(object("status",passed==checks.length()?"passed":"failed","passed",passed,"total",checks.length(),"checks",checks));if(passed!=checks.length())System.exit(1);}
+  static BrowserActivity openedSitePermissions(){
+    BrowserActivity browser=new BrowserActivity();
+    browser.newTab("https://example.com/first");
+    browser.selected.saved=new Object();
+    browser.sitePermissions();
+    return browser;
+  }
+  static void sitePermissionConfirmation(){
+    BrowserActivity current=openedSitePermissions();
+    BrowserActivity.Tab confirmed=current.selected;
+    check("Permission dialog identifies the page being confirmed",current.permissionDialog.message.startsWith(confirmed.url));
+    current.permissionDialog.confirm();
+    check("An unchanged permission dialog reloads its original page once",
+        current.retired.equals(Collections.singletonList(confirmed))&&confirmed.saved==null&&current.shown==1);
+
+    BrowserActivity switched=openedSitePermissions();
+    switched.onNewIntent(new Intent().setAction(Intent.ACTION_VIEW).setData(Uri.parse("https://example.com/second")));
+    BrowserActivity.Tab next=switched.selected;
+    Object saved=new Object();next.saved=saved;
+    switched.permissionDialog.confirm();
+    check("A permission dialog from another tab cannot reload the new selection",
+        switched.selected==next&&next.saved==saved&&switched.retired.isEmpty()&&switched.shown==0);
+
+    BrowserActivity navigated=openedSitePermissions();
+    navigated.selected.generation++;
+    navigated.selected.url="https://example.com/new-document";
+    navigated.permissionDialog.confirm();
+    check("Navigation in the same tab invalidates the old permission confirmation",navigated.retired.isEmpty()&&navigated.shown==0);
+
+    BrowserActivity recreated=openedSitePermissions();
+    recreated.selected.web=new WebView();
+    recreated.permissionDialog.confirm();
+    check("An old permission dialog cannot retire a replacement WebView",recreated.retired.isEmpty()&&recreated.shown==0);
+
+    BrowserActivity reentered=openedSitePermissions();
+    reentered.customViewClosed=()->reentered.onNewIntent(new Intent().putExtra("url","https://example.com/reentered"));
+    reentered.permissionDialog.confirm();
+    check("A page change during full-screen dismissal invalidates confirmation",
+        reentered.selected.url.equals("https://example.com/reentered")&&reentered.retired.isEmpty()&&reentered.shown==0);
+  }
+  public static void main(String[]args){preferences();routing();resumedDocument();sitePermissionConfirmation();int passed=0;for(int i=0;i<checks.length();i++)if(checks.optJSONObject(i).optBoolean("pass"))passed++;System.out.println(object("status",passed==checks.length()?"passed":"failed","passed",passed,"total",checks.length(),"checks",checks));if(passed!=checks.length())System.exit(1);}
 }
 
 final class Store implements SharedPreferences {
@@ -94,13 +134,42 @@ class BrowserActivity extends Activity {
   static class Profile3 extends BrowserActivity {}static class Profile4 extends BrowserActivity {}
   static class Profile5 extends BrowserActivity {}static class Profile6 extends BrowserActivity {}
   static class Profile7 extends BrowserActivity {}
-  static class Tab {final String url;Tab(String value){url=value;}}
+  static class Tab {String url;long generation;WebView web=new WebView();Object saved;Tab(String value){url=value;}}
   final List<Tab> tabs=new ArrayList<>();Tab selected;int newTabs,selections;final Store store=new Store();
   @Override public SharedPreferences getSharedPreferences(String name,int mode){return store;}
   void select(Tab tab){selections++;selected=tab;}
   void newTab(String url){newTabs++;selected=new Tab(url);tabs.add(selected);}
+  boolean destroyed;
+  TestDialog permissionDialog;
+  Runnable customViewClosed=()->{};
+  final List<Tab> retired=new ArrayList<>();
+  int shown;
+  void hideCustomView(){customViewClosed.run();}
+  void retire(Tab tab){retired.add(tab);}
+  void showSelected(){shown++;}
+  void updateChrome(){}
+  void message(String value){}
+  /* BROWSER_LIVE */
+  /* BROWSER_NAVIGATION_CURRENT */
+  /* BROWSER_SITE_PERMISSIONS */
   /* BROWSER_ACTIVITY */
   /* BROWSER_RESUME */
   /* BROWSER_INTENT_ADDRESS */
   /* BROWSER_NEW_INTENT */
+}
+
+final class WebView {}
+final class AppAppearance {
+  static TestDialog dialog(BrowserActivity activity){return activity.permissionDialog=new TestDialog();}
+}
+final class TestDialog {
+  interface ClickListener {void click(TestDialog dialog,int which);}
+  String message;
+  ClickListener positive;
+  TestDialog setTitle(String text){return this;}
+  TestDialog setMessage(String text){message=text;return this;}
+  TestDialog setNegativeButton(String text,ClickListener click){return this;}
+  TestDialog setPositiveButton(String text,ClickListener click){positive=click;return this;}
+  void show(){}
+  void confirm(){positive.click(this,-1);}
 }
