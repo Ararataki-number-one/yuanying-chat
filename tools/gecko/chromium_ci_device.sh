@@ -17,7 +17,12 @@ export ANDROID_AVD_HOME="$work/$android-avd" ANDROID_USER_HOME="$work/$android-u
 mkdir -p "$ANDROID_AVD_HOME" "$ANDROID_USER_HOME" "$ANDROID_EMULATOR_HOME"
 sudo chmod a+rw /dev/kvm
 echo no | "$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager" create avd --force -n chromiumdelivery -p "$ANDROID_AVD_HOME/chromiumdelivery.avd" -k "system-images;$image;google_apis;x86_64"
-"$ANDROID_HOME/emulator/emulator" -avd chromiumdelivery -no-window -no-audio -no-snapshot -no-boot-anim -no-metrics -accel on -port 5554 -gpu swiftshader -memory 4096 -cores 4 > "$work/$android-emulator.log" 2>&1 &
+graphics=(-gpu swiftshader)
+if (( sdk == 37 )); then
+  # Android 17 SurfaceFlinger requires Gfxstream DMA color-buffer readback.
+  graphics+=(-feature GLDirectMem -feature HasSharedSlotsHostMemoryAllocator)
+fi
+"$ANDROID_HOME/emulator/emulator" -avd chromiumdelivery -no-window -no-audio -no-snapshot -no-boot-anim -no-metrics -accel on -port 5554 "${graphics[@]}" -memory 4096 -cores 4 > "$work/$android-emulator.log" 2>&1 &
 emulator_pid=$!
 stop_guest() {
   local status=$?
