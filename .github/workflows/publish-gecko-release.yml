@@ -55,6 +55,94 @@ jobs:
               subprocess.run(['git','merge-base','--is-ancestor',m['sourceCommit'],tools_commit],check=True)
               changed=set(subprocess.check_output(['git','diff','--name-only',m['sourceCommit'],tools_commit],text=True).splitlines())
               assert changed and changed<=release_files,'Release tools cannot change the tested APK application source.'
+          if m.get('verificationInputMode')=='derive-existing-ci-v1':
+              import shutil,sys,tarfile,tempfile
+              release_dir=pathlib.Path.cwd()
+              expected_files={'.github/workflows/publish-gecko-release.yml','RELEASE.md',
+                              'release-authorization.json','release-manifest.json','signed-apk-tail.bin',
+                              'signed-transport.json','unsigned-build-manifest.json'}
+              tracked=set(subprocess.check_output(['git','ls-tree','-r','--name-only','HEAD'],text=True).splitlines())
+              assert tracked==expected_files,'The release tree may contain only necessary publication files.'
+              artifact=m['signedTransportArtifact']['unsignedArtifactCommit']
+              assert re.fullmatch(r'[0-9a-f]{40}',artifact)
+              subprocess.run(['git','fetch','--no-tags','--depth=1','--refetch','--no-filter','origin',artifact],check=True)
+              assert subprocess.check_output(['git','rev-parse','FETCH_HEAD^{commit}'],text=True).strip()==artifact
+              evidence_parents=[line.split()[1] for line in subprocess.check_output(['git','cat-file','-p',artifact],text=True).split('\n\n',1)[0].splitlines() if line.startswith('parent ')]
+              with tempfile.TemporaryDirectory(prefix='pocketchat-release-verify-') as directory:
+                  work=pathlib.Path(directory)
+                  tools_source=work/'release-tools'
+                  evidence=work/'existing-ci-evidence'
+                  evidence.mkdir()
+                  with subprocess.Popen(['git','archive','--format=tar',artifact],stdout=subprocess.PIPE) as archived:
+                      with tarfile.open(fileobj=archived.stdout,mode='r|') as archive:
+                          archive.extractall(evidence,filter='data')
+                      assert archived.wait()==0
+                  subprocess.run(['git','worktree','add','--detach',str(tools_source),tools_commit],check=True)
+                  try:
+                      sys.path.insert(0,str(tools_source))
+                      from tools.gecko.release_channel_contract import assemble_signed_transport, verify_unsigned_transport_provenance
+                      raw_build=(evidence/'manifest.json').read_bytes()
+                      verify_unsigned_transport_provenance(m,(release_dir/'unsigned-build-manifest.json').read_bytes(),
+                                                          raw_build,evidence_parents,artifact)
+                      build=json.loads(raw_build)
+                      for name in ('unsigned-build-manifest.json','signed-apk-tail.bin'):
+                          with (evidence/name).open('xb') as output:
+                              output.write((release_dir/name).read_bytes())
+                      descriptor_raw=(release_dir/'signed-transport.json').read_bytes()
+                      transport_ref=m['signedTransportArtifact']
+                      assert len(descriptor_raw)==transport_ref['bytes'] and hashlib.sha256(descriptor_raw).hexdigest()==transport_ref['sha256']
+                      signed_parts=work/'verified-signed-parts'
+                      assemble_signed_transport(json.loads(descriptor_raw),m,evidence,signed_parts,
+                                                expected_source=m['sourceCommit'],expected_run=m['buildRunId'],
+                                                expected_attempt=m['buildRunAttempt'],expected_artifact=artifact)
+                      apk=work/m['filename']
+                      with apk.open('xb') as output:
+                          for item in m['parts']:
+                              with (signed_parts/item['file']).open('rb') as part:
+                                  shutil.copyfileobj(part,output)
+                      sdk=sorted(pathlib.Path(os.environ['ANDROID_HOME']).glob('build-tools/*/apksigner'))[-1].parent
+                      signer_info=subprocess.check_output([str(sdk/'apksigner'),'verify','--print-certs',str(apk)],text=True)
+                      assert set(re.findall(r'certificate SHA-256 digest: ([0-9a-f]{64})',signer_info))=={m['signerSha256']}
+                      apk_info=subprocess.check_output([str(sdk/'aapt2'),'dump','badging',str(apk)],text=True)
+                      assert f"package: name='local.pocketchat' versionCode='{m['versionCode']}' versionName='{m['version']}'" in apk_info
+                      assert 'application-debuggable' not in apk_info
+                      receipt_keys=('file','package','version','versionCode','bytes','sha256','unsignedSha256',
+                                    'signerSha256','debuggable','testActivitiesPresent')
+                      receipt={key:m[key] for key in receipt_keys}
+                      (work/'gecko-apk-verification.json').write_text(json.dumps(receipt)+'\n')
+                      subprocess.run([sys.executable,'tools/publish-gecko-release.py','--source',m['sourceCommit'],
+                                      '--apk',str(apk),'--evidence',str(evidence),'--channel','stable','--stage-only',
+                                      '--notes',str(release_dir/'RELEASE.md'),'--direct-release-authorization',
+                                      str(release_dir/'release-authorization.json')],cwd=tools_source,check=True)
+                      staged=tools_source/'work/gecko-integration/signed-public'
+                      verified_manifest=json.loads((staged/'release-manifest.json').read_text())
+                      public_fields={k:v for k,v in m.items() if k not in ('signedTransportArtifact','verificationInputMode')}
+                      assert all(key in verified_manifest and verified_manifest[key]==value for key,value in public_fields.items())
+                      # Detailed validation stays in this process. The publication steps
+                      # read the small tracked install manifest and never release this copy.
+                      m=dict(verified_manifest,signedTransportArtifact=transport_ref)
+                      defer={'release-manifest.json',*(item['file'] for item in m['parts'])}
+                      for product in sorted(staged.rglob('*')):
+                          assert not product.is_symlink()
+                          if not product.is_file():
+                              continue
+                          relative=product.relative_to(staged)
+                          if relative.as_posix() in defer:
+                              continue
+                          destination=release_dir/relative
+                          if destination.exists():
+                              assert destination.read_bytes()==product.read_bytes()
+                              continue
+                          destination.parent.mkdir(parents=True,exist_ok=True)
+                          shutil.copy2(product,destination)
+                      for part in build['artifacts'][0]['chunks']:
+                          name=part['file']
+                          with (evidence/name).open('rb') as src,(release_dir/name).open('xb') as dst:
+                              shutil.copyfileobj(src,dst)
+                      print('Revalidated exact existing CI evidence inside the runner without adding it to publication.')
+                  finally:
+                      sys.path.remove(str(tools_source))
+                      subprocess.run(['git','worktree','remove','--force',str(tools_source)],check=True)
           for name in release_files|{'tools/publish-update-feed.py'}:
               assert pathlib.Path(name).read_bytes()==subprocess.check_output(['git','show',tools_commit+':'+name]),name
           if tuple(map(int,m['version'].split('.'))) >= (2,1,0):
