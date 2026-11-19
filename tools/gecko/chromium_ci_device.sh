@@ -17,12 +17,13 @@ export ANDROID_AVD_HOME="$work/$android-avd" ANDROID_USER_HOME="$work/$android-u
 mkdir -p "$ANDROID_AVD_HOME" "$ANDROID_USER_HOME" "$ANDROID_EMULATOR_HOME"
 sudo chmod a+rw /dev/kvm
 echo no | "$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager" create avd --force -n chromiumdelivery -p "$ANDROID_AVD_HOME/chromiumdelivery.avd" -k "system-images;$image;google_apis;x86_64"
-graphics=(-gpu swiftshader)
+emulator_options=(-gpu swiftshader)
 if (( sdk == 37 )); then
-  # Android 17 SurfaceFlinger requires Gfxstream DMA color-buffer readback.
-  graphics+=(-feature GLDirectMem -feature HasSharedSlotsHostMemoryAllocator)
+  # Android 17 needs DMA readback and room for the two APKs and their extracted libraries.
+  emulator_options+=(-feature GLDirectMem -feature HasSharedSlotsHostMemoryAllocator -partition-size 6144)
+  df -h "$work"
 fi
-"$ANDROID_HOME/emulator/emulator" -avd chromiumdelivery -no-window -no-audio -no-snapshot -no-boot-anim -no-metrics -accel on -port 5554 "${graphics[@]}" -memory 4096 -cores 4 > "$work/$android-emulator.log" 2>&1 &
+"$ANDROID_HOME/emulator/emulator" -avd chromiumdelivery -no-window -no-audio -no-snapshot -no-boot-anim -no-metrics -accel on -port 5554 "${emulator_options[@]}" -memory 4096 -cores 4 > "$work/$android-emulator.log" 2>&1 &
 emulator_pid=$!
 stop_guest() {
   local status=$?
@@ -43,6 +44,7 @@ timeout 180 "${adb_device[@]}" wait-for-device
 timeout 180 bash -c 'until [ "$("$1" -s "$2" shell getprop sys.boot_completed | tr -d "\r")" = 1 ] && "$1" -s "$2" shell pm path android | grep -q "^package:"; do sleep 2; done' _ "$adb_bin" "$serial"
 test "$("${adb_device[@]}" shell getprop ro.kernel.qemu | tr -d '\r')" = 1
 test "$("${adb_device[@]}" shell getprop ro.build.version.sdk | tr -d '\r')" = "$sdk"
+if (( sdk == 37 )); then "${adb_device[@]}" shell df -h /data; fi
 if [[ "$mode" == routes ]]; then
   # Android may automatically re-enable the default provider once. Check that the
   # guest has no current WebView provider before exercising the independent engine.
