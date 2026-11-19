@@ -127,6 +127,7 @@ final class ChromiumModuleInstaller {
   }
 
   private static byte[] trustedCertificate(PackageInfo info) throws IOException {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) throw invalidPackage();
     Signature[] certificates = info.signingInfo == null ? null : info.signingInfo.getApkContentsSigners();
     if (certificates == null || certificates.length != 1) throw invalidPackage();
     byte[] certificate = certificates[0].toByteArray();

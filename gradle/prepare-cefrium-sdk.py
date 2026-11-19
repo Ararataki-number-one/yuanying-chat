@@ -6,7 +6,7 @@ import hashlib
 from pathlib import Path, PurePosixPath
 import shutil
 import tempfile
-from urllib.request import urlopen
+from urllib.request import Request, urlopen
 
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -52,7 +52,9 @@ def main() -> None:
                 shutil.copyfile(cached, staged)
             else:
                 url = NOTICE_URL if relative == NOTICE else REPOSITORY + source.as_posix()
-                with urlopen(url, timeout=120) as response, staged.open('wb') as output:
+                print(f'Retrieving pinned Cefrium input {relative}', flush=True)
+                request = Request(url, headers={'User-Agent': 'PocketChat build dependency verifier/1'})
+                with urlopen(request, timeout=120) as response, staged.open('wb') as output:
                     shutil.copyfileobj(response, output)
 
             if digest(staged) != expected:
