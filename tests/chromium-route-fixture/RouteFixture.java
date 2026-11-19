@@ -494,7 +494,6 @@ public final class RouteFixture extends Instrumentation {
     private CefriumProfile registerFixture(Context target, String title, AtomicInteger served) throws Exception {
         ClassLoader loader = target.getClassLoader();
         Class<?> profiles = loader.loadClass(PACKAGE + ".Profiles");
-        Context global = (Context)invoke(profiles, null, "global", new Class<?>[]{Context.class}, target);
         Context environment = (Context)invoke(profiles, null, "context",
                 new Class<?>[]{Context.class, int.class}, target, 0);
         Class<?> catalog = loader.loadClass(PACKAGE + ".ProfileCatalog");
@@ -505,9 +504,10 @@ public final class RouteFixture extends Instrumentation {
 
         selectEnvironment(environment, "", false, ORIGIN + "/");
 
-        invoke(loader.loadClass(PACKAGE + ".CefriumRoute"), null, "configureEngine", new Class<?>[0]);
-        Cefrium.setDataDirectory(new File(global.getNoBackupFilesDir(), "cefrium-browser"));
-        require(Cefrium.initialize(target.getApplicationContext()), "Chromium initialization failed");
+        File engineDirectory = (File)invoke(loader.loadClass(PACKAGE + ".ChromiumProfileCleanup"),
+                null, "dataDirectory", new Class<?>[]{Context.class}, target);
+        require(Cefrium.isInitialized() && engineDirectory.equals(Cefrium.getDataDirectory()),
+                "The proxy fixtures did not initialize Chromium in the application's approved directory");
         CefriumProfile profile = CefriumProfile.get(name);
         profile.registerContentServer(ORIGIN, request -> {
             served.incrementAndGet();
