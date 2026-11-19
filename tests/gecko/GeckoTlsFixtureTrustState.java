@@ -22,7 +22,7 @@ final class GeckoTlsFixtureTrustState {
     for(String key:Arrays.asList("runNonce","caseNonce","bootCaseNonce","runtimeNonce","processNonce","challengeNonce"))hex(binding,key,32);
     hex(binding,"expectedCaDerSha256",64);
     for(String key:Arrays.asList("caPemSha256","caDerSha256","leafDerSha256"))hex(input,key,64);
-    if(!same(binding.get("caseNonce"),binding.get("bootCaseNonce"))||!same(binding.get("expectedCaDerSha256"),input.get("caDerSha256"))||number(binding,"pid")<1||!Arrays.asList(1L,2L,6L).contains(number(binding,"slot")))reject("binding");
+    if(!same(binding.get("caseNonce"),binding.get("bootCaseNonce"))||!same(binding.get("expectedCaDerSha256"),input.get("caDerSha256"))||number(binding,"pid")<1||!Arrays.asList(0L,1L,2L,6L).contains(number(binding,"slot")))reject("binding");
     for(String key:Arrays.asList("caNotBeforeMs","caNotAfterMs","leafNotBeforeMs","leafNotAfterMs","hostUtcMs"))if(number(input,key)<1)reject("validity");
     if(number(input,"caNotBeforeMs")>=number(input,"caNotAfterMs")||number(input,"leafNotBeforeMs")>=number(input,"leafNotAfterMs"))reject("validity");
     cases.add(binding.getString("caseNonce"));active();

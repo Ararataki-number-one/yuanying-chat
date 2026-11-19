@@ -19,11 +19,16 @@ final class GeckoTlsFixtureTrust {
   GeckoTlsFixtureTrust(Context context,GeckoWebView view,JSONObject build,String run,String invocation,String leaf,
       JSONObject input,LongSupplier deadline,Runnable admitted,Consumer<Throwable> failure)throws Exception{
     ui();this.view=view;runtime=view.runtime;this.admitted=admitted;this.failure=failure;
-    if(!"local.pocketchat.test".equals(context.getPackageName())||!Arrays.asList("local.pocketchat.GeckoTlsAcceptanceActivity$Profile1","local.pocketchat.GeckoTlsAcceptanceActivity$Profile2","local.pocketchat.GeckoTlsCpuIpComboIntegrationActivity").contains(context.getClass().getName())||runtime==null||!leaf.equals(input.opt("leafDerSha256")))throw new SecurityException("FixtureTrust:scope");
+    slot=Profiles.slot(context);
+    Class<?> activity=context.getClass();
+    boolean expectedActivity=(slot==0&&activity==GeckoEnvironmentPolicyIntegrationActivity.class)
+      ||(slot==1&&activity==GeckoTlsAcceptanceActivity.Profile1.class)||(slot==2&&activity==GeckoTlsAcceptanceActivity.Profile2.class)
+      ||(slot==6&&activity==GeckoTlsCpuIpComboIntegrationActivity.class);
+    if(!"local.pocketchat.test".equals(context.getPackageName())||!expectedActivity||runtime==null||!leaf.equals(input.opt("leafDerSha256")))throw new SecurityException("FixtureTrust:scope");
     JSONObject policy=view.owner.tls.status();
-    host=(MainActivity)context;slot=Profiles.slot(context);runtimeNonce=policy.getString("runtimeNonce");processNonce=policy.getString("processNonce");
+    host=(MainActivity)context;runtimeNonce=policy.getString("runtimeNonce");processNonce=policy.getString("processNonce");
     JSONObject binding=GeckoTlsFixtureTrustState.obj("sourceCommit",build.getString("sourceCommit"),"sourceTree",build.getString("sourceTree"),"runNonce",run,"caseNonce",invocation,"bootCaseNonce",invocation,
-      "runtimeNonce",policy.getString("runtimeNonce"),"processNonce",policy.getString("processNonce"),"challengeNonce",UUID.randomUUID().toString().replace("-",""),"expectedCaDerSha256",input.getString("caDerSha256"),"pid",android.os.Process.myPid(),"slot",Profiles.slot(context));
+      "runtimeNonce",policy.getString("runtimeNonce"),"processNonce",policy.getString("processNonce"),"challengeNonce",UUID.randomUUID().toString().replace("-",""),"expectedCaDerSha256",input.getString("caDerSha256"),"pid",android.os.Process.myPid(),"slot",slot);
     state=new GeckoTlsFixtureTrustState(binding,input,SystemClock::elapsedRealtime,deadline,this::owns);
   }
   void start(){try{ui();state.active();runtime.getWebExtensionController().ensureBuiltIn(LOCATION,EXTENSION).accept(value->{try{

@@ -44,6 +44,9 @@ async function complete(f, binding=base(), beforeWait=false) {
   for(const file of ['parent.js','background.js'])check(!/\b(fetch|XMLHttpRequest|WebSocket|importCertificates|addCert|setCertTrust|setBoolPref)\b/.test(fs.readFileSync(path.join(directory,file),'utf8')),'no added trust or traffic '+file);
   assert.throws(()=>fixture({id:'browser@pocketchat.local'}),/builtin-only/);checks++;
   assert.throws(()=>fixture({privileged:false}),/builtin-only/);checks++;
+  const main=fixture();const mainReceipt=await complete(main,{...base(),slot:0});
+  check(mainReceipt.binding.slot===0,'environment policy main process waits for its own exact root');
+  await reject(()=>fixture().api.arm({...base(),slot:3}),/fixture-trust-binding/);
   const ordinary=fixture();const original=await complete(ordinary);await reject(()=>ordinary.api.arm(base()),/duplicate-arm/);
   const fresh={...base(),caseNonce:'5'.repeat(32),challengeNonce:'6'.repeat(32)};
   const resample=await ordinary.api.read(fresh);check(resample.importedAtUtcMs===original.importedAtUtcMs&&resample.binding.caseNonce===fresh.caseNonce&&ordinary.events.size===0,'same-runtime fresh read has no new import');

@@ -122,6 +122,43 @@ class GeckoEnvironmentEvidenceTests(unittest.TestCase):
     def validate(self, value):
         return gate.validate_behavior(value, SOURCE, lambda source, path: SOURCE_BYTES)
 
+    def test_selected_source_requires_current_native_ca_receipt_and_hashes(self):
+        from tls_product_test_support import model_trust
+        report = self.document()
+        selected_activity = 'tests/gecko/GeckoEnvironmentPolicyIntegrationActivity.java'
+        def reader(source, path):
+            if path in ('tools/gecko/tls_acceptance_contract.py', 'tools/gecko/tls_acceptance_server.py'):
+                return (ROOT / path).read_bytes()
+            return SOURCE_BYTES + (b'// GeckoTlsFixtureTrust' if path == selected_activity else b'')
+        report['sourceFiles'].update({path: hashlib.sha256(reader(SOURCE, path)).hexdigest()
+                                      for path in gate.FIXTURE_TRUST_SOURCE_INPUTS})
+        report['sourceFiles'][selected_activity] = hashlib.sha256(reader(SOURCE, selected_activity)).hexdigest()
+        expected = dict(caPemSha256=report['hostTls']['caPemSha256'], leafDerSha256=report['hostTls']['leafDerSha256'],
+                        caDerSha256='1'*64, caNotBeforeMs=1000, caNotAfterMs=3000,
+                        leafNotBeforeMs=1000, leafNotAfterMs=3000, hostUtcMs=2000)
+        owner = dict(slot=0, pid=12345, runtimeNonce='d'*32, processNonce='e'*32)
+        report['fixtureTrustInput'] = expected
+        report['activity']['fixtureTrustOwner'] = owner
+        report['activity']['fixtureTrust'] = model_trust(owner, expected, NONCE, NONCE, SOURCE, TREE, NONCE)
+        gate.validate_behavior(report, SOURCE, reader)
+        mutations = (
+            lambda r: r['activity'].pop('fixtureTrust'),
+            lambda r: r.pop('fixtureTrustInput'),
+            lambda r: r['fixtureTrustInput'].update(caPemSha256='0'*64),
+            lambda r: r['activity']['fixtureTrust']['nativeReceipt'].update(caDerSha256='0'*64),
+            lambda r: r['activity']['fixtureTrust']['nativeReceipt'].update(importedEventObserved=False),
+            lambda r: r['activity']['fixtureTrust']['binding'].update(runNonce='0'*32),
+            lambda r: r['activity']['fixtureTrustOwner'].update(runtimeNonce='0'*32),
+            lambda r: r['activity']['fixtureTrustOwner'].update(slot=1),
+            lambda r: r['sourceFiles'].pop('tests/gecko/assets/tls-fixture-trust/parent.js'),
+            lambda r: r['sourceFiles'].update({'tools/gecko/tls_fixture_trust.py': '0'*64}),
+        )
+        for index, mutate in enumerate(mutations):
+            changed = copy.deepcopy(report)
+            mutate(changed)
+            with self.subTest(index=index), self.assertRaises(ValueError):
+                gate.validate_behavior(changed, SOURCE, reader)
+
     def reject_changes(self, changes):
         for index, change in enumerate(changes):
             with self.subTest(index=index):

@@ -21,8 +21,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from profile_invocation_contract import expected_build, verify_installed
 from fingerprint_fixture_server import EphemeralCertificates, AndroidUserCa, GUEST_PORT
 from newworker_fixture_server import WorkerFixtureServer
+from tls_fixture_trust import fixture_trust_input
 from check_gecko_environment_policy_evidence import (
-    SOURCE_INPUTS, FIXTURE_TYPE, REPORT_NAME, expected_clock,
+    SOURCE_INPUTS, FIXTURE_TRUST_SOURCE_INPUTS, FIXTURE_TYPE, REPORT_NAME, expected_clock,
     verify_gecko_environment_policy_evidence, strict_json,
 )
 
@@ -32,20 +33,21 @@ MAX_ACTIVITY_BYTES = 1024 * 1024
 TRANSPORT_DIAGNOSTIC_NAME = 'gecko-environment-policy-transport-diagnostic.json'
 
 
-def activity_start_args(nonce, source, leaf, ca):
+def activity_start_args(nonce, source, trust):
+    leaf, ca = trust['leafDerSha256'], trust['caPemSha256']
     if not re.fullmatch(r'[0-9a-f]{32}', nonce) or not re.fullmatch(r'[0-9a-f]{40}', source) or not all(re.fullmatch(r'[0-9a-f]{64}', value) for value in (leaf, ca)):
         raise ValueError('Invalid source-bound Gecko policy launch')
     tokens = ['am', 'start', '-W', '-n', ACTIVITY, '--es', 'runNonce', nonce,
               '--es', 'sourceCommit', source, '--ei', 'fixturePort', str(GUEST_PORT),
               '--es', 'fixtureEngine', 'gecko', '--es', 'expectedLeafSha256', leaf,
-              '--es', 'publicCaPemSha256', ca]
+              '--es', 'publicCaPemSha256', ca, '--es', 'fixtureTrustInput', json.dumps(trust, separators=(',', ':'))]
     return ['shell', shlex.join(tokens)]
 
 
 def source_inputs():
     # Include the fixed checker contract plus every app Java/extension resource:
     # no selected runtime helper may silently change during this workload.
-    paths = {ROOT / name for name in SOURCE_INPUTS}
+    paths = {ROOT / name for name in SOURCE_INPUTS | FIXTURE_TRUST_SOURCE_INPUTS}
     paths.update((ROOT / 'app/src/main/java').rglob('*.java'))
     paths.update((ROOT / 'app/src/main/assets').rglob('*.js'))
     paths.update((ROOT / 'app/src/main/assets').rglob('*.json'))
@@ -80,6 +82,14 @@ def failure_summary(activity):
         'status', 'stage', 'failedAtStage', 'failure', 'checks', 'currentTimeZonePolicy',
         'lastNativeReadback', 'lifecycle')}
     result['nativeEvents'] = activity.get('nativeEvents', [])[-12:]
+    trust = activity.get('fixtureTrust')
+    if isinstance(trust, dict):
+        result['fixtureTrust'] = {key: trust[key] for key in ('observerArmedBeforeEnable', 'bootImportAcknowledged')
+                                  if type(trust.get(key)) is bool}
+        if trust.get('status') in ('connecting', 'arming', 'armed', 'waiting-import', 'reading', 'ready', 'failed'):
+            result['fixtureTrust']['status'] = trust['status']
+        if type(trust.get('enableCalls')) is int and trust['enableCalls'] in (0, 1):
+            result['fixtureTrust']['enableCalls'] = trust['enableCalls']
     for name in ('staleTicketProof', 'staleRevisionProof'):
         proof = activity.get(name)
         if isinstance(proof, dict):
@@ -180,7 +190,8 @@ def main():
             raise ValueError('Gecko policy evidence requires shell UID2000')
         adb('shell', 'am', 'force-stop', 'local.pocketchat.test')
         server.begin('gecko')
-        adb(*activity_start_args(nonce, source, certificates.leaf_sha, certificates.ca_sha))
+        report['fixtureTrustInput'] = fixture_trust_input(certificates)
+        adb(*activity_start_args(nonce, source, report['fixtureTrustInput']))
         # New independent workload; no original 31/49/12 timing is changed.
         deadline = time.monotonic() + 660
         while time.monotonic() < deadline:

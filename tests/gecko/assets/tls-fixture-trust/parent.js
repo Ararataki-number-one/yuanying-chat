@@ -24,7 +24,7 @@ this.pocketFixtureTrust = class extends ExtensionCommon.ExtensionAPI {
         const size = ['sourceCommit', 'sourceTree'].includes(key) ? 40 : key === 'expectedCaDerSha256' ? 64 : 32;
         if (typeof value[key] !== 'string' || !new RegExp(`^[0-9a-f]{${size}}$`).test(value[key])) fail('fixture-trust-binding');
       }
-      if (!Number.isSafeInteger(value.pid) || value.pid < 1 || ![1, 2, 6].includes(value.slot)) fail('fixture-trust-binding');
+      if (!Number.isSafeInteger(value.pid) || value.pid < 1 || ![0, 1, 2, 6].includes(value.slot)) fail('fixture-trust-binding');
       return {...value};
     };
     const live = () => {

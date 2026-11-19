@@ -20,6 +20,9 @@ SPEC = importlib.util.spec_from_file_location('gecko_environment_runner', ROOT /
 runner = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(runner)
 SOURCE, TREE, NONCE = 'a' * 40, 'b' * 40, 'c' * 32
+TRUST = dict(leafDerSha256='d' * 64, caPemSha256='e' * 64, caDerSha256='f' * 64,
+             caNotBeforeMs=1000, caNotAfterMs=3000, leafNotBeforeMs=1000,
+             leafNotAfterMs=3000, hostUtcMs=2000)
 
 
 class GeckoEnvironmentRunnerTests(unittest.TestCase):
@@ -35,11 +38,14 @@ class GeckoEnvironmentRunnerTests(unittest.TestCase):
         return runner.read_activity(json.dumps(value).encode(), NONCE, SOURCE, TREE, self.identity())
 
     def test_launch_is_source_bound_to_actual_registered_component_and_provider(self):
-        command = runner.activity_start_args(NONCE, SOURCE, 'd' * 64, 'e' * 64)
+        command = runner.activity_start_args(NONCE, SOURCE, TRUST)
         self.assertEqual(command[0], 'shell')
         tokens = shlex.split(command[1])
         self.assertEqual(tokens[:5], ['am', 'start', '-W', '-n', runner.ACTIVITY])
         self.assertEqual(tokens[tokens.index('fixtureEngine') + 1], 'gecko')
+        self.assertEqual(tokens[tokens.index('expectedLeafSha256') + 1], TRUST['leafDerSha256'])
+        self.assertEqual(tokens[tokens.index('publicCaPemSha256') + 1], TRUST['caPemSha256'])
+        self.assertEqual(json.loads(tokens[tokens.index('fixtureTrustInput') + 1]), TRUST)
         ns = '{http://schemas.android.com/apk/res/android}'
         application = ET.parse(ROOT / 'tests/gecko/AndroidManifest.xml').getroot().find('application')
         self.assertEqual(sum(row.get(ns + 'name') == runner.ACTIVITY.split('/')[1] for row in application.findall('activity')), 1)
@@ -54,7 +60,7 @@ class GeckoEnvironmentRunnerTests(unittest.TestCase):
                     changed = list(valid)
                     changed[index] = bad
                     with self.assertRaises(ValueError):
-                        runner.activity_start_args(*changed)
+                        runner.activity_start_args(*changed[:2], dict(TRUST, leafDerSha256=changed[2], caPemSha256=changed[3]))
 
     def test_poll_ignores_missing_and_other_invocation_but_accepts_exact_current(self):
         for raw in (b'', b'not-json', b'null', b'[]', b'{}'):
@@ -96,12 +102,14 @@ class GeckoEnvironmentRunnerTests(unittest.TestCase):
 
     def test_failure_summary_exports_only_bounded_synthetic_diagnostic_fields(self):
         value = dict(self.activity(), privateKey='never export', pageText='never export',
+                     fixtureTrust=dict(status='failed', bootImportAcknowledged=False, nativeReceipt={'private': 'never export'}),
                      stage='native-context', nativeEvents=[{'kind': 'page-stop-false'}],
                      lastPageObservation=dict(page=dict(nativeTimeZone={'timeZone': 'UTC'}, inputText='never export'), frames=[], workers={}))
         summary = runner.failure_summary(value)
         self.assertNotIn('privateKey', summary)
         self.assertNotIn('pageText', summary)
         self.assertNotIn('buildIdentity', summary)
+        self.assertEqual(summary['fixtureTrust'], {'status': 'failed', 'bootImportAcknowledged': False})
         self.assertEqual(summary['nativeEvents'], [{'kind': 'page-stop-false'}])
         self.assertEqual(summary['lastPageObservation']['page'], {'nativeTimeZone': {'timeZone': 'UTC'}})
         self.assertEqual(runner.failure_summary(None), {'stage': 'unavailable'})

@@ -13,9 +13,10 @@ public final class TrustStateHost {
   static String hex(char c,int n){char[] a=new char[n];Arrays.fill(a,c);return new String(a);}
   static final class Fixture {
     long time=1000,until=121000;boolean owner=true;GeckoTlsFixtureTrustState state;
-    Fixture()throws Exception{
+    Fixture()throws Exception{this(1);}
+    Fixture(int slot)throws Exception{
       JSONObject input=obj("caPemSha256",hex('1',64),"caDerSha256",hex('2',64),"leafDerSha256",hex('3',64),"caNotBeforeMs",UTC-10000,"caNotAfterMs",UTC+10000,"leafNotBeforeMs",UTC-10000,"leafNotAfterMs",UTC+10000,"hostUtcMs",UTC);
-      JSONObject binding=obj("sourceCommit",hex('a',40),"sourceTree",hex('b',40),"runNonce",hex('c',32),"caseNonce",hex('d',32),"bootCaseNonce",hex('d',32),"runtimeNonce",hex('e',32),"processNonce",hex('f',32),"challengeNonce",hex('4',32),"expectedCaDerSha256",hex('2',64),"pid",12345,"slot",1);
+      JSONObject binding=obj("sourceCommit",hex('a',40),"sourceTree",hex('b',40),"runNonce",hex('c',32),"caseNonce",hex('d',32),"bootCaseNonce",hex('d',32),"runtimeNonce",hex('e',32),"processNonce",hex('f',32),"challengeNonce",hex('4',32),"expectedCaDerSha256",hex('2',64),"pid",12345,"slot",slot);
       state=new GeckoTlsFixtureTrustState(binding,input,()->time,()->until,()->owner);
     }
     JSONObject armed(){return obj("schema",1,"binding",GeckoTlsFixtureTrustState.copy(state.binding),"observerRegistered",true,"nativeEffective",false,"nativeHasUserValue",false,"importEventCount",0);}
@@ -24,6 +25,8 @@ public final class TrustStateHost {
     void complete()throws Exception{waiting();state.ready(proof());}
   }
   public static void main(String[] args)throws Exception{
+    Fixture main=new Fixture(0);main.waiting();check(!main.state.bootReady(),"environment policy slot stays closed at setter return");main.state.ready(main.proof());check(main.state.bootReady(),"main process exact root admits");
+    rejected("unrelated fixture slot",()->new Fixture(3));
     Fixture good=new Fixture();check(!good.state.bootReady(),"no admission before connection");good.state.connected();check(!good.state.bootReady(),"no admission from native port");good.state.armed(good.armed());check(!good.state.bootReady(),"observer and false pref are not trust");good.state.enabling();check(!good.state.bootReady(),"setter return is not trust");good.state.ready(good.proof());check(good.state.bootReady()&&good.state.caseReady(hex('d',32)),"matching completed native import admits owned case");
     rejected("duplicate armed",()->good.state.armed(good.armed()));rejected("duplicate enable",good.state::enabling);rejected("duplicate ACK",()->good.state.ready(good.proof()));
     for(String key:Arrays.asList("sourceCommit","sourceTree","runNonce","caseNonce","bootCaseNonce","runtimeNonce","processNonce","challengeNonce","expectedCaDerSha256")){

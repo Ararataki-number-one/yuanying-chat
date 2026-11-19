@@ -38,6 +38,12 @@ REQUIRED = {
     'ua.mobile-restored.native', 'wire.public-only', 'gpt.generic-hotpath-off',
     'coverage.worker-scopes-honest',
 }
+FIXTURE_TRUST_SOURCE_INPUTS = {
+    'tools/gecko/tls_fixture_trust.py', 'tools/gecko/tls_acceptance_contract.py',
+    'tools/gecko/tls_acceptance_server.py', 'tools/browser/check_gecko_tls_evidence.py',
+    'tests/gecko/GeckoTlsFixtureTrust.java', 'tests/gecko/GeckoTlsFixtureTrustState.java',
+    *{'tests/gecko/assets/tls-fixture-trust/' + name for name in ('manifest.json', 'schema.json', 'background.js', 'parent.js')},
+}
 SOURCE_INPUTS = {
     'tools/browser/check_gecko_environment_policy_evidence.py',
     'tools/browser/run_gecko_environment_policy_integration.py',
@@ -277,6 +283,21 @@ def validate_behavior(report, source, reader=source_bytes):
     engine_version = selected_engine_version(source, reader)
     require(type(report.get('hostTls')) is dict and type(report['hostTls'].get('trustInstallation')) is dict and type(report['expectedBuildIdentity'].get('sdkBuildIdentity')) is dict and type(activity.get('fixture')) is dict, 'host trust/SDK/fixture structures required')
     host = validate_host_trust(report, {'gecko': activity})
+    # The selected activity fixes the contract, including for pre-import historical reports.
+    if b'GeckoTlsFixtureTrust' in reader(source, 'tests/gecko/GeckoEnvironmentPolicyIntegrationActivity.java'):
+        hashes = report.get('sourceFiles')
+        require(type(hashes) is dict and FIXTURE_TRUST_SOURCE_INPUTS <= set(hashes), 'fixture trust source hashes missing')
+        expected = report.get('fixtureTrustInput')
+        require(type(expected) is dict and all(expected.get(key) == host[key] for key in ('caPemSha256', 'leafDerSha256')),
+                'fixture trust input differs from the installed CA or leaf')
+        policy = activity.get('fixtureTrustOwner')
+        require(type(policy) is dict and set(policy) == {'runtimeNonce', 'processNonce', 'pid', 'slot'}
+                and integer(policy['pid'], 1) and type(policy['slot']) is int and policy['slot'] == 0
+                and all(sha(policy[key], 32) for key in ('runtimeNonce', 'processNonce')), 'fixture trust main process identity')
+        from check_gecko_tls_evidence import selected_contract
+        verify_trust = selected_contract(source, reader)['fixture_trust']
+        verify_trust(activity.get('fixtureTrust'), expected=expected, run=report['runNonce'], case=report['runNonce'],
+                     source=source, tree=report['sourceTree'], policy=policy, resample=False)
     # The shared host validator deliberately has no knowledge of this new
     # fixture's phases or resource roles. Validate its raw bounded HTTP rows here.
     fixture = activity['fixture']

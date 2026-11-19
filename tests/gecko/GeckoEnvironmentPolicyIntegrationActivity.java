@@ -19,28 +19,46 @@ public final class GeckoEnvironmentPolicyIntegrationActivity extends MainActivit
   final JSONArray checks=new JSONArray(),samples=new JSONArray(),transitionSamples=new JSONArray(),nativeEvents=new JSONArray();
   final Map<GeckoSession,JSONObject> securities=new IdentityHashMap<>();
   BrowserFingerprintFixture fixture;JSONObject build,staleTicketProof=new JSONObject(),staleRevisionProof=new JSONObject(),popupProof=new JSONObject(),rfpConflictProof=new JSONObject(),lifecycle=new JSONObject();
-  String nonce,stage="startup",failure="",failedAtStage="";boolean terminal,enterpriseRootsReadback;long deadline,wholeDeadline;int popupCallbacks,restoreRequests;
+  GeckoTlsFixtureTrust trust;JSONObject trustInput;
+  String nonce,stage="startup",failure="",failedAtStage="";boolean terminal,enterpriseRootsReadback;long deadline,wholeDeadline,startupDeadline;int popupCallbacks,restoreRequests;
   GeckoTimeZoneStore.Ticket retainedTicket;JSONObject retainedReceipt;JSONObject lastSample,lastPageObservation=new JSONObject(),lastNativeReadback=new JSONObject(),rfpResetBaseline=new JSONObject(),rfpFinalObservation=new JSONObject();
   interface Ready{boolean get()throws Exception;}interface Step{void run()throws Exception;}
 
   @Override public void onCreate(Bundle state){try{
     BrowserFingerprintIntegrationActivity.validateIntent(this);nonce=getIntent().getStringExtra("runNonce");build=IntegrationBuildIdentity.read(this);
     if(!build.getString("sourceCommit").equals(getIntent().getStringExtra("sourceCommit")))throw new SecurityException("Fresh source binding required");
-    fixture=new BrowserFingerprintFixture(this,"gecko");fixture.start();BrowserFingerprintIntegrationActivity.configure(this,fixture.port(),ROOT+"gecko-system");
+    fixture=new BrowserFingerprintFixture(this,"gecko");trustInput=new JSONObject(getIntent().getStringExtra("fixtureTrustInput"));
+    if(!fixture.caPemSha256.equals(trustInput.getString("caPemSha256")))throw new SecurityException("Fixture CA differs");
+    fixture.start();BrowserFingerprintIntegrationActivity.configure(this,fixture.port(),ROOT+"gecko-system");
     getSharedPreferences("chat",0).edit().putBoolean("saveDraft",true).putInt("privacyLevel",1).commit();
     ChatSession.browserFactory=(context,owner)->new ObservedGecko(context,owner,this);getIntent().putExtra("legacyChat",true);
-    super.onCreate(null);wholeDeadline=SystemClock.elapsedRealtime()+600000;deadline=SystemClock.elapsedRealtime()+90000;publish();
+    super.onCreate(null);wholeDeadline=SystemClock.elapsedRealtime()+600000;deadline=SystemClock.elapsedRealtime()+90000;startupDeadline=deadline;publish();
+    if(remote instanceof ObservedGecko)((ObservedGecko)remote).ensureTrust();
     waitFor("production main surface",this::ready,()->{
       check("gecko.production-main",remote instanceof ObservedGecko&&geckoAddress!=null&&geckoAddress.address.isShown());
-      check("trust.enterprise-roots",enterpriseRootsReadback);
+      check("trust.enterprise-roots",enterpriseRootsReadback&&trust!=null&&trust.bootReady());
       capture("system",true,value->{try{check("clock.system",firstInline(value)&&clockMatches(value,java.util.TimeZone.getDefault().getID()));check("ua.mobile.native",!value.getJSONObject("native").getBoolean("desktop"));lastSample=value;saveZone("America/New_York",()->capture("new-york",true,this::newYork));}catch(Throwable error){failed(error);}});
     });
   }catch(Throwable error){failed(error);}}
   final class ObservedGecko extends GeckoWebView {
     final GeckoEnvironmentPolicyIntegrationActivity test;
     ObservedGecko(android.content.Context context,ChatSession owner,GeckoEnvironmentPolicyIntegrationActivity test){super(context,owner);this.test=test;}
+    void ensureTrust(){
+      if(trust!=null||terminal||remote!=this||runtime==null||!identityPrepared||deadline<=0||SystemClock.elapsedRealtime()>=deadline||!super.protectionAllowsNetwork())return;
+      try{
+        trust=new GeckoTlsFixtureTrust(GeckoEnvironmentPolicyIntegrationActivity.this,this,build,nonce,nonce,fixture.leafSha256,trustInput,()->startupDeadline,()->{
+          enterpriseRootsReadback=runtime.getSettings().getEnterpriseRootsEnabled();
+          if(!destroyed&&!owner.deleted&&identityPrepared&&!ready)identityConfigurationReady();
+        },GeckoEnvironmentPolicyIntegrationActivity.this::failed);
+        trust.start();
+      }catch(Throwable error){GeckoEnvironmentPolicyIntegrationActivity.this.failed(error);}
+    }
+    @Override boolean protectionAllowsNetwork(){
+      if(!super.protectionAllowsNetwork())return false;
+      ensureTrust();
+      return trust!=null&&trust.bootReady();
+    }
     @Override GeckoSession newSession(){
-      runtime.getSettings().setEnterpriseRootsEnabled(true);enterpriseRootsReadback=runtime.getSettings().getEnterpriseRootsEnabled();
       GeckoSession sdk=super.newSession();GeckoSession.ProgressDelegate original=sdk.getProgressDelegate();
       sdk.setProgressDelegate(new GeckoSession.ProgressDelegate(){
         public void onPageStart(GeckoSession s,String url){event("page-start",s,url);original.onPageStart(s,url);}
@@ -227,6 +245,12 @@ public final class GeckoEnvironmentPolicyIntegrationActivity extends MainActivit
     }catch(Throwable error){failed(error);}
   }
   void failed(Throwable error){if(terminal)return;terminal=true;failedAtStage=stage;stage="failed";String text=String.valueOf(error.getMessage()).replace('\n',' ').replace('\r',' ');failure=error.getClass().getSimpleName()+": "+text.substring(0,Math.min(300,text.length()));try{publish();}catch(Exception ignored){}}
-  void publish()throws Exception{if(build==null)return;JSONObject report=J.obj("schema",1,"fixtureType","gecko-production-environment-policy-v1","engine","gecko","status",terminal?(failure.isEmpty()?"passed":"failed"):"running","stage",stage,"failedAtStage",failedAtStage,"failure",failure,"sourceCommit",build.getString("sourceCommit"),"sourceTree",build.getString("sourceTree"),"runNonce",nonce,"buildIdentity",build,"checks",checks,"samples",samples,"transitionSamples",transitionSamples,"rfpResetBaseline",rfpResetBaseline,"rfpFinalObservation",rfpFinalObservation,"lastNativeReadback",lastNativeReadback,"lastPageObservation",lastPageObservation,"staleTicketProof",staleTicketProof,"staleRevisionProof",staleRevisionProof,"popupProof",popupProof,"rfpConflictProof",rfpConflictProof,"lifecycle",lifecycle,"fixture",fixture==null?new JSONObject():fixture.snapshot(),"nativeEvents",nativeEvents,"currentTimeZonePolicy",session==null?new JSONObject():session.timeZone.status(),"actualAndroidExecution",true,"actualGeckoExecution",remote!=null&&remote.current!=null,"actualAndroidWebViewExecution",false,"actualPublicWebsiteExecution",false,"actualDevicePerformanceMeasurement",false,"fingerprintProtectionVerified",false,"workerCoverageVerified",false,"serviceWorkerCoverageVerified",false,"contentProcessStopExecuted",false,"scope","Actual MainActivity/timezone/template UI and exact-session private native bridge; synthetic CA-trusted HTTPS first-inline Date/Intl and raw Worker/server header observations. Native setting receipts are separate from Worker effects; custom popup callback is invoked directly, not a claimed trusted popup gesture. Original acceptance workloads remain independently mandatory.");BrowserFingerprintIntegrationActivity.write(this,"gecko-environment-policy-results.json",report);}
-  @Override protected void onDestroy(){probe.removeCallbacksAndMessages(null);if(fixture!=null)fixture.close();super.onDestroy();}
+  JSONObject fixtureTrustOwner()throws Exception{
+    if(session==null)return new JSONObject();
+    JSONObject policy=session.tls.status();
+    return J.obj("runtimeNonce",policy.optString("runtimeNonce"),"processNonce",policy.optString("processNonce"),
+      "pid",android.os.Process.myPid(),"slot",Profiles.slot(this));
+  }
+  void publish()throws Exception{if(build==null)return;JSONObject report=J.obj("schema",1,"fixtureType","gecko-production-environment-policy-v1","engine","gecko","status",terminal?(failure.isEmpty()?"passed":"failed"):"running","stage",stage,"failedAtStage",failedAtStage,"failure",failure,"sourceCommit",build.getString("sourceCommit"),"sourceTree",build.getString("sourceTree"),"runNonce",nonce,"buildIdentity",build,"checks",checks,"samples",samples,"transitionSamples",transitionSamples,"rfpResetBaseline",rfpResetBaseline,"rfpFinalObservation",rfpFinalObservation,"lastNativeReadback",lastNativeReadback,"lastPageObservation",lastPageObservation,"staleTicketProof",staleTicketProof,"staleRevisionProof",staleRevisionProof,"popupProof",popupProof,"rfpConflictProof",rfpConflictProof,"lifecycle",lifecycle,"fixture",fixture==null?new JSONObject():fixture.snapshot(),"nativeEvents",nativeEvents,"fixtureTrust",trust==null?new JSONObject():trust.evidence(),"fixtureTrustOwner",fixtureTrustOwner(),"currentTimeZonePolicy",session==null?new JSONObject():session.timeZone.status(),"actualAndroidExecution",true,"actualGeckoExecution",remote!=null&&remote.current!=null,"actualAndroidWebViewExecution",false,"actualPublicWebsiteExecution",false,"actualDevicePerformanceMeasurement",false,"fingerprintProtectionVerified",false,"workerCoverageVerified",false,"serviceWorkerCoverageVerified",false,"contentProcessStopExecuted",false,"scope","Actual MainActivity/timezone/template UI and exact-session private native bridge; synthetic CA-trusted HTTPS first-inline Date/Intl and raw Worker/server header observations. Native setting receipts are separate from Worker effects; custom popup callback is invoked directly, not a claimed trusted popup gesture. Original acceptance workloads remain independently mandatory.");BrowserFingerprintIntegrationActivity.write(this,"gecko-environment-policy-results.json",report);}
+  @Override protected void onDestroy(){probe.removeCallbacksAndMessages(null);if(trust!=null)trust.close();if(fixture!=null)fixture.close();super.onDestroy();}
 }
