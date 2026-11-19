@@ -32,8 +32,15 @@ class FileDownloads {
     responseMetadata(response.uri,disposition,proposed);mark("downloading","");if(persistenceBlocked){try{input.close();}catch(IOException ignored){}return;}
     response.setReadTimeoutMillis(25000);nativeInput=input;long attempt=ticket;showProgress("正在下载 "+name+"…");
     worker.execute(()->{try(InputStream stream=input){
-      if(response.statusCode>=400)throw new IOException("网页未能提供文件（HTTP "+response.statusCode+"），请在原网页重新点按下载");
-      long expected=-1;try{if(GeckoWebView.header(response,"Content-Encoding").isEmpty()||"identity".equalsIgnoreCase(GeckoWebView.header(response,"Content-Encoding")))expected=Long.parseLong(GeckoWebView.header(response,"Content-Length"));}catch(Exception ignored){}
+      int status=response.statusCode;
+      // Only HTTP responses have status codes. Leave non-HTTP streams on the existing byte path.
+      if((status>0&&status<200)||status==204||status==205||status>=300)throw new IOException("网页未能提供文件（HTTP "+status+"），请在原网页重新点按下载");
+      String encoding=GeckoWebView.header(response,"Content-Encoding");
+      long expected=-1;
+      if(encoding.isEmpty()||"identity".equalsIgnoreCase(encoding)){
+        try{expected=Long.parseLong(GeckoWebView.header(response,"Content-Length"));}catch(NumberFormatException ignored){}
+      }
+      if(status==206)expected=DownloadRange.standaloneLength(GeckoWebView.header(response,"Content-Range"),encoding,expected);
       if(expected>MAX)throw new IOException("文件超过 512 MB");
       if(!valid(attempt))throw new IOException("下载已暂停");File file=File.createTempFile("download-",".part",a.getCacheDir());if(!valid(attempt)){file.delete();throw new IOException("下载已暂停");}temp=file;totalBytes=expected;receivedBytes=0;
       a.handler.post(()->{if(valid(attempt)){DownloadTasks.put(task,"partial",file.getName());saveTask();}});

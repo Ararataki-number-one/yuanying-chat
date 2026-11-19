@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Execute current BrowserActivity method bodies with explicit lifecycle boundaries."""
-import argparse, base64, hashlib, json, re, shutil, subprocess, tempfile
+import argparse, base64, hashlib, json, os, re, shutil, subprocess, tempfile
 from pathlib import Path
 
 ROOT=Path(__file__).resolve().parents[2]
@@ -37,10 +37,22 @@ def main():
     results=[];negative_controls=[]
     with tempfile.TemporaryDirectory(prefix='chromium-fingerprint-activity-host-') as temporary:
         base=Path(temporary)
+        context=base/'android/content/Context.java';context.parent.mkdir(parents=True);context.write_text('package android.content;import java.io.File;import java.util.*;public abstract class Context {public abstract Context getApplicationContext();public abstract File getNoBackupFilesDir();public final android.content.res.AssetManager assets=new android.content.res.AssetManager();public android.content.res.AssetManager getAssets(){return assets;}private final Map<String,SharedPreferences> prefs=new HashMap<>();public SharedPreferences getSharedPreferences(String name,int mode){return prefs.computeIfAbsent(name,key->new Memory());}static final class Memory implements SharedPreferences,SharedPreferences.Editor {final Map<String,String> values=new HashMap<>();public String getString(String key,String fallback){return values.getOrDefault(key,fallback);}public SharedPreferences.Editor edit(){return this;}public SharedPreferences.Editor putString(String key,String value){values.put(key,value);return this;}public SharedPreferences.Editor remove(String key){values.remove(key);return this;}public void apply(){}}}\n')
+        assets=base/'android/content/res/AssetManager.java';assets.parent.mkdir(parents=True);assets.write_text('package android.content.res;import java.io.*;import java.nio.charset.StandardCharsets;public class AssetManager {public String script=\"host-script\";public boolean failRead;public int opens,closes;public InputStream open(String name)throws IOException{opens++;if(failRead)throw new IOException(\"Injected asset read failure\");if(!name.equals(\"chromium-fingerprint.js\"))throw new IOException(\"Unexpected asset\");return new ByteArrayInputStream(script.getBytes(StandardCharsets.UTF_8)){public void close()throws IOException{closes++;super.close();}};}}\n')
+        preferences=base/'android/content/SharedPreferences.java';preferences.write_text('package android.content;public interface SharedPreferences {String getString(String key,String fallback);Editor edit();interface Editor {Editor putString(String key,String value);Editor remove(String key);void apply();}}\n')
+        shared = base/'shared-classes'
+        jar = str(args.json_jar.resolve())
+        compiler = [tool('javac'), '-encoding', 'UTF-8']
+        java8 = ['-source', '8', '-target', '8']
+        subprocess.run([*compiler, *java8, '-cp', jar, '-d', str(shared),
+                        *map(str, [*actual, adapters, context, preferences, assets])], check=True)
+        shared_path = os.pathsep.join((str(shared), jar))
         for template in templates:
-            name=template.name.split('.')[0];work=base/name;work.mkdir();context=work/'android/content/Context.java';context.parent.mkdir(parents=True);context.write_text('package android.content;import java.io.File;import java.util.*;public abstract class Context {public abstract Context getApplicationContext();public abstract File getNoBackupFilesDir();public final android.content.res.AssetManager assets=new android.content.res.AssetManager();public android.content.res.AssetManager getAssets(){return assets;}private final Map<String,SharedPreferences> prefs=new HashMap<>();public SharedPreferences getSharedPreferences(String name,int mode){return prefs.computeIfAbsent(name,key->new Memory());}static final class Memory implements SharedPreferences,SharedPreferences.Editor {final Map<String,String> values=new HashMap<>();public String getString(String key,String fallback){return values.getOrDefault(key,fallback);}public SharedPreferences.Editor edit(){return this;}public SharedPreferences.Editor putString(String key,String value){values.put(key,value);return this;}public SharedPreferences.Editor remove(String key){values.remove(key);return this;}public void apply(){}}}\n')
-            assets=work/'android/content/res/AssetManager.java';assets.parent.mkdir(parents=True);assets.write_text('package android.content.res;import java.io.*;import java.nio.charset.StandardCharsets;public class AssetManager {public String script=\"host-script\";public boolean failRead;public int opens,closes;public InputStream open(String name)throws IOException{opens++;if(failRead)throw new IOException(\"Injected asset read failure\");if(!name.equals(\"chromium-fingerprint.js\"))throw new IOException(\"Unexpected asset\");return new ByteArrayInputStream(script.getBytes(StandardCharsets.UTF_8)){public void close()throws IOException{closes++;super.close();}};}}\n')
-            preferences=work/'android/content/SharedPreferences.java';preferences.write_text('package android.content;public interface SharedPreferences {String getString(String key,String fallback);Editor edit();interface Editor {Editor putString(String key,String value);Editor remove(String key);void apply();}}\n')
+            name = template.name.split('.')[0]
+            work = base/name
+            work.mkdir()
+            classes = work/'classes'
+            classpath = os.pathsep.join((str(classes), shared_path))
             selected=METHODS if name=='ActivityHost' else PREPARATION_METHODS if name=='PreparationHost' else ['live','sameFingerprintPolicy','fingerprintProviderMatches','fingerprintTraffic','fingerprintBindingCurrent','fingerprintCurrent','fingerprintObservation','fingerprintNativeFields']
             callbacks='\n'.join(re.sub(r'@Override\s*','',member(activity_members,'callback',item),count=1) for item in ['onPageStarted','doUpdateVisitedHistory'])
             generated=template.read_text().replace('__METHODS__','\n'.join(member(activity_members,'method',item) for item in selected)).replace('__TAB__',member(activity_members,'class','Tab')).replace('__CHOICE__',member(activity_members,'class','FingerprintFileChoice')).replace('__NATIVE_CALLBACKS__',callbacks);java=work/(name+'.java');java.write_text(generated)
@@ -48,9 +60,9 @@ def main():
                 old_page=member(fixture_members,'method','page');gate='&&nativePageCompleted(path)'
                 if old_page.count(gate)!=1:raise AssertionError('Review original getter-only page negative baseline')
                 generated=template.read_text().replace('__COMPLETION_CLASS__',member(fixture_members,'class','NativePageCompletion')).replace('__METHODS__','\n'.join(member(fixture_members,'method',item) for item in ['nativePageCompleted','page','controlledPagePath'])).replace('__OLD_PAGE__',old_page.replace('boolean page(','boolean oldPage(',1).replace(gate,'',1));java.write_text(generated)
-            compiled=subprocess.run([tool('javac'),'-encoding','UTF-8','-source','8','-target','8','-cp',str(args.json_jar.resolve()),'-d',str(work/'classes'),*[str(p) for p in actual],str(adapters),str(context),str(preferences),str(assets),str(java)],capture_output=True,text=True)
+            compiled=subprocess.run([*compiler, *java8, '-cp', shared_path, '-d', str(classes), str(java)],capture_output=True,text=True)
             if compiled.returncode:raise RuntimeError(name+' compile:\n'+compiled.stderr)
-            executed=subprocess.run([tool('java'),'-cp',str(work/'classes')+':'+str(args.json_jar.resolve()),'local.pocketchat.'+name,str(work/'state')],capture_output=True,text=True,timeout=60)
+            executed=subprocess.run([tool('java'),'-cp',classpath,'local.pocketchat.'+name,str(work/'state')],capture_output=True,text=True,timeout=60)
             if executed.returncode:raise RuntimeError(name+' execution:\n'+executed.stderr)
             results.append(json.loads(executed.stdout))
             if name=='ActivityHost':
@@ -68,9 +80,9 @@ def main():
                 for index,(label,before,after,expected) in enumerate(mutants):
                     if generated.count(before)!=1:raise AssertionError('Mutation boundary changed: '+label)
                     java.write_text(generated.replace(before,after,1))
-                    compiled=subprocess.run([tool('javac'),'-encoding','UTF-8','-cp',str(work/'classes')+':'+str(args.json_jar.resolve()),'-d',str(work/'classes'),str(java)],capture_output=True,text=True)
+                    compiled=subprocess.run([*compiler, '-cp', classpath, '-d', str(classes), str(java)],capture_output=True,text=True)
                     if compiled.returncode:raise RuntimeError('Negative control did not compile: '+label+'\n'+compiled.stderr)
-                    executed=subprocess.run([tool('java'),'-cp',str(work/'classes')+':'+str(args.json_jar.resolve()),'local.pocketchat.'+name,str(work/('negative-'+str(index)))],capture_output=True,text=True,timeout=60)
+                    executed=subprocess.run([tool('java'),'-cp',classpath,'local.pocketchat.'+name,str(work/('negative-'+str(index)))],capture_output=True,text=True,timeout=60)
                     if executed.returncode==0 or 'AssertionError: '+expected not in executed.stderr:raise AssertionError('Negative control not rejected by expected behavior: '+label+'\n'+executed.stderr)
                     negative_controls.append(label)
     checks=[]

@@ -46,7 +46,7 @@ final class BrowserDownloadTransfer {
             if("https".equalsIgnoreCase(target.getProtocol())&&!"https".equalsIgnoreCase(next.getProtocol()))throw new IOException("下载重定向降低了连接安全性，文件未保存");
             target=next;continue;
           }
-          if(status<200||status>=300||status==206)throw new IOException("网页未提供完整文件（HTTP "+status+"）");
+          if(status<200||status==204||status==205||status==206||status>=300)throw new IOException("网页未提供完整文件（HTTP "+status+"）");
           String encoding=connection.getHeaderField("Content-Encoding");if(encoding!=null&&!encoding.isEmpty()&&!"identity".equalsIgnoreCase(encoding))throw new IOException("该文件的传输编码暂不支持，请使用外部浏览器下载");
           long total=connection.getContentLengthLong();if(total>MAX_BYTES)throw new IOException("文件超过 512 MB 下载限额");
           if(cache.getUsableSpace()<RESERVE_BYTES+Math.max(0,total))throw new IOException("可用存储空间不足");

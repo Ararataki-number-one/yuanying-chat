@@ -4,7 +4,7 @@
 
 | 组件 | 版本或说明 | 许可材料 |
 | --- | --- | --- |
-| Mihomo | v1.19.31-pocket-preconnect1，基于 v1.19.31 的探测与固定出口预认证补丁，Android ARM64、x86_64 | [GPL-3.0](licenses/Mihomo-GPL-3.0.txt)、[原始上游源码](source/mihomo-v1.19.31.tar.gz)、[修改补丁](patches/mihomo-v1.19.31-probe.patch)、[构建与行为说明](patches/mihomo-v1.19.31-probe.md) |
+| Mihomo | v1.19.31-pocket-reading1，基于 v1.19.31 和仓库中的探测及固定出口补丁，Android ARM64、x86_64 | [GPL-3.0](licenses/Mihomo-GPL-3.0.txt)、[原始上游源码](source/mihomo-v1.19.31.tar.gz)、[修改补丁](patches/mihomo-v1.19.31-probe.patch)、[构建与行为说明](patches/mihomo-v1.19.31-probe.md) |
 | AndroidX WebKit | 1.14.0，2.1.0 用于系统 Chromium 的受控代理；历史 1.12.1 材料继续保留 | [1.14.0 POM](licenses/AndroidX-WebKit-1.14.0.pom)、[历史 POM](licenses/AndroidX-WebKit.pom)、[Apache-2.0](licenses/Apache-2.0.txt) |
 | AndroidX Core | Gradle 发布使用 Gecko 的传递依赖；旧手工构建保留 1.1.0 | [Apache-2.0](licenses/Apache-2.0.txt) |
 | SnakeYAML | 2.3，网络分享从缓存订阅中提取选定节点，使用受限 SafeConstructor | [Apache-2.0](licenses/Apache-2.0.txt)、[对应 Maven 源码与 POM](https://repo.maven.apache.org/maven2/org/yaml/snakeyaml/2.3/) |
@@ -18,11 +18,11 @@ Mihomo 从 1.5.20 起使用本项目的探测补丁，不再将二进制描述�
 
 ## Mozilla GeckoView
 
-正式构建使用未经修改的官方预编译 `org.mozilla.geckoview:geckoview:157.0.20261005135250`（Firefox 157.0.1）。AAR SHA-256：`15f1edf3c58abcdaf2783f299b8c19c3a36272d348969106a9009671fef8d268`。[固定 SDK 来源收据](sdk/geckoview-157.0.1-official.json) 包含原始 AAR、POM、源码包和内部类哈希；来源核验不替代真实 Android 输入与环境隔离验收。
+上游构建输入为 Mozilla 官方的 `org.mozilla.geckoview:geckoview:157.0.20261005135250`（Firefox 157.0.1）。正式应用使用派生 SDK `local.pocketchat.sdk:geckoview-caret:157.0.20261005135250-pocket3`。构建脚本从修正后的 Java 源码编译并替换 `GeckoEditable.class`，其余类、原生库和资源保持上游内容。[官方输入收据](sdk/geckoview-157.0.1-official.json) · [派生构件收据](sdk/geckoview-157.0.1-editable-selection.json) · [输入修正及补丁说明](gecko/README.md)
 
 - [官方 Maven SDK](https://maven.mozilla.org/maven2/org/mozilla/geckoview/geckoview/157.0.20261005135250/)
 - [该发行包 POM 所指的准确上游源码](https://hg.mozilla.org/releases/mozilla-release/rev/737ec77d798755890b062aab541a90d6c75afd19)
 - [对应源码目录](https://hg.mozilla.org/releases/mozilla-release/file/737ec77d798755890b062aab541a90d6c75afd19/)
 - [Mozilla 原始许可汇总，包含 MPL 2.0](licenses/Mozilla-Gecko-License.html)（汇总文本来自官方 gecko-dev 镜像；准确发行源码以上述 revision 为准）
 
-SDK 的原生库、内部网页和许可材料保留原样。应用仅加入独立的 Java 适配层和内置路由扩展，没有改动 Mozilla 引擎源文件。AndroidX 的传递依赖使用各自 Apache 2.0 许可。Mozilla、Firefox 的商标不属于本项目。
+修改后的 `GeckoEditable.java` 保留了上游 MPL 2.0 声明。AndroidX 的传递依赖使用各自 Apache 2.0 许可。Mozilla、Firefox 的商标不属于本项目。

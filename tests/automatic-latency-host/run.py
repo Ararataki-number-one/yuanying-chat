@@ -82,8 +82,8 @@ def main():
     }
     ui_method = declaration(editor, 'static void edit(MainActivity a,JSONObject initial,int tab)')
     start = ui_method.index('    CheckBox[] options=')
-    end = ui_method.index('    DesignUi.note(preferences,', start)
-    selected['editor-loop'] = ui_method[start:end]
+    loop = ui_method.index('    for(int section=', start)
+    selected['editor-loop'] = ui_method[start:loop] + member_at(ui_method, loop)
     selected['editor-read'] = field(ui_method, 'for(int i=0;i<options.length;i++)')
     template = (HERE / 'AutomaticLatencyHost.java.in').read_text()
     aliases = (

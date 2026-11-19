@@ -4,7 +4,12 @@ This collects argv before the runner's execution loop; it does not report any
 host, compiler, SDK or Android workload as having run.
 """
 import ast
+from contextlib import redirect_stdout
+import io
+import json
 from pathlib import Path
+import runpy
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -115,6 +120,49 @@ class BrowserHostRegistryTests(unittest.TestCase):
             line = next(line for line in self.current.splitlines(keepends=True) if marker in line)
             with self.subTest(control=marker), self.assertRaises(AssertionError):
                 self.preserved(self.current.replace(line, b'', 1))
+
+
+class BrowserHostRetryTests(unittest.TestCase):
+    def test_only_reports_written_by_this_attempt_can_pass(self):
+        with tempfile.TemporaryDirectory() as folder:
+            out = Path(folder)
+            stale = '{"status":"passed","marker":"previous"}'
+            address = out/'address.json'
+            permissions = out/'permissions.json'
+            unrelated = out/'unrelated.json'
+            summary = out/'results.json'
+            for path in (address, permissions, unrelated, summary):
+                path.write_text(stale)
+            arguments = [str(RUNNER), '--output', str(out)]
+            for name in ('java-home', 'json-jar', 'android-json-jar', 'android-jar', 'webkit-jar', 'jsdom-module'):
+                arguments.extend(['--'+name, str(unrelated)])
+
+            run = subprocess.run
+
+            def child(command, **options):
+                if command[0] == 'git':
+                    return run(command, **options)
+                if command[1] == 'tests/browser-address-host/run.py':
+                    self.assertFalse(summary.exists())
+                    address.write_text('{"status":"passed","marker":"current"}')
+                    return subprocess.CompletedProcess(command, 0, '', '')
+                if command[1] == 'tests/browser-permissions-host/run.py':
+                    return subprocess.CompletedProcess(command, 0, '', '')
+                self.fail('The runner continued after a child produced no report')
+
+            main = runpy.run_path(str(RUNNER))['main']
+            with patch.object(sys, 'argv', arguments), patch.object(subprocess, 'run', child), redirect_stdout(io.StringIO()):
+                with self.assertRaises(SystemExit) as failure:
+                    main()
+            self.assertEqual(failure.exception.code, 1)
+            result = json.loads((out/'results.json').read_text())
+            self.assertEqual(result['status'], 'failed')
+            self.assertEqual([(row['suite'], row['status']) for row in result['suites']],
+                             [('address', 'passed'), ('permissions', 'failed')])
+            self.assertIn('Required report was not produced', result['suites'][1]['failureReason'])
+            self.assertEqual(json.loads(address.read_text())['marker'], 'current')
+            self.assertFalse(permissions.exists())
+            self.assertEqual(unrelated.read_text(), stale)
 
 
 if __name__ == '__main__':

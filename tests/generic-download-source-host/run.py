@@ -31,7 +31,7 @@ def main():
   selected=str(a.java_home/'bin'/name) if a.java_home else shutil.which(name)
   if not selected:p.error('Provide --java-home containing '+name)
   return selected
- production=PROD/'FileDownloads.java';template=HERE/'DownloadSourceHost.java.in';complete=[PROD/'J.java',PROD/'BrowserRuntimePolicy.java']
+ production=PROD/'FileDownloads.java';template=HERE/'DownloadSourceHost.java.in';complete=[PROD/'J.java',PROD/'BrowserRuntimePolicy.java',PROD/'DownloadRange.java',ROOT/'tests/download-resume-host/stubs/android/util/Base64.java']
  files=[production,template,Path(__file__).resolve(),extractor]+complete;hashes={str(path.relative_to(ROOT)):sha(path) for path in files};json_hash=sha(a.json_jar)
  raw=production.read_text();selected={needle:members.member_at(raw,raw.index(needle)) for needle in NEEDLES}
  def generate(values):

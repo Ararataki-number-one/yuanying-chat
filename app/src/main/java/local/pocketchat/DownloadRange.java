@@ -1,10 +1,21 @@
 package local.pocketchat;
 import java.net.*;import java.io.*;import java.util.regex.*;
 
-/** Append only after a matching resource validator and exact Content-Range. */
+/** Validate whether a byte range supplies a whole file or continues a known partial. */
 final class DownloadRange {
  static String resource(String url){try{return android.util.Base64.encodeToString(java.security.MessageDigest.getInstance("SHA-256").digest(url.getBytes(java.nio.charset.StandardCharsets.UTF_8)),android.util.Base64.NO_WRAP);}catch(Exception e){return "";}}
  static String validator(String etag,String modified){return etag!=null&&!etag.isEmpty()&&!etag.startsWith("W/")?etag:modified==null?"":modified;}
+ // Gecko may hand a range response directly to the download UI, without a prior partial file.
+ static long standaloneLength(String range,String encoding,long advertised)throws IOException {
+  Matcher match=Pattern.compile("bytes 0+-(\\d+)/(\\d+)",Pattern.CASE_INSENSITIVE).matcher(range.trim());
+  if((encoding.isEmpty()||"identity".equalsIgnoreCase(encoding))&&match.matches()){
+   try{
+    long end=Long.parseLong(match.group(1)),size=Long.parseLong(match.group(2));
+    if(size>0&&end==size-1&&(advertised<0||advertised==size))return size;
+   }catch(NumberFormatException ignored){}
+  }
+  throw new IOException("网页未提供可核验的完整文件，请在原网页重新下载");
+ }
  static long total(HttpURLConnection c,long offset,String expected)throws IOException {
   int code=c.getResponseCode();if(code==200)return c.getContentLengthLong();
   if(code!=206)throw new IOException("下载响应不支持续传（HTTP "+code+"）");

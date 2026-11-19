@@ -66,10 +66,44 @@ public final class DownloadSourceHost {
     d=fresh(HTTP_PAGE);d.task=d.tasks.add("attachment","key",OLD_GPT);d.sourceId="attachment";d.sourceKey="key";d.sourceUrl=OLD_GPT;d.active=true;d.acceptResponse(response("https://files.example.com/controlled.bin"));
     check("Existing attachment task retains its original source and DOM keys",d.tasks.rows.size()==1&&d.sourceUrl.equals(OLD_GPT)&&d.task.optString("conversation").equals(OLD_GPT)&&d.sourceId.equals("attachment")&&d.sourceKey.equals("key")&&d.a.remote.reads==0);
   }
+  static void responseBytes(int status,String range,String length,String encoding,byte[] body,boolean complete)throws Exception{
+    FileDownloads d=fresh(HTTPS_PAGE);
+    String address=status==0?"blob:https://www.wikipedia.org/1456d416-a45d-4027-ada8-c5e2507563e4":"https://files.example.com/chapter.pdf";
+    ResponseBoundary reply=new ResponseBoundary(address,body);
+    reply.statusCode=status;
+    reply.headers.put("Content-Range",range);
+    reply.headers.put("Content-Encoding",encoding);
+    reply.headers.put("Content-Length",length);
+    d.acceptResponse(reply);d.worker.drain();d.a.handler.drain();
+    String label=address+" status="+status+" range="+range+" length="+length+" encoding="+encoding+" bytes="+body.length;
+    if(complete)check("Complete file reaches save: "+label,d.chosen==1&&d.failures.isEmpty()&&Arrays.equals(body,Files.readAllBytes(d.temp.toPath())));
+    else check("Incomplete or absent file never reaches save: "+label,d.chosen==0&&d.failures.size()==1&&!d.failures.get(0).isEmpty());
+    check("Native response closes its input: "+label,reply.body.closed&&d.nativeInput==null);
+  }
+  static void responseCompleteness()throws Exception{
+    byte[] fragment={1,2,3},empty={};
+    responseBytes(206,"bytes 0-2/9","3","",fragment,false);
+    responseBytes(206,"bytes 6-8/9","3","",fragment,false);
+    responseBytes(206,"","3","",fragment,false);
+    responseBytes(206,"bytes 0-2/*","3","",fragment,false);
+    responseBytes(206,"bytes 0-2/3","2","",fragment,false);
+    responseBytes(206,"bytes 0-2/3","","gzip",fragment,false);
+    responseBytes(206,"bytes 0-8/9","","",fragment,false);
+    responseBytes(206,"bytes 0-2/3","3","",fragment,true);
+    responseBytes(206,"bytes 0-2/3","","identity",fragment,true);
+    responseBytes(206,"bytes 0-9223372036854775808/9223372036854775809","","",fragment,false);
+    responseBytes(103,"","0","",empty,false);
+    responseBytes(302,"","3","",fragment,false);
+    responseBytes(304,"","0","",empty,false);
+    responseBytes(204,"","0","",empty,false);
+    responseBytes(205,"","0","",empty,false);
+    responseBytes(200,"","0","",empty,true);
+    responseBytes(0,"","","",new byte[]{0,1,(byte)255},true);
+  }
   static void cleanup()throws Exception{for(FileDownloads d:fixtures){if(d.nativeInput!=null)d.nativeInput.close();try(java.util.stream.Stream<Path> paths=Files.walk(d.a.cache.toPath())){for(Path path:(Iterable<Path>)paths.sorted(Comparator.reverseOrder())::iterator)Files.deleteIfExists(path);}}}
   public static void main(String[] args)throws Exception{try{
     if(args.length==1){if(args[0].equals("native"))nativeSource(HTTP_PAGE);else if(args[0].equals("url"))urlSource(HTTPS_PAGE);else if(args[0].equals("http"))httpRefusal();else throw new AssertionError("Unknown focus");}
-    else{for(String page:new String[]{HTTP_PAGE,HTTPS_PAGE,"https://chatgpt.com:8443/c/other","http://chatgpt.com/c/other"}){nativeSource(page);urlSource(page);}captureOnce();gpt();httpRefusal();refusalAndExisting();}
+    else{for(String page:new String[]{HTTP_PAGE,HTTPS_PAGE,"https://chatgpt.com:8443/c/other","http://chatgpt.com/c/other"}){nativeSource(page);urlSource(page);}captureOnce();gpt();httpRefusal();refusalAndExisting();responseCompleteness();}
     System.out.println(J.obj("status","passed","passed",checks.length(),"total",checks.length(),"checks",checks,"syntheticControlledHost",true,"actualAndroidExecution",false,"actualGeckoExecution",false,"actualNetworkExecution",false).toString());
   }finally{cleanup();}}
 }
@@ -113,7 +147,7 @@ class DownloadTasks {
   boolean owns(JSONObject row){return rows.contains(row);}
   static void put(JSONObject row,Object... values){try{for(int i=0;i<values.length;i+=2)row.put((String)values[i],values[i+1]);}catch(Exception ignored){}}
 }
-class ResponseBoundary {final CloseProbe body;final String uri;final int statusCode=200;final Map<String,String> headers=new HashMap<>();int timeout;ResponseBoundary(String uri,byte[] bytes){this.uri=uri;body=new CloseProbe(bytes);headers.put("Content-Type","application/octet-stream");headers.put("Content-Length",String.valueOf(bytes.length));}void setReadTimeoutMillis(int value){timeout=value;}}
+class ResponseBoundary {final CloseProbe body;final String uri;int statusCode=200;final Map<String,String> headers=new HashMap<>();int timeout;ResponseBoundary(String uri,byte[] bytes){this.uri=uri;body=new CloseProbe(bytes);headers.put("Content-Type","application/octet-stream");headers.put("Content-Length",String.valueOf(bytes.length));}void setReadTimeoutMillis(int value){timeout=value;}}
 class CloseProbe extends ByteArrayInputStream {boolean closed;CloseProbe(byte[] bytes){super(bytes);}@Override public void close()throws IOException{closed=true;super.close();}}
 class GeckoWebView {static String header(ResponseBoundary response,String name){return response.headers.getOrDefault(name,"");}}
 class URLUtil {static String guessFileName(String url,String disposition,String type){return "controlled.bin";}}
