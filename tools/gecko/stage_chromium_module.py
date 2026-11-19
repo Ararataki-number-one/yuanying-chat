@@ -30,6 +30,16 @@ DEX_NAME = re.compile(r'classes(?:[2-9]|[1-9][0-9]+)?\.dex')
 ENGINE_CLASSES = ('Lcom/cefrium/', 'Lorg/chromium/base/', 'Lorg/chromium/content/',
                   'Lorg/chromium/content_public/', 'Lorg/chromium/net/',
                   'Llocal/pocketchat/CefriumSetupProvider;')
+# The Cefrium permission bridge links these classes, which AGP shares from the base APK.
+ACTIVITY_RESULT_CLASSES = frozenset({
+    'Landroidx/activity/result/ActivityResultCallback;',
+    'Landroidx/activity/result/ActivityResultLauncher;',
+    'Landroidx/activity/result/ActivityResultRegistry;',
+    'Landroidx/activity/result/ActivityResultRegistryOwner;',
+    'Landroidx/activity/result/contract/ActivityResultContract;',
+    'Landroidx/activity/result/contract/ActivityResultContracts;',
+    'Landroidx/activity/result/contract/ActivityResultContracts$RequestMultiplePermissions;',
+})
 PEM_CERT = re.compile(rb'-----BEGIN CERTIFICATE-----\r?\n.*?-----END CERTIFICATE-----', re.S)
 # Cefrium 0.21.0 Libre binaries and resources from the verified SDK artifacts.
 ENGINE_SHA = {
@@ -153,8 +163,11 @@ def check_payload(apk, role, abi):
             require(not any(Path(name).name == 'libcef.so' or '+com.cefrium+' in name for name in names)
                     and not any(name.startswith(ENGINE_CLASSES) for name in definitions),
                     'Chromium native library, assets or code found in the Gecko base APK')
+            require(ACTIVITY_RESULT_CLASSES <= definitions, 'Gecko base lacks the shared AndroidX Activity Result API')
         elif role == 'chromium':
             require('Lcom/cefrium/Cefrium;' in definitions, 'Chromium feature must provide Cefrium classes')
+            require(ACTIVITY_RESULT_CLASSES.isdisjoint(definitions),
+                    'Chromium feature duplicates the shared AndroidX Activity Result API')
             for member, expected in ASSET_SHA.items():
                 require(member in names and archive.getinfo(member).compress_type == ZIP_STORED
                         and digest_asset(archive, member) == expected, f'Cefrium asset missing, compressed or changed: {member}')

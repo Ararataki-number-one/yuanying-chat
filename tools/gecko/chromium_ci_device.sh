@@ -36,6 +36,10 @@ stop_guest() {
   fi
   "${adb_device[@]}" emu kill >/dev/null 2>&1 || kill "$emulator_pid" 2>/dev/null || true
   wait "$emulator_pid" || true
+  if [[ -n "${live_log_pid:-}" ]]; then
+    kill "$live_log_pid" 2>/dev/null || true
+    wait "$live_log_pid" || true
+  fi
   # This job owns these three fresh synthetic guest directories. Keep logs outside them.
   rm -rf -- "$ANDROID_AVD_HOME" "$ANDROID_USER_HOME" "$ANDROID_EMULATOR_HOME"
 }
@@ -119,6 +123,13 @@ wait_for_test_network
 nonce=$(jq -er .runNonce "$report")
 base_sha=$(jq -er .apkSet.base.sha256 "$report")
 feature_sha=$(jq -er .apkSet.chromium.sha256 "$report")
+# Preserve startup errors before the guest's rolling log buffer can discard them.
+timeout 900 "${adb_device[@]}" logcat -b main -b system -v threadtime -T 1 \
+  AndroidRuntime:V libc:V linker:V DEBUG:V chromium:V Cefrium:V cefrium:V \
+  cr_LibraryLoader:V cr_ApkAssets:V cr_BundleUtils:V cr_ChildProcessConn:V \
+  PocketChatCefriumRouteFixture:V ActivityManager:I ActivityTaskManager:I '*:S' \
+  > "$work/$android-native-live.log" 2>&1 &
+live_log_pid=$!
 timeout 300 "${adb_device[@]}" shell am instrument -w -e runNonce "$nonce" -e baseSha256 "$base_sha" -e featureSha256 "$feature_sha" "${fixture_mode[@]}" "$fixture" | tee "$renderer_log"
 if [[ "$mode" == smoke ]]; then
   python3 tests/gecko/run_chromium_delivery.py join-api37-renderer --host-report "$report" --renderer-log "$renderer_log" --output "$work/android17-compatibility-results.json"
