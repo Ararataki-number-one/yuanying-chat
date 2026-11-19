@@ -22,7 +22,14 @@ class CpuIpPublicationComposition(unittest.TestCase):
         # tree6058deb8280eb72d96d6a656b561931d733feffc; original complete file
         # blob45996b680539728cf14076418db9bddcccbd7fd8 / SHA256c0343a899fd8049728bbeeb43603da7b652c502f169802885aa9ca66caf42a79.
         # Raw source segments avoid Python-version-dependent AST serialization.
-        source=(original.ROOT/'tests/browser_cpu_publish_gate_test.py').read_text()
+        # The reviewed v114 fixture inputs are reversed only for this historical proof.
+        from profile_final_browser_source_compatibility_test import publisher_before_optional_gate
+        relative='tests/browser_cpu_publish_gate_test.py'
+        raw=(original.ROOT/relative).read_bytes()
+        source=publisher_before_optional_gate(raw,relative).decode('utf-8')
+        with self.assertRaises(ValueError):
+            publisher_before_optional_gate(raw.replace(b'self.assertEqual(len(dependencies),1,',
+                                                       b'self.assertEqual(len(dependencies),2,',1),relative)
         def bodies(raw):return {node.name:ast.get_source_segment(raw,node) for node in ast.walk(ast.parse(raw)) if isinstance(node,ast.FunctionDef) and node.name.startswith('test_')}
         def digest(raw):return hashlib.sha256(json.dumps(bodies(raw),sort_keys=True,ensure_ascii=False).encode()).hexdigest()
         expected='8304bd6a9a4acf95aeb64a2f5caa1a97491dfed46b76b02c4e1816414a75e8cb'
