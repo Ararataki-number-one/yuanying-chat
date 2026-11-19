@@ -122,18 +122,42 @@ public class WindowHomeTestActivity extends WindowHomeActivity {
       check("Bulk management preserves profile network and conversation settings",profile.getSharedPreferences("chat",0).getString("proxy","").equals("http://fixture.invalid:8080")&&profile.getSharedPreferences("chat",0).getString("conversation","").endsWith("/c/kept"));
       unfavoriteSelectedButton.performClick();syncFixtureSnapshot();
       check("Bulk unfavorite preserves selection for further edits",!catalog.item(0).optBoolean("favorite")&&!catalog.item(1).optBoolean("favorite")&&selectedIds.size()==2);
-      int changed=catalog.group(Arrays.asList(0,0,2,7,-1,8,null),"共享");
-      check("Bulk storage ignores duplicates, invalid IDs, and uncreated slots",changed==2&&catalog.item(2).optString("group").equals("共享")&&!catalog.item(7).optBoolean("created")&&catalog.item(7).optString("group").isEmpty());
+      JSONObject unavailable=catalog.item(7);
+      EnvironmentSpec.Identity unavailableIdentity=new EnvironmentSpec.Identity(7,unavailable.optInt("generation"),unavailable.getString("environmentId"));
+      int changed=catalog.group(Arrays.asList(catalog.identity(0),catalog.identity(0),catalog.identity(2),unavailableIdentity,null),"共享");
+      check("Bulk storage ignores duplicate or null identities and uncreated slots",changed==2&&catalog.item(2).optString("group").equals("共享")&&!catalog.item(7).optBoolean("created")&&catalog.item(7).optString("group").isEmpty());
       String before=catalog.item(0).optString("group");boolean rejected=false;
-      try{catalog.group(Arrays.asList(0,1),"1234567890123");}catch(IllegalArgumentException expected){rejected=true;}
+      try{catalog.group(Arrays.asList(catalog.identity(0),catalog.identity(1)),"1234567890123");}catch(IllegalArgumentException expected){rejected=true;}
       check("Invalid group rejects the whole operation without changing metadata",rejected&&catalog.item(0).optString("group").equals(before)&&catalog.item(1).optString("group").equals("项目组"));
-      catalog.group(Arrays.asList(0,1),"");syncFixtureSnapshot();
+      catalog.group(Arrays.asList(catalog.identity(0),catalog.identity(1)),"");syncFixtureSnapshot();
       check("Empty batch group explicitly returns selected profiles to ungrouped",catalog.item(0).optString("group").isEmpty()&&catalog.item(1).optString("group").isEmpty());
       Bundle state=new Bundle();onSaveInstanceState(state);
-      check("Configuration state retains selection IDs rather than list positions",state.getBoolean("selecting")&&Arrays.equals(state.getIntArray("selectedIds"),new int[]{0,1}));
+      check("Configuration state retains identities rather than list positions",state.getBoolean("selecting")
+        &&Arrays.equals(state.getIntArray("selectedIds"),new int[]{0,1})
+        &&Arrays.equals(state.getIntArray("selectedGenerations"),new int[]{catalog.identity(0).generation,catalog.identity(1).generation})
+        &&Arrays.equals(state.getStringArray("selectedEnvironmentIds"),new String[]{catalog.identity(0).environmentId,catalog.identity(1).environmentId}));
       check("Configuration state cannot restore removed homepage filters",!state.containsKey("query")&&!state.containsKey("filter")&&!state.containsKey("group")&&!state.containsKey("sort")&&!state.containsKey("activeView"));
       onBackPressed();
       check("Back exits selection without leaving the manager or changing favorites",!selecting&&selectedIds.isEmpty()&&!catalog.item(0).optBoolean("favorite"));
+      environmentRow(1).card.performLongClick();
+      android.app.AlertDialog staleGroup=batchGroup();
+      EnvironmentSpec.Identity oldIdentity=catalog.identity(1);
+      try{
+        catalog.getWritableDatabase().execSQL("UPDATE environments SET environment_id=?,generation=? WHERE slot=1",
+          new Object[]{UUID.randomUUID().toString(),oldIdentity.generation+1});
+        batchFavorite(true);
+        find(staleGroup.getWindow().getDecorView(),EditText.class).setText("旧选择分组");
+        staleGroup.getButton(android.app.AlertDialog.BUTTON_POSITIVE).performClick();
+        check("Delayed batch actions do not alter a replacement in the selected slot",
+          !catalog.item(1).optBoolean("favorite")&&catalog.item(1).optString("group").isEmpty());
+        syncFixtureSnapshot();
+        check("A reopened slot never inherits the replaced environment's selection",selectedIds.isEmpty()&&!environmentRow(1).check.isChecked());
+      }finally{
+        staleGroup.dismiss();
+        catalog.getWritableDatabase().execSQL("UPDATE environments SET environment_id=?,generation=? WHERE slot=1",
+          new Object[]{oldIdentity.environmentId,oldIdentity.generation});
+        setSelecting(false);syncFixtureSnapshot();
+      }
       catalog.getWritableDatabase().execSQL("UPDATE environments SET opened=CASE slot WHEN 0 THEN 1000 WHEN 1 THEN 3000 WHEN 2 THEN 2000 ELSE 0 END");syncFixtureSnapshot();
       check("Recent-use changes do not reorder the small environment workspace",visibleIds.equals(Arrays.asList(0,1,2)));
       check("Shared recent-use helper handles never opened and future clocks",recentUse(0,1000).equals("尚未打开")&&recentUse(2000,1000).equals("刚刚")&&recentUse(1000,121000).equals("2 分钟前"));

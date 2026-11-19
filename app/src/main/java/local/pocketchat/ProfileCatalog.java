@@ -75,24 +75,26 @@ final class ProfileCatalog extends SQLiteOpenHelper {
   void draft(int slot,JSONObject value){ContentValues v=new ContentValues();v.put("draft",value==null?"":value.toString());getWritableDatabase().update("environments",v,"slot=?",new String[]{String.valueOf(slot)});}
   void opened(int slot){ContentValues v=new ContentValues();v.put("opened",System.currentTimeMillis());getWritableDatabase().update("environments",v,"slot=?",new String[]{String.valueOf(slot)});}
   void favorite(int slot,boolean value){ContentValues v=new ContentValues();v.put("favorite",value?1:0);getWritableDatabase().update("environments",v,"slot=?",new String[]{String.valueOf(slot)});}
-  int group(Collection<Integer> slots,String value){
+  int group(Collection<EnvironmentSpec.Identity> selection,String value){
     String group=value==null?"":value.trim();
     if(group.length()>12)throw new IllegalArgumentException("分组最多 12 字");
     ContentValues values=new ContentValues();values.put("group_name",group);
-    return updateCreated(slots,values);
+    return updateSelection(selection,values);
   }
-  int favorites(Collection<Integer> slots,boolean favorite){
+  int favorites(Collection<EnvironmentSpec.Identity> selection,boolean favorite){
     ContentValues values=new ContentValues();values.put("favorite",favorite?1:0);
-    return updateCreated(slots,values);
+    return updateSelection(selection,values);
   }
-  private int updateCreated(Collection<Integer> slots,ContentValues values){
-    if(slots==null||slots.isEmpty())return 0;
+  private int updateSelection(Collection<EnvironmentSpec.Identity> selection,ContentValues values){
+    if(selection==null||selection.isEmpty())return 0;
     SQLiteDatabase db=getWritableDatabase();int changed=0;
     db.beginTransaction();
     try{
-      for(Integer slot:new LinkedHashSet<>(slots)){
-        if(slot==null||slot<0||slot>=Profiles.MAX)continue;
-        changed+=db.update("environments",values,"slot=? AND created=1",new String[]{String.valueOf(slot)});
+      for(EnvironmentSpec.Identity identity:new LinkedHashSet<>(selection)){
+        if(identity==null)continue;
+        changed+=db.update("environments",values,
+          "slot=? AND generation=? AND environment_id=? AND created=1 AND deleting=0 AND resetting=0",
+          new String[]{String.valueOf(identity.slot),String.valueOf(identity.generation),identity.environmentId});
       }
       db.setTransactionSuccessful();
     }finally{db.endTransaction();}

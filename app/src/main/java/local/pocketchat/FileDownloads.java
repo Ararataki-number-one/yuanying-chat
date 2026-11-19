@@ -103,7 +103,8 @@ class FileDownloads {
         try{
           frozen.check();int code=c.getResponseCode();frozen.check();if(!valid(attempt))throw new IOException("下载已暂停，受保护连接不可用");if(code>=300&&code<400){String next=c.getHeaderField("Location");if(next==null)throw new IOException("下载重定向缺少地址");url=new URL(new URL(url),next).toString();continue;}
           if(code!=200&&code!=206){if(code==416){resumeValidator="";resumeAddress="";}throw new IOException(code==401||code==403?"链接已过期，点继续重新获取文件":"下载失败（HTTP "+code+"）");}
-          long total;try{total=DownloadRange.total(c,base,expected);}catch(IOException invalid){resumeValidator="";resumeAddress="";File resetFile=local;SealedFileIo.lease(resetFile,()->{if(!valid(attempt))throw new IOException("下载已暂停");try(RandomAccessFile reset=new RandomAccessFile(resetFile,"rw")){reset.setLength(0);}return null;});receivedBytes=0;throw invalid;}
+          DownloadRange.ResponseBounds bounds;try{bounds=DownloadRange.responseBounds(c,base,expected);}catch(IOException invalid){resumeValidator="";resumeAddress="";File resetFile=local;SealedFileIo.lease(resetFile,()->{if(!valid(attempt))throw new IOException("下载已暂停");try(RandomAccessFile reset=new RandomAccessFile(resetFile,"rw")){reset.setLength(0);}return null;});receivedBytes=0;throw invalid;}
+          long total=bounds.total;
           if(code==200)base=0;
           if(total>MAX||total-base>a.getCacheDir().getUsableSpace()-64L*1024*1024)throw new IOException("文件超过本机 512 MB 限额或剩余空间不足");
           String encoding=c.getContentEncoding();if(encoding!=null&&!encoding.equalsIgnoreCase("identity"))throw new IOException("文件编码不支持安全续传，请使用原网页下载");
@@ -121,7 +122,9 @@ class FileDownloads {
             try(InputStream in=c.getInputStream();OutputStream out=new FileOutputStream(target,code==206)){
               resumeValidator=nextValidator;resumeAddress=nextAddress;
               byte[] bytes=new byte[65536];int size;
-              while((size=in.read(bytes))!=-1){frozen.check();if(!valid(attempt))throw new IOException("下载已暂停，受保护连接不可用");if(a.getCacheDir().getUsableSpace()<64L*1024*1024)throw new IOException("本机剩余空间不足，请清理后继续");copied+=size;if(copied>MAX)throw new IOException("文件超过 512 MB");out.write(bytes,0,size);receivedBytes=copied;
+              while((size=in.read(bytes))!=-1){frozen.check();if(!valid(attempt))throw new IOException("下载已暂停，受保护连接不可用");if(a.getCacheDir().getUsableSpace()<64L*1024*1024)throw new IOException("本机剩余空间不足，请清理后继续");
+                if(bounds.endExclusive>=0&&size>bounds.endExclusive-copied)throw new IOException("下载响应超出声明的字节范围，未保存文件");
+                copied+=size;if(copied>MAX)throw new IOException("文件超过 512 MB");out.write(bytes,0,size);receivedBytes=copied;
                 if(System.currentTimeMillis()-reported>400){reported=System.currentTimeMillis();a.handler.post(()->{if(valid(attempt))transferProgress();});}
               }
             }return copied;

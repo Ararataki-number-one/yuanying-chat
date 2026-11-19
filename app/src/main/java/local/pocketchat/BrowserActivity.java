@@ -649,7 +649,26 @@ public class BrowserActivity extends ThemedActivity {
   void linkMenu(String url){ReferenceUi.Modal dialog=new ReferenceUi.Modal(this,"链接").asSheet();dialog.body.addView(ReferenceUi.secondary(this,url));action(dialog,"在新标签页打开",()->newTab(url));action(dialog,"在当前标签页打开",()->go(url));action(dialog,"复制链接",()->((android.content.ClipboardManager)getSystemService(CLIPBOARD_SERVICE)).setPrimaryClip(ClipData.newPlainText("链接",url)));dialog.show();}
   void showLibrary(String key,String title){JSONArray rows=library.list(key);String[] labels=new String[rows.length()];for(int i=0;i<rows.length();i++){JSONObject row=rows.optJSONObject(i);labels[i]=row.optString("title")+"\n"+row.optString("url");}AlertDialog.Builder dialog=AppAppearance.dialog(this).setTitle(title).setNegativeButton("关闭",null);if(labels.length==0)dialog.setMessage("暂无记录");else dialog.setItems(labels,(d,index)->go(rows.optJSONObject(index).optString("url")));if("history".equals(key)&&rows.length()>0)dialog.setNeutralButton("清空",(d,w)->AppAppearance.dialog(this).setTitle("清空浏览历史？").setMessage("只删除网址记录，网站登录状态会保留。").setNegativeButton("取消",null).setPositiveButton("清空",(c,n)->library.clearHistory()).show());dialog.show();}
   void engineInfo(){PackageInfo provider=WebView.getCurrentWebViewPackage();String version=provider==null?"组件信息暂不可用":provider.packageName+" · "+provider.versionName;String fingerprint=fingerprintState==null?"此环境指纹配置尚未确认":"此环境独立指纹配置 · 版本 "+fingerprintState.revision;DesignUi.message(this,"Chromium 内核","Blink / V8 · "+version+"\n\n由 Android System WebView 或 Chrome 提供，随系统组件更新。默认首页为 ChatGPT，地址栏可访问其他网站。\n\n"+fingerprint+"。原生 UA / UA-CH 的设置回读、文档起始脚本注册与当前网页自测分开记录；脚本已注册不等于保护已验证。可在浏览器菜单查看 Chromium 指纹配置。\n\n文档保护限已配置的页面与框架。Worker、Service Worker、OffscreenCanvas、AudioWorklet、字体、时区、硬件及 TLS 等仍不具备完整覆盖确认。Chromium 与 Gecko 的配置、种子和确认记录独立；网站登录与 Cookie 也分别保存。\n\n网页 HTTP 请求使用此环境的线路。文档 WebRTC 限制不等于设备级网络保护；完整覆盖仍需设备级 VPN，应用不会自动开启 VPN。\n\n摄像头、麦克风和大致位置按网站逐次授权。Chrome 扩展尚不支持。");}
-  void sitePermissions(){String url=selected==null?"":selected.url;AppAppearance.dialog(this).setTitle("当前网站权限").setMessage(url+"\n\n摄像头、麦克风和大致位置在网站请求时逐次确认。Android 系统授权不等于自动允许网站。\n\n结束当前网页可停止此页已开始的媒体访问；未提交的网页输入可能丢失。").setNegativeButton("返回",null).setPositiveButton("结束网页并重载",(d,w)->{Tab tab=selected;if(tab==null)return;hideCustomView();retire(tab);tab.saved=null;showSelected();updateChrome();}).show();}
+  void sitePermissions(){
+    Tab tab=selected;
+    if(tab==null)return;
+    WebView view=tab.web;
+    long navigation=tab.generation;
+    AppAppearance.dialog(this).setTitle("当前网站权限").setMessage(tab.url+"\n\n摄像头、麦克风和大致位置在网站请求时逐次确认。Android 系统授权不等于自动允许网站。\n\n结束当前网页可停止此页已开始的媒体访问；未提交的网页输入可能丢失。")
+      .setNegativeButton("返回",null).setPositiveButton("结束网页并重载",(d,w)->{
+        if(!pageNavigationCurrent(tab,view,tab,navigation)){
+          message("网页已变化，请重新打开当前网站权限");
+          return;
+        }
+        hideCustomView();
+        // Leaving full-screen mode can synchronously deliver a page callback.
+        if(!pageNavigationCurrent(tab,view,tab,navigation))return;
+        retire(tab);
+        tab.saved=null;
+        showSelected();
+        updateChrome();
+      }).show();
+  }
   void defaultBrowser(){try{if(Build.VERSION.SDK_INT>=29){android.app.role.RoleManager roles=getSystemService(android.app.role.RoleManager.class);if(roles!=null&&roles.isRoleAvailable(android.app.role.RoleManager.ROLE_BROWSER)){if(roles.isRoleHeld(android.app.role.RoleManager.ROLE_BROWSER)){message("当前已是系统默认浏览器");return;}startActivityForResult(roles.createRequestRoleIntent(android.app.role.RoleManager.ROLE_BROWSER),0x2800);return;}}startActivity(new Intent(android.provider.Settings.ACTION_MANAGE_DEFAULT_APPS_SETTINGS));}catch(ActivityNotFoundException unavailable){message("请在系统设置中选择默认浏览器");}}
   void openChat(){startActivity(new Intent(this,Profiles.activity(Profiles.slot(this))).putExtra("legacyChat",true).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_REORDER_TO_FRONT));}
   void external(String url){

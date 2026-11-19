@@ -18,7 +18,8 @@ public class WindowHomeActivity extends ThemedActivity {
   Button createButton;
   LinearLayout preparation;
   boolean selecting,preparing;
-  final Set<Integer> selectedIds=new LinkedHashSet<>();
+  final Map<Integer,EnvironmentSpec.Identity> selectedEnvironments=new LinkedHashMap<>();
+  final Set<Integer> selectedIds=Collections.unmodifiableSet(selectedEnvironments.keySet());
   final List<Integer> visibleIds=new ArrayList<>();
   final Handler handler=new Handler(Looper.getMainLooper());
   String maintenanceSignature="",emptySignature="";
@@ -127,7 +128,16 @@ public class WindowHomeActivity extends ThemedActivity {
     if(state!=null){
       selecting=state.getBoolean("selecting");
       int[] ids=state.getIntArray("selectedIds");
-      if(selecting&&ids!=null)for(int id:ids)selectedIds.add(id);
+      int[] generations=state.getIntArray("selectedGenerations");
+      String[] environments=state.getStringArray("selectedEnvironmentIds");
+      // A slot from older saved state cannot prove which environment was selected.
+      if(selecting&&ids!=null&&generations!=null&&environments!=null&&ids.length==generations.length&&ids.length==environments.length){
+        for(int i=0;i<ids.length;i++){
+          if(environments[i]==null)continue;
+          try{selectedEnvironments.put(ids[i],new EnvironmentSpec.Identity(ids[i],generations[i],environments[i]));}
+          catch(IllegalArgumentException invalidIdentity){}
+        }
+      }
     }
     refresh();
   }
@@ -168,6 +178,8 @@ public class WindowHomeActivity extends ThemedActivity {
     super.onSaveInstanceState(state);
     state.putBoolean("selecting",selecting);
     state.putIntArray("selectedIds",selectedIds.stream().mapToInt(Integer::intValue).toArray());
+    state.putIntArray("selectedGenerations",selectedEnvironments.values().stream().mapToInt(id->id.generation).toArray());
+    state.putStringArray("selectedEnvironmentIds",selectedEnvironments.values().stream().map(id->id.environmentId).toArray(String[]::new));
   }
   @Override protected void onResume(){super.onResume();workspaceVisible=true;if(backdrop!=null)backdrop.setGlassActive(true);renderCached();if(snapshotQueue!=null)snapshotQueue.visible(true);handler.removeCallbacks(update);handler.postDelayed(update,3000);}
   @Override protected void onPause(){workspaceVisible=false;if(backdrop!=null)backdrop.setGlassActive(false);handler.removeCallbacks(update);if(snapshotQueue!=null)snapshotQueue.visible(false);super.onPause();}
@@ -199,13 +211,15 @@ public class WindowHomeActivity extends ThemedActivity {
     if(cards==null||selectionBar==null)return;
     View anchor=visibleEnvironmentAnchor();int anchorTop=anchor==null?0:environmentContentTop(anchor,workspaceScroll);
     Object positionToken=new Object();renderPositionToken=positionToken;
-    JSONArray rows=value.rows;Set<Integer> running=value.running,created=new HashSet<>();long now=System.currentTimeMillis();
+    JSONArray rows=value.rows;Set<Integer> running=value.running;long now=System.currentTimeMillis();
+    Map<Integer,EnvironmentSpec.Identity> created=new HashMap<>();
     List<JSONObject> ordered=new ArrayList<>();
     for(int i=0;i<rows.length();i++){
       JSONObject row=rows.optJSONObject(i);if(!EnvironmentWorkspacePolicy.eligible(row))continue;
-      ordered.add(row);created.add(row.optInt("slot"));
+      ordered.add(row);EnvironmentSpec.Identity identity=selectionIdentity(row);
+      if(identity!=null)created.put(identity.slot,identity);
     }
-    selectedIds.retainAll(created);
+    selectedEnvironments.entrySet().removeIf(entry->!entry.getValue().equals(created.get(entry.getKey())));
     String previousMaintenance=maintenanceSignature;renderMaintenance(rows);
     boolean structure=!previousMaintenance.equals(maintenanceSignature);
     visibleIds.clear();Set<String> retained=new HashSet<>();int index=0;
@@ -256,8 +270,8 @@ public class WindowHomeActivity extends ThemedActivity {
     final EnvironmentPresentation.Binding binding=new EnvironmentPresentation.Binding();
     EnvironmentRow(){
       root.addView(separator,new LinearLayout.LayoutParams(-1,dp(10)));root.addView(card);card.setPadding(dp(16),dp(13),dp(12),dp(13));
-      card.setClickable(true);card.setFocusable(true);card.setOnClickListener(v->{if(value!=null){if(selecting)toggleSelection(value.optInt("slot"));else openExpected(value,"chat",true);}});card.setOnLongClickListener(v->{if(value!=null)toggleSelection(value.optInt("slot"));return true;});
-      check.setOnCheckedChangeListener((button,selected)->{if(!syncing&&value!=null)toggleSelection(value.optInt("slot"));});head.addView(check,new LinearLayout.LayoutParams(dp(48),dp(48)));head.addView(emblem,new LinearLayout.LayoutParams(dp(40),dp(40)));
+      card.setClickable(true);card.setFocusable(true);card.setOnClickListener(v->{if(value!=null){if(selecting)toggleSelection(value);else openExpected(value,"chat",true);}});card.setOnLongClickListener(v->{if(value!=null)toggleSelection(value);return true;});
+      check.setOnCheckedChangeListener((button,selected)->{if(!syncing&&value!=null)toggleSelection(value);});head.addView(check,new LinearLayout.LayoutParams(dp(48),dp(48)));head.addView(emblem,new LinearLayout.LayoutParams(dp(40),dp(40)));
       LinearLayout titles=DesignUi.column(WindowHomeActivity.this);titles.setPadding(dp(12),0,dp(4),0);name.setMaxLines(2);name.setEllipsize(TextUtils.TruncateAt.END);sub.setMaxLines(1);sub.setEllipsize(TextUtils.TruncateAt.END);sub.setPadding(0,dp(4),0,0);sub.setCompoundDrawablePadding(dp(4));titles.addView(name);titles.addView(sub);head.addView(titles,new LinearLayout.LayoutParams(0,-2,1));head.addView(more,new LinearLayout.LayoutParams(dp(48),dp(48)));card.addView(head);
       details.setPadding(0,dp(8),0,0);
       network.setMaxLines(1);network.setEllipsize(TextUtils.TruncateAt.END);network.setPadding(0,0,dp(8),0);Ui.Icon globe=new Ui.Icon("globe",DesignUi.MUTED);globe.setBounds(0,0,dp(12),dp(12));network.setCompoundDrawables(globe,null,null,null);network.setCompoundDrawablePadding(dp(5));details.addView(network,new LinearLayout.LayoutParams(0,-2,1));
@@ -287,16 +301,29 @@ public class WindowHomeActivity extends ThemedActivity {
     if(!EnvironmentSwitcherUi.open(this,expected,action,overview))showProblem("环境已变化，请刷新后重新选择");
   }
   void setSelecting(boolean value){
-    selecting=value;if(!value)selectedIds.clear();renderCached();
+    selecting=value;if(!value)selectedEnvironments.clear();renderCached();
   }
-  void toggleSelection(int id){
-    if(snapshot==null)return;boolean created=false;for(int i=0;i<snapshot.rows.length();i++){JSONObject row=snapshot.rows.optJSONObject(i);if(row.optInt("slot")==id&&EnvironmentWorkspacePolicy.eligible(row)){created=true;break;}}if(!created)return;
-    selecting=true;if(!selectedIds.remove(id))selectedIds.add(id);renderCached();
+  static EnvironmentSpec.Identity selectionIdentity(JSONObject row){
+    if(!EnvironmentWorkspacePolicy.eligible(row))return null;
+    try{return new EnvironmentSpec.Identity(row.optInt("slot",-1),row.optInt("generation",-1),row.optString("environmentId"));}
+    catch(IllegalArgumentException invalidIdentity){return null;}
+  }
+  void toggleSelection(JSONObject row){
+    EnvironmentSpec.Identity identity=selectionIdentity(row);
+    if(identity==null)return;
+    selecting=true;
+    if(identity.equals(selectedEnvironments.get(identity.slot)))selectedEnvironments.remove(identity.slot);
+    else selectedEnvironments.put(identity.slot,identity);
+    renderCached();
   }
   void selectVisible(){
-    if(visibleIds.isEmpty())return;
+    if(visibleIds.isEmpty()||snapshot==null)return;
     selecting=true;
-    if(selectedIds.containsAll(visibleIds))selectedIds.removeAll(visibleIds);else selectedIds.addAll(visibleIds);
+    if(selectedIds.containsAll(visibleIds))selectedEnvironments.keySet().removeAll(visibleIds);
+    else for(int i=0;i<snapshot.rows.length();i++){
+      EnvironmentSpec.Identity identity=selectionIdentity(snapshot.rows.optJSONObject(i));
+      if(identity!=null&&visibleIds.contains(identity.slot))selectedEnvironments.put(identity.slot,identity);
+    }
     renderCached();
   }
   void updateSelectionBar(JSONArray rows){
@@ -316,20 +343,25 @@ public class WindowHomeActivity extends ThemedActivity {
   }
   void batchFavorite(boolean favorite){
     if(selectedIds.isEmpty())return;
-    ProfileCatalog.get(this).favorites(new ArrayList<>(selectedIds),favorite);
+    List<EnvironmentSpec.Identity> selection=new ArrayList<>(selectedEnvironments.values());
+    int changed=ProfileCatalog.get(this).favorites(selection,favorite);
+    finishSelectionUpdate(changed,selection.size());
+  }
+  void finishSelectionUpdate(int changed,int expected){
     refresh();
+    if(changed<expected)showProblem(changed==0?"所选环境已变化，请刷新后重新选择":"部分环境已变化，已更新仍匹配的环境");
   }
   AlertDialog batchGroup(){
     if(selectedIds.isEmpty())return null;
     // Capture the selection when opening the form; later refreshes cannot widen its scope.
-    List<Integer> ids=new ArrayList<>(selectedIds);ProfileCatalog catalog=ProfileCatalog.get(this);
-    String common=catalog.item(ids.get(0)).optString("group");boolean mixed=false;
-    for(int id:ids)if(!common.equals(catalog.item(id).optString("group")))mixed=true;
+    List<EnvironmentSpec.Identity> selection=new ArrayList<>(selectedEnvironments.values());ProfileCatalog catalog=ProfileCatalog.get(this);
+    String common=catalog.item(selection.get(0).slot).optString("group");boolean mixed=false;
+    for(EnvironmentSpec.Identity identity:selection)if(!common.equals(catalog.item(identity.slot).optString("group")))mixed=true;
     LinearLayout box=DesignUi.column(this);box.setPadding(dp(18),0,dp(18),dp(16));
     EditText group=DesignUi.input(box,"目标分组",mixed?"":common,"最多 12 字，留空为未分组");
     group.setFilters(new InputFilter[]{new InputFilter.LengthFilter(12)});
-    int hidden=0;for(int id:ids)if(!visibleIds.contains(id))hidden++;
-    DesignUi.note(box,"修改已选 "+ids.size()+" 个环境"+(hidden>0?"（含筛选外 "+hidden+" 个）":"")+"。备注和配置草稿保留。");
+    int hidden=0;for(EnvironmentSpec.Identity identity:selection)if(!visibleIds.contains(identity.slot))hidden++;
+    DesignUi.note(box,"修改已选 "+selection.size()+" 个环境"+(hidden>0?"（含筛选外 "+hidden+" 个）":"")+"。备注和配置草稿保留。");
     List<String> groups=new ArrayList<>();JSONArray rows=catalog.list();
     for(int i=0;i<rows.length();i++){
       JSONObject row=rows.optJSONObject(i);String value=row.optString("group");
@@ -341,7 +373,8 @@ public class WindowHomeActivity extends ThemedActivity {
       .setPositiveButton("保存分组",null).setNegativeButton("取消",null).create();
     dialog.show();
     dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v->{
-      catalog.group(ids,group.getText().toString());dialog.dismiss();refresh();
+      int changed=catalog.group(selection,group.getText().toString());
+      dialog.dismiss();finishSelectionUpdate(changed,selection.size());
     });
     return dialog;
   }
@@ -354,7 +387,7 @@ public class WindowHomeActivity extends ThemedActivity {
       if(n==0)openWindow(id,"edit");if(n==1)metadata(id);
       if(n==2){ProfileCatalog.get(this).favorite(id,!row.optBoolean("favorite"));refresh();}
       if(n==3){AppSettings.defaultSlot(this,id);refresh();}
-      if(n==4)openWindow(id,"network");if(n==5)toggleSelection(id);if(n==6)copyEnvironment(id);if(n==7)resetEnvironment(id);if(n==8)deleteEnvironment(id);if(n==9)openExpected(row,"overview",true);
+      if(n==4)openWindow(id,"network");if(n==5)toggleSelection(row);if(n==6)copyEnvironment(id);if(n==7)resetEnvironment(id);if(n==8)deleteEnvironment(id);if(n==9)openExpected(row,"overview",true);
     });if(i==7||i==8)item.setTextColor(DesignUi.RED);}
     panel.show();
   }

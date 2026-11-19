@@ -99,6 +99,23 @@ class BrowserWorkflowTests(unittest.TestCase):
                 checks=[at for at,item in enumerate(steps) if "-p 'profile_*_test.py'" in item.get('run','')]
                 self.assertEqual(len(checks),1)
                 self.assertLess(index,checks[0])
+    def test_desktop_chromium_checks_precede_toolchain_and_host_regressions(self):
+        steps = self.new['jobs']['build']['steps']
+        checkout = next(index for index, step in enumerate(steps)
+                        if step.get('uses', '').startswith('actions/checkout@'))
+        names = [step.get('name') for step in steps]
+        toolchain = names.index('Prepare locked toolchain')
+        host = names.index('Run all new browser and carried conversation host regressions')
+        for name in ('Verify document script semantics against actual desktop Chromium',
+                     'Verify selected-photo pixels and fingerprint controls in actual Chromium'):
+            with self.subTest(step=name):
+                self.assertEqual(names.count(name), 1)
+                index = names.index(name)
+                self.assertLess(checkout, index)
+                self.assertLess(index, min(toolchain, host))
+                self.assertNotIn('if', steps[index])
+                self.assertNotIn('continue-on-error', steps[index])
+
     def test_new_host_suites_and_exact_history_are_mandatory(self):
         body='\n'.join(step.get('run','') for step in self.new['jobs']['build']['steps'])
         self.assertIn('tools/browser/prepare_baselines.py',body);self.assertIn('tools/browser/run_host_checks.py',body)

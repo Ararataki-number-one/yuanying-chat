@@ -22,6 +22,8 @@ Windows 使用 `gradlew.bat`。发布输出在 `app/build/outputs/apk/release/`�
 
 原签名密钥须由维护者提供，保存在 Git 忽略目录，不进入源码、CI 或发布附件。文件名与存放路径不能证明签名身份，必须核对证书指纹。缺少原密钥或证书不匹配时保留未签名包；签名助手会报错，不会生成替代密钥。以下路径是维护者准备原密钥后的示例，不表示工作区已经具备原签名。
 
+在终端运行签名助手时，按提示输入原密钥库和签名密钥的口令。无人值守签名应由私有签名环境注入 `POCKET_STORE_PASSWORD` 和 `POCKET_KEY_PASSWORD`。签名助手只将它们传递给 APK 签名步骤。
+
 ```bash
 python3 tools/sign-apk.py app/build/outputs/apk/release/app-arm64-v8a-release-unsigned.apk \
   --key work/release-signing/original-release.jks \
