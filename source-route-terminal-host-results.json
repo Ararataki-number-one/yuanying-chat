@@ -1,0 +1,2617 @@
+{
+  "total": 26,
+  "checks": [
+    {
+      "pass": true,
+      "name": "No recovery uses one fresh terminal IPC without waiting for a future retry"
+    },
+    {
+      "pass": true,
+      "name": "Owned process closure records different live and closed generations"
+    },
+    {
+      "pass": true,
+      "name": "Real callback completion preserves the earlier alive cache and waits only for that request"
+    },
+    {
+      "pass": true,
+      "name": "A fresh alive process is rejected without another sample"
+    },
+    {
+      "pass": true,
+      "name": "Missing fresh alive is unknown and rejected"
+    },
+    {
+      "pass": true,
+      "name": "Boolean PID cannot masquerade as a process number"
+    },
+    {
+      "pass": true,
+      "name": "A different closed generation is rejected"
+    },
+    {
+      "pass": true,
+      "name": "A replacement service PID is rejected"
+    },
+    {
+      "pass": true,
+      "name": "A nonzero closed PID is rejected"
+    },
+    {
+      "pass": true,
+      "name": "A new recovery during the read fails instead of resampling"
+    },
+    {
+      "pass": true,
+      "name": "A new environment generation during the read is rejected"
+    },
+    {
+      "pass": true,
+      "name": "A target reached during terminal observation is rejected"
+    },
+    {
+      "pass": true,
+      "name": "Owned rejection cannot pass without ownership evidence"
+    },
+    {
+      "pass": true,
+      "name": "A different live PID cannot be attributed to the owned process"
+    },
+    {
+      "pass": true,
+      "name": "An expired original fetch deadline performs no IPC"
+    },
+    {
+      "pass": true,
+      "name": "A late callback cannot close another case"
+    },
+    {
+      "pass": true,
+      "name": "Terminal IPC executes off the caller thread"
+    },
+    {
+      "pass": true,
+      "name": "An IPC timeout interrupts only the read adapter and never retries"
+    },
+    {
+      "pass": true,
+      "name": "An IPC exception remains unknown and cannot become closed"
+    },
+    {
+      "pass": true,
+      "name": "A successful recovery is not rejected-startup terminal evidence"
+    },
+    {
+      "pass": true,
+      "name": "A pushed replacement service cache after the correlated reply is rejected"
+    },
+    {
+      "pass": true,
+      "name": "An immediate ready result cannot be overwritten by a later blocked fence"
+    },
+    {
+      "pass": true,
+      "name": "An immediate live cache without an overlapping recovery remains failure"
+    },
+    {
+      "pass": true,
+      "name": "A live cache at the UI selection cut needs a recovery owner"
+    },
+    {
+      "pass": true,
+      "name": "A target reached while the final UI callback is queued remains failure"
+    },
+    {
+      "pass": true,
+      "name": "A case change during read cannot be attributed to the old case"
+    }
+  ],
+  "actualAndroidExecution": false,
+  "actualFreshServiceIpc": false,
+  "actualFixtureObserverExecution": true,
+  "scope": "Complete fixture observer with explicit host UI/IPC adapters; not Android or process-exit acceptance",
+  "status": "passed",
+  "joinedStart": {
+    "total": 8,
+    "cases": [
+      {
+        "recoveryCallbacks": 1,
+        "negative": {
+          "postFetchObservedAtNs": 2282943165816,
+          "coreAliveAfter": false,
+          "readyAfter": false,
+          "terminalEvidence": {
+            "schema": 1,
+            "fenceAfter": {
+              "connectionEpoch": 1,
+              "environmentGeneration": 0,
+              "routeSerial": 0,
+              "recoveryToken": 2,
+              "slot": 0,
+              "environmentId": "33333333-3333-4333-8333-333333333333",
+              "transportIdentity": 300892338,
+              "hasVerifiedReceipt": false,
+              "ready": false,
+              "caseId": "5b051768-768f-4c13-b161-dc66600f42d7",
+              "runNonce": "0123456789abcdef0123456789abcdef",
+              "sourceCommit": "5ad586c6b99a8d14454c9589274646feea3c20cf",
+              "starting": false,
+              "connecting": false,
+              "sessionIdentity": 1395908815,
+              "browserIdentity": 1495063201,
+              "recoveryRequestSerial": 1
+            },
+            "fetchBudgetMs": 22000,
+            "restartTerminal": {
+              "cache": {
+                "generation": "20000000-0000-4000-8000-000000000001",
+                "alive": false,
+                "configuration": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "servicePid": 900,
+                "pid": 0,
+                "slot": 0,
+                "state": "closed"
+              },
+              "atNs": 2282942344764,
+              "ok": false
+            },
+            "startObservationWait": {
+              "requestedAtNs": 2282944970627,
+              "method": "actual-start-worker-observer-completion",
+              "completedAtNs": 2282945154811
+            },
+            "recoveries": [
+              {
+                "requestedAtNs": 2282939982442,
+                "request": 1,
+                "terminalFence": {
+                  "connectionEpoch": 1,
+                  "environmentGeneration": 0,
+                  "routeSerial": 0,
+                  "recoveryToken": 2,
+                  "slot": 0,
+                  "environmentId": "33333333-3333-4333-8333-333333333333",
+                  "transportIdentity": 300892338,
+                  "hasVerifiedReceipt": false,
+                  "ready": false,
+                  "caseId": "5b051768-768f-4c13-b161-dc66600f42d7",
+                  "runNonce": "0123456789abcdef0123456789abcdef",
+                  "sourceCommit": "5ad586c6b99a8d14454c9589274646feea3c20cf",
+                  "starting": false,
+                  "connecting": false,
+                  "sessionIdentity": 1395908815,
+                  "browserIdentity": 1495063201,
+                  "recoveryRequestSerial": 1
+                },
+                "connectionEpoch": 1,
+                "completedAtNs": 2282942472612,
+                "caseId": "5b051768-768f-4c13-b161-dc66600f42d7",
+                "hasReceipt": false,
+                "recoveryToken": 1,
+                "terminalCache": {
+                  "generation": "20000000-0000-4000-8000-000000000001",
+                  "alive": false,
+                  "configuration": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                  "servicePid": 900,
+                  "pid": 0,
+                  "slot": 0,
+                  "state": "closed"
+                },
+                "outcome": "FAILED"
+              }
+            ],
+            "caseId": "5b051768-768f-4c13-b161-dc66600f42d7",
+            "runNonce": "0123456789abcdef0123456789abcdef",
+            "finalCache": {
+              "generation": "20000000-0000-4000-8000-000000000001",
+              "alive": false,
+              "configuration": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "servicePid": 900,
+              "pid": 0,
+              "slot": 0,
+              "state": "closed"
+            },
+            "fenceBefore": {
+              "connectionEpoch": 1,
+              "environmentGeneration": 0,
+              "routeSerial": 0,
+              "recoveryToken": 2,
+              "slot": 0,
+              "environmentId": "33333333-3333-4333-8333-333333333333",
+              "transportIdentity": 300892338,
+              "hasVerifiedReceipt": false,
+              "ready": false,
+              "caseId": "5b051768-768f-4c13-b161-dc66600f42d7",
+              "runNonce": "0123456789abcdef0123456789abcdef",
+              "sourceCommit": "5ad586c6b99a8d14454c9589274646feea3c20cf",
+              "starting": false,
+              "connecting": false,
+              "sessionIdentity": 1395908815,
+              "browserIdentity": 1495063201,
+              "recoveryRequestSerial": 1
+            },
+            "freshRead": {
+              "requestedAtNs": 2282946892466,
+              "method": "NetworkTransportClient.call(snapshot)",
+              "receivedAtNs": 2282947541933,
+              "snapshot": {
+                "generation": "20000000-0000-4000-8000-000000000001",
+                "alive": false,
+                "configuration": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "servicePid": 900,
+                "pid": 0,
+                "slot": 0,
+                "state": "closed"
+              }
+            },
+            "restartDeadlineAtNs": 2357933753358,
+            "contactsBefore": {
+              "decoyTarget": 0,
+              "plainProbe": 0,
+              "fixedAllConnected": 0,
+              "ip": 0,
+              "decoyAllConnected": 0,
+              "fixedTarget": 0
+            },
+            "contactsAfter": {
+              "decoyTarget": 0,
+              "plainProbe": 0,
+              "fixedAllConnected": 0,
+              "ip": 0,
+              "decoyAllConnected": 0,
+              "fixedTarget": 0
+            },
+            "case": "same-name-changed-entry",
+            "restartBeganAtNs": 2282933753358,
+            "terminalAnchor": {
+              "generation": "20000000-0000-4000-8000-000000000001",
+              "alive": false,
+              "configuration": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "servicePid": 900,
+              "pid": 0,
+              "slot": 0,
+              "state": "closed"
+            },
+            "stopObservations": [
+              {
+                "reason": "START_FAILED",
+                "afterRequestSerial": 1,
+                "startInvocation": {
+                  "rootCallbackId": 1,
+                  "javaThreadIdAfter": 14,
+                  "owned": {
+                    "generation": "10000000-0000-4000-8000-000000000001",
+                    "configuration": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                    "servicePid": 900,
+                    "pid": 901
+                  },
+                  "caseId": "5b051768-768f-4c13-b161-dc66600f42d7",
+                  "beganAtNs": 2282938971010,
+                  "endedAtNs": 2282940922779,
+                  "javaThreadId": 14,
+                  "rootRegistrationId": 1,
+                  "invocationId": 1,
+                  "invocationIdAfter": 1
+                },
+                "owned": {
+                  "generation": "10000000-0000-4000-8000-000000000001",
+                  "configuration": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                  "servicePid": 900,
+                  "pid": 901
+                },
+                "observation": "client cache after original stopOwnedCore returned; not exit proof",
+                "caseId": "5b051768-768f-4c13-b161-dc66600f42d7",
+                "beganAtNs": 2282938650634,
+                "endedAtNs": 2282940787802,
+                "beforeCache": {
+                  "generation": "10000000-0000-4000-8000-000000000001",
+                  "alive": true,
+                  "configuration": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                  "servicePid": 900,
+                  "pid": 901,
+                  "slot": 0,
+                  "state": "running"
+                },
+                "afterCache": {
+                  "generation": "20000000-0000-4000-8000-000000000001",
+                  "alive": false,
+                  "configuration": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                  "servicePid": 900,
+                  "pid": 0,
+                  "slot": 0,
+                  "state": "closed"
+                },
+                "joinedRecovery": {
+                  "schema": 1,
+                  "rootCallbackId": 1,
+                  "request": 1,
+                  "javaThreadId": 14,
+                  "rootRegistrationId": 1,
+                  "admission": {
+                    "request": 1,
+                    "callbackKind": "recovery",
+                    "rootCallbackRetained": true,
+                    "invocationIdBefore": 1,
+                    "adapterCallbackMatches": true,
+                    "monitorHeldAfter": true,
+                    "monitorHeldBefore": true,
+                    "workerThreadIdAfter": 14,
+                    "waitersBefore": [
+                      1
+                    ],
+                    "invocationIdAfter": 1,
+                    "mode": 1,
+                    "waitersAfter": [
+                      1,
+                      2
+                    ],
+                    "callbackId": 2,
+                    "startingAfter": true,
+                    "caseId": "5b051768-768f-4c13-b161-dc66600f42d7",
+                    "beganAtNs": 2282940610257,
+                    "registrationId": 2,
+                    "endedAtNs": 2282940633840,
+                    "restartQueuedAfter": false,
+                    "restartQueuedBefore": false,
+                    "startingBefore": true,
+                    "workerThreadIdBefore": 14,
+                    "exactAppend": true
+                  },
+                  "invocationId": 1,
+                  "stopBeganAtNs": 2282938650634,
+                  "stopEndedAtNs": 2282940787802,
+                  "callbackId": 2,
+                  "owned": {
+                    "generation": "10000000-0000-4000-8000-000000000001",
+                    "configuration": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                    "servicePid": 900,
+                    "pid": 901
+                  },
+                  "caseId": "5b051768-768f-4c13-b161-dc66600f42d7",
+                  "runNonce": "0123456789abcdef0123456789abcdef",
+                  "registrationId": 2,
+                  "sourceCommit": "5ad586c6b99a8d14454c9589274646feea3c20cf"
+                },
+                "recoveryRequestSerial": 0
+              }
+            ],
+            "startObservation": {
+              "schema": 1,
+              "rootCallbackId": 1,
+              "workerInvocations": [
+                {
+                  "rootCallbackId": 1,
+                  "javaThreadId": 14,
+                  "rootRegistrationId": 1,
+                  "invocationId": 1,
+                  "waitersBefore": [
+                    1
+                  ],
+                  "mode": 2,
+                  "waitersAfter": [],
+                  "startingAfter": false,
+                  "caseId": "5b051768-768f-4c13-b161-dc66600f42d7",
+                  "beganAtNs": 2282937826070,
+                  "endedAtNs": 2282945090957,
+                  "restartQueuedAfter": false,
+                  "restartQueuedBefore": false,
+                  "startingBefore": true
+                }
+              ],
+              "caseId": "5b051768-768f-4c13-b161-dc66600f42d7",
+              "runNonce": "0123456789abcdef0123456789abcdef",
+              "admissions": [
+                {
+                  "request": 1,
+                  "callbackKind": "recovery",
+                  "rootCallbackRetained": true,
+                  "invocationIdBefore": 1,
+                  "adapterCallbackMatches": true,
+                  "monitorHeldAfter": true,
+                  "monitorHeldBefore": true,
+                  "workerThreadIdAfter": 14,
+                  "waitersBefore": [
+                    1
+                  ],
+                  "invocationIdAfter": 1,
+                  "mode": 1,
+                  "waitersAfter": [
+                    1,
+                    2
+                  ],
+                  "callbackId": 2,
+                  "startingAfter": true,
+                  "caseId": "5b051768-768f-4c13-b161-dc66600f42d7",
+                  "beganAtNs": 2282940610257,
+                  "registrationId": 2,
+                  "endedAtNs": 2282940633840,
+                  "restartQueuedAfter": false,
+                  "restartQueuedBefore": false,
+                  "startingBefore": true,
+                  "workerThreadIdBefore": 14,
+                  "exactAppend": true
+                }
+              ],
+              "rootRegistration": {
+                "request": 0,
+                "callbackKind": "restart",
+                "rootCallbackRetained": false,
+                "invocationIdBefore": 0,
+                "adapterCallbackMatches": false,
+                "monitorHeldAfter": true,
+                "monitorHeldBefore": true,
+                "workerThreadIdAfter": 0,
+                "waitersBefore": [],
+                "invocationIdAfter": 0,
+                "mode": 2,
+                "waitersAfter": [
+                  1
+                ],
+                "callbackId": 1,
+                "startingAfter": true,
+                "caseId": "5b051768-768f-4c13-b161-dc66600f42d7",
+                "beganAtNs": 2282936233426,
+                "registrationId": 1,
+                "endedAtNs": 2282937746148,
+                "restartQueuedAfter": false,
+                "restartQueuedBefore": false,
+                "startingBefore": false,
+                "workerThreadIdBefore": 0,
+                "exactAppend": true
+              },
+              "sourceCommit": "5ad586c6b99a8d14454c9589274646feea3c20cf",
+              "errors": []
+            },
+            "fetchBeganAtNs": 2282943155051,
+            "postFetchCache": {
+              "coreAlive": false,
+              "cache": {
+                "generation": "20000000-0000-4000-8000-000000000001",
+                "alive": false,
+                "configuration": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "servicePid": 900,
+                "pid": 0,
+                "slot": 0,
+                "state": "closed"
+              },
+              "atNs": 2282943165816,
+              "ready": false,
+              "cutAtNs": 2282944408983,
+              "message": "synthetic source rejected",
+              "fence": {
+                "connectionEpoch": 1,
+                "environmentGeneration": 0,
+                "routeSerial": 0,
+                "recoveryToken": 2,
+                "slot": 0,
+                "environmentId": "33333333-3333-4333-8333-333333333333",
+                "transportIdentity": 300892338,
+                "hasVerifiedReceipt": false,
+                "ready": false,
+                "caseId": "5b051768-768f-4c13-b161-dc66600f42d7",
+                "runNonce": "0123456789abcdef0123456789abcdef",
+                "sourceCommit": "5ad586c6b99a8d14454c9589274646feea3c20cf",
+                "starting": false,
+                "connecting": false,
+                "sessionIdentity": 1395908815,
+                "browserIdentity": 1495063201,
+                "recoveryRequestSerial": 1
+              }
+            },
+            "deadlineAtNs": 2304943155051,
+            "completedAtNs": 2282949606637,
+            "sourceCommit": "5ad586c6b99a8d14454c9589274646feea3c20cf",
+            "startedAtNs": 2282933741756,
+            "status": "passed"
+          },
+          "message": "synthetic source rejected"
+        },
+        "freshReads": 1,
+        "rootCallbacks": 1,
+        "name": "current-complete-observer-joined",
+        "sourceObservation": {
+          "schema": 1,
+          "rootCallbackId": 1,
+          "workerInvocations": [
+            {
+              "rootCallbackId": 1,
+              "javaThreadId": 14,
+              "rootRegistrationId": 1,
+              "invocationId": 1,
+              "waitersBefore": [
+                1
+              ],
+              "mode": 2,
+              "waitersAfter": [],
+              "startingAfter": false,
+              "caseId": "5b051768-768f-4c13-b161-dc66600f42d7",
+              "beganAtNs": 2282937826070,
+              "endedAtNs": 2282945090957,
+              "restartQueuedAfter": false,
+              "restartQueuedBefore": false,
+              "startingBefore": true
+            }
+          ],
+          "caseId": "5b051768-768f-4c13-b161-dc66600f42d7",
+          "runNonce": "0123456789abcdef0123456789abcdef",
+          "admissions": [
+            {
+              "request": 1,
+              "callbackKind": "recovery",
+              "rootCallbackRetained": true,
+              "invocationIdBefore": 1,
+              "adapterCallbackMatches": true,
+              "monitorHeldAfter": true,
+              "monitorHeldBefore": true,
+              "workerThreadIdAfter": 14,
+              "waitersBefore": [
+                1
+              ],
+              "invocationIdAfter": 1,
+              "mode": 1,
+              "waitersAfter": [
+                1,
+                2
+              ],
+              "callbackId": 2,
+              "startingAfter": true,
+              "caseId": "5b051768-768f-4c13-b161-dc66600f42d7",
+              "beganAtNs": 2282940610257,
+              "registrationId": 2,
+              "endedAtNs": 2282940633840,
+              "restartQueuedAfter": false,
+              "restartQueuedBefore": false,
+              "startingBefore": true,
+              "workerThreadIdBefore": 14,
+              "exactAppend": true
+            }
+          ],
+          "rootRegistration": {
+            "request": 0,
+            "callbackKind": "restart",
+            "rootCallbackRetained": false,
+            "invocationIdBefore": 0,
+            "adapterCallbackMatches": false,
+            "monitorHeldAfter": true,
+            "monitorHeldBefore": true,
+            "workerThreadIdAfter": 0,
+            "waitersBefore": [],
+            "invocationIdAfter": 0,
+            "mode": 2,
+            "waitersAfter": [
+              1
+            ],
+            "callbackId": 1,
+            "startingAfter": true,
+            "caseId": "5b051768-768f-4c13-b161-dc66600f42d7",
+            "beganAtNs": 2282936233426,
+            "registrationId": 1,
+            "endedAtNs": 2282937746148,
+            "restartQueuedAfter": false,
+            "restartQueuedBefore": false,
+            "startingBefore": false,
+            "workerThreadIdBefore": 0,
+            "exactAppend": true
+          },
+          "sourceCommit": "5ad586c6b99a8d14454c9589274646feea3c20cf",
+          "errors": []
+        },
+        "launches": 1
+      },
+      {
+        "recoveryCallbacks": 1,
+        "negative": {
+          "postFetchObservedAtNs": 2282955991846,
+          "coreAliveAfter": false,
+          "readyAfter": false,
+          "terminalEvidence": {
+            "schema": 1,
+            "stopObservations": [
+              {
+                "reason": "START_FAILED",
+                "afterRequestSerial": 1,
+                "startInvocation": {
+                  "rootCallbackId": 1,
+                  "javaThreadIdAfter": 18,
+                  "owned": {
+                    "generation": "10000000-0000-4000-8000-000000000001",
+                    "configuration": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                    "servicePid": 900,
+                    "pid": 901
+                  },
+                  "caseId": "56cdcb8f-e419-4466-9ce5-2c2f7a935023",
+                  "beganAtNs": 2282955216346,
+                  "endedAtNs": 2282955555836,
+                  "javaThreadId": 18,
+                  "rootRegistrationId": 1,
+                  "invocationId": 1,
+                  "invocationIdAfter": 1
+                },
+                "owned": {
+                  "generation": "10000000-0000-4000-8000-000000000001",
+                  "configuration": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                  "servicePid": 900,
+                  "pid": 901
+                },
+                "observation": "client cache after original stopOwnedCore returned; not exit proof",
+                "caseId": "56cdcb8f-e419-4466-9ce5-2c2f7a935023",
+                "beganAtNs": 2282955054592,
+                "endedAtNs": 2282955490382,
+                "beforeCache": {
+                  "generation": "10000000-0000-4000-8000-000000000001",
+                  "alive": true,
+                  "configuration": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                  "servicePid": 900,
+                  "pid": 901,
+                  "slot": 0,
+                  "state": "running"
+                },
+                "afterCache": {
+                  "generation": "20000000-0000-4000-8000-000000000001",
+                  "alive": false,
+                  "configuration": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                  "servicePid": 900,
+                  "pid": 0,
+                  "slot": 0,
+                  "state": "closed"
+                },
+                "recoveryRequestSerial": 0
+              }
+            ],
+            "startObservation": {
+              "schema": 1,
+              "rootCallbackId": 1,
+              "workerInvocations": [
+                {
+                  "rootCallbackId": 1,
+                  "javaThreadId": 18,
+                  "rootRegistrationId": 1,
+                  "invocationId": 1,
+                  "waitersBefore": [
+                    1
+                  ],
+                  "mode": 2,
+                  "waitersAfter": [],
+                  "startingAfter": false,
+                  "caseId": "56cdcb8f-e419-4466-9ce5-2c2f7a935023",
+                  "beganAtNs": 2282954852177,
+                  "endedAtNs": 2282955592224,
+                  "restartQueuedAfter": false,
+                  "restartQueuedBefore": false,
+                  "startingBefore": true
+                }
+              ],
+              "caseId": "56cdcb8f-e419-4466-9ce5-2c2f7a935023",
+              "runNonce": "0123456789abcdef0123456789abcdef",
+              "admissions": [
+                {
+                  "request": 1,
+                  "callbackKind": "recovery",
+                  "rootCallbackRetained": true,
+                  "invocationIdBefore": 1,
+                  "adapterCallbackMatches": true,
+                  "monitorHeldAfter": true,
+                  "monitorHeldBefore": true,
+                  "workerThreadIdAfter": 18,
+                  "waitersBefore": [
+                    1
+                  ],
+                  "invocationIdAfter": 1,
+                  "mode": 1,
+                  "waitersAfter": [
+                    1,
+                    2
+                  ],
+                  "callbackId": 2,
+                  "startingAfter": true,
+                  "caseId": "56cdcb8f-e419-4466-9ce5-2c2f7a935023",
+                  "beganAtNs": 2282955321759,
+                  "registrationId": 2,
+                  "endedAtNs": 2282955355240,
+                  "restartQueuedAfter": false,
+                  "restartQueuedBefore": false,
+                  "startingBefore": true,
+                  "workerThreadIdBefore": 18,
+                  "exactAppend": true
+                }
+              ],
+              "rootRegistration": {
+                "request": 0,
+                "callbackKind": "restart",
+                "rootCallbackRetained": false,
+                "invocationIdBefore": 0,
+                "adapterCallbackMatches": false,
+                "monitorHeldAfter": true,
+                "monitorHeldBefore": true,
+                "workerThreadIdAfter": 0,
+                "waitersBefore": [],
+                "invocationIdAfter": 0,
+                "mode": 2,
+                "waitersAfter": [
+                  1
+                ],
+                "callbackId": 1,
+                "startingAfter": true,
+                "caseId": "56cdcb8f-e419-4466-9ce5-2c2f7a935023",
+                "beganAtNs": 2282954668537,
+                "registrationId": 1,
+                "endedAtNs": 2282954772295,
+                "restartQueuedAfter": false,
+                "restartQueuedBefore": false,
+                "startingBefore": false,
+                "workerThreadIdBefore": 0,
+                "exactAppend": true
+              },
+              "sourceCommit": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "errors": []
+            },
+            "fetchBudgetMs": 22000,
+            "fetchBeganAtNs": 2282955984039,
+            "postFetchCache": {
+              "coreAlive": false,
+              "cache": {
+                "generation": "20000000-0000-4000-8000-000000000001",
+                "alive": false,
+                "configuration": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "servicePid": 900,
+                "pid": 0,
+                "slot": 0,
+                "state": "closed"
+              },
+              "atNs": 2282955991846,
+              "ready": false,
+              "cutAtNs": 2282956397593,
+              "message": "synthetic source rejected",
+              "fence": {
+                "connectionEpoch": 1,
+                "environmentGeneration": 0,
+                "routeSerial": 0,
+                "recoveryToken": 2,
+                "slot": 0,
+                "environmentId": "33333333-3333-4333-8333-333333333333",
+                "transportIdentity": 263273074,
+                "hasVerifiedReceipt": false,
+                "ready": false,
+                "caseId": "56cdcb8f-e419-4466-9ce5-2c2f7a935023",
+                "runNonce": "0123456789abcdef0123456789abcdef",
+                "sourceCommit": "5ad586c6b99a8d14454c9589274646feea3c20cf",
+                "starting": false,
+                "connecting": false,
+                "sessionIdentity": 1979741579,
+                "browserIdentity": 855827759,
+                "recoveryRequestSerial": 1
+              }
+            },
+            "restartTerminal": {
+              "cache": {
+                "generation": "20000000-0000-4000-8000-000000000001",
+                "alive": false,
+                "configuration": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "servicePid": 900,
+                "pid": 0,
+                "slot": 0,
+                "state": "closed"
+              },
+              "atNs": 2282955600417,
+              "ok": false
+            },
+            "error": "java.io.IOException: Negative terminal evidence: joined startup identity changed",
+            "startObservationWait": {
+              "requestedAtNs": 2282956496206,
+              "method": "actual-start-worker-observer-completion",
+              "completedAtNs": 2282956500866
+            },
+            "deadlineAtNs": 2304955984039,
+            "recoveries": [
+              {
+                "requestedAtNs": 2282955285410,
+                "request": 1,
+                "terminalFence": {
+                  "connectionEpoch": 1,
+                  "environmentGeneration": 0,
+                  "routeSerial": 0,
+                  "recoveryToken": 2,
+                  "slot": 0,
+                  "environmentId": "33333333-3333-4333-8333-333333333333",
+                  "transportIdentity": 263273074,
+                  "hasVerifiedReceipt": false,
+                  "ready": false,
+                  "caseId": "56cdcb8f-e419-4466-9ce5-2c2f7a935023",
+                  "runNonce": "0123456789abcdef0123456789abcdef",
+                  "sourceCommit": "5ad586c6b99a8d14454c9589274646feea3c20cf",
+                  "starting": false,
+                  "connecting": false,
+                  "sessionIdentity": 1979741579,
+                  "browserIdentity": 855827759,
+                  "recoveryRequestSerial": 1
+                },
+                "connectionEpoch": 1,
+                "completedAtNs": 2282955713473,
+                "caseId": "56cdcb8f-e419-4466-9ce5-2c2f7a935023",
+                "hasReceipt": false,
+                "recoveryToken": 1,
+                "terminalCache": {
+                  "generation": "20000000-0000-4000-8000-000000000001",
+                  "alive": false,
+                  "configuration": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                  "servicePid": 900,
+                  "pid": 0,
+                  "slot": 0,
+                  "state": "closed"
+                },
+                "outcome": "FAILED"
+              }
+            ],
+            "caseId": "56cdcb8f-e419-4466-9ce5-2c2f7a935023",
+            "runNonce": "0123456789abcdef0123456789abcdef",
+            "fenceBefore": {
+              "connectionEpoch": 1,
+              "environmentGeneration": 0,
+              "routeSerial": 0,
+              "recoveryToken": 2,
+              "slot": 0,
+              "environmentId": "33333333-3333-4333-8333-333333333333",
+              "transportIdentity": 263273074,
+              "hasVerifiedReceipt": false,
+              "ready": false,
+              "caseId": "56cdcb8f-e419-4466-9ce5-2c2f7a935023",
+              "runNonce": "0123456789abcdef0123456789abcdef",
+              "sourceCommit": "5ad586c6b99a8d14454c9589274646feea3c20cf",
+              "starting": false,
+              "connecting": false,
+              "sessionIdentity": 1979741579,
+              "browserIdentity": 855827759,
+              "recoveryRequestSerial": 1
+            },
+            "freshRead": {
+              "requestedAtNs": 2282956935535,
+              "method": "NetworkTransportClient.call(snapshot)",
+              "receivedAtNs": 2282957213594,
+              "snapshot": {
+                "generation": "20000000-0000-4000-8000-000000000001",
+                "alive": false,
+                "configuration": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "servicePid": 900,
+                "pid": 0,
+                "slot": 0,
+                "state": "closed"
+              }
+            },
+            "restartDeadlineAtNs": 2357954466440,
+            "sourceCommit": "5ad586c6b99a8d14454c9589274646feea3c20cf",
+            "startedAtNs": 2282954462884,
+            "case": "same-name-changed-entry",
+            "status": "failed",
+            "restartBeganAtNs": 2282954466440,
+            "terminalAnchor": {
+              "generation": "20000000-0000-4000-8000-000000000001",
+              "alive": false,
+              "configuration": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "servicePid": 900,
+              "pid": 0,
+              "slot": 0,
+              "state": "closed"
+            }
+          },
+          "message": "synthetic source rejected"
+        },
+        "freshReads": 1,
+        "rootCallbacks": 1,
+        "name": "wrong-source",
+        "sourceObservation": {
+          "schema": 1,
+          "rootCallbackId": 1,
+          "workerInvocations": [
+            {
+              "rootCallbackId": 1,
+              "javaThreadId": 18,
+              "rootRegistrationId": 1,
+              "invocationId": 1,
+              "waitersBefore": [
+                1
+              ],
+              "mode": 2,
+              "waitersAfter": [],
+              "startingAfter": false,
+              "caseId": "56cdcb8f-e419-4466-9ce5-2c2f7a935023",
+              "beganAtNs": 2282954852177,
+              "endedAtNs": 2282955592224,
+              "restartQueuedAfter": false,
+              "restartQueuedBefore": false,
+              "startingBefore": true
+            }
+          ],
+          "caseId": "56cdcb8f-e419-4466-9ce5-2c2f7a935023",
+          "runNonce": "0123456789abcdef0123456789abcdef",
+          "admissions": [
+            {
+              "request": 1,
+              "callbackKind": "recovery",
+              "rootCallbackRetained": true,
+              "invocationIdBefore": 1,
+              "adapterCallbackMatches": true,
+              "monitorHeldAfter": true,
+              "monitorHeldBefore": true,
+              "workerThreadIdAfter": 18,
+              "waitersBefore": [
+                1
+              ],
+              "invocationIdAfter": 1,
+              "mode": 1,
+              "waitersAfter": [
+                1,
+                2
+              ],
+              "callbackId": 2,
+              "startingAfter": true,
+              "caseId": "56cdcb8f-e419-4466-9ce5-2c2f7a935023",
+              "beganAtNs": 2282955321759,
+              "registrationId": 2,
+              "endedAtNs": 2282955355240,
+              "restartQueuedAfter": false,
+              "restartQueuedBefore": false,
+              "startingBefore": true,
+              "workerThreadIdBefore": 18,
+              "exactAppend": true
+            }
+          ],
+          "rootRegistration": {
+            "request": 0,
+            "callbackKind": "restart",
+            "rootCallbackRetained": false,
+            "invocationIdBefore": 0,
+            "adapterCallbackMatches": false,
+            "monitorHeldAfter": true,
+            "monitorHeldBefore": true,
+            "workerThreadIdAfter": 0,
+            "waitersBefore": [],
+            "invocationIdAfter": 0,
+            "mode": 2,
+            "waitersAfter": [
+              1
+            ],
+            "callbackId": 1,
+            "startingAfter": true,
+            "caseId": "56cdcb8f-e419-4466-9ce5-2c2f7a935023",
+            "beganAtNs": 2282954668537,
+            "registrationId": 1,
+            "endedAtNs": 2282954772295,
+            "restartQueuedAfter": false,
+            "restartQueuedBefore": false,
+            "startingBefore": false,
+            "workerThreadIdBefore": 0,
+            "exactAppend": true
+          },
+          "sourceCommit": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "errors": []
+        },
+        "launches": 1
+      },
+      {
+        "recoveryCallbacks": 1,
+        "negative": {
+          "postFetchObservedAtNs": 2282969252819,
+          "coreAliveAfter": false,
+          "readyAfter": false,
+          "terminalEvidence": {
+            "schema": 1,
+            "stopObservations": [
+              {
+                "reason": "START_FAILED",
+                "afterRequestSerial": 1,
+                "startInvocation": {
+                  "rootCallbackId": 1,
+                  "javaThreadIdAfter": 21,
+                  "owned": {
+                    "generation": "10000000-0000-4000-8000-000000000001",
+                    "configuration": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                    "servicePid": 900,
+                    "pid": 901
+                  },
+                  "caseId": "52e411b3-6f62-4eb4-a306-ddd7bbc17736",
+                  "beganAtNs": 2282968620692,
+                  "endedAtNs": 2282968888542,
+                  "javaThreadId": 21,
+                  "rootRegistrationId": 1,
+                  "invocationId": 1,
+                  "invocationIdAfter": 1
+                },
+                "owned": {
+                  "generation": "10000000-0000-4000-8000-000000000001",
+                  "configuration": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                  "servicePid": 900,
+                  "pid": 901
+                },
+                "observation": "client cache after original stopOwnedCore returned; not exit proof",
+                "caseId": "52e411b3-6f62-4eb4-a306-ddd7bbc17736",
+                "beganAtNs": 2282968475599,
+                "endedAtNs": 2282968837162,
+                "beforeCache": {
+                  "generation": "10000000-0000-4000-8000-000000000001",
+                  "alive": true,
+                  "configuration": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                  "servicePid": 900,
+                  "pid": 901,
+                  "slot": 0,
+                  "state": "running"
+                },
+                "afterCache": {
+                  "generation": "20000000-0000-4000-8000-000000000001",
+                  "alive": false,
+                  "configuration": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                  "servicePid": 900,
+                  "pid": 0,
+                  "slot": 0,
+                  "state": "closed"
+                },
+                "recoveryRequestSerial": 0
+              }
+            ],
+            "startObservation": {
+              "schema": 1,
+              "rootCallbackId": 1,
+              "workerInvocations": [
+                {
+                  "rootCallbackId": 1,
+                  "javaThreadId": 21,
+                  "rootRegistrationId": 1,
+                  "invocationId": 1,
+                  "waitersBefore": [
+                    1
+                  ],
+                  "mode": 2,
+                  "waitersAfter": [],
+                  "startingAfter": false,
+                  "caseId": "52e411b3-6f62-4eb4-a306-ddd7bbc17736",
+                  "beganAtNs": 2282968287434,
+                  "endedAtNs": 2282969034067,
+                  "restartQueuedAfter": false,
+                  "restartQueuedBefore": false,
+                  "startingBefore": true
+                }
+              ],
+              "caseId": "52e411b3-6f62-4eb4-a306-ddd7bbc17736",
+              "runNonce": "ffffffffffffffffffffffffffffffff",
+              "admissions": [
+                {
+                  "request": 1,
+                  "callbackKind": "recovery",
+                  "rootCallbackRetained": true,
+                  "invocationIdBefore": 1,
+                  "adapterCallbackMatches": true,
+                  "monitorHeldAfter": true,
+                  "monitorHeldBefore": true,
+                  "workerThreadIdAfter": 21,
+                  "waitersBefore": [
+                    1
+                  ],
+                  "invocationIdAfter": 1,
+                  "mode": 1,
+                  "waitersAfter": [
+                    1,
+                    2
+                  ],
+                  "callbackId": 2,
+                  "startingAfter": true,
+                  "caseId": "52e411b3-6f62-4eb4-a306-ddd7bbc17736",
+                  "beganAtNs": 2282968693605,
+                  "registrationId": 2,
+                  "endedAtNs": 2282968713046,
+                  "restartQueuedAfter": false,
+                  "restartQueuedBefore": false,
+                  "startingBefore": true,
+                  "workerThreadIdBefore": 21,
+                  "exactAppend": true
+                }
+              ],
+              "rootRegistration": {
+                "request": 0,
+                "callbackKind": "restart",
+                "rootCallbackRetained": false,
+                "invocationIdBefore": 0,
+                "adapterCallbackMatches": false,
+                "monitorHeldAfter": true,
+                "monitorHeldBefore": true,
+                "workerThreadIdAfter": 0,
+                "waitersBefore": [],
+                "invocationIdAfter": 0,
+                "mode": 2,
+                "waitersAfter": [
+                  1
+                ],
+                "callbackId": 1,
+                "startingAfter": true,
+                "caseId": "52e411b3-6f62-4eb4-a306-ddd7bbc17736",
+                "beganAtNs": 2282968108287,
+                "registrationId": 1,
+                "endedAtNs": 2282968211802,
+                "restartQueuedAfter": false,
+                "restartQueuedBefore": false,
+                "startingBefore": false,
+                "workerThreadIdBefore": 0,
+                "exactAppend": true
+              },
+              "sourceCommit": "5ad586c6b99a8d14454c9589274646feea3c20cf",
+              "errors": []
+            },
+            "fetchBudgetMs": 22000,
+            "fetchBeganAtNs": 2282969243337,
+            "postFetchCache": {
+              "coreAlive": false,
+              "cache": {
+                "generation": "20000000-0000-4000-8000-000000000001",
+                "alive": false,
+                "configuration": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "servicePid": 900,
+                "pid": 0,
+                "slot": 0,
+                "state": "closed"
+              },
+              "atNs": 2282969252819,
+              "ready": false,
+              "cutAtNs": 2282969327711,
+              "message": "synthetic source rejected",
+              "fence": {
+                "connectionEpoch": 1,
+                "environmentGeneration": 0,
+                "routeSerial": 0,
+                "recoveryToken": 2,
+                "slot": 0,
+                "environmentId": "33333333-3333-4333-8333-333333333333",
+                "transportIdentity": 1597742422,
+                "hasVerifiedReceipt": false,
+                "ready": false,
+                "caseId": "52e411b3-6f62-4eb4-a306-ddd7bbc17736",
+                "runNonce": "0123456789abcdef0123456789abcdef",
+                "sourceCommit": "5ad586c6b99a8d14454c9589274646feea3c20cf",
+                "starting": false,
+                "connecting": false,
+                "sessionIdentity": 1240103214,
+                "browserIdentity": 216596087,
+                "recoveryRequestSerial": 1
+              }
+            },
+            "restartTerminal": {
+              "cache": {
+                "generation": "20000000-0000-4000-8000-000000000001",
+                "alive": false,
+                "configuration": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "servicePid": 900,
+                "pid": 0,
+                "slot": 0,
+                "state": "closed"
+              },
+              "atNs": 2282968931391,
+              "ok": false
+            },
+            "error": "java.io.IOException: Negative terminal evidence: joined startup identity changed",
+            "startObservationWait": {
+              "requestedAtNs": 2282969406156,
+              "method": "actual-start-worker-observer-completion",
+              "completedAtNs": 2282969410113
+            },
+            "deadlineAtNs": 2304969243337,
+            "recoveries": [
+              {
+                "requestedAtNs": 2282968673750,
+                "request": 1,
+                "terminalFence": {
+                  "connectionEpoch": 1,
+                  "environmentGeneration": 0,
+                  "routeSerial": 0,
+                  "recoveryToken": 2,
+                  "slot": 0,
+                  "environmentId": "33333333-3333-4333-8333-333333333333",
+                  "transportIdentity": 1597742422,
+                  "hasVerifiedReceipt": false,
+                  "ready": false,
+                  "caseId": "52e411b3-6f62-4eb4-a306-ddd7bbc17736",
+                  "runNonce": "0123456789abcdef0123456789abcdef",
+                  "sourceCommit": "5ad586c6b99a8d14454c9589274646feea3c20cf",
+                  "starting": false,
+                  "connecting": false,
+                  "sessionIdentity": 1240103214,
+                  "browserIdentity": 216596087,
+                  "recoveryRequestSerial": 1
+                },
+                "connectionEpoch": 1,
+                "completedAtNs": 2282968976673,
+                "caseId": "52e411b3-6f62-4eb4-a306-ddd7bbc17736",
+                "hasReceipt": false,
+                "recoveryToken": 1,
+                "terminalCache": {
+                  "generation": "20000000-0000-4000-8000-000000000001",
+                  "alive": false,
+                  "configuration": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                  "servicePid": 900,
+                  "pid": 0,
+                  "slot": 0,
+                  "state": "closed"
+                },
+                "outcome": "FAILED"
+              }
+            ],
+            "caseId": "52e411b3-6f62-4eb4-a306-ddd7bbc17736",
+            "runNonce": "0123456789abcdef0123456789abcdef",
+            "fenceBefore": {
+              "connectionEpoch": 1,
+              "environmentGeneration": 0,
+              "routeSerial": 0,
+              "recoveryToken": 2,
+              "slot": 0,
+              "environmentId": "33333333-3333-4333-8333-333333333333",
+              "transportIdentity": 1597742422,
+              "hasVerifiedReceipt": false,
+              "ready": false,
+              "caseId": "52e411b3-6f62-4eb4-a306-ddd7bbc17736",
+              "runNonce": "0123456789abcdef0123456789abcdef",
+              "sourceCommit": "5ad586c6b99a8d14454c9589274646feea3c20cf",
+              "starting": false,
+              "connecting": false,
+              "sessionIdentity": 1240103214,
+              "browserIdentity": 216596087,
+              "recoveryRequestSerial": 1
+            },
+            "freshRead": {
+              "requestedAtNs": 2282969839185,
+              "method": "NetworkTransportClient.call(snapshot)",
+              "receivedAtNs": 2282970102376,
+              "snapshot": {
+                "generation": "20000000-0000-4000-8000-000000000001",
+                "alive": false,
+                "configuration": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "servicePid": 900,
+                "pid": 0,
+                "slot": 0,
+                "state": "closed"
+              }
+            },
+            "restartDeadlineAtNs": 2357967959810,
+            "sourceCommit": "5ad586c6b99a8d14454c9589274646feea3c20cf",
+            "startedAtNs": 2282967955304,
+            "case": "same-name-changed-entry",
+            "status": "failed",
+            "restartBeganAtNs": 2282967959810,
+            "terminalAnchor": {
+              "generation": "20000000-0000-4000-8000-000000000001",
+              "alive": false,
+              "configuration": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "servicePid": 900,
+              "pid": 0,
+              "slot": 0,
+              "state": "closed"
+            }
+          },
+          "message": "synthetic source rejected"
+        },
+        "freshReads": 1,
+        "rootCallbacks": 1,
+        "name": "wrong-nonce",
+        "sourceObservation": {
+          "schema": 1,
+          "rootCallbackId": 1,
+          "workerInvocations": [
+            {
+              "rootCallbackId": 1,
+              "javaThreadId": 21,
+              "rootRegistrationId": 1,
+              "invocationId": 1,
+              "waitersBefore": [
+                1
+              ],
+              "mode": 2,
+              "waitersAfter": [],
+              "startingAfter": false,
+              "caseId": "52e411b3-6f62-4eb4-a306-ddd7bbc17736",
+              "beganAtNs": 2282968287434,
+              "endedAtNs": 2282969034067,
+              "restartQueuedAfter": false,
+              "restartQueuedBefore": false,
+              "startingBefore": true
+            }
+          ],
+          "caseId": "52e411b3-6f62-4eb4-a306-ddd7bbc17736",
+          "runNonce": "ffffffffffffffffffffffffffffffff",
+          "admissions": [
+            {
+              "request": 1,
+              "callbackKind": "recovery",
+              "rootCallbackRetained": true,
+              "invocationIdBefore": 1,
+              "adapterCallbackMatches": true,
+              "monitorHeldAfter": true,
+              "monitorHeldBefore": true,
+              "workerThreadIdAfter": 21,
+              "waitersBefore": [
+                1
+              ],
+              "invocationIdAfter": 1,
+              "mode": 1,
+              "waitersAfter": [
+                1,
+                2
+              ],
+              "callbackId": 2,
+              "startingAfter": true,
+              "caseId": "52e411b3-6f62-4eb4-a306-ddd7bbc17736",
+              "beganAtNs": 2282968693605,
+              "registrationId": 2,
+              "endedAtNs": 2282968713046,
+              "restartQueuedAfter": false,
+              "restartQueuedBefore": false,
+              "startingBefore": true,
+              "workerThreadIdBefore": 21,
+              "exactAppend": true
+            }
+          ],
+          "rootRegistration": {
+            "request": 0,
+            "callbackKind": "restart",
+            "rootCallbackRetained": false,
+            "invocationIdBefore": 0,
+            "adapterCallbackMatches": false,
+            "monitorHeldAfter": true,
+            "monitorHeldBefore": true,
+            "workerThreadIdAfter": 0,
+            "waitersBefore": [],
+            "invocationIdAfter": 0,
+            "mode": 2,
+            "waitersAfter": [
+              1
+            ],
+            "callbackId": 1,
+            "startingAfter": true,
+            "caseId": "52e411b3-6f62-4eb4-a306-ddd7bbc17736",
+            "beganAtNs": 2282968108287,
+            "registrationId": 1,
+            "endedAtNs": 2282968211802,
+            "restartQueuedAfter": false,
+            "restartQueuedBefore": false,
+            "startingBefore": false,
+            "workerThreadIdBefore": 0,
+            "exactAppend": true
+          },
+          "sourceCommit": "5ad586c6b99a8d14454c9589274646feea3c20cf",
+          "errors": []
+        },
+        "launches": 1
+      },
+      {
+        "recoveryCallbacks": 1,
+        "negative": {
+          "postFetchObservedAtNs": 2282976976792,
+          "coreAliveAfter": false,
+          "readyAfter": false,
+          "terminalEvidence": {
+            "schema": 1,
+            "stopObservations": [
+              {
+                "reason": "START_FAILED",
+                "afterRequestSerial": 1,
+                "startInvocation": {
+                  "rootCallbackId": 1,
+                  "javaThreadIdAfter": 24,
+                  "owned": {
+                    "generation": "10000000-0000-4000-8000-000000000001",
+                    "configuration": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                    "servicePid": 900,
+                    "pid": 901
+                  },
+                  "caseId": "99999999-9999-4999-8999-999999999999",
+                  "beganAtNs": 2282976369691,
+                  "endedAtNs": 2282976735405,
+                  "javaThreadId": 24,
+                  "rootRegistrationId": 1,
+                  "invocationId": 1,
+                  "invocationIdAfter": 1
+                },
+                "owned": {
+                  "generation": "10000000-0000-4000-8000-000000000001",
+                  "configuration": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                  "servicePid": 900,
+                  "pid": 901
+                },
+                "observation": "client cache after original stopOwnedCore returned; not exit proof",
+                "caseId": "f91dd222-ecab-41bc-8433-a3f37568aaf9",
+                "beganAtNs": 2282976272790,
+                "endedAtNs": 2282976691904,
+                "beforeCache": {
+                  "generation": "10000000-0000-4000-8000-000000000001",
+                  "alive": true,
+                  "configuration": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                  "servicePid": 900,
+                  "pid": 901,
+                  "slot": 0,
+                  "state": "running"
+                },
+                "afterCache": {
+                  "generation": "20000000-0000-4000-8000-000000000001",
+                  "alive": false,
+                  "configuration": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                  "servicePid": 900,
+                  "pid": 0,
+                  "slot": 0,
+                  "state": "closed"
+                },
+                "recoveryRequestSerial": 0
+              }
+            ],
+            "startObservation": {
+              "schema": 1,
+              "rootCallbackId": 1,
+              "workerInvocations": [
+                {
+                  "rootCallbackId": 1,
+                  "javaThreadId": 24,
+                  "rootRegistrationId": 1,
+                  "invocationId": 1,
+                  "waitersBefore": [
+                    1
+                  ],
+                  "mode": 2,
+                  "waitersAfter": [],
+                  "startingAfter": false,
+                  "caseId": "99999999-9999-4999-8999-999999999999",
+                  "beganAtNs": 2282976136540,
+                  "endedAtNs": 2282976756598,
+                  "restartQueuedAfter": false,
+                  "restartQueuedBefore": false,
+                  "startingBefore": true
+                }
+              ],
+              "caseId": "99999999-9999-4999-8999-999999999999",
+              "runNonce": "0123456789abcdef0123456789abcdef",
+              "admissions": [
+                {
+                  "request": 1,
+                  "callbackKind": "recovery",
+                  "rootCallbackRetained": true,
+                  "invocationIdBefore": 1,
+                  "adapterCallbackMatches": true,
+                  "monitorHeldAfter": true,
+                  "monitorHeldBefore": true,
+                  "workerThreadIdAfter": 24,
+                  "waitersBefore": [
+                    1
+                  ],
+                  "invocationIdAfter": 1,
+                  "mode": 1,
+                  "waitersAfter": [
+                    1,
+                    2
+                  ],
+                  "callbackId": 2,
+                  "startingAfter": true,
+                  "caseId": "99999999-9999-4999-8999-999999999999",
+                  "beganAtNs": 2282976578001,
+                  "registrationId": 2,
+                  "endedAtNs": 2282976594448,
+                  "restartQueuedAfter": false,
+                  "restartQueuedBefore": false,
+                  "startingBefore": true,
+                  "workerThreadIdBefore": 24,
+                  "exactAppend": true
+                }
+              ],
+              "rootRegistration": {
+                "request": 0,
+                "callbackKind": "restart",
+                "rootCallbackRetained": false,
+                "invocationIdBefore": 0,
+                "adapterCallbackMatches": false,
+                "monitorHeldAfter": true,
+                "monitorHeldBefore": true,
+                "workerThreadIdAfter": 0,
+                "waitersBefore": [],
+                "invocationIdAfter": 0,
+                "mode": 2,
+                "waitersAfter": [
+                  1
+                ],
+                "callbackId": 1,
+                "startingAfter": true,
+                "caseId": "99999999-9999-4999-8999-999999999999",
+                "beganAtNs": 2282974546476,
+                "registrationId": 1,
+                "endedAtNs": 2282976056543,
+                "restartQueuedAfter": false,
+                "restartQueuedBefore": false,
+                "startingBefore": false,
+                "workerThreadIdBefore": 0,
+                "exactAppend": true
+              },
+              "sourceCommit": "5ad586c6b99a8d14454c9589274646feea3c20cf",
+              "errors": [
+                "stop crossed root scopes"
+              ]
+            },
+            "fetchBudgetMs": 22000,
+            "fetchBeganAtNs": 2282976970938,
+            "postFetchCache": {
+              "coreAlive": false,
+              "cache": {
+                "generation": "20000000-0000-4000-8000-000000000001",
+                "alive": false,
+                "configuration": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "servicePid": 900,
+                "pid": 0,
+                "slot": 0,
+                "state": "closed"
+              },
+              "atNs": 2282976976792,
+              "ready": false,
+              "cutAtNs": 2282978099397,
+              "message": "synthetic source rejected",
+              "fence": {
+                "connectionEpoch": 1,
+                "environmentGeneration": 0,
+                "routeSerial": 0,
+                "recoveryToken": 2,
+                "slot": 0,
+                "environmentId": "33333333-3333-4333-8333-333333333333",
+                "transportIdentity": 185183761,
+                "hasVerifiedReceipt": false,
+                "ready": false,
+                "caseId": "f91dd222-ecab-41bc-8433-a3f37568aaf9",
+                "runNonce": "0123456789abcdef0123456789abcdef",
+                "sourceCommit": "5ad586c6b99a8d14454c9589274646feea3c20cf",
+                "starting": false,
+                "connecting": false,
+                "sessionIdentity": 371260950,
+                "browserIdentity": 1394766518,
+                "recoveryRequestSerial": 1
+              }
+            },
+            "error": "java.util.concurrent.ExecutionException: java.io.IOException: Start observation: stop crossed root scopes",
+            "startObservationWait": {
+              "requestedAtNs": 2282978250080,
+              "method": "actual-start-worker-observer-completion"
+            },
+            "deadlineAtNs": 2304976970938,
+            "recoveries": [
+              {
+                "requestedAtNs": 2282976563403,
+                "request": 1,
+                "terminalFence": {
+                  "connectionEpoch": 1,
+                  "environmentGeneration": 0,
+                  "routeSerial": 0,
+                  "recoveryToken": 2,
+                  "slot": 0,
+                  "environmentId": "33333333-3333-4333-8333-333333333333",
+                  "transportIdentity": 185183761,
+                  "hasVerifiedReceipt": false,
+                  "ready": false,
+                  "caseId": "f91dd222-ecab-41bc-8433-a3f37568aaf9",
+                  "runNonce": "0123456789abcdef0123456789abcdef",
+                  "sourceCommit": "5ad586c6b99a8d14454c9589274646feea3c20cf",
+                  "starting": false,
+                  "connecting": false,
+                  "sessionIdentity": 371260950,
+                  "browserIdentity": 1394766518,
+                  "recoveryRequestSerial": 1
+                },
+                "connectionEpoch": 1,
+                "completedAtNs": 2282976811854,
+                "caseId": "f91dd222-ecab-41bc-8433-a3f37568aaf9",
+                "hasReceipt": false,
+                "recoveryToken": 1,
+                "terminalCache": {
+                  "generation": "20000000-0000-4000-8000-000000000001",
+                  "alive": false,
+                  "configuration": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                  "servicePid": 900,
+                  "pid": 0,
+                  "slot": 0,
+                  "state": "closed"
+                },
+                "outcome": "FAILED"
+              }
+            ],
+            "caseId": "f91dd222-ecab-41bc-8433-a3f37568aaf9",
+            "runNonce": "0123456789abcdef0123456789abcdef",
+            "restartDeadlineAtNs": 2357974369662,
+            "sourceCommit": "5ad586c6b99a8d14454c9589274646feea3c20cf",
+            "startedAtNs": 2282974366776,
+            "case": "same-name-changed-entry",
+            "status": "failed",
+            "restartBeganAtNs": 2282974369662
+          },
+          "message": "synthetic source rejected"
+        },
+        "freshReads": 0,
+        "rootCallbacks": 1,
+        "name": "wrong-case",
+        "sourceObservation": {
+          "schema": 1,
+          "rootCallbackId": 1,
+          "workerInvocations": [
+            {
+              "rootCallbackId": 1,
+              "javaThreadId": 24,
+              "rootRegistrationId": 1,
+              "invocationId": 1,
+              "waitersBefore": [
+                1
+              ],
+              "mode": 2,
+              "waitersAfter": [],
+              "startingAfter": false,
+              "caseId": "99999999-9999-4999-8999-999999999999",
+              "beganAtNs": 2282976136540,
+              "endedAtNs": 2282976756598,
+              "restartQueuedAfter": false,
+              "restartQueuedBefore": false,
+              "startingBefore": true
+            }
+          ],
+          "caseId": "99999999-9999-4999-8999-999999999999",
+          "runNonce": "0123456789abcdef0123456789abcdef",
+          "admissions": [
+            {
+              "request": 1,
+              "callbackKind": "recovery",
+              "rootCallbackRetained": true,
+              "invocationIdBefore": 1,
+              "adapterCallbackMatches": true,
+              "monitorHeldAfter": true,
+              "monitorHeldBefore": true,
+              "workerThreadIdAfter": 24,
+              "waitersBefore": [
+                1
+              ],
+              "invocationIdAfter": 1,
+              "mode": 1,
+              "waitersAfter": [
+                1,
+                2
+              ],
+              "callbackId": 2,
+              "startingAfter": true,
+              "caseId": "99999999-9999-4999-8999-999999999999",
+              "beganAtNs": 2282976578001,
+              "registrationId": 2,
+              "endedAtNs": 2282976594448,
+              "restartQueuedAfter": false,
+              "restartQueuedBefore": false,
+              "startingBefore": true,
+              "workerThreadIdBefore": 24,
+              "exactAppend": true
+            }
+          ],
+          "rootRegistration": {
+            "request": 0,
+            "callbackKind": "restart",
+            "rootCallbackRetained": false,
+            "invocationIdBefore": 0,
+            "adapterCallbackMatches": false,
+            "monitorHeldAfter": true,
+            "monitorHeldBefore": true,
+            "workerThreadIdAfter": 0,
+            "waitersBefore": [],
+            "invocationIdAfter": 0,
+            "mode": 2,
+            "waitersAfter": [
+              1
+            ],
+            "callbackId": 1,
+            "startingAfter": true,
+            "caseId": "99999999-9999-4999-8999-999999999999",
+            "beganAtNs": 2282974546476,
+            "registrationId": 1,
+            "endedAtNs": 2282976056543,
+            "restartQueuedAfter": false,
+            "restartQueuedBefore": false,
+            "startingBefore": false,
+            "workerThreadIdBefore": 0,
+            "exactAppend": true
+          },
+          "sourceCommit": "5ad586c6b99a8d14454c9589274646feea3c20cf",
+          "errors": [
+            "stop crossed root scopes"
+          ]
+        },
+        "launches": 1
+      },
+      {
+        "recoveryCallbacks": 1,
+        "negative": {
+          "postFetchObservedAtNs": 2282981352218,
+          "coreAliveAfter": false,
+          "readyAfter": false,
+          "terminalEvidence": {
+            "schema": 1,
+            "stopObservations": [
+              {
+                "reason": "START_FAILED",
+                "afterRequestSerial": 1,
+                "startInvocation": {
+                  "rootCallbackId": 1,
+                  "javaThreadIdAfter": 26,
+                  "owned": {
+                    "generation": "10000000-0000-4000-8000-000000000001",
+                    "configuration": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                    "servicePid": 900,
+                    "pid": 901
+                  },
+                  "caseId": "0a2c6df2-338d-4096-a541-be23a39ba7c1",
+                  "beganAtNs": 2282980767739,
+                  "endedAtNs": 2282981028264,
+                  "javaThreadId": 26,
+                  "rootRegistrationId": 1,
+                  "invocationId": 1,
+                  "invocationIdAfter": 1
+                },
+                "owned": {
+                  "generation": "10000000-0000-4000-8000-000000000001",
+                  "configuration": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                  "servicePid": 900,
+                  "pid": 901
+                },
+                "observation": "client cache after original stopOwnedCore returned; not exit proof",
+                "caseId": "0a2c6df2-338d-4096-a541-be23a39ba7c1",
+                "beganAtNs": 2282980649812,
+                "endedAtNs": 2282980969231,
+                "beforeCache": {
+                  "generation": "10000000-0000-4000-8000-000000000001",
+                  "alive": true,
+                  "configuration": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                  "servicePid": 900,
+                  "pid": 901,
+                  "slot": 0,
+                  "state": "running"
+                },
+                "afterCache": {
+                  "generation": "20000000-0000-4000-8000-000000000001",
+                  "alive": false,
+                  "configuration": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                  "servicePid": 900,
+                  "pid": 0,
+                  "slot": 0,
+                  "state": "closed"
+                },
+                "recoveryRequestSerial": 0
+              }
+            ],
+            "startObservation": {
+              "schema": 1,
+              "rootCallbackId": 1,
+              "workerInvocations": [
+                {
+                  "rootCallbackId": 1,
+                  "mode": 2,
+                  "caseId": "0a2c6df2-338d-4096-a541-be23a39ba7c1",
+                  "beganAtNs": 2282980498136,
+                  "javaThreadId": 26,
+                  "rootRegistrationId": 1,
+                  "restartQueuedBefore": false,
+                  "invocationId": 1,
+                  "waitersBefore": [
+                    1
+                  ],
+                  "startingBefore": true
+                }
+              ],
+              "caseId": "0a2c6df2-338d-4096-a541-be23a39ba7c1",
+              "runNonce": "0123456789abcdef0123456789abcdef",
+              "admissions": [
+                {
+                  "request": 1,
+                  "callbackKind": "recovery",
+                  "rootCallbackRetained": true,
+                  "invocationIdBefore": 1,
+                  "adapterCallbackMatches": true,
+                  "monitorHeldAfter": true,
+                  "monitorHeldBefore": true,
+                  "workerThreadIdAfter": 26,
+                  "waitersBefore": [
+                    1
+                  ],
+                  "invocationIdAfter": 1,
+                  "mode": 1,
+                  "waitersAfter": [
+                    1,
+                    2
+                  ],
+                  "callbackId": 2,
+                  "startingAfter": true,
+                  "caseId": "0a2c6df2-338d-4096-a541-be23a39ba7c1",
+                  "beganAtNs": 2282980846107,
+                  "registrationId": 2,
+                  "endedAtNs": 2282980864521,
+                  "restartQueuedAfter": false,
+                  "restartQueuedBefore": false,
+                  "startingBefore": true,
+                  "workerThreadIdBefore": 26,
+                  "exactAppend": true
+                }
+              ],
+              "rootRegistration": {
+                "request": 0,
+                "callbackKind": "restart",
+                "rootCallbackRetained": false,
+                "invocationIdBefore": 0,
+                "adapterCallbackMatches": false,
+                "monitorHeldAfter": true,
+                "monitorHeldBefore": true,
+                "workerThreadIdAfter": 0,
+                "waitersBefore": [],
+                "invocationIdAfter": 0,
+                "mode": 2,
+                "waitersAfter": [
+                  1
+                ],
+                "callbackId": 1,
+                "startingAfter": true,
+                "caseId": "0a2c6df2-338d-4096-a541-be23a39ba7c1",
+                "beganAtNs": 2282980333431,
+                "registrationId": 1,
+                "endedAtNs": 2282980414142,
+                "restartQueuedAfter": false,
+                "restartQueuedBefore": false,
+                "startingBefore": false,
+                "workerThreadIdBefore": 0,
+                "exactAppend": true
+              },
+              "sourceCommit": "5ad586c6b99a8d14454c9589274646feea3c20cf",
+              "errors": []
+            },
+            "fetchBudgetMs": 22000,
+            "fetchBeganAtNs": 2282981348362,
+            "postFetchCache": {
+              "coreAlive": false,
+              "cache": {
+                "generation": "20000000-0000-4000-8000-000000000001",
+                "alive": false,
+                "configuration": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "servicePid": 900,
+                "pid": 0,
+                "slot": 0,
+                "state": "closed"
+              },
+              "atNs": 2282981352218,
+              "ready": false,
+              "cutAtNs": 2282981389689,
+              "message": "synthetic source rejected",
+              "fence": {
+                "connectionEpoch": 1,
+                "environmentGeneration": 0,
+                "routeSerial": 0,
+                "recoveryToken": 2,
+                "slot": 0,
+                "environmentId": "33333333-3333-4333-8333-333333333333",
+                "transportIdentity": 1568428137,
+                "hasVerifiedReceipt": false,
+                "ready": false,
+                "caseId": "0a2c6df2-338d-4096-a541-be23a39ba7c1",
+                "runNonce": "0123456789abcdef0123456789abcdef",
+                "sourceCommit": "5ad586c6b99a8d14454c9589274646feea3c20cf",
+                "starting": false,
+                "connecting": false,
+                "sessionIdentity": 1898591872,
+                "browserIdentity": 875083457,
+                "recoveryRequestSerial": 1
+              }
+            },
+            "error": "java.util.concurrent.TimeoutException: null",
+            "startObservationWait": {
+              "requestedAtNs": 2282981440637,
+              "method": "actual-start-worker-observer-completion"
+            },
+            "deadlineAtNs": 2304981348362,
+            "recoveries": [
+              {
+                "requestedAtNs": 2282980827053,
+                "request": 1,
+                "terminalFence": {
+                  "connectionEpoch": 1,
+                  "environmentGeneration": 0,
+                  "routeSerial": 0,
+                  "recoveryToken": 2,
+                  "slot": 0,
+                  "environmentId": "33333333-3333-4333-8333-333333333333",
+                  "transportIdentity": 1568428137,
+                  "hasVerifiedReceipt": false,
+                  "ready": false,
+                  "caseId": "0a2c6df2-338d-4096-a541-be23a39ba7c1",
+                  "runNonce": "0123456789abcdef0123456789abcdef",
+                  "sourceCommit": "5ad586c6b99a8d14454c9589274646feea3c20cf",
+                  "starting": false,
+                  "connecting": false,
+                  "sessionIdentity": 1898591872,
+                  "browserIdentity": 875083457,
+                  "recoveryRequestSerial": 1
+                },
+                "connectionEpoch": 1,
+                "completedAtNs": 2282981123884,
+                "caseId": "0a2c6df2-338d-4096-a541-be23a39ba7c1",
+                "hasReceipt": false,
+                "recoveryToken": 1,
+                "terminalCache": {
+                  "generation": "20000000-0000-4000-8000-000000000001",
+                  "alive": false,
+                  "configuration": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                  "servicePid": 900,
+                  "pid": 0,
+                  "slot": 0,
+                  "state": "closed"
+                },
+                "outcome": "FAILED"
+              }
+            ],
+            "caseId": "0a2c6df2-338d-4096-a541-be23a39ba7c1",
+            "runNonce": "0123456789abcdef0123456789abcdef",
+            "restartDeadlineAtNs": 2357980175853,
+            "sourceCommit": "5ad586c6b99a8d14454c9589274646feea3c20cf",
+            "startedAtNs": 2282980173531,
+            "case": "same-name-changed-entry",
+            "status": "failed",
+            "restartBeganAtNs": 2282980175853
+          },
+          "message": "synthetic source rejected"
+        },
+        "freshReads": 0,
+        "rootCallbacks": 1,
+        "name": "original-deadline",
+        "sourceObservation": {
+          "schema": 1,
+          "rootCallbackId": 1,
+          "workerInvocations": [
+            {
+              "rootCallbackId": 1,
+              "mode": 2,
+              "caseId": "0a2c6df2-338d-4096-a541-be23a39ba7c1",
+              "beganAtNs": 2282980498136,
+              "javaThreadId": 26,
+              "rootRegistrationId": 1,
+              "restartQueuedBefore": false,
+              "invocationId": 1,
+              "waitersBefore": [
+                1
+              ],
+              "startingBefore": true
+            }
+          ],
+          "caseId": "0a2c6df2-338d-4096-a541-be23a39ba7c1",
+          "runNonce": "0123456789abcdef0123456789abcdef",
+          "admissions": [
+            {
+              "request": 1,
+              "callbackKind": "recovery",
+              "rootCallbackRetained": true,
+              "invocationIdBefore": 1,
+              "adapterCallbackMatches": true,
+              "monitorHeldAfter": true,
+              "monitorHeldBefore": true,
+              "workerThreadIdAfter": 26,
+              "waitersBefore": [
+                1
+              ],
+              "invocationIdAfter": 1,
+              "mode": 1,
+              "waitersAfter": [
+                1,
+                2
+              ],
+              "callbackId": 2,
+              "startingAfter": true,
+              "caseId": "0a2c6df2-338d-4096-a541-be23a39ba7c1",
+              "beganAtNs": 2282980846107,
+              "registrationId": 2,
+              "endedAtNs": 2282980864521,
+              "restartQueuedAfter": false,
+              "restartQueuedBefore": false,
+              "startingBefore": true,
+              "workerThreadIdBefore": 26,
+              "exactAppend": true
+            }
+          ],
+          "rootRegistration": {
+            "request": 0,
+            "callbackKind": "restart",
+            "rootCallbackRetained": false,
+            "invocationIdBefore": 0,
+            "adapterCallbackMatches": false,
+            "monitorHeldAfter": true,
+            "monitorHeldBefore": true,
+            "workerThreadIdAfter": 0,
+            "waitersBefore": [],
+            "invocationIdAfter": 0,
+            "mode": 2,
+            "waitersAfter": [
+              1
+            ],
+            "callbackId": 1,
+            "startingAfter": true,
+            "caseId": "0a2c6df2-338d-4096-a541-be23a39ba7c1",
+            "beganAtNs": 2282980333431,
+            "registrationId": 1,
+            "endedAtNs": 2282980414142,
+            "restartQueuedAfter": false,
+            "restartQueuedBefore": false,
+            "startingBefore": false,
+            "workerThreadIdBefore": 0,
+            "exactAppend": true
+          },
+          "sourceCommit": "5ad586c6b99a8d14454c9589274646feea3c20cf",
+          "errors": []
+        },
+        "launches": 1
+      },
+      {
+        "recoveryCallbacks": 1,
+        "negative": {
+          "postFetchObservedAtNs": 2283067920555,
+          "coreAliveAfter": false,
+          "readyAfter": false,
+          "terminalEvidence": {
+            "schema": 1,
+            "stopObservations": [
+              {
+                "reason": "START_FAILED",
+                "afterRequestSerial": 0,
+                "startInvocation": {
+                  "rootCallbackId": 1,
+                  "javaThreadIdAfter": 28,
+                  "owned": {
+                    "generation": "10000000-0000-4000-8000-000000000001",
+                    "configuration": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                    "servicePid": 900,
+                    "pid": 901
+                  },
+                  "caseId": "a15299cd-8a9f-4fe6-a628-b5574b7e9ed5",
+                  "beganAtNs": 2283065586773,
+                  "endedAtNs": 2283067097954,
+                  "javaThreadId": 28,
+                  "rootRegistrationId": 1,
+                  "invocationId": 1,
+                  "invocationIdAfter": 1
+                },
+                "owned": {
+                  "generation": "10000000-0000-4000-8000-000000000001",
+                  "configuration": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                  "servicePid": 900,
+                  "pid": 901
+                },
+                "observation": "client cache after original stopOwnedCore returned; not exit proof",
+                "caseId": "a15299cd-8a9f-4fe6-a628-b5574b7e9ed5",
+                "beganAtNs": 2283065504537,
+                "endedAtNs": 2283066956833,
+                "beforeCache": {
+                  "generation": "10000000-0000-4000-8000-000000000001",
+                  "alive": true,
+                  "configuration": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                  "servicePid": 900,
+                  "pid": 901,
+                  "slot": 0,
+                  "state": "running"
+                },
+                "afterCache": {
+                  "generation": "20000000-0000-4000-8000-000000000001",
+                  "alive": false,
+                  "configuration": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                  "servicePid": 900,
+                  "pid": 0,
+                  "slot": 0,
+                  "state": "closed"
+                },
+                "recoveryRequestSerial": 0
+              },
+              {
+                "reason": "START_FAILED",
+                "afterRequestSerial": 1,
+                "startInvocation": {
+                  "rootCallbackId": 1,
+                  "javaThreadIdAfter": 28,
+                  "owned": {
+                    "generation": "10000000-0000-4000-8000-000000000002",
+                    "configuration": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                    "servicePid": 900,
+                    "pid": 902
+                  },
+                  "caseId": "a15299cd-8a9f-4fe6-a628-b5574b7e9ed5",
+                  "beganAtNs": 2283067380359,
+                  "endedAtNs": 2283067618434,
+                  "javaThreadId": 28,
+                  "rootRegistrationId": 1,
+                  "invocationId": 2,
+                  "invocationIdAfter": 2
+                },
+                "owned": {
+                  "generation": "10000000-0000-4000-8000-000000000002",
+                  "configuration": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                  "servicePid": 900,
+                  "pid": 902
+                },
+                "observation": "client cache after original stopOwnedCore returned; not exit proof",
+                "caseId": "a15299cd-8a9f-4fe6-a628-b5574b7e9ed5",
+                "beganAtNs": 2283067302502,
+                "endedAtNs": 2283067583265,
+                "beforeCache": {
+                  "generation": "10000000-0000-4000-8000-000000000002",
+                  "alive": true,
+                  "configuration": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                  "servicePid": 900,
+                  "pid": 902,
+                  "slot": 0,
+                  "state": "running"
+                },
+                "afterCache": {
+                  "generation": "20000000-0000-4000-8000-000000000002",
+                  "alive": false,
+                  "configuration": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                  "servicePid": 900,
+                  "pid": 0,
+                  "slot": 0,
+                  "state": "closed"
+                },
+                "recoveryRequestSerial": 0
+              }
+            ],
+            "startObservation": {
+              "schema": 1,
+              "rootCallbackId": 1,
+              "workerInvocations": [
+                {
+                  "rootCallbackId": 1,
+                  "javaThreadId": 28,
+                  "rootRegistrationId": 1,
+                  "invocationId": 1,
+                  "waitersBefore": [
+                    1
+                  ],
+                  "mode": 2,
+                  "waitersAfter": [
+                    1,
+                    2
+                  ],
+                  "startingAfter": true,
+                  "caseId": "a15299cd-8a9f-4fe6-a628-b5574b7e9ed5",
+                  "beganAtNs": 2283065294227,
+                  "endedAtNs": 2283067117157,
+                  "restartQueuedAfter": false,
+                  "restartQueuedBefore": false,
+                  "startingBefore": true
+                },
+                {
+                  "rootCallbackId": 1,
+                  "javaThreadId": 28,
+                  "rootRegistrationId": 1,
+                  "invocationId": 2,
+                  "waitersBefore": [
+                    1,
+                    2
+                  ],
+                  "mode": 2,
+                  "waitersAfter": [],
+                  "startingAfter": false,
+                  "caseId": "a15299cd-8a9f-4fe6-a628-b5574b7e9ed5",
+                  "beganAtNs": 2283067160278,
+                  "endedAtNs": 2283067649108,
+                  "restartQueuedAfter": false,
+                  "restartQueuedBefore": false,
+                  "startingBefore": true
+                }
+              ],
+              "caseId": "a15299cd-8a9f-4fe6-a628-b5574b7e9ed5",
+              "runNonce": "0123456789abcdef0123456789abcdef",
+              "admissions": [
+                {
+                  "request": 0,
+                  "callbackKind": "other",
+                  "rootCallbackRetained": true,
+                  "invocationIdBefore": 1,
+                  "adapterCallbackMatches": false,
+                  "monitorHeldAfter": true,
+                  "monitorHeldBefore": true,
+                  "workerThreadIdAfter": 28,
+                  "waitersBefore": [
+                    1
+                  ],
+                  "invocationIdAfter": 1,
+                  "mode": 2,
+                  "waitersAfter": [
+                    1,
+                    2
+                  ],
+                  "callbackId": 2,
+                  "startingAfter": true,
+                  "caseId": "a15299cd-8a9f-4fe6-a628-b5574b7e9ed5",
+                  "beganAtNs": 2283066784499,
+                  "registrationId": 2,
+                  "endedAtNs": 2283066814306,
+                  "restartQueuedAfter": true,
+                  "restartQueuedBefore": false,
+                  "startingBefore": true,
+                  "workerThreadIdBefore": 28,
+                  "exactAppend": true
+                },
+                {
+                  "request": 1,
+                  "callbackKind": "recovery",
+                  "rootCallbackRetained": true,
+                  "invocationIdBefore": 2,
+                  "adapterCallbackMatches": true,
+                  "monitorHeldAfter": true,
+                  "monitorHeldBefore": true,
+                  "workerThreadIdAfter": 28,
+                  "waitersBefore": [
+                    1,
+                    2
+                  ],
+                  "invocationIdAfter": 2,
+                  "mode": 1,
+                  "waitersAfter": [
+                    1,
+                    2,
+                    3
+                  ],
+                  "callbackId": 3,
+                  "startingAfter": true,
+                  "caseId": "a15299cd-8a9f-4fe6-a628-b5574b7e9ed5",
+                  "beganAtNs": 2283067464437,
+                  "registrationId": 3,
+                  "endedAtNs": 2283067478562,
+                  "restartQueuedAfter": false,
+                  "restartQueuedBefore": false,
+                  "startingBefore": true,
+                  "workerThreadIdBefore": 28,
+                  "exactAppend": true
+                }
+              ],
+              "rootRegistration": {
+                "request": 0,
+                "callbackKind": "restart",
+                "rootCallbackRetained": false,
+                "invocationIdBefore": 0,
+                "adapterCallbackMatches": false,
+                "monitorHeldAfter": true,
+                "monitorHeldBefore": true,
+                "workerThreadIdAfter": 0,
+                "waitersBefore": [],
+                "invocationIdAfter": 0,
+                "mode": 2,
+                "waitersAfter": [
+                  1
+                ],
+                "callbackId": 1,
+                "startingAfter": true,
+                "caseId": "a15299cd-8a9f-4fe6-a628-b5574b7e9ed5",
+                "beganAtNs": 2283065116149,
+                "registrationId": 1,
+                "endedAtNs": 2283065218784,
+                "restartQueuedAfter": false,
+                "restartQueuedBefore": false,
+                "startingBefore": false,
+                "workerThreadIdBefore": 0,
+                "exactAppend": true
+              },
+              "sourceCommit": "5ad586c6b99a8d14454c9589274646feea3c20cf",
+              "errors": [
+                "worker completion still has another start invocation or pending waiters",
+                "worker completion still has another start invocation or pending waiters"
+              ]
+            },
+            "fetchBudgetMs": 22000,
+            "fetchBeganAtNs": 2283067917231,
+            "postFetchCache": {
+              "coreAlive": false,
+              "cache": {
+                "generation": "20000000-0000-4000-8000-000000000002",
+                "alive": false,
+                "configuration": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "servicePid": 900,
+                "pid": 0,
+                "slot": 0,
+                "state": "closed"
+              },
+              "atNs": 2283067920555,
+              "ready": false,
+              "cutAtNs": 2283068412187,
+              "message": "synthetic source rejected",
+              "fence": {
+                "connectionEpoch": 1,
+                "environmentGeneration": 0,
+                "routeSerial": 0,
+                "recoveryToken": 2,
+                "slot": 0,
+                "environmentId": "33333333-3333-4333-8333-333333333333",
+                "transportIdentity": 1417832134,
+                "hasVerifiedReceipt": false,
+                "ready": false,
+                "caseId": "a15299cd-8a9f-4fe6-a628-b5574b7e9ed5",
+                "runNonce": "0123456789abcdef0123456789abcdef",
+                "sourceCommit": "5ad586c6b99a8d14454c9589274646feea3c20cf",
+                "starting": false,
+                "connecting": false,
+                "sessionIdentity": 967512433,
+                "browserIdentity": 2091485216,
+                "recoveryRequestSerial": 1
+              }
+            },
+            "error": "java.util.concurrent.ExecutionException: java.io.IOException: Start observation: worker completion still has another start invocation or pending waiters",
+            "startObservationWait": {
+              "requestedAtNs": 2283068499111,
+              "method": "actual-start-worker-observer-completion"
+            },
+            "deadlineAtNs": 2305067917231,
+            "recoveries": [
+              {
+                "requestedAtNs": 2283067445383,
+                "request": 1,
+                "terminalFence": {
+                  "connectionEpoch": 1,
+                  "environmentGeneration": 0,
+                  "routeSerial": 0,
+                  "recoveryToken": 2,
+                  "slot": 0,
+                  "environmentId": "33333333-3333-4333-8333-333333333333",
+                  "transportIdentity": 1417832134,
+                  "hasVerifiedReceipt": false,
+                  "ready": false,
+                  "caseId": "a15299cd-8a9f-4fe6-a628-b5574b7e9ed5",
+                  "runNonce": "0123456789abcdef0123456789abcdef",
+                  "sourceCommit": "5ad586c6b99a8d14454c9589274646feea3c20cf",
+                  "starting": false,
+                  "connecting": false,
+                  "sessionIdentity": 967512433,
+                  "browserIdentity": 2091485216,
+                  "recoveryRequestSerial": 1
+                },
+                "connectionEpoch": 1,
+                "completedAtNs": 2283067758701,
+                "caseId": "a15299cd-8a9f-4fe6-a628-b5574b7e9ed5",
+                "hasReceipt": false,
+                "recoveryToken": 1,
+                "terminalCache": {
+                  "generation": "20000000-0000-4000-8000-000000000002",
+                  "alive": false,
+                  "configuration": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                  "servicePid": 900,
+                  "pid": 0,
+                  "slot": 0,
+                  "state": "closed"
+                },
+                "outcome": "FAILED"
+              }
+            ],
+            "caseId": "a15299cd-8a9f-4fe6-a628-b5574b7e9ed5",
+            "runNonce": "0123456789abcdef0123456789abcdef",
+            "restartDeadlineAtNs": 2358064738033,
+            "sourceCommit": "5ad586c6b99a8d14454c9589274646feea3c20cf",
+            "startedAtNs": 2283064731713,
+            "case": "same-name-changed-entry",
+            "status": "failed",
+            "restartBeganAtNs": 2283064738033
+          },
+          "message": "synthetic source rejected"
+        },
+        "freshReads": 0,
+        "rootCallbacks": 1,
+        "name": "queued-worker-aba",
+        "sourceObservation": {
+          "schema": 1,
+          "rootCallbackId": 1,
+          "workerInvocations": [
+            {
+              "rootCallbackId": 1,
+              "javaThreadId": 28,
+              "rootRegistrationId": 1,
+              "invocationId": 1,
+              "waitersBefore": [
+                1
+              ],
+              "mode": 2,
+              "waitersAfter": [
+                1,
+                2
+              ],
+              "startingAfter": true,
+              "caseId": "a15299cd-8a9f-4fe6-a628-b5574b7e9ed5",
+              "beganAtNs": 2283065294227,
+              "endedAtNs": 2283067117157,
+              "restartQueuedAfter": false,
+              "restartQueuedBefore": false,
+              "startingBefore": true
+            },
+            {
+              "rootCallbackId": 1,
+              "javaThreadId": 28,
+              "rootRegistrationId": 1,
+              "invocationId": 2,
+              "waitersBefore": [
+                1,
+                2
+              ],
+              "mode": 2,
+              "waitersAfter": [],
+              "startingAfter": false,
+              "caseId": "a15299cd-8a9f-4fe6-a628-b5574b7e9ed5",
+              "beganAtNs": 2283067160278,
+              "endedAtNs": 2283067649108,
+              "restartQueuedAfter": false,
+              "restartQueuedBefore": false,
+              "startingBefore": true
+            }
+          ],
+          "caseId": "a15299cd-8a9f-4fe6-a628-b5574b7e9ed5",
+          "runNonce": "0123456789abcdef0123456789abcdef",
+          "admissions": [
+            {
+              "request": 0,
+              "callbackKind": "other",
+              "rootCallbackRetained": true,
+              "invocationIdBefore": 1,
+              "adapterCallbackMatches": false,
+              "monitorHeldAfter": true,
+              "monitorHeldBefore": true,
+              "workerThreadIdAfter": 28,
+              "waitersBefore": [
+                1
+              ],
+              "invocationIdAfter": 1,
+              "mode": 2,
+              "waitersAfter": [
+                1,
+                2
+              ],
+              "callbackId": 2,
+              "startingAfter": true,
+              "caseId": "a15299cd-8a9f-4fe6-a628-b5574b7e9ed5",
+              "beganAtNs": 2283066784499,
+              "registrationId": 2,
+              "endedAtNs": 2283066814306,
+              "restartQueuedAfter": true,
+              "restartQueuedBefore": false,
+              "startingBefore": true,
+              "workerThreadIdBefore": 28,
+              "exactAppend": true
+            },
+            {
+              "request": 1,
+              "callbackKind": "recovery",
+              "rootCallbackRetained": true,
+              "invocationIdBefore": 2,
+              "adapterCallbackMatches": true,
+              "monitorHeldAfter": true,
+              "monitorHeldBefore": true,
+              "workerThreadIdAfter": 28,
+              "waitersBefore": [
+                1,
+                2
+              ],
+              "invocationIdAfter": 2,
+              "mode": 1,
+              "waitersAfter": [
+                1,
+                2,
+                3
+              ],
+              "callbackId": 3,
+              "startingAfter": true,
+              "caseId": "a15299cd-8a9f-4fe6-a628-b5574b7e9ed5",
+              "beganAtNs": 2283067464437,
+              "registrationId": 3,
+              "endedAtNs": 2283067478562,
+              "restartQueuedAfter": false,
+              "restartQueuedBefore": false,
+              "startingBefore": true,
+              "workerThreadIdBefore": 28,
+              "exactAppend": true
+            }
+          ],
+          "rootRegistration": {
+            "request": 0,
+            "callbackKind": "restart",
+            "rootCallbackRetained": false,
+            "invocationIdBefore": 0,
+            "adapterCallbackMatches": false,
+            "monitorHeldAfter": true,
+            "monitorHeldBefore": true,
+            "workerThreadIdAfter": 0,
+            "waitersBefore": [],
+            "invocationIdAfter": 0,
+            "mode": 2,
+            "waitersAfter": [
+              1
+            ],
+            "callbackId": 1,
+            "startingAfter": true,
+            "caseId": "a15299cd-8a9f-4fe6-a628-b5574b7e9ed5",
+            "beganAtNs": 2283065116149,
+            "registrationId": 1,
+            "endedAtNs": 2283065218784,
+            "restartQueuedAfter": false,
+            "restartQueuedBefore": false,
+            "startingBefore": false,
+            "workerThreadIdBefore": 0,
+            "exactAppend": true
+          },
+          "sourceCommit": "5ad586c6b99a8d14454c9589274646feea3c20cf",
+          "errors": [
+            "worker completion still has another start invocation or pending waiters",
+            "worker completion still has another start invocation or pending waiters"
+          ]
+        },
+        "launches": 2
+      }
+    ],
+    "checks": [
+      {
+        "pass": true,
+        "name": "Complete observer waits for actual workerAfter after both original callbacks"
+      },
+      {
+        "pass": true,
+        "name": "Complete observer accepts exact joined restart with one fresh read and unchanged raw serials"
+      },
+      {
+        "pass": true,
+        "name": "Worker completion stays inside the original fetch budget and precedes the sole fresh read"
+      },
+      {
+        "pass": true,
+        "name": "Complete observer rejects a joined restart with wrong source"
+      },
+      {
+        "pass": true,
+        "name": "Complete observer rejects a joined restart with wrong nonce"
+      },
+      {
+        "pass": true,
+        "name": "Complete observer rejects a joined restart with wrong case"
+      },
+      {
+        "pass": true,
+        "name": "Original deadline rejects unfinished worker observation without fresh IPC or cancellation"
+      },
+      {
+        "pass": true,
+        "name": "Complete observer rejects real queued-worker ABA despite retained root waiter and closed core"
+      }
+    ],
+    "actualAndroidExecution": false,
+    "actualFixtureObserverExecution": true,
+    "actualSourceStartMethodsExecution": true,
+    "syntheticControlledHost": true,
+    "status": "passed",
+    "publicJoinReplay": true,
+    "publicJoinContract": "tools/gecko/network_sources_contract.py",
+    "sourceCommit": "214c0b5799e00bd11015311526235c11bf2f8498",
+    "sourceFiles": {
+      "app/src/main/java/local/pocketchat/NativeNetwork.java": "b15ac95e7a6555f98dff2a43d8c3c58b0c9bda067b3aea7f430ddc147d808dd9",
+      "tests/gecko/SourceRouteTerminalObserver.java": "144b7296fcaef520446dea86d6cfacf8314c34f863f079bc7377d079ec370d73",
+      "tests/gecko/SourceRouteStartObservation.java": "d9ac103d5d64f7c31f5b895956d0bf005acc0bbacbf5a71403df5e7eb71e62d2",
+      "tests/source-route-start-host/TerminalJoinTest.java": "92d5c8d31d7be9b3f0594d3d9619be406be2487d063c7ae375e7351dae7319e7",
+      "tests/source-route-start-host/StartObservationTest.java": "2ff72bdf6b459f7779d760e9d0faad11ed06fcf662083ca5be7907b18d3b7696",
+      "tests/source-route-start-host/terminal_join.py": "a1302c5010f229fc20de08fbd87d85694b999e869a60e2c85e03bad96972a150",
+      "tests/source-route-start-host/run.py": "65accf1b89d628ad85578bd20a44d4f9c8fb8a22304b3f27fa16b154b9154866",
+      "tools/gecko/network_sources_contract.py": "59cfbcb88e002ae58f039471fee38aa8acf7dd381e13d2a7106faa06c16c1146",
+      "app/src/main/java/local/pocketchat/J.java": "772bcc91b130ace1f33b529c2d828771ff9f12ba44805685a703df14f7d68493",
+      "app/src/main/java/local/pocketchat/ChromiumRouteLease.java": "250ab6cc798de22c7fada9b0699a755c722374a691594080d6da08efd40253f0"
+    },
+    "observerSourceRef": "working-tree",
+    "observerSourceSha256": "144b7296fcaef520446dea86d6cfacf8314c34f863f079bc7377d079ec370d73",
+    "productionMembers": [
+      "interface Callback",
+      "enum RecoveryState",
+      "static final class RecoveryOutcome",
+      "interface RecoveryCallback",
+      "static final class RecoveryAdapter",
+      "void routeChanged()",
+      "void restart(Callback callback)",
+      "void recover(Callback callback)",
+      "void recoverOutcome(RecoveryCallback callback)",
+      "synchronized void startOperation(",
+      "boolean runStartOperation("
+    ],
+    "jsonJarSha256": "3cf6cd6892e32e2b4c1c39e0f52f5248a2f5b37646fdfbb79a66b46b618414ed",
+    "executionInputsUnchanged": true,
+    "scope": "Complete actual fixture terminal observer plus actual production startOperation/runStartOperation; controlled host main dispatcher and transport, no Android or process-exit acceptance",
+    "configurationApplicationBoundary": {
+      "concurrentApplication": false,
+      "actualCoreProof": false,
+      "adapter": "activeConfiguration is explicitly absent; unexpected observeRunning invocation fails. Configuration-bound admission/core proof has separate production host coverage."
+    }
+  }
+}
