@@ -36,7 +36,8 @@ class DownloadNamesCatalogCompatibilityTest(unittest.TestCase):
         cls.block=cls.current[begin:finish]
         assert len(cls.block.encode())==1579
         assert hashlib.sha256(cls.block.encode()).hexdigest()=='5e961abfcccae702bc026b4664063afa1a783be04514cdd499b906c8fd7d8811'
-        old=cls.current[:begin]+cls.current[finish:]
+        cls.pre_batch=runner.restore_reviewed_batch_selection(cls.current)
+        old=cls.pre_batch.replace(cls.block,'',1)
         names=runner.member(old,'Map<Integer,String> names()')
         display=runner.member(old,'static String displayName(')
         cls.baseline_catalog=old.replace('  /** Refresh-local labels only; do not load private drafts/notes or cache across renames. */\n','').replace('  '+names+'\n','').replace('  '+display+'\n','')
@@ -71,6 +72,17 @@ class DownloadNamesCatalogCompatibilityTest(unittest.TestCase):
     def test_exact_reviewed46_catalog_invalidation_reaches_original_guards(self):
         with self.assertRaises(CompilationReached):self.guards_reach_compile(self.raw_current)
 
+    def test_pre_batch_catalogue_still_reaches_original_guards(self):
+        with self.assertRaises(CompilationReached):
+            self.guards_reach_compile(self.pre_batch)
+
+    def test_batch_projection_rejects_predicate_or_argument_mutations(self):
+        for needle, replacement in [('AND generation=? AND environment_id=?', 'AND generation>=? AND environment_id=?'),
+                                    ('identity.environmentId});', 'identity.environmentId + "-other"});')]:
+            self.assertEqual(self.current.count(needle), 1)
+            with self.subTest(needle=needle), self.assertRaisesRegex(AssertionError, 'Reviewed batch selection bytes changed'):
+                self.guards_reach_compile(self.current.replace(needle, replacement, 1))
+
     def test_changed_reviewed46_catalog_hook_is_rejected(self):
         changed=self.raw_current.replace('DownloadLibrary.changed(root);','DownloadLibrary.changed(null);',1)
         with self.assertRaisesRegex(AssertionError,'Reviewed46 bounded edit'):self.guards_reach_compile(changed)
@@ -95,7 +107,7 @@ class DownloadNamesCatalogCompatibilityTest(unittest.TestCase):
     def test_mismatched_addition_digest_is_rejected(self):
         with mock.patch.object(runner,'digest',return_value='0'*64):
             with self.assertRaisesRegex(AssertionError,'Reviewed deletion addition bytes changed'):
-                self.guards_reach_compile(self.current)
+                self.guards_reach_compile(self.pre_batch)
 
     def test_missing_addition_is_rejected(self):
         with self.assertRaisesRegex(AssertionError,'exactly once'):

@@ -57,6 +57,43 @@ def install_workspace_file_helpers(fixture,downloads,style):
     assert all(member(compiled,needle)==body for needle,body in methods.items()),'Current filename classification must compile verbatim'
     return fixture,methods
 
+def restore_reviewed_batch_selection(text):
+    """Project only the reviewed batch metadata writes for the historical guard."""
+    marker = '  int group(Collection<EnvironmentSpec.Identity> selection,String value){\n'
+    if marker not in text:
+        return text
+    assert text.count(marker) == 1, 'Reviewed batch selection must occur exactly once'
+    raw = text.encode()
+    begin = raw.index(marker.encode())
+    finish = begin + 1279
+    assert digest(raw[begin:finish]) == '0387bd718d3df026ae14c2649e1d0d2de78036f444beec7f62156038ef064597', 'Reviewed batch selection bytes changed'
+    previous = '''  int group(Collection<Integer> slots,String value){
+    String group=value==null?"":value.trim();
+    if(group.length()>12)throw new IllegalArgumentException("分组最多 12 字");
+    ContentValues values=new ContentValues();values.put("group_name",group);
+    return updateCreated(slots,values);
+  }
+  int favorites(Collection<Integer> slots,boolean favorite){
+    ContentValues values=new ContentValues();values.put("favorite",favorite?1:0);
+    return updateCreated(slots,values);
+  }
+  private int updateCreated(Collection<Integer> slots,ContentValues values){
+    if(slots==null||slots.isEmpty())return 0;
+    SQLiteDatabase db=getWritableDatabase();int changed=0;
+    db.beginTransaction();
+    try{
+      for(Integer slot:new LinkedHashSet<>(slots)){
+        if(slot==null||slot<0||slot>=Profiles.MAX)continue;
+        changed+=db.update("environments",values,"slot=? AND created=1",new String[]{String.valueOf(slot)});
+      }
+      db.setTransactionSuccessful();
+    }finally{db.endTransaction();}
+    return changed;
+  }
+'''.encode()
+    assert digest(previous) == 'af6469e6f2e586955ec322829e784f7d4056e426bd18d30c0249096b84970463', 'Original batch metadata bytes changed'
+    return (raw[:begin] + previous + raw[finish:]).decode()
+
 def remove_reviewed_delete_identity(text):
     """Invert only the separately reviewed 2.0.31 additive deletion APIs.
 
@@ -116,7 +153,8 @@ def main():
         removed=guard_text.replace(guard_apply,member(baseline,'void apply(JSONArray data,')).replace(guard_bind,member(baseline,'void bind(JSONObject row,'))
         unchanged['allOtherDownloadUiBytes']=removed==baseline
         baseline_catalog=selected('ProfileCatalog.java',BASELINE).decode()
-        stripped=remove_reviewed46(text['ProfileCatalog.java'],'ProfileCatalog.java').replace('  /** Refresh-local labels only; do not load private drafts/notes or cache across renames. */\n','').replace('  '+extracts['names']+'\n','').replace('  '+extracts['displayName']+'\n','')
+        catalog_for_history=restore_reviewed_batch_selection(text['ProfileCatalog.java'])
+        stripped=remove_reviewed46(catalog_for_history,'ProfileCatalog.java').replace('  /** Refresh-local labels only; do not load private drafts/notes or cache across renames. */\n','').replace('  '+extracts['names']+'\n','').replace('  '+extracts['displayName']+'\n','')
         stripped=remove_reviewed_delete_identity(stripped)
         unchanged['allExistingCatalogBytes']=stripped==baseline_catalog
         assert all(unchanged.values()),unchanged
