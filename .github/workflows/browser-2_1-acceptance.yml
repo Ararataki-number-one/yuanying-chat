@@ -1521,12 +1521,14 @@ jobs:
         # Keep the existing Gecko matrix's pinned emulator/images unchanged.
         # This dedicated lane needs a stable emulator new enough for API 37.
         sdkmanager="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
-        "$sdkmanager" --channel=0 'platforms;android-37.1' 'build-tools;37.0.0' 'emulator' 'system-images;android-33;google_apis;x86_64'
+        python3 tools/gecko/prepare_chromium_emulator.py --sdk-root "$ANDROID_HOME" --cache "$work/packages" --report "$work/emulator-package.json"
+        "$sdkmanager" --channel=0 'platforms;android-37.1' 'build-tools;37.0.0' 'system-images;android-33;google_apis;x86_64'
         if ! ldconfig -p | grep -F "libpulse.so.0 " >/dev/null; then
           sudo apt-get update -o Acquire::Retries=3
           sudo apt-get install -y --no-install-recommends -o Acquire::Retries=3 libpulse0
         fi
         "$ANDROID_HOME/emulator/emulator" -version | tee "$work/emulator-version.txt"
+        grep -Fq 'Android emulator version 37.2.13.0 (build_id 16740729)' "$work/emulator-version.txt"
         "$sdkmanager" --channel=0 --list > "$work/sdk-packages.txt"
         if grep -Eq '^[[:space:]]*system-images;android-37[.]0;google_apis;x86_64[[:space:]]*\|' "$work/sdk-packages.txt"; then
           echo listed > "$work/android17-image.txt"
@@ -1596,6 +1598,7 @@ jobs:
           work/chromium-delivery/android13-crash.log
           work/chromium-delivery/android13-native-logcat.txt
           work/chromium-delivery/android13-webview.txt
+          work/chromium-delivery/emulator-package.json
           work/chromium-delivery/emulator-version.txt
           work/chromium-delivery/wire-vpn.txt
           work/chromium-delivery/wire-internal.txt
@@ -1612,6 +1615,8 @@ jobs:
           work/chromium-delivery/android17-emulator.log
           work/chromium-delivery/android17-crash.log
           work/chromium-delivery/android17-native-logcat.txt
+          work/chromium-delivery/android13-native-live.log
+          work/chromium-delivery/android17-native-live.log
           work/chromium-delivery/android17-webview.txt
           work/chromium-delivery/android17-image.txt
           work/chromium-delivery/android17-smoke.json

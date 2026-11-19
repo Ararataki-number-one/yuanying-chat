@@ -75,7 +75,8 @@ class StagingTest(unittest.TestCase):
     def test_base_cannot_contain_chromium_library_assets_or_classes(self):
         members = {'lib/arm64-v8a/libxul.so': b'Gecko', 'lib/arm64-v8a/libmozglue.so': b'Gecko',
                    'classes.dex': b'synthetic'}
-        with patch.object(stage, 'dex_definitions', return_value={'Lorg/mozilla/geckoview/GeckoView;'}):
+        definitions = {'Lorg/mozilla/geckoview/GeckoView;', *stage.ACTIVITY_RESULT_CLASSES}
+        with patch.object(stage, 'dex_definitions', return_value=definitions):
             fake_apk(self.base, members)
             stage.check_payload(self.base, '', 'arm64-v8a')
             for unexpected in ('lib/arm64-v8a/libcef.so', 'assets/icudtl.dat+com.cefrium+'):
@@ -87,6 +88,18 @@ class StagingTest(unittest.TestCase):
                 fake_apk(self.base, members)
                 with self.assertRaisesRegex(ValueError, 'found in the Gecko base'):
                     stage.check_payload(self.base, '', 'arm64-v8a')
+
+    def test_shared_activity_result_api_must_be_defined_by_the_base(self):
+        fake_apk(self.base, {'lib/arm64-v8a/libxul.so': b'Gecko', 'lib/arm64-v8a/libmozglue.so': b'Gecko',
+                             'classes.dex': b'synthetic'})
+        owner = 'Landroidx/activity/result/ActivityResultRegistryOwner;'
+        with patch.object(stage, 'dex_definitions', return_value=stage.ACTIVITY_RESULT_CLASSES - {owner}):
+            with self.assertRaisesRegex(ValueError, 'base lacks the shared AndroidX Activity Result API'):
+                stage.check_payload(self.base, '', 'arm64-v8a')
+        fake_apk(self.feature, {'classes.dex': b'synthetic'})
+        with patch.object(stage, 'dex_definitions', return_value={'Lcom/cefrium/Cefrium;', owner}):
+            with self.assertRaisesRegex(ValueError, 'feature duplicates the shared AndroidX Activity Result API'):
+                stage.check_payload(self.feature, 'chromium', 'arm64-v8a')
 
     def test_feature_resources_require_exact_uncompressed_bytes(self):
         resource = next(iter(stage.ASSET_SHA))

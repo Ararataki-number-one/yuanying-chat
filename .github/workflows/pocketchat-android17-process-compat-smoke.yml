@@ -10,8 +10,8 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     env:
-      RELEASE_SOURCE: e220ce7a0b0eddc22fb5a839de30a6fa8b4c10f6
-      RELEASE_TREE: 1466bf6fe65dc8cce04ee26593a9a3ffcff87c80
+      RELEASE_SOURCE: 52bc1ece618251cdf3b160b9eb83b9497715e40f
+      RELEASE_TREE: 9b84fa89e7652c59e65b9d328420afb2100c15b1
       PYTHONDONTWRITEBYTECODE: '1'
     steps:
     - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
@@ -48,13 +48,14 @@ jobs:
         # Keep the existing Gecko matrix's pinned emulator/images unchanged.
         # This dedicated lane needs a stable emulator new enough for API 37.
         sdkmanager="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
-        "$sdkmanager" --channel=0 'platforms;android-37.1' 'build-tools;37.0.0' 'emulator' 'system-images;android-37.0;google_apis;x86_64'
+        python3 tools/gecko/prepare_chromium_emulator.py --sdk-root "$ANDROID_HOME" --cache "$work/packages" --report "$work/emulator-package.json"
+        "$sdkmanager" --channel=0 'platforms;android-37.1' 'build-tools;37.0.0' 'system-images;android-37.0;google_apis;x86_64'
         if ! ldconfig -p | grep -F 'libpulse.so.0 (libc6,x86-64)' >/dev/null; then
           sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends libpulse0
         fi
         ldconfig -p | grep -F 'libpulse.so.0 (libc6,x86-64)' >/dev/null
         "$ANDROID_HOME/emulator/emulator" -version 2>&1 | tee "$work/emulator-version.txt"
-        grep -F 'Android emulator version ' "$work/emulator-version.txt" >/dev/null
+        grep -Fq 'Android emulator version 37.2.13.0 (build_id 16740729)' "$work/emulator-version.txt"
     - name: Derive the official pinned Gecko SDK for this diagnostic run
       shell: bash
       run: |
@@ -139,11 +140,14 @@ jobs:
           work/native-caret-sdk/derived-sdk-compilation.json
           work/chromium-delivery/android17-image.properties
           work/chromium-delivery/emulator-version.txt
+          work/chromium-delivery/emulator-package.json
           work/chromium-delivery/android17-emulator.log
           work/chromium-delivery/android17-crash.log
           work/chromium-delivery/android17-native-logcat.txt
+          work/chromium-delivery/android17-native-live.log
           work/chromium-delivery/android17-webview.txt
           work/chromium-delivery/android17-smoke.json
+          work/chromium-delivery/android17-smoke.logcat.txt
           work/chromium-delivery/android17-compatibility-results.json
           work/chromium-delivery/android17-renderer.txt
           work/chromium-delivery/test-build-sha256.txt
