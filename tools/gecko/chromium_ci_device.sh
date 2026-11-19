@@ -4,8 +4,8 @@ set -euo pipefail
 sdk=${1:?Android API required}
 mode=${2:?Test scope required}
 case "$sdk:$mode" in
-  33:routes) android=android13 ;;
-  37:smoke) android=android17 ;;
+  33:routes) android=android13; image=android-33 ;;
+  37:smoke) android=android17; image=android-37.0 ;;
   *) printf '%s\n' 'Unexpected Chromium emulator test scope' >&2; exit 2 ;;
 esac
 work="$PWD/work/chromium-delivery"
@@ -16,7 +16,7 @@ adb_device=("$adb_bin" -s "$serial")
 export ANDROID_AVD_HOME="$work/$android-avd" ANDROID_USER_HOME="$work/$android-user" ANDROID_EMULATOR_HOME="$work/$android-emulator-home"
 mkdir -p "$ANDROID_AVD_HOME" "$ANDROID_USER_HOME" "$ANDROID_EMULATOR_HOME"
 sudo chmod a+rw /dev/kvm
-echo no | "$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager" create avd --force -n chromiumdelivery -p "$ANDROID_AVD_HOME/chromiumdelivery.avd" -k "system-images;android-$sdk;google_apis;x86_64"
+echo no | "$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager" create avd --force -n chromiumdelivery -p "$ANDROID_AVD_HOME/chromiumdelivery.avd" -k "system-images;$image;google_apis;x86_64"
 "$ANDROID_HOME/emulator/emulator" -avd chromiumdelivery -no-window -no-audio -no-snapshot -no-boot-anim -no-metrics -accel on -port 5554 -gpu swiftshader -memory 4096 -cores 4 > "$work/$android-emulator.log" 2>&1 &
 emulator_pid=$!
 stop_guest() {

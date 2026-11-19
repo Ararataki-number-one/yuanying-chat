@@ -1522,9 +1522,13 @@ jobs:
         # This dedicated lane needs a stable emulator new enough for API 37.
         sdkmanager="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
         "$sdkmanager" --channel=0 'platforms;android-37.1' 'build-tools;37.0.0' 'emulator' 'system-images;android-33;google_apis;x86_64'
-        "$ANDROID_HOME/emulator/emulator" -version > "$work/emulator-version.txt"
+        if ! ldconfig -p | grep -F "libpulse.so.0 " >/dev/null; then
+          sudo apt-get update -o Acquire::Retries=3
+          sudo apt-get install -y --no-install-recommends -o Acquire::Retries=3 libpulse0
+        fi
+        "$ANDROID_HOME/emulator/emulator" -version | tee "$work/emulator-version.txt"
         "$sdkmanager" --channel=0 --list > "$work/sdk-packages.txt"
-        if grep -Eq '^[[:space:]]*system-images;android-37;google_apis;x86_64[[:space:]]*\|' "$work/sdk-packages.txt"; then
+        if grep -Eq '^[[:space:]]*system-images;android-37[.]0;google_apis;x86_64[[:space:]]*\|' "$work/sdk-packages.txt"; then
           echo listed > "$work/android17-image.txt"
         else
           echo 'not-tested: no stable API 37 x86_64 Google APIs image listed' > "$work/android17-image.txt"
@@ -1570,7 +1574,7 @@ jobs:
         availability=work/chromium-delivery/android17-image.txt
         if grep -Fxq listed "$availability"; then
           df -h "$PWD/work"
-          if "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --channel=0 'system-images;android-37;google_apis;x86_64'; then
+          if "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --channel=0 'system-images;android-37.0;google_apis;x86_64'; then
             echo 'installed stable API 37 image' > "$availability"
             bash tools/gecko/chromium_ci_device.sh 37 smoke
           else
@@ -1593,6 +1597,7 @@ jobs:
           work/chromium-delivery/android13-webview.txt
           work/chromium-delivery/android17-webview.txt
           work/chromium-delivery/android17-image.txt
+          work/chromium-delivery/emulator-version.txt
           work/chromium-delivery/android17-smoke.json
           work/chromium-delivery/wire-vpn.txt
           work/chromium-delivery/wire-internal.txt
