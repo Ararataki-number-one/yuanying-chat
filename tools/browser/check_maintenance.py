@@ -101,9 +101,6 @@ def main():
         host(name, script, [*java, '--json-jar', jar])
         if name == 'saved-file-copy':
             jobs[-1][1].append([sys.executable, 'tests/profile_saved_copy_host_retirement_test.py'])
-    host('config-backup', 'tests/profile_environment_config_backup_test.py', report=False)
-    host('download-library-migration', 'tests/profile_download_library_migration_test.py', report=False)
-    host('browser-preferences', 'tests/browser-preferences-host/run.py', [*java, '--json-jar', jar])
     host('page-recovery', 'tests/page-recovery-host/run.py', ['--json-jar', jar], report=False)
     host('persistent-profile', 'tests/browser-profile-path-host/run.py', java)
     host('profile-maintenance', 'tests/profile_current_runtime_raw_binding_test.py', [
@@ -149,14 +146,17 @@ def main():
             '--android-jar', str(args.android_jar.resolve()), '--classpath-jar', str(args.webkit_jar.resolve()),
             '--classpath-jar', str(args.snakeyaml_jar.resolve()), '--output', str(target)]], target/'receipt.json'))
 
+    hashes = {str(path.relative_to(ROOT)): digest(path) for path in source_inputs()}
     if args.only:
+        host('config-backup', 'tests/profile_environment_config_backup_test.py', report=False)
+        host('download-library-migration', 'tests/profile_download_library_migration_test.py', report=False)
+        host('browser-preferences', 'tests/browser-preferences-host/run.py', [*java, '--json-jar', jar])
         available = {name for name, _, _ in jobs}
         unknown = set(args.only) - available
         if unknown:
             parser.error('Unknown suite: ' + ', '.join(sorted(unknown)) + '. Available: ' + ', '.join(sorted(available)))
         jobs = [job for job in jobs if job[0] in args.only]
 
-    hashes = {str(path.relative_to(ROOT)): digest(path) for path in source_inputs()}
     dependencies = {str(path.resolve()): digest(path) for path in [jar, android_json, *[p for p in native if p]]}
     commit = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip()
     tree = subprocess.check_output(['git', 'rev-parse', 'HEAD^{tree}'], cwd=ROOT, text=True).strip()

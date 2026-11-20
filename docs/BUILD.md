@@ -39,7 +39,7 @@ python3 tools/browser/check_maintenance.py \
   --only config-backup --only download-library-migration --only browser-preferences
 ```
 
-结果文件记录实际运行的用例和用时。设备和正式发布仍使用对应的完整验收。
+维护命令默认按原顺序运行 36 组回归。使用 `--only` 时可选择已有回归或上面的三组专项检查。结果文件记录实际运行的用例和用时。设备和正式发布仍使用对应的完整验收。
 
 ## 原签名覆盖安装
 
