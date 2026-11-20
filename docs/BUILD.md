@@ -1,24 +1,49 @@
-# 构建 2.1.0 双内核版本
+# 构建 PocketChat
 
-ChatGPT 增强界面以 Mozilla 官方 GeckoView 为基础，使用固定来源、源码派生的输入同步修正 SDK；通用浏览器使用系统 Chromium 和 AndroidX WebKit 1.14.0。使用 Gradle 构建以合并 SDK 的 Java、原生库、资源、服务和依赖；旧版手工 AAPT2/D8 流程不再适用于本版本。
+正式版随主包提供 GeckoView。独立 Chromium 使用 Cefrium 0.21.0，发布时作为可选分包。Gradle 负责合并 Java、原生库、资源、服务与依赖。
 
-## 工具与构建
+## 本地编译
 
-使用 JDK 17、Android SDK Platform 37.1、Build Tools 37.0.0。minSdk 26（Android 8）、targetSdk 35；渲染进程的部分隔离选项按系统 API 条件启用。Gradle Wrapper 固定 9.8.0 并校验发行包 SHA-256；AGP 9.4.1、Mozilla 官方 GeckoView `157.0.20261005135250`（Firefox 157.0.1）固定在构建文件。[官方 SDK 来源收据](../third-party/sdk/geckoview-157.0.1-official.json) 记录 AAR、POM、源码包和准确上游 revision。
+使用 Android SDK Platform 37.1、Build Tools 37.0.0 和 JDK 25。Gecko 派生 SDK 的源码编译需 JDK 17。应用的 minSdk 为 26、targetSdk 为 35。Gradle Wrapper 固定 9.8.0，AGP 固定 9.4.1。[官方 GeckoView 来源收据](../third-party/sdk/geckoview-157.0.1-official.json) 记录固定的 AAR、POM、源码包和上游版本。
 
-首次构建须先按 [Gecko CI](../.github/workflows/gecko-integration.yml) 下载并核验固定的官方 AAR、POM、源码和依赖，再执行 `tools/gecko/caret_workflow.py prepare` 生成本次派生 SDK、来源回执及本地 Maven 目录。下列 Gradle 命令以这些输入已经准备好为前提；不能直接省略此步骤或把旧目录当作当前源码的通过记录。集成包另需运行 `python3 tools/gecko/generate_appearance_fixture.py` 准备仅测试使用的原生桥接样本；release 不使用该覆盖资源。
+从同一 SDK 配方的已核验构建产物取得 `maven/` 和 `assets/`。如果已放在 `work/native-caret-sdk/`，Gradle 会使用默认路径。也可以指定绝对路径：
 
 ```bash
-# ANDROID_HOME 指向已安装的 Android SDK，JAVA_HOME 指向 JDK 17。
-./gradlew :app:assembleRelease
-./gradlew :app:assembleIntegration
+# ANDROID_HOME 指向 Android SDK，JAVA_HOME 指向 JDK 25。
+# POCKETCHAT_GECKO_SDK 指向包含 maven/ 和 assets/ 的已准备目录。
+./gradlew :app:assembleRelease \
+  -PcaretSdkRepository="${POCKETCHAT_GECKO_SDK}/maven" \
+  -PcaretSdkAssets="${POCKETCHAT_GECKO_SDK}/assets"
 ```
 
-Windows 使用 `gradlew.bat`。发布输出在 `app/build/outputs/apk/release/`，包含 ARM64 和 x86_64 的未签名包。独立回归输出在 `app/build/outputs/apk/integration/`，包名 `local.pocketchat.test`，采用非调试构建和测试签名。发布包不包含回归 Activity 或 HTTP 样本入口。
+构建 Chromium 分包前，先运行 `python3 gradle/prepare-cefrium-sdk.py` 核对并准备固定依赖，再带上相同的 Gecko 路径参数运行 `:app:bundleRelease -PpocketChatChromiumBundle=true -PpocketChatChromiumAbi=arm64-v8a`。普通 APK 在 `app/build/outputs/apk/release/`，分包使用的 AAB 在 `app/build/outputs/bundle/release/`。Windows 使用 `gradlew.bat`。
 
-当前公网 APK 是 ARM64，适合常见 Android 手机。旧测试记录对应当时的内核，不替代 Gecko 设备验证。
+## 正式验收的 SDK 准备
+
+[完整发布验收](../.github/workflows/browser-2_1-acceptance.yml) 先下载并核对官方 AAR、POM、源码和固定工具链。以下调用在该工作流内使用，工作目录包含 `geckoview.aar`、`geckoview.pom`、`geckoview-sources.jar` 和 `gradle/gradle-9.8.0/`。`ANDROID_HOME` 指向 Android SDK，`JAVA_HOME` 指向 JDK 17，运行批次由 GitHub Actions 提供。
+
+```bash
+python3 tools/gecko/caret_workflow.py prepare --work work/gecko-integration
+```
+
+该步骤生成派生 SDK、来源回执和集成测试的身份资源。集成包还需用 `python3 tools/gecko/generate_appearance_fixture.py` 生成测试样本。`:app:assembleIntegration` 输出到 `app/build/outputs/apk/integration/`，包名为 `local.pocketchat.test`，使用测试签名。本地编译、设备验收和正式签名分别保留证据。
+
+## 针对性维护测试
+
+日常修改可用已有维护检查器选择受影响的测试。配置备份、下载迁移和浏览器设置可在一条命令中运行。这里的 `JAVA_HOME` 指向 JDK 17，两个 JSON JAR 使用 [完整验收](../.github/workflows/browser-2_1-acceptance.yml) 固定的版本和校验值。
+
+```bash
+python3 tools/browser/check_maintenance.py \
+  --java-home "$JAVA_HOME" --json-jar "$POCKETCHAT_HOST_JSON" \
+  --android-json-jar "$POCKETCHAT_ANDROID_JSON" --output work/quick-stability \
+  --only config-backup --only download-library-migration --only browser-preferences
+```
+
+结果文件记录实际运行的用例和用时。设备和正式发布仍使用对应的完整验收。
 
 ## 原签名覆盖安装
+
+以下是普通 Gecko APK 的签名示例。带可选 Chromium 的正式分发使用 `tools/gecko/sign_chromium_release_pair.py`，主包、分包和验收证据须来自同一批构建。
 
 原签名密钥须由维护者提供，保存在 Git 忽略目录，不进入源码、CI 或发布附件。文件名与存放路径不能证明签名身份，必须核对证书指纹。缺少原密钥或证书不匹配时保留未签名包；签名助手会报错，不会生成替代密钥。以下路径是维护者准备原密钥后的示例，不表示工作区已经具备原签名。
 
@@ -36,7 +61,7 @@ python3 tools/sign-apk.py app/build/outputs/apk/release/app-arm64-v8a-release-un
 
 已准备工具位于 `work/cloud-setup/jdk/` 与 `work/gecko-sdk-validation/`。`python3 engine-probe/tools/setup.py` 用官方地址与固定校验和准备 SDK 37.1、Build Tools 37、Gradle 和早期验证包所用的 Gecko AAR；它只写忽略目录。该独立验证包保留历史 SDK pin，正式应用 SDK 以 `app/build.gradle` 与上述来源收据为准。
 
-2.1.0 的完整构建与验收通过 `.github/workflows/browser-2_1-acceptance.yml` 在 GitHub runner 执行，分支为 `release/browser-2.1.0`。本地网络错误以本次实际请求为准。该工作流保留原有 Gecko 验收门槛，增加必需的 `lintRelease`、29 组主机检查，以及使用同批 APK 的真实 Android WebView 验收。主机 API 编译不能代替完整 APK 构建。构建产物仍未使用正式版原签名。
+完整验收由 GitHub Actions 构建并核对同批 APK，运行宿主机测试和 Android 设备测试。发布流程另行核对原签名与公网回读，随后推进更新源。
 
 无需常驻服务即可进行编译。设备回归需要 Android 设备或带 KVM 的模拟器，受控样本与 HTTP/SOCKS 服务由 `tests/gecko/run_device.py` 启动并结束。真实 Google/ChatGPT 登录需要在手机上验收，不在合成样本测试范围内。
 
