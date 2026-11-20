@@ -81,6 +81,13 @@ visibility, so a failed task with deliberately hidden progress remains a
 failure row rather than being mistaken for a saved file. No hidden progress
 text is added back into the rendered-label assertions.
 
+The recent profile creation change adds a separate
+`reviewed-profile-creation-inverse.json` stage for `ProfileCatalog`. Its three
+exact replacements restore the earlier details, creation and favorite writers
+before the existing catalogue projections and whole-file preservation check.
+The host still compiles its catalogue reads from the actual current source.
+Unknown or duplicated edits remain failures.
+
 This does **not** execute Android SQLite, Android layout, a phone or frame timing.
 The query-count result concerns the selected actual production method calls,
 not the total SQL or visible speed of the entire app. Existing original policy

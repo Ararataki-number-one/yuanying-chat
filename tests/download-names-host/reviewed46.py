@@ -3,6 +3,7 @@ import hashlib,json
 from pathlib import Path
 MANIFEST_SHA='ca4b9668e0dfa59cc35df2782c31729824ca1705baf7d55e1f731644e6aa5e6c'
 SCAFFOLD_MANIFEST_SHA='67b4b7872c6a8c66b8ded982ccf75f4dbcde58481262ca0c140070420bb614df'
+PROFILE_CREATION_MANIFEST_SHA='846b473e5f1d531242224e3af40de80b4459c988cc3ae5bf65655e1940a881d9'
 def scaffold_manifest():
     raw=Path(__file__).with_name('reviewed210-scaffold-inverse.json').read_bytes()
     assert hashlib.sha256(raw).hexdigest()==SCAFFOLD_MANIFEST_SHA,'Reviewed46 bounded edit 210 scaffold manifest bytes changed'
@@ -23,7 +24,22 @@ def remove_scaffold(text,name,member):
     for needle,digest in manifest['testedMethodSha256'].items():
         assert hashlib.sha256(member(text,needle).encode()).hexdigest()==digest,'Reviewed46 bounded edit 210 scaffold altered a tested method: '+needle
     return text
+def remove_profile_creation(text,name):
+    if name!='ProfileCatalog.java' or not any(marker in text for marker in (
+            '  boolean details(', '  <T>T createNew(int slot,int generation,',
+            '  void writeNewPresentation(', '  boolean favorite(')):
+        return text
+    raw=Path(__file__).with_name('reviewed-profile-creation-inverse.json').read_bytes()
+    assert hashlib.sha256(raw).hexdigest()==PROFILE_CREATION_MANIFEST_SHA,'Reviewed profile creation inverse manifest bytes changed'
+    for edit in reversed(json.loads(raw)['edits']):
+        before,after=edit['before'],edit['after']
+        assert hashlib.sha256(before.encode()).hexdigest()==edit['beforeSha256'] and hashlib.sha256(after.encode()).hexdigest()==edit['afterSha256'],'Reviewed profile creation bounded edit digest changed'
+        assert text.count(after)==1,'Reviewed profile creation bounded edit must occur exactly once'
+        text=text.replace(after,before,1)
+    return text
+
 def invert(text,name,member):
+    text=remove_profile_creation(text,name)
     text=remove_scaffold(text,name,member)
     raw=Path(__file__).with_name('reviewed46-inverse.json').read_bytes()
     assert hashlib.sha256(raw).hexdigest()==MANIFEST_SHA,'Reviewed46 inverse manifest bytes changed'
