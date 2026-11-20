@@ -56,7 +56,10 @@ class CurrentRuntimeRawBindings(unittest.TestCase):
     def test_every_other_original_raw_pin_remains_exact_and_unknown_is_rejected(self):
         pins = dict(PATH_HOST.PINS)
         self.assertEqual(len(pins), 13)
-        self.assertEqual(SHA(json.dumps(pins, sort_keys=True, separators=(',', ':')).encode()), '24466f4dc00a0b37a8eba66a39bf6ebc5b5b9de190e82579d496bb414dda5683')
+        serialize = lambda entries: json.dumps(entries, sort_keys=True, separators=(',', ':')).encode()
+        original = dict(pins, Profiles='3cb6e029ef665699345bc2f9bf3ae468090f8eda64d77048130f0a00fe2e1716')
+        self.assertEqual(SHA(serialize(original)), '24466f4dc00a0b37a8eba66a39bf6ebc5b5b9de190e82579d496bb414dda5683')
+        self.assertEqual(SHA(serialize(pins)), 'd2d6929c88b9a5f2409bbd6f21a2b5e429a64ad0691b8a3156007a3e8a8560c0')
         for name, expected in pins.items():
             raw = (ROOT/'app/src/main/java/local/pocketchat'/(name+'.java')).read_bytes()
             self.assertEqual(SHA(raw), expected)
@@ -66,6 +69,12 @@ class CurrentRuntimeRawBindings(unittest.TestCase):
                     PATH_HOST.verify_factored_raw(name, bad)
         with self.assertRaises(ValueError):
             PATH_HOST.verify_factored_raw('UnknownClass', b'unknown')
+        # The reviewed Profiles creation and copy changes leave the path methods byte-identical.
+        profiles = (ROOT/'app/src/main/java/local/pocketchat/Profiles.java').read_text()
+        self.assertEqual(SHA(PATH_HOST.member(profiles, 'static int slot(').encode()),
+                         'ed0f3d4e680e98f47184fe9e3df83c8d528e4d2ed13bebd90642a70bb32e8ed6')
+        self.assertEqual(SHA(PATH_HOST.member(profiles, 'static Context global(').encode()),
+                         '4236e9188bb34d09a1d153de3b31a0a72d4639c8f32f978f661134e6e0111474')
 
     def test_unknown_recovery_hunks_and_forged_outer_pins_cannot_admit_a_new_image(self):
         # These are counterfeits of the exact historical proof, not current Java.

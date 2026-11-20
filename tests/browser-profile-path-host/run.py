@@ -4,7 +4,8 @@ import argparse,base64,hashlib,importlib.util,json,os,re,subprocess,tempfile
 from pathlib import Path
 ROOT=Path(__file__).resolve().parents[2];HERE=Path(__file__).resolve().parent
 SOURCE='82a3512a8cf67259049353d7145407292a5d9cba'
-PINS={'GeckoCpuController': '2ceaa3bb6602392d9702339620832187f612a0c863c0ddf46a61aac00200a558', 'GeckoTlsController': '0bdcb528c6df40a5a03324d1dd8b4066c74d22c23af9ac715159667968c20f67', 'GeckoCpuProfile': 'd1569a11149f15b4e6da1c0259bfc25fe6ee1bc1c920f8419e26c8c60756b5dd', 'GeckoTlsProfile': '2b33d4bde7b44cd6068f794fe13cf074a4ced0975d32b444632455180bcf4ac4', 'GeckoCpuStore': '8b83942560d72a1ad432245228d4791965133d2db6064d8c6cb9466b56e87458', 'GeckoTlsStore': '9430714a847aafc8fbb56390566330c785b8c3dcc019de14015830f68dfe82c8', 'GeckoCpuSpec': '617c69ba3b1d3b4edd3abf455bee8e36f3b861e0c82857153a8f8c632dd1bedc', 'GeckoTlsSpec': '4ffd5f095d6528053c4b11938cf5807f2b95c189bf1feafc3402eb451553f341', 'EnvironmentSpec': 'e85b542ffad8e5ff09d4b8484333b52b22200df093cae633dcd05f6dc1c1fb99', 'NetworkShareJson': '2934074b1e0bb9bf2ebd114643e6966cb30b5cb7e0cb7acf27a1ea59f1ddf677', 'J': '772bcc91b130ace1f33b529c2d828771ff9f12ba44805685a703df14f7d68493', 'ProfileContext': '2b72094396c21c235e77ce79fbd6a6eb134abf14a71bf4c8c0ae010aa2369178', 'Profiles': '3cb6e029ef665699345bc2f9bf3ae468090f8eda64d77048130f0a00fe2e1716'}
+# Profiles uses the exact reviewed c510aeb7 production blob; its path members did not change.
+PINS={'GeckoCpuController': '2ceaa3bb6602392d9702339620832187f612a0c863c0ddf46a61aac00200a558', 'GeckoTlsController': '0bdcb528c6df40a5a03324d1dd8b4066c74d22c23af9ac715159667968c20f67', 'GeckoCpuProfile': 'd1569a11149f15b4e6da1c0259bfc25fe6ee1bc1c920f8419e26c8c60756b5dd', 'GeckoTlsProfile': '2b33d4bde7b44cd6068f794fe13cf074a4ced0975d32b444632455180bcf4ac4', 'GeckoCpuStore': '8b83942560d72a1ad432245228d4791965133d2db6064d8c6cb9466b56e87458', 'GeckoTlsStore': '9430714a847aafc8fbb56390566330c785b8c3dcc019de14015830f68dfe82c8', 'GeckoCpuSpec': '617c69ba3b1d3b4edd3abf455bee8e36f3b861e0c82857153a8f8c632dd1bedc', 'GeckoTlsSpec': '4ffd5f095d6528053c4b11938cf5807f2b95c189bf1feafc3402eb451553f341', 'EnvironmentSpec': 'e85b542ffad8e5ff09d4b8484333b52b22200df093cae633dcd05f6dc1c1fb99', 'NetworkShareJson': '2934074b1e0bb9bf2ebd114643e6966cb30b5cb7e0cb7acf27a1ea59f1ddf677', 'J': '772bcc91b130ace1f33b529c2d828771ff9f12ba44805685a703df14f7d68493', 'ProfileContext': '2b72094396c21c235e77ce79fbd6a6eb134abf14a71bf4c8c0ae010aa2369178', 'Profiles': '6c264ac655564e702d1c19428e0f0db4d700db1e7900693307e9b3e85f177c29'}
 LEGACY_GV_SHA='b8a32f9f7dccd67a4e0ab90a69a94d053c3130e470fdbe6af647244152817fb4'
 NAMES=['GeckoCpuController','GeckoTlsController','GeckoCpuProfile','GeckoTlsProfile','GeckoCpuStore','GeckoTlsStore','GeckoCpuSpec','GeckoTlsSpec','EnvironmentSpec','NetworkShareJson','J']
 sha=lambda b:hashlib.sha256(b).hexdigest()
@@ -37,10 +38,10 @@ def main():
  if modern not in active:
   if sha(view.encode())!=LEGACY_GV_SHA or legacy not in active or '"-profile",directory.getAbsolutePath()'not in active:raise ValueError('Unknown or disconnected active profile layout')
   a.output.parent.mkdir(parents=True,exist_ok=True);a.output.write_text(json.dumps({'status':'passed','layout':'legacy','sourceSha256':sha(view.encode()),'actualAndroidExecution':False})+'\n');print('PERSISTENT_PROFILE_PATH_PROOF:legacy');return
- for name,digest in PINS.items():
-  verify_factored_raw(name,(prod/(name+'.java')).read_bytes())
+ pinned={name:verify_factored_raw(name,(prod/(name+'.java')).read_bytes()) for name in PINS}
  runtime=runtime_profile_consumer(view)
- raw={n:(prod/(n+'.java')).read_text()for n in NAMES};profile=(prod/'ProfileContext.java').read_text();profiles=(prod/'Profiles.java').read_text()
+ raw={n:pinned[n].decode() for n in NAMES}
+ profile=pinned['ProfileContext'].decode();profiles=pinned['Profiles'].decode()
  bits={'@ACTIVE_RUNTIME@':runtime,'@DIRECTORY@':member(profile,'File directory('),'@NO_BACKUP@':member(profile,'public File getNoBackupFilesDir()'),'@SLOT@':member(profiles,'static int slot('),'@GLOBAL@':member(profiles,'static Context global(')}
  template=(HERE/'Host.java.in').read_text()
  for token,text in bits.items():
@@ -56,6 +57,8 @@ def main():
   jarbytes=chosen;jarsha=sha(chosen)
  files=[prod/(n+'.java')for n in [*NAMES,'ProfileContext','Profiles','GeckoWebView']]+[HERE/'Host.java.in',HERE/'README.md',Path(__file__).resolve(),ROOT/'tests/gecko-navigation-host/run.py',fixture,license];hashes={str(q.relative_to(ROOT)):sha(q.read_bytes())for q in files}
  if hashes['app/src/main/java/local/pocketchat/GeckoWebView.java']!=sha(view.encode()):raise ValueError('Gecko source changed during profile extraction')
+ if any(hashes[str((prod/(name+'.java')).relative_to(ROOT))]!=sha(raw_bytes) for name,raw_bytes in pinned.items()):
+  raise ValueError('Factored source changed during profile extraction')
  a.output.parent.mkdir(parents=True,exist_ok=True);artifacts=a.output.parent/(a.output.stem+'-artifacts');artifacts.mkdir(exist_ok=True);reports=[];negative=[]
  with tempfile.TemporaryDirectory(prefix='persistent-runtime-path-')as temporary:
   folder=Path(temporary);jar=folder/'json-20240303.jar';jar.write_bytes(jarbytes)
