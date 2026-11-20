@@ -70,7 +70,8 @@ def main():
         'labels': field(prefs, 'static final String[] LABELS='),
         'enabled': declaration(prefs, 'static boolean enabled('),
         'values': declaration(prefs, 'static JSONObject values('),
-        'apply': declaration(prefs, 'static void apply('),
+        'apply': declaration(prefs, 'static boolean apply('),
+        'preference-edit': declaration(prefs, 'static SharedPreferences.Editor edit('),
         'latency-route': declaration(region, 'static String latencyRoute('),
         'latency-cache': declaration(region, 'static JSONObject latency('),
         'proxy': declaration(region, 'static Proxy proxy('),
@@ -80,7 +81,7 @@ def main():
         'native-target': field(native, 'static final String PROBE='),
         'freshness': declaration(native, 'static boolean freshLatency('),
     }
-    ui_method = declaration(editor, 'static void edit(MainActivity a,JSONObject initial,int tab)')
+    ui_method = declaration(editor, 'static void edit(MainActivity a,JSONObject initial,int tab,EnvironmentSpec.Identity identity)')
     start = ui_method.index('    CheckBox[] options=')
     loop = ui_method.index('    for(int section=', start)
     selected['editor-loop'] = ui_method[start:loop] + member_at(ui_method, loop)
@@ -112,7 +113,7 @@ def main():
         return value
 
     def generate(members):
-        return template.replace('@PREFS_MEMBERS@', adapted('\n'.join(members[k] for k in ('keys','labels','enabled','values','apply')))).replace(
+        return template.replace('@PREFS_MEMBERS@', adapted('\n'.join(members[k] for k in ('keys','labels','enabled','values','apply','preference-edit')))).replace(
             '@REGION_MEMBERS@', adapted('\n'.join(members[k] for k in ('latency-route','latency-cache','proxy','session-gate','automatic-gate','refresh')))).replace(
             '@NATIVE_MEMBERS@', adapted(members['native-target']+'\n'+members['freshness'])).replace(
             '@EDITOR_BLOCK@', adapted(members['editor-loop'])).replace('@EDITOR_READ@', adapted(members['editor-read']))
@@ -157,7 +158,7 @@ def main():
         # replacement preference/network implementation or source-text oracle.
         mutations = [
             ('default-disabled', 'enabled', '{', '{if("automaticLatencyChecks".equals(key))return false;', 'preferences', 'A missing automatic latency preference defaults to enabled'),
-            ('apply-drops-key', 'apply', 'for(String key:KEYS)if(', 'for(String key:KEYS)if(!"automaticLatencyChecks".equals(key)&&', 'preferences', 'The actual preference API persists an explicit automatic latency disable'),
+            ('apply-drops-key', 'preference-edit', 'for(String key:KEYS)if(', 'for(String key:KEYS)if(!"automaticLatencyChecks".equals(key)&&', 'preferences', 'The actual preference API persists an explicit automatic latency disable'),
             ('editor-hides-key', 'editor-loop', '{"automaticLatencyChecks"}', '{}', 'preferences', 'The actual environment editor renders the automatic latency checkbox'),
             ('foreign-route', 'session-gate', '||!route.equals(latencyRoute(s))', '', 'foreign-route', 'A queued probe cannot query a foreign current route'),
         ]
