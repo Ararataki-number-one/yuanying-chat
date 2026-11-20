@@ -70,5 +70,27 @@ class EnvironmentDeleteRootGuardTest(unittest.TestCase):
             self.assertLess(migration, body.index(destructive_step), destructive_step)
 
 
+    def test_default_deletion_clears_private_share_snapshots_after_writers_exit(self):
+        body = remove_body()
+        default = body.index("else{\n      EnvironmentBrowserData.clear(")
+        end = body.index("// System WebView", default)
+        cleanup = "EnvironmentBrowserData.clearNetworkShareSnapshots(profile.getNoBackupFilesDir())"
+        self.assertEqual(body.count(cleanup), 1)
+        self.assertIn("NetworkSourceSelection.withActiveSnapshot(profile,()->{", body[default:end])
+        self.assertIn(cleanup, body[default:end])
+        self.assertLess(body.index("Thread.sleep(100);}while(true);"), body.index(cleanup))
+        self.assertLess(body.index(cleanup), body.index("catalog.completeDelete(expected)"))
+
+    def test_login_reset_retires_the_separate_gecko_address_in_its_durable_edit(self):
+        reset = (SOURCE / "EnvironmentResetActivity.java").read_text()
+        start = reset.index("private static void performReset(")
+        removed = reset.index('for(String key:new String[]{"pending","legacyPending"', start)
+        commit = reset.index("if(!preferences.commit()", removed)
+        self.assertLess(reset.index("terminate(c,slot)", start), removed)
+        self.assertIn('"geckoBrowserUrl"', reset[removed:commit])
+        self.assertNotIn('"browserHomeUrl"', reset[removed:commit])
+        self.assertLess(commit, reset.index("repository.finishLoginReset(plan)", start))
+
+
 if __name__ == "__main__":
     unittest.main()

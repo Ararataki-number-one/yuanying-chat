@@ -28,11 +28,15 @@ public final class EnvironmentManagementIntegrationActivity extends Activity {
       new SecretStore(one).put("environment-audit",J.obj("baseline",J.obj("syntheticLoginScope","retire-on-reset")).toString().getBytes(StandardCharsets.UTF_8));
       new SecretStore(one).put("lifecycle-marker","keep-configuration-secret".getBytes(StandardCharsets.UTF_8));byte[] marker=java.nio.file.Files.readAllBytes(new SecretStore(one).file("lifecycle-marker").toPath());
       one.getSharedPreferences("chat",0).edit().putString("draft","clear-reset-draft").putString("draftBackup:fixture","clear-backup").putString("pending",J.obj("id","old-reset-task","kind","web").toString()).putBoolean("replyNotice",false).commit();
+      if(!one.getSharedPreferences("chat",0).edit().putString("geckoBrowserUrl","https://example.test/previous-page").commit())throw new IOException("Could not seed prior Gecko address");
+      File partial=File.createTempFile("download-",".part",one.getCacheDir());java.nio.file.Files.write(partial.toPath(),new byte[]{1,2});
       String proxy=one.getSharedPreferences("chat",0).getString("proxy","");JSONObject candidate=J.obj("proxy",proxy,"requireExternalVpn",false);
       EnvironmentResetPlan staged=EnvironmentSpecRuntime.withIntent(one,()->{EnvironmentSpecRuntime.saveNetworkIntent(one,old.identity,"external",candidate,NetworkChanges.hash(one),new JSONObject());return EnvironmentResetActivity.begin(this,old.identity);});EnvironmentSpec before=staged.before;JSONObject paused=catalog.item(1);
       NetworkCatalog.put(result,"resetKeepsLogicalId",paused.optBoolean("created")&&!paused.optBoolean("deleting")&&paused.optBoolean("resetting")&&paused.optString("environmentId").equals(before.identity.environmentId));NetworkCatalog.put(result,"resetAdvancesGeneration",paused.optInt("generation")==before.identity.generation+1);
       boolean blocked=false;try{catalog.identity(1);}catch(IOException expected){blocked=true;}NetworkCatalog.put(result,"pausedIdentityRejected",blocked);
       EnvironmentResetActivity.reset(this,before.identity);EnvironmentSpec after=source.load();
+      NetworkCatalog.put(result,"geckoLastAddressRetired",!one.getSharedPreferences("chat",0).contains("geckoBrowserUrl"));
+      NetworkCatalog.put(result,"geckoDownloadPartialRetired",!java.nio.file.Files.exists(partial.toPath(),java.nio.file.LinkOption.NOFOLLOW_LINKS));
       if(new SecretStore(one).get("environment-audit")!=null)throw new IOException("Reset retained the old encrypted audit record");
       NetworkCatalog.put(result,"encryptedAuditRetired",true);
       NetworkCatalog.put(result,"configurationPreserved",after.desired().equals(before.desired()));NetworkCatalog.put(result,"resetAppliedEvidenceRetired",after.appliedRevision==0&&after.observedRevision==0);NetworkCatalog.put(result,"pendingNetworkRebound",NetworkChanges.identityMatches(NetworkChanges.pendingStrict(one),after.identity.json())&&NetworkChanges.pendingStrict(one).getJSONObject("config").toString().equals(candidate.toString()));

@@ -8,6 +8,48 @@ public final class DeletePreferenceCases {
   static int checks;static void check(String label,boolean pass){checks++;if(!pass)throw new AssertionError(label);}
   static String pref(int slot,String base){return (slot==0?"":"env"+slot+"_")+base;}
   static void file(Path path,String value)throws IOException{Files.createDirectories(path.getParent());Files.write(path,value.getBytes(java.nio.charset.StandardCharsets.UTF_8));}
+  static void shareSnapshots()throws Exception{
+    Path root=Files.createTempDirectory("retired-share-snapshots-");
+    Path outside=Files.createTempDirectory("retired-share-link-target-");
+    try{
+      String version="abcdefghijklmnopabcdefghijklmnop";
+      String otherVersion="ponmlkjihgfedcbaponmlkjihgfedcba";
+      List<Path> records=new ArrayList<>();
+      for(String label:new String[]{"share-saved-head","share-running-head","share-entry-selection-"+version,
+          "share-exit-selection-"+version,"share-entry-provider-"+version,"share-exit-provider-"+version}){
+        for(String suffix:new String[]{".sealed",".sealed.bak",".sealed.new"}){
+          Path item=root.resolve(label+suffix);file(item,"synthetic snapshot");records.add(item);
+        }
+      }
+      Map<Path,byte[]> retained=new LinkedHashMap<>();
+      for(String name:new String[]{"subscription-cache.sealed","network-snapshot.lock","sealed-io-02.lock",
+          "share-entry-selection-"+version+".sealed.copy","share-exit-provider-invalid.sealed",
+          "profiles/env1/share-saved-head.sealed","profiles/env1/share-entry-provider-"+version+".sealed"}){
+        Path item=root.resolve(name);file(item,"retained synthetic file");retained.put(item,Files.readAllBytes(item));
+      }
+      Path linkTarget=outside.resolve("shared-fixture");file(linkTarget,"terminal link target");
+      retained.put(linkTarget,Files.readAllBytes(linkTarget));
+      Path link=root.resolve("share-exit-provider-"+otherVersion+".sealed");
+      Files.createSymbolicLink(link,linkTarget);records.add(link);
+      Path blocked=root.resolve("share-entry-provider-"+otherVersion+".sealed");
+      Path child=blocked.resolve("untouched");file(child,"unexpected directory entry");
+      boolean refused=false;
+      try{EnvironmentBrowserData.clearNetworkShareSnapshots(root.toFile());}catch(IOException expected){refused=true;}
+      check("unexpected snapshot directory prevents completion and keeps its content",refused&&Files.isRegularFile(child));
+      Files.delete(child);Files.delete(blocked);
+      EnvironmentBrowserData.clearNetworkShareSnapshots(root.toFile());
+      EnvironmentBrowserData.clearNetworkShareSnapshots(root.toFile());
+      check("retry and repeat preserve the shared parent",Files.isDirectory(root));
+      for(Path item:records)check("retire exact private record "+item.getFileName(),!Files.exists(item,LinkOption.NOFOLLOW_LINKS));
+      for(Map.Entry<Path,byte[]> item:retained.entrySet())
+        check("retain other scope bytes "+item.getKey(),Arrays.equals(item.getValue(),Files.readAllBytes(item.getKey())));
+      Path linkedRoot=root.resolve("redirected");Files.createSymbolicLink(linkedRoot,outside);
+      Path otherHead=outside.resolve("share-saved-head.sealed");file(otherHead,"other root head");
+      refused=false;
+      try{EnvironmentBrowserData.clearNetworkShareSnapshots(linkedRoot.toFile());}catch(IOException expected){refused=true;}
+      check("linked parent is rejected before examining another root",refused&&Files.exists(otherHead));
+    }finally{EnvironmentBrowserData.erase(root.toFile());EnvironmentBrowserData.erase(outside.toFile());}
+  }
   public static void main(String[] args)throws Exception{
     for(int target=0;target<8;target++){
       Path data=Files.createTempDirectory("browser-delete-prefs-");try{
@@ -30,6 +72,7 @@ public final class DeletePreferenceCases {
         for(String cleared:Profiles.context.cleared)check("no unrelated live preference cache cleared",target==0?cleared.equals("chat")||cleared.equals("universal-browser"):cleared.startsWith("env"+target+"_"));
       }finally{EnvironmentBrowserData.erase(data.toFile());}
     }
+    shareSnapshots();
     System.out.println("Chromium production delete selection: "+checks+" checks passed");
   }
 }

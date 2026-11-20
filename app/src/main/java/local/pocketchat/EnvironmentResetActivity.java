@@ -64,7 +64,7 @@ public final class EnvironmentResetActivity extends ThemedActivity {
       profile.deleteDatabase(name);for(String suffix:new String[]{"","-wal","-shm","-journal"})if(java.nio.file.Files.exists(new File(database.getPath()+suffix).toPath(),java.nio.file.LinkOption.NOFOLLOW_LINKS))throw new IOException("本地网页数据库尚未清理");
     }
     android.content.SharedPreferences.Editor preferences=profile.getSharedPreferences("chat",0).edit();
-    for(String key:new String[]{"pending","legacyPending","sentAttachments","conversation","url","transcript","lastCompletedId","lastNotifiedId","lastReplyNotifiedId","draft","nativeDraft","webDraft"})preferences.remove(key);
+    for(String key:new String[]{"pending","legacyPending","sentAttachments","conversation","url","geckoBrowserUrl","transcript","lastCompletedId","lastNotifiedId","lastReplyNotifiedId","draft","nativeDraft","webDraft"})preferences.remove(key);
     for(String key:profile.getSharedPreferences("chat",0).getAll().keySet())if(key.startsWith("draftBackup:"))preferences.remove(key);
     if(!preferences.commit()||!profile.getSharedPreferences("environment-audit",0).edit().clear().commit())throw new IOException("本地网页记录尚未清理");
     DownloadLibrary.get(c).removeEnvironmentTasks(slot);

@@ -2,6 +2,8 @@ package local.pocketchat;
 
 import java.io.*;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
+import java.nio.file.Path;
 
 /** Narrow login/site storage cleanup. The trusted app roots themselves are never
  * removed; an environment ancestor link is refused, terminal links are unlinked. */
@@ -24,8 +26,27 @@ final class EnvironmentBrowserData {
   static void clearBrowserDownloadParts(File cache)throws IOException{
     if(Files.isSymbolicLink(cache.toPath())||!cache.isDirectory())throw new IOException("环境缓存目录不可用");
     File[] files=cache.listFiles();if(files==null)throw new IOException("无法读取环境缓存目录");
-    for(File file:files)if(file.getName().matches("browser-download-.*[.]part")&&(Files.isSymbolicLink(file.toPath())||file.isFile()))erase(file);
+    for(File file:files){
+      String name=file.getName();
+      if((name.matches("browser-download-.*[.]part")||name.matches("download-[A-Za-z0-9-]+[.]part"))
+          &&(Files.isSymbolicLink(file.toPath())||file.isFile()))erase(file);
+    }
     for(File file:files)if(file.getName().matches("cefrium-download-[0-9]+"))erase(file);
+  }
+  /** Slot zero shares its parent. Match only NetworkShareSelection's private records. */
+  static void clearNetworkShareSnapshots(File noBackup)throws IOException{
+    if(Files.isSymbolicLink(noBackup.toPath())||!noBackup.isDirectory())throw new IOException("环境存储目录不可用");
+    File[] files=noBackup.listFiles();if(files==null)throw new IOException("无法读取环境存储目录");
+    for(File file:files){
+      String name=file.getName();
+      if(!name.matches("share-(saved|running)-head[.]sealed([.](bak|new))?")
+          &&!name.matches("share-(entry|exit)-(selection|provider)-[a-p]{32}[.]sealed([.](bak|new))?"))continue;
+      Path record=file.toPath();
+      if(Files.notExists(record,LinkOption.NOFOLLOW_LINKS))continue;
+      if(!Files.isSymbolicLink(record)&&!Files.isRegularFile(record,LinkOption.NOFOLLOW_LINKS))
+        throw new IOException("分享记录类型异常，清理未完成");
+      Files.deleteIfExists(record);
+    }
   }
   static String[] chromiumNames(int slot)throws IOException{
     if(slot<0||slot>=8)throw new IOException("环境槽位无效");
