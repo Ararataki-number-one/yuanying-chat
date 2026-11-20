@@ -5,12 +5,17 @@ import android.app.UiAutomation;
 import android.content.ContentValues;
 import android.content.Context;
 import android.graphics.Paint;
+import android.graphics.Rect;
 import android.graphics.pdf.PdfDocument;
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.SystemClock;
 import android.provider.MediaStore;
+import android.view.InputDevice;
+import android.view.MotionEvent;
+import android.view.View;
 import android.view.accessibility.AccessibilityNodeInfo;
+import android.widget.TextView;
 import com.cefrium.CefriumBrowser;
 import com.cefrium.CefriumProfile;
 import org.json.JSONArray;
@@ -98,11 +103,16 @@ final class FilesAndProfilesFixture {
                 "application/vnd.openxmlformats-officedocument.wordprocessingml.document", docx());
         String page = "<!doctype html><meta name='viewport' content='width=device-width,initial-scale=1'>"
                 + "<title>" + title + "</title><h1 id='proof'>" + title + "</h1>"
-                + "<input id='upload' type='file' accept='text/plain'><pre id='selected'></pre>"
+                + "<label id='upload' for='upload-input'>Choose attachment</label>"
+                + "<input id='upload-input' type='file' accept='text/plain'><pre id='selected'></pre>"
                 + "<p><a id='pdf' href='/" + pdf.name + "' download>Download PDF</a></p>"
                 + "<p><a id='word' href='/" + docx.name + "' download>Download Word</a></p>"
-                + "<style>input,a{display:block;padding:12px}</style>"
-                + "<script>document.getElementById('upload').onchange=async function(){let f=this.files[0];"
+                + "<style>h1{font-size:1rem}h1,pre{overflow-wrap:anywhere}pre{white-space:pre-wrap}"
+                + "input,a{display:block;padding:12px}label{display:inline-block;padding:12px}</style>"
+                + "<script>window.fixtureClicks=Object.create(null);"
+                + "document.addEventListener('click',e=>{if(e.isTrusted&&e.target.id)"
+                + "fixtureClicks[e.target.id]={active:navigator.userActivation?.isActive===true}},true);"
+                + "document.getElementById('upload-input').onchange=async function(){let f=this.files[0];"
                 + "document.getElementById('selected').textContent=f?f.name+'\\n'+await f.text():'';}</script>";
         Uri source = publishUpload(uploadName, uploadBody);
         try (LoopbackProxy proxy = new LoopbackProxy(LoopbackProxy.Kind.HTTP, nonce, title, null,
@@ -125,19 +135,24 @@ final class FilesAndProfilesFixture {
                 CefriumBrowser browser = fixture.awaitBrowser(activity);
                 fixture.requireMockRender(browser, proxy, title);
                 recordLiveRenderer(result);
-                tap(browser, "upload");
-                selectDocument(uploadName);
+                UiAutomation automation = fixture.getUiAutomation();
+                tap(automation, browser, "upload");
+                selectDocument(automation, activity, browser, uploadName);
                 String expectedUpload = JSONObject.quote(uploadName + "\n" + uploadBody);
                 await("selected file returned to the non-default Chromium page", () -> expectedUpload.equals(
                         fixture.evaluate(browser, "document.getElementById('selected')?.textContent")));
+                require(trustedClick(browser, "upload"), "Chromium did not observe the trusted attachment click");
+                require(activatedClick(browser, "upload"), "The trusted attachment click did not activate Chromium");
                 require((proxy.origin() + "/files").equals(fixture.onMain(browser::getUrl)),
                         "Selected bytes must return to the owning Chromium page");
                 result.putBoolean("androidDocumentsPickerOpened", true);
+                result.putBoolean("trustedUploadClick", true);
+                result.putBoolean("uploadUserActivation", true);
                 result.putBoolean("selectedUploadBytesMatched", true);
                 result.putInt("fileOwnerSlot", 1);
 
-                result.putString("pdfSha256", download(browser, activity, "pdf", pdf));
-                result.putString("docxSha256", download(browser, activity, "word", docx));
+                result.putString("pdfSha256", download(automation, browser, activity, "pdf", pdf));
+                result.putString("docxSha256", download(automation, browser, activity, "word", docx));
                 require(proxy.handshakes.get() > 0 && pdf.requests.get() == 1 && docx.requests.get() == 1,
                         "Documents must use the exact isolated HTTP proxy once each");
                 proxy.validate();
@@ -150,8 +165,10 @@ final class FilesAndProfilesFixture {
         }
     }
 
-    private String download(CefriumBrowser browser, Activity activity, String element, Document file) throws Exception {
-        tap(browser, element);
+    private String download(UiAutomation automation, CefriumBrowser browser, Activity activity,
+                            String element, Document file) throws Exception {
+        tap(automation, browser, element);
+        await("trusted Chromium " + element + " click", () -> trustedClick(browser, element));
         Object store = fixture.onMain(() -> field(field(activity, "files"), "store"));
         JSONObject[] seen = {null};
         await("published " + file.name, () -> {
@@ -208,30 +225,86 @@ final class FilesAndProfilesFixture {
         }
     }
 
-    private void tap(CefriumBrowser browser, String element) throws Exception {
-        String position = fixture.evaluate(browser, "(()=>{const e=document.getElementById(" + JSONObject.quote(element)
-                + ");if(!e)return null;const r=e.getBoundingClientRect();return [r.x+r.width/2,r.y+r.height/2];})()");
-        require(position != null && position.startsWith("["), "Missing the Chromium fixture click target");
-        JSONArray point = new JSONArray(position);
-        fixture.onMain(() -> { browser.sendTap((float)point.getDouble(0), (float)point.getDouble(1)); return null; });
+    private void tap(UiAutomation automation, CefriumBrowser browser, String element) throws Exception {
+        String script = "(()=>{const e=document.getElementById(" + JSONObject.quote(element)
+                + "),v=visualViewport;if(!e||!v||!window.fixtureClicks)return null;"
+                + "const r=e.getBoundingClientRect(),x=r.x+r.width/2,y=r.y+r.height/2;"
+                + "if(!e.contains(document.elementFromPoint(x,y)))return null;"
+                + "const s=devicePixelRatio*v.scale;return [(x-v.offsetLeft)*s,(y-v.offsetTop)*s];})()";
+        float[] point = new float[2];
+        await("visible Chromium click target " + element, () -> {
+            String position = fixture.evaluate(browser, script);
+            if (position == null || !position.startsWith("[")) return false;
+            JSONArray offsets = new JSONArray(position);
+            Rect surface = fixture.onMain(() -> {
+                View view = browser.getSurfaceContainer();
+                if (view == null || !view.isShown() || !view.hasWindowFocus()) return null;
+                int[] origin = new int[2];
+                view.getLocationOnScreen(origin);
+                return new Rect(origin[0], origin[1], origin[0] + view.getWidth(), origin[1] + view.getHeight());
+            });
+            if (surface == null) return false;
+            point[0] = surface.left + (float) offsets.getDouble(0);
+            point[1] = surface.top + (float) offsets.getDouble(1);
+            return surface.contains((int) point[0], (int) point[1]);
+        });
+        long downTime = SystemClock.uptimeMillis();
+        touch(automation, MotionEvent.ACTION_DOWN, downTime, point);
+        SystemClock.sleep(45);
+        touch(automation, MotionEvent.ACTION_UP, downTime, point);
     }
 
-    private void selectDocument(String name) throws Exception {
-        UiAutomation automation = fixture.getUiAutomation();
-        boolean drawerOpened = false, downloadsChosen = false;
+    private static void touch(UiAutomation automation, int action, long downTime, float[] point) throws IOException {
+        MotionEvent event = MotionEvent.obtain(downTime, SystemClock.uptimeMillis(), action, point[0], point[1], 0);
+        try {
+            event.setSource(InputDevice.SOURCE_TOUCHSCREEN);
+            require(automation.injectInputEvent(event, true), "Android did not deliver the fixture touch action " + action);
+        } finally {
+            event.recycle();
+        }
+    }
+
+    private boolean trustedClick(CefriumBrowser browser, String element) throws Exception {
+        return "true".equals(fixture.evaluate(browser,
+                "Boolean(window.fixtureClicks?.[" + JSONObject.quote(element) + "])"));
+    }
+
+    private boolean activatedClick(CefriumBrowser browser, String element) throws Exception {
+        return "true".equals(fixture.evaluate(browser,
+                "window.fixtureClicks?.[" + JSONObject.quote(element) + "]?.active===true"));
+    }
+
+    private void selectDocument(UiAutomation automation, Activity activity, CefriumBrowser browser,
+                                String name) throws Exception {
+        boolean pickerObserved = false, drawerOpened = false, downloadsChosen = false;
+        String lastWindow = "unknown";
         long deadline = SystemClock.elapsedRealtime() + 25_000;
         while (SystemClock.elapsedRealtime() < deadline) {
             AccessibilityNodeInfo root = automation.getRootInActiveWindow();
             CharSequence owner = root == null ? null : root.getPackageName();
+            if (owner != null) lastWindow = owner.toString();
             if (owner != null && ("com.android.documentsui".contentEquals(owner)
                     || "com.google.android.documentsui".contentEquals(owner))) {
+                pickerObserved = true;
                 if (click(root, name)) return;
                 if (drawerOpened && !downloadsChosen) downloadsChosen = click(root, "Downloads");
                 if (!drawerOpened) drawerOpened = click(root, "Show roots") || click(root, "Open from");
             }
             SystemClock.sleep(200);
         }
-        throw new IOException("Android DocumentsUI did not offer the owned synthetic input");
+        if (pickerObserved) throw new IOException("Android DocumentsUI opened but did not offer the owned synthetic input"
+                + " (drawerOpened=" + drawerOpened + ", downloadsChosen=" + downloadsChosen + ")");
+        String appState = fixture.onMain(() -> {
+            Object files = field(activity, "files");
+            boolean pending = files != null && field(files, "picker") != null;
+            Object generation = files == null ? "unknown" : field(files, "pickerGeneration");
+            TextView status = (TextView) field(activity, "status");
+            return "pickerGeneration=" + generation + ", pending=" + pending + ", focused=" + activity.hasWindowFocus()
+                    + ", status=" + status.getText();
+        });
+        throw new IOException("Android DocumentsUI was not observed after the attachment action"
+                + " (trustedClick=" + trustedClick(browser, "upload") + ", userActivation="
+                + activatedClick(browser, "upload") + ", window=" + lastWindow + ", " + appState + ")");
     }
 
     private static boolean click(AccessibilityNodeInfo root, String label) {

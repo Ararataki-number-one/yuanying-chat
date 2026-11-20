@@ -59,7 +59,8 @@ def receipt(mode, flags, hashes):
     return fields
 
 
-receipt('files', dict(androidDocumentsPickerOpened='true', selectedUploadBytesMatched='true',
+receipt('files', dict(androidDocumentsPickerOpened='true', trustedUploadClick='true', uploadUserActivation='true',
+                      selectedUploadBytesMatched='true',
                       fileOwnerSlot='1', realPdfAndDocxSavedBytesMatched='true'), ('pdfSha256', 'docxSha256'))
 profiles = ('profile0Sha256', 'profile1Sha256')
 seed, read = (receipt(mode, dict(twoChromiumProfilesIsolated='true', persistentHttpOnlyCookieRead=done,
