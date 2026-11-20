@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Stage only verified signed APK chunks and public synthetic test evidence."""
-import argparse, hashlib, json, os, pathlib, re, shutil, subprocess, urllib.request
+import argparse, hashlib, json, os, pathlib, re, shutil, subprocess, sys, urllib.request
 from gecko.release_channel_contract import release_tag, requires_manual_acceptance, verify_manual_acceptance, verify_direct_release
 from gecko.network_scope_artifacts import copy_network_scope_evidence
 
@@ -288,8 +288,9 @@ stage.mkdir(parents=True)
 chromium_release_files=[]
 if chromium_release:
     sys.path.insert(0,str(root/'tools/gecko'))
-    from chromium_release_publication import RUNTIME_REPORT, SIGNED_TAIL, prepare_delivery, public_names
-    delivery=prepare_delivery(manifest,build['chromiumBuild'],args.chromium_build_commit,
+    from chromium_release_publication import RUNTIME_REPORT, SIGNED_TAIL, immutable_build_manifest, prepare_delivery, public_names
+    chromium_build=immutable_build_manifest(args.chromium_build_commit,args.source)['chromiumBuild']
+    delivery=prepare_delivery(manifest,chromium_build,args.chromium_build_commit,
                               args.evidence/RUNTIME_REPORT,args.apk,args.chromium_assets,stage,args.android_tools)
     manifest['chromiumDelivery']=delivery
     (stage/RUNTIME_REPORT).write_text(json.dumps(delivery['runtime'],indent=2)+'\n')
