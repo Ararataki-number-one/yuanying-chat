@@ -92,8 +92,29 @@ class EndpointTest(unittest.TestCase):
         self.assertEqual(receipt['status'], 'endpoint-ready')
         self.assertEqual(receipt['startupElapsedMs'], 0)
 
+    def test_initial_empty_file_can_complete_during_startup(self):
+        clock, receipt, port = Clock(), {}, PortFile(b'')
+        def advance_and_write(seconds):
+            clock.advance(seconds)
+            port.raw = b'9222\n/devtools/browser/owned-child'
+
+        endpoint = PROCESS._endpoint(PollProcess(), port, receipt, clock=clock,
+                                     sleep=advance_and_write)
+        self.assertEqual(endpoint, 'ws://127.0.0.1:9222/devtools/browser/owned-child')
+        self.assertEqual(receipt['status'], 'endpoint-ready')
+        self.assertEqual(receipt['startupElapsedMs'], 100)
+
+    def test_persistent_empty_file_is_rejected_at_the_original_deadline(self):
+        clock, receipt = Clock(), {}
+        with self.assertRaisesRegex(RuntimeError, 'invalid debugging endpoint'):
+            PROCESS._endpoint(PollProcess(), PortFile(b''), receipt, clock=clock,
+                              sleep=clock.advance)
+        self.assertEqual(clock.value, 12)
+        self.assertEqual(receipt['status'], 'invalid-endpoint')
+        self.assertEqual(receipt['portFileBytes'], 0)
+
     def test_malformed_ports_and_browser_paths_fail_closed(self):
-        for raw in (b'', b'0\n/devtools/browser/id', b'65536\n/devtools/browser/id',
+        for raw in (b'0\n/devtools/browser/id', b'65536\n/devtools/browser/id',
                     b'x\n/devtools/browser/id', b'9222', b'9222\n/devtools/page/id',
                     b'9222\n/devtools/browser/../x', b'9222\n/devtools/browser/'):
             with self.subTest(raw=raw), self.assertRaisesRegex(RuntimeError, 'invalid debugging endpoint'):

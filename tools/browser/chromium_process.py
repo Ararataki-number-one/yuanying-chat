@@ -110,6 +110,9 @@ def _endpoint(process, port_file, receipt, *, clock=time.monotonic, sleep=time.s
     try:
         while True:
             if clock() >= deadline:
+                if receipt.get('portFileBytes') == 0:
+                    receipt['status'] = 'invalid-endpoint'
+                    raise RuntimeError('Actual Chromium wrote an invalid debugging endpoint')
                 receipt['status'] = 'deadline'
                 raise RuntimeError('Actual Chromium debugging endpoint did not start within 12 seconds')
             if process.poll() is not None:
@@ -122,6 +125,10 @@ def _endpoint(process, port_file, receipt, *, clock=time.monotonic, sleep=time.s
                 if clock() >= deadline:
                     receipt['status'] = 'deadline'
                     raise RuntimeError('Actual Chromium debugging endpoint arrived after the 12-second deadline')
+                # Chromium can create DevToolsActivePort just before it writes the endpoint.
+                if not raw:
+                    sleep(min(.1, max(0, deadline-clock())))
+                    continue
                 try:
                     lines = raw.decode('utf-8').splitlines()
                 except UnicodeError:
