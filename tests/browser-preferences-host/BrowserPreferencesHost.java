@@ -182,22 +182,40 @@ public final class BrowserPreferencesHost {
       check("A VIEW intent cannot divert its environment into the private settings route",
           !BrowserSettingsUi.ownerOpening(owner,request));
       request.setAction(null);
+      owner.setIntent(request);
       owner.handleOpening(request);
       check("A cold Gecko owner opens the pinned settings natively without creating a browser",
           owner.hub!=null&&owner.browserStarts==0&&recentOwner.equals(BrowserSettingsUi.shownOwner)&&BrowserSettingsUi.fromStandalone);
       int modalOpenings=BrowserSettingsUi.modalOpenings;
       MainActivity restored=new MainActivity(6,stores);
+      restored.setIntent(request);
       restored.handleOpening(request);
       check("A restored native settings request does not replay its modal or fall back to Gecko",
           restored.hub!=null&&restored.browserStarts==0&&BrowserSettingsUi.modalOpenings==modalOpenings);
 
       BrowserPreferences.save(standalone,false,"https://example.com/default");
       BrowserPreferences.save(owner,true,"https://example.com/recent");
+      BrowserSettingsUi.openWorkspace(owner,row,()->{});
+      check("Reopening settings after dismissal keeps the standalone Chromium guard",
+          BrowserSettingsUi.fromStandalone&&recentOwner.equals(BrowserSettingsUi.shownOwner));
+      BrowserSettingsUi.openWorkspace(restored,row,()->{});
+      check("Reopening settings after Activity recreation keeps the standalone Chromium guard",
+          BrowserSettingsUi.fromStandalone&&recentOwner.equals(BrowserSettingsUi.shownOwner));
+
+      MainActivity chromiumMenu=new MainActivity(6,stores);
+      Intent menu=new Intent().putExtra("openWindowAction","settings");
+      chromiumMenu.setIntent(menu);
+      chromiumMenu.handleOpening(menu);
+      BrowserSettingsUi.openWorkspace(chromiumMenu,row,()->{});
+      check("Chromium's own settings route retains the existing engine-editing behavior",
+          chromiumMenu.hub!=null&&!BrowserSettingsUi.fromStandalone&&recentOwner.equals(BrowserSettingsUi.shownOwner));
+
       BrowserPreferences.saveHome(owner,"https://example.com/updated");
       check("A homepage-only save retains Chromium and the default environment's homepage",
           owner.store.lastKeys.equals(Collections.singleton(BrowserPreferences.KEY_HOME))&&BrowserPreferences.startBrowser(owner)
           &&BrowserPreferences.home(owner).equals("https://example.com/updated")&&BrowserPreferences.home(standalone).equals("https://example.com/default"));
 
+      modalOpenings=BrowserSettingsUi.modalOpenings;
       BrowserSettingsUi.openWorkspace(standalone,row,()->{});
       Intent stale=standalone.launched;
       ProfileCatalog.identities.put(6,new EnvironmentSpec.Identity(6,3,"replacement"));
@@ -207,6 +225,9 @@ public final class BrowserPreferencesHost {
       MainActivity replaced=new MainActivity(6,stores);replaced.handleOpening(stale);
       check("A replacement environment cannot receive a previously dispatched settings modal",
           replaced.browserStarts==0&&BrowserSettingsUi.modalOpenings==modalOpenings&&replaced.lastMessage!=null);
+      BrowserSettingsUi.openWorkspace(restored,BrowserSettingsUi.workspaceIdentity(restored),()->{});
+      check("A retained standalone intent cannot retarget its reopened editor to a replacement environment",
+          BrowserSettingsUi.modalOpenings==modalOpenings&&restored.lastMessage!=null);
 
       BrowserSettingsUi.openWorkspace(standalone,defaultOwner,()->{});
       check("The matching slot-zero settings entry still opens its local editor directly",

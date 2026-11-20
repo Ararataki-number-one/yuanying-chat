@@ -27,7 +27,13 @@ final class BrowserSettingsUi {
 
   static void openWorkspace(Activity activity,EnvironmentSpec.Identity expected,Runnable refresh){
     if(activity.isFinishing()||activity.isDestroyed())return;
-    if(expected!=null&&expected.slot==Profiles.slot(activity)){show(activity,expected,refresh,false);return;}
+    if(expected!=null&&expected.slot==Profiles.slot(activity)){
+      Intent origin=activity.getIntent();
+      boolean fromStandalone=ownerOpening(activity,origin);
+      if(fromStandalone&&!expected.equals(ownerIdentity(activity,origin))){unavailable(activity);return;}
+      show(activity,expected,refresh,fromStandalone);
+      return;
+    }
     if(!current(activity,expected)){unavailable(activity);return;}
     activity.startActivity(ownerIntent(activity,expected));
   }
