@@ -38,7 +38,10 @@ final class LoopbackProxy implements AutoCloseable {
         Kind(String scheme) { this.scheme = scheme; }
     }
 
+    interface Response { boolean serve(String request, String cookies, OutputStream output) throws IOException; }
+
     private final Kind kind;
+    private final Response response;
     private final String host;
     private final String nonce;
     private final String title;
@@ -57,7 +60,13 @@ final class LoopbackProxy implements AutoCloseable {
     final AtomicInteger heldConnectionsClosed = new AtomicInteger();
 
     LoopbackProxy(Kind kind, String nonce, String title, SSLContext tls) throws IOException {
+        this(kind, nonce, title, tls, null);
+    }
+
+    LoopbackProxy(Kind kind, String nonce, String title, SSLContext tls, Response response) throws IOException {
+        if (response != null && kind != Kind.HTTP) throw new IOException("Only the confined HTTP fixture supplies extra pages");
         this.kind = kind;
+        this.response = response;
         this.nonce = nonce;
         this.title = title;
         host = "pocketchat-" + kind.scheme + "-" + nonce + ".invalid";
@@ -132,6 +141,7 @@ final class LoopbackProxy implements AutoCloseable {
             if (!authority.equals(headers.host) || headers.proxyAuthorization) {
                 throw new IOException("Upstream HTTP request used a different authority or leaked proxy credentials");
             }
+            if (response != null && response.serve(request, headers.cookies, output)) return;
             if (("GET /page-" + nonce + " HTTP/1.1").equals(request)) {
                 pages.incrementAndGet();
                 page(output);
@@ -218,6 +228,9 @@ final class LoopbackProxy implements AutoCloseable {
                 result.host = text.substring(colon + 1).trim();
             } else if ("proxy-authorization".equals(name)) {
                 result.proxyAuthorization = true;
+            } else if ("cookie".equals(name)) {
+                if (!result.cookies.isEmpty()) result.cookies += "; ";
+                result.cookies += text.substring(colon + 1).trim();
             }
         }
         return result;
@@ -287,6 +300,7 @@ final class LoopbackProxy implements AutoCloseable {
 
     private static final class Headers {
         String host;
+        String cookies = "";
         boolean proxyAuthorization;
     }
 

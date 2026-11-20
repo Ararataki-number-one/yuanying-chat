@@ -43,3 +43,18 @@ The VPN lane reuses the app's existing non-forwarding TUN fixture. It matches a 
 The built-in route lane starts the app's existing authenticated entry and fixed exit on its real local core. The integration-only fixed-exit mock maps one nonce-bound reserved origin and port to an owned loopback HTTP server. The active native core, generation, route serial, installed core checksum, authenticated circuit counters and observed DOM must agree. The test stops the core while an upstream socket is open, confirms socket and browser closure, and denies late navigation. The hook never changes production destination rules.
 
 Public server traffic, physical devices, application-level module download, Android installer confirmation, and original release-signer verification require their own evidence.
+
+## Files and profile state
+
+Use a fresh English-language disposable emulator and the same integration base, Chromium split and signed fixture as above. After installing them and disabling System WebView, pass the matching receipt inputs and a fresh 32-character lowercase hexadecimal nonce. `TEST_ADB_PORT` can select an existing dedicated ADB server. The runner requires an explicitly selected emulator serial and saves all three Android transcripts.
+
+```sh
+TEST_SERIAL="$TEST_SERIAL" SOURCE_COMMIT="$SOURCE_COMMIT" SOURCE_TREE="$SOURCE_TREE" \
+  NONCE="$NONCE" BASE_SHA="$BASE_SHA" FEATURE_SHA="$FEATURE_SHA" \
+  bash tests/chromium-route-fixture/run-files-profiles.sh "$OUTPUT/chromium-files-profiles"
+```
+
+- The files check opens a non-default environment through the real app entry point. A Chromium tap opens Android DocumentsUI and selects synthetic text from Android Downloads. The originating page must read the exact name and contents. Chromium then downloads a generated PDF and a Word OOXML document. The app's saved-file index and Android content URI must identify the correct owner, name, MIME type and exact source bytes.
+- The profile check writes distinct persistent HTTP-only cookies and local storage values at a single reserved origin in two environments. It confirms clean storage before seeding. The runner force-stops the app, checks that a new Chromium host process opens the same two native profiles, and requires each request's cookie and the page's storage value to match its original environment.
+
+All content is owned by the fixture at a reserved `.invalid` origin behind the loopback proxy. These checks cover the Android file selection handoff and same-install process restart. A real account, a public-site upload, physical devices and replacement by a newer APK require separate validation.

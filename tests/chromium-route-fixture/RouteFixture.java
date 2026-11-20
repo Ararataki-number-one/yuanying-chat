@@ -124,6 +124,9 @@ public final class RouteFixture extends Instrumentation {
                 } else if ("internal".equals(fixtureMode)) {
                     result.putString("scope", "integration-clean-source-android-internal");
                     exerciseInternal(target, result, nonce);
+                } else if (FilesAndProfilesFixture.supports(fixtureMode)) {
+                    result.putString("scope", "integration-clean-source-synthetic-chromium-files-and-profiles");
+                    new FilesAndProfilesFixture(this, target, nonce).exercise(fixtureMode, result);
                 } else {
                     throw new IllegalArgumentException("An explicit integration fixture mode is required");
                 }
@@ -631,7 +634,7 @@ public final class RouteFixture extends Instrumentation {
         }
     }
 
-    private void selectEnvironment(Context environment, String proxy, boolean requireVpn, String url)
+    void selectEnvironment(Context environment, String proxy, boolean requireVpn, String url)
             throws Exception {
         SharedPreferences preferences = environment.getSharedPreferences("chat", Context.MODE_PRIVATE);
         require(preferences.edit().putBoolean("networkConfigured", true).putString("networkMode", "external")
@@ -662,10 +665,16 @@ public final class RouteFixture extends Instrumentation {
     }
 
     private Activity launchNormalEntry(Context target, String url) throws Exception {
+        return launchEnvironment(target, url, 0);
+    }
+
+    Activity launchEnvironment(Context target, String url, int slot) throws Exception {
+        Class<?> profiles = target.getClassLoader().loadClass(PACKAGE + ".Profiles");
+        String entry = slot == 0 ? ENTRY : ((Class<?>)invoke(profiles, null, "activity", new Class<?>[]{int.class}, slot)).getName();
         ActivityMonitor monitor = addMonitor(CHROMIUM, null, false);
         try {
             onMain(() -> {
-                target.startActivity(new Intent().setClassName(target.getPackageName(), ENTRY)
+                target.startActivity(new Intent().setClassName(target.getPackageName(), entry)
                         .putExtra("url", url).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
                 return null;
             });
@@ -677,7 +686,7 @@ public final class RouteFixture extends Instrumentation {
         }
     }
 
-    private CefriumBrowser awaitBrowser(Activity activity) throws Exception {
+    CefriumBrowser awaitBrowser(Activity activity) throws Exception {
         long cutoff = SystemClock.elapsedRealtime() + 70_000;
         while (SystemClock.elapsedRealtime() < cutoff) {
             CefriumBrowser browser = onMain(() -> (CefriumBrowser)field(activity, "browser"));
@@ -688,7 +697,7 @@ public final class RouteFixture extends Instrumentation {
         throw new IllegalStateException("Native Chromium browser was not created. Activity status: " + status);
     }
 
-    private void requireMockRender(CefriumBrowser browser, LoopbackProxy mock, String title) throws Exception {
+    void requireMockRender(CefriumBrowser browser, LoopbackProxy mock, String title) throws Exception {
         awaitRenderedTitle(browser, title);
         String dom = "document.getElementById('proof')?.textContent===" + JSONObject.quote(title)
                 + "&&location.origin===" + JSONObject.quote(mock.origin());
@@ -703,7 +712,7 @@ public final class RouteFixture extends Instrumentation {
         mock.awaitHeld();
     }
 
-    private void awaitRenderedTitle(CefriumBrowser browser, String title) throws Exception {
+    void awaitRenderedTitle(CefriumBrowser browser, String title) throws Exception {
         long cutoff = SystemClock.elapsedRealtime() + 90_000;
         while (SystemClock.elapsedRealtime() < cutoff) {
             if (("\"" + title + "\"").equals(evaluate(browser, "document.title"))) return;
@@ -712,7 +721,7 @@ public final class RouteFixture extends Instrumentation {
         throw new IllegalStateException("Controlled local page did not render");
     }
 
-    private String evaluate(CefriumBrowser browser, String script) throws Exception {
+    String evaluate(CefriumBrowser browser, String script) throws Exception {
         AtomicReference<String> value = new AtomicReference<>();
         CountDownLatch callback = new CountDownLatch(1);
         onMain(() -> {
@@ -754,7 +763,7 @@ public final class RouteFixture extends Instrumentation {
         }
     }
 
-    private static String readBounded(InputStream input, int limit) throws Exception {
+    static String readBounded(InputStream input, int limit) throws Exception {
         ByteArrayOutputStream bytes = new ByteArrayOutputStream();
         byte[] buffer = new byte[4096];
         for (int length; (length = input.read(buffer)) != -1; ) {
@@ -771,19 +780,19 @@ public final class RouteFixture extends Instrumentation {
         return capabilities != null && capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET);
     }
 
-    private <T> T onMain(Callable<T> action) throws Exception {
+    <T> T onMain(Callable<T> action) throws Exception {
         FutureTask<T> operation = new FutureTask<>(action);
         runOnMainSync(operation);
         return operation.get();
     }
 
-    private static Object field(Object owner, String name) throws Exception {
+    static Object field(Object owner, String name) throws Exception {
         Field field = owner.getClass().getDeclaredField(name);
         field.setAccessible(true);
         return field.get(owner);
     }
 
-    private static Object invoke(Class<?> owner, Object target, String name, Class<?>[] params, Object... args)
+    static Object invoke(Class<?> owner, Object target, String name, Class<?>[] params, Object... args)
             throws Exception {
         Method method = owner.getDeclaredMethod(name, params);
         method.setAccessible(true);
@@ -801,7 +810,7 @@ public final class RouteFixture extends Instrumentation {
         return hex.toString();
     }
 
-    private static void require(boolean valid, String message) {
+    static void require(boolean valid, String message) {
         if (!valid) throw new IllegalStateException(message);
     }
 }
