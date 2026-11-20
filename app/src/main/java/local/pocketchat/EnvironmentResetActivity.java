@@ -51,6 +51,7 @@ public final class EnvironmentResetActivity extends ThemedActivity {
       });
     }
     verifyRoots(c,slot);catalog.withReset(plan.next,()->null);
+    DownloadLibrary.get(c).migrateBeforeRemoval(slot);
     ChromiumProfileCleanup.clearRetired(c,plan.before.identity);
     EnvironmentBrowserData.clear(profile.getNoBackupFilesDir(),profile.getCacheDir());
     EnvironmentBrowserData.clearChromium(new File(Profiles.global(c).getApplicationInfo().dataDir),slot);
@@ -66,7 +67,7 @@ public final class EnvironmentResetActivity extends ThemedActivity {
     for(String key:new String[]{"pending","legacyPending","sentAttachments","conversation","url","transcript","lastCompletedId","lastNotifiedId","lastReplyNotifiedId","draft","nativeDraft","webDraft"})preferences.remove(key);
     for(String key:profile.getSharedPreferences("chat",0).getAll().keySet())if(key.startsWith("draftBackup:"))preferences.remove(key);
     if(!preferences.commit()||!profile.getSharedPreferences("environment-audit",0).edit().clear().commit())throw new IOException("本地网页记录尚未清理");
-    DownloadLibrary.get(c).migrate();DownloadLibrary.get(c).removeEnvironmentTasks(slot);
+    DownloadLibrary.get(c).removeEnvironmentTasks(slot);
     if(!profile.getSharedPreferences("download-tasks",0).edit().clear().commit())throw new IOException("文件任务尚未清理");
     NotificationManager notices=c.getSystemService(NotificationManager.class);for(int id=4101;id<=4105;id++)notices.cancel(Profiles.notification(profile,id));
     repository.finishLoginReset(plan);

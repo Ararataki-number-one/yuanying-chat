@@ -47,7 +47,7 @@ class EnvironmentDeleteRootGuardTest(unittest.TestCase):
         self.assertTrue(first_statement.startswith("EnvironmentResetActivity.verifyRoots(c,slot);"))
         first_guard = body.index("EnvironmentResetActivity.verifyRoots(c,slot);")
         for side_effect in ["ProfileCatalog.get(c)", "Profiles.context(c,slot)",
-                "DownloadLibrary.get(c).migrate()", "new NetworkCatalog(c)",
+                "DownloadLibrary.get(c).migrateBeforeRemoval(slot)", "new NetworkCatalog(c)",
                 '"stopForDelete"']:
             self.assertLess(first_guard, body.index(side_effect), side_effect)
 
@@ -61,11 +61,13 @@ class EnvironmentDeleteRootGuardTest(unittest.TestCase):
         self.assertLess(body.index('"stopForDelete"'), second)
         self.assertLess(body.index("android.os.Process.killProcess(p.pid)"), second)
         self.assertLess(body.index("Thread.sleep(100);}while(true);"), second)
+        migration = body.index("DownloadLibrary.get(c).migrateBeforeRemoval(slot)")
+        self.assertLess(second, migration)
         for destructive_step in ["NotificationManager notices=", "files.listFiles()",
                 'erase(new File(data,"cache/profiles/env"+slot))',
                 'erase(new File(profile.getNoBackupFilesDir(),name))',
                 'profile.deleteDatabase(name)', "catalog.completeDelete(expected)"]:
-            self.assertLess(second, body.index(destructive_step), destructive_step)
+            self.assertLess(migration, body.index(destructive_step), destructive_step)
 
 
 if __name__ == "__main__":

@@ -32,7 +32,7 @@ public final class EnvironmentDeleteActivity extends ThemedActivity {
   private static void performRemove(Context c,int slot,EnvironmentSpec.Identity expected)throws Exception{
     EnvironmentResetActivity.verifyRoots(c,slot);
     ProfileCatalog catalog=ProfileCatalog.get(c);requireCurrent(catalog,expected);
-    Context profile=Profiles.context(c,slot);DownloadLibrary.get(c).migrate();NetworkCatalog library=new NetworkCatalog(c);library.save();
+    Context profile=Profiles.context(c,slot);NetworkCatalog library=new NetworkCatalog(c);library.save();
     // A subscription may be cached only in the environment being removed. Keep
     // the user-owned shared subscription library available to all remaining environments.
     for(String role:new String[]{NetworkCatalog.ENTRY,NetworkCatalog.EXIT})for(int i=0;i<library.subscriptions(role).length();i++){JSONObject sub=library.subscriptions(role).optJSONObject(i);if(sub.optInt("owner",-1)==slot&&sub.optString("cacheSlot").isEmpty()){byte[] bytes=library.cache(sub);if(bytes!=null){NetworkCatalog.RefreshToken token=library.beginRefresh(role,sub.optString("id"));JSONObject current=library.subscription(role,sub.optString("id"));if(!token.url.equals(sub.optString("url"))||token.addressRevision!=sub.optLong("addressRevision")||current.optLong("revision")!=sub.optLong("revision")+1||!current.optString("cacheSlot").isEmpty()){library.failed(token,"订阅已更新，请重试删除环境",System.currentTimeMillis());throw new IOException("订阅缓存正在变化");}library.parsed(token,sub.optJSONArray("nodes"),sub.optJSONArray("nodeDetails"),bytes,sub.optLong("updatedAt"));}}}
@@ -42,6 +42,7 @@ public final class EnvironmentDeleteActivity extends ThemedActivity {
     do{boolean alive=false;List<ActivityManager.RunningAppProcessInfo> all=manager.getRunningAppProcesses();if(all!=null)for(ActivityManager.RunningAppProcessInfo p:all)if(p.uid==android.os.Process.myUid()&&(p.processName.equals(owner)||p.processName.startsWith(children))){if(p.pid==android.os.Process.myPid())throw new IOException();android.os.Process.killProcess(p.pid);alive=true;}if(!alive)break;if(SystemClock.elapsedRealtime()>deadline)throw new IOException();Thread.sleep(100);}while(true);
     EnvironmentResetActivity.verifyRoots(c,slot);
     requireCurrent(catalog,expected);
+    DownloadLibrary.get(c).migrateBeforeRemoval(slot);
     ChromiumProfileCleanup.clearRetired(c,ChromiumProfileCleanup.previous(expected));
     NotificationManager notices=c.getSystemService(NotificationManager.class);for(int id=4101;id<=4105;id++)notices.cancel(Profiles.notification(profile,id));
     File data=new File(Profiles.global(c).getApplicationInfo().dataDir);
