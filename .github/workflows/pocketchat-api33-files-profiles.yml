@@ -1,0 +1,233 @@
+name: PocketChat focused Android 13 files and profiles
+'on':
+  push:
+    branches: [acceptance/pocketchat-214-native-files-20261120]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  files-and-profiles:
+    if: ${{ github.repository == 'Ararataki-number-one/yuanying-chat' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    env:
+      RELEASE_SOURCE: f23269faec5d137ac1f388cbb520693993f29281
+      RELEASE_TREE: 80bd250971f90215359ab68db3fa345778848cf7
+      SDK_DONOR_SOURCE: d67420423f38180aa0738ac42f58b7c37ebfb062
+      SDK_DONOR_RUN: '44678993677'
+      SDK_DONOR_ATTEMPT: '1'
+      PYTHONDONTWRITEBYTECODE: '1'
+    steps:
+    - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      with:
+        ref: ${{ env.RELEASE_SOURCE }}
+        persist-credentials: false
+    - name: Check exact clean application and fixture source
+      shell: bash
+      run: |
+        set -euo pipefail
+        test "$(git rev-parse HEAD)" = "$RELEASE_SOURCE"
+        test "$(git rev-parse 'HEAD^{tree}')" = "$RELEASE_TREE"
+        test -z "$(git status --porcelain)"
+    - name: Read previously verified upstream Gecko SDK artifact
+      uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0
+      with:
+        name: browser-${{ env.SDK_DONOR_RUN }}-${{ env.SDK_DONOR_ATTEMPT }}-official-sdk
+        path: work/gecko-integration
+        repository: ${{ github.repository }}
+        run-id: ${{ env.SDK_DONOR_RUN }}
+        github-token: ${{ github.token }}
+    - name: Prepare pinned Gradle, split tooling and API 33 KVM runner
+      shell: bash
+      run: |
+        set -euo pipefail
+        test -n "${JAVA_HOME_25_X64:-}" && test -n "${JAVA_HOME_17_X64:-}"
+        test -c /dev/kvm
+        echo "JAVA_HOME=$JAVA_HOME_25_X64" >> "$GITHUB_ENV"
+        echo "$JAVA_HOME_25_X64/bin" >> "$GITHUB_PATH"
+        echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
+        work="$PWD/work/chromium-delivery"
+        mkdir -p "$work" work/gecko-integration/gradle
+        if ! curl -fsSL --retry 3 https://services.gradle.org/distributions/gradle-9.8.0-bin.zip -o "$work/gradle.zip"; then
+          curl -fLsS --retry 2 --max-time 240 -H 'Accept: application/octet-stream' -H 'X-GitHub-Api-Version: 2022-11-28' https://api.github.com/repos/gradle/gradle-distributions/releases/assets/586068844 -o "$work/gradle.zip"
+        fi
+        echo "bafd5ce9cfaea0fbccfdc8439a1ac42fbd4cd9c89dc9a988228d8a2639a58e6c  $work/gradle.zip" | sha256sum -c -
+        unzip -q "$work/gradle.zip" -d "$work"
+        ln -s "$work/gradle-9.8.0" work/gecko-integration/gradle/gradle-9.8.0
+        curl -fsSL --retry 3 https://github.com/google/bundletool/releases/download/1.18.3/bundletool-all-1.18.3.jar -o "$work/bundletool.jar"
+        echo "a099cfa1543f55593bc2ed16a70a7c67fe54b1747bb7301f37fdfd6d91028e29  $work/bundletool.jar" | sha256sum -c -
+        python3 gradle/prepare-cefrium-sdk.py
+        sdkmanager="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+        yes | "$sdkmanager" --licenses >/dev/null || true
+        python3 tools/gecko/prepare_chromium_emulator.py --sdk-root "$ANDROID_HOME" --cache "$work/packages" --report "$work/emulator-package.json"
+        "$sdkmanager" --channel=0 'platforms;android-37.1' 'build-tools;37.0.0' 'system-images;android-33;google_apis;x86_64'
+        if ! ldconfig -p | grep -F 'libpulse.so.0 ' >/dev/null; then
+          sudo apt-get update -o Acquire::Retries=3
+          sudo apt-get install -y --no-install-recommends -o Acquire::Retries=3 libpulse0
+        fi
+        "$ANDROID_HOME/emulator/emulator" -version | tee "$work/emulator-version.txt"
+        grep -Fq 'Android emulator version 37.2.13.0 (build_id 16740729)' "$work/emulator-version.txt"
+        cp "$ANDROID_HOME/system-images/android-33/google_apis/x86_64/source.properties" "$work/android13-image.properties"
+    - name: Reverify upstream SDK inputs and derive current-source receipt
+      shell: bash
+      run: |
+        set -euo pipefail
+        work="$PWD/work/gecko-integration"
+        python3 - <<'PYCODE'
+        import json, os
+        from pathlib import Path
+        donor = json.loads(Path('work/gecko-integration/official-sdk-verification.json').read_bytes())
+        if donor.get('status') != 'passed' or donor.get('sourceCommit') != os.environ['SDK_DONOR_SOURCE']:
+            raise SystemExit('Unexpected upstream SDK donor identity')
+        PYCODE
+        python3 tools/gecko/verify_official_sdk.py --aar "$work/geckoview.aar" --pom "$work/geckoview.pom" --sources "$work/geckoview-sources.jar" --upstream-only | tee "$work/official-sdk-current-verification.json"
+        JAVA_HOME="$JAVA_HOME_17_X64" python3 tools/gecko/caret_workflow.py prepare --work "$work"
+        python3 - <<'PYCODE'
+        import json, os, sys
+        from pathlib import Path
+        sys.path.insert(0, 'tools/gecko')
+        from sdk_identity_contract import file_digest, selected_manifest, validate_receipt
+        source, tree = (os.environ[key] for key in ('RELEASE_SOURCE', 'RELEASE_TREE'))
+        sdk = Path('work/native-caret-sdk')
+        raw = (sdk / 'sdk-build-receipt.json').read_bytes()
+        manifest, manifest_sha = selected_manifest(source)
+        receipt = validate_receipt(raw, manifest, manifest_sha, source, tree)
+        group, artifact, version = manifest['sdkRuntimeCoordinate'].split(':')
+        aar = sdk / 'maven' / group.replace('.', '/') / artifact / version / f'{artifact}-{version}.aar'
+        if ((receipt['runId'], receipt['runAttempt']) != (os.environ['GITHUB_RUN_ID'], os.environ['GITHUB_RUN_ATTEMPT'])
+                or raw != (sdk / 'assets/pocketchat-sdk-build-receipt.json').read_bytes()
+                or file_digest(aar) != manifest['sdkAarSha256']):
+            raise SystemExit('Derived Gecko SDK does not bind the exact focused run')
+        identity = dict(sourceCommit=source, sourceTree=tree, runId=receipt['runId'],
+                        runAttempt=receipt['runAttempt'], sdkDonorRunId=os.environ['SDK_DONOR_RUN'],
+                        sdkDonorRunAttempt=os.environ['SDK_DONOR_ATTEMPT'], diagnosticOnly=True,
+                        releaseQualification=False)
+        Path('work/chromium-delivery/focused-source.json').write_text(json.dumps(identity, indent=2) + '\n')
+        PYCODE
+    - name: Build integration pair and execute real file picker and profiles on fresh Android 13
+      shell: bash
+      run: |
+        set -euo pipefail
+        work="$PWD/work/chromium-delivery"
+        tools="$ANDROID_HOME/build-tools/37.0.0"
+        adb_bin="$ANDROID_HOME/platform-tools/adb"
+        serial=emulator-5554
+        adb_device=("$adb_bin" -s "$serial")
+        export ANDROID_AVD_HOME="$work/android13-avd" ANDROID_USER_HOME="$work/android13-user" ANDROID_EMULATOR_HOME="$work/android13-emulator-home"
+        mkdir -p "$ANDROID_AVD_HOME" "$ANDROID_USER_HOME" "$ANDROID_EMULATOR_HOME"
+        test "$(git rev-parse HEAD)" = "$RELEASE_SOURCE"
+        test "$(git rev-parse 'HEAD^{tree}')" = "$RELEASE_TREE"
+        test -z "$(git status --porcelain)"
+        if [[ ! -w /dev/kvm ]]; then sudo chmod a+rw /dev/kvm; fi
+        if "$adb_bin" devices | grep -Eq "^$serial[[:space:]]"; then
+          echo 'Port 5554 already has a device. This fixture requires its own guest.' >&2
+          exit 1
+        fi
+        echo no | "$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager" create avd --force -n pocketchatfiles -p "$ANDROID_AVD_HOME/pocketchatfiles.avd" -k 'system-images;android-33;google_apis;x86_64'
+        "$ANDROID_HOME/emulator/emulator" -avd pocketchatfiles -no-window -no-audio -no-snapshot -no-boot-anim -no-metrics -accel on -port 5554 -gpu swiftshader -memory 4096 -cores 4 > "$work/android13-emulator.log" 2>&1 &
+        emulator_pid=$!
+        cleanup() {
+          local result=$?
+          trap - EXIT
+          set +e
+          if (( result != 0 )); then
+            timeout 12 "${adb_device[@]}" shell dumpsys activity activities > "$work/android13-failure-activities.txt" 2>&1
+            timeout 12 "${adb_device[@]}" logcat -d -b crash -t 800 > "$work/android13-crash.log" 2>&1
+          fi
+          timeout 12 "${adb_device[@]}" emu kill >/dev/null 2>&1 || kill "$emulator_pid" 2>/dev/null
+          wait "$emulator_pid"
+          if [[ -n "${live_log_pid:-}" ]]; then kill "$live_log_pid" 2>/dev/null; wait "$live_log_pid"; fi
+          exit "$result"
+        }
+        trap cleanup EXIT
+
+        key_dir=$(mktemp -d "$RUNNER_TEMP/pocketchat-files-signing-XXXXXX")
+        key="$key_dir/synthetic-test.p12"
+        keytool -genkeypair -keystore "$key" -alias androiddebugkey -storetype PKCS12 -storepass android -keypass android -dname CN=SyntheticPocketChatFiles -keyalg RSA -validity 2
+        "$work/gradle-9.8.0/bin/gradle" :app:bundleIntegration -PpocketChatChromiumBundle=true -PpocketChatChromiumAbi=x86_64 -PtestSigningKey="$key" --no-daemon --max-workers=2 --console=plain 2>&1 | tee "$work/integration-build.log"
+        printf '%s\n' '{"sdkVersion":26,"supportedAbis":["x86_64"],"screenDensity":320,"supportedLocales":["en"]}' > "$work/device.json"
+        bundle=app/build/outputs/bundle/integration/app-integration.aab
+        java -Xmx1g -jar "$work/bundletool.jar" build-apks --aapt2="$tools/aapt2" --bundle="$bundle" --output="$work/integration.apks" --device-spec="$work/device.json" --max-threads=1 --ks="$key" --ks-key-alias=androiddebugkey --ks-pass=pass:android --key-pass=pass:android
+        java -Xmx512m -jar "$work/bundletool.jar" extract-apks --apks="$work/integration.apks" --output-dir="$work/integration" --device-spec="$work/device.json" --modules=base,chromium
+        base="$work/integration/base-master.apk"
+        feature="$work/integration/chromium-master.apk"
+        fixture="$work/integration-fixture.apk"
+        cef_sdk=work/chromium-sdk/maven/com/cefrium/cefrium-sdk-core/0.21.0/cefrium-sdk-core-0.21.0.aar
+        bash tests/chromium-route-fixture/build-fixture.sh "$cef_sdk" "$work/integration-fixture-unsigned.apk" local.pocketchat.test
+        "$tools/apksigner" sign --ks "$key" --ks-key-alias androiddebugkey --ks-pass pass:android --key-pass pass:android --out "$fixture" "$work/integration-fixture-unsigned.apk"
+        rm -- "$key"
+        signer_digest() {
+          "$tools/apksigner" verify --print-certs "$1" | sed -nE 's/^.*certificate SHA-256 digest: ([a-f0-9]{64})$/\1/p' | sort -u
+        }
+        signer=$(signer_digest "$base")
+        [[ "$signer" =~ ^[a-f0-9]{64}$ && "$signer" != f0afa2ef2b9ac68020b374276318b12d2bb4de65d2a3b788194de551356b9434 ]]
+        test "$(signer_digest "$feature")" = "$signer"
+        test "$(signer_digest "$fixture")" = "$signer"
+        sha256sum "$bundle" "$base" "$feature" "$fixture" > "$work/test-build-sha256.txt"
+
+        timeout 180 "${adb_device[@]}" wait-for-device
+        timeout 180 bash -c 'until [ "$("$1" -s "$2" shell getprop sys.boot_completed | tr -d "\r")" = 1 ] && "$1" -s "$2" shell pm path android | grep -q "^package:"; do sleep 2; done' _ "$adb_bin" "$serial"
+        test "$("${adb_device[@]}" shell getprop ro.kernel.qemu | tr -d '\r')" = 1
+        test "$("${adb_device[@]}" shell getprop ro.build.version.sdk | tr -d '\r')" = 33
+
+        timeout 90 bash -c '
+          set -euo pipefail
+          adb=("$1" -s "$2")
+          state="$3"
+          stable=0
+          while true; do
+            changed=0
+            for provider in com.android.webview com.google.android.webview com.android.chrome; do
+              if "${adb[@]}" shell pm list packages -e --user 0 "$provider" | tr -d "\r" | grep -Fx "package:$provider" >/dev/null; then
+                "${adb[@]}" shell pm disable-user --user 0 "$provider"
+                changed=1
+              fi
+            done
+            "${adb[@]}" shell dumpsys webviewupdate > "$state"
+            if (( changed == 0 )) && grep -Eiq "Current WebView package.*(null|none)" "$state"; then
+              stable=$((stable + 1))
+              if (( stable == 2 )); then exit 0; fi
+            else
+              stable=0
+            fi
+            sleep 2
+          done
+        ' _ "$adb_bin" "$serial" "$work/android13-webview.txt"
+
+        "${adb_device[@]}" shell cmd connectivity airplane-mode disable
+        "${adb_device[@]}" shell svc wifi enable
+        "${adb_device[@]}" shell svc data enable
+        timeout 90 bash -c 'until "$1" -s "$2" shell dumpsys connectivity | grep -Eq "^ *Active default network: *[0-9]+"; do sleep 2; done' _ "$adb_bin" "$serial"
+        "${adb_device[@]}" install-multiple -t "$base" "$feature"
+        "${adb_device[@]}" install -t "$fixture"
+        timeout 1300 "${adb_device[@]}" logcat -b main -b system -v threadtime -T 1 \
+          ActivityTaskManager:I ActivityManager:I AndroidRuntime:V DocumentsUI:V \
+          chromium:V Cefrium:V PocketChatCefriumRouteFixture:V '*:S' > "$work/android13-native-live.log" 2>&1 &
+        live_log_pid=$!
+        TEST_SERIAL="$serial" SOURCE_COMMIT="$RELEASE_SOURCE" SOURCE_TREE="$RELEASE_TREE" \
+          NONCE="$(openssl rand -hex 16)" BASE_SHA="$(sha256sum "$base" | cut -d ' ' -f 1)" \
+          FEATURE_SHA="$(sha256sum "$feature" | cut -d ' ' -f 1)" \
+          bash tests/chromium-route-fixture/run-files-profiles.sh "$work/files-profiles"
+    - name: Preserve scoped Android diagnostic receipts and logs
+      if: always()
+      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+      with:
+        name: diagnostic-api33-files-profiles-${{ github.run_id }}-${{ github.run_attempt }}
+        path: |
+          work/gecko-integration/official-sdk-current-verification.json
+          work/native-caret-sdk/sdk-build-receipt.json
+          work/chromium-delivery/focused-source.json
+          work/chromium-delivery/emulator-package.json
+          work/chromium-delivery/emulator-version.txt
+          work/chromium-delivery/android13-image.properties
+          work/chromium-delivery/android13-emulator.log
+          work/chromium-delivery/android13-webview.txt
+          work/chromium-delivery/android13-native-live.log
+          work/chromium-delivery/android13-failure-activities.txt
+          work/chromium-delivery/android13-crash.log
+          work/chromium-delivery/integration-build.log
+          work/chromium-delivery/test-build-sha256.txt
+          work/chromium-delivery/files-profiles/*.txt
+        if-no-files-found: warn
+        retention-days: 7
+        compression-level: 0
