@@ -22,7 +22,7 @@ final class ProfileCatalog extends SQLiteOpenHelper {
   static String displayName(Map<Integer,String> names,int slot){String value=names.get(slot);return value==null?(slot==0?"默认环境":"环境 "+(slot+1)):value;}
   String name(int slot){return item(slot).optString("name",slot==0?"默认环境":"环境 "+(slot+1));}
   void rename(int slot,String name){String text=name.trim();if(text.isEmpty()||text.length()>24)return;ContentValues v=new ContentValues();v.put("name",text);getWritableDatabase().update("environments",v,"slot=?",new String[]{String.valueOf(slot)});DownloadLibrary.changed(root);}
-  void details(int slot,String group,String notes){ContentValues v=new ContentValues();v.put("group_name",group.trim());v.put("notes",notes.trim());getWritableDatabase().update("environments",v,"slot=?",new String[]{String.valueOf(slot)});}
+  boolean details(int slot,String group,String notes){ContentValues v=new ContentValues();v.put("group_name",group.trim());v.put("notes",notes.trim());return getWritableDatabase().update("environments",v,"slot=?",new String[]{String.valueOf(slot)})==1;}
   void browserDisplay(int slot,boolean desktop){ContentValues v=new ContentValues();v.put("desktop",desktop?1:0);getWritableDatabase().update("environments",v,"slot=?",new String[]{String.valueOf(slot)});}
   void created(int slot){
     SQLiteDatabase db=getWritableDatabase();db.beginTransaction();try{
@@ -52,11 +52,45 @@ final class ProfileCatalog extends SQLiteOpenHelper {
   }
   /** Reserve an unused slot while its fresh, non-login configuration is written. */
   <T>T createNew(int slot,IdentityAction<T> action)throws Exception{
-    SQLiteDatabase db=getWritableDatabase();db.beginTransaction();try{
-      JSONObject current=item(slot);if(current.length()==0||current.optBoolean("created")||current.optBoolean("deleting")||current.optBoolean("resetting"))throw new java.io.IOException("目标槽位已变化，请重新复制");
-      ContentValues values=new ContentValues();values.put("created",1);values.put("environment_id",UUID.randomUUID().toString());db.update("environments",values,"slot=?",new String[]{String.valueOf(slot)});
-      T result=action.run();db.setTransactionSuccessful();return result;
-    }finally{db.endTransaction();DownloadLibrary.changed(root);}
+    return createNew(slot,-1,action);
+  }
+  <T>T createNew(int slot,int generation,IdentityAction<T> action)throws Exception{
+    SQLiteDatabase db=getWritableDatabase();
+    db.beginTransaction();
+    try{
+      JSONObject current=item(slot);
+      if(current.length()==0||current.optBoolean("created")||current.optBoolean("deleting")||current.optBoolean("resetting")
+          ||(generation>=0&&current.optInt("generation",-1)!=generation)){
+        throw new java.io.IOException("目标槽位已变化，请重新选择");
+      }
+      ContentValues values=new ContentValues();
+      values.put("created",1);
+      values.put("environment_id",UUID.randomUUID().toString());
+      if(db.update("environments",values,"slot=?",new String[]{String.valueOf(slot)})!=1){
+        throw new java.io.IOException("无法保留新环境槽位");
+      }
+      T result=action.run();
+      db.setTransactionSuccessful();
+      return result;
+    }finally{
+      db.endTransaction();
+      DownloadLibrary.changed(root);
+    }
+  }
+  /** Called by the createNew writer before the new identity becomes visible. */
+  void writeNewPresentation(int slot,String name,String group,String notes,boolean desktop,boolean makeDefault)throws java.io.IOException{
+    String title=name.trim();
+    if(title.isEmpty()||title.length()>24)throw new java.io.IOException("名称需要 1–24 字");
+    SQLiteDatabase db=getWritableDatabase();
+    ContentValues values=new ContentValues();
+    values.put("name",title);
+    values.put("group_name",group.trim());
+    values.put("notes",notes.trim());
+    values.put("desktop",desktop?1:0);
+    if(db.update("environments",values,"slot=? AND created=1",new String[]{String.valueOf(slot)})!=1
+        ||(makeDefault&&!AppSettings.writeDefault(db,slot))){
+      throw new java.io.IOException("新环境资料暂时无法保存");
+    }
   }
   void beginReset(EnvironmentSpec.Identity expected)throws Exception{
     withIdentity(expected,()->{if(expected.generation==Integer.MAX_VALUE)throw new java.io.IOException("环境代际已达到上限");ContentValues values=new ContentValues();values.put("resetting",1);values.put("generation",expected.generation+1);values.put("connected",0);values.put("waiting",0);getWritableDatabase().update("environments",values,"slot=?",new String[]{String.valueOf(expected.slot)});return null;});
@@ -74,7 +108,7 @@ final class ProfileCatalog extends SQLiteOpenHelper {
   boolean available(int slot){JSONObject row=item(slot);return row.optBoolean("created")&&!row.optBoolean("deleting")&&!row.optBoolean("resetting");}
   void draft(int slot,JSONObject value){ContentValues v=new ContentValues();v.put("draft",value==null?"":value.toString());getWritableDatabase().update("environments",v,"slot=?",new String[]{String.valueOf(slot)});}
   void opened(int slot){ContentValues v=new ContentValues();v.put("opened",System.currentTimeMillis());getWritableDatabase().update("environments",v,"slot=?",new String[]{String.valueOf(slot)});}
-  void favorite(int slot,boolean value){ContentValues v=new ContentValues();v.put("favorite",value?1:0);getWritableDatabase().update("environments",v,"slot=?",new String[]{String.valueOf(slot)});}
+  boolean favorite(int slot,boolean value){ContentValues v=new ContentValues();v.put("favorite",value?1:0);return getWritableDatabase().update("environments",v,"slot=?",new String[]{String.valueOf(slot)})==1;}
   int group(Collection<EnvironmentSpec.Identity> selection,String value){
     String group=value==null?"":value.trim();
     if(group.length()>12)throw new IllegalArgumentException("分组最多 12 字");

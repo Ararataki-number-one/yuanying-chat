@@ -18,16 +18,44 @@ final class Profiles {
   static String display(Context c,int id){return ProfileCatalog.get(c).name(id);}
   static void rename(Context c,int id,String name){String trimmed=name.trim();if(!trimmed.isEmpty()&&trimmed.length()<=24){ProfileCatalog.get(c).rename(id,trimmed);global(c).getSharedPreferences("browser-environment-names",0).edit().putString("name"+id,trimmed).apply();}}
   static void prepare(Context c,int target,boolean copyNetwork)throws Exception{
-    EnvironmentResetActivity.verifyRoots(c,target);Context dest=context(c,target);ProfileCatalog catalog=ProfileCatalog.get(c);org.json.JSONObject row=catalog.item(target);
+    prepare(c,target,-1,copyNetwork,null,()->null);
+  }
+  static EnvironmentSpec.Identity create(Context c,int target,int generation,EnvironmentSpec.Identity networkSource,
+      String title,String group,boolean desktop,boolean makeDefault)throws Exception{
+    if(generation<0)throw new java.io.IOException("目标槽位已变化，请重新选择");
+    ProfileCatalog catalog=ProfileCatalog.get(c);
+    return prepare(c,target,generation,networkSource!=null,networkSource,()->{
+      catalog.writeNewPresentation(target,title,group,"",desktop,makeDefault);
+      return catalog.identity(target);
+    });
+  }
+  private static <T>T prepare(Context c,int target,int generation,boolean copyNetwork,
+      EnvironmentSpec.Identity networkSource,ProfileCatalog.IdentityAction<T> stagePresentation)throws Exception{
+    EnvironmentResetActivity.verifyRoots(c,target);
+    Context dest=context(c,target);
+    ProfileCatalog catalog=ProfileCatalog.get(c);
+    JSONObject row=catalog.item(target);
     if(row.optBoolean("deleting")||row.optBoolean("resetting"))throw new java.io.IOException("这个环境正在维护，请稍候");
-    if(row.optBoolean("created"))return;
+    if(generation<0&&row.optBoolean("created"))return null;
+    if(networkSource!=null)EnvironmentSpecRuntime.requireIdentity(c,networkSource);
     NetworkCopy copy=copyNetwork?captureNetwork(c):null;
-    catalog.createNew(target,()->{
-      FileCheck.requireUnusedBrowser(dest);android.content.SharedPreferences prefs=dest.getSharedPreferences("chat",0);SecretStore vault=new SecretStore(dest);
+    return catalog.createNew(target,generation,()->{
+      // The source snapshot lease is released. The catalog writer now prevents
+      // reuse of the source slot while the captured settings are published.
+      if(networkSource!=null)EnvironmentSpecRuntime.requireIdentity(c,networkSource);
+      FileCheck.requireUnusedBrowser(dest);
+      T result=stagePresentation.run();
+      SharedPreferences prefs=dest.getSharedPreferences("chat",0);
+      SecretStore vault=new SecretStore(dest);
       clearConfiguration(vault);
-      android.content.SharedPreferences.Editor edit=prefs.edit().clear().putBoolean("environmentInitialized",true).putBoolean("pageMode",true);
-      if(copy!=null){for(java.util.Map.Entry<String,byte[]> record:copy.records.entrySet())vault.put(record.getKey(),record.getValue());edit.putString("networkMode",copy.mode).putString("proxy",copy.proxy).putBoolean("requireExternalVpn",copy.requireVpn).putBoolean("networkConfigured",copy.configured).putString("lastGoodEntry",copy.entry);}
-      if(!edit.commit())throw new java.io.IOException("新环境配置无法保存");return null;
+      SharedPreferences.Editor edit=prefs.edit().clear().putBoolean("environmentInitialized",true).putBoolean("pageMode",true);
+      if(copy!=null){
+        for(java.util.Map.Entry<String,byte[]> record:copy.records.entrySet())vault.put(record.getKey(),record.getValue());
+        edit.putString("networkMode",copy.mode).putString("proxy",copy.proxy).putBoolean("requireExternalVpn",copy.requireVpn)
+          .putBoolean("networkConfigured",copy.configured).putString("lastGoodEntry",copy.entry);
+      }
+      if(!edit.commit())throw new java.io.IOException("新环境配置无法保存");
+      return result;
     });
   }
   static void clearConfiguration(SecretStore vault)throws Exception{for(String record:new String[]{"network","subscription","subscription-meta","subscription-ui","exit-subscription","exit-subscription-meta","exit-subscription-ui","exit-baseline","pending-network","network-application",EnvironmentSpecRepository.STORE,EnvironmentSpecRepository.RESET})vault.remove(record);NetworkShareSelection.clear(vault.context);}
@@ -45,6 +73,11 @@ final class Profiles {
     return copyConfiguration(source,target,ProfileCatalog.get(source).identity(slot(source)));
   }
   static EnvironmentSpec.Identity copyConfiguration(Context source,int target,EnvironmentSpec.Identity confirmedSource)throws Exception{
+    return copyConfiguration(source,target,-1,confirmedSource,null);
+  }
+  static EnvironmentSpec.Identity copyConfiguration(Context source,int target,int generation,
+      EnvironmentSpec.Identity confirmedSource,String name)throws Exception{
+    if(name!=null&&generation<0)throw new java.io.IOException("目标槽位已变化，请重新选择");
     if(target==slot(source))throw new java.io.IOException("请选择另一个环境槽位");
     EnvironmentResetActivity.verifyRoots(source,target);
     ConfigurationCopy copy=EnvironmentSpecRuntime.withIntent(source,()->{
@@ -60,18 +93,31 @@ final class Profiles {
     Context dest=context(source,target);ProfileCatalog catalog=ProfileCatalog.get(source);
     int first=Math.min(slot(source),target),second=Math.max(slot(source),target);
     synchronized(EnvironmentSpecRepository.GATES[first]){synchronized(EnvironmentSpecRepository.GATES[second]){
-    return catalog.createNew(target,()->catalog.withIdentity(copy.source.identity,()->{
+    return catalog.createNew(target,generation,()->catalog.withIdentity(copy.source.identity,()->{
       EnvironmentSpec current=new EnvironmentSpecRepository(source).load();EnvironmentSpec.requireRevision(copy.source.desiredRevision,current.desiredRevision);
       FileCheck.requireUnusedBrowser(dest);
+      BrowserIdentitySpec browser=BrowserIdentitySpec.from(copy.source.desired().browser());
+      if(name==null){
+        catalog.browserDisplay(target,browser.desktop());
+      }else{
+        JSONObject metadata=catalog.item(confirmedSource.slot);
+        catalog.writeNewPresentation(target,name,metadata.optString("group"),metadata.optString("notes"),browser.desktop(),false);
+      }
       android.content.SharedPreferences prefs=dest.getSharedPreferences("chat",0);SecretStore vault=new SecretStore(dest);
       // Only configuration records are copied/re-encrypted under the destination
       // key. A failed reservation is still uncreated, and can be retried safely.
       clearConfiguration(vault);
       for(java.util.Map.Entry<String,byte[]> record:copy.network.records.entrySet())vault.put(record.getKey(),record.getValue());
-      BrowserIdentitySpec browser=BrowserIdentitySpec.from(copy.source.desired().browser());android.content.SharedPreferences.Editor edit=prefs.edit().clear().putString("networkMode",copy.network.mode).putString("proxy",copy.network.proxy).putBoolean("requireExternalVpn",copy.network.requireVpn).putBoolean("networkConfigured",copy.network.configured).putString("lastGoodEntry",copy.network.entry).putInt("privacyLevel",browser.protectionLevel()).putBoolean("environmentInitialized",true).putBoolean("pageMode",true);
+      android.content.SharedPreferences.Editor edit=prefs.edit().clear().putString("networkMode",copy.network.mode).putString("proxy",copy.network.proxy).putBoolean("requireExternalVpn",copy.network.requireVpn).putBoolean("networkConfigured",copy.network.configured).putString("lastGoodEntry",copy.network.entry).putInt("privacyLevel",browser.protectionLevel()).putBoolean("environmentInitialized",true).putBoolean("pageMode",true);
       for(String key:AppPrefs.KEYS)edit.putBoolean(key,copy.preferences.optBoolean(key));if(copy.hasZoom)edit.putFloat(BrowserReadingPolicy.ZOOM_KEY,copy.zoom);
-      if(!edit.commit())throw new java.io.IOException("环境配置未能复制");catalog.browserDisplay(target,browser.desktop());
-      EnvironmentSpec.Identity next=catalog.identity(target);new EnvironmentSpecRepository(dest).initializeCopy(next,copy.source.desired().browser());return next;
+      // Browser settings use this same catalog writer lease when saving the pair.
+      edit.putString(BrowserPreferences.KEY_HOME,BrowserPreferences.home(source))
+        .putString(BrowserPreferences.KEY_START,BrowserPreferences.startBrowser(source)
+          ?BrowserPreferences.START_BROWSER:BrowserPreferences.START_CHAT);
+      if(!edit.commit())throw new java.io.IOException("环境配置未能复制");
+      EnvironmentSpec.Identity next=catalog.identity(target);
+      new EnvironmentSpecRepository(dest).initializeCopy(next,copy.source.desired().browser());
+      return next;
     }));
     }}
   }
