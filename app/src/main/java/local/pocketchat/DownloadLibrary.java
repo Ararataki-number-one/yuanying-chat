@@ -121,8 +121,8 @@ final class DownloadLibrary extends SQLiteOpenHelper {
     try{
       JSONObject history=new JSONObject(c.getSharedPreferences("chat",0).getString("downloadHistory","{}"));
       JSONArray files=history.has("files")?history.getJSONArray("files"):new JSONArray();
-      JSONArray tasks=legacyTasks(c);
       for(int i=0;i<files.length();i++)add(c,files.optJSONObject(i),true);
+      JSONArray tasks=legacyTasks(c);
       for(int i=0;i<tasks.length();i++){
         JSONObject row=tasks.optJSONObject(i);
         if(row!=null&&"saved".equals(row.optString("state")))add(c,row,true);

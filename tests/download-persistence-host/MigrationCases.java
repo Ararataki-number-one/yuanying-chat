@@ -76,8 +76,11 @@ public final class MigrationCases {
     library.migrateTasks();
     check("an unsuccessful SQLite insert also leaves the task slot pending and atomic",
         !marks.getBoolean("tasksSlot0",false)&&!indexedTask(db,0,"fresh-task").has("id"));
-    check("corrupt unrelated slot source persisted",Profiles.context(root,1).getSharedPreferences("download-tasks",0)
-        .edit().putString("rows","[").commit());
+    Context damaged=Profiles.context(root,1);
+    JSONArray retained=new JSONArray().put(file("intact-history","intact",25,"Intact saved history"));
+    check("valid history and corrupt task source persist in the same slot",
+        damaged.getSharedPreferences("chat",0).edit().putString("downloadHistory",J.obj("files",retained).toString()).commit()
+        &&damaged.getSharedPreferences("download-tasks",0).edit().putString("rows","[").commit());
   }
   private static void restart(Context root,DownloadLibrary library){
     SQLiteDatabase db=library.getWritableDatabase();
@@ -85,7 +88,7 @@ public final class MigrationCases {
     check("new process reads durable partial saved state and pending flags",saved(db,"first").has("id")
         &&!marks.getBoolean("slot0",false)&&!marks.getBoolean("tasksSlot0",false));
     library.add(root,file("history-only","first",1,"Updated after failure"));
-    library.migrate();
+    JSONArray listed=library.list();
     library.migrateTasks();
     check("completed writes set both durable flags",
         "true".equals(marks.diskString("slot0","false"))&&"true".equals(marks.diskString("tasksSlot0","false")));
@@ -104,6 +107,9 @@ public final class MigrationCases {
     check("browsing leaves a corrupt unrelated slot pending and imports later healthy slots",
         !marks.getBoolean("slot1",false)&&marks.getBoolean("slot2",false)
         &&content(db,"files",2,PREFIX+"later").has("id"));
+    JSONObject intact=DownloadTaskRevisions.find(listed,"intact-history");
+    check("the damaged slot's readable saved history is visible even when its task source is corrupt",
+        intact!=null&&intact.optInt("slot",-1)==1&&intact.optString("uri").equals(PREFIX+"intact"));
     boolean failed=false;
     try{library.migrateBeforeRemoval(1);}catch(IllegalStateException expected){failed=true;}
     check("targeted retirement rejects corruption and keeps the legacy source",
@@ -111,7 +117,7 @@ public final class MigrationCases {
         &&"[".equals(Profiles.context(root,1).getSharedPreferences("download-tasks",0).getString("rows","")));
     library.migrate();
     library.migrateTasks();
-    check("repeated calls do not duplicate saved or task records",count(db,"files")==5&&count(db,"tasks")==6);
+    check("repeated calls do not duplicate saved or task records",count(db,"files")==6&&count(db,"tasks")==6);
   }
   public static void main(String[] args){
     Context context=new Context(Paths.get(args[0]),0);
