@@ -66,7 +66,7 @@ public final class EnvironmentDeleteActivity extends ThemedActivity {
     // System WebView data is private to this process suffix, even if Gecko is selected.
     EnvironmentBrowserData.clearChromium(data,slot);
     File[] prefs=new File(data,"shared_prefs").listFiles();if(prefs!=null)for(File f:prefs){String name=f.getName();if(slot>0&&name.startsWith(prefix)||slot==0&&(name.matches("(chat|download-tasks|network-journal|environment-audit|browser-reading|web-perf|route-quality|traffic-monitor|universal-browser)[.]xml(\\.bak)?"))){String base=name.replaceFirst("[.]xml(\\.bak)?$","");Profiles.global(c).getSharedPreferences(base,0).edit().clear().commit();if(f.exists()&&!f.delete())throw new IOException();}}
-    for(String name:new String[]{"conversations.db","deliveries.db","draft-archive.db",ReplyNoticeLedger.DATABASE})profile.deleteDatabase(name);
+    EnvironmentResetActivity.removeLoginDatabases(profile);
     if(slot>0){File[] dbs=new File(data,"databases").listFiles();if(dbs!=null)for(File f:dbs)if(f.getName().startsWith(prefix))erase(f);}
     // Saved files in Downloads or the user's chosen folder are user-owned and remain accessible.
     Profiles.global(c).getSharedPreferences("browser-environment-names",0).edit().remove("name"+slot).commit();

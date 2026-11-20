@@ -49,12 +49,13 @@ def guard_order(source):
     assert body[body.index('{')+1:].lstrip().startswith(guard)
     assert body.count(guard)==2 and body.count('requireCurrent(catalog,expected)')==2
     first=body.index(guard);second=body.rindex(guard)
-    for sideEffect in ('ProfileCatalog.get(c)','Profiles.context(c,slot)','DownloadLibrary.get(c).migrate()','new NetworkCatalog(c)','"stopForDelete"'):
+    for sideEffect in ('ProfileCatalog.get(c)','Profiles.context(c,slot)','DownloadLibrary.get(c).migrateBeforeRemoval(slot)','new NetworkCatalog(c)','"stopForDelete"'):
         assert first<body.index(sideEffect)
     assert body.index('"stopForDelete"')<body.index('android.os.Process.killProcess(p.pid)')<body.index('Thread.sleep(100);}while(true);')<second
     assert body.index('requireCurrent(catalog,expected)')<body.index('"stopForDelete"')
     assert second<body.rindex('requireCurrent(catalog,expected)')<body.index('NotificationManager notices=')
-    for destructive in ('files.listFiles()','erase(new File(data,"cache/profiles/env"+slot))','erase(new File(profile.getNoBackupFilesDir(),name))','profile.deleteDatabase(name)','catalog.completeDelete(expected)'):
+    assert second<body.index('DownloadLibrary.get(c).migrateBeforeRemoval(slot)')<body.index('EnvironmentResetActivity.removeLoginDatabases(profile)')<body.index('catalog.completeDelete(expected)')
+    for destructive in ('files.listFiles()','erase(new File(data,"cache/profiles/env"+slot))','erase(new File(profile.getNoBackupFilesDir(),name))','EnvironmentResetActivity.removeLoginDatabases(profile)','catalog.completeDelete(expected)'):
         assert second<body.index(destructive)
     outer=member(source,'static void remove(Context c,EnvironmentSpec.Identity expected)throws Exception{')
     assert 'EnvironmentMaintenanceLease.with' in outer and 'performRemove(c,expected.slot,expected)'in outer

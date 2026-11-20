@@ -22,7 +22,8 @@ public final class DeletePreferenceCases {
         }
       }
       Map<Path,byte[]> retained=new LinkedHashMap<>();
-      for(String name:new String[]{"subscription-cache.sealed","network-snapshot.lock","sealed-io-02.lock",
+      for(String name:new String[]{"network-catalog.sealed","source-pool-entry-"+version+version+".sealed",
+          "network-snapshot.lock","sealed-io-02.lock",
           "share-entry-selection-"+version+".sealed.copy","share-exit-provider-invalid.sealed",
           "profiles/env1/share-saved-head.sealed","profiles/env1/share-entry-provider-"+version+".sealed"}){
         Path item=root.resolve(name);file(item,"retained synthetic file");retained.put(item,Files.readAllBytes(item));

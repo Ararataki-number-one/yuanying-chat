@@ -54,6 +54,12 @@ final class Context {
   File getNoBackupFilesDir(){return folder("no_backup");}File getCacheDir(){return folder("cache");}File getFilesDir(){return folder("files");}
 }
 /** Production file/remove members below. Encryption is not invoked by deletion. */
+/** The owner-process snapshot lease itself stays outside this filesystem fixture. */
+final class NetworkSourceSelection {
+  interface Action<T>{T run()throws Exception;}
+  static <T>T withActiveSnapshot(Context profile,Action<T> action)throws Exception{return action.run();}
+}
+
 final class SecretStore {
   final Context context;
 /*ACTUAL_SECRET_CONSTRUCTOR*/
