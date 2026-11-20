@@ -12,7 +12,38 @@ import org.json.*;
 public final class EnvironmentDeleteActivity extends ThemedActivity {
   boolean working;int slot;TextView label;EnvironmentSpec.Identity confirmed;
   @Override public void onCreate(Bundle state){super.onCreate(state);try{slot=getIntent().getIntExtra("slot",-1);confirmed=new EnvironmentSpec.Identity(slot,getIntent().getIntExtra("confirmedGeneration",-1),getIntent().getStringExtra("confirmedEnvironmentId"));}catch(Exception invalid){finish();return;}LinearLayout root=DesignUi.screen(this);LinearLayout body=DesignUi.body(this,root,"删除环境",null);label=DesignUi.text(this,"正在清理环境数据…",16,DesignUi.TEXT);body.addView(label);setContentView(root);run();}
-  void run(){if(working)return;working=true;new Thread(()->{String failure="";boolean expired=false;try{remove(this,confirmed);}catch(Expired changed){expired=true;}catch(ChromiumProfileCleanup.Deferred pending){failure=pending.getMessage();}catch(Exception e){failure="清理尚未完成，环境已暂停。请重试，不会清理其他环境。";}String error=failure;boolean obsolete=expired;runOnUiThread(()->{working=false;if(obsolete){finish();return;}if(error.isEmpty()){startActivity(new Intent(this,WindowHomeActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_REORDER_TO_FRONT));finish();}else{label.setText(error);AppAppearance.dialog(this).setTitle("删除未完成").setMessage(error).setPositiveButton("重试",(d,w)->run()).setNegativeButton("返回列表",(d,w)->{startActivity(new Intent(this,WindowHomeActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));finish();}).show();}});},"environment-delete").start();}
+  void run(){
+    if(working)return;
+    working=true;
+    new Thread(()->{
+      String failure="";
+      boolean expired=false,unreadable=false;
+      try{remove(this,confirmed);}
+      catch(Expired changed){expired=true;}
+      catch(ChromiumProfileCleanup.Deferred pending){failure=pending.getMessage();}
+      catch(DownloadLibrary.LegacyHistoryUnreadable damaged){unreadable=true;failure=EnvironmentResetActivity.LEGACY_DOWNLOADS_BLOCKED;}
+      catch(Exception unavailable){failure="清理尚未完成，环境已暂停。请重试。";}
+      String error=failure;
+      boolean obsolete=expired,canRetry=!unreadable;
+      runOnUiThread(()->{
+        working=false;
+        if(isFinishing()||isDestroyed())return;
+        if(obsolete){finish();return;}
+        if(error.isEmpty()){backToList(true);return;}
+        label.setText(error);
+        AlertDialog.Builder dialog=AppAppearance.dialog(this).setTitle("删除未完成").setMessage(error);
+        if(canRetry)dialog.setPositiveButton("重试",(d,w)->run()).setNegativeButton("返回列表",(d,w)->backToList(false));
+        else dialog.setPositiveButton("返回列表",(d,w)->backToList(false));
+        dialog.show();
+      });
+    },"environment-delete").start();
+  }
+  void backToList(boolean reorder){
+    int flags=Intent.FLAG_ACTIVITY_NEW_TASK;
+    if(reorder)flags|=Intent.FLAG_ACTIVITY_REORDER_TO_FRONT;
+    startActivity(new Intent(this,WindowHomeActivity.class).addFlags(flags));
+    finish();
+  }
   @Override public void onBackPressed(){if(!working)super.onBackPressed();}
   static final class Expired extends IOException{}
   // Compatibility for in-process fixtures; production intents carry the identity.

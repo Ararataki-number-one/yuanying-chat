@@ -389,7 +389,7 @@ public class WindowHomeActivity extends ThemedActivity {
       if(n==0)openWindow(id,"edit");if(n==1)metadata(row);
       if(n==2)saveMenuChoice(catalog,shown,()->catalog.favorite(shown.slot,!row.optBoolean("favorite")));
       if(n==3)saveMenuChoice(catalog,shown,()->AppSettings.defaultSlot(this,shown.slot));
-      if(n==4)openWindow(id,"network");if(n==5)toggleSelection(row);if(n==6)copyEnvironment(row);if(n==7)resetEnvironment(id);if(n==8)deleteEnvironment(id);if(n==9)openExpected(row,"overview",true);
+      if(n==4)openWindow(id,"network");if(n==5)toggleSelection(row);if(n==6)copyEnvironment(row);if(n==7)resetEnvironment(row);if(n==8)deleteEnvironment(row);if(n==9)openExpected(row,"overview",true);
     });if(i==7||i==8)item.setTextColor(DesignUi.RED);}
     panel.show();
   }
@@ -400,11 +400,52 @@ public class WindowHomeActivity extends ThemedActivity {
     showProblem("环境已变化或暂时无法保存，请重新选择");
   }
   void startReset(int id,int generation,String environmentId){startActivity(new Intent(this,EnvironmentResetActivity.class).putExtra("slot",id).putExtra("confirmedGeneration",generation).putExtra("confirmedEnvironmentId",environmentId).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));}
-  void resetEnvironment(int id){
-    JSONObject row=ProfileCatalog.get(this).item(id);if(!ProfileCatalog.get(this).available(id))return;
+  void resetEnvironment(JSONObject row){
+    EnvironmentSpec.Identity shown=selectionIdentity(row);
+    if(shown==null){showProblem("环境已变化，请刷新列表");return;}
     AlertDialog dialog=AppAppearance.dialog(this).setTitle("重置 "+row.optString("name")+" 的登录？")
       .setMessage("将关闭此环境并清理登录、Cookie、网页存储和本地草稿、聊天缓存。正在进行的回复、上传和下载任务会中断。环境名称、模板、网络与使用偏好，以及已保存的下载文件会保留；其他环境不受影响。需要在此环境重新登录 ChatGPT。")
-      .setNegativeButton("取消",null).setPositiveButton("重置登录数据",(d,w)->startReset(id,row.optInt("generation"),row.optString("environmentId"))).show();dialog.getButton(AlertDialog.BUTTON_POSITIVE).setTextColor(DesignUi.RED);
+      .setNegativeButton("取消",null).setPositiveButton("重置登录数据",null).show();
+    confirmMaintenance(dialog,shown,false);
+  }
+
+  void confirmMaintenance(AlertDialog dialog,EnvironmentSpec.Identity shown,boolean deleting){
+    Button confirm=dialog.getButton(AlertDialog.BUTTON_POSITIVE);
+    confirm.setTextColor(DesignUi.RED);
+    confirm.setOnClickListener(view->{
+      confirm.setEnabled(false);
+      CharSequence title=confirm.getText();
+      confirm.setText("正在检查…");
+      new Thread(()->{
+        String failure="";
+        try{
+          ProfileCatalog.get(this).withIdentity(shown,()->{
+            DownloadLibrary.get(this).preflightRemoval(shown.slot);
+            return null;
+          });
+        }catch(DownloadLibrary.LegacyHistoryUnreadable unreadable){
+          failure="旧下载记录无法读取。此环境尚未进入维护，已保存的文件保留在原位置。";
+        }catch(Exception unavailable){
+          failure="环境已变化或暂时无法检查。此操作尚未开始，请刷新后重试。";
+        }
+        String issue=failure;
+        handler.post(()->{
+          if(!dialog.isShowing()||isFinishing()||isDestroyed())return;
+          confirm.setText(title);
+          confirm.setEnabled(true);
+          if(!workspaceVisible)return;
+          dialog.dismiss();
+          if(!issue.isEmpty()){showProblem(issue);return;}
+          try{
+            if(deleting)startDelete(ProfileCatalog.get(this).beginDelete(shown));
+            else startReset(shown.slot,shown.generation,shown.environmentId);
+          }catch(Exception unavailable){
+            String detail=unavailable.getMessage();
+            showProblem(detail==null?"暂时无法进入维护，请刷新后重试。":detail);
+          }
+        });
+      },"environment-maintenance-preflight").start();
+    });
   }
   void copyEnvironment(JSONObject source){
     if(preparing)return;
@@ -455,12 +496,13 @@ public class WindowHomeActivity extends ThemedActivity {
     });
   }
   void startDelete(EnvironmentSpec.Identity expected){startActivity(new Intent(this,EnvironmentDeleteActivity.class).putExtra("slot",expected.slot).putExtra("confirmedGeneration",expected.generation).putExtra("confirmedEnvironmentId",expected.environmentId).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));}
-  void deleteEnvironment(int id){
-    JSONObject row=ProfileCatalog.get(this).item(id);final EnvironmentSpec.Identity shown;
-    try{if(!row.optBoolean("created")||row.optBoolean("deleting")||row.optBoolean("resetting"))return;shown=new EnvironmentSpec.Identity(id,row.optInt("generation"),row.getString("environmentId"));}catch(Exception invalid){showProblem("环境已变化，请刷新列表");return;}
+  void deleteEnvironment(JSONObject row){
+    EnvironmentSpec.Identity shown=selectionIdentity(row);
+    if(shown==null){showProblem("环境已变化，请刷新列表");return;}
     AlertDialog dialog=AppAppearance.dialog(this).setTitle("删除 "+row.optString("name")+"？")
       .setMessage("将关闭此环境，清理它的登录、草稿、聊天缓存和网络配置。正在进行的回复和文件操作会中断。其他环境、订阅与固定出口，以及已保存到下载目录的文件会保留。")
-      .setNegativeButton("取消",null).setPositiveButton("删除环境",(d,w)->{try{startDelete(ProfileCatalog.get(this).beginDelete(shown));}catch(Exception e){showProblem(e.getMessage());}}).show();dialog.getButton(AlertDialog.BUTTON_POSITIVE).setTextColor(DesignUi.RED);
+      .setNegativeButton("取消",null).setPositiveButton("删除环境",null).show();
+    confirmMaintenance(dialog,shown,true);
   }
   void metadata(JSONObject row){
     EnvironmentSpec.Identity expected=selectionIdentity(row);

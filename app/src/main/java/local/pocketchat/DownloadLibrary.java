@@ -110,25 +110,42 @@ final class DownloadLibrary extends SQLiteOpenHelper {
       catch(RuntimeException failure){/* A later read can retry this slot. */}
     }
   }
+  static final class LegacyHistoryUnreadable extends IllegalStateException {
+    LegacyHistoryUnreadable(Exception cause){super("旧下载记录无法读取",cause);}
+  }
+  void preflightRemoval(int slot){
+    Context context=Profiles.context(root,slot);
+    legacyHistory(context);
+    legacyTasks(context);
+  }
   void migrateBeforeRemoval(int slot){
-    // The caller may clear this slot's legacy preferences after migration returns.
-    migrateSavedSlot(root.getSharedPreferences("download-library-migration",0),slot);
+    // New records can exist after the one-time migration marker. Re-read both
+    // sources after stopping the target writers, before clearing private data.
+    Context context=Profiles.context(root,slot);
+    JSONArray history=legacyHistory(context),tasks=legacyTasks(context);
+    addLegacySaved(context,history,false);
+    addLegacySaved(context,tasks,true);
   }
   private void migrateSavedSlot(SharedPreferences migration,int slot){
     String key="slot"+slot;
     if(migration.getBoolean(key,false))return;
-    Context c=Profiles.context(root,slot);
-    try{
-      JSONObject history=new JSONObject(c.getSharedPreferences("chat",0).getString("downloadHistory","{}"));
-      JSONArray files=history.has("files")?history.getJSONArray("files"):new JSONArray();
-      for(int i=0;i<files.length();i++)add(c,files.optJSONObject(i),true);
-      JSONArray tasks=legacyTasks(c);
-      for(int i=0;i<tasks.length();i++){
-        JSONObject row=tasks.optJSONObject(i);
-        if(row!=null&&"saved".equals(row.optString("state")))add(c,row,true);
-      }
-    }catch(JSONException failure){throw new IllegalStateException("Legacy download history could not be read",failure);}
+    Context context=Profiles.context(root,slot);
+    // A damaged task source does not hide a separate readable history when browsing.
+    addLegacySaved(context,legacyHistory(context),false);
+    addLegacySaved(context,legacyTasks(context),true);
     migration.edit().putBoolean(key,true).commit();
+  }
+  private static JSONArray legacyHistory(Context context){
+    try{
+      JSONObject history=new JSONObject(context.getSharedPreferences("chat",0).getString("downloadHistory","{}"));
+      return history.has("files")?history.getJSONArray("files"):new JSONArray();
+    }catch(JSONException|ClassCastException failure){throw new LegacyHistoryUnreadable(failure);}
+  }
+  private void addLegacySaved(Context context,JSONArray rows,boolean tasks){
+    for(int i=0;i<rows.length();i++){
+      JSONObject row=rows.optJSONObject(i);
+      if(row!=null&&(!tasks||"saved".equals(row.optString("state"))))add(context,row,true);
+    }
   }
   void migrateTasks(){
     SharedPreferences migration=root.getSharedPreferences("download-library-migration",0);
@@ -142,8 +159,9 @@ final class DownloadLibrary extends SQLiteOpenHelper {
       migration.edit().putBoolean(key,true).commit();
     }
   }
-  private static JSONArray legacyTasks(Context context)throws JSONException{
-    return new JSONArray(context.getSharedPreferences("download-tasks",0).getString("rows","[]"));
+  private static JSONArray legacyTasks(Context context){
+    try{return new JSONArray(context.getSharedPreferences("download-tasks",0).getString("rows","[]"));}
+    catch(JSONException|ClassCastException failure){throw new LegacyHistoryUnreadable(failure);}
   }
   void removeEnvironmentTasks(int slot){if(getWritableDatabase().delete("tasks","slot=?",new String[]{String.valueOf(slot)})>0)changed(root);}
   // Metadata queries and compare-and-set writes run only on a worker holding the URI lease.

@@ -11,9 +11,34 @@ import org.json.*;
 /** Separate maintenance process. Only an explicitly confirmed reset or a
  * persisted reset retry enters this activity. The logical environment is kept. */
 public final class EnvironmentResetActivity extends ThemedActivity {
+  static final String LEGACY_DOWNLOADS_BLOCKED="旧下载记录无法读取。此环境仍待维护。可返回列表使用其他环境，并在原保存位置查找已保存的文件。";
   boolean working;int slot;TextView label;EnvironmentSpec.Identity confirmed;
   @Override public void onCreate(Bundle state){super.onCreate(state);try{slot=getIntent().getIntExtra("slot",-1);confirmed=new EnvironmentSpec.Identity(slot,getIntent().getIntExtra("confirmedGeneration",-1),getIntent().getStringExtra("confirmedEnvironmentId"));}catch(Exception invalid){finish();return;}LinearLayout root=DesignUi.screen(this);LinearLayout body=DesignUi.body(this,root,"重置登录数据",null);label=DesignUi.text(this,"正在清理此环境的登录与网页数据…",16,DesignUi.TEXT);body.addView(label);setContentView(root);run();}
-  void run(){if(working)return;working=true;new Thread(()->{String failure="";boolean expired=false;try{reset(this,confirmed);}catch(Expired e){expired=true;}catch(ChromiumProfileCleanup.Deferred pending){failure=pending.getMessage();}catch(Exception e){failure="重置尚未完成，请重试。环境配置和其他环境会保留。";}String error=failure;boolean done=expired;runOnUiThread(()->{working=false;if(done||error.isEmpty()){backToList();}else{label.setText(error);AppAppearance.dialog(this).setTitle("登录重置未完成").setMessage(error).setPositiveButton("重试",(d,w)->run()).setNegativeButton("返回列表",(d,w)->backToList()).show();}});},"environment-login-reset").start();}
+  void run(){
+    if(working)return;
+    working=true;
+    new Thread(()->{
+      String failure="";
+      boolean expired=false,unreadable=false;
+      try{reset(this,confirmed);}
+      catch(Expired changed){expired=true;}
+      catch(ChromiumProfileCleanup.Deferred pending){failure=pending.getMessage();}
+      catch(DownloadLibrary.LegacyHistoryUnreadable damaged){unreadable=true;failure=LEGACY_DOWNLOADS_BLOCKED;}
+      catch(Exception unavailable){failure="重置尚未完成，请重试。环境配置和其他环境会保留。";}
+      String error=failure;
+      boolean done=expired,canRetry=!unreadable;
+      runOnUiThread(()->{
+        working=false;
+        if(isFinishing()||isDestroyed())return;
+        if(done||error.isEmpty()){backToList();return;}
+        label.setText(error);
+        AlertDialog.Builder dialog=AppAppearance.dialog(this).setTitle("登录重置未完成").setMessage(error);
+        if(canRetry)dialog.setPositiveButton("重试",(d,w)->run()).setNegativeButton("返回列表",(d,w)->backToList());
+        else dialog.setPositiveButton("返回列表",(d,w)->backToList());
+        dialog.show();
+      });
+    },"environment-login-reset").start();
+  }
   void backToList(){startActivity(new Intent(this,WindowHomeActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_REORDER_TO_FRONT));finish();}
   @Override public void onBackPressed(){if(!working)super.onBackPressed();}
   static void verifyRoots(Context c,int slot)throws Exception{

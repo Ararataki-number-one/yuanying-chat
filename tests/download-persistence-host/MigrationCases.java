@@ -57,6 +57,13 @@ public final class MigrationCases {
     legacyTasks(root,2,new JSONArray().put(task("old-completed",21,3)));
     check("legacy saved record in a later slot persisted",Profiles.context(root,2).getSharedPreferences("chat",0)
         .edit().putString("downloadHistory",J.obj("files",new JSONArray().put(file("later","later",30,"Later slot"))).toString()).commit());
+    // Preflight can be run while the environment is still active. It doesn't
+    // index records or acknowledge migration, even with a healthy source.
+    long filesBeforePreflight=count(db,"files");
+    library.preflightRemoval(0);
+    check("healthy preflight leaves both sources and the global index alone",
+        count(db,"files")==filesBeforePreflight&&!marks.getBoolean("slot0",false)
+        &&J.parse(root.getSharedPreferences("chat",0).getString("downloadHistory","")).has("files"));
     db.failureKey=PREFIX+"saved-task";
     boolean failed=false;
     try{library.migrateBeforeRemoval(0);}catch(IllegalStateException expected){failed=true;}
@@ -82,7 +89,7 @@ public final class MigrationCases {
         damaged.getSharedPreferences("chat",0).edit().putString("downloadHistory",J.obj("files",retained).toString()).commit()
         &&damaged.getSharedPreferences("download-tasks",0).edit().putString("rows","[").commit());
   }
-  private static void restart(Context root,DownloadLibrary library){
+  private static void restart(Context root,DownloadLibrary library)throws Exception{
     SQLiteDatabase db=library.getWritableDatabase();
     SharedPreferences marks=root.getSharedPreferences("download-library-migration",0);
     check("new process reads durable partial saved state and pending flags",saved(db,"first").has("id")
@@ -111,15 +118,59 @@ public final class MigrationCases {
     check("the damaged slot's readable saved history is visible even when its task source is corrupt",
         intact!=null&&intact.optInt("slot",-1)==1&&intact.optString("uri").equals(PREFIX+"intact"));
     boolean failed=false;
-    try{library.migrateBeforeRemoval(1);}catch(IllegalStateException expected){failed=true;}
+    try{library.migrateBeforeRemoval(1);}catch(DownloadLibrary.LegacyHistoryUnreadable expected){failed=true;}
     check("targeted retirement rejects corruption and keeps the legacy source",
         failed&&!marks.getBoolean("slot1",false)
         &&"[".equals(Profiles.context(root,1).getSharedPreferences("download-tasks",0).getString("rows","")));
     library.migrate();
     library.migrateTasks();
     check("repeated calls do not duplicate saved or task records",count(db,"files")==6&&count(db,"tasks")==6);
+    Context damaged=Profiles.context(root,1);
+    check("old boot marker can coexist with a damaged latest input",
+        marks.edit().putBoolean("slot1",true).commit());
+    long filesBefore=count(db,"files");
+    boolean unreadable=false;
+    try{library.preflightRemoval(1);}catch(DownloadLibrary.LegacyHistoryUnreadable expected){unreadable=true;}
+    check("permanent preflight error remains distinct even with an old completion marker",
+        unreadable&&count(db,"files")==filesBefore
+        &&"[".equals(damaged.getSharedPreferences("download-tasks",0).getString("rows","")));
+    library.preflightRemoval(2);
+    check("other healthy slots remain usable while the damaged slot is blocked",
+        content(db,"files",2,PREFIX+"later").has("id"));
+    SharedPreferences badHistory=damaged.getSharedPreferences("chat",0);
+    String originalHistory=badHistory.getString("downloadHistory","");
+    check("a wrong-shaped history can be injected independently",
+        badHistory.edit().putString("downloadHistory","{\"files\":{}}").commit()
+        &&damaged.getSharedPreferences("download-tasks",0).edit().putString("rows","[]").commit());
+    boolean badHistoryBlocked=false;
+    try{library.preflightRemoval(1);}catch(DownloadLibrary.LegacyHistoryUnreadable expected){badHistoryBlocked=true;}
+    check("a wrong-shaped history is preserved and blocks preflight with a readable task source",
+        badHistoryBlocked&&count(db,"files")==filesBefore
+        &&"{\"files\":{}}".equals(badHistory.getString("downloadHistory","")));
+    check("synthetic recovery of the original history was committed",
+        badHistory.edit().putString("downloadHistory",originalHistory).commit());
+    JSONArray repaired=new JSONArray().put(file("late-owner","late-owner",40,"Late saved document"))
+        .put(file("deleted","deleted",5,"Deleted"));
+    check("synthetic repair restores a readable pending source",
+        damaged.getSharedPreferences("download-tasks",0).edit().putString("rows",repaired.toString()).commit());
+    library.preflightRemoval(1);
+    check("repaired targeted source passes read-only preflight after the old marker",
+        count(db,"files")==filesBefore);
+    db.failureKey=PREFIX+"late-owner";
+    boolean temporary=false;
+    try{library.migrateBeforeRemoval(1);}
+    catch(DownloadLibrary.LegacyHistoryUnreadable wrong){throw new AssertionError("write was reported as corruption",wrong);}
+    catch(IllegalStateException expected){temporary=true;}
+    check("targeted reindex reports a write failure separately and leaves saved source intact",
+        temporary&&!content(db,"files",1,PREFIX+"late-owner").has("id")
+        &&"late-owner".equals(new JSONArray(damaged.getSharedPreferences("download-tasks",0).getString("rows","")).getJSONObject(0).optString("id")));
+    library.migrateBeforeRemoval(1);
+    library.migrateBeforeRemoval(1);
+    check("targeted retry preserves recent saved records despite the old marker without resurrecting deleted files",
+        "Late saved document".equals(content(db,"files",1,PREFIX+"late-owner").optString("name"))
+        &&!content(db,"files",1,PREFIX+"deleted").has("id")&&count(db,"files")==filesBefore+1);
   }
-  public static void main(String[] args){
+  public static void main(String[] args)throws Exception{
     Context context=new Context(Paths.get(args[0]),0);
     try(DownloadLibrary library=new DownloadLibrary(context)){
       if("fail".equals(args[1]))fail(context,library);else restart(context,library);
