@@ -392,8 +392,8 @@ def v4_short_before():
         environmentName='Host controlled environment')
 
 
-def v4_short_xml(*, pending=False):
-    """Synthetic current native chrome with the observed empty-container shape."""
+def v4_short_xml(*, pending=False, placeholder=False):
+    """Synthetic native chrome with the observed accessibility readiness shapes."""
     tree = ET.Element('hierarchy', rotation='0')
     def node(parent, kind, box, **extra):
         attrs = {'class':kind, 'package':v4.PACKAGE, 'enabled':'true',
@@ -412,7 +412,11 @@ def v4_short_xml(*, pending=False):
         **{'content-desc':'当前环境网络：Host controlled status','clickable':'true'})
     outer = node(main, 'android.widget.FrameLayout', [0,361,1080,1662])
     inner = node(outer, 'android.widget.FrameLayout', [0,361,1080,1662])
-    if not pending:
+    if placeholder:
+        node(inner, 'android.webkit.WebView', [0,0,0,0], enabled='false', index='0', text='',
+            **{'resource-id':'', 'content-desc':'', 'checked':'false', 'focused':'false',
+               'scrollable':'false', 'password':'false', 'selected':'false'})
+    elif not pending:
         web = node(inner, 'android.webkit.WebView', [0,361,1080,1662], focusable='true')
         node(web, 'android.widget.EditText', [24,1150,971,1580], clickable='true', focusable='true')
     footer = node(main, 'android.widget.FrameLayout', [0,1662,1080,1848])
@@ -566,6 +570,60 @@ class CurrentV4ShortReadinessTests(unittest.TestCase):
         self.assertEqual(diagnostic['inputInvocations'],0)
         self.assertTrue(all(c[0][3:]==['shell','dumpsys','activity','activities'] for c in commands))
         self.assertTrue(all(s['status']=='not-ready' for s in diagnostic['preparationSamples']))
+
+    def test_zero_area_owned_placeholder_waits_then_uses_one_fresh_target(self):
+        placeholder=v4_short_xml(placeholder=True)
+        ready=v4_short_xml()
+        result,error,reads,commands,diagnostic=self.invoke([placeholder,ready])
+        self.assertIsNone(error); geometry,proof=result
+        self.assertEqual(reads,[120.0,120.0])
+        self.assertEqual([sample['status'] for sample in diagnostic['preparationSamples']],
+                         ['not-ready','prepared'])
+        self.assertEqual(diagnostic['preparationSamples'][0]['rawXml'],placeholder)
+        self.assertEqual(proof['rawXml'],ready)
+        self.assertEqual(proof['captureRecord']['index'],2)
+        self.assertEqual([cmd[0][3:6] for cmd in commands],
+            [['shell','dumpsys','activity'],['shell','dumpsys','activity'],['shell','input','swipe']])
+        self.assertEqual(geometry['durationMs'],320)
+        self.assertEqual(diagnostic['inputInvocations'],1)
+
+    def test_persistent_placeholder_and_changed_owner_never_emit_input(self):
+        placeholder=v4_short_xml(placeholder=True)
+        for frames,owners,wanted_error in (
+                ([placeholder],None,TimeoutError),
+                ([placeholder,v4_short_xml()],[v4_owner(),v4_owner(window_token='124')],AssertionError)):
+            with self.subTest(wanted_error=wanted_error):
+                result,error,reads,commands,diagnostic=self.invoke(frames,owners=owners)
+                self.assertIsNone(result);self.assertIsInstance(error,wanted_error)
+                self.assertTrue(1<len(reads)<64)
+                self.assertTrue(all(cmd[0][3:6]==['shell','dumpsys','activity'] for cmd in commands))
+                self.assertEqual(diagnostic['inputInvocations'],0)
+
+    def test_only_the_inert_placeholder_in_the_owned_content_slot_can_wait(self):
+        for change in ('sized','offset-zero','child','clickable','focused','visible','absent-enabled',
+                       'text','duplicate','foreign','unowned-position','overlay','moved-wrapper'):
+            with self.subTest(change=change):
+                tree=ET.fromstring(v4_short_xml(placeholder=True))
+                content=next(n for n in tree.iter('node') if n.get('resource-id')=='android:id/content')
+                main=content[0];inner=main[1][0];web=inner[0]
+                if change=='sized':web.set('bounds','[0,361][1080,1662]')
+                elif change=='offset-zero':web.set('bounds','[1,1][1,1]')
+                elif change=='child':ET.SubElement(web,'node',**{'package':v4.PACKAGE})
+                elif change=='clickable':web.set('clickable','true')
+                elif change=='focused':web.set('focused','true')
+                elif change=='visible':web.set('visible-to-user','true')
+                elif change=='absent-enabled':web.attrib.pop('enabled')
+                elif change=='text':web.set('text','Host controlled active content')
+                elif change=='duplicate':inner.append(copy.deepcopy(web))
+                elif change=='foreign':web.set('package','foreign.test')
+                elif change=='unowned-position':inner.remove(web);main[0].append(web)
+                elif change=='overlay':main.append(copy.deepcopy(main[2]))
+                elif change=='moved-wrapper':inner.set('bounds','[0,362][1080,1662]')
+                frames=[ET.tostring(tree,encoding='unicode'),v4_short_xml()]
+                result,error,reads,commands,diagnostic=self.invoke(frames)
+                self.assertIsNone(result);self.assertIsNotNone(error)
+                self.assertEqual(reads,[120.0])
+                self.assertEqual(diagnostic['inputInvocations'],0)
 
     def test_repeated_webview_foreign_owner_and_unknown_subtree_are_not_pending(self):
         for change in ('duplicate-web','foreign-web','foreign-ready-sibling','extra-ready-window',

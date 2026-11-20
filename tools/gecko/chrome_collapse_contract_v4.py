@@ -152,12 +152,11 @@ def short_activity_owner(raw, android_user):
 
 
 def short_webview_pending(raw_xml, before):
-    """Recognize only the observed empty owned content container.
+    """Recognize the two observed forms of an unready owned content container.
 
-    A complete hierarchy can precede Gecko's accessibility subtree. Missing
-    or ambiguous windows, controls, owners or geometry are errors, not another
-    readiness state. An existing WebView still goes through the original full
-    target proof; no older hierarchy can supply its target.
+    A complete hierarchy can precede Gecko's accessibility subtree. The
+    container may be empty or hold a single inert WebView placeholder. An
+    enabled WebView still needs the original full target proof from fresh bytes.
     """
     assert type(raw_xml) is str and 0 < len(raw_xml.encode('utf-8')) <= 1024*1024
     tree = ET.fromstring(raw_xml)
@@ -167,9 +166,17 @@ def short_webview_pending(raw_xml, before):
     assert all(node.tag == 'node' for node in tree.iter() if node is not tree)
     assert all(node.get('package') == PACKAGE for node in nodes), 'Short target has a foreign native node'
     webs = [node for node in nodes if node.get('class') == 'android.webkit.WebView']
-    if len(webs) == 1:
-        return False
-    assert not webs, 'Short target has ambiguous native WebViews'
+    assert len(webs) <= 1, 'Short target has ambiguous native WebViews'
+    placeholder = webs[0] if webs else None
+    if placeholder is not None:
+        if placeholder.get('enabled') == 'true':
+            return False
+        assert placeholder.get('enabled') == 'false' and placeholder.get('bounds') == '[0,0][0,0]'
+        assert len(placeholder) == 0 and not (placeholder.text or '').strip()
+        assert placeholder.get('index') == '0' and placeholder.get('visible-to-user') in (None, 'false')
+        assert all(placeholder.get(key) == '' for key in ('text', 'resource-id', 'content-desc'))
+        assert all(placeholder.get(flag) == 'false' for flag in ('checkable', 'checked', 'clickable',
+            'focusable', 'focused', 'scrollable', 'long-clickable', 'password', 'selected'))
     assert before['command'] == 'horizontal' and before['expanded'] is True
     assert before['keyboard'] is False and before['windowFocus'] is True
     assert type(before['page']) is int and before['page'] == 0 and before['addressDialog']['showing'] is False
@@ -178,6 +185,7 @@ def short_webview_pending(raw_xml, before):
     expected = rect([before['webX'], before['webY'], before['webX']+before['webWidth'],
                      before['webY']+before['webHeight']])
     for node in nodes:
+        if node is placeholder: continue
         assert node.get('package') == PACKAGE and node.get('enabled') == 'true'
         assert node.get('visible-to-user') != 'false' and node.get('class')
         rect(bounds(node))
@@ -185,7 +193,7 @@ def short_webview_pending(raw_xml, before):
                    ('clickable', 'long-clickable', 'focusable', 'checkable'))
     parents = {child: parent for parent in tree.iter() for child in parent}
     for child, parent in parents.items():
-        if parent is tree: continue
+        if parent is tree or child is placeholder: continue
         l, t, r, b = bounds(child); pl, pt, pr, pb = bounds(parent)
         assert pl <= l < r <= pr and pt <= t < b <= pb, 'Short target has a clipped or overlapping native descendant'
     contents = [node for node in nodes if node.get('resource-id') == 'android:id/content']
@@ -210,7 +218,8 @@ def short_webview_pending(raw_xml, before):
     assert bounds(outer) == list(expected) and len(outer) == 1
     inner = outer[0]
     assert inner.get('class') == 'android.widget.FrameLayout' and bounds(inner) == list(expected)
-    assert len(inner) == 0, 'Short target content is not the observed empty container'
+    expected_children = [] if placeholder is None else [placeholder]
+    assert list(inner) == expected_children, 'Short target content includes an unexpected native child'
     for node in (content, main, outer, inner):
         assert all(node.get(flag) == 'false' for flag in ('clickable', 'long-clickable', 'focusable', 'checkable'))
     left, top, right, bottom = expected
