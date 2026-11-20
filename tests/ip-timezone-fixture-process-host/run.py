@@ -112,7 +112,7 @@ def main():
  app=ROOT/'app/src/main/java/local/pocketchat';geo=ROOT/'tests/gecko'
  whole=[geo/n for n in ['IpTimeZoneFixtureApplication.java','IpTimeZoneFixtureScopes.java']]+[app/n for n in ['EnvironmentProcessPolicy.java','J.java','GeckoTimeZoneSpec.java','GeckoTimeZonePolicy.java','NetworkShareJson.java']]
  extracted={}
- for name,markers in [('PocketApplication.java',['protected void attachBaseContext(','public void onCreate()','synchronized Context profile(','public Context getApplicationContext()']),('Profiles.java',['static int processSlot()','static int slot(','static Context global(','static Context context(','static void prepare(']),('EnvironmentSpec.java',['static final class Identity {','private static JSONObject object('])]:
+ for name,markers in [('PocketApplication.java',['protected void attachBaseContext(','public void onCreate()','synchronized Context profile(','public Context getApplicationContext()']),('Profiles.java',['static int processSlot()','static int slot(','static Context global(','static Context context(','static void prepare(','private static <T>T prepare(']),('EnvironmentSpec.java',['static final class Identity {','private static JSONObject object('])]:
   raw=(app/name).read_text()
   for marker in markers:
    if raw.count(marker)!=1:raise ValueError('Unique actual parent member required: '+name+marker)

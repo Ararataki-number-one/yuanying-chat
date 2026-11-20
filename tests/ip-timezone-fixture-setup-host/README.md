@@ -1,6 +1,6 @@
 # IP 时区测试启动边界
 
-`run.py --java-home <JDK17> --json-jar <actual-json.jar> --output <report.json>` 直接编译当前完整的 `IpTimeZoneFixtureApplication`、`IpTimeZoneFixtureScopes`、`GeckoIpTimeZoneEvidenceProvider`，以及当前完整的时区 Spec、Policy、严格 JSON 和进程归属策略。父 Application 的 attach/onCreate/profile、Profiles 的进程/上下文/prepare 方法和 Environment Identity 从当前源码逐字提取。
+`run.py --java-home <JDK17> --json-jar <actual-json.jar> --output <report.json>` 直接编译当前完整的 `IpTimeZoneFixtureApplication`、`IpTimeZoneFixtureScopes`、`GeckoIpTimeZoneEvidenceProvider`，以及当前完整的时区 Spec、Policy、严格 JSON 和进程归属策略。父 Application 的 attach/onCreate/profile、Profiles 的进程与上下文方法、prepare 入口及其准备事务实现、Environment Identity 均从当前源码逐字提取。
 
 检查覆盖明确声明的 generic 手动系统基线、所有已持久化字节保留、重入与应用 monitor、真实文件的 marker/叶节点软链接、provisional/reserved/armed 生命周期、安装身份/nonce/时间/槽位绑定、UID 2000 固定读口、并发 prepare/clear 的串行化，以及身份和 CAS 变化。另编译执行七个语义反例，要求原断言拒绝。
 
