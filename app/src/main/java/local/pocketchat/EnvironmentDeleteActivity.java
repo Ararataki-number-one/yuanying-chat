@@ -12,7 +12,38 @@ import org.json.*;
 public final class EnvironmentDeleteActivity extends ThemedActivity {
   boolean working;int slot;TextView label;EnvironmentSpec.Identity confirmed;
   @Override public void onCreate(Bundle state){super.onCreate(state);try{slot=getIntent().getIntExtra("slot",-1);confirmed=new EnvironmentSpec.Identity(slot,getIntent().getIntExtra("confirmedGeneration",-1),getIntent().getStringExtra("confirmedEnvironmentId"));}catch(Exception invalid){finish();return;}LinearLayout root=DesignUi.screen(this);LinearLayout body=DesignUi.body(this,root,"删除环境",null);label=DesignUi.text(this,"正在清理环境数据…",16,DesignUi.TEXT);body.addView(label);setContentView(root);run();}
-  void run(){if(working)return;working=true;new Thread(()->{String failure="";boolean expired=false;try{remove(this,confirmed);}catch(Expired changed){expired=true;}catch(ChromiumProfileCleanup.Deferred pending){failure=pending.getMessage();}catch(Exception e){failure="清理尚未完成，环境已暂停。请重试，不会清理其他环境。";}String error=failure;boolean obsolete=expired;runOnUiThread(()->{working=false;if(obsolete){finish();return;}if(error.isEmpty()){startActivity(new Intent(this,WindowHomeActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_REORDER_TO_FRONT));finish();}else{label.setText(error);AppAppearance.dialog(this).setTitle("删除未完成").setMessage(error).setPositiveButton("重试",(d,w)->run()).setNegativeButton("返回列表",(d,w)->{startActivity(new Intent(this,WindowHomeActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));finish();}).show();}});},"environment-delete").start();}
+  void run(){
+    if(working)return;
+    working=true;
+    new Thread(()->{
+      String failure="";
+      boolean expired=false,unreadable=false;
+      try{remove(this,confirmed);}
+      catch(Expired changed){expired=true;}
+      catch(ChromiumProfileCleanup.Deferred pending){failure=pending.getMessage();}
+      catch(DownloadLibrary.LegacyHistoryUnreadable damaged){unreadable=true;failure=EnvironmentResetActivity.LEGACY_DOWNLOADS_BLOCKED;}
+      catch(Exception unavailable){failure="清理尚未完成，环境已暂停。请重试。";}
+      String error=failure;
+      boolean obsolete=expired,canRetry=!unreadable;
+      runOnUiThread(()->{
+        working=false;
+        if(isFinishing()||isDestroyed())return;
+        if(obsolete){finish();return;}
+        if(error.isEmpty()){backToList(true);return;}
+        label.setText(error);
+        AlertDialog.Builder dialog=AppAppearance.dialog(this).setTitle("删除未完成").setMessage(error);
+        if(canRetry)dialog.setPositiveButton("重试",(d,w)->run()).setNegativeButton("返回列表",(d,w)->backToList(false));
+        else dialog.setPositiveButton("返回列表",(d,w)->backToList(false));
+        dialog.show();
+      });
+    },"environment-delete").start();
+  }
+  void backToList(boolean reorder){
+    int flags=Intent.FLAG_ACTIVITY_NEW_TASK;
+    if(reorder)flags|=Intent.FLAG_ACTIVITY_REORDER_TO_FRONT;
+    startActivity(new Intent(this,WindowHomeActivity.class).addFlags(flags));
+    finish();
+  }
   @Override public void onBackPressed(){if(!working)super.onBackPressed();}
   static final class Expired extends IOException{}
   // Compatibility for in-process fixtures; production intents carry the identity.
@@ -32,7 +63,7 @@ public final class EnvironmentDeleteActivity extends ThemedActivity {
   private static void performRemove(Context c,int slot,EnvironmentSpec.Identity expected)throws Exception{
     EnvironmentResetActivity.verifyRoots(c,slot);
     ProfileCatalog catalog=ProfileCatalog.get(c);requireCurrent(catalog,expected);
-    Context profile=Profiles.context(c,slot);DownloadLibrary.get(c).migrate();NetworkCatalog library=new NetworkCatalog(c);library.save();
+    Context profile=Profiles.context(c,slot);NetworkCatalog library=new NetworkCatalog(c);library.save();
     // A subscription may be cached only in the environment being removed. Keep
     // the user-owned shared subscription library available to all remaining environments.
     for(String role:new String[]{NetworkCatalog.ENTRY,NetworkCatalog.EXIT})for(int i=0;i<library.subscriptions(role).length();i++){JSONObject sub=library.subscriptions(role).optJSONObject(i);if(sub.optInt("owner",-1)==slot&&sub.optString("cacheSlot").isEmpty()){byte[] bytes=library.cache(sub);if(bytes!=null){NetworkCatalog.RefreshToken token=library.beginRefresh(role,sub.optString("id"));JSONObject current=library.subscription(role,sub.optString("id"));if(!token.url.equals(sub.optString("url"))||token.addressRevision!=sub.optLong("addressRevision")||current.optLong("revision")!=sub.optLong("revision")+1||!current.optString("cacheSlot").isEmpty()){library.failed(token,"订阅已更新，请重试删除环境",System.currentTimeMillis());throw new IOException("订阅缓存正在变化");}library.parsed(token,sub.optJSONArray("nodes"),sub.optJSONArray("nodeDetails"),bytes,sub.optLong("updatedAt"));}}}
@@ -42,6 +73,7 @@ public final class EnvironmentDeleteActivity extends ThemedActivity {
     do{boolean alive=false;List<ActivityManager.RunningAppProcessInfo> all=manager.getRunningAppProcesses();if(all!=null)for(ActivityManager.RunningAppProcessInfo p:all)if(p.uid==android.os.Process.myUid()&&(p.processName.equals(owner)||p.processName.startsWith(children))){if(p.pid==android.os.Process.myPid())throw new IOException();android.os.Process.killProcess(p.pid);alive=true;}if(!alive)break;if(SystemClock.elapsedRealtime()>deadline)throw new IOException();Thread.sleep(100);}while(true);
     EnvironmentResetActivity.verifyRoots(c,slot);
     requireCurrent(catalog,expected);
+    DownloadLibrary.get(c).migrateBeforeRemoval(slot);
     ChromiumProfileCleanup.clearRetired(c,ChromiumProfileCleanup.previous(expected));
     NotificationManager notices=c.getSystemService(NotificationManager.class);for(int id=4101;id<=4105;id++)notices.cancel(Profiles.notification(profile,id));
     File data=new File(Profiles.global(c).getApplicationInfo().dataDir);
@@ -49,6 +81,9 @@ public final class EnvironmentDeleteActivity extends ThemedActivity {
     if(slot>0){File files=new File(data,"files/profiles/env"+slot);File[] personal=files.listFiles();if(personal!=null)for(File f:personal)if(!f.getName().equals("saved-downloads"))erase(f);erase(new File(data,"cache/profiles/env"+slot));erase(new File(data,"no_backup/profiles/env"+slot));}
     else{
       EnvironmentBrowserData.clear(profile.getNoBackupFilesDir(),profile.getCacheDir());
+      NetworkSourceSelection.withActiveSnapshot(profile,()->{
+        EnvironmentBrowserData.clearNetworkShareSnapshots(profile.getNoBackupFilesDir());return null;
+      });
       for(String name:new String[]{"gecko-browser.yaml","network-runtime","pocket-tls-config.tmp"})erase(new File(profile.getNoBackupFilesDir(),name));
       SecretStore privateStore=new SecretStore(profile);for(String name:new String[]{"network","network-ui","exit-baseline","exit-region","subscription","subscription-meta","subscription-ui","exit-subscription","exit-subscription-meta","exit-subscription-ui","pending-network","environment-spec","browser-reset","environment-audit","gecko-timezone","gecko-cpu","gecko-tls"})privateStore.remove(name);
       erase(new File(profile.getNoBackupFilesDir(),"environment-spec.lock"));
@@ -57,12 +92,12 @@ public final class EnvironmentDeleteActivity extends ThemedActivity {
       erase(new File(profile.getNoBackupFilesDir(),"gecko-tls.lock"));
       erase(new File(profile.getFilesDir(),"network-import.json"));erase(new File(profile.getCacheDir(),"gecko-uploads"));
       File[] previews=profile.getNoBackupFilesDir().listFiles();if(previews!=null)for(File f:previews)if((f.getName().startsWith("subscription-preview-")||f.getName().startsWith("pending-entry-subscription-")||f.getName().startsWith("pending-exit-subscription-")))erase(f);
-      File[] temporary=profile.getCacheDir().listFiles();if(temporary!=null)for(File f:temporary)if(f.getName().matches("download-.*[.]part")||f.getName().startsWith("subscription-preview-"))erase(f);
+      File[] temporary=profile.getCacheDir().listFiles();if(temporary!=null)for(File f:temporary)if(f.getName().startsWith("subscription-preview-"))erase(f);
     }
     // System WebView data is private to this process suffix, even if Gecko is selected.
     EnvironmentBrowserData.clearChromium(data,slot);
     File[] prefs=new File(data,"shared_prefs").listFiles();if(prefs!=null)for(File f:prefs){String name=f.getName();if(slot>0&&name.startsWith(prefix)||slot==0&&(name.matches("(chat|download-tasks|network-journal|environment-audit|browser-reading|web-perf|route-quality|traffic-monitor|universal-browser)[.]xml(\\.bak)?"))){String base=name.replaceFirst("[.]xml(\\.bak)?$","");Profiles.global(c).getSharedPreferences(base,0).edit().clear().commit();if(f.exists()&&!f.delete())throw new IOException();}}
-    for(String name:new String[]{"conversations.db","deliveries.db","draft-archive.db",ReplyNoticeLedger.DATABASE})profile.deleteDatabase(name);
+    EnvironmentResetActivity.removeLoginDatabases(profile);
     if(slot>0){File[] dbs=new File(data,"databases").listFiles();if(dbs!=null)for(File f:dbs)if(f.getName().startsWith(prefix))erase(f);}
     // Saved files in Downloads or the user's chosen folder are user-owned and remain accessible.
     Profiles.global(c).getSharedPreferences("browser-environment-names",0).edit().remove("name"+slot).commit();

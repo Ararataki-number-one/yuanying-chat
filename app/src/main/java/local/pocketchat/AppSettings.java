@@ -47,7 +47,11 @@ final class AppSettings {
   static boolean eligibleDefault(org.json.JSONObject row){int slot=row.optInt("slot",-1);return slot>=0&&slot<Profiles.MAX&&(android.os.Build.VERSION.SDK_INT>=28||slot==0)&&row.optBoolean("created")&&!row.optBoolean("deleting");}
   static boolean selectable(org.json.JSONObject row){return eligibleDefault(row)&&!row.optBoolean("resetting");}
   static int firstAvailable(org.json.JSONArray rows,int excluded){for(int i=0;i<rows.length();i++){org.json.JSONObject row=rows.optJSONObject(i);if(row!=null&&row.optInt("slot",-1)!=excluded&&selectable(row))return row.optInt("slot");}return -1;}
-  static boolean writeDefault(SQLiteDatabase db,int id){ContentValues row=new ContentValues();row.put("name","defaultSlot");row.put("value",String.valueOf(id));return db.insertWithOnConflict("app_settings",null,row,SQLiteDatabase.CONFLICT_REPLACE)>=0;}
+  private static boolean writeSetting(SQLiteDatabase db,String key,String value){
+    ContentValues row=new ContentValues();row.put("name",key);row.put("value",value);
+    return db.insertWithOnConflict("app_settings",null,row,SQLiteDatabase.CONFLICT_REPLACE)>=0;
+  }
+  static boolean writeDefault(SQLiteDatabase db,int id){return writeSetting(db,"defaultSlot",String.valueOf(id));}
   /** Invalid legacy selections are repaired once, before a deleted slot can be reused. */
   static int defaultSlot(Context c){
     ProfileCatalog catalog=ProfileCatalog.get(c);int requested=requestedDefault(c);
@@ -62,6 +66,17 @@ final class AppSettings {
   static boolean defaultSlot(Context c,int id){
     ProfileCatalog catalog=ProfileCatalog.get(c);SQLiteDatabase db=catalog.getWritableDatabase();db.beginTransaction();try{
       if(!selectable(catalog.item(id))||!writeDefault(db,id))return false;
+      db.setTransactionSuccessful();return true;
+    }finally{db.endTransaction();}
+  }
+  static boolean saveStartup(Context c,int slot,int generation,String environmentId,boolean direct){
+    ProfileCatalog catalog=ProfileCatalog.get(c);SQLiteDatabase db=catalog.getWritableDatabase();
+    db.beginTransaction();
+    try{
+      org.json.JSONObject row=catalog.item(slot);
+      if(!selectable(row)||generation<0||row.optInt("generation",-1)!=generation
+          ||environmentId==null||environmentId.isEmpty()||!environmentId.equals(row.optString("environmentId")))return false;
+      if(!writeDefault(db,slot)||!writeSetting(db,"startupDirect",String.valueOf(direct)))return false;
       db.setTransactionSuccessful();return true;
     }finally{db.endTransaction();}
   }

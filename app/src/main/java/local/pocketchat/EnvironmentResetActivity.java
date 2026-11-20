@@ -11,9 +11,34 @@ import org.json.*;
 /** Separate maintenance process. Only an explicitly confirmed reset or a
  * persisted reset retry enters this activity. The logical environment is kept. */
 public final class EnvironmentResetActivity extends ThemedActivity {
+  static final String LEGACY_DOWNLOADS_BLOCKED="旧下载记录无法读取。此环境仍待维护。可返回列表使用其他环境，并在原保存位置查找已保存的文件。";
   boolean working;int slot;TextView label;EnvironmentSpec.Identity confirmed;
   @Override public void onCreate(Bundle state){super.onCreate(state);try{slot=getIntent().getIntExtra("slot",-1);confirmed=new EnvironmentSpec.Identity(slot,getIntent().getIntExtra("confirmedGeneration",-1),getIntent().getStringExtra("confirmedEnvironmentId"));}catch(Exception invalid){finish();return;}LinearLayout root=DesignUi.screen(this);LinearLayout body=DesignUi.body(this,root,"重置登录数据",null);label=DesignUi.text(this,"正在清理此环境的登录与网页数据…",16,DesignUi.TEXT);body.addView(label);setContentView(root);run();}
-  void run(){if(working)return;working=true;new Thread(()->{String failure="";boolean expired=false;try{reset(this,confirmed);}catch(Expired e){expired=true;}catch(ChromiumProfileCleanup.Deferred pending){failure=pending.getMessage();}catch(Exception e){failure="重置尚未完成，请重试。环境配置和其他环境会保留。";}String error=failure;boolean done=expired;runOnUiThread(()->{working=false;if(done||error.isEmpty()){backToList();}else{label.setText(error);AppAppearance.dialog(this).setTitle("登录重置未完成").setMessage(error).setPositiveButton("重试",(d,w)->run()).setNegativeButton("返回列表",(d,w)->backToList()).show();}});},"environment-login-reset").start();}
+  void run(){
+    if(working)return;
+    working=true;
+    new Thread(()->{
+      String failure="";
+      boolean expired=false,unreadable=false;
+      try{reset(this,confirmed);}
+      catch(Expired changed){expired=true;}
+      catch(ChromiumProfileCleanup.Deferred pending){failure=pending.getMessage();}
+      catch(DownloadLibrary.LegacyHistoryUnreadable damaged){unreadable=true;failure=LEGACY_DOWNLOADS_BLOCKED;}
+      catch(Exception unavailable){failure="重置尚未完成，请重试。环境配置和其他环境会保留。";}
+      String error=failure;
+      boolean done=expired,canRetry=!unreadable;
+      runOnUiThread(()->{
+        working=false;
+        if(isFinishing()||isDestroyed())return;
+        if(done||error.isEmpty()){backToList();return;}
+        label.setText(error);
+        AlertDialog.Builder dialog=AppAppearance.dialog(this).setTitle("登录重置未完成").setMessage(error);
+        if(canRetry)dialog.setPositiveButton("重试",(d,w)->run()).setNegativeButton("返回列表",(d,w)->backToList());
+        else dialog.setPositiveButton("返回列表",(d,w)->backToList());
+        dialog.show();
+      });
+    },"environment-login-reset").start();
+  }
   void backToList(){startActivity(new Intent(this,WindowHomeActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_REORDER_TO_FRONT));finish();}
   @Override public void onBackPressed(){if(!working)super.onBackPressed();}
   static void verifyRoots(Context c,int slot)throws Exception{
@@ -51,25 +76,35 @@ public final class EnvironmentResetActivity extends ThemedActivity {
       });
     }
     verifyRoots(c,slot);catalog.withReset(plan.next,()->null);
+    DownloadLibrary.get(c).migrateBeforeRemoval(slot);
     ChromiumProfileCleanup.clearRetired(c,plan.before.identity);
     EnvironmentBrowserData.clear(profile.getNoBackupFilesDir(),profile.getCacheDir());
     EnvironmentBrowserData.clearChromium(new File(Profiles.global(c).getApplicationInfo().dataDir),slot);
     new SecretStore(profile).remove("network-application");NetworkShareSelection.clear(profile);
     new SecretStore(profile).remove("environment-audit");
-    // These are login-scoped local recovery copies. Saved downloaded files and
-    // every network/template/preference record are deliberately outside this set.
-    for(String name:new String[]{"conversations.db","deliveries.db","draft-archive.db",ReplyNoticeLedger.DATABASE}){
-      File database=profile.getDatabasePath(name);if(java.nio.file.Files.isSymbolicLink(database.getParentFile().toPath()))throw new IOException("网页数据库目录包含链接");
-      profile.deleteDatabase(name);for(String suffix:new String[]{"","-wal","-shm","-journal"})if(java.nio.file.Files.exists(new File(database.getPath()+suffix).toPath(),java.nio.file.LinkOption.NOFOLLOW_LINKS))throw new IOException("本地网页数据库尚未清理");
-    }
+    removeLoginDatabases(profile);
     android.content.SharedPreferences.Editor preferences=profile.getSharedPreferences("chat",0).edit();
-    for(String key:new String[]{"pending","legacyPending","sentAttachments","conversation","url","transcript","lastCompletedId","lastNotifiedId","lastReplyNotifiedId","draft","nativeDraft","webDraft"})preferences.remove(key);
+    for(String key:new String[]{"pending","legacyPending","sentAttachments","conversation","url","geckoBrowserUrl","transcript","lastCompletedId","lastNotifiedId","lastReplyNotifiedId","draft","nativeDraft","webDraft"})preferences.remove(key);
     for(String key:profile.getSharedPreferences("chat",0).getAll().keySet())if(key.startsWith("draftBackup:"))preferences.remove(key);
     if(!preferences.commit()||!profile.getSharedPreferences("environment-audit",0).edit().clear().commit())throw new IOException("本地网页记录尚未清理");
-    DownloadLibrary.get(c).migrate();DownloadLibrary.get(c).removeEnvironmentTasks(slot);
+    DownloadLibrary.get(c).removeEnvironmentTasks(slot);
     if(!profile.getSharedPreferences("download-tasks",0).edit().clear().commit())throw new IOException("文件任务尚未清理");
     NotificationManager notices=c.getSystemService(NotificationManager.class);for(int id=4101;id<=4105;id++)notices.cancel(Profiles.notification(profile,id));
     repository.finishLoginReset(plan);
+  }
+  /** Retire the target profile's login-scoped recovery databases. */
+  static void removeLoginDatabases(Context profile)throws IOException{
+    for(String name:new String[]{"conversations.db","deliveries.db","draft-archive.db",ReplyNoticeLedger.DATABASE}){
+      File database=profile.getDatabasePath(name);
+      if(java.nio.file.Files.isSymbolicLink(database.getParentFile().toPath()))throw new IOException("网页数据库目录包含链接");
+      profile.deleteDatabase(name);
+      // Android can return false for a database that a previous attempt removed.
+      for(String suffix:new String[]{"","-wal","-shm","-journal"}){
+        File entry=new File(database.getPath()+suffix);
+        if(!java.nio.file.Files.notExists(entry.toPath(),java.nio.file.LinkOption.NOFOLLOW_LINKS))
+          throw new IOException("本地网页数据库尚未清理");
+      }
+    }
   }
   static void terminate(Context c,int slot)throws Exception{
     String owner=c.getPackageName()+(slot==0?"":":profile"+slot),children=c.getPackageName()+":gecko_env"+slot+"_";ActivityManager manager=c.getSystemService(ActivityManager.class);long deadline=SystemClock.elapsedRealtime()+10000;

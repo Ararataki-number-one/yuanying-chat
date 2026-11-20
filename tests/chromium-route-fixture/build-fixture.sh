@@ -34,7 +34,7 @@ case "$cefrium_input" in
 esac
 
 "$jdk_dir/bin/javac" --release 17 -cp "$android_api:$cefrium_api" \
-    -d "$work/classes" "$fixture_dir/RouteFixture.java" "$fixture_dir/LoopbackProxy.java"
+    -d "$work/classes" "$fixture_dir/RouteFixture.java" "$fixture_dir/LoopbackProxy.java" "$fixture_dir/FilesAndProfilesFixture.java"
 "$tools_dir/d8" -JXmx384m --min-api 29 --lib "$android_api" --classpath "$cefrium_api" \
     --output "$work/dex" "$work/classes/local/pocketchat/chromiumfixture/"*.class
 sed "s/android:targetPackage=\"local.pocketchat\"/android:targetPackage=\"$target\"/" \

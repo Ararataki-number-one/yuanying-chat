@@ -18,16 +18,22 @@ public final class DownloadPartCleanupCases {
         Path cache=Files.createDirectories(root.resolve("cache")),noBackup=Files.createDirectories(root.resolve("no_backup"));
         Path partial=File.createTempFile("browser-download-",".part",cache.toFile()).toPath();write(partial,"private partial download bytes");
         Path second=cache.resolve("browser-download-stale.part");write(second,"another interrupted download");
+        Path geckoPart=File.createTempFile("download-",".part",cache.toFile()).toPath();
+        write(geckoPart,"interrupted Gecko chat download bytes");
         Map<Path,byte[]> preserved=new LinkedHashMap<>();
-        for(String path:new String[]{"cache/image.cache","cache/browser-download-complete.pdf","cache/browser-download-stale.part.bak","cache/other-browser-download-11.part","cache/browser-download-folder.part/keep","cache/profiles/env1/browser-download-11.part","files/saved-downloads/browser-download-saved.part","Downloads/user-file.pdf","databases/saved-download-library.db"}){Path file=root.resolve(path);write(file,"keep "+path);preserved.put(file,Files.readAllBytes(file));}
+        for(String path:new String[]{"cache/image.cache","cache/browser-download-complete.pdf","cache/browser-download-stale.part.bak","cache/other-browser-download-11.part","cache/browser-download-folder.part/keep","cache/profiles/env1/browser-download-11.part","cache/profiles/env1/download-other-owner.part","cache/download-example.part.bak","cache/download-folder.part/keep","files/saved-downloads/browser-download-saved.part","Downloads/user-file.pdf","databases/saved-download-library.db"}){Path file=root.resolve(path);write(file,"keep "+path);preserved.put(file,Files.readAllBytes(file));}
         Path fileTarget=outside.resolve("private-target.part");write(fileTarget,"external symlink target bytes");preserved.put(fileTarget,Files.readAllBytes(fileTarget));
         Path directoryTarget=outside.resolve("directory");write(directoryTarget.resolve("keep"),"directory target bytes");preserved.put(directoryTarget.resolve("keep"),Files.readAllBytes(directoryTarget.resolve("keep")));
         Path fileLink=cache.resolve("browser-download-file-link.part"),directoryLink=cache.resolve("browser-download-directory-link.part"),keptLink=cache.resolve("unrelated-link");
+        Path geckoLink=cache.resolve("download-gecko-link.part");Files.createSymbolicLink(geckoLink,fileTarget);
         Files.createSymbolicLink(fileLink,fileTarget);Files.createSymbolicLink(directoryLink,directoryTarget);Files.createSymbolicLink(keptLink,fileTarget);
         clear(entry,noBackup.toFile(),cache.toFile());
         check("entry "+entry+" removes actual createTempFile part",!Files.exists(partial));check("entry "+entry+" removes stale named part",!Files.exists(second));
+        check("entry "+entry+" removes actual Gecko chat createTempFile part",!Files.exists(geckoPart));
         check("entry "+entry+" unlinks matching file symlink only",!Files.exists(fileLink,LinkOption.NOFOLLOW_LINKS));check("entry "+entry+" unlinks matching directory symlink only",!Files.exists(directoryLink,LinkOption.NOFOLLOW_LINKS));
+        check("entry "+entry+" unlinks matching Gecko download symlink only",!Files.exists(geckoLink,LinkOption.NOFOLLOW_LINKS));
         check("entry "+entry+" preserves unrelated symlink",Files.isSymbolicLink(keptLink));check("entry "+entry+" preserves cache root",Files.isDirectory(cache));
+        clear(entry,noBackup.toFile(),cache.toFile());
         for(Map.Entry<Path,byte[]> file:preserved.entrySet())check("entry "+entry+" preserves bytes "+file.getKey().getFileName(),Files.exists(file.getKey())&&Arrays.equals(file.getValue(),Files.readAllBytes(file.getKey())));
         Path redirected=root.resolve("redirected-cache");Files.createSymbolicLink(redirected,outside);Path externalPart=outside.resolve("browser-download-keep.part");write(externalPart,"must not delete through linked cache root");
         boolean refused=false;try{clear(entry,noBackup.toFile(),redirected.toFile());}catch(IOException expected){refused=true;}

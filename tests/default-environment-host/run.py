@@ -49,6 +49,7 @@ def main():
   text=text.replace(member(text,'static void workspaceRouting('),'static void workspaceRouting(){}')
  if a.before_ref:
   text=text.replace(member(text,'static void directBrowserRouting('),'static void directBrowserRouting(){}')
+  text=text.replace(member(text,'static void startupTransaction('),'static void startupTransaction(){}')
  with tempfile.TemporaryDirectory(prefix='default-environment-host-') as raw:
   tmp=pathlib.Path(raw);base=tmp/'local/pocketchat';base.mkdir(parents=True);(base/'DefaultEnvironmentHost.java').write_text(text);(base/'AppSettings.java').write_bytes(source['AppSettings.java']);(base/'WorkspaceNavigation.java').write_bytes(source['WorkspaceNavigation.java']);classes=tmp/'classes';files=[*base.glob('*.java'),*HERE.glob('stubs/**/*.java')]
   subprocess.run([str(a.java_home/'bin/javac'),'-encoding','UTF-8','-cp',str(a.json_jar),'-d',str(classes),*map(str,files)],check=True)

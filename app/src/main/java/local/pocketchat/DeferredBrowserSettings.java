@@ -4,13 +4,14 @@ import org.json.*;
 
 /** Desired settings stay separate from the policy currently used by a live reply. */
 final class DeferredBrowserSettings {
-  static boolean pending(ChatSession s){return s.prefs.contains("nextPrivacyLevel");}
+  static final String NEXT_PRIVACY_LEVEL="nextPrivacyLevel",NEXT_DESKTOP_SITE="nextDesktopSite";
+  static boolean pending(ChatSession s){return s.prefs.contains(NEXT_PRIVACY_LEVEL);}
   static boolean candidateAvailable(ChatSession s){return !s.deleted&&pending(s)&&(s.identity==null||!s.identity.queueUnavailable);}
-  static JSONObject desired(ChatSession s){return J.obj("privacyLevel",s.prefs.getInt("nextPrivacyLevel",s.privacy.level()),"desktopSite",s.prefs.getBoolean("nextDesktopSite",s.privacy.wantsDesktop()));}
-  static boolean save(ChatSession s,int level,boolean desktop){return s.prefs.edit().putInt("nextPrivacyLevel",level).putBoolean("nextDesktopSite",desktop).commit();}
-  static void cancel(ChatSession s){s.prefs.edit().remove("nextPrivacyLevel").remove("nextDesktopSite").commit();}
+  static JSONObject desired(ChatSession s){return J.obj("privacyLevel",s.prefs.getInt(NEXT_PRIVACY_LEVEL,s.privacy.level()),"desktopSite",s.prefs.getBoolean(NEXT_DESKTOP_SITE,s.privacy.wantsDesktop()));}
+  static boolean save(ChatSession s,int level,boolean desktop){return s.prefs.edit().putInt(NEXT_PRIVACY_LEVEL,level).putBoolean(NEXT_DESKTOP_SITE,desktop).commit();}
+  static void cancel(ChatSession s){s.prefs.edit().remove(NEXT_PRIVACY_LEVEL).remove(NEXT_DESKTOP_SITE).commit();}
   static boolean idle(ChatSession s){return !s.deleted&&!ProfileUi.working(s)&&!s.connecting&&!s.navigating&&!s.recoveryScheduled&&!s.web.failed;}
-  static void apply(ChatSession s){if(!candidateAvailable(s))return;JSONObject value=desired(s);boolean protection=value.optInt("privacyLevel")!=s.privacy.level();ProfileCatalog.get(s.context).browserDisplay(Profiles.slot(s.context),value.optBoolean("desktopSite"));s.prefs.edit().putInt("privacyLevel",value.optInt("privacyLevel")).remove("nextPrivacyLevel").remove("nextDesktopSite").commit();s.identityApplicationPending=false;s.applyBrowserSettings(protection);s.setStatus("已应用保存的网页显示和保护设置");}
+  static void apply(ChatSession s){if(!candidateAvailable(s))return;JSONObject value=desired(s);boolean protection=value.optInt("privacyLevel")!=s.privacy.level();ProfileCatalog.get(s.context).browserDisplay(Profiles.slot(s.context),value.optBoolean("desktopSite"));s.prefs.edit().putInt("privacyLevel",value.optInt("privacyLevel")).remove(NEXT_PRIVACY_LEVEL).remove(NEXT_DESKTOP_SITE).commit();s.identityApplicationPending=false;s.applyBrowserSettings(protection);s.setStatus("已应用保存的网页显示和保护设置");}
   static void release(ChatSession s){s.configurationCapture=false;s.operation=false;}
   static void drain(ChatSession s){
     if(!candidateAvailable(s)||!idle(s)||android.os.SystemClock.elapsedRealtime()-s.lastDeferredBrowserAttempt<10000)return;

@@ -131,9 +131,20 @@ class DeleteIdentityContractTest(unittest.TestCase):
 
     def test_production_intents_and_cleanup_keep_exact_identity(self):
         ui = (PROD / "WindowHomeActivity.java").read_text()
-        dialog = host.member(ui, "void deleteEnvironment(")
-        self.assertIn("beginDelete(shown)", dialog)
-        self.assertNotIn("beginDelete(id)", dialog)
+        menu = host.member(ui, "void menu(")
+        for method in ("deleteEnvironment", "resetEnvironment"):
+            self.assertIn(method + "(row)", menu)
+            dialog = host.member(ui, "void " + method + "(")
+            self.assertIn("selectionIdentity(row)", dialog)
+            self.assertIn("confirmMaintenance(dialog,shown,", dialog)
+        preflight = host.member(ui, "void confirmMaintenance(")
+        stages = ["confirm.setEnabled(false)", "withIdentity(shown,", "preflightRemoval(shown.slot)",
+                  "handler.post(", "!dialog.isShowing()", "if(!workspaceVisible)return;",
+                  "if(!issue.isEmpty()){showProblem(issue);return;}", "beginDelete(shown)",
+                  "startReset(shown.slot,shown.generation,shown.environmentId)"]
+        self.assertEqual([preflight.index(stage) for stage in stages],
+                         sorted(preflight.index(stage) for stage in stages))
+        self.assertNotIn("beginDelete(id)", ui)
         intent = host.member(ui, "void startDelete(")
         for field in ["expected.slot", "expected.generation", "expected.environmentId"]:
             self.assertIn(field, intent)
@@ -156,9 +167,20 @@ class DeleteIdentityContractTest(unittest.TestCase):
         self.assertLess(last, body.index("NotificationManager notices="))
         self.assertIn("catalog.completeDelete(expected)", body)
         self.assertNotIn("catalog.completeDelete(slot)", body)
-        reset = host.member((PROD / "EnvironmentResetActivity.java").read_text(), "static void reset(")
+        reset_source = (PROD / "EnvironmentResetActivity.java").read_text()
+        reset = host.member(reset_source, "static void reset(")
         self.assertIn("EnvironmentMaintenanceLease.with", reset)
         self.assertIn("Profiles.global(c).getNoBackupFilesDir()", reset)
+        reset_body = host.member(reset_source, "private static void performReset(")
+        for work, stopped in [(body, "Thread.sleep(100);}while(true);"), (reset_body, "terminate(c,slot)")]:
+            migration = work.index("migrateBeforeRemoval(slot)")
+            self.assertLess(work.index(stopped), migration)
+            self.assertLess(migration, work.index("ChromiumProfileCleanup.clearRetired"))
+        for worker in (deletion, reset_source):
+            run = host.member(worker, "void run(")
+            self.assertIn("catch(DownloadLibrary.LegacyHistoryUnreadable damaged)", run)
+            self.assertIn("canRetry=!unreadable", run)
+            self.assertIn('else dialog.setPositiveButton("返回列表"', run)
 
     def test_delete_and_reset_retire_the_actual_encrypted_audit_record(self):
         audit = (PROD / "EnvironmentAudit.java").read_text()

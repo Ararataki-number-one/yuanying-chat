@@ -154,3 +154,9 @@ for route in vpn internal; do
   timeout 300 "${adb_device[@]}" shell am instrument "${args[@]}" "$fixture" | tee "$work/wire-$route.txt"
 done
 python3 tools/gecko/chromium_release_publication.py join-routes --debug "$work/chromium-debug-render.json" --vpn "$work/wire-vpn.txt" --internal "$work/wire-internal.txt" --nonce "$nonce" --base-sha "$base_sha" --feature-sha "$feature_sha" --core-sha "$core_sha" --output "$work/chromium-ondemand-device-results.json"
+
+# Reuse the integration APK pair and the same Android 13 guest after the route checks.
+wait_for_test_network
+TEST_SERIAL="$serial" SOURCE_COMMIT="$source" SOURCE_TREE="$tree" \
+  NONCE="$(openssl rand -hex 16)" BASE_SHA="$base_sha" FEATURE_SHA="$feature_sha" \
+  bash tests/chromium-route-fixture/run-files-profiles.sh "$work/files-profiles"

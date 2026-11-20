@@ -97,7 +97,7 @@ public class MainActivity extends ThemedActivity {
     handleOpening(getIntent());
   }
   void handleOpening(Intent intent){
-    if(BrowserPreferences.startBrowser(this)&&BrowserPreferences.nativeOpening(intent)){
+    if(BrowserSettingsUi.ownerOpening(this,intent)||BrowserPreferences.startBrowser(this)&&BrowserPreferences.nativeOpening(intent)){
       openNativeWorkspace(intent);return;
     }
     if(session==null){
@@ -135,6 +135,7 @@ public class MainActivity extends ThemedActivity {
     // Keep the native destination when Android recreates this Activity.
     intent.putExtra("openWindowAction",network?"network":"settings");
     intent.removeExtra("openEnvironmentEditor");intent.removeExtra("openDownload");
+    BrowserSettingsUi.showRequestedOwner(this,intent);
   }
   void showNativeDownload(String id){
     JSONObject row=null;

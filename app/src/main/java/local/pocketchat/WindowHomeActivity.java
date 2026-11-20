@@ -379,51 +379,151 @@ public class WindowHomeActivity extends ThemedActivity {
     return dialog;
   }
   void menu(int id){
-    JSONObject row=ProfileCatalog.get(this).item(id);
-    if(!ProfileCatalog.get(this).available(id))return;
+    ProfileCatalog catalog=ProfileCatalog.get(this);
+    JSONObject row=catalog.item(id);
+    EnvironmentSpec.Identity shown=selectionIdentity(row);
+    if(shown==null)return;
     String[] labels={"编辑环境","分组与备注",row.optBoolean("favorite")?"取消收藏":"收藏环境",id==AppSettings.defaultSlot(this)?"当前默认环境":"设为默认启动环境","网络配置","选择此环境","复制环境配置","重置登录数据","删除环境","环境详情"};
     ReferenceUi.Modal panel=new ReferenceUi.Modal(this,row.optString("name")).asSheet();
     for(int i=0;i<labels.length;i++){final int n=i;Button item=ReferenceUi.menuAction(panel,labels[i],()->{panel.dismiss();
-      if(n==0)openWindow(id,"edit");if(n==1)metadata(id);
-      if(n==2){ProfileCatalog.get(this).favorite(id,!row.optBoolean("favorite"));refresh();}
-      if(n==3){AppSettings.defaultSlot(this,id);refresh();}
-      if(n==4)openWindow(id,"network");if(n==5)toggleSelection(row);if(n==6)copyEnvironment(id);if(n==7)resetEnvironment(id);if(n==8)deleteEnvironment(id);if(n==9)openExpected(row,"overview",true);
+      if(n==0)openWindow(id,"edit");if(n==1)metadata(row);
+      if(n==2)saveMenuChoice(catalog,shown,()->catalog.favorite(shown.slot,!row.optBoolean("favorite")));
+      if(n==3)saveMenuChoice(catalog,shown,()->AppSettings.defaultSlot(this,shown.slot));
+      if(n==4)openWindow(id,"network");if(n==5)toggleSelection(row);if(n==6)copyEnvironment(row);if(n==7)resetEnvironment(row);if(n==8)deleteEnvironment(row);if(n==9)openExpected(row,"overview",true);
     });if(i==7||i==8)item.setTextColor(DesignUi.RED);}
     panel.show();
   }
+  void saveMenuChoice(ProfileCatalog catalog,EnvironmentSpec.Identity shown,ProfileCatalog.IdentityAction<Boolean> change){
+    try{
+      if(catalog.withIdentity(shown,change)){refresh();return;}
+    }catch(Exception unavailable){}
+    showProblem("环境已变化或暂时无法保存，请重新选择");
+  }
   void startReset(int id,int generation,String environmentId){startActivity(new Intent(this,EnvironmentResetActivity.class).putExtra("slot",id).putExtra("confirmedGeneration",generation).putExtra("confirmedEnvironmentId",environmentId).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));}
-  void resetEnvironment(int id){
-    JSONObject row=ProfileCatalog.get(this).item(id);if(!ProfileCatalog.get(this).available(id))return;
+  void resetEnvironment(JSONObject row){
+    EnvironmentSpec.Identity shown=selectionIdentity(row);
+    if(shown==null){showProblem("环境已变化，请刷新列表");return;}
     AlertDialog dialog=AppAppearance.dialog(this).setTitle("重置 "+row.optString("name")+" 的登录？")
       .setMessage("将关闭此环境并清理登录、Cookie、网页存储和本地草稿、聊天缓存。正在进行的回复、上传和下载任务会中断。环境名称、模板、网络与使用偏好，以及已保存的下载文件会保留；其他环境不受影响。需要在此环境重新登录 ChatGPT。")
-      .setNegativeButton("取消",null).setPositiveButton("重置登录数据",(d,w)->startReset(id,row.optInt("generation"),row.optString("environmentId"))).show();dialog.getButton(AlertDialog.BUTTON_POSITIVE).setTextColor(DesignUi.RED);
+      .setNegativeButton("取消",null).setPositiveButton("重置登录数据",null).show();
+    confirmMaintenance(dialog,shown,false);
   }
-  void copyEnvironment(int sourceId){
-    if(preparing)return;JSONObject source=ProfileCatalog.get(this).item(sourceId);int target=-1;JSONArray rows=ProfileCatalog.get(this).list();for(int i=0;i<rows.length();i++){JSONObject row=rows.optJSONObject(i);if(!row.optBoolean("created")&&!row.optBoolean("deleting")&&!row.optBoolean("resetting")){target=row.optInt("slot");break;}}
-    if(target<0){showProblem("环境已满，请先删除不再使用的环境");return;}
-    final int destination=target;final EnvironmentSpec.Identity expected;try{expected=new EnvironmentSpec.Identity(sourceId,source.optInt("generation"),source.getString("environmentId"));}catch(Exception invalid){showProblem("源环境已变化，请重试");return;}
-    LinearLayout box=DesignUi.column(this);box.setPadding(dp(18),0,dp(18),dp(16));String label=source.optString("name");if(label.length()>20)label=label.substring(0,20);EditText name=DesignUi.input(box,"新环境名称",label+" 副本","");name.setFilters(new InputFilter[]{new InputFilter.LengthFilter(24)});DesignUi.note(box,"复制已保存的浏览器模板、网络和使用偏好。账号、聊天和草稿在新环境独立，不会复制。");
-    AlertDialog dialog=AppAppearance.dialog(this).setTitle("复制环境配置").setView(box).setPositiveButton("创建副本",null).setNegativeButton("取消",null).create();dialog.show();dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v->{String title=name.getText().toString().trim();if(title.isEmpty()){name.setError("请输入环境名称");return;}if(preparing)return;preparing=true;dialog.dismiss();createButton.setEnabled(false);preparation.setVisibility(View.VISIBLE);new Thread(()->{String error="";try{Context origin=Profiles.context(this,sourceId);EnvironmentSpec.Identity copied=Profiles.copyConfiguration(origin,destination,expected);ProfileCatalog.get(this).withIdentity(copied,()->{Profiles.rename(this,destination,title);ProfileCatalog.get(this).details(destination,source.optString("group"),source.optString("notes"));return null;});}catch(Exception failure){error=failure.getMessage()==null?"复制未完成，请重试":failure.getMessage();}String issue=error;handler.post(()->{preparing=false;if(isFinishing()||isDestroyed())return;createButton.setEnabled(true);preparation.setVisibility(View.GONE);refresh();if(!issue.isEmpty())showProblem(issue);});},"environment-copy").start();});
+
+  void confirmMaintenance(AlertDialog dialog,EnvironmentSpec.Identity shown,boolean deleting){
+    Button confirm=dialog.getButton(AlertDialog.BUTTON_POSITIVE);
+    confirm.setTextColor(DesignUi.RED);
+    confirm.setOnClickListener(view->{
+      confirm.setEnabled(false);
+      CharSequence title=confirm.getText();
+      confirm.setText("正在检查…");
+      new Thread(()->{
+        String failure="";
+        try{
+          ProfileCatalog.get(this).withIdentity(shown,()->{
+            DownloadLibrary.get(this).preflightRemoval(shown.slot);
+            return null;
+          });
+        }catch(DownloadLibrary.LegacyHistoryUnreadable unreadable){
+          failure="旧下载记录无法读取。此环境尚未进入维护，已保存的文件保留在原位置。";
+        }catch(Exception unavailable){
+          failure="环境已变化或暂时无法检查。此操作尚未开始，请刷新后重试。";
+        }
+        String issue=failure;
+        handler.post(()->{
+          if(!dialog.isShowing()||isFinishing()||isDestroyed())return;
+          confirm.setText(title);
+          confirm.setEnabled(true);
+          if(!workspaceVisible)return;
+          dialog.dismiss();
+          if(!issue.isEmpty()){showProblem(issue);return;}
+          try{
+            if(deleting)startDelete(ProfileCatalog.get(this).beginDelete(shown));
+            else startReset(shown.slot,shown.generation,shown.environmentId);
+          }catch(Exception unavailable){
+            String detail=unavailable.getMessage();
+            showProblem(detail==null?"暂时无法进入维护，请刷新后重试。":detail);
+          }
+        });
+      },"environment-maintenance-preflight").start();
+    });
+  }
+  void copyEnvironment(JSONObject source){
+    if(preparing)return;
+    ProfileCatalog catalog=ProfileCatalog.get(this);
+    EnvironmentSpec.Identity expected=selectionIdentity(source);
+    if(expected==null||!expected.equals(selectionIdentity(catalog.item(expected.slot)))){
+      showProblem("源环境已变化，请重试");return;
+    }
+    JSONObject target=firstEmptySlot(catalog.list());
+    if(target==null){showProblem("环境已满，请先删除不再使用的环境");return;}
+    int destination=target.optInt("slot",-1),generation=target.optInt("generation",-1);
+
+    LinearLayout box=DesignUi.column(this);
+    box.setPadding(dp(18),0,dp(18),dp(16));
+    String label=source.optString("name");
+    if(label.length()>20)label=label.substring(0,20);
+    EditText name=DesignUi.input(box,"新环境名称",label+" 副本","");
+    name.setFilters(new InputFilter[]{new InputFilter.LengthFilter(24)});
+    DesignUi.note(box,"复制已保存的浏览器模板、网络和使用偏好。账号、聊天和草稿在新环境独立，不会复制。");
+    AlertDialog dialog=AppAppearance.dialog(this).setTitle("复制环境配置").setView(box)
+      .setPositiveButton("创建副本",null).setNegativeButton("取消",null).create();
+    dialog.show();
+    dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v->{
+      String title=name.getText().toString().trim();
+      if(title.isEmpty()){name.setError("请输入环境名称");return;}
+      if(preparing)return;
+      preparing=true;
+      dialog.dismiss();
+      createButton.setEnabled(false);
+      preparation.setVisibility(View.VISIBLE);
+      new Thread(()->{
+        String error="";
+        try{
+          Profiles.copyConfiguration(Profiles.context(this,expected.slot),destination,generation,expected,title);
+        }catch(Exception failure){
+          error=failure.getMessage()==null?"复制未完成，请重试":failure.getMessage();
+        }
+        String issue=error;
+        handler.post(()->{
+          preparing=false;
+          if(isFinishing()||isDestroyed())return;
+          createButton.setEnabled(true);
+          preparation.setVisibility(View.GONE);
+          refresh();
+          if(!issue.isEmpty())showProblem(issue);
+        });
+      },"environment-copy").start();
+    });
   }
   void startDelete(EnvironmentSpec.Identity expected){startActivity(new Intent(this,EnvironmentDeleteActivity.class).putExtra("slot",expected.slot).putExtra("confirmedGeneration",expected.generation).putExtra("confirmedEnvironmentId",expected.environmentId).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));}
-  void deleteEnvironment(int id){
-    JSONObject row=ProfileCatalog.get(this).item(id);final EnvironmentSpec.Identity shown;
-    try{if(!row.optBoolean("created")||row.optBoolean("deleting")||row.optBoolean("resetting"))return;shown=new EnvironmentSpec.Identity(id,row.optInt("generation"),row.getString("environmentId"));}catch(Exception invalid){showProblem("环境已变化，请刷新列表");return;}
+  void deleteEnvironment(JSONObject row){
+    EnvironmentSpec.Identity shown=selectionIdentity(row);
+    if(shown==null){showProblem("环境已变化，请刷新列表");return;}
     AlertDialog dialog=AppAppearance.dialog(this).setTitle("删除 "+row.optString("name")+"？")
       .setMessage("将关闭此环境，清理它的登录、草稿、聊天缓存和网络配置。正在进行的回复和文件操作会中断。其他环境、订阅与固定出口，以及已保存到下载目录的文件会保留。")
-      .setNegativeButton("取消",null).setPositiveButton("删除环境",(d,w)->{try{startDelete(ProfileCatalog.get(this).beginDelete(shown));}catch(Exception e){showProblem(e.getMessage());}}).show();dialog.getButton(AlertDialog.BUTTON_POSITIVE).setTextColor(DesignUi.RED);
+      .setNegativeButton("取消",null).setPositiveButton("删除环境",null).show();
+    confirmMaintenance(dialog,shown,true);
   }
-  void metadata(int id){
-    JSONObject row=ProfileCatalog.get(this).item(id);LinearLayout box=DesignUi.column(this);
+  void metadata(JSONObject row){
+    EnvironmentSpec.Identity expected=selectionIdentity(row);
+    if(expected==null){showProblem("环境已变化，请刷新后重新选择");return;}
+    LinearLayout box=DesignUi.column(this);
     box.setPadding(dp(18),0,dp(18),dp(16));
     EditText group=DesignUi.input(box,"分组",row.optString("group"),"留空为未分组");
     EditText notes=DesignUi.input(box,"备注",row.optString("notes"),"环境用途说明");
     group.setFilters(new InputFilter[]{new InputFilter.LengthFilter(12)});
     notes.setFilters(new InputFilter[]{new InputFilter.LengthFilter(120)});
     AlertDialog dialog=AppAppearance.dialog(this).setTitle("分组与备注 · "+row.optString("name")).setView(box)
-      .setPositiveButton("保存",(d,w)->{
-        ProfileCatalog.get(this).details(id,group.getText().toString(),notes.getText().toString());refresh();
-      }).setNegativeButton("取消",null).show();
+      .setPositiveButton("保存",null).setNegativeButton("取消",null).create();
+    dialog.show();
+    dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v->{
+      ProfileCatalog catalog=ProfileCatalog.get(this);
+      try{
+        boolean saved=catalog.withIdentity(expected,()->catalog.details(expected.slot,group.getText().toString(),notes.getText().toString()));
+        if(saved){dialog.dismiss();refresh();return;}
+      }catch(Exception unavailable){}
+      notes.setError("环境已变化或暂时无法保存，请重新选择");
+    });
     DesignUi.protectEdits(this,dialog,()->!group.getText().toString().equals(row.optString("group"))||!notes.getText().toString().equals(row.optString("notes")));
   }
   void openWindow(int id,String action){
@@ -438,17 +538,26 @@ public class WindowHomeActivity extends ThemedActivity {
   void createWindow(){
     if(preparing)return;
     if(Build.VERSION.SDK_INT<28){showProblem("独立环境需要 Android 9 或更新版本");return;}
-    JSONArray rows=ProfileCatalog.get(this).list();int next=-1;
-    for(int i=0;i<rows.length();i++)if(!rows.optJSONObject(i).optBoolean("created")&&!rows.optJSONObject(i).optBoolean("deleting")&&!rows.optJSONObject(i).optBoolean("resetting")){next=i;break;}
-    if(next<0){showProblem("已达到 8 个环境");return;}
-    new Wizard(next,rows).show();
+    JSONArray rows=ProfileCatalog.get(this).list();
+    JSONObject next=firstEmptySlot(rows);
+    if(next==null){showProblem("已达到 8 个环境");return;}
+    new Wizard(next.optInt("slot"),next.optInt("generation",-1)).show();
+  }
+  static JSONObject firstEmptySlot(JSONArray rows){
+    for(int i=0;i<rows.length();i++){
+      JSONObject row=rows.optJSONObject(i);
+      if(row!=null&&!row.optBoolean("created")&&!row.optBoolean("deleting")&&!row.optBoolean("resetting"))return row;
+    }
+    return null;
   }
   final class Wizard {
-    final int id;final JSONArray windows;final Dialog dialog;
+    final int id,generation;final Dialog dialog;
     LinearLayout body,actions;EditText name;AlertDialog exitPrompt;
     int step,sourceType,sourceSlot;String title,group="";boolean makeDefault,desktop;Spinner displayChoice;
-    Wizard(int id,JSONArray windows){
-      this.id=id;this.windows=windows;title="环境 "+(id+1);sourceSlot=AppSettings.defaultSlot(WindowHomeActivity.this);
+    JSONObject selectedNetworkRow;
+    EnvironmentSpec.Identity shownNetworkSource;
+    Wizard(int id,int generation){
+      this.id=id;this.generation=generation;title="环境 "+(id+1);sourceSlot=AppSettings.defaultSlot(WindowHomeActivity.this);
       dialog=new ThemedDialog(WindowHomeActivity.this){@Override public void onBackPressed(){Wizard.this.back();}};
       dialog.setCanceledOnTouchOutside(false);
     }
@@ -505,23 +614,45 @@ public class WindowHomeActivity extends ThemedActivity {
         radio.setOnClickListener(v->{sourceType=n;render();});
       }DesignUi.addCard(body,choicesBox);
       if(sourceType==1){
-        List<Integer> ids=new ArrayList<>();List<String> labels=new ArrayList<>();
-        for(int i=0;i<windows.length();i++)if(windows.optJSONObject(i).optBoolean("created")){ids.add(i);labels.add(windows.optJSONObject(i).optString("name"));}
+        JSONArray rows=ProfileCatalog.get(WindowHomeActivity.this).list();
+        List<JSONObject> sources=new ArrayList<>();
+        List<String> labels=new ArrayList<>();
+        int selected=0;
+        for(int i=0;i<rows.length();i++){
+          JSONObject row=rows.optJSONObject(i);
+          EnvironmentSpec.Identity identity=selectionIdentity(row);
+          if(identity==null)continue;
+          if(identity.slot==sourceSlot)selected=sources.size();
+          sources.add(row);
+          labels.add(row.optString("name"));
+        }
         Spinner spinner=new Spinner(WindowHomeActivity.this);spinner.setMinimumHeight(dp(48));
         spinner.setAdapter(new ArrayAdapter<>(WindowHomeActivity.this,android.R.layout.simple_spinner_dropdown_item,labels));
-        spinner.setSelection(Math.max(0,ids.indexOf(sourceSlot)));
+        selectNetworkSource(sources,selected);
+        if(selectedNetworkRow!=null)spinner.setSelection(selected);
         spinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener(){
-          public void onItemSelected(AdapterView<?> p,View v,int pos,long item){if(pos>=0&&pos<ids.size())sourceSlot=ids.get(pos);}
+          public void onItemSelected(AdapterView<?> p,View v,int pos,long item){selectNetworkSource(sources,pos);}
           public void onNothingSelected(AdapterView<?> p){}
         });body.addView(spinner);
       }
       DesignUi.note(body,"只复制网络设置，账号需要在新环境单独登录。");
     }
+    void selectNetworkSource(List<JSONObject> sources,int position){
+      selectedNetworkRow=position>=0&&position<sources.size()?sources.get(position):null;
+      sourceSlot=selectedNetworkRow==null?-1:selectedNetworkRow.optInt("slot",-1);
+    }
     void summary(){
       DesignUi.field(body,"环境名称",title);if(!group.isEmpty())DesignUi.field(body,"分组",group);
       DesignUi.field(body,"网页显示方式",BrowserDisplay.label(desktop));
-      int selectedSource=sourceType==0?AppSettings.defaultSlot(WindowHomeActivity.this):sourceSlot;
-      DesignUi.field(body,"网络来源",sourceType==2?"创建后手动配置":selectedSource<0?"来源环境暂不可用":Profiles.display(WindowHomeActivity.this,selectedSource));
+      JSONObject source=null;
+      if(sourceType==0){
+        int defaultSlot=AppSettings.defaultSlot(WindowHomeActivity.this);
+        if(defaultSlot>=0)source=ProfileCatalog.get(WindowHomeActivity.this).item(defaultSlot);
+      }else if(sourceType==1){
+        source=selectedNetworkRow;
+      }
+      shownNetworkSource=selectionIdentity(source);
+      DesignUi.field(body,"网络来源",sourceType==2?"创建后手动配置":shownNetworkSource==null?"来源环境暂不可用":source.optString("name"));
       CheckBox selected=new CheckBox(WindowHomeActivity.this);selected.setText("设为默认环境");selected.setTextColor(DesignUi.TEXT);selected.setMinHeight(dp(48));
       DesignUi.note(body,sourceType==2?"创建后会打开网络配置页。保存网络方式后，再登录 ChatGPT。":"创建后会使用复制的网络配置打开浏览器，请在新环境单独登录 ChatGPT。");
       selected.setChecked(makeDefault);selected.setOnCheckedChangeListener((b,c)->makeDefault=c);body.addView(selected);
@@ -532,17 +663,37 @@ public class WindowHomeActivity extends ThemedActivity {
     }
     void create(){
       // Every new environment uses its own persistent Gecko profile.
-      if(preparing)return;boolean clone=sourceType!=2;int selectedSource=sourceType==0?AppSettings.defaultSlot(WindowHomeActivity.this):sourceSlot;
-      if(clone&&!AppSettings.selectable(ProfileCatalog.get(WindowHomeActivity.this).item(selectedSource))){DesignUi.message(WindowHomeActivity.this,"来源环境暂不可用","请重新选择来源环境，或使用自己配置网络。");return;}
+      if(preparing)return;
+      boolean clone=sourceType!=2;
+      EnvironmentSpec.Identity networkSource=shownNetworkSource;
+      if(clone&&(networkSource==null||!networkSource.equals(selectionIdentity(ProfileCatalog.get(WindowHomeActivity.this).item(networkSource.slot))))){
+        DesignUi.message(WindowHomeActivity.this,"来源环境暂不可用","请重新选择来源环境，或使用自己配置网络。");
+        return;
+      }
       showProblem("");preparing=true;createButton.setEnabled(false);preparation.setVisibility(View.VISIBLE);
-      Context source=clone?Profiles.context(WindowHomeActivity.this,selectedSource):Profiles.global(WindowHomeActivity.this);dialog.dismiss();
-      final boolean desktopSetting=desktop;
+      Context source=clone?Profiles.context(WindowHomeActivity.this,networkSource.slot):Profiles.global(WindowHomeActivity.this);dialog.dismiss();
+      final boolean desktopSetting=desktop,setDefault=makeDefault;
+      final String proposedTitle=title,proposedGroup=group;
       new Thread(()->{
-        String error="";try{Profiles.prepare(source,id,clone);Profiles.rename(source,id,title);ProfileCatalog.get(source).details(id,group,"");ProfileCatalog.get(source).browserDisplay(id,desktopSetting);if(makeDefault)AppSettings.defaultSlot(source,id);}
-        catch(Exception e){error="环境准备失败，请重试";}
-        String failure=error;handler.post(()->{
-          preparing=false;if(isFinishing()||isDestroyed())return;createButton.setEnabled(true);preparation.setVisibility(View.GONE);refresh();
-          if(failure.isEmpty())openWindow(id,sourceType==2?"network":"chat");else showProblem(failure);
+        EnvironmentSpec.Identity created=null;
+        String error="";
+        try{
+          created=Profiles.create(source,id,generation,networkSource,proposedTitle,proposedGroup,desktopSetting,setDefault);
+        }catch(Exception failure){
+          error=failure.getMessage()==null?"环境准备失败，请重试":failure.getMessage();
+        }
+        EnvironmentSpec.Identity result=created;
+        String issue=error;
+        handler.post(()->{
+          preparing=false;
+          if(isFinishing()||isDestroyed())return;
+          createButton.setEnabled(true);
+          preparation.setVisibility(View.GONE);
+          refresh();
+          if(result==null){showProblem(issue);return;}
+          JSONObject current=ProfileCatalog.get(WindowHomeActivity.this).item(result.slot);
+          if(!result.equals(selectionIdentity(current))){showProblem("环境已变化，请刷新后重新选择");return;}
+          openExpected(current,clone?"chat":"network",clone);
         });
       },"window-create").start();
     }

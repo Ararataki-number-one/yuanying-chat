@@ -1,6 +1,7 @@
 package local.pocketchat;
 
 import android.app.*;
+import android.content.Context;
 import android.widget.*;
 import org.json.*;
 import java.util.*;
@@ -16,7 +17,13 @@ final class DesignSettingsUi {
     group(a,appearance,"白天与黑夜",AppAppearance.label()+" · 应用与网页外观","appearance",()->appearance(a,refresh));
     SettingsWorkspaceStyle.section(box,"当前环境","仅当前环境");
     LinearLayout environment=SettingsWorkspaceStyle.group(a);box.addView(environment);
-    group(a,environment,"此环境的浏览器与启动",Profiles.display(a,Profiles.slot(a))+" · "+(BrowserPreferences.startBrowser(a)?"Chromium 指纹浏览器":"Gecko 指纹浏览器"),"browser",()->BrowserSettingsUi.show(a,refresh));
+    EnvironmentSpec.Identity target=BrowserSettingsUi.workspaceIdentity(a);
+    String browserDetail="环境暂不可用";
+    if(target!=null){
+      Context profile=Profiles.context(a,target.slot);
+      browserDetail=Profiles.display(a,target.slot)+" · "+(BrowserPreferences.startBrowser(profile)?"Chromium 指纹浏览器":"Gecko 指纹浏览器");
+    }
+    group(a,environment,"此环境的浏览器与启动",browserDetail,"browser",()->BrowserSettingsUi.openWorkspace(a,target,refresh));
     SettingsWorkspaceStyle.section(box,"提醒与后台","全局");
     LinearLayout background=SettingsWorkspaceStyle.group(a);box.addView(background);
     group(a,background,"后台完成提醒",AppSettings.backgroundCompletionNotice(a)?"离开应用后提醒下载完成":"已关闭 · 使用时保持安静","bell",()->completionReminders(a,refresh));
@@ -59,13 +66,46 @@ final class DesignSettingsUi {
     AppAppearance.dialog(a).setTitle("后台完成提醒").setView(box).setPositiveButton("完成",null).show();
   }
   static void defaultEntry(Activity a,Runnable refresh){
-    JSONArray rows=ProfileCatalog.get(a).list();List<Integer> ids=new ArrayList<>();List<String> titles=new ArrayList<>();
-    for(int i=0;i<rows.length();i++){JSONObject row=rows.optJSONObject(i);if(AppSettings.selectable(row)){ids.add(row.optInt("slot"));titles.add(row.optString("name"));}}
-    LinearLayout box=DesignUi.column(a);box.setPadding(DesignUi.dp(a,18),0,DesignUi.dp(a,18),DesignUi.dp(a,14));Spinner spinner=new Spinner(a);spinner.setContentDescription("默认启动环境");
-    spinner.setAdapter(DesignUi.spinnerAdapter(a,titles.toArray(new String[0])));spinner.setSelection(Math.max(0,ids.indexOf(AppSettings.defaultSlot(a))));box.addView(spinner,new LinearLayout.LayoutParams(-1,-2));
-    CheckBox direct=new CheckBox(a);direct.setText("启动时直接进入默认环境的原网页");direct.setChecked(AppSettings.bool(a,"startupDirect",true));box.addView(direct);
-    DesignUi.note(box,"关闭后先进入环境管理。底部“会话”会回到正在使用的环境。");
-    AlertDialog dialog=AppAppearance.dialog(a).setTitle("默认环境与启动入口").setView(box).setPositiveButton("保存",(d,w)->{if(spinner.getSelectedItemPosition()<0)return;AppSettings.defaultSlot(a,ids.get(spinner.getSelectedItemPosition()));AppSettings.put(a,"startupDirect",String.valueOf(direct.isChecked()));refresh.run();if(a instanceof MainActivity&&((MainActivity)a).designChrome!=null)((MainActivity)a).designChrome.update();}).setNegativeButton("取消",null).show();
+    JSONArray rows=ProfileCatalog.get(a).list();
+    List<EnvironmentSpec.Identity> choices=new ArrayList<>();List<String> titles=new ArrayList<>();
+    int current=AppSettings.defaultSlot(a),selected=0;
+    for(int i=0;i<rows.length();i++){
+      JSONObject row=rows.optJSONObject(i);
+      if(row==null||!AppSettings.selectable(row))continue;
+      try{
+        EnvironmentSpec.Identity identity=new EnvironmentSpec.Identity(row.optInt("slot"),row.optInt("generation"),row.optString("environmentId"));
+        if(identity.slot==current)selected=choices.size();
+        choices.add(identity);titles.add(row.optString("name"));
+      }catch(IllegalArgumentException unavailable){}
+    }
+    if(choices.isEmpty()){DesignUi.message(a,"默认环境与启动入口","暂无可用环境，请返回环境管理后重试。");return;}
+    LinearLayout box=DesignUi.column(a);box.setPadding(DesignUi.dp(a,18),0,DesignUi.dp(a,18),DesignUi.dp(a,14));
+    Spinner spinner=new Spinner(a);spinner.setContentDescription("默认启动环境");
+    spinner.setAdapter(DesignUi.spinnerAdapter(a,titles.toArray(new String[0])));spinner.setSelection(selected);
+    box.addView(spinner,new LinearLayout.LayoutParams(-1,-2));
+    CheckBox direct=new CheckBox(a);direct.setText("启动时直接进入默认环境的原网页");
+    direct.setChecked(AppSettings.bool(a,"startupDirect",true));box.addView(direct);
+    DesignUi.note(box,"关闭后先进入环境管理。底部“浏览器”会回到正在使用的环境。");
+    TextView issue=DesignUi.text(a,"",13,DesignUi.RED);
+    issue.setVisibility(android.view.View.GONE);issue.setAccessibilityLiveRegion(android.view.View.ACCESSIBILITY_LIVE_REGION_POLITE);
+    box.addView(issue);
+    AlertDialog dialog=AppAppearance.dialog(a).setTitle("默认环境与启动入口").setView(box)
+      .setPositiveButton("保存",null).setNegativeButton("取消",null).create();
+    dialog.show();
+    dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v->{
+      int position=spinner.getSelectedItemPosition();
+      if(position<0||position>=choices.size())return;
+      EnvironmentSpec.Identity identity=choices.get(position);
+      boolean saved=false;
+      try{saved=AppSettings.saveStartup(a,identity.slot,identity.generation,identity.environmentId,direct.isChecked());}
+      catch(RuntimeException unavailable){}
+      if(!saved){
+        issue.setText("环境已变化或设置暂时无法保存，请重新选择或重试。");
+        issue.setVisibility(android.view.View.VISIBLE);return;
+      }
+      dialog.dismiss();refresh.run();
+      if(a instanceof MainActivity&&((MainActivity)a).designChrome!=null)((MainActivity)a).designChrome.update();
+    });
   }
   static void appearance(Activity a,Runnable refresh){
     ReferenceUi.Modal d=new ReferenceUi.Modal(a,"白天与黑夜");

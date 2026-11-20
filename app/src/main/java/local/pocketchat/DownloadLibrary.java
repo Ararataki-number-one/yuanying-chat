@@ -58,25 +58,30 @@ final class DownloadLibrary extends SQLiteOpenHelper {
     }
     for(String[] key:keys)db.delete("tasks","slot=? AND id=?",key);
   }
-  void add(Context c,JSONObject row){
+  void add(Context c,JSONObject row){add(c,row,false);}
+  private void add(Context c,JSONObject row,boolean legacy){
     if(row==null)return;String uri=row.optString("uri");if(uri.isEmpty()||!"saved".equals(row.optString("state","saved")))return;
     SQLiteDatabase db=getWritableDatabase();boolean changed=false;JSONObject published=null;db.beginTransaction();
     try{
       if(removed(db,row)||conflicting(db,row)){db.setTransactionSuccessful();return;}
       JSONObject current=newest(db,uri);long time=DownloadListPolicy.preservedTime(row,current);
+      if(legacy&&current!=null&&time<=current.optLong("time")){db.setTransactionSuccessful();return;}
       JSONObject safe=J.obj("slot",Profiles.slot(c),"id",row.optString("id"),"name",row.optString("name","文件"),"mime",row.optString("mime","application/octet-stream"),"uri",uri,"state","saved","location",row.optString("location","原先选择的保存位置"),"time",time);
       DownloadMetadataValues.copy(row,safe);DownloadMetadataValues.merge(safe,current);
       // A history scan must not manufacture a newer download or rewrite an unchanged file.
       if(current!=null&&sameFile(safe,current)){db.setTransactionSuccessful();return;}
       ContentValues values=new ContentValues();values.put("slot",Profiles.slot(c));values.put("uri",uri);values.put("row",safe.toString());values.put("time",time);
       if(current!=null&&time>current.optLong("time"))db.delete("files","uri=?",new String[]{uri});
-      db.insertWithOnConflict("files",null,values,SQLiteDatabase.CONFLICT_REPLACE);if(current==null||time>current.optLong("time"))retireTasks(db,safe);changed=true;published=safe;db.setTransactionSuccessful();
+      if(db.insertWithOnConflict("files",null,values,SQLiteDatabase.CONFLICT_REPLACE)<0)throw new IllegalStateException("Saved download was not indexed");
+      if(!legacy&&(current==null||time>current.optLong("time")))retireTasks(db,safe);
+      changed=true;published=safe;db.setTransactionSuccessful();
     }finally{db.endTransaction();}
     if(changed){changed(root);SavedDownloadMetadata.added(root,published);}
   }
   static boolean sameFile(JSONObject a,JSONObject b){return a.optInt("slot")==b.optInt("slot")&&a.optLong("time")==b.optLong("time")&&same(a,b,"id","name","mime","uri","state","location")&&DownloadMetadataValues.same(a,b);}
   static boolean same(JSONObject a,JSONObject b,String... fields){for(String name:fields)if(!a.optString(name).equals(b.optString(name)))return false;return true;}
-  void sync(Context c,JSONArray rows){
+  void sync(Context c,JSONArray rows){sync(c,rows,false);}
+  private void sync(Context c,JSONArray rows,boolean legacy){
     SQLiteDatabase db=getWritableDatabase();int slot=Profiles.slot(c);boolean changed=false;db.beginTransaction();
     try{
       java.util.Map<String,JSONObject> current=new java.util.HashMap<>();
@@ -84,16 +89,80 @@ final class DownloadLibrary extends SQLiteOpenHelper {
       for(int i=0;i<rows.length();i++){
         JSONObject r=rows.optJSONObject(i);if(r==null||r.optString("id").isEmpty()||removed(db,r)||conflicting(db,r))continue;
         JSONObject safe=J.obj("slot",slot,"id",r.optString("id"),"name",r.optString("name","文件"),"mime",r.optString("mime","application/octet-stream"),"uri",r.optString("uri"),"state",r.optString("state"),"reason",r.optString("reason"),"location",r.optString("location"),"time",r.optLong("time"),"received",r.optLong("received"),"total",r.optLong("total",-1));
-        DownloadMetadataValues.copy(r,safe);JSONObject old=current.get(r.optString("id"));DownloadMetadataValues.merge(safe,old);if(old!=null&&sameFile(safe,old)&&same(safe,old,"reason")&&safe.optLong("received")==old.optLong("received")&&safe.optLong("total",-1)==old.optLong("total",-1))continue;
-        DownloadTasks.put(safe,"updated",System.currentTimeMillis());ContentValues v=new ContentValues();v.put("slot",slot);v.put("id",r.optString("id"));v.put("row",safe.toString());v.put("time",r.optLong("time"));db.insertWithOnConflict("tasks",null,v,SQLiteDatabase.CONFLICT_REPLACE);changed=true;
+        String id=r.optString("id");JSONObject old=current.get(id);
+        if(legacy&&old!=null)continue;
+        DownloadMetadataValues.copy(r,safe);DownloadMetadataValues.merge(safe,old);
+        if(old!=null&&sameFile(safe,old)&&same(safe,old,"reason")&&safe.optLong("received")==old.optLong("received")&&safe.optLong("total",-1)==old.optLong("total",-1))continue;
+        DownloadTasks.put(safe,"updated",System.currentTimeMillis());ContentValues v=new ContentValues();v.put("slot",slot);v.put("id",id);v.put("row",safe.toString());v.put("time",r.optLong("time"));
+        if(db.insertWithOnConflict("tasks",null,v,SQLiteDatabase.CONFLICT_REPLACE)<0)throw new IllegalStateException("Download task was not indexed");
+        if(legacy)current.put(id,safe);
+        changed=true;
       }
       db.setTransactionSuccessful();
     }finally{db.endTransaction();}
     if(changed)changed(root);
   }
   JSONArray tasks(){migrate();migrateTasks();JSONArray rows=new JSONArray();try(Cursor c=getReadableDatabase().query("tasks",new String[]{"row"},null,null,null,null,"time DESC")){while(c.moveToNext())rows.put(J.parse(c.getString(0)));}return prune(rows);}
-  void migrate(){SharedPreferences migration=root.getSharedPreferences("download-library-migration",0);for(int id=0;id<Profiles.MAX;id++){if(migration.getBoolean("slot"+id,false))continue;Context c=Profiles.context(root,id);JSONArray old=J.parse(c.getSharedPreferences("chat",0).getString("downloadHistory","{}")).optJSONArray("files");if(old!=null)for(int i=0;i<old.length();i++)add(c,old.optJSONObject(i));try{JSONArray tasks=new JSONArray(c.getSharedPreferences("download-tasks",0).getString("rows","[]"));for(int i=0;i<tasks.length();i++)if(tasks.optJSONObject(i).optString("state").equals("saved"))add(c,tasks.optJSONObject(i));}catch(Exception ignored){}migration.edit().putBoolean("slot"+id,true).commit();}}
-  void migrateTasks(){SharedPreferences migration=root.getSharedPreferences("download-library-migration",0);for(int id=0;id<Profiles.MAX;id++){if(migration.getBoolean("tasksSlot"+id,false))continue;Context c=Profiles.context(root,id);try{sync(c,new JSONArray(c.getSharedPreferences("download-tasks",0).getString("rows","[]")));}catch(Exception ignored){}migration.edit().putBoolean("tasksSlot"+id,true).commit();}}
+  void migrate(){
+    SharedPreferences migration=root.getSharedPreferences("download-library-migration",0);
+    for(int slot=0;slot<Profiles.MAX;slot++){
+      try{migrateSavedSlot(migration,slot);}
+      catch(RuntimeException failure){/* A later read can retry this slot. */}
+    }
+  }
+  static final class LegacyHistoryUnreadable extends IllegalStateException {
+    LegacyHistoryUnreadable(Exception cause){super("旧下载记录无法读取",cause);}
+  }
+  void preflightRemoval(int slot){
+    Context context=Profiles.context(root,slot);
+    legacyHistory(context);
+    legacyTasks(context);
+  }
+  void migrateBeforeRemoval(int slot){
+    // New records can exist after the one-time migration marker. Re-read both
+    // sources after stopping the target writers, before clearing private data.
+    Context context=Profiles.context(root,slot);
+    JSONArray history=legacyHistory(context),tasks=legacyTasks(context);
+    addLegacySaved(context,history,false);
+    addLegacySaved(context,tasks,true);
+  }
+  private void migrateSavedSlot(SharedPreferences migration,int slot){
+    String key="slot"+slot;
+    if(migration.getBoolean(key,false))return;
+    Context context=Profiles.context(root,slot);
+    // A damaged task source does not hide a separate readable history when browsing.
+    addLegacySaved(context,legacyHistory(context),false);
+    addLegacySaved(context,legacyTasks(context),true);
+    migration.edit().putBoolean(key,true).commit();
+  }
+  private static JSONArray legacyHistory(Context context){
+    try{
+      JSONObject history=new JSONObject(context.getSharedPreferences("chat",0).getString("downloadHistory","{}"));
+      return history.has("files")?history.getJSONArray("files"):new JSONArray();
+    }catch(JSONException|ClassCastException failure){throw new LegacyHistoryUnreadable(failure);}
+  }
+  private void addLegacySaved(Context context,JSONArray rows,boolean tasks){
+    for(int i=0;i<rows.length();i++){
+      JSONObject row=rows.optJSONObject(i);
+      if(row!=null&&(!tasks||"saved".equals(row.optString("state"))))add(context,row,true);
+    }
+  }
+  void migrateTasks(){
+    SharedPreferences migration=root.getSharedPreferences("download-library-migration",0);
+    for(int id=0;id<Profiles.MAX;id++){
+      String key="tasksSlot"+id;
+      if(migration.getBoolean(key,false))continue;
+      try{
+        Context c=Profiles.context(root,id);
+        sync(c,legacyTasks(c),true);
+      }catch(Exception failure){continue;}
+      migration.edit().putBoolean(key,true).commit();
+    }
+  }
+  private static JSONArray legacyTasks(Context context){
+    try{return new JSONArray(context.getSharedPreferences("download-tasks",0).getString("rows","[]"));}
+    catch(JSONException|ClassCastException failure){throw new LegacyHistoryUnreadable(failure);}
+  }
   void removeEnvironmentTasks(int slot){if(getWritableDatabase().delete("tasks","slot=?",new String[]{String.valueOf(slot)})>0)changed(root);}
   // Metadata queries and compare-and-set writes run only on a worker holding the URI lease.
   JSONArray metadataPage(long afterRowId,int limit){JSONArray rows=new JSONArray();try(Cursor cursor=getReadableDatabase().rawQuery("SELECT row,rowid FROM files WHERE rowid>? ORDER BY rowid LIMIT ?",new String[]{String.valueOf(afterRowId),String.valueOf(limit)})){while(cursor.moveToNext()){JSONObject row=J.parse(cursor.getString(0));DownloadTasks.put(row,"metadataRowId",cursor.getLong(1));rows.put(row);}}return rows;}

@@ -1,0 +1,294 @@
+package local.pocketchat;
+
+import android.content.ContentValues;
+import android.content.SharedPreferences;
+import android.database.Cursor;
+import android.database.sqlite.SQLiteDatabase;
+import org.json.*;
+import java.io.*;
+import java.nio.file.*;
+import java.util.*;
+import java.util.concurrent.*;
+import java.util.concurrent.atomic.*;
+
+public final class CreationHost {
+  static Path directory;
+  static int passed;
+  static void check(boolean result,String message) {
+    if(!result)throw new AssertionError(message);
+    passed++;
+  }
+  interface Action {void run()throws Exception;}
+  static boolean rejected(Action action)throws Exception {
+    try{action.run();return false;}catch(IOException expected){return true;}
+  }
+  static ProfileCatalog fixture()throws Exception {
+    ProfileCatalog catalog=new ProfileCatalog(Files.createTempDirectory(directory,"scenario-"));
+    ProfileCatalog.current=catalog;
+    for(int slot=0;slot<Profiles.MAX;slot++){
+      Map<String,Object> row=new LinkedHashMap<>();
+      for(String flag:new String[]{"created","privacy","connected","waiting","favorite","desktop","deleting","resetting"})row.put(flag,0);
+      for(String key:new String[]{"name","draft","problem","page","group_name","notes","mode"})row.put(key,"");
+      row.put("slot",slot);
+      row.put("name","Environment "+slot);
+      row.put("generation",10+slot);
+      row.put("environment_id",UUID.randomUUID().toString());
+      row.put("opened",0L);
+      row.put("pid",0);
+      row.put("seen",0L);
+      if(slot==0)row.put("created",1);
+      catalog.db.rows.put(slot,row);
+    }
+    catalog.db.settings.put("defaultSlot","0");
+    return catalog;
+  }
+  static int claimGeneration(ProfileCatalog catalog,int slot){return catalog.item(slot).optInt("generation",-1);}
+  static boolean presentation(ProfileCatalog catalog,int slot,String name,String group,String notes,boolean desktop) {
+    JSONObject row=catalog.item(slot);
+    return row.optBoolean("created")&&name.equals(row.optString("name"))&&group.equals(row.optString("group"))
+      &&notes.equals(row.optString("notes"))&&desktop==row.optBoolean("desktopSite");
+  }
+  static void creation()throws Exception {
+    ProfileCatalog catalog=fixture();
+    int generation=claimGeneration(catalog,1);
+    EnvironmentSpec.Identity winner=Profiles.create(catalog.root,1,generation,null,"Chosen"," Group ",true,true);
+    check(winner.equals(catalog.identity(1))&&presentation(catalog,1,"Chosen","Group","",true)
+          &&"1".equals(catalog.db.settings.get("defaultSlot")),"New environment publishes its name, group, display and default together");
+    check(rejected(()->Profiles.create(catalog.root,1,generation,null,"Late","changed",false,true))
+          &&winner.equals(catalog.identity(1))&&presentation(catalog,1,"Chosen","Group","",true),"Late creation cannot modify the winner");
+    Profiles.prepare(catalog.root,1,false);
+    check(winner.equals(catalog.identity(1)),"Existing environment preparation remains idempotent");
+    int stale=claimGeneration(catalog,2);
+    catalog.db.rows.get(2).put("generation",stale+1);
+    check(rejected(()->Profiles.create(catalog.root,2,stale,null,"Stale","",false,false))
+          &&!catalog.item(2).optBoolean("created"),"Old choice cannot reserve a slot which has already been retired");
+    catalog.db.failDefaultWrite=true;
+    int next=claimGeneration(catalog,3);
+    check(rejected(()->Profiles.create(catalog.root,3,next,null,"Failed","group",true,true))
+          &&!catalog.item(3).optBoolean("created")&&"Environment 3".equals(catalog.item(3).optString("name"))
+          &&!Profiles.context(catalog.root,3).getSharedPreferences("chat",0).contains("environmentInitialized")
+          &&"1".equals(catalog.db.settings.get("defaultSlot")),"Default publication failure rolls back the newly reserved identity and presentation");
+    catalog.db.failDefaultWrite=false;
+    Profiles.create(catalog.root,3,next,null,"Retried","fresh",false,true);
+    check(presentation(catalog,3,"Retried","fresh","",false)&&"3".equals(catalog.db.settings.get("defaultSlot")),
+          "Retry after a failed default write publishes one complete environment");
+  }
+  static void competingCreation()throws Exception {
+    ProfileCatalog catalog=fixture();
+    int generation=claimGeneration(catalog,1);
+    CountDownLatch arrived=new CountDownLatch(2),start=new CountDownLatch(1);
+    AtomicInteger created=new AtomicInteger(),refused=new AtomicInteger();
+    AtomicReference<Throwable> unexpected=new AtomicReference<>();
+    List<Thread> race=new ArrayList<>();
+    for(String label:new String[]{"Alpha","Beta"}){
+      Thread action=new Thread(()->{
+        arrived.countDown();
+        try{
+          if(!start.await(5,TimeUnit.SECONDS))throw new AssertionError("start timeout");
+          Profiles.create(catalog.root,1,generation,null,label,label,true,false);
+          created.incrementAndGet();
+        }catch(IOException occupied){refused.incrementAndGet();}
+        catch(Throwable failure){unexpected.set(failure);}
+      });
+      race.add(action);
+      action.start();
+    }
+    if(!arrived.await(5,TimeUnit.SECONDS))throw new AssertionError("worker timeout");
+    start.countDown();
+    for(Thread action:race)action.join(5000);
+    JSONObject result=catalog.item(1);
+    check(race.stream().noneMatch(Thread::isAlive)&&unexpected.get()==null&&created.get()==1&&refused.get()==1
+          &&result.optString("name").equals(result.optString("group"))&&result.optBoolean("desktopSite"),
+          "Two racing writers publish exactly one identity with matching metadata");
+  }
+  static void networkSource()throws Exception {
+    ProfileCatalog catalog=fixture();
+    EnvironmentSpec.Identity selected=catalog.identity(0);
+    SharedPreferences source=catalog.root.getSharedPreferences("chat",0);
+    source.edit().putString("proxy","presented.example:8080").putBoolean("requireExternalVpn",false)
+      .putString("cookie","source-only").putString(BrowserPreferences.KEY_HOME,"https://example.net/source").commit();
+    Profiles.create(catalog.root,1,claimGeneration(catalog,1),selected,"With Network","",false,false);
+    SharedPreferences target=Profiles.context(catalog.root,1).getSharedPreferences("chat",0);
+    check("presented.example:8080".equals(target.getString("proxy",""))&&!target.getBoolean("requireExternalVpn",true)
+          &&!target.contains("cookie")&&!target.contains(BrowserPreferences.KEY_HOME),
+          "Wizard borrows the confirmed network without copying browser preferences or login");
+    int generation=claimGeneration(catalog,2);
+    Profiles.afterCapture=()->catalog.db.rows.get(0).put("environment_id",UUID.randomUUID().toString());
+    try{
+      check(rejected(()->Profiles.create(catalog.root,2,generation,selected,"Lost Race","",false,false))
+            &&!catalog.item(2).optBoolean("created")&&!Profiles.context(catalog.root,2)
+              .getSharedPreferences("chat",0).contains("environmentInitialized"),
+            "Source reuse after capture rolls back the reserved target without exposing settings");
+    }finally{Profiles.afterCapture=null;}
+    check(rejected(()->Profiles.create(catalog.root,2,generation,selected,"Stale Source","",false,false))
+          &&!catalog.item(2).optBoolean("created"),"Already replaced source is rejected before borrowing settings");
+  }
+  static void copying()throws Exception {
+    for(boolean chromium:new boolean[]{false,true}){
+      ProfileCatalog catalog=fixture();
+      SharedPreferences source=catalog.root.getSharedPreferences("chat",0);
+      String home=chromium?"https://example.net/chromium":"https://example.net/gecko";
+      source.edit().putString(BrowserPreferences.KEY_HOME,home).putString(BrowserPreferences.KEY_START,
+          chromium?BrowserPreferences.START_BROWSER:BrowserPreferences.START_CHAT).putString("draft","source-only")
+        .putString("cookie","source-only").putBoolean("saveDraft",false).commit();
+      catalog.details(0,"same group","same notes");
+      File sourceBrowser=new File(catalog.root.getNoBackupFilesDir(),"gecko-browser");
+      if(!sourceBrowser.mkdir())throw new IOException("Cannot create source fixture");
+      Path login=sourceBrowser.toPath().resolve("login-marker");
+      Files.write(login,new byte[]{1});
+      Context target=Profiles.context(catalog.root,1);
+      EnvironmentSpec.Identity old=catalog.identity(0);
+      int generation=claimGeneration(catalog,1);
+      EnvironmentSpecRepository.failCopy=true;
+      check(rejected(()->Profiles.copyConfiguration(catalog.root,1,generation,old,"Unpublished"))
+            &&!catalog.item(1).optBoolean("created")&&"Environment 1".equals(catalog.item(1).optString("name")),
+            "Failure after copy presentation rolls back the identity and metadata");
+      EnvironmentSpecRepository.failCopy=false;
+      EnvironmentSpec.Identity copy=Profiles.copyConfiguration(catalog.root,1,generation,old,"Copy");
+      SharedPreferences preferences=target.getSharedPreferences("chat",0);
+      check(copy.equals(catalog.identity(1))&&presentation(catalog,1,"Copy","same group","same notes",true),
+            "The copied environment first appears with all metadata");
+      check(BrowserPreferences.startBrowser(target)==chromium&&home.equals(BrowserPreferences.home(target)),
+            "Explicit copy restores the selected engine and customized homepage");
+      check(!preferences.contains("draft")&&!preferences.contains("cookie")&&!preferences.getBoolean("saveDraft",true)
+            &&Files.isRegularFile(login)&&!new File(target.getNoBackupFilesDir(),"gecko-browser").exists()
+            &&catalog.identity(0).equals(old)&&source.contains("draft")&&source.contains("cookie"),
+            "Copy retains portable preferences and excludes login, site files and drafts");
+      check(rejected(()->Profiles.copyConfiguration(catalog.root,1,generation,old,"Duplicate"))
+            &&copy.equals(catalog.identity(1))&&presentation(catalog,1,"Copy","same group","same notes",true),
+            "Duplicate copy cannot replace an occupied identity or alter its details");
+      catalog.db.rows.get(1).put("environment_id",UUID.randomUUID().toString());
+      check(rejected(()->catalog.withIdentity(copy,()->{catalog.details(1,"stale","stale");return null;}))
+            &&presentation(catalog,1,"Copy","same group","same notes",true),
+            "Delayed metadata callback cannot change the replacement");
+    }
+  }
+  static void menuActions()throws Exception {
+    ProfileCatalog catalog=fixture();
+    EnvironmentSpec.Identity expected=Profiles.create(catalog.root,1,claimGeneration(catalog,1),null,"Current","",false,false);
+    WindowHomeActivity menu=new WindowHomeActivity();
+    menu.saveMenuChoice(catalog,expected,()->catalog.favorite(expected.slot,true));
+    check(menu.refreshes==1&&catalog.item(1).optBoolean("favorite"),"Valid favorite updates its displayed environment");
+    catalog.db.failDefaultWrite=true;
+    menu.saveMenuChoice(catalog,expected,()->AppSettings.defaultSlot(catalog.root,expected.slot));
+    check(menu.refreshes==1&&menu.problems==1&&"0".equals(catalog.db.settings.get("defaultSlot")),
+          "Failed default update is reported and keeps the prior selection");
+    catalog.db.failDefaultWrite=false;
+    catalog.refuseDetails=true;
+    check(!catalog.withIdentity(expected,()->catalog.details(expected.slot,"unsaved","unsaved"))&&catalog.item(1).optString("notes").isEmpty(),
+          "Metadata returning zero changed rows is not acknowledged");
+    catalog.db.rows.get(1).put("environment_id",UUID.randomUUID().toString());
+    menu.saveMenuChoice(catalog,expected,()->catalog.favorite(expected.slot,false));
+    menu.saveMenuChoice(catalog,expected,()->AppSettings.defaultSlot(catalog.root,expected.slot));
+    check(menu.refreshes==1&&menu.problems==3&&catalog.item(1).optBoolean("favorite")
+          &&"0".equals(catalog.db.settings.get("defaultSlot")),"An old menu can neither unfavorite nor select the replacement as default");
+  }
+  public static void main(String[] args)throws Exception {
+    directory=Path.of(args[0]);
+    creation();
+    competingCreation();
+    networkSource();
+    copying();
+    menuActions();
+    System.out.println("passed="+passed);
+  }
+}
+class Context {
+  static final int MODE_PRIVATE=0;
+  final Path root;
+  final int slot;
+  final Map<String,SharedPreferences> prefs=new ConcurrentHashMap<>();
+  Context(Path root,int slot){this.root=root;this.slot=slot;}
+  SharedPreferences getSharedPreferences(String name,int ignored){return prefs.computeIfAbsent(name,key->new SharedPreferences());}
+  File getNoBackupFilesDir(){File path=root.resolve("env"+slot).toFile();path.mkdirs();return path;}
+  ApplicationInfo getApplicationInfo(){return new ApplicationInfo(root.toString());}
+  static final class ApplicationInfo {final String dataDir;ApplicationInfo(String directory){dataDir=directory;}}
+}
+class ProfileCatalog {
+  static ProfileCatalog current;
+  final Context root;
+  final Context[] contexts=new Context[8];
+  boolean refuseDetails;
+  final SQLiteDatabase db=new SQLiteDatabase(){
+    @Override public int update(String table,ContentValues values,String where,String[] args){
+      if(refuseDetails&&values.containsKey("notes"))return 0;
+      return super.update(table,values,where,args);
+    }
+  };
+  ProfileCatalog(Path directory) {
+    for(int i=0;i<contexts.length;i++)contexts[i]=new Context(directory,i);
+    root=contexts[0];
+  }
+  static ProfileCatalog get(Context context){return current;}
+  SQLiteDatabase getReadableDatabase(){return db;}
+  SQLiteDatabase getWritableDatabase(){return db;}
+  /* CATALOG */
+}
+class Profiles {
+  static final int MAX=8;
+  static int slot(Context context){return context.slot;}
+  static Context global(Context context){return ProfileCatalog.current.root;}
+  static Context context(Context context,int slot){return ProfileCatalog.current.contexts[slot];}
+  static Runnable afterCapture;
+  static NetworkCopy captureNetwork(Context source){
+    NetworkCopy snapshot=new NetworkCopy(source.getSharedPreferences("chat",0));
+    if(afterCapture!=null)afterCapture.run();
+    return snapshot;
+  }
+  /* PROFILES */
+}
+class EnvironmentSpec {
+  final Identity identity;
+  final long desiredRevision=1;
+  EnvironmentSpec(Identity identity){this.identity=identity;}
+  Configuration desired(){return new Configuration();}
+  static final class Configuration {JSONObject browser(){return J.obj("desktop",true);}}
+  static JSONObject object(Object... fields){return J.obj(fields);}
+  /* SPEC */
+}
+class EnvironmentSpecRepository {
+  static final String STORE="environment-spec",RESET="browser-reset";
+  static final Object[] GATES=new Object[8];
+  static{Arrays.setAll(GATES,unused->new Object());}
+  static boolean failCopy;
+  final Context context;
+  EnvironmentSpecRepository(Context context){this.context=context;}
+  EnvironmentSpec load()throws IOException{return new EnvironmentSpec(ProfileCatalog.get(context).identity(context.slot));}
+  void initializeCopy(EnvironmentSpec.Identity identity,JSONObject template)throws IOException{
+    if(failCopy)throw new IOException("Synthetic copy storage failure");
+  }
+}
+class EnvironmentSpecRuntime {
+  static <T>T withIntent(Context source,ProfileCatalog.IdentityAction<T> action)throws Exception{return action.run();}
+  static void reconcileNetwork(Context source,EnvironmentSpec.Identity identity,String held){}
+  static void requireIdentity(Context source,EnvironmentSpec.Identity identity)throws IOException{
+    if(!identity.equals(ProfileCatalog.get(source).identity(source.slot)))throw new IOException("Source changed");
+  }
+}
+class EnvironmentResetActivity { static void verifyRoots(Context context,int slot){} }
+class NetworkChanges { static JSONObject pendingStrict(Context source){return new JSONObject();} }
+class NetworkShareSelection { static void clear(Context context){} }
+class SecretStore {
+  final Context context;
+  SecretStore(Context context){this.context=context;}
+  void remove(String record){}
+  void put(String record,byte[] value){}
+}
+class BrowserIdentitySpec {
+  static BrowserIdentitySpec from(JSONObject json){return new BrowserIdentitySpec();}
+  String validate(){return "";}
+  int protectionLevel(){return 1;}
+  boolean desktop(){return true;}
+}
+class BrowserPreferences { /* BROWSER */ }
+class BrowserReadingPolicy { /* ZOOM */ }
+class AppPrefs { /* PREFS */ }
+class AppSettings { /* DEFAULT */ }
+class WindowHomeActivity {
+  int refreshes,problems;
+  void refresh(){refreshes++;}
+  void showProblem(String message){problems++;}
+  /* MENU */
+}
+class DownloadLibrary {static void changed(Context ignored){}}
+class UiPerfStats {static void catalogRead(){}}

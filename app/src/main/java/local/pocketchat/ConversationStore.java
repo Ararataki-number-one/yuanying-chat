@@ -13,7 +13,21 @@ final class ConversationStore extends SQLiteOpenHelper {
   synchronized void saveMessages(String url,JSONArray entries){if(entries.length()==0||!MainActivity.chatUrl(url)||!android.net.Uri.parse(url).getPath().contains("/c/"))return;String title="未命名对话";for(int i=0;i<entries.length();i++){JSONObject e=entries.optJSONObject(i);if(e!=null&&"user".equals(e.optString("role"))){title=e.optString("text").replaceAll("\\s+"," ").trim();if(title.length()>80)title=title.substring(0,80)+"…";break;}}ensure(url,title);WebPerfStats.write();ContentValues v=new ContentValues();v.put("messages",entries.toString());v.put("touched",System.currentTimeMillis());getWritableDatabase().update("conversations",v,"url=?",new String[]{url});}
   synchronized void saveSerializedMessages(String url,String serial,String title){if(!MainActivity.chatUrl(url)||!android.net.Uri.parse(url).getPath().contains("/c/"))return;ensure(url,title);WebPerfStats.write();ContentValues values=new ContentValues();values.put("messages",serial);values.put("touched",System.currentTimeMillis());getWritableDatabase().update("conversations",values,"url=?",new String[]{url});}
   JSONArray withEarlier(String url,JSONArray incoming){if(incoming.length()==0)return incoming;JSONArray previous=messages(url);String first=incoming.optJSONObject(0).optString("id");int start=-1;for(int i=0;i<previous.length();i++)if(first.equals(previous.optJSONObject(i).optString("id"))){start=i;break;}if(start<=0)return incoming;JSONArray merged=new JSONArray();for(int i=0;i<start;i++)merged.put(previous.optJSONObject(i));for(int i=0;i<incoming.length();i++)merged.put(incoming.optJSONObject(i));return merged;}
-  JSONArray messages(String url){try(Cursor c=getReadableDatabase().query("conversations",new String[]{"messages"},"url=?",new String[]{url},null,null,null)){return c.moveToFirst()?new JSONArray(c.getString(0)):new JSONArray();}catch(Exception e){return new JSONArray();}}
+  // The write path must distinguish a missing row from a failed read.
+  String readSerializedMessages(String url){
+    try(Cursor cursor=getReadableDatabase().query("conversations",new String[]{"messages"},"url=?",new String[]{url},null,null,null)){
+      if(!cursor.moveToFirst())return null;
+      String saved=cursor.getString(0);
+      if(saved==null)throw new IllegalStateException("Stored transcript is missing");
+      return saved;
+    }
+  }
+  JSONArray messages(String url){
+    try{
+      String saved=readSerializedMessages(url);
+      return saved==null?new JSONArray():new JSONArray(saved);
+    }catch(Exception unavailable){return new JSONArray();}
+  }
   JSONArray list(){JSONArray out=new JSONArray();try(Cursor c=getReadableDatabase().query("conversations",new String[]{"url","title"},"listed=1",null,null,null,"touched DESC,rank ASC")){while(c.moveToNext())out.put(J.obj("url",c.getString(0),"title",c.getString(1)));}return out;}
   void rename(String url,String title){ContentValues v=new ContentValues();v.put("title",title);getWritableDatabase().update("conversations",v,"url=?",new String[]{url});}
   void remove(String url){getWritableDatabase().delete("conversations","url=?",new String[]{url});}

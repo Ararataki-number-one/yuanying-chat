@@ -1,6 +1,8 @@
 package local.pocketchat;
 
 import android.app.*;
+import android.content.SharedPreferences;
+import java.io.IOException;
 import android.os.Build;
 import android.text.*;
 import android.widget.*;
@@ -27,18 +29,19 @@ final class EnvironmentEditorUi {
   static void returnToList(MainActivity a){if(a.getIntent().getBooleanExtra("returnToEnvironmentList",false)){a.getIntent().removeExtra("returnToEnvironmentList");a.startActivity(new android.content.Intent(a,WindowHomeActivity.class).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK|android.content.Intent.FLAG_ACTIVITY_REORDER_TO_FRONT));}}
   static void show(MainActivity a){editTab(a,BASIC);}
   static void editTab(MainActivity a,int tab){
-    JSONObject draft=J.parse(ProfileCatalog.get(a).item(Profiles.slot(a)).optString("draft"));
+    EnvironmentSpec.Identity expected=editorIdentity(a,null);
+    if(expected==null){unavailable(a);returnToList(a);return;}
+    ProfileCatalog catalog=ProfileCatalog.get(a);
+    JSONObject draft=J.parse(catalog.item(expected.slot).optString("draft"));
     if(draft.length()>0)AppAppearance.dialog(a).setTitle("有未应用的环境草稿").setMessage("继续编辑可恢复上次填写的内容；草稿不会改变运行中的环境。")
-      .setPositiveButton("继续草稿",(d,w)->edit(a,draft,tab)).setNeutralButton("编辑已保存配置",(d,w)->edit(a,current(a),tab)).setNegativeButton("取消",(d,w)->returnToList(a)).setOnCancelListener(d->returnToList(a)).show();
-    else edit(a,current(a),tab);
+      .setPositiveButton("继续草稿",(d,w)->edit(a,draft,tab,expected)).setNeutralButton("编辑已保存配置",(d,w)->edit(a,current(a),tab,expected)).setNegativeButton("取消",(d,w)->returnToList(a)).setOnCancelListener(d->returnToList(a)).show();
+    else edit(a,current(a),tab,expected);
   }
-  static void edit(MainActivity a,JSONObject value){edit(a,value,BASIC);}
-  static void edit(MainActivity a,JSONObject initial,int tab){
+  static void edit(MainActivity a,JSONObject value){edit(a,value,BASIC,editorIdentity(a,null));}
+  static void edit(MainActivity a,JSONObject initial,int tab,EnvironmentSpec.Identity identity){
     // Old drafts may lack newly introduced metadata; inherit its current value.
     ChatSession owner=BrowserPreferences.startBrowser(a)?null:a.session;
-    EnvironmentSpec.Identity identity;
-    try{identity=ProfileCatalog.get(a).identity(Profiles.slot(a));}
-    catch(java.io.IOException unavailable){returnToList(a);return;}
+    if(!editorCurrent(a,identity,owner)){unavailable(a);returnToList(a);return;}
     JSONObject existing=current(a);final Runnable[] exit={null};final boolean[] saving={false};final JSONObject[] browserBaseline={null};final Dialog dialog=new ThemedDialog(a){@Override public void onBackPressed(){if(exit[0]!=null)exit[0].run();else super.onBackPressed();}};
     LinearLayout root=DesignUi.screen(a),outer=DesignUi.body(a,root,"编辑 · "+Profiles.display(a,Profiles.slot(a)),()->{if(exit[0]!=null)exit[0].run();});
     LinearLayout tabs=DesignUi.row(a);outer.addView(tabs);
@@ -143,7 +146,7 @@ final class EnvironmentEditorUi {
         validation.setTextColor(DesignUi.RED);validation.setVisibility(android.view.View.VISIBLE);
       };
       if(owner==null)done.accept(applyNative(a,identity,value,name));
-      else applySafely(a,value,name,done);
+      else applySafely(a,value,name,()->editorCurrent(a,identity,owner),done);
     })}){
       boolean primaryRow=largeText&&actionIndex==2;
       LinearLayout.LayoutParams p=primaryRow?new LinearLayout.LayoutParams(-1,a.dp(48)):new LinearLayout.LayoutParams(0,a.dp(48),1);
@@ -177,33 +180,77 @@ final class EnvironmentEditorUi {
     if(value.optString("group").length()>12||value.optString("notes").length()>120){a.status("分组最多 12 字，备注最多 120 字");return false;}
     return true;
   }
+  static EnvironmentSpec.Identity editorIdentity(MainActivity a,ChatSession owner){
+    if(a.isDestroyed()||a.isFinishing()||owner!=null&&(a.session!=owner||owner.deleted))return null;
+    try{
+      EnvironmentSpec.Identity identity=ProfileCatalog.get(a).identity(Profiles.slot(a));
+      if(owner!=null&&(identity.slot!=Profiles.slot(owner.context)||identity.generation!=owner.environmentGeneration
+          ||!identity.environmentId.equals(owner.environmentId)))return null;
+      return identity;
+    }catch(Exception unavailable){return null;}
+  }
+  static boolean editorCurrent(MainActivity a,EnvironmentSpec.Identity expected,ChatSession owner){
+    return expected!=null&&expected.equals(editorIdentity(a,owner));
+  }
+  static void unavailable(MainActivity a){a.status("环境已变化或暂不可用。请重新打开环境编辑。");}
+  // Preference memory can change before disk confirmation, and SQLite commits separately.
+  static void saveFailed(MainActivity a){a.status("配置未能确认保存。填写内容仍保留，请重试。");}
+
   static boolean applyNative(MainActivity a,EnvironmentSpec.Identity identity,JSONObject value,EditText name){
-    if(a.isDestroyed()||a.isFinishing()||!validMetadata(a,value,name))return false;
+    if(!editorCurrent(a,identity,null)){unavailable(a);return false;}
+    if(!validMetadata(a,value,name))return false;
     ProfileCatalog catalog=ProfileCatalog.get(a);
     try{
       catalog.withIdentity(identity,()->{
-        Profiles.rename(a,identity.slot,value.optString("name"));
         catalog.details(identity.slot,value.optString("group"),value.optString("notes"));
-        AppPrefs.apply(a,value);return null;
+        if(!AppPrefs.apply(Profiles.context(a,identity.slot),value))throw new IOException("Environment preferences not committed");
+        Profiles.rename(a,identity.slot,value.optString("name"));
+        return null;
       });
-    }catch(Exception changed){a.status("环境已变化或配置暂时无法保存，请重新打开环境后重试。");return false;}
+    }catch(Exception changed){saveFailed(a);return false;}
     if(a.hub!=null)a.hub.refresh();
     a.status("环境配置已保存");return true;
   }
   static boolean apply(MainActivity a,JSONObject value,EditText name){
+    ChatSession s=a.session;
+    EnvironmentSpec.Identity identity=editorIdentity(a,s);
+    if(s==null||identity==null){unavailable(a);return false;}
     if(!validMetadata(a,value,name))return false;
-    String title=value.optString("name").trim();
-    ChatSession s=a.session;int level=value.optInt("privacyLevel",s.privacy.level());if(level<0||level>2){a.status("请选择有效的保护等级");return false;}boolean preserveBrowser=BrowserEditIntent.preserveFailedCandidate(s.identity!=null&&s.identity.queueUnavailable,value);boolean change=!preserveBrowser&&level!=s.privacy.level();
-    boolean displayChange=!preserveBrowser&&value.optBoolean("desktopSite",s.privacy.wantsDesktop())!=s.privacy.wantsDesktop();
-    boolean failedOverride=BrowserEditIntent.explicitFailedOverride(s.identity!=null&&s.identity.queueUnavailable,value);
-    boolean browserIntent=BrowserEditIntent.browserIntent(s.identity!=null&&s.identity.queueUnavailable,value,change||displayChange,s.identityApplicationPending);
+    int level=value.optInt("privacyLevel",s.privacy.level());
+    if(level<0||level>2){a.status("请选择有效的保护等级");return false;}
+    boolean desktop=value.optBoolean("desktopSite",s.privacy.wantsDesktop());
+    boolean queueUnavailable=s.identity!=null&&s.identity.queueUnavailable;
+    boolean preserveBrowser=BrowserEditIntent.preserveFailedCandidate(queueUnavailable,value);
+    boolean change=!preserveBrowser&&level!=s.privacy.level();
+    boolean displayChange=!preserveBrowser&&desktop!=s.privacy.wantsDesktop();
+    boolean failedOverride=BrowserEditIntent.explicitFailedOverride(queueUnavailable,value);
+    boolean browserIntent=BrowserEditIntent.browserIntent(queueUnavailable,value,change||displayChange,s.identityApplicationPending);
     // A failed candidate can contain locale-only changes even when the visible
     // fields now equal the running browser. Mirror the explicit replacement
     // before the existing safe queue can apply it.
     boolean deferred=browserIntent&&(failedOverride||browserBusy(s));
 
-    if(deferred&&!DeferredBrowserSettings.save(s,level,value.optBoolean("desktopSite"))){a.status("设置暂时无法保存，请重试");return false;}Profiles.rename(a,Profiles.slot(a),title);ProfileCatalog.get(a).details(Profiles.slot(a),value.optString("group"),value.optString("notes"));if(!preserveBrowser&&!deferred){DeferredBrowserSettings.cancel(s);ProfileCatalog.get(a).browserDisplay(Profiles.slot(a),value.optBoolean("desktopSite",s.privacy.wantsDesktop()));s.prefs.edit().putInt("privacyLevel",level).commit();}AppPrefs.apply(a,value);ProfileCatalog.get(a).draft(Profiles.slot(a),null);
-    if(browserIntent)s.browserIdentitySaved(level,value.optBoolean("desktopSite",s.privacy.wantsDesktop()));if(!deferred&&browserIntent)s.applyBrowserSettings(change);
+    ProfileCatalog catalog=ProfileCatalog.get(a);
+    try{
+      catalog.withIdentity(identity,()->{
+        catalog.details(identity.slot,value.optString("group"),value.optString("notes"));
+        SharedPreferences.Editor prefs=AppPrefs.edit(s.prefs,value);
+        if(deferred){
+          prefs.putInt(DeferredBrowserSettings.NEXT_PRIVACY_LEVEL,level).putBoolean(DeferredBrowserSettings.NEXT_DESKTOP_SITE,desktop);
+        }else if(!preserveBrowser){
+          catalog.browserDisplay(identity.slot,desktop);
+          prefs.putInt("privacyLevel",level).remove(DeferredBrowserSettings.NEXT_PRIVACY_LEVEL).remove(DeferredBrowserSettings.NEXT_DESKTOP_SITE);
+        }
+        // A preference failure rolls back the catalog changes, including this draft removal.
+        catalog.draft(identity.slot,null);
+        if(!prefs.commit())throw new IOException("Environment preferences not committed");
+        Profiles.rename(a,identity.slot,value.optString("name"));
+        return null;
+      });
+    }catch(Exception changed){saveFailed(a);return false;}
+    if(!editorCurrent(a,identity,s)){unavailable(a);return false;}
+    if(browserIntent)s.browserIdentitySaved(level,desktop);
+    if(!deferred&&browserIntent)s.applyBrowserSettings(change);
     s.audit.refresh(true);ProfileCatalog.get(a).heartbeat(s,true);if(a.hub!=null)a.hub.refresh();if(a.designChrome!=null)a.designChrome.update();a.status(preserveBrowser?"环境资料已保存；上次模板排队失败，期望配置已保留，请重新保存模板":deferred?"环境已保存，当前回复结束后自动应用网页设置":displayChange&&!s.networkReady?"环境配置已保存，加载网页时应用显示方式":"环境配置已保存");return true;
   }
   static String browserTaskReason(ChatSession s){return BrowserSettingsPolicy.reason(s.pending!=null,s.submitting,s.operation,s.transferActive,s.uploading(),false);}
@@ -212,36 +259,47 @@ final class EnvironmentEditorUi {
   static boolean guardedApply(MainActivity a,JSONObject value,EditText name,java.util.function.BooleanSupplier current){if(!current.getAsBoolean()){a.status("设置已由较新的配置替换，旧修改没有应用");return false;}return apply(a,value,name);}
   static void applySafely(MainActivity a,JSONObject value,EditText name,java.util.function.Consumer<Boolean> done){applySafely(a,value,name,()->true,done);}
   static void applySafely(MainActivity a,JSONObject value,EditText name,java.util.function.BooleanSupplier current,java.util.function.Consumer<Boolean> done){
-    if(!current.getAsBoolean()){done.accept(false);return;}
-    ChatSession s=a.session;boolean preserveBrowser=BrowserEditIntent.preserveFailedCandidate(s.identity!=null&&s.identity.queueUnavailable,value);boolean browserChange=BrowserEditIntent.browserIntent(s.identity!=null&&s.identity.queueUnavailable,value,!preserveBrowser&&(value.optInt("privacyLevel",s.privacy.level())!=s.privacy.level()||value.optBoolean("desktopSite",s.privacy.wantsDesktop())!=s.privacy.wantsDesktop()),s.identityApplicationPending);
-    if(value.optString("name").trim().isEmpty()||value.optString("name").trim().length()>24||!browserChange||!MainActivity.chatUrl(s.web.getUrl())||ProfileUi.working(s)){done.accept(guardedApply(a,value,name,current));return;}
+    ChatSession s=a.session;
+    java.util.function.BooleanSupplier live=()->s!=null&&a.session==s&&!s.deleted&&!a.isDestroyed()&&!a.isFinishing()&&current.getAsBoolean();
+    if(!live.getAsBoolean()){a.status("环境已变化，请重新打开环境编辑");done.accept(false);return;}
+    boolean preserveBrowser=BrowserEditIntent.preserveFailedCandidate(s.identity!=null&&s.identity.queueUnavailable,value);boolean browserChange=BrowserEditIntent.browserIntent(s.identity!=null&&s.identity.queueUnavailable,value,!preserveBrowser&&(value.optInt("privacyLevel",s.privacy.level())!=s.privacy.level()||value.optBoolean("desktopSite",s.privacy.wantsDesktop())!=s.privacy.wantsDesktop()),s.identityApplicationPending);
+    if(value.optString("name").trim().isEmpty()||value.optString("name").trim().length()>24||!browserChange||!MainActivity.chatUrl(s.web.getUrl())||ProfileUi.working(s)){done.accept(guardedApply(a,value,name,live));return;}
     final String url=s.web.getUrl(),scope=s.pageMemory.scope();final long epoch=s.navigationEpoch;
     s.operation=true;s.configurationCapture=true;s.changed();a.status("正在保留网页草稿…");
     java.util.function.Consumer<String> fail=message->{DeferredBrowserSettings.release(s);s.changed();a.status(message);done.accept(false);};
     // Inspect uses the existing read-only driver and detects oversized drafts before
     // page-state's bounded snapshot could omit them.
     s.asyncDriver("inspect",J.obj("expectedUrl",url),2500,inspected->{
-      if(!WebReplyObserver.same(url,inspected.optString("url"))||epoch!=s.navigationEpoch||!scope.equals(s.pageMemory.scope())){
+      if(!live.getAsBoolean()||!WebReplyObserver.same(url,inspected.optString("url"))||epoch!=s.navigationEpoch||!scope.equals(s.pageMemory.scope())){
         fail.accept("网页状态已改变，请稍后重试；环境设置尚未应用");return;
       }
-      s.state=inspected;s.stateEpoch=epoch;if(inspected.optBoolean("busy")){DeferredBrowserSettings.release(s);done.accept(guardedApply(a,value,name,current));return;}
+      s.state=inspected;s.stateEpoch=epoch;if(inspected.optBoolean("busy")){DeferredBrowserSettings.release(s);done.accept(guardedApply(a,value,name,live));return;}
       if(inspected.optString("draft").length()>300000||inspected.optString("draftRaw").length()>300000){fail.accept("网页草稿过长，请先保存或发送，再切换显示方式");return;}
       s.asyncDriver("page-state",J.obj("expectedUrl",url),2500,state->{
-        if(!PageMemory.completeDraft(state)||epoch!=s.navigationEpoch||!WebReplyObserver.same(url,s.web.getUrl())||!scope.equals(s.pageMemory.scope())||!state.optString("draft").equals(inspected.optString("draft"))){
+        if(!live.getAsBoolean()||!PageMemory.completeDraft(state)||epoch!=s.navigationEpoch||!WebReplyObserver.same(url,s.web.getUrl())||!scope.equals(s.pageMemory.scope())||!state.optString("draft").equals(inspected.optString("draft"))){
           fail.accept("网页草稿暂时无法保留，请稍后重试；环境设置尚未应用");return;
         }
         if(PageMemory.hasDraft(state)&&(!LocalDraftPolicy.enabled(s.context)||value.opt("saveDraft") instanceof Boolean&&!value.optBoolean("saveDraft"))){fail.accept("本机草稿保存已关闭或将关闭，请先手动保留并发送或清空输入，再切换网页显示");return;}
         long draftRevision=LocalDraftPolicy.revision(s.context);s.pageMemory.remember(scope,url,state);String draft=state.optString("draft");
         try{s.webStore.worker.execute(()->{
-          boolean stored=false;try{stored=draft.isEmpty()||DraftArchive.get(s.context).save(url,draft,"切换网页显示前的草稿",draftRevision);}catch(RuntimeException ignored){}final boolean saved=stored;
+          boolean saved=archiveEditorDraft(s,url,draft,draftRevision);
           s.handler.post(()->{
             DeferredBrowserSettings.release(s);s.changed();if(a.isDestroyed()||a.isFinishing()){done.accept(false);return;}
-            if(!saved||PageMemory.hasDraft(state)&&(!LocalDraftPolicy.enabled(s.context)||draftRevision!=LocalDraftPolicy.revision(s.context))||epoch!=s.navigationEpoch||!WebReplyObserver.same(url,s.web.getUrl())||!scope.equals(s.pageMemory.scope())){a.status("草稿保留未完成或网页已改变，环境设置尚未应用");done.accept(false);return;}
-            done.accept(guardedApply(a,value,name,current));
+            if(!live.getAsBoolean()||!saved||PageMemory.hasDraft(state)&&(!LocalDraftPolicy.enabled(s.context)||draftRevision!=LocalDraftPolicy.revision(s.context))||epoch!=s.navigationEpoch||!WebReplyObserver.same(url,s.web.getUrl())||!scope.equals(s.pageMemory.scope())){a.status("草稿保留未完成或网页已改变，环境设置尚未应用");done.accept(false);return;}
+            done.accept(guardedApply(a,value,name,live));
           });
         });}catch(RuntimeException ignored){fail.accept("草稿暂时无法保存，请稍后重试；环境设置尚未应用");}
       });
     });
+  }
+  static boolean archiveEditorDraft(ChatSession s,String url,String draft,long revision){
+    if(draft.isEmpty())return true;
+    try{
+      EnvironmentSpec.Identity identity=new EnvironmentSpec.Identity(Profiles.slot(s.context),s.environmentGeneration,s.environmentId);
+      // Match the manual draft copy's catalog-before-archive lock order.
+      return ProfileCatalog.get(s.context).withIdentity(identity,()->!s.deleted
+          &&DraftArchive.get(s.context).save(url,draft,"切换网页显示前的草稿",revision));
+    }catch(Exception unavailable){return false;}
   }
   static boolean storageCurrent(MainActivity a,ChatSession session){
     if(session==null||a.isDestroyed()||a.isFinishing()||a.session!=session||a.remote!=session.web||session.deleted)return false;

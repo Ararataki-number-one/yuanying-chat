@@ -27,10 +27,16 @@ def boundary(main):
                 and any(isinstance(t,ast.Name) and t.id=='hashes' for t in node.targets))
 
 
-def declarations(raw, arguments):
+def declarations(raw, arguments, *, focused=False):
     tree=ast.parse(raw)
     main=next(n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name=='main')
-    main.body=main.body[:boundary(main)]+[ast.Return(ast.Tuple(
+    hashes=boundary(main)
+    declarations=main.body[:hashes]
+    if focused:
+        dependencies=next(i for i,node in enumerate(main.body) if isinstance(node,ast.Assign)
+                          and any(isinstance(t,ast.Name) and t.id=='dependencies' for t in node.targets))
+        declarations+=main.body[hashes+1:dependencies]
+    main.body=declarations+[ast.Return(ast.Tuple(
         elts=[ast.Name(id='jobs',ctx=ast.Load()),ast.Name(id='env',ctx=ast.Load())],ctx=ast.Load()))]
     tree.body=[n for n in tree.body if not isinstance(n,ast.If)]
     namespace=dict(__name__='maintenance_declarations',__file__=str(RUNNER))
@@ -68,6 +74,26 @@ class PhotoMaintenanceEntryTest(unittest.TestCase):
                and n.func.value.id=='subprocess' and n.func.attr=='run']
         self.assertEqual(len(calls),1)
         self.assertEqual([k.value.value for k in calls[0].keywords if k.arg=='timeout'],[300])
+
+    def test_focused_checks_include_extra_suites_only_when_requested(self):
+        defaults,_=declarations(self.raw,self.arguments,focused=True)
+        names=('config-backup','download-library-migration','browser-preferences')
+        self.assertTrue(set(names).isdisjoint(name for name,_,_ in defaults))
+        groups,_=declarations(self.raw, [
+            *self.arguments,'--only','browser-preferences','--only','config-backup',
+            '--only','address-policy','--only','download-library-migration','--only','config-backup',
+        ],focused=True)
+        self.assertEqual([name for name,_,_ in groups],['address-policy',*names])
+        self.assertEqual([commands[0][1] for _,commands,_ in groups[1:]],[
+            'tests/profile_environment_config_backup_test.py',
+            'tests/profile_download_library_migration_test.py',
+            'tests/browser-preferences-host/run.py',
+        ])
+        errors=io.StringIO()
+        with redirect_stderr(errors),self.assertRaises(SystemExit) as stopped:
+            declarations(self.raw,[*self.arguments,'--only','missing-suite'],focused=True)
+        self.assertEqual(stopped.exception.code,2)
+        self.assertIn('Unknown suite: missing-suite',errors.getvalue())
 
     def test_actual_photo_child_receives_and_executes_both_explicit_json_runtimes(self):
         groups,env=declarations(self.raw,self.arguments)

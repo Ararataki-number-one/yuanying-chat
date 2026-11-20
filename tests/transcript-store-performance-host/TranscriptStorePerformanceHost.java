@@ -32,7 +32,7 @@ public final class TranscriptStorePerformanceHost {
     }
     throw new AssertionError("Controlled store did not become idle");
   }
-  static void save(WebTranscriptStore store,String url,CountedArray rows)throws Exception{store.offer(url,rows);store.flush();finish(store);}
+  static void save(WebTranscriptStore store,String url,JSONArray rows)throws Exception{store.offer(url,rows);store.flush();finish(store);}
   public static void main(String[] args)throws Exception{
     try{
       WebTranscriptStore streaming=store(A);ChatSession session=streaming.session;session.prefs.values.put("transcript","retained-legacy-value");
@@ -52,8 +52,10 @@ public final class TranscriptStorePerformanceHost {
       check("Preference edits happen on main delivery",session.prefs.workerApplies==0);
       int transcriptPuts=session.prefs.transcriptPuts,cursorPuts=session.prefs.conversationPuts,cacheWrites=session.cache.writes;
       long transcriptCharacters=session.prefs.transcriptCharacters;
+      int strictReads=session.cache.strictReads;
       CountedArray same=entries(99);save(streaming,A,same);
       check("Unchanged snapshot produces no duplicate cache write",session.cache.writes==cacheWrites);
+      check("Unchanged snapshot produces no duplicate durable read",session.cache.strictReads==strictReads);
       check("Unchanged snapshot produces no preference write",session.prefs.transcriptPuts==transcriptPuts&&session.prefs.conversationPuts==cursorPuts);
       check("Unchanged snapshot still serializes for existing equality check",same.serializations.get()==1);
 
@@ -120,9 +122,108 @@ public final class TranscriptStorePerformanceHost {
       WebTranscriptStore broken=store(A);CountedArray bad=entries(40);bad.failNext=true;save(broken,A,bad);CountedArray recovered=entries(41);save(broken,A,recovered);
       check("Serialization failure cannot strand later valid snapshot",broken.session.statusWrites==1&&broken.session.cache.writes==1&&expected(recovered).equals(broken.session.cache.values.get(A))&&!broken.writing);
       check("All counted full-history serializations happen off main",CountedArray.mainSerializations.get()==0);
+      if(!baseline) verifyOfflineHistory();
 
       System.out.println(J.obj("status","passed","passed",checks.size(),"total",checks.size(),"baseline",baseline,"streamingSnapshots",100,"streamingCacheWrites",cacheWrites,"streamingSerializations",serialized,"transcriptPreferenceWrites",transcriptPuts,"transcriptPreferenceCharacters",transcriptCharacters,"conversationCursorWrites",cursorPuts,"burstOffers",40,"burstSerializations",burstSerializations,"burstCacheWrites",burst.session.cache.writes,"staleQueuedSerializations",staleSerializations,"mainHistorySerializations",CountedArray.mainSerializations.get(),"checks",new JSONArray(checks)));
     }finally{for(WebTranscriptStore store:stores){store.worker.shutdownNow();store.worker.awaitTermination(5,TimeUnit.SECONDS);}}
+  }
+  static JSONObject row(String id,String role,String text){return J.obj("id",id,"role",role,"text",text);}
+  static JSONArray history(JSONObject... rows){return new JSONArray(Arrays.asList(rows));}
+  static JSONArray mounted(WebTranscriptMirror mirror,JSONArray previous,String document,int revision,JSONObject... rows){
+    JSONArray order=new JSONArray();for(JSONObject row:rows)order.put(row.optString("id"));
+    JSONObject delta=J.obj("ok",true,"changed",true,"reset",revision==1,"url",A,"documentId",document,
+        "revision",revision,"changes",history(rows),"order",order);
+    return mirror.accept(delta,previous,A);
+  }
+  static boolean hasHistory(WebTranscriptStore store,JSONArray rows){return rows.toString().equals(store.session.cache.values.get(A));}
+  static void verifyOfflineHistory()throws Exception{
+    JSONObject u1=row("id:u1","user","Question one"),a1=row("id:a1","assistant","The long first answer"),
+        u2=row("id:u2","user","Question two"),a2=row("id:a2","assistant","The second answer"),
+        u3=row("id:u3","user","A new question"),a3=row("id:a3","assistant","A new answer");
+    JSONObject a1Edit=row("id:a1","assistant","Short edit"),a2Edit=row("id:a2","assistant","Another legitimate edit");
+    JSONArray complete=history(u1,a1,u2,a2),edited=history(u1,a1Edit,u2,a2);
+    WebTranscriptStore current=store(A);
+    WebTranscriptMirror mirror=new WebTranscriptMirror();
+    save(current,A,mounted(mirror,new JSONArray(),"same-document",1,u1,a1,u2,a2));
+    save(current,A,mounted(mirror,complete,"same-document",2,u1,a1));
+    check("A virtualized prefix never truncates the existing offline copy",hasHistory(current,complete)&&current.session.cache.writes==1);
+    int heldReads=current.session.cache.strictReads;
+    save(current,A,history(u1,a1));
+    check("An unchanged held observation does not reread or rewrite the durable copy",current.session.cache.strictReads==heldReads&&current.session.cache.writes==1);
+    save(current,A,mounted(mirror,complete,"same-document",3,a1,u2));
+    check("A virtualized middle window never drops the saved suffix",hasHistory(current,complete)&&current.session.cache.writes==1);
+    save(current,A,history(u1,a1Edit,u3,a3));
+    check("An edited prefix with novel IDs cannot attach to a missing saved tail",hasHistory(current,complete)&&current.session.cache.writes==1);
+    save(current,A,history(u2,u3,a2,a3));
+    check("An insertion inside a partial overlap does not establish a tail match",hasHistory(current,complete)&&current.session.cache.writes==1);
+    save(current,A,history(a2,u2,u3));
+    check("Reordered shared identities preserve the existing copy",hasHistory(current,complete)&&current.session.cache.writes==1);
+    save(current,A,history(u3,a3));
+    check("A non-overlapping observation preserves the existing copy",hasHistory(current,complete)&&current.session.cache.writes==1);
+    save(current,A,history(u2,a2,a2,a3));
+    check("Duplicate identities cannot authorize a tail match",hasHistory(current,complete)&&current.session.cache.writes==1);
+    save(current,A,history(u2,row("id:a2","user","A role change cannot identify an edit"),a3));
+    check("Conflicting roles cannot authorize a tail match",hasHistory(current,complete)&&current.session.cache.writes==1);
+    save(current,A,mounted(mirror,complete,"same-document",4,u1,a1Edit,u2,a2));
+    check("A shorter edit with complete ordered coverage is saved exactly",hasHistory(current,edited)&&current.session.cache.writes==2);
+
+    WebTranscriptStore freshProcess=store(A);
+    freshProcess.session.cache.values.put(A,complete.toString());
+    save(freshProcess,A,mounted(new WebTranscriptMirror(),new JSONArray(),"cold-start",1,u2,a2));
+    check("A cold-start observation preserves the saved prefix without requiring an earlier UI read",hasHistory(freshProcess,complete)&&freshProcess.session.cache.writes==0&&freshProcess.session.cache.reads==0);
+
+    WebTranscriptStore cold=store(A);
+    cold.session.cache.values.put(A,complete.toString());
+    Gate coldRead=new Gate(cold);
+    try{
+      cold.loadIfNeeded();
+      cold.session.entries=mounted(new WebTranscriptMirror(),new JSONArray(),"reload",1,u2,a2);
+      cold.offer(A,cold.session.entries);cold.flush();cold.session.handler.runReady();
+    }finally{coldRead.release();}
+    finish(cold);
+    check("First live rows win the prior UI read race without truncating durable history",cold.session.entries.length()==2&&cold.session.changes==0&&hasHistory(cold,complete)&&cold.session.cache.writes==0);
+    save(cold,A,history(u2,a2Edit,u3,a3));
+    JSONArray appended=history(u1,a1,u2,a2Edit,u3,a3);
+    check("A contiguous stable tail retains the old prefix and appends genuine new messages",hasHistory(cold,appended)&&cold.session.cache.writes==1);
+    check("The durable safety reads happen off the main thread",cold.session.cache.strictMainReads==0&&cold.session.cache.strictReads>=2);
+
+    WebTranscriptStore weak=store(A);
+    JSONObject fallback=row("turn:conversation-turn-2","assistant","A positional ID");
+    JSONArray weakHistory=history(u1,fallback);
+    save(weak,A,weakHistory);save(weak,A,history(fallback,u3,a3));
+    check("A positional identity is not a durable tail anchor",hasHistory(weak,weakHistory)&&weak.session.cache.writes==1);
+    save(weak,A,history(u1,fallback,u3,a3));
+    check("Full ordered coverage permits new rows beside an old positional ID",hasHistory(weak,history(u1,fallback,u3,a3))&&weak.session.cache.writes==2);
+
+    WebTranscriptStore storageFailure=store(A);
+    storageFailure.session.cache.values.put(A,complete.toString());
+    storageFailure.session.cache.failNextRead=true;
+    save(storageFailure,A,edited);
+    check("A failed durable read preserves the old bytes and allows an exact retry",hasHistory(storageFailure,complete)&&storageFailure.session.cache.writes==0&&storageFailure.savedSerial.isEmpty()&&storageFailure.session.statusWrites==1);
+    save(storageFailure,A,edited);
+    check("The unchanged input can succeed after storage recovery",hasHistory(storageFailure,edited)&&storageFailure.session.cache.writes==1);
+    WebTranscriptStore corrupt=store(A);
+    corrupt.session.cache.values.put(A,"[incomplete storage record");
+    save(corrupt,A,history(u2,a2));
+    check("Unreadable durable bytes are preserved rather than treated as a new row",corrupt.session.cache.writes==0&&corrupt.session.cache.values.get(A).equals("[incomplete storage record")&&corrupt.session.statusWrites==1);
+
+    WebTranscriptStore concurrent=store(A);
+    concurrent.session.cache.values.put(A,complete.toString());
+    CountDownLatch entered=new CountDownLatch(1),allowRead=new CountDownLatch(1);
+    concurrent.session.cache.beforeStrictRead=()->{
+      entered.countDown();
+      try{if(!allowRead.await(5,TimeUnit.SECONDS))throw new AssertionError("Durable read gate timed out");}
+      catch(InterruptedException interrupted){Thread.currentThread().interrupt();throw new AssertionError(interrupted);}
+    };
+    concurrent.offer(A,edited);concurrent.flush();concurrent.session.handler.runReady();
+    CompletableFuture<Void> nativeSave;
+    try{
+      if(!entered.await(5,TimeUnit.SECONDS))throw new AssertionError("Durable read did not enter");
+      concurrent.nativeSnapshot(A);
+      nativeSave=CompletableFuture.runAsync(()->concurrent.session.cache.saveSerializedMessages(A,appended.toString(),"new native copy"));
+    }finally{allowRead.countDown();}
+    finish(concurrent);nativeSave.get(5,TimeUnit.SECONDS);
+    check("A native save retiring an in-flight durable read is never overwritten by the stale writer",hasHistory(concurrent,appended)&&concurrent.session.cache.writes==1);
   }
   static final class Gate {
     final CountDownLatch entered=new CountDownLatch(1),allow=new CountDownLatch(1);
@@ -149,8 +250,16 @@ final class Handler {
   synchronized void advance(){if(!tasks.isEmpty())now=Math.max(now,tasks.peek().due);}synchronized boolean empty(){return tasks.isEmpty();}synchronized int size(){return tasks.size();}
 }
 final class Cache {
-  final Map<String,String> values=new ConcurrentHashMap<>(),titles=new ConcurrentHashMap<>();int writes,reads,mainWrites,mainReads;boolean failNext;
-  void saveSerializedMessages(String url,String serial,String title){if(failNext){failNext=false;throw new IllegalStateException("controlled cache failure");}writes++;if(Thread.currentThread()==TranscriptStorePerformanceHost.mainThread)mainWrites++;values.put(url,serial);titles.put(url,title);}
+  final Map<String,String> values=new ConcurrentHashMap<>(),titles=new ConcurrentHashMap<>();int writes,reads,mainWrites,mainReads,strictReads,strictMainReads;
+  boolean failNext,failNextRead;
+  Runnable beforeStrictRead;
+  String readSerializedMessages(String url){
+    strictReads++;if(Thread.currentThread()==TranscriptStorePerformanceHost.mainThread)strictMainReads++;
+    Runnable hook=beforeStrictRead;beforeStrictRead=null;if(hook!=null)hook.run();
+    if(failNextRead){failNextRead=false;throw new IllegalStateException("controlled cache read failure");}
+    return values.get(url);
+  }
+  synchronized void saveSerializedMessages(String url,String serial,String title){if(failNext){failNext=false;throw new IllegalStateException("controlled cache failure");}writes++;if(Thread.currentThread()==TranscriptStorePerformanceHost.mainThread)mainWrites++;values.put(url,serial);titles.put(url,title);}
   JSONArray messages(String url){reads++;if(Thread.currentThread()==TranscriptStorePerformanceHost.mainThread)mainReads++;try{return new JSONArray(values.getOrDefault(url,"[]"));}catch(JSONException invalid){throw new IllegalStateException(invalid);}}
 }
 final class Preferences {
@@ -163,3 +272,4 @@ final class Preferences {
   }
 }
 final class MainActivity {/* CHAT_URL_METHOD */}
+final class WebReplyObserver {/* OBSERVER_METHODS */}

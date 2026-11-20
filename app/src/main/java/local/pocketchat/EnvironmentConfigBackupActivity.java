@@ -15,11 +15,13 @@ import org.json.*;
 /** User-initiated system document picker. This activity creates no Gecko session. */
 public final class EnvironmentConfigBackupActivity extends ThemedActivity {
   static final int EXPORT=841,IMPORT=842;
+  private static final String IMPORT_PICKER_PENDING="environmentConfigImportPending";
   final ExecutorService worker=Executors.newSingleThreadExecutor();
   volatile long owner=1;boolean busy;int picker;byte[] pending;
   TextView result;LinearLayout body;
   @Override public void onCreate(Bundle state){
     super.onCreate(state);getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);
+    if(state!=null&&state.getBoolean(IMPORT_PICKER_PENDING))picker=IMPORT;
     LinearLayout root=DesignUi.screen(this);body=DesignUi.body(this,root,"环境配置备份",this::finish);
     DesignUi.note(body,"备份仅包含你选择的环境名称、浏览器模板、网页语言和使用偏好。使用密码加密，请自行保管密码。");
     DesignUi.note(body,"不包含网络账号、订阅、固定出口、登录、Cookie、聊天、草稿、附件或设备密钥。恢复会创建新环境，随后需重新配置网络；现有环境保持不变。");
@@ -62,6 +64,10 @@ public final class EnvironmentConfigBackupActivity extends ThemedActivity {
         try{picker=EXPORT;startActivityForResult(new Intent(Intent.ACTION_CREATE_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("application/octet-stream").putExtra(Intent.EXTRA_TITLE,"PocketChat-环境配置.pocketcfg"),EXPORT);message("请选择备份保存位置");}catch(Exception failure){picker=0;clearPending();message("设备没有可用的文件保存器");}
       });
     });
+  }
+  @Override protected void onSaveInstanceState(Bundle state){
+    super.onSaveInstanceState(state);
+    state.putBoolean(IMPORT_PICKER_PENDING,picker==IMPORT);
   }
   @Override protected void onActivityResult(int request,int code,Intent data){
     super.onActivityResult(request,code,data);if((request!=EXPORT&&request!=IMPORT)||picker!=request)return;picker=0;

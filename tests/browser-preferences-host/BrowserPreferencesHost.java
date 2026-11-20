@@ -153,6 +153,87 @@ public final class BrowserPreferencesHost {
     check("A retired Gecko session does not block engine settings",!BrowserSettingsUi.browserWorkPending(nativeHost));
     ChatSession.retained=null;
   }
+  static void standaloneSettingsOwner(){
+    Map<String,Store> stores=new HashMap<>();
+    AppSettingsActivity standalone=new AppSettingsActivity(stores);
+    MainActivity owner=new MainActivity(6,stores);
+    EnvironmentSpec.Identity defaultOwner=new EnvironmentSpec.Identity(0,1,"default");
+    EnvironmentSpec.Identity recentOwner=new EnvironmentSpec.Identity(6,2,"recent");
+    ProfileCatalog.identities.put(0,defaultOwner);
+    ProfileCatalog.identities.put(6,recentOwner);
+    try{
+      AppSettings.recent=6;
+      EnvironmentSpec.Identity row=BrowserSettingsUi.workspaceIdentity(standalone);
+      check("Standalone settings resolves the recent environment, away from slot zero",recentOwner.equals(row));
+      AppSettings.recent=0;
+      check("An owned settings page still targets its own environment",recentOwner.equals(BrowserSettingsUi.workspaceIdentity(owner)));
+      BrowserSettingsUi.openWorkspace(standalone,row,()->{});
+      Intent request=standalone.launched;
+      check("Tapping a rendered settings row keeps its exact environment after recency changes",
+          request!=null&&request.target==Profiles.activity(6)&&"settings".equals(request.getStringExtra("openWindowAction"))
+          &&request.getFlags()==(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_REORDER_TO_FRONT));
+      request.putExtra("browserSettingsOwnerSlot",0);
+      check("A matching forged slot-zero extra cannot enter the private owner route on the exported activity",
+          !BrowserSettingsUi.ownerOpening(new MainActivity(0,stores),request));
+      request.putExtra("browserSettingsOwnerSlot",5);
+      check("An owner action with a different slot cannot select the private route",
+          !BrowserSettingsUi.ownerOpening(owner,request));
+      request.putExtra("browserSettingsOwnerSlot",6).setAction(Intent.ACTION_VIEW);
+      check("A VIEW intent cannot divert its environment into the private settings route",
+          !BrowserSettingsUi.ownerOpening(owner,request));
+      request.setAction(null);
+      owner.setIntent(request);
+      owner.handleOpening(request);
+      check("A cold Gecko owner opens the pinned settings natively without creating a browser",
+          owner.hub!=null&&owner.browserStarts==0&&recentOwner.equals(BrowserSettingsUi.shownOwner)&&BrowserSettingsUi.fromStandalone);
+      int modalOpenings=BrowserSettingsUi.modalOpenings;
+      MainActivity restored=new MainActivity(6,stores);
+      restored.setIntent(request);
+      restored.handleOpening(request);
+      check("A restored native settings request does not replay its modal or fall back to Gecko",
+          restored.hub!=null&&restored.browserStarts==0&&BrowserSettingsUi.modalOpenings==modalOpenings);
+
+      BrowserPreferences.save(standalone,false,"https://example.com/default");
+      BrowserPreferences.save(owner,true,"https://example.com/recent");
+      BrowserSettingsUi.openWorkspace(owner,row,()->{});
+      check("Reopening settings after dismissal keeps the standalone Chromium guard",
+          BrowserSettingsUi.fromStandalone&&recentOwner.equals(BrowserSettingsUi.shownOwner));
+      BrowserSettingsUi.openWorkspace(restored,row,()->{});
+      check("Reopening settings after Activity recreation keeps the standalone Chromium guard",
+          BrowserSettingsUi.fromStandalone&&recentOwner.equals(BrowserSettingsUi.shownOwner));
+
+      MainActivity chromiumMenu=new MainActivity(6,stores);
+      Intent menu=new Intent().putExtra("openWindowAction","settings");
+      chromiumMenu.setIntent(menu);
+      chromiumMenu.handleOpening(menu);
+      BrowserSettingsUi.openWorkspace(chromiumMenu,row,()->{});
+      check("Chromium's own settings route retains the existing engine-editing behavior",
+          chromiumMenu.hub!=null&&!BrowserSettingsUi.fromStandalone&&recentOwner.equals(BrowserSettingsUi.shownOwner));
+
+      BrowserPreferences.saveHome(owner,"https://example.com/updated");
+      check("A homepage-only save retains Chromium and the default environment's homepage",
+          owner.store.lastKeys.equals(Collections.singleton(BrowserPreferences.KEY_HOME))&&BrowserPreferences.startBrowser(owner)
+          &&BrowserPreferences.home(owner).equals("https://example.com/updated")&&BrowserPreferences.home(standalone).equals("https://example.com/default"));
+
+      modalOpenings=BrowserSettingsUi.modalOpenings;
+      BrowserSettingsUi.openWorkspace(standalone,row,()->{});
+      Intent stale=standalone.launched;
+      ProfileCatalog.identities.put(6,new EnvironmentSpec.Identity(6,3,"replacement"));
+      standalone.launched=null;BrowserSettingsUi.openWorkspace(standalone,row,()->{});
+      check("A stale settings row cannot open the replacement environment",
+          standalone.launched==null&&standalone.lastMessage!=null);
+      MainActivity replaced=new MainActivity(6,stores);replaced.handleOpening(stale);
+      check("A replacement environment cannot receive a previously dispatched settings modal",
+          replaced.browserStarts==0&&BrowserSettingsUi.modalOpenings==modalOpenings&&replaced.lastMessage!=null);
+      BrowserSettingsUi.openWorkspace(restored,BrowserSettingsUi.workspaceIdentity(restored),()->{});
+      check("A retained standalone intent cannot retarget its reopened editor to a replacement environment",
+          BrowserSettingsUi.modalOpenings==modalOpenings&&restored.lastMessage!=null);
+
+      BrowserSettingsUi.openWorkspace(standalone,defaultOwner,()->{});
+      check("The matching slot-zero settings entry still opens its local editor directly",
+          standalone.launched==null&&defaultOwner.equals(BrowserSettingsUi.shownOwner)&&!BrowserSettingsUi.fromStandalone);
+    }finally{ProfileCatalog.identities.clear();AppSettings.recent=-1;}
+  }
   static void resumedDocument(){
     MainActivity owner=new MainActivity(6,new HashMap<>());BrowserPreferences.save(owner,true,"https://example.com/home");
     owner.dispatchBrowser(new Intent());Intent request=owner.launched;
@@ -210,7 +291,7 @@ public final class BrowserPreferencesHost {
     check("A page change during full-screen dismissal invalidates confirmation",
         reentered.selected.url.equals("https://example.com/reentered")&&reentered.retired.isEmpty()&&reentered.shown==0);
   }
-  public static void main(String[]args){preferences();routing();managedChromiumRouting();ownerStorage();deepLinks();settingsDuringFileWork();resumedDocument();sitePermissionConfirmation();int passed=0;for(int i=0;i<checks.length();i++)if(checks.optJSONObject(i).optBoolean("pass"))passed++;System.out.println(object("status",passed==checks.length()?"passed":"failed","passed",passed,"total",checks.length(),"checks",checks));if(passed!=checks.length())System.exit(1);}
+  public static void main(String[]args){preferences();routing();managedChromiumRouting();ownerStorage();deepLinks();settingsDuringFileWork();standaloneSettingsOwner();resumedDocument();sitePermissionConfirmation();int passed=0;for(int i=0;i<checks.length();i++)if(checks.optJSONObject(i).optBoolean("pass"))passed++;System.out.println(object("status",passed==checks.length()?"passed":"failed","passed",passed,"total",checks.length(),"checks",checks));if(passed!=checks.length())System.exit(1);}
 }
 
 final class Store implements SharedPreferences {
@@ -231,7 +312,13 @@ class MainActivity extends Activity {
   int pageReveals;
   EnvironmentOverviewUi environmentOverview;
   AppHub hub;
-  void openNativeWorkspace(Intent settings){hub=new AppHub();}
+  int browserStarts;
+  Object browserStartup;
+  void openNativeWorkspace(Intent settings){hub=new AppHub();BrowserSettingsUi.showRequestedOwner(this,settings);}
+  void closeNativeWorkspace(){}
+  void prepareBrowserAfterOverview(){}
+  void openNotification(Intent intent){}
+  void createChatUi(){browserStarts++;}
   final GeckoWeb remote=new GeckoWeb();
   void showPage(boolean ignored){pageReveals++;}
   void fileFeedback(String value){lastMessage=value;}
@@ -239,6 +326,7 @@ class MainActivity extends Activity {
   MainActivity(int slot,Map<String,Store> storage){this.slot=slot;store=storage.computeIfAbsent(new ProfileContext(slot).name("chat"),key->new Store());}
   @Override public SharedPreferences getSharedPreferences(String name,int mode){if(!name.equals("chat"))throw new AssertionError("Unexpected global preference access");return store;}
   @Override public void startActivity(Intent intent){launched=intent;BrowserActivity.calls++;BrowserActivity.owner=this;BrowserActivity.url=intent.hasExtra("url")?intent.getStringExtra("url"):"";}
+  /* HANDLE_OPENING */
   /* DISPATCH_METHOD */
   /* NATIVE_PENDING */
   /* GECKO_PENDING */
@@ -259,10 +347,11 @@ class ProfileUi {static boolean working(ChatSession session){return false;}}
 class FileDownloads {boolean awaitingPicker,retiringPartial;final SavedFileActions savedActions=new SavedFileActions();}
 class SavedFileActions {Object exporting;boolean busy;}
 class BrowserFiles {Object pending;boolean activeDownload;boolean hasActiveDownload(){return activeDownload;}}
-class EnvironmentOverviewUi {EnvironmentOverviewUi(MainActivity owner){}}
+class EnvironmentOverviewUi {EnvironmentOverviewUi(MainActivity owner){}boolean consume(Intent intent){return false;}}
 class AppHub {
   String feedback;
   void feedback(String message,boolean warning){feedback=message;}
+  void settings(){}
 }
 class ChromiumEntry {
   static class Feature {}
@@ -277,7 +366,46 @@ class ChromiumEntry {
   }
 }
 class BrowserSettingsUi {
+  static EnvironmentSpec.Identity shownOwner;
+  static boolean fromStandalone;
+  static int modalOpenings;
+  private static void show(Activity owner,EnvironmentSpec.Identity expected,Runnable refresh,boolean standalone){
+    if(!current(owner,expected)||Profiles.slot(owner)!=expected.slot){unavailable(owner);return;}
+    shownOwner=expected;fromStandalone=standalone;modalOpenings++;
+  }
+  /* SETTINGS_OWNERSHIP */
   /* SETTINGS_WORK_PENDING */
+}
+class AppSettingsActivity extends Activity {
+  final Store store;
+  Intent launched;
+  String lastMessage;
+  AppSettingsActivity(Map<String,Store> storage){store=storage.computeIfAbsent("chat",unused->new Store());}
+  @Override public SharedPreferences getSharedPreferences(String name,int mode){return store;}
+  @Override public void startActivity(Intent intent){launched=intent;}
+}
+class AppSettings {
+  static int recent=-1;
+  static int recentSlot(Activity owner){return recent;}
+}
+class EnvironmentSpec {
+  static final class Identity {
+    final int slot,generation;
+    final String environmentId;
+    Identity(int slot,int generation,String environmentId){
+      this.slot=slot;this.generation=generation;this.environmentId=environmentId;
+    }
+    @Override public boolean equals(Object other){
+      return other instanceof Identity value&&slot==value.slot&&generation==value.generation&&environmentId.equals(value.environmentId);
+    }
+    @Override public int hashCode(){return Objects.hash(slot,generation,environmentId);}
+  }
+}
+class DesignUi {
+  static void message(Activity owner,String title,String detail){
+    if(owner instanceof MainActivity)((MainActivity)owner).lastMessage=detail;
+    else if(owner instanceof AppSettingsActivity)((AppSettingsActivity)owner).lastMessage=detail;
+  }
 }
 class ChromiumRuntime {
   static ChromiumRuntime owner;
@@ -294,12 +422,18 @@ class ChromiumRouteLease {
   }
 }
 class Profiles {
-  static int slot(Activity owner){return owner instanceof MainActivity?((MainActivity)owner).slot:((BrowserActivity)owner).slot;}
+  static int slot(Activity owner){return owner instanceof MainActivity?((MainActivity)owner).slot:owner instanceof BrowserActivity?((BrowserActivity)owner).slot:0;}
   static Class<?> activity(int slot){if(slot==0)return MainActivity.class;if(slot==6)return Profile6.class;throw new AssertionError("Unexpected environment slot "+slot);}
   static final class Profile6 extends MainActivity {}
 }
 class ProfileCatalog {
+  static final Map<Integer,EnvironmentSpec.Identity> identities=new HashMap<>();
   Activity owner;
+  EnvironmentSpec.Identity identity(int slot)throws java.io.IOException{
+    EnvironmentSpec.Identity identity=identities.get(slot);
+    if(identity==null)throw new java.io.IOException("Unavailable fixture environment");
+    return identity;
+  }
   static ProfileCatalog get(Activity activity){ProfileCatalog c=new ProfileCatalog();c.owner=activity;return c;}
   boolean available(int slot){if(slot!=Profiles.slot(owner))throw new AssertionError("Wrong profile availability lookup");return owner instanceof MainActivity?((MainActivity)owner).available:((BrowserActivity)owner).available;}
 }

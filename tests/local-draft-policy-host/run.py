@@ -31,7 +31,7 @@ def main():
     source=ROOT/'app/src/main/java/local/pocketchat'
     whole=['LocalDraftPolicy.java','PageMemory.java','DraftArchive.java','BrowserSessionStore.java','ChromiumRouteLease.java','BrowserRuntimePolicy.java','BrowserAddressPolicy.java','GeckoNavigationPolicy.java']
     before=subprocess.check_output(['git','rev-parse',args.before_ref+'^{commit}'],cwd=ROOT,text=True).strip() if args.before_ref else None
-    partial={'AppPrefs.java':['static boolean enabled(','static void apply('], 'GeckoWebView.java':['void restoreCheckpoint(','static final class ProtectionRestore','boolean generalRouteReady(','boolean retainGeneralRoute(','void forgetGeneralRoute(','void releaseGeneralRoutes(','void routeAdmissionChanged(','void queueGeneralRouteRetry(','void retryGeneralRoutes(','Object claimTimeZoneIntent(','void clearTimeZoneIntent(']}
+    partial={'AppPrefs.java':['static boolean enabled(','static boolean apply(','static SharedPreferences.Editor edit('], 'GeckoWebView.java':['void restoreCheckpoint(','static final class ProtectionRestore','boolean generalRouteReady(','boolean retainGeneralRoute(','void forgetGeneralRoute(','void releaseGeneralRoutes(','void routeAdmissionChanged(','void queueGeneralRouteRetry(','void retryGeneralRoutes(','Object claimTimeZoneIntent(','void clearTimeZoneIntent(']}
     if not before:partial['WebReplyObserver.java']=['static boolean webJob(','boolean archiveNavigation(']
     inputs=[source/name for name in whole+list(partial)]+sorted(HERE.rglob('*.java'))+[pathlib.Path(__file__).resolve()]
     hashes={str(p.relative_to(ROOT)):hashlib.sha256(p.read_bytes()).hexdigest() for p in inputs}

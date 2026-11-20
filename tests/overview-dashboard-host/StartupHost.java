@@ -35,6 +35,15 @@ public final class StartupHost {
 
     MainActivity nativePage=new MainActivity(false);nativePage.chromium=true;nativePage.intent.putExtra("openDownload","old-file");nativePage.onCreate(null);nativePage.onResume();
     check("old-file".equals(nativePage.nativeDownload)&&nativePage.hub.page==AppHub.SETTINGS&&nativePage.creates==0&&nativePage.browserStarts==0&&nativePage.hub.refreshes==1,"Chromium-bound download management stays native from cold entry through resume");
+    MainActivity ownerSettings=new MainActivity(false);
+    ownerSettings.intent.putExtra("openWindowAction","settings").putExtra("fixtureOwnerSettings","true");
+    ownerSettings.onCreate(null);
+    check(ownerSettings.hub.page==AppHub.SETTINGS&&ownerSettings.creates==0&&ownerSettings.browserStarts==0
+      &&ownerSettings.ownerSettingsRequests==1,"owner settings open the native workspace for a Gecko environment");
+    MainActivity restoredOwner=new MainActivity(false);
+    restoredOwner.setIntent(ownerSettings.getIntent());restoredOwner.onCreate(null);
+    check(restoredOwner.hub.page==AppHub.SETTINGS&&restoredOwner.creates==0&&restoredOwner.ownerSettingsRequests==0,
+      "recreating owner settings keeps its native route without reissuing the modal");
     MainActivity restoredNative=new MainActivity(false);restoredNative.chromium=true;restoredNative.setIntent(nativePage.getIntent());restoredNative.onCreate(null);
     check(restoredNative.hub.page==AppHub.SETTINGS&&restoredNative.creates==0&&restoredNative.browserStarts==0,"a recreated native Activity keeps its destination without starting an engine or reopening the dialog");
     nativePage.nativeSavedFiles.busy=true;nativePage.onNewIntent(new Intent(false));
@@ -75,7 +84,7 @@ public final class StartupHost {
 }
 
 class MainActivity extends Activity {
-  static final int MODE_PRIVATE=0;boolean pageMode,active,destroyed,finished,focusReading,chromium;Bundle downloadUiState;UiFrames sessionUi;int creates,resumes,content,feedback;String nativeDownload;BrowserStartupGate browserStartup;ChatSession session;EnvironmentOverviewUi environmentOverview;Intent intent;Prefs prefs;
+  static final int MODE_PRIVATE=0;boolean pageMode,active,destroyed,finished,focusReading,chromium;Bundle downloadUiState;UiFrames sessionUi;int creates,resumes,content,feedback,ownerSettingsRequests;String nativeDownload;BrowserStartupGate browserStartup;ChatSession session;EnvironmentOverviewUi environmentOverview;Intent intent;Prefs prefs;
   AppHub hub;FileDownloads downloads;SavedFileActions nativeSavedFiles;Remote remote;final Handler handler=new Handler();
   boolean managedChromium,chromiumReady;String featureUrl,chromiumNetworkIssue="";
   MainActivity(boolean manual){intent=new Intent(manual);}
@@ -93,6 +102,17 @@ class ProfileUi{static boolean working(ChatSession session){return session.worki
 class Remote{String getUrl(){return "https://retained.example/";}}
 class FileDownloads{boolean awaitingPicker,retiringPartial;final SavedFileActions savedActions=new SavedFileActions(null);}
 class SavedFileActions{Object exporting;boolean busy;SavedFileActions(MainActivity a){}void close(){}}
+/** Controlled native owner-settings boundary. The real owner and identity checks are covered separately. */
+class BrowserSettingsUi {
+  static final String OWNER_ROUTE="fixtureOwnerSettings", OWNER_MODAL="fixtureOwnerSettingsConsumed";
+  static boolean ownerOpening(Activity activity,Intent intent){
+    return intent!=null&&"settings".equals(intent.getStringExtra("openWindowAction"))&&intent.getBooleanExtra(OWNER_ROUTE,false);
+  }
+  static void showRequestedOwner(MainActivity activity,Intent intent){
+    if(!ownerOpening(activity,intent)||intent.getBooleanExtra(OWNER_MODAL,false))return;
+    intent.putExtra(OWNER_MODAL,"true");activity.ownerSettingsRequests++;
+  }
+}
 class EnvironmentEditorUi{static void show(MainActivity a){}}
 class AppHub{
   static final int CHAT=0,SETTINGS=3,NETWORK=4;int page,refreshes;
