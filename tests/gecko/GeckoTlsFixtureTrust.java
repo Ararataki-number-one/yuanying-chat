@@ -23,7 +23,8 @@ final class GeckoTlsFixtureTrust {
     Class<?> activity=context.getClass();
     boolean expectedActivity=(slot==0&&activity==GeckoEnvironmentPolicyIntegrationActivity.class)
       ||(slot==1&&activity==GeckoTlsAcceptanceActivity.Profile1.class)||(slot==2&&activity==GeckoTlsAcceptanceActivity.Profile2.class)
-      ||(slot==6&&activity==GeckoTlsCpuIpComboIntegrationActivity.class);
+      ||(slot==6&&(activity==GeckoTlsCpuIpComboIntegrationActivity.class
+        ||activity==GeckoIpTimeZoneIntegrationActivity.class||activity==GeckoCpuIpComboIntegrationActivity.class));
     if(!"local.pocketchat.test".equals(context.getPackageName())||!expectedActivity||runtime==null||!leaf.equals(input.opt("leafDerSha256")))throw new SecurityException("FixtureTrust:scope");
     JSONObject policy=view.owner.tls.status();
     host=(MainActivity)context;runtimeNonce=policy.getString("runtimeNonce");processNonce=policy.getString("processNonce");

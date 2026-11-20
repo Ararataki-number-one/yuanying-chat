@@ -22,6 +22,7 @@ sys.path.insert(0,str(ROOT/'tools/gecko'))
 sys.path.insert(0,str(Path(__file__).resolve().parent))
 from profile_invocation_contract import expected_build,verify_installed
 from fingerprint_fixture_server import AndroidUserCa
+from tls_fixture_trust import fixture_trust_input
 from ip_timezone_fixture_server import IpFixtureCertificates,IpTimeZoneFleet
 from check_gecko_ip_timezone_evidence import (SOURCE_INPUTS,REPORT_NAME,RAW_DIRECTORY,RAW_FILES,
     CASES,FIXTURE_TYPE,verify_gecko_ip_timezone_evidence,expected_clock,strict_json,_typed_equal)
@@ -44,10 +45,12 @@ def scope_command(action,source,nonce):
     require(action in ('prepare','clear') and re.fullmatch('[0-9a-f]{40}',source) and re.fullmatch('[0-9a-f]{32}',nonce),'invalid explicit fixture scope invocation')
     return ['shell',shlex.join(['content','call','--uri',URI,'--method',action,
         '--extra','sourceCommit:s:'+source,'--extra','runNonce:s:'+nonce])]
-def activity_args(source,nonce,leaf):
+def activity_args(source,nonce,leaf,trust_input):
     require(re.fullmatch('[0-9a-f]{40}',source) and re.fullmatch('[0-9a-f]{32}',nonce) and re.fullmatch('[0-9a-f]{64}',leaf),'invalid controlled activity invocation')
+    require(type(trust_input) is dict and trust_input.get('leafDerSha256')==leaf,'native trust input leaf differs')
     return ['shell',shlex.join(['am','start','-W','-n',ACTIVITY,'--es','sourceCommit',source,
-                              '--es','runNonce',nonce,'--es','expectedLeafSha256',leaf])]
+                              '--es','runNonce',nonce,'--es','expectedLeafSha256',leaf,
+                              '--es','fixtureTrustInput',json.dumps(trust_input,separators=(',',':'))])]
 def source_inputs():
     paths={ROOT/name for name in SOURCE_INPUTS}
     paths.update((ROOT/'app/src/main/java').rglob('*.java'))
@@ -123,7 +126,7 @@ def main():
         scope_prepared=True;adb(*scope_command('prepare',source,nonce))
         setup=strict_json(adb('exec-out','content','read','--uri',URI+'/setup').stdout)
         require(setup.get('status')=='armed' and setup.get('sourceCommit')==source and setup.get('sourceTree')==tree and setup.get('runNonce')==nonce and setup.get('integrationApkSha256')==identity['apkSha256'] and setup.get('timezoneSealedRecordMissing') is True and setup.get('actualDefaultStoreLoadYet') is False and setup.get('manualSeedAppliedToIpScope') is False,'actual unused-scope provider proof differs')
-        adb(*activity_args(source,nonce,certificates.leaf_sha))
+        adb(*activity_args(source,nonce,certificates.leaf_sha,fixture_trust_input(certificates)))
         deadline=time.monotonic()+960
         while time.monotonic()<deadline:
             raw=adb('exec-out','content','read','--uri',URI+'/report',check=False,timeout=20).stdout

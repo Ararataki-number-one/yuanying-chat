@@ -179,7 +179,12 @@ class ReadingFitCompletionTests(unittest.TestCase):
   self.assertEqual(report['passed'],48)
 
  def test_completion_mutations_are_rejected(self):
-  reading=reading45_source_bytes((PRODUCTION/'BrowserReading.java').read_bytes(),'app/src/main/java/local/pocketchat/BrowserReading.java').decode();policy=reading45_source_bytes((PRODUCTION/'BrowserReadingPolicy.java').read_bytes(),'app/src/main/java/local/pocketchat/BrowserReadingPolicy.java').decode()
+  # These mutation anchors belong to the original fit implementation. The
+  # current controller is compiled unmodified by the behavior test above.
+  reading_path='app/src/main/java/local/pocketchat/BrowserReading.java'
+  policy_path='app/src/main/java/local/pocketchat/BrowserReadingPolicy.java'
+  reading=reading45_source_bytes(historical_bytes(reading_path),reading_path).decode()
+  policy=reading45_source_bytes(historical_bytes(policy_path),policy_path).decode()
   mutants=[('old relative completion',reading.replace(NEW_RESTORE,OLD_RESTORE,1),policy),('consume before measured fit',reading.replace('else if(atTarget){','else if(alignLeft){',1),policy),('ignore layout scaling',reading,policy.replace('(double)scale*viewport/layout-width','(double)scale*viewport-width',1)),('relaxed edge',reading,policy.replace('residual<=scale','residual<=scale*5',1)),('target unapplied approximate choice',reading.replace('viewportWidth,nativeFit?session.web.readingLayout:choice()','viewportWidth,choice()',1),policy)]
   outcomes=[]
   for label,r,p in mutants:

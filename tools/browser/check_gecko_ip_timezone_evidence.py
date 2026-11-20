@@ -51,12 +51,15 @@ SOURCE_INPUTS={
  'tests/gecko/GeckoIpTimeZoneIntegrationActivity.java','tests/gecko/GeckoIpTimeZoneEvidenceProvider.java',
  'tests/gecko/IpTimeZoneFixtureApplication.java','tests/gecko/IpTimeZoneFixtureScopes.java',
  'tests/gecko/IntegrationBuildIdentity.java','tests/gecko/BrowserFingerprintIntegrationActivity.java',
+ 'tools/gecko/tls_fixture_trust.py','tests/gecko/GeckoTlsFixtureTrust.java','tests/gecko/GeckoTlsFixtureTrustState.java',
  'tests/gecko/GeckoEnvironmentPolicyIntegrationActivity.java','tests/gecko/AndroidManifest.xml',
  'tests/gecko/res/xml/network_security.xml','tests/gecko/assets/gecko-ip-timezone-page.js',
  'tests/gecko/assets/gecko-environment-policy-page.js','tests/gecko/assets/worker-policy-page.js',
  'app/build.gradle','app/src/main/AndroidManifest.xml','app/src/main/res/xml/network_security.xml',
  '.github/workflows/browser-2_1-acceptance.yml',
 }
+SOURCE_INPUTS.update('tests/gecko/assets/tls-fixture-trust/'+name for name in (
+ 'manifest.json','schema.json','background.js','parent.js'))
 # Keep the contract readable while binding every app-owned transport dependency.
 SOURCE_INPUTS.update('app/src/main/java/local/pocketchat/'+name+'.java' for name in (
  'MainActivity','PocketApplication','ChatSession','Profiles','ProfileCatalog','SecretStore','GeckoWebView',

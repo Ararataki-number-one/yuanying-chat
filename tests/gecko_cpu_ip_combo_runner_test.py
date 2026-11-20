@@ -21,11 +21,15 @@ import gecko_cpu_ip_combo_evidence_test as modeled
 class ComboRunnerTests(unittest.TestCase):
     def test_shell_source_nonce_leaf_and_constant_single_invocation(self):
         source,nonce=modeled.SOURCE,modeled.NONCE;words=shlex.split(runner.scope_command('prepare',source,nonce)[1]);self.assertEqual(words[:2],['content','call']);self.assertIn(runner.URI,words);self.assertIn('sourceCommit:s:'+source,words)
-        self.assertIn(runner.ACTIVITY,shlex.split(runner.activity_args(source,nonce,'f'*64)[1]))
+        trust=dict(leafDerSha256='f'*64,caDerSha256='a'*64)
+        launch=shlex.split(runner.activity_args(source,nonce,'f'*64,trust)[1])
+        self.assertIn(runner.ACTIVITY,launch)
+        self.assertEqual(json.loads(launch[launch.index('fixtureTrustInput')+1]),trust)
         for bad in ('','f'*39,'f'*40+';id','$(id)','f'*40+'\n'):
             with self.subTest(bad=bad),self.assertRaises(ValueError):runner.scope_command('prepare',bad,nonce)
         with self.assertRaises(ValueError):runner.scope_command('rerun',source,nonce)
-        with self.assertRaises(ValueError):runner.activity_args(source,nonce,'f'*63)
+        with self.assertRaises(ValueError):runner.activity_args(source,nonce,'f'*63,trust)
+        with self.assertRaises(ValueError):runner.activity_args(source,nonce,'a'*64,trust)
     def test_strict_json_before_nonce_ignoring_damaged_foreign_packets(self):
         report,expected=modeled.fixture();activity=report['activity'];raw=json.dumps(activity).encode()
         def installed(value,reference):return modeled.gate.ip.installed(value,reference,modeled.modeled.source_reader)
@@ -111,7 +115,7 @@ class ComboRunnerTests(unittest.TestCase):
         def installed(value,reference):return modeled.gate.ip.installed(value,reference,modeled.modeled.source_reader)
         stdout=io.StringIO();original_clock=runner.time.monotonic;clock_values=iter((0,179,179.5,181))
         def clock():return next(clock_values) if where=='expired' else original_clock()
-        with patch.object(sys,'argv',['run','--serial','emulator-5554','--apk',str(apk),'--source',modeled.SOURCE,'--output',str(out)]),patch.object(runner.subprocess,'check_output',git),patch.object(runner.subprocess,'run',adb),patch.object(runner,'expected_build',lambda *args:expected),patch.object(runner,'verify_installed',installed),patch.object(runner,'source_inputs',lambda:[Path(runner.__file__)]),patch.object(runner.uuid,'uuid4',lambda:type('Nonce',(),{'hex':modeled.NONCE})()),patch.object(runner,'IpFixtureCertificates',Certificates),patch.object(runner,'IpTimeZoneFleet',Server),patch.object(runner,'AndroidUserCa',Ca),patch.object(runner,'verify_gecko_cpu_ip_combo_evidence',verify),patch.object(runner.time,'monotonic',clock),patch.object(runner.time,'sleep',lambda duration:actions.append(('sleep',duration))),contextlib.redirect_stdout(stdout):
+        with patch.object(sys,'argv',['run','--serial','emulator-5554','--apk',str(apk),'--source',modeled.SOURCE,'--output',str(out)]),patch.object(runner.subprocess,'check_output',git),patch.object(runner.subprocess,'run',adb),patch.object(runner,'expected_build',lambda *args:expected),patch.object(runner,'verify_installed',installed),patch.object(runner,'source_inputs',lambda:[Path(runner.__file__)]),patch.object(runner.uuid,'uuid4',lambda:type('Nonce',(),{'hex':modeled.NONCE})()),patch.object(runner,'IpFixtureCertificates',Certificates),patch.object(runner,'fixture_trust_input',lambda cert:dict(leafDerSha256=cert.leaf_sha)),patch.object(runner,'IpTimeZoneFleet',Server),patch.object(runner,'AndroidUserCa',Ca),patch.object(runner,'verify_gecko_cpu_ip_combo_evidence',verify),patch.object(runner.time,'monotonic',clock),patch.object(runner.time,'sleep',lambda duration:actions.append(('sleep',duration))),contextlib.redirect_stdout(stdout):
             if where=='passed':runner.main()
             else:
                 with self.assertRaises(SystemExit) as error:runner.main()
@@ -120,6 +124,8 @@ class ComboRunnerTests(unittest.TestCase):
     def test_actual_main_preserves_device_bytes_and_calls_verifier_once_at_model_boundary(self):
         report,actions,out,original,status,verify=self.execute_main('passed');self.assertEqual(status['status'],'passed');self.assertEqual(len(verify),1);self.assertEqual((out/runner.RAW_DIRECTORY/'combo.json').read_bytes(),original);self.assertEqual(set(report['casePins']),set(runner.RAW_FILES));self.assertTrue(all(report['cleanup'].values()));self.assertFalse(status['actualPublicIpGeolocationVerified'])
         launches=[a for a in actions if isinstance(a,tuple) and len(a)==2 and a[0]=='shell' and a[1].startswith('am start ')];self.assertEqual(len(launches),1);self.assertEqual(sum(isinstance(row,tuple) and row[0]=='local-stage' for row in actions),1)
+        words=shlex.split(launches[0][1]);trust=json.loads(words[words.index('fixtureTrustInput')+1])
+        self.assertEqual(trust['leafDerSha256'],report['hostTls']['leafDerSha256'])
     def test_every_failure_preserves_original_outcome_runs_all_cleanup_and_never_replays(self):
         for where in ('prepare','device-failed','pid','server-close','snapshot','checker'):
             with self.subTest(where=where):

@@ -29,14 +29,16 @@ public final class GeckoIpTimeZoneIntegrationActivity extends MainActivity {
   final Map<GeckoSession,JSONObject> securities=new IdentityHashMap<>();
   JSONObject build,setup,lastPage=new JSONObject(),lastSample=new JSONObject();
   String nonce,stage="startup",failure="",failedStage="";
-  long deadline,wholeDeadline;boolean terminal,roots;GeckoTimeZoneStore.Ticket originalTicket;
+  long deadline,wholeDeadline,startupDeadline;boolean terminal,roots;GeckoTimeZoneStore.Ticket originalTicket;
   GeckoWebView.IpLookup isolationClaim;ChromiumRouteLease.Handle observedLease;
   JSONObject applyLeaseProof=new JSONObject();
   interface Ready{boolean get()throws Exception;}interface Step{void run()throws Exception;}
 
+  GeckoTlsFixtureTrust trust;JSONObject trustInput;
+
   @Override public void onCreate(Bundle saved){try{
     BrowserFingerprintIntegrationActivity.validateIntent(this);nonce=getIntent().getStringExtra("runNonce");
-    build=IntegrationBuildIdentity.read(this);if(!build.getString("sourceCommit").equals(getIntent().getStringExtra("sourceCommit")))throw new SecurityException("Installed source differs");
+    build=IntegrationBuildIdentity.read(this);trustInput=new JSONObject(getIntent().getStringExtra("fixtureTrustInput"));if(!build.getString("sourceCommit").equals(getIntent().getStringExtra("sourceCommit")))throw new SecurityException("Installed source differs");
     IpTimeZoneFixtureScopes.requireArmed(this,build.getString("sourceCommit"),nonce);
     setup=IpTimeZoneFixtureScopes.read(this,IpTimeZoneFixtureScopes.SETUP);
     // Actual vault/default loader on a separate test writer before the real
@@ -54,7 +56,8 @@ public final class GeckoIpTimeZoneIntegrationActivity extends MainActivity {
     getSharedPreferences("universal-browser",0).edit().clear().commit();
     ChatSession.browserFactory=(context,owner)->new Observed(context,owner);
     getIntent().putExtra("legacyChat",true);super.onCreate(null);
-    wholeDeadline=SystemClock.elapsedRealtime()+900000;deadline=SystemClock.elapsedRealtime()+90000;publish();
+    wholeDeadline=SystemClock.elapsedRealtime()+900000;startupDeadline=deadline=SystemClock.elapsedRealtime()+90000;publish();
+    if(remote instanceof Observed)((Observed)remote).ensureTrust();
     waitFor("actual main default IP",this::ready,()->capture("default-socks","America/New_York",true,value->{try{
       originalTicket=ticket();check("default.actual-main-profile6",remote instanceof Observed&&geckoAddress!=null&&geckoAddress.address.isShown()&&Profiles.slot(this)==6);
       check("default.missing-store-ip",setup.getBoolean("timezoneSealedRecordMissing")&&initial.spec.followsIp());
@@ -64,7 +67,24 @@ public final class GeckoIpTimeZoneIntegrationActivity extends MainActivity {
 
   final class Observed extends GeckoWebView {
     Observed(android.content.Context context,ChatSession owner){super(context,owner);}
-    @Override GeckoSession newSession(){runtime.getSettings().setEnterpriseRootsEnabled(true);roots=runtime.getSettings().getEnterpriseRootsEnabled();
+    void ensureTrust(){
+      if(trust!=null||terminal||remote!=this||runtime==null||!identityPrepared||startupDeadline<=0
+          ||SystemClock.elapsedRealtime()>=startupDeadline||!super.protectionAllowsNetwork())return;
+      try{
+        trust=new GeckoTlsFixtureTrust(GeckoIpTimeZoneIntegrationActivity.this,this,build,nonce,nonce,
+            getIntent().getStringExtra("expectedLeafSha256"),trustInput,()->startupDeadline,()->{
+              if(!destroyed&&!owner.deleted&&identityPrepared&&!ready)identityConfigurationReady();
+            },GeckoIpTimeZoneIntegrationActivity.this::failed);
+        trust.start();
+      }catch(Throwable error){failed(error);}
+    }
+    @Override boolean protectionAllowsNetwork(){
+      if(!super.protectionAllowsNetwork())return false;
+      ensureTrust();
+      return trust!=null&&trust.bootReady();
+    }
+
+    @Override GeckoSession newSession(){roots=trust!=null&&trust.bootReady()&&runtime.getSettings().getEnterpriseRootsEnabled();
       GeckoSession sdk=super.newSession();GeckoSession.ProgressDelegate original=sdk.getProgressDelegate();
       sdk.setProgressDelegate(new GeckoSession.ProgressDelegate(){
         public void onPageStart(GeckoSession s,String url){event("page-start",s,url);original.onPageStart(s,url);}
@@ -252,5 +272,5 @@ public final class GeckoIpTimeZoneIntegrationActivity extends MainActivity {
   void publish()throws Exception{if(build==null)return;JSONObject value=J.obj("schema",1,"fixtureType","gecko-production-ip-timezone-v1","engine","gecko","status",terminal?(failure.isEmpty()?"passed":"failed"):"running","stage",stage,"failedAtStage",failedStage,"failure",failure,"sourceCommit",build.getString("sourceCommit"),"sourceTree",build.getString("sourceTree"),"runNonce",nonce,"buildIdentity",build,"setup",setup==null?new JSONObject():setup,"checks",checks,"cases",cases,"nativeEvents",events,"lastPage",lastPage,"currentTimeZonePolicy",session==null?new JSONObject():session.timeZone.status(),"actualAndroidExecution",true,"actualGeckoExecution",remote!=null&&remote.current!=null,"syntheticGeoService",true,"actualPublicIpGeolocationVerified",false,"workerCoverageVerified",false,"serviceWorkerCoverageVerified",false,"fingerprintProtectionVerified",false,"scope","Canonical MainActivity profile6, actual production UI/native timezone/private bootstrap plus controlled HTTPS proxy responses. Geo JSON is synthetic, not public-location proof; raw Worker clocks and capability-denial observations do not establish full Worker timezone isolation.");
     android.util.AtomicFile file=new android.util.AtomicFile(new File(Profiles.global(this).getFilesDir(),"gecko-ip-timezone-results.json"));FileOutputStream out=null;try{out=file.startWrite();byte[] bytes=(value.toString()+"\n").getBytes(StandardCharsets.UTF_8);if(bytes.length>4*1024*1024)throw new IOException("Bounded IP fixture report overflow");out.write(bytes);file.finishWrite(out);}catch(Exception error){if(out!=null)file.failWrite(out);throw error;}
   }
-  @Override protected void onDestroy(){probe.removeCallbacksAndMessages(null);io.shutdownNow();super.onDestroy();}
+  @Override protected void onDestroy(){if(trust!=null)trust.close();probe.removeCallbacksAndMessages(null);io.shutdownNow();super.onDestroy();}
 }

@@ -30,12 +30,15 @@ class RunnerTests(unittest.TestCase):
         words=shlex.split(args[1]);self.assertEqual(words[0:2],['content','call'])
         self.assertEqual(words.count('--method'),1);self.assertIn('sourceCommit:s:'+source,words)
         self.assertIn('runNonce:s:'+nonce,words)
-        launch=shlex.split(runner.activity_args(source,nonce,'c'*64)[1])
+        trust=dict(leafDerSha256='c'*64,caDerSha256='d'*64)
+        launch=shlex.split(runner.activity_args(source,nonce,'c'*64,trust)[1])
         self.assertEqual(launch[:3],['am','start','-W']);self.assertIn(runner.ACTIVITY,launch)
+        self.assertEqual(json.loads(launch[launch.index('fixtureTrustInput')+1]),trust)
         for bad in ('','a'*39,'a'*40+';id','$(id)','a'*40+'\n'):
             with self.subTest(bad=bad),self.assertRaises(ValueError):runner.scope_command('prepare',bad,nonce)
         with self.assertRaises(ValueError):runner.scope_command('delete',source,nonce)
-        with self.assertRaises(ValueError):runner.activity_args(source,nonce,'c'*63)
+        with self.assertRaises(ValueError):runner.activity_args(source,nonce,'c'*63,trust)
+        with self.assertRaises(ValueError):runner.activity_args(source,nonce,'a'*64,trust)
         tree=ast.parse(Path(runner.__file__).read_text())
         self.assertEqual(sum(isinstance(n,ast.Call) and isinstance(n.func,ast.Name) and n.func.id=='activity_args' for n in ast.walk(tree)),1)
         for node in ast.walk(tree):
@@ -103,7 +106,7 @@ class RunnerTests(unittest.TestCase):
             if values[-1]=='--porcelain':return ''
             raise AssertionError('Unexpected modeled command')
         def actual(value,reference):return modeled.gate.installed(value,reference,modeled.source_reader)
-        with patch.object(sys,'argv',['run','--serial','emulator-5554','--apk',str(apk),'--source',modeled.SOURCE,'--output',str(out)]),patch.object(runner.subprocess,'check_output',git),patch.object(runner.subprocess,'run',command),patch.object(runner,'expected_build',lambda *args:expected),patch.object(runner,'verify_installed',actual),patch.object(runner,'source_inputs',lambda:[Path(runner.__file__)]),patch.object(runner.uuid,'uuid4',lambda:type('Nonce',(),{'hex':modeled.NONCE})()),patch.object(runner,'IpFixtureCertificates',Certificates),patch.object(runner,'IpTimeZoneFleet',Server),patch.object(runner,'AndroidUserCa',Ca),contextlib.redirect_stdout(io.StringIO()):
+        with patch.object(sys,'argv',['run','--serial','emulator-5554','--apk',str(apk),'--source',modeled.SOURCE,'--output',str(out)]),patch.object(runner.subprocess,'check_output',git),patch.object(runner.subprocess,'run',command),patch.object(runner,'expected_build',lambda *args:expected),patch.object(runner,'verify_installed',actual),patch.object(runner,'source_inputs',lambda:[Path(runner.__file__)]),patch.object(runner.uuid,'uuid4',lambda:type('Nonce',(),{'hex':modeled.NONCE})()),patch.object(runner,'IpFixtureCertificates',Certificates),patch.object(runner,'fixture_trust_input',lambda cert:dict(leafDerSha256=cert.leaf_sha)),patch.object(runner,'IpTimeZoneFleet',Server),patch.object(runner,'AndroidUserCa',Ca),contextlib.redirect_stdout(io.StringIO()):
             with self.assertRaises(SystemExit) as failed:runner.main()
             self.assertEqual(failed.exception.code,1)
         return json.loads((out/runner.REPORT_NAME).read_text()),actions,out

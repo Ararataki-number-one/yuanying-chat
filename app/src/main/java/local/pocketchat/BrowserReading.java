@@ -8,6 +8,7 @@ final class BrowserReading {
   final ChatSession session;boolean desktop,ready,pinching,pinchChanged,keyboard,alignLeft,touching,dragged,restoreAllowed,focusAllowed,focusAfterTouch;long document,gestureUntil,gesture,focusRequest,touchDocument,touchEpoch;int width,restoreAttempts;float gestureScale,viewportWidth,fitY=Float.NaN,downX,downY,touchSlop;
   final Runnable restore=this::restoreScale,focus=this::revealFocus;Runnable zoomFocus;boolean precisionAllowed;
   ScaleRestore scaleRestore;boolean displayHidden,displayPageChanged;
+  private boolean maintainOneToOneFit;
   void hideDisplay(){displayHidden=true;displayPageChanged=false;touching=false;cancelGesture();cancelPosition();}
   void showDisplay(){displayHidden=false;if(displayPageChanged){displayPageChanged=false;started(session.web.getUrl());visible(session.web.getUrl());}}
   static final class ScaleRestore {
@@ -29,7 +30,7 @@ final class BrowserReading {
     }catch(ClassCastException ignored){return 1;}
   }
   void cancelGesture(){gesture++;pinching=false;pinchChanged=false;gestureUntil=0;restoreAttempts=0;scaleRestore=null;}
-  void cancelPosition(){if(scaleRestore!=null)scaleRestore.invalid=true;precisionAllowed=false;restoreAllowed=false;alignLeft=false;fitY=Float.NaN;focusAllowed=false;focusAfterTouch=false;zoomFocus=null;focusRequest++;session.handler.removeCallbacks(restore);session.handler.removeCallbacks(focus);}
+  void cancelPosition(){if(scaleRestore!=null)scaleRestore.invalid=true;precisionAllowed=false;restoreAllowed=false;alignLeft=false;maintainOneToOneFit=false;fitY=Float.NaN;focusAllowed=false;focusAfterTouch=false;zoomFocus=null;focusRequest++;session.handler.removeCallbacks(restore);session.handler.removeCallbacks(focus);}
   void configure(boolean value){desktop=value;ready=false;cancelGesture();cancelPosition();restoreAllowed=true;precisionAllowed=true;prepare();}
   void prepare(){int available=session.web.getWidth();if(available>0)width=available;session.web.setInitialScale(0);}
   void started(String url){if(displayHidden){displayPageChanged=true;return;}document++;ready=false;viewportWidth=0;cancelGesture();cancelPosition();restoreAllowed=true;precisionAllowed=true;alignLeft=desktop&&session.web.readingPage(url)&&choice()<=1;session.web.setInitialScale(0);if(!desktop||!session.web.readingPage(url))session.web.setReadingLayout(1);}
@@ -76,15 +77,16 @@ final class BrowserReading {
     }
     if(session.web.readingZoomActive()){scheduleRestore();return;}
     if(session.web.setReadingLayout(choice())){if(scaleRestore!=null)scaleRestore.invalid=true;viewportWidth=0;return;}
-    boolean nativeFit=alignLeft&&session.web.requiresViewportMeasurement();
+    boolean nativeFit=(alignLeft||maintainOneToOneFit&&choice()==1)&&session.web.requiresViewportMeasurement();
     // setReadingLayout may retain a nearby value; fit that applied layout.
     float current=session.web.getScale(),target=BrowserReadingPolicy.target(width,density(),viewportWidth,nativeFit?session.web.readingLayout:choice());
     if(current<=0||target<=0)return;float factor=target/current;
     // Both measurements include readingLayout; undo it once to compare the
-    // rendered page width with the native view before consuming a fit anchor.
-    boolean atTarget=alignLeft&&(nativeFit?BrowserReadingPolicy.fitted(width,current,viewportWidth,session.web.readingLayout):Math.abs(factor-1)<=.015f);
+    // rendered page width with the native view even after the one-time alignment.
+    boolean fitted=nativeFit&&BrowserReadingPolicy.fitted(width,current,viewportWidth,session.web.readingLayout);
+    boolean atTarget=alignLeft&&(nativeFit?fitted:Math.abs(factor-1)<=.015f);
     boolean measuredChoice=!alignLeft&&choice()>1&&session.web.requiresViewportMeasurement();
-    boolean correction=nativeFit?!atTarget:Math.abs(factor-1)>.015f||measuredChoice&&!BrowserReadingPolicy.restored(width,current,viewportWidth,choice());
+    boolean correction=nativeFit?!fitted:Math.abs(factor-1)>.015f||measuredChoice&&!BrowserReadingPolicy.restored(width,current,viewportWidth,choice());
     if(correction){
       long now=SystemClock.uptimeMillis();boolean primary=restoreAttempts<3;
       if(!primary&&(restoreAttempts!=3||!fineCorrection(now,current)))return;
@@ -97,10 +99,10 @@ final class BrowserReading {
       session.web.zoomBy(Math.max(.01f,Math.min(100f,factor)));
       session.handler.removeCallbacks(restore);if(primary)session.handler.postDelayed(restore,500);
     }
-    else if(atTarget){alignLeft=false;session.web.alignReadingLeft(fitY);fitY=Float.NaN;}
+    else if(atTarget){maintainOneToOneFit=nativeFit&&choice()==1;alignLeft=false;session.web.alignReadingLeft(fitY);fitY=Float.NaN;}
     else if(measuredChoice){precisionAllowed=false;if(scaleRestore!=null)scaleRestore.closed=true;}
   }
-  void choose(float value){if(displayHidden)return;cancelGesture();restoreAllowed=true;precisionAllowed=true;float selected=BrowserReadingPolicy.bounded(value);alignLeft=selected<=1;fitY=alignLeft?session.web.readingScrollY():Float.NaN;session.prefs.edit().putFloat(BrowserReadingPolicy.ZOOM_KEY,selected).apply();prepare();scheduleRestore();if(keyboard)scheduleFocus();}
+  void choose(float value){if(displayHidden)return;cancelGesture();restoreAllowed=true;precisionAllowed=true;maintainOneToOneFit=false;float selected=BrowserReadingPolicy.bounded(value);alignLeft=selected<=1;fitY=alignLeft?session.web.readingScrollY():Float.NaN;session.prefs.edit().putFloat(BrowserReadingPolicy.ZOOM_KEY,selected).apply();prepare();scheduleRestore();if(keyboard)scheduleFocus();}
   void fit(){choose(1);}
   void scaled(float value){if(displayHidden)return;if(Float.isFinite(value)&&value>0&&scaleRestore!=null&&scaleRestore.precision)scheduleRestore();if(value>0&&!Float.isNaN(value)&&!Float.isInfinite(value)&&BrowserReadingPolicy.remember(desktop,ready,pinching||SystemClock.uptimeMillis()<gestureUntil,session.web.getUrl())&&(pinchChanged||Math.abs(value-gestureScale)>.01f)){pinchChanged=true;session.prefs.edit().putFloat(BrowserReadingPolicy.ZOOM_KEY,BrowserReadingPolicy.fromScale(width,density(),viewportWidth,value)).apply();}}
   @SuppressWarnings("deprecation") void touch(MotionEvent event){

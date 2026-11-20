@@ -24,9 +24,11 @@ public final class GeckoCpuIpComboIntegrationActivity extends MainActivity {
   JSONObject build,setup=new JSONObject(),cpuSetup=new JSONObject(),page=new JSONObject(),nativeProof=new JSONObject(),freshCpu=new JSONObject(),cpuStored=new JSONObject();
   String nonce,stage="startup",failure="";long deadline;boolean terminal,capturing,roots;
 
+  GeckoTlsFixtureTrust trust;JSONObject trustInput;
+
   @Override public void onCreate(Bundle saved){try{
     deadline=SystemClock.elapsedRealtime()+120000;BrowserFingerprintIntegrationActivity.validateIntent(this);
-    nonce=getIntent().getStringExtra("runNonce");build=IntegrationBuildIdentity.read(this);
+    nonce=getIntent().getStringExtra("runNonce");build=IntegrationBuildIdentity.read(this);trustInput=new JSONObject(getIntent().getStringExtra("fixtureTrustInput"));
     if(!build.getString("sourceCommit").equals(getIntent().getStringExtra("sourceCommit")))throw new SecurityException("Installed source differs");
     IpTimeZoneFixtureScopes.requireArmed(this,build.getString("sourceCommit"),nonce);
     setup=IpTimeZoneFixtureScopes.read(this,IpTimeZoneFixtureScopes.SETUP);
@@ -48,12 +50,31 @@ public final class GeckoCpuIpComboIntegrationActivity extends MainActivity {
     AppPrefs.apply(this,J.obj("automaticLatencyChecks",false));
     if(AppPrefs.enabled(this,"automaticLatencyChecks"))throw new IOException("Automatic response checks remained enabled");
     ChatSession.browserFactory=(context,owner)->new Observed(context,owner);getIntent().putExtra("legacyChat",true);
-    super.onCreate(null);stage="production-cold-bootstrap";publishNativeRefusals();publish();probe.post(this::tick);
+    super.onCreate(null);stage="production-cold-bootstrap";publishNativeRefusals();publish();
+    if(remote instanceof Observed)((Observed)remote).ensureTrust();
+    probe.post(this::tick);
   }catch(Throwable error){failed(error);}}
 
   final class Observed extends GeckoWebView {
     final ThreadLocal<String[]> admissionCall=new ThreadLocal<>();
     Observed(android.content.Context context,ChatSession owner){super(context,owner);}
+    void ensureTrust(){
+      if(trust!=null||terminal||remote!=this||runtime==null||!identityPrepared||deadline<=0
+          ||SystemClock.elapsedRealtime()>=deadline||!super.protectionAllowsNetwork())return;
+      try{
+        trust=new GeckoTlsFixtureTrust(GeckoCpuIpComboIntegrationActivity.this,this,build,nonce,nonce,
+            getIntent().getStringExtra("expectedLeafSha256"),trustInput,()->deadline,()->{
+              if(!destroyed&&!owner.deleted&&identityPrepared&&!ready)identityConfigurationReady();
+            },GeckoCpuIpComboIntegrationActivity.this::failed);
+        trust.start();
+      }catch(Throwable error){failed(error);}
+    }
+    @Override boolean protectionAllowsNetwork(){
+      if(!super.protectionAllowsNetwork())return false;
+      ensureTrust();
+      return trust!=null&&trust.bootReady();
+    }
+
     @Override protected boolean allowedUrl(String target){
       String role=sdkStartupRole(target);String[] observed=admissionCall.get();
       if(observed!=null&&observed[1].isEmpty())return super.allowedUrl(target);
@@ -68,7 +89,7 @@ public final class GeckoCpuIpComboIntegrationActivity extends MainActivity {
       }finally{if(previous==null)admissionCall.remove();else admissionCall.set(previous);}
     }
     @Override GeckoSession newSession(){
-      runtime.getSettings().setEnterpriseRootsEnabled(true);roots=runtime.getSettings().getEnterpriseRootsEnabled();
+      roots=trust!=null&&trust.bootReady()&&runtime.getSettings().getEnterpriseRootsEnabled();
       GeckoSession sdk=super.newSession();GeckoSession.ProgressDelegate progress=sdk.getProgressDelegate();
       sdk.setProgressDelegate(new GeckoSession.ProgressDelegate(){
         public void onPageStart(GeckoSession source,String url){event("page-start",source,url);progress.onPageStart(source,url);}
@@ -211,5 +232,5 @@ public final class GeckoCpuIpComboIntegrationActivity extends MainActivity {
     byte[] raw=(value.toString()+"\n").getBytes(StandardCharsets.UTF_8);if(raw.length>524288)throw new IOException("Combined device report bound");
     AtomicFile file=new AtomicFile(new File(Profiles.global(this).getFilesDir(),FILE));FileOutputStream out=null;try{out=file.startWrite();out.write(raw);file.finishWrite(out);}catch(Exception error){if(out!=null)file.failWrite(out);throw error;}
   }
-  @Override protected void onDestroy(){probe.removeCallbacksAndMessages(null);writer.shutdownNow();super.onDestroy();}
+  @Override protected void onDestroy(){if(trust!=null)trust.close();probe.removeCallbacksAndMessages(null);writer.shutdownNow();super.onDestroy();}
 }
