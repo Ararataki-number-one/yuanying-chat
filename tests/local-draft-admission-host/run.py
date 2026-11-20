@@ -66,7 +66,7 @@ def main():
       'CHAT_URL':(source/'MainActivity.java',['static boolean chatUrl(']),
       'SAME':(source/'WebReplyObserver.java',['static boolean same(']),
       'POLICY':(source/'LocalDraftPolicy.java',['static boolean enabled(','static long revision(','static boolean mayRestore(','static JSONObject snapshot(Context context,JSONObject value)','static JSONObject snapshot(Context context,JSONObject value,long capturedRevision)']),
-      'APP_PREFS':(source/'AppPrefs.java',['static boolean enabled(','static void apply(']),
+      'APP_PREFS':(source/'AppPrefs.java',['static boolean enabled(','static boolean apply(','static SharedPreferences.Editor edit(']),
       'JSON':(source/'J.java',['static JSONObject obj(','static JSONObject parse(']),
       'HASH':(source/'NativeNetwork.java',['static String hash(']),
       'PUT':(source/'NetworkCatalog.java',['static void put(']),
