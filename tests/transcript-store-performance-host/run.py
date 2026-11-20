@@ -52,11 +52,15 @@ def main():
         if not selected:parser.error('Provide --java-home containing '+name)
         return selected
     names=['WebTranscriptStore.java','MainActivity.java','J.java']
-    paths=[PRODUCTION/name for name in names]+[HERE/'TranscriptStorePerformanceHost.java',Path(__file__).resolve()]
+    mirror=PRODUCTION/'WebTranscriptMirror.java'
+    observer=PRODUCTION/'WebReplyObserver.java'
+    paths=[PRODUCTION/name for name in names]+[mirror,observer,HERE/'TranscriptStorePerformanceHost.java',Path(__file__).resolve()]
     hashes={str(path.relative_to(ROOT)):digest(path.read_bytes()) for path in paths}
     commit=subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip()
     baseline_commit=subprocess.check_output(['git','rev-parse',args.before_ref+'^{commit}'],cwd=ROOT,text=True).strip()
     fixture=(HERE/'TranscriptStorePerformanceHost.java').read_text()
+    observer_source=observer.read_text()
+    fixture=fixture.replace('/* OBSERVER_METHODS */','\n'.join(member(observer_source,name) for name in ('static boolean same(','static boolean stable(')))
     results={}
     for label,before in [('before',True),('after',False)]:
         selected={name:(subprocess.check_output(['git','show',baseline_commit+':app/src/main/java/local/pocketchat/'+name],cwd=ROOT).decode() if before else (PRODUCTION/name).read_text()) for name in names}
@@ -69,7 +73,7 @@ def main():
             uri=work/'android/net/Uri.java';uri.parent.mkdir(parents=True)
             uri.write_text('package android.net;public final class Uri {private java.net.URI value;public static Uri parse(String text){Uri result=new Uri();result.value=java.net.URI.create(text);return result;}public String getScheme(){return value.getScheme();}public String getHost(){return value.getHost();}public String getUserInfo(){return value.getUserInfo();}public int getPort(){return value.getPort();}public String getPath(){return value.getPath();}}\n')
             classes=work/'classes'
-            compiled=subprocess.run([tool('javac'),'-encoding','UTF-8','-source','8','-target','8','-cp',str(args.json_jar.resolve()),'-d',str(classes),str(java),str(store),str(utility),str(uri)],text=True,capture_output=True)
+            compiled=subprocess.run([tool('javac'),'-encoding','UTF-8','-source','8','-target','8','-cp',str(args.json_jar.resolve()),'-d',str(classes),str(java),str(store),str(utility),str(uri),str(mirror)],text=True,capture_output=True)
             if compiled.returncode:raise RuntimeError(label+' compile failed:\n'+compiled.stderr)
             ran=subprocess.run([tool('java'),'-Dbaseline='+str(before).lower(),'-cp',str(classes)+':'+str(args.json_jar.resolve()),'local.pocketchat.TranscriptStorePerformanceHost'],text=True,capture_output=True,timeout=60)
             if ran.returncode:raise RuntimeError(label+' workload failed:\n'+ran.stderr)
@@ -81,7 +85,7 @@ def main():
     report=dict(status='passed' if unchanged else 'source-changed',passed=total,total=total,sourceCommit=commit,baselineCommit=baseline_commit,
         sourceFiles=hashes,executionInputsUnchanged=unchanged,jsonJarSha256=digest(args.json_jar.read_bytes()),before=results['before'],after=results['after'],
         actualAndroidExecution=False,actualGeckoExecution=False,actualSqliteExecution=False,actualSharedPreferencesExecution=False,actualDevicePerformanceMeasurement=False,
-        scope='Complete verbatim f43adac/current WebTranscriptStore and J, actual MainActivity.chatUrl, real production single-worker ExecutorService, and controlled manually advanced Handler/cache/preferences/URI adapters. Counted JSONArray subclass records production toString calls; oracle fixture serialization uses uncounted superclass calls.100changed64-message histories,40offer burst, stale queued worker/native invalidation,2URLs/current-only cursor, legacy sentinel preservation, offline load/stale-load guards and serialization/cache failures. Counts preference setter calls and exact characters passed to transcript setter, not actual XML/disk bytes, heap allocation or device frame time.')
+        scope='Complete verbatim f43adac/current WebTranscriptStore and J, actual MainActivity.chatUrl, real production single-worker ExecutorService, and controlled manually advanced Handler/cache/preferences/URI adapters. Counted JSONArray subclass records production toString calls; oracle fixture serialization uses uncounted superclass calls.100changed64-message histories,40offer burst, stale queued worker/native invalidation,2URLs/current-only cursor, legacy sentinel preservation, offline load/stale-load guards and serialization/cache failures. The current-only workload uses the actual WebTranscriptMirror to exercise virtualized observations, durable history protection, and the in-flight native invalidation boundary. Counts preference setter calls and exact characters passed to transcript setter, not actual XML/disk bytes, heap allocation or device frame time.')
     args.output.parent.mkdir(parents=True,exist_ok=True);args.output.write_text(json.dumps(report,ensure_ascii=False,indent=2)+'\n')
     print(json.dumps(dict(status=report['status'],passed=total,total=total,
         cacheWrites={label:results[label]['streamingCacheWrites'] for label in results},
