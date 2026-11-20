@@ -34,7 +34,7 @@ public final class RetirementHost {
   /* ACTUAL_UI */
   static final class Dialog {void dismiss(){throw new AssertionError("No dialog in retirement control");}}
   static final class Action {
-    final ExecutorService worker;volatile boolean closed;long detailEpoch;Dialog detailDialog;
+    final ExecutorService worker;volatile boolean closed;long detailEpoch;Dialog detailDialog,exportRetryDialog;
     Action(ExecutorService worker){this.worker=worker;}
     /* ACTUAL_CLOSE */
   }

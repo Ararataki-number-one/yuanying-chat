@@ -7,6 +7,7 @@ import org.json.*;
 
 /** Shared file index only: no cookies, chat content or signed source URLs. */
 final class DownloadLibrary extends SQLiteOpenHelper {
+  private enum IndexWrite { CURRENT, LEGACY, REPAIR }
   static DownloadLibrary instance;final Context root;
   static synchronized DownloadLibrary get(Context c){if(instance==null)instance=new DownloadLibrary(Profiles.global(c));return instance;}
   DownloadLibrary(Context c){super(c,"saved-download-library.db",null,4);root=c;}
@@ -58,14 +59,15 @@ final class DownloadLibrary extends SQLiteOpenHelper {
     }
     for(String[] key:keys)db.delete("tasks","slot=? AND id=?",key);
   }
-  void add(Context c,JSONObject row){add(c,row,false);}
-  private void add(Context c,JSONObject row,boolean legacy){
+  void add(Context c,JSONObject row){add(c,row,IndexWrite.CURRENT);}
+  private void add(Context c,JSONObject row,IndexWrite write){
     if(row==null)return;String uri=row.optString("uri");if(uri.isEmpty()||!"saved".equals(row.optString("state","saved")))return;
     SQLiteDatabase db=getWritableDatabase();boolean changed=false;JSONObject published=null;db.beginTransaction();
     try{
       if(removed(db,row)||conflicting(db,row)){db.setTransactionSuccessful();return;}
       JSONObject current=newest(db,uri);long time=DownloadListPolicy.preservedTime(row,current);
-      if(legacy&&current!=null&&time<=current.optLong("time")){db.setTransactionSuccessful();return;}
+      if(write==IndexWrite.REPAIR&&(current!=null||tombstoned(db,uri)||conflictsWithTask(db,Profiles.slot(c),row))){db.setTransactionSuccessful();return;}
+      if(write==IndexWrite.LEGACY&&current!=null&&time<=current.optLong("time")){db.setTransactionSuccessful();return;}
       JSONObject safe=J.obj("slot",Profiles.slot(c),"id",row.optString("id"),"name",row.optString("name","文件"),"mime",row.optString("mime","application/octet-stream"),"uri",uri,"state","saved","location",row.optString("location","原先选择的保存位置"),"time",time);
       DownloadMetadataValues.copy(row,safe);DownloadMetadataValues.merge(safe,current);
       // A history scan must not manufacture a newer download or rewrite an unchanged file.
@@ -73,15 +75,15 @@ final class DownloadLibrary extends SQLiteOpenHelper {
       ContentValues values=new ContentValues();values.put("slot",Profiles.slot(c));values.put("uri",uri);values.put("row",safe.toString());values.put("time",time);
       if(current!=null&&time>current.optLong("time"))db.delete("files","uri=?",new String[]{uri});
       if(db.insertWithOnConflict("files",null,values,SQLiteDatabase.CONFLICT_REPLACE)<0)throw new IllegalStateException("Saved download was not indexed");
-      if(!legacy&&(current==null||time>current.optLong("time")))retireTasks(db,safe);
+      if(write==IndexWrite.CURRENT&&(current==null||time>current.optLong("time")))retireTasks(db,safe);
       changed=true;published=safe;db.setTransactionSuccessful();
     }finally{db.endTransaction();}
     if(changed){changed(root);SavedDownloadMetadata.added(root,published);}
   }
   static boolean sameFile(JSONObject a,JSONObject b){return a.optInt("slot")==b.optInt("slot")&&a.optLong("time")==b.optLong("time")&&same(a,b,"id","name","mime","uri","state","location")&&DownloadMetadataValues.same(a,b);}
   static boolean same(JSONObject a,JSONObject b,String... fields){for(String name:fields)if(!a.optString(name).equals(b.optString(name)))return false;return true;}
-  void sync(Context c,JSONArray rows){sync(c,rows,false);}
-  private void sync(Context c,JSONArray rows,boolean legacy){
+  void sync(Context c,JSONArray rows){sync(c,rows,IndexWrite.CURRENT);}
+  private void sync(Context c,JSONArray rows,IndexWrite write){
     SQLiteDatabase db=getWritableDatabase();int slot=Profiles.slot(c);boolean changed=false;db.beginTransaction();
     try{
       java.util.Map<String,JSONObject> current=new java.util.HashMap<>();
@@ -90,12 +92,13 @@ final class DownloadLibrary extends SQLiteOpenHelper {
         JSONObject r=rows.optJSONObject(i);if(r==null||r.optString("id").isEmpty()||removed(db,r)||conflicting(db,r))continue;
         JSONObject safe=J.obj("slot",slot,"id",r.optString("id"),"name",r.optString("name","文件"),"mime",r.optString("mime","application/octet-stream"),"uri",r.optString("uri"),"state",r.optString("state"),"reason",r.optString("reason"),"location",r.optString("location"),"time",r.optLong("time"),"received",r.optLong("received"),"total",r.optLong("total",-1));
         String id=r.optString("id");JSONObject old=current.get(id);
-        if(legacy&&old!=null)continue;
+        if(write!=IndexWrite.CURRENT&&old!=null)continue;
+        if(write==IndexWrite.REPAIR&&coveredByOtherPublication(db,r))continue;
         DownloadMetadataValues.copy(r,safe);DownloadMetadataValues.merge(safe,old);
         if(old!=null&&sameFile(safe,old)&&same(safe,old,"reason")&&safe.optLong("received")==old.optLong("received")&&safe.optLong("total",-1)==old.optLong("total",-1))continue;
         DownloadTasks.put(safe,"updated",System.currentTimeMillis());ContentValues v=new ContentValues();v.put("slot",slot);v.put("id",id);v.put("row",safe.toString());v.put("time",r.optLong("time"));
         if(db.insertWithOnConflict("tasks",null,v,SQLiteDatabase.CONFLICT_REPLACE)<0)throw new IllegalStateException("Download task was not indexed");
-        if(legacy)current.put(id,safe);
+        if(write!=IndexWrite.CURRENT)current.put(id,safe);
         changed=true;
       }
       db.setTransactionSuccessful();
@@ -103,11 +106,12 @@ final class DownloadLibrary extends SQLiteOpenHelper {
     if(changed)changed(root);
   }
   JSONArray tasks(){migrate();migrateTasks();JSONArray rows=new JSONArray();try(Cursor c=getReadableDatabase().query("tasks",new String[]{"row"},null,null,null,null,"time DESC")){while(c.moveToNext())rows.put(J.parse(c.getString(0)));}return prune(rows);}
-  void migrate(){
+  void migrate(){migrate(false);}
+  private void migrate(boolean taskIndex){
     SharedPreferences migration=root.getSharedPreferences("download-library-migration",0);
     for(int slot=0;slot<Profiles.MAX;slot++){
-      try{migrateSavedSlot(migration,slot);}
-      catch(RuntimeException failure){/* A later read can retry this slot. */}
+      try{migrateSlot(migration,slot,taskIndex);}
+      catch(Exception failure){/* Keep pending so a later read can retry this slot. */}
     }
   }
   static final class LegacyHistoryUnreadable extends IllegalStateException {
@@ -123,17 +127,94 @@ final class DownloadLibrary extends SQLiteOpenHelper {
     // sources after stopping the target writers, before clearing private data.
     Context context=Profiles.context(root,slot);
     JSONArray history=legacyHistory(context),tasks=legacyTasks(context);
-    addLegacySaved(context,history,false);
-    addLegacySaved(context,tasks,true);
+    addLegacySaved(context,history,false,IndexWrite.LEGACY);
+    addLegacySaved(context,tasks,true,IndexWrite.LEGACY);
   }
-  private void migrateSavedSlot(SharedPreferences migration,int slot){
-    String key="slot"+slot;
-    if(migration.getBoolean(key,false))return;
+  private void migrateSlot(SharedPreferences migration,int slot,boolean taskIndex)throws Exception{
+    String key=(taskIndex?"tasksSlot":"slot")+slot;
+    String reconciled=key+"Reconciled";
+    if(migration.getBoolean(reconciled,false))return;
     Context context=Profiles.context(root,slot);
-    // A damaged task source does not hide a separate readable history when browsing.
-    addLegacySaved(context,legacyHistory(context),false);
-    addLegacySaved(context,legacyTasks(context),true);
-    migration.edit().putBoolean(key,true).commit();
+    if((taskIndex||legacyHistory(context).length()==0)&&legacyTasks(context).length()==0)return;
+    ProfileCatalog catalog=ProfileCatalog.get(root);
+    EnvironmentSpec.Identity owner=catalog.identity(slot);
+    // Reset/delete cannot run between validating the owner and writing its legacy rows.
+    catalog.withIdentity(owner,()->{
+      if(migration.getBoolean(reconciled,false))return null;
+      boolean previouslyMarked=migration.getBoolean(key,false);
+      IndexWrite write=previouslyMarked?IndexWrite.REPAIR:IndexWrite.LEGACY;
+      migrateLegacy(context,taskIndex,owner,write);
+      if(!migration.edit().putBoolean(key,true).putBoolean(reconciled,true).commit()){
+        // commit(false) can still change memory. Leave the flags retryable.
+        migration.edit().putBoolean(key,previouslyMarked).putBoolean(reconciled,false).commit();
+        throw new IllegalStateException("Download migration marker was not persisted");
+      }
+      return null;
+    });
+  }
+  private void migrateLegacy(Context context,boolean taskIndex,EnvironmentSpec.Identity owner,IndexWrite write){
+    if(taskIndex){sync(context,ownedRows(legacyTasks(context),owner,write),write);return;}
+    // A malformed task source must not block independently readable owned history.
+    JSONArray history=legacyHistory(context);
+    addLegacySaved(context,ownedRows(history,owner,write),false,write);
+    addLegacySaved(context,ownedRows(legacyTasks(context),owner,write),true,write);
+    if(write==IndexWrite.LEGACY)addPreOwnerHistory(context,history,owner);
+  }
+  private static JSONArray ownedRows(JSONArray rows,EnvironmentSpec.Identity owner,IndexWrite write){
+    JSONArray owned=new JSONArray();
+    for(int i=0;i<rows.length();i++){
+      JSONObject row=rows.optJSONObject(i);
+      if(row==null)continue;
+      boolean exact=matchesInteger(row.opt("slot"),owner.slot)&&matchesInteger(row.opt("environmentGeneration"),owner.generation)
+          &&owner.environmentId.equals(row.opt("environmentId"));
+      // Retain first-import compatibility for genuinely old data from an untouched slot.
+      boolean unbound=write==IndexWrite.LEGACY&&owner.generation==0&&savedInSlot(row,owner.slot)
+          &&withoutEnvironmentId(row)&&!row.has("environmentGeneration");
+      if(unbound||(exact&&(write!=IndexWrite.REPAIR||!row.optString("id").isEmpty())))owned.put(row);
+    }
+    return owned;
+  }
+  private void addPreOwnerHistory(Context context,JSONArray history,EnvironmentSpec.Identity owner){
+    // Login reset keeps saved history. Index pre-owner files without assigning
+    // them to the new generation; never revive their old active tasks.
+    for(int i=0;i<history.length();i++){
+      JSONObject row=history.optJSONObject(i);
+      if(row==null||!savedInSlot(row,owner.slot)||!withoutEnvironmentId(row))continue;
+      Object generation=row.opt("environmentGeneration");
+      boolean preOwner=row.has("environmentGeneration")
+          ?isInteger(generation)&&row.optLong("environmentGeneration")>=0&&row.optLong("environmentGeneration")<=owner.generation
+          :owner.generation>0;
+      if(preOwner)add(context,row,IndexWrite.REPAIR);
+    }
+  }
+  private static boolean isInteger(Object value){return value instanceof Integer||value instanceof Long;}
+  private static boolean matchesInteger(Object value,int expected){return isInteger(value)&&((Number)value).longValue()==expected;}
+  private static boolean savedInSlot(JSONObject row,int slot){return !row.has("slot")||matchesInteger(row.opt("slot"),slot);}
+  private static boolean withoutEnvironmentId(JSONObject row){return row.isNull("environmentId")||"".equals(row.opt("environmentId"));}
+  private static boolean tombstoned(SQLiteDatabase db,String uri){
+    try(Cursor cursor=db.query("deleted_files",new String[]{"uri"},"uri=?",new String[]{uri},null,null,null)){
+      return cursor.moveToFirst();
+    }
+  }
+  private static boolean conflictsWithTask(SQLiteDatabase db,int slot,JSONObject row){
+    try(Cursor prior=db.query("tasks",new String[]{"row"},"slot=? AND id=?",
+        new String[]{String.valueOf(slot),row.optString("id")},null,null,null)){
+      if(!prior.moveToFirst())return false;
+      JSONObject task=J.parse(prior.getString(0));
+      return !"saved".equals(task.optString("state"))||!sameOwnedPublication(row,task);
+    }
+  }
+  private static boolean coveredByOtherPublication(SQLiteDatabase db,JSONObject row){
+    String uri=row.optString("uri");
+    if(uri.isEmpty())return false;
+    if(tombstoned(db,uri))return true;
+    JSONObject existing=newest(db,uri);
+    return existing!=null&&(!"saved".equals(row.optString("state"))||!sameOwnedPublication(row,existing));
+  }
+  private static boolean sameOwnedPublication(JSONObject row,JSONObject existing){
+    return DownloadMetadataValues.identity(row,existing)
+        &&java.util.Objects.equals(row.opt("environmentId"),existing.opt("environmentId"))
+        &&java.util.Objects.equals(row.opt("environmentGeneration"),existing.opt("environmentGeneration"));
   }
   private static JSONArray legacyHistory(Context context){
     try{
@@ -141,24 +222,13 @@ final class DownloadLibrary extends SQLiteOpenHelper {
       return history.has("files")?history.getJSONArray("files"):new JSONArray();
     }catch(JSONException|ClassCastException failure){throw new LegacyHistoryUnreadable(failure);}
   }
-  private void addLegacySaved(Context context,JSONArray rows,boolean tasks){
+  private void addLegacySaved(Context context,JSONArray rows,boolean tasks,IndexWrite write){
     for(int i=0;i<rows.length();i++){
       JSONObject row=rows.optJSONObject(i);
-      if(row!=null&&(!tasks||"saved".equals(row.optString("state"))))add(context,row,true);
+      if(row!=null&&(!tasks||"saved".equals(row.optString("state"))))add(context,row,write);
     }
   }
-  void migrateTasks(){
-    SharedPreferences migration=root.getSharedPreferences("download-library-migration",0);
-    for(int id=0;id<Profiles.MAX;id++){
-      String key="tasksSlot"+id;
-      if(migration.getBoolean(key,false))continue;
-      try{
-        Context c=Profiles.context(root,id);
-        sync(c,legacyTasks(c),true);
-      }catch(Exception failure){continue;}
-      migration.edit().putBoolean(key,true).commit();
-    }
-  }
+  void migrateTasks(){migrate(true);}
   private static JSONArray legacyTasks(Context context){
     try{return new JSONArray(context.getSharedPreferences("download-tasks",0).getString("rows","[]"));}
     catch(JSONException|ClassCastException failure){throw new LegacyHistoryUnreadable(failure);}

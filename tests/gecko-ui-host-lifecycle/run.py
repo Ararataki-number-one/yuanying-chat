@@ -54,7 +54,7 @@ def main():
     args = parser.parse_args()
     sources = {name: (PROD / name).read_text() for name in ['MainActivity.java', 'GeckoWebView.java', 'ChatSession.java', 'Attachments.java', 'FileDownloads.java']}
     members = {
-        'ACTUAL_MAIN_METHODS': '\n'.join(member_at(sources['MainActivity.java'], signature) for signature in ['void createChatUi(', 'WebViewClient remoteClient(', 'static boolean chatUrl(', '@Override protected void onResume(', '@Override protected void onPause(', '@Override protected void onDestroy(']),
+        'ACTUAL_MAIN_METHODS': '\n'.join(member_at(sources['MainActivity.java'], signature) for signature in ['void createChatUi(', 'SavedFileActions createSavedFileActions(', 'WebViewClient remoteClient(', 'static boolean chatUrl(', '@Override protected void onResume(', '@Override protected void onPause(', '@Override protected void onDestroy(']),
         'ACTUAL_WEB_MEMBERS': '\n'.join(member_at(sources['GeckoWebView.java'], signature) for signature in ['void setHost(', 'public void setWebViewClient(', 'public void setWebChromeClient(', 'public void setDownloadListener(']),
         'ACTUAL_EXTERNAL_RESPONSE': member_at(sources['GeckoWebView.java'], '@Override public void onExternalResponse('),
         'ACTUAL_SESSION_CLIENT': member_at(sources['ChatSession.java'], 'WebViewClient client('),

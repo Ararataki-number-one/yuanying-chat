@@ -170,17 +170,104 @@ public final class MigrationCases {
         "Late saved document".equals(content(db,"files",1,PREFIX+"late-owner").optString("name"))
         &&!content(db,"files",1,PREFIX+"deleted").has("id")&&count(db,"files")==filesBefore+1);
   }
+  private static JSONObject owned(Context root,int slot,JSONObject row)throws Exception{
+    EnvironmentSpec.Identity owner=ProfileCatalog.get(root).identity(slot);
+    DownloadTasks.put(row,"slot",slot,"environmentId",owner.environmentId,"environmentGeneration",owner.generation);
+    return row;
+  }
+  private static void history(Context root,int slot,JSONArray rows){
+    check("synthetic legacy file index committed",Profiles.context(root,slot).getSharedPreferences("chat",0)
+        .edit().putString("downloadHistory",J.obj("files",rows).toString()).commit());
+  }
+  private static void completedMarkerReplay(Context root,DownloadLibrary library)throws Exception{
+    int slot=3;
+    library.list(); // Settle older fixtures before injecting this slot's marker failure.
+    Context profile=Profiles.context(root,slot);
+    SharedPreferences marks=root.getSharedPreferences("download-library-migration",0);
+    SQLiteDatabase db=library.getWritableDatabase();
+    check("simulated old completion markers committed",marks.edit().putBoolean("slot3",true)
+        .putBoolean("tasksSlot3",true).commit());
+    history(root,slot,new JSONArray().put(owned(root,slot,file("backfill","backfill",100,"Recoverable")))
+        .put(owned(root,slot,file("stale","latest",Long.MAX_VALUE,"Reject duplicate URI")))
+        .put(owned(root,slot,file("removed","deleted",Long.MAX_VALUE,"Reject tombstoned URI")))
+        .put(file("unknown","unknown",100,"Unproven history")));
+    library.sync(profile,new JSONArray().put(owned(root,slot,task("keep-current",101,52))));
+    JSONObject deleted=file("deleted-task","deleted",Long.MAX_VALUE,"Reject resurrected task");
+    JSONObject stale=file("stale-file-task","latest",Long.MAX_VALUE,"Reject newer-looking task");
+    legacyTasks(root,slot,new JSONArray().put(owned(root,slot,task("backfill-task",100,7)))
+        .put(owned(root,slot,task("keep-current",110,2))).put(owned(root,slot,deleted))
+        .put(owned(root,slot,stale)).put(task("unknown-task",100,5)));
+
+    marks.failAfterMemoryBeforeDisk=true;
+    library.list();
+    check("old true file marker cannot hide a missing file with the current owner",
+        content(db,"files",slot,PREFIX+"backfill").has("id"));
+    check("failed confirmation cannot complete replay in memory or on disk",
+        marks.getBoolean("slot3",false)&&!marks.getBoolean("slot3Reconciled",false)
+        &&"false".equals(marks.diskString("slot3Reconciled","false")));
+    db.failureKey="backfill-task";
+    library.migrateTasks();
+    check("failed task replay is pending despite its old true marker",!marks.getBoolean("tasksSlot3Reconciled",false));
+    library.list();
+    library.migrateTasks();
+    check("retry adds only the missing owned task",indexedTask(db,slot,"backfill-task").optLong("received")==7
+        &&indexedTask(db,slot,"keep-current").optLong("received")==52&&!indexedTask(db,slot,"unknown-task").has("id"));
+    check("retry preserves indexed URI, strictly respects tombstones and never admits ambiguous old history",
+        "Newer saved data".equals(saved(db,"latest").optString("name"))
+        &&!content(db,"files",slot,PREFIX+"latest").has("id")&&!content(db,"files",slot,PREFIX+"deleted").has("id")
+        &&!content(db,"files",slot,PREFIX+"unknown").has("id")&&!indexedTask(db,slot,"deleted-task").has("id")
+        &&!indexedTask(db,slot,"stale-file-task").has("id"));
+    long files=count(db,"files"),tasks=count(db,"tasks");
+    library.list();
+    library.migrateTasks();
+    check("a successful repair is durable and cannot duplicate records",
+        "true".equals(marks.diskString("slot3Reconciled","false"))
+        &&"true".equals(marks.diskString("tasksSlot3Reconciled","false"))
+        &&files==count(db,"files")&&tasks==count(db,"tasks"));
+  }
+  private static void resetMigration(Context root,DownloadLibrary library)throws Exception{
+    int slot=4;
+    ProfileCatalog catalog=ProfileCatalog.get(root);
+    SharedPreferences marks=root.getSharedPreferences("download-library-migration",0);
+    SQLiteDatabase db=library.getWritableDatabase();
+    JSONObject retired=owned(root,slot,task("retired",10,8));
+    history(root,slot,new JSONArray().put(file("early-history","early-history",3,"Preserved historical file"))
+        .put(file("unbound", "new-saved",12,"Pre-owner conflict")));
+    catalog.generation[slot]=1;
+    catalog.resetting[slot]=true;
+    legacyTasks(root,slot,new JSONArray().put(retired));
+    library.migrateTasks();
+    check("first migration cannot write or acknowledge old tasks during reset",
+        !indexedTask(db,slot,"retired").has("id")&&!marks.getBoolean("tasksSlot4",false));
+    catalog.resetting[slot]=false;
+    legacyTasks(root,slot,new JSONArray().put(retired).put(task("unknown-owner",10,6))
+        .put(owned(root,slot,task("active",11,7))).put(owned(root,slot,file("owned-saved","new-saved",12,"Verified owner"))));
+    library.list();
+    library.migrateTasks();
+    JSONObject early=content(db,"files",slot,PREFIX+"early-history");
+    check("first migration preserves pre-owner saved history with unknown ownership",
+        "early-history".equals(early.optString("id"))&&early.optString("environmentId").isEmpty());
+    check("verified history takes priority over unbound history at the same URI and timestamp",
+        "owned-saved".equals(content(db,"files",slot,PREFIX+"new-saved").optString("id")));
+    check("first migration after reset admits only the current generation of live tasks",
+        !indexedTask(db,slot,"retired").has("id")&&!indexedTask(db,slot,"unknown-owner").has("id")
+        &&indexedTask(db,slot,"active").has("id"));
+  }
   public static void main(String[] args)throws Exception{
     Context context=new Context(Paths.get(args[0]),0);
     try(DownloadLibrary library=new DownloadLibrary(context)){
-      if("fail".equals(args[1]))fail(context,library);else restart(context,library);
+      if("fail".equals(args[1]))fail(context,library);else{
+        restart(context,library);
+        completedMarkerReplay(context,library);
+        resetMigration(context,library);
+      }
     }
     System.out.println(args[1]+": "+checks+" migration checks passed (host SQLite, no Android execution)");
   }
 }
 
 final class Profiles {
-  static final int MAX=3;
+  static final int MAX=5;
   static Context global(Context c){return c;}
   static Context context(Context c,int slot){return slot==c.slot?c:new Context(c.root,slot);}
   static int slot(Context c){return c.slot;}
@@ -193,3 +280,30 @@ final class DownloadTasks {
 }
 final class DownloadLibraryChanges {static void changed(Context context){}}
 final class SavedDownloadMetadata {static void added(Context context,JSONObject row){}}
+
+final class EnvironmentSpec {
+  static final class Identity {
+    final int slot,generation;
+    final String environmentId;
+    Identity(int slot,int generation,String environmentId){
+      this.slot=slot;this.generation=generation;this.environmentId=environmentId;
+    }
+  }
+}
+final class ProfileCatalog {
+  private static final ProfileCatalog INSTANCE=new ProfileCatalog();
+  final int[] generation=new int[Profiles.MAX];
+  final boolean[] resetting=new boolean[Profiles.MAX];
+  static ProfileCatalog get(Context context){return INSTANCE;}
+  EnvironmentSpec.Identity identity(int slot)throws java.io.IOException{
+    if(resetting[slot])throw new java.io.IOException("Simulated environment reset");
+    return new EnvironmentSpec.Identity(slot,generation[slot],String.format("00000000-0000-0000-0000-%012d",slot+1));
+  }
+  interface IdentityAction<T>{T run()throws Exception;}
+  synchronized <T>T withIdentity(EnvironmentSpec.Identity expected,IdentityAction<T> action)throws Exception{
+    EnvironmentSpec.Identity live=identity(expected.slot);
+    if(live.generation!=expected.generation||!live.environmentId.equals(expected.environmentId))
+      throw new java.io.IOException("Simulated environment change");
+    return action.run();
+  }
+}

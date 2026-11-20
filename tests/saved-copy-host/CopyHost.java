@@ -9,7 +9,7 @@ public final class CopyHost {
   static void check(String name,boolean pass){checks.put(J.obj("name",name,"pass",pass));}
   static final class Fixture {
     final FaultProvider provider;final Activity activity;final SavedFileActions action;final JSONObject source;
-    Fixture(byte[] bytes)throws Exception{File root=Files.createTempDirectory("saved-copy-host-").toFile();provider=new FaultProvider(root,bytes);activity=new Activity(root,provider);action=ui(()->new SavedFileActions(activity));actions.add(action);source=J.obj("uri",provider.original.toString(),"name","source.bin","mime","application/octet-stream");}
+    Fixture(byte[] bytes)throws Exception{File root=Files.createTempDirectory("saved-copy-host-").toFile();provider=new FaultProvider(root,bytes);activity=new Activity(root,provider);action=ui(()->new SavedFileActions(activity));actions.add(action);source=J.obj("uri",provider.original.toString(),"slot",0,"id","source-id","time",321,"name","source.bin","mime","application/octet-stream");DownloadLibrary.get(activity).source=source;}
     void select()throws Exception{ui(()->{action.export(source);action.result(Activity.RESULT_OK,new Intent("result").setData(provider.destination));return null;});}
     void idle()throws Exception{
       try{action.worker.submit(()->{}).get(5,TimeUnit.SECONDS);}
@@ -25,7 +25,7 @@ public final class CopyHost {
       byte[] bytes=fault.equals("normal-empty")?new byte[0]:new byte[65539];Arrays.fill(bytes,(byte)41);Fixture f=new Fixture(bytes);f.provider.fault=fault;if(fault.equals("document-close"))f.provider.destination=Uri.parse("content://documents.test/target");f.select();f.idle();
       boolean normal=fault.startsWith("normal");
       check("Copy "+fault+" preserves original bytes",Arrays.equals(Files.readAllBytes(f.provider.source.toPath()),bytes));
-      check("Copy "+fault+" confirms only a fully closed destination",normal?f.provider.target.isFile()&&Arrays.equals(Files.readAllBytes(f.provider.target.toPath()),bytes)&&f.activity.problems.isEmpty():!f.provider.target.exists()&&!f.activity.problems.isEmpty());
+      check("Copy "+fault+" confirms only a fully closed destination",normal?f.provider.target.isFile()&&Arrays.equals(Files.readAllBytes(f.provider.target.toPath()),bytes)&&f.activity.problems.isEmpty():f.provider.deletes==0&&!f.activity.problems.isEmpty());
       check("Copy "+fault+" releases busy after terminal callback",!f.action.busy&&f.action.exporting==null);
     }
   }
@@ -36,7 +36,7 @@ public final class CopyHost {
       if(timing.equals("queued-empty")){
         CountDownLatch held=new CountDownLatch(1),release=new CountDownLatch(1);f.action.worker.execute(()->{held.countDown();try{if(!release.await(5,TimeUnit.SECONDS))throw new AssertionError("queued copy barrier");}catch(InterruptedException error){throw new AssertionError(error);}});if(!held.await(5,TimeUnit.SECONDS))throw new AssertionError("queued worker");f.select();close.run();release.countDown();
       }else{if(timing.startsWith("input"))f.provider.onEof=close;else f.provider.onOutputClose=close;f.select();}
-      f.idle();check("Retired copy "+timing+" leaves no unconfirmed destination",!f.provider.target.exists());
+      f.idle();check("Retired copy "+timing+" never deletes a provider destination",f.provider.deletes==0&&(!timing.equals("queued-empty")||f.provider.outputOpens==0));
       check("Retired copy "+timing+" releases busy without stale UI feedback",!f.action.busy&&f.activity.problems.isEmpty()&&f.provider.source.isFile());
     }
   }
@@ -61,13 +61,60 @@ public final class CopyHost {
       if(fault.equals("exception"))f.provider.destination=Uri.parse("content://documents.test/refused-target");
       if(fault.equals("closed-refused"))f.provider.onOutputClose=()->{try{ui(()->{f.action.close();return null;});}catch(Exception error){throw new CompletionException(error);}};
       f.select();f.idle();
-      check("Cleanup "+fault+" cannot convert failed copy into success",!f.action.busy&&f.provider.deletes==1&&f.provider.target.isFile());
+      check("Copy failure "+fault+" preserves the provider destination without deleting it",!f.action.busy&&f.provider.deletes==0&&f.provider.target.isFile());
       check("Cleanup "+fault+" preserves the source file",Arrays.equals(Files.readAllBytes(f.provider.source.toPath()),original));
-      check("Cleanup "+fault+" gives only current owner accurate uncertainty",fault.equals("closed-refused")?f.activity.problems.isEmpty():f.activity.problems.size()==1&&f.activity.problems.get(0).equals("原文件已保留，目标副本清理未确认，请检查保存位置"));
+      check("Cleanup "+fault+" gives only current owner accurate uncertainty",fault.equals("closed-refused")?f.activity.problems.isEmpty():f.activity.problems.size()==1&&f.activity.problems.get(0).equals("另存为未完成，原文件已保留。请检查保存位置后重试"));
+    }
+  }
+  static void awaitRestoredWork(SavedFileActions restored)throws Exception{
+    restored.worker.submit(()->{}).get(5,TimeUnit.SECONDS);
+    ui(()->null);
+  }
+  static SavedFileActions recreated(Fixture f,int result,Uri target)throws Exception{
+    Bundle state=new Bundle();
+    ui(()->{f.action.export(f.source);f.action.saveState(state);f.action.close();return null;});
+    Activity activity=new Activity(f.provider.source.getParentFile(),f.provider);
+    DownloadLibrary.values.put(activity,DownloadLibrary.get(f.activity));
+    SavedFileActions fresh=ui(()->SavedFileActions.restore(activity,state));
+    if(fresh==null)throw new AssertionError("Pending export missing after recreation");
+    actions.add(fresh);
+    ui(()->{fresh.result(result,target==null?null:new Intent("result").setData(target));return null;});
+    awaitRestoredWork(fresh);
+    return fresh;
+  }
+  static void restoredCopies()throws Exception{
+    byte[] original={11,22,33},existing={88,99};
+    for(String scenario:new String[]{"new-target","same-target","cancel","source-changed","expired-source"}){
+      Fixture f=new Fixture(original);
+      Files.write(f.provider.target.toPath(),existing);
+      if(scenario.equals("source-changed"))DownloadLibrary.get(f.activity).source=J.obj("uri",f.provider.original.toString(),"slot",0,"id","different-id","time",321);
+      if(scenario.equals("expired-source"))f.provider.fault="null-input";
+      Uri prior=f.provider.destination;
+      boolean cancel=scenario.equals("cancel");
+      SavedFileActions fresh=recreated(f,cancel?Activity.RESULT_CANCELED:Activity.RESULT_OK,cancel?null:prior);
+      boolean retry=scenario.equals("new-target")||scenario.equals("same-target");
+      check("Restored "+scenario+" does not modify the first returned target",
+          f.provider.outputOpens==0&&f.provider.deletes==0&&Arrays.equals(Files.readAllBytes(f.provider.target.toPath()),existing));
+      check("Restored "+scenario+" keeps source and gives an accurate outcome",
+          Arrays.equals(Files.readAllBytes(f.provider.source.toPath()),original)
+          &&(retry?fresh.a.dialog!=null&&fresh.a.dialog.message.contains("可能已留下空文件"):
+              fresh.a.dialog==null&&(cancel?fresh.a.problems.isEmpty():!fresh.a.problems.isEmpty())));
+      if(!retry)continue;
+      ui(()->{fresh.a.dialog.confirm();return null;});
+      Uri target=prior;
+      if(scenario.equals("new-target"))target=f.provider.destination=Uri.parse("content://copy.test/second-target");
+      Uri chosen=target;
+      ui(()->{fresh.result(Activity.RESULT_OK,new Intent("result").setData(chosen));return null;});
+      awaitRestoredWork(fresh);
+      check("Restored retry "+scenario+" accepts only a different target",
+          scenario.equals("new-target")?Arrays.equals(Files.readAllBytes(f.provider.alternate.toPath()),original):f.provider.outputOpens==0&&!fresh.a.problems.isEmpty());
+      check("Restored retry "+scenario+" preserves original and existing target",
+          Arrays.equals(Files.readAllBytes(f.provider.source.toPath()),original)
+          &&Arrays.equals(Files.readAllBytes(f.provider.target.toPath()),existing)&&f.provider.deletes==0);
     }
   }
   public static void main(String[] args)throws Exception{
-    try{streams();retiredCopies();admission();destinationLease();cleanupUnconfirmed();}
+    try{streams();retiredCopies();admission();restoredCopies();destinationLease();cleanupUnconfirmed();}
     finally{for(SavedFileActions action:actions)action.worker.shutdownNow();}
     int passed=0;for(int i=0;i<checks.length();i++)if(checks.optJSONObject(i).optBoolean("pass"))passed++;
     System.out.println(J.obj("status",passed==checks.length()?"passed":"failed","passed",passed,"total",checks.length(),"checks",checks));if(passed!=checks.length())System.exit(1);
@@ -75,9 +122,9 @@ public final class CopyHost {
 }
 
 final class FaultProvider extends ContentResolver {
-  final Uri original=Uri.parse("content://copy.test/original");Uri destination=Uri.parse("content://copy.test/destination");final File source,target;
+  final Uri original=Uri.parse("content://copy.test/original");Uri destination=Uri.parse("content://copy.test/destination");final File source,target,alternate;
   String fault="",deletionFault="";int outputOpens,deletes;Runnable onEof,onOutputClose;
-  FaultProvider(File root,byte[] bytes)throws Exception{source=new File(root,"original.bin");target=new File(root,"destination.bin");Files.write(source.toPath(),bytes);}
+  FaultProvider(File root,byte[] bytes)throws Exception{source=new File(root,"original.bin");target=new File(root,"destination.bin");alternate=new File(root,"second.bin");Files.write(source.toPath(),bytes);}
   public InputStream openInputStream(Uri uri)throws IOException{
     if(!original.equals(uri))throw new AssertionError("Unexpected source URI");if(fault.equals("null-input"))return null;
     return new FilterInputStream(new FileInputStream(source)){
@@ -87,7 +134,7 @@ final class FaultProvider extends ContentResolver {
   }
   public OutputStream openOutputStream(Uri uri,String mode)throws IOException{
     if(!destination.equals(uri)||!"wt".equals(mode))throw new AssertionError("Unexpected destination open");outputOpens++;if(fault.equals("null-output"))return null;
-    return new FilterOutputStream(new FileOutputStream(target)){
+    return new FilterOutputStream(new FileOutputStream(uri.toString().endsWith("/second-target")?alternate:target)){
       public void write(byte[] bytes,int offset,int length)throws IOException{if(fault.equals("write")){out.write(bytes,offset,1);throw new IOException("Write failure");}out.write(bytes,offset,length);}
       public void flush()throws IOException{if(fault.equals("flush"))throw new IOException("Flush failure");out.flush();}
       public void close()throws IOException{if(onOutputClose!=null){Runnable action=onOutputClose;onOutputClose=null;action.run();}out.close();if(fault.equals("output-close")||fault.equals("document-close"))throw new IOException("Provider close failure");}
@@ -99,15 +146,19 @@ final class SavedFileActions {
   static final int EXPORT=85;final Activity a;final ExecutorService worker=Executors.newSingleThreadExecutor();final Handler main=new Handler(Looper.getMainLooper());JSONObject exporting;volatile boolean closed,busy;long detailEpoch;AlertDialog detailDialog;
   SavedFileActions(Activity activity){a=activity;}
   static void problem(Activity activity,String message){activity.problems.add(message);}
+  /* EXPORT_FIELDS */
   /* SAVEDFILEACTIONS */
 }
 final class DownloadMetadataValues {/* METADATA */}
-final class Profiles {static Context global(Context context){return context;}}
+final class Profiles {static final int MAX=8;static Context global(Context context){return context;}static int slot(Context context){return 0;}}
+final class AppAppearance {static AlertDialog.Builder dialog(Activity activity){return new AlertDialog.Builder(activity);}}
 final class AppUpdatePolicy {static String hash(byte[] bytes){try{byte[] digest=java.security.MessageDigest.getInstance("SHA-256").digest(bytes);StringBuilder out=new StringBuilder();for(byte value:digest)out.append(String.format(java.util.Locale.ROOT,"%02x",value&255));return out.toString();}catch(java.security.NoSuchAlgorithmException impossible){throw new AssertionError(impossible);}}}
 /** Index admission only; saved-file deletion and database persistence are unsupported. */
 final class DownloadLibrary {
   static final Map<Context,DownloadLibrary> values=new ConcurrentHashMap<>();final Set<String> indexed=ConcurrentHashMap.newKeySet();static DownloadLibrary get(Context context){return values.computeIfAbsent(context,key->new DownloadLibrary());}
   boolean indexed(Uri uri){return indexed.contains(uri.toString());}
-  boolean isRemoved(JSONObject row){throw new AssertionError("Saved-file deletion outside copy host");}JSONObject saved(JSONObject row){throw new AssertionError("Saved-file lookup outside copy host");}void removeSaved(JSONObject row){throw new AssertionError("Saved-file deletion outside copy host");}
+  JSONObject source;
+  boolean isRemoved(JSONObject row){throw new AssertionError("Saved-file deletion outside copy host");}
+  JSONObject saved(JSONObject row){return source!=null&&source.optInt("slot")==row.optInt("slot")&&source.optLong("time")==row.optLong("time")&&source.optString("id").equals(row.optString("id"))&&source.optString("uri").equals(row.optString("uri"))?source:null;}void removeSaved(JSONObject row){throw new AssertionError("Saved-file deletion outside copy host");}
 }
 final class SavedDownloadProvider {static File resolve(Context context,Uri uri){throw new AssertionError("Owned-provider deletion outside copy host");}}

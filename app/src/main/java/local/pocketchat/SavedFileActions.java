@@ -14,7 +14,40 @@ import java.util.concurrent.*;
 /** Saved files can be opened, shared, copied or removed without another download. */
 final class SavedFileActions {
   static final int EXPORT=85;final Activity a;final ExecutorService worker=Executors.newSingleThreadExecutor();final Handler main=new Handler(Looper.getMainLooper());JSONObject exporting;volatile boolean closed,busy;String deleteProblem="";volatile long detailEpoch;AlertDialog detailDialog;
+  private static final String EXPORT_STATE="savedFileExport";
+  private static final String SOURCE_UNAVAILABLE="原文件已移走或下载记录已变化，请重新选择来源";
+  private boolean restoredExport;
+  private Uri unverifiedTarget;
+  private AlertDialog exportRetryDialog;
+
   SavedFileActions(Activity a){this.a=a;}
+
+  void saveState(Bundle state){
+    if(exporting==null)return;
+    Bundle pending=new Bundle();
+    pending.putString("uri",exporting.optString("uri"));
+    pending.putInt("slot",exporting.optInt("slot",Profiles.slot(a)));
+    pending.putString("id",exporting.optString("id"));
+    pending.putLong("time",exporting.optLong("time"));
+    state.putBundle(EXPORT_STATE,pending);
+  }
+
+  static SavedFileActions restore(Activity activity,Bundle state){
+    Bundle pending=state==null?null:state.getBundle(EXPORT_STATE);
+    if(pending==null)return null;
+    String source=pending.getString("uri"),id=pending.getString("id");
+    int slot=pending.getInt("slot",-1);
+    long time=pending.getLong("time",-1);
+    if(source==null||id==null||slot<0||slot>=Profiles.MAX||time<0||!documentUri(Uri.parse(source)))return null;
+    SavedFileActions actions=new SavedFileActions(activity);
+    actions.exporting=J.obj("uri",source,"slot",slot,"id",id,"time",time);
+    actions.restoredExport=true;
+    return actions;
+  }
+
+  private static boolean documentUri(Uri uri){
+    return uri!=null&&"content".equals(uri.getScheme())&&uri.getAuthority()!=null&&!uri.getAuthority().isEmpty();
+  }
   void show(JSONObject row){
     ReferenceUi.Modal d=new ReferenceUi.Modal(a,DownloadMetadataValues.name(row)).asSheet();
     String[] labels={"打开","分享","另存为","详细信息","删除文件"};
@@ -56,36 +89,110 @@ final class SavedFileActions {
   static Intent shareIntent(JSONObject row){Uri uri=Uri.parse(row.optString("uri"));Intent intent=new Intent(Intent.ACTION_SEND).setType(DownloadMetadataValues.mime(row)).putExtra(Intent.EXTRA_STREAM,uri).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);intent.setClipData(ClipData.newRawUri("已保存文件",uri));return intent;}
   static void open(Activity a,JSONObject row){Uri uri=Uri.parse(row.optString("uri"));String mime=DownloadMetadataValues.mime(row);try{if(mime.equals("application/pdf")||mime.startsWith("image/"))a.startActivity(new Intent(a,Profiles.preview(a)).putExtra("uri",uri.toString()).putExtra("name",DownloadMetadataValues.name(row)).putExtra("mime",mime));else{Intent intent=new Intent(Intent.ACTION_VIEW).setDataAndType(uri,mime).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);intent.setClipData(ClipData.newRawUri("已保存文件",uri));a.startActivity(intent);}}catch(Exception e){problem(a,"文件无法打开，可能已移动或手机没有对应查看器");}}
   static void share(Activity a,JSONObject row){try{a.startActivity(Intent.createChooser(shareIntent(row),"分享文件"));}catch(Exception e){problem(a,"文件已移动或无法分享");}}
-  void export(JSONObject row){if(closed)return;if(busy||exporting!=null){problem(a,"请先完成当前另存为");return;}exporting=J.parse(row.toString());try{a.startActivityForResult(new Intent(Intent.ACTION_CREATE_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType(DownloadMetadataValues.mime(row)).putExtra(Intent.EXTRA_TITLE,DownloadMetadataValues.name(row)),EXPORT);}catch(Exception e){exporting=null;problem(a,"设备没有文件保存器");}}
+  void export(JSONObject row){export(row,null);}
+
+  private void export(JSONObject row,Uri previousTarget){
+    if(closed)return;
+    if(busy||exporting!=null){problem(a,"请先完成当前另存为");return;}
+    exporting=J.parse(row.toString());
+    unverifiedTarget=previousTarget;
+    try{
+      a.startActivityForResult(new Intent(Intent.ACTION_CREATE_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE)
+          .setType(DownloadMetadataValues.mime(row)).putExtra(Intent.EXTRA_TITLE,DownloadMetadataValues.name(row)),EXPORT);
+    }catch(Exception error){
+      exporting=null;
+      unverifiedTarget=null;
+      problem(a,"设备没有文件保存器");
+    }
+  }
+
   void result(int result,Intent data){
-    JSONObject source=exporting;exporting=null;if(closed||source==null||result!=Activity.RESULT_OK||data==null||data.getData()==null)return;
-    Uri destination=data.getData(),original=Uri.parse(source.optString("uri"));if(destination.equals(original))return;busy=true;
+    JSONObject source=exporting;
+    boolean restored=restoredExport;
+    Uri previousTarget=unverifiedTarget;
+    exporting=null;
+    restoredExport=false;
+    unverifiedTarget=null;
+    if(closed||source==null||result!=Activity.RESULT_OK)return;
+    Uri destination=data==null?null:data.getData();
+    if(!documentUri(destination)){problem(a,"没有收到可用的保存位置，请重新另存为");return;}
+    Uri original=Uri.parse(source.optString("uri"));
+    if(restored){recoverExport(source,original,destination);return;}
+    if(destination.equals(original)||destination.equals(previousTarget)){
+      if(previousTarget!=null)problem(a,"请选择不同的文件名或保存位置");
+      return;
+    }
+    busy=true;
     try{worker.execute(()->{
-      boolean success=false;String issue="另存为失败，原文件已保留";
-      String cleanupIssue="原文件已保留，目标副本清理未确认，请检查保存位置";
-      try{SavedFileDeletion.lease(a,destination,()->{
-        if(DownloadLibrary.get(a).indexed(destination))throw new IOException("请另存为新的文件名，已有下载文件已保留");
-        try{
+      String issue="";
+      try{SavedFileDeletion.leaseAll(a,Arrays.asList(original,destination),()->{
+        DownloadLibrary library=DownloadLibrary.get(a);
+        if(library.indexed(destination))throw new IOException("请另存为新的文件名，已有下载文件已保留");
+        if(closed)throw new IOException("另存为已取消");
+        if(previousTarget!=null&&library.saved(source)==null)throw new IOException(SOURCE_UNAVAILABLE);
+        try(InputStream in=openExportInput(original)){
           if(closed)throw new IOException("另存为已取消");
-          try(InputStream in=a.getContentResolver().openInputStream(original)){
-            if(closed)throw new IOException("另存为已取消");
-            try(OutputStream out=a.getContentResolver().openOutputStream(destination,"wt")){
-              SavedFileBytes.copy(in,out,()->!closed);
-            }
+          try(OutputStream out=a.getContentResolver().openOutputStream(destination,"wt")){
+            SavedFileBytes.copy(in,out,()->!closed);
           }
-          // Providers can fail while closing. Empty streams also need this
-          // ownership check because they never enter copy's read/write loop.
-          if(closed)throw new IOException("另存为已取消");
-        }catch(Exception error){
-          if(!delete(a,destination))throw new IOException(cleanupIssue,error);
-          throw error;
         }
+        if(closed)throw new IOException("另存为已取消");
         return null;
-      });success=true;}catch(Exception error){if(error.getMessage()!=null&&(error.getMessage().contains("新的文件名")||cleanupIssue.equals(error.getMessage())))issue=error.getMessage();}
-      boolean done=success;String message=issue;main.post(()->{busy=false;if(!closed&&!done)problem(a,message);});
+      });}catch(Exception error){
+        String reason=error.getMessage();
+        issue=SOURCE_UNAVAILABLE.equals(reason)||reason!=null&&reason.contains("新的文件名")?reason:
+            "另存为未完成，原文件已保留。请检查保存位置后重试";
+      }
+      String message=issue;
+      main.post(()->{busy=false;if(!closed&&!message.isEmpty())problem(a,message);});
     });}catch(RejectedExecutionException retired){busy=false;if(!closed)problem(a,"另存为尚未开始，原文件已保留，请稍后重试");}
   }
-  static boolean delete(Context c,Uri uri){try{return android.provider.DocumentsContract.isDocumentUri(c,uri)?android.provider.DocumentsContract.deleteDocument(c.getContentResolver(),uri):c.getContentResolver().delete(uri,null,null)>0;}catch(Exception unconfirmed){return false;}}
-  static void problem(Activity a,String message){if(a instanceof MainActivity){MainActivity host=(MainActivity)a;if(host.hub!=null&&host.hub.page!=AppHub.CHAT)host.hub.feedback(message,true);else host.status("文件操作失败："+message);}else if(a instanceof DownloadCenterActivity)((DownloadCenterActivity)a).showProblem(message);else if(a instanceof WindowHomeActivity)((WindowHomeActivity)a).showProblem(message);}
-  void close(){closed=true;detailEpoch++;if(detailDialog!=null){detailDialog.dismiss();detailDialog=null;}worker.shutdown();}
+
+  private void recoverExport(JSONObject source,Uri original,Uri destination){
+    busy=true;
+    try{worker.execute(()->{
+      JSONObject verified=null;
+      try{verified=SavedFileDeletion.lease(a,original,()->{
+        JSONObject row=DownloadLibrary.get(a).saved(source);
+        if(row==null||closed)return null;
+        try(InputStream input=openExportInput(original)){return row;}
+      });}catch(Exception unavailable){}
+      JSONObject retry=verified;
+      main.post(()->{
+        busy=false;
+        if(closed)return;
+        if(retry==null)problem(a,SOURCE_UNAVAILABLE+"。系统可能已在所选位置留下空文件。");
+        else offerExportRetry(retry,destination);
+      });
+    });}catch(RejectedExecutionException retired){busy=false;if(!closed)problem(a,"另存为尚未开始，原文件已保留，请稍后重试");}
+  }
+
+  private InputStream openExportInput(Uri source)throws IOException{
+    InputStream opened=null;
+    try{
+      opened=a.getContentResolver().openInputStream(source);
+      if(opened==null)throw new IOException(SOURCE_UNAVAILABLE);
+      PushbackInputStream input=new PushbackInputStream(opened);
+      int first=input.read();
+      if(first!=-1)input.unread(first);
+      return input;
+    }catch(IOException|RuntimeException error){
+      if(opened!=null)try{opened.close();}catch(IOException closing){error.addSuppressed(closing);}
+      throw new IOException(SOURCE_UNAVAILABLE,error);
+    }
+  }
+
+  private void offerExportRetry(JSONObject source,Uri previousTarget){
+    if(a.isFinishing()||a.isDestroyed())return;
+    if(exportRetryDialog!=null)exportRetryDialog.dismiss();
+    AlertDialog dialog=AppAppearance.dialog(a).setTitle("继续另存为")
+      .setMessage("保存窗口重建后，应用未写入副本，系统可能已留下空文件。请使用新的文件名或保存位置。")
+      .setNegativeButton("取消",null).setPositiveButton("重选保存位置",(d,w)->export(source,previousTarget)).create();
+    exportRetryDialog=dialog;
+    dialog.setOnDismissListener(d->{if(exportRetryDialog==dialog)exportRetryDialog=null;});
+    dialog.show();
+  }
+
+  static void problem(Activity a,String message){if(a instanceof MainActivity){MainActivity host=(MainActivity)a;if(host.hub!=null&&host.hub.page!=AppHub.CHAT)host.hub.feedback(message,true);else if(host.status!=null)host.status("文件操作失败："+message);else Toast.makeText(a,message,Toast.LENGTH_LONG).show();}else if(a instanceof DownloadCenterActivity)((DownloadCenterActivity)a).showProblem(message);else if(a instanceof WindowHomeActivity)((WindowHomeActivity)a).showProblem(message);}
+  void close(){closed=true;detailEpoch++;if(detailDialog!=null){detailDialog.dismiss();detailDialog=null;}if(exportRetryDialog!=null){exportRetryDialog.dismiss();exportRetryDialog=null;}worker.shutdown();}
 }

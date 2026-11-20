@@ -22,6 +22,12 @@ public final class StartupHost {
 
     MainActivity chromium=new MainActivity(true);chromium.chromium=true;chromium.onCreate(null);
     check(chromium.finished&&chromium.creates==0&&chromium.browserStarts==1&&chromium.launched.target==BrowserActivity.class&&!chromium.launched.extras.containsKey("url"),"cold Chromium selection resumes the browser without forcing a URL or creating Gecko");
+    MainActivity pendingExport=new MainActivity(false);pendingExport.chromium=true;
+    Bundle exportState=new Bundle();exportState.pending=new SavedFileActions(pendingExport);exportState.pending.exporting=new Object();
+    pendingExport.onCreate(exportState);
+    check(!pendingExport.finished&&pendingExport.browserStarts==0&&pendingExport.creates==0
+      &&pendingExport.hub.page==AppHub.SETTINGS&&pendingExport.nativeSavedFiles==exportState.pending
+      &&pendingExport.restoredSavedFiles==null,"Recreated interrupted export uses the native workspace without opening a browser");
     MainActivity warm=new MainActivity(false);warm.onCreate(null);ChatSession retained=warm.session;warm.sessionUi=new UiFrames();warm.onResume();check(warm.sessionUi.visible,"resumed session requests its presentation frame");
     Intent browserIntent=new Intent(false);warm.chromium=true;warm.onNewIntent(browserIntent);
     check(warm.finished&&warm.session==retained&&warm.creates==1&&warm.browserStarts==1&&!warm.launched.extras.containsKey("url"),"warm dispatch closes the idle Gecko Activity without replacing its retained session or forcing a URL");
@@ -85,7 +91,7 @@ public final class StartupHost {
 
 class MainActivity extends Activity {
   static final int MODE_PRIVATE=0;boolean pageMode,active,destroyed,finished,focusReading,chromium;Bundle downloadUiState;UiFrames sessionUi;int creates,resumes,content,feedback,ownerSettingsRequests;String nativeDownload;BrowserStartupGate browserStartup;ChatSession session;EnvironmentOverviewUi environmentOverview;Intent intent;Prefs prefs;
-  AppHub hub;FileDownloads downloads;SavedFileActions nativeSavedFiles;Remote remote;final Handler handler=new Handler();
+  AppHub hub;FileDownloads downloads;SavedFileActions nativeSavedFiles,restoredSavedFiles;Remote remote;final Handler handler=new Handler();
   boolean managedChromium,chromiumReady;String featureUrl,chromiumNetworkIssue="";
   MainActivity(boolean manual){intent=new Intent(manual);}
   Intent getIntent(){return intent;}void setIntent(Intent value){intent=value;}boolean isFinishing(){return finished;}void finish(){finished=true;}void setContentView(LinearLayout v){content++;}Prefs getSharedPreferences(String name,int mode){return new Prefs();}Window getWindow(){return new Window();}
@@ -96,12 +102,12 @@ class MainActivity extends Activity {
   /*ACTUAL_ENTRY_METHODS*/
 }
 class Activity {Intent launched;int browserStarts;void startActivity(Intent value){launched=value;if(value.target==BrowserActivity.class)browserStarts++;}public void onCreate(Bundle b){}protected void onResume(){}protected void onNewIntent(Intent i){}}
-class Bundle{boolean focused;Bundle(){}Bundle(boolean focused){this.focused=focused;}boolean getBoolean(String name,boolean fallback){return "focusReading".equals(name)?focused:fallback;}Bundle getBundle(String name){return null;}}
+class Bundle{SavedFileActions pending;boolean focused;Bundle(){}Bundle(boolean focused){this.focused=focused;}boolean getBoolean(String name,boolean fallback){return "focusReading".equals(name)?focused:fallback;}Bundle getBundle(String name){return null;}}
 class ChatSession{boolean working,navigationFailed,reply;int browses;String lastUrl;boolean currentReplyActive(){return reply;}boolean browse(String url,String label){browses++;lastUrl=url;return true;}}
 class ProfileUi{static boolean working(ChatSession session){return session.working;}}
 class Remote{String getUrl(){return "https://retained.example/";}}
 class FileDownloads{boolean awaitingPicker,retiringPartial;final SavedFileActions savedActions=new SavedFileActions(null);}
-class SavedFileActions{Object exporting;boolean busy;SavedFileActions(MainActivity a){}void close(){}}
+class SavedFileActions{Object exporting;boolean busy;SavedFileActions(MainActivity a){}void close(){}static SavedFileActions restore(MainActivity a,Bundle state){return state==null?null:state.pending;}}
 /** Controlled native owner-settings boundary. The real owner and identity checks are covered separately. */
 class BrowserSettingsUi {
   static final String OWNER_ROUTE="fixtureOwnerSettings", OWNER_MODAL="fixtureOwnerSettingsConsumed";

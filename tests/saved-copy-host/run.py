@@ -8,7 +8,9 @@ PRODUCTION=ROOT/'app/src/main/java/local/pocketchat'
 spec=importlib.util.spec_from_file_location('download_member',ROOT/'tests/download-resume-host/run.py')
 extract=importlib.util.module_from_spec(spec);spec.loader.exec_module(extract)
 NAMES=['J.java','SavedFileBytes.java','SavedFileDeletion.java','SealedFileIo.java']
-METHODS=['void export(','void result(','static boolean delete(','void close(']
+METHODS=['void saveState(','static SavedFileActions restore(','private static boolean documentUri(',
+         'void export(JSONObject row){','private void export(','void result(','private void recoverExport(',
+         'private InputStream openExportInput(','private void offerExportRetry(','void close(']
 
 def read_host_report(run, output):
     """Keep the actual JVM outcome visible even when it could not emit JSON."""
@@ -38,11 +40,12 @@ def main():
     hashes={str(p.relative_to(ROOT)):hashlib.sha256(p.read_bytes()).hexdigest() for p in sorted(inputs)}
     callbacks=(PRODUCTION/'SavedFileActions.java').read_text()
     selected={name:extract.member(callbacks,name) for name in METHODS}
+    fields=callbacks[callbacks.index("  private static final String EXPORT_STATE="):callbacks.index("  SavedFileActions(Activity a)")].strip()
     metadata=(PRODUCTION/'DownloadMetadataValues.java').read_text()
     with tempfile.TemporaryDirectory(prefix='saved-copy-host-') as temporary:
         temp=pathlib.Path(temporary);package=temp/'local/pocketchat';package.mkdir(parents=True)
         for name in NAMES:(package/name).write_bytes((PRODUCTION/name).read_bytes())
-        host=(HERE/'CopyHost.java').read_text().replace('/* SAVEDFILEACTIONS */','\n'.join(selected.values())).replace('/* METADATA */','\n'.join(extract.member(metadata,name) for name in ['static String name(','static String mime(']))
+        host=(HERE/'CopyHost.java').read_text().replace('/* EXPORT_FIELDS */',fields).replace('/* SAVEDFILEACTIONS */','\n'.join(selected.values())).replace('/* METADATA */','\n'.join(extract.member(metadata,name) for name in ['static String name(','static String mime(']))
         (package/'CopyHost.java').write_text(host)
         for stub in [*support,*list((HERE/'stubs').rglob('*.java'))]:
             relative=pathlib.Path('android')/str(stub).split('/android/',1)[1]
@@ -55,7 +58,7 @@ def main():
         run=subprocess.run([binary('java'),'-cp',str(temp)+os.pathsep+str(args.json_jar.resolve()),'local.pocketchat.CopyHost'],capture_output=True,text=True,timeout=45)
         report=read_host_report(run,args.output)
         unchanged=all(hashlib.sha256((ROOT/name).read_bytes()).hexdigest()==digest for name,digest in hashes.items())
-        report.update(sourceCommit=subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip(),sourceFiles=hashes,selectedMethods={name:hashlib.sha256(code.encode()).hexdigest() for name,code in selected.items()},executionInputsUnchanged=unchanged,jsonJarSha256=hashlib.sha256(args.json_jar.read_bytes()).hexdigest(),actualAndroidExecution=False,actualExternalProviderExecution=False,scope='Exact production SavedFileActions export/result/delete/close, metadata accessors, full SavedFileBytes/SavedFileDeletion/SealedFileIo. Real JVM workers, file leases and files; controlled provider streams and UI. No Android device, external provider durability, saved-index database or global exactly-once claim.')
+        report.update(sourceCommit=subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip(),sourceFiles=hashes,selectedMethods={name:hashlib.sha256(code.encode()).hexdigest() for name,code in selected.items()},executionInputsUnchanged=unchanged,jsonJarSha256=hashlib.sha256(args.json_jar.read_bytes()).hexdigest(),actualAndroidExecution=False,actualExternalProviderExecution=False,scope='Exact production SavedFileActions lifecycle/export/result/close, metadata accessors, full SavedFileBytes/SavedFileDeletion/SealedFileIo. Real JVM workers, file leases and files; controlled provider streams and UI. No Android device, external provider durability, saved-index database or global exactly-once claim.')
         if not unchanged:report['status']='invalid-source-changed'
         args.output.write_text(json.dumps(report,ensure_ascii=False,indent=2)+'\n')
         print(json.dumps({key:report[key] for key in ['status','passed','total','executionInputsUnchanged']}))

@@ -89,6 +89,12 @@ public final class ChooserHost {
     host.downloads.savedActions.exporting=J.obj("id","gecko-export");
     deliver(host,SavedFileActions.EXPORT,OLD);
     check("An idle native workspace leaves the Gecko export with its original owner",host.nativeSavedFiles.results==1&&host.downloads.savedActions.results==1&&OLD.equals(host.downloads.savedActions.savedTo));
+    host.restoredSavedFiles=new SavedFileActions();
+    host.restoredSavedFiles.exporting=J.obj("id","restored");
+    host.onActivityResult(SavedFileActions.EXPORT,Activity.RESULT_CANCELED,null);
+    check("Recreated Activity consumes the restored export before either live owner",
+      host.restoredSavedFiles.results==1&&host.restoredSavedFiles.exporting==null
+      &&host.nativeSavedFiles.results==1&&host.downloads.savedActions.results==1);
     check("Download and export results leave the active upload request untouched",upload.calls.isEmpty()&&host.attachments.blocked()&&host.resolver.persisted.isEmpty());
     deliver(host,uploadRequest,NEW);
     check("The upload receives only its own result after the file exports",upload.only(NEW)&&!host.attachments.blocked()&&host.downloads.results==1&&host.nativeSavedFiles.results==1&&host.downloads.savedActions.results==1);
@@ -104,7 +110,7 @@ public final class ChooserHost {
   public static void main(String[] args){normal();admission();replaceDuringCancellation();cancellationChangesOwner();synchronousBoundaries();dismissReentry();staleResults();callbacksAndResultReentry();hostHandoff();resultRouting();retirementAndLimit();int passed=0;for(int i=0;i<checks.length();i++)if(checks.optJSONObject(i).optBoolean("pass"))passed++;System.out.println(J.obj("status",passed==checks.length()?"passed":"failed","passed",passed,"total",checks.length(),"checks",checks));if(passed!=checks.length())System.exit(1);}
 }
 class MainActivity extends Activity {
-  static final String ORIGIN="https://chatgpt.com/";boolean destroyed;final Session session;final Page remote;final Loading loading=new Loading();final List<String> messages=new ArrayList<>();final SharedPreferences prefs=new SharedPreferences();String conversation="";Attachments attachments;FileDownloads downloads;SavedFileActions nativeSavedFiles;
+  static final String ORIGIN="https://chatgpt.com/";boolean destroyed;final Session session;final Page remote;final Loading loading=new Loading();final List<String> messages=new ArrayList<>();final SharedPreferences prefs=new SharedPreferences();String conversation="";Attachments attachments;FileDownloads downloads;SavedFileActions nativeSavedFiles,restoredSavedFiles;
   MainActivity(){this(new Session(),new Page());}MainActivity(Session session,Page page){this.session=session;remote=page;remote.displayContext.setBaseContext(this);attachments=new Attachments(this);}void status(String message){messages.add(message);}void attachmentStatus(AttachmentIssue issue){messages.add(issue.message);}void showPage(boolean value){throw new AssertionError("Legacy preview outside picker host");}
   /* ACTUAL_ACTIVITY */
 }

@@ -20,7 +20,7 @@ class FileDownloads {
   volatile InputStream nativeInput;volatile boolean cancelled;volatile HttpURLConnection connection;volatile File temp;volatile boolean active,destroyed;String imageLabel="",name="文件",mime="application/octet-stream",sourceId="",sourceKey="",sourceUrl="",retryUrl="",agent="";volatile long ticket=0;long ignoreUntil=0;Dialog dialog;AlertDialog noticeDialog;TextView progress;
   private BlobDownload blob;
   final SavedFileActions savedActions;final DownloadTasks tasks;JSONObject task;boolean resumeRequested=false,minimized=false,completeFile=false,awaitingPicker=false,retiringPartial=false,persistenceBlocked=false;long pickerTicket=-1,lastProgressSaved;static final long PROGRESS_SAVE_INTERVAL=2000;volatile Uri savingDestination;AlertDialog manager;String resumeValidator="",resumeAddress="";volatile long receivedBytes=0,totalBytes=-1;
-  FileDownloads(MainActivity a){this.a=a;savedActions=new SavedFileActions(a);tasks=new DownloadTasks(a);a.remote.setDownloadListener((url,ua,cd,type,size)->accept(url,ua,cd,type,size));a.remote.responseDownload=this::acceptResponse;}
+  FileDownloads(MainActivity a){this.a=a;savedActions=a.createSavedFileActions();tasks=new DownloadTasks(a);a.remote.setDownloadListener((url,ua,cd,type,size)->accept(url,ua,cd,type,size));a.remote.responseDownload=this::acceptResponse;}
   String downloadSource(){String current=a.remote.getUrl();return MainActivity.chatUrl(current)?a.conversation:current==null?"":current;}
   void acceptResponse(org.mozilla.geckoview.WebResponse response){
     InputStream input=response.body;

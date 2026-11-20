@@ -78,7 +78,7 @@ def main():
     java_hashes = {str(path): digest(path) for path in [java, javac]}
     activity = (PROD / 'MainActivity.java').read_text()
     selected = {needle: base.member(activity, needle) for needle in [
-        '@Override protected void onActivityResult(', 'static boolean chatUrl(']}
+        '@Override protected void onActivityResult(', 'SavedFileActions currentSavedFileExport(', 'static boolean chatUrl(']}
     original = (PROD / 'Attachments.java').read_text()
     host = (HERE / 'ChooserHost.java').read_text().replace('/* ACTUAL_ACTIVITY */', '\n'.join(selected.values()))
     args.output.parent.mkdir(parents=True, exist_ok=True)

@@ -35,7 +35,7 @@ public class MainActivity extends ThemedActivity {
   String pageError="",lastUiStatus="";
   AttachmentIssue lastAttachmentIssue;
   long shownGoogleLoginNotice=-1;
-  LoadingUi loading; Attachments attachments; FileDownloads downloads;SavedFileActions nativeSavedFiles;
+  LoadingUi loading; Attachments attachments; FileDownloads downloads;SavedFileActions nativeSavedFiles,restoredSavedFiles;
   ChatDownloadProgressUi chatDownloadProgress;
   Button focusExit;boolean focusReading;Bundle downloadUiState;
   TextView status,exitIpLine,networkLine; LinearLayout toolbar;
@@ -86,7 +86,9 @@ public class MainActivity extends ThemedActivity {
     if(!ProfileCatalog.get(this).available(Profiles.slot(this))){startActivity(new Intent(this,WindowHomeActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));finish();return;}
     if(Build.VERSION.SDK_INT>=30)getWindow().setDecorFitsSystemWindows(false);
     prefs=getSharedPreferences("chat",MODE_PRIVATE);
-    if(dispatchBrowser(getIntent()))return;
+    restoredSavedFiles=SavedFileActions.restore(this,state);
+    boolean restoringBeforeBrowser=restoredSavedFiles!=null&&BrowserPreferences.shouldOpenBrowser(this,getIntent());
+    if(!restoringBeforeBrowser&&dispatchBrowser(getIntent()))return;
     // Migrate only the display preference. Cookies, old drafts and engine stores
     // stay untouched, including profiles previously opened in simple mode.
     pageMode=true;if(!prefs.getBoolean("pageMode",false))prefs.edit().putBoolean("pageMode",true).apply();
@@ -94,14 +96,17 @@ public class MainActivity extends ThemedActivity {
     // Gecko and network initialization run only after that frame, while resumed.
     environmentOverview=new EnvironmentOverviewUi(this);
     LinearLayout startup=new LinearLayout(this);startup.setBackgroundColor(ReferenceUi.CHAT_BG);setContentView(startup);
-    handleOpening(getIntent());
+    if(restoringBeforeBrowser){
+      setIntent(new Intent().putExtra("openWindowAction","settings"));
+      openNativeWorkspace(getIntent());
+    }else handleOpening(getIntent());
   }
   void handleOpening(Intent intent){
     if(BrowserSettingsUi.ownerOpening(this,intent)||BrowserPreferences.startBrowser(this)&&BrowserPreferences.nativeOpening(intent)){
       openNativeWorkspace(intent);return;
     }
     if(session==null){
-      if(nativeFileWorkPending()){
+      if(nativeSavedFiles!=null&&nativeFileWorkPending()){
         if(active)fileFeedback("请完成当前文件操作，然后重新打开此环境。");
         return;
       }
@@ -113,9 +118,21 @@ public class MainActivity extends ThemedActivity {
     }
   }
   void openBoundBrowser(){startActivity(EnvironmentOverviewUi.browserOpening(this,Profiles.slot(this)));}
+  SavedFileActions createSavedFileActions(){
+    SavedFileActions restored=restoredSavedFiles;
+    restoredSavedFiles=null;
+    return restored==null?new SavedFileActions(this):restored;
+  }
+
+  private SavedFileActions currentSavedFileExport(){
+    if(restoredSavedFiles!=null)return restoredSavedFiles;
+    if(nativeSavedFiles!=null&&nativeSavedFiles.exporting!=null)return nativeSavedFiles;
+    return downloads==null?null:downloads.savedActions;
+  }
+
   void openNativeWorkspace(Intent intent){
     if(browserStartup!=null){browserStartup.close();browserStartup=null;}
-    if(nativeSavedFiles==null)nativeSavedFiles=new SavedFileActions(this);
+    if(nativeSavedFiles==null)nativeSavedFiles=createSavedFileActions();
     if(hub==null){
       LinearLayout root=DesignUi.screen(this);DesignUi.chrome(this);
       hub=new AppHub(this,root,null);setContentView(root);
@@ -407,7 +424,7 @@ public class MainActivity extends ThemedActivity {
     if(!chatUrl(url)||!GeckoAddressUi.available(this))return;
     if(session.browse(url,"正在打开对话…"))showPage(true);
   }
-  @Override protected void onActivityResult(int request,int result,Intent data){super.onActivityResult(request,result,data);if(attachments!=null&&attachments.result(request,result,data))return;if(request==FileDownloads.SAVE&&downloads!=null)downloads.result(result,data);if(request==SavedFileActions.EXPORT){if(nativeSavedFiles!=null&&nativeSavedFiles.exporting!=null)nativeSavedFiles.result(result,data);else if(downloads!=null)downloads.savedActions.result(result,data);}}
+  @Override protected void onActivityResult(int request,int result,Intent data){super.onActivityResult(request,result,data);if(attachments!=null&&attachments.result(request,result,data))return;if(request==FileDownloads.SAVE&&downloads!=null)downloads.result(result,data);if(request==SavedFileActions.EXPORT){SavedFileActions export=currentSavedFileExport();if(export!=null)export.result(result,data);}}
   boolean openWebsite(Intent intent){
     if(intent==null||!Intent.ACTION_VIEW.equals(intent.getAction())&&!intent.hasExtra("url"))return false;
     String url=BrowserPreferences.openingAddress(intent);
@@ -449,7 +466,8 @@ public class MainActivity extends ThemedActivity {
     if(url==null)BrowserActivity.resume(this);else BrowserActivity.open(this,url);
     finish();return true;
   }
-  boolean nativeFileWorkPending(){return nativeSavedFiles!=null&&(nativeSavedFiles.exporting!=null||nativeSavedFiles.busy);}
+  boolean nativeFileWorkPending(){return nativeSavedFiles!=null&&(nativeSavedFiles.exporting!=null||nativeSavedFiles.busy)
+    ||restoredSavedFiles!=null&&(restoredSavedFiles.exporting!=null||restoredSavedFiles.busy);}
   boolean geckoWorkPending(){return session!=null&&(ProfileUi.working(session)||session.currentReplyActive()
     ||downloads!=null&&(downloads.awaitingPicker||downloads.retiringPartial||downloads.savedActions.exporting!=null||downloads.savedActions.busy));}
   @Override protected void onNewIntent(Intent intent){super.onNewIntent(intent);setIntent(intent);ExitIpPageUi.close(this);if(!isFinishing()&&!dispatchBrowser(intent))handleOpening(intent);}
@@ -481,8 +499,8 @@ public class MainActivity extends ThemedActivity {
     if(!browserUi.current())return;
     session.foreground(false);
   }
-  @Override protected void onDestroy(){destroyed=true;if(toolsPanel!=null)toolsPanel.panel.dismiss();if(browserUi!=null)browserUi.close();if(sessionUi!=null)sessionUi.close();if(designChrome!=null)designChrome.cancelUpdates();if(chatDownloadProgress!=null)chatDownloadProgress.close();if(geckoAddress!=null)geckoAddress.close();if(browserStartup!=null)browserStartup.close();if(environmentOverview!=null)environmentOverview.close();if(hub!=null)hub.downloadsVisible(false);if(reloadDialog!=null)reloadDialog.dismiss();if(networkDialog!=null)networkDialog.dismiss();if(downloads!=null)downloads.destroy();if(nativeSavedFiles!=null)nativeSavedFiles.close();if(attachments!=null)attachments.destroy();if(loading!=null)loading.dismissTask();if(hub!=null)hub.networkWorkspace.close();handler.removeCallbacksAndMessages(null);if(session!=null)session.remove(sessionObserver);super.onDestroy();}
-  @Override protected void onSaveInstanceState(Bundle state){super.onSaveInstanceState(state);state.putBoolean("focusReading",focusReading);Bundle downloadsState=new Bundle();if(hub!=null&&hub.downloadController!=null)hub.downloadController.saveState(downloadsState);else if(downloadUiState!=null)downloadsState.putAll(downloadUiState);state.putBundle("uxDownloads",downloadsState);}
+  @Override protected void onDestroy(){destroyed=true;if(toolsPanel!=null)toolsPanel.panel.dismiss();if(browserUi!=null)browserUi.close();if(sessionUi!=null)sessionUi.close();if(designChrome!=null)designChrome.cancelUpdates();if(chatDownloadProgress!=null)chatDownloadProgress.close();if(geckoAddress!=null)geckoAddress.close();if(browserStartup!=null)browserStartup.close();if(environmentOverview!=null)environmentOverview.close();if(hub!=null)hub.downloadsVisible(false);if(reloadDialog!=null)reloadDialog.dismiss();if(networkDialog!=null)networkDialog.dismiss();if(downloads!=null)downloads.destroy();if(nativeSavedFiles!=null)nativeSavedFiles.close();if(restoredSavedFiles!=null)restoredSavedFiles.close();if(attachments!=null)attachments.destroy();if(loading!=null)loading.dismissTask();if(hub!=null)hub.networkWorkspace.close();handler.removeCallbacksAndMessages(null);if(session!=null)session.remove(sessionObserver);super.onDestroy();}
+  @Override protected void onSaveInstanceState(Bundle state){super.onSaveInstanceState(state);SavedFileActions export=currentSavedFileExport();if(export!=null)export.saveState(state);state.putBoolean("focusReading",focusReading);Bundle downloadsState=new Bundle();if(hub!=null&&hub.downloadController!=null)hub.downloadController.saveState(downloadsState);else if(downloadUiState!=null)downloadsState.putAll(downloadUiState);state.putBundle("uxDownloads",downloadsState);}
   @Override public boolean dispatchKeyEvent(KeyEvent event){
     if(event.getAction()==KeyEvent.ACTION_DOWN&&event.getRepeatCount()==0){
       if(event.getKeyCode()==KeyEvent.KEYCODE_ESCAPE&&focusActive()){setFocusReading(false);return true;}

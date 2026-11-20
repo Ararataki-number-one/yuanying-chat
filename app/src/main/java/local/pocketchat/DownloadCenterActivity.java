@@ -10,7 +10,8 @@ public class DownloadCenterActivity extends ThemedActivity {
   final Runnable tick=()->{refresh();handler.postDelayed(this.tick,2000);};
   @Override public void onCreate(Bundle state){
     super.onCreate(state);filter=state==null?0:Math.max(0,Math.min(3,state.getInt("filter")));
-    actions=new SavedFileActions(this);
+    actions=SavedFileActions.restore(this,state);
+    if(actions==null)actions=new SavedFileActions(this);
     if(Build.VERSION.SDK_INT>=30)getWindow().setDecorFitsSystemWindows(false);
     root=DesignUi.screen(this);root.setClipChildren(false);root.setClipToPadding(false);
     root.addView(DesignDownloads.header(this),new LinearLayout.LayoutParams(-1,-2));
@@ -36,7 +37,7 @@ public class DownloadCenterActivity extends ThemedActivity {
   int recentSlot(){return AppSettings.recentSlot(this);}
   void refresh(){render(true);}
   void render(boolean preserveScroll){if(downloadsView!=null)downloadsView.refresh(filter);}
-  @Override protected void onSaveInstanceState(Bundle state){super.onSaveInstanceState(state);state.putInt("filter",filter);if(downloadsView!=null)downloadsView.saveState(state);}
+  @Override protected void onSaveInstanceState(Bundle state){super.onSaveInstanceState(state);actions.saveState(state);state.putInt("filter",filter);if(downloadsView!=null)downloadsView.saveState(state);}
   @Override protected void onResume(){super.onResume();if(backdrop!=null)backdrop.setGlassActive(true);if(downloadsView!=null)downloadsView.setVisible(true);handler.removeCallbacks(tick);handler.post(tick);}
   @Override protected void onPause(){if(backdrop!=null)backdrop.setGlassActive(false);if(downloadsView!=null)downloadsView.setVisible(false);handler.removeCallbacks(tick);super.onPause();}
   @Override protected void onActivityResult(int request,int result,Intent data){super.onActivityResult(request,result,data);if(request==SavedFileActions.EXPORT)actions.result(result,data);}

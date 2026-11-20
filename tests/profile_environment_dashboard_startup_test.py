@@ -22,7 +22,7 @@ class DashboardStartup(unittest.TestCase):
     def test_real_entry_lifecycle_and_wait_boundaries(self):
         java=Path(os.environ.get('PROFILE_JAVA') or shutil.which('java') or '')
         source=(PROD/'MainActivity.java').read_text()
-        methods='\n'.join(member(source,x) for x in ['  @Override public void onCreate(', '  void prepareBrowserAfterOverview(', '  void startBrowserAfterOverview(', '  @Override protected void onResume(', '  @Override protected void onNewIntent(', '  boolean dispatchBrowser(', '  void handleOpening(', '  boolean geckoWorkPending(', '  boolean nativeFileWorkPending(', '  boolean openWebsite(', '  void openNativeWorkspace(', '  void closeNativeWorkspace('])
+        methods='\n'.join(member(source,x) for x in ['  @Override public void onCreate(', '  void prepareBrowserAfterOverview(', '  void startBrowserAfterOverview(', '  @Override protected void onResume(', '  @Override protected void onNewIntent(', '  boolean dispatchBrowser(', '  void handleOpening(', '  boolean geckoWorkPending(', '  boolean nativeFileWorkPending(', '  boolean openWebsite(', '  SavedFileActions createSavedFileActions(', '  void openNativeWorkspace(', '  void closeNativeWorkspace('])
         chromium=(PROD/'BrowserActivity.java').read_text()
         launches='\n'.join(member(chromium, signature) for signature in ['  static void open(', '  static void resume('])
         template=(ROOT/'tests/overview-dashboard-host/StartupHost.java').read_text()

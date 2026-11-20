@@ -307,7 +307,7 @@ final class ProfileContext {
 class MainActivity extends Activity {
   final Store store;ChatSession session;boolean available=true,active;final int slot;Intent launched;
   FileDownloads downloads;
-  SavedFileActions nativeSavedFiles;
+  SavedFileActions nativeSavedFiles,restoredSavedFiles;
   String lastMessage;
   int pageReveals;
   EnvironmentOverviewUi environmentOverview;
