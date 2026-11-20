@@ -59,6 +59,12 @@ final class SecretStore {
   void remove(String name)throws IOException{if(!name.matches("[a-z-]+"))throw new IOException("Invalid fixture sealed name");removed.add(name);Files.deleteIfExists(new File(profile.getNoBackupFilesDir(),name+".sealed").toPath());}
 }
 
+/** Runs the actual snapshot cleanup without modeling the production lock. */
+final class NetworkSourceSelection {
+  interface Action<T>{T run()throws Exception;}
+  static <T>T withActiveSnapshot(FixtureProfile profile,Action<T> action)throws Exception{return action.run();}
+}
+
 final class ActualDeletionCleanup {
   static void run(File data,int slot,FixtureProfile profile)throws Exception{
 /*ACTUAL_CLEANUP_BRANCH*/
