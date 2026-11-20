@@ -3,6 +3,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import runpy
 import shutil
 import subprocess
 import tempfile
@@ -85,6 +86,32 @@ class EnvironmentConfigBackupTest(unittest.TestCase):
         output.parent.mkdir(parents=True, exist_ok=True)
         output.write_text(json.dumps(dict(status='passed', sourceSha256=before, runs=runs,
                                          actualAndroidExecution=False, actualSQLiteExecution=False), ensure_ascii=False, indent=2) + '\n')
+
+    def test_pending_import_survives_activity_recreation(self):
+        java = os.environ.get('PROFILE_JAVA') or shutil.which('java')
+        self.assertTrue(java, 'JDK17+ required')
+        source = (PRODUCTION / 'EnvironmentConfigBackupActivity.java').read_text()
+        member = runpy.run_path(str(ROOT / 'tests/download-resume-host/run.py'))['member']
+        names = ('public void onCreate(', 'protected void onActivityResult(',
+                 'boolean active(', 'void message(', 'void clearPending(')
+        callbacks = [member(source, name) for name in names]
+        if 'protected void onSaveInstanceState(' in source:
+            callbacks.append(member(source, 'protected void onSaveInstanceState('))
+        constants = '\n'.join(line.strip() for line in source.splitlines()
+                              if 'static final int EXPORT=' in line or 'static final String IMPORT_PICKER_PENDING=' in line)
+        template = (ROOT / 'tests/environment-config-backup-host/BackupPickerHost.java.in').read_text()
+        fixture = template.replace('/* PICKER_CONSTANTS */', constants).replace('/* PICKER_CALLBACKS */', '\n'.join(callbacks))
+        with tempfile.TemporaryDirectory(prefix='environment-config-picker-') as classes:
+            path = Path(classes) / 'BackupPickerHost.java'
+            path.write_text(fixture, encoding='utf-8')
+            built = subprocess.run([java, '-m', 'jdk.compiler/com.sun.tools.javac.Main', '--release', '17',
+                                    '-encoding', 'UTF-8', '-d', classes, str(path)],
+                                   capture_output=True, text=True, timeout=30)
+            self.assertEqual(built.returncode, 0, built.stdout + built.stderr)
+            ran = subprocess.run([java, '-cp', classes, 'local.pocketchat.BackupPickerHost'],
+                                 capture_output=True, text=True, timeout=10)
+            self.assertEqual(ran.returncode, 0, ran.stdout + ran.stderr)
+            self.assertEqual(ran.stdout.strip(), 'Passed 11 backup picker callback checks')
 
     def test_crypto_and_strict_portable_payload(self):
         java = os.environ.get('PROFILE_JAVA') or shutil.which('java')

@@ -22,7 +22,22 @@ public final class EnvironmentConfigTransferHost {
       check(stage+" does not publish half environment",!ProfileCatalog.INSTANCE.created[1]);check(stage+" retains old bytes",before.equals(oldFingerprint()));
       if(!stage.equals("browser-data")&&!stage.equals("roots")&&!stage.equals("stale-before")&&!stage.equals("stale-enter")){check(stage+" cleans staged settings",target.prefs.values.isEmpty()&&target.vault.isEmpty());}
     }
-    reset();root=Profiles.contexts[0];EnvironmentSpec.Identity expected=ProfileCatalog.INSTANCE.identity(0);EnvironmentConfigBackup.Config exported=EnvironmentConfigTransfer.capture(root,expected);check("capture excludes source identity",!new String(exported.bytes(),"UTF-8").contains(expected.environmentId));
+    reset();root=Profiles.contexts[0];EnvironmentSpec.Identity expected=ProfileCatalog.INSTANCE.identity(0);
+    root.prefs.values.put("saveDraft",false);
+    root.prefs.values.put("wifiDownloads",true);
+    root.prefs.values.put("backgroundWait",true);
+    check("application preferences include the nonportable latency option",AppPrefs.values(root).has("automaticLatencyChecks"));
+    EnvironmentConfigBackup.Config exported=EnvironmentConfigTransfer.capture(root,expected);
+    JSONObject portable=exported.preferences();
+    check("capture only exports the versioned portable preference set",
+        portable.length()==EnvironmentConfigBackup.PREFERENCES.length&&!portable.has("automaticLatencyChecks"));
+    check("capture retains explicit and default preference values",
+        !portable.getBoolean("saveDraft")&&portable.getBoolean("wifiDownloads")
+        &&portable.getBoolean("autoHistory")&&!portable.getBoolean("cleanTemporaryCache"));
+    check("capture does not enable legacy background waiting",!portable.getBoolean("backgroundWait"));
+    String payload=new String(exported.bytes(),java.nio.charset.StandardCharsets.UTF_8);
+    check("capture excludes source identity",!payload.contains(expected.environmentId));
+    check("capture excludes source credentials",!payload.contains("secret-proxy")&&!payload.contains("\"cookie\""));
     final TestContext source=root;rejected("stale source ownership rejected",()->EnvironmentConfigTransfer.capture(source,new EnvironmentSpec.Identity(0,"another")));
     EnvironmentSpecRepository.wrongLoadedIdentity=true;rejected("loaded spec ownership mismatch rejected",()->EnvironmentConfigTransfer.capture(source,expected));
     EnvironmentSpecRepository.wrongLoadedIdentity=false;ProfileCatalog.INSTANCE.replaceOnItem=true;rejected("delete recreate during final capture rejected",()->EnvironmentConfigTransfer.capture(source,expected));
