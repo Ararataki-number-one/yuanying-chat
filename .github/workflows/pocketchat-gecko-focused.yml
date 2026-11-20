@@ -1,0 +1,206 @@
+name: PocketChat focused Android 15 Gecko diagnostics
+'on':
+  push:
+    branches: [acceptance/pocketchat-214-gecko-focused-20261120]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  focused-gecko:
+    if: ${{ github.repository == 'Ararataki-number-one/yuanying-chat' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    env:
+      RELEASE_SOURCE: bcb20753c6d1cf939ad87955beb63da267cf06f0
+      RELEASE_TREE: 5f2e0ca6b7579735caad6ee1f2641677f5deaf4a
+      SDK_DONOR_SOURCE: 39243cfdb4463ce5f5033d4e153a1409edb159ec
+      SDK_DONOR_RUN: '44698782728'
+      SDK_DONOR_ATTEMPT: '1'
+      PYTHONDONTWRITEBYTECODE: '1'
+    steps:
+    - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      with:
+        ref: ${{ env.RELEASE_SOURCE }}
+        persist-credentials: false
+    - name: Check the exact clean application and fixture source
+      shell: bash
+      run: |
+        set -euo pipefail
+        test "$(git rev-parse HEAD)" = "$RELEASE_SOURCE"
+        test "$(git rev-parse 'HEAD^{tree}')" = "$RELEASE_TREE"
+        test -z "$(git status --porcelain)"
+    - name: Read the previous verified upstream Gecko SDK inputs
+      uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0
+      with:
+        name: browser-${{ env.SDK_DONOR_RUN }}-${{ env.SDK_DONOR_ATTEMPT }}-official-sdk
+        path: work/gecko-integration
+        repository: ${{ github.repository }}
+        run-id: ${{ env.SDK_DONOR_RUN }}
+        github-token: ${{ github.token }}
+    - name: Prepare pinned build and Android 35 tools
+      shell: bash
+      run: |
+        set -euo pipefail
+        test -n "$JAVA_HOME_17_X64"
+        test -c /dev/kvm
+        echo "JAVA_HOME=$JAVA_HOME_17_X64" >> "$GITHUB_ENV"
+        echo "$JAVA_HOME_17_X64/bin" >> "$GITHUB_PATH"
+        echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
+        mkdir -p work/gecko-integration/gradle work/gecko-focused work/android-image
+        gradle_zip=work/gecko-integration/gradle.zip
+        if ! curl -fsSL --retry 3 https://services.gradle.org/distributions/gradle-9.8.0-bin.zip -o "$gradle_zip"; then
+          curl -fLsS --retry 2 --max-time 240 -H 'Accept: application/octet-stream' -H 'X-GitHub-Api-Version: 2022-11-28' https://api.github.com/repos/gradle/gradle-distributions/releases/assets/586068844 -o "$gradle_zip"
+        fi
+        test "$(stat -c %s "$gradle_zip")" = 151611662
+        echo "bafd5ce9cfaea0fbccfdc8439a1ac42fbd4cd9c89dc9a988228d8a2639a58e6c  $gradle_zip" | sha256sum -c -
+        unzip -q "$gradle_zip" -d work/gecko-integration/gradle
+        sdkmanager="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+        yes | "$sdkmanager" --licenses >/dev/null || true
+        "$sdkmanager" 'platforms;android-37.1' 'build-tools;37.0.0'
+        python3 tools/gecko/prepare_android_image.py --component emulator --sdk-root "$ANDROID_HOME" --cache work/android-image --report work/gecko-focused/android-emulator-package-results.json
+        python3 tools/gecko/prepare_android_image.py --sdk-root "$ANDROID_HOME" --cache work/android-image --report work/gecko-focused/android-system-image-results.json
+        python3 tools/gecko/prepare_platform_tools.py --sdk-root "$ANDROID_HOME" --cache work/android-image --report work/gecko-focused/android-platform-tools-results.json
+    - name: Reverify upstream inputs and derive this diagnostic run's SDK
+      shell: bash
+      run: |
+        set -euo pipefail
+        sdk="work/gecko-integration"
+        python3 - <<'PYCODE'
+        import json, os
+        from pathlib import Path
+
+        donor = json.loads(Path('work/gecko-integration/official-sdk-verification.json').read_bytes())
+        if donor.get('status') != 'passed' or donor.get('sourceCommit') != os.environ['SDK_DONOR_SOURCE']:
+            raise SystemExit('Unexpected upstream Gecko SDK donor')
+        PYCODE
+        python3 tools/gecko/verify_official_sdk.py --aar "$sdk/geckoview.aar" --pom "$sdk/geckoview.pom" --sources "$sdk/geckoview-sources.jar" --upstream-only | tee work/gecko-focused/official-sdk-current-verification.json
+        python3 tools/gecko/caret_workflow.py prepare --work "$sdk"
+        python3 - <<'PYCODE'
+        import json, os, sys
+        from pathlib import Path
+
+        sys.path.insert(0, 'tools/gecko')
+        from sdk_identity_contract import file_digest, selected_manifest, validate_receipt
+
+        source, tree = (os.environ[key] for key in ('RELEASE_SOURCE', 'RELEASE_TREE'))
+        sdk = Path('work/native-caret-sdk')
+        raw = (sdk / 'sdk-build-receipt.json').read_bytes()
+        manifest, manifest_sha = selected_manifest(source)
+        receipt = validate_receipt(raw, manifest, manifest_sha, source, tree)
+        group, artifact, version = manifest['sdkRuntimeCoordinate'].split(':')
+        aar = sdk / 'maven' / group.replace('.', '/') / artifact / version / f'{artifact}-{version}.aar'
+        if ((receipt['runId'], receipt['runAttempt']) != (os.environ['GITHUB_RUN_ID'], os.environ['GITHUB_RUN_ATTEMPT'])
+                or raw != (sdk / 'assets/pocketchat-sdk-build-receipt.json').read_bytes()
+                or file_digest(aar) != manifest['sdkAarSha256']):
+            raise SystemExit('Derived Gecko SDK does not bind the exact diagnostic run')
+        identity = dict(sourceCommit=source, sourceTree=tree, workflowSource=os.environ['GITHUB_SHA'],
+                        runId=receipt['runId'], runAttempt=receipt['runAttempt'],
+                        sdkDonorSource=os.environ['SDK_DONOR_SOURCE'], sdkDonorRunId=os.environ['SDK_DONOR_RUN'],
+                        sdkDonorRunAttempt=os.environ['SDK_DONOR_ATTEMPT'],
+                        diagnosticOnly=True, releaseQualification=False)
+        Path('work/gecko-focused/focused-source.json').write_text(json.dumps(identity, indent=2) + '\n')
+        PYCODE
+    - name: Assemble only the synthetic signed integration variant
+      shell: bash
+      run: |
+        set -euo pipefail
+        key_dir=$(mktemp -d "$RUNNER_TEMP/pocketchat-gecko-focused-XXXXXX")
+        key="$key_dir/synthetic-test.p12"
+        trap 'rm -f -- "$key"' EXIT
+        keytool -genkeypair -keystore "$key" -alias androiddebugkey -storetype PKCS12 -storepass android -keypass android -dname CN=SyntheticGeckoFocusedDiagnostic -keyalg RSA -validity 2
+        work/gecko-integration/gradle/gradle-9.8.0/bin/gradle :app:assembleIntegration -PtestSigningKey="$key" --no-daemon --max-workers=2 --console=plain 2>&1 | tee work/gecko-focused/integration-build.log
+        python3 - <<'PYCODE'
+        import json, os, re, sys
+        from pathlib import Path
+
+        sys.path.insert(0, 'tools/gecko')
+        from profile_invocation_contract import expected_build
+
+        apk = Path('app/build/outputs/apk/integration/app-x86_64-integration.apk')
+        settings = Path('app/build.gradle').read_text()
+        version = re.search(r"versionName '([^']+)'", settings).group(1)
+        code = int(re.search(r'versionCode (\d+)', settings).group(1))
+        identity = expected_build(apk, os.environ['RELEASE_SOURCE'], os.environ['RELEASE_TREE'], version, code)
+        receipt = identity['sdkBuildIdentity']
+        if (receipt['runId'], receipt['runAttempt']) != (os.environ['GITHUB_RUN_ID'], os.environ['GITHUB_RUN_ATTEMPT']):
+            raise SystemExit('Integration APK does not contain the exact diagnostic-run SDK')
+        Path('work/gecko-focused/integration-build-identity.json').write_text(json.dumps(identity, indent=2) + '\n')
+        PYCODE
+    - name: Boot and install on a fresh pinned KVM Android 35 guest
+      id: boot
+      shell: bash
+      run: |
+        set -euo pipefail
+        work="$PWD/work/gecko-focused"
+        export ANDROID_AVD_HOME="$work/avd"
+        export ANDROID_USER_HOME="$work/android-user"
+        export ANDROID_EMULATOR_HOME="$work/emulator-home"
+        mkdir -p "$ANDROID_AVD_HOME" "$ANDROID_USER_HOME" "$ANDROID_EMULATOR_HOME"
+        if [[ ! -w /dev/kvm ]]; then sudo chmod a+rw /dev/kvm; fi
+        adb start-server
+        if adb devices | grep -Eq '^emulator-5554[[:space:]]'; then
+          echo 'Focused diagnostics require an unused emulator port' >&2
+          exit 1
+        fi
+        echo no | "$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager" create avd --force -n geckofocused -p "$ANDROID_AVD_HOME/geckofocused.avd" -k 'system-images;android-35;google_apis;x86_64'
+        "$ANDROID_HOME/emulator/emulator" -avd geckofocused -no-window -no-audio -no-snapshot -no-boot-anim -no-metrics -accel on -port 5554 -gpu swiftshader -memory 3072 -cores 4 > "$work/emulator.log" 2>&1 &
+        echo "$!" > "$work/emulator.pid"
+        timeout 180 adb -s emulator-5554 wait-for-device
+        timeout 300 bash -c 'until [ "$(adb -s emulator-5554 shell getprop sys.boot_completed | tr -d "\r")" = "1" ]; do sleep 2; done'
+        test "$(adb -s emulator-5554 shell getprop ro.kernel.qemu | tr -d '\r')" = 1
+        test "$(adb -s emulator-5554 shell getprop ro.build.version.sdk | tr -d '\r')" = 35
+        adb -s emulator-5554 shell input keyevent 82
+        apk=app/build/outputs/apk/integration/app-x86_64-integration.apk
+        adb -s emulator-5554 install -r "$apk"
+        python3 tools/gecko/prepare_cellular_adb.py --phase normal --adb "$(command -v adb)" --serial emulator-5554 --apk "$apk"
+    - name: Check actual Gecko exit-IP timezone bootstrap and routes
+      if: ${{ !cancelled() && steps.boot.outcome == 'success' }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        printf 'hostUTC=%s guestUTC=%s\n' "$(date -u +%s)" "$(adb -s emulator-5554 shell date -u +%s | tr -d '\r')" | tee work/gecko-focused/timezone-start-clock.txt
+        python3 tools/browser/run_gecko_ip_timezone_integration.py --adb "$(command -v adb)" --serial emulator-5554 --apk app/build/outputs/apk/integration/app-x86_64-integration.apk --source "$RELEASE_SOURCE" --output work/gecko-focused/timezone 2>&1 | tee work/gecko-focused/ip-timezone.log
+    - name: Check actual Gecko cold CPU and default-IP together
+      if: ${{ !cancelled() && steps.boot.outcome == 'success' }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        printf 'hostUTC=%s guestUTC=%s\n' "$(date -u +%s)" "$(adb -s emulator-5554 shell date -u +%s | tr -d '\r')" | tee work/gecko-focused/combo-start-clock.txt
+        python3 tools/browser/run_gecko_cpu_ip_combo_integration.py --adb "$(command -v adb)" --serial emulator-5554 --apk app/build/outputs/apk/integration/app-x86_64-integration.apk --source "$RELEASE_SOURCE" --output work/gecko-focused/combo 2>&1 | tee work/gecko-focused/cpu-ip-combo.log
+    - name: Check actual Gecko reading and responsive geometry
+      if: ${{ !cancelled() && steps.boot.outcome == 'success' }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        python3 tests/gecko/run_device.py --adb "$(command -v adb)" --serial emulator-5554 --apk app/build/outputs/apk/integration/app-x86_64-integration.apk --reading-only --reading-zoom-trace 2>&1 | tee work/gecko-focused/reading.log
+    - name: Stop the owned emulator and collect bounded crash output
+      if: ${{ always() }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        if [[ -f work/gecko-focused/emulator.pid ]]; then
+          timeout 12 adb -s emulator-5554 logcat -d -b crash -t 120 > work/gecko-focused/emulator-crash.log 2>&1 || true
+          timeout 12 adb -s emulator-5554 emu kill || kill "$(cat work/gecko-focused/emulator.pid)" || true
+        fi
+    - name: Preserve focused synthetic diagnostics
+      if: ${{ always() }}
+      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+      with:
+        name: diagnostic-gecko-focused-${{ github.run_id }}-${{ github.run_attempt }}
+        path: |
+          work/gecko-focused/focused-source.json
+          work/gecko-focused/integration-build-identity.json
+          work/gecko-focused/official-sdk-current-verification.json
+          work/gecko-focused/android-*-results.json
+          work/native-caret-sdk/sdk-build-receipt.json
+          work/gecko-integration/emulator-bootstrap-results.json
+          work/gecko-focused/*-start-clock.txt
+          work/gecko-focused/*.log
+          work/gecko-focused/timezone/*.json
+          work/gecko-focused/timezone/gecko-ip-timezone-evidence/*.json
+          work/gecko-focused/combo/*.json
+          work/gecko-focused/combo/gecko-cpu-ip-combo-evidence/*.json
+          work/gecko-integration/diagnostic-reading-results.json
+        if-no-files-found: warn
+        retention-days: 7
+        compression-level: 0
