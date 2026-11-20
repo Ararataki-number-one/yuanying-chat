@@ -140,7 +140,37 @@ public final class DefaultEnvironmentHost{
   c=setup(99,0,1);before=c.db.rows.toString();c.db.failDefaultWrite=true;failed=false;try{c.beginDelete(1);}catch(java.io.IOException expected){failed=true;}check("Failed stale-default repair aborts deletion without a false success",failed&&before.equals(c.db.rows.toString())&&"99".equals(c.db.settings.get("defaultSlot")));
   c=setup(0,0,1);c.db.rows.get(1).put("opened",999L);c.db.rows.get(1).put("resetting",1);check("Recent navigation excludes unavailable row",AppSettings.recentSlot(c.root)==0);
  }
- public static void main(String[]args)throws Exception{if(Boolean.getBoolean("before"))baseline();else {current();concurrency();routing();workspaceRouting();directBrowserRouting();}int passed=0;for(int i=0;i<checks.length();i++)if(checks.optJSONObject(i).optBoolean("pass"))passed++;System.out.println(J.obj("status",passed==checks.length()?"passed":"failed","passed",passed,"total",checks.length(),"checks",checks));if(passed!=checks.length())System.exit(1);}
+ static void startupTransaction()throws Exception{
+  ProfileCatalog profile=setup(0,0,1);
+  profile.db.settings.put("startupDirect","true");
+  EnvironmentSpec.Identity shown=profile.identity(1);
+  String original=profile.db.settings.toString();
+  profile.db.rows.get(1).put("environment_id",UUID.randomUUID().toString());
+  check("An old picker cannot select a replacement in the same slot",
+      !AppSettings.saveStartup(profile.root,shown.slot,shown.generation,shown.environmentId,false)
+      &&original.equals(profile.db.settings.toString()));
+  EnvironmentSpec.Identity replacement=profile.identity(1);
+  profile.db.rows.get(1).put("generation",replacement.generation+1);
+  check("Advancing the selected generation expires the old picker",
+      !AppSettings.saveStartup(profile.root,replacement.slot,replacement.generation,replacement.environmentId,false)
+      &&original.equals(profile.db.settings.toString()));
+  EnvironmentSpec.Identity current=profile.identity(1);
+  profile.db.failDefaultWrite=true;
+  check("Failing default write leaves the direct-start option unchanged",
+      !AppSettings.saveStartup(profile.root,current.slot,current.generation,current.environmentId,false)
+      &&original.equals(profile.db.settings.toString()));
+  profile.db.failDefaultWrite=false;
+  profile.db.failStartupDirectWrite=true;
+  check("Failing the second startup write rolls back the already-written default",
+      !AppSettings.saveStartup(profile.root,current.slot,current.generation,current.environmentId,false)
+      &&original.equals(profile.db.settings.toString())&&profile.db.begins==profile.db.ends);
+  profile.db.failStartupDirectWrite=false;
+  check("Retry commits both startup choices for the exact available identity",
+      AppSettings.saveStartup(profile.root,current.slot,current.generation,current.environmentId,false)
+      &&"1".equals(profile.db.settings.get("defaultSlot"))&&"false".equals(profile.db.settings.get("startupDirect"))
+      &&profile.identity(1).equals(current));
+ }
+ public static void main(String[]args)throws Exception{if(Boolean.getBoolean("before"))baseline();else {current();concurrency();routing();workspaceRouting();directBrowserRouting();startupTransaction();}int passed=0;for(int i=0;i<checks.length();i++)if(checks.optJSONObject(i).optBoolean("pass"))passed++;System.out.println(J.obj("status",passed==checks.length()?"passed":"failed","passed",passed,"total",checks.length(),"checks",checks));if(passed!=checks.length())System.exit(1);}
 }
 class ProfileCatalog{static ProfileCatalog instance;final Context root=new Context();final SQLiteDatabase db=new SQLiteDatabase();static ProfileCatalog get(Context c){return instance;}SQLiteDatabase getReadableDatabase(){return db;}SQLiteDatabase getWritableDatabase(){return db;}/* CATALOG */}
 class EnvironmentSpec{static JSONObject object(Object...x){return J.obj(x);}/* IDENTITY */}
