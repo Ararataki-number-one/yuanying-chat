@@ -1,6 +1,7 @@
 package local.pocketchat;
 
 import android.app.*;
+import android.content.Context;
 import android.widget.*;
 import org.json.*;
 import java.util.*;
@@ -16,7 +17,13 @@ final class DesignSettingsUi {
     group(a,appearance,"白天与黑夜",AppAppearance.label()+" · 应用与网页外观","appearance",()->appearance(a,refresh));
     SettingsWorkspaceStyle.section(box,"当前环境","仅当前环境");
     LinearLayout environment=SettingsWorkspaceStyle.group(a);box.addView(environment);
-    group(a,environment,"此环境的浏览器与启动",Profiles.display(a,Profiles.slot(a))+" · "+(BrowserPreferences.startBrowser(a)?"Chromium 指纹浏览器":"Gecko 指纹浏览器"),"browser",()->BrowserSettingsUi.show(a,refresh));
+    EnvironmentSpec.Identity target=BrowserSettingsUi.workspaceIdentity(a);
+    String browserDetail="环境暂不可用";
+    if(target!=null){
+      Context profile=Profiles.context(a,target.slot);
+      browserDetail=Profiles.display(a,target.slot)+" · "+(BrowserPreferences.startBrowser(profile)?"Chromium 指纹浏览器":"Gecko 指纹浏览器");
+    }
+    group(a,environment,"此环境的浏览器与启动",browserDetail,"browser",()->BrowserSettingsUi.openWorkspace(a,target,refresh));
     SettingsWorkspaceStyle.section(box,"提醒与后台","全局");
     LinearLayout background=SettingsWorkspaceStyle.group(a);box.addView(background);
     group(a,background,"后台完成提醒",AppSettings.backgroundCompletionNotice(a)?"离开应用后提醒下载完成":"已关闭 · 使用时保持安静","bell",()->completionReminders(a,refresh));

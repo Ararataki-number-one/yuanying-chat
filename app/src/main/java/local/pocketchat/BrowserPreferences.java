@@ -32,6 +32,9 @@ final class BrowserPreferences {
     String normalized=normalizeHome(address);
     return preferences(context).edit().putString(KEY_START,browser?START_BROWSER:START_CHAT).putString(KEY_HOME,normalized).commit();
   }
+  static boolean saveHome(Context context,String address){
+    return preferences(context).edit().putString(KEY_HOME,normalizeHome(address)).commit();
+  }
   static boolean nativeOpening(Intent intent){
     if(intent==null||Intent.ACTION_VIEW.equals(intent.getAction()))return false;
     if(intent.hasExtra("openDownload")||intent.getBooleanExtra("openEnvironmentEditor",false)||intent.getBooleanExtra("returnToEnvironmentList",false))return true;
