@@ -29,8 +29,8 @@ import time
 
 _PORT = 37891
 _TARGETS = {
-    b"gecko-failure.invalid:443": "gecko",
-    b"gateway-failure.invalid:443": "gateway",
+    b"gecko-failure.test:443": "gecko",
+    b"gateway-failure.test:443": "gateway",
 }
 _HEADER_NAMES = {b"host", b"user-agent", b"proxy-connection", b"connection", b"accept",
                  b"accept-language", b"accept-encoding", b"cache-control", b"pragma"}
@@ -111,11 +111,12 @@ def _read_connect(sock):
             value.extend(part)
 
     request = line(128)
-    matches = [authority for authority in _TARGETS
-               if request == b"CONNECT " + authority + b" HTTP/1.1"]
-    if len(matches) != 1:
+    method, separator, target_and_version = request.partition(b" ")
+    authority, version_separator, version = target_and_version.partition(b" ")
+    if not separator or method != b"CONNECT" or authority not in _TARGETS:
         raise _Rejected("targetOrRequestLine")
-    authority = matches[0]
+    if not version_separator or version not in (b"HTTP/1.0", b"HTTP/1.1"):
+        raise _Rejected("testTargetVersion")
     seen = set()
     for _ in range(16):
         first = byte()
@@ -156,16 +157,17 @@ def _read_connect(sock):
 
 
 class Fixture:
-    url = "https://gecko-failure.invalid/"
+    url = "https://gecko-failure.test/"
     proxy_host = "10.0.2.2"
     proxy_port = _PORT
-    gateway_url = "https://gateway-failure.invalid/v1/diagnose"
+    gateway_url = "https://gateway-failure.test/v1/diagnose"
 
     def __init__(self):
         self._lock = threading.Lock()
         self._counts = {name: 0 for name in (
             "connectionsAccepted", "proxyRejected", "capacityRejected",
-            "rejectTargetOrRequestLine", "rejectHeaderName", "rejectHost", "rejectMalformed", "rejectIo",
+            "rejectTargetOrRequestLine", "rejectTestTargetVersion", "rejectHeaderName",
+            "rejectHost", "rejectMalformed", "rejectIo",
             "geckoConnectAccepted", "gatewayConnectAccepted",
             "gatewayHandshakeDelayed", "tlsHandshakeStarted",
             "tlsHandshakeFailed", "tlsHandshakeCompleted", "connectionsClosed",
@@ -195,8 +197,8 @@ def _tls_context(directory):
     try:
         subprocess.run([
             executable, "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "1",
-            "-subj", "/CN=gecko-failure.invalid",
-            "-addext", "subjectAltName=DNS:gecko-failure.invalid,DNS:gateway-failure.invalid",
+            "-subj", "/CN=gecko-failure.test",
+            "-addext", "subjectAltName=DNS:gecko-failure.test,DNS:gateway-failure.test",
             "-keyout", str(private_key), "-out", str(certificate),
         ], check=True, timeout=20, stdin=subprocess.DEVNULL,
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
@@ -323,7 +325,8 @@ class _Handler(socketserver.BaseRequestHandler):
         try:
             target = _read_connect(self.request)
         except _Rejected as rejected:
-            key = {"targetOrRequestLine": "rejectTargetOrRequestLine", "headerName": "rejectHeaderName",
+            key = {"targetOrRequestLine": "rejectTargetOrRequestLine", "testTargetVersion": "rejectTestTargetVersion",
+                   "headerName": "rejectHeaderName",
                    "host": "rejectHost", "malformed": "rejectMalformed"}.get(rejected.category)
             fixture._count(key or "rejectMalformed")
             fixture._count("proxyRejected")

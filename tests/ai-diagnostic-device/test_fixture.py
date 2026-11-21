@@ -37,7 +37,7 @@ class BytesSocket:
         self.closed = True
 
 
-def request(host=b"gecko-failure.invalid:443", headers=b"", tail=b""):
+def request(host=b"gecko-failure.test:443", headers=b"", tail=b""):
     return b"CONNECT " + host + b" HTTP/1.1\r\nHost: " + host + b"\r\n" + headers + b"\r\n" + tail
 
 
@@ -65,25 +65,32 @@ class SyntheticTests(unittest.TestCase):
 
     def test_authorized_default_port_host_and_plain_metadata(self):
         payload = request(headers=b"Accept-Language: en\r\nPragma: no-cache\r\n", tail=b"UNREAD")
-        payload = payload.replace(b"Host: gecko-failure.invalid:443", b"Host: gecko-failure.invalid")
+        payload = payload.replace(b"Host: gecko-failure.test:443", b"Host: gecko-failure.test")
         sock = BytesSocket(payload)
         self.assertEqual("gecko", fixture._read_connect(sock))
         self.assertEqual(b"UNREAD", sock.remaining)
 
+    def test_exact_test_authority_with_another_http_version(self):
+        approved = request().replace(b"HTTP/1.1", b"HTTP/1.0")
+        self.assertEqual("gecko", fixture._read_connect(BytesSocket(approved)))
+        with self.assertRaises(fixture._Rejected) as rejected:
+            fixture._read_connect(BytesSocket(request().replace(b"HTTP/1.1", b"HTTP/2")))
+        self.assertEqual("testTargetVersion", rejected.exception.category)
+
     def test_unregistered_authorities_methods_and_versions_rejected(self):
         candidates = [request(host=host) for host in (
-            b"example.com:443", b"127.0.0.1:443", b"gecko-failure.invalid:80",
-            b"gecko-failure.invalid.:443", b"GECKO-FAILURE.INVALID:443",
-            b"u@gecko-failure.invalid:443", b"gecko-failure.invalid:443/path")]
-        candidates += [request().replace(b"CONNECT", b"GET"), request().replace(b"HTTP/1.1", b"HTTP/1.0")]
+            b"example.com:443", b"127.0.0.1:443", b"gecko-failure.test:80",
+            b"gecko-failure.test.:443", b"GECKO-FAILURE.TEST:443",
+            b"u@gecko-failure.test:443", b"gecko-failure.test:443/path")]
+        candidates += [request().replace(b"CONNECT", b"GET"), request().replace(b"HTTP/1.1", b"HTTP/2")]
         for payload in candidates:
             with self.subTest(payload=payload), self.assertRaises(fixture._Rejected):
                 fixture._read_connect(BytesSocket(payload))
 
     def test_header_structure_rejected(self):
-        payloads = [request(headers=b"Host: gecko-failure.invalid:443\r\n"),
-                    request().replace(b"Host: gecko-failure.invalid:443", b"Host: gateway-failure.invalid:443"),
-                    request().replace(b"Host: gecko-failure.invalid:443\r\n", b""),
+        payloads = [request(headers=b"Host: gecko-failure.test:443\r\n"),
+                    request().replace(b"Host: gecko-failure.test:443", b"Host: gateway-failure.test:443"),
+                    request().replace(b"Host: gecko-failure.test:443\r\n", b""),
                     request(headers=b" User-Agent: folded\r\n"), request().replace(b"\r\n", b"\n"),
                     request(headers=b"User-Agent: a\tb\r\n"), request(headers=b"User-Agent: \xff\r\n"),
                     request(headers=b"User-Agent: " + b"x" * 513 + b"\r\n"),
@@ -133,7 +140,7 @@ class SyntheticTests(unittest.TestCase):
                     fixture._require_isolated_netns()
 
     def _handler(self, *, handshake_error=None, target="gecko", stop_on_delay=False):
-        raw = BytesSocket(request((target + "-failure.invalid:443").encode()))
+        raw = BytesSocket(request((target + "-failure.test:443").encode()))
         tls = types.SimpleNamespace(settimeout=mock.Mock(), close=mock.Mock(),
                                     do_handshake=mock.Mock(side_effect=handshake_error))
         # SimpleNamespace is not hashable; use a standalone fake TLS object.
@@ -195,7 +202,7 @@ class SyntheticTests(unittest.TestCase):
             result = fixture._tls_context("/synthetic/private")
         self.assertEqual({"gecko", "gateway"}, set(result))
         for target, context in result.items():
-            self.assertIsNone(context.callback(None, target + "-failure.invalid", None))
+            self.assertIsNone(context.callback(None, target + "-failure.test", None))
             self.assertEqual(ssl.ALERT_DESCRIPTION_UNRECOGNIZED_NAME,
                              context.callback(None, "example.com", None))
             self.assertEqual(ssl.ALERT_DESCRIPTION_UNRECOGNIZED_NAME,
@@ -331,8 +338,8 @@ class SyntheticTests(unittest.TestCase):
         self.assertFalse(snapshot["trustStoresModified"])
 
     def test_fixed_external_interface_and_non_daemon_cleanup(self):
-        self.assertEqual("https://gecko-failure.invalid/", fixture.Fixture.url)
-        self.assertEqual("https://gateway-failure.invalid/v1/diagnose", fixture.Fixture.gateway_url)
+        self.assertEqual("https://gecko-failure.test/", fixture.Fixture.url)
+        self.assertEqual("https://gateway-failure.test/v1/diagnose", fixture.Fixture.gateway_url)
         self.assertEqual("10.0.2.2", fixture.Fixture.proxy_host)
         self.assertEqual(37891, fixture.Fixture.proxy_port)
         self.assertFalse(fixture._Server.daemon_threads)

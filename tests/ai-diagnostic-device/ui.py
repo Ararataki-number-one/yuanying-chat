@@ -14,8 +14,8 @@ import xml.etree.ElementTree as ET
 
 PACKAGE = "local.pocketchat.aidiagnostics"
 ENVIRONMENT = "AI-synthetic"
-PAGE_URL = "https://gecko-failure.invalid/"
-GATEWAY_URL = "https://gateway-failure.invalid/v1/diagnose"
+PAGE_URL = "https://gecko-failure.test/"
+GATEWAY_URL = "https://gateway-failure.test/v1/diagnose"
 SYNTHETIC_TOKEN = "local-synthetic-token-0000000000000001"
 
 
@@ -322,8 +322,9 @@ def exercise(adb, record, fixture):
         # Reacquire from this same tab at most three times, never accept stale UI.
         proof = None
         for attempt in range(3):
-            checkpoint = "select_snapshot_from_current_gecko_tab"
+            checkpoint = "tap_choose_tab_evidence"
             ui.tap(text="选择标签页证据", cls="android.widget.Button")
+            checkpoint = "await_tab_picker_or_empty_notice"
             tree, state = ui.wait(lambda tree: (
                 "selection" if _nodes(tree, text="选择标签页证据（最多 3 个）") else
                 "empty" if _nodes(tree, text="当前环境没有可以归属到标签页的原生错误记录。") else None))
@@ -337,7 +338,9 @@ def exercise(adb, record, fixture):
                       and node.get("checkable") == "true"]
             if len(labels) != 1:
                 raise UiBlocked("unexpected-tab-count")
+            checkpoint = "toggle_one_native_tab"
             ui.tap(text=labels[0])
+            checkpoint = "apply_native_tab_selection"
             ui.tap(text="选入", cls="android.widget.Button")
             checkpoint = "read_the_native_evidence_preview"
             ui.tap(text="预览证据", cls="android.widget.Button")
