@@ -101,7 +101,7 @@ jobs:
               "-PcaretSdkRepository=$root/work/native-caret-sdk/maven" \
               "-PcaretSdkAssets=$root/work/native-caret-sdk/assets" \
               --max-workers=2 --console=plain "$@"
-            jq -n --arg abi "$abi" '{sdkVersion:33, supportedAbis:[$abi], screenDensity:320, supportedLocales:["en","zh"]}' > "$work/device.json"
+            jq -n --arg abi "$abi" '{sdkVersion:26, supportedAbis:[$abi], screenDensity:320, supportedLocales:["en","zh"]}' > "$work/device.json"
             java -Xmx1g -jar "$work/bundletool.jar" build-apks --bundle="$bundle" --output="$work/current.apks" \
               --aapt2="$tools/aapt2" --device-spec="$work/device.json" --max-threads=1 \
               --ks="$private/$signer.p12" --ks-key-alias=testkey \
