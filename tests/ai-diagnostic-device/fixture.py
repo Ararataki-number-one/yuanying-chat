@@ -1,6 +1,6 @@
 """Closed proxy for original-APK certificate-failure tests, in a new netns only.
 
-No upstream socket is ever opened. Only the two fixed CONNECT authorities below
+No upstream socket is ever opened. Only the three fixed CONNECT authorities below
 are admitted. A temporary self-signed leaf is presented, never installed in a
 trust store. Even if a client unexpectedly trusts it, application data is never
 read. TCP/OpenSSL may buffer received bytes; this module does not read/parse
@@ -16,6 +16,7 @@ from __future__ import annotations
 from contextlib import contextmanager
 from pathlib import Path
 import os
+import errno
 import shutil
 import socket
 import socketserver
@@ -29,6 +30,7 @@ import time
 
 _PORT = 37891
 _TARGETS = {
+    b"fixture-control.test:443": "control",
     b"gecko-failure.test:443": "gecko",
     b"gateway-failure.test:443": "gateway",
 }
@@ -37,6 +39,16 @@ _HEADER_NAMES = {b"host", b"user-agent", b"proxy-connection", b"connection", b"a
 _HEADER_DEADLINE = 5.0
 _TLS_DEADLINE = 5.0
 _GATEWAY_HANDSHAKE_DELAY = 2.0
+_DESTINATIONS = ("control", "gecko", "gateway", "other")
+_PHASES = (
+    "requestLineParsed", "proxyRejected", "rejectedRequestLine", "rejectedHeaderName",
+    "rejectedHeaderValue", "rejectedHeaderEnd", "connectAccepted", "connectResponseSent",
+    "connectResponseFailed", "handshakeDelayed", "tlsSetupFailed", "handshakeStarted",
+    "sniMatched", "sniRejected", "handshakeCompleted", "peerUnknownCa",
+    "peerCertificateAlert", "tlsEof", "tlsReset", "tlsTimeout", "tlsOtherFailure",
+)
+_CONNECT_OK = b"HTTP/1.1 200 Connection Established\r\n\r\n"
+_DENIED = b"HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
 
 
 class _Rejected(Exception):
@@ -44,6 +56,10 @@ class _Rejected(Exception):
 
     def __init__(self, category="malformed"):
         self.category = category
+        self.destination = "other"
+        self.request_type = "other"
+        self.phase = "requestLine"
+        self.blocked_timezone = False
 
 
 def _require_isolated_netns():
@@ -75,7 +91,20 @@ def _require_isolated_netns():
         raise RuntimeError("fixture_requires_isolated_linux_network_namespace") from None
 
 
-def _read_connect(sock):
+def _read_connect(sock, observe=None):
+    state = {"destination": "other", "request_type": "other", "phase": "requestLine", "blocked_timezone": False}
+    try:
+        return _read_connect_impl(sock, state, observe)
+    except (_Rejected, OSError) as error:
+        rejected = error if isinstance(error, _Rejected) else _Rejected("io")
+        rejected.destination = state["destination"]
+        rejected.request_type = state["request_type"]
+        rejected.phase = state["phase"]
+        rejected.blocked_timezone = state["blocked_timezone"]
+        raise rejected from None
+
+
+def _read_connect_impl(sock, state, observe):
     """No buffered I/O: reject secret-bearing header names before their value.
 
     The blank line terminates reads exactly, so no pipelined HTTP body is read.
@@ -113,14 +142,38 @@ def _read_connect(sock):
     request = line(128)
     method, separator, target_and_version = request.partition(b" ")
     authority, version_separator, version = target_and_version.partition(b" ")
+    if method == b"CONNECT":
+        state["request_type"] = "connect"
+        state["destination"] = _TARGETS.get(authority, "other")
+        state["blocked_timezone"] = authority == b"ipwho.is:443"
+    elif method in (b"GET", b"HEAD", b"POST", b"PUT", b"PATCH", b"DELETE", b"OPTIONS", b"TRACE"):
+        state["request_type"] = "http"
+        scheme, divider, remainder = authority.partition(b"://")
+        # Denial classification only; discard path/query immediately and keep
+        # only a boolean. This hostname never enters the admitted target map.
+        host = remainder.split(b"/", 1)[0].split(b"?", 1)[0].split(b"#", 1)[0]
+        if divider and scheme in (b"http", b"https"):
+            default_port = b":80" if scheme == b"http" else b":443"
+            for fixed_authority, destination in _TARGETS.items():
+                hostname = fixed_authority.removesuffix(b":443")
+                if host in (hostname, hostname + default_port):
+                    state["destination"] = destination
+                    break
+        state["blocked_timezone"] = bool(divider) and (
+            (scheme == b"http" and host in (b"ipwho.is", b"ipwho.is:80")) or
+            (scheme == b"https" and host in (b"ipwho.is", b"ipwho.is:443")))
+    if observe is not None:
+        observe(state["destination"], "requestLineParsed")
     if not separator or method != b"CONNECT" or authority not in _TARGETS:
         raise _Rejected("targetOrRequestLine")
     if not version_separator or version not in (b"HTTP/1.0", b"HTTP/1.1"):
         raise _Rejected("testTargetVersion")
     seen = set()
     for _ in range(16):
+        state["phase"] = "headerName"
         first = byte()
         if first == b"\r":
+            state["phase"] = "headerEnd"
             if byte() != b"\n" or b"host" not in seen:
                 raise _Rejected()
             return _TARGETS[authority]
@@ -137,6 +190,7 @@ def _read_connect(sock):
         if key not in _HEADER_NAMES or key in seen:
             raise _Rejected("headerName")
         seen.add(key)
+        state["phase"] = "headerValue"
         if key == b"host":
             # Both authority forms identify the same fixed HTTPS endpoint.
             if line(128).strip(b" ") not in (authority, authority.removesuffix(b":443")):
@@ -157,6 +211,7 @@ def _read_connect(sock):
 
 
 class Fixture:
+    control_url = "https://fixture-control.test/"
     url = "https://gecko-failure.test/"
     proxy_host = "10.0.2.2"
     proxy_port = _PORT
@@ -164,11 +219,16 @@ class Fixture:
 
     def __init__(self):
         self._lock = threading.Lock()
+        self._serving = False
+        self._destination_phases = {destination: {phase: 0 for phase in _PHASES}
+                                    for destination in _DESTINATIONS}
         self._counts = {name: 0 for name in (
             "connectionsAccepted", "proxyRejected", "capacityRejected",
             "rejectTargetOrRequestLine", "rejectTestTargetVersion", "rejectHeaderName",
             "rejectHost", "rejectMalformed", "rejectIo",
-            "geckoConnectAccepted", "gatewayConnectAccepted",
+            "controlConnectAccepted", "geckoConnectAccepted", "gatewayConnectAccepted",
+            "deniedConnect", "deniedHttp", "deniedOtherRequest",
+            "blockedTimezoneConnect", "blockedTimezoneHttp",
             "gatewayHandshakeDelayed", "tlsHandshakeStarted",
             "tlsHandshakeFailed", "tlsHandshakeCompleted", "connectionsClosed",
         )}
@@ -177,18 +237,92 @@ class Fixture:
         with self._lock:
             self._counts[key] += 1
 
+    def _observe(self, destination, phase):
+        # Both keys are derived fixed enums. Never retain raw authority, SNI,
+        # request line, headers, SSL reasons, peer addresses or exception text.
+        with self._lock:
+            self._destination_phases[destination][phase] += 1
+
+    def host_self_test(self):
+        """Explicit owned-control loopback probe; never trusts the test leaf.
+
+        Call only inside serve(). This sends a fixed CONNECT and TLS handshake,
+        but no HTTP application data. It does not test the emulator or Gecko.
+        Server alert counters may settle shortly after the client result.
+        """
+        if not self._serving:
+            raise RuntimeError("fixture_not_serving")
+        _require_isolated_netns()
+        deadline = time.monotonic() + 5.0
+        raw = tls = None
+        outcome = "loopbackOrProxyFailed"
+        try:
+            raw = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            raw.settimeout(max(0.001, deadline - time.monotonic()))
+            raw.connect(("127.0.0.1", _PORT))
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise TimeoutError()
+            raw.settimeout(remaining)
+            raw.sendall(b"CONNECT fixture-control.test:443 HTTP/1.1\r\nHost: fixture-control.test:443\r\n\r\n")
+            for expected in _CONNECT_OK:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise TimeoutError()
+                raw.settimeout(remaining)
+                if raw.recv(1) != bytes((expected,)):
+                    return self._control_result(outcome)
+            outcome = "tlsFailureUnclassified"
+            # An empty client trust store is deliberate. No CA files, custom
+            # roots or certificates are loaded, installed or bypassed.
+            context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+            tls = context.wrap_socket(raw, server_hostname="fixture-control.test",
+                                      do_handshake_on_connect=False)
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise TimeoutError()
+            tls.settimeout(remaining)
+            try:
+                tls.do_handshake()
+            except ssl.SSLCertVerificationError as error:
+                # The generated leaf is self-signed. A hostname/date failure is
+                # a different control failure, not proof of this expected case.
+                outcome = "untrustedCertificateRejected" if error.verify_code == 18 else "otherCertificateVerificationRejected"
+            else:
+                outcome = "unexpectedHandshakeSuccess"
+        except OSError:
+            pass
+        finally:
+            for peer in (tls, raw):
+                if peer is not None:
+                    try:
+                        peer.close()
+                    except OSError:
+                        pass
+        return self._control_result(outcome)
+
+    @staticmethod
+    def _control_result(outcome):
+        return {"status": "passed" if outcome == "untrustedCertificateRejected" else "failed",
+                "outcome": outcome, "destination": "control", "httpApplicationBytesSent": 0,
+                "trustStoresModified": False}
+
     def summary(self):
         with self._lock:
             return {
                 "counts": dict(self._counts),
+                "destinationPhases": {key: dict(value) for key, value in self._destination_phases.items()},
                 "upstreamConnections": 0,
-                "httpApplicationReads": 0,
+                "httpApplicationReads": 0,  # Compatibility: post-CONNECT only.
+                "tlsApplicationReads": 0,
+                "httpBodyReads": 0,
+                "authenticationValueReads": 0,
                 "trustStoresModified": False,
                 "providerRequests": 0,
             }
 
 
-def _tls_context(directory):
+def _tls_context(directory, fixture=None):
     executable = shutil.which("openssl")
     if executable is None:
         raise RuntimeError("fixture_requires_openssl")
@@ -198,7 +332,7 @@ def _tls_context(directory):
         subprocess.run([
             executable, "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "1",
             "-subj", "/CN=gecko-failure.test",
-            "-addext", "subjectAltName=DNS:gecko-failure.test,DNS:gateway-failure.test",
+            "-addext", "subjectAltName=DNS:fixture-control.test,DNS:gecko-failure.test,DNS:gateway-failure.test",
             "-keyout", str(private_key), "-out", str(certificate),
         ], check=True, timeout=20, stdin=subprocess.DEVNULL,
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
@@ -211,10 +345,11 @@ def _tls_context(directory):
             context.minimum_version = ssl.TLSVersion.TLSv1_2
             context.load_cert_chain(str(certificate), str(private_key))
 
-            def check_sni(sock, server_name, initial_context, expected=hostname):
-                if server_name != expected:
-                    return ssl.ALERT_DESCRIPTION_UNRECOGNIZED_NAME
-                return None
+            def check_sni(sock, server_name, initial_context, expected=hostname, destination=target):
+                matched = server_name == expected
+                if fixture is not None:
+                    fixture._observe(destination, "sniMatched" if matched else "sniRejected")
+                return None if matched else ssl.ALERT_DESCRIPTION_UNRECOGNIZED_NAME
 
             context.set_servername_callback(check_sni)
             contexts[target] = context
@@ -317,38 +452,73 @@ class _Server(socketserver.TCPServer):
                     pass
 
 
+def _tls_failure_kind(error):
+    # Only enumerated reason classes escape; raw OpenSSL text is discarded.
+    reason = getattr(error, "reason", None)
+    if reason == "TLSV1_ALERT_UNKNOWN_CA":
+        return "peerUnknownCa"
+    if reason in ("SSLV3_ALERT_BAD_CERTIFICATE", "SSLV3_ALERT_CERTIFICATE_UNKNOWN",
+                  "SSLV3_ALERT_CERTIFICATE_EXPIRED", "SSLV3_ALERT_CERTIFICATE_REVOKED",
+                  "SSLV3_ALERT_UNSUPPORTED_CERTIFICATE"):
+        return "peerCertificateAlert"
+    if isinstance(error, ssl.SSLEOFError) or reason == "UNEXPECTED_EOF_WHILE_READING":
+        return "tlsEof"
+    if isinstance(error, TimeoutError):
+        return "tlsTimeout"
+    if getattr(error, "errno", None) == errno.ECONNRESET:
+        return "tlsReset"
+    return "tlsOtherFailure"
+
+
 class _Handler(socketserver.BaseRequestHandler):
     def handle(self):
         server = self.server
         fixture = server.fixture
         tls = None
         try:
-            target = _read_connect(self.request)
+            target = _read_connect(self.request, fixture._observe)
         except _Rejected as rejected:
             key = {"targetOrRequestLine": "rejectTargetOrRequestLine", "testTargetVersion": "rejectTestTargetVersion",
-                   "headerName": "rejectHeaderName",
+                   "headerName": "rejectHeaderName", "io": "rejectIo",
                    "host": "rejectHost", "malformed": "rejectMalformed"}.get(rejected.category)
             fixture._count(key or "rejectMalformed")
             fixture._count("proxyRejected")
-            return
-        except OSError:
-            fixture._count("rejectIo")
-            fixture._count("proxyRejected")
+            fixture._observe(rejected.destination, "proxyRejected")
+            fixture._observe(rejected.destination, {
+                "requestLine": "rejectedRequestLine", "headerName": "rejectedHeaderName",
+                "headerValue": "rejectedHeaderValue", "headerEnd": "rejectedHeaderEnd",
+            }[rejected.phase])
+            if rejected.blocked_timezone:
+                fixture._count("blockedTimezoneConnect" if rejected.request_type == "connect" else "blockedTimezoneHttp")
+            if rejected.category == "targetOrRequestLine":
+                fixture._count({"connect": "deniedConnect", "http": "deniedHttp",
+                                "other": "deniedOtherRequest"}[rejected.request_type])
+                # Empty, fixed denial only. Do not read headers or body to reply.
+                try:
+                    self.request.settimeout(1.0)
+                    self.request.sendall(_DENIED)
+                except OSError:
+                    pass
             return
         fixture._count(target + "ConnectAccepted")
+        fixture._observe(target, "connectAccepted")
         try:
             self.request.settimeout(_TLS_DEADLINE)
-            self.request.sendall(b"HTTP/1.1 200 Connection Established\r\n\r\n")
+            self.request.sendall(_CONNECT_OK)
+        except OSError:
+            fixture._observe(target, "connectResponseFailed")
+            return
+        fixture._observe(target, "connectResponseSent")
+        try:
             if target == "gateway":
                 fixture._count("gatewayHandshakeDelayed")
+                fixture._observe(target, "handshakeDelayed")
                 if server.stopping.wait(_GATEWAY_HANDSHAKE_DELAY):
                     return
             if server.stopping.is_set():
                 return
             tls = server.context[target].wrap_socket(self.request, server_side=True,
                                                      do_handshake_on_connect=False)
-            # wrap_socket transfers the FD. Track the replacement so teardown
-            # can interrupt a TLS handshake, as well as a raw-header read.
             with server._active_lock:
                 server._active.discard(self.request)
                 if server.stopping.is_set():
@@ -356,12 +526,14 @@ class _Handler(socketserver.BaseRequestHandler):
                 server._active.add(tls)
             tls.settimeout(_TLS_DEADLINE)
             fixture._count("tlsHandshakeStarted")
+            fixture._observe(target, "handshakeStarted")
             tls.do_handshake()
             fixture._count("tlsHandshakeCompleted")
+            fixture._observe(target, "handshakeCompleted")
             # Never read TLS application data, including path, auth or body.
-            # A handshake success is unexpected, never a positive gateway test.
-        except (OSError, ssl.SSLError):
+        except OSError as error:
             fixture._count("tlsHandshakeFailed")
+            fixture._observe(target, "tlsSetupFailed" if tls is None else _tls_failure_kind(error))
         finally:
             if tls is not None:
                 with server._active_lock:
@@ -375,7 +547,7 @@ def serve():
     _require_isolated_netns()
     fixture = Fixture()
     with tempfile.TemporaryDirectory(prefix="pocketchat-negative-tls-") as directory:
-        context = _tls_context(directory)
+        context = _tls_context(directory, fixture)
         server = _Server(fixture, context)
         try:
             worker = threading.Thread(target=server.serve_forever,
@@ -387,9 +559,11 @@ def serve():
             finally:
                 server.server_close()
             raise RuntimeError("fixture_listener_start_failed") from None
+        fixture._serving = True
         try:
             yield fixture
         finally:
+            fixture._serving = False
             try:
                 server.close_active()
             finally:

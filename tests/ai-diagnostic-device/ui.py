@@ -176,6 +176,80 @@ class _Ui:
             pass
 
 
+
+def _timezone_summary(tree):
+    """Only read the fixed native status, never serialize its other contents."""
+    status = [node.get("text", "") for node in _nodes(tree, cls="android.widget.TextView")
+              if node.get("text", "").startswith("已保存：跟随系统时区\n当前：")]
+    if len(status) > 1:
+        raise UiBlocked("ambiguous-timezone-status")
+    return bool(status), bool(status and "当前会话原生设置已回读" in status[0])
+
+
+def _system_timezone_preflight(ui, record):
+    """Use the product editor on the fresh synthetic environment only.
+
+    Default IP timezone needs a remote IP lookup, which the closed proxy rejects.
+    Explicit system mode removes that lookup dependency while retaining the
+    product's native setting readback, route, TLS and protection gates.
+    """
+    environment = "当前环境：" + ENVIRONMENT + "，点按切换环境"
+    ui.wait(lambda tree: _target(tree, {"desc": environment}))
+    ui.tap(desc="浏览器菜单", cls="android.widget.Button")
+    ui.tap(text="编辑当前环境", cls="android.widget.Button", scroll=True)
+    ui.seen("编辑 · " + ENVIRONMENT)
+    ui.tap(text="浏览器", cls="android.widget.Button")
+    ui.tap(text="环境模板与生效状态", cls="android.widget.Button", scroll=True)
+    ui.seen("环境模板")
+    ui.tap(text="此环境的独立时区", cls="android.widget.Button", scroll=True)
+    ui.seen("此环境的独立时区")
+    selector = {"desc": "此环境时区模式", "cls": "android.widget.Spinner"}
+    ui.wait(lambda tree: _target(tree, selector))
+    record("timezone_editor_opened", "passed")
+    ui.tap(**selector)
+
+    # Android Spinner list rows can report clickable=false. Require the entire
+    # exact four-option native list, then tap only the observed system-mode row.
+    options = ("跟随当前出口 IP（默认）", "跟随系统时区", "UTC", "指定 IANA 时区")
+    def system_option(tree):
+        if not all(_nodes(tree, text=label) for label in options):
+            return None
+        node = _target(tree, {"text": "跟随系统时区"})
+        return node if node is not None and node.get("class") in (
+            "android.widget.TextView", "android.widget.CheckedTextView") else None
+    _, option = ui.wait(system_option)
+    x1, y1, x2, y2 = _bounds(option)
+    ui.call("shell", "input", "tap", str((x1+x2)//2), str((y1+y2)//2))
+    ui.wait(lambda tree: any(_nodes(node, text="跟随系统时区")
+                             for node in _nodes(tree, **selector)))
+    record("timezone_system_selected", "passed")
+    ui.tap(text="应用并重新加载", cls="android.widget.Button")
+    tree = ui.seen("应用当前环境时区？")
+    if not any(node.get("text", "").startswith("保存为“跟随系统时区”后将重新加载当前网页")
+               for node in _nodes(tree, cls="android.widget.TextView")):
+        raise UiBlocked("timezone-confirmation-mode-mismatch")
+    # This flow has just created the named empty environment; no user document,
+    # account, unsaved text or file operation has ever been introduced into it.
+    choices = [label for label in ("已保存输入，应用", "应用并重新加载")
+               if _nodes(tree, text=label, cls="android.widget.Button")]
+    if len(choices) != 1:
+        raise UiBlocked("timezone-confirmation-control-unavailable")
+    ui.tap(text=choices[0], cls="android.widget.Button")
+    record("timezone_apply_confirmed", "passed")
+    ui.wait(lambda tree: _timezone_summary(tree)[0], timeout=45)
+    record("timezone_system_saved", "passed", "explicit-product-setting-only")
+    ui.wait(lambda tree: _timezone_summary(tree)[1], timeout=45)
+    record("timezone_native_readback", "passed", "native-setting-readback-not-page-or-worker-proof")
+    ui.tap(desc="关闭此环境的独立时区", cls="android.widget.Button")
+    ui.seen("环境模板")
+    ui.tap(desc="关闭环境模板", cls="android.widget.Button")
+    ui.seen("编辑 · " + ENVIRONMENT)
+    ui.tap(text="取消", cls="android.widget.Button")
+    ui.wait(lambda tree: _target(tree, {"desc": "网页工具", "cls": "android.widget.Button"}))
+    ui.wait(lambda tree: _target(tree, {"desc": environment}))
+    record("timezone_preflight", "passed")
+
+
 def _preview(tree, *, configured=False):
     """Read only the explicit native preview TextView, validate, then discard."""
     candidates = [node.get("text", "") for node in _nodes(tree, cls="android.widget.TextView")
@@ -309,6 +383,10 @@ def exercise(adb, record, fixture):
         checkpoint = "gecko_toolbar"
         ui.wait(lambda tree: _target(tree, {"desc": "网页工具", "cls": "android.widget.Button"}), timeout=60)
         record("gecko_browser_workspace", "passed")
+        stage = "timezone_preflight"
+        checkpoint = "apply_system_timezone_through_product_ui"
+        _system_timezone_preflight(ui, record)
+        stage = "android_ui"
         checkpoint = "issue_synthetic_gecko_navigation"
         ui.tap(prefix="当前网址 ", cls="android.widget.Button")
         ui.seen("打开网址")

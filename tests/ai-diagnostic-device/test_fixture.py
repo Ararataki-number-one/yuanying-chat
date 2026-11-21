@@ -139,8 +139,9 @@ class SyntheticTests(unittest.TestCase):
                 with self.assertRaisesRegex(RuntimeError, "fixture_requires_isolated"):
                     fixture._require_isolated_netns()
 
-    def _handler(self, *, handshake_error=None, target="gecko", stop_on_delay=False):
-        raw = BytesSocket(request((target + "-failure.test:443").encode()))
+    def _handler(self, *, handshake_error=None, target="gecko", stop_on_delay=False, payload=None):
+        authority = next(key for key, value in fixture._TARGETS.items() if value == target)
+        raw = BytesSocket(request(authority) if payload is None else payload)
         tls = types.SimpleNamespace(settimeout=mock.Mock(), close=mock.Mock(),
                                     do_handshake=mock.Mock(side_effect=handshake_error))
         # SimpleNamespace is not hashable; use a standalone fake TLS object.
@@ -200,9 +201,10 @@ class SyntheticTests(unittest.TestCase):
                 fixture.subprocess, "run") as run, mock.patch.object(fixture.Path, "chmod"), mock.patch.object(
                 fixture.ssl, "SSLContext", Context):
             result = fixture._tls_context("/synthetic/private")
-        self.assertEqual({"gecko", "gateway"}, set(result))
+        self.assertEqual({"control", "gecko", "gateway"}, set(result))
         for target, context in result.items():
-            self.assertIsNone(context.callback(None, target + "-failure.test", None))
+            hostname = next(key for key, value in fixture._TARGETS.items() if value == target).decode().removesuffix(":443")
+            self.assertIsNone(context.callback(None, hostname, None))
             self.assertEqual(ssl.ALERT_DESCRIPTION_UNRECOGNIZED_NAME,
                              context.callback(None, "example.com", None))
             self.assertEqual(ssl.ALERT_DESCRIPTION_UNRECOGNIZED_NAME,
@@ -328,6 +330,117 @@ class SyntheticTests(unittest.TestCase):
         server.server_close.assert_called_once()
         worker.join.assert_called_once_with(timeout=2)
         directory.__exit__.assert_called_once()
+
+    def test_denied_destination_and_request_type_are_fixed_aggregates(self):
+        cases = [(request(b"private-sentinel.example:443"), "deniedConnect"),
+                 (b"GET http://private-sentinel.example/secret-path HTTP/1.1\r\nAuthorization: SECRET\r\n\r\n", "deniedHttp")]
+        for payload, counter in cases:
+            result, raw, tls, _ = self._handler(payload=payload)
+            self.assertEqual(1, result["counts"][counter])
+            self.assertEqual(1, result["destinationPhases"]["other"]["rejectedRequestLine"])
+            self.assertEqual([fixture._DENIED], raw.sent)
+            self.assertNotIn("private-sentinel", repr(result))
+            self.assertNotIn("SECRET", repr(result))
+            tls.do_handshake.assert_not_called()
+
+    def test_http_fixed_hostname_is_classified_but_always_denied(self):
+        for authority, destination in fixture._TARGETS.items():
+            hostname = authority.removesuffix(b":443")
+            payload = b"GET https://" + hostname + b"/synthetic HTTP/1.1\r\nAuthorization: SECRET\r\n\r\n"
+            result, raw, tls, _ = self._handler(payload=payload)
+            self.assertEqual(1, result["counts"]["deniedHttp"])
+            self.assertEqual(1, result["destinationPhases"][destination]["rejectedRequestLine"])
+            self.assertEqual(0, result["destinationPhases"][destination]["connectAccepted"])
+            self.assertTrue(raw.remaining.startswith(b"Authorization: SECRET"))
+            self.assertEqual([fixture._DENIED], raw.sent)
+            tls.do_handshake.assert_not_called()
+
+    def test_owned_destination_header_rejection_does_not_become_other(self):
+        result, raw, _, _ = self._handler(payload=request(headers=b"Authorization: SECRET\r\n"))
+        self.assertEqual(1, result["destinationPhases"]["gecko"]["rejectedHeaderName"])
+        self.assertEqual(0, result["destinationPhases"]["other"]["proxyRejected"])
+        self.assertTrue(raw.remaining.startswith(b" SECRET"))
+        self.assertEqual([], raw.sent)
+
+    def test_denied_timezone_is_exact_and_never_admitted(self):
+        cases = [(request(b"ipwho.is:443"), "blockedTimezoneConnect"),
+                 (b"GET https://ipwho.is/synthetic-path?q=synthetic HTTP/1.1\r\n\r\n", "blockedTimezoneHttp"),
+                 (b"GET http://ipwho.is:80/ HTTP/1.1\r\n\r\n", "blockedTimezoneHttp")]
+        for payload, counter in cases:
+            result, raw, tls, _ = self._handler(payload=payload)
+            self.assertEqual(1, result["counts"][counter])
+            self.assertEqual(1, result["destinationPhases"]["other"]["proxyRejected"])
+            self.assertEqual([fixture._DENIED], raw.sent)
+            tls.do_handshake.assert_not_called()
+        for authority in (b"ipwho.is.example:443", b"u@ipwho.is:443", b"IPWHO.IS:443", b"ipwho.is:80"):
+            result, _, _, _ = self._handler(payload=request(authority))
+            self.assertEqual(0, result["counts"]["blockedTimezoneConnect"])
+
+    def test_control_tls_unknown_ca_eof_and_timeout_have_distinct_counts(self):
+        errors = [(ssl.SSLEOFError(8, "synthetic"), "tlsEof"),
+                  (TimeoutError(), "tlsTimeout"),
+                  (ConnectionResetError(fixture.errno.ECONNRESET, "synthetic"), "tlsReset")]
+        unknown_ca = ssl.SSLError(1, "PRIVATE_ERROR_SENTINEL")
+        unknown_ca.reason = "TLSV1_ALERT_UNKNOWN_CA"
+        errors.append((unknown_ca, "peerUnknownCa"))
+        for error, phase in errors:
+            result, _, _, _ = self._handler(target="control", handshake_error=error)
+            self.assertEqual(1, result["counts"]["controlConnectAccepted"])
+            self.assertEqual(1, result["destinationPhases"]["control"][phase])
+            self.assertEqual(0, result["destinationPhases"]["gecko"][phase])
+            self.assertNotIn("PRIVATE_ERROR_SENTINEL", repr(result))
+            if phase != "peerUnknownCa":
+                self.assertEqual(0, result["destinationPhases"]["control"]["peerUnknownCa"])
+
+    def test_host_control_requires_live_fixture(self):
+        with self.assertRaisesRegex(RuntimeError, "fixture_not_serving"):
+            fixture.Fixture().host_self_test()
+
+    def test_host_control_fixed_loopback_cert_verification_without_application_data(self):
+        details = fixture.Fixture()
+        details._serving = True
+        raw = BytesSocket(fixture._CONNECT_OK)
+        raw.connect = mock.Mock()
+        tls = mock.Mock()
+        error = ssl.SSLCertVerificationError(1, "PRIVATE_ERROR_SENTINEL")
+        error.verify_code = 18
+        tls.do_handshake.side_effect = error
+        context = mock.Mock()
+        context.wrap_socket.return_value = tls
+        with mock.patch.object(fixture, "_require_isolated_netns"), mock.patch.object(
+                fixture.socket, "socket", return_value=raw), mock.patch.object(
+                fixture.ssl, "SSLContext", return_value=context) as constructor:
+            result = details.host_self_test()
+        self.assertEqual("passed", result["status"])
+        self.assertEqual("control", result["destination"])
+        raw.connect.assert_called_once_with(("127.0.0.1", 37891))
+        constructor.assert_called_once_with(ssl.PROTOCOL_TLS_CLIENT)
+        self.assertEqual("fixture-control.test", context.wrap_socket.call_args.kwargs["server_hostname"])
+        self.assertEqual(1, len(raw.sent))
+        self.assertTrue(raw.sent[0].startswith(b"CONNECT fixture-control.test:443 "))
+        tls.recv.assert_not_called()
+        tls.sendall.assert_not_called()
+        tls.close.assert_called_once()
+        self.assertTrue(raw.closed)
+        self.assertNotIn("PRIVATE_ERROR_SENTINEL", repr(result))
+
+    def test_host_control_other_certificate_failure_or_success_is_not_pass(self):
+        for verify_code in (62, None):
+            details = fixture.Fixture()
+            details._serving = True
+            raw = BytesSocket(fixture._CONNECT_OK)
+            raw.connect = mock.Mock()
+            tls, context = mock.Mock(), mock.Mock()
+            if verify_code is not None:
+                error = ssl.SSLCertVerificationError(1, "synthetic")
+                error.verify_code = verify_code
+                tls.do_handshake.side_effect = error
+            context.wrap_socket.return_value = tls
+            with mock.patch.object(fixture, "_require_isolated_netns"), mock.patch.object(
+                    fixture.socket, "socket", return_value=raw), mock.patch.object(
+                    fixture.ssl, "SSLContext", return_value=context):
+                result = details.host_self_test()
+            self.assertEqual("failed", result["status"])
 
     def test_summary_is_safe_copy(self):
         details = fixture.Fixture()

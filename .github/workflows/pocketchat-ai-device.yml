@@ -79,6 +79,13 @@ jobs:
           yes | "$sdkmanager" --sdk_root="$sdk" --licenses >/dev/null
           set -o pipefail
           "$sdkmanager" --sdk_root="$sdk" 'build-tools;37.0.0'
+          mkdir -p "$work/control-classes"
+          javac --release 8 -d "$work/control-classes" tests/ai-diagnostic-device/PocketChatTlsControl.java
+          "$sdk/build-tools/37.0.0/d8" --min-api 35 --output "$work/control.dex.jar" \
+            "$work/control-classes/PocketChatTlsControl.class"
+          python3 -B tests/ai-diagnostic-device/test_fixture.py
+          python3 -B prototype/ai-diagnostics/test_acceptance_https_gateway.py \
+            --report "$work/host-gateway-tls.json"
           apk="$work/app-x86_64-diagnostics.apk"
           badging=$("$sdk/build-tools/37.0.0/aapt2" dump badging "$apk")
           grep -F "package: name='local.pocketchat.aidiagnostics'" <<< "$badging"
@@ -144,6 +151,7 @@ jobs:
             work/ai-device/emulator-setup.json
             work/ai-device/image-setup.json
             work/ai-device/platform-tools-setup.json
+            work/ai-device/host-gateway-tls.json
             work/ai-device/device-results.json
           if-no-files-found: warn
           retention-days: 5

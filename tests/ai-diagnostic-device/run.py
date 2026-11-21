@@ -13,6 +13,15 @@ ACTIVITY = PACKAGE + "/local.pocketchat.BrandLaunchActivity"
 APK_SHA = "75ff5f3f880770aa9b4bc3fe8badd0658701460d0bf6c5f6b9335e23837e2feb"
 APK_COMMIT = "cca221ab11c7d05a21e998be7c27197937fbb23a"
 SERIAL = "emulator-5554"
+CONTROL_DEX = "/data/local/tmp/pocketchat-tls-control.dex.jar"
+TLS_RESULTS = {"TLS_CERTIFICATE_REJECTED", "TLS_UNEXPECTEDLY_TRUSTED",
+               "TLS_OTHER_FAILURE", "PROXY_OR_NETWORK_FAILED"}
+DNS_RESULTS = {"DNS_RESOLVED", "DNS_NOT_RESOLVED", "DNS_TIMEOUT", "DNS_PROBE_FAILED"}
+PHASE_MARKERS = {
+    "synthetic_proxy_saved", "timezone_editor_opened", "timezone_system_selected",
+    "timezone_apply_confirmed", "timezone_system_saved", "timezone_native_readback",
+    "timezone_preflight", "synthetic_address_navigation", "redacted_preview", "confirmation_cancel",
+}
 
 
 def checksum(path):
@@ -26,6 +35,69 @@ def checksum(path):
 def loopback_only():
     details = subprocess.check_output(["ip", "-j", "link", "show"], text=True, timeout=5)
     return {entry["ifname"] for entry in json.loads(details)} == {"lo"}
+
+
+def exact_marker(output, permitted):
+    markers = [line.strip() for line in output.splitlines() if line.strip() in permitted]
+    return markers[0] if len(markers) == 1 else "CONTROL_OUTPUT_NOT_OBSERVED"
+
+
+def observed_control_alert(fixture, before):
+    deadline = time.monotonic() + 2
+    while time.monotonic() < deadline:
+        after = fixture.summary()["destinationPhases"]["control"]
+        if (after["handshakeStarted"] > before["handshakeStarted"]
+                and after["sniMatched"] > before["sniMatched"]
+                and (after["peerUnknownCa"] > before["peerUnknownCa"]
+                     or after["peerCertificateAlert"] > before["peerCertificateAlert"])
+                and after["handshakeCompleted"] == before["handshakeCompleted"]):
+            return True
+        time.sleep(.05)
+    return False
+
+
+def run_controls(adb, root, fixture, record, snapshot):
+    if fixture.control_url != "https://fixture-control.test/":
+        raise RuntimeError("Control hostname did not match the fixed topology")
+    before = fixture.summary()["destinationPhases"]["control"]
+    try:
+        completed = subprocess.run(
+            ["java", "-cp", str(root / "control-classes"), "PocketChatTlsControl", "host"],
+            capture_output=True, text=True, timeout=18, check=True)
+        host = exact_marker(completed.stdout, TLS_RESULTS)
+    except (OSError, subprocess.SubprocessError):
+        host = "CONTROL_PROCESS_FAILED"
+    host_alert = host == "TLS_CERTIFICATE_REJECTED" and observed_control_alert(fixture, before)
+    snapshot("afterHostTlsControl")
+    record("host_default_tls_control", "passed" if host_alert else "failed",
+           {"client": host, "matchingProxyCertificateAlert": host_alert})
+
+    before = fixture.summary()["destinationPhases"]["control"]
+    try:
+        adb("push", str(root / "control.dex.jar"), CONTROL_DEX, timeout=20)
+        launcher = ("shell", "CLASSPATH=" + CONTROL_DEX, "app_process", "/system/bin", "PocketChatTlsControl")
+        try:
+            dns = exact_marker(adb(*launcher, "android-dns", timeout=16), DNS_RESULTS)
+        except (RuntimeError, subprocess.TimeoutExpired):
+            dns = "CONTROL_PROCESS_FAILED"
+        dns_observed = dns in ("DNS_RESOLVED", "DNS_NOT_RESOLVED", "DNS_TIMEOUT")
+        record("android_direct_dns_control", "passed" if dns_observed else "unverified", dns)
+        snapshot("afterAndroidDnsControl")
+        try:
+            android = exact_marker(adb(*launcher, "android", timeout=18), TLS_RESULTS)
+        except (RuntimeError, subprocess.TimeoutExpired):
+            android = "CONTROL_PROCESS_FAILED"
+    except (RuntimeError, subprocess.TimeoutExpired):
+        android = "CONTROL_PROCESS_FAILED"
+    finally:
+        try:
+            adb("shell", "rm", "-f", CONTROL_DEX, timeout=8)
+        except (RuntimeError, subprocess.TimeoutExpired):
+            pass
+    android_alert = android == "TLS_CERTIFICATE_REJECTED" and observed_control_alert(fixture, before)
+    snapshot("afterAndroidTlsControl")
+    record("android_default_tls_control", "passed" if android_alert else "failed",
+           {"client": android, "matchingProxyCertificateAlert": android_alert})
 
 
 def main():
@@ -43,6 +115,7 @@ def main():
         "scope": {"emulator": True, "physicalDevice": False, "thirdPartyAccess": False,
                   "paidProviderCalls": False, "deviceTrustChanged": False, "productionEgressVerified": False},
         "checks": {},
+        "proxyPhases": {},
     }
 
     def record(name, status, detail=None):
@@ -136,17 +209,45 @@ def main():
             from fixture import serve
             from ui import exercise
             with serve() as fixture:
+                def snapshot(name):
+                    report["proxyPhases"][name] = fixture.summary()
+
+                def ui_record(name, status, detail=None):
+                    if status == "passed" and name in PHASE_MARKERS:
+                        snapshot(name)
+                    record(name, status, detail)
+
+                snapshot("beforeControls")
+                run_controls(adb, args.output, fixture, record, snapshot)
                 try:
-                    report["observed"] = exercise(adb, record, fixture)
+                    report["observed"] = exercise(adb, ui_record, fixture)
                     print("UI observations:", json.dumps(report["observed"], sort_keys=True), flush=True)
                 except Exception as error:
                     record("ui_driver", "unverified", type(error).__name__)
             report["fixture"] = fixture.summary()
             counts = report["fixture"]["counts"]
             print("Synthetic proxy counts:", json.dumps(counts, sort_keys=True), flush=True)
+            phases = report["fixture"]["destinationPhases"]
+            print("Synthetic proxy destination phases:", json.dumps(phases, sort_keys=True), flush=True)
+            for name, receipt in report["proxyPhases"].items():
+                observed = receipt["counts"]
+                print("Proxy milestone:", name, json.dumps({
+                    "blockedTimezoneConnect": observed["blockedTimezoneConnect"],
+                    "blockedTimezoneHttp": observed["blockedTimezoneHttp"],
+                    "geckoConnectAccepted": observed["geckoConnectAccepted"],
+                    "controlConnectAccepted": observed["controlConnectAccepted"],
+                    "gatewayConnectAccepted": observed["gatewayConnectAccepted"],
+                }, sort_keys=True), flush=True)
+            for name in ("host_default_tls_control", "android_direct_dns_control", "android_default_tls_control"):
+                print("Fixed route control:", name, json.dumps(report["checks"].get(name, {}), sort_keys=True),
+                      flush=True)
             if counts["geckoConnectAccepted"]:
-                rejected = counts["tlsHandshakeFailed"] > 0 and counts["tlsHandshakeCompleted"] == 0
-                record("fixture_tls_rejection", "passed" if rejected else "failed")
+                gecko = phases["gecko"]
+                rejected = (gecko["handshakeStarted"] > 0 and gecko["sniMatched"] > 0
+                            and gecko["peerUnknownCa"] + gecko["peerCertificateAlert"] > 0
+                            and gecko["handshakeCompleted"] == 0)
+                record("fixture_tls_rejection", "passed" if rejected else "unverified",
+                       "matching-sni-and-peer-certificate-alert" if rejected else "no-specific-peer-certificate-alert")
             if report["checks"].get("confirmation_cancel", {}).get("status") == "passed":
                 record("cancel_no_gateway_connection", "passed" if counts["gatewayConnectAccepted"] == 0 else "failed")
 
@@ -173,8 +274,8 @@ def main():
                 pass
 
     checks = report["checks"]
-    required_ui = ("android_ui", "gecko_certificate_error", "redacted_preview", "confirmation_cancel",
-                   "fixture_tls_rejection", "cancel_no_gateway_connection")
+    required_ui = ("android_ui", "timezone_native_readback", "gecko_certificate_error", "redacted_preview",
+                   "confirmation_cancel", "fixture_tls_rejection", "cancel_no_gateway_connection")
     for key in (*required_ui, "trusted_gateway", "production_network_path", "physical_arm64"):
         checks.setdefault(key, {"status": "unverified"})
     core_passed = all(
@@ -182,7 +283,9 @@ def main():
         for k in ("original_apk", "namespace", "emulator_boot", "install", "launcher")
     ) and checks.get("installed_bytes", {}).get("status") != "failed"
     ui_passed = all(checks[key]["status"] == "passed" for key in required_ui)
-    report["result"] = "passed" if core_passed and ui_passed else "partial" if core_passed else "core_failed"
+    report["nativeEmulatorSubsetPassed"] = core_passed and ui_passed
+    report["result"] = ("passed" if core_passed and ui_passed and checks["trusted_gateway"]["status"] == "passed"
+                        else "partial" if core_passed else "core_failed")
     (args.output / "device-results.json").write_text(
         json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     print("Device acceptance result:", report["result"], flush=True)
