@@ -24,6 +24,62 @@ LABEL = '进入专注阅读'
 FIXTURE = ROOT/'tests/fixtures/browser-menu-original-incomplete-body.json'
 
 
+class V4ToolsBodyReadinessTests(unittest.TestCase):
+    def setUp(self):
+        self.addCleanup(capture.set_display, capture.WIDTH, capture.HEIGHT, capture.DENSITY)
+        capture.set_display(2676, 1236, 480)
+
+    # Minimal native hierarchy reproducing the API35 landscape head-before-body
+    # frame. The earlier complete fixture below does not prove that run recovered.
+    def frame(self, *, label='网页工具', body=False, body_package=PACKAGE, detached_close=False):
+        tree = ET.Element('hierarchy')
+        root = ET.SubElement(tree, 'node', {'package': PACKAGE, 'class': 'android.widget.LinearLayout'})
+        header = ET.SubElement(root, 'node', {'package': PACKAGE, 'class': 'android.widget.LinearLayout'})
+        ET.SubElement(header, 'node', {'package': PACKAGE, 'class': 'android.widget.TextView',
+                                      'text': label, 'content-desc': label, 'bounds':'[666,311][1866,455]'})
+        ET.SubElement(root if detached_close else header, 'node',
+                      {'package': PACKAGE, 'class': 'android.widget.Button',
+                       'content-desc': '关闭'+label, 'clickable': 'true', 'enabled': 'true',
+                       'bounds':'[1866,311][2010,455]'})
+        if body:
+            pane = ET.SubElement(root, 'node',
+                                 {'package': body_package, 'class': 'android.widget.ScrollView',
+                                  'scrollable': 'false', 'enabled': 'true', 'bounds':'[666,455][2010,1044]'})
+            ET.SubElement(pane, 'node', {'package': PACKAGE, 'class': 'android.widget.Button',
+                                        'clickable': 'true', 'enabled': 'true', 'text': LABEL,
+                                        'content-desc': LABEL, 'bounds': '[1002,804][1338,1044]'})
+        return ET.tostring(tree, encoding='unicode')
+
+    def test_tools_header_then_real_body_waits_under_original_deadline_without_gesture(self):
+        partial, complete = self.frame(), self.frame(body=True)
+        read = mock.Mock(side_effect=[partial, complete]); adb = mock.Mock(); inputs = []
+        with tempfile.TemporaryDirectory() as directory, mock.patch.object(capture.time, 'monotonic', return_value=100):
+            raw, action = capture.menu_action(SimpleNamespace(read=read), adb, partial, LABEL,
+                                               directory, 'v4', 120, inputs, sheet='tools')
+            self.assertEqual(raw, complete)
+            self.assertEqual(capture.bounds(action), (1002,804,1338,1044))
+            self.assertEqual((Path(directory)/'v4-menu-0.xml').read_text(), partial)
+            self.assertEqual([call.kwargs for call in read.call_args_list], [{'deadline':120}]*2)
+            adb.assert_not_called(); self.assertEqual(inputs, [])
+
+    def test_header_only_never_authorizes_late_foreign_or_ambiguous_tools(self):
+        for invalid in (self.frame(label='浏览器菜单'), self.frame(body=True, body_package='foreign.package'),
+                        self.frame(detached_close=True)):
+            read = mock.Mock(); adb = mock.Mock()
+            with self.subTest(invalid=invalid), tempfile.TemporaryDirectory() as directory, \
+                    mock.patch.object(capture.time, 'monotonic', return_value=100):
+                with self.assertRaises((AssertionError, ValueError)):
+                    capture.menu_action(SimpleNamespace(read=read), adb, invalid, LABEL,
+                                        directory, 'invalid', 120, [], sheet='tools')
+                read.assert_not_called(); adb.assert_not_called()
+        read = mock.Mock(return_value=self.frame(body=True)); adb = mock.Mock()
+        with tempfile.TemporaryDirectory() as directory, mock.patch.object(capture.time, 'monotonic', side_effect=[100, 120]):
+            with self.assertRaises(TimeoutError):
+                capture.menu_action(SimpleNamespace(read=read), adb, self.frame(), LABEL,
+                                    directory, 'late', 120, [], sheet='tools')
+            read.assert_called_once_with(deadline=120); adb.assert_not_called()
+
+
 class OriginalMenuBodyReadinessTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):

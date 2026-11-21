@@ -51,7 +51,7 @@ def member(raw,needle):
 def main():
  p=argparse.ArgumentParser();p.add_argument('--java-home',type=Path,required=True);p.add_argument('--json-jar',type=Path,required=True);p.add_argument('--output',type=Path,required=True);a=p.parse_args()
  app=ROOT/'app/src/main/java/local/pocketchat';geo=ROOT/'tests/gecko'
- whole=[geo/n for n in ['IpTimeZoneFixtureApplication.java','IpTimeZoneFixtureScopes.java']]+[app/n for n in ['J.java','GeckoTimeZoneSpec.java','GeckoTimeZonePolicy.java','NetworkShareJson.java','EnvironmentProcessPolicy.java']]
+ whole=[geo/n for n in ['IpTimeZoneFixtureApplication.java','IpTimeZoneFixtureScopes.java']]+[app/n for n in ['J.java','GeckoTimeZoneSpec.java','GeckoTimeZonePolicy.java','NetworkShareJson.java','EnvironmentProcessPolicy.java','EnvironmentEngine.java']]
  extracted={}
  for name,needles in [('PocketApplication.java',['protected void attachBaseContext(','public void onCreate()','synchronized Context profile(','public Context getApplicationContext()']),('Profiles.java',['static int processSlot()','static int slot(','static Context global(','static Context context(','static void prepare(','private static <T>T prepare(']),('EnvironmentSpec.java',['static final class Identity {','private static JSONObject object(']),('ProfileContext.java',['public Context getApplicationContext()','File directory(','public File getFilesDir()','public File getNoBackupFilesDir()']),('GeckoTimeZoneStore.java',['Repository(Context context)'])]:
   raw=(app/name).read_text()

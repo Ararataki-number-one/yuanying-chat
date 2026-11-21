@@ -106,6 +106,14 @@ def menu_body_ready(xml, package, *, panel='浏览器菜单'):
                  and n.get('enabled') == 'true'
                  and (n.get('scrollable') == 'true' or panel == '网页工具' and n.get('scrollable') == 'false')
                  and n.get('visible-to-user') != 'false']
+    # Android may expose the exact tools header before publishing the scroll
+    # subtree (observed after leaving reading mode on API 35 in landscape).
+    # No action or swipe is authorized until the actual owned body appears.
+    if (panel == '网页工具' and len(headings) == len(close) == 1 and not scrollers
+            and parents.get(headings[0]) is not None
+            and parents[headings[0]] is parents.get(close[0])
+            and not any(n.get('class') == 'android.widget.ScrollView' for n in nodes)):
+        return False
     assert len(headings) == len(close) == len(scrollers) == 1, 'Expected the actual native browser menu'
     scroller = scrollers[0]
     left, top, right, bottom = bounds(scroller)
