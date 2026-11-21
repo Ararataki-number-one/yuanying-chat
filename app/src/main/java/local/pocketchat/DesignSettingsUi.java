@@ -21,7 +21,7 @@ final class DesignSettingsUi {
     String browserDetail="环境暂不可用";
     if(target!=null){
       Context profile=Profiles.context(a,target.slot);
-      browserDetail=Profiles.display(a,target.slot)+" · "+(BrowserPreferences.startBrowser(profile)?"Chromium 指纹浏览器":"Gecko 指纹浏览器");
+      browserDetail=Profiles.display(a,target.slot)+" · "+BrowserPreferences.engine(profile).label;
     }
     group(a,environment,"此环境的浏览器与启动",browserDetail,"browser",()->BrowserSettingsUi.openWorkspace(a,target,refresh));
     SettingsWorkspaceStyle.section(box,"提醒与后台","全局");
@@ -47,7 +47,7 @@ final class DesignSettingsUi {
           +"\n\nChromium 由 Cefrium 0.21.0 提供，使用 LGPL-3.0-or-later。上游源码和第三方声明随本版本发布说明提供。");
       return;
     }
-    DesignUi.message(a,"元婴期院士 · "+AppVersion.name(a),"Android 双内核指纹浏览器\n\nGecko 与 Chromium 都能输入网址或搜索，默认网站仍为 https://chatgpt.com/。Gecko 在 ChatGPT 网页额外提供草稿救援和离线会话检索。\n\n每个环境分别保存登录、网络和指纹配置；两个内核的 Cookie 与指纹配置独立。Gecko 使用原生隐私模板，Chromium 使用原生 UA / UA-CH 和文档开始时的指纹保护，具体范围可分别查看设置与自检。\n\nChromium 基于 Android System WebView，提供多标签、收藏与历史、页内查找和文件上传下载。可选择每个环境的启动内核和两个内核共用的默认网站。\n\n后台完成提醒默认关闭，可在应用设置中开启。登录数据保存在本机，网络凭据及 Chromium 指纹配置由 Android Keystore 加密。第三方许可随源码提供。");}
+    DesignUi.message(a,"元婴期院士 · "+AppVersion.name(a),"Android 双内核指纹浏览器\n\nGecko 与 Chromium 都能输入网址或搜索，默认网站仍为 https://chatgpt.com/。Gecko 在 ChatGPT 网页额外提供草稿救援和离线会话检索。\n\n每个环境分别保存登录、网络和指纹配置；两个内核的 Cookie 与指纹配置独立。Gecko 使用原生隐私模板，Chromium 使用原生 UA / UA-CH 和文档开始时的指纹保护，具体范围可分别查看设置与自检。\n\n独立 Chromium 提供多标签、收藏与历史、页内查找和文件上传下载。内核只在创建环境时选择，默认 Firefox（Gecko）；创建后仍可编辑首页。\n\n后台完成提醒默认关闭，可在应用设置中开启。登录数据保存在本机，网络凭据及 Chromium 指纹配置由 Android Keystore 加密。第三方许可随源码提供。");}
   static void capabilities(Activity a){
     if(ChromiumEntry.managed(a)){
       DesignUi.message(a,"功能支持范围",

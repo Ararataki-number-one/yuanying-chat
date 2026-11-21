@@ -13,7 +13,12 @@ public final class EnvironmentConfigTransferHost {
     check("fresh identity not imported from source",saved.slot==1&&!saved.environmentId.equals(ProfileCatalog.INSTANCE.ids[0]));check("fresh environment becomes created",ProfileCatalog.INSTANCE.created[1]);
     TestContext dest=Profiles.contexts[1];check("network requires new configuration",Boolean.FALSE.equals(dest.prefs.values.get("networkConfigured")));check("external VPN required",Boolean.TRUE.equals(dest.prefs.values.get("requireExternalVpn")));check("no imported proxy",!dest.prefs.values.containsKey("proxy"));check("no internal route restored",dest.prefs.values.get("networkMode").equals("external"));
     check("browser protection restored as requested",Integer.valueOf(2).equals(dest.prefs.values.get("privacyLevel")));check("only browser spec in destination vault",dest.vault.size()==1&&dest.vault.containsKey("environment-spec"));check("name restored",ProfileCatalog.INSTANCE.names[1].equals("恢复的环境"));check("old environment unchanged after success",old.equals(oldFingerprint()));
-    final TestContext initial=root;rejected("occupied environment rejected",()->EnvironmentConfigTransfer.restore(initial,0,config,()->true));check("occupied environment bytes unchanged",old.equals(oldFingerprint()));
+    check("backup restore defaults to Firefox",EnvironmentEngine.read(dest.prefs)==EnvironmentEngine.GECKO);
+    EnvironmentConfigTransfer.restore(root,2,config,EnvironmentEngine.CHROMIUM,()->true);
+    check("explicit restore choice binds only the newly reserved slot",
+        EnvironmentEngine.read(Profiles.contexts[2].prefs)==EnvironmentEngine.CHROMIUM
+        &&EnvironmentEngine.read(dest.prefs)==EnvironmentEngine.GECKO&&old.equals(oldFingerprint()));
+    final TestContext initial=root;rejected("occupied environment rejected",()->EnvironmentConfigTransfer.restore(initial,0,config,EnvironmentEngine.CHROMIUM,()->true));check("occupied environment bytes unchanged",old.equals(oldFingerprint()));
     for(String stage:new String[]{"preferences","vault","stale-before","stale-enter","stale-after","browser-data","roots"}){
       reset();root=Profiles.contexts[0];final TestContext source=root;String before=oldFingerprint();TestContext target=Profiles.contexts[1];
       if(stage.equals("preferences"))target.prefs.failAt=1;if(stage.equals("vault"))EnvironmentSpecRepository.failInitialize=true;if(stage.equals("browser-data"))target.browserData=true;if(stage.equals("roots"))EnvironmentResetActivity.rootsValid=false;

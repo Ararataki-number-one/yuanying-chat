@@ -58,7 +58,7 @@ class EnvironmentConfigBackupTest(unittest.TestCase):
     def test_restore_transaction_ownership_and_fault_boundaries(self):
         java = os.environ.get('PROFILE_JAVA') or shutil.which('java')
         self.assertTrue(java, 'JDK17+ required')
-        sources = [PRODUCTION / name for name in ['J.java', 'BrowserIdentitySpec.java', 'EnvironmentConfigBackup.java', 'EnvironmentConfigTransfer.java']]
+        sources = [PRODUCTION / name for name in ['J.java', 'BrowserIdentitySpec.java', 'EnvironmentConfigBackup.java', 'EnvironmentConfigTransfer.java', 'EnvironmentEngine.java']]
         sources += [ROOT / 'tests/environment-config-backup-host' / name for name in ['TransferDoubles.java', 'EnvironmentConfigTransferHost.java', 'android/content/Context.java', 'android/content/SharedPreferences.java']]
         before = {str(p.relative_to(ROOT)): hashlib.sha256(p.read_bytes()).hexdigest() for p in [*sources, Path(__file__)]}
         jars = {'desktop': Path(os.environ.get('PROFILE_JSON_JAR', ROOT / 'work/profile-host/json.jar')),

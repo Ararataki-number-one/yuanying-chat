@@ -90,10 +90,14 @@ public class BrowserActivity extends ThemedActivity {
     runtime.start();
   }
   static String intentAddress(Intent intent){return BrowserPreferences.openingAddress(intent);}
+  static boolean legacyFixtureEnabled(Context context){
+    if(!"local.pocketchat.test".equals(context.getPackageName()))return false;
+    Bundle flags=AppVersion.metadata(context);
+    return flags!=null&&flags.getBoolean("local.pocketchat.LEGACY_WEBVIEW_FIXTURE");
+  }
   boolean dispatchBoundEngine(Intent intent){
     if(!ProfileCatalog.get(this).available(Profiles.slot(this))){finish();return true;}
-    boolean chromium=BrowserPreferences.startBrowser(this);
-    if(chromium&&!ChromiumEntry.managed(this))return false;
+    if(legacyFixtureEnabled(this)&&BrowserPreferences.startBrowser(this))return false;
     if(fileOperationPending()){
       message("请完成当前文件操作，然后重新打开此环境。");return true;
     }

@@ -21,6 +21,9 @@ final class EnvironmentConfigTransfer {
     });
   }
   static EnvironmentSpec.Identity restore(Context root,int slot,EnvironmentConfigBackup.Config config,BooleanSupplier current)throws Exception{
+    return restore(root,slot,config,EnvironmentEngine.GECKO,current);
+  }
+  static EnvironmentSpec.Identity restore(Context root,int slot,EnvironmentConfigBackup.Config config,EnvironmentEngine engine,BooleanSupplier current)throws Exception{
     // Revalidate at the mutation boundary, including supported template fields.
     EnvironmentConfigBackup.Config safe=EnvironmentConfigBackup.Config.read(config.bytes());
     if(slot<0||slot>=Profiles.MAX)throw new IOException("目标环境不可用");
@@ -32,7 +35,7 @@ final class EnvironmentConfigTransfer {
           EnvironmentSpec.Identity identity=catalog.identity(slot);staged[0]=identity;SecretStore vault=new SecretStore(destination);SharedPreferences preferences=destination.getSharedPreferences("chat",0);
           // The marker is committed before any vault mutation. A later failed
           // batch may clean only its exact marker under a new writer lease.
-          SharedPreferences.Editor edit=preferences.edit().clear().putBoolean("environmentInitialized",true).putBoolean("pageMode",true)
+          SharedPreferences.Editor edit=EnvironmentEngine.stageNew(preferences.edit().clear(),engine).putBoolean("environmentInitialized",true).putBoolean("pageMode",true)
             .putString("networkMode","external").putBoolean("requireExternalVpn",true).putBoolean("networkConfigured",false)
             .putInt("privacyLevel",safe.browser.protectionLevel()).putString("configRestoreBatch",batch)
             .putString("configRestoreIdentity",identity.environmentId).putInt("configRestoreGeneration",identity.generation);

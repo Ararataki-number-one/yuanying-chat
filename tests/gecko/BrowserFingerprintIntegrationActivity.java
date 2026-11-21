@@ -28,7 +28,7 @@ public final class BrowserFingerprintIntegrationActivity extends BrowserActivity
     validateIntent(this);nonce=getIntent().getStringExtra("runNonce");build=IntegrationBuildIdentity.read(this);
     if(!build.getString("sourceCommit").equals(getIntent().getStringExtra("sourceCommit")))throw new SecurityException("Source differs");
     fixture=new BrowserFingerprintFixture(this,"chromium");fixture.start();configure(this,fixture.port(),URL+"?case=primary");
-    if(!BrowserPreferences.save(this,true,BrowserPreferences.DEFAULT_URL))throw new IOException("Chromium fixture binding could not be saved");
+    if(!BrowserIntegrationActivity.seedChromium(this))throw new IOException("Chromium fixture binding could not be saved");
     getIntent().putExtra("url",URL+"?case=primary");super.onCreate(null);deadline=SystemClock.elapsedRealtime()+90000;publish(false);
     await("first protected production surface",()->fingerprintState!=null&&selected!=null&&selected.fingerprint!=null&&ready(URL),()->{
       check("chromium.production-ui",address.isShown()&&runtime.allowed()&&web()!=null);

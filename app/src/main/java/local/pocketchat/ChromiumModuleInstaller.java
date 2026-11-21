@@ -33,7 +33,9 @@ import java.util.concurrent.ExecutorService;
 
 /** Downloads an original-signed feature into one inherit-existing package transaction. */
 final class ChromiumModuleInstaller {
-  static final String SLOT = "chromiumInstallSlot";
+  private static final String SLOT = "chromiumInstallSlot";
+  private static final String GENERATION = "chromiumInstallGeneration";
+  private static final String ENVIRONMENT = "chromiumInstallEnvironment";
   static final String STATUS_ACTION = "local.pocketchat.CHROMIUM_INSTALL_STATUS";
   private static final String DELIVERY = "local.pocketchat.CHROMIUM_DELIVERY";
   private static final String STATE = "chromium-module-install";
@@ -60,6 +62,10 @@ final class ChromiumModuleInstaller {
     }
   }
 
+  static boolean selectableForNewEnvironment(Context context) {
+    return supported(context) && ChromiumEntry.managed(context) && (installed(context) || available(context));
+  }
+
   static boolean installed(Context context) {
     if (!supported(context)) return false;
     try {
@@ -72,15 +78,33 @@ final class ChromiumModuleInstaller {
     }
   }
 
-  static void show(Activity activity, int slot) {
-    activity.startActivity(new Intent(activity, ChromiumModuleInstallActivity.class).putExtra(SLOT, slot));
+  static void show(Activity activity, EnvironmentSpec.Identity expected) {
+    activity.startActivity(new Intent(activity, ChromiumModuleInstallActivity.class)
+        .putExtra(SLOT, expected.slot).putExtra(GENERATION, expected.generation).putExtra(ENVIRONMENT, expected.environmentId));
+  }
+
+  static EnvironmentSpec.Identity requestedOwner(Intent intent) {
+    if (intent == null) return null;
+    try {
+      return new EnvironmentSpec.Identity(intent.getIntExtra(SLOT, -1), intent.getIntExtra(GENERATION, -1),
+          intent.getStringExtra(ENVIRONMENT));
+    } catch (RuntimeException invalid) { return null; }
+  }
+
+  static boolean ownerCurrent(Context context, EnvironmentSpec.Identity expected) {
+    if (expected == null) return false;
+    try {
+      return expected.equals(ProfileCatalog.get(context).identity(expected.slot))
+          && BrowserPreferences.startBrowser(Profiles.context(context, expected.slot));
+    } catch (IOException | RuntimeException unavailable) { return false; }
   }
 
   static Operation current() { return current; }
 
-  static synchronized Operation begin(Context context, int slot) {
+  static synchronized Operation begin(Context context, EnvironmentSpec.Identity expected) {
+    if (!ownerCurrent(context, expected)) return null;
     if (current != null && !current.done) return current;
-    Operation work = new Operation(Profiles.global(context), slot);
+    Operation work = new Operation(Profiles.global(context), expected);
     current = work;
     WORKER.execute(work::run);
     return work;
@@ -102,7 +126,7 @@ final class ChromiumModuleInstaller {
     }
     forgetSession(context, work.sessionId);
     if (result == PackageInstaller.STATUS_SUCCESS && installed(context)) {
-      work.finish("Chromium 组件已安装。返回环境设置后即可选择内核。");
+      work.finish("Chromium 组件已安装。返回已绑定 Chromium 的环境即可打开。");
     } else if (result == PackageInstaller.STATUS_FAILURE_ABORTED) {
       work.finish("安装已取消，可以重新下载。");
     } else {
@@ -171,7 +195,7 @@ final class ChromiumModuleInstaller {
 
   static final class Operation {
     final Context context;
-    final int slot;
+    final EnvironmentSpec.Identity expected;
     volatile boolean cancelled, submitted, done;
     volatile long read, total;
     volatile String message = "正在核对已安装版本与环境网络…";
@@ -182,9 +206,9 @@ final class ChromiumModuleInstaller {
     private boolean wifiOnly;
     private long lastWifiCheck;
 
-    Operation(Context context, int slot) {
+    Operation(Context context, EnvironmentSpec.Identity expected) {
       this.context = context;
-      this.slot = slot;
+      this.expected = expected;
     }
 
     synchronized void cancel() {
@@ -238,16 +262,16 @@ final class ChromiumModuleInstaller {
       PackageInstaller installer = null;
       try {
         installer = context.getPackageManager().getPackageInstaller();
-        if (!available(context) || !AppUpdates.validSlot(slot)) throw invalidPackage();
+        if (!available(context) || !ownerCurrent(context, expected)) throw invalidPackage();
         if (!context.getPackageManager().canRequestPackageInstalls()) throw new IOException("请先允许 PocketChat 安装组件");
         if (installed(context)) {
-          finish("Chromium 组件已安装，返回设置后即可选择。");
+          finish("Chromium 组件已安装，返回环境即可打开。");
           return;
         }
         discardPreviousSession(context, installer);
         wifiOnly = AppSettings.bool(context, "updateWifiOnly", true);
         checkStopped();
-        try (ChromiumModuleRoute route = ChromiumModuleRoute.acquire(context, slot, () -> cancelled)) {
+        try (ChromiumModuleRoute route = ChromiumModuleRoute.acquire(context, expected, () -> cancelled)) {
           transfer = route;
           checkStopped();
           PackageInfo before = packageInfo(context);

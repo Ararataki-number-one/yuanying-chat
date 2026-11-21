@@ -102,7 +102,7 @@ public class MainActivity extends ThemedActivity {
     }else handleOpening(getIntent());
   }
   void handleOpening(Intent intent){
-    if(BrowserSettingsUi.ownerOpening(this,intent)||BrowserPreferences.startBrowser(this)&&BrowserPreferences.nativeOpening(intent)){
+    if(BrowserSettingsUi.ownerOpening(this,intent)||BrowserPreferences.engine(this)!=EnvironmentEngine.GECKO&&BrowserPreferences.nativeOpening(intent)){
       openNativeWorkspace(intent);return;
     }
     if(session==null){
@@ -160,7 +160,7 @@ public class MainActivity extends ThemedActivity {
     catch(JSONException unavailable){}
     if(row==null){DesignUi.message(this,"下载任务","此下载任务已不可用，请查看下载记录。");return;}
     if("saved".equals(row.optString("state"))){nativeSavedFiles.show(row);return;}
-    DesignUi.message(this,row.optString("name","下载任务"),"请在此环境的浏览器设置中选择 Gecko，然后重新打开此下载任务。");
+    DesignUi.message(this,row.optString("name","下载任务"),"这是旧版 Firefox（Gecko）的未完成任务，不能在当前环境继续；已保存文件仍可在下载页打开。");
   }
   void closeNativeWorkspace(){
     if(nativeSavedFiles==null||session!=null)return;
@@ -177,7 +177,7 @@ public class MainActivity extends ThemedActivity {
     if(!ProfileCatalog.get(this).available(Profiles.slot(this))){finish();return;}
     JSONObject opening=ProfileCatalog.get(this).item(Profiles.slot(this));
     if(browserStartup!=null&&!browserStartup.matches(opening.optString("environmentId"),Profiles.slot(this),opening.optInt("generation",-1))){finish();return;}
-    if(BrowserPreferences.startBrowser(this)){
+    if(BrowserPreferences.engine(this)!=EnvironmentEngine.GECKO){
       if(BrowserPreferences.nativeOpening(getIntent()))openNativeWorkspace(getIntent());
       else dispatchBrowser(getIntent());
       return;
@@ -448,23 +448,28 @@ public class MainActivity extends ThemedActivity {
     }
   }
   boolean dispatchBrowser(Intent intent){
-    if(!BrowserPreferences.shouldOpenBrowser(this,intent)||!ProfileCatalog.get(this).available(Profiles.slot(this)))return false;
+    if(!ProfileCatalog.get(this).available(Profiles.slot(this))||BrowserPreferences.nativeOpening(intent))return false;
+    EnvironmentEngine engine=BrowserPreferences.engine(this);
+    if(engine==EnvironmentEngine.GECKO)return false;
     if(geckoWorkPending()||nativeFileWorkPending()){
-      if(active)fileFeedback("请完成当前网页或文件操作，然后重新打开此环境以使用 Chromium。");
+      if(active)fileFeedback("请完成当前网页或文件操作，再重新打开此环境。");
       return true;
     }
     String url=BrowserPreferences.openingAddress(intent);
-    if(ChromiumEntry.managed(this)){
-      if(ChromiumEntry.open(this,url)){finish();return true;}
-      if(environmentOverview==null)environmentOverview=new EnvironmentOverviewUi(this);
-      Intent settings=new Intent().putExtra("openWindowAction","settings");
-      setIntent(settings);openNativeWorkspace(settings);
-      String issue=ChromiumEntry.networkIssue(this);
-      hub.feedback(issue.isEmpty()?"Chromium 组件尚未就绪。请在浏览器内核设置中检查安装状态。":issue,true);
-      return true;
+    if(engine==EnvironmentEngine.CHROMIUM&&ChromiumEntry.managed(this)&&ChromiumEntry.open(this,url)){
+      finish();return true;
     }
-    if(url==null)BrowserActivity.resume(this);else BrowserActivity.open(this,url);
-    finish();return true;
+    if(engine==EnvironmentEngine.CHROMIUM&&BrowserActivity.legacyFixtureEnabled(this)){
+      if(url==null)BrowserActivity.resume(this);else BrowserActivity.open(this,url);
+      finish();return true;
+    }
+    if(environmentOverview==null)environmentOverview=new EnvironmentOverviewUi(this);
+    Intent settings=new Intent().putExtra("openWindowAction","settings");
+    setIntent(settings);openNativeWorkspace(settings);
+    String issue=engine==EnvironmentEngine.CHROMIUM?ChromiumEntry.networkIssue(this):"";
+    hub.feedback(engine==EnvironmentEngine.UNAVAILABLE?"环境的浏览器内核无法读取，未打开网页。"
+      :issue.isEmpty()?"Chromium 组件尚未就绪。请在浏览器设置中检查安装状态。":issue,true);
+    return true;
   }
   boolean nativeFileWorkPending(){return nativeSavedFiles!=null&&(nativeSavedFiles.exporting!=null||nativeSavedFiles.busy)
     ||restoredSavedFiles!=null&&(restoredSavedFiles.exporting!=null||restoredSavedFiles.busy);}

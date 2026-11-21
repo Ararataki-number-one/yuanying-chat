@@ -51,26 +51,28 @@ public final class CreationHost {
   static void creation()throws Exception {
     ProfileCatalog catalog=fixture();
     int generation=claimGeneration(catalog,1);
-    EnvironmentSpec.Identity winner=Profiles.create(catalog.root,1,generation,null,"Chosen"," Group ",true,true);
+    EnvironmentSpec.Identity winner=Profiles.create(catalog.root,1,generation,null,"Chosen"," Group ",true,true,EnvironmentEngine.CHROMIUM);
     check(winner.equals(catalog.identity(1))&&presentation(catalog,1,"Chosen","Group","",true)
           &&"1".equals(catalog.db.settings.get("defaultSlot")),"New environment publishes its name, group, display and default together");
-    check(rejected(()->Profiles.create(catalog.root,1,generation,null,"Late","changed",false,true))
+    check(rejected(()->Profiles.create(catalog.root,1,generation,null,"Late","changed",false,true,EnvironmentEngine.GECKO))
           &&winner.equals(catalog.identity(1))&&presentation(catalog,1,"Chosen","Group","",true),"Late creation cannot modify the winner");
     Profiles.prepare(catalog.root,1,false);
-    check(winner.equals(catalog.identity(1)),"Existing environment preparation remains idempotent");
+    check(winner.equals(catalog.identity(1))&&BrowserPreferences.engine(Profiles.context(catalog.root,1))==EnvironmentEngine.CHROMIUM,
+          "Existing environment preparation preserves the saved Chromium binding");
     int stale=claimGeneration(catalog,2);
     catalog.db.rows.get(2).put("generation",stale+1);
-    check(rejected(()->Profiles.create(catalog.root,2,stale,null,"Stale","",false,false))
+    check(rejected(()->Profiles.create(catalog.root,2,stale,null,"Stale","",false,false,EnvironmentEngine.GECKO))
           &&!catalog.item(2).optBoolean("created"),"Old choice cannot reserve a slot which has already been retired");
     catalog.db.failDefaultWrite=true;
     int next=claimGeneration(catalog,3);
-    check(rejected(()->Profiles.create(catalog.root,3,next,null,"Failed","group",true,true))
+    check(rejected(()->Profiles.create(catalog.root,3,next,null,"Failed","group",true,true,EnvironmentEngine.GECKO))
           &&!catalog.item(3).optBoolean("created")&&"Environment 3".equals(catalog.item(3).optString("name"))
           &&!Profiles.context(catalog.root,3).getSharedPreferences("chat",0).contains("environmentInitialized")
           &&"1".equals(catalog.db.settings.get("defaultSlot")),"Default publication failure rolls back the newly reserved identity and presentation");
     catalog.db.failDefaultWrite=false;
-    Profiles.create(catalog.root,3,next,null,"Retried","fresh",false,true);
-    check(presentation(catalog,3,"Retried","fresh","",false)&&"3".equals(catalog.db.settings.get("defaultSlot")),
+    Profiles.create(catalog.root,3,next,null,"Retried","fresh",false,true,EnvironmentEngine.GECKO);
+    check(presentation(catalog,3,"Retried","fresh","",false)&&"3".equals(catalog.db.settings.get("defaultSlot"))
+          &&BrowserPreferences.engine(Profiles.context(catalog.root,3))==EnvironmentEngine.GECKO,
           "Retry after a failed default write publishes one complete environment");
   }
   static void competingCreation()throws Exception {
@@ -85,7 +87,7 @@ public final class CreationHost {
         arrived.countDown();
         try{
           if(!start.await(5,TimeUnit.SECONDS))throw new AssertionError("start timeout");
-          Profiles.create(catalog.root,1,generation,null,label,label,true,false);
+          Profiles.create(catalog.root,1,generation,null,label,label,true,false,EnvironmentEngine.GECKO);
           created.incrementAndGet();
         }catch(IOException occupied){refused.incrementAndGet();}
         catch(Throwable failure){unexpected.set(failure);}
@@ -105,22 +107,22 @@ public final class CreationHost {
     ProfileCatalog catalog=fixture();
     EnvironmentSpec.Identity selected=catalog.identity(0);
     SharedPreferences source=catalog.root.getSharedPreferences("chat",0);
-    source.edit().putString("proxy","presented.example:8080").putBoolean("requireExternalVpn",false)
+    source.edit().putString(BrowserPreferences.KEY_START,BrowserPreferences.START_BROWSER).putString("proxy","presented.example:8080").putBoolean("requireExternalVpn",false)
       .putString("cookie","source-only").putString(BrowserPreferences.KEY_HOME,"https://example.net/source").commit();
-    Profiles.create(catalog.root,1,claimGeneration(catalog,1),selected,"With Network","",false,false);
+    Profiles.create(catalog.root,1,claimGeneration(catalog,1),selected,"With Network","",false,false,EnvironmentEngine.GECKO);
     SharedPreferences target=Profiles.context(catalog.root,1).getSharedPreferences("chat",0);
     check("presented.example:8080".equals(target.getString("proxy",""))&&!target.getBoolean("requireExternalVpn",true)
-          &&!target.contains("cookie")&&!target.contains(BrowserPreferences.KEY_HOME),
+          &&!target.contains("cookie")&&!target.contains(BrowserPreferences.KEY_HOME)&&EnvironmentEngine.read(target)==EnvironmentEngine.GECKO,
           "Wizard borrows the confirmed network without copying browser preferences or login");
     int generation=claimGeneration(catalog,2);
     Profiles.afterCapture=()->catalog.db.rows.get(0).put("environment_id",UUID.randomUUID().toString());
     try{
-      check(rejected(()->Profiles.create(catalog.root,2,generation,selected,"Lost Race","",false,false))
+      check(rejected(()->Profiles.create(catalog.root,2,generation,selected,"Lost Race","",false,false,EnvironmentEngine.GECKO))
             &&!catalog.item(2).optBoolean("created")&&!Profiles.context(catalog.root,2)
               .getSharedPreferences("chat",0).contains("environmentInitialized"),
             "Source reuse after capture rolls back the reserved target without exposing settings");
     }finally{Profiles.afterCapture=null;}
-    check(rejected(()->Profiles.create(catalog.root,2,generation,selected,"Stale Source","",false,false))
+    check(rejected(()->Profiles.create(catalog.root,2,generation,selected,"Stale Source","",false,false,EnvironmentEngine.GECKO))
           &&!catalog.item(2).optBoolean("created"),"Already replaced source is rejected before borrowing settings");
   }
   static void copying()throws Exception {
@@ -157,6 +159,12 @@ public final class CreationHost {
       check(rejected(()->Profiles.copyConfiguration(catalog.root,1,generation,old,"Duplicate"))
             &&copy.equals(catalog.identity(1))&&presentation(catalog,1,"Copy","same group","same notes",true),
             "Duplicate copy cannot replace an occupied identity or alter its details");
+      Context alternate=Profiles.context(catalog.root,2);
+      EnvironmentEngine chosen=chromium?EnvironmentEngine.GECKO:EnvironmentEngine.CHROMIUM;
+      Profiles.copyConfigurationWithEngine(catalog.root,2,claimGeneration(catalog,2),old,"Other engine",chosen);
+      check(BrowserPreferences.engine(alternate)==chosen&&BrowserPreferences.startBrowser(catalog.root)==chromium
+            &&BrowserPreferences.startBrowser(target)==chromium&&home.equals(BrowserPreferences.home(alternate)),
+            "Explicit creation choice affects only the new duplicate");
       catalog.db.rows.get(1).put("environment_id",UUID.randomUUID().toString());
       check(rejected(()->catalog.withIdentity(copy,()->{catalog.details(1,"stale","stale");return null;}))
             &&presentation(catalog,1,"Copy","same group","same notes",true),
@@ -165,7 +173,7 @@ public final class CreationHost {
   }
   static void menuActions()throws Exception {
     ProfileCatalog catalog=fixture();
-    EnvironmentSpec.Identity expected=Profiles.create(catalog.root,1,claimGeneration(catalog,1),null,"Current","",false,false);
+    EnvironmentSpec.Identity expected=Profiles.create(catalog.root,1,claimGeneration(catalog,1),null,"Current","",false,false,EnvironmentEngine.GECKO);
     WindowHomeActivity menu=new WindowHomeActivity();
     menu.saveMenuChoice(catalog,expected,()->catalog.favorite(expected.slot,true));
     check(menu.refreshes==1&&catalog.item(1).optBoolean("favorite"),"Valid favorite updates its displayed environment");

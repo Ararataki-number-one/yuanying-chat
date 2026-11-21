@@ -28,7 +28,7 @@ public final class BrowserIntegrationActivity extends BrowserActivity {
         JSONObject build=IntegrationBuildIdentity.read(this);
         if(Profiles.slot(this)!=0||!build.getString("sourceCommit").equals(getIntent().getStringExtra("sourceCommit")))
           throw new SecurityException("Workspace seed source or environment differs");
-        if(!BrowserPreferences.save(this,true,BrowserPreferences.DEFAULT_URL))
+        if(!seedChromium(this))
           throw new IOException("Chromium workspace binding could not be saved");
         BrowserActivity.open(this,ORIGIN+"/native-ui-smoke");
       }catch(Exception failure){
@@ -36,6 +36,11 @@ public final class BrowserIntegrationActivity extends BrowserActivity {
       }
       finish();
     }
+  }
+  static boolean seedChromium(android.content.Context context){
+    if(!BrowserActivity.legacyFixtureEnabled(context))throw new SecurityException("Integration package only");
+    return EnvironmentEngine.stageNew(context.getSharedPreferences("chat",0).edit(),EnvironmentEngine.CHROMIUM)
+      .putString(BrowserPreferences.KEY_HOME,BrowserPreferences.DEFAULT_URL).commit();
   }
   static final String TARGET_SCROLL_SCRIPT="function(id){const e=document.getElementById(id);if(!e)throw new Error('Missing target '+id);e.scrollIntoView({block:'center',inline:'center'});return {id:e.id};}";
   static final String TARGET_SAMPLE_SCRIPT="function(id){const e=document.getElementById(id);if(!e)throw new Error('Missing target '+id);const r=e.getBoundingClientRect(),x=r.left+r.width/2,y=r.top+r.height/2,h=document.elementFromPoint(x,y),v=window.visualViewport;return {id:e.id,x,y,left:r.left,top:r.top,right:r.right,bottom:r.bottom,viewportWidth:innerWidth,viewportHeight:innerHeight,scrollX,scrollY,devicePixelRatio,visualScale:window.visualViewport?visualViewport.scale:1,visualWidth:v&&Number.isFinite(v.width)?v.width:null,visualHeight:v&&Number.isFinite(v.height)?v.height:null,visualOffsetLeft:v&&Number.isFinite(v.offsetLeft)?v.offsetLeft:null,visualOffsetTop:v&&Number.isFinite(v.offsetTop)?v.offsetTop:null,documentFocus:document.hasFocus(),hitTarget:h===e||e.contains(h),hitId:h&&h.id||'',hitTag:h&&h.tagName||'',url:location.href};}";
@@ -67,7 +72,7 @@ public final class BrowserIntegrationActivity extends BrowserActivity {
       if(!build.getString("sourceCommit").equals(getIntent().getStringExtra("sourceCommit")))throw new SecurityException("Installed source differs");
       fixture=new FixtureProxy();fixture.start();ProfileCatalog.get(this).created(Profiles.slot(this));
       getSharedPreferences("chat",0).edit().clear().putString("networkMode","external").putString("proxy","http://127.0.0.1:"+fixture.port()).putBoolean("networkConfigured",true).putBoolean("requireExternalVpn",false).commit();
-      if(!BrowserPreferences.save(this,true,BrowserPreferences.DEFAULT_URL))throw new IOException("Chromium fixture binding could not be saved");
+      if(!seedChromium(this))throw new IOException("Chromium fixture binding could not be saved");
       getSharedPreferences("universal-browser",0).edit().clear().commit();
       getIntent().putExtra("url",ORIGIN+"/start");
     }catch(Exception error){throw new IllegalStateException("Synthetic browser setup failed",error);}

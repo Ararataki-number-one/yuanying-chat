@@ -9,7 +9,7 @@ extract=importlib.util.module_from_spec(spec);spec.loader.exec_module(extract)
 
 def main():
     p=argparse.ArgumentParser();p.add_argument('--java-home',required=True,type=pathlib.Path);p.add_argument('--json-jar',required=True,type=pathlib.Path);p.add_argument('--output',required=True,type=pathlib.Path);args=p.parse_args()
-    paths=[PROD/name for name in ['BrowserPreferences.java','BrowserAddressPolicy.java','MainActivity.java','BrowserActivity.java','BrowserSettingsUi.java','ProfileContext.java']]+[HERE/'BrowserPreferencesHost.java',pathlib.Path(__file__).resolve(),ROOT/'tests/chrome-network-state-host/run.py']
+    paths=[PROD/name for name in ['BrowserPreferences.java','BrowserAddressPolicy.java','EnvironmentEngine.java','MainActivity.java','BrowserActivity.java','BrowserSettingsUi.java','ProfileContext.java']]+[HERE/'BrowserPreferencesHost.java',pathlib.Path(__file__).resolve(),ROOT/'tests/chrome-network-state-host/run.py']
     hashes={str(path.relative_to(ROOT)):hashlib.sha256(path.read_bytes()).hexdigest() for path in paths}
     main_source=(PROD/'MainActivity.java').read_text()
     dispatch=extract.member(main_source,'boolean dispatchBrowser(')
@@ -48,7 +48,7 @@ def main():
     }
     with tempfile.TemporaryDirectory(prefix='browser-preferences-host-') as raw:
         base=pathlib.Path(raw);src=base/'src';src.mkdir();(src/'BrowserPreferencesHost.java').write_text(source)
-        for name in ['BrowserPreferences.java','BrowserAddressPolicy.java']:(src/name).write_bytes((PROD/name).read_bytes())
+        for name in ['BrowserPreferences.java','BrowserAddressPolicy.java','EnvironmentEngine.java']:(src/name).write_bytes((PROD/name).read_bytes())
         for name,text in stubs.items():path=src/name;path.parent.mkdir(parents=True,exist_ok=True);path.write_text(text)
         classes=base/'classes';compiled=subprocess.run([str(args.java_home/'bin/javac'),'-encoding','UTF-8','-cp',str(args.json_jar.resolve()),'-d',str(classes),*map(str,src.rglob('*.java'))],capture_output=True,text=True)
         if compiled.returncode:raise RuntimeError(compiled.stderr)

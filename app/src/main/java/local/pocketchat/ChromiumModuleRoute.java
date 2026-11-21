@@ -32,10 +32,20 @@ final class ChromiumModuleRoute implements ChromiumRouteSocketOwner, AutoCloseab
         this.stopped = stopped;
     }
 
-    static ChromiumModuleRoute acquire(Context context, int slot, BooleanSupplier stopped) throws IOException {
-        Context profile = Profiles.context(context, slot);
-        EnvironmentSpec.Identity identity = ProfileCatalog.get(context).identity(slot);
-        CefriumRoutePolicy.Selection selected = selection(profile);
+    static ChromiumModuleRoute acquire(Context context, EnvironmentSpec.Identity identity, BooleanSupplier stopped) throws IOException {
+        if (stopped.getAsBoolean() || !ChromiumModuleInstaller.ownerCurrent(context, identity)) throw unavailable();
+        Context profile = Profiles.context(context, identity.slot);
+        CefriumRoutePolicy.Selection selected;
+        try {
+            selected = ProfileCatalog.get(profile).withIdentity(identity, () -> {
+                if (stopped.getAsBoolean() || !BrowserPreferences.startBrowser(profile)) throw unavailable();
+                return selection(profile);
+            });
+        } catch (IOException unavailable) {
+            throw unavailable;
+        } catch (Exception unavailable) {
+            throw new IOException("下载 Chromium 的原环境已变化，未连接网络", unavailable);
+        }
         if (selected == null) throw new IOException("请先在此环境配置用于下载 Chromium 的网络线路");
         ChromiumModuleRoute route = new ChromiumModuleRoute(profile, identity, selected, stopped);
         try {
@@ -118,9 +128,9 @@ final class ChromiumModuleRoute implements ChromiumRouteSocketOwner, AutoCloseab
 
     private boolean configurationCurrent() {
         try {
-            return !stopped.getAsBoolean() && selection.equals(selection(profile))
-                    && identity.equals(ProfileCatalog.get(profile).identity(identity.slot));
-        } catch (IOException | RuntimeException unavailable) {
+            return !stopped.getAsBoolean() && ChromiumModuleInstaller.ownerCurrent(profile, identity)
+                    && selection.equals(selection(profile)) && ChromiumModuleInstaller.ownerCurrent(profile, identity);
+        } catch (RuntimeException unavailable) {
             return false;
         }
     }

@@ -34,10 +34,11 @@ class EnvironmentCreationTest(unittest.TestCase):
                 'static final class ConfigurationCopy', 'static EnvironmentSpec.Identity copyConfiguration(Context source,int target)throws',
                 'static EnvironmentSpec.Identity copyConfiguration(Context source,int target,EnvironmentSpec.Identity',
                 'static EnvironmentSpec.Identity copyConfiguration(Context source,int target,int generation,',
+                'static EnvironmentSpec.Identity copyConfigurationWithEngine(',
                 'static final class FileCheck')),
             'SPEC': ('EnvironmentSpec.java', ('static final class Identity', 'static void requireRevision(')),
             'BROWSER': ('BrowserPreferences.java', ('private static SharedPreferences preferences(',
-                'static boolean startBrowser(', 'static String home(', 'static String normalizeHome(')),
+                'static EnvironmentEngine engine(', 'static boolean startBrowser(', 'static String home(', 'static String normalizeHome(')),
             'PREFS': ('AppPrefs.java', ('static boolean enabled(', 'static JSONObject values(')),
             'DEFAULT': ('AppSettings.java', ('static boolean writeDefault(', 'static boolean defaultSlot(Context c,int id)',
                                              'static boolean eligibleDefault(', 'static boolean selectable(')),
@@ -68,7 +69,7 @@ class EnvironmentCreationTest(unittest.TestCase):
                     stubs = DEFAULT_HOST / 'stubs/android'
                     inputs = [fixture, FIXTURE / 'SharedPreferences.java', stubs / 'content/ContentValues.java',
                               stubs / 'database/Cursor.java', stubs / 'database/sqlite/SQLiteDatabase.java', stubs / 'os/Build.java',
-                              *(PROD / name for name in ('J.java', 'BrowserAddressPolicy.java', 'EnvironmentBrowserData.java'))]
+                              *(PROD / name for name in ('J.java', 'BrowserAddressPolicy.java', 'EnvironmentBrowserData.java', 'EnvironmentEngine.java'))]
                     compile_result = subprocess.run([java, '-m', 'jdk.compiler/com.sun.tools.javac.Main', '--release', '17',
                         '-encoding', 'UTF-8', '-cp', str(jar), '-d', temp, *map(str, inputs)],
                         capture_output=True, text=True, timeout=30)
@@ -76,7 +77,7 @@ class EnvironmentCreationTest(unittest.TestCase):
                     run_result = subprocess.run([java, '-cp', temp + os.pathsep + str(jar),
                         'local.pocketchat.CreationHost', temp], capture_output=True, text=True, timeout=20)
                     self.assertEqual(run_result.returncode, 0, run_result.stdout + run_result.stderr)
-                    self.assertEqual(run_result.stdout.strip(), 'passed=26')
+                    self.assertEqual(run_result.stdout.strip(), 'passed=28')
 
 
 if __name__ == '__main__':

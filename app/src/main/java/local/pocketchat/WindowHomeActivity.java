@@ -465,12 +465,14 @@ public class WindowHomeActivity extends ThemedActivity {
     EditText name=DesignUi.input(box,"新环境名称",label+" 副本","");
     name.setFilters(new InputFilter[]{new InputFilter.LengthFilter(24)});
     DesignUi.note(box,"复制已保存的浏览器模板、网络和使用偏好。账号、聊天和草稿在新环境独立，不会复制。");
+    Spinner enginePicker=BrowserSettingsUi.creationPicker(this,box,EnvironmentEngine.GECKO);
     AlertDialog dialog=AppAppearance.dialog(this).setTitle("复制环境配置").setView(box)
       .setPositiveButton("创建副本",null).setNegativeButton("取消",null).create();
     dialog.show();
     dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v->{
       String title=name.getText().toString().trim();
       if(title.isEmpty()){name.setError("请输入环境名称");return;}
+      EnvironmentEngine chosen=BrowserSettingsUi.creationSelection(enginePicker);
       if(preparing)return;
       preparing=true;
       dialog.dismiss();
@@ -479,7 +481,7 @@ public class WindowHomeActivity extends ThemedActivity {
       new Thread(()->{
         String error="";
         try{
-          Profiles.copyConfiguration(Profiles.context(this,expected.slot),destination,generation,expected,title);
+          Profiles.copyConfigurationWithEngine(Profiles.context(this,expected.slot),destination,generation,expected,title,chosen);
         }catch(Exception failure){
           error=failure.getMessage()==null?"复制未完成，请重试":failure.getMessage();
         }
@@ -553,7 +555,8 @@ public class WindowHomeActivity extends ThemedActivity {
   final class Wizard {
     final int id,generation;final Dialog dialog;
     LinearLayout body,actions;EditText name;AlertDialog exitPrompt;
-    int step,sourceType,sourceSlot;String title,group="";boolean makeDefault,desktop;Spinner displayChoice;
+    int step,sourceType,sourceSlot;String title,group="";boolean makeDefault,desktop;Spinner displayChoice,enginePicker;
+    EnvironmentEngine engine=EnvironmentEngine.GECKO;
     JSONObject selectedNetworkRow;
     EnvironmentSpec.Identity shownNetworkSource;
     Wizard(int id,int generation){
@@ -570,8 +573,8 @@ public class WindowHomeActivity extends ThemedActivity {
     }
     void back(){if(step>0){step--;render();}else close();}
     void close(){
-      if(step==0&&displayChoice!=null)desktop=displayChoice.getSelectedItemPosition()==1;
-      boolean dirty=!title.equals("环境 "+(id+1))||!group.isEmpty()||sourceType!=0||makeDefault||desktop;
+      if(step==0&&displayChoice!=null){desktop=displayChoice.getSelectedItemPosition()==1;engine=BrowserSettingsUi.creationSelection(enginePicker);}
+      boolean dirty=!title.equals("环境 "+(id+1))||!group.isEmpty()||sourceType!=0||makeDefault||desktop||engine!=EnvironmentEngine.GECKO;
       if(!dirty){dialog.dismiss();return;}
       if(exitPrompt!=null&&exitPrompt.isShowing())return;
       exitPrompt=AppAppearance.dialog(WindowHomeActivity.this).setTitle("放弃创建环境？")
@@ -596,6 +599,7 @@ public class WindowHomeActivity extends ThemedActivity {
       watch(name,()->title=name.getText().toString());
       EditText input=DesignUi.input(body,"分组（可选）",group,"最多 12 字，留空为未分组");
       input.setFilters(new InputFilter[]{new InputFilter.LengthFilter(12)});watch(input,()->group=input.getText().toString().trim());
+      enginePicker=BrowserSettingsUi.creationPicker(WindowHomeActivity.this,body,engine);
       displayChoice=BrowserDisplayUi.add(body,desktop);
       displayChoice.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener(){public void onItemSelected(AdapterView<?> p,View v,int pos,long item){desktop=pos==1;}public void onNothingSelected(AdapterView<?> p){}});
       DesignUi.note(body,"电脑版内容更密，可用双指缩放。");
@@ -643,6 +647,7 @@ public class WindowHomeActivity extends ThemedActivity {
     }
     void summary(){
       DesignUi.field(body,"环境名称",title);if(!group.isEmpty())DesignUi.field(body,"分组",group);
+      DesignUi.field(body,"浏览器内核",engine.label);
       DesignUi.field(body,"网页显示方式",BrowserDisplay.label(desktop));
       JSONObject source=null;
       if(sourceType==0){
@@ -658,11 +663,11 @@ public class WindowHomeActivity extends ThemedActivity {
       selected.setChecked(makeDefault);selected.setOnCheckedChangeListener((b,c)->makeDefault=c);body.addView(selected);
     }
     void next(){
-      if(step==0){desktop=displayChoice.getSelectedItemPosition()==1;if(title.trim().isEmpty()||title.trim().length()>24){name.setError("名称需要 1–24 字");name.requestFocus();return;}title=title.trim();}
+      if(step==0){desktop=displayChoice.getSelectedItemPosition()==1;engine=BrowserSettingsUi.creationSelection(enginePicker);if(title.trim().isEmpty()||title.trim().length()>24){name.setError("名称需要 1–24 字");name.requestFocus();return;}title=title.trim();}
       if(step<2){step++;render();}else create();
     }
     void create(){
-      // Every new environment uses its own persistent Gecko profile.
+      // The engine is bound before publishing the new environment.
       if(preparing)return;
       boolean clone=sourceType!=2;
       EnvironmentSpec.Identity networkSource=shownNetworkSource;
@@ -673,12 +678,13 @@ public class WindowHomeActivity extends ThemedActivity {
       showProblem("");preparing=true;createButton.setEnabled(false);preparation.setVisibility(View.VISIBLE);
       Context source=clone?Profiles.context(WindowHomeActivity.this,networkSource.slot):Profiles.global(WindowHomeActivity.this);dialog.dismiss();
       final boolean desktopSetting=desktop,setDefault=makeDefault;
+      final EnvironmentEngine chosen=engine;
       final String proposedTitle=title,proposedGroup=group;
       new Thread(()->{
         EnvironmentSpec.Identity created=null;
         String error="";
         try{
-          created=Profiles.create(source,id,generation,networkSource,proposedTitle,proposedGroup,desktopSetting,setDefault);
+          created=Profiles.create(source,id,generation,networkSource,proposedTitle,proposedGroup,desktopSetting,setDefault,chosen);
         }catch(Exception failure){
           error=failure.getMessage()==null?"环境准备失败，请重试":failure.getMessage();
         }

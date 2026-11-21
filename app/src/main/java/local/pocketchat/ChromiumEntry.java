@@ -12,7 +12,7 @@ import java.io.IOException;
 /** The base app depends on a verified Android split, never on a Cefrium class. */
 final class ChromiumEntry {
   static final String FEATURE_ACTIVITY="local.pocketchat.CefriumBrowserActivity";
-  private static final String NETWORK_CONFIGURATION_REQUIRED="请先检查此环境的网络配置，再选择 Chromium。";
+  private static final String NETWORK_CONFIGURATION_REQUIRED="请先检查此环境的网络配置，再打开 Chromium。";
   private static final String DELIVERY="local.pocketchat.CHROMIUM_DELIVERY";
   private static final String SLOT="local.pocketchat.chromium.slot";
   private static final String GENERATION="local.pocketchat.chromium.generation";
@@ -55,7 +55,7 @@ final class ChromiumEntry {
     EnvironmentSpec.Identity actual=ProfileCatalog.get(context).identity(slot);
     if(actual.generation!=intent.getIntExtra(GENERATION,-1)||!actual.environmentId.equals(intent.getStringExtra(ENVIRONMENT)))
       throw new IOException("环境已变化，请重新打开");
-    if(!BrowserPreferences.startBrowser(Profiles.context(context,slot)))throw new IOException("此环境已切换内核，请重新打开");
+    if(!BrowserPreferences.startBrowser(Profiles.context(context,slot)))throw new IOException("此环境未绑定 Chromium，请返回环境列表");
     return actual;
   }
 }

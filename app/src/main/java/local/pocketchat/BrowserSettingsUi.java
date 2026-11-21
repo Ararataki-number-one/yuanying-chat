@@ -31,7 +31,7 @@ final class BrowserSettingsUi {
       Intent origin=activity.getIntent();
       boolean fromStandalone=ownerOpening(activity,origin);
       if(fromStandalone&&!expected.equals(ownerIdentity(activity,origin))){unavailable(activity);return;}
-      show(activity,expected,refresh,fromStandalone);
+      show(activity,expected,refresh);
       return;
     }
     if(!current(activity,expected)){unavailable(activity);return;}
@@ -65,7 +65,7 @@ final class BrowserSettingsUi {
     // itself opens once per request, with the original slot and generation.
     intent.removeExtra(OPEN_DIALOG);
     EnvironmentSpec.Identity expected=ownerIdentity(activity,intent);
-    show(activity,expected,()->activity.hub.settings(),true);
+    show(activity,expected,()->activity.hub.settings());
   }
 
   private static boolean current(Activity activity,EnvironmentSpec.Identity expected){
@@ -84,67 +84,64 @@ final class BrowserSettingsUi {
     final EnvironmentSpec.Identity expected;
     try{expected=ProfileCatalog.get(activity).identity(Profiles.slot(activity));}
     catch(Exception failure){unavailable(activity);return;}
-    show(activity,expected,refresh,false);
+    show(activity,expected,refresh);
   }
 
-  private static void show(Activity activity,EnvironmentSpec.Identity expected,Runnable refresh,boolean fromStandalone){
+  static Spinner creationPicker(Activity activity,LinearLayout form,EnvironmentEngine initial){
+    DesignUi.note(form,"浏览器内核 · 仅创建时可选");
+    Spinner picker=new Spinner(activity);
+    picker.setContentDescription("新环境的浏览器内核");
+    picker.setMinimumHeight(DesignUi.dp(activity,48));
+    boolean available=ChromiumModuleInstaller.selectableForNewEnvironment(activity);
+    picker.setAdapter(DesignUi.spinnerAdapter(activity,available
+      ?new String[]{EnvironmentEngine.GECKO.label,EnvironmentEngine.CHROMIUM.label}
+      :new String[]{EnvironmentEngine.GECKO.label}));
+    picker.setSelection(available&&initial==EnvironmentEngine.CHROMIUM?1:0);
+    form.addView(picker,new LinearLayout.LayoutParams(-1,-2));
+    if(!available)DesignUi.note(form,"此设备或当前安装不提供独立 Chromium，新环境可使用 Firefox（Gecko）。");
+    return picker;
+  }
+
+  static EnvironmentEngine creationSelection(Spinner picker){
+    return picker.getSelectedItemPosition()==1?EnvironmentEngine.CHROMIUM:EnvironmentEngine.GECKO;
+  }
+
+  private static void show(Activity activity,EnvironmentSpec.Identity expected,Runnable refresh){
     if(activity.isFinishing()||activity.isDestroyed())return;
     if(!current(activity,expected)||expected.slot!=Profiles.slot(activity)){unavailable(activity);return;}
     Context profile=Profiles.context(activity,expected.slot);
-    boolean initialChromium=BrowserPreferences.startBrowser(profile);
+    EnvironmentEngine engine=BrowserPreferences.engine(profile);
     ReferenceUi.Modal dialog=new ReferenceUi.Modal(activity,"此环境的浏览器与启动");
     dialog.note(Profiles.display(activity,expected.slot));
     LinearLayout form=DesignUi.column(activity);dialog.body.addView(form);
-    DesignUi.note(form,"浏览器内核");
-    Spinner start=new Spinner(activity);start.setContentDescription("此环境的浏览器内核");start.setMinimumHeight(DesignUi.dp(activity,48));
-    start.setAdapter(DesignUi.spinnerAdapter(activity,new String[]{"Gecko 浏览器","Chromium 浏览器"}));start.setSelection(initialChromium?1:0);form.addView(start,new LinearLayout.LayoutParams(-1,-2));
-    EditText home=DesignUi.input(form,"两个内核的默认网站",BrowserPreferences.home(profile),BrowserPreferences.DEFAULT_URL);
-    home.setInputType(InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_URI);home.setSingleLine(true);home.setImeOptions(EditorInfo.IME_ACTION_DONE);home.setFilters(new InputFilter[]{new InputFilter.LengthFilter(8192)});
+    DesignUi.field(form,"已绑定浏览器内核",engine.label);
+    dialog.note("内核只在创建时选择。修改首页不会更换内核或影响登录。");
+    EditText home=DesignUi.input(form,"默认网站",BrowserPreferences.home(profile),BrowserPreferences.DEFAULT_URL);
+    home.setInputType(InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_URI);home.setSingleLine(true);
+    home.setImeOptions(EditorInfo.IME_ACTION_DONE);home.setFilters(new InputFilter[]{new InputFilter.LengthFilter(8192)});
     DesignUi.action(form,"恢复默认网站为 ChatGPT",false,()->home.setText(BrowserPreferences.DEFAULT_URL));
-    dialog.note("此环境打开网页时使用所选内核。初始选择为 Gecko，首页为 ChatGPT。切换内核前请保存未提交的网页内容，并在保存设置后重新打开此环境。");
-    boolean managedChromium=ChromiumEntry.managed(activity);
-    if(fromStandalone&&initialChromium&&managedChromium&&ChromiumModuleInstaller.installed(activity)){
-      start.setEnabled(false);
-      dialog.note("可保存默认网站。切换内核请从此环境的 Chromium 网页打开环境设置，以便先确认文件操作已结束。");
+    if(engine==EnvironmentEngine.CHROMIUM&&!ChromiumModuleInstaller.installed(activity)){
+      if(ChromiumModuleInstaller.available(activity)){
+        DesignUi.action(form,"安装 Chromium 组件",false,()->{
+          if(!current(activity,expected)){unavailable(activity);return;}
+          if(browserWorkPending(activity)){DesignUi.message(activity,"Chromium 组件","请完成当前网页或文件操作后再安装。");return;}
+          String issue=ChromiumEntry.networkIssue(profile);
+          if(!issue.isEmpty()){DesignUi.message(activity,"Chromium 组件",issue);return;}
+          dialog.dismiss();ChromiumModuleInstaller.show(activity,expected);
+        });
+      }else DesignUi.note(form,"当前安装不提供此 Chromium 组件。原有内核绑定不会改变。");
     }
-    if(managedChromium){
-      dialog.note("Chromium 按需安装。安装后，各环境可选择使用此组件，登录和网站数据各自保存。");
-    }else{
-      dialog.note("两个内核分别保存登录、Cookie 和指纹配置。Gecko 保留原生隐私模板；Chromium 的 UA、UA-CH 与文档指纹保护在其指纹设置中单独管理。Gecko 在 ChatGPT 网页中支持草稿救援和离线会话检索。");
-      dialog.note("两核保护范围不同，请分别查看设置和自检。Chromium 的页面 WebRTC 限制不覆盖 Worker；HTTP 代理也不能代替设备 VPN。");
-    }
-    TextView problem=DesignUi.text(activity,"",13,DesignUi.RED);problem.setVisibility(View.GONE);problem.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);form.addView(problem);
+    TextView problem=DesignUi.text(activity,"",13,DesignUi.RED);problem.setVisibility(View.GONE);
+    problem.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);form.addView(problem);
     dialog.buttons("取消",dialog::dismiss,"保存",()->{
       if(activity.isFinishing()||activity.isDestroyed())return;
       final String address;
       try{address=BrowserPreferences.normalizeHome(home.getText().toString());}
       catch(IllegalArgumentException invalid){home.setError(invalid.getMessage());home.requestFocus();return;}
       try{
-        boolean chromium=start.getSelectedItemPosition()==1;
-        boolean homepageOnly=fromStandalone&&chromium==initialChromium;
-        boolean currentChromium=BrowserPreferences.startBrowser(profile);
-        boolean changing=!homepageOnly&&chromium!=currentChromium;
-        if(fromStandalone&&changing&&currentChromium&&managedChromium&&ChromiumModuleInstaller.installed(activity)){
-          problem.setText("切换内核请从此环境的 Chromium 网页打开环境设置。");problem.setVisibility(View.VISIBLE);return;
-        }
-        boolean needsModule=!homepageOnly&&managedChromium&&chromium&&!ChromiumModuleInstaller.installed(activity);
-        if((changing||needsModule)&&browserWorkPending(activity)){
-          problem.setText("请完成当前网页或文件操作，再保存新的内核选择。");problem.setVisibility(View.VISIBLE);return;
-        }
-        if(!homepageOnly&&managedChromium&&chromium){
-          String issue=ChromiumEntry.networkIssue(profile);
-          if(!issue.isEmpty()){problem.setText(issue);problem.setVisibility(View.VISIBLE);return;}
-        }
-        if(needsModule){
-          if(!current(activity,expected)){unavailable(activity);return;}
-          ChromiumModuleInstaller.show(activity,expected.slot);
-          return;
-        }
-        boolean saved=ProfileCatalog.get(activity).withIdentity(expected,()->homepageOnly
-          ?BrowserPreferences.saveHome(profile,address):BrowserPreferences.save(profile,chromium,address));
+        boolean saved=ProfileCatalog.get(activity).withIdentity(expected,()->BrowserPreferences.saveHome(profile,address));
         if(!saved){problem.setText("偏好暂时无法保存，请重试。");problem.setVisibility(View.VISIBLE);return;}
         dialog.dismiss();refresh.run();
-        if(changing)Toast.makeText(activity,"内核已保存，重新打开此环境后生效。",Toast.LENGTH_LONG).show();
       }catch(Exception changed){problem.setText("环境已变化或暂时无法保存，请重新打开浏览器设置。");problem.setVisibility(View.VISIBLE);}
     });
     dialog.show();

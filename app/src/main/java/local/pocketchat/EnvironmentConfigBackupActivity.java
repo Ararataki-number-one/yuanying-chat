@@ -94,10 +94,12 @@ public final class EnvironmentConfigBackupActivity extends ThemedActivity {
     ReferenceUi.Modal dialog=new ReferenceUi.Modal(this,"恢复预览");dialog.note(config.name+"\n"+config.browser.label()+"\n网页语言："+(config.browser.locales.isEmpty()?"跟随系统":String.join(", ",config.browser.locales)));
     java.util.concurrent.atomic.AtomicBoolean visible=new java.util.concurrent.atomic.AtomicBoolean(true);dialog.setOnDismissListener(d->visible.set(false));
     dialog.note("将模板与使用偏好恢复为新环境。现有环境不会被覆盖。请重新配置网络、核验固定出口并登录；恢复前不会打开网页。点击创建后若离开页面，请先在环境列表确认结果，再决定是否重试。");
+    Spinner engine=BrowserSettingsUi.creationPicker(this,dialog.body,EnvironmentEngine.GECKO);
     TextView error=DesignUi.text(this,"",13,DesignUi.RED);dialog.body.addView(error);
     dialog.buttons("取消",dialog::dismiss,"创建新环境",()->{
       if(busy)return;busy=true;long serial=owner;dialog.primary().setEnabled(false);error.setText("正在创建新环境…");
-      worker.execute(()->{EnvironmentSpec.Identity restored=null;String issue="";try{if(!active(serial))return;JSONArray rows=ProfileCatalog.get(this).list();int slot=-1;for(int i=0;i<rows.length();i++){JSONObject row=rows.optJSONObject(i);if(row!=null&&!row.optBoolean("created")&&!row.optBoolean("deleting")&&!row.optBoolean("resetting")){slot=row.optInt("slot",-1);break;}}if(slot<0)throw new IOException("没有可用的环境槽位；现有环境未改变");if(!active(serial))return;restored=EnvironmentConfigTransfer.restore(this,slot,config,()->active(serial)&&visible.get());}catch(Exception failure){issue="恢复结果尚未确认，现有环境未被覆盖。请先查看环境列表，再决定是否重试。";}
+      EnvironmentEngine chosen=BrowserSettingsUi.creationSelection(engine);
+      worker.execute(()->{EnvironmentSpec.Identity restored=null;String issue="";try{if(!active(serial))return;JSONArray rows=ProfileCatalog.get(this).list();int slot=-1;for(int i=0;i<rows.length();i++){JSONObject row=rows.optJSONObject(i);if(row!=null&&!row.optBoolean("created")&&!row.optBoolean("deleting")&&!row.optBoolean("resetting")){slot=row.optInt("slot",-1);break;}}if(slot<0)throw new IOException("没有可用的环境槽位；现有环境未改变");if(!active(serial))return;restored=EnvironmentConfigTransfer.restore(this,slot,config,chosen,()->active(serial)&&visible.get());}catch(Exception failure){issue="恢复结果尚未确认，现有环境未被覆盖。请先查看环境列表，再决定是否重试。";}
         EnvironmentSpec.Identity completed=restored;String problem=issue;runOnUiThread(()->{if(!active(serial))return;busy=false;if(completed==null){if(dialog.isShowing()){dialog.primary().setEnabled(true);error.setText(problem);}else message(problem);return;}dialog.dismiss();message("新环境已创建，尚未联网。请前往环境列表重新配置网络并登录。");});
       });
     });dialog.show();

@@ -19,14 +19,13 @@ public final class ChromiumModuleInstallActivity extends ThemedActivity {
   private TextView status;
   private ProgressBar progress;
   private Button action;
-  private int slot;
-  private boolean eligible, active;
+  private EnvironmentSpec.Identity expected;
+  private boolean active;
   private String localMessage = "";
 
   @Override public void onCreate(Bundle state) {
     super.onCreate(state);
-    slot = getIntent().getIntExtra(ChromiumModuleInstaller.SLOT, -1);
-    eligible = AppUpdates.validSlot(slot) && ChromiumModuleInstaller.available(this);
+    expected = ChromiumModuleInstaller.requestedOwner(getIntent());
     if (state != null) localMessage = state.getString("localMessage", "");
 
     LinearLayout root = DesignUi.screen(this);
@@ -65,9 +64,11 @@ public final class ChromiumModuleInstallActivity extends ThemedActivity {
   private void refresh() {
     ChromiumModuleInstaller.Operation work = ChromiumModuleInstaller.current();
     boolean running = work != null && !work.done;
-    boolean sameEnvironment = work != null && work.slot == slot;
+    boolean sameEnvironment = work != null && work.expected.equals(expected);
+    boolean current = ChromiumModuleInstaller.ownerCurrent(this, expected);
+    boolean eligible = current && ChromiumModuleInstaller.available(this);
     boolean installed = ChromiumModuleInstaller.installed(this);
-    String label = statusText(work, sameEnvironment, installed);
+    String label = statusText(work, sameEnvironment, current, eligible, installed);
     if (!label.contentEquals(status.getText())) status.setText(label);
     progress.setVisibility(running && sameEnvironment ? View.VISIBLE : View.GONE);
     if (running && sameEnvironment) {
@@ -85,8 +86,10 @@ public final class ChromiumModuleInstallActivity extends ThemedActivity {
     if (active && running) handler.postDelayed(refresh, 300);
   }
 
-  private String statusText(ChromiumModuleInstaller.Operation work, boolean sameEnvironment, boolean installed) {
-    if (installed) return "Chromium 组件已安装。返回环境设置后即可选择内核。";
+  private String statusText(ChromiumModuleInstaller.Operation work, boolean sameEnvironment,
+      boolean current, boolean eligible, boolean installed) {
+    if (!current) return "原环境已变化，请返回环境列表重新打开。";
+    if (installed) return "Chromium 组件已安装。返回此环境即可打开。";
     if (!ChromiumModuleInstaller.supported(this)) return "此设备需要 Android 10 或更新版本及受支持的 64 位架构。";
     if (!eligible) return "当前安装版本暂未提供 Chromium 组件。";
     if (work != null && !work.done && !sameEnvironment) return "另一个环境正在下载或安装 Chromium 组件。";
@@ -100,11 +103,12 @@ public final class ChromiumModuleInstallActivity extends ThemedActivity {
   }
 
   private void act() {
-    if (!eligible || ChromiumModuleInstaller.installed(this)) return;
+    if (!ChromiumModuleInstaller.ownerCurrent(this, expected)
+        || !ChromiumModuleInstaller.available(this) || ChromiumModuleInstaller.installed(this)) { refresh(); return; }
     localMessage = "";
     ChromiumModuleInstaller.Operation work = ChromiumModuleInstaller.current();
     if (work != null && !work.done) {
-      if (work.slot != slot) return;
+      if (!work.expected.equals(expected)) return;
       Intent approval = work.takeConfirmation();
       if (approval != null) {
         try { startActivity(approval); }
@@ -122,7 +126,7 @@ public final class ChromiumModuleInstallActivity extends ThemedActivity {
         localMessage = "请在 Android 系统设置中允许 PocketChat 安装应用。";
       }
     } else {
-      ChromiumModuleInstaller.begin(this, slot);
+      if (ChromiumModuleInstaller.begin(this, expected) == null) localMessage = "原环境已变化，请返回后重试。";
     }
     refresh();
   }

@@ -40,7 +40,7 @@ final class EnvironmentEditorUi {
   static void edit(MainActivity a,JSONObject value){edit(a,value,BASIC,editorIdentity(a,null));}
   static void edit(MainActivity a,JSONObject initial,int tab,EnvironmentSpec.Identity identity){
     // Old drafts may lack newly introduced metadata; inherit its current value.
-    ChatSession owner=BrowserPreferences.startBrowser(a)?null:a.session;
+    ChatSession owner=BrowserPreferences.engine(a)==EnvironmentEngine.GECKO?a.session:null;
     if(!editorCurrent(a,identity,owner)){unavailable(a);returnToList(a);return;}
     JSONObject existing=current(a);final Runnable[] exit={null};final boolean[] saving={false};final JSONObject[] browserBaseline={null};final Dialog dialog=new ThemedDialog(a){@Override public void onBackPressed(){if(exit[0]!=null)exit[0].run();else super.onBackPressed();}};
     LinearLayout root=DesignUi.screen(a),outer=DesignUi.body(a,root,"编辑 · "+Profiles.display(a,Profiles.slot(a)),()->{if(exit[0]!=null)exit[0].run();});

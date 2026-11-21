@@ -34,7 +34,7 @@ public final class WorkerPolicyIntegrationActivity extends BrowserActivity {
     BrowserFingerprintIntegrationActivity.validateIntent(this);invocation=getIntent().getStringExtra("runNonce");build=IntegrationBuildIdentity.read(this);
     if(!build.getString("sourceCommit").equals(getIntent().getStringExtra("sourceCommit")))throw new SecurityException("Worker fixture source differs");
     fixture=new BrowserFingerprintFixture(this,"chromium");fixture.start();BrowserFingerprintIntegrationActivity.configure(this,fixture.port(),URL+"?phase=allow");
-    if(!BrowserPreferences.save(this,true,BrowserPreferences.DEFAULT_URL))throw new IOException("Chromium fixture binding could not be saved");
+    if(!BrowserIntegrationActivity.seedChromium(this))throw new IOException("Chromium fixture binding could not be saved");
     getIntent().putExtra("url",URL+"?phase=allow");super.onCreate(null);deadline=SystemClock.elapsedRealtime()+90000;publish(false);
     await("initial native browser",this::ready,()->sample("allow","",true,this::allowed));
   }catch(Throwable error){fail(error);}}
