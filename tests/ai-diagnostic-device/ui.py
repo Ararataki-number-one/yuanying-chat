@@ -152,6 +152,11 @@ class _Ui:
         if not password:
             self.wait(lambda tree: any(node.get("text") == value for node in _nodes(tree, **selector)))
 
+    def hide_keyboard(self):
+        shown = r"(?:mInputShown|mIsInputViewShown|isInputViewShown)=true\b"
+        if re.search(shown, self.call("shell", "dumpsys", "input_method")):
+            self.call("shell", "input", "keyevent", "KEYCODE_BACK")
+
     def close(self):
         try:
             self.adb("shell", "rm", "-f", self.remote, timeout=5)
@@ -264,9 +269,27 @@ def exercise(adb, record, fixture):
         ui.tap(desc="应用专用代理")
         checkpoint = "proxy_editor"
         ui.fill("代理地址", "http://10.0.2.2:37891")
+        ui.hide_keyboard()
         ui.tap(text="保存并应用", cls="android.widget.Button")
-        checkpoint = "proxy_save_receipt"
-        tree = ui.seen("本次保存结果", timeout=60)
+        checkpoint = "proxy_save_or_apply_decision"
+        immediate = "立即切换，可能中断当前任务"
+        deferred = "任务结束后自动应用"
+        tree, state = ui.wait(lambda tree: (
+            "apply" if _nodes(tree, text="选择应用时间")
+                and _nodes(tree, text=immediate, cls="android.widget.Button")
+                and _nodes(tree, text=deferred, cls="android.widget.Button") else
+            "receipt" if _nodes(tree, text="本次保存结果") else
+            "invalid" if _nodes(tree, text="填写有效的 HTTP / SOCKS 代理地址") else None),
+            timeout=75)
+        if state == "invalid":
+            raise UiBlocked("synthetic-proxy-address-rejected")
+        if state == "apply":
+            # Only the freshly created, isolated synthetic environment exists
+            # in this flow, with zero existing tasks and no personal accounts.
+            ui.tap(text=immediate, cls="android.widget.Button")
+            record("synthetic_proxy_apply_confirmed", "passed")
+            checkpoint = "proxy_save_receipt"
+            tree = ui.seen("本次保存结果", timeout=75)
         if not any(node.get("text", "").startswith(("已应用", "已保存"))
                    for node in _nodes(tree, cls="android.widget.TextView")):
             raise UiBlocked("proxy-save-not-confirmed")
