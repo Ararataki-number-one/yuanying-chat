@@ -63,6 +63,13 @@ class SyntheticTests(unittest.TestCase):
                 fixture._read_connect(sock)
             self.assertTrue(sock.remaining.startswith(b" SECRET_SENTINEL\r\n"))
 
+    def test_authorized_default_port_host_and_plain_metadata(self):
+        payload = request(headers=b"Accept-Language: en\r\nPragma: no-cache\r\n", tail=b"UNREAD")
+        payload = payload.replace(b"Host: gecko-failure.invalid:443", b"Host: gecko-failure.invalid")
+        sock = BytesSocket(payload)
+        self.assertEqual("gecko", fixture._read_connect(sock))
+        self.assertEqual(b"UNREAD", sock.remaining)
+
     def test_unregistered_authorities_methods_and_versions_rejected(self):
         candidates = [request(host=host) for host in (
             b"example.com:443", b"127.0.0.1:443", b"gecko-failure.invalid:80",

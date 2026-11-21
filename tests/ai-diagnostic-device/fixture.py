@@ -32,7 +32,8 @@ _TARGETS = {
     b"gecko-failure.invalid:443": "gecko",
     b"gateway-failure.invalid:443": "gateway",
 }
-_HEADER_NAMES = {b"host", b"user-agent", b"proxy-connection", b"connection", b"accept"}
+_HEADER_NAMES = {b"host", b"user-agent", b"proxy-connection", b"connection", b"accept",
+                 b"accept-language", b"accept-encoding", b"cache-control", b"pragma"}
 _HEADER_DEADLINE = 5.0
 _TLS_DEADLINE = 5.0
 _GATEWAY_HANDSHAKE_DELAY = 2.0
@@ -40,6 +41,9 @@ _GATEWAY_HANDSHAKE_DELAY = 2.0
 
 class _Rejected(Exception):
     """Private fixed failure; never includes input bytes or exception details."""
+
+    def __init__(self, category="malformed"):
+        self.category = category
 
 
 def _require_isolated_netns():
@@ -110,7 +114,7 @@ def _read_connect(sock):
     matches = [authority for authority in _TARGETS
                if request == b"CONNECT " + authority + b" HTTP/1.1"]
     if len(matches) != 1:
-        raise _Rejected()
+        raise _Rejected("targetOrRequestLine")
     authority = matches[0]
     seen = set()
     for _ in range(16):
@@ -130,11 +134,12 @@ def _read_connect(sock):
         # Do not consume Authorization, Proxy-Authorization, Cookie, framing,
         # or any unknown header's value. No incoming header is ever logged.
         if key not in _HEADER_NAMES or key in seen:
-            raise _Rejected()
+            raise _Rejected("headerName")
         seen.add(key)
         if key == b"host":
-            if line(128).strip(b" ") != authority:
-                raise _Rejected()
+            # Both authority forms identify the same fixed HTTPS endpoint.
+            if line(128).strip(b" ") not in (authority, authority.removesuffix(b":443")):
+                raise _Rejected("host")
         else:
             # Discard bounded, printable nonsecret metadata without retaining it.
             for _ in range(513):
@@ -160,6 +165,7 @@ class Fixture:
         self._lock = threading.Lock()
         self._counts = {name: 0 for name in (
             "connectionsAccepted", "proxyRejected", "capacityRejected",
+            "rejectTargetOrRequestLine", "rejectHeaderName", "rejectHost", "rejectMalformed", "rejectIo",
             "geckoConnectAccepted", "gatewayConnectAccepted",
             "gatewayHandshakeDelayed", "tlsHandshakeStarted",
             "tlsHandshakeFailed", "tlsHandshakeCompleted", "connectionsClosed",
@@ -316,7 +322,14 @@ class _Handler(socketserver.BaseRequestHandler):
         tls = None
         try:
             target = _read_connect(self.request)
-        except (OSError, _Rejected):
+        except _Rejected as rejected:
+            key = {"targetOrRequestLine": "rejectTargetOrRequestLine", "headerName": "rejectHeaderName",
+                   "host": "rejectHost", "malformed": "rejectMalformed"}.get(rejected.category)
+            fixture._count(key or "rejectMalformed")
+            fixture._count("proxyRejected")
+            return
+        except OSError:
+            fixture._count("rejectIo")
             fixture._count("proxyRejected")
             return
         fixture._count(target + "ConnectAccepted")

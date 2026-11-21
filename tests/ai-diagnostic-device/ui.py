@@ -306,20 +306,32 @@ def exercise(adb, record, fixture):
         ui.tap(prefix="当前网址 ", cls="android.widget.Button")
         ui.seen("打开网址")
         ui.fill("网址或搜索", PAGE_URL)
+        ui.hide_keyboard()
         ui.tap(text="前往", cls="android.widget.Button")
+        checkpoint = "observed_synthetic_address_bar"
+        ui.wait(lambda tree: _target(tree, {"prefix": "当前网址 " + PAGE_URL,
+                                            "cls": "android.widget.Button"}))
+        record("synthetic_address_navigation", "passed")
         checkpoint = "open_ai_from_long_press"
         ui.tap(desc="网页工具", cls="android.widget.Button", hold=True)
         ui.seen("AI 助手 · 浏览器诊断")
         record("android_ui", "passed")
 
         stage = "gecko_certificate_error"
-        checkpoint = "snapshot_from_real_native_callback"
         # A callback arriving while selecting invalidates the frozen evidence.
         # Reacquire from this same tab at most three times, never accept stale UI.
         proof = None
         for attempt in range(3):
+            checkpoint = "select_snapshot_from_current_gecko_tab"
             ui.tap(text="选择标签页证据", cls="android.widget.Button")
-            tree = ui.seen("选择标签页证据（最多 3 个）")
+            tree, state = ui.wait(lambda tree: (
+                "selection" if _nodes(tree, text="选择标签页证据（最多 3 个）") else
+                "empty" if _nodes(tree, text="当前环境没有可以归属到标签页的原生错误记录。") else None))
+            if state == "empty":
+                if attempt < 2:
+                    time.sleep(3)
+                    continue
+                raise UiBlocked("no-native-tab-snapshot")
             labels = [node.get("text") for node in _nodes(tree)
                       if re.fullmatch(r"标签页 [1-9][0-9]*", node.get("text", ""))
                       and node.get("checkable") == "true"]
@@ -327,6 +339,7 @@ def exercise(adb, record, fixture):
                 raise UiBlocked("unexpected-tab-count")
             ui.tap(text=labels[0])
             ui.tap(text="选入", cls="android.widget.Button")
+            checkpoint = "read_the_native_evidence_preview"
             ui.tap(text="预览证据", cls="android.widget.Button")
             tree, state = ui.wait(lambda tree: (
                 "preview" if _nodes(tree, text="查看本地诊断证据") else
