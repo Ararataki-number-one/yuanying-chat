@@ -39,7 +39,7 @@ final class ActionSearchUi {
     add(out,"downloads","下载中心","搜索文件、筛选环境和收集分享","文件 附件 保存 下载 download file",()->{if(a instanceof MainActivity&&((MainActivity)a).hub!=null)((MainActivity)a).hub.select(AppHub.DOWNLOADS);else a.startActivity(new Intent(a,DownloadCenterActivity.class).addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT));});
     add(out,"settings","应用设置","启动、外观与后台提醒","设置 主题 通知 黑夜 setting",()->{if(a instanceof MainActivity&&((MainActivity)a).hub!=null)((MainActivity)a).hub.select(AppHub.SETTINGS);else a.startActivity(new Intent(a,AppSettingsActivity.class).addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT));});
     add(out,"backup","环境配置备份","导出或恢复密码加密的环境配置","备份 迁移 导入 导出 backup",()->a.startActivity(new Intent(a,EnvironmentConfigBackupActivity.class)));
-    add(out,"updates","检查应用更新","查看更新与版本通道","升级 版本 安装 update",()->AppUpdates.open(a));
+    if(AppUpdates.enabled(a))add(out,"updates","检查应用更新","查看更新与版本通道","升级 版本 安装 update",()->AppUpdates.open(a));
     add(out,"feedback","问题与建议","提交反馈并查看处理进度","帮助 反馈 建议 bug help",()->FeedbackUi.open(a));
     return out;
   }

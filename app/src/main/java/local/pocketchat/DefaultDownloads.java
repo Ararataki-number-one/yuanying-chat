@@ -12,7 +12,7 @@ import java.util.*;
 
 /** App-owned default destinations. Existing names are never overwritten. */
 final class DefaultDownloads {
-  static String directory(Context c){return Environment.DIRECTORY_DOWNLOADS+"/元婴期院士/窗口_"+(Profiles.slot(c)+1)+"/";}
+  static String directory(Context c){return Environment.DIRECTORY_DOWNLOADS+"/"+(AppUpdates.parallelInstall(c)?"元婴期院士（并行版）":"元婴期院士")+"/窗口_"+(Profiles.slot(c)+1)+"/";}
   static String description(Context c){return Build.VERSION.SDK_INT>=29?directory(c):"应用内文件/窗口_"+(Profiles.slot(c)+1)+"（可在下载页打开、分享或另存为）";}
   static final class Target {
     final Context c;final Uri uri;final String name,location;final File file,part;

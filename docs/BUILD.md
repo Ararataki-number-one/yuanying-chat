@@ -18,6 +18,12 @@
 
 构建 Chromium 分包前，先运行 `python3 gradle/prepare-cefrium-sdk.py` 核对并准备固定依赖，再带上相同的 Gecko 路径参数运行 `:app:bundleRelease -PpocketChatChromiumBundle=true -PpocketChatChromiumAbi=arm64-v8a`。普通 APK 在 `app/build/outputs/apk/release/`，分包使用的 AAB 在 `app/build/outputs/bundle/release/`。Windows 使用 `gradlew.bat`。
 
+## 并行安装测试包
+
+显式指定 `-PpocketChatParallelInstall=true -PpocketChatChromiumBundle=true` 构建独立包 `local.pocketchat.parallel`。按设备 ABI 从同一 AAB 提取 `base-master.apk` 和 `chromium-master.apk`，使用同一证书签署，再通过 `adb install-multiple base-master.apk chromium-master.apk` 一次提交。安装后从环境设置选择 Chromium。并行版使用独立的环境、登录资料和默认下载目录，环境配置备份仅传递可移植设置。
+
+设备验证使用一次性测试密钥。将来若发布并行版，由维护者在受控工位建立专用签名密钥，将加密密钥库及恢复副本分开保存，口令由独立的私有凭据库保管。在首次正式使用前实测恢复，记录公开证书的 SHA-256 指纹。主包和分包都由该证书签署，并行版后续更新沿用同一证书。
+
 ## 正式验收的 SDK 准备
 
 [完整发布验收](../.github/workflows/browser-2_1-acceptance.yml) 先下载并核对官方 AAR、POM、源码和固定工具链。以下调用在该工作流内使用，工作目录包含 `geckoview.aar`、`geckoview.pom`、`geckoview-sources.jar` 和 `gradle/gradle-9.8.0/`。`ANDROID_HOME` 指向 Android SDK，`JAVA_HOME` 指向 JDK 17，运行批次由 GitHub Actions 提供。

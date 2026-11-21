@@ -108,7 +108,10 @@ final class BrowserSettingsUi {
       dialog.note("可保存默认网站。切换内核请从此环境的 Chromium 网页打开环境设置，以便先确认文件操作已结束。");
     }
     if(managedChromium){
-      dialog.note("Chromium 按需安装。安装后，各环境可选择使用此组件，登录和网站数据各自保存。");
+      if(AppUpdates.parallelInstall(activity))
+        dialog.note("独立 Chromium 仅支持同批构建的并行版组件，不能从正式版通道下载。");
+      else
+        dialog.note("Chromium 按需安装。安装后，各环境可选择使用此组件，登录和网站数据各自保存。");
     }else{
       dialog.note("两个内核分别保存登录、Cookie 和指纹配置。Gecko 保留原生隐私模板；Chromium 的 UA、UA-CH 与文档指纹保护在其指纹设置中单独管理。Gecko 在 ChatGPT 网页中支持草稿救援和离线会话检索。");
       dialog.note("两核保护范围不同，请分别查看设置和自检。Chromium 的页面 WebRTC 限制不覆盖 Worker；HTTP 代理也不能代替设备 VPN。");
@@ -137,6 +140,10 @@ final class BrowserSettingsUi {
         }
         if(needsModule){
           if(!current(activity,expected)){unavailable(activity);return;}
+          if(AppUpdates.parallelInstall(activity)){
+            problem.setText("并行版不能使用正式版组件下载。请安装同一并行版发布包内的 Chromium 组件。");
+            problem.setVisibility(View.VISIBLE);return;
+          }
           ChromiumModuleInstaller.show(activity,expected.slot);
           return;
         }

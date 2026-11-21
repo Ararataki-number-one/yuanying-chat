@@ -1,6 +1,11 @@
 plugins { id 'com.android.application' }
 
+def parallelInstall = providers.gradleProperty('pocketChatParallelInstall').map { it.toBoolean() }.getOrElse(false)
+
 def chromiumBundle = findProject(':chromium') != null
+if (parallelInstall && !chromiumBundle) {
+    throw new GradleException('PocketChat parallel install requires the same-bundle Chromium feature')
+}
 def chromiumAbi = providers.gradleProperty('pocketChatChromiumAbi').orElse('arm64-v8a').get()
 if (chromiumBundle && !(chromiumAbi in ['arm64-v8a', 'x86_64'])) {
     throw new GradleException('PocketChat Chromium bundles require one ABI: arm64-v8a or x86_64')
@@ -10,6 +15,7 @@ def generatedManifest = layout.buildDirectory.file('generated/gecko/AndroidManif
 tasks.register('prepareGeckoManifest') {
     inputs.file('src/main/AndroidManifest.xml')
     inputs.property('chromiumBundle', chromiumBundle)
+    inputs.property('parallelInstall', parallelInstall)
     outputs.file(generatedManifest)
     doLast {
         def content = file('src/main/AndroidManifest.xml').getText('UTF-8')
@@ -17,6 +23,16 @@ tasks.register('prepareGeckoManifest') {
             .replaceAll(/<uses-sdk[^>]*\/>/, '')
             .replace(' android:debuggable="false"', '')
             .replace('android:authorities="local.pocketchat.', 'android:authorities="${applicationId}.')
+        if (parallelInstall) {
+            // Keep class names and official manifests unchanged; only scope OS-facing identity.
+            content = content
+                .replace('android:taskAffinity="local.pocketchat.', 'android:taskAffinity="${applicationId}.')
+                .replace('android:label="元婴期院士"', 'android:label="元婴期院士（并行版）"')
+                // Both modules are installed together by Android for the parallel package.
+                .replaceAll(/(?m)^.*android:name="local[.]pocketchat[.]AppUpdate(?:Activity|Provider|Job|Receiver)".*\n/, '')
+                .replaceAll(/(?m)^.*android:name="local[.]pocketchat[.]ChromiumModule(?:InstallActivity|Receiver)".*\n/, '')
+                .replaceAll(/(?m)^.*android:name="android[.]permission[.]REQUEST_INSTALL_PACKAGES".*\n/, '')
+        }
         if (chromiumBundle) {
             // Gecko retains the app-level zygote preload hook in the base. The
             // independently installed Chromium feature owns its renderer services.
@@ -40,7 +56,7 @@ android {
     if (chromiumBundle) buildToolsVersion '37.0.0'
     // Core flows keep API 26 support; protected external VPN route inspection needs API 33+.
     defaultConfig {
-        applicationId 'local.pocketchat'; minSdk 26; targetSdk 35; versionCode 117; versionName '2.1.15'
+        applicationId (parallelInstall ? 'local.pocketchat.parallel' : 'local.pocketchat'); minSdk 26; targetSdk 35; versionCode 117; versionName '2.1.15'
         manifestPlaceholders = [releaseChannel: providers.gradleProperty('releaseChannel').orElse('stable').get(),
                                 candidateNumber: providers.gradleProperty('candidateNumber').orElse('0').get(),
                                 chromiumDelivery: chromiumBundle]

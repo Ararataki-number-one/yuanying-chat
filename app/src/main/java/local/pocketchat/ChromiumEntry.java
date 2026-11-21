@@ -20,6 +20,8 @@ final class ChromiumEntry {
   private ChromiumEntry() {}
 
   static boolean managed(Context context){
+    // A Gecko-only parallel build must not silently use legacy WebView as Chromium.
+    if(AppUpdates.parallelInstall(context))return true;
     try{
       Bundle metadata=context.getPackageManager().getApplicationInfo(context.getPackageName(),PackageManager.GET_META_DATA).metaData;
       return metadata!=null&&Boolean.TRUE.equals(metadata.get(DELIVERY));

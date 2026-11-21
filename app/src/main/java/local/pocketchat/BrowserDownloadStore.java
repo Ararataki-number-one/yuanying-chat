@@ -14,7 +14,7 @@ final class BrowserDownloadStore {
   static final class Unconfirmed extends IOException {Unconfirmed(Throwable cause){super("保存结果待确认，请在下载中心核对",cause);}}
   final Context context;
   BrowserDownloadStore(Context context){this.context=context.getApplicationContext();}
-  String directory(){return "Download/元婴期浏览器/窗口_"+(Profiles.slot(context)+1)+"/";}
+  String directory(){return "Download/"+(AppUpdates.parallelInstall(context)?"元婴期浏览器（并行版）":"元婴期浏览器")+"/窗口_"+(Profiles.slot(context)+1)+"/";}
   static String safeName(String value){String clean=(value==null?"文件":value).replaceAll("[\\\\/:*?\"<>|\\p{Cntrl}]","_").trim();if(clean.isEmpty()||clean.equals(".")||clean.equals("..")||clean.equals("payload.part"))clean="文件";if(clean.length()>160){int end=160;if(Character.isHighSurrogate(clean.charAt(end-1)))--end;clean=clean.substring(0,end);}return clean;}
   static final class Target {
     final Context context;final Uri uri;final String name,location;final File file,part;

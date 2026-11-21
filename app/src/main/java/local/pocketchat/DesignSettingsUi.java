@@ -34,7 +34,7 @@ final class DesignSettingsUi {
     SettingsWorkspaceStyle.section(box,"帮助与应用","");
     LinearLayout help=SettingsWorkspaceStyle.group(a);box.addView(help);
     group(a,help,"问题与建议","提交反馈 · 查看处理进度","feedback",()->FeedbackUi.open(a));
-    group(a,help,"应用更新",AppSettings.get(a,"updateLabel","当前版本 "+AppVersion.name(a)),"download",()->AppUpdates.open(a));
+    if(AppUpdates.enabled(a))group(a,help,"应用更新",AppSettings.get(a,"updateLabel","当前版本 "+AppVersion.name(a)),"download",()->AppUpdates.open(a));
     group(a,help,"关于与使用帮助","版本与使用说明","info",()->about(a));
     group(a,help,"功能支持范围","查看支持的功能","shield",()->capabilities(a));
   }
