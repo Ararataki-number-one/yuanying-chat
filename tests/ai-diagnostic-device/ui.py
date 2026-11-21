@@ -295,17 +295,18 @@ def exercise(adb, record, fixture):
             raise UiBlocked("proxy-save-not-confirmed")
         ui.tap(text="关闭", cls="android.widget.Button")
         record("synthetic_proxy_saved", "passed", "native-form-save-only-route-needs-fixture-receipt")
-        checkpoint = "open_gecko_from_network"
-        ui.tap(**more)
-        ui.tap(text="打开会话", cls="android.widget.Button")
+        # This is the native workspace of the new environment. Its dock
+        # switches that same Activity to Gecko without reopening a profile.
+        checkpoint = "open_same_environment_browser_dock"
+        ui.tap(desc="浏览器", text="浏览器", cls="android.widget.Button")
+        checkpoint = "gecko_toolbar"
         ui.wait(lambda tree: _target(tree, {"desc": "网页工具", "cls": "android.widget.Button"}), timeout=60)
+        record("gecko_browser_workspace", "passed")
         checkpoint = "issue_synthetic_gecko_navigation"
         ui.tap(prefix="当前网址 ", cls="android.widget.Button")
         ui.seen("打开网址")
         ui.fill("网址或搜索", PAGE_URL)
         ui.tap(text="前往", cls="android.widget.Button")
-        checkpoint = "gecko_error_banner"
-        ui.wait(lambda tree: _target(tree, {"desc": "网页或网络错误，点按查看详情"}), timeout=60)
         checkpoint = "open_ai_from_long_press"
         ui.tap(desc="网页工具", cls="android.widget.Button", hold=True)
         ui.seen("AI 助手 · 浏览器诊断")
