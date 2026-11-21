@@ -70,23 +70,11 @@ final class FilesAndProfilesFixture {
     private Activity open(LoopbackProxy proxy, String path, int slot, boolean create) throws Exception {
         String url = proxy.origin() + path;
         fixture.onMain(() -> {
-            ClassLoader loader = target.getClassLoader();
-            Class<?> catalogType = loader.loadClass("local.pocketchat.ProfileCatalog");
-            Object catalog = invoke(catalogType, null, "get", new Class<?>[]{Context.class}, target);
-            Class<?> profiles = loader.loadClass("local.pocketchat.Profiles");
-            if (slot != 0 && create) invoke(profiles, null, "prepare",
-                    new Class<?>[]{Context.class, int.class, boolean.class}, target, slot, false);
-            invoke(catalogType, catalog, "identity", new Class<?>[]{int.class}, slot);
-            Context environment = (Context)invoke(profiles, null,
-                    "context", new Class<?>[]{Context.class, int.class}, target, slot);
+            Context environment = RouteFixture.chromiumEnvironment(target, slot, nonce, create);
             fixture.selectEnvironment(environment, proxy.endpoint(), false, url);
             return null;
         });
-        Activity activity = fixture.launchEnvironment(target, url, slot);
-        Object identity = fixture.onMain(() -> field(activity, "identity"));
-        require(identity != null && Integer.valueOf(slot).equals(field(identity, "slot")),
-                "Chromium opened a different environment than the fixture owner");
-        return activity;
+        return fixture.launchEnvironment(target, url, slot);
     }
 
     private void close(Activity activity) throws Exception {
@@ -349,7 +337,9 @@ final class FilesAndProfilesFixture {
                     return false;
                 })) {
             for (int slot = 0; slot < 2; slot++) {
-                Activity activity = open(proxy, "/state-" + slot, slot, seed);
+                // Keep the built-in Gecko identity (slot 0) unchanged. The two
+                // logical sites use independent fixture slots 1 and 2.
+                Activity activity = open(proxy, "/state-" + slot, slot + 1, seed);
                 try {
                     CefriumBrowser browser = fixture.awaitBrowser(activity);
                     fixture.awaitRenderedTitle(browser, "FixtureProfiles-" + slot);

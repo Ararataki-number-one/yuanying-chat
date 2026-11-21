@@ -19,8 +19,8 @@ from stage_chromium_module import ASSET_SHA, ABI_CONFIGS, ABIS, DELIVERY, SIGNER
 
 ACTIVITY_NS = 'local.pocketchat.'
 PACKAGES = ('local.pocketchat', 'local.pocketchat.test')
-SAFE_SCREEN = ('请先确认此环境的网络设置', '请先为此环境配置网络线路', '此环境未明确启用系统直连', '系统网络尚未连接',
-               'Chromium 尚不能验证此环境的受保护线路，可在环境设置中选择 Gecko')
+OFFLINE_SCREEN = '系统网络尚未连接'
+FIXTURE = 'local.pocketchat.chromiumfixture/.RouteFixture'
 FEATURE = 'chromium'
 API37_HOST_SCOPE = 'api37-debug-candidate-stock-webview-host'
 API37_RENDER_SCOPE = 'api37-debug-candidate-stock-webview-renderer'
@@ -277,35 +277,30 @@ class Device:
         require(self.run_as('cat', 'files/pocketchat-chromium-delivery-fixture') == self.nonce,
                 'Private data marker was not retained by split installation')
 
-    def engine_preference(self, pick_chromium=False):
-        file = 'shared_prefs/chat.xml'
+    def require_default_gecko(self):
         self.shell('am', 'force-stop', self.args.package)
-        raw = self.run_as('cat', file)
+        raw = self.run_as('cat', 'shared_prefs/chat.xml')
         xml = ElementTree.fromstring(raw)
         require(xml.tag == 'map', 'Unexpected SharedPreferences after native Gecko startup')
         choices = xml.findall("*[@name='browserStartScreen']")
-        require(not choices or (len(choices) == 1 and choices[0].text == 'chatgpt-enhanced'),
-                'Fresh environment is not default Gecko')
-        if pick_chromium:
-            choice = choices[0] if choices else ElementTree.SubElement(xml, 'string', {'name': 'browserStartScreen'})
-            require(choice.tag == 'string', 'Unexpected engine preference type')
-            choice.text = FEATURE
-            updated = ElementTree.tostring(xml, encoding='unicode', xml_declaration=True)
-            self.run_as('sh', '-c', f'cat > {file}.tmp && mv {file}.tmp {file}', input=updated)
-            require(ElementTree.fromstring(self.run_as('cat', file)).find("string[@name='browserStartScreen']").text == FEATURE,
-                    'Could not seed the independent fixture choice')
+        require(not choices or (len(choices) == 1 and choices[0].tag == 'string'
+                                and choices[0].text == 'chatgpt-enhanced'), 'Default environment is not Gecko')
 
-    def safe_status(self):
-        file = f'/data/local/tmp/pocketchat-chromium-ui-{self.nonce}.xml'
-        try:
-            self.shell('uiautomator', 'dump', file, timeout=25, check=False)
-            raw = self.shell('cat', file, timeout=15, check=False)
-            if not raw.startswith('<?xml'):
-                return None
-            xml = ElementTree.fromstring(raw)
-            return next((node.get('text') for node in xml.iter('node') if node.get('text') in SAFE_SCREEN), None)
-        finally:
-            self.shell('rm', '-f', file, timeout=15, check=False)
+
+def offline_receipt(transcript, nonce, base, feature):
+    require(re.findall(r'(?m)^INSTRUMENTATION_CODE:\s*(-?[0-9]+)\s*$', transcript) == ['-1'],
+            'Offline Chromium instrumentation did not finish successfully')
+    entries = re.findall(r'(?m)^INSTRUMENTATION_RESULT: (\w+)=(.*)$', transcript)
+    observed = dict(entries)
+    require(len(entries) == len(observed) and 'failure' not in observed, 'Offline evidence is ambiguous or failed')
+    expected = dict(scope='debug-fresh-chromium-offline', package=PACKAGES[0], runNonce=nonce,
+                    baseSha256=base, featureSha256=feature, chromiumOfflineStatus=OFFLINE_SCREEN,
+                    chromiumForeground=ACTIVITY_NS + 'CefriumBrowserActivity', defaultGeckoUnchanged='true',
+                    offlineRouteRejectedBeforeNativeInitialization='true')
+    require(all(observed.get(key) == value for key, value in expected.items()),
+            'Offline Chromium evidence does not match the exact pair, nonce, identity and blocked route')
+    return {'chromiumForeground': observed['chromiumForeground'], 'chromiumOfflineStatus': observed['chromiumOfflineStatus'],
+            'defaultGeckoUnchanged': True, 'offlineFixtureTranscriptSha256': hashlib.sha256(transcript.encode()).hexdigest()}
 
 
 def run(args, report):
@@ -323,7 +318,7 @@ def run(args, report):
     require(device.native_engine('libcef.so', require_main_maps=True) is None, 'Chromium loaded before its split was present')
     report['initWithoutChromium'] = True
     device.seed_marker()
-    device.engine_preference()
+    device.require_default_gecko()
     report['inheritedInstallSession'] = device.install({role: apk for role, apk in artifacts.items() if role != 'base'}, inherit=True)
     report['inheritedPaths'] = device.verify_installed(artifacts)
     device.check_marker()
@@ -332,11 +327,16 @@ def run(args, report):
     device.launch_default_entry()
     report['geckoAfterInstallForeground'] = device.wait(lambda: device.resumed('MainActivity'), 'Module install changed the Gecko default')
     report['geckoAfterInstallNative'] = device.wait(device.gecko_runtime, 'Default Gecko did not load after feature install')
-    device.engine_preference(pick_chromium=True)
-    device.launch_default_entry()
-    report['chromiumForeground'] = device.wait(lambda: device.resumed('CefriumBrowserActivity'), 'Environment selection did not open Chromium activity')
-    report['chromiumOfflineStatus'] = device.wait(device.safe_status, 'Chromium did not display a safe blocked network status')
-    require(device.native_engine('libcef.so', require_main_maps=True) is None, 'Chromium initialized before the route allowed it')
+    device.require_default_gecko()
+    fixture = args.fixture_apk.resolve()
+    apk_signer(args.apksigner, fixture, 29, args.signer)
+    require(device.adb('install', '-t', str(fixture)) == 'Success', 'Could not install the same-signer offline fixture')
+    log = device.shell('am', 'instrument', '-w', '-e', 'fixtureMode', 'prepare-offline-chromium',
+                       '-e', 'runNonce', device.nonce, '-e', 'baseSha256', artifacts['base']['sha256'],
+                       '-e', 'featureSha256', artifacts[FEATURE]['sha256'], FIXTURE, timeout=180)
+    args.output.with_suffix('.offline.txt').write_text(log + '\n')
+    report.update(offline_receipt(log, device.nonce, artifacts['base']['sha256'], artifacts[FEATURE]['sha256']))
+    device.require_default_gecko()
     device.offline()
     device.check_marker()
     device.verify_installed(artifacts)
@@ -450,13 +450,15 @@ def main():
     parser.add_argument('--timeout', default=300, type=int)
     parser.add_argument('--output', required=True, type=Path)
     parser.add_argument('--verify-only', action='store_true')
+    parser.add_argument('--fixture-apk', type=Path, help='Same-signer debug RouteFixture APK for offline environment creation')
     parser.add_argument('--api37-compatibility', action='store_true',
                         help='Retain the stock provider on API 37 for a separate process-disabled renderer test')
     args = parser.parse_args()
     if args.api37_compatibility and args.verify_only:
         parser.error('API 37 compatibility requires actual Android execution')
-    if not args.verify_only and not (args.adb and args.serial and args.disposable_emulator):
-        parser.error('Running on Android requires --adb, --serial and --disposable-emulator')
+    if not args.verify_only and not (args.adb and args.serial and args.disposable_emulator
+                                    and args.fixture_apk and args.package == PACKAGES[0] and args.abi == 'x86_64'):
+        parser.error('Running requires --adb, --serial, --disposable-emulator, --fixture-apk and the x86_64 debug package')
     if not 10 <= args.timeout <= 900 or not re.fullmatch(r'[a-f0-9]{64}', args.signer) or args.signer == SIGNER:
         parser.error('Use a dedicated debug test signer and a bounded timeout of 10..900 seconds')
     report = {'schema': 1, 'status': 'running',

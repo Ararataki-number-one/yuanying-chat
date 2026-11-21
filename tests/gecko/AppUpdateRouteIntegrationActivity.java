@@ -101,16 +101,25 @@ public final class AppUpdateRouteIntegrationActivity extends Activity {
     @SuppressWarnings("unchecked") void restore()throws Exception{if(originalPrefs==null)return;SharedPreferences.Editor edit=profile.getSharedPreferences("chat",0).edit().clear();for(Map.Entry<String,?> e:originalPrefs.entrySet()){Object v=e.getValue();String k=e.getKey();if(v instanceof String)edit.putString(k,(String)v);else if(v instanceof Boolean)edit.putBoolean(k,(Boolean)v);else if(v instanceof Integer)edit.putInt(k,(Integer)v);else if(v instanceof Long)edit.putLong(k,(Long)v);else if(v instanceof Float)edit.putFloat(k,(Float)v);else if(v instanceof Set)edit.putStringSet(k,(Set<String>)v);}if(!edit.commit())throw new IOException("Cannot restore synthetic profile prefs");ContentValues values=new ContentValues();values.put("created",originalRow.optBoolean("created")?1:0);values.put("deleting",originalRow.optBoolean("deleting")?1:0);values.put("generation",originalRow.optInt("generation"));ProfileCatalog.get(profile).getWritableDatabase().update("environments",values,"slot=?",new String[]{String.valueOf(Profiles.slot(profile))});if(Profiles.slot(profile)==0)AppSettings.defaultSlot(profile,originalDefault);SecretStore vault=new SecretStore(profile);for(Map.Entry<String,byte[]> entry:originalSecrets.entrySet())NetworkUiProvider.restore(vault,entry.getKey(),entry.getValue());java.lang.reflect.Field singleton=NativeNetwork.class.getDeclaredField("instance");singleton.setAccessible(true);singleton.set(null,previousSingleton);originalPrefs=null;}
     @Override public Bundle call(String method,String arg,Bundle args){if(Binder.getCallingUid()!=android.os.Process.myUid()||Looper.myLooper()==Looper.getMainLooper())throw new SecurityException();JSONObject value;try{
       if("setup".equals(method)){
-        NativeProbeIntegrationActivity.AuthSocks.ChromiumOrigin origin=null;
-        if(args.containsKey("chromiumFixtureHost")||args.containsKey("chromiumFixtureOriginPort")
-            ||args.containsKey("chromiumFixtureLoopbackPort")){
-          if(!(this instanceof Control0)||Profiles.slot(profile)!=0||!"local.pocketchat.test".equals(profile.getPackageName()))
-            throw new SecurityException("Chromium fixture requires the private slot-0 test app");
-          origin=new NativeProbeIntegrationActivity.AuthSocks.ChromiumOrigin(
-              args.getString("chromiumFixtureHost"),args.getInt("chromiumFixtureOriginPort"),
-              args.getInt("chromiumFixtureLoopbackPort"));
-        }
-        setup(args.getInt("updatePort"),origin);
+        if(args!=null&&args.keySet().stream().anyMatch(key->key.startsWith("chromiumFixture"))){
+          if(!(this instanceof Control7)||Profiles.slot(profile)!=7||!"local.pocketchat.test".equals(profile.getPackageName()))
+            throw new SecurityException("Chromium fixture requires the private slot-7 test app");
+          String nonce=args.getString("chromiumFixtureRunNonce","");
+          String host=args.getString("chromiumFixtureHost","");
+          if(!nonce.matches("[0-9a-f]{32}")||!host.equals("pocketchat-internal-"+nonce+".invalid"))
+            throw new SecurityException("Invalid private Chromium fixture origin identity");
+          ProfileCatalog catalog=ProfileCatalog.get(profile);
+          EnvironmentSpec.Identity identity=catalog.identity(7);
+          if(identity.generation!=args.getInt("chromiumFixtureGeneration",-1)
+              ||!identity.environmentId.equals(args.getString("chromiumFixtureEnvironmentId"))
+              ||BrowserPreferences.engine(profile)!=EnvironmentEngine.CHROMIUM)
+            throw new SecurityException("Chromium fixture requires its created environment identity");
+          NativeProbeIntegrationActivity.AuthSocks.ChromiumOrigin origin=new NativeProbeIntegrationActivity.AuthSocks.ChromiumOrigin(
+              host,args.getInt("chromiumFixtureOriginPort"),args.getInt("chromiumFixtureLoopbackPort"));
+          setup(args.getInt("updatePort"),origin);
+          if(!catalog.identity(7).equals(identity)||BrowserPreferences.engine(profile)!=EnvironmentEngine.CHROMIUM)
+            throw new SecurityException("Chromium fixture environment changed during setup");
+        }else setup(args.getInt("updatePort"),null);
       }
       else if("stop".equals(method)||"setDirect".equals(method)){network.cancelMaintenance();network.stopNow();if("setDirect".equals(method))profile.getSharedPreferences("chat",0).edit().putString("networkMode","external").putBoolean("networkConfigured",true).putString("proxy","").commit();}
       else if("restart".equals(method))network.startNow();

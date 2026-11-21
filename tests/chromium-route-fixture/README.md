@@ -7,14 +7,13 @@ bash tests/chromium-route-fixture/build-fixture.sh \
   "$VERIFIED_CEFRIUM_SDK_AAR" "$OUTPUT/fixture-unsigned.apk"
 ```
 
-Run the installed-package checks in `tests/gecko/run_chromium_delivery.py` first. Those checks start offline with Android System WebView disabled. Before starting instrumentation, make an Internet-capable non-VPN default network available on the disposable guest. The fixture binds the installed APK hashes and nonce to the install receipt and opens Chromium through the normal app activity.
+Run the installed-package checks in `tests/gecko/run_chromium_delivery.py --fixture-apk <same-signer-debug-fixture.apk> …` first. They start offline, prove the factory environment stays on Gecko before and after split installation, then use the app's creation API to bind a fresh non-default identity to Chromium. The instrumentation checks that the existing Gecko identity cannot be repurposed and that the newly selected Chromium activity visibly rejects the offline route before loading libcef. The route checks then reopen that same owned identity; make an Internet-capable non-VPN default network available on the disposable guest before running them. The fixture binds the installed APK hashes and nonce to the install receipt and opens Chromium through the normal app activity.
 
 - Explicit HTTP, HTTPS, and SOCKS tests each start an upstream mock on 127.0.0.1. The mock opens no outbound sockets and accepts only a per-run reserved `.invalid` origin. Each mock records the exact HTTP CONNECT or domain-based SOCKS5 negotiation, then serves a unique HTTP page to Chromium. The page title and live renderer must match the mock's own observed request. The mocks reject escaped proxy credentials. The HTTPS proxy mock also requires an actual TLS handshake. The test uses a per-invocation JSSE trust store containing only the existing localhost fixture certificate. Production hostname verification remains active and the default context is restored.
 - Each proxy test holds an incomplete response open, switches the environment to an unavailable VPN route, and requires the old upstream socket and Chromium browser to close. An independent private-address listener records any bypass during native and in-page request attempts and after the switch. Late navigation must stay blocked while the old mock remains observable.
 - The direct test uses a Java-backed HTTPS page on a different reserved origin. It disables the guest's network and checks browser retirement and denied late navigation again.
 
 ```sh
-adb -P "$TEST_ADB_PORT" -s "$TEST_SERIAL" install -t "$OUTPUT/fixture-signed.apk"
 adb -P "$TEST_ADB_PORT" -s "$TEST_SERIAL" shell am instrument -w \
   -e runNonce "$NONCE" -e baseSha256 "$BASE_SHA" -e featureSha256 "$FEATURE_SHA" \
   local.pocketchat.chromiumfixture/.RouteFixture
@@ -40,7 +39,7 @@ adb -s "$TEST_SERIAL" shell am instrument -w \
 
 The VPN lane reuses the app's existing non-forwarding TUN fixture. It matches a CEF-mediated TCP attempt to an IPv6 benchmarking-only address and a per-nonce port on the selected full TUN. It stops that exact generation and observes the descriptor close, active network change, browser retire, and late request denial. The shell-prepared consent state does not measure user consent UI. The TUN fixture does not serve a page or forward packets.
 
-The built-in route lane starts the app's existing authenticated entry and fixed exit on its real local core. The integration-only fixed-exit mock maps one nonce-bound reserved origin and port to an owned loopback HTTP server. The active native core, generation, route serial, installed core checksum, authenticated circuit counters and observed DOM must agree. The test stops the core while an upstream socket is open, confirms socket and browser closure, and denies late navigation. The hook never changes production destination rules.
+The built-in route lane uses a fresh Chromium binding in the existing private slot-7 fixture process. It starts the app's existing authenticated entry and fixed exit on its real local core. The integration-only fixed-exit mock maps one nonce-bound reserved origin and port to an owned loopback HTTP server. The active native core, generation, route serial, installed core checksum, authenticated circuit counters and observed DOM must agree. The test stops the core while an upstream socket is open, confirms socket and browser closure, and denies late navigation. The hook never changes production destination rules.
 
 Public server traffic, physical devices, application-level module download, Android installer confirmation, and original release-signer verification require their own evidence.
 
@@ -55,6 +54,6 @@ TEST_SERIAL="$TEST_SERIAL" SOURCE_COMMIT="$SOURCE_COMMIT" SOURCE_TREE="$SOURCE_T
 ```
 
 - The files check opens a non-default environment through the real app entry point. A Chromium tap opens Android DocumentsUI and selects synthetic text from Android Downloads. The originating page must read the exact name and contents. Chromium then downloads a generated PDF and a Word OOXML document. The app's saved-file index and Android content URI must identify the correct owner, name, MIME type and exact source bytes.
-- The profile check writes distinct persistent HTTP-only cookies and local storage values at a single reserved origin in two environments. It confirms clean storage before seeding. The runner force-stops the app, checks that a new Chromium host process opens the same two native profiles, and requires each request's cookie and the page's storage value to match its original environment.
+- The profile check writes distinct persistent HTTP-only cookies and local storage values at a single reserved origin in two fresh Chromium environments (slots 1 and 2; the default slot is not changed). It confirms clean storage before seeding. The runner force-stops the app, checks that a new Chromium host process opens the same two native profiles, and requires each request's cookie and the page's storage value to match its original environment.
 
 All content is owned by the fixture at a reserved `.invalid` origin behind the loopback proxy. These checks cover the Android file selection handoff and same-install process restart. A real account, a public-site upload, physical devices and replacement by a newer APK require separate validation.

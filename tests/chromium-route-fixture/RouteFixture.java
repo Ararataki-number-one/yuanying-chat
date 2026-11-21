@@ -27,7 +27,9 @@ import com.cefrium.CefriumBrowser;
 import com.cefrium.CefriumContentResponse;
 import com.cefrium.CefriumProfile;
 
+import java.io.BufferedReader;
 import java.io.ByteArrayOutputStream;
+import java.io.FileReader;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.InputStream;
@@ -55,7 +57,11 @@ public final class RouteFixture extends Instrumentation {
     private static final String PACKAGE = "local.pocketchat";
     private static final String INTEGRATION_PACKAGE = PACKAGE + ".test";
     private static final String VPN_FIXTURE_IP = "2001:2::cafe";
-    private static final String ENTRY = PACKAGE + ".MainActivity";
+    private static final int DEBUG_SLOT = 1;
+    private static final int VPN_SLOT = 3;
+    private static final int INTERNAL_SLOT = 7;
+    private static final String OFFLINE_MODE = "prepare-offline-chromium";
+    private static final String OFFLINE_ORIGIN = "https://pocketchat-optional-fixture.invalid/";
     private static final String CHROMIUM = PACKAGE + ".CefriumBrowserActivity";
     private static final String ORIGIN = "https://pocketchat-route-fixture.invalid";
     private static final String API37_MODE = "api37-process-webview-disabled";
@@ -101,6 +107,12 @@ public final class RouteFixture extends Instrumentation {
             require(nonce.matches("[0-9a-f]{32}"), "Missing fixture nonce");
             result.putString("runNonce", nonce);
             String fixtureMode = arguments.getString("fixtureMode", "standard");
+            if (OFFLINE_MODE.equals(fixtureMode)) {
+                require(PACKAGE.equals(target.getPackageName()), "Offline preflight requires the debug delivery package");
+                prepareOfflineChromium(target, nonce, result);
+                finish(Activity.RESULT_OK, result);
+                return;
+            }
             String stockWebView = null;
             if (api37WebViewDisabled) {
                 stockWebView = enabledSystemWebViewProvider();
@@ -137,15 +149,16 @@ public final class RouteFixture extends Instrumentation {
             }
             require("standard".equals(fixtureMode) || api37WebViewDisabled, "Unexpected production fixture mode");
 
+            onMain(() -> chromiumEnvironment(target, DEBUG_SLOT, nonce, false));
             exerciseProtectedProxy(target, result, nonce, LoopbackProxy.Kind.HTTP, null);
             exerciseProtectedProxy(target, result, nonce, LoopbackProxy.Kind.SOCKS, null);
             exerciseTlsProxy(target, result, nonce);
 
             AtomicInteger served = new AtomicInteger();
             String title = "PocketChatRoute-" + nonce;
-            CefriumProfile profile = onMain(() -> registerFixture(target, title, served));
+            CefriumProfile profile = onMain(() -> registerFixture(target, nonce, title, served));
             try {
-                Activity activity = launchNormalEntry(target, ORIGIN + "/");
+                Activity activity = launchEnvironment(target, ORIGIN + "/", DEBUG_SLOT);
                 require(activity.getClass().getName().equals(CHROMIUM), "Normal base entry did not open Chromium");
                 CefriumBrowser browser = awaitBrowser(activity);
                 awaitRenderedTitle(browser, title);
@@ -202,6 +215,64 @@ public final class RouteFixture extends Instrumentation {
         }
     }
 
+    private void prepareOfflineChromium(Context target, String nonce, Bundle result) throws Exception {
+        require(!hasInternetCapableNetwork(target) && "1".equals(shell("settings get global airplane_mode_on").trim()),
+                "Factory debug preflight must remain offline");
+        onMain(() -> {
+            ClassLoader loader = target.getClassLoader();
+            Class<?> catalogType = loader.loadClass(PACKAGE + ".ProfileCatalog");
+            Object catalog = invoke(catalogType, null, "get", new Class<?>[]{Context.class}, target);
+            Object original = invoke(catalogType, catalog, "identity", new Class<?>[]{int.class}, 0);
+            Context baseline = environment(target, 0);
+            require("GECKO".equals(engine(baseline)), "The default environment must remain on Gecko");
+            boolean refused = false;
+            try {
+                chromiumEnvironment(target, 0, nonce, true);
+            } catch (IllegalStateException expected) {
+                refused = "Refusing to repurpose an existing or foreign environment".equals(expected.getMessage());
+            }
+            require(refused, "The Chromium fixture must refuse the existing Gecko identity");
+            selectEnvironment(chromiumEnvironment(target, DEBUG_SLOT, nonce, true), "", false, OFFLINE_ORIGIN);
+            require(original.equals(invoke(catalogType, catalog, "identity", new Class<?>[]{int.class}, 0))
+                    && "GECKO".equals(engine(baseline)), "Creating Chromium changed the original Gecko identity");
+            return null;
+        });
+        Activity activity = launchEnvironment(target, OFFLINE_ORIGIN, DEBUG_SLOT);
+        try {
+            String status = "";
+            long deadline = SystemClock.elapsedRealtime() + 45_000;
+            while (SystemClock.elapsedRealtime() < deadline) {
+                status = onMain(() -> {
+                    TextView view = (TextView)field(activity, "status");
+                    return view == null || !view.isShown() || !view.hasWindowFocus() ? "" : view.getText().toString();
+                });
+                if ("系统网络尚未连接".equals(status)) break;
+                SystemClock.sleep(250);
+            }
+            require("系统网络尚未连接".equals(status)
+                    && !hasInternetCapableNetwork(target) && onMain(() -> field(activity, "browser")) == null,
+                    "Chromium did not display its safe offline status");
+            require(Application.getProcessName().equals(target.getPackageName()),
+                    "Offline Chromium must use the inspected app process");
+            boolean inspected = false;
+            try (BufferedReader maps = new BufferedReader(new FileReader("/proc/self/maps"))) {
+                for (String line; (line = maps.readLine()) != null; ) {
+                    inspected |= line.matches("^[0-9a-f]+-[0-9a-f]+\\s.*");
+                    require(!line.matches(".*(?:/|!/)libcef\\.so(?:\\s.*)?$"),
+                            "Chromium initialized before the route allowed it");
+                }
+            }
+            require(inspected, "Could not inspect actual engine host process memory mappings");
+            result.putString("scope", "debug-fresh-chromium-offline");
+            result.putString("chromiumOfflineStatus", status);
+            result.putString("chromiumForeground", activity.getClass().getName());
+            result.putBoolean("defaultGeckoUnchanged", true);
+            result.putBoolean("offlineRouteRejectedBeforeNativeInitialization", true);
+        } finally {
+            onMain(() -> { activity.finish(); return null; });
+        }
+    }
+
     private PackageInfo verifyInstalledCandidate(Context target, Bundle result) throws Exception {
         String packageName = target.getPackageName();
         require((PACKAGE.equals(packageName) || INTEGRATION_PACKAGE.equals(packageName))
@@ -250,9 +321,9 @@ public final class RouteFixture extends Instrumentation {
         String destination = InetAddress.getByName(VPN_FIXTURE_IP).getHostAddress();
         String url = "http://[" + VPN_FIXTURE_IP + "]:" + port + "/vpn-" + nonce;
         onMain(() -> {
-            Context slot = environment(target);
+            Context slot = chromiumEnvironment(target, VPN_SLOT, nonce, true);
             selectEnvironment(slot, "", true, url);
-            target.startActivity(new Intent().setClassName(target.getPackageName(), ENTRY)
+            target.startActivity(new Intent(target, entry(target, VPN_SLOT))
                     .putExtra("openWindowAction", "settings").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
             return null;
         });
@@ -281,7 +352,7 @@ public final class RouteFixture extends Instrumentation {
             }
             require(generation > 0 && activeVpn(target), "Owned full TUN did not become the active default route");
             long navigationAt = SystemClock.elapsedRealtime();
-            activity = launchNormalEntry(target, url);
+            activity = launchEnvironment(target, url, VPN_SLOT);
             awaitBrowser(activity);
             JSONObject packet = null;
             deadline = SystemClock.elapsedRealtime() + 30_000;
@@ -395,12 +466,16 @@ public final class RouteFixture extends Instrumentation {
             setup.putString("chromiumFixtureHost", origin.host());
             setup.putInt("chromiumFixtureOriginPort", LoopbackProxy.ORIGIN_PORT);
             setup.putInt("chromiumFixtureLoopbackPort", origin.listenPort());
+            setup.putString("chromiumFixtureRunNonce", nonce);
             Activity activity = null;
             try {
                 onMain(() -> {
-                    Context profile = environment(target);
-                    selectBrowser(profile, origin.page());
-                    target.startActivity(new Intent().setClassName(target.getPackageName(), ENTRY)
+                    Context profile = chromiumEnvironment(target, INTERNAL_SLOT, nonce, true);
+                    Object identity = identity(target, INTERNAL_SLOT);
+                    setup.putInt("chromiumFixtureGeneration", (Integer)field(identity, "generation"));
+                    setup.putString("chromiumFixtureEnvironmentId", (String)field(identity, "environmentId"));
+                    saveHome(profile, origin.page());
+                    target.startActivity(new Intent(target, entry(target, INTERNAL_SLOT))
                             .putExtra("openWindowAction", "settings").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
                     return null;
                 });
@@ -413,7 +488,7 @@ public final class RouteFixture extends Instrumentation {
                     SystemClock.sleep(250);
                     admitted = internalControl(target, "state", null);
                 }
-                require(admitted.optBoolean("ready") && admitted.optBoolean("verified")
+                require(admitted.optInt("slot", -1) == INTERNAL_SLOT && admitted.optBoolean("ready") && admitted.optBoolean("verified")
                         && admitted.optInt("corePid") > 0 && admitted.optInt("servicePid") > 0
                         && admitted.optLong("routeSerial") > 0 && admitted.optInt("proxyPort") > 0
                         && !admitted.optString("coreGeneration").isEmpty()
@@ -421,7 +496,7 @@ public final class RouteFixture extends Instrumentation {
                         && admitted.optInt("chromiumFixtureCircuits", -1) == 0,
                         "The exact internal native core did not admit the owned isolated route");
 
-                activity = launchNormalEntry(target, origin.page());
+                activity = launchEnvironment(target, origin.page(), INTERNAL_SLOT);
                 CefriumBrowser browser = awaitBrowser(activity);
                 requireMockRender(browser, origin, title);
                 require(origin.pages.get() > 0, "No internal CEF page reached the locally owned origin");
@@ -477,7 +552,8 @@ public final class RouteFixture extends Instrumentation {
                     });
                     waitForIdleSync();
                 }
-                require(internalControl(target, "close", null).optBoolean("restored"),
+                JSONObject restored = internalControl(target, "close", null);
+                require(restored.optBoolean("restored") && restored.optInt("slot", -1) == INTERNAL_SLOT,
                         "The test-owned internal environment did not restore");
             }
         }
@@ -485,26 +561,77 @@ public final class RouteFixture extends Instrumentation {
 
     private static JSONObject internalControl(Context target, String operation, Bundle params) throws Exception {
         Bundle receive = target.getContentResolver().call(Uri.parse("content://" + INTEGRATION_PACKAGE
-                + ".test-update-route0"), operation, null, params);
+                + ".test-update-route" + INTERNAL_SLOT), operation, null, params);
         require(receive != null, "No private integration core response");
         JSONObject state = new JSONObject(receive.getString("json", ""));
         require(!state.has("error"), "Integration core control failed: " + state.optString("error"));
         return state;
     }
 
-    private static Context environment(Context target) throws Exception {
-        return (Context)invoke(target.getClassLoader().loadClass(PACKAGE + ".Profiles"), null,
-                "context", new Class<?>[]{Context.class, int.class}, target, 0);
+    private static Object identity(Context target, int slot) throws Exception {
+        Class<?> catalogType = target.getClassLoader().loadClass(PACKAGE + ".ProfileCatalog");
+        Object catalog = invoke(catalogType, null, "get", new Class<?>[]{Context.class}, target);
+        return invoke(catalogType, catalog, "identity", new Class<?>[]{int.class}, slot);
     }
 
-    private CefriumProfile registerFixture(Context target, String title, AtomicInteger served) throws Exception {
+    private static Context environment(Context target, int slot) throws Exception {
+        return (Context)invoke(target.getClassLoader().loadClass(PACKAGE + ".Profiles"), null,
+                "context", new Class<?>[]{Context.class, int.class}, target, slot);
+    }
+
+    static Context chromiumEnvironment(Context target, int slot, String nonce, boolean allowCreation) throws Exception {
+        require(nonce.matches("[0-9a-f]{32}"), "Missing fixture environment owner");
         ClassLoader loader = target.getClassLoader();
-        Class<?> profiles = loader.loadClass(PACKAGE + ".Profiles");
-        Context environment = (Context)invoke(profiles, null, "context",
-                new Class<?>[]{Context.class, int.class}, target, 0);
+        Class<?> catalogType = loader.loadClass(PACKAGE + ".ProfileCatalog");
+        Object catalog = invoke(catalogType, null, "get", new Class<?>[]{Context.class}, target);
+        JSONObject row = (JSONObject)invoke(catalogType, catalog, "item", new Class<?>[]{int.class}, slot);
+        int generation = row.optInt("generation", -1);
+        require(generation >= 0 && !row.optBoolean("deleting") && !row.optBoolean("resetting"),
+                "Fixture environment slot is unavailable");
+        Context environment = environment(target, slot);
+        // Use the full nonce without disclosing the generated environment UUID.
+        String name = fixtureEnvironmentName(nonce, slot);
+        Object created = null;
+        if (row.optBoolean("created")) {
+            require(slot > 0 && name.equals(row.optString("name")) && "CHROMIUM".equals(engine(environment)),
+                    "Refusing to repurpose an existing or foreign environment");
+        } else {
+            require(allowCreation && slot > 0, "The owned Chromium environment has not been created");
+            Class<?> profiles = loader.loadClass(PACKAGE + ".Profiles");
+            Class<?> engines = loader.loadClass(PACKAGE + ".EnvironmentEngine");
+            Object chromium = invoke(engines, null, "valueOf", new Class<?>[]{String.class}, "CHROMIUM");
+            created = invoke(profiles, null, "create",
+                    new Class<?>[]{Context.class, int.class, int.class, loader.loadClass(PACKAGE + ".EnvironmentSpec$Identity"),
+                            String.class, String.class, boolean.class, boolean.class, engines},
+                    target, slot, generation, null, name, "fixture", false, false, chromium);
+            require(created != null, "Chromium creation did not return an identity");
+        }
+        Object observed = invoke(catalogType, catalog, "identity", new Class<?>[]{int.class}, slot);
+        require((created == null || created.equals(observed))
+                && Integer.valueOf(slot).equals(field(observed, "slot"))
+                && Integer.valueOf(generation).equals(field(observed, "generation"))
+                && "CHROMIUM".equals(engine(environment)), "App did not bind the exact Chromium fixture identity");
+        return environment;
+    }
+
+    static String fixtureEnvironmentName(String nonce, int slot) {
+        byte[] bytes = new byte[16];
+        for (int i = 0; i < bytes.length; i++) bytes[i] = (byte)Integer.parseInt(nonce.substring(i * 2, i * 2 + 2), 16);
+        return android.util.Base64.encodeToString(bytes,
+                android.util.Base64.NO_PADDING | android.util.Base64.URL_SAFE | android.util.Base64.NO_WRAP) + "-" + slot;
+    }
+
+    private static String engine(Context environment) throws Exception {
+        return ((Enum<?>)invoke(environment.getClassLoader().loadClass(PACKAGE + ".BrowserPreferences"), null,
+                "engine", new Class<?>[]{Context.class}, environment)).name();
+    }
+
+    private CefriumProfile registerFixture(Context target, String nonce, String title, AtomicInteger served) throws Exception {
+        ClassLoader loader = target.getClassLoader();
+        Context environment = chromiumEnvironment(target, DEBUG_SLOT, nonce, false);
         Class<?> catalog = loader.loadClass(PACKAGE + ".ProfileCatalog");
         Object manager = invoke(catalog, null, "get", new Class<?>[]{Context.class}, target);
-        Object identity = invoke(catalog, manager, "identity", new Class<?>[]{int.class}, 0);
+        Object identity = invoke(catalog, manager, "identity", new Class<?>[]{int.class}, DEBUG_SLOT);
         String name = (String)invoke(loader.loadClass(PACKAGE + ".ChromiumEntry"), null, "profileName",
                 new Class<?>[]{identity.getClass()}, identity);
 
@@ -564,11 +691,11 @@ public final class RouteFixture extends Instrumentation {
         try (LoopbackProxy proxy = new LoopbackProxy(kind, nonce, title, tls);
              LoopbackProxy.PrivateTrap trap = new LoopbackProxy.PrivateTrap()) {
             Context environment = onMain(() -> {
-                Context slot = environment(target);
+                Context slot = chromiumEnvironment(target, DEBUG_SLOT, nonce, false);
                 selectEnvironment(slot, proxy.endpoint(), false, proxy.page());
                 return slot;
             });
-            Activity activity = launchNormalEntry(target, proxy.page());
+            Activity activity = launchEnvironment(target, proxy.page(), DEBUG_SLOT);
             try {
                 CefriumBrowser browser = awaitBrowser(activity);
                 requireMockRender(browser, proxy, title);
@@ -636,17 +763,19 @@ public final class RouteFixture extends Instrumentation {
 
     void selectEnvironment(Context environment, String proxy, boolean requireVpn, String url)
             throws Exception {
+        require("CHROMIUM".equals(engine(environment)), "Only a Chromium environment may enter the fixture route");
         SharedPreferences preferences = environment.getSharedPreferences("chat", Context.MODE_PRIVATE);
         require(preferences.edit().putBoolean("networkConfigured", true).putString("networkMode", "external")
                 .putString("proxy", proxy).putBoolean("requireExternalVpn", requireVpn).commit(),
                 "Controlled fixture route could not be saved");
-        selectBrowser(environment, url);
+        saveHome(environment, url);
     }
 
-    private static void selectBrowser(Context environment, String url) throws Exception {
-        Object chosen = invoke(environment.getClassLoader().loadClass(PACKAGE + ".BrowserPreferences"),
-                null, "save", new Class<?>[]{Context.class, boolean.class, String.class}, environment, true, url);
-        require(Boolean.TRUE.equals(chosen), "Controlled Chromium selection could not be saved");
+    private static void saveHome(Context environment, String url) throws Exception {
+        require("CHROMIUM".equals(engine(environment)), "Only a Chromium environment may save this fixture home");
+        Object saved = invoke(environment.getClassLoader().loadClass(PACKAGE + ".BrowserPreferences"),
+                null, "saveHome", new Class<?>[]{Context.class, String.class}, environment, url);
+        require(Boolean.TRUE.equals(saved), "Controlled Chromium homepage could not be saved");
     }
 
     private static boolean activeVpn(Context context) {
@@ -664,25 +793,49 @@ public final class RouteFixture extends Instrumentation {
         require(onMain(() -> field(activity, "browser")) == null, "The revoked Chromium browser was not retired");
     }
 
-    private Activity launchNormalEntry(Context target, String url) throws Exception {
-        return launchEnvironment(target, url, 0);
+    private static Class<?> entry(Context target, int slot) throws Exception {
+        return (Class<?>)invoke(target.getClassLoader().loadClass(PACKAGE + ".Profiles"),
+                null, "activity", new Class<?>[]{int.class}, slot);
     }
 
     Activity launchEnvironment(Context target, String url, int slot) throws Exception {
-        Class<?> profiles = target.getClassLoader().loadClass(PACKAGE + ".Profiles");
-        String entry = slot == 0 ? ENTRY : ((Class<?>)invoke(profiles, null, "activity", new Class<?>[]{int.class}, slot)).getName();
-        ActivityMonitor monitor = addMonitor(CHROMIUM, null, false);
+        Class<?> entry = entry(target, slot);
+        Application application = (Application)target.getApplicationContext();
+        Object expected = onMain(() -> identity(target, slot));
+        CountDownLatch resumed = new CountDownLatch(1);
+        AtomicReference<Activity> observed = new AtomicReference<>();
+        Application.ActivityLifecycleCallbacks callbacks = new Application.ActivityLifecycleCallbacks() {
+            @Override public void onActivityResumed(Activity activity) {
+                if (CHROMIUM.equals(activity.getClass().getName())) {
+                    observed.set(activity);
+                    resumed.countDown();
+                }
+            }
+            @Override public void onActivityCreated(Activity activity, Bundle state) {}
+            @Override public void onActivityStarted(Activity activity) {}
+            @Override public void onActivityPaused(Activity activity) {}
+            @Override public void onActivityStopped(Activity activity) {}
+            @Override public void onActivitySaveInstanceState(Activity activity, Bundle state) {}
+            @Override public void onActivityDestroyed(Activity activity) {}
+        };
         try {
             onMain(() -> {
-                target.startActivity(new Intent().setClassName(target.getPackageName(), entry)
+                application.registerActivityLifecycleCallbacks(callbacks);
+                target.startActivity(new Intent(target, entry)
                         .putExtra("url", url).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
                 return null;
             });
-            Activity activity = waitForMonitorWithTimeout(monitor, 90_000);
-            require(activity != null, "Base-to-Chromium Activity launch was not observed");
+            require(resumed.await(90, TimeUnit.SECONDS), "Base-to-Chromium Activity launch was not observed");
+            Activity activity = observed.get();
+            require(expected.equals(onMain(() -> field(activity, "identity")))
+                    && expected.equals(onMain(() -> identity(target, slot))),
+                    "Chromium opened a different environment than the fixture owner");
             return activity;
         } finally {
-            removeMonitor(monitor);
+            onMain(() -> {
+                application.unregisterActivityLifecycleCallbacks(callbacks);
+                return null;
+            });
         }
     }
 

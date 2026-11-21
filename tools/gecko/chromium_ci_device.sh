@@ -109,7 +109,7 @@ if [[ "$mode" == smoke ]]; then
   host_mode=(--api37-compatibility)
   fixture_mode=(-e fixtureMode api37-process-webview-disabled)
 fi
-python3 tests/gecko/run_chromium_delivery.py --adb "$adb_bin" --serial "$serial" --disposable-emulator --aapt2 "$tools/aapt2" --apksigner "$tools/apksigner" --base "$work/debug/base-master.apk" --splits "$work/debug" --version "$version" --version-code "$version_code" --abi x86_64 --signer "$signer" --output "$report" "${host_mode[@]}"
+python3 tests/gecko/run_chromium_delivery.py --adb "$adb_bin" --serial "$serial" --disposable-emulator --fixture-apk "$work/fixture.apk" --aapt2 "$tools/aapt2" --apksigner "$tools/apksigner" --base "$work/debug/base-master.apk" --splits "$work/debug" --version "$version" --version-code "$version_code" --abi x86_64 --signer "$signer" --output "$report" "${host_mode[@]}"
 
 wait_for_test_network() {
   "${adb_device[@]}" shell cmd connectivity airplane-mode disable
@@ -118,7 +118,6 @@ wait_for_test_network() {
   timeout 90 bash -c 'until "$1" -s "$2" shell dumpsys connectivity | grep -Eq "^ *Active default network: *[0-9]+"; do sleep 2; done' _ "$adb_bin" "$serial"
 }
 fixture=local.pocketchat.chromiumfixture/.RouteFixture
-"${adb_device[@]}" install -t "$work/fixture.apk"
 wait_for_test_network
 nonce=$(jq -er .runNonce "$report")
 base_sha=$(jq -er .apkSet.base.sha256 "$report")
