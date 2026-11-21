@@ -48,6 +48,10 @@ GECKO_VISIBLE_STATES = {
     "websiteConnectionFailure": "连接失败",
     "browserStartupPending": "正在打开浏览器",
     "pageCheckPending": "正在核对网页",
+    "ipTimezoneNotMatched": "IP 时区未匹配",
+    "ipTimezoneLookupFailure": "IP 时区查询失败",
+    "ipTimezoneLookupTimeout": "IP 时区查询超时",
+    "timezoneAdmissionPending": "当前原生时区尚未确认",
 }
 
 
@@ -99,10 +103,12 @@ class Device:
     def stop(self, package):
         self.shell("am", "force-stop", package)
 
-    def start(self, package, activity, url=None):
+    def start(self, package, activity, url=None, *, edit_environment=False):
         arguments = ["am", "start", "-W", "-n", f"{package}/local.pocketchat.{activity}"]
         if url:
             arguments.extend(("-a", "android.intent.action.VIEW", "-d", url))
+        if edit_environment:
+            arguments.extend(("--ez", "openEnvironmentEditor", "true"))
         result = self.call("shell", shlex.join(arguments), timeout=55).stdout.decode()
         require("Status: ok" in result, f"Android did not start {package}/{activity}: {result[-500:]}")
 
@@ -195,6 +201,7 @@ class Fixture(ThreadingHTTPServer):
         self.nonce = nonce
         self.cold_gecko_state = None
         self.gecko_navigation_retried = False
+        self.gecko_timezone_ui = []
         self._lock = Lock()
         self._events = Counter()
         super().__init__(("127.0.0.1", 0), Handler)
@@ -230,6 +237,8 @@ class Handler(BaseHTTPRequestHandler):
     def do_CONNECT(self):
         if self.path != self.server.authority:
             self.server.record("rejectedConnects")
+            if self.path == "ipwho.is:443":
+                self.server.record("ipTimezoneConnectRejected")
             self.answer(403)
             return
         self.server.record("fixtureConnects")
@@ -302,10 +311,13 @@ def run_engine(device, uid, fixture, engine):
         cold = gecko_failure_state(device, fixture)
         fixture.cold_gecko_state = cold
         startup_failure = any("Failure" in state for state in cold.get("visibleStates", []))
-        if cold.get("mainActivityResumed") and cold.get("geckoLibraryMapped") and not startup_failure:
-            # The preceding cold intent can reach the production load queue before
-            # the Gecko native extension and admission gate are ready. Retry once
-            # via the same exported web entry after observing the running engine.
+        timezone_blocked = cold["proxyCounts"].get("ipTimezoneConnectRejected", 0) > 0 or any(
+            state.startswith("ipTimezone") for state in cold.get("visibleStates", []))
+        if cold.get("mainActivityResumed") and timezone_blocked:
+            select_system_timezone(device, fixture)
+        if cold.get("mainActivityResumed") and (fixture.gecko_timezone_ui or
+                                               cold.get("geckoLibraryMapped") and not startup_failure):
+            # Retry through the same normal route and require a fresh renderer proof.
             fixture.gecko_navigation_retried = True
             device.start(PARALLEL, "MainActivity", fixture.url(engine))
             arrived = fixture.received[engine].wait(45)
@@ -364,25 +376,86 @@ def gecko_failure_state(device, fixture):
                 ("applicationFatalException", r"FATAL EXCEPTION")) if re.search(words, log, re.I)]
     except (OSError, RuntimeError, subprocess.SubprocessError):
         evidence["processSnapshotUnavailable"] = True
-    path = f"/data/local/tmp/pocketchat-coexist-ui-{fixture.nonce}.xml"
     try:
-        dumped = device.call("shell", "uiautomator", "dump", path, timeout=10, check=False)
-        require(dumped.returncode == 0, "No Android hierarchy dump")
-        raw = device.call("exec-out", "cat", path, timeout=5).stdout
-        tree = ElementTree.fromstring(raw)
-        nodes = [node for node in tree.iter("node") if node.get("package") == PARALLEL]
+        nodes = parallel_ui_nodes(device, fixture.nonce)
         labels = [text for node in nodes for text in (node.get("text", ""), node.get("content-desc", ""))]
         evidence["visibleStates"] = [name for name, phrase in GECKO_VISIBLE_STATES.items()
                                      if any(phrase in value for value in labels)]
         evidence["parallelUiNodeCount"] = len(nodes)
     except (OSError, RuntimeError, subprocess.SubprocessError, ElementTree.ParseError):
         evidence["uiSnapshotUnavailable"] = True
+    return evidence
+
+
+def parallel_ui_nodes(device, nonce):
+    path = f"/data/local/tmp/pocketchat-coexist-ui-{nonce}.xml"
+    try:
+        device.call("shell", "uiautomator", "dump", path, timeout=10)
+        raw = device.call("exec-out", "cat", path, timeout=5).stdout
+        tree = ElementTree.fromstring(raw)
+        return [node for node in tree.iter("node") if node.get("package") == PARALLEL]
     finally:
         try:
             device.call("shell", "rm", "-f", path, timeout=4, check=False)
         except (OSError, subprocess.SubprocessError):
-            evidence["uiSnapshotCleanupUnavailable"] = True
-    return evidence
+            pass
+
+
+def find_control(nodes, label, *, contains=False):
+    positions = set()
+    for node in nodes:
+        text = (node.get("text", ""), node.get("content-desc", ""))
+        if not (any(label in value for value in text) if contains else label in text):
+            continue
+        match = re.fullmatch(r"\[(\d+),(\d+)\]\[(\d+),(\d+)\]", node.get("bounds", ""))
+        if match is None:
+            continue
+        left, top, right, bottom = map(int, match.groups())
+        if right > left and bottom > top and node.get("enabled") != "false":
+            positions.add(((left + right) // 2, (top + bottom) // 2))
+    require(len(positions) <= 1, f"Ambiguous Android control: {label}")
+    return next(iter(positions), None)
+
+
+def select_system_timezone(device, fixture):
+    """Select the environment's real system-zone setting without a network exception."""
+    device.start(PARALLEL, "MainActivity", edit_environment=True)
+    screen = device.shell("wm", "size")
+    sizes = re.findall(r"(?:Physical|Override) size: (\d+)x(\d+)", screen)
+    require(sizes, "Android screen dimensions are unavailable")
+    width, height = map(int, sizes[-1])
+
+    def observe(label, *, tap=True, scroll=False, contains=False):
+        deadline = time.monotonic() + 20
+        remaining_scrolls = 3 if scroll else 0
+        while time.monotonic() < deadline:
+            try:
+                nodes = parallel_ui_nodes(device, fixture.nonce)
+            except (OSError, RuntimeError, subprocess.SubprocessError, ElementTree.ParseError):
+                time.sleep(0.25)
+                continue
+            position = find_control(nodes, label, contains=contains)
+            if position is not None:
+                if tap:
+                    device.shell("input", "tap", *position)
+                fixture.gecko_timezone_ui.append(label)
+                return
+            if remaining_scrolls and any(node.get("scrollable") == "true" for node in nodes):
+                device.shell("input", "swipe", width // 2, height * 3 // 4, width // 2, height // 3, 380)
+                remaining_scrolls -= 1
+            time.sleep(0.25)
+        raise RuntimeError(f"Android timezone control did not become visible: {label}")
+
+    observe("浏览器")
+    observe("环境模板与生效状态", scroll=True)
+    observe("此环境的独立时区", scroll=True)
+    observe("此环境时区模式")
+    observe("跟随系统时区")
+    observe("应用并重新加载")
+    observe("已保存输入，应用")
+    observe("已保存：跟随系统时区", tap=False, contains=True)
+    for _ in range(3):
+        device.shell("input", "keyevent", "KEYCODE_BACK")
 
 
 def run(args, report):
@@ -438,6 +511,7 @@ def run(args, report):
                 if engine == "gecko" and fixture.cold_gecko_state is not None:
                     report["checks"][check]["coldNavigation"] = fixture.cold_gecko_state
                     report["checks"][check]["normalNavigationRetried"] = fixture.gecko_navigation_retried
+                    report["checks"][check]["timeZoneUi"] = fixture.gecko_timezone_ui
     finally:
         current = {name: device.private_bytes(OFFICIAL, name) for name in snapshots
                    if device.private_exists(OFFICIAL, name)}
