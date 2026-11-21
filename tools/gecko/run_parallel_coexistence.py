@@ -310,13 +310,11 @@ def run_engine(device, uid, fixture, engine):
     if engine == "gecko" and not arrived and not fixture.pages[engine].is_set():
         cold = gecko_failure_state(device, fixture)
         fixture.cold_gecko_state = cold
-        startup_failure = any("Failure" in state for state in cold.get("visibleStates", []))
-        timezone_blocked = cold["proxyCounts"].get("ipTimezoneConnectRejected", 0) > 0 or any(
-            state.startswith("ipTimezone") for state in cold.get("visibleStates", []))
-        if cold.get("mainActivityResumed") and timezone_blocked:
+        # A general website failure can occur before the optional IP time-zone
+        # lookup sends a proxy request. The offline fixture always selects the
+        # app's system time zone after observing an unloaded native browser.
+        if cold.get("mainActivityResumed") and cold.get("geckoLibraryMapped"):
             select_system_timezone(device, fixture)
-        if cold.get("mainActivityResumed") and (fixture.gecko_timezone_ui or
-                                               cold.get("geckoLibraryMapped") and not startup_failure):
             # Retry through the same normal route and require a fresh renderer proof.
             fixture.gecko_navigation_retried = True
             device.start(PARALLEL, "MainActivity", fixture.url(engine))
@@ -441,7 +439,14 @@ def select_system_timezone(device, fixture):
                 fixture.gecko_timezone_ui.append(label)
                 return
             if remaining_scrolls and any(node.get("scrollable") == "true" for node in nodes):
-                device.shell("input", "swipe", width // 2, height * 3 // 4, width // 2, height // 3, 380)
+                scroller = next(node for node in nodes if node.get("scrollable") == "true")
+                region = re.fullmatch(r"\[(\d+),(\d+)\]\[(\d+),(\d+)\]", scroller.get("bounds", ""))
+                if region:
+                    left, top, right, bottom = map(int, region.groups())
+                    x = min(width - 1, (left + right) // 2)
+                    y = min(height - 1, bottom)
+                    if y - top >= 80:
+                        device.shell("input", "swipe", x, top + (y - top) * 4 // 5, x, top + (y - top) // 5, 380)
                 remaining_scrolls -= 1
             time.sleep(0.25)
         raise RuntimeError(f"Android timezone control did not become visible: {label}")
