@@ -73,7 +73,7 @@ jobs:
           sdk="$RUNNER_TEMP/pocketchat-baseline-gecko"
           gradle="$RUNNER_TEMP/gradle-9.8.0/bin/gradle"
           "$gradle" --no-daemon --console=plain :app:assembleDiagnostics :app:lintDiagnostics \
-            "-PcaretSdkRepository=$sdk/maven" "-PcaretSdkAssets=$sdk/assets" "-PtestSigningKey=$test_key"
+            "-PcaretSdkRepository=$sdk/maven" "-PcaretSdkAssets=$sdk/assets" "-PtestSigningKey=$test_key" -PreleaseChannel=ai-diagnostics
 
           aapt2="$ANDROID_HOME/build-tools/37.0.0/aapt2"
           apksigner="$ANDROID_HOME/build-tools/37.0.0/apksigner"
@@ -83,11 +83,32 @@ jobs:
             badging=$("$aapt2" dump badging "$apk")
             grep -F "package: name='local.pocketchat.aidiagnostics'" <<< "$badging"
             grep -Fx "native-code: '$abi'" <<< "$badging"
-            manifest=$("$aapt2" dump xmltree --file AndroidManifest.xml "$apk")
-            awk '/local[.]pocketchat[.]UPDATE_CHANNEL/ {if (getline && /"ai-diagnostics"/) found = 1} END {exit !found}' <<< "$manifest"
+            apkanalyzer="$ANDROID_HOME/cmdline-tools/latest/bin/apkanalyzer"
+            manifest="$RUNNER_TEMP/pocketchat-diagnostics-$abi.xml"
+            "$apkanalyzer" manifest print "$apk" > "$manifest"
+            python3 -B - "$manifest" <<'PY'
+          import sys
+          from xml.etree import ElementTree
+          android = "{http://schemas.android.com/apk/res/android}"
+          manifest = ElementTree.parse(sys.argv[1]).getroot()
+          channels = [item.get(android+"value") for item in manifest.findall("./application/meta-data")
+                      if item.get(android+"name") == "local.pocketchat.UPDATE_CHANNEL"]
+          if channels != ["ai-diagnostics"]:
+              raise SystemExit(f"Unexpected diagnostics update channel: {channels}")
+          print("Verified diagnostics update channel")
+          PY
             signature=$("$apksigner" verify --verbose --print-certs "$apk")
-            grep -Fx "Signer #1 certificate SHA-256 digest: $signer" <<< "$signature"
-            unzip -p "$apk" assets/pocketchat-sdk-build-receipt.json | cmp "$sdk/sdk-build-receipt.json" -
+            actual_signer=$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' <<< "$signature" | tr 'A-F' 'a-f')
+            if [[ "$actual_signer" != "$signer" ]]; then
+              echo "::error::APK signer fingerprint does not match the temporary test signer ($abi)"
+              exit 1
+            fi
+            printf 'Verified temporary test signer %s (%s)\n' "$actual_signer" "$abi"
+            if ! unzip -p "$apk" assets/pocketchat-sdk-build-receipt.json | cmp "$sdk/sdk-build-receipt.json" -; then
+              echo "::error::APK baseline Gecko SDK receipt differs ($abi)"
+              exit 1
+            fi
+            echo "Verified embedded baseline Gecko SDK receipt ($abi)"
             sha256sum "$apk"
           done
 
