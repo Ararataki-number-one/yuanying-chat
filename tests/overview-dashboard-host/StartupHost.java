@@ -20,7 +20,7 @@ public final class StartupHost {
     MainActivity replaced=new MainActivity(true);replaced.onCreate(new Bundle());replaced.onResume();Runnable oldFrame=replaced.environmentOverview.draw;replaced.onNewIntent(new Intent(true));oldFrame.run();check(replaced.creates==0,"retired overview draw cannot authorize a replacement dashboard");replaced.environmentOverview.paint();check(replaced.creates==1,"replacement dashboard starts only after its own native frame");
     ProfileCatalog.available=false;MainActivity deleted=new MainActivity(true);deleted.onCreate(new Bundle());check(deleted.finished&&deleted.creates==0,"deleted or resetting environment cannot create browser");ProfileCatalog.available=true;
 
-    MainActivity chromium=new MainActivity(true);chromium.chromium=true;chromium.onCreate(null);
+    MainActivity chromium=new MainActivity(true);chromium.chromium=true;chromium.allowLegacyFixture();chromium.onCreate(null);
     check(chromium.finished&&chromium.creates==0&&chromium.browserStarts==1&&chromium.launched.target==BrowserActivity.class&&!chromium.launched.extras.containsKey("url"),"cold Chromium selection resumes the browser without forcing a URL or creating Gecko");
     MainActivity pendingExport=new MainActivity(false);pendingExport.chromium=true;
     Bundle exportState=new Bundle();exportState.pending=new SavedFileActions(pendingExport);exportState.pending.exporting=new Object();
@@ -29,17 +29,17 @@ public final class StartupHost {
       &&pendingExport.hub.page==AppHub.SETTINGS&&pendingExport.nativeSavedFiles==exportState.pending
       &&pendingExport.restoredSavedFiles==null,"Recreated interrupted export uses the native workspace without opening a browser");
     MainActivity warm=new MainActivity(false);warm.onCreate(null);ChatSession retained=warm.session;warm.sessionUi=new UiFrames();warm.onResume();check(warm.sessionUi.visible,"resumed session requests its presentation frame");
-    Intent browserIntent=new Intent(false);warm.chromium=true;warm.onNewIntent(browserIntent);
+    Intent browserIntent=new Intent(false);warm.chromium=true;warm.allowLegacyFixture();warm.onNewIntent(browserIntent);
     check(warm.finished&&warm.session==retained&&warm.creates==1&&warm.browserStarts==1&&!warm.launched.extras.containsKey("url"),"warm dispatch closes the idle Gecko Activity without replacing its retained session or forcing a URL");
     warm.onResume();check(warm.browserStarts==1,"the finishing Gecko Activity must not launch Chromium again");
 
-    MainActivity busy=new MainActivity(false);busy.onCreate(null);busy.onResume();busy.session.working=true;busy.chromium=true;
+    MainActivity busy=new MainActivity(false);busy.onCreate(null);busy.onResume();busy.session.working=true;busy.chromium=true;busy.allowLegacyFixture();
     busy.onNewIntent(new Intent(false).putExtra("url","https://destination.example/work"));
     check(!busy.finished&&busy.browserStarts==0&&busy.feedback==1&&busy.session.browses==0,"an active Gecko operation keeps its page and shows how to reopen under the new binding");
     busy.session.working=false;busy.onResume();
     check(busy.finished&&busy.browserStarts==1&&!busy.launched.extras.containsKey("url"),"later resume uses the binding without replaying an earlier deferred link");
 
-    MainActivity nativePage=new MainActivity(false);nativePage.chromium=true;nativePage.intent.putExtra("openDownload","old-file");nativePage.onCreate(null);nativePage.onResume();
+    MainActivity nativePage=new MainActivity(false);nativePage.chromium=true;nativePage.allowLegacyFixture();nativePage.intent.putExtra("openDownload","old-file");nativePage.onCreate(null);nativePage.onResume();
     check("old-file".equals(nativePage.nativeDownload)&&nativePage.hub.page==AppHub.SETTINGS&&nativePage.creates==0&&nativePage.browserStarts==0&&nativePage.hub.refreshes==1,"Chromium-bound download management stays native from cold entry through resume");
     MainActivity ownerSettings=new MainActivity(false);
     ownerSettings.intent.putExtra("openWindowAction","settings").putExtra("fixtureOwnerSettings","true");
@@ -67,13 +67,22 @@ public final class StartupHost {
     check(geckoLink.creates==1&&geckoLink.session.browses==1&&link.equals(geckoLink.session.lastUrl)&&geckoLink.intent.data==null,"a cold Gecko opening consumes the explicit URL once");
     geckoLink.onResume();geckoLink.onNewIntent(new Intent(false));
     check(geckoLink.session.browses==1&&geckoLink.browserStarts==0,"ordinary Gecko resume preserves the current document and consumed link");
-    MainActivity chromiumLink=new MainActivity(false);chromiumLink.chromium=true;chromiumLink.intent.putExtra("url",link);chromiumLink.onCreate(null);
+    MainActivity chromiumLink=new MainActivity(false);chromiumLink.chromium=true;chromiumLink.allowLegacyFixture();chromiumLink.intent.putExtra("url",link);chromiumLink.onCreate(null);
     check(chromiumLink.finished&&chromiumLink.creates==0&&chromiumLink.browserStarts==1&&link.equals(chromiumLink.launched.extras.get("url")),"a cold Chromium opening forwards the exact page URL instead of selecting the homepage");
     check((chromium.launched.flags&Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)!=0&&(warm.launched.flags&Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)!=0,"cold and warm entry reuse the existing browser task");
     MainActivity installed=new MainActivity(false);installed.chromium=true;installed.managedChromium=true;installed.chromiumReady=true;installed.intent.putExtra("url",link);installed.onCreate(null);
     check(installed.finished&&installed.creates==0&&installed.browserStarts==0&&link.equals(installed.featureUrl),"installed Chromium receives the link without launching the legacy browser or Gecko");
     MainActivity missing=new MainActivity(false);missing.chromium=true;missing.managedChromium=true;missing.onCreate(null);missing.onResume();
     check(!missing.finished&&missing.creates==0&&missing.browserStarts==0&&missing.hub.page==AppHub.SETTINGS&&missing.hub.noticeError&&missing.hub.notice.contains("组件尚未就绪"),"missing Chromium opens native settings with component feedback");
+    MainActivity officialNoSplit=new MainActivity(false);officialNoSplit.chromium=true;officialNoSplit.flags.legacyFixture=true;officialNoSplit.onCreate(null);
+    check(!officialNoSplit.finished&&officialNoSplit.creates==0&&officialNoSplit.browserStarts==0&&officialNoSplit.hub.page==AppHub.SETTINGS,
+      "Production rejects legacy WebView even when the fixture metadata is present");
+    MainActivity unflaggedTest=new MainActivity(false);unflaggedTest.chromium=true;unflaggedTest.packageName="local.pocketchat.test";unflaggedTest.onCreate(null);
+    check(!unflaggedTest.finished&&unflaggedTest.creates==0&&unflaggedTest.browserStarts==0&&unflaggedTest.hub.page==AppHub.SETTINGS,
+      "The test package still requires the exact fixture metadata flag");
+    MainActivity corrupt=new MainActivity(false);corrupt.engineUnreadable=true;corrupt.onCreate(null);
+    check(!corrupt.finished&&corrupt.creates==0&&corrupt.browserStarts==0&&corrupt.hub.page==AppHub.SETTINGS&&corrupt.hub.notice.contains("无法读取"),
+      "Unreadable binding opens neither browser, and root settings indicate the actual cause");
     MainActivity restricted=new MainActivity(false);restricted.chromium=true;restricted.managedChromium=true;restricted.chromiumNetworkIssue="Network configuration required";restricted.onCreate(null);
     check(!restricted.finished&&restricted.creates==0&&restricted.browserStarts==0&&restricted.hub.page==AppHub.SETTINGS&&restricted.hub.noticeError&&restricted.chromiumNetworkIssue.equals(restricted.hub.notice),"managed Chromium reports the specific network problem in native settings");
     MainActivity focused=new MainActivity(true);focused.onCreate(new Bundle(true));check(focused.focusReading&&focused.creates==0,"native focus preference restores before deferred Gecko startup");
@@ -92,7 +101,8 @@ public final class StartupHost {
 class MainActivity extends Activity {
   static final int MODE_PRIVATE=0;boolean pageMode,active,destroyed,finished,focusReading,chromium;Bundle downloadUiState;UiFrames sessionUi;int creates,resumes,content,feedback,ownerSettingsRequests;String nativeDownload;BrowserStartupGate browserStartup;ChatSession session;EnvironmentOverviewUi environmentOverview;Intent intent;Prefs prefs;
   AppHub hub;FileDownloads downloads;SavedFileActions nativeSavedFiles,restoredSavedFiles;Remote remote;final Handler handler=new Handler();
-  boolean managedChromium,chromiumReady;String featureUrl,chromiumNetworkIssue="";
+  boolean managedChromium,chromiumReady,engineUnreadable;String featureUrl,chromiumNetworkIssue="";
+  void allowLegacyFixture(){packageName="local.pocketchat.test";flags.legacyFixture=true;}
   MainActivity(boolean manual){intent=new Intent(manual);}
   Intent getIntent(){return intent;}void setIntent(Intent value){intent=value;}boolean isFinishing(){return finished;}void finish(){finished=true;}void setContentView(LinearLayout v){content++;}Prefs getSharedPreferences(String name,int mode){return new Prefs();}Window getWindow(){return new Window();}
   void createChatUi(){creates++;session=new ChatSession();remote=new Remote();openWebsite(getIntent());if(active)resumeChatUi();}
@@ -101,8 +111,10 @@ class MainActivity extends Activity {
   void fileFeedback(String value){feedback++;}void showPage(boolean value){}
   /*ACTUAL_ENTRY_METHODS*/
 }
-class Activity {Intent launched;int browserStarts;void startActivity(Intent value){launched=value;if(value.target==BrowserActivity.class)browserStarts++;}public void onCreate(Bundle b){}protected void onResume(){}protected void onNewIntent(Intent i){}}
-class Bundle{SavedFileActions pending;boolean focused;Bundle(){}Bundle(boolean focused){this.focused=focused;}boolean getBoolean(String name,boolean fallback){return "focusReading".equals(name)?focused:fallback;}Bundle getBundle(String name){return null;}}
+class Context {String packageName="local.pocketchat";final Bundle flags=new Bundle();String getPackageName(){return packageName;}}
+class AppVersion {static Bundle metadata(Context context){return context.flags;}}
+class Activity extends Context {Intent launched;int browserStarts;void startActivity(Intent value){launched=value;if(value.target==BrowserActivity.class)browserStarts++;}public void onCreate(Bundle b){}protected void onResume(){}protected void onNewIntent(Intent i){}}
+class Bundle{SavedFileActions pending;boolean focused,legacyFixture;boolean getBoolean(String name){return "local.pocketchat.LEGACY_WEBVIEW_FIXTURE".equals(name)&&legacyFixture;}Bundle(){}Bundle(boolean focused){this.focused=focused;}boolean getBoolean(String name,boolean fallback){return "focusReading".equals(name)?focused:fallback;}Bundle getBundle(String name){return null;}}
 class ChatSession{boolean working,navigationFailed,reply;int browses;String lastUrl;boolean currentReplyActive(){return reply;}boolean browse(String url,String label){browses++;lastUrl=url;return true;}}
 class ProfileUi{static boolean working(ChatSession session){return session.working;}}
 class Remote{String getUrl(){return "https://retained.example/";}}
@@ -157,8 +169,10 @@ class EnvironmentOverviewUi {
 class OverviewIdentity{String environmentId="A";int slot=0,generation=1;}
 
 /** Controlled preference and intent inputs; engine routing and browser task launches are production methods. */
+enum EnvironmentEngine {GECKO,CHROMIUM,UNAVAILABLE}
 class BrowserPreferences{
-  static boolean startBrowser(MainActivity activity){return activity.chromium;}
+  static EnvironmentEngine engine(MainActivity activity){return activity.engineUnreadable?EnvironmentEngine.UNAVAILABLE:activity.chromium?EnvironmentEngine.CHROMIUM:EnvironmentEngine.GECKO;}
+  static boolean startBrowser(MainActivity activity){return engine(activity)==EnvironmentEngine.CHROMIUM;}
   static boolean nativeOpening(Intent intent){if(intent==null)return false;String action=intent.getStringExtra("openWindowAction");return intent.hasExtra("openDownload")||"network".equals(action)||"settings".equals(action)||"downloads".equals(action);}
   static boolean shouldOpenBrowser(MainActivity activity,Intent intent){return startBrowser(activity)&&!nativeOpening(intent);}
   static String openingAddress(Intent intent){return intent==null||nativeOpening(intent)?null:Intent.ACTION_VIEW.equals(intent.getAction())?intent.data:intent.extras.get("url");}

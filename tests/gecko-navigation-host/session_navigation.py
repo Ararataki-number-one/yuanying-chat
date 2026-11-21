@@ -60,8 +60,15 @@ def main():
   if not found:raise ValueError('Missing actual navigation declaration: '+needle)
   selected.extend((needle,value) for value in found)
  pref_raw=preferences.read_text();pref_parts=[member_at(pref_raw,pref_raw.index(needle)) for needle in PREF_NEEDLES]
- pref_fields=[line.strip() for line in pref_raw.splitlines() if line.strip().startswith('static final String ')]
- if len(pref_fields)!=3:raise ValueError('Review actual browser preference constants')
+ # The extracted navigation methods exercise homepage only. The production
+ # START bindings are independent and need Android's EnvironmentEngine.
+ declarations=re.findall(r'^\s*static final String (.*);$',pref_raw,re.M)
+ pref_fields=[]
+ for name in ('DEFAULT_URL','KEY_HOME'):
+  matches=[match for declaration in declarations for match in
+           re.findall(r'(?:^|,)\s*('+name+r'\s*=\s*"[^"\n]*")\s*(?:,|$)',declaration)]
+  if len(matches)!=1:raise ValueError('Review actual browser homepage constant: '+name)
+  pref_fields.append('static final String '+matches[0]+';')
  observer_raw=observer.read_text()
  observer_members='\n'.join(member_at(observer_raw,observer_raw.index(needle)) for needle in ('static boolean same(','static boolean bindingRoute(','static boolean webJob('))
  def generate(parts):

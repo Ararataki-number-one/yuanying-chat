@@ -24,7 +24,7 @@ class DashboardStartup(unittest.TestCase):
         source=(PROD/'MainActivity.java').read_text()
         methods='\n'.join(member(source,x) for x in ['  @Override public void onCreate(', '  void prepareBrowserAfterOverview(', '  void startBrowserAfterOverview(', '  @Override protected void onResume(', '  @Override protected void onNewIntent(', '  boolean dispatchBrowser(', '  void handleOpening(', '  boolean geckoWorkPending(', '  boolean nativeFileWorkPending(', '  boolean openWebsite(', '  SavedFileActions createSavedFileActions(', '  void openNativeWorkspace(', '  void closeNativeWorkspace('])
         chromium=(PROD/'BrowserActivity.java').read_text()
-        launches='\n'.join(member(chromium, signature) for signature in ['  static void open(', '  static void resume('])
+        launches='\n'.join(member(chromium, signature) for signature in ['  static void open(', '  static void resume(', '  static boolean legacyFixtureEnabled('])
         template=(ROOT/'tests/overview-dashboard-host/StartupHost.java').read_text()
         host=template.replace('/*ACTUAL_ENTRY_METHODS*/',methods).replace('/*ACTUAL_BROWSER_LAUNCHES*/',launches)
         with tempfile.TemporaryDirectory(prefix='overview-dashboard-startup-') as folder:

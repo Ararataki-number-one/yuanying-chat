@@ -219,7 +219,8 @@ class DesignUi {static final int RED=1,CARD=2,LINE=3;static void chrome(MainActi
 class DesignChrome {DesignChrome(MainActivity a,LinearLayout root){}void cancelUpdates(){}void cancelWebGesture(){}}
 class GeckoAddressUi {void close(){}}
 class AppHub {static final int CHAT=0;int page=CHAT;final Runnable tick=()->{};final NetworkWorkspace networkWorkspace=new NetworkWorkspace();AppHub(MainActivity a,LinearLayout root,FrameLayout stack){}void downloadsVisible(boolean value){}void refresh(){}}
-class BrowserPreferences {static boolean startBrowser(MainActivity a){return false;}static boolean nativeOpening(Intent intent){return false;}}
+enum EnvironmentEngine {GECKO,CHROMIUM,UNAVAILABLE}
+class BrowserPreferences {static EnvironmentEngine engine(MainActivity a){return EnvironmentEngine.GECKO;}static boolean startBrowser(MainActivity a){return engine(a)==EnvironmentEngine.CHROMIUM;}static boolean nativeOpening(Intent intent){return false;}}
 class NetworkWorkspace {void close(){}}
 class EnvironmentOverviewUi {void browserReady(){}void close(){}void pause(){}void resume(){}}
 class BrowserStartupGate {boolean matches(String environment,int slot,int generation){return true;}void close(){}void foreground(boolean value){}}

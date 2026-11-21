@@ -59,7 +59,7 @@ class CurrentRuntimeRawBindings(unittest.TestCase):
         serialize = lambda entries: json.dumps(entries, sort_keys=True, separators=(',', ':')).encode()
         original = dict(pins, Profiles='3cb6e029ef665699345bc2f9bf3ae468090f8eda64d77048130f0a00fe2e1716')
         self.assertEqual(SHA(serialize(original)), '24466f4dc00a0b37a8eba66a39bf6ebc5b5b9de190e82579d496bb414dda5683')
-        self.assertEqual(SHA(serialize(pins)), 'd2d6929c88b9a5f2409bbd6f21a2b5e429a64ad0691b8a3156007a3e8a8560c0')
+        self.assertEqual(SHA(serialize(pins)), '572fea0e1b98a1252652228ae45e5ce26cc4dd90055de46f489173d7fe8d247e')
         for name, expected in pins.items():
             raw = (ROOT/'app/src/main/java/local/pocketchat'/(name+'.java')).read_bytes()
             self.assertEqual(SHA(raw), expected)
