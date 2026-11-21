@@ -108,7 +108,7 @@ def switch_auto_random(stem):
     finally:
         (out/(stem+'-auto-random-tap.json')).write_text(json.dumps(
             {'schema':1,'sourceCommit':source,'targetLabel':label,'observations':trace,'tap':tap},
-            ensure_ascii=False,separators=(',',':'))+'\n')
+            ensure_ascii=False,indent=2)+'\n')
 
 
 def click_editor_tab(xml,label):
