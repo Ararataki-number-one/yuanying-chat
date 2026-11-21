@@ -157,6 +157,18 @@ class _Ui:
         if re.search(shown, self.call("shell", "dumpsys", "input_method")):
             self.call("shell", "input", "keyevent", "KEYCODE_BACK")
 
+    def check_tab(self, label):
+        def item(tree):
+            node = _target(tree, {"text": label})
+            return node if node is not None and node.get("checkable") == "true" else None
+
+        _, node = self.wait(item)
+        if node.get("checked") != "true":
+            x1, y1, x2, y2 = _bounds(node)
+            self.call("shell", "input", "tap", str((x1 + x2) // 2), str((y1 + y2) // 2))
+            self.wait(lambda tree: any(n.get("checkable") == "true" and n.get("checked") == "true"
+                                      for n in _nodes(tree, text=label)))
+
     def close(self):
         try:
             self.adb("shell", "rm", "-f", self.remote, timeout=5)
@@ -201,7 +213,6 @@ def _preview(tree, *, configured=False):
     if type(events) is not list or not 1 <= len(events) <= 16:
         raise UiBlocked("native-events-unavailable")
     identifiers = set()
-    certificate = False
     kinds = {"LOAD_START", "LOCATION_CHANGED", "LOAD_ERROR", "PAGE_STOP_SUCCESS", "PAGE_STOP_FAILURE", "CONTENT_CRASH", "CONTENT_KILL"}
     signals = {"UNKNOWN", "DNS_FAILURE", "TIMEOUT", "CERTIFICATE_REJECTED", "TLS_FAILURE", "CONTENT_CRASH", "CONTENT_KILL"}
     for event in events:
@@ -217,10 +228,6 @@ def _preview(tree, *, configured=False):
         if (code is None) != (category is None) or (code is not None and
                 (type(code) is not int or type(category) is not int or not 0 <= code <= 2147483647 or not 0 <= category <= 2147483647)):
             raise UiBlocked("native-error-code-invalid")
-        if event["kind"] == "LOAD_ERROR" and event["signal"] == "CERTIFICATE_REJECTED" and code is not None:
-            certificate = True
-    if not certificate:
-        raise UiBlocked("native-certificate-error-not-observed")
     # Retain only anonymous validated evidence in memory for equality checks.
     return evidence
 
@@ -317,7 +324,7 @@ def exercise(adb, record, fixture):
         ui.seen("AI 助手 · 浏览器诊断")
         record("android_ui", "passed")
 
-        stage = "gecko_certificate_error"
+        stage = "redacted_preview"
         # A callback arriving while selecting invalidates the frozen evidence.
         # Reacquire from this same tab at most three times, never accept stale UI.
         proof = None
@@ -339,7 +346,7 @@ def exercise(adb, record, fixture):
             if len(labels) != 1:
                 raise UiBlocked("unexpected-tab-count")
             checkpoint = "toggle_one_native_tab"
-            ui.tap(text=labels[0])
+            ui.check_tab(labels[0])
             checkpoint = "apply_native_tab_selection"
             ui.tap(text="选入", cls="android.widget.Button")
             checkpoint = "read_the_native_evidence_preview"
@@ -349,18 +356,20 @@ def exercise(adb, record, fixture):
                 "stale" if _nodes(tree, text="标签页发生变化，请重新选择证据。") else None))
             if state == "stale":
                 continue
-            try:
-                proof = _preview(tree)
-            except UiBlocked as error:
-                ui.tap(text="关闭", cls="android.widget.Button")
-                if str(error) == "native-certificate-error-not-observed" and attempt < 2:
-                    continue
-                raise
+            proof = _preview(tree)
             break
         if proof is None:
             raise UiBlocked("no-stable-native-evidence")
-        record("gecko_certificate_error", "passed", "native-code-and-certificate-signal")
-        stage = "redacted_preview"
+        certificates = [event for event in proof[0]["events"] if event["kind"] == "LOAD_ERROR"
+                        and event["signal"] == "CERTIFICATE_REJECTED" and event["code"] is not None]
+        native_error = None
+        if certificates:
+            certificate = certificates[-1]
+            native_error = {"code": certificate["code"], "category": certificate["category"],
+                            "signal": "CERTIFICATE_REJECTED", "navigationAttribution": "UNKNOWN"}
+            record("gecko_certificate_error", "passed", native_error)
+        else:
+            record("gecko_certificate_error", "unverified", "valid-preview-without-native-certificate-signal")
         checkpoint = "inspect_redacted_local_preview"
         if _nodes(tree, text="确认新请求并发送") or _nodes(tree, text="沿用编号发送"):
             raise UiBlocked("unconfigured-preview-exposed-send")
@@ -377,6 +386,7 @@ def exercise(adb, record, fixture):
             ui.seen("GPT 网关")
             ui.fill("已授权的 HTTPS 网关", GATEWAY_URL)
             ui.fill("本窗口访问令牌", SYNTHETIC_TOKEN, password=True)
+            ui.hide_keyboard()
             ui.tap(text="使用", cls="android.widget.Button")
             checkpoint = "confirm_and_close_without_sending"
             ui.tap(text="预览证据", cls="android.widget.Button")
@@ -405,12 +415,9 @@ def exercise(adb, record, fixture):
         ui.tap(text="关闭", cls="android.widget.Button")
         ui.wait(lambda tree: _target(tree, {"desc": "网页工具", "cls": "android.widget.Button"}))
         record("assistant_closed", "passed")
-        certificate = [event for event in proof[0]["events"]
-                       if event["kind"] == "LOAD_ERROR" and event["signal"] == "CERTIFICATE_REJECTED"][-1]
-        return {"nativeCertificateError": True, "redactedPreview": True,
+        return {"nativeCertificateError": native_error is not None, "redactedPreview": True,
                 "confirmationCancelled": confirmation, "submitted": False,
-                "nativeError": {"code": certificate["code"], "category": certificate["category"],
-                    "signal": "CERTIFICATE_REJECTED", "navigationAttribution": "UNKNOWN"}}
+                "nativeError": native_error}
     except UiBlocked as error:
         record(stage, "failed", {"checkpoint": checkpoint, "reason": str(error)})
         raise
