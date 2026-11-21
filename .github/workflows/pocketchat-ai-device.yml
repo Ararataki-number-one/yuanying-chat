@@ -1,0 +1,149 @@
+name: PocketChat AI diagnostics emulator acceptance
+
+on:
+  push:
+    branches: ['candidate/pocketchat-ai-diagnostics-20261121']
+    paths:
+      - '.github/workflows/pocketchat-ai-device.yml'
+      - 'tests/ai-diagnostic-device/**'
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  original-apk:
+    if: github.repository == 'Ararataki-number-one/yuanying-chat' && github.ref == 'refs/heads/candidate/pocketchat-ai-diagnostics-20261121'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+
+      - name: Recover the original signed x86_64 APK
+        env:
+          ARTIFACT_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          work="$PWD/work/ai-device"
+          mkdir -p "$work"
+          fetch() {
+            printf 'header = "Authorization: Bearer %s"\n' "$ARTIFACT_TOKEN" |
+              curl --config - --fail --silent --show-error --location --retry 3 \
+                --proto '=https' --proto-redir '=https' --output "$2" \
+                "https://api.github.com/repos/Ararataki-number-one/yuanying-chat/$1"
+          }
+          fetch actions/runs/44910281335 "$work/source-run.private.json"
+          fetch actions/artifacts/14709646838 "$work/source-artifact.private.json"
+          python3 -B - "$work" <<'PY'
+          import json, sys
+          from pathlib import Path
+
+          work = Path(sys.argv[1])
+          run = json.loads((work / "source-run.private.json").read_text())
+          artifact = json.loads((work / "source-artifact.private.json").read_text())
+          commit = "cca221ab11c7d05a21e998be7c27197937fbb23a"
+          branch = "candidate/pocketchat-ai-diagnostics-20261121"
+          digest = "9823c21efbc091238709ab6e28fc91f92f0bf3cf612fdda5037683fb94b7a51c"
+          if run["id"] != 44910281335 or run["head_sha"] != commit or run["head_branch"] != branch or run["conclusion"] != "success":
+              raise SystemExit("Unexpected source run")
+          owner = artifact["workflow_run"]
+          if artifact["id"] != 14709646838 or artifact["expired"] or artifact["name"] != "pocketchat-ai-diagnostics-test-apks":
+              raise SystemExit("Unexpected or expired source artifact")
+          if owner["id"] != run["id"] or owner["head_sha"] != commit or artifact["digest"] != f"sha256:{digest}":
+              raise SystemExit("Source artifact does not match the accepted run")
+          PY
+          fetch actions/artifacts/14709646838/zip "$work/original-apks.private.zip"
+          printf '%s  %s\n' 9823c21efbc091238709ab6e28fc91f92f0bf3cf612fdda5037683fb94b7a51c "$work/original-apks.private.zip" | sha256sum --check
+          files=$(unzip -Z1 "$work/original-apks.private.zip" | sort)
+          test "$files" = "$(printf '%s\n' app-arm64-v8a-diagnostics.apk app-x86_64-diagnostics.apk)"
+          unzip -p "$work/original-apks.private.zip" app-x86_64-diagnostics.apk > "$work/app-x86_64-diagnostics.apk"
+          printf '%s  %s\n' 75ff5f3f880770aa9b4bc3fe8badd0658701460d0bf6c5f6b9335e23837e2feb "$work/app-x86_64-diagnostics.apk" | sha256sum --check
+
+      - name: Verify package and prepare pinned emulator
+        shell: bash
+        run: |
+          set -euo pipefail
+          export JAVA_HOME="$JAVA_HOME_17_X64"
+          export PATH="$JAVA_HOME/bin:$PATH"
+          work="$PWD/work/ai-device"
+          sdk="$RUNNER_TEMP/pocketchat-device-sdk"
+          test -c /dev/kvm
+          sudo chmod a+rw /dev/kvm
+          mkdir -p "$sdk/cmdline-tools"
+          cp -aL "$ANDROID_HOME/cmdline-tools/latest" "$sdk/cmdline-tools/latest"
+          sdkmanager="$sdk/cmdline-tools/latest/bin/sdkmanager"
+          set +o pipefail
+          yes | "$sdkmanager" --sdk_root="$sdk" --licenses >/dev/null
+          set -o pipefail
+          "$sdkmanager" --sdk_root="$sdk" 'build-tools;37.0.0'
+          apk="$work/app-x86_64-diagnostics.apk"
+          badging=$("$sdk/build-tools/37.0.0/aapt2" dump badging "$apk")
+          grep -F "package: name='local.pocketchat.aidiagnostics'" <<< "$badging"
+          grep -Fx "native-code: 'x86_64'" <<< "$badging"
+          grep -F "launchable-activity: name='local.pocketchat.BrandLaunchActivity'" <<< "$badging"
+          signature=$("$sdk/build-tools/37.0.0/apksigner" verify --print-certs "$apk")
+          signer=$(sed -nE 's/^.*certificate SHA-256 digest:[[:space:]]*([0-9A-Fa-f]{64})[[:space:]]*$/\1/p' <<< "$signature" | tr 'A-F' 'a-f' | sort -u)
+          test "$signer" = 1230913e31a79ede8911513c18a4235b2a6814626d9fd1d3345a6e03adcd72e8
+          python3 -B - "$work" <<'PY'
+          import json, sys
+          from pathlib import Path
+
+          work = Path(sys.argv[1])
+          receipt = {
+              "sourceRun": 44910281335,
+              "sourceArtifact": 14709646838,
+              "sourceCommit": "cca221ab11c7d05a21e998be7c27197937fbb23a",
+              "zipSha256": "9823c21efbc091238709ab6e28fc91f92f0bf3cf612fdda5037683fb94b7a51c",
+              "apkSha256": "75ff5f3f880770aa9b4bc3fe8badd0658701460d0bf6c5f6b9335e23837e2feb",
+              "signerSha256": "1230913e31a79ede8911513c18a4235b2a6814626d9fd1d3345a6e03adcd72e8",
+              "abi": "x86_64",
+              "package": "local.pocketchat.aidiagnostics",
+              "launcher": "local.pocketchat.BrandLaunchActivity",
+          }
+          (work / "original-apk.json").write_text(json.dumps(receipt, indent=2) + "\n")
+          PY
+          python3 tools/gecko/prepare_android_image.py --component emulator --sdk-root "$sdk" --cache "$RUNNER_TEMP/pocketchat-device-packages" --report "$work/emulator-setup.json"
+          python3 tools/gecko/prepare_android_image.py --sdk-root "$sdk" --cache "$RUNNER_TEMP/pocketchat-device-packages" --report "$work/image-setup.json"
+          python3 tools/gecko/prepare_platform_tools.py --sdk-root "$sdk" --cache "$RUNNER_TEMP/pocketchat-device-packages" --report "$work/platform-tools-setup.json"
+          "$sdk/emulator/emulator" -accel-check
+
+      - name: Install original APK and exercise production native UI
+        shell: bash
+        run: |
+          set -euo pipefail
+          export JAVA_HOME="$JAVA_HOME_17_X64"
+          export PATH="$JAVA_HOME/bin:$PATH"
+          sdk="$RUNNER_TEMP/pocketchat-device-sdk"
+          export ANDROID_HOME="$sdk" ANDROID_SDK_ROOT="$sdk"
+          export ANDROID_AVD_HOME="$RUNNER_TEMP/pocketchat-device/avd"
+          export ANDROID_USER_HOME="$RUNNER_TEMP/pocketchat-device/user"
+          export ANDROID_EMULATOR_HOME="$RUNNER_TEMP/pocketchat-device/emulator"
+          mkdir -p "$ANDROID_AVD_HOME" "$ANDROID_USER_HOME" "$ANDROID_EMULATOR_HOME"
+          printf 'no\n' | "$sdk/cmdline-tools/latest/bin/avdmanager" create avd --force -n pocketchat-ai -p "$ANDROID_AVD_HOME/pocketchat-ai.avd" -k 'system-images;android-35;google_apis;x86_64'
+          namespace=pocketchat-ai-device
+          sudo ip netns add "$namespace"
+          trap 'sudo ip netns del "$namespace"' EXIT
+          sudo ip -n "$namespace" link set lo up
+          sudo ip netns exec "$namespace" runuser -u "$(id -un)" -- env \
+            "JAVA_HOME=$JAVA_HOME" "PATH=$PATH" "ANDROID_HOME=$sdk" "ANDROID_SDK_ROOT=$sdk" \
+            "ANDROID_AVD_HOME=$ANDROID_AVD_HOME" "ANDROID_USER_HOME=$ANDROID_USER_HOME" \
+            "ANDROID_EMULATOR_HOME=$ANDROID_EMULATOR_HOME" \
+            python3 -B tests/ai-diagnostic-device/run.py --apk work/ai-device/app-x86_64-diagnostics.apk \
+              --sdk "$sdk" --output work/ai-device
+
+      - name: Retain scoped emulator evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: pocketchat-ai-original-x86_64-device-evidence
+          path: |
+            work/ai-device/original-apk.json
+            work/ai-device/emulator-setup.json
+            work/ai-device/image-setup.json
+            work/ai-device/platform-tools-setup.json
+            work/ai-device/device-results.json
+          if-no-files-found: warn
+          retention-days: 5
