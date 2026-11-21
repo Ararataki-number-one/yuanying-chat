@@ -1,0 +1,2081 @@
+{
+  "schema": 1,
+  "status": "passed",
+  "sourceCommit": "4503e72d3bbbf5d7888aff98fc2c39658e0ba57d",
+  "runNonce": "cf0785556bdd4af5a397da414f266281",
+  "actualAndroidFixtureAttempted": true,
+  "fixtureInvocationCount": 1,
+  "automaticRetryPerformed": false,
+  "adbObservations": [
+    {
+      "index": 1,
+      "command": [
+        "/usr/local/lib/android/sdk/platform-tools/adb",
+        "-s",
+        "emulator-5554",
+        "shell",
+        "am",
+        "force-stop",
+        "local.pocketchat.test"
+      ],
+      "returnCode": 0,
+      "streams": {
+        "stdout": {
+          "path": "network-client-binding-adb-0001-stdout.raw.log",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "stderr": {
+          "path": "network-client-binding-adb-0001-stderr.raw.log",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      }
+    },
+    {
+      "index": 2,
+      "command": [
+        "/usr/local/lib/android/sdk/platform-tools/adb",
+        "-s",
+        "emulator-5554",
+        "shell",
+        "pm",
+        "clear",
+        "local.pocketchat.test"
+      ],
+      "returnCode": 0,
+      "streams": {
+        "stdout": {
+          "path": "network-client-binding-adb-0002-stdout.raw.log",
+          "bytes": 8,
+          "sha256": "7fc0023a6402c7bd7abd98bb3e580968de4833eed07d88d1cc8d70819d69c7a0"
+        },
+        "stderr": {
+          "path": "network-client-binding-adb-0002-stderr.raw.log",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      }
+    },
+    {
+      "index": 3,
+      "command": [
+        "/usr/local/lib/android/sdk/platform-tools/adb",
+        "-s",
+        "emulator-5554",
+        "logcat",
+        "-c"
+      ],
+      "returnCode": 0,
+      "streams": {
+        "stdout": {
+          "path": "network-client-binding-adb-0003-stdout.raw.log",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "capturePrivacy": {
+            "schema": 1,
+            "kind": "service-key-byte-derivative",
+            "originalBytes": 0,
+            "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "projectionEncoding": "latin1",
+            "helperHashEncoding": "utf-8",
+            "projectionPrivacy": {
+              "schema": 1,
+              "kind": "service-api-key-value-redaction",
+              "policy": "known-service-keys-v1",
+              "originalBytes": 0,
+              "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "finalBytes": 0,
+              "finalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "changed": false,
+              "replacements": {
+                "gboard": 0,
+                "mozilla-location": 0,
+                "google-safebrowsing": 0,
+                "google-api-key-shape": 0
+              }
+            },
+            "storedBytes": 0,
+            "storedSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "changed": false
+          }
+        },
+        "stderr": {
+          "path": "network-client-binding-adb-0003-stderr.raw.log",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "capturePrivacy": {
+            "schema": 1,
+            "kind": "service-key-byte-derivative",
+            "originalBytes": 0,
+            "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "projectionEncoding": "latin1",
+            "helperHashEncoding": "utf-8",
+            "projectionPrivacy": {
+              "schema": 1,
+              "kind": "service-api-key-value-redaction",
+              "policy": "known-service-keys-v1",
+              "originalBytes": 0,
+              "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "finalBytes": 0,
+              "finalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "changed": false,
+              "replacements": {
+                "gboard": 0,
+                "mozilla-location": 0,
+                "google-safebrowsing": 0,
+                "google-api-key-shape": 0
+              }
+            },
+            "storedBytes": 0,
+            "storedSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "changed": false
+          }
+        }
+      }
+    },
+    {
+      "index": 4,
+      "command": [
+        "/usr/local/lib/android/sdk/platform-tools/adb",
+        "-s",
+        "emulator-5554",
+        "exec-out",
+        "content",
+        "read",
+        "--uri",
+        "content://local.pocketchat.test.evidence/build-identity"
+      ],
+      "returnCode": 0,
+      "streams": {
+        "stdout": {
+          "path": "network-client-binding-adb-0004-stdout.raw.log",
+          "bytes": 2408,
+          "sha256": "d9c336825c5c73b249bdbde705d3c829b912491bb4699e7f25d5b1bdcebc1358"
+        },
+        "stderr": {
+          "path": "network-client-binding-adb-0004-stderr.raw.log",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      }
+    },
+    {
+      "index": 5,
+      "command": [
+        "/usr/local/lib/android/sdk/platform-tools/adb",
+        "-s",
+        "emulator-5554",
+        "shell",
+        "cmd",
+        "package",
+        "list",
+        "packages",
+        "-U",
+        "local.pocketchat.test"
+      ],
+      "returnCode": 0,
+      "streams": {
+        "stdout": {
+          "path": "network-client-binding-adb-0005-stdout.raw.log",
+          "bytes": 40,
+          "sha256": "4a0f122b5a367453b2f308c897e8cb2b0ea218be44c22bbd0e2025aa4a7c470e"
+        },
+        "stderr": {
+          "path": "network-client-binding-adb-0005-stderr.raw.log",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      }
+    },
+    {
+      "index": 6,
+      "command": [
+        "/usr/local/lib/android/sdk/platform-tools/adb",
+        "-s",
+        "emulator-5554",
+        "shell",
+        "getprop",
+        "ro.build.version.sdk"
+      ],
+      "returnCode": 0,
+      "streams": {
+        "stdout": {
+          "path": "network-client-binding-adb-0006-stdout.raw.log",
+          "bytes": 3,
+          "sha256": "90d7ec0f0acef104d8b6252794295f661a0149634868d02a1ae0c358099638f5"
+        },
+        "stderr": {
+          "path": "network-client-binding-adb-0006-stderr.raw.log",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      }
+    },
+    {
+      "index": 7,
+      "command": [
+        "/usr/local/lib/android/sdk/platform-tools/adb",
+        "-s",
+        "emulator-5554",
+        "shell",
+        "am",
+        "start",
+        "-W",
+        "-n",
+        "local.pocketchat.test/local.pocketchat.NetworkClientBindingIntegrationActivity",
+        "--es",
+        "sourceCommit",
+        "4503e72d3bbbf5d7888aff98fc2c39658e0ba57d",
+        "--es",
+        "eventNonce",
+        "cf0785556bdd4af5a397da414f266281"
+      ],
+      "returnCode": 0,
+      "streams": {
+        "stdout": {
+          "path": "network-client-binding-adb-0007-stdout.raw.log",
+          "bytes": 273,
+          "sha256": "54530875abcab8763d84f75e0e8b977ec046a10c5f0b196fb8a438f5a0ecd591"
+        },
+        "stderr": {
+          "path": "network-client-binding-adb-0007-stderr.raw.log",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      }
+    },
+    {
+      "index": 8,
+      "command": [
+        "/usr/local/lib/android/sdk/platform-tools/adb",
+        "-s",
+        "emulator-5554",
+        "logcat",
+        "-d",
+        "-s",
+        "PocketGeckoIntegration:I",
+        "PocketClientBinding:E",
+        "AndroidRuntime:E",
+        "*:S"
+      ],
+      "returnCode": 0,
+      "streams": {
+        "stdout": {
+          "path": "network-client-binding-adb-0008-stdout.raw.log",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "capturePrivacy": {
+            "schema": 1,
+            "kind": "service-key-byte-derivative",
+            "originalBytes": 0,
+            "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "projectionEncoding": "latin1",
+            "helperHashEncoding": "utf-8",
+            "projectionPrivacy": {
+              "schema": 1,
+              "kind": "service-api-key-value-redaction",
+              "policy": "known-service-keys-v1",
+              "originalBytes": 0,
+              "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "finalBytes": 0,
+              "finalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "changed": false,
+              "replacements": {
+                "gboard": 0,
+                "mozilla-location": 0,
+                "google-safebrowsing": 0,
+                "google-api-key-shape": 0
+              }
+            },
+            "storedBytes": 0,
+            "storedSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "changed": false
+          }
+        },
+        "stderr": {
+          "path": "network-client-binding-adb-0008-stderr.raw.log",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "capturePrivacy": {
+            "schema": 1,
+            "kind": "service-key-byte-derivative",
+            "originalBytes": 0,
+            "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "projectionEncoding": "latin1",
+            "helperHashEncoding": "utf-8",
+            "projectionPrivacy": {
+              "schema": 1,
+              "kind": "service-api-key-value-redaction",
+              "policy": "known-service-keys-v1",
+              "originalBytes": 0,
+              "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "finalBytes": 0,
+              "finalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "changed": false,
+              "replacements": {
+                "gboard": 0,
+                "mozilla-location": 0,
+                "google-safebrowsing": 0,
+                "google-api-key-shape": 0
+              }
+            },
+            "storedBytes": 0,
+            "storedSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "changed": false
+          }
+        }
+      }
+    },
+    {
+      "index": 9,
+      "command": [
+        "/usr/local/lib/android/sdk/platform-tools/adb",
+        "-s",
+        "emulator-5554",
+        "logcat",
+        "-d",
+        "-s",
+        "PocketGeckoIntegration:I",
+        "PocketClientBinding:E",
+        "AndroidRuntime:E",
+        "*:S"
+      ],
+      "returnCode": 0,
+      "streams": {
+        "stdout": {
+          "path": "network-client-binding-adb-0009-stdout.raw.log",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "capturePrivacy": {
+            "schema": 1,
+            "kind": "service-key-byte-derivative",
+            "originalBytes": 0,
+            "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "projectionEncoding": "latin1",
+            "helperHashEncoding": "utf-8",
+            "projectionPrivacy": {
+              "schema": 1,
+              "kind": "service-api-key-value-redaction",
+              "policy": "known-service-keys-v1",
+              "originalBytes": 0,
+              "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "finalBytes": 0,
+              "finalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "changed": false,
+              "replacements": {
+                "gboard": 0,
+                "mozilla-location": 0,
+                "google-safebrowsing": 0,
+                "google-api-key-shape": 0
+              }
+            },
+            "storedBytes": 0,
+            "storedSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "changed": false
+          }
+        },
+        "stderr": {
+          "path": "network-client-binding-adb-0009-stderr.raw.log",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "capturePrivacy": {
+            "schema": 1,
+            "kind": "service-key-byte-derivative",
+            "originalBytes": 0,
+            "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "projectionEncoding": "latin1",
+            "helperHashEncoding": "utf-8",
+            "projectionPrivacy": {
+              "schema": 1,
+              "kind": "service-api-key-value-redaction",
+              "policy": "known-service-keys-v1",
+              "originalBytes": 0,
+              "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "finalBytes": 0,
+              "finalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "changed": false,
+              "replacements": {
+                "gboard": 0,
+                "mozilla-location": 0,
+                "google-safebrowsing": 0,
+                "google-api-key-shape": 0
+              }
+            },
+            "storedBytes": 0,
+            "storedSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "changed": false
+          }
+        }
+      }
+    },
+    {
+      "index": 10,
+      "command": [
+        "/usr/local/lib/android/sdk/platform-tools/adb",
+        "-s",
+        "emulator-5554",
+        "logcat",
+        "-d",
+        "-s",
+        "PocketGeckoIntegration:I",
+        "PocketClientBinding:E",
+        "AndroidRuntime:E",
+        "*:S"
+      ],
+      "returnCode": 0,
+      "streams": {
+        "stdout": {
+          "path": "network-client-binding-adb-0010-stdout.raw.log",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "capturePrivacy": {
+            "schema": 1,
+            "kind": "service-key-byte-derivative",
+            "originalBytes": 0,
+            "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "projectionEncoding": "latin1",
+            "helperHashEncoding": "utf-8",
+            "projectionPrivacy": {
+              "schema": 1,
+              "kind": "service-api-key-value-redaction",
+              "policy": "known-service-keys-v1",
+              "originalBytes": 0,
+              "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "finalBytes": 0,
+              "finalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "changed": false,
+              "replacements": {
+                "gboard": 0,
+                "mozilla-location": 0,
+                "google-safebrowsing": 0,
+                "google-api-key-shape": 0
+              }
+            },
+            "storedBytes": 0,
+            "storedSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "changed": false
+          }
+        },
+        "stderr": {
+          "path": "network-client-binding-adb-0010-stderr.raw.log",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "capturePrivacy": {
+            "schema": 1,
+            "kind": "service-key-byte-derivative",
+            "originalBytes": 0,
+            "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "projectionEncoding": "latin1",
+            "helperHashEncoding": "utf-8",
+            "projectionPrivacy": {
+              "schema": 1,
+              "kind": "service-api-key-value-redaction",
+              "policy": "known-service-keys-v1",
+              "originalBytes": 0,
+              "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "finalBytes": 0,
+              "finalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "changed": false,
+              "replacements": {
+                "gboard": 0,
+                "mozilla-location": 0,
+                "google-safebrowsing": 0,
+                "google-api-key-shape": 0
+              }
+            },
+            "storedBytes": 0,
+            "storedSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "changed": false
+          }
+        }
+      }
+    },
+    {
+      "index": 11,
+      "command": [
+        "/usr/local/lib/android/sdk/platform-tools/adb",
+        "-s",
+        "emulator-5554",
+        "logcat",
+        "-d",
+        "-s",
+        "PocketGeckoIntegration:I",
+        "PocketClientBinding:E",
+        "AndroidRuntime:E",
+        "*:S"
+      ],
+      "returnCode": 0,
+      "streams": {
+        "stdout": {
+          "path": "network-client-binding-adb-0011-stdout.raw.log",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "capturePrivacy": {
+            "schema": 1,
+            "kind": "service-key-byte-derivative",
+            "originalBytes": 0,
+            "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "projectionEncoding": "latin1",
+            "helperHashEncoding": "utf-8",
+            "projectionPrivacy": {
+              "schema": 1,
+              "kind": "service-api-key-value-redaction",
+              "policy": "known-service-keys-v1",
+              "originalBytes": 0,
+              "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "finalBytes": 0,
+              "finalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "changed": false,
+              "replacements": {
+                "gboard": 0,
+                "mozilla-location": 0,
+                "google-safebrowsing": 0,
+                "google-api-key-shape": 0
+              }
+            },
+            "storedBytes": 0,
+            "storedSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "changed": false
+          }
+        },
+        "stderr": {
+          "path": "network-client-binding-adb-0011-stderr.raw.log",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "capturePrivacy": {
+            "schema": 1,
+            "kind": "service-key-byte-derivative",
+            "originalBytes": 0,
+            "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "projectionEncoding": "latin1",
+            "helperHashEncoding": "utf-8",
+            "projectionPrivacy": {
+              "schema": 1,
+              "kind": "service-api-key-value-redaction",
+              "policy": "known-service-keys-v1",
+              "originalBytes": 0,
+              "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "finalBytes": 0,
+              "finalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "changed": false,
+              "replacements": {
+                "gboard": 0,
+                "mozilla-location": 0,
+                "google-safebrowsing": 0,
+                "google-api-key-shape": 0
+              }
+            },
+            "storedBytes": 0,
+            "storedSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "changed": false
+          }
+        }
+      }
+    },
+    {
+      "index": 12,
+      "command": [
+        "/usr/local/lib/android/sdk/platform-tools/adb",
+        "-s",
+        "emulator-5554",
+        "logcat",
+        "-d",
+        "-s",
+        "PocketGeckoIntegration:I",
+        "PocketClientBinding:E",
+        "AndroidRuntime:E",
+        "*:S"
+      ],
+      "returnCode": 0,
+      "streams": {
+        "stdout": {
+          "path": "network-client-binding-adb-0012-stdout.raw.log",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "capturePrivacy": {
+            "schema": 1,
+            "kind": "service-key-byte-derivative",
+            "originalBytes": 0,
+            "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "projectionEncoding": "latin1",
+            "helperHashEncoding": "utf-8",
+            "projectionPrivacy": {
+              "schema": 1,
+              "kind": "service-api-key-value-redaction",
+              "policy": "known-service-keys-v1",
+              "originalBytes": 0,
+              "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "finalBytes": 0,
+              "finalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "changed": false,
+              "replacements": {
+                "gboard": 0,
+                "mozilla-location": 0,
+                "google-safebrowsing": 0,
+                "google-api-key-shape": 0
+              }
+            },
+            "storedBytes": 0,
+            "storedSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "changed": false
+          }
+        },
+        "stderr": {
+          "path": "network-client-binding-adb-0012-stderr.raw.log",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "capturePrivacy": {
+            "schema": 1,
+            "kind": "service-key-byte-derivative",
+            "originalBytes": 0,
+            "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "projectionEncoding": "latin1",
+            "helperHashEncoding": "utf-8",
+            "projectionPrivacy": {
+              "schema": 1,
+              "kind": "service-api-key-value-redaction",
+              "policy": "known-service-keys-v1",
+              "originalBytes": 0,
+              "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "finalBytes": 0,
+              "finalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "changed": false,
+              "replacements": {
+                "gboard": 0,
+                "mozilla-location": 0,
+                "google-safebrowsing": 0,
+                "google-api-key-shape": 0
+              }
+            },
+            "storedBytes": 0,
+            "storedSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "changed": false
+          }
+        }
+      }
+    },
+    {
+      "index": 13,
+      "command": [
+        "/usr/local/lib/android/sdk/platform-tools/adb",
+        "-s",
+        "emulator-5554",
+        "logcat",
+        "-d",
+        "-s",
+        "PocketGeckoIntegration:I",
+        "PocketClientBinding:E",
+        "AndroidRuntime:E",
+        "*:S"
+      ],
+      "returnCode": 0,
+      "streams": {
+        "stdout": {
+          "path": "network-client-binding-adb-0013-stdout.raw.log",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "capturePrivacy": {
+            "schema": 1,
+            "kind": "service-key-byte-derivative",
+            "originalBytes": 0,
+            "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "projectionEncoding": "latin1",
+            "helperHashEncoding": "utf-8",
+            "projectionPrivacy": {
+              "schema": 1,
+              "kind": "service-api-key-value-redaction",
+              "policy": "known-service-keys-v1",
+              "originalBytes": 0,
+              "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "finalBytes": 0,
+              "finalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "changed": false,
+              "replacements": {
+                "gboard": 0,
+                "mozilla-location": 0,
+                "google-safebrowsing": 0,
+                "google-api-key-shape": 0
+              }
+            },
+            "storedBytes": 0,
+            "storedSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "changed": false
+          }
+        },
+        "stderr": {
+          "path": "network-client-binding-adb-0013-stderr.raw.log",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "capturePrivacy": {
+            "schema": 1,
+            "kind": "service-key-byte-derivative",
+            "originalBytes": 0,
+            "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "projectionEncoding": "latin1",
+            "helperHashEncoding": "utf-8",
+            "projectionPrivacy": {
+              "schema": 1,
+              "kind": "service-api-key-value-redaction",
+              "policy": "known-service-keys-v1",
+              "originalBytes": 0,
+              "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "finalBytes": 0,
+              "finalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "changed": false,
+              "replacements": {
+                "gboard": 0,
+                "mozilla-location": 0,
+                "google-safebrowsing": 0,
+                "google-api-key-shape": 0
+              }
+            },
+            "storedBytes": 0,
+            "storedSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "changed": false
+          }
+        }
+      }
+    },
+    {
+      "index": 14,
+      "command": [
+        "/usr/local/lib/android/sdk/platform-tools/adb",
+        "-s",
+        "emulator-5554",
+        "logcat",
+        "-d",
+        "-s",
+        "PocketGeckoIntegration:I",
+        "PocketClientBinding:E",
+        "AndroidRuntime:E",
+        "*:S"
+      ],
+      "returnCode": 0,
+      "streams": {
+        "stdout": {
+          "path": "network-client-binding-adb-0014-stdout.raw.log",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "capturePrivacy": {
+            "schema": 1,
+            "kind": "service-key-byte-derivative",
+            "originalBytes": 0,
+            "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "projectionEncoding": "latin1",
+            "helperHashEncoding": "utf-8",
+            "projectionPrivacy": {
+              "schema": 1,
+              "kind": "service-api-key-value-redaction",
+              "policy": "known-service-keys-v1",
+              "originalBytes": 0,
+              "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "finalBytes": 0,
+              "finalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "changed": false,
+              "replacements": {
+                "gboard": 0,
+                "mozilla-location": 0,
+                "google-safebrowsing": 0,
+                "google-api-key-shape": 0
+              }
+            },
+            "storedBytes": 0,
+            "storedSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "changed": false
+          }
+        },
+        "stderr": {
+          "path": "network-client-binding-adb-0014-stderr.raw.log",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "capturePrivacy": {
+            "schema": 1,
+            "kind": "service-key-byte-derivative",
+            "originalBytes": 0,
+            "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "projectionEncoding": "latin1",
+            "helperHashEncoding": "utf-8",
+            "projectionPrivacy": {
+              "schema": 1,
+              "kind": "service-api-key-value-redaction",
+              "policy": "known-service-keys-v1",
+              "originalBytes": 0,
+              "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "finalBytes": 0,
+              "finalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "changed": false,
+              "replacements": {
+                "gboard": 0,
+                "mozilla-location": 0,
+                "google-safebrowsing": 0,
+                "google-api-key-shape": 0
+              }
+            },
+            "storedBytes": 0,
+            "storedSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "changed": false
+          }
+        }
+      }
+    },
+    {
+      "index": 15,
+      "command": [
+        "/usr/local/lib/android/sdk/platform-tools/adb",
+        "-s",
+        "emulator-5554",
+        "logcat",
+        "-d",
+        "-s",
+        "PocketGeckoIntegration:I",
+        "PocketClientBinding:E",
+        "AndroidRuntime:E",
+        "*:S"
+      ],
+      "returnCode": 0,
+      "streams": {
+        "stdout": {
+          "path": "network-client-binding-adb-0015-stdout.raw.log",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "capturePrivacy": {
+            "schema": 1,
+            "kind": "service-key-byte-derivative",
+            "originalBytes": 0,
+            "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "projectionEncoding": "latin1",
+            "helperHashEncoding": "utf-8",
+            "projectionPrivacy": {
+              "schema": 1,
+              "kind": "service-api-key-value-redaction",
+              "policy": "known-service-keys-v1",
+              "originalBytes": 0,
+              "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "finalBytes": 0,
+              "finalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "changed": false,
+              "replacements": {
+                "gboard": 0,
+                "mozilla-location": 0,
+                "google-safebrowsing": 0,
+                "google-api-key-shape": 0
+              }
+            },
+            "storedBytes": 0,
+            "storedSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "changed": false
+          }
+        },
+        "stderr": {
+          "path": "network-client-binding-adb-0015-stderr.raw.log",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "capturePrivacy": {
+            "schema": 1,
+            "kind": "service-key-byte-derivative",
+            "originalBytes": 0,
+            "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "projectionEncoding": "latin1",
+            "helperHashEncoding": "utf-8",
+            "projectionPrivacy": {
+              "schema": 1,
+              "kind": "service-api-key-value-redaction",
+              "policy": "known-service-keys-v1",
+              "originalBytes": 0,
+              "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "finalBytes": 0,
+              "finalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "changed": false,
+              "replacements": {
+                "gboard": 0,
+                "mozilla-location": 0,
+                "google-safebrowsing": 0,
+                "google-api-key-shape": 0
+              }
+            },
+            "storedBytes": 0,
+            "storedSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "changed": false
+          }
+        }
+      }
+    },
+    {
+      "index": 16,
+      "command": [
+        "/usr/local/lib/android/sdk/platform-tools/adb",
+        "-s",
+        "emulator-5554",
+        "logcat",
+        "-d",
+        "-s",
+        "PocketGeckoIntegration:I",
+        "PocketClientBinding:E",
+        "AndroidRuntime:E",
+        "*:S"
+      ],
+      "returnCode": 0,
+      "streams": {
+        "stdout": {
+          "path": "network-client-binding-adb-0016-stdout.raw.log",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "capturePrivacy": {
+            "schema": 1,
+            "kind": "service-key-byte-derivative",
+            "originalBytes": 0,
+            "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "projectionEncoding": "latin1",
+            "helperHashEncoding": "utf-8",
+            "projectionPrivacy": {
+              "schema": 1,
+              "kind": "service-api-key-value-redaction",
+              "policy": "known-service-keys-v1",
+              "originalBytes": 0,
+              "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "finalBytes": 0,
+              "finalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "changed": false,
+              "replacements": {
+                "gboard": 0,
+                "mozilla-location": 0,
+                "google-safebrowsing": 0,
+                "google-api-key-shape": 0
+              }
+            },
+            "storedBytes": 0,
+            "storedSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "changed": false
+          }
+        },
+        "stderr": {
+          "path": "network-client-binding-adb-0016-stderr.raw.log",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "capturePrivacy": {
+            "schema": 1,
+            "kind": "service-key-byte-derivative",
+            "originalBytes": 0,
+            "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "projectionEncoding": "latin1",
+            "helperHashEncoding": "utf-8",
+            "projectionPrivacy": {
+              "schema": 1,
+              "kind": "service-api-key-value-redaction",
+              "policy": "known-service-keys-v1",
+              "originalBytes": 0,
+              "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "finalBytes": 0,
+              "finalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "changed": false,
+              "replacements": {
+                "gboard": 0,
+                "mozilla-location": 0,
+                "google-safebrowsing": 0,
+                "google-api-key-shape": 0
+              }
+            },
+            "storedBytes": 0,
+            "storedSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "changed": false
+          }
+        }
+      }
+    },
+    {
+      "index": 17,
+      "command": [
+        "/usr/local/lib/android/sdk/platform-tools/adb",
+        "-s",
+        "emulator-5554",
+        "logcat",
+        "-d",
+        "-s",
+        "PocketGeckoIntegration:I",
+        "PocketClientBinding:E",
+        "AndroidRuntime:E",
+        "*:S"
+      ],
+      "returnCode": 0,
+      "streams": {
+        "stdout": {
+          "path": "network-client-binding-adb-0017-stdout.raw.log",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "capturePrivacy": {
+            "schema": 1,
+            "kind": "service-key-byte-derivative",
+            "originalBytes": 0,
+            "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "projectionEncoding": "latin1",
+            "helperHashEncoding": "utf-8",
+            "projectionPrivacy": {
+              "schema": 1,
+              "kind": "service-api-key-value-redaction",
+              "policy": "known-service-keys-v1",
+              "originalBytes": 0,
+              "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "finalBytes": 0,
+              "finalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "changed": false,
+              "replacements": {
+                "gboard": 0,
+                "mozilla-location": 0,
+                "google-safebrowsing": 0,
+                "google-api-key-shape": 0
+              }
+            },
+            "storedBytes": 0,
+            "storedSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "changed": false
+          }
+        },
+        "stderr": {
+          "path": "network-client-binding-adb-0017-stderr.raw.log",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "capturePrivacy": {
+            "schema": 1,
+            "kind": "service-key-byte-derivative",
+            "originalBytes": 0,
+            "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "projectionEncoding": "latin1",
+            "helperHashEncoding": "utf-8",
+            "projectionPrivacy": {
+              "schema": 1,
+              "kind": "service-api-key-value-redaction",
+              "policy": "known-service-keys-v1",
+              "originalBytes": 0,
+              "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "finalBytes": 0,
+              "finalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "changed": false,
+              "replacements": {
+                "gboard": 0,
+                "mozilla-location": 0,
+                "google-safebrowsing": 0,
+                "google-api-key-shape": 0
+              }
+            },
+            "storedBytes": 0,
+            "storedSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "changed": false
+          }
+        }
+      }
+    },
+    {
+      "index": 18,
+      "command": [
+        "/usr/local/lib/android/sdk/platform-tools/adb",
+        "-s",
+        "emulator-5554",
+        "logcat",
+        "-d",
+        "-s",
+        "PocketGeckoIntegration:I",
+        "PocketClientBinding:E",
+        "AndroidRuntime:E",
+        "*:S"
+      ],
+      "returnCode": 0,
+      "streams": {
+        "stdout": {
+          "path": "network-client-binding-adb-0018-stdout.raw.log",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "capturePrivacy": {
+            "schema": 1,
+            "kind": "service-key-byte-derivative",
+            "originalBytes": 0,
+            "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "projectionEncoding": "latin1",
+            "helperHashEncoding": "utf-8",
+            "projectionPrivacy": {
+              "schema": 1,
+              "kind": "service-api-key-value-redaction",
+              "policy": "known-service-keys-v1",
+              "originalBytes": 0,
+              "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "finalBytes": 0,
+              "finalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "changed": false,
+              "replacements": {
+                "gboard": 0,
+                "mozilla-location": 0,
+                "google-safebrowsing": 0,
+                "google-api-key-shape": 0
+              }
+            },
+            "storedBytes": 0,
+            "storedSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "changed": false
+          }
+        },
+        "stderr": {
+          "path": "network-client-binding-adb-0018-stderr.raw.log",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "capturePrivacy": {
+            "schema": 1,
+            "kind": "service-key-byte-derivative",
+            "originalBytes": 0,
+            "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "projectionEncoding": "latin1",
+            "helperHashEncoding": "utf-8",
+            "projectionPrivacy": {
+              "schema": 1,
+              "kind": "service-api-key-value-redaction",
+              "policy": "known-service-keys-v1",
+              "originalBytes": 0,
+              "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "finalBytes": 0,
+              "finalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "changed": false,
+              "replacements": {
+                "gboard": 0,
+                "mozilla-location": 0,
+                "google-safebrowsing": 0,
+                "google-api-key-shape": 0
+              }
+            },
+            "storedBytes": 0,
+            "storedSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "changed": false
+          }
+        }
+      }
+    },
+    {
+      "index": 19,
+      "command": [
+        "/usr/local/lib/android/sdk/platform-tools/adb",
+        "-s",
+        "emulator-5554",
+        "logcat",
+        "-d",
+        "-s",
+        "PocketGeckoIntegration:I",
+        "PocketClientBinding:E",
+        "AndroidRuntime:E",
+        "*:S"
+      ],
+      "returnCode": 0,
+      "streams": {
+        "stdout": {
+          "path": "network-client-binding-adb-0019-stdout.raw.log",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "capturePrivacy": {
+            "schema": 1,
+            "kind": "service-key-byte-derivative",
+            "originalBytes": 0,
+            "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "projectionEncoding": "latin1",
+            "helperHashEncoding": "utf-8",
+            "projectionPrivacy": {
+              "schema": 1,
+              "kind": "service-api-key-value-redaction",
+              "policy": "known-service-keys-v1",
+              "originalBytes": 0,
+              "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "finalBytes": 0,
+              "finalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "changed": false,
+              "replacements": {
+                "gboard": 0,
+                "mozilla-location": 0,
+                "google-safebrowsing": 0,
+                "google-api-key-shape": 0
+              }
+            },
+            "storedBytes": 0,
+            "storedSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "changed": false
+          }
+        },
+        "stderr": {
+          "path": "network-client-binding-adb-0019-stderr.raw.log",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "capturePrivacy": {
+            "schema": 1,
+            "kind": "service-key-byte-derivative",
+            "originalBytes": 0,
+            "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "projectionEncoding": "latin1",
+            "helperHashEncoding": "utf-8",
+            "projectionPrivacy": {
+              "schema": 1,
+              "kind": "service-api-key-value-redaction",
+              "policy": "known-service-keys-v1",
+              "originalBytes": 0,
+              "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "finalBytes": 0,
+              "finalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "changed": false,
+              "replacements": {
+                "gboard": 0,
+                "mozilla-location": 0,
+                "google-safebrowsing": 0,
+                "google-api-key-shape": 0
+              }
+            },
+            "storedBytes": 0,
+            "storedSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "changed": false
+          }
+        }
+      }
+    },
+    {
+      "index": 20,
+      "command": [
+        "/usr/local/lib/android/sdk/platform-tools/adb",
+        "-s",
+        "emulator-5554",
+        "logcat",
+        "-d",
+        "-s",
+        "PocketGeckoIntegration:I",
+        "PocketClientBinding:E",
+        "AndroidRuntime:E",
+        "*:S"
+      ],
+      "returnCode": 0,
+      "streams": {
+        "stdout": {
+          "path": "network-client-binding-adb-0020-stdout.raw.log",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "capturePrivacy": {
+            "schema": 1,
+            "kind": "service-key-byte-derivative",
+            "originalBytes": 0,
+            "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "projectionEncoding": "latin1",
+            "helperHashEncoding": "utf-8",
+            "projectionPrivacy": {
+              "schema": 1,
+              "kind": "service-api-key-value-redaction",
+              "policy": "known-service-keys-v1",
+              "originalBytes": 0,
+              "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "finalBytes": 0,
+              "finalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "changed": false,
+              "replacements": {
+                "gboard": 0,
+                "mozilla-location": 0,
+                "google-safebrowsing": 0,
+                "google-api-key-shape": 0
+              }
+            },
+            "storedBytes": 0,
+            "storedSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "changed": false
+          }
+        },
+        "stderr": {
+          "path": "network-client-binding-adb-0020-stderr.raw.log",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "capturePrivacy": {
+            "schema": 1,
+            "kind": "service-key-byte-derivative",
+            "originalBytes": 0,
+            "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "projectionEncoding": "latin1",
+            "helperHashEncoding": "utf-8",
+            "projectionPrivacy": {
+              "schema": 1,
+              "kind": "service-api-key-value-redaction",
+              "policy": "known-service-keys-v1",
+              "originalBytes": 0,
+              "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "finalBytes": 0,
+              "finalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "changed": false,
+              "replacements": {
+                "gboard": 0,
+                "mozilla-location": 0,
+                "google-safebrowsing": 0,
+                "google-api-key-shape": 0
+              }
+            },
+            "storedBytes": 0,
+            "storedSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "changed": false
+          }
+        }
+      }
+    },
+    {
+      "index": 21,
+      "command": [
+        "/usr/local/lib/android/sdk/platform-tools/adb",
+        "-s",
+        "emulator-5554",
+        "logcat",
+        "-d",
+        "-s",
+        "PocketGeckoIntegration:I",
+        "PocketClientBinding:E",
+        "AndroidRuntime:E",
+        "*:S"
+      ],
+      "returnCode": 0,
+      "streams": {
+        "stdout": {
+          "path": "network-client-binding-adb-0021-stdout.raw.log",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "capturePrivacy": {
+            "schema": 1,
+            "kind": "service-key-byte-derivative",
+            "originalBytes": 0,
+            "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "projectionEncoding": "latin1",
+            "helperHashEncoding": "utf-8",
+            "projectionPrivacy": {
+              "schema": 1,
+              "kind": "service-api-key-value-redaction",
+              "policy": "known-service-keys-v1",
+              "originalBytes": 0,
+              "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "finalBytes": 0,
+              "finalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "changed": false,
+              "replacements": {
+                "gboard": 0,
+                "mozilla-location": 0,
+                "google-safebrowsing": 0,
+                "google-api-key-shape": 0
+              }
+            },
+            "storedBytes": 0,
+            "storedSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "changed": false
+          }
+        },
+        "stderr": {
+          "path": "network-client-binding-adb-0021-stderr.raw.log",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "capturePrivacy": {
+            "schema": 1,
+            "kind": "service-key-byte-derivative",
+            "originalBytes": 0,
+            "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "projectionEncoding": "latin1",
+            "helperHashEncoding": "utf-8",
+            "projectionPrivacy": {
+              "schema": 1,
+              "kind": "service-api-key-value-redaction",
+              "policy": "known-service-keys-v1",
+              "originalBytes": 0,
+              "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "finalBytes": 0,
+              "finalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "changed": false,
+              "replacements": {
+                "gboard": 0,
+                "mozilla-location": 0,
+                "google-safebrowsing": 0,
+                "google-api-key-shape": 0
+              }
+            },
+            "storedBytes": 0,
+            "storedSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "changed": false
+          }
+        }
+      }
+    },
+    {
+      "index": 22,
+      "command": [
+        "/usr/local/lib/android/sdk/platform-tools/adb",
+        "-s",
+        "emulator-5554",
+        "logcat",
+        "-d",
+        "-s",
+        "PocketGeckoIntegration:I",
+        "PocketClientBinding:E",
+        "AndroidRuntime:E",
+        "*:S"
+      ],
+      "returnCode": 0,
+      "streams": {
+        "stdout": {
+          "path": "network-client-binding-adb-0022-stdout.raw.log",
+          "bytes": 417,
+          "sha256": "5b0569ff80004c5983a1a0dc6bd6f541c7c9235c5e4b18e090a57219034870ac",
+          "capturePrivacy": {
+            "schema": 1,
+            "kind": "service-key-byte-derivative",
+            "originalBytes": 417,
+            "originalSha256": "5b0569ff80004c5983a1a0dc6bd6f541c7c9235c5e4b18e090a57219034870ac",
+            "projectionEncoding": "latin1",
+            "helperHashEncoding": "utf-8",
+            "projectionPrivacy": {
+              "schema": 1,
+              "kind": "service-api-key-value-redaction",
+              "policy": "known-service-keys-v1",
+              "originalBytes": 417,
+              "originalSha256": "5b0569ff80004c5983a1a0dc6bd6f541c7c9235c5e4b18e090a57219034870ac",
+              "finalBytes": 417,
+              "finalSha256": "5b0569ff80004c5983a1a0dc6bd6f541c7c9235c5e4b18e090a57219034870ac",
+              "changed": false,
+              "replacements": {
+                "gboard": 0,
+                "mozilla-location": 0,
+                "google-safebrowsing": 0,
+                "google-api-key-shape": 0
+              }
+            },
+            "storedBytes": 417,
+            "storedSha256": "5b0569ff80004c5983a1a0dc6bd6f541c7c9235c5e4b18e090a57219034870ac",
+            "changed": false
+          }
+        },
+        "stderr": {
+          "path": "network-client-binding-adb-0022-stderr.raw.log",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "capturePrivacy": {
+            "schema": 1,
+            "kind": "service-key-byte-derivative",
+            "originalBytes": 0,
+            "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "projectionEncoding": "latin1",
+            "helperHashEncoding": "utf-8",
+            "projectionPrivacy": {
+              "schema": 1,
+              "kind": "service-api-key-value-redaction",
+              "policy": "known-service-keys-v1",
+              "originalBytes": 0,
+              "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "finalBytes": 0,
+              "finalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "changed": false,
+              "replacements": {
+                "gboard": 0,
+                "mozilla-location": 0,
+                "google-safebrowsing": 0,
+                "google-api-key-shape": 0
+              }
+            },
+            "storedBytes": 0,
+            "storedSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "changed": false
+          }
+        }
+      }
+    },
+    {
+      "index": 23,
+      "command": [
+        "/usr/local/lib/android/sdk/platform-tools/adb",
+        "-s",
+        "emulator-5554",
+        "exec-out",
+        "content",
+        "read",
+        "--uri",
+        "content://local.pocketchat.test.evidence/gecko-events/0/cf0785556bdd4af5a397da414f266281/1"
+      ],
+      "returnCode": 0,
+      "streams": {
+        "stdout": {
+          "path": "network-client-binding-adb-0023-stdout.raw.log",
+          "bytes": 28432,
+          "sha256": "5ccb32c94474ece3afcebfe3afc9c8d6484996c9d797c67c0ada5b52da88a0b9"
+        },
+        "stderr": {
+          "path": "network-client-binding-adb-0023-stderr.raw.log",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      }
+    },
+    {
+      "index": 24,
+      "command": [
+        "/usr/local/lib/android/sdk/platform-tools/adb",
+        "-s",
+        "emulator-5554",
+        "exec-out",
+        "content",
+        "read",
+        "--uri",
+        "content://local.pocketchat.test.evidence/build-identity"
+      ],
+      "returnCode": 0,
+      "streams": {
+        "stdout": {
+          "path": "network-client-binding-adb-0024-stdout.raw.log",
+          "bytes": 2408,
+          "sha256": "d9c336825c5c73b249bdbde705d3c829b912491bb4699e7f25d5b1bdcebc1358"
+        },
+        "stderr": {
+          "path": "network-client-binding-adb-0024-stderr.raw.log",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      }
+    },
+    {
+      "index": 25,
+      "command": [
+        "/usr/local/lib/android/sdk/platform-tools/adb",
+        "-s",
+        "emulator-5554",
+        "shell",
+        "cmd",
+        "package",
+        "list",
+        "packages",
+        "-U",
+        "local.pocketchat.test"
+      ],
+      "returnCode": 0,
+      "streams": {
+        "stdout": {
+          "path": "network-client-binding-adb-0025-stdout.raw.log",
+          "bytes": 40,
+          "sha256": "4a0f122b5a367453b2f308c897e8cb2b0ea218be44c22bbd0e2025aa4a7c470e"
+        },
+        "stderr": {
+          "path": "network-client-binding-adb-0025-stderr.raw.log",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      }
+    }
+  ],
+  "buildIdentity": {
+    "schema": 1,
+    "sourceCommit": "4503e72d3bbbf5d7888aff98fc2c39658e0ba57d",
+    "sourceTree": "6987a3b413d223608f84c6ee45990df24fa2df03",
+    "dirtySource": false,
+    "version": "2.1.15",
+    "versionCode": 117,
+    "sdkCoordinate": "org.mozilla.geckoview:geckoview:157.0.20261005135250",
+    "sdkBuildIdentity": {
+      "sdkBuildKind": "source-derived-java",
+      "sdkCoordinate": "org.mozilla.geckoview:geckoview:157.0.20261005135250",
+      "sdkRuntimeCoordinate": "local.pocketchat.sdk:geckoview-caret:157.0.20261005135250-pocket3",
+      "sdkInputCoordinate": "org.mozilla.geckoview:geckoview:157.0.20261005135250",
+      "sdkInputAarSha256": "15f1edf3c58abcdaf2783f299b8c19c3a36272d348969106a9009671fef8d268",
+      "sdkAarSha256": "f9fad20c02e554b00da51b72c8cd2643e121b4a81bc656dd5cf03de21ded2e72",
+      "sdkClassesJarSha256": "237fd669f196b6efc6882a3e806a31e7de5b95b4ad1bef3e22233c6b41de684f",
+      "sdkGeckoEditableClassSha256": "02e386e366fc7bad29eb4f5f92d5f762618eb97609c236cf5e0d42604e58fb00",
+      "sdkManifestSha256": "e17c26595f25a7d87b250a92bd1359607e0ec859369f4ade312a129d2fe98902",
+      "sdkBuildReceiptSha256": "c60be9646fca098442bbc64455b413aec1c88a02a2f437bbbe4fb05c2916fe3c",
+      "sdkBuildSource": "4503e72d3bbbf5d7888aff98fc2c39658e0ba57d",
+      "schema": 1,
+      "sourceCommit": "4503e72d3bbbf5d7888aff98fc2c39658e0ba57d",
+      "sourceTree": "6987a3b413d223608f84c6ee45990df24fa2df03",
+      "runId": "44928539243",
+      "runAttempt": "1"
+    },
+    "sdkBuildKind": "source-derived-java",
+    "sdkRuntimeCoordinate": "local.pocketchat.sdk:geckoview-caret:157.0.20261005135250-pocket3",
+    "sdkInputCoordinate": "org.mozilla.geckoview:geckoview:157.0.20261005135250",
+    "sdkInputAarSha256": "15f1edf3c58abcdaf2783f299b8c19c3a36272d348969106a9009671fef8d268",
+    "sdkAarSha256": "f9fad20c02e554b00da51b72c8cd2643e121b4a81bc656dd5cf03de21ded2e72",
+    "sdkClassesJarSha256": "237fd669f196b6efc6882a3e806a31e7de5b95b4ad1bef3e22233c6b41de684f",
+    "sdkGeckoEditableClassSha256": "02e386e366fc7bad29eb4f5f92d5f762618eb97609c236cf5e0d42604e58fb00",
+    "sdkManifestSha256": "e17c26595f25a7d87b250a92bd1359607e0ec859369f4ade312a129d2fe98902",
+    "sdkBuildReceiptSha256": "c60be9646fca098442bbc64455b413aec1c88a02a2f437bbbe4fb05c2916fe3c",
+    "sdkBuildSource": "4503e72d3bbbf5d7888aff98fc2c39658e0ba57d",
+    "package": "local.pocketchat.test",
+    "apkSha256": "35e2cbe3f5016894efdebfa54562727ab12997b0fd7a9e1c3db610fce0ce249b",
+    "apkBytes": 127442315,
+    "buildStampSha256": "ae5c4fcb686c93f65c1b7a75749786b3ba572ea84fdeb4661b948d51bc358850"
+  },
+  "installedBefore": {
+    "rawUtf8": "{\"schema\":1,\"sourceCommit\":\"4503e72d3bbbf5d7888aff98fc2c39658e0ba57d\",\"sourceTree\":\"6987a3b413d223608f84c6ee45990df24fa2df03\",\"dirtySource\":false,\"version\":\"2.1.15\",\"versionCode\":117,\"sdkCoordinate\":\"org.mozilla.geckoview:geckoview:157.0.20261005135250\",\"sdkBuildKind\":\"source-derived-java\",\"sdkInputCoordinate\":\"org.mozilla.geckoview:geckoview:157.0.20261005135250\",\"sdkRuntimeCoordinate\":\"local.pocketchat.sdk:geckoview-caret:157.0.20261005135250-pocket3\",\"sdkInputAarSha256\":\"15f1edf3c58abcdaf2783f299b8c19c3a36272d348969106a9009671fef8d268\",\"sdkAarSha256\":\"f9fad20c02e554b00da51b72c8cd2643e121b4a81bc656dd5cf03de21ded2e72\",\"sdkClassesJarSha256\":\"237fd669f196b6efc6882a3e806a31e7de5b95b4ad1bef3e22233c6b41de684f\",\"sdkGeckoEditableClassSha256\":\"02e386e366fc7bad29eb4f5f92d5f762618eb97609c236cf5e0d42604e58fb00\",\"sdkManifestSha256\":\"e17c26595f25a7d87b250a92bd1359607e0ec859369f4ade312a129d2fe98902\",\"sdkBuildReceiptSha256\":\"c60be9646fca098442bbc64455b413aec1c88a02a2f437bbbe4fb05c2916fe3c\",\"sdkBuildSource\":\"4503e72d3bbbf5d7888aff98fc2c39658e0ba57d\",\"sdkBuildIdentity\":{\"sdkBuildKind\":\"source-derived-java\",\"sdkCoordinate\":\"org.mozilla.geckoview:geckoview:157.0.20261005135250\",\"sdkRuntimeCoordinate\":\"local.pocketchat.sdk:geckoview-caret:157.0.20261005135250-pocket3\",\"sdkInputCoordinate\":\"org.mozilla.geckoview:geckoview:157.0.20261005135250\",\"sdkInputAarSha256\":\"15f1edf3c58abcdaf2783f299b8c19c3a36272d348969106a9009671fef8d268\",\"sdkAarSha256\":\"f9fad20c02e554b00da51b72c8cd2643e121b4a81bc656dd5cf03de21ded2e72\",\"sdkClassesJarSha256\":\"237fd669f196b6efc6882a3e806a31e7de5b95b4ad1bef3e22233c6b41de684f\",\"sdkGeckoEditableClassSha256\":\"02e386e366fc7bad29eb4f5f92d5f762618eb97609c236cf5e0d42604e58fb00\",\"sdkManifestSha256\":\"e17c26595f25a7d87b250a92bd1359607e0ec859369f4ade312a129d2fe98902\",\"sdkBuildReceiptSha256\":\"c60be9646fca098442bbc64455b413aec1c88a02a2f437bbbe4fb05c2916fe3c\",\"sdkBuildSource\":\"4503e72d3bbbf5d7888aff98fc2c39658e0ba57d\",\"schema\":1,\"sourceCommit\":\"4503e72d3bbbf5d7888aff98fc2c39658e0ba57d\",\"sourceTree\":\"6987a3b413d223608f84c6ee45990df24fa2df03\",\"runId\":\"44928539243\",\"runAttempt\":\"1\"},\"package\":\"local.pocketchat.test\",\"apkBytes\":127442315,\"apkSha256\":\"35e2cbe3f5016894efdebfa54562727ab12997b0fd7a9e1c3db610fce0ce249b\",\"buildStampSha256\":\"ae5c4fcb686c93f65c1b7a75749786b3ba572ea84fdeb4661b948d51bc358850\",\"scope\":\"Installed synthetic integration APK bytes and embedded source stamp only\"}\n",
+    "utf8Bytes": 2408,
+    "sha256": "d9c336825c5c73b249bdbde705d3c829b912491bb4699e7f25d5b1bdcebc1358"
+  },
+  "packageUidBeforeRaw": "package:local.pocketchat.test uid:10209\n",
+  "packageUid": 10209,
+  "androidSdk": 35,
+  "eventTransport": [
+    {
+      "receipt": {
+        "kind": "eventReceipt",
+        "schema": 1,
+        "runNonce": "cf0785556bdd4af5a397da414f266281",
+        "fixtureAction": "networkClientBinding",
+        "command": 1,
+        "sequence": 1,
+        "nativeContext": "environment-1",
+        "processSlot": 0,
+        "eventKind": "networkClientBinding",
+        "payloadBytes": 28432,
+        "payloadSha256": "5ccb32c94474ece3afcebfe3afc9c8d6484996c9d797c67c0ada5b52da88a0b9"
+      },
+      "rawUtf8": "{\"schema\":1,\"sourceCommit\":\"4503e72d3bbbf5d7888aff98fc2c39658e0ba57d\",\"buildIdentity\":{\"schema\":1,\"sourceCommit\":\"4503e72d3bbbf5d7888aff98fc2c39658e0ba57d\",\"sourceTree\":\"6987a3b413d223608f84c6ee45990df24fa2df03\",\"dirtySource\":false,\"version\":\"2.1.15\",\"versionCode\":117,\"sdkCoordinate\":\"org.mozilla.geckoview:geckoview:157.0.20261005135250\",\"sdkBuildKind\":\"source-derived-java\",\"sdkInputCoordinate\":\"org.mozilla.geckoview:geckoview:157.0.20261005135250\",\"sdkRuntimeCoordinate\":\"local.pocketchat.sdk:geckoview-caret:157.0.20261005135250-pocket3\",\"sdkInputAarSha256\":\"15f1edf3c58abcdaf2783f299b8c19c3a36272d348969106a9009671fef8d268\",\"sdkAarSha256\":\"f9fad20c02e554b00da51b72c8cd2643e121b4a81bc656dd5cf03de21ded2e72\",\"sdkClassesJarSha256\":\"237fd669f196b6efc6882a3e806a31e7de5b95b4ad1bef3e22233c6b41de684f\",\"sdkGeckoEditableClassSha256\":\"02e386e366fc7bad29eb4f5f92d5f762618eb97609c236cf5e0d42604e58fb00\",\"sdkManifestSha256\":\"e17c26595f25a7d87b250a92bd1359607e0ec859369f4ade312a129d2fe98902\",\"sdkBuildReceiptSha256\":\"c60be9646fca098442bbc64455b413aec1c88a02a2f437bbbe4fb05c2916fe3c\",\"sdkBuildSource\":\"4503e72d3bbbf5d7888aff98fc2c39658e0ba57d\",\"sdkBuildIdentity\":{\"sdkBuildKind\":\"source-derived-java\",\"sdkCoordinate\":\"org.mozilla.geckoview:geckoview:157.0.20261005135250\",\"sdkRuntimeCoordinate\":\"local.pocketchat.sdk:geckoview-caret:157.0.20261005135250-pocket3\",\"sdkInputCoordinate\":\"org.mozilla.geckoview:geckoview:157.0.20261005135250\",\"sdkInputAarSha256\":\"15f1edf3c58abcdaf2783f299b8c19c3a36272d348969106a9009671fef8d268\",\"sdkAarSha256\":\"f9fad20c02e554b00da51b72c8cd2643e121b4a81bc656dd5cf03de21ded2e72\",\"sdkClassesJarSha256\":\"237fd669f196b6efc6882a3e806a31e7de5b95b4ad1bef3e22233c6b41de684f\",\"sdkGeckoEditableClassSha256\":\"02e386e366fc7bad29eb4f5f92d5f762618eb97609c236cf5e0d42604e58fb00\",\"sdkManifestSha256\":\"e17c26595f25a7d87b250a92bd1359607e0ec859369f4ade312a129d2fe98902\",\"sdkBuildReceiptSha256\":\"c60be9646fca098442bbc64455b413aec1c88a02a2f437bbbe4fb05c2916fe3c\",\"sdkBuildSource\":\"4503e72d3bbbf5d7888aff98fc2c39658e0ba57d\",\"schema\":1,\"sourceCommit\":\"4503e72d3bbbf5d7888aff98fc2c39658e0ba57d\",\"sourceTree\":\"6987a3b413d223608f84c6ee45990df24fa2df03\",\"runId\":\"44928539243\",\"runAttempt\":\"1\"},\"package\":\"local.pocketchat.test\",\"apkBytes\":127442315,\"apkSha256\":\"35e2cbe3f5016894efdebfa54562727ab12997b0fd7a9e1c3db610fce0ce249b\",\"buildStampSha256\":\"ae5c4fcb686c93f65c1b7a75749786b3ba572ea84fdeb4661b948d51bc358850\",\"scope\":\"Installed synthetic integration APK bytes and embedded source stamp only\"},\"runNonce\":\"cf0785556bdd4af5a397da414f266281\",\"fixtureAction\":\"networkClientBinding\",\"command\":1,\"sequence\":1,\"nativeContext\":\"environment-1\",\"processSlot\":0,\"observedAtElapsedRealtime\":317462,\"event\":{\"kind\":\"networkClientBinding\",\"result\":{\"schema\":1,\"status\":\"passed\",\"actualAndroidExecution\":true,\"actualFrameworkBinding\":true,\"actualMessengerIpc\":true,\"actualProductionClient\":true,\"actualProductionNetworkService\":false,\"actualMihomoExecution\":false,\"actualGeckoExecution\":false,\"manualServiceConnectionCallbacks\":0,\"automaticBindRetryAdded\":false,\"securityExceptionAndroidAcceptance\":false,\"bindingDiedAndroidAcceptance\":false,\"physicalPhoneAcceptance\":false,\"realUserProxyAcceptance\":false,\"scope\":\"Complete production Client; real Android bind\\/unbind and Messenger. Only this fixture's explicit destination is redirected to private test Services. The normal Mihomo service does not return null in this test; no physical-device or user-route cause\\/speed claim.\",\"sourceCommit\":\"4503e72d3bbbf5d7888aff98fc2c39658e0ba57d\",\"buildIdentity\":{\"schema\":1,\"sourceCommit\":\"4503e72d3bbbf5d7888aff98fc2c39658e0ba57d\",\"sourceTree\":\"6987a3b413d223608f84c6ee45990df24fa2df03\",\"dirtySource\":false,\"version\":\"2.1.15\",\"versionCode\":117,\"sdkCoordinate\":\"org.mozilla.geckoview:geckoview:157.0.20261005135250\",\"sdkBuildKind\":\"source-derived-java\",\"sdkInputCoordinate\":\"org.mozilla.geckoview:geckoview:157.0.20261005135250\",\"sdkRuntimeCoordinate\":\"local.pocketchat.sdk:geckoview-caret:157.0.20261005135250-pocket3\",\"sdkInputAarSha256\":\"15f1edf3c58abcdaf2783f299b8c19c3a36272d348969106a9009671fef8d268\",\"sdkAarSha256\":\"f9fad20c02e554b00da51b72c8cd2643e121b4a81bc656dd5cf03de21ded2e72\",\"sdkClassesJarSha256\":\"237fd669f196b6efc6882a3e806a31e7de5b95b4ad1bef3e22233c6b41de684f\",\"sdkGeckoEditableClassSha256\":\"02e386e366fc7bad29eb4f5f92d5f762618eb97609c236cf5e0d42604e58fb00\",\"sdkManifestSha256\":\"e17c26595f25a7d87b250a92bd1359607e0ec859369f4ade312a129d2fe98902\",\"sdkBuildReceiptSha256\":\"c60be9646fca098442bbc64455b413aec1c88a02a2f437bbbe4fb05c2916fe3c\",\"sdkBuildSource\":\"4503e72d3bbbf5d7888aff98fc2c39658e0ba57d\",\"sdkBuildIdentity\":{\"sdkBuildKind\":\"source-derived-java\",\"sdkCoordinate\":\"org.mozilla.geckoview:geckoview:157.0.20261005135250\",\"sdkRuntimeCoordinate\":\"local.pocketchat.sdk:geckoview-caret:157.0.20261005135250-pocket3\",\"sdkInputCoordinate\":\"org.mozilla.geckoview:geckoview:157.0.20261005135250\",\"sdkInputAarSha256\":\"15f1edf3c58abcdaf2783f299b8c19c3a36272d348969106a9009671fef8d268\",\"sdkAarSha256\":\"f9fad20c02e554b00da51b72c8cd2643e121b4a81bc656dd5cf03de21ded2e72\",\"sdkClassesJarSha256\":\"237fd669f196b6efc6882a3e806a31e7de5b95b4ad1bef3e22233c6b41de684f\",\"sdkGeckoEditableClassSha256\":\"02e386e366fc7bad29eb4f5f92d5f762618eb97609c236cf5e0d42604e58fb00\",\"sdkManifestSha256\":\"e17c26595f25a7d87b250a92bd1359607e0ec859369f4ade312a129d2fe98902\",\"sdkBuildReceiptSha256\":\"c60be9646fca098442bbc64455b413aec1c88a02a2f437bbbe4fb05c2916fe3c\",\"sdkBuildSource\":\"4503e72d3bbbf5d7888aff98fc2c39658e0ba57d\",\"schema\":1,\"sourceCommit\":\"4503e72d3bbbf5d7888aff98fc2c39658e0ba57d\",\"sourceTree\":\"6987a3b413d223608f84c6ee45990df24fa2df03\",\"runId\":\"44928539243\",\"runAttempt\":\"1\"},\"package\":\"local.pocketchat.test\",\"apkBytes\":127442315,\"apkSha256\":\"35e2cbe3f5016894efdebfa54562727ab12997b0fd7a9e1c3db610fce0ce249b\",\"buildStampSha256\":\"ae5c4fcb686c93f65c1b7a75749786b3ba572ea84fdeb4661b948d51bc358850\",\"scope\":\"Installed synthetic integration APK bytes and embedded source stamp only\"},\"runNonce\":\"cf0785556bdd4af5a397da414f266281\",\"clientPid\":6850,\"clientUid\":10209,\"clientProcess\":\"local.pocketchat.test:transport_binding_fixture\",\"androidSdk\":35,\"bindingTimeoutSeconds\":10,\"replyTimeoutSeconds\":15,\"detachTimeoutSeconds\":5,\"environmentIdentity\":{\"slot\":0,\"generation\":0,\"environmentId\":\"d8871bac-785b-476a-aedf-1fdd4f3e7035\"},\"phase\":\"actual-missing-component\",\"nullWaiter\":{\"began\":316458,\"ended\":317115,\"elapsedMs\":657,\"failureClass\":\"java.io.IOException\",\"failed\":true},\"nullService\":{\"schema\":1,\"runNonce\":\"cf0785556bdd4af5a397da414f266281\",\"sourceCommit\":\"4503e72d3bbbf5d7888aff98fc2c39658e0ba57d\",\"buildIdentity\":{\"schema\":1,\"sourceCommit\":\"4503e72d3bbbf5d7888aff98fc2c39658e0ba57d\",\"sourceTree\":\"6987a3b413d223608f84c6ee45990df24fa2df03\",\"dirtySource\":false,\"version\":\"2.1.15\",\"versionCode\":117,\"sdkCoordinate\":\"org.mozilla.geckoview:geckoview:157.0.20261005135250\",\"sdkBuildKind\":\"source-derived-java\",\"sdkInputCoordinate\":\"org.mozilla.geckoview:geckoview:157.0.20261005135250\",\"sdkRuntimeCoordinate\":\"local.pocketchat.sdk:geckoview-caret:157.0.20261005135250-pocket3\",\"sdkInputAarSha256\":\"15f1edf3c58abcdaf2783f299b8c19c3a36272d348969106a9009671fef8d268\",\"sdkAarSha256\":\"f9fad20c02e554b00da51b72c8cd2643e121b4a81bc656dd5cf03de21ded2e72\",\"sdkClassesJarSha256\":\"237fd669f196b6efc6882a3e806a31e7de5b95b4ad1bef3e22233c6b41de684f\",\"sdkGeckoEditableClassSha256\":\"02e386e366fc7bad29eb4f5f92d5f762618eb97609c236cf5e0d42604e58fb00\",\"sdkManifestSha256\":\"e17c26595f25a7d87b250a92bd1359607e0ec859369f4ade312a129d2fe98902\",\"sdkBuildReceiptSha256\":\"c60be9646fca098442bbc64455b413aec1c88a02a2f437bbbe4fb05c2916fe3c\",\"sdkBuildSource\":\"4503e72d3bbbf5d7888aff98fc2c39658e0ba57d\",\"sdkBuildIdentity\":{\"sdkBuildKind\":\"source-derived-java\",\"sdkCoordinate\":\"org.mozilla.geckoview:geckoview:157.0.20261005135250\",\"sdkRuntimeCoordinate\":\"local.pocketchat.sdk:geckoview-caret:157.0.20261005135250-pocket3\",\"sdkInputCoordinate\":\"org.mozilla.geckoview:geckoview:157.0.20261005135250\",\"sdkInputAarSha256\":\"15f1edf3c58abcdaf2783f299b8c19c3a36272d348969106a9009671fef8d268\",\"sdkAarSha256\":\"f9fad20c02e554b00da51b72c8cd2643e121b4a81bc656dd5cf03de21ded2e72\",\"sdkClassesJarSha256\":\"237fd669f196b6efc6882a3e806a31e7de5b95b4ad1bef3e22233c6b41de684f\",\"sdkGeckoEditableClassSha256\":\"02e386e366fc7bad29eb4f5f92d5f762618eb97609c236cf5e0d42604e58fb00\",\"sdkManifestSha256\":\"e17c26595f25a7d87b250a92bd1359607e0ec859369f4ade312a129d2fe98902\",\"sdkBuildReceiptSha256\":\"c60be9646fca098442bbc64455b413aec1c88a02a2f437bbbe4fb05c2916fe3c\",\"sdkBuildSource\":\"4503e72d3bbbf5d7888aff98fc2c39658e0ba57d\",\"schema\":1,\"sourceCommit\":\"4503e72d3bbbf5d7888aff98fc2c39658e0ba57d\",\"sourceTree\":\"6987a3b413d223608f84c6ee45990df24fa2df03\",\"runId\":\"44928539243\",\"runAttempt\":\"1\"},\"package\":\"local.pocketchat.test\",\"apkBytes\":127442315,\"apkSha256\":\"35e2cbe3f5016894efdebfa54562727ab12997b0fd7a9e1c3db610fce0ce249b\",\"buildStampSha256\":\"ae5c4fcb686c93f65c1b7a75749786b3ba572ea84fdeb4661b948d51bc358850\",\"scope\":\"Installed synthetic integration APK bytes and embedded source stamp only\"},\"serviceClass\":\"local.pocketchat.NetworkClientBindingIntegrationActivity$NullService\",\"servicePid\":6892,\"serviceUid\":10209,\"serviceProcess\":\"local.pocketchat.test:transport_binding_services\",\"onBindAt\":317107,\"onBindMainLooper\":true,\"role\":\"null\",\"returnedNull\":true},\"nullServiceRaw\":{\"rawUtf8\":\"{\\\"schema\\\":1,\\\"runNonce\\\":\\\"cf0785556bdd4af5a397da414f266281\\\",\\\"sourceCommit\\\":\\\"4503e72d3bbbf5d7888aff98fc2c39658e0ba57d\\\",\\\"buildIdentity\\\":{\\\"schema\\\":1,\\\"sourceCommit\\\":\\\"4503e72d3bbbf5d7888aff98fc2c39658e0ba57d\\\",\\\"sourceTree\\\":\\\"6987a3b413d223608f84c6ee45990df24fa2df03\\\",\\\"dirtySource\\\":false,\\\"version\\\":\\\"2.1.15\\\",\\\"versionCode\\\":117,\\\"sdkCoordinate\\\":\\\"org.mozilla.geckoview:geckoview:157.0.20261005135250\\\",\\\"sdkBuildKind\\\":\\\"source-derived-java\\\",\\\"sdkInputCoordinate\\\":\\\"org.mozilla.geckoview:geckoview:157.0.20261005135250\\\",\\\"sdkRuntimeCoordinate\\\":\\\"local.pocketchat.sdk:geckoview-caret:157.0.20261005135250-pocket3\\\",\\\"sdkInputAarSha256\\\":\\\"15f1edf3c58abcdaf2783f299b8c19c3a36272d348969106a9009671fef8d268\\\",\\\"sdkAarSha256\\\":\\\"f9fad20c02e554b00da51b72c8cd2643e121b4a81bc656dd5cf03de21ded2e72\\\",\\\"sdkClassesJarSha256\\\":\\\"237fd669f196b6efc6882a3e806a31e7de5b95b4ad1bef3e22233c6b41de684f\\\",\\\"sdkGeckoEditableClassSha256\\\":\\\"02e386e366fc7bad29eb4f5f92d5f762618eb97609c236cf5e0d42604e58fb00\\\",\\\"sdkManifestSha256\\\":\\\"e17c26595f25a7d87b250a92bd1359607e0ec859369f4ade312a129d2fe98902\\\",\\\"sdkBuildReceiptSha256\\\":\\\"c60be9646fca098442bbc64455b413aec1c88a02a2f437bbbe4fb05c2916fe3c\\\",\\\"sdkBuildSource\\\":\\\"4503e72d3bbbf5d7888aff98fc2c39658e0ba57d\\\",\\\"sdkBuildIdentity\\\":{\\\"sdkBuildKind\\\":\\\"source-derived-java\\\",\\\"sdkCoordinate\\\":\\\"org.mozilla.geckoview:geckoview:157.0.20261005135250\\\",\\\"sdkRuntimeCoordinate\\\":\\\"local.pocketchat.sdk:geckoview-caret:157.0.20261005135250-pocket3\\\",\\\"sdkInputCoordinate\\\":\\\"org.mozilla.geckoview:geckoview:157.0.20261005135250\\\",\\\"sdkInputAarSha256\\\":\\\"15f1edf3c58abcdaf2783f299b8c19c3a36272d348969106a9009671fef8d268\\\",\\\"sdkAarSha256\\\":\\\"f9fad20c02e554b00da51b72c8cd2643e121b4a81bc656dd5cf03de21ded2e72\\\",\\\"sdkClassesJarSha256\\\":\\\"237fd669f196b6efc6882a3e806a31e7de5b95b4ad1bef3e22233c6b41de684f\\\",\\\"sdkGeckoEditableClassSha256\\\":\\\"02e386e366fc7bad29eb4f5f92d5f762618eb97609c236cf5e0d42604e58fb00\\\",\\\"sdkManifestSha256\\\":\\\"e17c26595f25a7d87b250a92bd1359607e0ec859369f4ade312a129d2fe98902\\\",\\\"sdkBuildReceiptSha256\\\":\\\"c60be9646fca098442bbc64455b413aec1c88a02a2f437bbbe4fb05c2916fe3c\\\",\\\"sdkBuildSource\\\":\\\"4503e72d3bbbf5d7888aff98fc2c39658e0ba57d\\\",\\\"schema\\\":1,\\\"sourceCommit\\\":\\\"4503e72d3bbbf5d7888aff98fc2c39658e0ba57d\\\",\\\"sourceTree\\\":\\\"6987a3b413d223608f84c6ee45990df24fa2df03\\\",\\\"runId\\\":\\\"44928539243\\\",\\\"runAttempt\\\":\\\"1\\\"},\\\"package\\\":\\\"local.pocketchat.test\\\",\\\"apkBytes\\\":127442315,\\\"apkSha256\\\":\\\"35e2cbe3f5016894efdebfa54562727ab12997b0fd7a9e1c3db610fce0ce249b\\\",\\\"buildStampSha256\\\":\\\"ae5c4fcb686c93f65c1b7a75749786b3ba572ea84fdeb4661b948d51bc358850\\\",\\\"scope\\\":\\\"Installed synthetic integration APK bytes and embedded source stamp only\\\"},\\\"serviceClass\\\":\\\"local.pocketchat.NetworkClientBindingIntegrationActivity$NullService\\\",\\\"servicePid\\\":6892,\\\"serviceUid\\\":10209,\\\"serviceProcess\\\":\\\"local.pocketchat.test:transport_binding_services\\\",\\\"onBindAt\\\":317107,\\\"onBindMainLooper\\\":true,\\\"role\\\":\\\"null\\\",\\\"returnedNull\\\":true}\\n\",\"utf8Bytes\":2808,\"sha256\":\"c4049fda888b2699bf37b1fbce0a070fc24cf01e1f3f9cf33dfa2df83e9048f0\"},\"nullCallbackJournal\":{\"diagnosticWaitBegan\":317117,\"diagnosticWaitEnded\":317120,\"diagnosticWaitLimitMs\":3000,\"owner\":\"01bd9514-71e6-4b23-997b-1e601aded5e6\",\"environmentIdentity\":{\"slot\":0,\"generation\":0,\"environmentId\":\"d8871bac-785b-476a-aedf-1fdd4f3e7035\"},\"rawSummary\":\"网络事件 · 环境编号：1\\n环境 ID：d8871bac-785b-476a-aedf-1fdd4f3e7035 · 环境代次：0\\n仅固定事件与数值；不包含核心输出原文。\\n字段：时间毫秒 \\/ 单调时间 \\/ 内部槽位 \\/ 来源 \\/ 记录器代次 \\/ 环境 ID \\/ 环境代次 \\/ 核心代次 \\/ 事件 \\/ 原因 \\/ 阶段 \\/ 数值\\n1795284312053\\t317114\\t0\\tCONTROL\\t01bd9514-71e6-4b23-997b-1e601aded5e6\\td8871bac-785b-476a-aedf-1fdd4f3e7035\\t0\\tunknown\\tIPC_NULL_BINDING\\tCONTROL_UNAVAILABLE\\tBIND\\t0\\n1795284312054\\t317115\\t0\\tCONTROL\\t01bd9514-71e6-4b23-997b-1e601aded5e6\\td8871bac-785b-476a-aedf-1fdd4f3e7035\\t0\\tunknown\\tIPC_BIND_TIMEOUT\\tCONTROL_UNAVAILABLE\\tBIND\\t0\\n\",\"ownedRows\":[\"1795284312053\\t317114\\t0\\tCONTROL\\t01bd9514-71e6-4b23-997b-1e601aded5e6\\td8871bac-785b-476a-aedf-1fdd4f3e7035\\t0\\tunknown\\tIPC_NULL_BINDING\\tCONTROL_UNAVAILABLE\\tBIND\\t0\",\"1795284312054\\t317115\\t0\\tCONTROL\\t01bd9514-71e6-4b23-997b-1e601aded5e6\\td8871bac-785b-476a-aedf-1fdd4f3e7035\\t0\\tunknown\\tIPC_BIND_TIMEOUT\\tCONTROL_UNAVAILABLE\\tBIND\\t0\"],\"journalMonotonicClock\":\"System.nanoTime()\\/1000000; distinct from elapsedRealtime call\\/wait clocks\",\"source\":\"actual NetworkDiagnostics records emitted only by this production Client callback\\/command paths; no ServiceConnection method is called by the fixture\"},\"recoveredState\":{\"slot\":0,\"alive\":false,\"state\":\"fixture\",\"generation\":\"fixture-cf0785556bdd4af5a397da414f266281\",\"servicePid\":6892,\"serviceUid\":10209,\"fixtureNonce\":\"cf0785556bdd4af5a397da414f266281\",\"fixtureRole\":\"messenger\"},\"messengerService\":{\"schema\":1,\"runNonce\":\"cf0785556bdd4af5a397da414f266281\",\"sourceCommit\":\"4503e72d3bbbf5d7888aff98fc2c39658e0ba57d\",\"buildIdentity\":{\"schema\":1,\"sourceCommit\":\"4503e72d3bbbf5d7888aff98fc2c39658e0ba57d\",\"sourceTree\":\"6987a3b413d223608f84c6ee45990df24fa2df03\",\"dirtySource\":false,\"version\":\"2.1.15\",\"versionCode\":117,\"sdkCoordinate\":\"org.mozilla.geckoview:geckoview:157.0.20261005135250\",\"sdkBuildKind\":\"source-derived-java\",\"sdkInputCoordinate\":\"org.mozilla.geckoview:geckoview:157.0.20261005135250\",\"sdkRuntimeCoordinate\":\"local.pocketchat.sdk:geckoview-caret:157.0.20261005135250-pocket3\",\"sdkInputAarSha256\":\"15f1edf3c58abcdaf2783f299b8c19c3a36272d348969106a9009671fef8d268\",\"sdkAarSha256\":\"f9fad20c02e554b00da51b72c8cd2643e121b4a81bc656dd5cf03de21ded2e72\",\"sdkClassesJarSha256\":\"237fd669f196b6efc6882a3e806a31e7de5b95b4ad1bef3e22233c6b41de684f\",\"sdkGeckoEditableClassSha256\":\"02e386e366fc7bad29eb4f5f92d5f762618eb97609c236cf5e0d42604e58fb00\",\"sdkManifestSha256\":\"e17c26595f25a7d87b250a92bd1359607e0ec859369f4ade312a129d2fe98902\",\"sdkBuildReceiptSha256\":\"c60be9646fca098442bbc64455b413aec1c88a02a2f437bbbe4fb05c2916fe3c\",\"sdkBuildSource\":\"4503e72d3bbbf5d7888aff98fc2c39658e0ba57d\",\"sdkBuildIdentity\":{\"sdkBuildKind\":\"source-derived-java\",\"sdkCoordinate\":\"org.mozilla.geckoview:geckoview:157.0.20261005135250\",\"sdkRuntimeCoordinate\":\"local.pocketchat.sdk:geckoview-caret:157.0.20261005135250-pocket3\",\"sdkInputCoordinate\":\"org.mozilla.geckoview:geckoview:157.0.20261005135250\",\"sdkInputAarSha256\":\"15f1edf3c58abcdaf2783f299b8c19c3a36272d348969106a9009671fef8d268\",\"sdkAarSha256\":\"f9fad20c02e554b00da51b72c8cd2643e121b4a81bc656dd5cf03de21ded2e72\",\"sdkClassesJarSha256\":\"237fd669f196b6efc6882a3e806a31e7de5b95b4ad1bef3e22233c6b41de684f\",\"sdkGeckoEditableClassSha256\":\"02e386e366fc7bad29eb4f5f92d5f762618eb97609c236cf5e0d42604e58fb00\",\"sdkManifestSha256\":\"e17c26595f25a7d87b250a92bd1359607e0ec859369f4ade312a129d2fe98902\",\"sdkBuildReceiptSha256\":\"c60be9646fca098442bbc64455b413aec1c88a02a2f437bbbe4fb05c2916fe3c\",\"sdkBuildSource\":\"4503e72d3bbbf5d7888aff98fc2c39658e0ba57d\",\"schema\":1,\"sourceCommit\":\"4503e72d3bbbf5d7888aff98fc2c39658e0ba57d\",\"sourceTree\":\"6987a3b413d223608f84c6ee45990df24fa2df03\",\"runId\":\"44928539243\",\"runAttempt\":\"1\"},\"package\":\"local.pocketchat.test\",\"apkBytes\":127442315,\"apkSha256\":\"35e2cbe3f5016894efdebfa54562727ab12997b0fd7a9e1c3db610fce0ce249b\",\"buildStampSha256\":\"ae5c4fcb686c93f65c1b7a75749786b3ba572ea84fdeb4661b948d51bc358850\",\"scope\":\"Installed synthetic integration APK bytes and embedded source stamp only\"},\"serviceClass\":\"local.pocketchat.NetworkClientBindingIntegrationActivity$MessengerService\",\"servicePid\":6892,\"serviceUid\":10209,\"serviceProcess\":\"local.pocketchat.test:transport_binding_services\",\"onBindAt\":317432,\"onBindMainLooper\":true,\"role\":\"messenger\",\"returnedNull\":false,\"messages\":[{\"id\":\"4a0ea07b-1c17-4231-9ec4-5ec2ecefcb7c\",\"slot\":0,\"action\":\"snapshot\",\"configuration\":\"\",\"generation\":\"\",\"stopReason\":\"UNKNOWN\",\"expectedGeneration\":\"\",\"sendingUid\":10209,\"receivedAt\":317435,\"replySent\":true},{\"id\":\"cbe1d225-a634-4d89-bfbb-c0ee25807919\",\"slot\":0,\"action\":\"detach\",\"configuration\":\"\",\"generation\":\"fixture-cf0785556bdd4af5a397da414f266281\",\"stopReason\":\"UNKNOWN\",\"expectedGeneration\":\"\",\"sendingUid\":10209,\"receivedAt\":317436,\"replySent\":true}]},\"messengerServiceRaw\":{\"rawUtf8\":\"{\\\"schema\\\":1,\\\"runNonce\\\":\\\"cf0785556bdd4af5a397da414f266281\\\",\\\"sourceCommit\\\":\\\"4503e72d3bbbf5d7888aff98fc2c39658e0ba57d\\\",\\\"buildIdentity\\\":{\\\"schema\\\":1,\\\"sourceCommit\\\":\\\"4503e72d3bbbf5d7888aff98fc2c39658e0ba57d\\\",\\\"sourceTree\\\":\\\"6987a3b413d223608f84c6ee45990df24fa2df03\\\",\\\"dirtySource\\\":false,\\\"version\\\":\\\"2.1.15\\\",\\\"versionCode\\\":117,\\\"sdkCoordinate\\\":\\\"org.mozilla.geckoview:geckoview:157.0.20261005135250\\\",\\\"sdkBuildKind\\\":\\\"source-derived-java\\\",\\\"sdkInputCoordinate\\\":\\\"org.mozilla.geckoview:geckoview:157.0.20261005135250\\\",\\\"sdkRuntimeCoordinate\\\":\\\"local.pocketchat.sdk:geckoview-caret:157.0.20261005135250-pocket3\\\",\\\"sdkInputAarSha256\\\":\\\"15f1edf3c58abcdaf2783f299b8c19c3a36272d348969106a9009671fef8d268\\\",\\\"sdkAarSha256\\\":\\\"f9fad20c02e554b00da51b72c8cd2643e121b4a81bc656dd5cf03de21ded2e72\\\",\\\"sdkClassesJarSha256\\\":\\\"237fd669f196b6efc6882a3e806a31e7de5b95b4ad1bef3e22233c6b41de684f\\\",\\\"sdkGeckoEditableClassSha256\\\":\\\"02e386e366fc7bad29eb4f5f92d5f762618eb97609c236cf5e0d42604e58fb00\\\",\\\"sdkManifestSha256\\\":\\\"e17c26595f25a7d87b250a92bd1359607e0ec859369f4ade312a129d2fe98902\\\",\\\"sdkBuildReceiptSha256\\\":\\\"c60be9646fca098442bbc64455b413aec1c88a02a2f437bbbe4fb05c2916fe3c\\\",\\\"sdkBuildSource\\\":\\\"4503e72d3bbbf5d7888aff98fc2c39658e0ba57d\\\",\\\"sdkBuildIdentity\\\":{\\\"sdkBuildKind\\\":\\\"source-derived-java\\\",\\\"sdkCoordinate\\\":\\\"org.mozilla.geckoview:geckoview:157.0.20261005135250\\\",\\\"sdkRuntimeCoordinate\\\":\\\"local.pocketchat.sdk:geckoview-caret:157.0.20261005135250-pocket3\\\",\\\"sdkInputCoordinate\\\":\\\"org.mozilla.geckoview:geckoview:157.0.20261005135250\\\",\\\"sdkInputAarSha256\\\":\\\"15f1edf3c58abcdaf2783f299b8c19c3a36272d348969106a9009671fef8d268\\\",\\\"sdkAarSha256\\\":\\\"f9fad20c02e554b00da51b72c8cd2643e121b4a81bc656dd5cf03de21ded2e72\\\",\\\"sdkClassesJarSha256\\\":\\\"237fd669f196b6efc6882a3e806a31e7de5b95b4ad1bef3e22233c6b41de684f\\\",\\\"sdkGeckoEditableClassSha256\\\":\\\"02e386e366fc7bad29eb4f5f92d5f762618eb97609c236cf5e0d42604e58fb00\\\",\\\"sdkManifestSha256\\\":\\\"e17c26595f25a7d87b250a92bd1359607e0ec859369f4ade312a129d2fe98902\\\",\\\"sdkBuildReceiptSha256\\\":\\\"c60be9646fca098442bbc64455b413aec1c88a02a2f437bbbe4fb05c2916fe3c\\\",\\\"sdkBuildSource\\\":\\\"4503e72d3bbbf5d7888aff98fc2c39658e0ba57d\\\",\\\"schema\\\":1,\\\"sourceCommit\\\":\\\"4503e72d3bbbf5d7888aff98fc2c39658e0ba57d\\\",\\\"sourceTree\\\":\\\"6987a3b413d223608f84c6ee45990df24fa2df03\\\",\\\"runId\\\":\\\"44928539243\\\",\\\"runAttempt\\\":\\\"1\\\"},\\\"package\\\":\\\"local.pocketchat.test\\\",\\\"apkBytes\\\":127442315,\\\"apkSha256\\\":\\\"35e2cbe3f5016894efdebfa54562727ab12997b0fd7a9e1c3db610fce0ce249b\\\",\\\"buildStampSha256\\\":\\\"ae5c4fcb686c93f65c1b7a75749786b3ba572ea84fdeb4661b948d51bc358850\\\",\\\"scope\\\":\\\"Installed synthetic integration APK bytes and embedded source stamp only\\\"},\\\"serviceClass\\\":\\\"local.pocketchat.NetworkClientBindingIntegrationActivity$MessengerService\\\",\\\"servicePid\\\":6892,\\\"serviceUid\\\":10209,\\\"serviceProcess\\\":\\\"local.pocketchat.test:transport_binding_services\\\",\\\"onBindAt\\\":317432,\\\"onBindMainLooper\\\":true,\\\"role\\\":\\\"messenger\\\",\\\"returnedNull\\\":false,\\\"messages\\\":[{\\\"id\\\":\\\"4a0ea07b-1c17-4231-9ec4-5ec2ecefcb7c\\\",\\\"slot\\\":0,\\\"action\\\":\\\"snapshot\\\",\\\"configuration\\\":\\\"\\\",\\\"generation\\\":\\\"\\\",\\\"stopReason\\\":\\\"UNKNOWN\\\",\\\"expectedGeneration\\\":\\\"\\\",\\\"sendingUid\\\":10209,\\\"receivedAt\\\":317435,\\\"replySent\\\":true},{\\\"id\\\":\\\"cbe1d225-a634-4d89-bfbb-c0ee25807919\\\",\\\"slot\\\":0,\\\"action\\\":\\\"detach\\\",\\\"configuration\\\":\\\"\\\",\\\"generation\\\":\\\"fixture-cf0785556bdd4af5a397da414f266281\\\",\\\"stopReason\\\":\\\"UNKNOWN\\\",\\\"expectedGeneration\\\":\\\"\\\",\\\"sendingUid\\\":10209,\\\"receivedAt\\\":317436,\\\"replySent\\\":true}]}\\n\",\"utf8Bytes\":3296,\"sha256\":\"39bea440ecad70b81934a17b36335944ef90b79a8d00e709f2ce3d9b96faa87c\"},\"completedCallbackJournal\":{\"diagnosticWaitBegan\":317459,\"diagnosticWaitEnded\":317459,\"diagnosticWaitLimitMs\":3000,\"owner\":\"01bd9514-71e6-4b23-997b-1e601aded5e6\",\"environmentIdentity\":{\"slot\":0,\"generation\":0,\"environmentId\":\"d8871bac-785b-476a-aedf-1fdd4f3e7035\"},\"rawSummary\":\"网络事件 · 环境编号：1\\n环境 ID：d8871bac-785b-476a-aedf-1fdd4f3e7035 · 环境代次：0\\n仅固定事件与数值；不包含核心输出原文。\\n字段：时间毫秒 \\/ 单调时间 \\/ 内部槽位 \\/ 来源 \\/ 记录器代次 \\/ 环境 ID \\/ 环境代次 \\/ 核心代次 \\/ 事件 \\/ 原因 \\/ 阶段 \\/ 数值\\n1795284312053\\t317114\\t0\\tCONTROL\\t01bd9514-71e6-4b23-997b-1e601aded5e6\\td8871bac-785b-476a-aedf-1fdd4f3e7035\\t0\\tunknown\\tIPC_NULL_BINDING\\tCONTROL_UNAVAILABLE\\tBIND\\t0\\n1795284312054\\t317115\\t0\\tCONTROL\\t01bd9514-71e6-4b23-997b-1e601aded5e6\\td8871bac-785b-476a-aedf-1fdd4f3e7035\\t0\\tunknown\\tIPC_BIND_TIMEOUT\\tCONTROL_UNAVAILABLE\\tBIND\\t0\\n1795284312374\\t317435\\t0\\tCONTROL\\t01bd9514-71e6-4b23-997b-1e601aded5e6\\td8871bac-785b-476a-aedf-1fdd4f3e7035\\t0\\tunknown\\tIPC_CONNECTED\\tUNKNOWN\\tBIND\\t0\\n1795284312376\\t317437\\t0\\tCONTROL\\t01bd9514-71e6-4b23-997b-1e601aded5e6\\td8871bac-785b-476a-aedf-1fdd4f3e7035\\t0\\tunknown\\tIPC_DETACH\\tUNKNOWN\\tIPC\\t0\\n\",\"ownedRows\":[\"1795284312053\\t317114\\t0\\tCONTROL\\t01bd9514-71e6-4b23-997b-1e601aded5e6\\td8871bac-785b-476a-aedf-1fdd4f3e7035\\t0\\tunknown\\tIPC_NULL_BINDING\\tCONTROL_UNAVAILABLE\\tBIND\\t0\",\"1795284312054\\t317115\\t0\\tCONTROL\\t01bd9514-71e6-4b23-997b-1e601aded5e6\\td8871bac-785b-476a-aedf-1fdd4f3e7035\\t0\\tunknown\\tIPC_BIND_TIMEOUT\\tCONTROL_UNAVAILABLE\\tBIND\\t0\",\"1795284312374\\t317435\\t0\\tCONTROL\\t01bd9514-71e6-4b23-997b-1e601aded5e6\\td8871bac-785b-476a-aedf-1fdd4f3e7035\\t0\\tunknown\\tIPC_CONNECTED\\tUNKNOWN\\tBIND\\t0\",\"1795284312376\\t317437\\t0\\tCONTROL\\t01bd9514-71e6-4b23-997b-1e601aded5e6\\td8871bac-785b-476a-aedf-1fdd4f3e7035\\t0\\tunknown\\tIPC_DETACH\\tUNKNOWN\\tIPC\\t0\"],\"journalMonotonicClock\":\"System.nanoTime()\\/1000000; distinct from elapsedRealtime call\\/wait clocks\",\"source\":\"actual NetworkDiagnostics records emitted only by this production Client callback\\/command paths; no ServiceConnection method is called by the fixture\"},\"missingWaiter\":{\"began\":317460,\"ended\":317461,\"elapsedMs\":1,\"failureClass\":\"java.io.IOException\",\"failed\":true},\"missingCallbackJournal\":{\"diagnosticWaitBegan\":317461,\"diagnosticWaitEnded\":317462,\"diagnosticWaitLimitMs\":3000,\"owner\":\"341bfb11-f68e-4d57-bdf3-7ca7269610fe\",\"environmentIdentity\":{\"slot\":0,\"generation\":0,\"environmentId\":\"d8871bac-785b-476a-aedf-1fdd4f3e7035\"},\"rawSummary\":\"网络事件 · 环境编号：1\\n环境 ID：d8871bac-785b-476a-aedf-1fdd4f3e7035 · 环境代次：0\\n仅固定事件与数值；不包含核心输出原文。\\n字段：时间毫秒 \\/ 单调时间 \\/ 内部槽位 \\/ 来源 \\/ 记录器代次 \\/ 环境 ID \\/ 环境代次 \\/ 核心代次 \\/ 事件 \\/ 原因 \\/ 阶段 \\/ 数值\\n1795284312053\\t317114\\t0\\tCONTROL\\t01bd9514-71e6-4b23-997b-1e601aded5e6\\td8871bac-785b-476a-aedf-1fdd4f3e7035\\t0\\tunknown\\tIPC_NULL_BINDING\\tCONTROL_UNAVAILABLE\\tBIND\\t0\\n1795284312054\\t317115\\t0\\tCONTROL\\t01bd9514-71e6-4b23-997b-1e601aded5e6\\td8871bac-785b-476a-aedf-1fdd4f3e7035\\t0\\tunknown\\tIPC_BIND_TIMEOUT\\tCONTROL_UNAVAILABLE\\tBIND\\t0\\n1795284312374\\t317435\\t0\\tCONTROL\\t01bd9514-71e6-4b23-997b-1e601aded5e6\\td8871bac-785b-476a-aedf-1fdd4f3e7035\\t0\\tunknown\\tIPC_CONNECTED\\tUNKNOWN\\tBIND\\t0\\n1795284312376\\t317437\\t0\\tCONTROL\\t01bd9514-71e6-4b23-997b-1e601aded5e6\\td8871bac-785b-476a-aedf-1fdd4f3e7035\\t0\\tunknown\\tIPC_DETACH\\tUNKNOWN\\tIPC\\t0\\n1795284312400\\t317461\\t0\\tCONTROL\\t341bfb11-f68e-4d57-bdf3-7ca7269610fe\\td8871bac-785b-476a-aedf-1fdd4f3e7035\\t0\\tunknown\\tIPC_BIND_REJECTED\\tCONTROL_UNAVAILABLE\\tBIND\\t0\\n1795284312400\\t317461\\t0\\tCONTROL\\t341bfb11-f68e-4d57-bdf3-7ca7269610fe\\td8871bac-785b-476a-aedf-1fdd4f3e7035\\t0\\tunknown\\tIPC_BIND_TIMEOUT\\tCONTROL_UNAVAILABLE\\tBIND\\t0\\n\",\"ownedRows\":[\"1795284312400\\t317461\\t0\\tCONTROL\\t341bfb11-f68e-4d57-bdf3-7ca7269610fe\\td8871bac-785b-476a-aedf-1fdd4f3e7035\\t0\\tunknown\\tIPC_BIND_REJECTED\\tCONTROL_UNAVAILABLE\\tBIND\\t0\",\"1795284312400\\t317461\\t0\\tCONTROL\\t341bfb11-f68e-4d57-bdf3-7ca7269610fe\\td8871bac-785b-476a-aedf-1fdd4f3e7035\\t0\\tunknown\\tIPC_BIND_TIMEOUT\\tCONTROL_UNAVAILABLE\\tBIND\\t0\"],\"journalMonotonicClock\":\"System.nanoTime()\\/1000000; distinct from elapsedRealtime call\\/wait clocks\",\"source\":\"actual NetworkDiagnostics records emitted only by this production Client callback\\/command paths; no ServiceConnection method is called by the fixture\"},\"checks\":[{\"name\":\"Fixture runs in its separate integration process\",\"pass\":true},{\"name\":\"Fixture process owns the installed package UID\",\"pass\":true},{\"name\":\"Actual null binding releases original caller before its ten second deadline\",\"pass\":true},{\"name\":\"First real bind was accepted for the private null Service\",\"pass\":true},{\"name\":\"Null callback releases the captured production gate\",\"pass\":true},{\"name\":\"Null owner is actually unbound once through Android\",\"pass\":true},{\"name\":\"Private Service records a real null onBind in another process\",\"pass\":true},{\"name\":\"Actual production callback journal contains exactly one owned null binding\",\"pass\":true},{\"name\":\"Next ordinary production call receives the real Messenger reply\",\"pass\":true},{\"name\":\"Next demand binds a distinct owner and gate without automatic retry\",\"pass\":true},{\"name\":\"Explicit detach unbinds only the Messenger owner once\",\"pass\":true},{\"name\":\"Service received original snapshot and detach command envelopes\",\"pass\":true},{\"name\":\"Real Messenger command sender UID matches the owned package\",\"pass\":true},{\"name\":\"Both actual bind attempts have one successful framework unbind\",\"pass\":true},{\"name\":\"Missing-component fault names an absent component in this test package\",\"pass\":true},{\"name\":\"Real missing-component bind returns false and wakes its caller\",\"pass\":true},{\"name\":\"False-return framework dispatcher is released exactly once\",\"pass\":true},{\"name\":\"Actual missing bind rejection is distinct from a null callback\",\"pass\":true}],\"checkCount\":18,\"bindings\":[{\"missingComponent\":false,\"attempts\":[{\"number\":1,\"connectionIdentity\":221689986,\"connectionClass\":\"local.pocketchat.NetworkTransportClient$Binding\",\"gateIdentity\":111474677,\"gateCount\":0,\"target\":\"local.pocketchat.NetworkClientBindingIntegrationActivity$NullService\",\"began\":316461,\"ended\":316470,\"accepted\":true,\"error\":\"\",\"unbindError\":\"\",\"unbindAttempts\":1,\"unbindSuccesses\":1},{\"number\":2,\"connectionIdentity\":122647297,\"connectionClass\":\"local.pocketchat.NetworkTransportClient$Binding\",\"gateIdentity\":71854474,\"gateCount\":0,\"target\":\"local.pocketchat.NetworkClientBindingIntegrationActivity$MessengerService\",\"began\":317120,\"ended\":317121,\"accepted\":true,\"error\":\"\",\"unbindError\":\"\",\"unbindAttempts\":1,\"unbindSuccesses\":1}],\"outstanding\":0},{\"missingComponent\":true,\"attempts\":[{\"number\":1,\"connectionIdentity\":174489913,\"connectionClass\":\"local.pocketchat.NetworkTransportClient$Binding\",\"gateIdentity\":230239227,\"gateCount\":0,\"target\":\"local.pocketchat.AbsentNetworkClientBindingFixture\",\"began\":317460,\"ended\":317461,\"accepted\":false,\"error\":\"\",\"unbindError\":\"\",\"unbindAttempts\":1,\"unbindSuccesses\":1}],\"outstanding\":0}]},\"nativeContext\":\"environment-1\",\"processSlot\":0}}\n"
+    }
+  ],
+  "activityStartOutput": "Starting: Intent { cmp=local.pocketchat.test/local.pocketchat.NetworkClientBindingIntegrationActivity (has extras) }\nStatus: ok\nLaunchState: COLD\nActivity: local.pocketchat.test/local.pocketchat.NetworkClientBindingIntegrationActivity\nTotalTime: 376\nWaitTime: 418\nComplete\n",
+  "result": {
+    "schema": 1,
+    "status": "passed",
+    "actualAndroidExecution": true,
+    "actualFrameworkBinding": true,
+    "actualMessengerIpc": true,
+    "actualProductionClient": true,
+    "actualProductionNetworkService": false,
+    "actualMihomoExecution": false,
+    "actualGeckoExecution": false,
+    "manualServiceConnectionCallbacks": 0,
+    "automaticBindRetryAdded": false,
+    "securityExceptionAndroidAcceptance": false,
+    "bindingDiedAndroidAcceptance": false,
+    "physicalPhoneAcceptance": false,
+    "realUserProxyAcceptance": false,
+    "scope": "Complete production Client; real Android bind/unbind and Messenger. Only this fixture's explicit destination is redirected to private test Services. The normal Mihomo service does not return null in this test; no physical-device or user-route cause/speed claim.",
+    "sourceCommit": "4503e72d3bbbf5d7888aff98fc2c39658e0ba57d",
+    "buildIdentity": {
+      "schema": 1,
+      "sourceCommit": "4503e72d3bbbf5d7888aff98fc2c39658e0ba57d",
+      "sourceTree": "6987a3b413d223608f84c6ee45990df24fa2df03",
+      "dirtySource": false,
+      "version": "2.1.15",
+      "versionCode": 117,
+      "sdkCoordinate": "org.mozilla.geckoview:geckoview:157.0.20261005135250",
+      "sdkBuildKind": "source-derived-java",
+      "sdkInputCoordinate": "org.mozilla.geckoview:geckoview:157.0.20261005135250",
+      "sdkRuntimeCoordinate": "local.pocketchat.sdk:geckoview-caret:157.0.20261005135250-pocket3",
+      "sdkInputAarSha256": "15f1edf3c58abcdaf2783f299b8c19c3a36272d348969106a9009671fef8d268",
+      "sdkAarSha256": "f9fad20c02e554b00da51b72c8cd2643e121b4a81bc656dd5cf03de21ded2e72",
+      "sdkClassesJarSha256": "237fd669f196b6efc6882a3e806a31e7de5b95b4ad1bef3e22233c6b41de684f",
+      "sdkGeckoEditableClassSha256": "02e386e366fc7bad29eb4f5f92d5f762618eb97609c236cf5e0d42604e58fb00",
+      "sdkManifestSha256": "e17c26595f25a7d87b250a92bd1359607e0ec859369f4ade312a129d2fe98902",
+      "sdkBuildReceiptSha256": "c60be9646fca098442bbc64455b413aec1c88a02a2f437bbbe4fb05c2916fe3c",
+      "sdkBuildSource": "4503e72d3bbbf5d7888aff98fc2c39658e0ba57d",
+      "sdkBuildIdentity": {
+        "sdkBuildKind": "source-derived-java",
+        "sdkCoordinate": "org.mozilla.geckoview:geckoview:157.0.20261005135250",
+        "sdkRuntimeCoordinate": "local.pocketchat.sdk:geckoview-caret:157.0.20261005135250-pocket3",
+        "sdkInputCoordinate": "org.mozilla.geckoview:geckoview:157.0.20261005135250",
+        "sdkInputAarSha256": "15f1edf3c58abcdaf2783f299b8c19c3a36272d348969106a9009671fef8d268",
+        "sdkAarSha256": "f9fad20c02e554b00da51b72c8cd2643e121b4a81bc656dd5cf03de21ded2e72",
+        "sdkClassesJarSha256": "237fd669f196b6efc6882a3e806a31e7de5b95b4ad1bef3e22233c6b41de684f",
+        "sdkGeckoEditableClassSha256": "02e386e366fc7bad29eb4f5f92d5f762618eb97609c236cf5e0d42604e58fb00",
+        "sdkManifestSha256": "e17c26595f25a7d87b250a92bd1359607e0ec859369f4ade312a129d2fe98902",
+        "sdkBuildReceiptSha256": "c60be9646fca098442bbc64455b413aec1c88a02a2f437bbbe4fb05c2916fe3c",
+        "sdkBuildSource": "4503e72d3bbbf5d7888aff98fc2c39658e0ba57d",
+        "schema": 1,
+        "sourceCommit": "4503e72d3bbbf5d7888aff98fc2c39658e0ba57d",
+        "sourceTree": "6987a3b413d223608f84c6ee45990df24fa2df03",
+        "runId": "44928539243",
+        "runAttempt": "1"
+      },
+      "package": "local.pocketchat.test",
+      "apkBytes": 127442315,
+      "apkSha256": "35e2cbe3f5016894efdebfa54562727ab12997b0fd7a9e1c3db610fce0ce249b",
+      "buildStampSha256": "ae5c4fcb686c93f65c1b7a75749786b3ba572ea84fdeb4661b948d51bc358850",
+      "scope": "Installed synthetic integration APK bytes and embedded source stamp only"
+    },
+    "runNonce": "cf0785556bdd4af5a397da414f266281",
+    "clientPid": 6850,
+    "clientUid": 10209,
+    "clientProcess": "local.pocketchat.test:transport_binding_fixture",
+    "androidSdk": 35,
+    "bindingTimeoutSeconds": 10,
+    "replyTimeoutSeconds": 15,
+    "detachTimeoutSeconds": 5,
+    "environmentIdentity": {
+      "slot": 0,
+      "generation": 0,
+      "environmentId": "d8871bac-785b-476a-aedf-1fdd4f3e7035"
+    },
+    "phase": "actual-missing-component",
+    "nullWaiter": {
+      "began": 316458,
+      "ended": 317115,
+      "elapsedMs": 657,
+      "failureClass": "java.io.IOException",
+      "failed": true
+    },
+    "nullService": {
+      "schema": 1,
+      "runNonce": "cf0785556bdd4af5a397da414f266281",
+      "sourceCommit": "4503e72d3bbbf5d7888aff98fc2c39658e0ba57d",
+      "buildIdentity": {
+        "schema": 1,
+        "sourceCommit": "4503e72d3bbbf5d7888aff98fc2c39658e0ba57d",
+        "sourceTree": "6987a3b413d223608f84c6ee45990df24fa2df03",
+        "dirtySource": false,
+        "version": "2.1.15",
+        "versionCode": 117,
+        "sdkCoordinate": "org.mozilla.geckoview:geckoview:157.0.20261005135250",
+        "sdkBuildKind": "source-derived-java",
+        "sdkInputCoordinate": "org.mozilla.geckoview:geckoview:157.0.20261005135250",
+        "sdkRuntimeCoordinate": "local.pocketchat.sdk:geckoview-caret:157.0.20261005135250-pocket3",
+        "sdkInputAarSha256": "15f1edf3c58abcdaf2783f299b8c19c3a36272d348969106a9009671fef8d268",
+        "sdkAarSha256": "f9fad20c02e554b00da51b72c8cd2643e121b4a81bc656dd5cf03de21ded2e72",
+        "sdkClassesJarSha256": "237fd669f196b6efc6882a3e806a31e7de5b95b4ad1bef3e22233c6b41de684f",
+        "sdkGeckoEditableClassSha256": "02e386e366fc7bad29eb4f5f92d5f762618eb97609c236cf5e0d42604e58fb00",
+        "sdkManifestSha256": "e17c26595f25a7d87b250a92bd1359607e0ec859369f4ade312a129d2fe98902",
+        "sdkBuildReceiptSha256": "c60be9646fca098442bbc64455b413aec1c88a02a2f437bbbe4fb05c2916fe3c",
+        "sdkBuildSource": "4503e72d3bbbf5d7888aff98fc2c39658e0ba57d",
+        "sdkBuildIdentity": {
+          "sdkBuildKind": "source-derived-java",
+          "sdkCoordinate": "org.mozilla.geckoview:geckoview:157.0.20261005135250",
+          "sdkRuntimeCoordinate": "local.pocketchat.sdk:geckoview-caret:157.0.20261005135250-pocket3",
+          "sdkInputCoordinate": "org.mozilla.geckoview:geckoview:157.0.20261005135250",
+          "sdkInputAarSha256": "15f1edf3c58abcdaf2783f299b8c19c3a36272d348969106a9009671fef8d268",
+          "sdkAarSha256": "f9fad20c02e554b00da51b72c8cd2643e121b4a81bc656dd5cf03de21ded2e72",
+          "sdkClassesJarSha256": "237fd669f196b6efc6882a3e806a31e7de5b95b4ad1bef3e22233c6b41de684f",
+          "sdkGeckoEditableClassSha256": "02e386e366fc7bad29eb4f5f92d5f762618eb97609c236cf5e0d42604e58fb00",
+          "sdkManifestSha256": "e17c26595f25a7d87b250a92bd1359607e0ec859369f4ade312a129d2fe98902",
+          "sdkBuildReceiptSha256": "c60be9646fca098442bbc64455b413aec1c88a02a2f437bbbe4fb05c2916fe3c",
+          "sdkBuildSource": "4503e72d3bbbf5d7888aff98fc2c39658e0ba57d",
+          "schema": 1,
+          "sourceCommit": "4503e72d3bbbf5d7888aff98fc2c39658e0ba57d",
+          "sourceTree": "6987a3b413d223608f84c6ee45990df24fa2df03",
+          "runId": "44928539243",
+          "runAttempt": "1"
+        },
+        "package": "local.pocketchat.test",
+        "apkBytes": 127442315,
+        "apkSha256": "35e2cbe3f5016894efdebfa54562727ab12997b0fd7a9e1c3db610fce0ce249b",
+        "buildStampSha256": "ae5c4fcb686c93f65c1b7a75749786b3ba572ea84fdeb4661b948d51bc358850",
+        "scope": "Installed synthetic integration APK bytes and embedded source stamp only"
+      },
+      "serviceClass": "local.pocketchat.NetworkClientBindingIntegrationActivity$NullService",
+      "servicePid": 6892,
+      "serviceUid": 10209,
+      "serviceProcess": "local.pocketchat.test:transport_binding_services",
+      "onBindAt": 317107,
+      "onBindMainLooper": true,
+      "role": "null",
+      "returnedNull": true
+    },
+    "nullServiceRaw": {
+      "rawUtf8": "{\"schema\":1,\"runNonce\":\"cf0785556bdd4af5a397da414f266281\",\"sourceCommit\":\"4503e72d3bbbf5d7888aff98fc2c39658e0ba57d\",\"buildIdentity\":{\"schema\":1,\"sourceCommit\":\"4503e72d3bbbf5d7888aff98fc2c39658e0ba57d\",\"sourceTree\":\"6987a3b413d223608f84c6ee45990df24fa2df03\",\"dirtySource\":false,\"version\":\"2.1.15\",\"versionCode\":117,\"sdkCoordinate\":\"org.mozilla.geckoview:geckoview:157.0.20261005135250\",\"sdkBuildKind\":\"source-derived-java\",\"sdkInputCoordinate\":\"org.mozilla.geckoview:geckoview:157.0.20261005135250\",\"sdkRuntimeCoordinate\":\"local.pocketchat.sdk:geckoview-caret:157.0.20261005135250-pocket3\",\"sdkInputAarSha256\":\"15f1edf3c58abcdaf2783f299b8c19c3a36272d348969106a9009671fef8d268\",\"sdkAarSha256\":\"f9fad20c02e554b00da51b72c8cd2643e121b4a81bc656dd5cf03de21ded2e72\",\"sdkClassesJarSha256\":\"237fd669f196b6efc6882a3e806a31e7de5b95b4ad1bef3e22233c6b41de684f\",\"sdkGeckoEditableClassSha256\":\"02e386e366fc7bad29eb4f5f92d5f762618eb97609c236cf5e0d42604e58fb00\",\"sdkManifestSha256\":\"e17c26595f25a7d87b250a92bd1359607e0ec859369f4ade312a129d2fe98902\",\"sdkBuildReceiptSha256\":\"c60be9646fca098442bbc64455b413aec1c88a02a2f437bbbe4fb05c2916fe3c\",\"sdkBuildSource\":\"4503e72d3bbbf5d7888aff98fc2c39658e0ba57d\",\"sdkBuildIdentity\":{\"sdkBuildKind\":\"source-derived-java\",\"sdkCoordinate\":\"org.mozilla.geckoview:geckoview:157.0.20261005135250\",\"sdkRuntimeCoordinate\":\"local.pocketchat.sdk:geckoview-caret:157.0.20261005135250-pocket3\",\"sdkInputCoordinate\":\"org.mozilla.geckoview:geckoview:157.0.20261005135250\",\"sdkInputAarSha256\":\"15f1edf3c58abcdaf2783f299b8c19c3a36272d348969106a9009671fef8d268\",\"sdkAarSha256\":\"f9fad20c02e554b00da51b72c8cd2643e121b4a81bc656dd5cf03de21ded2e72\",\"sdkClassesJarSha256\":\"237fd669f196b6efc6882a3e806a31e7de5b95b4ad1bef3e22233c6b41de684f\",\"sdkGeckoEditableClassSha256\":\"02e386e366fc7bad29eb4f5f92d5f762618eb97609c236cf5e0d42604e58fb00\",\"sdkManifestSha256\":\"e17c26595f25a7d87b250a92bd1359607e0ec859369f4ade312a129d2fe98902\",\"sdkBuildReceiptSha256\":\"c60be9646fca098442bbc64455b413aec1c88a02a2f437bbbe4fb05c2916fe3c\",\"sdkBuildSource\":\"4503e72d3bbbf5d7888aff98fc2c39658e0ba57d\",\"schema\":1,\"sourceCommit\":\"4503e72d3bbbf5d7888aff98fc2c39658e0ba57d\",\"sourceTree\":\"6987a3b413d223608f84c6ee45990df24fa2df03\",\"runId\":\"44928539243\",\"runAttempt\":\"1\"},\"package\":\"local.pocketchat.test\",\"apkBytes\":127442315,\"apkSha256\":\"35e2cbe3f5016894efdebfa54562727ab12997b0fd7a9e1c3db610fce0ce249b\",\"buildStampSha256\":\"ae5c4fcb686c93f65c1b7a75749786b3ba572ea84fdeb4661b948d51bc358850\",\"scope\":\"Installed synthetic integration APK bytes and embedded source stamp only\"},\"serviceClass\":\"local.pocketchat.NetworkClientBindingIntegrationActivity$NullService\",\"servicePid\":6892,\"serviceUid\":10209,\"serviceProcess\":\"local.pocketchat.test:transport_binding_services\",\"onBindAt\":317107,\"onBindMainLooper\":true,\"role\":\"null\",\"returnedNull\":true}\n",
+      "utf8Bytes": 2808,
+      "sha256": "c4049fda888b2699bf37b1fbce0a070fc24cf01e1f3f9cf33dfa2df83e9048f0"
+    },
+    "nullCallbackJournal": {
+      "diagnosticWaitBegan": 317117,
+      "diagnosticWaitEnded": 317120,
+      "diagnosticWaitLimitMs": 3000,
+      "owner": "01bd9514-71e6-4b23-997b-1e601aded5e6",
+      "environmentIdentity": {
+        "slot": 0,
+        "generation": 0,
+        "environmentId": "d8871bac-785b-476a-aedf-1fdd4f3e7035"
+      },
+      "rawSummary": "网络事件 · 环境编号：1\n环境 ID：d8871bac-785b-476a-aedf-1fdd4f3e7035 · 环境代次：0\n仅固定事件与数值；不包含核心输出原文。\n字段：时间毫秒 / 单调时间 / 内部槽位 / 来源 / 记录器代次 / 环境 ID / 环境代次 / 核心代次 / 事件 / 原因 / 阶段 / 数值\n1795284312053\t317114\t0\tCONTROL\t01bd9514-71e6-4b23-997b-1e601aded5e6\td8871bac-785b-476a-aedf-1fdd4f3e7035\t0\tunknown\tIPC_NULL_BINDING\tCONTROL_UNAVAILABLE\tBIND\t0\n1795284312054\t317115\t0\tCONTROL\t01bd9514-71e6-4b23-997b-1e601aded5e6\td8871bac-785b-476a-aedf-1fdd4f3e7035\t0\tunknown\tIPC_BIND_TIMEOUT\tCONTROL_UNAVAILABLE\tBIND\t0\n",
+      "ownedRows": [
+        "1795284312053\t317114\t0\tCONTROL\t01bd9514-71e6-4b23-997b-1e601aded5e6\td8871bac-785b-476a-aedf-1fdd4f3e7035\t0\tunknown\tIPC_NULL_BINDING\tCONTROL_UNAVAILABLE\tBIND\t0",
+        "1795284312054\t317115\t0\tCONTROL\t01bd9514-71e6-4b23-997b-1e601aded5e6\td8871bac-785b-476a-aedf-1fdd4f3e7035\t0\tunknown\tIPC_BIND_TIMEOUT\tCONTROL_UNAVAILABLE\tBIND\t0"
+      ],
+      "journalMonotonicClock": "System.nanoTime()/1000000; distinct from elapsedRealtime call/wait clocks",
+      "source": "actual NetworkDiagnostics records emitted only by this production Client callback/command paths; no ServiceConnection method is called by the fixture"
+    },
+    "recoveredState": {
+      "slot": 0,
+      "alive": false,
+      "state": "fixture",
+      "generation": "fixture-cf0785556bdd4af5a397da414f266281",
+      "servicePid": 6892,
+      "serviceUid": 10209,
+      "fixtureNonce": "cf0785556bdd4af5a397da414f266281",
+      "fixtureRole": "messenger"
+    },
+    "messengerService": {
+      "schema": 1,
+      "runNonce": "cf0785556bdd4af5a397da414f266281",
+      "sourceCommit": "4503e72d3bbbf5d7888aff98fc2c39658e0ba57d",
+      "buildIdentity": {
+        "schema": 1,
+        "sourceCommit": "4503e72d3bbbf5d7888aff98fc2c39658e0ba57d",
+        "sourceTree": "6987a3b413d223608f84c6ee45990df24fa2df03",
+        "dirtySource": false,
+        "version": "2.1.15",
+        "versionCode": 117,
+        "sdkCoordinate": "org.mozilla.geckoview:geckoview:157.0.20261005135250",
+        "sdkBuildKind": "source-derived-java",
+        "sdkInputCoordinate": "org.mozilla.geckoview:geckoview:157.0.20261005135250",
+        "sdkRuntimeCoordinate": "local.pocketchat.sdk:geckoview-caret:157.0.20261005135250-pocket3",
+        "sdkInputAarSha256": "15f1edf3c58abcdaf2783f299b8c19c3a36272d348969106a9009671fef8d268",
+        "sdkAarSha256": "f9fad20c02e554b00da51b72c8cd2643e121b4a81bc656dd5cf03de21ded2e72",
+        "sdkClassesJarSha256": "237fd669f196b6efc6882a3e806a31e7de5b95b4ad1bef3e22233c6b41de684f",
+        "sdkGeckoEditableClassSha256": "02e386e366fc7bad29eb4f5f92d5f762618eb97609c236cf5e0d42604e58fb00",
+        "sdkManifestSha256": "e17c26595f25a7d87b250a92bd1359607e0ec859369f4ade312a129d2fe98902",
+        "sdkBuildReceiptSha256": "c60be9646fca098442bbc64455b413aec1c88a02a2f437bbbe4fb05c2916fe3c",
+        "sdkBuildSource": "4503e72d3bbbf5d7888aff98fc2c39658e0ba57d",
+        "sdkBuildIdentity": {
+          "sdkBuildKind": "source-derived-java",
+          "sdkCoordinate": "org.mozilla.geckoview:geckoview:157.0.20261005135250",
+          "sdkRuntimeCoordinate": "local.pocketchat.sdk:geckoview-caret:157.0.20261005135250-pocket3",
+          "sdkInputCoordinate": "org.mozilla.geckoview:geckoview:157.0.20261005135250",
+          "sdkInputAarSha256": "15f1edf3c58abcdaf2783f299b8c19c3a36272d348969106a9009671fef8d268",
+          "sdkAarSha256": "f9fad20c02e554b00da51b72c8cd2643e121b4a81bc656dd5cf03de21ded2e72",
+          "sdkClassesJarSha256": "237fd669f196b6efc6882a3e806a31e7de5b95b4ad1bef3e22233c6b41de684f",
+          "sdkGeckoEditableClassSha256": "02e386e366fc7bad29eb4f5f92d5f762618eb97609c236cf5e0d42604e58fb00",
+          "sdkManifestSha256": "e17c26595f25a7d87b250a92bd1359607e0ec859369f4ade312a129d2fe98902",
+          "sdkBuildReceiptSha256": "c60be9646fca098442bbc64455b413aec1c88a02a2f437bbbe4fb05c2916fe3c",
+          "sdkBuildSource": "4503e72d3bbbf5d7888aff98fc2c39658e0ba57d",
+          "schema": 1,
+          "sourceCommit": "4503e72d3bbbf5d7888aff98fc2c39658e0ba57d",
+          "sourceTree": "6987a3b413d223608f84c6ee45990df24fa2df03",
+          "runId": "44928539243",
+          "runAttempt": "1"
+        },
+        "package": "local.pocketchat.test",
+        "apkBytes": 127442315,
+        "apkSha256": "35e2cbe3f5016894efdebfa54562727ab12997b0fd7a9e1c3db610fce0ce249b",
+        "buildStampSha256": "ae5c4fcb686c93f65c1b7a75749786b3ba572ea84fdeb4661b948d51bc358850",
+        "scope": "Installed synthetic integration APK bytes and embedded source stamp only"
+      },
+      "serviceClass": "local.pocketchat.NetworkClientBindingIntegrationActivity$MessengerService",
+      "servicePid": 6892,
+      "serviceUid": 10209,
+      "serviceProcess": "local.pocketchat.test:transport_binding_services",
+      "onBindAt": 317432,
+      "onBindMainLooper": true,
+      "role": "messenger",
+      "returnedNull": false,
+      "messages": [
+        {
+          "id": "4a0ea07b-1c17-4231-9ec4-5ec2ecefcb7c",
+          "slot": 0,
+          "action": "snapshot",
+          "configuration": "",
+          "generation": "",
+          "stopReason": "UNKNOWN",
+          "expectedGeneration": "",
+          "sendingUid": 10209,
+          "receivedAt": 317435,
+          "replySent": true
+        },
+        {
+          "id": "cbe1d225-a634-4d89-bfbb-c0ee25807919",
+          "slot": 0,
+          "action": "detach",
+          "configuration": "",
+          "generation": "fixture-cf0785556bdd4af5a397da414f266281",
+          "stopReason": "UNKNOWN",
+          "expectedGeneration": "",
+          "sendingUid": 10209,
+          "receivedAt": 317436,
+          "replySent": true
+        }
+      ]
+    },
+    "messengerServiceRaw": {
+      "rawUtf8": "{\"schema\":1,\"runNonce\":\"cf0785556bdd4af5a397da414f266281\",\"sourceCommit\":\"4503e72d3bbbf5d7888aff98fc2c39658e0ba57d\",\"buildIdentity\":{\"schema\":1,\"sourceCommit\":\"4503e72d3bbbf5d7888aff98fc2c39658e0ba57d\",\"sourceTree\":\"6987a3b413d223608f84c6ee45990df24fa2df03\",\"dirtySource\":false,\"version\":\"2.1.15\",\"versionCode\":117,\"sdkCoordinate\":\"org.mozilla.geckoview:geckoview:157.0.20261005135250\",\"sdkBuildKind\":\"source-derived-java\",\"sdkInputCoordinate\":\"org.mozilla.geckoview:geckoview:157.0.20261005135250\",\"sdkRuntimeCoordinate\":\"local.pocketchat.sdk:geckoview-caret:157.0.20261005135250-pocket3\",\"sdkInputAarSha256\":\"15f1edf3c58abcdaf2783f299b8c19c3a36272d348969106a9009671fef8d268\",\"sdkAarSha256\":\"f9fad20c02e554b00da51b72c8cd2643e121b4a81bc656dd5cf03de21ded2e72\",\"sdkClassesJarSha256\":\"237fd669f196b6efc6882a3e806a31e7de5b95b4ad1bef3e22233c6b41de684f\",\"sdkGeckoEditableClassSha256\":\"02e386e366fc7bad29eb4f5f92d5f762618eb97609c236cf5e0d42604e58fb00\",\"sdkManifestSha256\":\"e17c26595f25a7d87b250a92bd1359607e0ec859369f4ade312a129d2fe98902\",\"sdkBuildReceiptSha256\":\"c60be9646fca098442bbc64455b413aec1c88a02a2f437bbbe4fb05c2916fe3c\",\"sdkBuildSource\":\"4503e72d3bbbf5d7888aff98fc2c39658e0ba57d\",\"sdkBuildIdentity\":{\"sdkBuildKind\":\"source-derived-java\",\"sdkCoordinate\":\"org.mozilla.geckoview:geckoview:157.0.20261005135250\",\"sdkRuntimeCoordinate\":\"local.pocketchat.sdk:geckoview-caret:157.0.20261005135250-pocket3\",\"sdkInputCoordinate\":\"org.mozilla.geckoview:geckoview:157.0.20261005135250\",\"sdkInputAarSha256\":\"15f1edf3c58abcdaf2783f299b8c19c3a36272d348969106a9009671fef8d268\",\"sdkAarSha256\":\"f9fad20c02e554b00da51b72c8cd2643e121b4a81bc656dd5cf03de21ded2e72\",\"sdkClassesJarSha256\":\"237fd669f196b6efc6882a3e806a31e7de5b95b4ad1bef3e22233c6b41de684f\",\"sdkGeckoEditableClassSha256\":\"02e386e366fc7bad29eb4f5f92d5f762618eb97609c236cf5e0d42604e58fb00\",\"sdkManifestSha256\":\"e17c26595f25a7d87b250a92bd1359607e0ec859369f4ade312a129d2fe98902\",\"sdkBuildReceiptSha256\":\"c60be9646fca098442bbc64455b413aec1c88a02a2f437bbbe4fb05c2916fe3c\",\"sdkBuildSource\":\"4503e72d3bbbf5d7888aff98fc2c39658e0ba57d\",\"schema\":1,\"sourceCommit\":\"4503e72d3bbbf5d7888aff98fc2c39658e0ba57d\",\"sourceTree\":\"6987a3b413d223608f84c6ee45990df24fa2df03\",\"runId\":\"44928539243\",\"runAttempt\":\"1\"},\"package\":\"local.pocketchat.test\",\"apkBytes\":127442315,\"apkSha256\":\"35e2cbe3f5016894efdebfa54562727ab12997b0fd7a9e1c3db610fce0ce249b\",\"buildStampSha256\":\"ae5c4fcb686c93f65c1b7a75749786b3ba572ea84fdeb4661b948d51bc358850\",\"scope\":\"Installed synthetic integration APK bytes and embedded source stamp only\"},\"serviceClass\":\"local.pocketchat.NetworkClientBindingIntegrationActivity$MessengerService\",\"servicePid\":6892,\"serviceUid\":10209,\"serviceProcess\":\"local.pocketchat.test:transport_binding_services\",\"onBindAt\":317432,\"onBindMainLooper\":true,\"role\":\"messenger\",\"returnedNull\":false,\"messages\":[{\"id\":\"4a0ea07b-1c17-4231-9ec4-5ec2ecefcb7c\",\"slot\":0,\"action\":\"snapshot\",\"configuration\":\"\",\"generation\":\"\",\"stopReason\":\"UNKNOWN\",\"expectedGeneration\":\"\",\"sendingUid\":10209,\"receivedAt\":317435,\"replySent\":true},{\"id\":\"cbe1d225-a634-4d89-bfbb-c0ee25807919\",\"slot\":0,\"action\":\"detach\",\"configuration\":\"\",\"generation\":\"fixture-cf0785556bdd4af5a397da414f266281\",\"stopReason\":\"UNKNOWN\",\"expectedGeneration\":\"\",\"sendingUid\":10209,\"receivedAt\":317436,\"replySent\":true}]}\n",
+      "utf8Bytes": 3296,
+      "sha256": "39bea440ecad70b81934a17b36335944ef90b79a8d00e709f2ce3d9b96faa87c"
+    },
+    "completedCallbackJournal": {
+      "diagnosticWaitBegan": 317459,
+      "diagnosticWaitEnded": 317459,
+      "diagnosticWaitLimitMs": 3000,
+      "owner": "01bd9514-71e6-4b23-997b-1e601aded5e6",
+      "environmentIdentity": {
+        "slot": 0,
+        "generation": 0,
+        "environmentId": "d8871bac-785b-476a-aedf-1fdd4f3e7035"
+      },
+      "rawSummary": "网络事件 · 环境编号：1\n环境 ID：d8871bac-785b-476a-aedf-1fdd4f3e7035 · 环境代次：0\n仅固定事件与数值；不包含核心输出原文。\n字段：时间毫秒 / 单调时间 / 内部槽位 / 来源 / 记录器代次 / 环境 ID / 环境代次 / 核心代次 / 事件 / 原因 / 阶段 / 数值\n1795284312053\t317114\t0\tCONTROL\t01bd9514-71e6-4b23-997b-1e601aded5e6\td8871bac-785b-476a-aedf-1fdd4f3e7035\t0\tunknown\tIPC_NULL_BINDING\tCONTROL_UNAVAILABLE\tBIND\t0\n1795284312054\t317115\t0\tCONTROL\t01bd9514-71e6-4b23-997b-1e601aded5e6\td8871bac-785b-476a-aedf-1fdd4f3e7035\t0\tunknown\tIPC_BIND_TIMEOUT\tCONTROL_UNAVAILABLE\tBIND\t0\n1795284312374\t317435\t0\tCONTROL\t01bd9514-71e6-4b23-997b-1e601aded5e6\td8871bac-785b-476a-aedf-1fdd4f3e7035\t0\tunknown\tIPC_CONNECTED\tUNKNOWN\tBIND\t0\n1795284312376\t317437\t0\tCONTROL\t01bd9514-71e6-4b23-997b-1e601aded5e6\td8871bac-785b-476a-aedf-1fdd4f3e7035\t0\tunknown\tIPC_DETACH\tUNKNOWN\tIPC\t0\n",
+      "ownedRows": [
+        "1795284312053\t317114\t0\tCONTROL\t01bd9514-71e6-4b23-997b-1e601aded5e6\td8871bac-785b-476a-aedf-1fdd4f3e7035\t0\tunknown\tIPC_NULL_BINDING\tCONTROL_UNAVAILABLE\tBIND\t0",
+        "1795284312054\t317115\t0\tCONTROL\t01bd9514-71e6-4b23-997b-1e601aded5e6\td8871bac-785b-476a-aedf-1fdd4f3e7035\t0\tunknown\tIPC_BIND_TIMEOUT\tCONTROL_UNAVAILABLE\tBIND\t0",
+        "1795284312374\t317435\t0\tCONTROL\t01bd9514-71e6-4b23-997b-1e601aded5e6\td8871bac-785b-476a-aedf-1fdd4f3e7035\t0\tunknown\tIPC_CONNECTED\tUNKNOWN\tBIND\t0",
+        "1795284312376\t317437\t0\tCONTROL\t01bd9514-71e6-4b23-997b-1e601aded5e6\td8871bac-785b-476a-aedf-1fdd4f3e7035\t0\tunknown\tIPC_DETACH\tUNKNOWN\tIPC\t0"
+      ],
+      "journalMonotonicClock": "System.nanoTime()/1000000; distinct from elapsedRealtime call/wait clocks",
+      "source": "actual NetworkDiagnostics records emitted only by this production Client callback/command paths; no ServiceConnection method is called by the fixture"
+    },
+    "missingWaiter": {
+      "began": 317460,
+      "ended": 317461,
+      "elapsedMs": 1,
+      "failureClass": "java.io.IOException",
+      "failed": true
+    },
+    "missingCallbackJournal": {
+      "diagnosticWaitBegan": 317461,
+      "diagnosticWaitEnded": 317462,
+      "diagnosticWaitLimitMs": 3000,
+      "owner": "341bfb11-f68e-4d57-bdf3-7ca7269610fe",
+      "environmentIdentity": {
+        "slot": 0,
+        "generation": 0,
+        "environmentId": "d8871bac-785b-476a-aedf-1fdd4f3e7035"
+      },
+      "rawSummary": "网络事件 · 环境编号：1\n环境 ID：d8871bac-785b-476a-aedf-1fdd4f3e7035 · 环境代次：0\n仅固定事件与数值；不包含核心输出原文。\n字段：时间毫秒 / 单调时间 / 内部槽位 / 来源 / 记录器代次 / 环境 ID / 环境代次 / 核心代次 / 事件 / 原因 / 阶段 / 数值\n1795284312053\t317114\t0\tCONTROL\t01bd9514-71e6-4b23-997b-1e601aded5e6\td8871bac-785b-476a-aedf-1fdd4f3e7035\t0\tunknown\tIPC_NULL_BINDING\tCONTROL_UNAVAILABLE\tBIND\t0\n1795284312054\t317115\t0\tCONTROL\t01bd9514-71e6-4b23-997b-1e601aded5e6\td8871bac-785b-476a-aedf-1fdd4f3e7035\t0\tunknown\tIPC_BIND_TIMEOUT\tCONTROL_UNAVAILABLE\tBIND\t0\n1795284312374\t317435\t0\tCONTROL\t01bd9514-71e6-4b23-997b-1e601aded5e6\td8871bac-785b-476a-aedf-1fdd4f3e7035\t0\tunknown\tIPC_CONNECTED\tUNKNOWN\tBIND\t0\n1795284312376\t317437\t0\tCONTROL\t01bd9514-71e6-4b23-997b-1e601aded5e6\td8871bac-785b-476a-aedf-1fdd4f3e7035\t0\tunknown\tIPC_DETACH\tUNKNOWN\tIPC\t0\n1795284312400\t317461\t0\tCONTROL\t341bfb11-f68e-4d57-bdf3-7ca7269610fe\td8871bac-785b-476a-aedf-1fdd4f3e7035\t0\tunknown\tIPC_BIND_REJECTED\tCONTROL_UNAVAILABLE\tBIND\t0\n1795284312400\t317461\t0\tCONTROL\t341bfb11-f68e-4d57-bdf3-7ca7269610fe\td8871bac-785b-476a-aedf-1fdd4f3e7035\t0\tunknown\tIPC_BIND_TIMEOUT\tCONTROL_UNAVAILABLE\tBIND\t0\n",
+      "ownedRows": [
+        "1795284312400\t317461\t0\tCONTROL\t341bfb11-f68e-4d57-bdf3-7ca7269610fe\td8871bac-785b-476a-aedf-1fdd4f3e7035\t0\tunknown\tIPC_BIND_REJECTED\tCONTROL_UNAVAILABLE\tBIND\t0",
+        "1795284312400\t317461\t0\tCONTROL\t341bfb11-f68e-4d57-bdf3-7ca7269610fe\td8871bac-785b-476a-aedf-1fdd4f3e7035\t0\tunknown\tIPC_BIND_TIMEOUT\tCONTROL_UNAVAILABLE\tBIND\t0"
+      ],
+      "journalMonotonicClock": "System.nanoTime()/1000000; distinct from elapsedRealtime call/wait clocks",
+      "source": "actual NetworkDiagnostics records emitted only by this production Client callback/command paths; no ServiceConnection method is called by the fixture"
+    },
+    "checks": [
+      {
+        "name": "Fixture runs in its separate integration process",
+        "pass": true
+      },
+      {
+        "name": "Fixture process owns the installed package UID",
+        "pass": true
+      },
+      {
+        "name": "Actual null binding releases original caller before its ten second deadline",
+        "pass": true
+      },
+      {
+        "name": "First real bind was accepted for the private null Service",
+        "pass": true
+      },
+      {
+        "name": "Null callback releases the captured production gate",
+        "pass": true
+      },
+      {
+        "name": "Null owner is actually unbound once through Android",
+        "pass": true
+      },
+      {
+        "name": "Private Service records a real null onBind in another process",
+        "pass": true
+      },
+      {
+        "name": "Actual production callback journal contains exactly one owned null binding",
+        "pass": true
+      },
+      {
+        "name": "Next ordinary production call receives the real Messenger reply",
+        "pass": true
+      },
+      {
+        "name": "Next demand binds a distinct owner and gate without automatic retry",
+        "pass": true
+      },
+      {
+        "name": "Explicit detach unbinds only the Messenger owner once",
+        "pass": true
+      },
+      {
+        "name": "Service received original snapshot and detach command envelopes",
+        "pass": true
+      },
+      {
+        "name": "Real Messenger command sender UID matches the owned package",
+        "pass": true
+      },
+      {
+        "name": "Both actual bind attempts have one successful framework unbind",
+        "pass": true
+      },
+      {
+        "name": "Missing-component fault names an absent component in this test package",
+        "pass": true
+      },
+      {
+        "name": "Real missing-component bind returns false and wakes its caller",
+        "pass": true
+      },
+      {
+        "name": "False-return framework dispatcher is released exactly once",
+        "pass": true
+      },
+      {
+        "name": "Actual missing bind rejection is distinct from a null callback",
+        "pass": true
+      }
+    ],
+    "checkCount": 18,
+    "bindings": [
+      {
+        "missingComponent": false,
+        "attempts": [
+          {
+            "number": 1,
+            "connectionIdentity": 221689986,
+            "connectionClass": "local.pocketchat.NetworkTransportClient$Binding",
+            "gateIdentity": 111474677,
+            "gateCount": 0,
+            "target": "local.pocketchat.NetworkClientBindingIntegrationActivity$NullService",
+            "began": 316461,
+            "ended": 316470,
+            "accepted": true,
+            "error": "",
+            "unbindError": "",
+            "unbindAttempts": 1,
+            "unbindSuccesses": 1
+          },
+          {
+            "number": 2,
+            "connectionIdentity": 122647297,
+            "connectionClass": "local.pocketchat.NetworkTransportClient$Binding",
+            "gateIdentity": 71854474,
+            "gateCount": 0,
+            "target": "local.pocketchat.NetworkClientBindingIntegrationActivity$MessengerService",
+            "began": 317120,
+            "ended": 317121,
+            "accepted": true,
+            "error": "",
+            "unbindError": "",
+            "unbindAttempts": 1,
+            "unbindSuccesses": 1
+          }
+        ],
+        "outstanding": 0
+      },
+      {
+        "missingComponent": true,
+        "attempts": [
+          {
+            "number": 1,
+            "connectionIdentity": 174489913,
+            "connectionClass": "local.pocketchat.NetworkTransportClient$Binding",
+            "gateIdentity": 230239227,
+            "gateCount": 0,
+            "target": "local.pocketchat.AbsentNetworkClientBindingFixture",
+            "began": 317460,
+            "ended": 317461,
+            "accepted": false,
+            "error": "",
+            "unbindError": "",
+            "unbindAttempts": 1,
+            "unbindSuccesses": 1
+          }
+        ],
+        "outstanding": 0
+      }
+    ]
+  },
+  "installedAfter": {
+    "rawUtf8": "{\"schema\":1,\"sourceCommit\":\"4503e72d3bbbf5d7888aff98fc2c39658e0ba57d\",\"sourceTree\":\"6987a3b413d223608f84c6ee45990df24fa2df03\",\"dirtySource\":false,\"version\":\"2.1.15\",\"versionCode\":117,\"sdkCoordinate\":\"org.mozilla.geckoview:geckoview:157.0.20261005135250\",\"sdkBuildKind\":\"source-derived-java\",\"sdkInputCoordinate\":\"org.mozilla.geckoview:geckoview:157.0.20261005135250\",\"sdkRuntimeCoordinate\":\"local.pocketchat.sdk:geckoview-caret:157.0.20261005135250-pocket3\",\"sdkInputAarSha256\":\"15f1edf3c58abcdaf2783f299b8c19c3a36272d348969106a9009671fef8d268\",\"sdkAarSha256\":\"f9fad20c02e554b00da51b72c8cd2643e121b4a81bc656dd5cf03de21ded2e72\",\"sdkClassesJarSha256\":\"237fd669f196b6efc6882a3e806a31e7de5b95b4ad1bef3e22233c6b41de684f\",\"sdkGeckoEditableClassSha256\":\"02e386e366fc7bad29eb4f5f92d5f762618eb97609c236cf5e0d42604e58fb00\",\"sdkManifestSha256\":\"e17c26595f25a7d87b250a92bd1359607e0ec859369f4ade312a129d2fe98902\",\"sdkBuildReceiptSha256\":\"c60be9646fca098442bbc64455b413aec1c88a02a2f437bbbe4fb05c2916fe3c\",\"sdkBuildSource\":\"4503e72d3bbbf5d7888aff98fc2c39658e0ba57d\",\"sdkBuildIdentity\":{\"sdkBuildKind\":\"source-derived-java\",\"sdkCoordinate\":\"org.mozilla.geckoview:geckoview:157.0.20261005135250\",\"sdkRuntimeCoordinate\":\"local.pocketchat.sdk:geckoview-caret:157.0.20261005135250-pocket3\",\"sdkInputCoordinate\":\"org.mozilla.geckoview:geckoview:157.0.20261005135250\",\"sdkInputAarSha256\":\"15f1edf3c58abcdaf2783f299b8c19c3a36272d348969106a9009671fef8d268\",\"sdkAarSha256\":\"f9fad20c02e554b00da51b72c8cd2643e121b4a81bc656dd5cf03de21ded2e72\",\"sdkClassesJarSha256\":\"237fd669f196b6efc6882a3e806a31e7de5b95b4ad1bef3e22233c6b41de684f\",\"sdkGeckoEditableClassSha256\":\"02e386e366fc7bad29eb4f5f92d5f762618eb97609c236cf5e0d42604e58fb00\",\"sdkManifestSha256\":\"e17c26595f25a7d87b250a92bd1359607e0ec859369f4ade312a129d2fe98902\",\"sdkBuildReceiptSha256\":\"c60be9646fca098442bbc64455b413aec1c88a02a2f437bbbe4fb05c2916fe3c\",\"sdkBuildSource\":\"4503e72d3bbbf5d7888aff98fc2c39658e0ba57d\",\"schema\":1,\"sourceCommit\":\"4503e72d3bbbf5d7888aff98fc2c39658e0ba57d\",\"sourceTree\":\"6987a3b413d223608f84c6ee45990df24fa2df03\",\"runId\":\"44928539243\",\"runAttempt\":\"1\"},\"package\":\"local.pocketchat.test\",\"apkBytes\":127442315,\"apkSha256\":\"35e2cbe3f5016894efdebfa54562727ab12997b0fd7a9e1c3db610fce0ce249b\",\"buildStampSha256\":\"ae5c4fcb686c93f65c1b7a75749786b3ba572ea84fdeb4661b948d51bc358850\",\"scope\":\"Installed synthetic integration APK bytes and embedded source stamp only\"}\n",
+    "utf8Bytes": 2408,
+    "sha256": "d9c336825c5c73b249bdbde705d3c829b912491bb4699e7f25d5b1bdcebc1358"
+  },
+  "packageUidAfterRaw": "package:local.pocketchat.test uid:10209\n",
+  "verification": {
+    "actualAndroidExecution": true,
+    "actualFrameworkBinding": true,
+    "actualMessengerIpc": true,
+    "checks": 18,
+    "nullCallbacks": 1,
+    "frameworkBindCalls": 3,
+    "successfulFrameworkUnbindCalls": 3,
+    "productionNetworkServiceFaulted": false,
+    "securityExceptionAndroidAcceptance": false,
+    "bindingDiedAndroidAcceptance": false,
+    "physicalPhoneAcceptance": false
+  }
+}
