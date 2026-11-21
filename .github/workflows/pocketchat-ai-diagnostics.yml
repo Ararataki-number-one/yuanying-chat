@@ -98,9 +98,10 @@ jobs:
           print("Verified diagnostics update channel")
           PY
             signature=$("$apksigner" verify --verbose --print-certs "$apk")
-            actual_signer=$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' <<< "$signature" | tr 'A-F' 'a-f')
+            actual_signer=$(sed -nE 's/^.*certificate SHA-256 digest:[[:space:]]*([0-9A-Fa-f]{64})[[:space:]]*$/\1/p'               <<< "$signature" | tr 'A-F' 'a-f' | sort -u)
             if [[ "$actual_signer" != "$signer" ]]; then
               echo "::error::APK signer fingerprint does not match the temporary test signer ($abi)"
+              printf 'Expected: %s\nVerified APK fingerprints: %s\n' "$signer" "$actual_signer"
               exit 1
             fi
             printf 'Verified temporary test signer %s (%s)\n' "$actual_signer" "$abi"
