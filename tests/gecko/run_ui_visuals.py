@@ -67,6 +67,50 @@ def observe_scrolled_download(invocation_nonce,deadline):
 def click(xml,label):
     node=next(n for n in ET.fromstring(xml).iter('node') if n.attrib.get('text')==label)
     x1,y1,x2,y2=map(int,re.findall(r'\d+',node.attrib['bounds']));adb('shell','input','tap',str((x1+x2)//2),str((y1+y2)//2))
+def entry_mode_geometry(xml,label):
+    """Read only the controlled dialog's enabled button and owner geometry."""
+    nodes=list(ET.fromstring(xml).iter('node'))
+    def owned(node,kind):
+        return node.attrib.get('package')==package and node.attrib.get('class')=='android.widget.'+kind
+    title=[node for node in nodes if owned(node,'TextView') and node.attrib.get('text')=='选择入口']
+    target=[node for node in nodes if owned(node,'Button') and node.attrib.get('text')==label
+            and node.attrib.get('enabled')=='true' and node.attrib.get('clickable')=='true']
+    if len(title)!=1 or len(target)!=1:return None
+    def rect(node):
+        match=re.fullmatch(r'\[(\d+),(\d+)\]\[(\d+),(\d+)\]',node.attrib.get('bounds',''))
+        result=tuple(map(int,match.groups())) if match else ()
+        return result if result and result[0]<result[2] and result[1]<result[3] else None
+    header,button=rect(title[0]),rect(target[0])
+    if header is None or button is None:return None
+    return (header,button,target[0].attrib.get('selected')=='true')
+
+def switch_auto_random(stem):
+    # Separate read-only preparation starts here, after the original scene
+    # readiness and screenshot. Keep the original tap and post-dump budgets.
+    label='自动随机'
+    preflight_deadline=time.monotonic()+30
+    trace=[]
+    tap=None
+    try:
+        previous=None
+        while True:
+            raw=dump(deadline=preflight_deadline)
+            current=entry_mode_geometry(raw,label)
+            if len(trace)<24:trace.append({'phase':'before','geometry':current})
+            if current is not None and current==previous and not current[2]:break
+            previous=current
+        x1,y1,x2,y2=current[1];tap=((x1+x2)//2,(y1+y2)//2)
+        adb('shell','input','tap',*map(str,tap))
+        raw=dump()
+        trace.append({'phase':'after','geometry':entry_mode_geometry(raw,label)})
+        assert '重新随机' in raw
+        return raw
+    finally:
+        (out/(stem+'-auto-random-tap.json')).write_text(json.dumps(
+            {'schema':1,'sourceCommit':source,'targetLabel':label,'observations':trace,'tap':tap},
+            ensure_ascii=False,separators=(',',':'))+'\n')
+
+
 def click_editor_tab(xml,label):
     deadline=time.monotonic()+20;swipes=0
     while time.monotonic()<deadline:
@@ -274,7 +318,7 @@ try:
         stem=f'network-latency-{width}-font{scale}'
         (out/(stem+'.xml')).write_text(xml);(out/(stem+'.png')).write_bytes(subprocess.check_output([args.adb,'-s',args.serial,'exec-out','screencap','-p'],timeout=30))
         if scale==1:
-            click(xml,'自动随机');xml=dump();assert '重新随机' in xml
+            xml=switch_auto_random(stem)
             click(xml,'手动指定');xml=dump();assert any(n.attrib.get('class')=='android.widget.RadioButton' for n in ET.fromstring(xml).iter('node'))
             click(xml,'自动优选');xml=dump();assert '勾选允许使用的入口' in xml and '重新随机' not in xml
         optimization.append({'viewport':width,'fontScale':scale,'image':stem+'.png','xml':stem+'.xml','poolCheckboxes':len(choices)})

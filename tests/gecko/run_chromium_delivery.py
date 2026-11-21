@@ -20,7 +20,8 @@ from stage_chromium_module import ASSET_SHA, ABI_CONFIGS, ABIS, DELIVERY, SIGNER
 ACTIVITY_NS = 'local.pocketchat.'
 PACKAGES = ('local.pocketchat', 'local.pocketchat.test')
 OFFLINE_SCREEN = '系统网络尚未连接'
-FIXTURE = 'local.pocketchat.chromiumfixture/.RouteFixture'
+FIXTURE_PACKAGE = 'local.pocketchat.chromiumfixture'
+FIXTURE = FIXTURE_PACKAGE + '/.RouteFixture'
 FEATURE = 'chromium'
 API37_HOST_SCOPE = 'api37-debug-candidate-stock-webview-host'
 API37_RENDER_SCOPE = 'api37-debug-candidate-stock-webview-renderer'
@@ -277,6 +278,44 @@ class Device:
         require(self.run_as('cat', 'files/pocketchat-chromium-delivery-fixture') == self.nonce,
                 'Private data marker was not retained by split installation')
 
+    def install_offline_fixture(self, fixture, report):
+        target = self.args.package
+        apk_signer(self.args.apksigner, fixture, 29, self.args.signer)
+        size, digest = fixture.stat().st_size, sha256(fixture)
+        observed = dict(runNonce=self.nonce, expectedFixtureApkSha256=digest,
+                        fixtureSignerSha256=self.args.signer)
+        report['offlineFixtureInstall'] = observed
+        require(not self.shell('pm', 'path', FIXTURE_PACKAGE, check=False),
+                'Offline instrumentation package already exists on this disposable emulator')
+        # Explicit streaming avoids asynchronous install modes. Unlike adb(),
+        # keep both original channels, including the adb banner and final LF.
+        try:
+            proc = subprocess.run([self.args.adb, '-s', self.args.serial, 'install',
+                                   '--streaming', '--no-incremental', '-t', str(fixture)],
+                                  capture_output=True, timeout=self.args.timeout)
+        except subprocess.TimeoutExpired as error:
+            observed.update(returnCode=None, timedOut=True,
+                            stdout=(error.stdout or b'').decode('utf-8', errors='backslashreplace'),
+                            stderr=(error.stderr or b'').decode('utf-8', errors='backslashreplace'))
+            raise
+        observed.update(returnCode=proc.returncode,
+                        stdout=proc.stdout.decode('utf-8', errors='backslashreplace'),
+                        stderr=proc.stderr.decode('utf-8', errors='backslashreplace'))
+        require(streaming_install_succeeded(proc.returncode, proc.stdout, proc.stderr),
+                'Same-signer offline fixture install did not report an exact success')
+        package_paths = self.shell('pm', 'path', FIXTURE_PACKAGE).splitlines()
+        observed['packagePaths'] = package_paths
+        require(len(package_paths) == 1, 'Expected one installed offline fixture base and no splits')
+        path_match = re.fullmatch(r'package:(/data/app/(?:[A-Za-z0-9_.~=+-]+/)+base[.]apk)', package_paths[0])
+        require(path_match, 'Offline fixture returned an unexpected installed APK path')
+        path = path_match[1]
+        self.verify_device_file(path, {'bytes': size, 'sha256': digest})
+        instrumentation = self.shell('pm', 'list', 'instrumentation', '-f', target).splitlines()
+        observed['registeredInstrumentation'] = instrumentation
+        require(instrumentation == [f'instrumentation:{path}={FIXTURE} (target={target})'],
+                'Installed fixture instrumentation does not bind the exact APK to the expected base package')
+        observed['exactInstalledFixtureVerified'] = True
+
     def require_default_gecko(self):
         self.shell('am', 'force-stop', self.args.package)
         raw = self.run_as('cat', 'shared_prefs/chat.xml')
@@ -285,6 +324,15 @@ class Device:
         choices = xml.findall("*[@name='browserStartScreen']")
         require(not choices or (len(choices) == 1 and choices[0].tag == 'string'
                                 and choices[0].text == 'chatgpt-enhanced'), 'Default environment is not Gecko')
+
+
+def streaming_install_succeeded(returncode, stdout, stderr):
+    lines = stdout.splitlines()
+    # AOSP prints this banner separately from the package-manager result.
+    # Never match arbitrary prefixes, a result embedded in an error, or
+    # duplicated success lines; installation is also checked on-device.
+    return returncode == 0 and not stderr.strip() and (
+        lines == [b'Success'] or lines == [b'Performing Streamed Install', b'Success'])
 
 
 def offline_receipt(transcript, nonce, base, feature):
@@ -328,9 +376,7 @@ def run(args, report):
     report['geckoAfterInstallForeground'] = device.wait(lambda: device.resumed('MainActivity'), 'Module install changed the Gecko default')
     report['geckoAfterInstallNative'] = device.wait(device.gecko_runtime, 'Default Gecko did not load after feature install')
     device.require_default_gecko()
-    fixture = args.fixture_apk.resolve()
-    apk_signer(args.apksigner, fixture, 29, args.signer)
-    require(device.adb('install', '-t', str(fixture)) == 'Success', 'Could not install the same-signer offline fixture')
+    device.install_offline_fixture(args.fixture_apk.resolve(), report)
     log = device.shell('am', 'instrument', '-w', '-e', 'fixtureMode', 'prepare-offline-chromium',
                        '-e', 'runNonce', device.nonce, '-e', 'baseSha256', artifacts['base']['sha256'],
                        '-e', 'featureSha256', artifacts[FEATURE]['sha256'], FIXTURE, timeout=180)

@@ -121,12 +121,28 @@ public final class GeckoIpTimeZoneIntegrationActivity extends MainActivity {
   void next(String name,Step after){try{stage=name;deadline=SystemClock.elapsedRealtime()+60000;publish();control("stage",J.obj("case",name),ignored->run(after));}catch(Throwable error){failed(error);}}
   void run(Step step){try{step.run();}catch(Throwable error){failed(error);}}
   void check(String id,boolean ok)throws Exception{checks.put(J.obj("id",id,"pass",ok));if(!ok)throw new AssertionError(id);}
-  void control(String action,JSONObject extra,Consumer<JSONObject> done){io.execute(()->{try{
-    JSONObject body=J.obj("sourceCommit",build.getString("sourceCommit"),"runNonce",nonce,"action",action);for(Iterator<String> keys=extra.keys();keys.hasNext();){String key=keys.next();body.put(key,extra.get(key));}
-    HttpURLConnection channel=(HttpURLConnection)new URL("http://127.0.0.1:18769/__ip-control").openConnection();channel.setConnectTimeout(3000);channel.setReadTimeout(3000);channel.setInstanceFollowRedirects(false);channel.setRequestMethod("POST");channel.setDoOutput(true);byte[] bytes=body.toString().getBytes(StandardCharsets.UTF_8);channel.setFixedLengthStreamingMode(bytes.length);channel.setRequestProperty("Content-Type","application/json");
-    JSONObject value;try{try(OutputStream out=channel.getOutputStream()){out.write(bytes);}if(channel.getResponseCode()!=200)throw new IOException("Controlled host command rejected");try(InputStream in=channel.getInputStream()){value=GeckoTimeZonePolicy.object(J.text(in,262144).getBytes(StandardCharsets.UTF_8),262144);}}finally{channel.disconnect();}
-    probe.post(()->{if(!terminal)done.accept(value);});
-  }catch(Throwable error){probe.post(()->failed(error));}});}
+  private static final class ControlFailure extends IOException {
+    ControlFailure(String action,String operation,int status,int bytes,Throwable cause){
+      super((Arrays.asList("stage","snapshot","behavior","release").contains(action)?action:"unknown")
+          +"-"+operation+"-status-"+status+"-bytes-"+bytes,cause);
+    }
+  }
+  void control(String action,JSONObject extra,Consumer<JSONObject> done){io.execute(()->{
+    String operation="prepare";int status=0,responseBytes=0;
+    try{
+      JSONObject body=J.obj("sourceCommit",build.getString("sourceCommit"),"runNonce",nonce,"action",action);for(Iterator<String> keys=extra.keys();keys.hasNext();){String key=keys.next();body.put(key,extra.get(key));}
+      HttpURLConnection channel=(HttpURLConnection)new URL("http://127.0.0.1:18769/__ip-control").openConnection();channel.setConnectTimeout(3000);channel.setReadTimeout(3000);channel.setInstanceFollowRedirects(false);channel.setRequestMethod("POST");channel.setDoOutput(true);byte[] bytes=body.toString().getBytes(StandardCharsets.UTF_8);channel.setFixedLengthStreamingMode(bytes.length);channel.setRequestProperty("Content-Type","application/json");
+      JSONObject value;try{
+        operation="write";try(OutputStream out=channel.getOutputStream()){out.write(bytes);}
+        operation="status";status=channel.getResponseCode();if(status!=200)throw new IOException("Controlled host command rejected");
+        operation="body";try(InputStream in=channel.getInputStream()){
+          byte[] received=J.text(in,262144).getBytes(StandardCharsets.UTF_8);responseBytes=received.length;
+          operation="decode";value=GeckoTimeZonePolicy.object(received,262144);
+        }
+      }finally{channel.disconnect();}
+      probe.post(()->{if(!terminal)done.accept(value);});
+    }catch(Throwable error){ControlFailure observed=new ControlFailure(action,operation,status,responseBytes,error);probe.post(()->failed(observed));}
+  });}
   void snapshot(Consumer<JSONObject> done){control("snapshot",new JSONObject(),done);}
   int geoCount(JSONObject value){int count=0;JSONArray rows=value.optJSONArray("events");if(rows!=null)for(int i=0;i<rows.length();i++)if("geo".equals(rows.optJSONObject(i).optString("kind")))count++;return count;}
   void page(Consumer<JSONObject> done){final GeckoSession sdk=remote.current;final long nav=session.navigationEpoch;
@@ -266,7 +282,7 @@ public final class GeckoIpTimeZoneIntegrationActivity extends MainActivity {
   }catch(Throwable error){failed(error);}}));}
   void complete()throws Exception{check("scope.worker-and-sw-unclaimed",!session.timeZone.status().optBoolean("workerCoverageVerified",true)&&!session.timeZone.status().optBoolean("serviceWorkerCoverageVerified",true));check("scope.generic-not-gpt",!session.chatAutomationAllowed()&&session.driverTarget()==null);terminal=true;stage="complete";publish();}
   void failed(Throwable error){if(terminal)return;terminal=true;failedStage=stage;stage="failed";failure=error.getClass().getSimpleName();String message=error.getMessage();
-    if(error instanceof AssertionError&&message!=null&&message.matches("[A-Za-z0-9._-]{1,160}"))failure+=":"+message;
+    if((error instanceof AssertionError||error instanceof ControlFailure)&&message!=null&&message.matches("[A-Za-z0-9._-]{1,160}"))failure+=":"+message;
     else for(StackTraceElement frame:error.getStackTrace())if(frame.getClassName().startsWith("local.pocketchat.GeckoIpTimeZoneIntegrationActivity")){failure+="@"+frame.getMethodName()+":"+frame.getLineNumber();break;}
     try{publish();}catch(Exception ignored){}}
   void publish()throws Exception{if(build==null)return;JSONObject value=J.obj("schema",1,"fixtureType","gecko-production-ip-timezone-v1","engine","gecko","status",terminal?(failure.isEmpty()?"passed":"failed"):"running","stage",stage,"failedAtStage",failedStage,"failure",failure,"sourceCommit",build.getString("sourceCommit"),"sourceTree",build.getString("sourceTree"),"runNonce",nonce,"buildIdentity",build,"setup",setup==null?new JSONObject():setup,"checks",checks,"cases",cases,"nativeEvents",events,"lastPage",lastPage,"currentTimeZonePolicy",session==null?new JSONObject():session.timeZone.status(),"actualAndroidExecution",true,"actualGeckoExecution",remote!=null&&remote.current!=null,"syntheticGeoService",true,"actualPublicIpGeolocationVerified",false,"workerCoverageVerified",false,"serviceWorkerCoverageVerified",false,"fingerprintProtectionVerified",false,"scope","Canonical MainActivity profile6, actual production UI/native timezone/private bootstrap plus controlled HTTPS proxy responses. Geo JSON is synthetic, not public-location proof; raw Worker clocks and capability-denial observations do not establish full Worker timezone isolation.");
