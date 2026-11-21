@@ -886,6 +886,34 @@ def prepare_background(case, adb, out, *, package, component, pid):
         record['elapsedSeconds'] = time.monotonic() - started
 
 
+def returned_controlled_gecko_document(xml, package, bounds):
+    """Readiness witness for the existing API 35 management-return window."""
+    tree = ET.fromstring(xml)
+    def owned_visible(node):
+        return node.get('package') == package and node.get('visible-to-user') != 'false'
+
+    views = [node for node in tree.iter('node') if owned_visible(node)
+             and node.get('class') == 'android.webkit.WebView' and bounds(node) is not None]
+    if len(views) != 1:
+        return False
+    view = views[0]
+    left, top, right, bottom = bounds(view)
+    parents = {child: parent for parent in tree.iter() for child in parent}
+    markers = []
+    for node in view.iter('node'):
+        if node is view or not owned_visible(node) or node.get('text') != 'Controlled long reading document':
+            continue
+        rect = bounds(node)
+        if rect is None or not (left <= rect[0] < rect[2] <= right and top <= rect[1] < rect[3] <= bottom):
+            continue
+        ancestor = parents.get(node)
+        while ancestor is not view and ancestor is not None and owned_visible(ancestor):
+            ancestor = parents.get(ancestor)
+        if ancestor is view:
+            markers.append(node)
+    return len(markers) == 1
+
+
 def capture_acceptance_suite(args, report, capture, adb, wait_for, tap, screenshot, api):
     """Fail closed on route/configuration failures; save every original observation."""
     result = report['glassUiAcceptance'] = dict(schema=1, navigationContract=4,status='started',
@@ -1210,7 +1238,12 @@ def capture_acceptance_suite(args, report, capture, adb, wait_for, tap, screensh
         open_menu_action(case,xml,'管理全部环境','open-environments')
         artifact(case, 'environments', lambda value: api['selected_navigation'](value, '环境'))
         key(case, 4, 'Return from environment management to the retained conversation')
-        xml = artifact(case, 'environments-returned', chat, photograph=False)
+        # API 35 can expose the toolbar during return before the retained
+        # Gecko surface is attached to the accessibility hierarchy. Use the
+        # existing observation window; a missed tap still fails, without retry.
+        xml = artifact(case, 'environments-returned', lambda value: chat(value)
+                       and (args.device_api != 35 or returned_controlled_gecko_document(value, package, bounds)),
+                       photograph=False)
         for exit_method in ('button', 'back'):
             open_menu_action(case,xml,'进入专注阅读','open-reading-'+exit_method,sheet='tools')
             xml = artifact(case, 'reading-entered-' + exit_method,

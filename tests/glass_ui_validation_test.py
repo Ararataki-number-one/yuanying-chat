@@ -27,6 +27,45 @@ import gecko_event_transfer_test as event_controls
 from profile_event_journal_discovery_test import discovery_class
 
 
+class ReturnedControlledGeckoDocumentTest(unittest.TestCase):
+    package = 'local.pocketchat.test'
+
+    def frame(self, fault=None):
+        root = ET.Element('hierarchy')
+        attrs = {'package': self.package, 'visible-to-user': 'true', 'bounds': '[0,313][1236,2418]'}
+        native = ET.SubElement(root, 'node', {**attrs, 'class': 'android.widget.FrameLayout'})
+        ET.SubElement(native, 'node', {**attrs, 'class': 'android.widget.Button', 'content-desc': '网页工具'})
+        if fault != 'toolbar-only':
+            web = ET.SubElement(native, 'node', {**attrs, 'class': 'android.webkit.WebView'})
+            if fault == 'foreign-web':
+                web.set('package', 'some.other.package')
+            if fault == 'duplicate-view':
+                native.append(copy.deepcopy(web))
+            parent = ET.SubElement(native if fault == 'outside' else web, 'node', attrs)
+            if fault == 'hidden-ancestor':
+                parent.set('visible-to-user', 'false')
+            if fault == 'foreign-ancestor':
+                parent.set('package', 'some.other.package')
+            node = ET.SubElement(parent, 'node', {**attrs, 'class': 'android.view.View',
+                'text': 'Controlled long reading document', 'bounds': '[24,584][838,649]'})
+            if fault == 'hidden-mark':
+                node.set('visible-to-user', 'false')
+            if fault == 'clipped-mark':
+                node.set('bounds', '[24,2400][838,2450]')
+            if fault == 'other-document':
+                node.set('text', 'Different document')
+            if fault == 'duplicate-marker':
+                parent.append(copy.deepcopy(node))
+        return ET.tostring(root, encoding='unicode')
+
+    def test_owned_visible_controlled_document_is_required(self):
+        self.assertTrue(validation.returned_controlled_gecko_document(self.frame(), self.package, capture.bounds))
+        for fault in ('toolbar-only', 'foreign-web', 'duplicate-view', 'outside', 'hidden-ancestor',
+                      'foreign-ancestor', 'hidden-mark', 'clipped-mark', 'other-document', 'duplicate-marker'):
+            with self.subTest(fault=fault):
+                self.assertFalse(validation.returned_controlled_gecko_document(self.frame(fault), self.package, capture.bounds))
+
+
 class GlassDocumentEventDiscoveryTest(unittest.TestCase):
     """Exercise the actual glass consumer with explicit synthetic native bytes."""
 

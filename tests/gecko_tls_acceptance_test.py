@@ -59,6 +59,35 @@ _WORKSPACE_AFTER = (
 _WORKSPACE_CONTEXT = _WORKSPACE_BEFORE + _WORKSPACE_SEED + _WORKSPACE_AFTER
 
 
+_ENGINE_FIXTURE_MANIFEST_BYTES = 13571
+_ENGINE_FIXTURE_MANIFEST_SHA256 = 'b9da2b30d9e785e55449a304d110e30b47d803d57f8918ddcdc41be8b7c2f03b'
+_ENGINE_FIXTURE_BEFORE = b'  <application android:name="local.pocketchat.IpTimeZoneFixtureApplication" tools:replace="android:name">\n'
+_ENGINE_FIXTURE_METADATA = b'    <meta-data android:name="local.pocketchat.LEGACY_WEBVIEW_FIXTURE" android:value="true" />\n'
+_ENGINE_FIXTURE_AFTER = (
+    b'    <activity android:name="local.pocketchat.GeckoTlsCpuIpComboIntegrationActivity" android:exported="true" '
+    b'android:process=":profile6" android:launchMode="singleTask" android:taskAffinity="local.pocketchat.test.gecko_tls_cpu_ip_combo" '
+    b'android:configChanges="orientation|screenSize|keyboardHidden|uiMode" />\n')
+_ENGINE_FIXTURE_CONTEXT = _ENGINE_FIXTURE_BEFORE + _ENGINE_FIXTURE_METADATA + _ENGINE_FIXTURE_AFTER
+
+
+def manifest_before_reviewed_engine_fixture(raw):
+    """Invert only the exact integration-only fixture line for the historical proof.
+
+    Actual packaging, TLS checks and source evidence continue to use the raw
+    current integration manifest; this does not edit or ignore runtime inputs.
+    """
+    if type(raw) is not bytes:
+        raise ValueError('Complete engine fixture manifest bytes required')
+    if (len(raw), hashlib.sha256(raw).hexdigest()) != (_ENGINE_FIXTURE_MANIFEST_BYTES, _ENGINE_FIXTURE_MANIFEST_SHA256):
+        raise ValueError('Exact reviewed engine fixture manifest required')
+    if raw.count(_ENGINE_FIXTURE_CONTEXT) != 1 or raw.count(_ENGINE_FIXTURE_METADATA) != 1:
+        raise ValueError('Unique reviewed integration-only engine fixture registration required')
+    restored = raw.replace(_ENGINE_FIXTURE_CONTEXT, _ENGINE_FIXTURE_BEFORE + _ENGINE_FIXTURE_AFTER, 1)
+    if (len(restored), hashlib.sha256(restored).hexdigest()) != (_WORKSPACE_MANIFEST_BYTES, _WORKSPACE_MANIFEST_SHA256):
+        raise ValueError('Entire reviewed workspace manifest did not restore')
+    return restored
+
+
 def manifest_before_reviewed_workspace_seed(raw):
     """Restore the exact already-reviewed UI manifest for historical comparisons."""
     if type(raw) is not bytes:
@@ -111,16 +140,68 @@ class NativeTrustProtocolControls(unittest.TestCase):
             report=json.loads(result.stdout);self.assertEqual(report['status'],'passed');self.assertTrue(report['executionInputsUnchanged'])
             self.assertIs(report['actualAndroidExecution'],False);self.assertIs(report['actualGeckoExecution'],False)
 
-class ReviewedWorkspaceManifestControls(unittest.TestCase):
+class ReviewedEngineFixtureManifestControls(unittest.TestCase):
     def setUp(self):
         self.actual = (ROOT/'tests/gecko/AndroidManifest.xml').read_bytes()
+
+    def test_exact_engine_fixture_roundtrip_preserves_all_nonfixture_bytes(self):
+        restored = manifest_before_reviewed_engine_fixture(self.actual)
+        self.assertEqual((len(restored), hashlib.sha256(restored).hexdigest()),
+                         (_WORKSPACE_MANIFEST_BYTES, _WORKSPACE_MANIFEST_SHA256))
+        anchor = _ENGINE_FIXTURE_BEFORE + _ENGINE_FIXTURE_AFTER
+        self.assertEqual(restored.count(anchor), 1)
+        self.assertEqual(restored.replace(anchor, _ENGINE_FIXTURE_CONTEXT, 1), self.actual)
+        self.assertEqual((ROOT/'tests/gecko/AndroidManifest.xml').read_bytes(), self.actual)
+        self.assertNotIn(b'local.pocketchat.LEGACY_WEBVIEW_FIXTURE', (ROOT/'app/src/main/AndroidManifest.xml').read_bytes())
+        gradle = (ROOT/'app/build.gradle').read_text()
+        self.assertEqual(gradle.count("manifest.srcFile('../tests/gecko/AndroidManifest.xml')"), 1)
+        self.assertRegex(gradle, r"integration \{[^\n]*manifest\.srcFile\('\.\./tests/gecko/AndroidManifest\.xml'\)")
+        self.assertIn("applicationIdSuffix '.test'", gradle)
+
+    def test_missing_moved_duplicate_false_and_unrelated_engine_fixture_rejected(self):
+        line = _ENGINE_FIXTURE_METADATA
+        removed = self.actual.replace(line, b'', 1)
+        variants = [
+            ('missing', removed), ('moved', removed.replace(b'</application>', line+b'</application>', 1)),
+            ('duplicate', self.actual.replace(line, line*2, 1)),
+            ('false', self.actual.replace(line, line.replace(b'"true"', b'"false"'), 1)),
+            ('wrong-name', self.actual.replace(line, line.replace(b'LEGACY_WEBVIEW_FIXTURE', b'OTHER_METADATA'), 1)),
+            ('TLS-provider-change', self.actual.replace(b'gecko-tls-cpu-ip-combo-evidence"', b'gecko-tls-wrong-evidence"', 1)),
+            ('unrelated-byte', self.actual.replace(b'xmlns:tools=', b'xmlns:toolx=', 1)),
+        ]
+        for label, raw in variants:
+            self.assertNotEqual(raw, self.actual)
+            with self.subTest(label=label), self.assertRaisesRegex(ValueError, 'Exact reviewed engine fixture manifest required'):
+                manifest_before_reviewed_engine_fixture(raw)
+            NEGATIVE_CONTROLS.append('reviewed integration-only engine fixture '+label)
+
+    def test_engine_fixture_anchor_and_restored_identity_reject_forged_input_pin(self):
+        variants = [
+            ('anchor-drift', self.actual.replace(_ENGINE_FIXTURE_CONTEXT, _ENGINE_FIXTURE_BEFORE + _ENGINE_FIXTURE_AFTER, 1),
+             'Unique reviewed integration-only engine fixture registration required'),
+            ('unrelated-byte-with-pin', self.actual.replace(b'xmlns:tools=', b'xmlns:toolx=', 1),
+             'Entire reviewed workspace manifest did not restore'),
+        ]
+        for label, raw, reason in variants:
+            self.assertNotEqual(raw, self.actual)
+            with self.subTest(label=label), patch.dict(globals(), {
+                    '_ENGINE_FIXTURE_MANIFEST_BYTES': len(raw), '_ENGINE_FIXTURE_MANIFEST_SHA256': hashlib.sha256(raw).hexdigest()}):
+                with self.assertRaisesRegex(ValueError, reason):
+                    manifest_before_reviewed_engine_fixture(raw)
+            NEGATIVE_CONTROLS.append('reviewed integration-only engine fixture '+label)
+
+
+class ReviewedWorkspaceManifestControls(unittest.TestCase):
+    def setUp(self):
+        self.integration = (ROOT/'tests/gecko/AndroidManifest.xml').read_bytes()
+        self.actual = manifest_before_reviewed_engine_fixture(self.integration)
 
     def test_exact_workspace_seed_roundtrip_preserves_the_actual_manifest(self):
         restored = manifest_before_reviewed_workspace_seed(self.actual)
         self.assertEqual((len(restored), hashlib.sha256(restored).hexdigest()),
                          (_UI_MANIFEST_CURRENT_BYTES, _UI_MANIFEST_CURRENT_SHA256))
         self.assertEqual(restored.replace(_WORKSPACE_BEFORE + _WORKSPACE_AFTER, _WORKSPACE_CONTEXT, 1), self.actual)
-        self.assertEqual((ROOT/'tests/gecko/AndroidManifest.xml').read_bytes(), self.actual)
+        self.assertEqual((ROOT/'tests/gecko/AndroidManifest.xml').read_bytes(), self.integration)
 
     def test_workspace_seed_rejects_removed_moved_changed_and_duplicate_registrations(self):
         removed = self.actual.replace(_WORKSPACE_SEED, b'', 1)
@@ -157,7 +238,7 @@ class ReviewedUiManifestControls(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.actual = (ROOT/'tests/gecko/AndroidManifest.xml').read_bytes()
-        cls.current = manifest_before_reviewed_workspace_seed(cls.actual)
+        cls.current = manifest_before_reviewed_workspace_seed(manifest_before_reviewed_engine_fixture(cls.actual))
 
     def reject(self, variants):
         for label, raw in variants:
@@ -657,7 +738,7 @@ class ProducerBoundaryControls(unittest.TestCase):
         self.assertIn('Binder.getCallingUid()!=2000',provider);self.assertIn('Files.isSymbolicLink',provider)
         original=subprocess.check_output(['git','show','e4a20469326f16dc8ff8cfabd4fe67bf3d0148de:tests/gecko/AndroidManifest.xml'],cwd=ROOT,text=True)
         current_manifest = (ROOT/'tests/gecko/AndroidManifest.xml').read_bytes()
-        reviewed_ui = manifest_before_reviewed_workspace_seed(current_manifest)
+        reviewed_ui = manifest_before_reviewed_workspace_seed(manifest_before_reviewed_engine_fixture(current_manifest))
         current = manifest_before_reviewed_ui_additions(reviewed_ui).decode('utf-8')
         filtered='\n'.join(line for line in current.split('\n') if not any(name in line for name in ('GeckoTlsAcceptance','NativeTlsProbe','GeckoTlsCpuIpCombo')))
         self.assertEqual(filtered,original)
