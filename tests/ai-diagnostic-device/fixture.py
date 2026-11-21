@@ -272,17 +272,23 @@ class _Server(socketserver.TCPServer):
         except Exception:
             self.handle_error(request, client_address)
         finally:
-            self.shutdown_request(request)
-            self._release(request)
-            with self._active_lock:
-                self._workers.discard(threading.current_thread())
+            try:
+                self.shutdown_request(request)
+            finally:
+                try:
+                    self._release(request)
+                finally:
+                    with self._active_lock:
+                        self._workers.discard(threading.current_thread())
 
     def server_close(self):
-        super().server_close()
-        with self._active_lock:
-            workers = tuple(self._workers)
-        for worker in workers:
-            worker.join()
+        try:
+            super().server_close()
+        finally:
+            with self._active_lock:
+                workers = tuple(self._workers)
+            for worker in workers:
+                worker.join()
 
     def handle_error(self, request, client_address):
         # socketserver's default would print a traceback and input-associated
@@ -297,7 +303,10 @@ class _Server(socketserver.TCPServer):
                     sock.shutdown(socket.SHUT_RDWR)
                 except OSError:
                     pass
-                sock.close()
+                try:
+                    sock.close()
+                except OSError:
+                    pass
 
 
 class _Handler(socketserver.BaseRequestHandler):
@@ -357,13 +366,21 @@ def serve():
                                       kwargs={"poll_interval": 0.05}, daemon=True)
             worker.start()
         except Exception:
-            server.close_active()
-            server.server_close()
+            try:
+                server.close_active()
+            finally:
+                server.server_close()
             raise RuntimeError("fixture_listener_start_failed") from None
         try:
             yield fixture
         finally:
-            server.close_active()
-            server.shutdown()
-            server.server_close()
-            worker.join(timeout=2)
+            try:
+                server.close_active()
+            finally:
+                try:
+                    server.shutdown()
+                finally:
+                    try:
+                        server.server_close()
+                    finally:
+                        worker.join(timeout=2)

@@ -269,6 +269,52 @@ class SyntheticTests(unittest.TestCase):
         raw.shutdown.assert_called_once_with(fixture.socket.SHUT_RDWR)
         raw.close.assert_called_once()
 
+    def test_socket_close_error_does_not_skip_other_sockets(self):
+        server = object.__new__(fixture._Server)
+        server.stopping = threading.Event()
+        server._active_lock = threading.Lock()
+        failed, other = mock.Mock(), mock.Mock()
+        failed.shutdown.side_effect = OSError("synthetic")
+        failed.close.side_effect = OSError("synthetic")
+        server._active = {failed, other}
+        server.close_active()
+        failed.close.assert_called_once()
+        other.close.assert_called_once()
+
+    def test_worker_shutdown_error_still_releases_state(self):
+        server = object.__new__(fixture._Server)
+        server.fixture = fixture.Fixture()
+        server._active_lock = threading.Lock()
+        raw = BytesSocket(b"")
+        server._active = {raw}
+        server._workers = {threading.current_thread()}
+        server._slots = threading.BoundedSemaphore(1)
+        server._slots.acquire()
+        server.finish_request = mock.Mock()
+        server.shutdown_request = mock.Mock(side_effect=OSError("synthetic"))
+        with self.assertRaises(OSError):
+            server.process_request_thread(raw, ("127.0.0.1", 1))
+        self.assertEqual(set(), server._active)
+        self.assertEqual(set(), server._workers)
+        self.assertTrue(server._slots.acquire(blocking=False))
+
+    def test_context_exit_closes_listener_despite_active_cleanup_error(self):
+        server, worker = mock.Mock(), mock.Mock()
+        server.close_active.side_effect = OSError("synthetic")
+        directory = mock.MagicMock()
+        directory.__enter__.return_value = "/synthetic/private"
+        with mock.patch.object(fixture, "_require_isolated_netns"), mock.patch.object(
+                fixture.tempfile, "TemporaryDirectory", return_value=directory), mock.patch.object(
+                fixture, "_tls_context"), mock.patch.object(fixture, "_Server", return_value=server), mock.patch.object(
+                fixture.threading, "Thread", return_value=worker):
+            with self.assertRaises(OSError):
+                with fixture.serve():
+                    pass
+        server.shutdown.assert_called_once()
+        server.server_close.assert_called_once()
+        worker.join.assert_called_once_with(timeout=2)
+        directory.__exit__.assert_called_once()
+
     def test_summary_is_safe_copy(self):
         details = fixture.Fixture()
         snapshot = details.summary()

@@ -51,7 +51,8 @@ def main():
         report["checks"][name] = {"status": status}
         if detail is not None:
             report["checks"][name]["detail"] = detail
-        print(f"{name}: {status}", flush=True)
+        suffix = f" ({json.dumps(detail, ensure_ascii=True)})" if status == "failed" and detail is not None else ""
+        print(f"{name}: {status}{suffix}", flush=True)
         (args.output / "device-results.json").write_text(
             json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 

@@ -237,6 +237,7 @@ def exercise(adb, record, fixture):
         raise UiBlocked("unexpected-fixture-topology")
     ui = _Ui(adb)
     stage = "android_ui"
+    checkpoint = "first_launch"
     confirmation = False
     try:
         ui.tap(text="立即进入", cls="android.widget.Button", scroll=True)
@@ -250,41 +251,45 @@ def exercise(adb, record, fixture):
         ui.tap(text="下一步", cls="android.widget.Button")
         ui.tap(text="创建并打开", cls="android.widget.Button")
         more = {"desc": ENVIRONMENT + "的更多网络操作", "cls": "android.widget.Button"}
+        checkpoint = "environment_created"
         ui.wait(lambda tree: _target(tree, more, actionable=True), timeout=60)
         record("synthetic_environment", "passed")
 
-        # Set the homepage before enabling a route. The caller still denies all
-        # non-fixture destinations, including any retained default startup URL.
-        ui.tap(desc="设置", cls="android.widget.Button")
-        ui.tap(text="此环境的浏览器与启动", scroll=True)
-        ui.seen("此环境的浏览器与启动")
-        ui.fill("两个内核的默认网站", PAGE_URL)
-        ui.tap(text="保存", cls="android.widget.Button")
-        ui.tap(desc="网络", cls="android.widget.Button")
+        # The creation wizard already opened this environment's network page.
+        # The isolated deny-all proxy prevents any default startup URL access.
+        checkpoint = "environment_network_menu"
         ui.tap(**more)
+        checkpoint = "network_mode_menu"
         ui.tap(text="网络方式", cls="android.widget.Button")
         ui.tap(desc="应用专用代理")
+        checkpoint = "proxy_editor"
         ui.fill("代理地址", "http://10.0.2.2:37891")
         ui.tap(text="保存并应用", cls="android.widget.Button")
+        checkpoint = "proxy_save_receipt"
         tree = ui.seen("本次保存结果", timeout=60)
         if not any(node.get("text", "").startswith(("已应用", "已保存"))
                    for node in _nodes(tree, cls="android.widget.TextView")):
             raise UiBlocked("proxy-save-not-confirmed")
         ui.tap(text="关闭", cls="android.widget.Button")
         record("synthetic_proxy_saved", "passed", "native-form-save-only-route-needs-fixture-receipt")
+        checkpoint = "open_gecko_from_network"
         ui.tap(**more)
         ui.tap(text="打开会话", cls="android.widget.Button")
         ui.wait(lambda tree: _target(tree, {"desc": "网页工具", "cls": "android.widget.Button"}), timeout=60)
+        checkpoint = "issue_synthetic_gecko_navigation"
         ui.tap(prefix="当前网址 ", cls="android.widget.Button")
         ui.seen("打开网址")
         ui.fill("网址或搜索", PAGE_URL)
         ui.tap(text="前往", cls="android.widget.Button")
+        checkpoint = "gecko_error_banner"
         ui.wait(lambda tree: _target(tree, {"desc": "网页或网络错误，点按查看详情"}), timeout=60)
+        checkpoint = "open_ai_from_long_press"
         ui.tap(desc="网页工具", cls="android.widget.Button", hold=True)
         ui.seen("AI 助手 · 浏览器诊断")
         record("android_ui", "passed")
 
         stage = "gecko_certificate_error"
+        checkpoint = "snapshot_from_real_native_callback"
         # A callback arriving while selecting invalidates the frozen evidence.
         # Reacquire from this same tab at most three times, never accept stale UI.
         proof = None
@@ -316,6 +321,7 @@ def exercise(adb, record, fixture):
             raise UiBlocked("no-stable-native-evidence")
         record("gecko_certificate_error", "passed", "native-code-and-certificate-signal")
         stage = "redacted_preview"
+        checkpoint = "inspect_redacted_local_preview"
         if _nodes(tree, text="确认新请求并发送") or _nodes(tree, text="沿用编号发送"):
             raise UiBlocked("unconfigured-preview-exposed-send")
         record("redacted_preview", "passed", "anonymous-native-fields-only")
@@ -323,6 +329,7 @@ def exercise(adb, record, fixture):
         ui.seen("AI 助手 · 浏览器诊断")
 
         stage = "confirmation_cancel"
+        checkpoint = "configure_synthetic_gateway"
         if hasattr(fixture, "gateway_url"):
             ui.tap(text="配置 AI 网关", cls="android.widget.Button")
             ui.seen("选择 AI 供应商")
@@ -331,6 +338,7 @@ def exercise(adb, record, fixture):
             ui.fill("已授权的 HTTPS 网关", GATEWAY_URL)
             ui.fill("本窗口访问令牌", SYNTHETIC_TOKEN, password=True)
             ui.tap(text="使用", cls="android.widget.Button")
+            checkpoint = "confirm_and_close_without_sending"
             ui.tap(text="预览证据", cls="android.widget.Button")
             tree, state = ui.wait(lambda tree: (
                 "confirmation" if _nodes(tree, text="确认发送脱敏证据") else
@@ -352,6 +360,8 @@ def exercise(adb, record, fixture):
                 record("confirmation_cancel", "unverified", "protected-route-or-evidence-not-current")
         else:
             record("confirmation_cancel", "unverified", "local-preview-only")
+        stage = "assistant_closed"
+        checkpoint = "return_to_gecko"
         ui.tap(text="关闭", cls="android.widget.Button")
         ui.wait(lambda tree: _target(tree, {"desc": "网页工具", "cls": "android.widget.Button"}))
         record("assistant_closed", "passed")
@@ -362,10 +372,10 @@ def exercise(adb, record, fixture):
                 "nativeError": {"code": certificate["code"], "category": certificate["category"],
                     "signal": "CERTIFICATE_REJECTED", "navigationAttribution": "UNKNOWN"}}
     except UiBlocked as error:
-        record(stage, "failed", str(error))
+        record(stage, "failed", {"checkpoint": checkpoint, "reason": str(error)})
         raise
     except Exception:
-        record(stage, "failed", "unexpected-ui-driver-failure")
+        record(stage, "failed", {"checkpoint": checkpoint, "reason": "unexpected-ui-driver-failure"})
         raise UiBlocked("unexpected-ui-driver-failure") from None
     finally:
         ui.close()
