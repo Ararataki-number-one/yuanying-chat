@@ -2,6 +2,7 @@
 """Exercise two independently installed PocketChat packages on a fresh API 33 AVD."""
 
 import argparse
+from collections import Counter
 from contextlib import contextmanager
 from hashlib import file_digest, sha256
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -13,7 +14,7 @@ import shlex
 import sqlite3
 import subprocess
 import tempfile
-from threading import Event, Thread
+from threading import Event, Lock, Thread
 import time
 from urllib.parse import parse_qs, urlsplit
 from xml.etree import ElementTree
@@ -28,6 +29,26 @@ SHARED_AUTHORITIES = {"saved-downloads", "network-shares"} | {
 }
 CHECKS = ("packageIdentity", "providerIsolation", "officialDataIntegrity",
           "parallelGecko", "parallelNativeChromium", "portableBackup")
+GECKO_VISIBLE_STATES = {
+    "runtimeInitFailure": "新内核未能启动",
+    "sdkOrAddonFailure": "浏览器初始化失败",
+    "startupWindowFailure": "浏览器启动窗口未能",
+    "browserWindowFailure": "浏览器窗口未能启动",
+    "cpuPreparationFailure": "CPU 冷启动配置未能安全准备",
+    "cpuAcknowledgementFailure": "原生 CPU 配置未确认",
+    "tlsPreparationFailure": "TLS 冷启动配置未能安全准备",
+    "tlsAcknowledgementFailure": "原生 TLS 协议尚未确认",
+    "protectionAcknowledgementFailure": "当前浏览器保护尚未就绪",
+    "requestIdentityFailure": "浏览器请求身份保护未能安装",
+    "routeNotReady": "线路正在更新",
+    "noConfiguredNetwork": "请先配置手机独立网络",
+    "networkOffline": "当前离线",
+    "unexpectedVpnRequired": "手机 VPN 未连接",
+    "websiteFailure": "网页暂时无法打开",
+    "websiteConnectionFailure": "连接失败",
+    "browserStartupPending": "正在打开浏览器",
+    "pageCheckPending": "正在核对网页",
+}
 
 
 def require(condition, message):
@@ -172,13 +193,29 @@ class Fixture(ThreadingHTTPServer):
         self.proofs = {name: {} for name in self.pages}
         self.received = {name: Event() for name in self.pages}
         self.nonce = nonce
+        self.cold_gecko_state = None
+        self.gecko_navigation_retried = False
+        self._lock = Lock()
+        self._events = Counter()
         super().__init__(("127.0.0.1", 0), Handler)
 
     def url(self, name):
         return f"{self.origin}/{name}/{self.nonce}"
 
+    def record(self, event):
+        with self._lock:
+            self._events[event] += 1
+
+    def counts(self):
+        with self._lock:
+            return dict(self._events)
+
 
 class Handler(BaseHTTPRequestHandler):
+    def setup(self):
+        super().setup()
+        self.server.record("proxyConnections")
+
     def log_message(self, *_args):
         pass
 
@@ -192,8 +229,10 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_CONNECT(self):
         if self.path != self.server.authority:
+            self.server.record("rejectedConnects")
             self.answer(403)
             return
+        self.server.record("fixtureConnects")
         self.wfile.write(b"HTTP/1.1 200 Connection Established\r\n\r\n")
         self.wfile.flush()
         self.connection.settimeout(12)
@@ -204,8 +243,10 @@ class Handler(BaseHTTPRequestHandler):
         fixture = self.server
         address = urlsplit(self.path)
         if self.headers.get("Host") != fixture.authority or address.netloc not in ("", fixture.authority):
+            fixture.record("rejectedRequests")
             self.answer(403)
             return
+        fixture.record("fixtureRequests")
         for engine in fixture.pages:
             page = f"/{engine}/{fixture.nonce}"
             if address.path == page and not address.query:
@@ -256,7 +297,19 @@ def run_engine(device, uid, fixture, engine):
     }
     device.write_private(PARALLEL, uid, "shared_prefs/chat.xml", preferences(settings))
     device.start(PARALLEL, "MainActivity", fixture.url(engine))
-    require(fixture.received[engine].wait(60), f"No visible-page JavaScript proof from {engine}")
+    arrived = fixture.received[engine].wait(60)
+    if engine == "gecko" and not arrived and not fixture.pages[engine].is_set():
+        cold = gecko_failure_state(device, fixture)
+        fixture.cold_gecko_state = cold
+        startup_failure = any("Failure" in state for state in cold.get("visibleStates", []))
+        if cold.get("mainActivityResumed") and cold.get("geckoLibraryMapped") and not startup_failure:
+            # The preceding cold intent can reach the production load queue before
+            # the Gecko native extension and admission gate are ready. Retry once
+            # via the same exported web entry after observing the running engine.
+            fixture.gecko_navigation_retried = True
+            device.start(PARALLEL, "MainActivity", fixture.url(engine))
+            arrived = fixture.received[engine].wait(45)
+    require(arrived, f"No visible-page JavaScript proof from {engine}")
     proof = fixture.proofs[engine]
     require(fixture.pages[engine].is_set() and proof["visible"] == "true" and
             proof["title"] == f"PocketChat-{engine}-{fixture.nonce}", f"Page proof differs for {engine}")
@@ -275,6 +328,61 @@ def run_engine(device, uid, fixture, engine):
         proof["nativeSplitMapped"] = True
     proof["receivedPage"] = True
     return proof
+
+
+def gecko_failure_state(device, fixture):
+    evidence = {"proxyCounts": fixture.counts()}
+    try:
+        activities = device.shell("dumpsys", "activity", "activities")
+        evidence["mainActivityResumed"] = any(
+            re.search(r"local[.]pocketchat[.]parallel/(?:local[.]pocketchat)?[.]MainActivity\b", line)
+            for line in activities.splitlines() if "ResumedActivity" in line)
+        processes = device.shell("ps", "-A", "-o", "PID,NAME").splitlines()
+        main = []
+        for line in processes:
+            columns = line.split()
+            if len(columns) == 2 and columns[0].isdigit() and columns[1] == PARALLEL:
+                main.append(columns[0])
+        evidence["mainProcessRunning"] = len(main) == 1
+        evidence["geckoChildProcessCount"] = sum(
+            bool(re.search(r"\blocal[.]pocketchat[.]parallel:(?:gecko_env\d+_|[^\s]*ChildProcess)", line, re.I))
+            for line in processes)
+        if len(main) == 1:
+            maps = device.call("shell", "cat", f"/proc/{main[0]}/maps", check=False)
+            evidence["geckoLibraryMapped"] = (bool(re.search(rb"lib(?:xul|mozglue)[.]so\b", maps.stdout))
+                                               if maps.returncode == 0 else None)
+            log = device.call("logcat", "-d", "--pid", main[0], "-b", "main", "-t", "700", "-v", "brief",
+                              "GeckoRuntime:V", "GeckoSession:V", "GeckoThread:V", "GeckoConsole:V", "AndroidRuntime:V",
+                              "*:S", timeout=6, check=False).stdout.decode(errors="replace")
+            evidence["nativeLogTags"] = dict(Counter(re.findall(
+                r"^[A-Z]/(GeckoRuntime|GeckoSession|GeckoThread|GeckoConsole|AndroidRuntime)\b", log, re.M)))
+            evidence["runtimeMarkers"] = [name for name, words in (
+                ("zygoteOrChildBindingError", r"(?:bindService|child process|ChildProcess).*(?:failed|fail|denied|exception)"),
+                ("extensionError", r"(?:extension|pocketroute).*(?:error|failure|exception)"),
+                ("nativeLinkError", r"UnsatisfiedLinkError|dlopen failed"),
+                ("sdkManifestReadError", r"pocketchat-sdk-build(?:-receipt)?[.]json"),
+                ("applicationFatalException", r"FATAL EXCEPTION")) if re.search(words, log, re.I)]
+    except (OSError, RuntimeError, subprocess.SubprocessError):
+        evidence["processSnapshotUnavailable"] = True
+    path = f"/data/local/tmp/pocketchat-coexist-ui-{fixture.nonce}.xml"
+    try:
+        dumped = device.call("shell", "uiautomator", "dump", path, timeout=10, check=False)
+        require(dumped.returncode == 0, "No Android hierarchy dump")
+        raw = device.call("exec-out", "cat", path, timeout=5).stdout
+        tree = ElementTree.fromstring(raw)
+        nodes = [node for node in tree.iter("node") if node.get("package") == PARALLEL]
+        labels = [text for node in nodes for text in (node.get("text", ""), node.get("content-desc", ""))]
+        evidence["visibleStates"] = [name for name, phrase in GECKO_VISIBLE_STATES.items()
+                                     if any(phrase in value for value in labels)]
+        evidence["parallelUiNodeCount"] = len(nodes)
+    except (OSError, RuntimeError, subprocess.SubprocessError, ElementTree.ParseError):
+        evidence["uiSnapshotUnavailable"] = True
+    finally:
+        try:
+            device.call("shell", "rm", "-f", path, timeout=4, check=False)
+        except (OSError, subprocess.SubprocessError):
+            evidence["uiSnapshotCleanupUnavailable"] = True
+    return evidence
 
 
 def run(args, report):
@@ -324,6 +432,12 @@ def run(args, report):
                     report["checks"][check] = dict(status="fail", reason=str(error),
                         servedFixtureDocument=fixture.pages[engine].is_set(),
                         pageJavascriptReceipt=fixture.received[engine].is_set())
+                    if engine == "gecko":
+                        if fixture.cold_gecko_state is None or fixture.gecko_navigation_retried:
+                            report["checks"][check]["failureState"] = gecko_failure_state(device, fixture)
+                if engine == "gecko" and fixture.cold_gecko_state is not None:
+                    report["checks"][check]["coldNavigation"] = fixture.cold_gecko_state
+                    report["checks"][check]["normalNavigationRetried"] = fixture.gecko_navigation_retried
     finally:
         current = {name: device.private_bytes(OFFICIAL, name) for name in snapshots
                    if device.private_exists(OFFICIAL, name)}

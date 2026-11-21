@@ -74,63 +74,75 @@ jobs:
             sudo apt-get install -y --no-install-recommends -o Acquire::Retries=3 libpulse0
           fi
 
-      - name: Build and test the two independent APK sets
-        id: parallel_build
+      - name: Restore and verify the x86_64 APKs tested in run 44867757446
+        env:
+          ARTIFACT_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          work="$GITHUB_WORKSPACE/work/parallel"
+          apks="$work/results/x86_64"
+          mkdir -p "$apks"
+          fetch_artifact() {
+            local id="$1" sha="$2" target="$3"
+            curl --proto '=https' --proto-redir '=https' -fsSL --retry 3 \
+              -H "Authorization: Bearer $ARTIFACT_TOKEN" \
+              "https://api.github.com/repos/Ararataki-number-one/yuanying-chat/actions/artifacts/$id/zip" -o "$target"
+            echo "$sha  $target" | sha256sum -c -
+          }
+          fetch_artifact 14693240288 785dab78eba9c867caf30a37e5cd99d85499326aa48bb33c94b8813591aee05e "$work/candidate.zip"
+          fetch_artifact 14693270194 136c86ed2bfc63a2d08d33d1b3bb0b20a519269d964dc6755d6bcf3028c8ce8d "$work/receipts.zip"
+          unzip -q "$work/candidate.zip" base-master.apk chromium-master.apk -d "$apks"
+          (
+            cd "$apks"
+            echo '8561e56364383440bdcfea9b7e3538ca47117d1e95b651842a4cde8dc30ae711  base-master.apk' | sha256sum -c -
+            echo '6ed70a9b49edc10bd758048be09562455a8a8d21b92b434b669c9b5ad72f42ea  chromium-master.apk' | sha256sum -c -
+          )
+          unzip -p "$work/receipts.zip" x86_64/build.json | jq -e --arg sdk "$GECKO_ARTIFACT_SHA256" '
+            .sourceCommit == "05469e4537d1a100ecc47fd96fbe03a36308a687" and .runId == "44867757446" and
+            .runAttempt == "1" and .abi == "x86_64" and .geckoArtifactSha256 == $sdk'
+          tools="$ANDROID_HOME/build-tools/37.0.0"
+          python3 tools/gecko/test_parallel_install.py --base "$apks/base-master.apk" \
+            --feature "$apks/chromium-master.apk" --abi x86_64 --aapt2 "$tools/aapt2" \
+            --apksigner "$tools/apksigner" --output "$work/current-static.json"
+          unzip -p "$work/receipts.zip" x86_64/static.json | jq -S . > "$work/original-static.json"
+          jq -S . "$work/current-static.json" | diff -u "$work/original-static.json" -
+          rm "$work/candidate.zip" "$work/receipts.zip"
+
+      - name: Build the 2.1.14 baseline for the disposable device
         run: |
           set -euo pipefail
           umask 077
           root="$GITHUB_WORKSPACE"
           work="$root/work/parallel"
-          private=$(mktemp -d "$RUNNER_TEMP/parallel-signing.XXXXXXXX")
-          trap 'rm -rf -- "$private"' EXIT
+          project="$work/baseline"
           tools="$ANDROID_HOME/build-tools/37.0.0"
-          for signer in baseline parallel; do
-            openssl rand -hex 24 > "$private/$signer.pass"
-            keytool -genkeypair -noprompt -storetype PKCS12 -keyalg RSA -keysize 2048 -validity 30 \
-              -keystore "$private/$signer.p12" -alias testkey -dname "CN=PocketChat $signer CI test" \
-              -storepass:file "$private/$signer.pass" -keypass:file "$private/$signer.pass"
-          done
+          private=$(mktemp -d "$RUNNER_TEMP/baseline-signing.XXXXXXXX")
+          trap 'rm -rf -- "$private"' EXIT
+          openssl rand -hex 24 > "$private/baseline.pass"
+          keytool -genkeypair -noprompt -storetype PKCS12 -keyalg RSA -keysize 2048 -validity 30 \
+            -keystore "$private/baseline.p12" -alias testkey -dname 'CN=PocketChat baseline CI test' \
+            -storepass:file "$private/baseline.pass" -keypass:file "$private/baseline.pass"
 
-          build_set() {
-            local project="$1" abi="$2" signer="$3" modules="$4" destination="$5"
-            shift 5
-            local bundle="$project/app/build/outputs/bundle/release/app-release.aab"
-            "$work/gradle-9.8.0/bin/gradle" -p "$project" :app:bundleRelease \
-              -PpocketChatChromiumBundle=true "-PpocketChatChromiumAbi=$abi" \
-              "-PpocketChatCefriumRepository=$root/work/chromium-sdk/maven" \
-              "-PcaretSdkRepository=$root/work/native-caret-sdk/maven" \
-              "-PcaretSdkAssets=$root/work/native-caret-sdk/assets" \
-              --max-workers=2 --console=plain "$@"
-            jq -n --arg abi "$abi" '{sdkVersion:26, supportedAbis:[$abi], screenDensity:320, supportedLocales:["en","zh"]}' > "$work/device.json"
-            java -Xmx1g -jar "$work/bundletool.jar" build-apks --bundle="$bundle" --output="$work/current.apks" \
-              --aapt2="$tools/aapt2" --device-spec="$work/device.json" --max-threads=1 \
-              --ks="$private/$signer.p12" --ks-key-alias=testkey \
-              --ks-pass="file:$private/$signer.pass" --key-pass="file:$private/$signer.pass"
-            java -Xmx512m -jar "$work/bundletool.jar" extract-apks --apks="$work/current.apks" \
-              --device-spec="$work/device.json" --modules="$modules" --output-dir="$destination"
-            rm "$work/current.apks"
-          }
-
-          build_set "$work/baseline" x86_64 baseline base,chromium "$work/baseline-apk"
+          "$work/gradle-9.8.0/bin/gradle" -p "$project" :app:bundleRelease \
+            -PpocketChatChromiumBundle=true -PpocketChatChromiumAbi=x86_64 \
+            "-PpocketChatCefriumRepository=$root/work/chromium-sdk/maven" \
+            "-PcaretSdkRepository=$root/work/native-caret-sdk/maven" \
+            "-PcaretSdkAssets=$root/work/native-caret-sdk/assets" \
+            --max-workers=2 --console=plain --no-daemon
+          jq -n '{sdkVersion:26, supportedAbis:["x86_64"], screenDensity:320, supportedLocales:["en","zh"]}' > "$work/device-spec.json"
+          java -Xmx1g -jar "$work/bundletool.jar" build-apks \
+            --bundle="$project/app/build/outputs/bundle/release/app-release.aab" --output="$work/baseline.apks" \
+            --aapt2="$tools/aapt2" --device-spec="$work/device-spec.json" --max-threads=1 \
+            --ks="$private/baseline.p12" --ks-key-alias=testkey \
+            --ks-pass="file:$private/baseline.pass" --key-pass="file:$private/baseline.pass"
+          java -Xmx512m -jar "$work/bundletool.jar" extract-apks --apks="$work/baseline.apks" \
+            --device-spec="$work/device-spec.json" --modules=base,chromium --output-dir="$work/baseline-apk"
           "$tools/apksigner" verify "$work/baseline-apk/base-master.apk"
+          "$tools/apksigner" verify "$work/baseline-apk/chromium-master.apk"
           "$tools/aapt2" dump badging "$work/baseline-apk/base-master.apk" > "$work/baseline-badging.txt"
           grep -E "^package: name='local[.]pocketchat' versionCode='116' versionName='2[.]1[.]14'" "$work/baseline-badging.txt"
-          rm -rf -- "$work/baseline/app/build" "$work/baseline/chromium/build"
-
-          mkdir -p "$work/results"
-          for abi in arm64-v8a x86_64; do
-            destination="$work/results/$abi"
-            build_set "$root" "$abi" parallel base,chromium "$destination" -PpocketChatParallelInstall=true
-            python3 tools/gecko/test_parallel_install.py --base "$destination/base-master.apk" \
-              --feature "$destination/chromium-master.apk" --abi "$abi" \
-              --aapt2 "$tools/aapt2" --apksigner "$tools/apksigner" --output "$destination/static.json"
-            bundle_hash=$(sha256sum app/build/outputs/bundle/release/app-release.aab | cut -d ' ' -f 1)
-            jq -n --arg source "$GITHUB_SHA" --arg abi "$abi" --arg bundle "$bundle_hash" \
-              --arg sdk "$GECKO_ARTIFACT_SHA256" --arg run "$GITHUB_RUN_ID" --arg attempt "$GITHUB_RUN_ATTEMPT" \
-              '{sourceCommit:$source, abi:$abi, bundleSha256:$bundle, geckoArtifactSha256:$sdk, runId:$run, runAttempt:$attempt}' \
-              > "$destination/build.json"
-          done
-          "$work/gradle-9.8.0/bin/gradle" --stop
+          rm "$work/baseline.apks"
+          rm -rf -- "$project/app/build" "$project/chromium/build"
 
       - name: Verify coexistence on a disposable Android 13 device
         timeout-minutes: 18
@@ -156,38 +168,11 @@ jobs:
             --parallel-base-apk "$work/results/x86_64/base-master.apk" \
             --parallel-chromium-apk "$work/results/x86_64/chromium-master.apk" --output "$work/results/device.json"
 
-      - name: Keep arm64-v8a test packages
-        if: ${{ !cancelled() && steps.parallel_build.outcome == 'success' }}
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-        with:
-          name: pocketchat-2.1.15-parallel-arm64-v8a-${{ github.run_id }}-${{ github.run_attempt }}
-          path: |
-            work/parallel/results/arm64-v8a/base-master.apk
-            work/parallel/results/arm64-v8a/chromium-master.apk
-          if-no-files-found: error
-          retention-days: 7
-          compression-level: 0
-
-      - name: Keep x86_64 test packages
-        if: ${{ !cancelled() && steps.parallel_build.outcome == 'success' }}
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-        with:
-          name: pocketchat-2.1.15-parallel-x86_64-${{ github.run_id }}-${{ github.run_attempt }}
-          path: |
-            work/parallel/results/x86_64/base-master.apk
-            work/parallel/results/x86_64/chromium-master.apk
-          if-no-files-found: error
-          retention-days: 7
-          compression-level: 0
-
-      - name: Keep synthetic validation receipts
+      - name: Keep the fresh synthetic device receipt
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: pocketchat-parallel-receipts-${{ github.run_id }}-${{ github.run_attempt }}
-          path: |
-            work/parallel/results/*/build.json
-            work/parallel/results/*/static.json
-            work/parallel/results/device.json
+          name: pocketchat-parallel-device-receipt-${{ github.run_id }}-${{ github.run_attempt }}
+          path: work/parallel/results/device.json
           if-no-files-found: warn
           retention-days: 7
