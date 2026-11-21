@@ -18,7 +18,7 @@ TLS_RESULTS = {"TLS_CERTIFICATE_REJECTED", "TLS_UNEXPECTEDLY_TRUSTED",
                "TLS_OTHER_FAILURE", "PROXY_OR_NETWORK_FAILED"}
 DNS_RESULTS = {"DNS_RESOLVED", "DNS_NOT_RESOLVED", "DNS_TIMEOUT", "DNS_PROBE_FAILED"}
 PHASE_MARKERS = {
-    "synthetic_proxy_saved", "timezone_editor_opened", "timezone_system_selected",
+    "synthetic_proxy_saved", "default_timezone_target_observed", "timezone_editor_opened", "timezone_system_selected",
     "timezone_apply_confirmed", "timezone_system_saved", "timezone_native_readback",
     "timezone_preflight", "synthetic_address_navigation", "redacted_preview", "confirmation_cancel",
 }
@@ -80,7 +80,7 @@ def run_controls(adb, root, fixture, record, snapshot):
             dns = exact_marker(adb(*launcher, "android-dns", timeout=16), DNS_RESULTS)
         except (RuntimeError, subprocess.TimeoutExpired):
             dns = "CONTROL_PROCESS_FAILED"
-        dns_observed = dns in ("DNS_RESOLVED", "DNS_NOT_RESOLVED", "DNS_TIMEOUT")
+        dns_observed = dns in ("DNS_RESOLVED", "DNS_NOT_RESOLVED")
         record("android_direct_dns_control", "passed" if dns_observed else "unverified", dns)
         snapshot("afterAndroidDnsControl")
         try:

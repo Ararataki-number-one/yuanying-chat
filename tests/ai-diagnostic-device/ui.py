@@ -204,7 +204,8 @@ def _system_timezone_preflight(ui, record):
     ui.tap(text="此环境的独立时区", cls="android.widget.Button", scroll=True)
     ui.seen("此环境的独立时区")
     selector = {"desc": "此环境时区模式", "cls": "android.widget.Spinner"}
-    ui.wait(lambda tree: _target(tree, selector))
+    ui.wait(lambda tree: any(_nodes(node, text="跟随当前出口 IP（默认）")
+                             for node in _nodes(tree, **selector)))
     record("timezone_editor_opened", "passed")
     ui.tap(**selector)
 
@@ -225,7 +226,10 @@ def _system_timezone_preflight(ui, record):
     record("timezone_system_selected", "passed")
     ui.tap(text="应用并重新加载", cls="android.widget.Button")
     tree = ui.seen("应用当前环境时区？")
-    if not any(node.get("text", "").startswith("保存为“跟随系统时区”后将重新加载当前网页")
+    confirmation = "保存为“跟随系统时区”后将重新加载当前网页"
+    # ReferenceUi.note uses U+2060 in the display text to keep action words
+    # together, and keeps the unmodified sentence in its description.
+    if not any((node.get("content-desc", "") or node.get("text", "").replace("\u2060", "")).startswith(confirmation)
                for node in _nodes(tree, cls="android.widget.TextView")):
         raise UiBlocked("timezone-confirmation-mode-mismatch")
     # This flow has just created the named empty environment; no user document,
@@ -248,6 +252,15 @@ def _system_timezone_preflight(ui, record):
     ui.wait(lambda tree: _target(tree, {"desc": "网页工具", "cls": "android.widget.Button"}))
     ui.wait(lambda tree: _target(tree, {"desc": environment}))
     record("timezone_preflight", "passed")
+
+
+def _navigate_to_fixture(ui):
+    ui.tap(prefix="当前网址 ", cls="android.widget.Button")
+    ui.seen("打开网址")
+    ui.fill("网址或搜索", PAGE_URL)
+    ui.hide_keyboard()
+    ui.tap(text="前往", cls="android.widget.Button")
+    ui.wait(lambda tree: _target(tree, {"prefix": "当前网址 " + PAGE_URL, "cls": "android.widget.Button"}))
 
 
 def _preview(tree, *, configured=False):
@@ -384,18 +397,17 @@ def exercise(adb, record, fixture):
         ui.wait(lambda tree: _target(tree, {"desc": "网页工具", "cls": "android.widget.Button"}), timeout=60)
         record("gecko_browser_workspace", "passed")
         stage = "timezone_preflight"
+        checkpoint = "same_address_with_original_timezone"
+        _navigate_to_fixture(ui)
+        # Allow the original native exit-IP preflight's bounded retry to
+        # reach the closed proxy. Observations come from the proxy counters.
+        time.sleep(9)
+        record("default_timezone_target_observed", "passed", "address-display-only")
         checkpoint = "apply_system_timezone_through_product_ui"
         _system_timezone_preflight(ui, record)
         stage = "android_ui"
         checkpoint = "issue_synthetic_gecko_navigation"
-        ui.tap(prefix="当前网址 ", cls="android.widget.Button")
-        ui.seen("打开网址")
-        ui.fill("网址或搜索", PAGE_URL)
-        ui.hide_keyboard()
-        ui.tap(text="前往", cls="android.widget.Button")
-        checkpoint = "observed_synthetic_address_bar"
-        ui.wait(lambda tree: _target(tree, {"prefix": "当前网址 " + PAGE_URL,
-                                            "cls": "android.widget.Button"}))
+        _navigate_to_fixture(ui)
         record("synthetic_address_navigation", "passed")
         checkpoint = "open_ai_from_long_press"
         ui.tap(desc="网页工具", cls="android.widget.Button", hold=True)
