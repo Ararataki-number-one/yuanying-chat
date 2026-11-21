@@ -1,0 +1,84 @@
+name: PocketChat default IP timezone comparison
+
+on:
+  push:
+    branches: [test/pocketchat-2.1.15-timezone-ab]
+    paths:
+      - .github/workflows/pocketchat-parallel-ip-timezone.yml
+      - tools/gecko/compare_parallel_ip_timezone.py
+      - tools/gecko/parallel_ip_timezone_relay.py
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  compare:
+    if: ${{ contains(github.event.head_commit.message, '[timezone-ab]') }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+
+      - name: Restore the verified x86_64 APK pair
+        env:
+          ARTIFACT_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          work="$RUNNER_TEMP/pocketchat-timezone-ab"
+          mkdir -p "$work/apks"
+          curl --proto '=https' --proto-redir '=https' -fsSL --retry 3 \
+            -H "Authorization: Bearer $ARTIFACT_TOKEN" \
+            https://api.github.com/repos/Ararataki-number-one/yuanying-chat/actions/artifacts/14693240288/zip -o "$work/input.zip"
+          echo "785dab78eba9c867caf30a37e5cd99d85499326aa48bb33c94b8813591aee05e  $work/input.zip" | sha256sum -c -
+          unzip -q "$work/input.zip" base-master.apk chromium-master.apk -d "$work/apks"
+          cd "$work/apks"
+          echo '8561e56364383440bdcfea9b7e3538ca47117d1e95b651842a4cde8dc30ae711  base-master.apk' | sha256sum -c -
+          echo '6ed70a9b49edc10bd758048be09562455a8a8d21b92b434b669c9b5ad72f42ea  chromium-master.apk' | sha256sum -c -
+
+      - name: Prepare Android 13 x86_64
+        run: |
+          set -euo pipefail
+          work="$RUNNER_TEMP/pocketchat-timezone-ab"
+          test -c /dev/kvm
+          sdkmanager="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          yes | "$sdkmanager" --licenses >/dev/null || true
+          "$sdkmanager" --channel=0 'system-images;android-33;google_apis;x86_64'
+          python3 tools/gecko/prepare_chromium_emulator.py --sdk-root "$ANDROID_HOME" \
+            --cache "$work/packages" --report "$work/emulator-package.json"
+          if ! ldconfig -p | grep -F 'libpulse.so.0 ' >/dev/null; then
+            sudo apt-get update -o Acquire::Retries=3
+            sudo apt-get install -y --no-install-recommends -o Acquire::Retries=3 libpulse0
+          fi
+          sudo chmod a+rw /dev/kvm
+
+      - name: Compare default mode on two fresh app profiles
+        run: |
+          set -euo pipefail
+          work="$RUNNER_TEMP/pocketchat-timezone-ab"
+          export ANDROID_AVD_HOME="$work/avd" ANDROID_USER_HOME="$work/android-user" ANDROID_EMULATOR_HOME="$work/emulator-home"
+          mkdir -p "$ANDROID_AVD_HOME" "$ANDROID_USER_HOME" "$ANDROID_EMULATOR_HOME"
+          echo no | "$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager" create avd --force --name timezone33 \
+            --path "$ANDROID_AVD_HOME/timezone33.avd" --package 'system-images;android-33;google_apis;x86_64'
+          "$ANDROID_HOME/emulator/emulator" -avd timezone33 -no-window -no-audio -no-snapshot -no-boot-anim \
+            -no-metrics -accel on -gpu swiftshader -port 5554 -cores 4 -memory 4096 -partition-size 6144 > "$work/emulator.log" 2>&1 &
+          emulator_pid=$!
+          adb="$ANDROID_HOME/platform-tools/adb"
+          trap 'timeout 10 "$adb" -s emulator-5554 emu kill >/dev/null 2>&1 || kill "$emulator_pid" 2>/dev/null || true' EXIT
+          timeout 180 "$adb" -s emulator-5554 wait-for-device
+          timeout 240 bash -c 'until [[ "$("$1" -s emulator-5554 shell getprop sys.boot_completed | tr -d "\r")" == 1 ]] &&
+            "$1" -s emulator-5554 shell pm path android | grep -q "^package:"; do sleep 2; done' _ "$adb"
+          python3 tools/gecko/compare_parallel_ip_timezone.py --adb "$adb" --serial emulator-5554 \
+            --parallel-base-apk "$work/apks/base-master.apk" --parallel-chromium-apk "$work/apks/chromium-master.apk" \
+            --output "$work/device.json"
+
+      - name: Keep the redacted comparison receipt
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: pocketchat-default-ip-timezone-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/pocketchat-timezone-ab/device.json
+          if-no-files-found: warn
+          retention-days: 7
