@@ -14,7 +14,7 @@ import tempfile
 ROOT=Path(__file__).resolve().parents[2];HERE=Path(__file__).resolve().parent;PROD=ROOT/'app/src/main/java/local/pocketchat'
 EXTRACTOR=ROOT/'tests/gecko-timezone-flow-host/run.py'
 spec=importlib.util.spec_from_file_location('ip_transport_verbatim_members',EXTRACTOR);extract=importlib.util.module_from_spec(spec);spec.loader.exec_module(extract)
-MEMBERS=('static final class IpLookup {','static final class TimeZoneGate {','static final class IpNavigationFailure {','boolean autoIpMode(',
+MEMBERS=('private boolean aiDiagnosticsEnabled(', 'private boolean aiObservationAllowed(', 'static final class IpLookup {','static final class TimeZoneGate {','static final class IpNavigationFailure {','boolean autoIpMode(',
  'void queueIpRouteCheck(', 'void checkIpRoute(', '  String ipRouteStamp(', 'boolean ipLookupCurrent(',
  'void lookupIpTimeZone(', 'void tryStartIpLookup(', 'void cancelIpLookup(', 'void releaseIpRoute(',
  'boolean ipBootstrapRequest(', 'GeckoResult<Object> ipBootstrapHeaders(', 'boolean timeZoneSessionAlive(',
@@ -37,7 +37,7 @@ def main():
   if not found:p.error('Provide JDK17 --java-home')
   return found
  source=PROD/'GeckoWebView.java';watch=PROD/'GeckoIpRouteWatch.java';identity=ROOT/'app/src/main/java/org/mozilla/geckoview/AppSessionIdentity.java';main_activity=PROD/'MainActivity.java';network=PROD/'NativeNetwork.java';chat=PROD/'ChatSession.java'
- full=[PROD/name for name in ['GeckoTimeZoneController.java','GeckoTimeZoneSpec.java','GeckoTimeZoneStore.java','GeckoTimeZonePolicy.java','GeckoIpTimeZonePolicy.java','EnvironmentSpec.java','NetworkShareJson.java','J.java','ChromiumRouteLease.java','BrowserBridgeRequests.java','NetworkPoolIdentity.java','Sha256.java','BrowserAddressPolicy.java','GeckoNavigationPolicy.java']]
+ full=[PROD/name for name in ['AiDiagnosticEvidence.java','GeckoTimeZoneController.java','GeckoTimeZoneSpec.java','GeckoTimeZoneStore.java','GeckoTimeZonePolicy.java','GeckoIpTimeZonePolicy.java','EnvironmentSpec.java','NetworkShareJson.java','J.java','ChromiumRouteLease.java','BrowserBridgeRequests.java','NetworkPoolIdentity.java','Sha256.java','BrowserAddressPolicy.java','GeckoNavigationPolicy.java']]
  adapters=ROOT/'tests/gecko-timezone-host/GeckoTimeZoneHost.java';template_path=HERE/'IpTransportHost.java.in'
  files=[source,watch,identity,main_activity,network,chat,adapters,template_path,EXTRACTOR,Path(__file__).resolve(),HERE/'README.md',*full];hashes={str(path.relative_to(ROOT)):sha(path) for path in files};jar=sha(a.json_jar)
  text=source.read_text();selected={marker:extract.block(text,marker) for marker in MEMBERS}
@@ -61,7 +61,7 @@ def main():
  with tempfile.TemporaryDirectory(prefix='gecko-ip-transport-') as temporary:
   temp=Path(temporary)
   def execute(members,watching,label,focus='full'):
-   out=artifacts/label;out.mkdir(exist_ok=True);host=out/'IpTransportHost.java';host.write_text(generate(members,watching));context=out/'android/content/Context.java';context.parent.mkdir(parents=True,exist_ok=True);context.write_text('package android.content;public abstract class Context {public abstract Context getApplicationContext();public abstract java.io.File getNoBackupFilesDir();}\n')
+   out=artifacts/label;out.mkdir(exist_ok=True);host=out/'IpTransportHost.java';host.write_text(generate(members,watching));context=out/'android/content/Context.java';context.parent.mkdir(parents=True,exist_ok=True);context.write_text('package android.content;public abstract class Context {public String getPackageName(){return "local.pocketchat.aidiagnostics";}public abstract Context getApplicationContext();public abstract java.io.File getNoBackupFilesDir();}\n')
    cmd=[tool('javac'),'--release','17','-encoding','UTF-8','-cp',str(a.json_jar.resolve()),'-d',str(temp/label/'classes'),*map(str,full),str(adapters),str(context),str(host)]
    built=subprocess.run(cmd,text=True,capture_output=True,timeout=60);(out/'compile.command.json').write_text(json.dumps(cmd)+'\n');(out/'compile.stdout.log').write_text(built.stdout);(out/'compile.stderr.log').write_text(built.stderr)
    if built.returncode:raise RuntimeError(label+' compilation failed:\n'+built.stderr)

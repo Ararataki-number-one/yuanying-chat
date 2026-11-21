@@ -1,5 +1,9 @@
 This host compiles the whole current `AppUpdates.java`, with named JVM-only
 Android ContentResolver/JobScheduler/Context and queued Executor boundaries.
+It also compiles the actual `AiDiagnosticUi.enabled` method in a small host
+wrapper shared with the isolation workload. The JVM Toast boundary records
+notice calls. The diagnostics package is checked for both automatic queue
+isolation and suppression of the manual update activity.
 It proves that a MainActivity schedule queues the private update provider origin
 request before the automatic-check switch is read. It preserves and checks both
 original job criteria. An explicit modeled provider-denial control is a possible

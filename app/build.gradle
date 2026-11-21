@@ -17,6 +17,8 @@ tasks.register('prepareGeckoManifest') {
             .replaceAll(/<uses-sdk[^>]*\/>/, '')
             .replace(' android:debuggable="false"', '')
             .replace('android:authorities="local.pocketchat.', 'android:authorities="${applicationId}.')
+            .replace('android:label="元婴期院士"', 'android:label="${pocketChatAppLabel}"')
+            .replace('android:taskAffinity="local.pocketchat.', 'android:taskAffinity="${pocketChatTaskPrefix}.')
         if (chromiumBundle) {
             // Gecko retains the app-level zygote preload hook in the base. The
             // independently installed Chromium feature owns its renderer services.
@@ -43,7 +45,8 @@ android {
         applicationId 'local.pocketchat'; minSdk 26; targetSdk 35; versionCode 117; versionName '2.1.15'
         manifestPlaceholders = [releaseChannel: providers.gradleProperty('releaseChannel').orElse('stable').get(),
                                 candidateNumber: providers.gradleProperty('candidateNumber').orElse('0').get(),
-                                chromiumDelivery: chromiumBundle]
+                                chromiumDelivery: chromiumBundle,
+                                pocketChatAppLabel: '元婴期院士', pocketChatTaskPrefix: 'local.pocketchat']
         if (chromiumBundle) {
             ndk { abiFilters chromiumAbi }
         }
@@ -56,6 +59,14 @@ android {
     buildTypes {
         release { minifyEnabled false; debuggable false }
         integration { initWith release; applicationIdSuffix '.test'; signingConfig signingConfigs.debug }
+        diagnostics {
+            initWith release
+            applicationIdSuffix '.aidiagnostics'
+            signingConfig signingConfigs.debug
+            matchingFallbacks = ['release']
+            manifestPlaceholders = [releaseChannel: 'ai-diagnostics',
+                pocketChatAppLabel: '元婴期院士 · AI 诊断测试', pocketChatTaskPrefix: 'local.pocketchat.aidiagnostics']
+        }
     }
     packaging { jniLibs { useLegacyPackaging = true } }
     if (chromiumBundle) {

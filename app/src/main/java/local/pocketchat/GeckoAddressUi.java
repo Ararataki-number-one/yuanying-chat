@@ -14,14 +14,17 @@ import android.widget.*;
 /** Native address controls; never inspect or modify the website's inputs. */
 final class GeckoAddressUi {
   final MainActivity a;final BrowserToolbarUi.NavigationBar row;final Button address,home,windows,tools,menu;
+  private final AiDiagnosticUi aiDiagnostics;
   private AlertDialog dialog;private EditText editor;private String shown="";
   GeckoAddressUi(MainActivity activity){
     a=activity;
+    aiDiagnostics=AiDiagnosticUi.enabled(activity)?new AiDiagnosticUi(activity):null;
     address=DesignUi.button(a,"网址或搜索",false,()->show(a));address.setAllCaps(false);address.setEllipsize(TextUtils.TruncateAt.END);address.setGravity(android.view.Gravity.CENTER_VERTICAL);
     BrowserToolbarUi.address(address);GlassMotion.press(address,false);
     home=BrowserToolbarUi.action(a,"home","打开当前环境主页",()->home(a));
     windows=BrowserToolbarUi.action(a,"window","网页窗口",a::windowsSheet);
     tools=BrowserToolbarUi.action(a,"grid","网页工具",a::toolsSheet);
+    if(aiDiagnostics!=null)tools.setOnLongClickListener(view->{aiDiagnostics.show();return true;});
     menu=BrowserToolbarUi.action(a,"more","浏览器菜单",a::moreSheet);
     row=new BrowserToolbarUi.NavigationBar(a,address,home,windows,tools,menu);refresh();
   }
@@ -143,5 +146,5 @@ final class GeckoAddressUi {
       });
     }).show();
   }
-  void close(){if(dialog!=null)dialog.dismiss();dialog=null;editor=null;}
+  void close(){if(aiDiagnostics!=null)aiDiagnostics.close();if(dialog!=null)dialog.dismiss();dialog=null;editor=null;}
 }

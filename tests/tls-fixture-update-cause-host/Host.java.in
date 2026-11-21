@@ -4,6 +4,11 @@ import android.content.*;import android.app.job.*;import java.util.*;
 public final class Host {
  static int checks;static void check(String name,boolean value){if(!value)throw new AssertionError(name);checks++;}
  static void reset(){android.content.Context.resolver.reset();android.content.Context.jobs.reset();AppUpdateManager.queue.tasks.clear();AppSettings.autoCheck=true;Profiles.slot=1;}
+ private static final class DiagnosticActivity extends MainActivity{
+  int starts;
+  @Override public String getPackageName(){return "local.pocketchat.aidiagnostics";}
+  @Override public void startActivity(Intent intent){starts++;}
+ }
  public static void main(String[]args){
   reset();AppSettings.autoCheck=false;AppUpdates.schedule(new MainActivity());
   check("Disabled auto-check cancels both jobs",Context.jobs.cancelled.equals(Arrays.asList(AppUpdates.ON_OPEN,AppUpdates.PERIODIC))&&Context.jobs.pending.isEmpty());
@@ -22,6 +27,14 @@ public final class Host {
   reset();AppSettings.autoCheck=false;Context.resolver.enabled=false;AppUpdates.schedule(new MainActivity());AppUpdateManager.queue.drain();
   check("Explicit modeled provider denial prevents its launch",Context.resolver.launches==0&&!Context.resolver.mainRunning&&Context.resolver.calls==1);
   check("Denied callback is bounded without automatic retry",AppUpdateManager.queue.tasks.isEmpty()&&Context.jobs.pending.isEmpty());
+  reset();
+  DiagnosticActivity diagnostic=new DiagnosticActivity();
+  AppUpdates.schedule(diagnostic);
+  check("Diagnostics package schedules no automatic jobs or origin work",
+        Context.jobs.pending.isEmpty()&&AppUpdateManager.queue.tasks.isEmpty()&&Context.resolver.calls==0);
+  AppUpdates.open(diagnostic);
+  check("Diagnostics package shows the local notice and does not open updates",
+        android.widget.Toast.shown==1&&diagnostic.starts==0);
   System.out.println("{\"status\":\"passed\",\"checks\":"+checks+",\"actualAndroidExecution\":false,\"actualObservedProcessCause\":false}");
  }
 }

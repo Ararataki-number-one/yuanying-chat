@@ -52,6 +52,10 @@ public final class PageBridgeLifecycleHost {
   }
   static final class Client {void onPageStarted(Object unused,String target,Object icon){}}
   static final class Bridge {
+    // This fixture represents a regular package with diagnostics disabled.
+    boolean aiObservationAllowed(GeckoSession session){return false;}
+    final EvidenceBoundary aiEvidence=new EvidenceBoundary();
+    static final class EvidenceBoundary {void location(GeckoSession session){throw new AssertionError("Unexpected diagnostics call");}}
     // This legacy bridge workload assumes the builtin addon remains enabled.
     // Authoritative SDK addon lifecycle and late disabled events run separately.
     boolean destroyed,addonDisabled;String url=URL;float readingLayout=1;int appearanceRequests,visible;

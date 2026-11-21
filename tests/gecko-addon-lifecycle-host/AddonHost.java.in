@@ -102,6 +102,15 @@ public final class AddonHost {
  public static void main(String[] args){String focus=args.length==0?"all":args[0];if(focus.equals("cold-policy-boundary"))coldPolicyBoundary();if(focus.equals("manual-ip-boundary"))manualIpBoundary();if(focus.equals("all")||focus.equals("authority"))authority();if(focus.equals("all")||focus.equals("entries"))entries();if(focus.equals("all")||focus.equals("enable"))enable();if(focus.equals("all")||focus.equals("progress"))progress();if(focus.equals("all")||focus.equals("audit"))audit();if(focus.equals("all")||focus.equals("navigation-capture"))navigationCapture();System.out.println(J.obj("status","passed","passed",checks.size(),"total",checks.size(),"checks",new JSONArray(checks)));}
 }
 class View {
+ // This fixture represents a regular package with diagnostics disabled.
+ boolean aiObservationAllowed(GeckoSession session){return false;}
+ void aiLoadError(GeckoSession session,WebRequestError error){}
+ final EvidenceBoundary aiEvidence=new EvidenceBoundary();
+ static final class EvidenceBoundary{
+  void location(GeckoSession session){throw new AssertionError("Unexpected diagnostics call");}
+  void start(GeckoSession session){throw new AssertionError("Unexpected diagnostics call");}
+  void stop(GeckoSession session,boolean success){throw new AssertionError("Unexpected diagnostics call");}
+ }
  @@MEMBERS@@
  final Owner owner=new Owner();GeckoRuntime runtime=new GeckoRuntime();WebExtension extension=AddonHost.enabled();GeckoSession current=new GeckoSession(),primary=current;
  boolean destroyed,failed,addonDisabled,enabled=true,ready=true,checkpointReady=true,identityPrepared=true,requestHeadersInstalled=true,privacyReady=true,routePrepared=true,fingerprintingProtected=true,timeZonePermitted=true;long addonStateSerial,routeDelegateInstalls,protectionRequest,startupDraftRevision;String queued="",url="";int opens,newSessions,timeZoneRetirements,headerRetirements,routeReleases;

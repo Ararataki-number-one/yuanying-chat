@@ -174,6 +174,8 @@ class MainActivity extends Activity {
   /*ACTUAL_MAIN_METHODS*/
 }
 class GeckoWebView extends FrameLayout {
+  // Host ownership revision is advanced by the verbatim setHost/releaseHost methods.
+  long aiHostRevision;
   final ChatSession owner;final MutableContextWrapper displayContext;final PopupBoundary blockedPopups=new PopupBoundary();
   WebViewClient client;WebChromeClient chrome;DownloadListener download;interface ResponseDownload{void receive(WebResponse response);}ResponseDownload responseDownload;
   boolean destroyed,auxOpen,addonDisabled;final Set<GeckoSession> crashed=new HashSet<>(),popups=new HashSet<>();boolean protectionAllowsNetwork(){return owner.guard.allowed();}Runnable onClose;int auxCloses;String url="https://chatgpt.com/";final GeckoSession current=new GeckoSession();final Set<GeckoSession> pendingLoads=new HashSet<>();final Map<GeckoSession,String> loadingTargets=new HashMap<>(),locations=new HashMap<>();

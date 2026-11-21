@@ -79,6 +79,7 @@ class GeckoWebView {
   final class Blocked {int invalidations;void invalidate(){invalidations++;}}
   final Blocked blockedPopups=new Blocked();
   boolean destroyed,failed,desktop,canBack,canForward,ready=true,exitIp;float readingLayout=1,scale=1;
+  long aiHostRevision;
   String url;int auxiliaryCloses,zooms,configures;Runnable closeHook,configureHook;
   WebViewClient client=new WebViewClient(this);final MainActivity activity=new MainActivity();
   GeckoWebView(){owner.web=this;activity.remote=this;activity.session=owner;displayContext.base=activity;surface.session=primary;register(primary);url=locations.get(primary);}
@@ -123,11 +124,13 @@ public final class SelectionHost {
     check(same.selectBrowserWindow(row(same,same.primary),same.activity),"Selecting the same real page succeeds");
     check(!same.exitIp&&same.auxiliaryCloses==1,"Same-page selection only dismisses the auxiliary IP display");
     check(same.owner.navigationEpoch==epoch&&same.surface.releases==0&&same.surface.attachments==0&&same.configures==0,"Same-page selection does not activate or begin navigation");
+    check(same.aiHostRevision==0,"Selecting the same tab preserves diagnostic host epoch");
     noNavigation(same,"Same-page selection has no fabricated page callbacks");retained(same.primary,document,"Same-page document/draft/cookie/position boundary stays unchanged");
     GeckoWebView view=new GeckoWebView();GeckoSession page=view.popup("popup");Object primaryDocument=view.primary.document,popupDocument=page.document;
     WebExtension.Port source=view.ports.get(view.primary),other=view.ports.get(page);List<String> cancelled=new ArrayList<>(),untouched=new ArrayList<>();
     view.callbacks.add(source,cancelled::add,1000);view.callbacks.add(other,untouched::add,1000);
     check(view.selectBrowserWindow(row(view,page),view.activity),"An existing real popup can be selected");
+    check(view.aiHostRevision==1,"Switching native tabs retires prior diagnostic selection");
     check(view.current==page&&view.surface.session==page&&!view.primary.active&&page.active,"Actual activation transfers the retained surface");
     check(view.surface.releases==1&&view.surface.attachments==1&&view.configures==1,"Retained selection attaches once without constructing sessions");
     check(cancelled.equals(Collections.singletonList("null"))&&untouched.isEmpty()&&view.callbacks.size()==1&&view.clock.tasks.size()==1,"Production request registry cancels only the previous session's callbacks");
@@ -135,6 +138,7 @@ public final class SelectionHost {
     check(view.client.committed.equals(Collections.singletonList(page))&&view.client.finished.equals(Collections.singletonList(page)),"Painted session callbacks belong to the selected existing document");
     check(view.owner.observerPorts.get(view.owner.observerPorts.size()-1)==other,"Resource observer binds to the selected session's exact port");
     retained(view.primary,primaryDocument,"Primary document/draft/cookie/position is retained");retained(page,popupDocument,"Popup document/draft/cookie/position is retained");
+    check(view.selectBrowserWindow(row(view,view.primary),view.activity)&&view.aiHostRevision==2,"Switch away and back cannot revive a previous diagnostic host epoch");
     GeckoWebView blank=new GeckoWebView();GeckoSession empty=blank.popup("blank");blank.locations.put(empty,"about:blank");blank.painted.remove(empty);
     check(blank.selectBrowserWindow(row(blank,empty),blank.activity)&&blank.owner.cancelled==1&&blank.owner.cancelledEpoch==blank.owner.navigationEpoch,"A retained blank window cancels only its own observer epoch");
     check(blank.client.committed.isEmpty()&&blank.client.finished.isEmpty(),"Unpainted blank page has no invented visible/finished callback");

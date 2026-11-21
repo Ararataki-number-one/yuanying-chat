@@ -1,0 +1,101 @@
+name: PocketChat AI diagnostics test APK
+
+on:
+  push:
+    branches: ['candidate/pocketchat-ai-diagnostics-20261121']
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  diagnostics:
+    if: github.repository == 'Ararataki-number-one/yuanying-chat' && github.ref == 'refs/heads/candidate/pocketchat-ai-diagnostics-20261121'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+
+      - name: Test synthetic diagnostics
+        run: python3 -B -m unittest discover -s prototype/ai-diagnostics -p 'test_*.py'
+
+      - name: Restore verified baseline Gecko SDK
+        env:
+          BASELINE_ARTIFACT_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          archive="$RUNNER_TEMP/pocketchat-baseline-gecko.zip"
+          printf 'header = "Authorization: Bearer %s"\n' "$BASELINE_ARTIFACT_TOKEN" |
+            curl --config - --fail --silent --show-error --location --retry 3 \
+              --proto '=https' --proto-redir '=https' --output "$archive" \
+              https://api.github.com/repos/Ararataki-number-one/yuanying-chat/actions/artifacts/14642417394/zip
+          printf '%s  %s\n' f152cb973db41c7029499bd442c068dbd9c22d942d476c9d6de4e1b63b009545 "$archive" | sha256sum --check
+          sdk="$RUNNER_TEMP/pocketchat-baseline-gecko"
+          unzip -q "$archive" -d "$sdk"
+          aar="$sdk/maven/local/pocketchat/sdk/geckoview-caret/157.0.20261005135250-pocket3/geckoview-caret-157.0.20261005135250-pocket3.aar"
+          printf '%s  %s\n' f9fad20c02e554b00da51b72c8cd2643e121b4a81bc656dd5cf03de21ded2e72 "$aar" | sha256sum --check
+          test -s "${aar%.aar}.pom"
+          cmp "$sdk/sdk-build-receipt.json" "$sdk/assets/pocketchat-sdk-build-receipt.json"
+
+      - name: Prepare pinned Android build tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          archive="$RUNNER_TEMP/pocketchat-gradle-9.8.0.zip"
+          curl --fail --silent --show-error --location --retry 3 \
+            --proto '=https' --proto-redir '=https' --output "$archive" \
+            https://services.gradle.org/distributions/gradle-9.8.0-bin.zip
+          printf '%s  %s\n' bafd5ce9cfaea0fbccfdc8439a1ac42fbd4cd9c89dc9a988228d8a2639a58e6c "$archive" | sha256sum --check
+          unzip -q "$archive" -d "$RUNNER_TEMP"
+          export JAVA_HOME="$JAVA_HOME_17_X64"
+          export PATH="$JAVA_HOME/bin:$PATH"
+          sdkmanager="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          set +o pipefail
+          yes | "$sdkmanager" --licenses >/dev/null
+          set -o pipefail
+          "$sdkmanager" 'platforms;android-37.1' 'build-tools;37.0.0'
+
+      - name: Build and verify diagnostics APKs
+        shell: bash
+        run: |
+          set -euo pipefail
+          export JAVA_HOME="$JAVA_HOME_17_X64"
+          export PATH="$JAVA_HOME/bin:$PATH"
+          test_key="$RUNNER_TEMP/pocketchat-ai-diagnostics-test.jks"
+          "$JAVA_HOME/bin/keytool" -genkeypair -storetype JKS -keystore "$test_key" \
+            -alias androiddebugkey -storepass android -keypass android \
+            -dname 'CN=PocketChat AI Diagnostics Test' -keyalg RSA -keysize 2048 -validity 30
+          signer=$("$JAVA_HOME/bin/keytool" -exportcert -keystore "$test_key" \
+            -alias androiddebugkey -storepass android | sha256sum | cut -d ' ' -f 1)
+          sdk="$RUNNER_TEMP/pocketchat-baseline-gecko"
+          gradle="$RUNNER_TEMP/gradle-9.8.0/bin/gradle"
+          "$gradle" --no-daemon --console=plain :app:assembleDiagnostics :app:lintDiagnostics \
+            "-PcaretSdkRepository=$sdk/maven" "-PcaretSdkAssets=$sdk/assets" "-PtestSigningKey=$test_key"
+
+          aapt2="$ANDROID_HOME/build-tools/37.0.0/aapt2"
+          apksigner="$ANDROID_HOME/build-tools/37.0.0/apksigner"
+          for abi in arm64-v8a x86_64; do
+            apk="app/build/outputs/apk/diagnostics/app-$abi-diagnostics.apk"
+            test -s "$apk"
+            badging=$("$aapt2" dump badging "$apk")
+            grep -F "package: name='local.pocketchat.aidiagnostics'" <<< "$badging"
+            grep -Fx "native-code: '$abi'" <<< "$badging"
+            manifest=$("$aapt2" dump xmltree --file AndroidManifest.xml "$apk")
+            awk '/local[.]pocketchat[.]UPDATE_CHANNEL/ {if (getline && /"ai-diagnostics"/) found = 1} END {exit !found}' <<< "$manifest"
+            signature=$("$apksigner" verify --verbose --print-certs "$apk")
+            grep -Fx "Signer #1 certificate SHA-256 digest: $signer" <<< "$signature"
+            unzip -p "$apk" assets/pocketchat-sdk-build-receipt.json | cmp "$sdk/sdk-build-receipt.json" -
+            sha256sum "$apk"
+          done
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: pocketchat-ai-diagnostics-test-apks
+          path: |
+            app/build/outputs/apk/diagnostics/app-arm64-v8a-diagnostics.apk
+            app/build/outputs/apk/diagnostics/app-x86_64-diagnostics.apk
+          if-no-files-found: error
+          retention-days: 5

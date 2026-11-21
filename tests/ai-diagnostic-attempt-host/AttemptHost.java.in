@@ -1,0 +1,87 @@
+package local.pocketchat;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.UUID;
+import java.util.concurrent.Future;
+
+public final class AttemptHost {
+  private static final String BODY = "{\"version\":1,\"provider\":\"openai\",\"evidence\":[{\"id\":\"E1\"}]}";
+  private static int checks;
+
+  /* ACTUAL_ATTEMPT */
+
+  private static void check(String label, boolean condition) {
+    if (!condition) throw new AssertionError(label);
+    checks++;
+  }
+
+  private static Attempt create(ChatSession owner, AiDiagnosticGateway.Settings settings,
+                                String body, Attempt previous) {
+    return new Attempt(owner, settings, List.of(), body, "synthetic preview", previous);
+  }
+
+  private static void fresh(String label, Attempt attempt, Attempt earlier) {
+    check(label + " generates a new canonical UUID",
+        !attempt.reusedId && !earlier.id.equals(attempt.id)
+            && UUID.fromString(attempt.id).toString().equals(attempt.id));
+  }
+
+  public static void main(String[] args) {
+    ChatSession owner = new ChatSession();
+    AiDiagnosticGateway.Settings settings = new AiDiagnosticGateway.Settings();
+
+    Attempt first = create(owner, settings, BODY, null);
+    check("First confirmation has a fresh UUID",
+        !first.reusedId && UUID.fromString(first.id).toString().equals(first.id));
+    check("Fresh confirmation explains possible duplicate charges",
+        first.confirmationText().contains("新请求") && first.confirmationText().contains("启用付费")
+            && first.confirmationText().contains("可能再次计费"));
+    check("Fresh request requires a distinctly labeled confirmation button",
+        "确认新请求并发送".equals(first.confirmationButton()));
+
+    Attempt retry = create(owner, settings, new String(BODY), first);
+    check("Same owner, settings object and serialized body reuse the uncertain UUID",
+        retry.reusedId && first.id.equals(retry.id));
+    check("Retry confirmation explains reuse of the uncertain UUID",
+        retry.confirmationText().contains("沿用") && retry.confirmationText().contains("状态不确定"));
+    check("Retry uses its own confirmation button", "沿用编号发送".equals(retry.confirmationButton()));
+
+    owner.connectionEpoch++;
+    Attempt newRoute = create(owner, settings, BODY, first);
+    check("A new route epoch is captured without reissuing the identity of unchanged evidence",
+        newRoute.epoch == owner.connectionEpoch && newRoute.epoch != first.epoch
+            && newRoute.reusedId && first.id.equals(newRoute.id));
+
+    fresh("Same window without an uncertain record", create(owner, settings, BODY, null), first);
+    fresh("Re-entering identical settings in a new settings object",
+        create(owner, new AiDiagnosticGateway.Settings(), BODY, first), first);
+    fresh("Switching providers", create(owner, new AiDiagnosticGateway.Settings(), BODY.replace("openai", "deepseek"), first), first);
+    fresh("Changed evidence", create(owner, settings, BODY.replace("E1", "E2"), first), first);
+
+    ChatSession replacement = new ChatSession();
+    fresh("Stale record from a different session", create(replacement, settings, BODY, first), first);
+    Attempt restart = create(replacement, new AiDiagnosticGateway.Settings(), BODY, null);
+    fresh("Restart without an uncertain record", restart, first);
+    check("Restart uses the fresh request warning and button",
+        restart.confirmationText().equals(first.confirmationText())
+            && restart.confirmationButton().equals(first.confirmationButton()));
+    System.out.println(checks);
+  }
+}
+
+final class ChatSession {
+  long connectionEpoch = 1;
+}
+
+final class AiDiagnosticGateway {
+  static final class Settings {}
+
+  static final class Transfer {}
+}
+
+final class AiDiagnosticEvidence {
+  static final class Entry {
+    boolean current() { return true; }
+  }
+}
