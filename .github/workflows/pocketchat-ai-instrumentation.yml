@@ -1,0 +1,100 @@
+name: PocketChat AI native send instrumentation
+
+on:
+  push:
+    branches: ['candidate/pocketchat-ai-diagnostics-20261121']
+    paths:
+      - '.github/workflows/pocketchat-ai-instrumentation.yml'
+      - 'tests/ai-diagnostic-instrumentation/**'
+
+permissions:
+  contents: read
+
+jobs:
+  synthetic-confirmation:
+    if: github.repository == 'Ararataki-number-one/yuanying-chat' && github.ref == 'refs/heads/candidate/pocketchat-ai-diagnostics-20261121'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+
+      - name: Build the standalone instrumentation fixture
+        shell: bash
+        run: |
+          set -euo pipefail
+          export JAVA_HOME="$JAVA_HOME_17_X64"
+          export PATH="$JAVA_HOME/bin:$PATH"
+          work="$PWD/work/ai-instrumentation"
+          sdk="$RUNNER_TEMP/pocketchat-ai-instrumentation-sdk"
+          mkdir -p "$work" "$sdk/cmdline-tools"
+          cp -aL "$ANDROID_HOME/cmdline-tools/latest" "$sdk/cmdline-tools/latest"
+          sdkmanager="$sdk/cmdline-tools/latest/bin/sdkmanager"
+          set +o pipefail
+          yes | "$sdkmanager" --sdk_root="$sdk" --licenses >/dev/null
+          set -o pipefail
+          "$sdkmanager" --sdk_root="$sdk" 'platforms;android-35' 'build-tools;37.0.0'
+          python3 -B tests/ai-diagnostic-instrumentation/build.py --sdk "$sdk" --output "$work/private-build"
+
+      - name: Prepare pinned Android emulator
+        shell: bash
+        run: |
+          set -euo pipefail
+          export JAVA_HOME="$JAVA_HOME_17_X64"
+          export PATH="$JAVA_HOME/bin:$PATH"
+          work="$PWD/work/ai-instrumentation"
+          sdk="$RUNNER_TEMP/pocketchat-ai-instrumentation-sdk"
+          cache="$RUNNER_TEMP/pocketchat-ai-instrumentation-sdk-cache"
+          test -c /dev/kvm
+          sudo chmod a+rw /dev/kvm
+          python3 -B tools/gecko/prepare_android_image.py --component emulator --sdk-root "$sdk" --cache "$cache" --report "$work/emulator-setup.json"
+          python3 -B tools/gecko/prepare_android_image.py --sdk-root "$sdk" --cache "$cache" --report "$work/image-setup.json"
+          python3 -B tools/gecko/prepare_platform_tools.py --sdk-root "$sdk" --cache "$cache" --report "$work/platform-tools-setup.json"
+          "$sdk/emulator/emulator" -accel-check
+
+      - name: Exercise native confirmation in a fresh loopback-only emulator
+        shell: bash
+        run: |
+          set -euo pipefail
+          export JAVA_HOME="$JAVA_HOME_17_X64"
+          export PATH="$JAVA_HOME/bin:$PATH"
+          sdk="$RUNNER_TEMP/pocketchat-ai-instrumentation-sdk"
+          export ANDROID_HOME="$sdk" ANDROID_SDK_ROOT="$sdk"
+          export ANDROID_AVD_HOME="$RUNNER_TEMP/pocketchat-ai-instrumentation/avd"
+          export ANDROID_USER_HOME="$RUNNER_TEMP/pocketchat-ai-instrumentation/user"
+          export ANDROID_EMULATOR_HOME="$RUNNER_TEMP/pocketchat-ai-instrumentation/emulator"
+          mkdir -p "$ANDROID_AVD_HOME" "$ANDROID_USER_HOME" "$ANDROID_EMULATOR_HOME"
+          printf 'no\n' | "$sdk/cmdline-tools/latest/bin/avdmanager" create avd --force -n pocketchat-ai-instrumentation -p "$ANDROID_AVD_HOME/pocketchat-ai-instrumentation.avd" -k 'system-images;android-35;google_apis;x86_64'
+          namespace=pocketchat-ai-instrumentation
+          sudo ip netns add "$namespace"
+          trap 'sudo ip netns del "$namespace"' EXIT
+          sudo ip -n "$namespace" link set lo up
+          sudo ip netns exec "$namespace" runuser -u "$(id -un)" -- env \
+            "JAVA_HOME=$JAVA_HOME" "PATH=$PATH" "ANDROID_HOME=$sdk" "ANDROID_SDK_ROOT=$sdk" \
+            "ANDROID_AVD_HOME=$ANDROID_AVD_HOME" "ANDROID_USER_HOME=$ANDROID_USER_HOME" \
+            "ANDROID_EMULATOR_HOME=$ANDROID_EMULATOR_HOME" \
+            python3 -B tests/ai-diagnostic-instrumentation/run.py --sdk "$sdk" \
+              --output "$PWD/work/ai-instrumentation/"
+
+      - name: Check the separate local HTTPS transport control
+        if: always()
+        shell: bash
+        run: |
+          python3 -B prototype/ai-diagnostics/test_acceptance_https_gateway.py \
+            --report "$PWD/work/ai-instrumentation/host-https.json"
+
+      - name: Retain scoped test receipts
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: pocketchat-ai-native-send-instrumentation-evidence
+          path: |
+            work/ai-instrumentation/private-build/build-report.json
+            work/ai-instrumentation/emulator-setup.json
+            work/ai-instrumentation/image-setup.json
+            work/ai-instrumentation/platform-tools-setup.json
+            work/ai-instrumentation/instrumentation-results.json
+            work/ai-instrumentation/host-https.json
+          if-no-files-found: warn
+          retention-days: 5
