@@ -243,9 +243,11 @@ final class AiDiagnosticUi {
         : J.obj("version", 1, "provider", configured.provider, "evidence", evidence);
     Attempt attempt = configured != null && issue.isEmpty()
         ? new Attempt(owner, configured, selected, request.toString(), labels.toString(), uncertain) : null;
-    String preview;
-    try { preview = request.toString(2); }
-    catch (org.json.JSONException invalid) {
+    String preview, localPreview;
+    try {
+      preview = request.toString(2);
+      localPreview = AiDiagnosticReply.localPreview(evidence);
+    } catch (org.json.JSONException invalid) {
       feedback = "无法预览本次证据。";
       update();
       return;
@@ -253,9 +255,11 @@ final class AiDiagnosticUi {
     String heading = configured == null ? "" : "网关 " + configured.endpoint + "\n供应商 "
         + configured.providerLabel() + "\n";
     if (attempt != null) heading += "请求编号 " + attempt.id + "\n" + attempt.confirmationText() + "\n";
+    String availability = attempt == null ? issue + "\n\n" : "";
+    String jsonHeading = attempt == null ? "本地证据\n" : "将发送的证据\n";
     LinearLayout content = panel();
     TextView details = DesignUi.text(activity, heading + labels + "\n"
-        + (attempt == null ? issue + "\n\n本地证据\n" : "将发送的证据\n") + preview, 14, DesignUi.TEXT);
+        + availability + localPreview + "\n\n" + jsonHeading + preview, 14, DesignUi.TEXT);
     details.setTextIsSelectable(true);
     content.addView(details);
     AlertDialog.Builder builder = AppAppearance.dialog(activity)
@@ -305,7 +309,9 @@ final class AiDiagnosticUi {
         activity.handler.removeCallbacks(attempt.deadline);
         active = null;
         uncertain = null;
-        reply = attempt.preview + "\n诊断结果\n" + completed;
+        String title = attempt.currentEvidence() ? "已发送证据快照的诊断结果"
+            : "历史诊断结果（证据快照已不可用于当前诊断）";
+        reply = title + "\n仅对应当时确认发送的证据。\n\n" + attempt.preview + "\n" + completed;
         feedback = "已收到诊断回复。";
         update();
       });

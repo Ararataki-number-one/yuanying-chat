@@ -12,6 +12,9 @@ import java.nio.charset.StandardCharsets;
 import java.security.Principal;
 import java.security.cert.Certificate;
 import javax.net.ssl.HttpsURLConnection;
+import org.json.JSONArray;
+import org.json.JSONException;
+import org.json.JSONObject;
 
 final class GatewayHost {
   private static final String ENDPOINT = "https://mock.example/v1/diagnose";
@@ -39,7 +42,109 @@ final class GatewayHost {
     return AiDiagnosticGateway.send(new ChatSession(), 7, SETTINGS, REQUEST_ID, BODY, transfer);
   }
 
+  private static JSONObject localEvent(String id, String kind, String signal,
+                                       Integer code, Integer category) throws JSONException {
+    return new JSONObject().put("id", id).put("kind", kind).put("signal", signal)
+        .put("code", code == null ? JSONObject.NULL : code)
+        .put("category", category == null ? JSONObject.NULL : category).put("elapsedMs", 17);
+  }
+
+  private static JSONObject localTab(String id, JSONArray events) throws JSONException {
+    return new JSONObject().put("schema", 1).put("engine", "GECKO").put("tabEvidenceId", id)
+        .put("scope", "TAB_CALLBACK_OBSERVATIONS").put("navigationAttribution", "UNKNOWN")
+        .put("events", events);
+  }
+
+  private static String localPreviewUnchanged(JSONArray evidence) throws Exception {
+    JSONObject confirmed = new JSONObject().put("version", 1).put("provider", "openai")
+        .put("evidence", evidence);
+    String originalBody = confirmed.toString();
+    String originalEvidence = evidence.toString();
+    String summary = AiDiagnosticReply.localPreview(evidence);
+    check(originalBody.equals(confirmed.toString()) && originalEvidence.equals(evidence.toString()));
+    check(summary.startsWith("本机观察（Gecko 回调）") && summary.contains("具体导航归属未知。"));
+    return summary;
+  }
+
+  private static void localPreviewChecks() throws Exception {
+    int capturesBefore = AiDiagnosticRoute.captures;
+    int opensBefore = AiDiagnosticRoute.opens;
+    String[][] known = {
+        {"LOAD_ERROR", "DNS_FAILURE", "收到名称解析失败回调", "37", "5"},
+        {"LOAD_ERROR", "TIMEOUT", "收到超时回调", "51", "3"},
+        {"LOAD_ERROR", "CERTIFICATE_REJECTED", "收到证书拒绝回调", "50", "2"},
+        {"LOAD_ERROR", "TLS_FAILURE", "收到 TLS 失败回调", "34", "2"},
+        {"CONTENT_CRASH", "CONTENT_CRASH", "收到内容进程崩溃回调", null, null},
+        {"CONTENT_KILL", "CONTENT_KILL", "收到内容进程终止回调", null, null},
+    };
+    for (int i = 0; i < known.length; i++) {
+      String[] row = known[i];
+      String eventId = "E" + (i + 1);
+      Integer code = row[3] == null ? null : Integer.valueOf(row[3]);
+      Integer category = row[4] == null ? null : Integer.valueOf(row[4]);
+      JSONArray evidence = new JSONArray().put(localTab("T3", new JSONArray()
+          .put(localEvent(eventId, row[0], row[1], code, category))));
+      String summary = localPreviewUnchanged(evidence);
+      check(summary.contains("[T3/" + eventId + "] " + row[2]));
+      check(code == null ? !summary.contains("错误码")
+          : summary.contains("错误码 " + code + "/" + category));
+      check(!summary.contains("null/null") && !summary.contains("远端建议") && !summary.contains("可能"));
+      if ("CERTIFICATE_REJECTED".equals(row[1])) {
+        // A certificate callback alone does not establish trust, expiry, clock,
+        // proxy or site ownership as its cause. Local text stays observational.
+        check(!summary.contains("信任关系") && !summary.contains("有效期")
+            && !summary.contains("设备时间") && !summary.contains("证书绕过"));
+      }
+    }
+
+    JSONArray unknown = new JSONArray().put(localTab("T1", new JSONArray()
+        .put(localEvent("E8", "LOAD_ERROR", "UNKNOWN", 1024, 9))));
+    String unknownText = localPreviewUnchanged(unknown);
+    check(unknownText.contains("[T1/E8] 收到未细分的加载错误回调")
+        && unknownText.contains("错误码 1024/9") && !unknownText.contains("可能"));
+
+    JSONArray missingCodes = new JSONArray().put(localTab("T1", new JSONArray()
+        .put(localEvent("E9", "LOAD_ERROR", "UNKNOWN", null, null))
+        .put(localEvent("E10", "PAGE_STOP_FAILURE", "UNKNOWN", null, null))));
+    String missingText = localPreviewUnchanged(missingCodes);
+    check(missingText.contains("[T1/E9] 收到未细分的加载错误回调")
+        && missingText.contains("[T1/E10] 收到加载失败回调"));
+    check(!missingText.contains("错误码") && !missingText.contains("null/null"));
+
+    JSONArray progress = new JSONArray()
+        .put(localEvent("E1", "LOAD_START", "UNKNOWN", null, null))
+        .put(localEvent("E2", "LOCATION_CHANGED", "UNKNOWN", null, null))
+        .put(localEvent("E3", "PAGE_STOP_SUCCESS", "UNKNOWN", null, null));
+    for (JSONArray evidence : new JSONArray[]{new JSONArray(),
+        new JSONArray().put(localTab("T1", new JSONArray())),
+        new JSONArray().put(localTab("T1", progress))}) {
+      String summary = localPreviewUnchanged(evidence);
+      check(summary.contains("所选快照没有记录到故障回调。"));
+      check(!summary.contains("[T1/") && !summary.contains("远端建议"));
+    }
+
+    JSONArray ordered = new JSONArray()
+        .put(localTab("T7", new JSONArray()
+            .put(localEvent("E1", "LOAD_START", "UNKNOWN", null, null))
+            .put(localEvent("E2", "LOAD_ERROR", "TIMEOUT", 51, 3))
+            .put(localEvent("E10", "LOAD_ERROR", "DNS_FAILURE", 37, 5))))
+        .put(localTab("T2", new JSONArray()
+            .put(localEvent("E1", "LOCATION_CHANGED", "UNKNOWN", null, null))
+            .put(localEvent("E2", "LOAD_ERROR", "CERTIFICATE_REJECTED", 50, 2))
+            .put(localEvent("E3", "PAGE_STOP_SUCCESS", "UNKNOWN", null, null))));
+    String orderedText = localPreviewUnchanged(ordered);
+    int first = orderedText.indexOf("[T7/E2]");
+    int second = orderedText.indexOf("[T7/E10]");
+    int third = orderedText.indexOf("[T2/E2]");
+    check(first >= 0 && first < second && second < third);
+    check(first == orderedText.lastIndexOf("[T7/E2]") && third == orderedText.lastIndexOf("[T2/E2]"));
+    check(!orderedText.contains("[T7/E1]") && !orderedText.contains("[T2/E1]")
+        && !orderedText.contains("[T2/E3]"));
+    check(AiDiagnosticRoute.captures == capturesBefore && AiDiagnosticRoute.opens == opensBefore);
+  }
+
   public static void main(String[] args) throws Exception {
+    localPreviewChecks();
     FakeConnection success = new FakeConnection(200, REPLY);
     AiDiagnosticRoute.reset(success);
     AiDiagnosticGateway.Transfer completed = new AiDiagnosticGateway.Transfer();

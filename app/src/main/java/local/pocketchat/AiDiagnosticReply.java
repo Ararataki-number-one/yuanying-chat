@@ -19,6 +19,23 @@ final class AiDiagnosticReply {
   private static final String CLOCK = "REVIEW_DEVICE_DATE_TIME";
   private static final String VERSION = "REVIEW_BROWSER_VERSION";
 
+  static String localPreview(JSONArray evidence) throws JSONException {
+    Map<String, JSONObject> facts = facts(evidence);
+    StringBuilder text = new StringBuilder("本机观察（Gecko 回调）\n具体导航归属未知。");
+    if (facts.isEmpty()) return text.append("\n所选快照没有记录到故障回调。").toString();
+    for (Map.Entry<String, JSONObject> fact : facts.entrySet()) {
+      JSONObject event = fact.getValue();
+      text.append("\n[").append(fact.getKey()).append("] ")
+          .append(observed(event.optString("signal"), event.optString("kind")));
+      Object code = event.opt("code");
+      Object category = event.opt("category");
+      if (code instanceof Number && category instanceof Number) {
+        text.append(" · 错误码 ").append(code).append('/').append(category);
+      }
+    }
+    return text.toString();
+  }
+
   static String render(byte[] bytes, String confirmedBody) throws IOException {
     Map<?, ?> envelope = AiDiagnosticJson.object(AiDiagnosticJson.decode(bytes), "version", "diagnosis");
     if (!Integer.valueOf(2).equals(envelope.get("version"))) throw AiDiagnosticJson.invalid();
@@ -70,27 +87,30 @@ final class AiDiagnosticReply {
   }
 
   private static Map<String, JSONObject> facts(String confirmedBody) throws IOException {
-    Map<String, JSONObject> facts = new LinkedHashMap<>();
     try {
-      JSONArray evidence = new JSONObject(confirmedBody).getJSONArray("evidence");
-      for (int i = 0; i < evidence.length(); i++) {
-        JSONObject tab = evidence.getJSONObject(i);
-        JSONArray events = tab.getJSONArray("events");
-        for (int j = 0; j < events.length(); j++) {
-          JSONObject event = events.getJSONObject(j);
-          switch (event.getString("kind")) {
-            case "LOAD_ERROR": case "PAGE_STOP_FAILURE": case "CONTENT_CRASH": case "CONTENT_KILL":
-              facts.put(tab.getString("tabEvidenceId") + "/" + event.getString("id"), event);
-              break;
-            default:
-              break;
-          }
-        }
-      }
-      return facts;
+      return facts(new JSONObject(confirmedBody).getJSONArray("evidence"));
     } catch (JSONException invalid) {
       throw AiDiagnosticJson.invalid();
     }
+  }
+
+  private static Map<String, JSONObject> facts(JSONArray evidence) throws JSONException {
+    Map<String, JSONObject> facts = new LinkedHashMap<>();
+    for (int i = 0; i < evidence.length(); i++) {
+      JSONObject tab = evidence.getJSONObject(i);
+      JSONArray events = tab.getJSONArray("events");
+      for (int j = 0; j < events.length(); j++) {
+        JSONObject event = events.getJSONObject(j);
+        switch (event.getString("kind")) {
+          case "LOAD_ERROR": case "PAGE_STOP_FAILURE": case "CONTENT_CRASH": case "CONTENT_KILL":
+            facts.put(tab.getString("tabEvidenceId") + "/" + event.getString("id"), event);
+            break;
+          default:
+            break;
+        }
+      }
+    }
+    return facts;
   }
 
   private static String observed(String signal, String kind) {
