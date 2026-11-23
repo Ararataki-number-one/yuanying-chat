@@ -271,11 +271,13 @@ def _preview(tree, *, configured=False):
     if len(candidates) != 1:
         raise UiBlocked("preview-text-unavailable")
     content = candidates[0]
-    start = content.find("\n{")
-    if start < 0:
-        raise UiBlocked("preview-json-unavailable")
+    marker = "\n\n将发送的证据\n" if configured else "\n\n本地证据\n"
+    other_marker = "\n本地证据\n" if configured else "\n将发送的证据\n"
+    if content.count(marker) != 1 or other_marker in content:
+        raise UiBlocked("preview-json-marker-invalid")
+    before_json, raw_json = content.split(marker, 1)
     try:
-        value = json.loads(content[start+1:])
+        value = json.loads(raw_json)
     except (ValueError, TypeError):
         raise UiBlocked("preview-json-invalid") from None
     expected = {"version", "provider", "evidence"} if configured else {"evidence"}
@@ -315,8 +317,46 @@ def _preview(tree, *, configured=False):
         if (code is None) != (category is None) or (code is not None and
                 (type(code) is not int or type(category) is not int or not 0 <= code <= 2147483647 or not 0 <= category <= 2147483647)):
             raise UiBlocked("native-error-code-invalid")
+    _assert_local_summary(before_json, entry)
     # Retain only anonymous validated evidence in memory for equality checks.
     return evidence
+
+
+def _assert_local_summary(before_json, entry):
+    """Compare rendered Chinese observations with the same validated JSON snapshot.
+
+    This independent UI oracle does not call the product formatter. Error codes
+    alone never imply a diagnosis: UNKNOWN with code 50 remains UNKNOWN. The
+    configured page may mention possible billing before this summary; only the
+    summary slice is compared, and no captured content is emitted on failure.
+    """
+    heading = "本机观察（Gecko 回调）"
+    if before_json.count(heading) != 1:
+        raise UiBlocked("local-summary-unavailable")
+    observed = before_json[before_json.index(heading):]
+    expected = [heading, "具体导航归属未知。"]
+    labels = {
+        "DNS_FAILURE": "收到名称解析失败回调",
+        "TIMEOUT": "收到超时回调",
+        "CERTIFICATE_REJECTED": "收到证书拒绝回调",
+        "TLS_FAILURE": "收到 TLS 失败回调",
+        "CONTENT_CRASH": "收到内容进程崩溃回调",
+        "CONTENT_KILL": "收到内容进程终止回调",
+    }
+    faults = {"LOAD_ERROR", "PAGE_STOP_FAILURE", "CONTENT_CRASH", "CONTENT_KILL"}
+    for event in entry["events"]:
+        if event["kind"] not in faults:
+            continue
+        label = labels.get(event["signal"], "收到未细分的加载错误回调"
+                           if event["kind"] == "LOAD_ERROR" else "收到加载失败回调")
+        line = "[" + entry["tabEvidenceId"] + "/" + event["id"] + "] " + label
+        if event["code"] is not None:
+            line += " · 错误码 " + str(event["code"]) + "/" + str(event["category"])
+        expected.append(line)
+    if len(expected) == 2:
+        expected.append("所选快照没有记录到故障回调。")
+    if observed != "\n".join(expected):
+        raise UiBlocked("local-summary-evidence-mismatch")
 
 
 def exercise(adb, record, fixture):
@@ -451,7 +491,8 @@ def exercise(adb, record, fixture):
         if proof is None:
             raise UiBlocked("no-stable-native-evidence")
         certificates = [event for event in proof[0]["events"] if event["kind"] == "LOAD_ERROR"
-                        and event["signal"] == "CERTIFICATE_REJECTED" and event["code"] is not None]
+                        and event["signal"] == "CERTIFICATE_REJECTED"
+                        and (event["code"], event["category"]) == (50, 2)]
         native_error = None
         if certificates:
             certificate = certificates[-1]
@@ -459,7 +500,7 @@ def exercise(adb, record, fixture):
                             "signal": "CERTIFICATE_REJECTED", "navigationAttribution": "UNKNOWN"}
             record("gecko_certificate_error", "passed", native_error)
         else:
-            record("gecko_certificate_error", "unverified", "valid-preview-without-native-certificate-signal")
+            record("gecko_certificate_error", "unverified", "valid-preview-without-gecko-certificate-code-50-category-2")
         checkpoint = "inspect_redacted_local_preview"
         if _nodes(tree, text="确认新请求并发送") or _nodes(tree, text="沿用编号发送"):
             raise UiBlocked("unconfigured-preview-exposed-send")
@@ -489,6 +530,9 @@ def exercise(adb, record, fixture):
                     raise UiBlocked("confirmation-evidence-changed")
                 if len(_nodes(tree, text="确认新请求并发送", cls="android.widget.Button")) != 1:
                     raise UiBlocked("confirmation-button-unavailable")
+                # Both independently checked summaries describe the same captured
+                # anonymous evidence. Record only the fixed result before cancelling.
+                record("chinese_preview_consistency", "passed")
                 # Deliberately close; never invoke the actual sending control.
                 ui.tap(text="关闭", cls="android.widget.Button")
                 ui.seen("AI 助手 · 浏览器诊断")

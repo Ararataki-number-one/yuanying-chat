@@ -35,8 +35,8 @@ jobs:
                 --proto '=https' --proto-redir '=https' --output "$2" \
                 "https://api.github.com/repos/Ararataki-number-one/yuanying-chat/$1"
           }
-          fetch actions/runs/44910281335 "$work/source-run.private.json"
-          fetch actions/artifacts/14709646838 "$work/source-artifact.private.json"
+          fetch actions/runs/45099005675 "$work/source-run.private.json"
+          fetch actions/artifacts/14784891248 "$work/source-artifact.private.json"
           python3 -B - "$work" <<'PY'
           import json, sys
           from pathlib import Path
@@ -44,23 +44,26 @@ jobs:
           work = Path(sys.argv[1])
           run = json.loads((work / "source-run.private.json").read_text())
           artifact = json.loads((work / "source-artifact.private.json").read_text())
-          commit = "cca221ab11c7d05a21e998be7c27197937fbb23a"
+          commit = "48d1a27fff34109f0603657574c38e85a86ac253"
           branch = "candidate/pocketchat-ai-diagnostics-20261121"
-          digest = "9823c21efbc091238709ab6e28fc91f92f0bf3cf612fdda5037683fb94b7a51c"
-          if run["id"] != 44910281335 or run["head_sha"] != commit or run["head_branch"] != branch or run["conclusion"] != "success":
+          digest = "5bcd4a76ed5481ea2b2066b6c15cf821f74eee869305e4db1a80b184e3473af8"
+          if run["id"] != 45099005675 or run["head_sha"] != commit or run["head_branch"] != branch or run["conclusion"] != "success":
               raise SystemExit("Unexpected source run")
           owner = artifact["workflow_run"]
-          if artifact["id"] != 14709646838 or artifact["expired"] or artifact["name"] != "pocketchat-ai-diagnostics-test-apks":
+          if artifact["id"] != 14784891248 or artifact["expired"] or artifact["name"] != "pocketchat-ai-diagnostics-test-apks":
               raise SystemExit("Unexpected or expired source artifact")
-          if owner["id"] != run["id"] or owner["head_sha"] != commit or artifact["digest"] != f"sha256:{digest}":
+          if (owner["id"] != run["id"] or owner["head_sha"] != commit
+                  or artifact["digest"] != f"sha256:{digest}" or artifact["size_in_bytes"] != 245305932):
               raise SystemExit("Source artifact does not match the accepted run")
           PY
-          fetch actions/artifacts/14709646838/zip "$work/original-apks.private.zip"
-          printf '%s  %s\n' 9823c21efbc091238709ab6e28fc91f92f0bf3cf612fdda5037683fb94b7a51c "$work/original-apks.private.zip" | sha256sum --check
+          fetch actions/artifacts/14784891248/zip "$work/original-apks.private.zip"
+          test "$(stat -c %s "$work/original-apks.private.zip")" = 245305932
+          printf '%s  %s\n' 5bcd4a76ed5481ea2b2066b6c15cf821f74eee869305e4db1a80b184e3473af8 "$work/original-apks.private.zip" | sha256sum --check
           files=$(unzip -Z1 "$work/original-apks.private.zip" | sort)
           test "$files" = "$(printf '%s\n' app-arm64-v8a-diagnostics.apk app-x86_64-diagnostics.apk)"
           unzip -p "$work/original-apks.private.zip" app-x86_64-diagnostics.apk > "$work/app-x86_64-diagnostics.apk"
-          printf '%s  %s\n' 75ff5f3f880770aa9b4bc3fe8badd0658701460d0bf6c5f6b9335e23837e2feb "$work/app-x86_64-diagnostics.apk" | sha256sum --check
+          test "$(stat -c %s "$work/app-x86_64-diagnostics.apk")" = 126490973
+          printf '%s  %s\n' 459ab4a0b8a742094785304592e8d25c851d0f51765a375df725234e6a80fc96 "$work/app-x86_64-diagnostics.apk" | sha256sum --check
 
       - name: Verify package and prepare pinned emulator
         shell: bash
@@ -84,6 +87,7 @@ jobs:
           "$sdk/build-tools/37.0.0/d8" --min-api 35 --output "$work/control.dex.jar" \
             "$work/control-classes/PocketChatTlsControl.class"
           python3 -B tests/ai-diagnostic-device/test_fixture.py
+          python3 -B tests/ai-diagnostic-device/test_summary.py
           python3 -B prototype/ai-diagnostics/test_acceptance_https_gateway.py \
             --report "$work/host-gateway-tls.json"
           apk="$work/app-x86_64-diagnostics.apk"
@@ -93,19 +97,19 @@ jobs:
           grep -F "launchable-activity: name='local.pocketchat.BrandLaunchActivity'" <<< "$badging"
           signature=$("$sdk/build-tools/37.0.0/apksigner" verify --print-certs "$apk")
           signer=$(sed -nE 's/^.*certificate SHA-256 digest:[[:space:]]*([0-9A-Fa-f]{64})[[:space:]]*$/\1/p' <<< "$signature" | tr 'A-F' 'a-f' | sort -u)
-          test "$signer" = 1230913e31a79ede8911513c18a4235b2a6814626d9fd1d3345a6e03adcd72e8
+          test "$signer" = c05c5f56951b9a8c1d362edc143ef31d2b42010b354d48be85694f5e14de69a2
           python3 -B - "$work" <<'PY'
           import json, sys
           from pathlib import Path
 
           work = Path(sys.argv[1])
           receipt = {
-              "sourceRun": 44910281335,
-              "sourceArtifact": 14709646838,
-              "sourceCommit": "cca221ab11c7d05a21e998be7c27197937fbb23a",
-              "zipSha256": "9823c21efbc091238709ab6e28fc91f92f0bf3cf612fdda5037683fb94b7a51c",
-              "apkSha256": "75ff5f3f880770aa9b4bc3fe8badd0658701460d0bf6c5f6b9335e23837e2feb",
-              "signerSha256": "1230913e31a79ede8911513c18a4235b2a6814626d9fd1d3345a6e03adcd72e8",
+              "sourceRun": 45099005675,
+              "sourceArtifact": 14784891248,
+              "sourceCommit": "48d1a27fff34109f0603657574c38e85a86ac253",
+              "zipSha256": "5bcd4a76ed5481ea2b2066b6c15cf821f74eee869305e4db1a80b184e3473af8",
+              "apkSha256": "459ab4a0b8a742094785304592e8d25c851d0f51765a375df725234e6a80fc96",
+              "signerSha256": "c05c5f56951b9a8c1d362edc143ef31d2b42010b354d48be85694f5e14de69a2",
               "abi": "x86_64",
               "package": "local.pocketchat.aidiagnostics",
               "launcher": "local.pocketchat.BrandLaunchActivity",
@@ -117,7 +121,7 @@ jobs:
           python3 tools/gecko/prepare_platform_tools.py --sdk-root "$sdk" --cache "$RUNNER_TEMP/pocketchat-device-packages" --report "$work/platform-tools-setup.json"
           "$sdk/emulator/emulator" -accel-check
 
-      - name: Install original APK and exercise production native UI
+      - name: Install the original APK and verify native preview and cancellation
         shell: bash
         run: |
           set -euo pipefail

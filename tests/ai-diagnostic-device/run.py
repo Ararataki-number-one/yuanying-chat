@@ -10,8 +10,8 @@ import time
 
 PACKAGE = "local.pocketchat.aidiagnostics"
 ACTIVITY = PACKAGE + "/local.pocketchat.BrandLaunchActivity"
-APK_SHA = "75ff5f3f880770aa9b4bc3fe8badd0658701460d0bf6c5f6b9335e23837e2feb"
-APK_COMMIT = "cca221ab11c7d05a21e998be7c27197937fbb23a"
+APK_SHA = "459ab4a0b8a742094785304592e8d25c851d0f51765a375df725234e6a80fc96"
+APK_COMMIT = "48d1a27fff34109f0603657574c38e85a86ac253"
 SERIAL = "emulator-5554"
 CONTROL_DEX = "/data/local/tmp/pocketchat-tls-control.dex.jar"
 TLS_RESULTS = {"TLS_CERTIFICATE_REJECTED", "TLS_UNEXPECTEDLY_TRUSTED",
@@ -110,7 +110,7 @@ def main():
     adb_path = args.sdk / "platform-tools" / "adb"
     emulator = args.sdk / "emulator" / "emulator"
     report = {
-        "sourceApk": {"run": 44910281335, "artifact": 14709646838, "commit": APK_COMMIT,
+        "sourceApk": {"run": 45099005675, "artifact": 14784891248, "commit": APK_COMMIT,
                       "expectedSha256": APK_SHA, "package": PACKAGE, "deviceAbi": "x86_64"},
         "scope": {"emulator": True, "physicalDevice": False, "thirdPartyAccess": False,
                   "paidProviderCalls": False, "deviceTrustChanged": False, "productionEgressVerified": False},
@@ -189,13 +189,13 @@ def main():
                 raise RuntimeError("expected one installed diagnostic base APK")
             record(scope, "passed", {"package": PACKAGE})
             installed_path = package_paths[0][len("package:"):]
+            scope = "installed_bytes"
             try:
                 installed_sha = adb("shell", "sha256sum", installed_path, timeout=40).split()[0]
             except (RuntimeError, IndexError, subprocess.TimeoutExpired):
                 record("installed_bytes", "unverified", "ADB shell could not read the installed APK")
             else:
                 if installed_sha != APK_SHA:
-                    scope = "installed_bytes"
                     raise RuntimeError("installed APK hash differs")
                 record("installed_bytes", "passed", {"sha256": installed_sha})
 
@@ -249,7 +249,11 @@ def main():
                 record("fixture_tls_rejection", "passed" if rejected else "unverified",
                        "matching-sni-and-peer-certificate-alert" if rejected else "no-specific-peer-certificate-alert")
             if report["checks"].get("confirmation_cancel", {}).get("status") == "passed":
-                record("cancel_no_gateway_connection", "passed" if counts["gatewayConnectAccepted"] == 0 else "failed")
+                gateway = phases["gateway"]
+                cancelled_without_traffic = gateway["requestLineParsed"] == 0 and gateway["connectAccepted"] == 0
+                record("cancel_no_gateway_connection", "passed" if cancelled_without_traffic else "failed",
+                       {"gatewayRequestLines": gateway["requestLineParsed"],
+                        "gatewayAcceptedConnects": gateway["connectAccepted"]})
 
     except RuntimeError as problem:
         record(scope, "failed", str(problem))
@@ -275,15 +279,18 @@ def main():
 
     checks = report["checks"]
     required_ui = ("android_ui", "timezone_native_readback", "gecko_certificate_error", "redacted_preview",
-                   "confirmation_cancel", "fixture_tls_rejection", "cancel_no_gateway_connection")
+                   "chinese_preview_consistency", "confirmation_cancel", "fixture_tls_rejection",
+                   "cancel_no_gateway_connection")
     for key in (*required_ui, "trusted_gateway", "production_network_path", "physical_arm64"):
         checks.setdefault(key, {"status": "unverified"})
     core_passed = all(
         checks.get(k, {}).get("status") == "passed"
-        for k in ("original_apk", "namespace", "emulator_boot", "install", "launcher")
-    ) and checks.get("installed_bytes", {}).get("status") != "failed"
+        for k in ("original_apk", "namespace", "emulator_boot", "install", "installed_bytes", "launcher")
+    )
     ui_passed = all(checks[key]["status"] == "passed" for key in required_ui)
     report["nativeEmulatorSubsetPassed"] = core_passed and ui_passed
+    print("Android preview and cancellation passed:", report["nativeEmulatorSubsetPassed"], flush=True)
+    print("Trusted HTTPS submission:", checks["trusted_gateway"]["status"], flush=True)
     report["result"] = ("passed" if core_passed and ui_passed and checks["trusted_gateway"]["status"] == "passed"
                         else "partial" if core_passed else "core_failed")
     (args.output / "device-results.json").write_text(
