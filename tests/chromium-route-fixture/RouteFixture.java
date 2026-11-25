@@ -59,6 +59,9 @@ public final class RouteFixture extends Instrumentation {
     private static final String VPN_FIXTURE_IP = "2001:2::cafe";
     private static final int DEBUG_SLOT = 1;
     private static final int VPN_SLOT = 3;
+    private static final int HTTP_PROXY_SLOT = 4;
+    private static final int SOCKS_PROXY_SLOT = 5;
+    private static final int HTTPS_PROXY_SLOT = 6;
     private static final int INTERNAL_SLOT = 7;
     private static final String OFFLINE_MODE = "prepare-offline-chromium";
     private static final String OFFLINE_ORIGIN = "https://pocketchat-optional-fixture.invalid/";
@@ -681,21 +684,32 @@ public final class RouteFixture extends Instrumentation {
     private void exerciseProtectedProxy(Context target, Bundle result, String nonce, LoopbackProxy.Kind kind,
                                         SSLContext tls) throws Exception {
         String prefix;
+        int slot;
         switch (kind) {
-            case HTTP: prefix = "protectedHttpProxy"; break;
-            case HTTPS: prefix = "protectedHttpsProxy"; break;
-            case SOCKS: prefix = "protectedSocksProxy"; break;
+            case HTTP:
+                prefix = "protectedHttpProxy";
+                slot = HTTP_PROXY_SLOT;
+                break;
+            case HTTPS:
+                prefix = "protectedHttpsProxy";
+                slot = HTTPS_PROXY_SLOT;
+                break;
+            case SOCKS:
+                prefix = "protectedSocksProxy";
+                slot = SOCKS_PROXY_SLOT;
+                break;
             default: throw new IllegalArgumentException("Expected an explicit fixture proxy");
         }
         String title = "PocketChatProtected-" + kind.scheme + "-" + nonce;
         try (LoopbackProxy proxy = new LoopbackProxy(kind, nonce, title, tls);
              LoopbackProxy.PrivateTrap trap = new LoopbackProxy.PrivateTrap()) {
             Context environment = onMain(() -> {
-                Context slot = chromiumEnvironment(target, DEBUG_SLOT, nonce, false);
-                selectEnvironment(slot, proxy.endpoint(), false, proxy.page());
-                return slot;
+                // Stage each route before its owner process first reads the saved settings.
+                Context profile = chromiumEnvironment(target, slot, nonce, true);
+                selectEnvironment(profile, proxy.endpoint(), false, proxy.page());
+                return profile;
             });
-            Activity activity = launchEnvironment(target, proxy.page(), DEBUG_SLOT);
+            Activity activity = launchEnvironment(target, proxy.page(), slot);
             try {
                 CefriumBrowser browser = awaitBrowser(activity);
                 requireMockRender(browser, proxy, title);

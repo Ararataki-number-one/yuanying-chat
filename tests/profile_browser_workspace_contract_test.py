@@ -197,9 +197,10 @@ def ready_menu(decoy=False):
 
 class MenuHarness:
     """Compile the real nested functions, controlling only ADB and the clock."""
-    def __init__(self, reveal_after=2, decoy=False, late_logcat=False, late_predicate=False):
+    def __init__(self, reveal_after=2, decoy=False, late_logcat=False, late_predicate=False, moving_layout=False):
         self.clock = Clock(); self.calls = []; self.taps = []; self.events = []
         self.state = 'list'; self.swipes = 0
+        self.menu_reads = 0; self.swipe_observations = []
         initial, card = environment_tree()
         node(card, 'android.widget.Button', description='更多操作 日常会话',
              bounds='[840,404][984,548]', clickable='true')
@@ -210,6 +211,7 @@ class MenuHarness:
             if parts[:3] == ('shell', 'input', 'swipe'):
                 self.swipes += 1
                 self.assert_state('menu')
+                self.swipe_observations.append(self.menu_reads)
             elif parts[:3] == ('shell', 'input', 'tap'):
                 if self.state == 'list': self.state = 'menu'
                 else:
@@ -221,6 +223,10 @@ class MenuHarness:
             assert self.clock.now < kwargs['deadline']
             if self.state == 'list': return list_xml
             if self.state == 'details': return details_xml
+            assert kwargs.get('sync_window') is True, 'environment detail needs input-window synchronization'
+            self.menu_reads += 1
+            if moving_layout and self.menu_reads == 1:
+                return menu_xml.replace('[78,578][1002,1728]', '[78,519][1002,1669]', 1)
             return visible_xml if self.swipes >= reveal_after else menu_xml
         def progress(value, environment):
             result = RUN.details_menu_progress(value, environment)
@@ -276,6 +282,12 @@ class EnvironmentDetailsScrolling(unittest.TestCase):
         with self.assertRaisesRegex(AssertionError, 'eight real menu scrolls'): harness.open('日常会话')
         self.assertEqual(harness.swipes, 8)
         self.assertEqual(len(harness.taps), 1)
+
+    def test_initial_sliding_sheet_geometry_is_never_used_for_input(self):
+        harness = MenuHarness(reveal_after=1, moving_layout=True)
+        self.assertIn('环境仪表盘', harness.open('日常会话'))
+        self.assertEqual(harness.swipe_observations, [3])
+        self.assertEqual(harness.events[0]['actualAndroidSwipe']['observedBounds'], [78,578,1002,1728])
 
     def test_whole_xml_text_decoy_cannot_replace_validated_menu_target(self):
         harness = MenuHarness(reveal_after=1, decoy=True)

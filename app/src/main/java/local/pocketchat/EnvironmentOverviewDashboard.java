@@ -37,7 +37,8 @@ final class EnvironmentOverviewDashboard extends LinearLayout {
 
     LinearLayout window=card(body);heading(window,"窗口信息",null);notes=row(window,"备注","—");group=row(window,"分组","未分组");progress=row(window,"网络状态","正在准备环境");
     LinearLayout identity=card(body);audit=ReferenceUi.small(a,"指纹检测 ↗",false,inspectIdentity);heading(identity,"指纹信息",audit);
-    row(identity,"系统 / 内核","Android "+Build.VERSION.RELEASE+" / Firefox");browser=row(identity,"浏览器模板","等待浏览器确认");language=row(identity,"请求语言","等待浏览器确认");zone=row(identity,"网页时区","尚未观测");agent=row(identity,"User Agent","等待浏览器确认");agent.setMaxLines(3);agent.setEllipsize(TextUtils.TruncateAt.END);agent.setTextIsSelectable(true);
+    EnvironmentEngine engine=EnvironmentEngine.read(a.prefs);
+    row(identity,"系统 / 内核","Android "+Build.VERSION.RELEASE+" / "+engine.label);browser=row(identity,"浏览器模板","等待浏览器确认");language=row(identity,"请求语言","等待浏览器确认");zone=row(identity,"网页时区","尚未观测");agent=row(identity,"User Agent","等待浏览器确认");agent.setMaxLines(3);agent.setEllipsize(TextUtils.TruncateAt.END);agent.setTextIsSelectable(true);
     Button technical=ReferenceUi.small(a,"查看来源与详细信息",false,details);identity.addView(technical,new LinearLayout.LayoutParams(-1,-2));
     TextView credit=label("IP 网页查询：ip123.in · 使用当前环境线路",11,DesignUi.MUTED,false);credit.setPadding(a.dp(2),a.dp(14),a.dp(2),a.dp(6));body.addView(credit);
 

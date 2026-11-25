@@ -131,11 +131,20 @@ def run(adb,binary,source,out,dump):
         adb('shell','am','start','-W','-n',PACKAGE+'/local.pocketchat.WindowHomeActivity')
         xml=wait(lambda x:environment_action_description(x,environment) is not None,'details environment card')
         click(xml,description='更多操作 '+environment)
-        scrolls=0;details_target=None
+        scrolls=0;details_target=None;previous_progress=None
         def details_ready(value):
-            nonlocal scrolls,details_target
+            nonlocal scrolls,details_target,previous_progress
             progress=details_menu_progress(value,environment)
-            if progress is None:return False
+            if progress is None:
+                previous_progress=None
+                assert not any(n.get('package')==PACKAGE and n.get('class')=='android.widget.CheckBox'
+                    and n.get('content-desc','').startswith('选择环境 ') for n in tree(value)), \
+                    ('environment details input opened bulk selection',environment)
+                return False
+            # The sheet can expose accessibility nodes before its input window
+            # reaches the same position. Confirm fresh matching bounds first.
+            if progress!=previous_progress:
+                previous_progress=progress;return False
             if progress['ready']:
                 details_target=progress['bounds'];return True
             assert scrolls<8,'environment details exceeded eight real menu scrolls'
@@ -143,10 +152,11 @@ def run(adb,binary,source,out,dump):
             start,end=t+(b-t)*4//5,t+(b-t)//5
             adb('shell','input','swipe',str(x),str(start),str(x),str(end),'300')
             scrolls+=1
+            previous_progress=None
             events.append(dict(name='reveal-explicit-environment-details',environment=environment,
                 actualAndroidSwipe=dict(start=[x,start],end=[x,end],durationMillis=300,observedBounds=progress['bounds'])))
             return False
-        xml=wait(details_ready,'explicit details menu')
+        xml=wait(details_ready,'explicit details menu',sync_window=True)
         l,t,r,b=details_target
         adb('shell','input','tap',str((l+r)//2),str((t+b)//2))
         taps.append(dict(label='环境详情',description=None,x=(l+r)//2,y=(t+b)//2))

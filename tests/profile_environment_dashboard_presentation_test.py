@@ -47,8 +47,8 @@ DELTAS = (
 )
 
 
-# Current settings entry alone waits for the native window input transaction.
-# Reverse only these three exact changes before the retained v2 source proof.
+# Settings entry and explicit menu input use the native input transaction.
+# Reverse these exact changes before the retained v2 source proof.
 WINDOW_INPUT_PORTS = (
     ('    def wait(predicate,label,timeout=35):\n',
      '    def wait(predicate,label,timeout=35,*,sync_window=False):\n'),
@@ -56,6 +56,30 @@ WINDOW_INPUT_PORTS = (
      '            xml=dump(deadline=deadline,sync_window=True) if sync_window else dump(deadline=deadline)\n'),
     ("            xml=wait(settings_workspace,'settings workspace')\n",
      "            xml=wait(settings_workspace,'settings workspace',sync_window=True)\n"),
+    ("        scrolls=0;details_target=None\n"
+     "        def details_ready(value):\n"
+     "            nonlocal scrolls,details_target\n"
+     "            progress=details_menu_progress(value,environment)\n"
+     "            if progress is None:return False\n",
+     "        scrolls=0;details_target=None;previous_progress=None\n"
+     "        def details_ready(value):\n"
+     "            nonlocal scrolls,details_target,previous_progress\n"
+     "            progress=details_menu_progress(value,environment)\n"
+     "            if progress is None:\n"
+     "                previous_progress=None\n"
+     "                assert not any(n.get('package')==PACKAGE and n.get('class')=='android.widget.CheckBox'\n"
+     "                    and n.get('content-desc','').startswith('选择环境 ') for n in tree(value)), \\\n"
+     "                    ('environment details input opened bulk selection',environment)\n"
+     "                return False\n"
+     "            # The sheet can expose accessibility nodes before its input window\n"
+     "            # reaches the same position. Confirm fresh matching bounds first.\n"
+     "            if progress!=previous_progress:\n"
+     "                previous_progress=progress;return False\n"),
+    ("            scrolls+=1\n",
+     "            scrolls+=1\n"
+     "            previous_progress=None\n"),
+    ("        xml=wait(details_ready,'explicit details menu')\n",
+     "        xml=wait(details_ready,'explicit details menu',sync_window=True)\n"),
 )
 
 
