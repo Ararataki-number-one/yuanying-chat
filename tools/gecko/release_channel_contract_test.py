@@ -107,6 +107,24 @@ class DirectReleaseTests(unittest.TestCase):
             with self.subTest(request=request), self.assertRaises(ReleaseChannelError):
                 verify_direct_release(dict(record, userRequest=request), self.identity)
 
+    def test_exact_stable_upgrade_request_applies_to_2_1_15(self):
+        request = '改发**能覆盖升级的正式版**'
+        identity = dict(self.identity, version='2.1.15', versionCode=117)
+        record = dict(self.record, version=identity['version'], versionCode=identity['versionCode'],
+                      userRequest=request)
+        result = verify_direct_release(record, identity)
+        self.assertEqual(result, dict(record, physicalArmPhone='not-tested'))
+        self.assertEqual(result['userRequest'], request)
+        self.assertNotIn('actualPhysicalPhoneExecution', result)
+        for altered in ('不要' + request, '“' + request + '”', request + '？',
+                        '如果可以就' + request, '改发正式版'):
+            with self.subTest(request=altered), self.assertRaises(ReleaseChannelError):
+                verify_direct_release(dict(record, userRequest=altered), identity)
+        for version, version_code in (('2.1.16', 118), ('2.1.15', 118)):
+            with self.subTest(version=version, versionCode=version_code), self.assertRaises(ReleaseChannelError):
+                verify_direct_release(dict(record, version=version, versionCode=version_code),
+                                      dict(identity, version=version, versionCode=version_code))
+
     def test_maintenance_publication_preserves_the_complete_actual_request(self):
         identity = dict(self.identity, version='2.1.5', versionCode=107)
         for source in ('current-user-message', 'prior-explicit-user-message-in-current-task'):
