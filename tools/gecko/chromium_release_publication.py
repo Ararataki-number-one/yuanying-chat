@@ -112,13 +112,22 @@ def record(args):
     args.output.write_text(json.dumps(result, indent=2) + '\n')
 
 
-def validate_build(build, release, build_commit):
-    require(re.fullmatch(r'[0-9a-f]{40}', build_commit), 'Missing immutable Chromium CI artifact commit')
-    parent = git('rev-parse', build_commit + '^1')
-    require(parent == release['sourceCommit'], 'Chromium build transport is not parented to the tested source')
+def immutable_build_manifest(build_commit, source_commit):
+    require(type(build_commit) is str and re.fullmatch(r'[0-9a-f]{40}', build_commit),
+            'Missing immutable Chromium CI artifact commit')
+    commit = subprocess.check_output(['git', 'cat-file', 'commit', build_commit])
+    header = commit.split(b'\n\n', 1)[0].decode('ascii')
+    parents = [line.split()[1] for line in header.splitlines() if line.startswith('parent ')]
+    require(parents and parents[0] == source_commit, 'Chromium build transport is not parented to the tested source')
     evidence_object = build_commit + ':manifest.json'
     require(0 < int(git('cat-file', '-s', evidence_object)) <= MAX_MANIFEST_BYTES, 'Oversized immutable build manifest')
-    immutable = strict_json(git('show', evidence_object))
+    result = strict_json(subprocess.check_output(['git', 'show', evidence_object]))
+    require(type(result) is dict, 'Immutable Chromium build manifest must be an object')
+    return result
+
+
+def validate_build(build, release, build_commit):
+    immutable = immutable_build_manifest(build_commit, release['sourceCommit'])
     require(immutable.get('chromiumBuild') == build, 'Chromium bundle proof differs from the exact CI artifact')
     expected = {'schema': 1, 'sourceCommit': release['sourceCommit'],
                 'sourceTree': git('rev-parse', release['sourceCommit'] + '^{tree}'),
