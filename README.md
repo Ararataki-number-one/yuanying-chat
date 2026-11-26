@@ -1,13 +1,13 @@
 # 元婴期院士 · Yuanying Chat
 
-## 最新正式版 2.1.15（117）
+## 最新正式版 2.1.16（118）
 
 Gecko 随安装包提供，是默认内核。需要 Chromium 时，可在环境的浏览器设置中下载独立组件。应用按环境保存内核选择和网站资料。Chromium 可使用该环境的系统直连、内置线路、固定代理或强制 VPN。
 
-- [下载 2.1.15 正式安装包（Android ARM64）](https://github.com/Ararataki-number-one/yuanying-chat/releases/download/v2.1.15-gecko/PocketChat-2.1.15-gecko-arm64.apk)
-- [正式发布说明与校验信息](https://github.com/Ararataki-number-one/yuanying-chat/releases/tag/v2.1.15-gecko)
-- [2.1.15 对应源码](https://github.com/Ararataki-number-one/yuanying-chat/tree/v2.1.15-gecko)
-- [变更说明](https://github.com/Ararataki-number-one/yuanying-chat/blob/v2.1.15-gecko/docs/RELEASE-v2.1.15.md)
+- [下载 2.1.16 正式安装包（Android ARM64）](https://github.com/Ararataki-number-one/yuanying-chat/releases/download/v2.1.16-gecko/PocketChat-2.1.16-gecko-arm64.apk)
+- [正式发布说明与校验信息](https://github.com/Ararataki-number-one/yuanying-chat/releases/tag/v2.1.16-gecko)
+- [2.1.16 对应源码](https://github.com/Ararataki-number-one/yuanying-chat/tree/v2.1.16-gecko)
+- [变更说明](https://github.com/Ararataki-number-one/yuanying-chat/blob/v2.1.16-gecko/docs/RELEASE-v2.1.16.md)
 - [应用内更新清单](https://raw.githubusercontent.com/Ararataki-number-one/yuanying-chat/app-updates/latest.json)
 
 安装包沿用原应用签名。使用原签名正式版的用户可以覆盖升级，开发和构建请使用上方的源码标签。
