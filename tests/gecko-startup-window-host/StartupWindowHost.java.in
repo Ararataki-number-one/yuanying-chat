@@ -141,6 +141,7 @@ public final class StartupWindowHost {
     GeckoResult<String> nativeNavigationFailure(GeckoSession session,String target,String message){return GeckoResult.fromValue(null);}
     final Resource blockedPopups=new Resource(),ipRoutes=new Resource(),contentPermissions=new Resource(),nativeProtection=new Resource(),callbacks=new Resource(),cookieCallbacks=new Resource(),appearanceSync=new Resource();
     final Map<GeckoSession,String> locations=new IdentityHashMap<>();final Set<GeckoSession> popups=new HashSet<>();
+    final Map<GeckoSession,Object> pdfCoverProofs=new IdentityHashMap<>();
     final Map<Object,Object> appearanceLoads=new HashMap<>(),appearanceConnections=new HashMap<>(),appearanceDocuments=new HashMap<>(),ports=new HashMap<>(),backStates=new HashMap<>(),forwardStates=new HashMap<>(),pageScales=new HashMap<>(),viewportWidths=new HashMap<>(),loadingTargets=new HashMap<>(),states=new HashMap<>(),stateDraftRevisions=new HashMap<>();
     final Set<Object> generalSessions=new HashSet<>(),deferredGeneralLoads=new HashSet<>(),staleAppearanceConnections=new HashSet<>(),measuredCompositors=new HashSet<>(),pendingLoads=new HashSet<>(),painted=new HashSet<>(),usable=new HashSet<>(),crashed=new HashSet<>();
     Resource ipObservedNetwork;Object ipRouteSignal,ipPreferences,ipRouteCheck,generalRestore,protectionRestore,recovery,checkpoint,routeLeaseChanged,startupState;WebExtension.Port routePort;

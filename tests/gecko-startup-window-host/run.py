@@ -19,17 +19,19 @@ def main():
   if count!=1:raise ValueError('Unique current member required: '+name)
   parts[name]=reader.member_at(source,source.index(name))
  files=[SOURCE,HERE/'StartupWindowHost.java.in',Path(__file__).resolve(),ROOT/'tests/gecko-navigation-host/run.py',ROOT/'app/src/main/java/local/pocketchat/J.java'];before={str(x.relative_to(ROOT)):sha(x) for x in files}
- deps={str(a.json_jar.resolve()):sha(a.json_jar),str((a.java_home/'bin/javac').resolve()):sha(a.java_home/'bin/javac'),str((a.java_home/'bin/java').resolve()):sha(a.java_home/'bin/java')}
+ suffix='.exe' if os.name=='nt' else ''
+ javac,vm=(a.java_home/'bin'/(name+suffix) for name in ('javac','java'))
+ deps={str(path.resolve()):sha(path) for path in (a.json_jar,javac,vm)}
  template=(HERE/'StartupWindowHost.java.in').read_text();a.output.parent.mkdir(parents=True,exist_ok=True)
  artifacts=a.output.parent/(a.output.stem+'-artifacts');artifacts.mkdir(exist_ok=True)
  with tempfile.TemporaryDirectory(prefix='gecko-startup-window-') as temporary:
   base=Path(temporary)
   def run(chosen,label):
    folder=base/label;folder.mkdir();java=folder/'StartupWindowHost.java';java.write_text(template.replace('@@MEMBERS@@','\n'.join(chosen.values())))
-   compiled=subprocess.run([str(a.java_home/'bin/javac'),'-encoding','UTF-8','-cp',str(a.json_jar),'-d',str(folder/'classes'),str(java),str(ROOT/'app/src/main/java/local/pocketchat/J.java')],capture_output=True,text=True)
+   compiled=subprocess.run([str(javac),'-encoding','UTF-8','-cp',str(a.json_jar),'-d',str(folder/'classes'),str(java),str(ROOT/'app/src/main/java/local/pocketchat/J.java')],capture_output=True,text=True)
    (artifacts/(label+'-compile.log')).write_text(compiled.stdout+compiled.stderr)
    if compiled.returncode:raise RuntimeError('Actual current startup methods did not compile: '+compiled.stderr)
-   result=subprocess.run([str(a.java_home/'bin/java'),'-cp',str(folder/'classes')+os.pathsep+str(a.json_jar),'local.pocketchat.StartupWindowHost'],capture_output=True,text=True)
+   result=subprocess.run([str(vm),'-cp',str(folder/'classes')+os.pathsep+str(a.json_jar),'local.pocketchat.StartupWindowHost'],capture_output=True,text=True)
    (artifacts/(label+'-run.log')).write_text(result.stdout+result.stderr)
    if not result.stdout.strip():raise RuntimeError('Startup host did not report behavior: '+result.stderr)
    return result,json.loads(result.stdout)

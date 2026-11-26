@@ -62,7 +62,18 @@ class CurrentRuntimeRawBindings(unittest.TestCase):
         self.assertEqual(SHA(serialize(pins)), '572fea0e1b98a1252652228ae45e5ce26cc4dd90055de46f489173d7fe8d247e')
         for name, expected in pins.items():
             raw = (ROOT/'app/src/main/java/local/pocketchat'/(name+'.java')).read_bytes()
-            self.assertEqual(SHA(raw), expected)
+            if name == 'GeckoCpuProfile':
+                self.assertEqual(SHA(raw), '7292cf2bef5e948f833909d071bbff0558aa026e1a2fc29000fdc855a479108a')
+                delta = PATH_HOST.CPU_PDF_DELTA
+                self.assertEqual((len(delta), raw.count(delta)), (156, 1))
+                previous = raw.replace(delta, b'', 1)
+                self.assertEqual(SHA(previous), expected)
+                for changed in (previous, raw.replace(delta, delta*2, 1),
+                                raw.replace(delta, delta.replace(b'false', b'true'), 1), previous+delta):
+                    with self.assertRaises(ValueError):
+                        PATH_HOST.verify_factored_raw(name, changed)
+            else:
+                self.assertEqual(SHA(raw), expected)
             self.assertIs(PATH_HOST.verify_factored_raw(name, raw), raw)
             for bad in (raw+b' ', raw[:-1], b'unknown', None, bytearray(raw)):
                 with self.assertRaises(ValueError):
@@ -186,7 +197,7 @@ class CurrentRuntimeRawBindings(unittest.TestCase):
                 target = root/relative
                 target.parent.mkdir(parents=True, exist_ok=True)
                 target.write_bytes((ROOT/relative).read_bytes())
-            (root/SOURCE_PATH).write_text(changed)
+            (root/SOURCE_PATH).write_bytes(changed.encode('utf-8'))
             output = root/'result.json'
             result = subprocess.run([shutil.which('python3'), str(root/'tests/browser-profile-path-host/run.py'),
                                      '--java-home', str(home), '--output', str(output)],

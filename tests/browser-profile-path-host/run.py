@@ -7,6 +7,10 @@ SOURCE='82a3512a8cf67259049353d7145407292a5d9cba'
 # Profiles uses the reviewed environment-engine-lock blob; slot/global path members are byte-identical.
 PINS={'GeckoCpuController': '2ceaa3bb6602392d9702339620832187f612a0c863c0ddf46a61aac00200a558', 'GeckoTlsController': '0bdcb528c6df40a5a03324d1dd8b4066c74d22c23af9ac715159667968c20f67', 'GeckoCpuProfile': 'd1569a11149f15b4e6da1c0259bfc25fe6ee1bc1c920f8419e26c8c60756b5dd', 'GeckoTlsProfile': '2b33d4bde7b44cd6068f794fe13cf074a4ced0975d32b444632455180bcf4ac4', 'GeckoCpuStore': '8b83942560d72a1ad432245228d4791965133d2db6064d8c6cb9466b56e87458', 'GeckoTlsStore': '9430714a847aafc8fbb56390566330c785b8c3dcc019de14015830f68dfe82c8', 'GeckoCpuSpec': '617c69ba3b1d3b4edd3abf455bee8e36f3b861e0c82857153a8f8c632dd1bedc', 'GeckoTlsSpec': '4ffd5f095d6528053c4b11938cf5807f2b95c189bf1feafc3402eb451553f341', 'EnvironmentSpec': 'e85b542ffad8e5ff09d4b8484333b52b22200df093cae633dcd05f6dc1c1fb99', 'NetworkShareJson': '2934074b1e0bb9bf2ebd114643e6966cb30b5cb7e0cb7acf27a1ea59f1ddf677', 'J': '772bcc91b130ace1f33b529c2d828771ff9f12ba44805685a703df14f7d68493', 'ProfileContext': '2b72094396c21c235e77ce79fbd6a6eb134abf14a71bf4c8c0ae010aa2369178', 'Profiles': '7f1b81480940393d533811e7511cfe4d56bc7f92cabb0dca8da666ec5b5f805e'}
 LEGACY_GV_SHA='b8a32f9f7dccd67a4e0ab90a69a94d053c3130e470fdbe6af647244152817fb4'
+# The only reviewed change to the pinned path source is the PDF attachment preference.
+CURRENT_CPU_PROFILE_SHA256='7292cf2bef5e948f833909d071bbff0558aa026e1a2fc29000fdc855a479108a'
+CPU_PDF_DELTA=(b'      // Deliver PDF attachments to the download handler while keeping inline PDF viewing.\n'
+               b'      +"  browser.download.open_pdf_attachments_inline: false\\n"\n')
 NAMES=['GeckoCpuController','GeckoTlsController','GeckoCpuProfile','GeckoTlsProfile','GeckoCpuStore','GeckoTlsStore','GeckoCpuSpec','GeckoTlsSpec','EnvironmentSpec','NetworkShareJson','J']
 sha=lambda b:hashlib.sha256(b).hexdigest()
 spec=importlib.util.spec_from_file_location('raw_path_member_extractor',ROOT/'tests/gecko-navigation-host/run.py');extract=importlib.util.module_from_spec(spec);spec.loader.exec_module(extract)
@@ -17,7 +21,15 @@ def uncomment(s):
  # Preserve string/character tokens; remove only lexical Java comments.
  return re.sub(r'("(?:\\.|[^"\\])*"|\'(?:\\.|[^\'\\])*\')|//[^\n]*|/\*.*?\*/',lambda m:m[1]if m[1]else' ',s,flags=re.S)
 def verify_factored_raw(name,raw):
- if type(raw) is not bytes or type(name) is not str or name not in PINS or sha(raw)!=PINS[name]:raise ValueError('Unknown factored raw source: '+str(name))
+ if type(raw) is not bytes or type(name) is not str or name not in PINS:
+  raise ValueError('Unknown factored raw source: '+str(name))
+ historical=raw
+ if name=='GeckoCpuProfile':
+  if sha(raw)!=CURRENT_CPU_PROFILE_SHA256 or raw.count(CPU_PDF_DELTA)!=1:
+   raise ValueError('Unknown factored raw source: '+name)
+  historical=raw.replace(CPU_PDF_DELTA,b'',1)
+ if sha(historical)!=PINS[name]:raise ValueError('Unknown factored raw source: '+name)
+ # Compile the actual current bytes. The inverse protects the old path source pin only.
  return raw
 
 def runtime_profile_consumer(view):
@@ -55,9 +67,9 @@ def main():
   chosen=a.json_jar.read_bytes();known={'3cf6cd6892e32e2b4c1c39e0f52f5248a2f5b37646fdfbb79a66b46b618414ed':78332,'dfb7bae2f404cfe0b72b4d23944698cb716b7665171812a0a4d0f5926c0fac79':18279,'3ea61b2a06e31edf1c91134fe9106b0ebb16628be169f3db75bc7a2b06b45796':82710}
   if known.get(sha(chosen))!=len(chosen):raise ValueError('Explicit JSON input is not a fixed real test dependency')
   jarbytes=chosen;jarsha=sha(chosen)
- files=[prod/(n+'.java')for n in [*NAMES,'ProfileContext','Profiles','GeckoWebView']]+[HERE/'Host.java.in',HERE/'README.md',Path(__file__).resolve(),ROOT/'tests/gecko-navigation-host/run.py',fixture,license];hashes={str(q.relative_to(ROOT)):sha(q.read_bytes())for q in files}
+ files=[prod/(n+'.java')for n in [*NAMES,'ProfileContext','Profiles','GeckoWebView']]+[HERE/'Host.java.in',HERE/'README.md',Path(__file__).resolve(),ROOT/'tests/gecko-navigation-host/run.py',fixture,license];hashes={q.relative_to(ROOT).as_posix():sha(q.read_bytes())for q in files}
  if hashes['app/src/main/java/local/pocketchat/GeckoWebView.java']!=sha(view.encode()):raise ValueError('Gecko source changed during profile extraction')
- if any(hashes[str((prod/(name+'.java')).relative_to(ROOT))]!=sha(raw_bytes) for name,raw_bytes in pinned.items()):
+ if any(hashes[(prod/(name+'.java')).relative_to(ROOT).as_posix()]!=sha(raw_bytes) for name,raw_bytes in pinned.items()):
   raise ValueError('Factored source changed during profile extraction')
  a.output.parent.mkdir(parents=True,exist_ok=True);artifacts=a.output.parent/(a.output.stem+'-artifacts');artifacts.mkdir(exist_ok=True);reports=[];negative=[]
  with tempfile.TemporaryDirectory(prefix='persistent-runtime-path-')as temporary:
