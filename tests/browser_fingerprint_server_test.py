@@ -1,8 +1,10 @@
 """Actual host TLS/proxy and controlled adb-boundary tests; no Android execution claim."""
+import contextlib
 import importlib.util
+import io
 import json
 import os
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 import shlex
 import socket
 import ssl
@@ -11,6 +13,7 @@ import sys
 import time
 from types import SimpleNamespace
 import unittest
+from unittest.mock import patch
 
 ROOT=Path(__file__).resolve().parents[1]
 spec=importlib.util.spec_from_file_location('ephemeral_fingerprint_server',ROOT/'tools/browser/fingerprint_fixture_server.py');host=importlib.util.module_from_spec(spec);spec.loader.exec_module(host)
@@ -165,6 +168,7 @@ class ControlledAdb:
         if args==('root',):self.root_calls+=1;self.uid=2000 if self.fault=='root' or self.fault=='cleanup-root' and self.root_calls>1 else 0
         elif args==('unroot',):self.uid=0 if self.fault=='unroot' else 2000
         elif args==('shell','getprop','ro.kernel.qemu'):out=b'1\n'
+        elif args==('shell','date','-u','+%s'):out=b'invalid\n' if self.fault=='clock' else b'10\n'
         elif args==('shell','id','-u'):out=str(self.uid).encode()+b'\n'
         elif args==('shell','am','get-current-user'):out=b'1\n' if self.fault=='user' else b'0\n'
         elif args==('shell','getenforce'):out=b'Permissive\n' if self.fault=='selinux' else b'Enforcing\n'
@@ -183,8 +187,63 @@ class ControlledAdb:
         return SimpleNamespace(returncode=code,stdout=out,stderr=b'')
 
 
+class GuestTlsValidityTests(unittest.TestCase):
+    def setUp(self):
+        self.certificates=SimpleNamespace(ca=Path('ca.pem'),leaf=Path('leaf.pem'))
+        windows={self.certificates.ca:(5000,120000),self.certificates.leaf:(10000,100000)}
+        bounds=patch.object(host,'certificate_validity_ms',side_effect=windows.__getitem__)
+        bounds.start();self.addCleanup(bounds.stop)
+        self.now=0.;self.probes=[];self.diagnostic=io.StringIO()
+
+    def wait(self,read):
+        def adb(*parts,timeout):
+            self.assertEqual(parts,('shell','date','-u','+%s'))
+            self.assertGreater(timeout,0)
+            self.assertLessEqual(timeout,3)
+            self.probes.append((self.now,timeout))
+            return SimpleNamespace(stdout=read())
+        def sleep(duration):self.now+=duration
+        with contextlib.redirect_stderr(self.diagnostic):
+            host.wait_for_guest_tls_validity(adb,self.certificates,monotonic=lambda:self.now,sleep=sleep)
+
+    def receipt(self):
+        record=self.diagnostic.getvalue().removeprefix('TLS_FIXTURE_GUEST_UTC ')
+        return json.loads(record)
+
+    def test_waits_for_leaf_after_ca_and_recovers_from_one_clock_read_timeout(self):
+        samples=iter([b'9\n',None,b'10\n'])
+        def read():
+            value=next(samples)
+            if value is None:raise subprocess.TimeoutExpired(['adb','shell','date'],3)
+            return value
+        self.wait(read)
+        self.assertEqual(self.probes,[(0,3),(1,3),(2,3)])
+        self.assertEqual(self.receipt(),dict(status='passed',notBeforeUtcMs=10000,notAfterUtcMs=100000,
+            guestUtcMs=10000,attempts=3,readFailures=1,lastReadErrorType='TimeoutExpired',elapsedMs=2000))
+
+    def test_recent_certificate_wait_times_out_and_keeps_last_numeric_observation(self):
+        with self.assertRaisesRegex(ValueError,'within 45 seconds'):
+            self.wait(lambda:b'9\n')
+        self.assertEqual(self.probes[-1],(44,1))
+        self.assertEqual(len(self.probes),45)
+        self.assertEqual(self.receipt(),dict(status='timeout',notBeforeUtcMs=10000,notAfterUtcMs=100000,
+            guestUtcMs=9000,attempts=45,readFailures=0,elapsedMs=45000))
+
+    def test_malformed_and_expired_guest_time_fail_without_waiting_or_leaking_output(self):
+        for observed,status in ((b'redacted non-time response','invalid-clock'),(b'101\n','expired')):
+            with self.subTest(status=status):
+                self.probes.clear();self.diagnostic.seek(0);self.diagnostic.truncate()
+                with self.assertRaises(ValueError):self.wait(lambda:observed)
+                self.assertEqual(len(self.probes),1)
+                self.assertEqual(self.receipt()['status'],status)
+                self.assertNotIn('redacted non-time response',self.diagnostic.getvalue())
+
+
 class UserCaInstallationBoundaryTests(unittest.TestCase):
-    def setUp(self):self.certificates=SimpleNamespace(subject_hash='1234abcd',ca=Path('/tmp/public-ca.pem'),ca_bytes=b'PUBLIC CA certificate only',ca_sha='e'*64,leaf_sha='f'*64)
+    def setUp(self):
+        self.certificates=SimpleNamespace(subject_hash='1234abcd',ca=PurePosixPath('/tmp/public-ca.pem'),leaf=PurePosixPath('/tmp/public-leaf.pem'),ca_bytes=b'PUBLIC CA certificate only',ca_sha='e'*64,leaf_sha='f'*64)
+        bounds=patch.object(host,'certificate_validity_ms',return_value=(5000,120000))
+        bounds.start();self.addCleanup(bounds.stop)
     def test_exact_public_ca_only_is_installed_read_back_and_removed(self):
         adb=ControlledAdb(self.certificates);installer=host.AndroidUserCa(adb,self.certificates);receipt=installer.install();self.assertTrue(receipt['installedPublicCaBytesMatch']);self.assertFalse(receipt['removedAfterExecution'])
         self.assertEqual(adb.uid,2000);self.assertEqual(receipt['evidenceShellUid'],2000);self.assertTrue(receipt['shellRestoredAfterInstall']);self.assertEqual(adb('exec-out','content','read','--uri','content://local.pocketchat.test.browser-fingerprint-evidence/chromium').returncode,0)
@@ -199,6 +258,14 @@ class UserCaInstallationBoundaryTests(unittest.TestCase):
                 with self.assertRaises(ValueError):installer.install()
                 self.assertFalse(installer.receipt)
                 if fault in ('root','user','selinux','collision'):self.assertFalse(any(a[0]=='push' for a in adb.calls))
+
+    def test_invalid_guest_clock_never_changes_adbd_or_the_ca_store(self):
+        adb=ControlledAdb(self.certificates,'clock');installer=host.AndroidUserCa(adb,self.certificates)
+        with self.assertRaisesRegex(ValueError,'invalid guest UTC'):
+            installer.install()
+        installer.remove()
+        self.assertEqual(adb.calls,[('shell','getprop','ro.kernel.qemu'),('shell','date','-u','+%s')])
+        self.assertFalse(installer.receipt)
     def test_cleanup_refuses_to_remove_changed_or_preexisting_certificate(self):
         adb=ControlledAdb(self.certificates);installer=host.AndroidUserCa(adb,self.certificates);installer.install();adb.fault='bytes'
         with self.assertRaises(ValueError):installer.remove()

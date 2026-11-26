@@ -9,6 +9,7 @@ import re
 import socket
 import ssl
 import subprocess
+import sys
 import tempfile
 import threading
 import time
@@ -80,6 +81,53 @@ def openssl(*args):
     result=subprocess.run(['openssl',*map(str,args)],capture_output=True,timeout=30)
     require(result.returncode==0,'OpenSSL public-certificate operation failed')
     return result.stdout
+
+
+def certificate_validity_ms(path):
+    dates=openssl('x509','-in',path,'-noout','-startdate','-enddate').decode('ascii').splitlines()
+    require(len(dates)==2 and dates[0].startswith('notBefore=') and dates[1].startswith('notAfter='),
+            'public certificate validity unavailable')
+    starts,ends=(ssl.cert_time_to_seconds(value.split('=',1)[1])*1000 for value in dates)
+    require(0<starts<ends,'public certificate validity differs')
+    return starts,ends
+
+
+def wait_for_guest_tls_validity(adb,certificates,*,monotonic=time.monotonic,sleep=time.sleep):
+    """Do not begin a fresh TLS fixture while its guest cannot validate the leaf and CA."""
+    ca_start,ca_end=certificate_validity_ms(certificates.ca)
+    leaf_start,leaf_end=certificate_validity_ms(certificates.leaf)
+    first,last=max(ca_start,leaf_start),min(ca_end,leaf_end)
+    require(first<=last,'public CA and leaf validity do not overlap')
+    start=monotonic();deadline=start+45
+    diagnostic=dict(status='timeout',notBeforeUtcMs=first,notAfterUtcMs=last,
+                    guestUtcMs=None,attempts=0,readFailures=0)
+    try:
+        while (remaining:=deadline-monotonic())>0:
+            diagnostic['attempts']+=1
+            try:
+                raw=adb('shell','date','-u','+%s',timeout=min(3,remaining)).stdout.strip()
+            except (subprocess.SubprocessError,OSError) as error:
+                diagnostic['readFailures']+=1
+                diagnostic['lastReadErrorType']=type(error).__name__
+            else:
+                if not re.fullmatch(rb'[1-9][0-9]{0,12}',raw):
+                    diagnostic['status']='invalid-clock'
+                    raise ValueError('Synthetic TLS fixture: invalid guest UTC observation')
+                guest=int(raw)*1000
+                diagnostic['guestUtcMs']=guest
+                if guest>last:
+                    diagnostic['status']='expired'
+                    raise ValueError('Synthetic TLS fixture: guest UTC is after certificate validity')
+                if guest>=first and monotonic()<=deadline:
+                    diagnostic['status']='passed'
+                    return
+            remaining=deadline-monotonic()
+            if remaining>0:sleep(min(1,remaining))
+        raise ValueError('Synthetic TLS fixture: guest UTC did not enter certificate validity within 45 seconds')
+    finally:
+        # Keep diagnostics out of the signed/source-bound CA installation receipt.
+        diagnostic['elapsedMs']=round((monotonic()-start)*1000)
+        print('TLS_FIXTURE_GUEST_UTC '+json.dumps(diagnostic,sort_keys=True),file=sys.stderr,flush=True)
 
 
 class EphemeralCertificates:
@@ -304,6 +352,7 @@ class AndroidUserCa:
     def install(self):
         a=self.adb;c=self.certificates
         require(a('shell','getprop','ro.kernel.qemu').stdout.decode().strip()=='1','controlled emulator required')
+        wait_for_guest_tls_validity(a,c)
         self.root_requested=True;self.set_root(True)
         require(a('shell','am','get-current-user').stdout.decode().strip()=='0','primary Android user required')
         require(a('shell','getenforce').stdout.decode().strip()=='Enforcing','SELinux enforcing required')
