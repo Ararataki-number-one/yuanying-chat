@@ -15,7 +15,7 @@ final class BrowserDownloadStore {
   final Context context;
   BrowserDownloadStore(Context context){this.context=context.getApplicationContext();}
   String directory(){return "Download/元婴期浏览器/窗口_"+(Profiles.slot(context)+1)+"/";}
-  static String safeName(String value){String clean=(value==null?"文件":value).replaceAll("[\\\\/:*?\"<>|\\p{Cntrl}]","_").trim();if(clean.isEmpty()||clean.equals(".")||clean.equals("..")||clean.equals("payload.part"))clean="文件";if(clean.length()>160){int end=160;if(Character.isHighSurrogate(clean.charAt(end-1)))--end;clean=clean.substring(0,end);}return clean;}
+  static String safeName(String value){return DownloadFileFormat.safeName(value);}
   static final class Target {
     final Context context;final Uri uri;final String name,location;final File file,part;
     Target(Context c,Uri uri,String name,String location,File file){context=c;this.uri=uri;this.name=name;this.location=location;this.file=file;part=file==null?null:new File(file.getParentFile(),"payload.part");}
@@ -25,12 +25,28 @@ final class BrowserDownloadStore {
   }
   Target create(String requested,String mime)throws IOException {
     String name=safeName(requested);
-    if(Build.VERSION.SDK_INT>=29){
-      ContentValues values=new ContentValues();values.put(MediaStore.MediaColumns.DISPLAY_NAME,name);values.put(MediaStore.MediaColumns.MIME_TYPE,mime);values.put(MediaStore.MediaColumns.RELATIVE_PATH,directory());values.put(MediaStore.MediaColumns.IS_PENDING,1);
-      Uri uri=context.getContentResolver().insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI,values);if(uri==null)throw new IOException("下载目录不可用");
-      try(Cursor row=context.getContentResolver().query(uri,new String[]{MediaStore.MediaColumns.DISPLAY_NAME},null,null,null)){if(row!=null&&row.moveToFirst())name=row.getString(0);}catch(RuntimeException ignored){}
-      return new Target(context,uri,name,directory()+name,null);
+    if(Build.VERSION.SDK_INT<29)return createLocal(name);
+    Uri pending=null;
+    try{
+      ContentResolver resolver=context.getContentResolver();
+      ContentValues values=new ContentValues();
+      values.put(MediaStore.MediaColumns.DISPLAY_NAME,name);
+      values.put(MediaStore.MediaColumns.MIME_TYPE,mime);
+      values.put(MediaStore.MediaColumns.RELATIVE_PATH,directory());
+      values.put(MediaStore.MediaColumns.IS_PENDING,1);
+      pending=resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI,values);
+      if(pending==null)throw new IOException("下载目录不可用");
+      try(Cursor row=resolver.query(pending,new String[]{MediaStore.MediaColumns.DISPLAY_NAME},null,null,null)){
+        String actual=row!=null&&row.moveToFirst()?row.getString(0):null;
+        if(!DownloadFileFormat.keepsExtension(name,actual))throw new IOException("下载目录无法保留文件扩展名");
+        return new Target(context,pending,actual,directory()+actual,null);
+      }
+    }catch(IOException|RuntimeException unavailable){
+      if(pending!=null)try{context.getContentResolver().delete(pending,null,null);}catch(RuntimeException cleanup){unavailable.addSuppressed(cleanup);}
+      try{return createLocal(name);}catch(IOException|RuntimeException localFailure){localFailure.addSuppressed(unavailable);throw localFailure;}
     }
+  }
+  private Target createLocal(String name)throws IOException {
     String id=UUID.randomUUID().toString();File folder=new File(context.getFilesDir(),"saved-downloads/"+id);if(!folder.mkdirs())throw new IOException("应用下载目录无法创建");
     Uri uri=new Uri.Builder().scheme("content").authority(context.getPackageName()+".saved-downloads").appendPath(String.valueOf(Profiles.slot(context))).appendPath(id).appendPath(name).build();
     return new Target(context,uri,name,"浏览器应用内下载/"+name,new File(folder,name));

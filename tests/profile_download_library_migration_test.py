@@ -28,7 +28,7 @@ class DownloadLibraryMigrationTest(unittest.TestCase):
             self.assertTrue(jar.is_file(), "Pinned JSON jar required: " + str(jar))
             self.assertEqual(hashlib.sha256(jar.read_bytes()).hexdigest(), sha)
             command.extend(("--json-jar", str(jar)))
-        result = subprocess.run(command, cwd=ROOT, capture_output=True, text=True, timeout=90)
+        result = subprocess.run(command, cwd=ROOT, capture_output=True, encoding="utf-8", errors="replace", timeout=90)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
     def test_reset_migrates_target_before_erasing_download_state(self):

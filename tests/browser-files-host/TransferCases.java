@@ -5,6 +5,7 @@ import java.net.*;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
 import java.util.*;
+import java.util.zip.GZIPOutputStream;
 
 public final class TransferCases {
   static final List<String> checks=new ArrayList<>();
@@ -31,6 +32,11 @@ public final class TransferCases {
   }
   static BrowserDownloadTransfer.Result run(File cache,BrowserDownloadTransfer transfer,Route route,BrowserDownloadTransfer.Cookies cookies)throws IOException {
     return transfer.fetch("https://first.example/file","actual-user-agent","attachment; filename=original.txt","application/octet-stream",-1,cache,route,cookies,(received,total)->{});
+  }
+  static byte[] gzip(byte[] file)throws IOException {
+    ByteArrayOutputStream bytes=new ByteArrayOutputStream();
+    try(GZIPOutputStream output=new GZIPOutputStream(bytes)){output.write(file);}
+    return bytes.toByteArray();
   }
   static boolean empty(File cache){String[] names=cache.list();return names!=null&&names.length==0;}
   public static void main(String[] args)throws Exception {
@@ -72,7 +78,24 @@ public final class TransferCases {
       for(long length:new long[]{1,1000}){Route selected=new Route();Connection truncated=new Connection("https://first.example/file");truncated.declared=length;selected.queue.add(truncated);rejects("Incorrect advertised bytes "+length+" cannot succeed",()->run(cache,new BrowserDownloadTransfer(),selected,target->""));yes("Truncated/extra body leaves no partial "+length,empty(cache));}
       Route oversized=new Route();Connection huge=new Connection("https://first.example/file");huge.declared=BrowserDownloadTransfer.MAX_BYTES+1;oversized.queue.add(huge);rejects("Response size limit is enforced before body",()->run(cache,new BrowserDownloadTransfer(),oversized,target->""));yes("Oversized body is never opened",huge.streamReads==0);
       Route advertised=new Route();rejects("Listener size limit is enforced before route open",()->new BrowserDownloadTransfer().fetch("https://first.example/file","ua","","",BrowserDownloadTransfer.MAX_BYTES+1,cache,advertised,target->"",(a,b)->{}));yes("Oversized listener value opens no connection",advertised.opened.isEmpty());
-      Route encoded=new Route();Connection gzip=new Connection("https://first.example/file");gzip.headers.put("Content-Encoding","gzip");encoded.queue.add(gzip);rejects("Unsupported response encoding cannot save corrupted bytes",()->run(cache,new BrowserDownloadTransfer(),encoded,target->""));
+      byte[] original="col1,col2\r\n一,二\r\n".getBytes(StandardCharsets.UTF_8);
+      byte[] archive=gzip(original);
+      Route encoded=new Route();Connection compressed=new Connection("https://first.example/report.csv");
+      compressed.headers.put("Content-Encoding","gzip");compressed.payload=archive;compressed.declared=archive.length;encoded.queue.add(compressed);
+      saved=run(cache,new BrowserDownloadTransfer(),encoded,target->"");
+      yes("HTTP gzip decoding preserves exact UTF-8 and CRLF attachment bytes",saved.bytes==original.length&&Arrays.equals(original,Files.readAllBytes(saved.file.toPath())));saved.file.delete();
+      Route archiveRoute=new Route();Connection actualArchive=new Connection("https://first.example/report.csv.gz");
+      actualArchive.headers.put("Content-Type","application/gzip");actualArchive.payload=archive;actualArchive.declared=archive.length;archiveRoute.queue.add(actualArchive);
+      saved=run(cache,new BrowserDownloadTransfer(),archiveRoute,target->"");
+      yes("A gzip file without HTTP content coding keeps its original compressed bytes",saved.bytes==archive.length&&Arrays.equals(archive,Files.readAllBytes(saved.file.toPath())));saved.file.delete();
+      Route brokenGzip=new Route();Connection broken=new Connection("https://first.example/file");
+      broken.headers.put("Content-Encoding","gzip");broken.payload=Arrays.copyOf(archive,archive.length-4);broken.declared=broken.payload.length;brokenGzip.queue.add(broken);
+      rejects("Missing gzip trailer is not an intact attachment",()->run(cache,new BrowserDownloadTransfer(),brokenGzip,target->""));
+      Route wrongWireLength=new Route();Connection incorrectLength=new Connection("https://first.example/file");
+      incorrectLength.headers.put("Content-Encoding","x-gzip");incorrectLength.payload=archive;incorrectLength.declared=archive.length+1;wrongWireLength.queue.add(incorrectLength);
+      rejects("Wire length is checked separately from decoded bytes",()->run(cache,new BrowserDownloadTransfer(),wrongWireLength,target->""));
+      Route unsupportedEncoding=new Route();Connection brotli=new Connection("https://first.example/file");brotli.headers.put("Content-Encoding","br");unsupportedEncoding.queue.add(brotli);
+      rejects("Unsupported response encoding cannot save corrupted bytes",()->run(cache,new BrowserDownloadTransfer(),unsupportedEncoding,target->""));
       BrowserDownloadTransfer cancelled=new BrowserDownloadTransfer();cancelled.cancel();Route cancelRoute=new Route();rejects("Cancel before execution prevents opening",()->run(cache,cancelled,cancelRoute,target->""));yes("Precancel opens no connection",cancelRoute.opened.isEmpty());
       Route unknown=new Route();Connection chunked=new Connection("https://first.example/file");chunked.declared=-1;unknown.queue.add(chunked);saved=run(cache,new BrowserDownloadTransfer(),unknown,target->null);yes("Unknown total succeeds only after EOF with actual counted bytes",saved.bytes==chunked.payload.length&&!chunked.sent.containsKey("Cookie"));saved.file.delete();
       yes("All successful and failed cases clean their private files",empty(cache));

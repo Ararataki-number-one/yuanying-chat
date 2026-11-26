@@ -56,8 +56,11 @@ public final class CefriumBrowserActivity extends ThemedActivity {
 
   private void createScreen(String opening){
     LinearLayout root=DesignUi.screen(this);
+    LinearLayout heading=DesignUi.row(this);
     TextView title=DesignUi.text(this,Profiles.display(this,identity.slot),15,DesignUi.MUTED);
-    root.addView(title,new LinearLayout.LayoutParams(-1,-2));
+    heading.addView(title,new LinearLayout.LayoutParams(0,-2,1));
+    heading.addView(ReferenceUi.small(this,"网络环境检查",false,this::showNetworkCheck));
+    root.addView(heading,new LinearLayout.LayoutParams(-1,-2));
     status=DesignUi.text(this,"",13,DesignUi.MUTED);
     root.addView(status,new LinearLayout.LayoutParams(-1,-2));
     surface=new FrameLayout(this);
@@ -163,6 +166,22 @@ public final class CefriumBrowserActivity extends ThemedActivity {
     }
   }
   private void message(String value){status.setText(value);}
+  private void showNetworkCheck(){
+    if(isFinishing()||isDestroyed()||route==null)return;
+    ReferenceUi.Modal check=new ReferenceUi.Modal(this,"网络环境检查");
+    TextView result=ReferenceUi.text(this,"",14,ReferenceUi.TEXT,false);
+    ReferenceUi.readable(result);
+    check.body.addView(result);
+    check.note("这里只读取当前 Chromium 环境的本机线路证据。公网出口 IP 与网站响应未测量。");
+    ReferenceUi.menuAction(check,"此环境的网络设置",()->{check.dismiss();openWorkspace("network");});
+    Runnable read=()->{
+      CefriumRoute selected=route;
+      result.setText(selected==null?"当前环境已关闭，请重新打开。":selected.networkCheckSummary());
+      check.resize();
+    };
+    check.buttons("关闭",check::dismiss,"重新读取",read);
+    read.run();check.show();
+  }
   private void routeLost(){
     if(isDestroyed()||isFinishing()||route==null)return;
     navigationRequest++;
@@ -178,11 +197,12 @@ public final class CefriumBrowserActivity extends ThemedActivity {
     surface.removeAllViews();
     current.close();
   }
-  private void settings(){
+  private void settings(){openWorkspace("settings");}
+  private void openWorkspace(String page){
     if(isFinishing()||files==null)return;
     if(files.busy()){message("请先完成当前文件操作");return;}
     if(!stillSelected()){finish();return;}
-    startActivity(new Intent(this,Profiles.activity(identity.slot)).putExtra("openWindowAction","settings")
+    startActivity(new Intent(this,Profiles.activity(identity.slot)).putExtra("openWindowAction",page)
       .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_REORDER_TO_FRONT));
     finish();
   }

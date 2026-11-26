@@ -4,6 +4,7 @@ import argparse
 import hashlib
 import importlib.util
 import json
+import os
 from pathlib import Path
 import shutil
 import subprocess
@@ -13,7 +14,7 @@ ROOT=Path(__file__).resolve().parents[2];HERE=Path(__file__).resolve().parent;PR
 extractor=ROOT/'tests/gecko-navigation-host/run.py'
 spec=importlib.util.spec_from_file_location('generic_download_source_members',extractor)
 members=importlib.util.module_from_spec(spec);spec.loader.exec_module(members)
-NEEDLES=('void responseMetadata(','String downloadSource(','void acceptResponse(','void accept(','static boolean https(','void newTask(','boolean sameSource(','boolean valid(','static String safeName(','static String type(','static String imageExtension(')
+NEEDLES=('void responseMetadata(','String downloadSource(','void acceptResponse(','void accept(','void startPopupDownload(','static boolean https(','void newTask(','boolean sameSource(','boolean valid(','static String safeName(','static String type(','static String imageExtension(','static String urlFileName(','static void checkResponseType(','static InputStream checkFilePrefix(')
 MUTATIONS=(
  ('native-task','void acceptResponse(','newTask("","",source)','newTask("","",a.conversation)','native','Native task records the current generic page: http://example.com/downloads'),
  ('native-source','void acceptResponse(','sourceUrl=source','sourceUrl=a.conversation','native','Native in-memory source uses the same captured page: http://example.com/downloads'),
@@ -21,6 +22,7 @@ MUTATIONS=(
  ('url-source','void accept(','sourceUrl=source','sourceUrl=a.conversation','url','URL in-memory source uses the same captured page: https://www.wikipedia.org/wiki/Download'),
  ('stale-helper','String downloadSource(','return MainActivity.chatUrl(current)?a.conversation:current==null?"":current;','return a.conversation;','native','Native task records the current generic page: http://example.com/downloads'),
  ('http-activation','void accept(','if(!https(url)&&!url.startsWith("blob:https://"))','if(false)','http','URL activation still refuses HTTP or unsafe address: http://cdn.example.com/controlled.bin'),
+ ('popup-active-task','void startPopupDownload(','active&&!awaitingAttachmentLink','active','popup','Protected popup starts the waiting ChatGPT attachment without losing its source or name'),
 )
 def sha(path):return hashlib.sha256(path.read_bytes()).hexdigest()
 
@@ -31,7 +33,7 @@ def main():
   selected=str(a.java_home/'bin'/name) if a.java_home else shutil.which(name)
   if not selected:p.error('Provide --java-home containing '+name)
   return selected
- production=PROD/'FileDownloads.java';template=HERE/'DownloadSourceHost.java.in';complete=[PROD/'J.java',PROD/'BrowserRuntimePolicy.java',PROD/'DownloadRange.java',ROOT/'tests/download-resume-host/stubs/android/util/Base64.java']
+ production=PROD/'FileDownloads.java';template=HERE/'DownloadSourceHost.java.in';complete=[PROD/name for name in ('J.java','BrowserRuntimePolicy.java','DownloadRange.java','DownloadFileFormat.java','BrowserAddressPolicy.java','GeckoNavigationPolicy.java')]+[ROOT/'tests/download-resume-host/stubs/android/util/Base64.java']
  files=[production,template,Path(__file__).resolve(),extractor]+complete;hashes={str(path.relative_to(ROOT)):sha(path) for path in files};json_hash=sha(a.json_jar)
  raw=production.read_text();selected={needle:members.member_at(raw,raw.index(needle)) for needle in NEEDLES}
  def generate(values):
@@ -46,7 +48,7 @@ def main():
    cmd=[binary('javac'),'-encoding','UTF-8','-cp',str(a.json_jar.resolve()),'-d',str(classes),str(source)]+[str(path) for path in complete]
    compiled=subprocess.run(cmd,capture_output=True,text=True,timeout=60);(logs/'compile.command.json').write_text(json.dumps(cmd)+'\n');(logs/'compile.stdout.log').write_text(compiled.stdout);(logs/'compile.stderr.log').write_text(compiled.stderr)
    if compiled.returncode:raise RuntimeError(compiled.stderr)
-   cmd=[binary('java'),'-cp',str(classes)+':'+str(a.json_jar.resolve()),'local.pocketchat.DownloadSourceHost']+([] if focus is None else [focus]);ran=subprocess.run(cmd,capture_output=True,text=True,timeout=30)
+   cmd=[binary('java'),'-cp',str(classes)+os.pathsep+str(a.json_jar.resolve()),'local.pocketchat.DownloadSourceHost']+([] if focus is None else [focus]);ran=subprocess.run(cmd,capture_output=True,text=True,timeout=30)
    (logs/'run.command.json').write_text(json.dumps(cmd)+'\n');(logs/'run.stdout.log').write_text(ran.stdout);(logs/'run.stderr.log').write_text(ran.stderr);return ran
   ran=run(generated,'current')
   if ran.returncode:raise RuntimeError(ran.stdout+ran.stderr)

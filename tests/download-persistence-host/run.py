@@ -23,13 +23,15 @@ def main():
         return subprocess.check_output(['git', 'show', before + ':' + path], cwd=ROOT, text=True) if before else (ROOT / path).read_text()
     names = ['J.java', 'DownloadTasks.java', 'DownloadTaskRevisions.java', 'DownloadResumePolicy.java', 'DownloadRange.java', 'SavedFileDeletion.java', 'SavedFilePublication.java', 'DefaultDownloads.java', 'SealedFileIo.java','DownloadMetadataValues.java', 'BrowserAddressPolicy.java', 'GeckoNavigationPolicy.java']
     text = source('FileDownloads.java')
+    if 'DownloadFileFormat.' in text:
+        names.append('DownloadFileFormat.java')
     old_needles = ['void taskActions(', 'boolean requestAvailable(', 'String continuationAction(', 'void requestRedownload(', 'void discardForRedownload(', 'boolean loadTask(', 'void newTask(', 'void updateTask(', 'void mark(', 'boolean valid(', 'void acceptResponse(', 'void retry(', 'void fail(', 'void pause(', 'void destroy(', 'void download(']
     extra = ['void transferProgress(', 'void cancel(']
     has_blob_reader = 'BlobDownload blob;' in text
     if has_blob_reader:
         names.append('BlobDownload.java')
         extra.append('void clearBlob(')
-    optional = ['void responseMetadata(', 'String downloadSource(', 'boolean saveTask(', 'void persistenceFailed(', 'boolean claimTask(', 'private void retirePrivateCopy(']
+    optional = ['void responseMetadata(', 'String downloadSource(', 'boolean saveTask(', 'void persistenceFailed(', 'boolean claimTask(', 'private void retirePrivateCopy(', 'static String urlFileName(', 'static void checkResponseType(', 'static InputStream checkFilePrefix(', 'static final class DownloadWireInput']
     needles = old_needles + extra + [n for n in optional if n in text]
     parts = [adapter.member(text, n) for n in needles]
     inputs = [ADAPTER / 'DownloadResumeHost.java', ADAPTER / 'run.py', HERE / 'FailureCases.java.in', pathlib.Path(__file__).resolve(), RECOVERY / 'local/pocketchat/Support.java', ROOT / 'tests/sealed-file-host/android/util/AtomicFile.java'] + list((RECOVERY / 'android').rglob('*.java')) + list((ADAPTER / 'stubs').rglob('*.java'))
@@ -46,6 +48,8 @@ def main():
         for n in names:
             (package / n).write_text(source(n))
         fixture = (ADAPTER / 'DownloadResumeHost.java').read_text()
+        if 'DownloadFileFormat.java' not in names:
+            fixture = fixture.replace('return DownloadFileFormat.mimeForName(name,type,extension->"");','return type;')
         for old_boundary,new_boundary in [('class MainActivity extends Context{','class MainActivity extends Context{static boolean chatUrl(String url){return "https://chatgpt.com/c/one".equals(url);}')]:
             if fixture.count(old_boundary)!=1:raise ValueError('Review fixed-page download-source boundary: '+old_boundary)
             fixture=fixture.replace(old_boundary,new_boundary,1)

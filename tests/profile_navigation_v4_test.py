@@ -551,7 +551,7 @@ class ProductionNetworkDialogTests(unittest.TestCase):
         from profile_gecko_window_selection_test import member
         java_home=os.environ.get('JAVA_HOME')
         java=Path(os.environ.get('PROFILE_JAVA') or (str(Path(java_home)/'bin/java') if java_home else '') or shutil.which('java') or '')
-        javac=java.with_name('javac')
+        javac=java.with_name('javac.exe' if os.name=='nt' else 'javac')
         self.assertTrue(java.is_file() and javac.is_file(),'A complete JDK with javac is required')
         template=(ROOT/'tests/network-metrics-dialog-host/NetworkMetricsDialogHost.java.in').read_text()
         self.assertEqual(template.count('/* ACTUAL_SHOW */'),1)

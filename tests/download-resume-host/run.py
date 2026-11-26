@@ -26,10 +26,10 @@ def member(text,needle):
  raise ValueError(needle)
 
 def main():
- p=argparse.ArgumentParser();p.add_argument('--json-jar',required=True,type=pathlib.Path);p.add_argument('--java-home',type=pathlib.Path);p.add_argument('--output',required=True,type=pathlib.Path);p.add_argument('--before-ref');p.add_argument('--before-writer-ref');p.add_argument('--before-range-ref');p.add_argument('--before-load-ref');a=p.parse_args()
+ p=argparse.ArgumentParser();p.add_argument('--json-jar',required=True,type=pathlib.Path);p.add_argument('--java-home',type=pathlib.Path);p.add_argument('--output',required=True,type=pathlib.Path);p.add_argument('--before-ref');p.add_argument('--before-writer-ref');p.add_argument('--before-range-ref');p.add_argument('--before-load-ref');p.add_argument('--skip-symlink-fixture',action='store_true',help='Skip only the symlink fixture on hosts without symlink creation privileges');a=p.parse_args()
  if sum(bool(x) for x in (a.before_ref,a.before_writer_ref,a.before_range_ref,a.before_load_ref))>1:p.error('Select one before reproduction')
  source=ROOT/'app/src/main/java/local/pocketchat';old=ROOT/'tests/download-recovery-host'
- names=['J.java','DownloadTasks.java','DownloadTaskRevisions.java','DownloadResumePolicy.java','DownloadRange.java','SavedFileDeletion.java','SavedFilePublication.java','DefaultDownloads.java','SealedFileIo.java','DownloadMetadataValues.java', 'BrowserAddressPolicy.java', 'GeckoNavigationPolicy.java', 'BlobDownload.java']
+ names=['J.java','DownloadTasks.java','DownloadTaskRevisions.java','DownloadResumePolicy.java','DownloadRange.java','DownloadFileFormat.java','SavedFileDeletion.java','SavedFilePublication.java','DefaultDownloads.java','SealedFileIo.java','DownloadMetadataValues.java', 'BrowserAddressPolicy.java', 'GeckoNavigationPolicy.java', 'BlobDownload.java']
  needles=['void taskActions(','boolean requestAvailable(','String continuationAction(','void requestRedownload(','void discardForRedownload(','boolean loadTask(','void newTask(','void updateTask(','void mark(','boolean valid(','String downloadSource(','void acceptResponse(','void retry(','void fail(','void pause(','void destroy(','void download(','void startBlob(','void clearBlob(','boolean saveTask(','void persistenceFailed(','boolean claimTask(','void cancel(']
  files=[source/n for n in names]+[source/'FileDownloads.java',HERE/'DownloadResumeHost.java',HERE/'CancelCases.java',HERE/'BlobCases.java',HERE/'blob-scripts.cjs',pathlib.Path(__file__).resolve(),old/'local/pocketchat/Support.java',ROOT/'tests/sealed-file-host/android/util/AtomicFile.java']+list((old/'android').rglob('*.java'))+list((HERE/'stubs').rglob('*.java'))
  hashes={str(f.relative_to(ROOT)):hashlib.sha256(f.read_bytes()).hexdigest() for f in sorted(files)}
@@ -40,6 +40,7 @@ def main():
  needles.append('private void retirePrivateCopy(')
  text=(source/'FileDownloads.java').read_text()
  if 'void responseMetadata(' in text:needles.append('void responseMetadata(')
+ needles.extend(['static String urlFileName(','static void checkResponseType(','static InputStream checkFilePrefix(','static final class DownloadWireInput'])
  parts=[member(text,n) for n in needles]
  if before:
   previous=subprocess.check_output(['git','show',before+':app/src/main/java/local/pocketchat/FileDownloads.java'],cwd=ROOT,text=True)
@@ -72,9 +73,10 @@ def main():
   java=[*package.glob('*.java'),*stubs,ROOT/'tests/sealed-file-host/android/util/AtomicFile.java',*list((HERE/'stubs').rglob('*.java'))]
   binary=lambda name:str(a.java_home/'bin'/name) if a.java_home else name
   subprocess.run([binary('javac'),'-encoding','UTF-8','-cp',str(a.json_jar.resolve()),'-d',str(temp),*map(str,java)],check=True)
-  result=subprocess.run([binary('java'),'-DblobScripts='+str(temp/'blob-scripts.json'),'-Dbefore='+str(bool(before)).lower(),'-DbeforeWriter='+str(bool(writer_before)).lower(),'-DbeforeRange='+str(bool(range_before)).lower(),'-DbeforeLoad='+str(bool(load_before)).lower(),'-cp',str(temp)+os.pathsep+str(a.json_jar.resolve()),'local.pocketchat.DownloadResumeHost'],capture_output=True,text=True,timeout=45)
+  result=subprocess.run([binary('java'),'-Dfile.encoding=UTF-8','-DblobScripts='+str(temp/'blob-scripts.json'),'-Dbefore='+str(bool(before)).lower(),'-DbeforeWriter='+str(bool(writer_before)).lower(),'-DbeforeRange='+str(bool(range_before)).lower(),'-DbeforeLoad='+str(bool(load_before)).lower(),'-DskipSymlinkFixture='+str(a.skip_symlink_fixture).lower(),'-cp',str(temp)+os.pathsep+str(a.json_jar.resolve()),'local.pocketchat.DownloadResumeHost'],capture_output=True,text=True,timeout=45,errors='replace')
   if not result.stdout.strip():raise RuntimeError(result.stderr)
   report=json.loads(result.stdout)
+  if a.skip_symlink_fixture:report['skippedFixtures']=['symlink']
   if result.returncode==0 and not any((before, writer_before, range_before, load_before)):
    executed=subprocess.run(['node',str(HERE/'blob-scripts.cjs'),str(temp/'blob-scripts.json')],capture_output=True,text=True,timeout=30,check=True)
    report['blobJavaScript']=json.loads(executed.stdout)

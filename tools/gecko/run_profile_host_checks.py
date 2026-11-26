@@ -146,6 +146,7 @@ def main():
         ROOT/'tests/download-resume-fixture-host/fixture-preservation.json',ROOT/'tests/gecko/DownloadResumeIntegrationActivity.java',
         ROOT/'app/src/main/java/local/pocketchat/GeckoWebView.java',ROOT/'app/src/main/java/local/pocketchat/FileDownloads.java',
         ROOT/'app/src/main/java/local/pocketchat/BrowserAddressPolicy.java',ROOT/'app/src/main/java/local/pocketchat/GeckoNavigationPolicy.java',
+        ROOT/'app/src/main/java/local/pocketchat/DownloadFileFormat.java',
         ROOT/'app/src/main/java/local/pocketchat/J.java',ROOT/'app/src/main/java/local/pocketchat/DownloadRange.java',ROOT/'app/src/main/java/local/pocketchat/SealedFileIo.java',
         ROOT/'tests/download-resume-host/run.py',ROOT/'tests/sealed-file-host/android/util/AtomicFile.java',ROOT/'tests/download-recovery-host/android/os/Handler.java',
         ROOT/'tests/download-recovery-host/android/os/Looper.java',ROOT/'tests/download-recovery-host/android/net/Uri.java',

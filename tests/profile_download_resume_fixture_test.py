@@ -32,8 +32,10 @@ class DownloadResumeFixtureControls(unittest.TestCase):
         source=(production/'GeckoWebView.java').read_text();download=(production/'FileDownloads.java').read_text();fixture=FIXTURE.read_text()
         selected={'READ_COOKIES':member(source,'void readCookies('),'DOWNLOAD_COOKIES':member(source,'String downloadCookies('),
                   'RESPONSE_METADATA':member(download,'void responseMetadata('),'VALID':member(download,'boolean valid('),'DOWNLOAD':member(download,'void download('),
+                  'URL_FILE_NAME':member(download,'static String urlFileName('),'CHECK_RESPONSE_TYPE':member(download,'static void checkResponseType('),
+                  'CHECK_FILE_PREFIX':member(download,'static InputStream checkFilePrefix('),'DOWNLOAD_WIRE_INPUT':member(download,'static final class DownloadWireInput'),
                   'FIXTURE_VIEW':member(fixture,'static final class FixtureView'), 'ENDPOINT':member(fixture,'static final class Endpoint'), 'OLD_FIXTURE_VIEW':OLD_VIEW, 'SHA':member(fixture,'static String sha('), 'OBSERVE_FAILURE':member(fixture,'void observeRangeFailure(')}
-        dependencies=('J.java','DownloadRange.java','SealedFileIo.java','BrowserAddressPolicy.java','GeckoNavigationPolicy.java')
+        dependencies=('J.java','DownloadRange.java','DownloadFileFormat.java','SealedFileIo.java','BrowserAddressPolicy.java','GeckoNavigationPolicy.java')
         files=[production/n for n in ('GeckoWebView.java','FileDownloads.java',*dependencies)]
         files += [FIXTURE,HERE/'CookieFixtureHost.java.in',HERE/'fixture-preservation.json',pathlib.Path(__file__),ROOT/'tests/download-resume-host/run.py',ROOT/'tests/sealed-file-host/android/util/AtomicFile.java',ROOT/'tests/download-recovery-host/android/os/Handler.java',ROOT/'tests/download-recovery-host/android/os/Looper.java',ROOT/'tests/download-recovery-host/android/net/Uri.java',ROOT/'tests/download-resume-host/stubs/android/util/Base64.java',ROOT/'tests/download-resume-host/stubs/android/os/SystemClock.java']
         hashes={str(p.relative_to(ROOT)):sha(p.read_bytes()) for p in files}

@@ -180,7 +180,16 @@ public final class ChooserCases {
           check("MediaStore slot "+slot+" requests a pending download with its MIME",Integer.valueOf(1).equals(values.get(android.provider.MediaStore.MediaColumns.IS_PENDING))&&values.get(android.provider.MediaStore.MediaColumns.MIME_TYPE).equals("application/pdf")&&context.resolver.insertedCollection.equals(android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI));
           check("MediaStore slot "+slot+" retains the actual provider filename",modern.file==null&&modern.part==null&&modern.name.equals("report (1).pdf")&&modern.location.equals(store.directory()+modern.name));
           check("Creating a MediaStore target never publishes before file copy",context.resolver.updates==0);modern.abort();
-          context.resolver.denyInsert=true;boolean denied=false;try{store.create("denied.pdf","application/pdf");}catch(java.io.IOException expected){denied=true;}check("MediaStore slot "+slot+" creation failure remains uncommitted",denied&&context.resolver.updates==0);
+          context.resolver.denyInsert=true;
+          BrowserDownloadStore.Target fallback=store.create("report.pdf","application/pdf");
+          check("Unavailable MediaStore falls back to the same profile's private destination in slot "+slot,
+              fallback.file!=null&&fallback.name.equals("report.pdf")&&fallback.uri.getPathSegments().get(0).equals(String.valueOf(slot))
+                  &&context.resolver.rows.isEmpty()&&context.resolver.updates==0);fallback.abort();
+          context.resolver.denyInsert=false;context.resolver.displayName="report.pdf.bin";
+          BrowserDownloadStore.Target corrected=store.create("report.pdf","application/pdf");
+          check("MediaStore suffix changes preserve the requested name and leave no row in slot "+slot,
+              corrected.file!=null&&corrected.name.equals("report.pdf")&&context.resolver.rows.isEmpty()
+                  &&context.resolver.updates==0);corrected.abort();
         }finally{context.clean();Profiles.contexts.remove(slot);}
       }
     }finally{android.os.Build.VERSION.SDK_INT=original;}
@@ -222,6 +231,14 @@ public final class ChooserCases {
       android.os.Build.VERSION.SDK_INT=29;JSONObject saved=f.save();Uri destination=Uri.parse(saved.optString("uri"));
       check("Successful MediaStore save copies all bytes before global confirmation",Arrays.equals(f.context.resolver.contents.get(destination),f.bytes)&&f.context.resolver.updates==1&&f.context.resolver.deletes==0);
       check("Successful MediaStore save shares the same checked global metadata",f.library.saved(saved)!=null&&DownloadMetadataValues.bytes(saved)==f.bytes.length&&DownloadMetadataValues.checked(saved));
+    }
+    try(StoreFixture f=new StoreFixture(3)){
+      android.os.Build.VERSION.SDK_INT=29;f.context.resolver.displayName="report.pdf.bin";
+      JSONObject saved=f.save();java.io.File file=f.published(saved);
+      check("Suffix-preserving fallback publishes the exact original bytes under the original name and type",
+          file.getName().equals("report.pdf")&&Arrays.equals(java.nio.file.Files.readAllBytes(file.toPath()),f.bytes)
+              &&saved.optString("actualMime").equals("application/pdf")&&f.context.resolver.rows.isEmpty()
+              &&f.context.resolver.updates==0&&f.store.rows().length()==1);
     }
   }
   static void globalSaveRollback()throws Exception {

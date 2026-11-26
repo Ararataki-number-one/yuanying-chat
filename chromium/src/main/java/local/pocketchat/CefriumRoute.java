@@ -368,15 +368,40 @@ final class CefriumRoute implements AutoCloseable {
 
     private boolean ready(Grant selected) {
         if (selected == null || !selected.ready || closed || grant.get() != selected) return false;
-        CefriumProxyRelay relay = selected.relay;
-        ChromiumProtectedOwnerLease owner = selected.owner;
-        if (!baseCurrent(selected) || SystemClock.elapsedRealtime() - selected.verifiedAt > MAX_EVIDENCE_AGE_MS
-                || owner == null || !owner.current()
-                || selected.evidence.setting.protectedRoute() && (relay == null || !relay.isOpen())) {
+        if (!evidenceUsable(selected)) {
             revoke(selected, ROUTE_LOST);
             return false;
         }
         return grant.get() == selected;
+    }
+
+    private boolean evidenceUsable(Grant selected) {
+        CefriumProxyRelay relay = selected.relay;
+        ChromiumProtectedOwnerLease owner = selected.owner;
+        return baseCurrent(selected) && SystemClock.elapsedRealtime() - selected.verifiedAt <= MAX_EVIDENCE_AGE_MS
+                && owner != null && owner.current()
+                && (!selected.evidence.setting.protectedRoute() || relay != null && relay.isOpen());
+    }
+
+    /** Reads the current Chromium grant without probing a site or changing the route. */
+    String networkCheckSummary() {
+        requireMainThread();
+        if (closed || !currentEnvironment()) return "当前环境已变化，请重新打开。";
+        CefriumRoutePolicy.Selection configured = selection();
+        if (configured == null) return "网络方式未配置或无法读取，请查看此环境的网络设置。";
+        String mode = switch (configured.mode) {
+            case INTERNAL -> "应用内线路";
+            case FIXED_PROXY -> configured.requireVpn ? "应用专用代理（要求手机 VPN）" : "应用专用代理";
+            case VPN -> "手机 VPN";
+            case DIRECT -> "系统网络直连（未要求 VPN）";
+            default -> "未知";
+        };
+        Grant selected = attached;
+        boolean admitted = selected != null && selected.ready && evidenceUsable(selected)
+                && configured.equals(selected.evidence.setting) && attached == selected && grant.get() == selected;
+        String state = admitted ? "当前浏览器线路已通过本机核验"
+                : grant.get() == null ? "未连接或线路已变化" : "等待当前浏览器线路核验";
+        return "网络方式：" + mode + "\n线路状态：" + state;
     }
 
     private boolean baseCurrent(Grant selected) {

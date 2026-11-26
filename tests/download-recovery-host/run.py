@@ -3,6 +3,7 @@
 import argparse
 import hashlib
 import json
+import os
 from pathlib import Path
 import shutil
 import subprocess
@@ -20,7 +21,7 @@ output.unlink(missing_ok=True)
 classes = output.parent / 'classes'
 classes.mkdir(exist_ok=True)
 sources = [root / 'app/src/main/java/local/pocketchat' / name for name in (
-    'J.java', 'DownloadTaskRevisions.java', 'DownloadTasks.java', 'DownloadResumePolicy.java', 'DefaultDownloads.java',
+    'J.java', 'DownloadTaskRevisions.java', 'DownloadTasks.java', 'DownloadResumePolicy.java', 'DefaultDownloads.java', 'DownloadFileFormat.java',
     'SavedFilePublication.java', 'SavedFileDeletion.java', 'SealedFileIo.java')]
 sources += [root / 'app/src/main/java/local/pocketchat/DownloadMetadataValues.java']
 sources += sorted(Path(__file__).parent.rglob('*.java'))
@@ -37,7 +38,7 @@ if not javac or not java:
     parser.error('Provide --java-home or make java and javac available on PATH')
 subprocess.run([javac, '-encoding', 'UTF-8', '-cp', str(args.json_jar.resolve()),
                 '-d', str(classes), *map(str, sources)], check=True)
-run = subprocess.run([java, '-cp', str(classes) + ':' + str(args.json_jar.resolve()),
+run = subprocess.run([java, '-cp', str(classes) + os.pathsep + str(args.json_jar.resolve()),
                       'local.pocketchat.DownloadRecoveryHostTest'], capture_output=True, text=True, timeout=60)
 (output.parent / 'host-stdout.txt').write_text(run.stdout)
 (output.parent / 'host-stderr.txt').write_text(run.stderr)

@@ -2,6 +2,7 @@ package local.pocketchat;
 
 import java.io.*;
 import java.net.URI;
+import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
 import java.util.*;
@@ -100,10 +101,63 @@ public final class DownloadSourceHost {
     responseBytes(200,"","0","",empty,true);
     responseBytes(0,"","","",new byte[]{0,1,(byte)255},true);
   }
+  static void originalFormat()throws Exception{
+    String original="https://files.example.com/chapter.pdf";
+    byte[] html="\uFEFF  <!doctype html><p>Sign in</p>".getBytes(StandardCharsets.UTF_8);
+    for(String type:new String[]{"text/html; charset=UTF-8","application/octet-stream"}){
+      FileDownloads d=fresh(HTTPS_PAGE);
+      ResponseBoundary response=new ResponseBoundary(original,html);
+      response.headers.put("Content-Type",type);
+      d.acceptResponse(response);d.worker.drain();d.a.handler.drain();
+      check("No login page is published as PDF for "+type,d.chosen==0&&d.failures.size()==1&&response.body.closed);
+    }
+    FileDownloads d=fresh(HTTPS_PAGE);
+    ResponseBoundary response=new ResponseBoundary("https://files.example.com/export",html);
+    response.headers.put("Content-Type","text/html");
+    response.headers.put("Content-Disposition","attachment; filename=article.html");
+    d.acceptResponse(response);d.worker.drain();d.a.handler.drain();
+    check("A deliberate HTML attachment retains its exact bytes",d.chosen==1&&d.name.equals("article.html")&&Arrays.equals(html,Files.readAllBytes(d.temp.toPath())));
+    d=fresh(HTTPS_PAGE);
+    byte[] pdf={37,80,68,70,45,88,0,(byte)255};
+    response=new ResponseBoundary(original,pdf);
+    response.headers.put("Content-Disposition","attachment; filename=ascii.pdf; filename*=UTF-8''%E6%8A%A5%E5%91%8A.PDF");
+    d.acceptResponse(response);d.worker.drain();d.a.handler.drain();
+    check("RFC 5987 name and original PDF bytes survive publication handoff",d.chosen==1&&d.name.equals("报告.PDF")&&d.mime.equals("application/pdf")&&Arrays.equals(pdf,Files.readAllBytes(d.temp.toPath())));
+    d=fresh(HTTPS_PAGE);
+    response=new ResponseBoundary(original,pdf);response.headers.put("Content-Length","3");
+    d.acceptResponse(response);d.worker.drain();d.a.handler.drain();
+    check("Native size overrun is rejected before writing extra bytes",d.chosen==0&&d.failures.size()==1&&d.temp.length()==0&&response.body.closed);
+  }
+  static void popupHandoff()throws Exception{
+    String address="https://chatgpt.com/backend-api/estuary/content?id=file_1234&sig="+"a".repeat(64);
+    FileDownloads d=fresh(OLD_GPT);
+    JSONObject owned=d.tasks.add("attachment-id","attachment-key",OLD_GPT);
+    d.task=owned;d.sourceId="attachment-id";d.sourceKey="attachment-key";d.sourceUrl=OLD_GPT;
+    d.name="附件.pdf";d.active=true;d.ticket=1;
+    d.startPopupDownload(address);
+    check("Protected popup starts the waiting ChatGPT attachment without losing its source or name",
+        d.active&&d.task==owned&&d.ticket==1&&d.retryUrl.equals(address)&&d.sourceId.equals("attachment-id")
+        &&d.sourceKey.equals("attachment-key")&&d.name.equals("附件.pdf")&&d.worker.queue.size()==1);
+    d.startPopupDownload(address.replace("file_1234","file_5678"));
+    check("A second popup cannot replace a running transfer",d.retryUrl.equals(address)&&d.worker.queue.size()==1);
+    d.worker.drain();
+    check("Protected popup queues one protected download",d.urlDownloads==1);
+
+    for(String context:new String[]{"unknown attachment","stale conversation","guard off"}){
+      d=fresh(OLD_GPT);
+      d.task=d.tasks.add("","",OLD_GPT);
+      d.sourceId=context.equals("unknown attachment")?"":"attachment-id";
+      d.sourceUrl=context.equals("stale conversation")?"https://chatgpt.com/c/other":OLD_GPT;
+      d.a.session.guard.permit=!context.equals("guard off");
+      d.active=true;d.ticket=1;
+      d.startPopupDownload(address);
+      check("Popup rejects "+context,d.worker.queue.isEmpty()&&d.retryUrl.isEmpty()&&!d.a.message.isEmpty());
+    }
+  }
   static void cleanup()throws Exception{for(FileDownloads d:fixtures){if(d.nativeInput!=null)d.nativeInput.close();try(java.util.stream.Stream<Path> paths=Files.walk(d.a.cache.toPath())){for(Path path:(Iterable<Path>)paths.sorted(Comparator.reverseOrder())::iterator)Files.deleteIfExists(path);}}}
   public static void main(String[] args)throws Exception{try{
-    if(args.length==1){if(args[0].equals("native"))nativeSource(HTTP_PAGE);else if(args[0].equals("url"))urlSource(HTTPS_PAGE);else if(args[0].equals("http"))httpRefusal();else throw new AssertionError("Unknown focus");}
-    else{for(String page:new String[]{HTTP_PAGE,HTTPS_PAGE,"https://chatgpt.com:8443/c/other","http://chatgpt.com/c/other"}){nativeSource(page);urlSource(page);}captureOnce();gpt();httpRefusal();refusalAndExisting();responseCompleteness();}
+    if(args.length==1){if(args[0].equals("native"))nativeSource(HTTP_PAGE);else if(args[0].equals("url"))urlSource(HTTPS_PAGE);else if(args[0].equals("http"))httpRefusal();else if(args[0].equals("popup"))popupHandoff();else throw new AssertionError("Unknown focus");}
+    else{for(String page:new String[]{HTTP_PAGE,HTTPS_PAGE,"https://chatgpt.com:8443/c/other","http://chatgpt.com/c/other"}){nativeSource(page);urlSource(page);}captureOnce();gpt();httpRefusal();refusalAndExisting();responseCompleteness();originalFormat();popupHandoff();}
     System.out.println(J.obj("status","passed","passed",checks.length(),"total",checks.length(),"checks",checks,"syntheticControlledHost",true,"actualAndroidExecution",false,"actualGeckoExecution",false,"actualNetworkExecution",false).toString());
   }finally{cleanup();}}
 }
@@ -134,8 +188,9 @@ class MainActivity {
   void fileFeedback(String value){message=value;}
   void runDriver(String action,JSONObject args,Object callback){driverCalls++;throw new AssertionError("Unexpected DOM driver");}
 }
-class RemoteBoundary {String url,afterRead;int reads,scripts;String getUrl(){reads++;String value=url;if(afterRead!=null){url=afterRead;afterRead=null;}return value;}}
-class SessionBoundary {boolean transferActive,navigating;final GuardBoundary guard=new GuardBoundary();int updates;void updateBrowserActivity(){updates++;}}
+class RemoteBoundary {String url,afterRead;int reads,scripts;String getUrl(){reads++;String value=url;if(afterRead!=null){url=afterRead;afterRead=null;}return value;}SettingsBoundary getSettings(){return new SettingsBoundary();}}
+class SettingsBoundary {String getUserAgentString(){return "controlled-UA";}}
+class SessionBoundary {boolean transferActive,navigating,offline,networkReady=true;final GuardBoundary guard=new GuardBoundary();int updates;void updateBrowserActivity(){updates++;}}
 class GuardBoundary {boolean permit=true;boolean allowed(){return permit;}}
 class HandlerBoundary {final List<Runnable> queue=new ArrayList<>();void post(Runnable task){queue.add(task);}void drain(){while(!queue.isEmpty())queue.remove(0).run();}}
 class WorkerBoundary {final List<Runnable> queue=new ArrayList<>();void execute(Runnable task){queue.add(task);}void drain(){while(!queue.isEmpty())queue.remove(0).run();}}

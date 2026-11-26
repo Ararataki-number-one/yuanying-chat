@@ -2,6 +2,7 @@
 """Run the exact download migration in separate JVMs with host SQLite and preference doubles."""
 import argparse
 import json
+import os
 from pathlib import Path
 import sqlite3
 import subprocess
@@ -162,7 +163,7 @@ public final class SQLiteDatabase {
             subprocess.run([java_home / "bin/javac", "--release", "8", "-encoding", "UTF-8",
                             "-cp", jar, "-d", classes, *files], check=True, timeout=30)
             launcher = [java_home / "bin/java", "-Dpython=" + sys.executable, "-Dbridge=" + str(Path(__file__).resolve()),
-                        "-cp", str(classes) + ":" + str(jar), "local.pocketchat.MigrationCases", state]
+                        "-cp", os.pathsep.join((str(classes), str(jar))), "local.pocketchat.MigrationCases", state]
             for phase in ("fail", "restart"):
                 subprocess.run([*launcher, phase], check=True, timeout=30)
 

@@ -54,7 +54,7 @@ final class NetworkMetricsUi {
   box.addView(connection,new LinearLayout.LayoutParams(-1,-2));
   Button verify=new Button(a);verify.setText("查看 / 核实出口 IP");verify.setOnClickListener(v->ExitIpUi.show(a));
   box.addView(verify,new LinearLayout.LayoutParams(-1,-2));
-  Button audit=new Button(a);audit.setText("环境自检 / 查看变化");audit.setOnClickListener(v->EnvironmentAuditUi.show(a));
+  Button audit=new Button(a);audit.setText("网络环境检查");audit.setOnClickListener(v->EnvironmentAuditUi.show(a));
   box.addView(audit,new LinearLayout.LayoutParams(-1,-2));scroll.addView(box);
   AlertDialog dialog=AppAppearance.dialog(a).setTitle("网络情况").setView(scroll).setNegativeButton("关闭",null).create();
   a.networkDialog=dialog;

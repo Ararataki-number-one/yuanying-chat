@@ -125,8 +125,25 @@ final class BrowserFiles {
           public java.net.HttpURLConnection open(URL target)throws IOException{return route.open(target);}
         };
         result=selected.fetch(url,agent,disposition,mime,size,activity.getCacheDir(),protectedRoute,target->CookieManager.getInstance().getCookie(target),(received,total)->main.post(()->{if(!destroyed&&transfer==selected)message("正在下载 · "+bytes(received)+(total>0?" / "+bytes(total):""));}));
-        String name=BrowserDownloadStore.safeName(URLUtil.guessFileName(result.url,result.disposition,result.mime));
-        JSONObject saved=store.save(result,name,()->!destroyed&&!selected.cancelled&&protectedRoute.current());
+        String name=DownloadFileFormat.dispositionName(result.disposition);
+        if(name.isEmpty())name=DownloadFileFormat.dispositionName(disposition);
+        if(name.isEmpty()){
+          name=Uri.parse(result.url).getLastPathSegment();
+          String original=Uri.parse(url).getLastPathSegment();
+          if(DownloadFileFormat.extension(name).isEmpty()&&!DownloadFileFormat.extension(original).isEmpty())name=original;
+        }
+        name=DownloadFileFormat.safeName(name);
+        MimeTypeMap types=MimeTypeMap.getSingleton();
+        String extension=DownloadFileFormat.extension(name);
+        String mimeForName=DownloadFileFormat.mimeForName(name,result.mime,types::getMimeTypeFromExtension);
+        if(DownloadFileFormat.isHtml(result.mime)&&!DownloadFileFormat.isHtml(mimeForName))
+          throw new IOException("网页返回了网页内容，未保存为下载文件");
+        if(extension.isEmpty()){
+          String suffix=types.getExtensionFromMimeType(mimeForName);
+          if(suffix!=null)name=DownloadFileFormat.safeName(name+"."+suffix);
+        }
+        BrowserDownloadTransfer.Result formatted=new BrowserDownloadTransfer.Result(result.file,result.url,result.disposition,mimeForName,result.bytes);
+        JSONObject saved=store.save(formatted,name,()->!destroyed&&!selected.cancelled&&protectedRoute.current());
         main.post(()->{if(transfer==selected){transfer=null;message("已保存 · "+saved.optString("name")+" · 可在浏览器下载列表打开");}});
       }catch(Exception error){String reason=selected.cancelled&&!(error instanceof BrowserDownloadStore.Unconfirmed)?"下载已取消":error.getMessage()==null?"下载失败，未保存文件":error.getMessage();main.post(()->{if(transfer==selected){transfer=null;message(reason);}});}
       finally{try{if(result!=null)result.file.delete();}finally{if(lease!=null)lease.close();}}

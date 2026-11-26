@@ -272,8 +272,10 @@ final class CefriumFiles implements AutoCloseable {
     }
     CefriumDownloadFormat format;
     try {
+      MimeTypeMap types = MimeTypeMap.getSingleton();
       format = CefriumDownloadFormat.resolve(job.suggestedName, job.suggestedMime,
-          item.getSuggestedName(), item.getMimeType());
+          item.getSuggestedName(), item.getMimeType(), types::getMimeTypeFromExtension,
+          types::getExtensionFromMimeType);
     } catch (IOException mismatch) {
       cancel(job);
       message(mismatch.getMessage());

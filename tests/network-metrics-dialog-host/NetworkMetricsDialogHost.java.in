@@ -118,7 +118,7 @@ public final class NetworkMetricsDialogHost {
     require(d.view.children.size()==1&&d.view.children.get(0) instanceof LinearLayout,"one scroll content owner");
     LinearLayout body=(LinearLayout)d.view.children.get(0);
     require(body.orientation==LinearLayout.VERTICAL,"scrollable information remains vertical");
-    Button measure=button(body,"测一下延迟"),connection=button(body,"连接详情"),verify=button(body,"查看 / 核实出口 IP"),audit=button(body,"环境自检 / 查看变化");
+    Button measure=button(body,"测一下延迟"),connection=button(body,"连接详情"),verify=button(body,"查看 / 核实出口 IP"),audit=button(body,"网络环境检查");
     require(measure.description.equals("测一下网络延迟")&&connection.description.equals("查看当前网络连接详情"),"stable operation descriptions");
     require(measure.parent==body&&connection.parent==body,"optional actions stay in body");
     TextView failure=a.labels.stream().filter(v->v.color==DesignUi.RED).findFirst().orElseThrow();

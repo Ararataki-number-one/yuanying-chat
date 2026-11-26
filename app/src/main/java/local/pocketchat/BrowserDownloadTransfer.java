@@ -2,6 +2,9 @@ package local.pocketchat;
 
 import java.io.*;
 import java.net.*;
+import java.util.Locale;
+import java.util.zip.GZIPInputStream;
+import java.util.zip.ZipException;
 
 /** A bounded GET on one frozen Chromium route; never selects a replacement. */
 final class BrowserDownloadTransfer {
@@ -47,19 +50,29 @@ final class BrowserDownloadTransfer {
             target=next;continue;
           }
           if(status<200||status==204||status==205||status==206||status>=300)throw new IOException("网页未提供完整文件（HTTP "+status+"）");
-          String encoding=connection.getHeaderField("Content-Encoding");if(encoding!=null&&!encoding.isEmpty()&&!"identity".equalsIgnoreCase(encoding))throw new IOException("该文件的传输编码暂不支持，请使用外部浏览器下载");
-          long total=connection.getContentLengthLong();if(total>MAX_BYTES)throw new IOException("文件超过 512 MB 下载限额");
+          String encoding=connection.getHeaderField("Content-Encoding");
+          encoding=encoding==null?"":encoding.trim().toLowerCase(Locale.ROOT);
+          boolean gzip="gzip".equals(encoding)||"x-gzip".equals(encoding);
+          if(!gzip&&!encoding.isEmpty()&&!"identity".equals(encoding))throw new IOException("该文件的传输编码暂不支持，请使用外部浏览器下载");
+          long wireLength=connection.getContentLengthLong();
+          if(wireLength>MAX_BYTES)throw new IOException("文件超过 512 MB 下载限额");
+          long total=gzip?-1:wireLength;
           if(cache.getUsableSpace()<RESERVE_BYTES+Math.max(0,total))throw new IOException("可用存储空间不足");
           String disposition=connection.getHeaderField("Content-Disposition");if(disposition==null||disposition.isEmpty())disposition=fallbackDisposition;disposition=header(disposition,16384);
           String mime=connection.getContentType();if(mime==null||mime.isEmpty())mime=fallbackMime;if(mime==null||!mime.split(";",2)[0].trim().matches("[a-zA-Z0-9.+-]+/[a-zA-Z0-9.+-]+"))mime="application/octet-stream";else mime=mime.split(";",2)[0].trim();
           partial=File.createTempFile("browser-download-",".part",cache);long received=0,reportedAt=0;
-          try(InputStream input=connection.getInputStream();FileOutputStream output=new FileOutputStream(partial)){
+          try(WireInput wire=new WireInput(connection.getInputStream());
+              InputStream input=gzip?new GZIPInputStream(wire,65536):wire;
+              FileOutputStream output=new FileOutputStream(partial)){
             byte[] buffer=new byte[65536];int count;
             while((count=input.read(buffer))!=-1){
               check(route);if(received+count>MAX_BYTES)throw new IOException("文件超过 512 MB 下载限额");if(cache.getUsableSpace()<RESERVE_BYTES)throw new IOException("可用存储空间不足");
               output.write(buffer,0,count);received+=count;long now=System.nanoTime();if(now-reportedAt>=400000000L){reportedAt=now;progress.update(received,total);}
             }
+            if(wireLength>=0&&wire.bytes!=wireLength)throw new IOException("文件未下载完整，未保存");
             check(route);output.getFD().sync();
+          }catch(ZipException|EOFException incomplete){
+            throw new IOException("文件未下载完整，未保存，请重试",incomplete);
           }
           if(total>=0&&received!=total)throw new IOException("文件未下载完整，未保存");
           check(route);progress.update(received,total);return new Result(partial,target.toExternalForm(),disposition,mime,received);
@@ -67,5 +80,28 @@ final class BrowserDownloadTransfer {
       }
       throw new IOException("下载重定向次数过多");
     }catch(IOException|RuntimeException error){if(partial!=null)partial.delete();throw error;}
+  }
+
+  private static final class WireInput extends FilterInputStream {
+    long bytes;
+
+    WireInput(InputStream input){super(input);}
+
+    @Override public int read()throws IOException {
+      int value=in.read();
+      if(value>=0)count(1);
+      return value;
+    }
+
+    @Override public int read(byte[] buffer,int offset,int length)throws IOException {
+      int read=in.read(buffer,offset,length);
+      if(read>0)count(read);
+      return read;
+    }
+
+    private void count(int count)throws IOException {
+      bytes+=count;
+      if(bytes>MAX_BYTES)throw new IOException("文件超过 512 MB 下载限额");
+    }
   }
 }

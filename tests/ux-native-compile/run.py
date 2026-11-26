@@ -3,6 +3,7 @@
 import argparse
 import hashlib
 import json
+import os
 from pathlib import Path
 import shutil
 import subprocess
@@ -27,6 +28,8 @@ def main():
     parser.add_argument('--output', type=Path, default=ROOT / 'work/ux-native-check')
     args = parser.parse_args()
     java = args.java_home.resolve() / 'bin'
+    suffix = '.exe' if sys.platform == 'win32' else ''
+    javac, launcher = java / ('javac' + suffix), java / ('java' + suffix)
     android = args.android_jar.resolve()
     out = args.output.resolve()
     out.mkdir(parents=True, exist_ok=True)
@@ -37,20 +40,20 @@ def main():
         raise ValueError('Production source names must be direct Java files')
     dependencies = ([args.json_jar.resolve()] if args.json_jar else []) + [path.resolve() for path in args.classpath_jar]
     dependency_hashes = {str(path): digest(path) for path in dependencies if path.is_file()}
-    for source in [android, java / 'javac', java / 'java', *dependencies, *(SOURCE / name for name in names)]:
+    for source in [android, javac, launcher, *dependencies, *(SOURCE / name for name in names)]:
         if not source.is_file():
             raise FileNotFoundError(source)
     app_sources = sorted(SOURCE.glob('*.java'))
     styles = ROOT / 'app/src/main/res/values/styles.xml'
     input_paths = [HERE / 'BoundaryGenerator.java', HERE / 'production-sources.json', Path(__file__).resolve(), styles, *app_sources]
     input_hashes = {str(path.relative_to(ROOT)): digest(path) for path in input_paths}
-    version = subprocess.check_output([str(java / 'javac'), '-version'], stderr=subprocess.STDOUT, text=True).strip()
+    version = subprocess.check_output([str(javac), '-version'], stderr=subprocess.STDOUT, text=True).strip()
     if not version.startswith('javac 17.'):
         raise ValueError('The native compilation check requires JDK 17')
     for folder in ['classes', 'generator-classes', 'stubs']:
         shutil.rmtree(out / folder, ignore_errors=True)
-    subprocess.run([str(java / 'javac'), '-d', str(out / 'generator-classes'), str(HERE / 'BoundaryGenerator.java')], check=True, cwd=ROOT)
-    subprocess.run([str(java / 'java'), '-cp', str(out / 'generator-classes'), 'BoundaryGenerator',
+    subprocess.run([str(javac), '-d', str(out / 'generator-classes'), str(HERE / 'BoundaryGenerator.java')], check=True, cwd=ROOT)
+    subprocess.run([str(launcher), '-cp', str(out / 'generator-classes'), 'BoundaryGenerator',
                     str(SOURCE), str(out / 'stubs/local/pocketchat'), *names], check=True, cwd=ROOT)
     if len(ET.parse(styles).getroot().findall("style[@name='FloatingPanelAnimation']")) != 1:
         raise ValueError('The actual FloatingPanelAnimation style resource is missing or duplicated')
@@ -61,7 +64,7 @@ def main():
         'static final int FloatingPanelAnimation = 0; } }\n')
     classpath = [str(android)]
     classpath.extend(map(str, dependencies))
-    command = [str(java / 'javac'), '-encoding', 'UTF-8', '-Xmaxerrs', '300', '-cp', ':'.join(classpath),
+    command = [str(javac), '-encoding', 'UTF-8', '-Xmaxerrs', '300', '-cp', os.pathsep.join(classpath),
                '-sourcepath', str(out / 'stubs'), '-d', str(out / 'classes'), *[str(SOURCE / name) for name in names]]
     with (out / 'javac.log').open('w') as log:
         result = subprocess.run(command, stdout=log, stderr=subprocess.STDOUT, cwd=ROOT)

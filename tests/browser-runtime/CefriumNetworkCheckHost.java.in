@@ -1,0 +1,92 @@
+package local.pocketchat;
+
+import java.util.Map;
+import java.util.concurrent.atomic.AtomicReference;
+
+/** Real route checks with controlled Android clock, ownership and relay boundaries. */
+public final class CefriumNetworkCheckHost {
+    private static final long MAX_EVIDENCE_AGE_MS = 2500;
+    private static final String ROUTE_LOST = "route lost";
+    private final AtomicReference<Grant> grant = new AtomicReference<>();
+    private final Network network = new Network();
+    private Grant attached;
+    private CefriumRoutePolicy.Selection configured;
+    private boolean closed, identityCurrent = true;
+    private int revocations;
+
+    private static class SystemClock {
+        static long now = 10_000;
+        static long elapsedRealtime() { return now; }
+    }
+    private static class Network {
+        String value = "first";
+        String snapshot() { return value; }
+    }
+    private static class CefriumProxyRelay {
+        boolean open = true;
+        boolean isOpen() { return open; }
+    }
+    private static class ChromiumProtectedOwnerLease {
+        boolean current = true;
+        boolean current() { return current; }
+    }
+    private record Evidence(CefriumRoutePolicy.Selection setting, String connection) {}
+    private static class Grant {
+        boolean ready = true;
+        long verifiedAt = SystemClock.now;
+        final Evidence evidence;
+        final ChromiumProtectedOwnerLease owner = new ChromiumProtectedOwnerLease();
+        final CefriumProxyRelay relay = new CefriumProxyRelay();
+        Grant(Evidence evidence) { this.evidence = evidence; }
+    }
+    private void revoke(Grant selected, String why) {
+        if (grant.compareAndSet(selected, null)) revocations++;
+    }
+    private boolean currentEnvironment() { return identityCurrent; }
+    private CefriumRoutePolicy.Selection selection() { return configured; }
+    private static void requireMainThread() {}
+
+    /* PRODUCTION_METHODS */
+
+    private void verify(boolean admitted, String evidenceLabel) {
+        String summary = networkCheckSummary();
+        if (summary.contains("线路已通过本机核验") != admitted || !summary.contains(evidenceLabel)
+                || summary.contains("private-proxy.example") || revocations != 0) {
+            throw new AssertionError(summary);
+        }
+    }
+
+    public static void main(String[] args) {
+        CefriumNetworkCheckHost host = new CefriumNetworkCheckHost();
+        host.verify(false, "未配置或无法读取");
+        host.configured = CefriumRoutePolicy.selection(Map.of("networkConfigured", true, "networkMode", "external",
+                "proxy", "https://private-proxy.example:443", "requireExternalVpn", true));
+        host.verify(false, "未连接或线路已变化");
+        Grant fresh = new Grant(new Evidence(host.configured, host.network.snapshot()));
+        host.grant.set(fresh);
+        host.verify(false, "等待当前浏览器线路核验");
+        host.attached = fresh;
+        host.verify(true, "应用专用代理（要求手机 VPN）");
+        fresh.owner.current = false;
+        host.verify(false, "等待当前浏览器线路核验");
+        fresh.owner.current = true;
+        fresh.relay.open = false;
+        host.verify(false, "等待当前浏览器线路核验");
+        fresh.relay.open = true;
+        host.network.value = "changed";
+        host.verify(false, "等待当前浏览器线路核验");
+        host.network.value = "first";
+        host.identityCurrent = false;
+        host.verify(false, "当前环境已变化");
+        host.identityCurrent = true;
+        host.configured = CefriumRoutePolicy.selection(Map.of("networkConfigured", true, "networkMode", "internal"));
+        host.verify(false, "应用内线路");
+        host.configured = fresh.evidence.setting;
+        SystemClock.now += MAX_EVIDENCE_AGE_MS;
+        host.verify(true, "应用专用代理");
+        SystemClock.now++;
+        host.verify(false, "等待当前浏览器线路核验");
+        if (host.ready(fresh) || host.revocations != 1) throw new AssertionError("Traffic gate must still revoke stale evidence");
+        System.out.println("Cefrium local network check passed");
+    }
+}

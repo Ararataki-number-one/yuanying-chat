@@ -75,12 +75,13 @@ public class Context {
 import android.net.Uri;import android.database.Cursor;
 public final class ContentResolver {
   public Uri insertedCollection;public ContentValues insertedValues;public String displayName;public boolean denyInsert;public int updates,deletes,updateResult=1;private int sequence;
+  public final java.util.Set<Uri> rows=new java.util.HashSet<>();
   public final java.util.Map<Uri,byte[]> contents=new java.util.HashMap<>();
-  public Uri insert(Uri collection,ContentValues values){insertedCollection=collection;insertedValues=values;return denyInsert?null:Uri.parse("content://media/external/downloads/"+(++sequence));}
+  public Uri insert(Uri collection,ContentValues values){insertedCollection=collection;insertedValues=values;if(denyInsert)return null;Uri row=Uri.parse("content://media/external/downloads/"+(++sequence));rows.add(row);return row;}
   public Cursor query(Uri uri,String[] projection,String selection,String[] arguments,String sort){return new Cursor(displayName==null?(String)insertedValues.get(android.provider.MediaStore.MediaColumns.DISPLAY_NAME):displayName);}
   public java.io.OutputStream openOutputStream(Uri uri,String mode){return new java.io.ByteArrayOutputStream(){public void close()throws java.io.IOException{super.close();contents.put(uri,toByteArray());}};}
   public int update(Uri uri,ContentValues values,String selection,String[] arguments){updates++;return updateResult;}
-  public int delete(Uri uri,String selection,String[] arguments){deletes++;contents.remove(uri);return 1;}
+  public int delete(Uri uri,String selection,String[] arguments){deletes++;rows.remove(uri);contents.remove(uri);return 1;}
 }''',
 'android/database/Cursor.java':'''package android.database;public final class Cursor implements AutoCloseable {final String value;public Cursor(String value){this.value=value;}public boolean moveToFirst(){return true;}public String getString(int index){return value;}public void close(){}}''',
 'android/provider/MediaStore.java':'''package android.provider;
@@ -230,7 +231,7 @@ def main():
     destroyed=member(source,'void destroy()')
     handoff=member(source,'void handoff(')
     chooser=prefix+'  '+handoff+'\n  '+destroyed+'\n}\n'
-    native_names=('BrowserDownloadTransfer.java','BrowserDownloadStore.java','BrowserAddressPolicy.java','DownloadMetadataValues.java','DownloadTaskRevisions.java')
+    native_names=('BrowserDownloadTransfer.java','BrowserDownloadStore.java','BrowserAddressPolicy.java','DownloadFileFormat.java','DownloadMetadataValues.java','DownloadTaskRevisions.java')
     resolver_path=PROD/'SavedDownloadProvider.java';legacy_path=PROD/'FileDownloads.java'
     resolved=member(resolver_path.read_text(),'static File resolve(')
     safe_name=member(legacy_path.read_text(),'static String safeName(')

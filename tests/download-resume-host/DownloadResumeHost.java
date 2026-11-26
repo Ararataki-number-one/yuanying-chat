@@ -1,5 +1,5 @@
 package local.pocketchat;
-import android.content.*;import android.net.Uri;import android.os.*;import org.json.*;import java.io.*;import java.nio.file.*;import java.util.*;import java.util.concurrent.*;import java.util.function.*;import java.net.*;
+import android.content.*;import android.net.Uri;import android.os.*;import org.json.*;import java.io.*;import java.nio.charset.StandardCharsets;import java.nio.file.*;import java.util.*;import java.util.concurrent.*;import java.util.function.*;import java.net.*;import java.util.zip.*;
 public final class DownloadResumeHost{
  static final JSONArray checks=new JSONArray();static final List<FileDownloads> downloads=new ArrayList<>();static final Handler main=new Handler(Looper.getMainLooper());
  static <T>T ui(Callable<T> f)throws Exception{CompletableFuture<T> result=new CompletableFuture<>();main.post(()->{try{result.complete(f.call());}catch(Throwable e){result.completeExceptionally(e);}});return result.get(5,TimeUnit.SECONDS);}
@@ -27,6 +27,7 @@ public final class DownloadResumeHost{
  }
  static void exclusions()throws Exception{
   for(String state:new String[]{"complete","pending","uri","unknown-state","unknown-complete","other-reference","generation","owner","symlink","outside"}){
+   if(state.equals("symlink")&&Boolean.getBoolean("skipSymlinkFixture"))continue;
    FileDownloads d=fresh();JSONObject r=row(d,"gecko-response");File original=partial(d,"download-protected.part");attach(d,r,original);File external=new File(d.a.root,"outside-user-data");Files.write(external.toPath(),new byte[]{9,9});String gen=r.optString("taskGeneration");
    if(state.equals("symlink")){Files.delete(original.toPath());Files.createSymbolicLink(original.toPath(),external.toPath());}
    final String mode=state;
@@ -55,7 +56,7 @@ public final class DownloadResumeHost{
  }
  static final class BlockedBody extends InputStream{final CountDownLatch blocked=new CountDownLatch(1),release=new CountDownLatch(1);int calls;public int read()throws IOException{throw new IOException("bulk only");}public int read(byte[] out)throws IOException{if(calls++==0){Arrays.fill(out,0,4,(byte)7);return 4;}blocked.countDown();try{if(!release.await(10,TimeUnit.SECONDS))throw new IOException("fixture read barrier timeout");}catch(InterruptedException e){throw new IOException(e);}return -1;}public void close(){/* A paused stream may remain blocked until its actual read completes. */}}
  static void oldWriter()throws Exception{
-  FileDownloads old=fresh();BlockedBody body=new BlockedBody();org.mozilla.geckoview.WebResponse response=new org.mozilla.geckoview.WebResponse(new byte[0]);response.body=body;ui(()->{old.acceptResponse(response);return null;});if(!body.blocked.await(5,TimeUnit.SECONDS))throw new AssertionError("actual response writer not reached");ui(()->null);File partial=old.temp;String id=old.task.optString("id");
+  FileDownloads old=fresh();BlockedBody body=new BlockedBody();org.mozilla.geckoview.WebResponse response=new org.mozilla.geckoview.WebResponse(new byte[0]);response.body=body;response.length=9;ui(()->{old.acceptResponse(response);return null;});if(!body.blocked.await(5,TimeUnit.SECONDS))throw new AssertionError("actual response writer not reached");ui(()->null);File partial=old.temp;String id=old.task.optString("id");
   ui(()->{old.destroy();return null;});FileDownloads newer=ui(()->new FileDownloads(new MainActivity(old.a.root)));downloads.add(newer);DownloadTasks.recovery.submit(()->{}).get(5,TimeUnit.SECONDS);ui(()->null);JSONObject selected=ui(()->DownloadTaskRevisions.find(newer.tasks.rows,id));Thread retiringWorker=newer.worker.submit(()->Thread.currentThread()).get(5,TimeUnit.SECONDS);ui(()->{if(!newer.loadTask(selected))throw new AssertionError("new instance claim");newer.discardForRedownload(selected);return null;});
   long deadline=System.nanoTime()+TimeUnit.SECONDS.toNanos(5);boolean waiting=false;do{StackTraceElement[] stack=retiringWorker.getStackTrace();boolean lease=false,interruptibleLock=false;for(StackTraceElement frame:stack){lease|=frame.getClassName().equals("local.pocketchat.SealedFileIo")&&frame.getMethodName().equals("lease");interruptibleLock|=frame.getClassName().equals("java.util.concurrent.locks.ReentrantLock")&&frame.getMethodName().equals("lockInterruptibly");}waiting=lease&&interruptibleLock;if(!waiting)Thread.yield();}while(!waiting&&System.nanoTime()<deadline);
   check("New instance retirement waits inside the real partial lease while old writer is blocked",waiting&&ui(()->newer.retiringPartial)&&partial.isFile()&&partial.length()==4);
@@ -99,6 +100,32 @@ public final class DownloadResumeHost{
    }
   }
  }
+ static void completeDirectResponses()throws Exception{
+  String address="https://example.test/report.pdf";
+  byte[] original="%PDF-1.7\ncontrolled bytestream\n".getBytes(StandardCharsets.UTF_8);
+  ByteArrayOutputStream buffer=new ByteArrayOutputStream();
+  try(GZIPOutputStream gzip=new GZIPOutputStream(buffer)){gzip.write(original);}
+  byte[] compressed=buffer.toByteArray();
+  for(String scenario:new String[]{"gzip","short-gzip","advertised-length-gzip","encoded-range","whole-range","partial-range"}){
+   FileDownloads d=fresh();JSONObject record=row(d,"http-range");
+   boolean encoded=scenario.contains("gzip")||scenario.equals("encoded-range");
+   boolean ranged=scenario.endsWith("range");
+   byte[] body=scenario.equals("short-gzip")?Arrays.copyOf(compressed,compressed.length-4):encoded?compressed:original;
+   String range="bytes 0-"+(body.length-1)+"/"+(scenario.equals("partial-range")?body.length+1:body.length);
+   d.http=new FakeHttp(ranged?206:200,body,range){
+    @Override public String getContentEncoding(){return encoded?"gzip":"identity";}
+    @Override public long getContentLengthLong(){return scenario.equals("advertised-length-gzip")?body.length+3:body.length;}
+   };
+   d.http.contentType="application/pdf";
+   ui(()->{d.active=true;d.mark("downloading","");return null;});
+   d.worker.execute(()->d.download(d.ticket,address,"fixture"));idle(d);
+   boolean publish=scenario.equals("gzip")||scenario.equals("whole-range");
+   check("Direct response preserves bytes or fails without publication: "+scenario,publish
+        ?d.a.chosen==1&&Arrays.equals(original,Files.readAllBytes(d.temp.toPath()))&&d.name.equals("report.pdf")
+        :d.a.chosen==0&&record.optString("state").equals("failed"));
+   if(encoded)check("HTTP content coding never creates a decoded Range validator: "+scenario,d.resumeValidator.isEmpty()&&d.resumeAddress.isEmpty());
+  }
+ }
  static void staleRangeReset()throws Exception{
   FileDownloads old=fresh();JSONObject row=row(old,"http-range");File f=partial(old,"download-range-reset.part");attach(old,row,f);String address="https://example.test/file";old.http=new FakeHttp(206,new byte[]{5,6},"invalid range");old.http.blockSecond=true;
   ui(()->{old.resumeValidator="\"v1\"";old.resumeAddress=DownloadRange.resource(address);old.a.remote.gecko=false;old.active=true;old.mark("downloading","");return null;});old.worker.execute(()->old.download(old.ticket,address,"fixture"));if(!old.http.blocked.await(5,TimeUnit.SECONDS))throw new AssertionError("range validation barrier");ui(()->{old.destroy();return null;});
@@ -110,11 +137,11 @@ public final class DownloadResumeHost{
  static void lateMenu()throws Exception{
   FileDownloads d=fresh();JSONObject selected=row(d,"gecko-response");File partial=partial(d,"download-selected-menu.part"),complete=partial(d,"download-complete-menu.part");attach(d,selected,partial);JSONObject finished=ui(()->{JSONObject r=d.tasks.add("","","https://chatgpt.com/c/one");DownloadTasks.put(r,"state","paused","complete",true,"partial",complete.getName());d.tasks.save();if(!d.loadTask(r))throw new AssertionError("complete selection");d.taskActions(r);return r;});Builder oldMenu=AppAppearance.last;CountDownLatch held=new CountDownLatch(1),release=new CountDownLatch(1);CompletableFuture<Void> lease=CompletableFuture.runAsync(()->{try{SealedFileIo.lease(partial,()->{held.countDown();if(!release.await(10,TimeUnit.SECONDS))throw new IOException("menu barrier timeout");return null;});}catch(Exception e){throw new CompletionException(e);}});if(!held.await(5,TimeUnit.SECONDS))throw new AssertionError("menu lease");ui(()->{if(!d.loadTask(selected))throw new AssertionError("restart selection");d.discardForRedownload(selected);return null;});long deadline=System.nanoTime()+TimeUnit.SECONDS.toNanos(5);while(!ui(()->d.retiringPartial)&&System.nanoTime()<deadline)Thread.yield();String generation=selected.optString("taskGeneration");ui(()->{oldMenu.clickPositive();return null;});check("Previously opened continue-saving callback cannot claim during retirement",d.retiringPartial&&d.task==selected&&selected.optString("taskGeneration").equals(generation)&&d.a.chosen==0&&partial.isFile()&&complete.isFile());release.countDown();lease.get(5,TimeUnit.SECONDS);idle(d);check("Retirement finishes after rejecting old menu without touching complete file",!d.retiringPartial&&!partial.exists()&&complete.isFile()&&finished.optBoolean("complete"));
  }
- public static void main(String[] args)throws Exception{try{if(Boolean.getBoolean("beforeLoad"))lateMenu();else if(Boolean.getBoolean("beforeRange"))changedRangeLength();else if(Boolean.getBoolean("beforeWriter"))oldWriter();else{menus();if(!Boolean.getBoolean("before")){selectedCleanup();exclusions();failures();finishFailure();oldWriter();rangeTransfers();boundedRangeBody();chatDownloadResponses();staleRangeReset();BlobCases.run();changedRangeLength();lateMenu();CancelCases.run();}}}finally{for(FileDownloads d:downloads){d.worker.shutdownNow();ui(()->{d.tasks.release();return null;});}}int passed=0;for(int i=0;i<checks.length();i++)if(checks.optJSONObject(i).optBoolean("pass"))passed++;System.out.println(J.obj("status",passed==checks.length()?"passed":"failed","passed",passed,"total",checks.length(),"checks",checks));if(passed!=checks.length())System.exit(1);}
+ public static void main(String[] args)throws Exception{try{if(Boolean.getBoolean("beforeLoad"))lateMenu();else if(Boolean.getBoolean("beforeRange"))changedRangeLength();else if(Boolean.getBoolean("beforeWriter"))oldWriter();else{menus();if(!Boolean.getBoolean("before")){selectedCleanup();exclusions();failures();finishFailure();oldWriter();rangeTransfers();boundedRangeBody();chatDownloadResponses();completeDirectResponses();staleRangeReset();BlobCases.run();changedRangeLength();lateMenu();CancelCases.run();}}}finally{for(FileDownloads d:downloads){d.worker.shutdownNow();ui(()->{d.tasks.release();return null;});}}int passed=0;for(int i=0;i<checks.length();i++)if(checks.optJSONObject(i).optBoolean("pass"))passed++;System.out.println(J.obj("status",passed==checks.length()?"passed":"failed","passed",passed,"total",checks.length(),"checks",checks));if(passed!=checks.length())System.exit(1);}
 }
 class FileDownloads{
  final MainActivity a;final DownloadTasks tasks;final ExecutorService worker=Executors.newSingleThreadExecutor();final SavedFileActions savedActions=new SavedFileActions();Builder manager,noticeDialog;FakeHttp http;java.net.HttpURLConnection connection;Uri savingDestination;JSONObject task;volatile File temp;volatile boolean active,destroyed,cancelled;boolean persistenceBlocked,awaitingPicker,retiringPartial,resumeRequested,minimized,completeFile;BlobDownload blob;String name="文件",mime="application/octet-stream",sourceId="",sourceKey="",sourceUrl="",retryUrl="",agent="",imageLabel="",resumeValidator="",resumeAddress="";long receivedBytes,totalBytes=-1,ignoreUntil,lastProgressSaved;volatile long ticket;volatile InputStream nativeInput;static final long MAX=512L*1024*1024;
- FileDownloads(MainActivity x){a=x;tasks=new DownloadTasks(x);}static String safeName(String v){return v;}static String type(String name,String type){return type;}static boolean https(String url){return url.startsWith("https://");}static String imageExtension(String type){return "png";}Proxy route(){return Proxy.NO_PROXY;}HttpURLConnection connect(String url,Proxy proxy){return http;}
+ FileDownloads(MainActivity x){a=x;tasks=new DownloadTasks(x);}static String safeName(String v){return v;}static String type(String name,String type){return DownloadFileFormat.mimeForName(name,type,extension->"");}static boolean https(String url){return url.startsWith("https://");}static String imageExtension(String type){return "png";}Proxy route(){return Proxy.NO_PROXY;}HttpURLConnection connect(String url,Proxy proxy){return http;}
  boolean sameSource(){return true;}void choose(long attempt){a.chosen++;}void chooseManually(long attempt){a.chosen++;}void showProgress(String s){}void dismiss(){}void transferProgress(){}void finishSaved(JSONObject row,File source,String n){}void openSaved(Uri uri,String mime,String title){}void openSaved(Uri uri,String mime,String title,boolean confirmed){}void open(String id,String key){a.started++;}void accept(String url,String ua,String disposition,String type,long length){a.started++;}void requestCancel(){}/* FILEDOWNLOADS */
 }
 class MainActivity extends Context{final Handler handler=new Handler(Looper.getMainLooper());final Session session=new Session();final Remote remote=new Remote();Hub hub;String conversation="https://chatgpt.com/c/one",message="";int chosen,started;MainActivity(File root){super(root,0);}void status(String v){message=v;}void fileFeedback(String v){message=v;}int dp(int v){return v;}TextView label(String v,int size,int color){return new TextView();}}
@@ -128,7 +155,7 @@ class Remote{boolean gecko=true;final Object current=new Object();final Map<Obje
  String downloadCookies(String url){return null;}
  void evaluateJavascript(String code,Consumer<String> callback){scripts.add(code);if(callback==null){closedEntries++;return;}if(++callbackCount==holdAt){held=callback;return;}callback.accept(replies.remove());}
 }class BrowserNetworkGuard{static boolean publicHttps(Uri uri){return true;}}class Hub{int page;void refresh(){}}
-class SavedFileActions{void show(JSONObject r){}void close(){}}class AppPrefs{static void requireDownloadNetwork(Context c)throws IOException{}}class GeckoWebView{static boolean active(Remote r){return r.gecko;}static String header(org.mozilla.geckoview.WebResponse r,String key){return key.equals("Content-Length")?"3":key.equals("Content-Type")?"application/octet-stream":"";}}class URLUtil{static String guessFileName(String url,String disposition,String mime){return "fixture.bin";}}
+class SavedFileActions{void show(JSONObject r){}void close(){}}class AppPrefs{static void requireDownloadNetwork(Context c)throws IOException{}}class GeckoWebView{static boolean active(Remote r){return r.gecko;}static String header(org.mozilla.geckoview.WebResponse r,String key){return key.equals("Content-Length")?Long.toString(r.length):key.equals("Content-Type")?"application/octet-stream":"";}}class URLUtil{static String guessFileName(String url,String disposition,String mime){return "fixture.bin";}}
 class Ui{static final int MUTED=0;}class TextView{void setPadding(int a,int b,int c,int d){}}class Button extends TextView{Button(Object a){}void setText(String text){}void setOnClickListener(Consumer<Object> action){}}
 class LinearLayout{static final int VERTICAL=1;LinearLayout(Object a){}void setOrientation(int a){}void addView(Object v){}}
 class AppAppearance{static Builder last;static Builder dialog(Object a){return last=new Builder();}}

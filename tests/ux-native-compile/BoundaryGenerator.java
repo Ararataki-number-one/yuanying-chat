@@ -2,6 +2,7 @@ import com.sun.source.tree.*;
 import com.sun.source.util.*;
 import javax.tools.*;
 import javax.lang.model.element.Modifier;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
 import java.util.*;
 import java.io.*;
@@ -73,7 +74,7 @@ public class BoundaryGenerator {
   public static void main(String[] args)throws Exception{
     Path src=Path.of(args[0]),out=Path.of(args[1]);Files.createDirectories(out);
     Set<String> actual=new HashSet<>(Arrays.asList(Arrays.copyOfRange(args,2,args.length)));
-    JavaCompiler compiler=ToolProvider.getSystemJavaCompiler();StandardJavaFileManager fm=compiler.getStandardFileManager(null,null,null);
+    JavaCompiler compiler=ToolProvider.getSystemJavaCompiler();StandardJavaFileManager fm=compiler.getStandardFileManager(null,null,StandardCharsets.UTF_8);
     List<File> files=new ArrayList<>();try(var stream=Files.list(src)){stream.filter(p->p.toString().endsWith(".java")).forEach(p->files.add(p.toFile()));}
     JavacTask task=(JavacTask)compiler.getTask(null,fm,null,List.of("-proc:none"),null,fm.getJavaFileObjectsFromFiles(files));
     for(CompilationUnitTree unit:task.parse()){

@@ -1,5 +1,5 @@
 package local.pocketchat;
-import android.net.Uri;import android.os.*;import android.webkit.ValueCallback;import org.json.*;import java.io.*;import java.net.*;import java.nio.charset.StandardCharsets;import java.nio.file.*;import java.util.*;import java.util.concurrent.*;import java.util.function.Consumer;
+import android.net.Uri;import android.os.*;import android.webkit.ValueCallback;import org.json.*;import java.io.*;import java.net.*;import java.nio.charset.StandardCharsets;import java.nio.file.*;import java.util.*;import java.util.concurrent.*;import java.util.function.Consumer;import java.util.zip.GZIPInputStream;
 public final class CookieFixtureHost {
  static final JSONArray checks=new JSONArray();
  static void check(String name,boolean pass){checks.put(J.obj("name",name,"pass",pass));if(!pass)throw new AssertionError(name);}
@@ -108,8 +108,12 @@ class FileDownloads {
  boolean saveTask(){tasks.save();return true;}
  void transferProgress(){}void choose(long attempt){chosen++;}void fail(long attempt,String message){reason=message;}static class Tasks {boolean owned=true;void save(){}boolean owns(JSONObject row){return owned&&row!=null;}}
  // MIME lookup is an explicit host adapter; parser behavior is covered separately.
- static String type(String name,String fallback){return fallback;}
+ static String type(String name,String fallback){return DownloadFileFormat.mimeForName(name,fallback,extension->"");}
  /* RESPONSE_METADATA */
+ /* URL_FILE_NAME */
+ /* CHECK_RESPONSE_TYPE */
+ /* CHECK_FILE_PREFIX */
+ /* DOWNLOAD_WIRE_INPUT */
  /* VALID */
  /* DOWNLOAD */
 }
