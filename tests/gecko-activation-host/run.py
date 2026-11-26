@@ -98,7 +98,8 @@ def main():
     paths=[source,registry,leases,utility,template,Path(__file__).resolve(),ROOT/'tests/gecko-navigation-host/run.py']
     hashes={str(path.relative_to(ROOT)):digest(path) for path in paths}
     dependency=digest(args.json_jar)
-    java_tools={name:args.java_home/'bin'/name for name in ('java','javac')}
+    suffix='.exe' if os.name=='nt' else ''
+    java_tools={name:args.java_home/'bin'/(name+suffix) for name in ('java','javac')}
     tool_hashes={name:digest(path) for name,path in java_tools.items()}
     text=source.read_text()
     names=['private void activate(','private boolean navigationCurrent(','private boolean closePopup(GeckoSession old,boolean returnNavigation)','boolean closeWebsitePages(','void forgetGeneralRoute(']

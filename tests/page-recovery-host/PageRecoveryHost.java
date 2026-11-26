@@ -333,6 +333,7 @@ class Audit{void retirePageCheck(){}boolean requestIdentitySelected;boolean requ
  boolean closeExitIpPage(){if(auxiliaryPageSelected)throw new AssertionError("Auxiliary page lifecycle is outside this host");return false;}
  static boolean active(Web w){return true;}final ChatSession owner;GeckoSession current=new GeckoSession(),primary=current;boolean destroyed,enabled=true,failed;long recoveryWindow;int contentRecoveries,recoveryDispatches;String url="https://chatgpt.com/c/lifecycle-current";
  final Map<GeckoSession,String> locations=new IdentityHashMap<>();final Map<GeckoSession,WebExtension.Port> ports=new IdentityHashMap<>();final Set<GeckoSession> crashed=new HashSet<>(),pendingLoads=new HashSet<>(),painted=new HashSet<>(),usable=new HashSet<>();final Runnable recovery=()->recoveryDispatches++;
+ final Map<GeckoSession,Object> pdfCoverProofs=new IdentityHashMap<>();
  final BrowserBridgeRequests callbacks=new BrowserBridgeRequests(new BrowserBridgeRequests.Timer(){public void schedule(Runnable r,long delay){}public void cancel(Runnable r){}},"null");
  /* ROUTE_FIELDS */
  // Native allocation, activation and SDK restore are explicit counters, not

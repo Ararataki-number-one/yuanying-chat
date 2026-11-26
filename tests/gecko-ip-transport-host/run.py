@@ -20,7 +20,7 @@ MEMBERS=('static final class IpLookup {','static final class TimeZoneGate {','st
  'boolean ipBootstrapRequest(', 'GeckoResult<Object> ipBootstrapHeaders(', 'boolean timeZoneSessionAlive(',
  'boolean timeZoneAllows(', 'JSONObject timeZoneStatus(', 'void retireTimeZone(', 'void retireTimeZones(',
  'boolean ipNavigationFailed(', 'boolean retryFailedIpNavigation(', 'private boolean reopenIpCurrent(', 'void finishIpNavigationFailure(', 'GeckoResult<String> nativeNavigationFailure(',
- 'public void onPageStart(', 'public void onPageStop(', 'private void pageVisible(', 'public void onLocationChange(',
+ 'public void onPageStart(', 'public void onPageStop(', 'private void pageVisible(', 'public void onLocationChange(', 'private static String pdfDocumentUrl(',
  'public void loadUrl(', 'Object claimTimeZoneIntent(', 'void clearTimeZoneIntent(',
  'void finishTimeZone(', 'void sendTimeZone(', 'void prepareTimeZone(', 'void revalidateTimeZone(',
  'private void startTimeZone(', 'void completeTimeZoneRequests(', 'void completeTimeZoneProofs(',

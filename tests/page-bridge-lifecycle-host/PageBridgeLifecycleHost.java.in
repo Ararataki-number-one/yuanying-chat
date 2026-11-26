@@ -70,6 +70,8 @@ public final class PageBridgeLifecycleHost {
     final Owner owner=new Owner();final Clock clock=new Clock();
     final BrowserBridgeRequests callbacks=new BrowserBridgeRequests(clock,"null");
     final Map<GeckoSession,String> locations=new IdentityHashMap<>(),loadingTargets=new IdentityHashMap<>();
+    final Map<GeckoSession,Object> pdfCoverProofs=new IdentityHashMap<>();
+    /* PDF_DOCUMENT_URL */
     final Map<GeckoSession,WebExtension.Port> ports=new IdentityHashMap<>();
     final Map<GeckoSession,Float> viewportWidths=new IdentityHashMap<>(),pageScales=new IdentityHashMap<>();
     final Set<GeckoSession> painted=Collections.newSetFromMap(new IdentityHashMap<>()),usable=Collections.newSetFromMap(new IdentityHashMap<>()),crashed=Collections.newSetFromMap(new IdentityHashMap<>()),pendingLoads=Collections.newSetFromMap(new IdentityHashMap<>());
