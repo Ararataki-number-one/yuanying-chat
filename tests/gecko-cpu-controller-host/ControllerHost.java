@@ -29,7 +29,11 @@ public final class ControllerHost {
     Path base=root.resolve("profile-files");Files.createDirectories(base);File profile=base.resolve("gecko-browser").toFile();GeckoCpuProfile.prepare(base.toFile(),profile,GeckoCpuSpec.of("2"));
     Path prefs=profile.toPath().resolve("prefs.js");Files.write(prefs,bytes(original));GeckoCpuProfile.prepare(base.toFile(),profile,GeckoCpuSpec.automatic());
     check("Offline automatic removes staleUSER without inventing engine default",Arrays.equals(Files.readAllBytes(prefs),bytes(expected))&&!new String(Files.readAllBytes(base.resolve("gecko-browser.yaml")),StandardCharsets.UTF_8).contains(GeckoCpuProfile.PREF));
-    check("Closed route remains in complete background generated config",new String(Files.readAllBytes(base.resolve("gecko-browser.yaml")),StandardCharsets.UTF_8).contains("network.proxy.socks_port: 9"));
+    String startupConfig=Files.readString(base.resolve("gecko-browser.yaml"),StandardCharsets.UTF_8);
+    check("Closed route remains in complete background generated config",startupConfig.contains("network.proxy.socks_port: 9"));
+    if(!startupConfig.contains("\n  browser.download.open_pdf_attachments_inline: false\n")){
+      throw new AssertionError("Gecko startup must dispatch PDF attachments to the download handler");
+    }
     Path user=profile.toPath().resolve("user.js");
     for(String bad:new String[]{"user_pref(\"dom.maxHardwareConcurrency\", 1);","user_pref(\"dom.maxHardwareConcurre\\u006ecy\", 1);","user_pref(\"other\", 1);user_pref(\"dom.maxHardwareConcurre\\u006ecy\", 2);"}){
       Files.write(user,bytes(bad));byte[] before=Files.readAllBytes(prefs);rejects("user.js CPU or extra executable call cannot override startup policy",()->GeckoCpuProfile.prepare(base.toFile(),profile,GeckoCpuSpec.of("1")));check("Rejected user.js leaves persisted prefs untouched",Arrays.equals(before,Files.readAllBytes(prefs)));

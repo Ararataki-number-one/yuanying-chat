@@ -65,6 +65,8 @@ final class GeckoCpuProfile {
       +"  network.proxy.socks_version: 5\n  network.proxy.socks_remote_dns: true\n  network.proxy.no_proxies_on: ''\n"
       +"  network.proxy.allow_hijacking_localhost: true\n  network.trr.mode: 5\n  network.dns.disablePrefetch: true\n"
       +"  network.prefetch-next: false\n  network.http.speculative-parallel-limit: 0\n  media.peerconnection.enabled: false\n"
+      // Deliver PDF attachments to the download handler while keeping inline PDF viewing.
+      +"  browser.download.open_pdf_attachments_inline: false\n"
       +(spec.isAutomatic()?"":"  "+PREF+": "+spec.cap+"\n");
     // This complete closed-route config is prepared on environmentIo, including
     // default mode. Runtime creation performs no newly-added disk work on UI.
