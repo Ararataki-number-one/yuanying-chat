@@ -120,10 +120,10 @@ final class LoadingUi {
   void update(){
     ChatSession s=a.session;if(s==null)return;
     a.applyFocusLayout();
-    boolean visible=s.web.hasVisibleDocument();
+    boolean visible=s.web.hasVisibleContentForCover();
     boolean slow=wait.update(!visible&&!s.web.resourceDeferred,android.os.SystemClock.elapsedRealtime());
     MainActivity.chromeVisibility(band,false);
-    // A live document always remains usable, including while the site is
+    // A visible document remains on screen, including while the site is
     // loading or rendering a reply. Only an empty surface needs our cover.
     if(visible){hideCover();return;}
     MainActivity.chromeVisibility(a.status,false);showCover();
