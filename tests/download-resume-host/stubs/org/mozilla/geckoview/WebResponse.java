@@ -1,1 +1,0 @@
-package org.mozilla.geckoview;public final class WebResponse{public java.io.InputStream body;public String uri="https://example.test/file";public int statusCode=200;public long length;public WebResponse(byte[] value){body=new java.io.ByteArrayInputStream(value);length=value.length;}public void setReadTimeoutMillis(long value){}}
