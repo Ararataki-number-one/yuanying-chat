@@ -222,7 +222,10 @@ class AppHub {static final int CHAT=0;int page=CHAT;final Runnable tick=()->{};f
 enum EnvironmentEngine {GECKO,CHROMIUM,UNAVAILABLE}
 class BrowserPreferences {static EnvironmentEngine engine(MainActivity a){return EnvironmentEngine.GECKO;}static boolean startBrowser(MainActivity a){return engine(a)==EnvironmentEngine.CHROMIUM;}static boolean nativeOpening(Intent intent){return false;}}
 class NetworkWorkspace {void close(){}}
-class EnvironmentOverviewUi {void browserReady(){}void close(){}void pause(){}void resume(){}}
+class EnvironmentOverviewUi {
+  static boolean requested(Intent intent){throw new AssertionError("A non-Gecko overview is outside the Gecko lifecycle host");}
+  void browserReady(){}void close(){}void pause(){}void resume(){}
+}
 class BrowserStartupGate {boolean matches(String environment,int slot,int generation){return true;}void close(){}void foreground(boolean value){}}
 class UiFrameScheduler {interface Frames{void post(Runnable frame);void cancel(Runnable frame);}UiFrameScheduler(Frames frames,Runnable render){}void visible(boolean value){}void close(){}}
 class LoadingUi {final View cover;LoadingUi(MainActivity a){cover=new View(a);}void dismissTask(){}}

@@ -129,6 +129,7 @@ class SavedFileActions {
   JSONObject exporting;
   int results,lastResult;
   Uri savedTo;
+  static Intent openIntent(Uri uri,String mime,String name){throw new AssertionError("Opening a saved attachment is outside the chooser host");}
   void result(int result,Intent data){results++;lastResult=result;savedTo=data==null?null:data.getData();exporting=null;}
 }
 class Profiles {static Class<?> preview(Context context){throw new AssertionError("Legacy preview outside picker host");}}
