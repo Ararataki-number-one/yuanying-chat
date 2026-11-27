@@ -57,19 +57,57 @@ final class GeckoSitePermissionFixture {
       +"o.id='pool-permission-state';b.dataset.nonce="+JSONObject.quote(nonce)+";"
       +"const save=v=>{o.dataset.value=JSON.stringify(v)};save({realm:'page-main-world',nonce:b.dataset.nonce,url:location.href,secureContext:isSecureContext,notificationApi:typeof Notification!=='undefined'&&typeof Notification.requestPermission==='function'});"
       +"b.addEventListener('click',e=>{const v={realm:'page-main-world',nonce:b.dataset.nonce,stage:b.dataset.stage,url:location.href,secureContext:isSecureContext,isTrusted:e.isTrusted,userActivation:navigator.userActivation?.isActive===true,requestCalled:false,done:false,before:Notification.permission};save(v);"
-      +"if(!e.isTrusted){v.error='untrusted-click';v.done=true;save(v);return;}let p;try{v.requestCalled=true;p=Notification.requestPermission();}catch(error){v.error=error.name;v.done=true;save(v);return;}"
+      +"if(!e.isTrusted){v.error='untrusted-click';v.done=true;save(v);return;}let p;try{v.requestCalled=true;p=Notification.requestPermission();save(v);}catch(error){v.error=error.name;v.done=true;save(v);return;}"
       +"Promise.resolve(p).then(value=>{v.result=value;v.after=Notification.permission;v.done=true;save(v)},error=>{v.error=error.name;v.done=true;save(v)});});"
       +"document.body.append(b,o);})();";
     JSONObject result=test.eval("(()=>{if(document.getElementById('pool-permission-request'))return {injected:false};const s=document.createElement('script');s.textContent="+JSONObject.quote(script)+";document.documentElement.appendChild(s);s.remove();return {injected:true}})()");
     check("One main-world fixture script is inserted into the existing document",result.optBoolean("injected"));
   }
+  JSONObject readyTap(String stage)throws Exception{
+    String quotedStage=JSONObject.quote(stage);
+    test.eval("(()=>{document.getElementById('pool-permission-request').dataset.stage="+quotedStage+";return {}})()");
+    final JSONObject[] stable={null};
+    test.await("Visible focused permission button "+stage,()->{
+      JSONObject bounds=test.eval("(()=>{const b=document.getElementById('pool-permission-request');"
+          +"if(!b||b.dataset.stage!=="+quotedStage+"||document.visibilityState!=='visible')return {};"
+          +"const r=b.getBoundingClientRect(),x=r.x+r.width/2,y=r.y+r.height/2;"
+          +"if(r.width<=0||r.height<=0||document.elementFromPoint(x,y)!==b)return {};"
+          +"return {x,y,width:innerWidth,height:innerHeight}})()");
+      JSONObject nativeBounds=test.ui(()->{
+        if(test.view.current!=bound||test.view.surface==null||!test.view.surface.isAttachedToWindow()
+            ||!test.view.surface.isShown()||!test.view.surface.hasWindowFocus())return new JSONObject();
+        int width=test.view.surface.getWidth(),height=test.view.surface.getHeight();
+        if(width<=0||height<=0)return new JSONObject();
+        int[] point=new int[2];test.view.surface.getLocationOnScreen(point);
+        return J.obj("x",point[0],"y",point[1],"width",width,"height",height);
+      });
+      if(bounds.length()==0||nativeBounds.length()==0){stable[0]=null;return false;}
+      JSONObject candidate=J.obj("nonce",nonce,"stage",stage,"css",bounds,"native",nativeBounds);
+      boolean settled=stable[0]!=null&&candidate.toString().equals(stable[0].toString());
+      stable[0]=candidate;
+      return settled;
+    },5000);
+    return stable[0];
+  }
   JSONObject request(String stage)throws Exception{
     samePage();int before=count();
-    JSONObject bounds=test.eval("(()=>{const b=document.getElementById('pool-permission-request');b.dataset.stage="+JSONObject.quote(stage)+";const r=b.getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2,width:innerWidth,height:innerHeight}})()");
-    JSONObject nativeBounds=test.ui(()->{int[] p=new int[2];test.view.surface.getLocationOnScreen(p);return J.obj("x",p[0],"y",p[1],"width",test.view.surface.getWidth(),"height",test.view.surface.getHeight());});
-    test.event("permissionTapNeeded",J.obj("nonce",nonce,"stage",stage,"css",bounds,"native",nativeBounds));
+    test.event("permissionTapNeeded",readyTap(stage));
     final JSONObject[] observed={null};
-    test.await("Actual trusted permission request "+stage,()->{JSONObject value=dom();if(!stage.equals(value.optString("stage"))||!value.optBoolean("done"))return false;observed[0]=value;return true;},10000);
+    try{
+      test.await("Actual trusted permission request "+stage,()->{
+        JSONObject value=dom();
+        if(!stage.equals(value.optString("stage"))||!nonce.equals(value.optString("nonce")))return false;
+        observed[0]=value;
+        return value.optBoolean("done");
+      },10000);
+    }catch(Exception failure){
+      JSONObject pending=observed[0];
+      NetworkCatalog.put(evidence,"pendingInput",J.obj("stage",stage,"matchingClickSeen",pending!=null,
+          "trusted",pending!=null&&pending.optBoolean("isTrusted"),
+          "activated",pending!=null&&pending.optBoolean("userActivation"),
+          "requestCalled",pending!=null&&pending.optBoolean("requestCalled")));
+      throw failure;
+    }
     JSONObject value=observed[0];
     check("Request "+stage+" comes from the same secure page and one trusted activated click",nonce.equals(value.optString("nonce"))
         &&"page-main-world".equals(value.optString("realm"))&&(GeckoConnectionPoolIntegrationActivity.ORIGIN+"/pool").equals(value.optString("url"))

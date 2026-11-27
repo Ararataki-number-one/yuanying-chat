@@ -69,7 +69,11 @@ class GeckoConnectionPoolIntegrationActivity {
   void await(String name,Work<Boolean> condition,long limit)throws Exception{}
 }
 class View {GeckoSession current;GeckoRuntime runtime;Surface surface;String getUrl(){return null;}}
-class Surface {void getLocationOnScreen(int[] value){}int getWidth(){return 0;}int getHeight(){return 0;}}
+class Surface {
+  void getLocationOnScreen(int[] value){}
+  int getWidth(){return 0;}int getHeight(){return 0;}
+  boolean isAttachedToWindow(){return false;}boolean isShown(){return false;}boolean hasWindowFocus(){return false;}
+}
 class Owner {android.os.Handler handler;}
 class NetworkCatalog {static void put(JSONObject value,String key,Object item){}}
 '''
@@ -101,6 +105,34 @@ final class NativeRequestScopeProbe {
   static void check(boolean value){if(!value)throw new AssertionError("scope check "+checks);checks++;}
   static class Test extends GeckoConnectionPoolIntegrationActivity {
     @Override <T>T ui(Work<T> work)throws Exception{return work.run();}
+  }
+  static void checkTapReadiness()throws Exception {
+    Test test=new Test(){
+      int samples;
+      @Override JSONObject eval(String code){
+        if(!code.contains("elementFromPoint"))return new JSONObject();
+        samples++;
+        return samples==1?new JSONObject():J.obj("x",samples>=4?45:40,"y",40,"width",100,"height",100);
+      }
+      @Override void await(String name,Work<Boolean> condition,long limit)throws Exception{
+        check(limit==5000);
+        for(int step=1;step<=5;step++)check(condition.run()==(step==5));
+      }
+      {
+        view=new View();view.current=new GeckoSession();
+        view.surface=new Surface(){
+          @Override boolean isAttachedToWindow(){return true;}
+          @Override boolean isShown(){return true;}
+          @Override boolean hasWindowFocus(){return samples!=2;}
+          @Override int getWidth(){return 100;}
+          @Override int getHeight(){return 100;}
+        };
+      }
+    };
+    GeckoSitePermissionFixture fixture=new GeckoSitePermissionFixture(test);fixture.bound=test.view.current;
+    JSONObject gesture=fixture.readyTap("initial");
+    check(gesture.getJSONObject("css").getInt("x")==45&&gesture.getString("stage").equals("initial")
+        &&gesture.getString("nonce").equals(fixture.nonce));
   }
   static GeckoSession.PermissionDelegate.ContentPermission permission(int value,String third){
     GeckoSession.PermissionDelegate.ContentPermission p=new GeckoSession.PermissionDelegate.ContentPermission();
@@ -155,6 +187,7 @@ final class NativeRequestScopeProbe {
     observed.onContentPermissionRequest(session,permission(0,"https://other.test"));
     JSONObject foreign=f.callbacks.getJSONObject(1);check(foreign.isNull("thirdPartyOrigin")&&"other".equals(foreign.getString("thirdPartyOriginKind"))&&foreign.getString("thirdPartyOriginSha256").length()==64);
     check(f.mutations.getJSONObject(0).getInt("sourceValue")==0&&"native-request-unmapped".equals(f.mutations.getJSONObject(0).getString("sourceValueSemantics")));
+    checkTapReadiness();
     System.out.println(checks);
   }
 }
