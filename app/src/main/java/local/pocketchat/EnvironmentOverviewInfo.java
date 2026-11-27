@@ -1,5 +1,6 @@
 package local.pocketchat;
 
+import android.content.SharedPreferences;
 import android.net.Uri;
 import java.text.SimpleDateFormat;
 import java.util.*;
@@ -40,8 +41,34 @@ final class EnvironmentOverviewInfo {
     value.zone=observed&&AuditReport.observedField(page,"zone")?clean(page.optString("zone"))+"（"+label+"）":"尚未观测";
     if(observed)value.observedAt=time(report.optLong("at"));value.connection=clean(s.connectionStage);return value;
   }
-  static String text(ChatSession s){
-    Snapshot v=read(s);StringBuilder out=new StringBuilder(v.ipLabel+"："+v.ipValue);
+  static Snapshot readConfiguration(SharedPreferences prefs,EnvironmentEngine engine){
+    Snapshot value=new Snapshot();
+    value.ipValue="尚未核验";
+    value.browser=engine==EnvironmentEngine.CHROMIUM?"Chromium · 网页指纹尚未观测":"内核绑定无法读取";
+    value.language="尚未观测";
+    value.connection="网络配置未确认";
+    try{
+      Map<String,?> saved=prefs.getAll();
+      CefriumRoutePolicy.Selection selection=CefriumRoutePolicy.selection(saved);
+      if(selection==null){
+        if(!Boolean.TRUE.equals(saved.get("networkConfigured")))value.connection="尚未配置网络";
+        return value;
+      }
+      String mode;
+      switch(selection.mode){
+        case INTERNAL: mode="内置网络";break;
+        case FIXED_PROXY: mode=selection.requireVpn?"应用专用代理 · 需要手机 VPN":"应用专用代理";break;
+        case VPN: mode="手机 VPN";break;
+        case DIRECT: mode="手机网络";break;
+        default:return value;
+      }
+      value.connection=mode+"（已配置，线路状态尚未核验）";
+    }catch(RuntimeException unavailable){value.connection="网络配置无法读取";}
+    return value;
+  }
+  static String text(ChatSession s){return text(read(s));}
+  static String text(Snapshot v){
+    StringBuilder out=new StringBuilder(v.ipLabel+"："+v.ipValue);
     if(!v.ip.isEmpty())out.append("\n来源：").append(v.ipSource).append(v.ipLabel.equals("固定出口 IP")?"\n核验时间：":"\n观测时间：").append(v.ipTime);
     out.append("\n出口地区：").append(v.region.isEmpty()?"未取得":"上次 IP 定位 "+v.region);
     if(!v.region.isEmpty())out.append("\n地区来源：").append(v.regionSource).append("\n地区观测时间：").append(v.regionTime);

@@ -1,4 +1,4 @@
-"""Real browser entry and explicit environment details, using ADB touches.
+"""Real environment dashboard entry and browser return, using ADB touches.
 
 Only the existing integration package is seeded. No production display method
 is called by the fixture. This verifies Android display/entry/lifecycle, not
@@ -11,7 +11,7 @@ PACKAGE='local.pocketchat.test'
 def environment_action_description(xml,environment):
     """Find the real named environment card without rewriting captured XML."""
     nodes=list(ET.fromstring(xml).iter('node'))
-    prefix='打开浏览器：'+environment+'，'
+    prefix='打开环境：'+environment+'，'
     cards=[n for n in nodes if n.get('package')==PACKAGE and n.get('content-desc','').startswith(prefix)]
     assert len(cards)<=1,('ambiguous environment card',environment)
     if not cards:return None
@@ -127,6 +127,20 @@ def run(adb,binary,source,out,dump):
         l,t,r,b=map(int,re.findall(r'\d+',node.get('bounds')));assert r>l and b>t,(label,node.attrib)
         adb('shell','input','tap',str((l+r)//2),str((t+b)//2))
         taps.append(dict(label=label,description=description,x=(l+r)//2,y=(t+b)//2))
+    def description(xml,prefix):
+        matches=[n.get('content-desc') for n in tree(xml) if n.get('package')==PACKAGE
+                 and n.get('content-desc','').startswith(prefix)]
+        assert len(matches)==1,(prefix,matches)
+        return matches[0]
+    def continue_to_browser(xml,environment):
+        click(xml,'继续浏览')
+        return wait(lambda x:not dashboard(x) and browser(x)
+                    and environment in description(x,'当前环境：'),'continue to browser for '+environment)
+    def switch_environment(xml,environment):
+        click(xml,description=description(xml,'当前环境：'))
+        prefix='切换到 '+environment+'，'
+        xml=wait(lambda x:'快速切换环境' in x and prefix in x,'quick switch menu for '+environment,sync_window=True)
+        click(xml,description=description(xml,prefix))
     def open_details(environment):
         adb('shell','am','start','-W','-n',PACKAGE+'/local.pocketchat.WindowHomeActivity')
         xml=wait(lambda x:environment_action_description(x,environment) is not None,'details environment card')
@@ -184,13 +198,12 @@ def run(adb,binary,source,out,dump):
             adb('shell','am','start','-W','-n',PACKAGE+'/local.pocketchat.UiVisualIntegrationActivity','--es','visualAction','environments')
             wait(lambda x:'环境管理' in x,name+' existing environment seed')
             adb('shell','am','start','-W','-n',PACKAGE+'/local.pocketchat.BrandLaunchActivity')
-            wait(browser,name+' actual launcher browser')
-            events.append(dict(name=name+'-launcher-opens-browser-directly',passed=True))
-            xml=open_details('日常会话')
+            xml=wait(lambda x:dashboard(x) and '日常会话' in x,name+' actual launcher dashboard')
+            events.append(dict(name=name+'-launcher-opens-default-environment-dashboard',passed=True))
             node=next(n for n in tree(xml) if n.get('text')=='继续浏览' and n.get('enabled')=='true')
             l,t,r,b=map(int,re.findall(r'\d+',node.get('bounds')))
             assert 0<=l<r<=width*3 and 0<=t<b<=height*3 and b-t>=48*3,(name,'entry action clipped',node.attrib)
-            snapshot(name,xml,entry='production-environment-details',viewport=[width,height],fontScale=scale,theme='dark' if night else 'light',observedAdbDisplay=observed,observationDelaySeconds=round(time.monotonic()-started,3))
+            snapshot(name,xml,entry='production-brand-launcher',viewport=[width,height],fontScale=scale,theme='dark' if night else 'light',observedAdbDisplay=observed,observationDelaySeconds=round(time.monotonic()-started,3))
             # Scroll the real native content to expose fingerprint rows on small
             # screens; the fixed entry button remains reachable.
             scroll=next(n for n in tree(xml) if n.get('class')=='android.widget.ScrollView')
@@ -212,19 +225,26 @@ def run(adb,binary,source,out,dump):
             adb('shell','input','keyevent','KEYCODE_HOME')
             adb('shell','am','start','-W','-n',PACKAGE+'/local.pocketchat.MainActivity','--activity-reorder-to-front')
             xml=wait(dashboard,'dashboard retained over Home');snapshot('home-return',xml)
-            click(xml,'继续浏览');wait(browser,'explicit return to browser')
+            xml=continue_to_browser(xml,'日常会话')
             adb('shell','input','keyevent','KEYCODE_HOME')
             adb('shell','am','start','-W','-n',PACKAGE+'/local.pocketchat.MainActivity','--activity-reorder-to-front')
-            wait(browser,'ordinary resume has no dashboard')
+            xml=wait(browser,'ordinary resume has no dashboard')
+            original_address=description(xml,'当前网址')
             events.append(dict(name='home-retains-open-dashboard-and-chat-resume-does-not-reinsert',passed=True))
             # Real list button, same existing environment/Activity instance.
             entry_taps=len(taps)
             adb('shell','am','start','-W','-n',PACKAGE+'/local.pocketchat.WindowHomeActivity')
             xml=wait(lambda x:environment_action_description(x,'日常会话') is not None,'environment list button')
-            click(xml,description=environment_action_description(xml,'日常会话'));wait(browser,'warm list opens browser directly')
-            events.append(dict(name='warm-list-opens-browser-without-dashboard',passed=True))
-            xml=open_details('日常会话');snapshot('warm-list',xml)
-            click(xml,'继续浏览');wait(lambda x:not dashboard(x),'warm explicit entry')
+            click(xml,description=environment_action_description(xml,'日常会话'))
+            xml=wait(lambda x:dashboard(x) and '日常会话' in x,'warm card opens its dashboard')
+            snapshot('warm-list',xml)
+            xml=continue_to_browser(xml,'日常会话')
+            assert description(xml,'当前网址')==original_address,'warm dashboard replaced the browser address'
+            events.append(dict(name='warm-card-dashboard-retains-browser-address',passed=True))
+            switch_environment(xml,'日常会话')
+            xml=wait(browser,'dismissing the current environment from quick switch')
+            assert description(xml,'当前网址')==original_address,'selecting the current environment replaced its address'
+            events.append(dict(name='quick-switch-current-keeps-browser-visible',passed=True))
             # Match the reported second-environment case in its actual separate
             # Android profile process, using the real list's native button.
             adb('shell','am','start','-W','-n',PACKAGE+'/local.pocketchat.WindowHomeActivity')
@@ -234,10 +254,16 @@ def run(adb,binary,source,out,dump):
                 scroll=next(n for n in tree(xml) if n.get('class')=='android.widget.ScrollView' and n.get('scrollable')=='true')
                 l,t,r,b=map(int,re.findall(r'\d+',scroll.get('bounds')));x=(l+r)//2
                 adb('shell','input','swipe',str(x),str(t+(b-t)*4//5),str(x),str(t+(b-t)//5),'300');xml=dump()
-            click(xml,description=environment_action_description(xml,'资料整理'));wait(lambda x:browser(x) and '资料整理' in x,'separate process second browser')
-            events.append(dict(name='second-process-opens-browser-without-dashboard',passed=True))
-            xml=open_details('资料整理');snapshot('second-environment',xml,profileProcess='profile1',slot=1)
-            click(xml,'继续浏览');wait(lambda x:not dashboard(x),'second environment explicit entry')
+            click(xml,description=environment_action_description(xml,'资料整理'))
+            xml=wait(lambda x:dashboard(x) and '资料整理' in x,'separate process second dashboard')
+            snapshot('second-environment',xml,profileProcess='profile1',slot=1)
+            xml=continue_to_browser(xml,'资料整理')
+            events.append(dict(name='second-process-card-opens-its-dashboard',passed=True))
+            switch_environment(xml,'日常会话')
+            xml=wait(lambda x:dashboard(x) and '日常会话' in x,'quick switch opens the selected environment dashboard')
+            xml=continue_to_browser(xml,'日常会话')
+            assert description(xml,'当前网址')==original_address,'quick switch replaced the existing browser address'
+            events.append(dict(name='quick-switch-other-dashboard-retains-browser-address',passed=True))
             # Settings workspace -> real bottom chat tab exercises the other
             # previously unmarked native navigation route.
             adb('shell','am','start','-W','-n',PACKAGE+'/local.pocketchat.WindowHomeActivity')

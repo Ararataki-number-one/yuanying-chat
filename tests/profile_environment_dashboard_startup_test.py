@@ -25,8 +25,10 @@ class DashboardStartup(unittest.TestCase):
         methods='\n'.join(member(source,x) for x in ['  @Override public void onCreate(', '  void prepareBrowserAfterOverview(', '  void startBrowserAfterOverview(', '  @Override protected void onResume(', '  @Override protected void onNewIntent(', '  boolean dispatchBrowser(', '  void handleOpening(', '  boolean geckoWorkPending(', '  boolean nativeFileWorkPending(', '  boolean openWebsite(', '  SavedFileActions createSavedFileActions(', '  void openNativeWorkspace(', '  void closeNativeWorkspace('])
         chromium=(PROD/'BrowserActivity.java').read_text()
         launches='\n'.join(member(chromium, signature) for signature in ['  static void open(', '  static void resume(', '  static boolean legacyFixtureEnabled('])
+        overview=(PROD/'EnvironmentOverviewUi.java').read_text()
+        actions='\n'.join(member(overview, signature) for signature in ['  static boolean requested(', '  void continueBrowsing('])
         template=(ROOT/'tests/overview-dashboard-host/StartupHost.java').read_text()
-        host=template.replace('/*ACTUAL_ENTRY_METHODS*/',methods).replace('/*ACTUAL_BROWSER_LAUNCHES*/',launches)
+        host=template.replace('/*ACTUAL_ENTRY_METHODS*/',methods).replace('/*ACTUAL_BROWSER_LAUNCHES*/',launches).replace('/*ACTUAL_DASHBOARD_ACTIONS*/',actions)
         with tempfile.TemporaryDirectory(prefix='overview-dashboard-startup-') as folder:
             folder=Path(folder);(folder/'StartupHost.java').write_text(host)
             for name in ['BrowserStartupGate.java','PageLoadingWait.java']:(folder/name).write_bytes((PROD/name).read_bytes())
@@ -35,7 +37,7 @@ class DashboardStartup(unittest.TestCase):
             result=subprocess.run([str(java),'-cp',str(folder),'local.pocketchat.StartupHost'],capture_output=True,text=True,timeout=20)
             self.assertEqual(result.returncode,0,result.stdout+result.stderr)
             report=json.loads(result.stdout);self.assertGreaterEqual(report['checks'],30)
-            report.update(status='passed',scope=__doc__.strip(),sourceSha256={name:hashlib.sha256((PROD/name).read_bytes()).hexdigest() for name in ['MainActivity.java','BrowserActivity.java','BrowserStartupGate.java','PageLoadingWait.java']})
+            report.update(status='passed',scope=__doc__.strip(),sourceSha256={name:hashlib.sha256((PROD/name).read_bytes()).hexdigest() for name in ['MainActivity.java','BrowserActivity.java','BrowserStartupGate.java','PageLoadingWait.java','EnvironmentOverviewUi.java']})
             output=os.environ.get('DASHBOARD_STARTUP_REPORT')
             if output:Path(output).write_text(json.dumps(report,indent=2)+'\n')
 

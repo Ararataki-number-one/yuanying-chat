@@ -19,7 +19,9 @@ public final class DefaultEnvironmentHost{
   ProfileCatalog c=setup(3);BrandLaunchActivity brand=new BrandLaunchActivity();brand.route();check("Direct launch with no available environment routes to manager without indexing Profiles",brand.launched!=null&&brand.launched.target==WindowHomeActivity.class&&Profiles.lastActivity==-1&&brand.finished);
   c=setup(2,1,2);EnvironmentSpec.Identity identity=c.identity(2);brand=new BrandLaunchActivity();brand.route();check("Valid default launch keeps exact selected environment identity",Profiles.lastActivity==2&&brand.launched!=null&&Boolean.TRUE.equals(brand.launched.extras.get("forceWebMode"))&&c.identity(2).equals(identity));
   overview("Default launcher retains the selected one-shot identity",brand.launched,identity);
-  check("Direct app launch opens its browser without an intermediate details screen",Boolean.TRUE.equals(brand.launched.extras.get("openBrowserDirect"))&&!brand.launched.extras.containsKey("url"));
+  check("Default startup lands on the environment dashboard without forcing a browser URL",!brand.launched.extras.containsKey("openBrowserDirect")&&!brand.launched.extras.containsKey("url"));
+  BrandLaunchActivity listStart=new BrandLaunchActivity();AppSettings.put(listStart,"startupDirect","false");listStart.route();
+  check("The saved environment-list startup still opens the manager",listStart.launched!=null&&listStart.launched.target==WindowHomeActivity.class&&listStart.finished);
   // Tab indices are the public four-action layout: environment, network, downloads, reading.
   for(int target:new int[]{0,1,3}){
    c=setup(7);Activity downloads=new DownloadCenterActivity();WorkspaceNavigation.select(downloads,2,target);
@@ -44,8 +46,8 @@ public final class DefaultEnvironmentHost{
   }
   c.db.rows.get(1).put("resetting",1);workspace=new DownloadCenterActivity();WorkspaceNavigation.select(workspace,2,3);
   check("Reading excludes a more recent unavailable environment",Profiles.lastActivity==2&&workspace.launched!=null&&"reading".equals(workspace.launched.extras.get("openWindowAction")));
-  c=setup(2,1,2);home=new WindowHomeActivity();home.openWindow(2,"chat");overview("Environment list keeps the one-shot opening identity",home.launched,c.identity(2));
-  check("Environment list opens the browser directly without supplying a replacement URL",Boolean.TRUE.equals(home.launched.extras.get("openBrowserDirect"))&&!home.launched.extras.containsKey("url"));
+  c=setup(2,1,2);home=new WindowHomeActivity();home.openWindow(2,"chat");overview("The standalone browser tab keeps the one-shot opening identity",home.launched,c.identity(2));
+  check("The standalone browser tab goes directly to the browser without supplying a replacement URL",Boolean.TRUE.equals(home.launched.extras.get("openBrowserDirect"))&&!home.launched.extras.containsKey("url"));
   home=new WindowHomeActivity();WorkspaceNavigation.select(home,0,3);
   check("Reading from manager opens the recent environment with the reading action",Profiles.lastActivity==2&&home.launched!=null&&"reading".equals(home.launched.extras.get("openWindowAction"))&&!home.launched.extras.containsKey("manualEnvironmentOverview")&&!home.finished);
   workspace=new DownloadCenterActivity();WorkspaceNavigation.select(workspace,2,2);

@@ -41,6 +41,16 @@ public final class Overview46Host {
     check(!EnvironmentOverviewInfo.text(web.owner).contains("Observed/Zone"),"isolated fallback cannot masquerade as page timezone");signals.put("provenance","page-main-world");mainWorld.put("observed","true");check(!EnvironmentOverviewInfo.text(web.owner).contains("Observed/Zone"),"main-world observation requires strict true");mainWorld.put("observed",true);
     info=EnvironmentOverviewInfo.text(web.owner);check(info.contains("Observed/Zone（上次网页观测）")&&info.contains("网页观测时间："),"owned old page observation carries historical label and time");web.owner.audit.current=true;check(EnvironmentOverviewInfo.text(web.owner).contains("Observed/Zone（网页观测）"),"current page observation label remains distinct");metadata.put("environmentId","environment-B");check(!EnvironmentOverviewInfo.text(web.owner).contains("Observed/Zone"),"foreign environment report not displayed");
     web=fresh();NetworkRegion.record=new JSONObject().put("ip","203.0.113.9").put("route","external:other").put("region","foreign-region");info=EnvironmentOverviewInfo.text(web.owner);check(!info.contains("203.0.113.9")&&!info.contains("foreign-region"),"other-route cached IP and region never borrowed");
+    Map<String,Object> configuration=new HashMap<>();
+    configuration.put("networkConfigured",true);configuration.put("networkMode","external");
+    configuration.put("proxy","http://configured.example:8888");configuration.put("requireExternalVpn",false);
+    EnvironmentOverviewInfo.Snapshot configured=EnvironmentOverviewInfo.readConfiguration(()->configuration,EnvironmentEngine.CHROMIUM);
+    info=EnvironmentOverviewInfo.text(configured);
+    check(info.contains("应用专用代理（已配置，线路状态尚未核验）")&&info.contains("Chromium · 网页指纹尚未观测"),"Chromium shows configured mode separately from observations");
+    check(!info.contains("configured.example")&&!info.contains("203.0.113.9")&&configured.ip.isEmpty()&&!configured.verified&&!configured.observed,"Native dashboard never exposes proxy endpoint or borrows Gecko evidence");
+    configuration.put("proxy","http://configured.example:8888/not-a-proxy");
+    configured=EnvironmentOverviewInfo.readConfiguration(()->configuration,EnvironmentEngine.UNAVAILABLE);
+    check(configured.connection.equals("网络配置未确认")&&configured.browser.equals("内核绑定无法读取"),"Invalid proxy cannot be represented as a configured route");
     System.out.println("{\"passed\":"+checks+",\"actualAndroidExecution\":false,\"actualGeckoExecution\":false}");
   }
 }

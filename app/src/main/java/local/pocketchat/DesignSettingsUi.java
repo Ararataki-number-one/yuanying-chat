@@ -83,7 +83,7 @@ final class DesignSettingsUi {
     Spinner spinner=new Spinner(a);spinner.setContentDescription("默认启动环境");
     spinner.setAdapter(DesignUi.spinnerAdapter(a,titles.toArray(new String[0])));spinner.setSelection(selected);
     box.addView(spinner,new LinearLayout.LayoutParams(-1,-2));
-    CheckBox direct=new CheckBox(a);direct.setText("启动时直接进入默认环境的原网页");
+    CheckBox direct=new CheckBox(a);direct.setText("启动时显示默认环境的仪表盘");
     direct.setChecked(AppSettings.bool(a,"startupDirect",true));box.addView(direct);
     DesignUi.note(box,"关闭后先进入环境管理。底部“浏览器”会回到正在使用的环境。");
     TextView issue=DesignUi.text(a,"",13,DesignUi.RED);

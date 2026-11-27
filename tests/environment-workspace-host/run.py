@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Run production workspace policy and full saved-view adapter with host preference storage."""
-import argparse, hashlib, json, pathlib, shutil, subprocess
+import argparse, hashlib, json, os, pathlib, shutil, subprocess
 def member(text,needle):
     start=text.index(needle);opened=text.index('{',start);depth=0;quote=None;escape=False;line=False;block=False;i=opened
     while i<len(text):
@@ -37,7 +37,7 @@ switcher=root/'app/src/main/java/local/pocketchat/EnvironmentSwitcherUi.java'
 generated=work.parent/'EnvironmentSwitcherUi.java'
 generated.write_text('package local.pocketchat;\nimport android.app.Activity;\nimport android.content.Intent;\nimport android.os.Build;\nimport org.json.JSONObject;\nfinal class EnvironmentSwitcherUi {\n'+member(switcher.read_text(),'static boolean open(')+'\n}\n')
 subprocess.run([javac,'-encoding','UTF-8','-cp',str(a.json_jar),'-d',str(work),*map(str,sources),str(generated)],check=True)
-result=subprocess.run([java,'-cp',str(work)+':'+str(a.json_jar),'local.pocketchat.EnvironmentWorkspaceHost'],capture_output=True,text=True,check=True)
+result=subprocess.run([java,'-cp',os.pathsep.join(map(str,(work,a.json_jar))),'local.pocketchat.EnvironmentWorkspaceHost'],capture_output=True,text=True,check=True)
 report=json.loads(result.stdout)
 report['scope']='Complete production EnvironmentWorkspacePolicy and EnvironmentSavedViews plus verbatim extracted EnvironmentSwitcherUi.open; minimal Context/SharedPreferences use in-memory host storage and navigation boundaries use Activity/Intent/Build/catalog doubles. No Android execution, browser APIs or disk SharedPreferences lifecycle.'
 report['sourceSha256']={str(path.relative_to(root)):hashlib.sha256(path.read_bytes()).hexdigest() for path in [*sources,switcher]}

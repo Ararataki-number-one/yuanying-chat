@@ -34,10 +34,14 @@ final class ChromiumEntry {
       return "";
     }catch(RuntimeException unavailable){return NETWORK_CONFIGURATION_REQUIRED;}
   }
-  static boolean open(Activity host,String url){
+  static boolean open(Activity host,String url,Intent request){
     if(!ChromiumModuleInstaller.installed(host))return false;
     try{
       EnvironmentSpec.Identity expected=ProfileCatalog.get(host).identity(Profiles.slot(host));
+      if(request!=null&&request.getBooleanExtra(EnvironmentOverviewUi.DIRECT,false)
+          &&(expected.slot!=request.getIntExtra(EnvironmentOverviewUi.SLOT,-1)
+             ||expected.generation!=request.getIntExtra(EnvironmentOverviewUi.GENERATION,-1)
+             ||!expected.environmentId.equals(request.getStringExtra(EnvironmentOverviewUi.ID))))return false;
       Intent next=new Intent().setClassName(host,FEATURE_ACTIVITY);
       next.putExtra(SLOT,expected.slot).putExtra(GENERATION,expected.generation).putExtra(ENVIRONMENT,expected.environmentId);
       if(BrowserAddressPolicy.allowed(url))next.putExtra("url",url);

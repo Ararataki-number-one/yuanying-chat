@@ -1,8 +1,8 @@
 """Native selectors and exact interaction ports; synthetic XML is not Android acceptance.
 
 The original dashboard cohorts, captures, lifecycle observations and timeouts
-remain. Browser entry is now direct, and dashboard checks explicitly choose
-environment details. The inverse pins every deliberate port and rejects any
+remain. Environment entry shows the dashboard first. The inverse pins this
+change and the earlier direct-browser ports, rejecting any
 unrelated change to the accepted runner.
 """
 import ast
@@ -83,6 +83,104 @@ WINDOW_INPUT_PORTS = (
 )
 
 
+# Only the restored opening steps differ from the retained direct-entry runner.
+# Undo each complete, uniquely located change before verifying its older inputs.
+DASHBOARD_FIRST_PORTS = (
+    ('"""Real browser entry and explicit environment details, using ADB touches.\n'
+     '\n',
+     '"""Real environment dashboard entry and browser return, using ADB touches.\n'
+     '\n'),
+    ("    nodes=list(ET.fromstring(xml).iter('node'))\n"
+     "    prefix='打开浏览器：'+environment+'，'\n"
+     "    cards=[n for n in nodes if n.get('package')==PACKAGE and n.get('content-desc','').startswith(prefix)]\n",
+     "    nodes=list(ET.fromstring(xml).iter('node'))\n"
+     "    prefix='打开环境：'+environment+'，'\n"
+     "    cards=[n for n in nodes if n.get('package')==PACKAGE and n.get('content-desc','').startswith(prefix)]\n"),
+    ('        taps.append(dict(label=label,description=description,x=(l+r)//2,y=(t+b)//2))\n'
+     '    def open_details(environment):\n',
+     '        taps.append(dict(label=label,description=description,x=(l+r)//2,y=(t+b)//2))\n'
+     '    def description(xml,prefix):\n'
+     "        matches=[n.get('content-desc') for n in tree(xml) if n.get('package')==PACKAGE\n"
+     "                 and n.get('content-desc','').startswith(prefix)]\n"
+     '        assert len(matches)==1,(prefix,matches)\n'
+     '        return matches[0]\n'
+     '    def continue_to_browser(xml,environment):\n'
+     "        click(xml,'继续浏览')\n"
+     '        return wait(lambda x:not dashboard(x) and browser(x)\n'
+     "                    and environment in description(x,'当前环境：'),'continue to browser for '+environment)\n"
+     '    def switch_environment(xml,environment):\n'
+     "        click(xml,description=description(xml,'当前环境：'))\n"
+     "        prefix='切换到 '+environment+'，'\n"
+     "        xml=wait(lambda x:'快速切换环境' in x and prefix in x,'quick switch menu for '+environment,sync_window=True)\n"
+     '        click(xml,description=description(xml,prefix))\n'
+     '    def open_details(environment):\n'),
+    ("            adb('shell','am','start','-W','-n',PACKAGE+'/local.pocketchat.BrandLaunchActivity')\n"
+     "            wait(browser,name+' actual launcher browser')\n"
+     "            events.append(dict(name=name+'-launcher-opens-browser-directly',passed=True))\n"
+     "            xml=open_details('日常会话')\n"
+     "            node=next(n for n in tree(xml) if n.get('text')=='继续浏览' and n.get('enabled')=='true')\n",
+     "            adb('shell','am','start','-W','-n',PACKAGE+'/local.pocketchat.BrandLaunchActivity')\n"
+     "            xml=wait(lambda x:dashboard(x) and '日常会话' in x,name+' actual launcher dashboard')\n"
+     "            events.append(dict(name=name+'-launcher-opens-default-environment-dashboard',passed=True))\n"
+     "            node=next(n for n in tree(xml) if n.get('text')=='继续浏览' and n.get('enabled')=='true')\n"),
+    ("            assert 0<=l<r<=width*3 and 0<=t<b<=height*3 and b-t>=48*3,(name,'entry action clipped',node.attrib)\n"
+     "            snapshot(name,xml,entry='production-environment-details',viewport=[width,height],fontScale=scale,theme='dark' if night else 'light',observedAdbDisplay=observed,observationDelaySeconds=round(time.monotonic()-started,3))\n"
+     '            # Scroll the real native content to expose fingerprint rows on small\n',
+     "            assert 0<=l<r<=width*3 and 0<=t<b<=height*3 and b-t>=48*3,(name,'entry action clipped',node.attrib)\n"
+     "            snapshot(name,xml,entry='production-brand-launcher',viewport=[width,height],fontScale=scale,theme='dark' if night else 'light',observedAdbDisplay=observed,observationDelaySeconds=round(time.monotonic()-started,3))\n"
+     '            # Scroll the real native content to expose fingerprint rows on small\n'),
+    ("            xml=wait(dashboard,'dashboard retained over Home');snapshot('home-return',xml)\n"
+     "            click(xml,'继续浏览');wait(browser,'explicit return to browser')\n"
+     "            adb('shell','input','keyevent','KEYCODE_HOME')\n"
+     "            adb('shell','am','start','-W','-n',PACKAGE+'/local.pocketchat.MainActivity','--activity-reorder-to-front')\n"
+     "            wait(browser,'ordinary resume has no dashboard')\n"
+     "            events.append(dict(name='home-retains-open-dashboard-and-chat-resume-does-not-reinsert',passed=True))\n",
+     "            xml=wait(dashboard,'dashboard retained over Home');snapshot('home-return',xml)\n"
+     "            xml=continue_to_browser(xml,'日常会话')\n"
+     "            adb('shell','input','keyevent','KEYCODE_HOME')\n"
+     "            adb('shell','am','start','-W','-n',PACKAGE+'/local.pocketchat.MainActivity','--activity-reorder-to-front')\n"
+     "            xml=wait(browser,'ordinary resume has no dashboard')\n"
+     "            original_address=description(xml,'当前网址')\n"
+     "            events.append(dict(name='home-retains-open-dashboard-and-chat-resume-does-not-reinsert',passed=True))\n"),
+    ("            xml=wait(lambda x:environment_action_description(x,'日常会话') is not None,'environment list button')\n"
+     "            click(xml,description=environment_action_description(xml,'日常会话'));wait(browser,'warm list opens browser directly')\n"
+     "            events.append(dict(name='warm-list-opens-browser-without-dashboard',passed=True))\n"
+     "            xml=open_details('日常会话');snapshot('warm-list',xml)\n"
+     "            click(xml,'继续浏览');wait(lambda x:not dashboard(x),'warm explicit entry')\n"
+     '            # Match the reported second-environment case in its actual separate\n',
+     "            xml=wait(lambda x:environment_action_description(x,'日常会话') is not None,'environment list button')\n"
+     "            click(xml,description=environment_action_description(xml,'日常会话'))\n"
+     "            xml=wait(lambda x:dashboard(x) and '日常会话' in x,'warm card opens its dashboard')\n"
+     "            snapshot('warm-list',xml)\n"
+     "            xml=continue_to_browser(xml,'日常会话')\n"
+     "            assert description(xml,'当前网址')==original_address,'warm dashboard replaced the browser address'\n"
+     "            events.append(dict(name='warm-card-dashboard-retains-browser-address',passed=True))\n"
+     "            switch_environment(xml,'日常会话')\n"
+     "            xml=wait(browser,'dismissing the current environment from quick switch')\n"
+     "            assert description(xml,'当前网址')==original_address,'selecting the current environment replaced its address'\n"
+     "            events.append(dict(name='quick-switch-current-keeps-browser-visible',passed=True))\n"
+     '            # Match the reported second-environment case in its actual separate\n'),
+    ("                adb('shell','input','swipe',str(x),str(t+(b-t)*4//5),str(x),str(t+(b-t)//5),'300');xml=dump()\n"
+     "            click(xml,description=environment_action_description(xml,'资料整理'));wait(lambda x:browser(x) and '资料整理' in x,'separate process second browser')\n"
+     "            events.append(dict(name='second-process-opens-browser-without-dashboard',passed=True))\n"
+     "            xml=open_details('资料整理');snapshot('second-environment',xml,profileProcess='profile1',slot=1)\n"
+     "            click(xml,'继续浏览');wait(lambda x:not dashboard(x),'second environment explicit entry')\n"
+     '            # Settings workspace -> real bottom chat tab exercises the other\n',
+     "                adb('shell','input','swipe',str(x),str(t+(b-t)*4//5),str(x),str(t+(b-t)//5),'300');xml=dump()\n"
+     "            click(xml,description=environment_action_description(xml,'资料整理'))\n"
+     "            xml=wait(lambda x:dashboard(x) and '资料整理' in x,'separate process second dashboard')\n"
+     "            snapshot('second-environment',xml,profileProcess='profile1',slot=1)\n"
+     "            xml=continue_to_browser(xml,'资料整理')\n"
+     "            events.append(dict(name='second-process-card-opens-its-dashboard',passed=True))\n"
+     "            switch_environment(xml,'日常会话')\n"
+     "            xml=wait(lambda x:dashboard(x) and '日常会话' in x,'quick switch opens the selected environment dashboard')\n"
+     "            xml=continue_to_browser(xml,'日常会话')\n"
+     "            assert description(xml,'当前网址')==original_address,'quick switch replaced the existing browser address'\n"
+     "            events.append(dict(name='quick-switch-other-dashboard-retains-browser-address',passed=True))\n"
+     '            # Settings workspace -> real bottom chat tab exercises the other\n'),
+)
+
+
 def original_selector_flow(raw):
     if type(raw) is not bytes:
         raise ValueError('Complete dashboard source bytes required')
@@ -113,7 +211,7 @@ def node(parent, kind, text='', description='', bounds='[60,361][1020,674]', **a
 
 def environment_tree(name='日常会话', metadata='已收藏，01 · 工作 · 默认 · 电脑版，手机网络 · 连接需处理，需处理'):
     root = ET.Element('hierarchy')
-    card = node(root, 'android.widget.LinearLayout', description='打开浏览器：'+name+'，'+metadata,
+    card = node(root, 'android.widget.LinearLayout', description='打开环境：'+name+'，'+metadata,
                 clickable='true')
     node(card, 'android.widget.TextView', name, bounds='[264,404][828,474]')
     node(card, 'android.widget.TextView', '01 · 工作 · 默认 · 电脑版', bounds='[264,474][828,539]')
@@ -178,8 +276,8 @@ class DashboardPresentation(unittest.TestCase):
         tree, card = environment_tree()
         self.assertIsNone(RUN.environment_action_description(xml(tree), '资料整理'))
         self.assertIsNone(RUN.environment_action_description('<hierarchy />', '日常会话'))
-        for description in ('打开环境 日常会话', '打开浏览器：日常会话备份，01',
-                            '选择环境：日常会话，01', '打开浏览器：日常会话'):
+        for description in ('打开环境 日常会话', '打开环境：日常会话备份，01',
+                            '选择环境：日常会话，01', '打开环境：日常会话'):
             card.set('content-desc', description)
             self.assertIsNone(RUN.environment_action_description(xml(tree), '日常会话'))
 
@@ -292,6 +390,9 @@ class CurrentBrowserEntryObservation(unittest.TestCase):
     def require_original_flow(self, current):
         previous=browser_v2_bytes('tests/gecko/run_environment_dashboard.py').decode()
         restored=current
+        for old_port,new_port in reversed(DASHBOARD_FIRST_PORTS):
+            self.assertEqual(restored.count(new_port),1)
+            restored=restored.replace(new_port,old_port,1)
         for old_port,new_port in reversed(WINDOW_INPUT_PORTS):
             self.assertEqual(restored.count(new_port),1)
             restored=restored.replace(new_port,old_port,1)

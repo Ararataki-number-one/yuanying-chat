@@ -32,7 +32,7 @@ final class EnvironmentSwitcherUi {
         boolean current=(activity instanceof MainActivity||activity instanceof BrowserActivity)&&Profiles.slot(activity)==slot;
         String label=String.format(Locale.ROOT,"%02d",slot+1)+"  "+row.optString("name")+(current?" · 当前":"")+"\n"+detail;
         Button action=DesignUi.button(activity,label,false,()->{
-          if(open(activity,row,"chat",false))panel.dismiss();else message.setText("环境已变化或当前系统不支持，请关闭后重新选择。");
+          if(current||open(activity,row,"chat",true))panel.dismiss();else message.setText("环境已变化或当前系统不支持，请关闭后重新选择。");
         });action.setSelected(current);action.setGravity(android.view.Gravity.START|android.view.Gravity.CENTER_VERTICAL);action.setContentDescription("切换到 "+row.optString("name")+"，"+detail);list.addView(action,new LinearLayout.LayoutParams(-1,-2));
       }
     };
@@ -44,7 +44,7 @@ final class EnvironmentSwitcherUi {
     int slot=expected.optInt("slot",-1);if(slot<0||slot>=Profiles.MAX||slot>0&&Build.VERSION.SDK_INT<28)return false;
     ProfileCatalog catalog=ProfileCatalog.get(activity);if(!EnvironmentWorkspacePolicy.sameIdentity(expected,catalog.item(slot)))return false;
     // The receiving profile process reads its own engine binding.
-    Intent target=overview&&"chat".equals(action)?EnvironmentOverviewUi.browserOpening(activity,slot):overview&&"overview".equals(action)?EnvironmentOverviewUi.detailsOpening(activity,slot):new Intent(activity,Profiles.activity(slot)).putExtra("openWindowAction",action).putExtra("returnToEnvironmentList","edit".equals(action)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_REORDER_TO_FRONT);
+    Intent target=overview&&"chat".equals(action)?EnvironmentOverviewUi.opening(activity,slot):overview&&"overview".equals(action)?EnvironmentOverviewUi.detailsOpening(activity,slot):new Intent(activity,Profiles.activity(slot)).putExtra("openWindowAction",action).putExtra("returnToEnvironmentList","edit".equals(action)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_REORDER_TO_FRONT);
     // The catalog row may have changed while preparing the overview intent.
     if(!EnvironmentWorkspacePolicy.sameIdentity(expected,catalog.item(slot)))return false;
     catalog.opened(slot);activity.startActivity(target);return true;

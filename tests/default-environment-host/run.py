@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Exact default selection/deletion methods with transactional host DB adapters."""
-import argparse,hashlib,json,pathlib,subprocess,tempfile
+import argparse,hashlib,json,os,pathlib,subprocess,tempfile
 ROOT=pathlib.Path(__file__).resolve().parents[2];HERE=pathlib.Path(__file__).resolve().parent
 
 def member(text,needle):
@@ -53,7 +53,7 @@ def main():
  with tempfile.TemporaryDirectory(prefix='default-environment-host-') as raw:
   tmp=pathlib.Path(raw);base=tmp/'local/pocketchat';base.mkdir(parents=True);(base/'DefaultEnvironmentHost.java').write_text(text);(base/'AppSettings.java').write_bytes(source['AppSettings.java']);(base/'WorkspaceNavigation.java').write_bytes(source['WorkspaceNavigation.java']);classes=tmp/'classes';files=[*base.glob('*.java'),*HERE.glob('stubs/**/*.java')]
   subprocess.run([str(a.java_home/'bin/javac'),'-encoding','UTF-8','-cp',str(a.json_jar),'-d',str(classes),*map(str,files)],check=True)
-  result=subprocess.run([str(a.java_home/'bin/java'),'-Dbefore='+str(bool(a.before_ref)).lower(),'-cp',str(classes)+':'+str(a.json_jar),'local.pocketchat.DefaultEnvironmentHost'],text=True,capture_output=True)
+  result=subprocess.run([str(a.java_home/'bin/java'),'-Dbefore='+str(bool(a.before_ref)).lower(),'-cp',os.pathsep.join(map(str,(classes,a.json_jar))),'local.pocketchat.DefaultEnvironmentHost'],text=True,capture_output=True)
   if not result.stdout:raise RuntimeError(result.stderr)
   report=json.loads(result.stdout);report.update(sourceCommit=subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip(),selectedProductionRef=a.before_ref or 'working-tree',selectedProductionSha256={n:hashlib.sha256(raw).hexdigest() for n,raw in source.items()},sourceFiles=hashes,executionInputsUnchanged=all(hashlib.sha256((ROOT/p).read_bytes()).hexdigest()==h for p,h in hashes.items()),actualAndroidExecution=False,scope='Complete production AppSettings and exact ProfileCatalog deletion/item/list/identity plus exact EnvironmentSpec.Identity, launcher route, window open, and full WorkspaceNavigation. Controlled transactional database adapter and actual Java threads; no Android SQLite or deletion of real files.')
   if not report['executionInputsUnchanged']:report['status']='source-changed'

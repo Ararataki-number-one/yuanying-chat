@@ -102,7 +102,7 @@ public class MainActivity extends ThemedActivity {
     }else handleOpening(getIntent());
   }
   void handleOpening(Intent intent){
-    if(BrowserSettingsUi.ownerOpening(this,intent)||BrowserPreferences.engine(this)!=EnvironmentEngine.GECKO&&BrowserPreferences.nativeOpening(intent)){
+    if(BrowserSettingsUi.ownerOpening(this,intent)||BrowserPreferences.engine(this)!=EnvironmentEngine.GECKO&&(BrowserPreferences.nativeOpening(intent)||EnvironmentOverviewUi.requested(intent))){
       openNativeWorkspace(intent);return;
     }
     if(session==null){
@@ -142,11 +142,10 @@ public class MainActivity extends ThemedActivity {
     String action=intent.getStringExtra("openWindowAction");
     boolean editor="edit".equals(action)||intent.getBooleanExtra("openEnvironmentEditor",false);
     String download=intent.getStringExtra("openDownload");
-    boolean network="network".equals(action)||"overview".equals(action);
+    boolean network="network".equals(action)||"overview".equals(action)||EnvironmentOverviewUi.requested(intent);
     if("network".equals(action))hub.networkWorkspace.focus(Profiles.slot(this));
     hub.show(network?AppHub.NETWORK:AppHub.SETTINGS);
     environmentOverview.consume(intent);
-    if(session!=null&&environmentOverview.owner==session)environmentOverview.close();
     if(editor)handler.post(()->{if(!isFinishing()&&!destroyed)EnvironmentEditorUi.show(this);});
     if(download!=null)showNativeDownload(download);
     // Keep the native destination when Android recreates this Activity.
@@ -178,7 +177,7 @@ public class MainActivity extends ThemedActivity {
     JSONObject opening=ProfileCatalog.get(this).item(Profiles.slot(this));
     if(browserStartup!=null&&!browserStartup.matches(opening.optString("environmentId"),Profiles.slot(this),opening.optInt("generation",-1))){finish();return;}
     if(BrowserPreferences.engine(this)!=EnvironmentEngine.GECKO){
-      if(BrowserPreferences.nativeOpening(getIntent()))openNativeWorkspace(getIntent());
+      if(BrowserPreferences.nativeOpening(getIntent())||EnvironmentOverviewUi.requested(getIntent()))openNativeWorkspace(getIntent());
       else dispatchBrowser(getIntent());
       return;
     }
@@ -448,7 +447,7 @@ public class MainActivity extends ThemedActivity {
     }
   }
   boolean dispatchBrowser(Intent intent){
-    if(!ProfileCatalog.get(this).available(Profiles.slot(this))||BrowserPreferences.nativeOpening(intent))return false;
+    if(!ProfileCatalog.get(this).available(Profiles.slot(this))||BrowserPreferences.nativeOpening(intent)||EnvironmentOverviewUi.requested(intent))return false;
     EnvironmentEngine engine=BrowserPreferences.engine(this);
     if(engine==EnvironmentEngine.GECKO)return false;
     if(geckoWorkPending()||nativeFileWorkPending()){
@@ -456,7 +455,7 @@ public class MainActivity extends ThemedActivity {
       return true;
     }
     String url=BrowserPreferences.openingAddress(intent);
-    if(engine==EnvironmentEngine.CHROMIUM&&ChromiumEntry.managed(this)&&ChromiumEntry.open(this,url)){
+    if(engine==EnvironmentEngine.CHROMIUM&&ChromiumEntry.managed(this)&&ChromiumEntry.open(this,url,intent)){
       finish();return true;
     }
     if(engine==EnvironmentEngine.CHROMIUM&&BrowserActivity.legacyFixtureEnabled(this)){
@@ -485,7 +484,7 @@ public class MainActivity extends ThemedActivity {
     if(environmentOverview!=null)environmentOverview.resume();
     if(hub!=null&&session==null){hub.downloadsVisible(true);hub.refresh();handler.removeCallbacks(hub.tick);handler.post(hub.tick);return;}
     if(session==null){if(browserStartup!=null){browserStartup.foreground(true);startBrowserAfterOverview();}return;}
-    if(hub!=null&&hub.page!=AppHub.CHAT&&BrowserPreferences.startBrowser(this)){hub.downloadsVisible(true);hub.refresh();handler.removeCallbacks(hub.tick);handler.post(hub.tick);return;}
+    if(hub!=null&&hub.page!=AppHub.CHAT&&BrowserPreferences.engine(this)!=EnvironmentEngine.GECKO){hub.downloadsVisible(true);hub.refresh();handler.removeCallbacks(hub.tick);handler.post(hub.tick);return;}
     resumeChatUi();
   }
   void resumeChatUi(){AppUpdates.schedule(this);if(hub!=null)hub.downloadsVisible(true);AppPrefs.maintainCache(this);session.add(sessionObserver);session.audit.refresh(true);session.foreground(true);session.connect();if(hub!=null&&hub.page!=AppHub.CHAT){hub.refresh();handler.removeCallbacks(hub.tick);handler.postDelayed(hub.tick,2500);}handler.removeCallbacks(ticker);handler.post(ticker);}

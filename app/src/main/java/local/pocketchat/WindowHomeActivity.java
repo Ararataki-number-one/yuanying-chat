@@ -294,7 +294,7 @@ public class WindowHomeActivity extends ThemedActivity {
       badge.setBackground(DesignUi.surface(WindowHomeActivity.this,active||problem?(color&0x00ffffff)|0x11000000:android.graphics.Color.TRANSPARENT,12,android.graphics.Color.TRANSPARENT));
       setText(network,networkStatus(row,active,fresh));network.setTextColor(DesignUi.MUTED);
       more.setVisibility(selecting?View.GONE:View.VISIBLE);more.setContentDescription("更多操作 "+row.optString("name"));
-      card.setContentDescription((selecting?"选择环境：":"打开浏览器：")+row.optString("name")+(row.optBoolean("favorite")?"，已收藏":"")+"，"+sub.getText()+"，"+network.getText()+"，"+badge.getText());
+      card.setContentDescription((selecting?"选择环境：":"打开环境：")+row.optString("name")+(row.optBoolean("favorite")?"，已收藏":"")+"，"+sub.getText()+"，"+network.getText()+"，"+badge.getText());
     }
   }
   void openExpected(JSONObject expected,String action,boolean overview){

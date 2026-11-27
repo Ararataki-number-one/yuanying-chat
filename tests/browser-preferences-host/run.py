@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Execute complete browser preferences and verbatim Main dispatch with Android adapters."""
-import argparse,hashlib,importlib.util,json,pathlib,subprocess,tempfile
+import argparse,hashlib,importlib.util,json,os,pathlib,subprocess,tempfile
 ROOT=pathlib.Path(__file__).resolve().parents[2]
 HERE=pathlib.Path(__file__).resolve().parent
 PROD=ROOT/'app/src/main/java/local/pocketchat'
@@ -9,7 +9,7 @@ extract=importlib.util.module_from_spec(spec);spec.loader.exec_module(extract)
 
 def main():
     p=argparse.ArgumentParser();p.add_argument('--java-home',required=True,type=pathlib.Path);p.add_argument('--json-jar',required=True,type=pathlib.Path);p.add_argument('--output',required=True,type=pathlib.Path);args=p.parse_args()
-    paths=[PROD/name for name in ['BrowserPreferences.java','BrowserAddressPolicy.java','EnvironmentEngine.java','MainActivity.java','BrowserActivity.java','BrowserSettingsUi.java','ProfileContext.java']]+[HERE/'BrowserPreferencesHost.java',pathlib.Path(__file__).resolve(),ROOT/'tests/chrome-network-state-host/run.py']
+    paths=[PROD/name for name in ['BrowserPreferences.java','BrowserAddressPolicy.java','EnvironmentEngine.java','MainActivity.java','BrowserActivity.java','BrowserSettingsUi.java','ProfileContext.java','EnvironmentOverviewUi.java']]+[HERE/'BrowserPreferencesHost.java',pathlib.Path(__file__).resolve(),ROOT/'tests/chrome-network-state-host/run.py']
     hashes={str(path.relative_to(ROOT)):hashlib.sha256(path.read_bytes()).hexdigest() for path in paths}
     main_source=(PROD/'MainActivity.java').read_text()
     dispatch=extract.member(main_source,'boolean dispatchBrowser(')
@@ -31,6 +31,9 @@ def main():
     )
     profile_storage=extract.member((PROD/'ProfileContext.java').read_text(),'String name(')
     source=(HERE/'BrowserPreferencesHost.java').read_text().replace('/* DISPATCH_METHOD */',dispatch).replace('/* HANDLE_OPENING */',opening).replace('/* SETTINGS_OWNERSHIP */',settings_ownership).replace('/* NATIVE_PENDING */',native_pending).replace('/* GECKO_PENDING */',gecko_pending).replace('/* GECKO_OPEN_WEBSITE */',gecko_website).replace('/* CHAT_URL */',chat_url).replace('/* PROFILE_STORAGE_NAME */',profile_storage).replace('/* SETTINGS_WORK_PENDING */',settings_pending)
+    overview=(PROD/'EnvironmentOverviewUi.java').read_text()
+    constants='\n'.join(line for line in overview.splitlines() if line.strip().startswith(('static final String NONCE=','static final String DIRECT=')))
+    source=source.replace('/* OVERVIEW_REQUEST */',constants+'\n'+extract.member(overview,'static boolean requested('))
     browser=(PROD/'BrowserActivity.java').read_text()
     browser_methods={marker:extract.member(browser,signature) for marker,signature in (
         ('BROWSER_ACTIVITY','static Class<?> activity('),('BROWSER_RESUME','static void resume('),
@@ -52,7 +55,7 @@ def main():
         for name,text in stubs.items():path=src/name;path.parent.mkdir(parents=True,exist_ok=True);path.write_text(text)
         classes=base/'classes';compiled=subprocess.run([str(args.java_home/'bin/javac'),'-encoding','UTF-8','-cp',str(args.json_jar.resolve()),'-d',str(classes),*map(str,src.rglob('*.java'))],capture_output=True,text=True)
         if compiled.returncode:raise RuntimeError(compiled.stderr)
-        run=subprocess.run([str(args.java_home/'bin/java'),'-cp',str(classes)+':'+str(args.json_jar.resolve()),'local.pocketchat.BrowserPreferencesHost'],capture_output=True,text=True)
+        run=subprocess.run([str(args.java_home/'bin/java'),'-cp',str(classes)+os.pathsep+str(args.json_jar.resolve()),'local.pocketchat.BrowserPreferencesHost'],capture_output=True,text=True)
         if not run.stdout:raise RuntimeError(run.stderr)
         report=json.loads(run.stdout)
     report.update(sourceCommit=subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip(),sourceFiles=hashes,extractedMainDispatchSha256=hashlib.sha256(dispatch.encode()).hexdigest(),extractedAddressAndStorageSha256={name:hashlib.sha256(method.encode()).hexdigest() for name,method in {"nativeFileWorkPending":native_pending,"geckoWorkPending":gecko_pending,"openWebsite":gecko_website,"chatUrl":chat_url,"profileStorageName":profile_storage}.items()},extractedSettingsGuardSha256=hashlib.sha256(settings_pending.encode()).hexdigest(),extractedBrowserEntryPointsSha256={name:hashlib.sha256(method.encode()).hexdigest() for name,method in browser_methods.items()},jsonJarSha256=hashlib.sha256(args.json_jar.read_bytes()).hexdigest(),executionInputsUnchanged=all(path.is_file() and hashlib.sha256(path.read_bytes()).hexdigest()==hashes[str(path.relative_to(ROOT))] for path in paths),actualAndroidExecution=False,actualBrowserExecution=False,scope='Complete production BrowserPreferences and BrowserAddressPolicy, exact MainActivity dispatch and ChatGPT address check, exact ProfileContext preference-name calculation, exact standalone settings ownership and native-opening methods, and exact BrowserActivity entry points, live document check and site-permissions dialog. Controlled Android persistence, Intent/Uri/Activity, catalog availability, file operation state and tab adapters. Checks defaults and existing settings, homepage validation, isolated same-engine preference names, engine selection after re-entry, web and native destination precedence, settings guards for retained file operations, exact tab preservation, and destructive dialog confirmation ownership. The host tests cold and recreated settings dispatch under adapters. Actual Android activity lifecycle, dialogs, engine cookie storage and file activity delivery are outside this host.')

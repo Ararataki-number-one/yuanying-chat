@@ -20,7 +20,32 @@ public final class StartupHost {
     MainActivity replaced=new MainActivity(true);replaced.onCreate(new Bundle());replaced.onResume();Runnable oldFrame=replaced.environmentOverview.draw;replaced.onNewIntent(new Intent(true));oldFrame.run();check(replaced.creates==0,"retired overview draw cannot authorize a replacement dashboard");replaced.environmentOverview.paint();check(replaced.creates==1,"replacement dashboard starts only after its own native frame");
     ProfileCatalog.available=false;MainActivity deleted=new MainActivity(true);deleted.onCreate(new Bundle());check(deleted.finished&&deleted.creates==0,"deleted or resetting environment cannot create browser");ProfileCatalog.available=true;
 
-    MainActivity chromium=new MainActivity(true);chromium.chromium=true;chromium.allowLegacyFixture();chromium.onCreate(null);
+    MainActivity liveGecko=new MainActivity(false);liveGecko.intent.putExtra("url","https://retained.example/document");liveGecko.onCreate(null);liveGecko.onResume();
+    ChatSession liveDocument=liveGecko.session;liveGecko.onNewIntent(new Intent(true));
+    check(liveGecko.environmentOverview.shown&&liveGecko.session==liveDocument&&liveGecko.creates==1&&liveDocument.browses==1,
+      "opening a live Gecko environment shows its dashboard without creating a session or navigating");
+    liveGecko.environmentOverview.continueBrowsing();
+    check(!liveGecko.environmentOverview.shown&&liveGecko.session==liveDocument&&liveDocument.browses==1&&liveGecko.launched==null,
+      "Continue hides the Gecko dashboard without replacing the live document");
+
+    MainActivity chromiumDashboard=new MainActivity(true);chromiumDashboard.chromium=true;chromiumDashboard.allowLegacyFixture();
+    chromiumDashboard.onCreate(null);chromiumDashboard.onResume();
+    check(chromiumDashboard.environmentOverview.shown&&!chromiumDashboard.finished&&chromiumDashboard.creates==0&&chromiumDashboard.browserStarts==0,
+      "cold Chromium environment opens a native dashboard without starting either renderer");
+    chromiumDashboard.environmentOverview.continueBrowsing();
+    Intent follow=chromiumDashboard.launched;
+    check(!chromiumDashboard.environmentOverview.shown&&follow!=null&&follow.getBooleanExtra("openBrowserDirect",false)&&!follow.hasExtra("url"),
+      "chromium dashboard Continue carries the current identity and no replacement address");
+    chromiumDashboard.onNewIntent(follow);
+    check(chromiumDashboard.finished&&chromiumDashboard.creates==0&&chromiumDashboard.browserStarts==1,
+      "Continue re-enters the bound Chromium browser once");
+    MainActivity replacedDashboard=new MainActivity(true);replacedDashboard.chromium=true;replacedDashboard.allowLegacyFixture();
+    replacedDashboard.onCreate(null);replacedDashboard.environmentOverview.nextGeneration++;
+    replacedDashboard.environmentOverview.continueBrowsing();
+    check(!replacedDashboard.environmentOverview.shown&&replacedDashboard.launched==null&&replacedDashboard.browserStarts==0,
+      "Continue cannot use an environment identity that changed while the dashboard was open");
+
+    MainActivity chromium=new MainActivity(false);chromium.chromium=true;chromium.allowLegacyFixture();chromium.onCreate(null);
     check(chromium.finished&&chromium.creates==0&&chromium.browserStarts==1&&chromium.launched.target==BrowserActivity.class&&!chromium.launched.extras.containsKey("url"),"cold Chromium selection resumes the browser without forcing a URL or creating Gecko");
     MainActivity pendingExport=new MainActivity(false);pendingExport.chromium=true;
     Bundle exportState=new Bundle();exportState.pending=new SavedFileActions(pendingExport);exportState.pending.exporting=new Object();
@@ -153,20 +178,42 @@ class ReferenceUi{static int CHAT_BG;static void insets(MainActivity a,LinearLay
 class Prefs{boolean getBoolean(String k,boolean v){return v;}Prefs edit(){return this;}Prefs putBoolean(String k,boolean v){return this;}void apply(){}}
 class Intent{
   static final int FLAG_ACTIVITY_NEW_TASK=1,FLAG_ACTIVITY_REORDER_TO_FRONT=2;static final String ACTION_VIEW="android.intent.action.VIEW";
-  final boolean manual;Class<?> target;int flags;String action,data;final Map<String,String> extras=new HashMap<>();
-  Intent(){this(false);}Intent(boolean v){manual=v;}Intent(Activity a,Class<?> c){manual=false;target=c;}
+  Class<?> target;int flags;String action,data;final Map<String,String> extras=new HashMap<>();
+  Intent(){this(false);}
+  Intent(boolean manual){if(manual)putExtra("openWindowAction","chat").putExtra("overviewSource","environment-list-chat").putExtra("manualEnvironmentOverview","owned");}
+  Intent(Activity a,Class<?> c){target=c;}
   Intent addFlags(int f){flags|=f;return this;}Intent putExtra(String key,String value){extras.put(key,value);return this;}
-  String getAction(){return action;}String getStringExtra(String name){return extras.get(name);}boolean getBooleanExtra(String name,boolean fallback){return extras.containsKey(name)?Boolean.parseBoolean(extras.get(name)):fallback;}boolean hasExtra(String key){return extras.containsKey(key);}void removeExtra(String key){extras.remove(key);}void setData(String value){data=value;}
+  Intent putExtra(String key,int value){return putExtra(key,Integer.toString(value));}
+  String getAction(){return action;}String getStringExtra(String name){return extras.get(name);}
+  int getIntExtra(String name,int fallback){return extras.containsKey(name)?Integer.parseInt(extras.get(name)):fallback;}
+  boolean getBooleanExtra(String name,boolean fallback){return extras.containsKey(name)?Boolean.parseBoolean(extras.get(name)):fallback;}
+  boolean hasExtra(String key){return extras.containsKey(key);}void removeExtra(String key){extras.remove(key);}void setData(String value){data=value;}
 }
 class Profiles{static int slot(Activity a){return 0;}}
 class ProfileCatalog{static boolean available=true;static ProfileCatalog get(MainActivity a){return new ProfileCatalog();}boolean available(int slot){return available;}}
 class ExitIpPageUi{static void close(MainActivity a){}}
 class EnvironmentOverviewUi {
-  OverviewIdentity state=new OverviewIdentity();ChatSession owner;boolean shown;Runnable draw;EnvironmentOverviewUi(MainActivity a){}
-  boolean consume(Intent i){shown=i.manual;return shown;}void afterFirstFrame(Runnable r){draw=r;}void paint(){if(draw!=null)draw.run();}void resume(){}void close(){}
+  static final String DIRECT="openBrowserDirect",SOURCE="overviewSource",NONCE="manualEnvironmentOverview",ID="overviewEnvironmentId",SLOT="overviewSlot",GENERATION="overviewGeneration";
+  final MainActivity a;OverviewIdentity state=new OverviewIdentity();ChatSession owner;EnvironmentEngine engine;boolean shown;Runnable draw;int nextGeneration=1;
+  EnvironmentOverviewUi(MainActivity a){this.a=a;}
+  boolean consume(Intent intent){
+    shown=requested(intent);intent.removeExtra(NONCE);
+    engine=BrowserPreferences.engine(a);owner=engine==EnvironmentEngine.GECKO?a.session:null;
+    return shown;
+  }
+  static Intent browserOpening(MainActivity activity,int slot){
+    return new Intent(activity,MainActivity.class).putExtra("openWindowAction","chat").putExtra(DIRECT,"true")
+      .putExtra(ID,"A").putExtra(SLOT,slot).putExtra(GENERATION,activity.environmentOverview.nextGeneration);
+  }
+  boolean current(){return shown&&engine==BrowserPreferences.engine(a);}
+  void afterFirstFrame(Runnable r){draw=r;}void paint(){if(draw!=null)draw.run();}void resume(){}void close(){shown=false;owner=null;}
+  /*ACTUAL_DASHBOARD_ACTIONS*/
 }
 
-class OverviewIdentity{String environmentId="A";int slot=0,generation=1;}
+class OverviewIdentity{
+  String environmentId="A";int slot=0,generation=1;
+  boolean matches(String id,int slot,int generation){return environmentId.equals(id)&&this.slot==slot&&this.generation==generation;}
+}
 
 /** Controlled preference and intent inputs; engine routing and browser task launches are production methods. */
 enum EnvironmentEngine {GECKO,CHROMIUM,UNAVAILABLE}
@@ -180,7 +227,7 @@ class BrowserPreferences{
 /** The Android split availability and launch result are controlled in this host. */
 class ChromiumEntry{
   static boolean managed(MainActivity activity){return activity.managedChromium;}
-  static boolean open(Activity host,String url){
+  static boolean open(Activity host,String url,Intent intent){
     MainActivity activity=(MainActivity)host;
     if(!activity.chromiumReady)return false;
     activity.featureUrl=url;

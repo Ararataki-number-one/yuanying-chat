@@ -8,6 +8,7 @@ import shutil,subprocess,tempfile,unittest
 ROOT=Path(__file__).resolve().parents[1]
 PRODUCTION=ROOT/'app/src/main/java/local/pocketchat'
 HOST=ROOT/'tests/experience46-overview-host'
+OVERVIEW_SOURCES=['EnvironmentOverviewState.java','EnvironmentOverviewInfo.java','ExitIpPageSession.java','EnvironmentEngine.java','CefriumRoutePolicy.java']
 def member(source,needle):
  start=source.index(needle);opening=source.index('{',start);depth=0
  for at in range(opening,len(source)):
@@ -19,17 +20,17 @@ def member(source,needle):
 class Overview46Test(unittest.TestCase):
  def test_actual_deadline_gate_and_auxiliary_lifecycle(self):
   java=Path(os.environ.get('PROFILE_JAVA') or shutil.which('java') or '')
-  javac=java.with_name('javac')
+  javac=java.with_name('javac'+java.suffix)
   self.assertTrue(java.is_file() and javac.is_file(),'JDK compiler required')
   browser=(PRODUCTION/'GeckoWebView.java').read_text()
   methods='\n'.join(member(browser,signature) for signature in ['  boolean hasExitIpPage()', '  boolean readingOwnerVisible()', '  String openExitIpPage(', '  boolean closeExitIpPage()'])
-  sources=[PRODUCTION/'EnvironmentOverviewState.java',PRODUCTION/'EnvironmentOverviewInfo.java',PRODUCTION/'ExitIpPageSession.java',PRODUCTION/'GeckoWebView.java',HOST/'Overview46Host.java',HOST/'Stubs.java',Path(__file__)]
+  sources=[PRODUCTION/name for name in OVERVIEW_SOURCES]+[PRODUCTION/'GeckoWebView.java',HOST/'Overview46Host.java',HOST/'Stubs.java',Path(__file__)]
   before={str(p.relative_to(ROOT)):hashlib.sha256(p.read_bytes()).hexdigest() for p in sources}
   with tempfile.TemporaryDirectory(prefix='overview46-host-') as directory:
    base=Path(directory)
    for relative,text in SDK.items():
     p=base/relative;p.parent.mkdir(parents=True,exist_ok=True);p.write_text(text)
-   for name in ['EnvironmentOverviewState.java','EnvironmentOverviewInfo.java','ExitIpPageSession.java']:(base/name).write_bytes((PRODUCTION/name).read_bytes())
+   for name in OVERVIEW_SOURCES:(base/name).write_bytes((PRODUCTION/name).read_bytes())
    for name in ['Overview46Host.java','Stubs.java']:(base/name).write_bytes((HOST/name).read_bytes())
    (base/'GeckoWebView.java').write_text(WEB.replace('/*ACTUAL*/',methods))
    result=subprocess.run([str(javac),'-encoding','UTF-8','-d',str(base),*map(str,base.rglob('*.java'))],capture_output=True,text=True,timeout=45)
@@ -42,7 +43,7 @@ class Overview46Test(unittest.TestCase):
   output=os.environ.get('OVERVIEW46_REPORT')
   if output:Path(output).write_text(json.dumps(report,indent=2)+'\n')
  def test_declared_default_system_boundary_defers_rejects_and_retires_exact_auxiliary(self):
-  java=Path(os.environ.get('PROFILE_JAVA') or shutil.which('java') or '');javac=java.with_name('javac')
+  java=Path(os.environ.get('PROFILE_JAVA') or shutil.which('java') or '');javac=java.with_name('javac'+java.suffix)
   self.assertTrue(java.is_file() and javac.is_file(),'JDK compiler required')
   browser=(PRODUCTION/'GeckoWebView.java').read_text()
   actual='\n'.join(member(browser,signature) for signature in ['  boolean hasExitIpPage()', '  boolean readingOwnerVisible()', '  String openExitIpPage(', '  boolean closeExitIpPage()'])
@@ -56,7 +57,7 @@ class Overview46Test(unittest.TestCase):
     base=Path(directory)
     for relative,text in SDK.items():
      p=base/relative;p.parent.mkdir(parents=True,exist_ok=True);p.write_text(text)
-    for name in ['EnvironmentOverviewState.java','EnvironmentOverviewInfo.java','ExitIpPageSession.java']:(base/name).write_bytes((PRODUCTION/name).read_bytes())
+    for name in OVERVIEW_SOURCES:(base/name).write_bytes((PRODUCTION/name).read_bytes())
     for name in ['Overview46Host.java','Stubs.java']:(base/name).write_bytes((HOST/name).read_bytes())
     (base/'GeckoWebView.java').write_text(WEB.replace('/*ACTUAL*/',methods))
     (base/'Overview46TimeZoneBoundaryHost.java').write_text(TIMEZONE_BOUNDARY_HOST)
@@ -114,6 +115,7 @@ class GeckoWebView {
  static class Surface{GeckoSession session;float scaleX=1,scaleY=1;GeckoSession getSession(){return session;}void setSession(GeckoSession s){session=s;}void releaseSession(){session=null;}void setScaleX(float f){scaleX=f;}void setScaleY(float f){scaleY=f;}void setPivotX(float f){}void setPivotY(float f){}int measuredWidth,measuredHeight;void measure(int w,int h){measuredWidth=w;measuredHeight=h;}void layout(int l,int t,int r,int b){}int getMeasuredWidth(){return measuredWidth;}int getMeasuredHeight(){return measuredHeight;}}
 }'''
 SDK={
+ 'android/content/SharedPreferences.java':'''package android.content;public interface SharedPreferences{java.util.Map<String,?> getAll();default String getString(String key,String fallback){Object value=getAll().get(key);return value==null?fallback:(String)value;}interface Editor{Editor putString(String key,String value);}}''',
  'android/text/TextUtils.java':'''package android.text;public class TextUtils{public static String join(String delimiter,Object[] values){return String.join(delimiter,java.util.Arrays.copyOf(values,values.length,String[].class));}}''',
  'android/net/Uri.java':'''package android.net;public class Uri {java.net.URI uri;Uri(String s){uri=java.net.URI.create(s);}public static Uri parse(String s){return new Uri(s);}public String getScheme(){return uri.getScheme();}public String getHost(){return uri.getHost();}public String getUserInfo(){return uri.getUserInfo();}public int getPort(){return uri.getPort();}}''',
  'org/json/JSONObject.java':'''package org.json;public class JSONObject {java.util.Map<String,Object> values=new java.util.HashMap<>();public JSONObject put(String k,Object v){values.put(k,v);return this;}public String optString(String k){Object v=values.get(k);return v instanceof String?(String)v:"";}public int optInt(String k,int fallback){Object v=values.get(k);return v instanceof Number?((Number)v).intValue():fallback;}public boolean optBoolean(String k){return Boolean.TRUE.equals(values.get(k));}public Object opt(String k){return values.get(k);}public JSONObject optJSONObject(String k){Object v=values.get(k);return v instanceof JSONObject?(JSONObject)v:null;}public long optLong(String k){Object v=values.get(k);return v instanceof Number?((Number)v).longValue():0;}public int length(){return values.size();}}''',

@@ -35,7 +35,7 @@ class BrowserEnvironmentEntry(unittest.TestCase):
         source = (PROD / 'EnvironmentOverviewUi.java').read_text()
         methods = MEMBERS.opening_helpers(source) + '\n' + '\n'.join(
             MEMBERS.member(source, signature) for signature in (
-                'boolean consume(', 'boolean current(', 'void browserReady('))
+                'static boolean requested(', 'boolean consume(', 'boolean current(', 'void browserReady(', 'void continueBrowsing('))
         fixture = (ROOT / 'tests/browser-entry-host/BrowserEntryHost.java.in').read_text().replace('/* PRODUCTION_METHODS */', methods)
         with tempfile.TemporaryDirectory(prefix='browser-entry-host-') as folder:
             folder = Path(folder)

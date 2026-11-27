@@ -16,10 +16,11 @@ final class EnvironmentOverviewDashboard extends LinearLayout {
   final MainActivity a;
   final TextView clock,flag,connection,region,ip,source,notes,group,progress,browser,language,zone,agent;
   final Button check,query,audit;
+  final EnvironmentEngine engine;
   final List<LinearLayout> cards=new ArrayList<>();
   boolean paletteDark;
   EnvironmentOverviewDashboard(MainActivity a,int slot,Runnable inspect,Runnable queryIp,Runnable inspectIdentity,Runnable details,Runnable enter){
-    super(a);this.a=a;setOrientation(VERTICAL);setBackground(new Backdrop());setContentDescription("环境仪表盘");
+    super(a);this.a=a;engine=EnvironmentEngine.read(a.prefs);setOrientation(VERTICAL);setBackground(new Backdrop());setContentDescription("环境仪表盘");
     LinearLayout body=new LinearLayout(a){@Override protected void onMeasure(int width,int height){super.onMeasure(MeasureSpec.makeMeasureSpec(Math.min(MeasureSpec.getSize(width),a.dp(760)),MeasureSpec.EXACTLY),height);}};
     body.setOrientation(VERTICAL);body.setPadding(a.dp(18),a.dp(20),a.dp(18),a.dp(18));
     FrameLayout centered=new FrameLayout(a);centered.addView(body,new FrameLayout.LayoutParams(-1,-2,Gravity.TOP|Gravity.CENTER_HORIZONTAL));
@@ -37,10 +38,14 @@ final class EnvironmentOverviewDashboard extends LinearLayout {
 
     LinearLayout window=card(body);heading(window,"窗口信息",null);notes=row(window,"备注","—");group=row(window,"分组","未分组");progress=row(window,"网络状态","正在准备环境");
     LinearLayout identity=card(body);audit=ReferenceUi.small(a,"指纹检测 ↗",false,inspectIdentity);heading(identity,"指纹信息",audit);
-    EnvironmentEngine engine=EnvironmentEngine.read(a.prefs);
     row(identity,"系统 / 内核","Android "+Build.VERSION.RELEASE+" / "+engine.label);browser=row(identity,"浏览器模板","等待浏览器确认");language=row(identity,"请求语言","等待浏览器确认");zone=row(identity,"网页时区","尚未观测");agent=row(identity,"User Agent","等待浏览器确认");agent.setMaxLines(3);agent.setEllipsize(TextUtils.TruncateAt.END);agent.setTextIsSelectable(true);
     Button technical=ReferenceUi.small(a,"查看来源与详细信息",false,details);identity.addView(technical,new LinearLayout.LayoutParams(-1,-2));
-    TextView credit=label("IP 网页查询：ip123.in · 使用当前环境线路",11,DesignUi.MUTED,false);credit.setPadding(a.dp(2),a.dp(14),a.dp(2),a.dp(6));body.addView(credit);
+    if(engine!=EnvironmentEngine.UNAVAILABLE){
+      String help=engine==EnvironmentEngine.GECKO?"IP 网页查询：ip123.in · 使用当前环境线路"
+        :"继续浏览后可在「网络环境检查」中查看 Chromium 的本机线路状态。";
+      TextView credit=label(help,11,DesignUi.MUTED,false);
+      credit.setPadding(a.dp(2),a.dp(14),a.dp(2),a.dp(6));body.addView(credit);
+    }
 
     LinearLayout footer=DesignUi.column(a);footer.setPadding(a.dp(18),a.dp(8),a.dp(18),a.dp(14));footer.addView(DesignUi.button(a,"继续浏览",true,enter),new LinearLayout.LayoutParams(-1,-2));addView(footer,new LinearLayout.LayoutParams(-1,-2));
     paletteDark=AppAppearance.dark();check.setEnabled(false);query.setEnabled(false);audit.setEnabled(false);
@@ -53,13 +58,13 @@ final class EnvironmentOverviewDashboard extends LinearLayout {
   void render(EnvironmentOverviewInfo.Snapshot v,JSONObject metadata,ChatSession session,boolean checking){
     if(paletteDark!=AppAppearance.dark()){paletteDark=AppAppearance.dark();for(LinearLayout card:cards)card.setBackground(DesignUi.surface(a,DesignUi.CARD,18,DesignUi.LINE));invalidate();}
     update(clock,TimeZone.getDefault().getID()+"  "+new SimpleDateFormat("yyyy-MM-dd HH:mm",Locale.getDefault()).format(new Date())+" · 手机时间");
-    update(connection,session==null?"正在准备":v.verified?"已连接":session.offline?"未连接":session.connecting?"连接中":session.networkReady?"线路已连接":"等待连接");
+    update(connection,session==null?(engine==EnvironmentEngine.GECKO?"正在准备":"尚未核验"):v.verified?"已连接":session.offline?"未连接":session.connecting?"连接中":session.networkReady?"线路已连接":"等待连接");
     update(region,v.region.isEmpty()?"地区未取得":v.region+" · 上次定位");update(flag,flag(v.region));
-    update(ip,"IP："+(v.ip.isEmpty()?(session==null||session.connecting?"查询中…":"未取得"):v.ip));
+    update(ip,"IP："+(engine!=EnvironmentEngine.GECKO?v.ipValue:v.ip.isEmpty()?(session==null||session.connecting?"查询中…":"未取得"):v.ip));
     update(source,v.ip.isEmpty()?"尚未取得当前线路核验结果":(v.verified?"已核验":"上次查询")+" · "+v.ipTime+"\n"+v.ipSource);
     update(notes,metadata.optString("notes").isEmpty()?"—":EnvironmentOverviewInfo.clean(metadata.optString("notes")));update(group,metadata.optString("group").isEmpty()?"未分组":EnvironmentOverviewInfo.clean(metadata.optString("group")));update(progress,v.connection);
     update(browser,v.browser);update(language,v.language);update(zone,v.zone);
-    String ua=session==null?"":session.web.getSettings().getUserAgentString();update(agent,ua==null||ua.isEmpty()?"等待浏览器确认":ua);
+    String ua=session==null?"":session.web.getSettings().getUserAgentString();update(agent,ua==null||ua.isEmpty()?(engine==EnvironmentEngine.GECKO?"等待浏览器确认":"尚未观测"):ua);
     boolean owned=session!=null&&NetworkStatusUi.current(a,session);boolean connected=owned&&NetworkStatusUi.connectionReady(session);
     check.setEnabled(connected&&!checking);query.setEnabled(connected);audit.setEnabled(owned);
     if(!TextUtils.equals(check.getText(),checking?"检测中…":"检测线路"))check.setText(checking?"检测中…":"检测线路");

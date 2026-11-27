@@ -367,7 +367,11 @@ class ProfileUi {static boolean working(ChatSession session){return false;}}
 class FileDownloads {boolean awaitingPicker,retiringPartial;final SavedFileActions savedActions=new SavedFileActions();}
 class SavedFileActions {Object exporting;boolean busy;}
 class BrowserFiles {Object pending;boolean activeDownload;boolean hasActiveDownload(){return activeDownload;}}
-class EnvironmentOverviewUi {EnvironmentOverviewUi(MainActivity owner){}boolean consume(Intent intent){return false;}}
+class EnvironmentOverviewUi {
+  EnvironmentOverviewUi(MainActivity owner){}
+  boolean consume(Intent intent){return false;}
+  /* OVERVIEW_REQUEST */
+}
 class AppHub {
   String feedback;
   void feedback(String message,boolean warning){feedback=message;}
@@ -378,7 +382,7 @@ class ChromiumEntry {
   static boolean delivery,moduleReady;
   static String networkIssue(Activity owner){return "Chromium environment network needs configuration";}
   static boolean managed(Activity owner){return delivery;}
-  static boolean open(Activity owner,String url){
+  static boolean open(Activity owner,String url,Intent request){
     if(!moduleReady)return false;
     MainActivity main=(MainActivity)owner;
     main.launched=new Intent(owner,Feature.class).putExtra("url",url);

@@ -13,7 +13,7 @@ class Overview46NativeCompile(unittest.TestCase):
   if not android.is_file():self.skipTest('Android 35 API jar unavailable')
   self.assertEqual(hashlib.sha256(android.read_bytes()).hexdigest(),'4566663c3876e022b4fa4ced8c8697c4ab1688267f090114fd92d027b32e619b')
   java=Path(os.environ.get('PROFILE_JAVA') or shutil.which('java') or '');javac=java.with_name('javac');self.assertTrue(javac.is_file())
-  names=['EnvironmentOverviewUi.java','EnvironmentOverviewInfo.java','EnvironmentOverviewState.java','EnvironmentOverviewDashboard.java','EnvironmentEngine.java','BrowserStartupGate.java','PageLoadingWait.java','LoadingUi.java','ExitIpPageUi.java','ThemedDialog.java']
+  names=['EnvironmentOverviewUi.java','EnvironmentOverviewInfo.java','EnvironmentOverviewState.java','EnvironmentOverviewDashboard.java','EnvironmentEngine.java','CefriumRoutePolicy.java','BrowserStartupGate.java','PageLoadingWait.java','LoadingUi.java','ExitIpPageUi.java','ThemedDialog.java']
   before={name:hashlib.sha256((PRODUCTION/name).read_bytes()).hexdigest() for name in names}
   with tempfile.TemporaryDirectory(prefix='overview46-android-api-') as directory:
    base=Path(directory)
