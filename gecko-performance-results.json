@@ -1,0 +1,5383 @@
+{
+  "status": "passed",
+  "actualAndroidExecution": true,
+  "actualGeckoExecution": true,
+  "actualAndroidTouchExecution": true,
+  "actualGeckoBindingRegressionExecution": true,
+  "actualAppearanceRoundtrip": true,
+  "actualInputImeSettled": true,
+  "actualSingleInputBurst": true,
+  "inputDiagnosticsEnabled": false,
+  "inputNativeDiagnosticsEnabled": false,
+  "baselineSource": "835d59991218eda70c7a4fdd73ea9d7ae6052688",
+  "checkCount": 164,
+  "directDeferredSamples": 1,
+  "nativeDeferredSamples": 2,
+  "scope": "Actual GeckoView 157, real extension-to-native payload and DOM work; actual Android scroll and keyboard input; 240 historical messages and 105k current reply. Subsequent same-route DOM restoration, exact-identity SPA allocation, website socket faults and native completion-stability regression; no real account or external site. RAF and Android Choreographer timings are descriptive, no cross-device FPS threshold.",
+  "measurements": [
+    {
+      "variant": "baseline",
+      "samples": 12,
+      "bridgeResponseBytes": 2526332,
+      "bridgeResponseChars": 2526332,
+      "bridgeScriptChars": 3756,
+      "evaluateCallbackMs": 235,
+      "domReadChars": 2521560,
+      "domReadCalls": 108,
+      "cloneCalls": 0,
+      "elapsedJsMs": 5227,
+      "raf": {
+        "frames": 130,
+        "averageGapMs": 20.128153846153843,
+        "maxGapMs": 133.3199999999997,
+        "gapsOver32Ms": 10
+      },
+      "androidChoreographer": {
+        "frames": 310,
+        "averageGapMs": 16.827956316129033,
+        "maxGapMs": 49.999998,
+        "gapsOver32Ms": 2
+      },
+      "observationBefore": {
+        "entriesBuilt": 242,
+        "snapshots": 1
+      },
+      "observationAfter": {
+        "entriesBuilt": 242,
+        "snapshots": 1
+      }
+    },
+    {
+      "variant": "current",
+      "samples": 12,
+      "bridgeResponseBytes": 5040,
+      "bridgeResponseChars": 5040,
+      "bridgeScriptChars": 4092,
+      "evaluateCallbackMs": 170,
+      "domReadChars": 96,
+      "domReadCalls": 24,
+      "cloneCalls": 0,
+      "elapsedJsMs": 2759,
+      "raf": {
+        "frames": 133,
+        "averageGapMs": 20.67669172932331,
+        "maxGapMs": 116.68000000000029,
+        "gapsOver32Ms": 16
+      },
+      "androidChoreographer": {
+        "frames": 164,
+        "averageGapMs": 16.768292012195122,
+        "maxGapMs": 33.333332,
+        "gapsOver32Ms": 2
+      },
+      "observationBefore": {
+        "entriesBuilt": 242,
+        "snapshots": 1,
+        "derivedBuilt": 363,
+        "messageListsBuilt": 3,
+        "controlListsBuilt": 0,
+        "controlGroupsBuilt": 0,
+        "mutationBatches": 0,
+        "mutationRecords": 0,
+        "ancestorVisits": 0,
+        "capturesScheduled": 0,
+        "capturesPrepared": 0
+      },
+      "observationAfter": {
+        "entriesBuilt": 242,
+        "snapshots": 1,
+        "derivedBuilt": 363,
+        "messageListsBuilt": 3,
+        "controlListsBuilt": 1,
+        "controlGroupsBuilt": 2,
+        "mutationBatches": 2,
+        "mutationRecords": 2,
+        "ancestorVisits": 14,
+        "capturesScheduled": 0,
+        "capturesPrepared": 0
+      }
+    }
+  ],
+  "scrollDiagnostics": {
+    "schema": 1,
+    "actualAndroidFileRead": true,
+    "phases": 2,
+    "instrumentationScope": "Read-only scroll-phase diagnostics add passive DOM listeners, bounded native touch/delegate capture, geometry and existing before/after snapshots. This passive layer adds no evaluations or changes to polling, timeouts, assertions or typing. Native injection uses the separately declared fixed UiAutomation protocol; controller startup and event timing remain recorded. First four busy samples are unchanged; APZ touch dispatch, scroll-phase scheduling and frame timing may be affected by the added work and passive touch listeners."
+  },
+  "nativeInputDriver": {
+    "purpose": "qualification",
+    "nonce": "92e41dedda594bb5b19aa4a6b0c0de60",
+    "buildSha256": "368aed88f3992c9f64605dfbe3bc47512756c95b13f44cd228df695fa40e2ae8",
+    "targetByteProofFile": "native-input-target-proof-92e41dedda594bb5b19aa4a6b0c0de60.json",
+    "targetByteProofSha256": "ab2ac52bdcc07dcbd0a2c7cdef682b37c57fd6d4b9b7a81ff77e113ce37c075b",
+    "receipts": [
+      {
+        "file": "native-input-92e41dedda594bb5b19aa4a6b0c0de60-baseline-scroll.json",
+        "sha256": "831fa01a789c5991bd399b68973e53e970482df79809bfae9c3153f82526b1fb",
+        "gesture": "baseline-scroll",
+        "request": {
+          "x": 540,
+          "startY": 1469,
+          "endY": 567,
+          "targetPid": "4781",
+          "expiresUptimeMs": 133651,
+          "targetByteProofSha256": "ab2ac52bdcc07dcbd0a2c7cdef682b37c57fd6d4b9b7a81ff77e113ce37c075b",
+          "targetApkPath": "/data/app/~~FIbhTbh4fNDyvthQR5m2KQ==/local.pocketchat.test--5f_Tj12Dc3V1GNbbbpYhg==/base.apk",
+          "targetApkBytes": 127444895
+        },
+        "hostStartedMonotonicNs": 258454791950,
+        "hostCompletedMonotonicNs": 262001334209
+      },
+      {
+        "file": "native-input-92e41dedda594bb5b19aa4a6b0c0de60-current-scroll.json",
+        "sha256": "04b112927f425fa9d387e5e47e10c68d3a45c68352b6835444cba4cb2fcf7179",
+        "gesture": "current-scroll",
+        "request": {
+          "x": 540,
+          "startY": 1469,
+          "endY": 567,
+          "targetPid": "4781",
+          "expiresUptimeMs": 139106,
+          "targetByteProofSha256": "ab2ac52bdcc07dcbd0a2c7cdef682b37c57fd6d4b9b7a81ff77e113ce37c075b",
+          "targetApkPath": "/data/app/~~FIbhTbh4fNDyvthQR5m2KQ==/local.pocketchat.test--5f_Tj12Dc3V1GNbbbpYhg==/base.apk",
+          "targetApkBytes": 127444895
+        },
+        "hostStartedMonotonicNs": 264240996843,
+        "hostCompletedMonotonicNs": 265074036321
+      }
+    ]
+  },
+  "actualAndroidGestureDeadlines": [
+    {
+      "id": "baseline-scroll",
+      "sampledElapsedMs": 113651,
+      "sampledUptimeMs": 113651,
+      "expiresElapsedMs": 133651,
+      "expiresUptimeMs": 133651
+    },
+    {
+      "id": "current-scroll",
+      "sampledElapsedMs": 119105,
+      "sampledUptimeMs": 119106,
+      "expiresElapsedMs": 139105,
+      "expiresUptimeMs": 139106
+    }
+  ],
+  "sourceCommit": "022381fc6d35e2cfcd8863de67174b026e50ca83",
+  "diagnosticOnly": false,
+  "checks": [
+    {
+      "name": "baseline installs its real versioned observation assets",
+      "pass": true
+    },
+    {
+      "name": "baseline loads all 242 messages including the 105k latest reply",
+      "pass": true
+    },
+    {
+      "name": "baseline busy sample 0 stays bound and never completes",
+      "pass": true
+    },
+    {
+      "name": "Baseline sample 0 actually transfers its long body",
+      "pass": true
+    },
+    {
+      "name": "baseline busy sample 1 stays bound and never completes",
+      "pass": true
+    },
+    {
+      "name": "Baseline sample 1 actually transfers its long body",
+      "pass": true
+    },
+    {
+      "name": "baseline busy sample 2 stays bound and never completes",
+      "pass": true
+    },
+    {
+      "name": "Baseline sample 2 actually transfers its long body",
+      "pass": true
+    },
+    {
+      "name": "baseline busy sample 3 stays bound and never completes",
+      "pass": true
+    },
+    {
+      "name": "Baseline sample 3 actually transfers its long body",
+      "pass": true
+    },
+    {
+      "name": "baseline accepts an actual Android scroll while reply observation is active",
+      "pass": true
+    },
+    {
+      "name": "baseline busy sample 4 stays bound and never completes",
+      "pass": true
+    },
+    {
+      "name": "Baseline sample 4 actually transfers its long body",
+      "pass": true
+    },
+    {
+      "name": "baseline busy sample 5 stays bound and never completes",
+      "pass": true
+    },
+    {
+      "name": "Baseline sample 5 actually transfers its long body",
+      "pass": true
+    },
+    {
+      "name": "baseline busy sample 6 stays bound and never completes",
+      "pass": true
+    },
+    {
+      "name": "Baseline sample 6 actually transfers its long body",
+      "pass": true
+    },
+    {
+      "name": "baseline busy sample 7 stays bound and never completes",
+      "pass": true
+    },
+    {
+      "name": "Baseline sample 7 actually transfers its long body",
+      "pass": true
+    },
+    {
+      "name": "baseline busy sample 8 stays bound and never completes",
+      "pass": true
+    },
+    {
+      "name": "Baseline sample 8 actually transfers its long body",
+      "pass": true
+    },
+    {
+      "name": "baseline busy sample 9 stays bound and never completes",
+      "pass": true
+    },
+    {
+      "name": "Baseline sample 9 actually transfers its long body",
+      "pass": true
+    },
+    {
+      "name": "baseline busy sample 10 stays bound and never completes",
+      "pass": true
+    },
+    {
+      "name": "Baseline sample 10 actually transfers its long body",
+      "pass": true
+    },
+    {
+      "name": "baseline busy sample 11 stays bound and never completes",
+      "pass": true
+    },
+    {
+      "name": "Baseline sample 11 actually transfers its long body",
+      "pass": true
+    },
+    {
+      "name": "baseline preserves the draft, synthetic session cookie and send count",
+      "pass": true
+    },
+    {
+      "name": "current installs its real versioned observation assets",
+      "pass": true
+    },
+    {
+      "name": "current loads all 242 messages including the 105k latest reply",
+      "pass": true
+    },
+    {
+      "name": "current busy sample 0 stays bound and never completes",
+      "pass": true
+    },
+    {
+      "name": "Current streaming sample 0 transfers only metadata",
+      "pass": true
+    },
+    {
+      "name": "current busy sample 1 stays bound and never completes",
+      "pass": true
+    },
+    {
+      "name": "Current streaming sample 1 transfers only metadata",
+      "pass": true
+    },
+    {
+      "name": "current busy sample 2 stays bound and never completes",
+      "pass": true
+    },
+    {
+      "name": "Current streaming sample 2 transfers only metadata",
+      "pass": true
+    },
+    {
+      "name": "current busy sample 3 stays bound and never completes",
+      "pass": true
+    },
+    {
+      "name": "Current streaming sample 3 transfers only metadata",
+      "pass": true
+    },
+    {
+      "name": "current accepts an actual Android scroll while reply observation is active",
+      "pass": true
+    },
+    {
+      "name": "current busy sample 4 stays bound and never completes",
+      "pass": true
+    },
+    {
+      "name": "Current streaming sample 4 transfers only metadata",
+      "pass": true
+    },
+    {
+      "name": "current busy sample 5 stays bound and never completes",
+      "pass": true
+    },
+    {
+      "name": "Current streaming sample 5 transfers only metadata",
+      "pass": true
+    },
+    {
+      "name": "current busy sample 6 stays bound and never completes",
+      "pass": true
+    },
+    {
+      "name": "Current streaming sample 6 transfers only metadata",
+      "pass": true
+    },
+    {
+      "name": "current busy sample 7 stays bound and never completes",
+      "pass": true
+    },
+    {
+      "name": "Current streaming sample 7 transfers only metadata",
+      "pass": true
+    },
+    {
+      "name": "current busy sample 8 stays bound and never completes",
+      "pass": true
+    },
+    {
+      "name": "Current streaming sample 8 transfers only metadata",
+      "pass": true
+    },
+    {
+      "name": "current busy sample 9 stays bound and never completes",
+      "pass": true
+    },
+    {
+      "name": "Current streaming sample 9 transfers only metadata",
+      "pass": true
+    },
+    {
+      "name": "current busy sample 10 stays bound and never completes",
+      "pass": true
+    },
+    {
+      "name": "Current streaming sample 10 transfers only metadata",
+      "pass": true
+    },
+    {
+      "name": "current busy sample 11 stays bound and never completes",
+      "pass": true
+    },
+    {
+      "name": "Current streaming sample 11 transfers only metadata",
+      "pass": true
+    },
+    {
+      "name": "current preserves the draft, synthetic session cookie and send count",
+      "pass": true
+    },
+    {
+      "name": "Actual Gecko streaming bridge payload is reduced by at least 95 percent",
+      "pass": true
+    },
+    {
+      "name": "Actual growing-body DOM read work is reduced by at least 95 percent",
+      "pass": true
+    },
+    {
+      "name": "Streaming metadata never rebuilds markdown or files",
+      "pass": true
+    },
+    {
+      "name": "Text mutations preserve the cached message topology",
+      "pass": true
+    },
+    {
+      "name": "Two streaming mutations rebuild only the current transcript entry",
+      "pass": true
+    },
+    {
+      "name": "Actual Gecko idle deferral transfers no partial final body",
+      "pass": true
+    },
+    {
+      "name": "First terminal capture keeps the entire 105k reply, both stream tails, code and file",
+      "pass": true
+    },
+    {
+      "name": "Terminal poll reuses the just-built transcript markdown and file representation",
+      "pass": true
+    },
+    {
+      "name": "A first actual terminal body cannot complete prematurely",
+      "pass": true
+    },
+    {
+      "name": "Stable terminal sample 1 omits the 105k body using the exact content revision",
+      "pass": true
+    },
+    {
+      "name": "The second terminal sample remains incomplete",
+      "pass": true
+    },
+    {
+      "name": "Stable terminal sample 2 omits the 105k body using the exact content revision",
+      "pass": true
+    },
+    {
+      "name": "The third stable actual body is accepted after at least two seconds",
+      "pass": true
+    },
+    {
+      "name": "A post-terminal mutation expires the omitted-body capture",
+      "pass": true
+    },
+    {
+      "name": "A changed terminal body resets the production stable-completion gate",
+      "pass": true
+    },
+    {
+      "name": "Reusing a stable message ID on a new node cannot retain the previous body",
+      "pass": true
+    },
+    {
+      "name": "Generated file changes invalidate terminal markdown and attachment metadata",
+      "pass": true
+    },
+    {
+      "name": "Sibling generated file cards invalidate the actual Gecko reply revision",
+      "pass": true
+    },
+    {
+      "name": "Sibling file cards appear in incremental transcript downloads",
+      "pass": true
+    },
+    {
+      "name": "Renaming a sibling file card refreshes actual Gecko metadata and transcript downloads",
+      "pass": true
+    },
+    {
+      "name": "Removing a sibling file card invalidates the actual Gecko reply metadata",
+      "pass": true
+    },
+    {
+      "name": "Reattaching an edited cached body refreshes actual Gecko terminal text and transcript",
+      "pass": true
+    },
+    {
+      "name": "Earlier response copy controls cannot complete the current reply",
+      "pass": true
+    },
+    {
+      "name": "Semantic checks preserve the synthetic login, draft and no-send invariant",
+      "pass": true
+    },
+    {
+      "name": "Production ChatSession keeps a streaming task pending without retaining a partial body",
+      "pass": true
+    },
+    {
+      "name": "Production first terminal capture retains the entire actual Gecko body",
+      "pass": true
+    },
+    {
+      "name": "A different task cannot request reuse of the captured reply",
+      "pass": true
+    },
+    {
+      "name": "A different route cannot request reuse of the captured reply",
+      "pass": true
+    },
+    {
+      "name": "Production terminal sample 2 uses actual metadata-only bridge output",
+      "pass": true
+    },
+    {
+      "name": "Production terminal sample 2 restores the complete cached body in Java",
+      "pass": true
+    },
+    {
+      "name": "Production second terminal sample still preserves the persisted pending operation",
+      "pass": true
+    },
+    {
+      "name": "Production terminal sample 3 uses actual metadata-only bridge output",
+      "pass": true
+    },
+    {
+      "name": "Production terminal sample 3 restores the complete cached body in Java",
+      "pass": true
+    },
+    {
+      "name": "Production stable lightweight samples finish and persist the actual reply task",
+      "pass": true
+    },
+    {
+      "name": "Production completion keeps the full 242-message transcript",
+      "pass": true
+    },
+    {
+      "name": "The complete final body is durably saved by the production transcript worker",
+      "pass": true
+    },
+    {
+      "name": "Production completion preserves the document login, unsent draft and no-send invariant",
+      "pass": true
+    },
+    {
+      "name": "Actual Android input waits for visible IME and unchanged viewport, composer and caret",
+      "pass": true
+    },
+    {
+      "name": "Actual Android tap and keyboard input preserve the existing composer draft",
+      "pass": true
+    },
+    {
+      "name": "The single Android input burst delivers exact ordered trusted keys and real input events",
+      "pass": true
+    },
+    {
+      "name": "Actual user input neither sends a message nor changes the synthetic login",
+      "pass": true
+    },
+    {
+      "name": "Actual native idle deferral preserves the persisted task with zero completion samples",
+      "pass": true
+    },
+    {
+      "name": "Binding regression starts with the actual full reply and one incomplete native terminal sample",
+      "pass": true
+    },
+    {
+      "name": "Same-route empty DOM waits without losing the confirmed task or accumulating terminal samples",
+      "pass": true
+    },
+    {
+      "name": "Restoring the original message key and prompt rebinds the real native task",
+      "pass": true
+    },
+    {
+      "name": "Virtualizing only the bound user waits even while other historical messages remain",
+      "pass": true
+    },
+    {
+      "name": "Restoring a virtualized user retains its exact identity and pending operation",
+      "pass": true
+    },
+    {
+      "name": "A confirmed homepage prompt remains bound before the website assigns its conversation route",
+      "pass": true
+    },
+    {
+      "name": "Homepage allocation rejects the same user ID when its prompt no longer matches",
+      "pass": true
+    },
+    {
+      "name": "Homepage conversation allocation preserves the exact user identity and persists the new route",
+      "pass": true
+    },
+    {
+      "name": "A genuine different conversation is rejected even if its visible message IDs match",
+      "pass": true
+    },
+    {
+      "name": "A neutral homepage shell during restoration waits without declaring another conversation",
+      "pass": true
+    },
+    {
+      "name": "Restoring the bound conversation after a neutral shell retains its pending task",
+      "pass": true
+    },
+    {
+      "name": "Websocket error words in ordinary historical reply text do not become a website fault",
+      "pass": true
+    },
+    {
+      "name": "A rendered historical reply socket alert and retry control do not invalidate the current task",
+      "pass": true
+    },
+    {
+      "name": "A rendered historical websocket-failed alert cannot interrupt the current production reply",
+      "pass": true
+    },
+    {
+      "name": "The restored real reply has only one valid terminal sample before the website error",
+      "pass": true
+    },
+    {
+      "name": "Two real terminal samples still cannot finish before a website fault intervenes",
+      "pass": true
+    },
+    {
+      "name": "Actual native inspection recognizes the website socket fault before polling and resets terminal stability",
+      "pass": true
+    },
+    {
+      "name": "A rendered website websocket-closed alert has a recoverable error while preserving the original binding",
+      "pass": true
+    },
+    {
+      "name": "Website errors clear native stable samples and never finish or clear the persisted task",
+      "pass": true
+    },
+    {
+      "name": "Repeated website error observations cannot accumulate completion samples",
+      "pass": true
+    },
+    {
+      "name": "A rendered current websocket-failed alert is recognized by actual native inspection",
+      "pass": true
+    },
+    {
+      "name": "Repeated websocket-failed polls preserve the pending task without completion",
+      "pass": true
+    },
+    {
+      "name": "Recovered binding terminal sample 1 retains the entire real final reply",
+      "pass": true
+    },
+    {
+      "name": "Recovered binding terminal sample 1 keeps the task pending until the fresh stability window passes",
+      "pass": true
+    },
+    {
+      "name": "Recovered binding terminal sample 2 retains the entire real final reply",
+      "pass": true
+    },
+    {
+      "name": "Recovered binding terminal sample 2 keeps the task pending until the fresh stability window passes",
+      "pass": true
+    },
+    {
+      "name": "Recovered binding terminal sample 3 retains the entire real final reply",
+      "pass": true
+    },
+    {
+      "name": "A restored bound reply completes only after three fresh actual samples and two seconds",
+      "pass": true
+    },
+    {
+      "name": "SPA restoration and websocket faults never resubmit and preserve the typed draft and synthetic login",
+      "pass": true
+    },
+    {
+      "name": "Manual website recovery durably archives its captured draft before checking newer typing",
+      "pass": true
+    },
+    {
+      "name": "Typing while manual recovery saves aborts reload and preserves the newer draft and original pending task",
+      "pass": true
+    },
+    {
+      "name": "Manual website recovery durably archives its captured draft even when the pending task changes",
+      "pass": true
+    },
+    {
+      "name": "Changing the pending task while manual recovery saves aborts stale reload and preserves the new task",
+      "pass": true
+    },
+    {
+      "name": "Connection invalidation resets native terminal samples without submitting or clearing browser data",
+      "pass": true
+    },
+    {
+      "name": "Original-only bridge starts with the actual existing Gecko document",
+      "pass": true
+    },
+    {
+      "name": "Public native bridge rejects retired action fill",
+      "pass": true
+    },
+    {
+      "name": "Actual Gecko observation asset rejects retired action fill",
+      "pass": true
+    },
+    {
+      "name": "Public native bridge rejects retired action submit",
+      "pass": true
+    },
+    {
+      "name": "Actual Gecko observation asset rejects retired action submit",
+      "pass": true
+    },
+    {
+      "name": "Public native bridge rejects retired action model-open",
+      "pass": true
+    },
+    {
+      "name": "Actual Gecko observation asset rejects retired action model-open",
+      "pass": true
+    },
+    {
+      "name": "Public native bridge rejects retired action model-select",
+      "pass": true
+    },
+    {
+      "name": "Actual Gecko observation asset rejects retired action model-select",
+      "pass": true
+    },
+    {
+      "name": "Public native bridge rejects retired action message-regenerate-submit",
+      "pass": true
+    },
+    {
+      "name": "Actual Gecko observation asset rejects retired action message-regenerate-submit",
+      "pass": true
+    },
+    {
+      "name": "Public native bridge rejects retired action page-navigate",
+      "pass": true
+    },
+    {
+      "name": "Actual Gecko observation asset rejects retired action page-navigate",
+      "pass": true
+    },
+    {
+      "name": "Retired native actions leave the entire website DOM, composer, selection, route and login unchanged",
+      "pass": true
+    },
+    {
+      "name": "Actual different official SPA conversation quietly archives its native observation",
+      "pass": true
+    },
+    {
+      "name": "Quiet conversation archive retains full pending body and original delivery binding",
+      "pass": true
+    },
+    {
+      "name": "Quiet conversation archive clears stale completion samples and settings busy state",
+      "pass": true
+    },
+    {
+      "name": "Returning to an archived official conversation does not resurrect its old task",
+      "pass": true
+    },
+    {
+      "name": "Matching current official conversation retains a new observation",
+      "pass": true
+    },
+    {
+      "name": "A stale inspected URL cannot archive the current task",
+      "pass": true
+    },
+    {
+      "name": "A new official conversation still monitors its exact bound user without native submission",
+      "pass": true
+    },
+    {
+      "name": "An actual login route retains unresolved observation and its original binding",
+      "pass": true
+    },
+    {
+      "name": "An actual empty homepage hydration shell does not archive a bound conversation",
+      "pass": true
+    },
+    {
+      "name": "An interactive homepage still displaying a busy operation retains its bound observation",
+      "pass": true
+    },
+    {
+      "name": "An actual interactive empty official homepage quietly ends the old observation",
+      "pass": true
+    },
+    {
+      "name": "A genuine same-conversation edited question stays unresolved with its error",
+      "pass": true
+    },
+    {
+      "name": "Quiet navigation never stops reloads resubmits or changes the browser draft and login",
+      "pass": true
+    },
+    {
+      "name": "Dark appearance applies the official Gecko runtime preference",
+      "pass": true
+    },
+    {
+      "name": "Dark appearance preserves actual document login draft and URL",
+      "pass": true
+    },
+    {
+      "name": "Light appearance applies the official Gecko runtime preference",
+      "pass": true
+    },
+    {
+      "name": "Theme roundtrip preserves the same browser session and navigation epoch",
+      "pass": true
+    },
+    {
+      "name": "Light appearance preserves actual document login and unsent draft",
+      "pass": true
+    }
+  ],
+  "fixtureRequests": [
+    {
+      "method": "GET",
+      "path": "/performance"
+    },
+    {
+      "method": "GET",
+      "path": "/performance"
+    }
+  ],
+  "controlledProxyRoutes": [
+    {
+      "host": "127.0.0.1",
+      "port": 8767,
+      "addressType": 3,
+      "accepted": true
+    },
+    {
+      "host": "127.0.0.1",
+      "port": 8767,
+      "addressType": 3,
+      "accepted": true
+    }
+  ],
+  "browserDiagnostics": [
+    {
+      "kind": "route",
+      "value": {
+        "url": "https://firefox-settings-attachments.cdn.mozilla.net/bundles/startup.json.mozlz4",
+        "decision": {
+          "type": "socks",
+          "host": "127.0.0.1",
+          "port": 9,
+          "proxyDNS": true,
+          "failoverTimeout": 1
+        },
+        "guardAllowed": true,
+        "offline": false,
+        "networkReady": true
+      }
+    },
+    {
+      "kind": "load",
+      "value": {
+        "variant": "baseline",
+        "guardAllowed": true,
+        "offline": false,
+        "networkReady": true,
+        "proxy": "socks://127.0.0.1:1087"
+      }
+    },
+    {
+      "kind": "route",
+      "value": {
+        "url": "http://firefox-portal-detection.com/success.txt?ipv4",
+        "decision": {
+          "type": "socks",
+          "host": "127.0.0.1",
+          "port": 9,
+          "proxyDNS": true,
+          "failoverTimeout": 1
+        },
+        "guardAllowed": true,
+        "offline": false,
+        "networkReady": true
+      }
+    },
+    {
+      "kind": "route",
+      "value": {
+        "url": "http://firefox-portal-detection.com/success.txt?ipv6",
+        "decision": {
+          "type": "socks",
+          "host": "127.0.0.1",
+          "port": 9,
+          "proxyDNS": true,
+          "failoverTimeout": 1
+        },
+        "guardAllowed": true,
+        "offline": false,
+        "networkReady": true
+      }
+    },
+    {
+      "kind": "route",
+      "value": {
+        "url": "https://content-signature-2.cdn.mozilla.net/g/chains/202402/remote-settings.content-signature.mozilla.org-2027-01-03-18-03-41.chain",
+        "decision": {
+          "type": "socks",
+          "host": "127.0.0.1",
+          "port": 9,
+          "proxyDNS": true,
+          "failoverTimeout": 1
+        },
+        "guardAllowed": true,
+        "offline": false,
+        "networkReady": true
+      }
+    },
+    {
+      "kind": "route",
+      "value": {
+        "url": "http://127.0.0.1:8767/performance?variant=baseline",
+        "decision": {
+          "type": "socks",
+          "host": "127.0.0.1",
+          "port": 1087,
+          "failoverTimeout": 1,
+          "connectionIsolationKey": "environment-0-0",
+          "proxyDNS": true
+        },
+        "guardAllowed": true,
+        "offline": false,
+        "networkReady": true
+      }
+    },
+    {
+      "kind": "route",
+      "value": {
+        "url": "http://127.0.0.1:8767/performance?variant=baseline",
+        "decision": {
+          "type": "socks",
+          "host": "127.0.0.1",
+          "port": 1087,
+          "failoverTimeout": 1,
+          "connectionIsolationKey": "environment-0-0",
+          "proxyDNS": true
+        },
+        "guardAllowed": true,
+        "offline": false,
+        "networkReady": true
+      }
+    },
+    {
+      "kind": "route",
+      "value": {
+        "url": "http://127.0.0.1:8767/performance?variant=baseline",
+        "decision": {
+          "type": "socks",
+          "host": "127.0.0.1",
+          "port": 1087,
+          "failoverTimeout": 1,
+          "connectionIsolationKey": "environment-0-0",
+          "proxyDNS": true
+        },
+        "guardAllowed": true,
+        "offline": false,
+        "networkReady": true
+      }
+    },
+    {
+      "kind": "route",
+      "value": {
+        "url": "https://content-signature-2.cdn.mozilla.net/g/chains/202402/remote-settings.content-signature.mozilla.org-2027-01-03-18-03-41.chain",
+        "decision": {
+          "type": "socks",
+          "host": "127.0.0.1",
+          "port": 9,
+          "proxyDNS": true,
+          "failoverTimeout": 1
+        },
+        "guardAllowed": true,
+        "offline": false,
+        "networkReady": true
+      }
+    },
+    {
+      "kind": "route",
+      "value": {
+        "url": "https://content-signature-2.cdn.mozilla.net/g/chains/202402/remote-settings.content-signature.mozilla.org-2027-01-03-18-03-41.chain",
+        "decision": {
+          "type": "socks",
+          "host": "127.0.0.1",
+          "port": 9,
+          "proxyDNS": true,
+          "failoverTimeout": 1
+        },
+        "guardAllowed": true,
+        "offline": false,
+        "networkReady": true
+      }
+    },
+    {
+      "kind": "route",
+      "value": {
+        "url": "https://content-signature-2.cdn.mozilla.net/g/chains/202402/remote-settings.content-signature.mozilla.org-2027-01-03-18-03-41.chain",
+        "decision": {
+          "type": "socks",
+          "host": "127.0.0.1",
+          "port": 9,
+          "proxyDNS": true,
+          "failoverTimeout": 1
+        },
+        "guardAllowed": true,
+        "offline": false,
+        "networkReady": true
+      }
+    },
+    {
+      "kind": "route",
+      "value": {
+        "url": "https://content-signature-2.cdn.mozilla.net/g/chains/202402/remote-settings.content-signature.mozilla.org-2027-01-03-18-03-41.chain",
+        "decision": {
+          "type": "socks",
+          "host": "127.0.0.1",
+          "port": 9,
+          "proxyDNS": true,
+          "failoverTimeout": 1
+        },
+        "guardAllowed": true,
+        "offline": false,
+        "networkReady": true
+      }
+    },
+    {
+      "kind": "route",
+      "value": {
+        "url": "https://content-signature-2.cdn.mozilla.net/g/chains/202402/remote-settings.content-signature.mozilla.org-2027-01-03-18-03-41.chain",
+        "decision": {
+          "type": "socks",
+          "host": "127.0.0.1",
+          "port": 9,
+          "proxyDNS": true,
+          "failoverTimeout": 1
+        },
+        "guardAllowed": true,
+        "offline": false,
+        "networkReady": true
+      }
+    },
+    {
+      "kind": "route",
+      "value": {
+        "url": "https://content-signature-2.cdn.mozilla.net/g/chains/202402/remote-settings.content-signature.mozilla.org-2027-01-03-18-03-41.chain",
+        "decision": {
+          "type": "socks",
+          "host": "127.0.0.1",
+          "port": 9,
+          "proxyDNS": true,
+          "failoverTimeout": 1
+        },
+        "guardAllowed": true,
+        "offline": false,
+        "networkReady": true
+      }
+    },
+    {
+      "kind": "route",
+      "value": {
+        "url": "https://content-signature-2.cdn.mozilla.net/g/chains/202402/remote-settings.content-signature.mozilla.org-2027-01-03-18-03-41.chain",
+        "decision": {
+          "type": "socks",
+          "host": "127.0.0.1",
+          "port": 9,
+          "proxyDNS": true,
+          "failoverTimeout": 1
+        },
+        "guardAllowed": true,
+        "offline": false,
+        "networkReady": true
+      }
+    },
+    {
+      "kind": "route",
+      "value": {
+        "url": "https://content-signature-2.cdn.mozilla.net/g/chains/202402/remote-settings.content-signature.mozilla.org-2027-01-03-18-03-41.chain",
+        "decision": {
+          "type": "socks",
+          "host": "127.0.0.1",
+          "port": 9,
+          "proxyDNS": true,
+          "failoverTimeout": 1
+        },
+        "guardAllowed": true,
+        "offline": false,
+        "networkReady": true
+      }
+    },
+    {
+      "kind": "route",
+      "value": {
+        "url": "https://content-signature-2.cdn.mozilla.net/g/chains/202402/remote-settings.content-signature.mozilla.org-2027-01-03-18-03-41.chain",
+        "decision": {
+          "type": "socks",
+          "host": "127.0.0.1",
+          "port": 9,
+          "proxyDNS": true,
+          "failoverTimeout": 1
+        },
+        "guardAllowed": true,
+        "offline": false,
+        "networkReady": true
+      }
+    },
+    {
+      "kind": "route",
+      "value": {
+        "url": "https://content-signature-2.cdn.mozilla.net/g/chains/202402/remote-settings.content-signature.mozilla.org-2027-01-03-18-03-41.chain",
+        "decision": {
+          "type": "socks",
+          "host": "127.0.0.1",
+          "port": 9,
+          "proxyDNS": true,
+          "failoverTimeout": 1
+        },
+        "guardAllowed": true,
+        "offline": false,
+        "networkReady": true
+      }
+    },
+    {
+      "kind": "route",
+      "value": {
+        "url": "https://content-signature-2.cdn.mozilla.net/g/chains/202402/remote-settings.content-signature.mozilla.org-2027-01-03-18-03-41.chain",
+        "decision": {
+          "type": "socks",
+          "host": "127.0.0.1",
+          "port": 9,
+          "proxyDNS": true,
+          "failoverTimeout": 1
+        },
+        "guardAllowed": true,
+        "offline": false,
+        "networkReady": true
+      }
+    },
+    {
+      "kind": "route",
+      "value": {
+        "url": "https://content-signature-2.cdn.mozilla.net/g/chains/202402/remote-settings.content-signature.mozilla.org-2027-01-03-18-03-41.chain",
+        "decision": {
+          "type": "socks",
+          "host": "127.0.0.1",
+          "port": 9,
+          "proxyDNS": true,
+          "failoverTimeout": 1
+        },
+        "guardAllowed": true,
+        "offline": false,
+        "networkReady": true
+      }
+    },
+    {
+      "kind": "route",
+      "value": {
+        "url": "https://content-signature-2.cdn.mozilla.net/g/chains/202402/remote-settings.content-signature.mozilla.org-2027-01-03-18-03-41.chain",
+        "decision": {
+          "type": "socks",
+          "host": "127.0.0.1",
+          "port": 9,
+          "proxyDNS": true,
+          "failoverTimeout": 1
+        },
+        "guardAllowed": true,
+        "offline": false,
+        "networkReady": true
+      }
+    },
+    {
+      "kind": "route",
+      "value": {
+        "url": "https://content-signature-2.cdn.mozilla.net/g/chains/202402/remote-settings.content-signature.mozilla.org-2027-01-03-18-03-41.chain",
+        "decision": {
+          "type": "socks",
+          "host": "127.0.0.1",
+          "port": 9,
+          "proxyDNS": true,
+          "failoverTimeout": 1
+        },
+        "guardAllowed": true,
+        "offline": false,
+        "networkReady": true
+      }
+    },
+    {
+      "kind": "route",
+      "value": {
+        "url": "https://content-signature-2.cdn.mozilla.net/g/chains/202402/remote-settings.content-signature.mozilla.org-2027-01-03-18-03-41.chain",
+        "decision": {
+          "type": "socks",
+          "host": "127.0.0.1",
+          "port": 9,
+          "proxyDNS": true,
+          "failoverTimeout": 1
+        },
+        "guardAllowed": true,
+        "offline": false,
+        "networkReady": true
+      }
+    },
+    {
+      "kind": "route",
+      "value": {
+        "url": "https://content-signature-2.cdn.mozilla.net/g/chains/202402/remote-settings.content-signature.mozilla.org-2027-01-03-18-03-41.chain",
+        "decision": {
+          "type": "socks",
+          "host": "127.0.0.1",
+          "port": 9,
+          "proxyDNS": true,
+          "failoverTimeout": 1
+        },
+        "guardAllowed": true,
+        "offline": false,
+        "networkReady": true
+      }
+    },
+    {
+      "kind": "route",
+      "value": {
+        "url": "https://content-signature-2.cdn.mozilla.net/g/chains/202402/remote-settings.content-signature.mozilla.org-2027-01-03-18-03-41.chain",
+        "decision": {
+          "type": "socks",
+          "host": "127.0.0.1",
+          "port": 9,
+          "proxyDNS": true,
+          "failoverTimeout": 1
+        },
+        "guardAllowed": true,
+        "offline": false,
+        "networkReady": true
+      }
+    },
+    {
+      "kind": "route",
+      "value": {
+        "url": "https://firefox.settings.services.mozilla.com/v2/buckets/monitor/collections/changes/changeset?collection=moz-essential-domain-fallbacks&bucket=main&_expected=0",
+        "decision": {
+          "type": "socks",
+          "host": "127.0.0.1",
+          "port": 9,
+          "proxyDNS": true,
+          "failoverTimeout": 1
+        },
+        "guardAllowed": true,
+        "offline": false,
+        "networkReady": true
+      }
+    },
+    {
+      "kind": "route",
+      "value": {
+        "url": "https://firefox.settings.services.mozilla.com/v2/buckets/monitor/collections/changes/changeset?collection=url-parser-default-unknown-schemes-interventions&bucket=main&_expected=0",
+        "decision": {
+          "type": "socks",
+          "host": "127.0.0.1",
+          "port": 9,
+          "proxyDNS": true,
+          "failoverTimeout": 1
+        },
+        "guardAllowed": true,
+        "offline": false,
+        "networkReady": true
+      }
+    },
+    {
+      "kind": "route",
+      "value": {
+        "url": "https://firefox.settings.services.mozilla.com/v2/buckets/monitor/collections/changes/changeset?collection=anti-tracking-url-decoration&bucket=main&_expected=0",
+        "decision": {
+          "type": "socks",
+          "host": "127.0.0.1",
+          "port": 9,
+          "proxyDNS": true,
+          "failoverTimeout": 1
+        },
+        "guardAllowed": true,
+        "offline": false,
+        "networkReady": true
+      }
+    },
+    {
+      "kind": "route",
+      "value": {
+        "url": "https://firefox-settings-attachments.cdn.mozilla.net/main-workspace/tracking-protection-lists/20261112011954--ads-track-digest256-157--d3f3f4cc-a949-4f87-bdb9-f6e1f912e708",
+        "decision": {
+          "type": "socks",
+          "host": "127.0.0.1",
+          "port": 9,
+          "proxyDNS": true,
+          "failoverTimeout": 1
+        },
+        "guardAllowed": true,
+        "offline": false,
+        "networkReady": true
+      }
+    },
+    {
+      "kind": "route",
+      "value": {
+        "url": "https://firefox.settings.services.mozilla.com/v2/buckets/main/collections/moz-essential-domain-fallbacks/changeset?_expected=1776861681298",
+        "decision": {
+          "type": "socks",
+          "host": "127.0.0.1",
+          "port": 9,
+          "proxyDNS": true,
+          "failoverTimeout": 1
+        },
+        "guardAllowed": true,
+        "offline": false,
+        "networkReady": true
+      }
+    },
+    {
+      "kind": "route",
+      "value": {
+        "url": "https://firefox.settings.services.mozilla.com/v2/buckets/main/collections/url-parser-default-unknown-schemes-interventions/changeset?_expected=1743513175300",
+        "decision": {
+          "type": "socks",
+          "host": "127.0.0.1",
+          "port": 9,
+          "proxyDNS": true,
+          "failoverTimeout": 1
+        },
+        "guardAllowed": true,
+        "offline": false,
+        "networkReady": true
+      }
+    },
+    {
+      "kind": "route",
+      "value": {
+        "url": "https://firefox.settings.services.mozilla.com/v2/buckets/main/collections/anti-tracking-url-decoration/changeset?_expected=1564511755134",
+        "decision": {
+          "type": "socks",
+          "host": "127.0.0.1",
+          "port": 9,
+          "proxyDNS": true,
+          "failoverTimeout": 1
+        },
+        "guardAllowed": true,
+        "offline": false,
+        "networkReady": true
+      }
+    },
+    {
+      "kind": "route",
+      "value": {
+        "url": "https://firefox-settings-attachments.cdn.mozilla.net/main-workspace/tracking-protection-lists/20261112011959--social-track-digest256-157--64ffa9c5-a3f0-40f7-86d2-c36a5be3b438",
+        "decision": {
+          "type": "socks",
+          "host": "127.0.0.1",
+          "port": 9,
+          "proxyDNS": true,
+          "failoverTimeout": 1
+        },
+        "guardAllowed": true,
+        "offline": false,
+        "networkReady": true
+      }
+    },
+    {
+      "kind": "route",
+      "value": {
+        "url": "https://content-signature-2.cdn.mozilla.net/g/chains/202402/remote-settings.content-signature.mozilla.org-2027-01-03-18-03-41.chain",
+        "decision": {
+          "type": "socks",
+          "host": "127.0.0.1",
+          "port": 9,
+          "proxyDNS": true,
+          "failoverTimeout": 1
+        },
+        "guardAllowed": true,
+        "offline": false,
+        "networkReady": true
+      }
+    },
+    {
+      "kind": "route",
+      "value": {
+        "url": "https://content-signature-2.cdn.mozilla.net/g/chains/202402/remote-settings.content-signature.mozilla.org-2027-01-03-18-03-41.chain",
+        "decision": {
+          "type": "socks",
+          "host": "127.0.0.1",
+          "port": 9,
+          "proxyDNS": true,
+          "failoverTimeout": 1
+        },
+        "guardAllowed": true,
+        "offline": false,
+        "networkReady": true
+      }
+    },
+    {
+      "kind": "route",
+      "value": {
+        "url": "https://content-signature-2.cdn.mozilla.net/g/chains/202402/remote-settings.content-signature.mozilla.org-2027-01-03-18-03-41.chain",
+        "decision": {
+          "type": "socks",
+          "host": "127.0.0.1",
+          "port": 9,
+          "proxyDNS": true,
+          "failoverTimeout": 1
+        },
+        "guardAllowed": true,
+        "offline": false,
+        "networkReady": true
+      }
+    },
+    {
+      "kind": "route",
+      "value": {
+        "url": "https://firefox-settings-attachments.cdn.mozilla.net/main-workspace/tracking-protection-lists/20261112011957--analytics-track-digest256-157--6ab32c64-1799-4f4d-b7ec-24ac83c2b940",
+        "decision": {
+          "type": "socks",
+          "host": "127.0.0.1",
+          "port": 9,
+          "proxyDNS": true,
+          "failoverTimeout": 1
+        },
+        "guardAllowed": true,
+        "offline": false,
+        "networkReady": true
+      }
+    },
+    {
+      "kind": "route",
+      "value": {
+        "url": "https://firefox-settings-attachments.cdn.mozilla.net/main-workspace/tracking-protection-lists/20261112011952--content-track-digest256-157--2dae6a3b-d171-452c-9e8b-1a9edd090c34",
+        "decision": {
+          "type": "socks",
+          "host": "127.0.0.1",
+          "port": 9,
+          "proxyDNS": true,
+          "failoverTimeout": 1
+        },
+        "guardAllowed": true,
+        "offline": false,
+        "networkReady": true
+      }
+    },
+    {
+      "kind": "route",
+      "value": {
+        "url": "https://firefox-settings-attachments.cdn.mozilla.net/main-workspace/tracking-protection-lists/20261112012016--mozstd-trackwhite-digest256-157--1fa60958-43c5-49a4-b818-599a7a7d126c",
+        "decision": {
+          "type": "socks",
+          "host": "127.0.0.1",
+          "port": 9,
+          "proxyDNS": true,
+          "failoverTimeout": 1
+        },
+        "guardAllowed": true,
+        "offline": false,
+        "networkReady": true
+      }
+    },
+    {
+      "kind": "route",
+      "value": {
+        "url": "https://firefox-settings-attachments.cdn.mozilla.net/main-workspace/tracking-protection-lists/20261112012019--google-trackwhite-digest256-157--0bfc0097-b3d5-4f06-8bd3-0501919549ad",
+        "decision": {
+          "type": "socks",
+          "host": "127.0.0.1",
+          "port": 9,
+          "proxyDNS": true,
+          "failoverTimeout": 1
+        },
+        "guardAllowed": true,
+        "offline": false,
+        "networkReady": true
+      }
+    },
+    {
+      "kind": "route",
+      "value": {
+        "url": "https://firefox-settings-attachments.cdn.mozilla.net/main-workspace/tracking-protection-lists/20261112012022--base-fingerprinting-track-digest256-157--d94ce166-2338-43fd-a576-7772fb763288",
+        "decision": {
+          "type": "socks",
+          "host": "127.0.0.1",
+          "port": 9,
+          "proxyDNS": true,
+          "failoverTimeout": 1
+        },
+        "guardAllowed": true,
+        "offline": false,
+        "networkReady": true
+      }
+    },
+    {
+      "kind": "route",
+      "value": {
+        "url": "https://firefox-settings-attachments.cdn.mozilla.net/main-workspace/tracking-protection-lists/20261112012027--base-cryptomining-track-digest256-157--e530ce54-df27-44f0-92f2-0a0862592dc8",
+        "decision": {
+          "type": "socks",
+          "host": "127.0.0.1",
+          "port": 9,
+          "proxyDNS": true,
+          "failoverTimeout": 1
+        },
+        "guardAllowed": true,
+        "offline": false,
+        "networkReady": true
+      }
+    },
+    {
+      "kind": "route",
+      "value": {
+        "url": "https://firefox-settings-attachments.cdn.mozilla.net/main-workspace/tracking-protection-lists/20261112012035--base-email-track-digest256-157--000faf41-f496-44d6-bac6-ee8e2c3f2e0b",
+        "decision": {
+          "type": "socks",
+          "host": "127.0.0.1",
+          "port": 9,
+          "proxyDNS": true,
+          "failoverTimeout": 1
+        },
+        "guardAllowed": true,
+        "offline": false,
+        "networkReady": true
+      }
+    },
+    {
+      "kind": "route",
+      "value": {
+        "url": "https://firefox-settings-attachments.cdn.mozilla.net/main-workspace/tracking-protection-lists/20261112012038--content-email-track-digest256-157--3656cdd8-19e6-4343-80a0-048850796f4d",
+        "decision": {
+          "type": "socks",
+          "host": "127.0.0.1",
+          "port": 9,
+          "proxyDNS": true,
+          "failoverTimeout": 1
+        },
+        "guardAllowed": true,
+        "offline": false,
+        "networkReady": true
+      }
+    },
+    {
+      "kind": "route",
+      "value": {
+        "url": "https://firefox-settings-attachments.cdn.mozilla.net/main-workspace/tracking-protection-lists/20261112012040--consent-manager-track-digest256-157--8b935152-71f6-4503-a6cd-dbb21d5ec9b0",
+        "decision": {
+          "type": "socks",
+          "host": "127.0.0.1",
+          "port": 9,
+          "proxyDNS": true,
+          "failoverTimeout": 1
+        },
+        "guardAllowed": true,
+        "offline": false,
+        "networkReady": true
+      }
+    },
+    {
+      "kind": "route",
+      "value": {
+        "url": "https://firefox-settings-attachments.cdn.mozilla.net/main-workspace/tracking-protection-lists/20261112012043--anti-fraud-track-digest256-157--f2f6276c-2520-40ee-aa21-c5791324fa17",
+        "decision": {
+          "type": "socks",
+          "host": "127.0.0.1",
+          "port": 9,
+          "proxyDNS": true,
+          "failoverTimeout": 1
+        },
+        "guardAllowed": true,
+        "offline": false,
+        "networkReady": true
+      }
+    },
+    {
+      "kind": "route",
+      "value": {
+        "url": "https://firefox-settings-attachments.cdn.mozilla.net/main-workspace/tracking-protection-lists/20261112011954--ads-track-digest256-157--d3f3f4cc-a949-4f87-bdb9-f6e1f912e708",
+        "decision": {
+          "type": "socks",
+          "host": "127.0.0.1",
+          "port": 9,
+          "proxyDNS": true,
+          "failoverTimeout": 1
+        },
+        "guardAllowed": true,
+        "offline": false,
+        "networkReady": true
+      }
+    },
+    {
+      "kind": "route",
+      "value": {
+        "url": "https://firefox-settings-attachments.cdn.mozilla.net/main-workspace/tracking-protection-lists/20261112011959--social-track-digest256-157--64ffa9c5-a3f0-40f7-86d2-c36a5be3b438",
+        "decision": {
+          "type": "socks",
+          "host": "127.0.0.1",
+          "port": 9,
+          "proxyDNS": true,
+          "failoverTimeout": 1
+        },
+        "guardAllowed": true,
+        "offline": false,
+        "networkReady": true
+      }
+    },
+    {
+      "kind": "route",
+      "value": {
+        "url": "https://firefox-settings-attachments.cdn.mozilla.net/main-workspace/tracking-protection-lists/20261112011957--analytics-track-digest256-157--6ab32c64-1799-4f4d-b7ec-24ac83c2b940",
+        "decision": {
+          "type": "socks",
+          "host": "127.0.0.1",
+          "port": 9,
+          "proxyDNS": true,
+          "failoverTimeout": 1
+        },
+        "guardAllowed": true,
+        "offline": false,
+        "networkReady": true
+      }
+    },
+    {
+      "kind": "route",
+      "value": {
+        "url": "https://firefox-settings-attachments.cdn.mozilla.net/main-workspace/tracking-protection-lists/20261112011952--content-track-digest256-157--2dae6a3b-d171-452c-9e8b-1a9edd090c34",
+        "decision": {
+          "type": "socks",
+          "host": "127.0.0.1",
+          "port": 9,
+          "proxyDNS": true,
+          "failoverTimeout": 1
+        },
+        "guardAllowed": true,
+        "offline": false,
+        "networkReady": true
+      }
+    },
+    {
+      "kind": "route",
+      "value": {
+        "url": "https://firefox-settings-attachments.cdn.mozilla.net/main-workspace/tracking-protection-lists/20261112012016--mozstd-trackwhite-digest256-157--1fa60958-43c5-49a4-b818-599a7a7d126c",
+        "decision": {
+          "type": "socks",
+          "host": "127.0.0.1",
+          "port": 9,
+          "proxyDNS": true,
+          "failoverTimeout": 1
+        },
+        "guardAllowed": true,
+        "offline": false,
+        "networkReady": true
+      }
+    },
+    {
+      "kind": "route",
+      "value": {
+        "url": "https://firefox-settings-attachments.cdn.mozilla.net/main-workspace/tracking-protection-lists/20261112012019--google-trackwhite-digest256-157--0bfc0097-b3d5-4f06-8bd3-0501919549ad",
+        "decision": {
+          "type": "socks",
+          "host": "127.0.0.1",
+          "port": 9,
+          "proxyDNS": true,
+          "failoverTimeout": 1
+        },
+        "guardAllowed": true,
+        "offline": false,
+        "networkReady": true
+      }
+    },
+    {
+      "kind": "route",
+      "value": {
+        "url": "https://firefox-settings-attachments.cdn.mozilla.net/main-workspace/tracking-protection-lists/20261112012022--base-fingerprinting-track-digest256-157--d94ce166-2338-43fd-a576-7772fb763288",
+        "decision": {
+          "type": "socks",
+          "host": "127.0.0.1",
+          "port": 9,
+          "proxyDNS": true,
+          "failoverTimeout": 1
+        },
+        "guardAllowed": true,
+        "offline": false,
+        "networkReady": true
+      }
+    },
+    {
+      "kind": "route",
+      "value": {
+        "url": "https://firefox-settings-attachments.cdn.mozilla.net/main-workspace/tracking-protection-lists/20261112012027--base-cryptomining-track-digest256-157--e530ce54-df27-44f0-92f2-0a0862592dc8",
+        "decision": {
+          "type": "socks",
+          "host": "127.0.0.1",
+          "port": 9,
+          "proxyDNS": true,
+          "failoverTimeout": 1
+        },
+        "guardAllowed": true,
+        "offline": false,
+        "networkReady": true
+      }
+    },
+    {
+      "kind": "route",
+      "value": {
+        "url": "https://firefox-settings-attachments.cdn.mozilla.net/main-workspace/tracking-protection-lists/20261112012035--base-email-track-digest256-157--000faf41-f496-44d6-bac6-ee8e2c3f2e0b",
+        "decision": {
+          "type": "socks",
+          "host": "127.0.0.1",
+          "port": 9,
+          "proxyDNS": true,
+          "failoverTimeout": 1
+        },
+        "guardAllowed": true,
+        "offline": false,
+        "networkReady": true
+      }
+    },
+    {
+      "kind": "route",
+      "value": {
+        "url": "https://firefox-settings-attachments.cdn.mozilla.net/main-workspace/tracking-protection-lists/20261112012038--content-email-track-digest256-157--3656cdd8-19e6-4343-80a0-048850796f4d",
+        "decision": {
+          "type": "socks",
+          "host": "127.0.0.1",
+          "port": 9,
+          "proxyDNS": true,
+          "failoverTimeout": 1
+        },
+        "guardAllowed": true,
+        "offline": false,
+        "networkReady": true
+      }
+    },
+    {
+      "kind": "route",
+      "value": {
+        "url": "https://firefox-settings-attachments.cdn.mozilla.net/main-workspace/tracking-protection-lists/20261112012040--consent-manager-track-digest256-157--8b935152-71f6-4503-a6cd-dbb21d5ec9b0",
+        "decision": {
+          "type": "socks",
+          "host": "127.0.0.1",
+          "port": 9,
+          "proxyDNS": true,
+          "failoverTimeout": 1
+        },
+        "guardAllowed": true,
+        "offline": false,
+        "networkReady": true
+      }
+    },
+    {
+      "kind": "route",
+      "value": {
+        "url": "https://firefox-settings-attachments.cdn.mozilla.net/main-workspace/tracking-protection-lists/20261112012043--anti-fraud-track-digest256-157--f2f6276c-2520-40ee-aa21-c5791324fa17",
+        "decision": {
+          "type": "socks",
+          "host": "127.0.0.1",
+          "port": 9,
+          "proxyDNS": true,
+          "failoverTimeout": 1
+        },
+        "guardAllowed": true,
+        "offline": false,
+        "networkReady": true
+      }
+    },
+    {
+      "kind": "load",
+      "value": {
+        "variant": "current",
+        "guardAllowed": true,
+        "offline": false,
+        "networkReady": true,
+        "proxy": "socks://127.0.0.1:1087"
+      }
+    },
+    {
+      "kind": "route",
+      "value": {
+        "url": "http://127.0.0.1:8767/performance?variant=current",
+        "decision": {
+          "type": "socks",
+          "host": "127.0.0.1",
+          "port": 1087,
+          "failoverTimeout": 1,
+          "connectionIsolationKey": "environment-0-0",
+          "proxyDNS": true
+        },
+        "guardAllowed": true,
+        "offline": false,
+        "networkReady": true
+      }
+    },
+    {
+      "kind": "route",
+      "value": {
+        "url": "http://127.0.0.1:8767/performance?variant=current",
+        "decision": {
+          "type": "socks",
+          "host": "127.0.0.1",
+          "port": 1087,
+          "failoverTimeout": 1,
+          "connectionIsolationKey": "environment-0-0",
+          "proxyDNS": true
+        },
+        "guardAllowed": true,
+        "offline": false,
+        "networkReady": true
+      }
+    },
+    {
+      "kind": "route",
+      "value": {
+        "url": "https://location.services.mozilla.com/v1/country?key=[REDACTED_SERVICE_API_KEY]",
+        "decision": {
+          "type": "socks",
+          "host": "127.0.0.1",
+          "port": 9,
+          "proxyDNS": true,
+          "failoverTimeout": 1
+        },
+        "guardAllowed": true,
+        "offline": false,
+        "networkReady": true
+      }
+    },
+    {
+      "kind": "route",
+      "value": {
+        "url": "https://safebrowsing.googleapis.com/v5/hashLists:batchGet?key=[REDACTED_SERVICE_API_KEY]&names=se-4b&names=mw-4b&names=uwsa-4b&version=&version=&version=",
+        "decision": {
+          "type": "socks",
+          "host": "127.0.0.1",
+          "port": 9,
+          "proxyDNS": true,
+          "failoverTimeout": 1
+        },
+        "guardAllowed": true,
+        "offline": false,
+        "networkReady": true
+      }
+    }
+  ],
+  "baselineAssetVerification": {
+    "sourceCommit": "835d59991218eda70c7a4fdd73ea9d7ae6052688",
+    "version": "1.5.16",
+    "scope": "Integration-only immutable historical production assets. Absent from release source set.",
+    "files": {
+      "page-driver.js": {
+        "bytes": 47781,
+        "sha256": "218097100a00f54ef1ea8732c3b3cb0307a7100b8e6a6ce7d0dcf635763cfeec"
+      },
+      "web-performance.js": {
+        "bytes": 3689,
+        "sha256": "e1d26f134e4e6edac8ad82a3c8faf245f8083d19b93f1922281828408191b2ad"
+      }
+    }
+  },
+  "actualAndroidGestures": [
+    {
+      "id": "baseline-scroll",
+      "action": "scroll",
+      "x": 540,
+      "startY": 1469,
+      "endY": 567
+    },
+    {
+      "id": "current-scroll",
+      "action": "scroll",
+      "x": 540,
+      "startY": 1469,
+      "endY": 567
+    },
+    {
+      "id": "current-input",
+      "action": "input",
+      "x": 498,
+      "y": 1753,
+      "text": "-user-typed"
+    }
+  ],
+  "actualAndroidTextInputs": [
+    {
+      "id": "current-input",
+      "text": "-user-typed",
+      "composerFocused": true,
+      "nativeFocused": true,
+      "acceptingText": true,
+      "imeVisible": true,
+      "imeBottom": 840,
+      "stableFocusSamples": 7,
+      "settledMs": 614,
+      "start": 22,
+      "end": 22,
+      "draft": "unsent draft stays unchanged",
+      "bounds": {
+        "left": 10,
+        "top": 599.4833374023438,
+        "width": 362.433349609375,
+        "height": 55.366668701171875
+      },
+      "viewport": {
+        "width": 414,
+        "height": 691.1500244140625,
+        "offsetLeft": 0,
+        "offsetTop": 0,
+        "scale": 1,
+        "innerWidth": 414,
+        "innerHeight": 691
+      },
+      "nativeBounds": {
+        "left": 0,
+        "top": 117,
+        "width": 1080,
+        "height": 1803
+      }
+    }
+  ],
+  "device": {
+    "androidSdk": 35,
+    "androidRelease": "15",
+    "screen": "Physical size: 320x640\nOverride size: 1080x1920",
+    "density": "Physical density: 160\nOverride density: 420",
+    "frameTimingInterpretation": "Descriptive actual Gecko RAF and Android Choreographer gaps during the controlled polling and gesture workload; no claim of real-account FPS."
+  },
+  "actualInputReadinessTrace": [
+    {
+      "id": "current-input",
+      "sequence": 0,
+      "requested": false,
+      "composerFocused": false,
+      "nativeFocused": true,
+      "acceptingText": false,
+      "imeVisible": false,
+      "imeBottom": 0,
+      "stableFocusSamples": 0,
+      "settledMs": 0,
+      "start": 0,
+      "end": 0,
+      "draft": "unsent draft stays unchanged",
+      "bounds": {
+        "left": 10,
+        "top": 599.4833374023438,
+        "width": 362.433349609375,
+        "height": 55.366668701171875
+      },
+      "viewport": {
+        "width": 414,
+        "height": 691.1500244140625,
+        "offsetLeft": 0,
+        "offsetTop": 0,
+        "scale": 1,
+        "innerWidth": 414,
+        "innerHeight": 691
+      },
+      "nativeBounds": {
+        "left": 0,
+        "top": 117,
+        "width": 1080,
+        "height": 1803
+      }
+    },
+    {
+      "id": "current-input",
+      "sequence": 1,
+      "requested": false,
+      "composerFocused": false,
+      "nativeFocused": true,
+      "acceptingText": false,
+      "imeVisible": false,
+      "imeBottom": 0,
+      "stableFocusSamples": 0,
+      "settledMs": 0,
+      "start": 0,
+      "end": 0,
+      "draft": "unsent draft stays unchanged",
+      "bounds": {
+        "left": 10,
+        "top": 599.4833374023438,
+        "width": 362.433349609375,
+        "height": 55.366668701171875
+      },
+      "viewport": {
+        "width": 414,
+        "height": 691.1500244140625,
+        "offsetLeft": 0,
+        "offsetTop": 0,
+        "scale": 1,
+        "innerWidth": 414,
+        "innerHeight": 691
+      },
+      "nativeBounds": {
+        "left": 0,
+        "top": 117,
+        "width": 1080,
+        "height": 1803
+      }
+    },
+    {
+      "id": "current-input",
+      "sequence": 2,
+      "requested": false,
+      "composerFocused": false,
+      "nativeFocused": true,
+      "acceptingText": false,
+      "imeVisible": false,
+      "imeBottom": 0,
+      "stableFocusSamples": 0,
+      "settledMs": 0,
+      "start": 0,
+      "end": 0,
+      "draft": "unsent draft stays unchanged",
+      "bounds": {
+        "left": 10,
+        "top": 599.4833374023438,
+        "width": 362.433349609375,
+        "height": 55.366668701171875
+      },
+      "viewport": {
+        "width": 414,
+        "height": 691.1500244140625,
+        "offsetLeft": 0,
+        "offsetTop": 0,
+        "scale": 1,
+        "innerWidth": 414,
+        "innerHeight": 691
+      },
+      "nativeBounds": {
+        "left": 0,
+        "top": 117,
+        "width": 1080,
+        "height": 1803
+      }
+    },
+    {
+      "id": "current-input",
+      "sequence": 3,
+      "requested": false,
+      "composerFocused": false,
+      "nativeFocused": true,
+      "acceptingText": false,
+      "imeVisible": false,
+      "imeBottom": 0,
+      "stableFocusSamples": 0,
+      "settledMs": 0,
+      "start": 0,
+      "end": 0,
+      "draft": "unsent draft stays unchanged",
+      "bounds": {
+        "left": 10,
+        "top": 599.4833374023438,
+        "width": 362.433349609375,
+        "height": 55.366668701171875
+      },
+      "viewport": {
+        "width": 414,
+        "height": 691.1500244140625,
+        "offsetLeft": 0,
+        "offsetTop": 0,
+        "scale": 1,
+        "innerWidth": 414,
+        "innerHeight": 691
+      },
+      "nativeBounds": {
+        "left": 0,
+        "top": 117,
+        "width": 1080,
+        "height": 1803
+      }
+    },
+    {
+      "id": "current-input",
+      "sequence": 4,
+      "requested": false,
+      "composerFocused": false,
+      "nativeFocused": true,
+      "acceptingText": false,
+      "imeVisible": false,
+      "imeBottom": 0,
+      "stableFocusSamples": 0,
+      "settledMs": 0,
+      "start": 0,
+      "end": 0,
+      "draft": "unsent draft stays unchanged",
+      "bounds": {
+        "left": 10,
+        "top": 599.4833374023438,
+        "width": 362.433349609375,
+        "height": 55.366668701171875
+      },
+      "viewport": {
+        "width": 414,
+        "height": 691.1500244140625,
+        "offsetLeft": 0,
+        "offsetTop": 0,
+        "scale": 1,
+        "innerWidth": 414,
+        "innerHeight": 691
+      },
+      "nativeBounds": {
+        "left": 0,
+        "top": 117,
+        "width": 1080,
+        "height": 1803
+      }
+    },
+    {
+      "id": "current-input",
+      "sequence": 5,
+      "requested": false,
+      "composerFocused": false,
+      "nativeFocused": true,
+      "acceptingText": false,
+      "imeVisible": false,
+      "imeBottom": 0,
+      "stableFocusSamples": 0,
+      "settledMs": 0,
+      "start": 0,
+      "end": 0,
+      "draft": "unsent draft stays unchanged",
+      "bounds": {
+        "left": 10,
+        "top": 599.4833374023438,
+        "width": 362.433349609375,
+        "height": 55.366668701171875
+      },
+      "viewport": {
+        "width": 414,
+        "height": 691.1500244140625,
+        "offsetLeft": 0,
+        "offsetTop": 0,
+        "scale": 1,
+        "innerWidth": 414,
+        "innerHeight": 691
+      },
+      "nativeBounds": {
+        "left": 0,
+        "top": 117,
+        "width": 1080,
+        "height": 1803
+      }
+    },
+    {
+      "id": "current-input",
+      "sequence": 6,
+      "requested": false,
+      "composerFocused": false,
+      "nativeFocused": true,
+      "acceptingText": false,
+      "imeVisible": false,
+      "imeBottom": 0,
+      "stableFocusSamples": 0,
+      "settledMs": 0,
+      "start": 0,
+      "end": 0,
+      "draft": "unsent draft stays unchanged",
+      "bounds": {
+        "left": 10,
+        "top": 599.4833374023438,
+        "width": 362.433349609375,
+        "height": 55.366668701171875
+      },
+      "viewport": {
+        "width": 414,
+        "height": 691.1500244140625,
+        "offsetLeft": 0,
+        "offsetTop": 0,
+        "scale": 1,
+        "innerWidth": 414,
+        "innerHeight": 691
+      },
+      "nativeBounds": {
+        "left": 0,
+        "top": 117,
+        "width": 1080,
+        "height": 1803
+      }
+    },
+    {
+      "id": "current-input",
+      "sequence": 7,
+      "requested": false,
+      "composerFocused": true,
+      "nativeFocused": true,
+      "acceptingText": false,
+      "imeVisible": false,
+      "imeBottom": 0,
+      "stableFocusSamples": 0,
+      "settledMs": 0,
+      "start": 22,
+      "end": 22,
+      "draft": "unsent draft stays unchanged",
+      "bounds": {
+        "left": 10,
+        "top": 599.4833374023438,
+        "width": 362.433349609375,
+        "height": 55.366668701171875
+      },
+      "viewport": {
+        "width": 414,
+        "height": 691.1500244140625,
+        "offsetLeft": 0,
+        "offsetTop": 0,
+        "scale": 1,
+        "innerWidth": 414,
+        "innerHeight": 691
+      },
+      "nativeBounds": {
+        "left": 0,
+        "top": 117,
+        "width": 1080,
+        "height": 1803
+      }
+    },
+    {
+      "id": "current-input",
+      "sequence": 8,
+      "requested": false,
+      "composerFocused": true,
+      "nativeFocused": true,
+      "acceptingText": true,
+      "imeVisible": false,
+      "imeBottom": 0,
+      "stableFocusSamples": 0,
+      "settledMs": 0,
+      "start": 22,
+      "end": 22,
+      "draft": "unsent draft stays unchanged",
+      "bounds": {
+        "left": 10,
+        "top": 599.4833374023438,
+        "width": 362.433349609375,
+        "height": 55.366668701171875
+      },
+      "viewport": {
+        "width": 414,
+        "height": 691.1500244140625,
+        "offsetLeft": 0,
+        "offsetTop": 0,
+        "scale": 1,
+        "innerWidth": 414,
+        "innerHeight": 691
+      },
+      "nativeBounds": {
+        "left": 0,
+        "top": 117,
+        "width": 1080,
+        "height": 1803
+      }
+    },
+    {
+      "id": "current-input",
+      "sequence": 9,
+      "requested": false,
+      "composerFocused": true,
+      "nativeFocused": true,
+      "acceptingText": true,
+      "imeVisible": false,
+      "imeBottom": 0,
+      "stableFocusSamples": 0,
+      "settledMs": 0,
+      "start": 22,
+      "end": 22,
+      "draft": "unsent draft stays unchanged",
+      "bounds": {
+        "left": 10,
+        "top": 599.4833374023438,
+        "width": 362.433349609375,
+        "height": 55.366668701171875
+      },
+      "viewport": {
+        "width": 414,
+        "height": 691.1500244140625,
+        "offsetLeft": 0,
+        "offsetTop": 0,
+        "scale": 1,
+        "innerWidth": 414,
+        "innerHeight": 691
+      },
+      "nativeBounds": {
+        "left": 0,
+        "top": 117,
+        "width": 1080,
+        "height": 1803
+      }
+    },
+    {
+      "id": "current-input",
+      "sequence": 10,
+      "requested": false,
+      "composerFocused": true,
+      "nativeFocused": true,
+      "acceptingText": true,
+      "imeVisible": false,
+      "imeBottom": 0,
+      "stableFocusSamples": 0,
+      "settledMs": 0,
+      "start": 22,
+      "end": 22,
+      "draft": "unsent draft stays unchanged",
+      "bounds": {
+        "left": 10,
+        "top": 599.4833374023438,
+        "width": 362.433349609375,
+        "height": 55.366668701171875
+      },
+      "viewport": {
+        "width": 414,
+        "height": 691.1500244140625,
+        "offsetLeft": 0,
+        "offsetTop": 0,
+        "scale": 1,
+        "innerWidth": 414,
+        "innerHeight": 691
+      },
+      "nativeBounds": {
+        "left": 0,
+        "top": 117,
+        "width": 1080,
+        "height": 1803
+      }
+    },
+    {
+      "id": "current-input",
+      "sequence": 11,
+      "requested": false,
+      "composerFocused": true,
+      "nativeFocused": true,
+      "acceptingText": true,
+      "imeVisible": false,
+      "imeBottom": 0,
+      "stableFocusSamples": 0,
+      "settledMs": 0,
+      "start": 22,
+      "end": 22,
+      "draft": "unsent draft stays unchanged",
+      "bounds": {
+        "left": 10,
+        "top": 599.4833374023438,
+        "width": 362.433349609375,
+        "height": 55.366668701171875
+      },
+      "viewport": {
+        "width": 414,
+        "height": 691.1500244140625,
+        "offsetLeft": 0,
+        "offsetTop": 0,
+        "scale": 1,
+        "innerWidth": 414,
+        "innerHeight": 691
+      },
+      "nativeBounds": {
+        "left": 0,
+        "top": 117,
+        "width": 1080,
+        "height": 1803
+      }
+    },
+    {
+      "id": "current-input",
+      "sequence": 12,
+      "requested": false,
+      "composerFocused": true,
+      "nativeFocused": true,
+      "acceptingText": true,
+      "imeVisible": false,
+      "imeBottom": 0,
+      "stableFocusSamples": 0,
+      "settledMs": 0,
+      "start": 22,
+      "end": 22,
+      "draft": "unsent draft stays unchanged",
+      "bounds": {
+        "left": 10,
+        "top": 599.4833374023438,
+        "width": 362.433349609375,
+        "height": 55.366668701171875
+      },
+      "viewport": {
+        "width": 414,
+        "height": 691.1500244140625,
+        "offsetLeft": 0,
+        "offsetTop": 0,
+        "scale": 1,
+        "innerWidth": 414,
+        "innerHeight": 691
+      },
+      "nativeBounds": {
+        "left": 0,
+        "top": 117,
+        "width": 1080,
+        "height": 1803
+      }
+    },
+    {
+      "id": "current-input",
+      "sequence": 13,
+      "requested": false,
+      "composerFocused": true,
+      "nativeFocused": true,
+      "acceptingText": true,
+      "imeVisible": false,
+      "imeBottom": 0,
+      "stableFocusSamples": 0,
+      "settledMs": 0,
+      "start": 22,
+      "end": 22,
+      "draft": "unsent draft stays unchanged",
+      "bounds": {
+        "left": 10,
+        "top": 599.4833374023438,
+        "width": 362.433349609375,
+        "height": 55.366668701171875
+      },
+      "viewport": {
+        "width": 414,
+        "height": 691.1500244140625,
+        "offsetLeft": 0,
+        "offsetTop": 0,
+        "scale": 1,
+        "innerWidth": 414,
+        "innerHeight": 691
+      },
+      "nativeBounds": {
+        "left": 0,
+        "top": 117,
+        "width": 1080,
+        "height": 1803
+      }
+    },
+    {
+      "id": "current-input",
+      "sequence": 14,
+      "requested": false,
+      "composerFocused": true,
+      "nativeFocused": true,
+      "acceptingText": true,
+      "imeVisible": false,
+      "imeBottom": 0,
+      "stableFocusSamples": 0,
+      "settledMs": 0,
+      "start": 22,
+      "end": 22,
+      "draft": "unsent draft stays unchanged",
+      "bounds": {
+        "left": 10,
+        "top": 599.4833374023438,
+        "width": 362.433349609375,
+        "height": 55.366668701171875
+      },
+      "viewport": {
+        "width": 414,
+        "height": 691.1500244140625,
+        "offsetLeft": 0,
+        "offsetTop": 0,
+        "scale": 1,
+        "innerWidth": 414,
+        "innerHeight": 691
+      },
+      "nativeBounds": {
+        "left": 0,
+        "top": 117,
+        "width": 1080,
+        "height": 1803
+      }
+    },
+    {
+      "id": "current-input",
+      "sequence": 15,
+      "requested": false,
+      "composerFocused": true,
+      "nativeFocused": true,
+      "acceptingText": true,
+      "imeVisible": false,
+      "imeBottom": 0,
+      "stableFocusSamples": 0,
+      "settledMs": 0,
+      "start": 22,
+      "end": 22,
+      "draft": "unsent draft stays unchanged",
+      "bounds": {
+        "left": 10,
+        "top": 599.4833374023438,
+        "width": 362.433349609375,
+        "height": 55.366668701171875
+      },
+      "viewport": {
+        "width": 414,
+        "height": 691.1500244140625,
+        "offsetLeft": 0,
+        "offsetTop": 0,
+        "scale": 1,
+        "innerWidth": 414,
+        "innerHeight": 691
+      },
+      "nativeBounds": {
+        "left": 0,
+        "top": 117,
+        "width": 1080,
+        "height": 1803
+      }
+    },
+    {
+      "id": "current-input",
+      "sequence": 16,
+      "requested": false,
+      "composerFocused": true,
+      "nativeFocused": true,
+      "acceptingText": true,
+      "imeVisible": false,
+      "imeBottom": 0,
+      "stableFocusSamples": 0,
+      "settledMs": 0,
+      "start": 22,
+      "end": 22,
+      "draft": "unsent draft stays unchanged",
+      "bounds": {
+        "left": 10,
+        "top": 599.4833374023438,
+        "width": 362.433349609375,
+        "height": 55.366668701171875
+      },
+      "viewport": {
+        "width": 414,
+        "height": 691.1500244140625,
+        "offsetLeft": 0,
+        "offsetTop": 0,
+        "scale": 1,
+        "innerWidth": 414,
+        "innerHeight": 691
+      },
+      "nativeBounds": {
+        "left": 0,
+        "top": 117,
+        "width": 1080,
+        "height": 1803
+      }
+    },
+    {
+      "id": "current-input",
+      "sequence": 17,
+      "requested": false,
+      "composerFocused": true,
+      "nativeFocused": true,
+      "acceptingText": true,
+      "imeVisible": false,
+      "imeBottom": 0,
+      "stableFocusSamples": 0,
+      "settledMs": 0,
+      "start": 22,
+      "end": 22,
+      "draft": "unsent draft stays unchanged",
+      "bounds": {
+        "left": 10,
+        "top": 599.4833374023438,
+        "width": 362.433349609375,
+        "height": 55.366668701171875
+      },
+      "viewport": {
+        "width": 414,
+        "height": 691.1500244140625,
+        "offsetLeft": 0,
+        "offsetTop": 0,
+        "scale": 1,
+        "innerWidth": 414,
+        "innerHeight": 691
+      },
+      "nativeBounds": {
+        "left": 0,
+        "top": 117,
+        "width": 1080,
+        "height": 1803
+      }
+    },
+    {
+      "id": "current-input",
+      "sequence": 18,
+      "requested": false,
+      "composerFocused": true,
+      "nativeFocused": true,
+      "acceptingText": true,
+      "imeVisible": false,
+      "imeBottom": 0,
+      "stableFocusSamples": 0,
+      "settledMs": 0,
+      "start": 22,
+      "end": 22,
+      "draft": "unsent draft stays unchanged",
+      "bounds": {
+        "left": 10,
+        "top": 599.4833374023438,
+        "width": 362.433349609375,
+        "height": 55.366668701171875
+      },
+      "viewport": {
+        "width": 414,
+        "height": 691.1500244140625,
+        "offsetLeft": 0,
+        "offsetTop": 0,
+        "scale": 1,
+        "innerWidth": 414,
+        "innerHeight": 691
+      },
+      "nativeBounds": {
+        "left": 0,
+        "top": 117,
+        "width": 1080,
+        "height": 1803
+      }
+    },
+    {
+      "id": "current-input",
+      "sequence": 19,
+      "requested": false,
+      "composerFocused": true,
+      "nativeFocused": true,
+      "acceptingText": true,
+      "imeVisible": false,
+      "imeBottom": 0,
+      "stableFocusSamples": 0,
+      "settledMs": 0,
+      "start": 22,
+      "end": 22,
+      "draft": "unsent draft stays unchanged",
+      "bounds": {
+        "left": 10,
+        "top": 599.4833374023438,
+        "width": 362.433349609375,
+        "height": 55.366668701171875
+      },
+      "viewport": {
+        "width": 414,
+        "height": 691.1500244140625,
+        "offsetLeft": 0,
+        "offsetTop": 0,
+        "scale": 1,
+        "innerWidth": 414,
+        "innerHeight": 691
+      },
+      "nativeBounds": {
+        "left": 0,
+        "top": 117,
+        "width": 1080,
+        "height": 1803
+      }
+    },
+    {
+      "id": "current-input",
+      "sequence": 20,
+      "requested": false,
+      "composerFocused": true,
+      "nativeFocused": true,
+      "acceptingText": true,
+      "imeVisible": false,
+      "imeBottom": 0,
+      "stableFocusSamples": 0,
+      "settledMs": 0,
+      "start": 22,
+      "end": 22,
+      "draft": "unsent draft stays unchanged",
+      "bounds": {
+        "left": 10,
+        "top": 599.4833374023438,
+        "width": 362.433349609375,
+        "height": 55.366668701171875
+      },
+      "viewport": {
+        "width": 414,
+        "height": 691.1500244140625,
+        "offsetLeft": 0,
+        "offsetTop": 0,
+        "scale": 1,
+        "innerWidth": 414,
+        "innerHeight": 691
+      },
+      "nativeBounds": {
+        "left": 0,
+        "top": 117,
+        "width": 1080,
+        "height": 1803
+      }
+    },
+    {
+      "id": "current-input",
+      "sequence": 21,
+      "requested": false,
+      "composerFocused": true,
+      "nativeFocused": true,
+      "acceptingText": true,
+      "imeVisible": true,
+      "imeBottom": 840,
+      "stableFocusSamples": 1,
+      "settledMs": 0,
+      "start": 22,
+      "end": 22,
+      "draft": "unsent draft stays unchanged",
+      "bounds": {
+        "left": 10,
+        "top": 599.4833374023438,
+        "width": 362.433349609375,
+        "height": 55.366668701171875
+      },
+      "viewport": {
+        "width": 414,
+        "height": 691.1500244140625,
+        "offsetLeft": 0,
+        "offsetTop": 0,
+        "scale": 1,
+        "innerWidth": 414,
+        "innerHeight": 691
+      },
+      "nativeBounds": {
+        "left": 0,
+        "top": 117,
+        "width": 1080,
+        "height": 1803
+      }
+    },
+    {
+      "id": "current-input",
+      "sequence": 22,
+      "requested": false,
+      "composerFocused": true,
+      "nativeFocused": true,
+      "acceptingText": true,
+      "imeVisible": true,
+      "imeBottom": 840,
+      "stableFocusSamples": 2,
+      "settledMs": 102,
+      "start": 22,
+      "end": 22,
+      "draft": "unsent draft stays unchanged",
+      "bounds": {
+        "left": 10,
+        "top": 599.4833374023438,
+        "width": 362.433349609375,
+        "height": 55.366668701171875
+      },
+      "viewport": {
+        "width": 414,
+        "height": 691.1500244140625,
+        "offsetLeft": 0,
+        "offsetTop": 0,
+        "scale": 1,
+        "innerWidth": 414,
+        "innerHeight": 691
+      },
+      "nativeBounds": {
+        "left": 0,
+        "top": 117,
+        "width": 1080,
+        "height": 1803
+      }
+    },
+    {
+      "id": "current-input",
+      "sequence": 23,
+      "requested": false,
+      "composerFocused": true,
+      "nativeFocused": true,
+      "acceptingText": true,
+      "imeVisible": true,
+      "imeBottom": 840,
+      "stableFocusSamples": 3,
+      "settledMs": 206,
+      "start": 22,
+      "end": 22,
+      "draft": "unsent draft stays unchanged",
+      "bounds": {
+        "left": 10,
+        "top": 599.4833374023438,
+        "width": 362.433349609375,
+        "height": 55.366668701171875
+      },
+      "viewport": {
+        "width": 414,
+        "height": 691.1500244140625,
+        "offsetLeft": 0,
+        "offsetTop": 0,
+        "scale": 1,
+        "innerWidth": 414,
+        "innerHeight": 691
+      },
+      "nativeBounds": {
+        "left": 0,
+        "top": 117,
+        "width": 1080,
+        "height": 1803
+      }
+    },
+    {
+      "id": "current-input",
+      "sequence": 24,
+      "requested": false,
+      "composerFocused": true,
+      "nativeFocused": true,
+      "acceptingText": true,
+      "imeVisible": true,
+      "imeBottom": 840,
+      "stableFocusSamples": 4,
+      "settledMs": 308,
+      "start": 22,
+      "end": 22,
+      "draft": "unsent draft stays unchanged",
+      "bounds": {
+        "left": 10,
+        "top": 599.4833374023438,
+        "width": 362.433349609375,
+        "height": 55.366668701171875
+      },
+      "viewport": {
+        "width": 414,
+        "height": 691.1500244140625,
+        "offsetLeft": 0,
+        "offsetTop": 0,
+        "scale": 1,
+        "innerWidth": 414,
+        "innerHeight": 691
+      },
+      "nativeBounds": {
+        "left": 0,
+        "top": 117,
+        "width": 1080,
+        "height": 1803
+      }
+    },
+    {
+      "id": "current-input",
+      "sequence": 25,
+      "requested": false,
+      "composerFocused": true,
+      "nativeFocused": true,
+      "acceptingText": true,
+      "imeVisible": true,
+      "imeBottom": 840,
+      "stableFocusSamples": 5,
+      "settledMs": 410,
+      "start": 22,
+      "end": 22,
+      "draft": "unsent draft stays unchanged",
+      "bounds": {
+        "left": 10,
+        "top": 599.4833374023438,
+        "width": 362.433349609375,
+        "height": 55.366668701171875
+      },
+      "viewport": {
+        "width": 414,
+        "height": 691.1500244140625,
+        "offsetLeft": 0,
+        "offsetTop": 0,
+        "scale": 1,
+        "innerWidth": 414,
+        "innerHeight": 691
+      },
+      "nativeBounds": {
+        "left": 0,
+        "top": 117,
+        "width": 1080,
+        "height": 1803
+      }
+    },
+    {
+      "id": "current-input",
+      "sequence": 26,
+      "requested": false,
+      "composerFocused": true,
+      "nativeFocused": true,
+      "acceptingText": true,
+      "imeVisible": true,
+      "imeBottom": 840,
+      "stableFocusSamples": 6,
+      "settledMs": 511,
+      "start": 22,
+      "end": 22,
+      "draft": "unsent draft stays unchanged",
+      "bounds": {
+        "left": 10,
+        "top": 599.4833374023438,
+        "width": 362.433349609375,
+        "height": 55.366668701171875
+      },
+      "viewport": {
+        "width": 414,
+        "height": 691.1500244140625,
+        "offsetLeft": 0,
+        "offsetTop": 0,
+        "scale": 1,
+        "innerWidth": 414,
+        "innerHeight": 691
+      },
+      "nativeBounds": {
+        "left": 0,
+        "top": 117,
+        "width": 1080,
+        "height": 1803
+      }
+    },
+    {
+      "id": "current-input",
+      "sequence": 27,
+      "requested": false,
+      "composerFocused": true,
+      "nativeFocused": true,
+      "acceptingText": true,
+      "imeVisible": true,
+      "imeBottom": 840,
+      "stableFocusSamples": 7,
+      "settledMs": 614,
+      "start": 22,
+      "end": 22,
+      "draft": "unsent draft stays unchanged",
+      "bounds": {
+        "left": 10,
+        "top": 599.4833374023438,
+        "width": 362.433349609375,
+        "height": 55.366668701171875
+      },
+      "viewport": {
+        "width": 414,
+        "height": 691.1500244140625,
+        "offsetLeft": 0,
+        "offsetTop": 0,
+        "scale": 1,
+        "innerWidth": 414,
+        "innerHeight": 691
+      },
+      "nativeBounds": {
+        "left": 0,
+        "top": 117,
+        "width": 1080,
+        "height": 1803
+      }
+    },
+    {
+      "id": "current-input",
+      "sequence": 28,
+      "requested": true,
+      "composerFocused": true,
+      "nativeFocused": true,
+      "acceptingText": true,
+      "imeVisible": true,
+      "imeBottom": 840,
+      "stableFocusSamples": 7,
+      "settledMs": 715,
+      "start": 22,
+      "end": 22,
+      "draft": "unsent draft stays unchanged",
+      "bounds": {
+        "left": 10,
+        "top": 599.4833374023438,
+        "width": 362.433349609375,
+        "height": 55.366668701171875
+      },
+      "viewport": {
+        "width": 414,
+        "height": 691.1500244140625,
+        "offsetLeft": 0,
+        "offsetTop": 0,
+        "scale": 1,
+        "innerWidth": 414,
+        "innerHeight": 691
+      },
+      "nativeBounds": {
+        "left": 0,
+        "top": 117,
+        "width": 1080,
+        "height": 1803
+      }
+    },
+    {
+      "id": "current-input",
+      "sequence": 29,
+      "requested": true,
+      "composerFocused": true,
+      "nativeFocused": true,
+      "acceptingText": true,
+      "imeVisible": true,
+      "imeBottom": 840,
+      "stableFocusSamples": 7,
+      "settledMs": 817,
+      "start": 22,
+      "end": 22,
+      "draft": "unsent draft stays unchanged",
+      "bounds": {
+        "left": 10,
+        "top": 599.4833374023438,
+        "width": 362.433349609375,
+        "height": 55.366668701171875
+      },
+      "viewport": {
+        "width": 414,
+        "height": 691.1500244140625,
+        "offsetLeft": 0,
+        "offsetTop": 0,
+        "scale": 1,
+        "innerWidth": 414,
+        "innerHeight": 691
+      },
+      "nativeBounds": {
+        "left": 0,
+        "top": 117,
+        "width": 1080,
+        "height": 1803
+      }
+    },
+    {
+      "id": "current-input",
+      "sequence": 30,
+      "requested": true,
+      "composerFocused": true,
+      "nativeFocused": true,
+      "acceptingText": true,
+      "imeVisible": true,
+      "imeBottom": 840,
+      "stableFocusSamples": 7,
+      "settledMs": 919,
+      "start": 22,
+      "end": 22,
+      "draft": "unsent draft stays unchanged",
+      "bounds": {
+        "left": 10,
+        "top": 599.4833374023438,
+        "width": 362.433349609375,
+        "height": 55.366668701171875
+      },
+      "viewport": {
+        "width": 414,
+        "height": 691.1500244140625,
+        "offsetLeft": 0,
+        "offsetTop": 0,
+        "scale": 1,
+        "innerWidth": 414,
+        "innerHeight": 691
+      },
+      "nativeBounds": {
+        "left": 0,
+        "top": 117,
+        "width": 1080,
+        "height": 1803
+      }
+    },
+    {
+      "id": "current-input",
+      "sequence": 31,
+      "requested": true,
+      "composerFocused": true,
+      "nativeFocused": true,
+      "acceptingText": true,
+      "imeVisible": true,
+      "imeBottom": 840,
+      "stableFocusSamples": 7,
+      "settledMs": 1024,
+      "start": 22,
+      "end": 22,
+      "draft": "unsent draft stays unchanged",
+      "bounds": {
+        "left": 10,
+        "top": 599.4833374023438,
+        "width": 362.433349609375,
+        "height": 55.366668701171875
+      },
+      "viewport": {
+        "width": 414,
+        "height": 691.1500244140625,
+        "offsetLeft": 0,
+        "offsetTop": 0,
+        "scale": 1,
+        "innerWidth": 414,
+        "innerHeight": 691
+      },
+      "nativeBounds": {
+        "left": 0,
+        "top": 117,
+        "width": 1080,
+        "height": 1803
+      }
+    },
+    {
+      "id": "current-input",
+      "sequence": 32,
+      "requested": true,
+      "composerFocused": true,
+      "nativeFocused": true,
+      "acceptingText": true,
+      "imeVisible": true,
+      "imeBottom": 840,
+      "stableFocusSamples": 7,
+      "settledMs": 1125,
+      "start": 22,
+      "end": 22,
+      "draft": "unsent draft stays unchanged",
+      "bounds": {
+        "left": 10,
+        "top": 599.4833374023438,
+        "width": 362.433349609375,
+        "height": 55.366668701171875
+      },
+      "viewport": {
+        "width": 414,
+        "height": 691.1500244140625,
+        "offsetLeft": 0,
+        "offsetTop": 0,
+        "scale": 1,
+        "innerWidth": 414,
+        "innerHeight": 691
+      },
+      "nativeBounds": {
+        "left": 0,
+        "top": 117,
+        "width": 1080,
+        "height": 1803
+      }
+    },
+    {
+      "id": "current-input",
+      "sequence": 33,
+      "requested": true,
+      "composerFocused": true,
+      "nativeFocused": true,
+      "acceptingText": true,
+      "imeVisible": true,
+      "imeBottom": 840,
+      "stableFocusSamples": 7,
+      "settledMs": 1226,
+      "start": 22,
+      "end": 22,
+      "draft": "unsent draft stays unchanged",
+      "bounds": {
+        "left": 10,
+        "top": 599.4833374023438,
+        "width": 362.433349609375,
+        "height": 55.366668701171875
+      },
+      "viewport": {
+        "width": 414,
+        "height": 691.1500244140625,
+        "offsetLeft": 0,
+        "offsetTop": 0,
+        "scale": 1,
+        "innerWidth": 414,
+        "innerHeight": 691
+      },
+      "nativeBounds": {
+        "left": 0,
+        "top": 117,
+        "width": 1080,
+        "height": 1803
+      }
+    },
+    {
+      "id": "current-input",
+      "sequence": 34,
+      "requested": true,
+      "composerFocused": true,
+      "nativeFocused": true,
+      "acceptingText": true,
+      "imeVisible": true,
+      "imeBottom": 840,
+      "stableFocusSamples": 7,
+      "settledMs": 1327,
+      "start": 22,
+      "end": 22,
+      "draft": "unsent draft stays unchanged",
+      "bounds": {
+        "left": 10,
+        "top": 599.4833374023438,
+        "width": 362.433349609375,
+        "height": 55.366668701171875
+      },
+      "viewport": {
+        "width": 414,
+        "height": 691.1500244140625,
+        "offsetLeft": 0,
+        "offsetTop": 0,
+        "scale": 1,
+        "innerWidth": 414,
+        "innerHeight": 691
+      },
+      "nativeBounds": {
+        "left": 0,
+        "top": 117,
+        "width": 1080,
+        "height": 1803
+      }
+    },
+    {
+      "id": "current-input",
+      "sequence": 35,
+      "requested": true,
+      "composerFocused": true,
+      "nativeFocused": true,
+      "acceptingText": true,
+      "imeVisible": true,
+      "imeBottom": 840,
+      "stableFocusSamples": 7,
+      "settledMs": 1428,
+      "start": 22,
+      "end": 22,
+      "draft": "unsent draft stays unchanged",
+      "bounds": {
+        "left": 10,
+        "top": 599.4833374023438,
+        "width": 362.433349609375,
+        "height": 55.366668701171875
+      },
+      "viewport": {
+        "width": 414,
+        "height": 691.1500244140625,
+        "offsetLeft": 0,
+        "offsetTop": 0,
+        "scale": 1,
+        "innerWidth": 414,
+        "innerHeight": 691
+      },
+      "nativeBounds": {
+        "left": 0,
+        "top": 117,
+        "width": 1080,
+        "height": 1803
+      }
+    },
+    {
+      "id": "current-input",
+      "sequence": 36,
+      "requested": true,
+      "composerFocused": true,
+      "nativeFocused": true,
+      "acceptingText": true,
+      "imeVisible": true,
+      "imeBottom": 840,
+      "stableFocusSamples": 7,
+      "settledMs": 1547,
+      "start": 22,
+      "end": 22,
+      "draft": "unsent draft stays unchanged",
+      "bounds": {
+        "left": 10,
+        "top": 599.4833374023438,
+        "width": 362.433349609375,
+        "height": 55.366668701171875
+      },
+      "viewport": {
+        "width": 414,
+        "height": 691.1500244140625,
+        "offsetLeft": 0,
+        "offsetTop": 0,
+        "scale": 1,
+        "innerWidth": 414,
+        "innerHeight": 691
+      },
+      "nativeBounds": {
+        "left": 0,
+        "top": 117,
+        "width": 1080,
+        "height": 1803
+      }
+    },
+    {
+      "id": "current-input",
+      "sequence": 37,
+      "requested": true,
+      "composerFocused": true,
+      "nativeFocused": true,
+      "acceptingText": true,
+      "imeVisible": true,
+      "imeBottom": 840,
+      "stableFocusSamples": 7,
+      "settledMs": 1649,
+      "start": 22,
+      "end": 22,
+      "draft": "unsent draft stays unchanged",
+      "bounds": {
+        "left": 10,
+        "top": 599.4833374023438,
+        "width": 362.433349609375,
+        "height": 55.366668701171875
+      },
+      "viewport": {
+        "width": 414,
+        "height": 691.1500244140625,
+        "offsetLeft": 0,
+        "offsetTop": 0,
+        "scale": 1,
+        "innerWidth": 414,
+        "innerHeight": 691
+      },
+      "nativeBounds": {
+        "left": 0,
+        "top": 117,
+        "width": 1080,
+        "height": 1803
+      }
+    },
+    {
+      "id": "current-input",
+      "sequence": 38,
+      "requested": true,
+      "composerFocused": true,
+      "nativeFocused": true,
+      "acceptingText": true,
+      "imeVisible": true,
+      "imeBottom": 840,
+      "stableFocusSamples": 7,
+      "settledMs": 1900,
+      "start": 26,
+      "end": 26,
+      "draft": "unsent draft stays unc-usehanged",
+      "bounds": {
+        "left": 10,
+        "top": 599.4833374023438,
+        "width": 362.433349609375,
+        "height": 55.366668701171875
+      },
+      "viewport": {
+        "width": 414,
+        "height": 691.1500244140625,
+        "offsetLeft": 0,
+        "offsetTop": 0,
+        "scale": 1,
+        "innerWidth": 414,
+        "innerHeight": 691
+      },
+      "nativeBounds": {
+        "left": 0,
+        "top": 117,
+        "width": 1080,
+        "height": 1803
+      }
+    },
+    {
+      "id": "current-input",
+      "sequence": 39,
+      "requested": true,
+      "composerFocused": true,
+      "nativeFocused": true,
+      "acceptingText": true,
+      "imeVisible": true,
+      "imeBottom": 840,
+      "stableFocusSamples": 7,
+      "settledMs": 2004,
+      "start": 29,
+      "end": 29,
+      "draft": "unsent draft stays unc-user-thanged",
+      "bounds": {
+        "left": 10,
+        "top": 599.4833374023438,
+        "width": 362.433349609375,
+        "height": 55.366668701171875
+      },
+      "viewport": {
+        "width": 414,
+        "height": 691.1500244140625,
+        "offsetLeft": 0,
+        "offsetTop": 0,
+        "scale": 1,
+        "innerWidth": 414,
+        "innerHeight": 691
+      },
+      "nativeBounds": {
+        "left": 0,
+        "top": 117,
+        "width": 1080,
+        "height": 1803
+      }
+    },
+    {
+      "id": "current-input",
+      "sequence": 40,
+      "requested": true,
+      "composerFocused": true,
+      "nativeFocused": true,
+      "acceptingText": true,
+      "imeVisible": true,
+      "imeBottom": 840,
+      "stableFocusSamples": 7,
+      "settledMs": 2119,
+      "start": 30,
+      "end": 30,
+      "draft": "unsent draft stays unc-user-tyhanged",
+      "bounds": {
+        "left": 10,
+        "top": 599.4833374023438,
+        "width": 362.433349609375,
+        "height": 55.366668701171875
+      },
+      "viewport": {
+        "width": 414,
+        "height": 691.1500244140625,
+        "offsetLeft": 0,
+        "offsetTop": 0,
+        "scale": 1,
+        "innerWidth": 414,
+        "innerHeight": 691
+      },
+      "nativeBounds": {
+        "left": 0,
+        "top": 117,
+        "width": 1080,
+        "height": 1803
+      }
+    },
+    {
+      "id": "current-input",
+      "sequence": 41,
+      "requested": true,
+      "composerFocused": true,
+      "nativeFocused": true,
+      "acceptingText": true,
+      "imeVisible": true,
+      "imeBottom": 840,
+      "stableFocusSamples": 7,
+      "settledMs": 2242,
+      "start": 32,
+      "end": 32,
+      "draft": "unsent draft stays unc-user-typehanged",
+      "bounds": {
+        "left": 10,
+        "top": 599.4833374023438,
+        "width": 362.433349609375,
+        "height": 55.366668701171875
+      },
+      "viewport": {
+        "width": 414,
+        "height": 691.1500244140625,
+        "offsetLeft": 0,
+        "offsetTop": 0,
+        "scale": 1,
+        "innerWidth": 414,
+        "innerHeight": 691
+      },
+      "nativeBounds": {
+        "left": 0,
+        "top": 117,
+        "width": 1080,
+        "height": 1803
+      }
+    },
+    {
+      "id": "current-input",
+      "sequence": 42,
+      "requested": true,
+      "composerFocused": true,
+      "nativeFocused": true,
+      "acceptingText": true,
+      "imeVisible": true,
+      "imeBottom": 840,
+      "stableFocusSamples": 7,
+      "settledMs": 2345,
+      "start": 33,
+      "end": 33,
+      "draft": "unsent draft stays unc-user-typedhanged",
+      "bounds": {
+        "left": 10,
+        "top": 599.4833374023438,
+        "width": 362.433349609375,
+        "height": 55.366668701171875
+      },
+      "viewport": {
+        "width": 414,
+        "height": 691.1500244140625,
+        "offsetLeft": 0,
+        "offsetTop": 0,
+        "scale": 1,
+        "innerWidth": 414,
+        "innerHeight": 691
+      },
+      "nativeBounds": {
+        "left": 0,
+        "top": 117,
+        "width": 1080,
+        "height": 1803
+      }
+    }
+  ],
+  "actualTrustedInputEvents": [
+    {
+      "type": "focus",
+      "key": "",
+      "data": "",
+      "inputType": "",
+      "trusted": true,
+      "composing": false,
+      "time": 9909,
+      "draft": "unsent draft stays unchanged",
+      "start": 22,
+      "end": 22
+    },
+    {
+      "type": "keydown",
+      "key": "-",
+      "data": "",
+      "inputType": "",
+      "trusted": true,
+      "composing": false,
+      "time": 13084,
+      "draft": "unsent draft stays unchanged",
+      "start": 22,
+      "end": 22
+    },
+    {
+      "type": "beforeinput",
+      "key": "",
+      "data": "-",
+      "inputType": "insertText",
+      "trusted": true,
+      "composing": false,
+      "time": 13084,
+      "draft": "unsent draft stays unchanged",
+      "start": 22,
+      "end": 22
+    },
+    {
+      "type": "input",
+      "key": "",
+      "data": "-",
+      "inputType": "insertText",
+      "trusted": true,
+      "composing": false,
+      "time": 13086,
+      "draft": "unsent draft stays unc-hanged",
+      "start": 23,
+      "end": 23
+    },
+    {
+      "type": "keyup",
+      "key": "-",
+      "data": "",
+      "inputType": "",
+      "trusted": true,
+      "composing": false,
+      "time": 13093,
+      "draft": "unsent draft stays unc-hanged",
+      "start": 23,
+      "end": 23
+    },
+    {
+      "type": "keydown",
+      "key": "u",
+      "data": "",
+      "inputType": "",
+      "trusted": true,
+      "composing": false,
+      "time": 13096,
+      "draft": "unsent draft stays unc-hanged",
+      "start": 23,
+      "end": 23
+    },
+    {
+      "type": "beforeinput",
+      "key": "",
+      "data": "u",
+      "inputType": "insertText",
+      "trusted": true,
+      "composing": false,
+      "time": 13096,
+      "draft": "unsent draft stays unc-hanged",
+      "start": 23,
+      "end": 23
+    },
+    {
+      "type": "input",
+      "key": "",
+      "data": "u",
+      "inputType": "insertText",
+      "trusted": true,
+      "composing": false,
+      "time": 13096,
+      "draft": "unsent draft stays unc-uhanged",
+      "start": 24,
+      "end": 24
+    },
+    {
+      "type": "keyup",
+      "key": "u",
+      "data": "",
+      "inputType": "",
+      "trusted": true,
+      "composing": false,
+      "time": 13100,
+      "draft": "unsent draft stays unc-uhanged",
+      "start": 24,
+      "end": 24
+    },
+    {
+      "type": "keydown",
+      "key": "s",
+      "data": "",
+      "inputType": "",
+      "trusted": true,
+      "composing": false,
+      "time": 13114,
+      "draft": "unsent draft stays unc-uhanged",
+      "start": 24,
+      "end": 24
+    },
+    {
+      "type": "beforeinput",
+      "key": "",
+      "data": "s",
+      "inputType": "insertText",
+      "trusted": true,
+      "composing": false,
+      "time": 13114,
+      "draft": "unsent draft stays unc-uhanged",
+      "start": 24,
+      "end": 24
+    },
+    {
+      "type": "input",
+      "key": "",
+      "data": "s",
+      "inputType": "insertText",
+      "trusted": true,
+      "composing": false,
+      "time": 13114,
+      "draft": "unsent draft stays unc-ushanged",
+      "start": 25,
+      "end": 25
+    },
+    {
+      "type": "keyup",
+      "key": "s",
+      "data": "",
+      "inputType": "",
+      "trusted": true,
+      "composing": false,
+      "time": 13124,
+      "draft": "unsent draft stays unc-ushanged",
+      "start": 25,
+      "end": 25
+    },
+    {
+      "type": "keydown",
+      "key": "e",
+      "data": "",
+      "inputType": "",
+      "trusted": true,
+      "composing": false,
+      "time": 13133,
+      "draft": "unsent draft stays unc-ushanged",
+      "start": 25,
+      "end": 25
+    },
+    {
+      "type": "beforeinput",
+      "key": "",
+      "data": "e",
+      "inputType": "insertText",
+      "trusted": true,
+      "composing": false,
+      "time": 13133,
+      "draft": "unsent draft stays unc-ushanged",
+      "start": 25,
+      "end": 25
+    },
+    {
+      "type": "input",
+      "key": "",
+      "data": "e",
+      "inputType": "insertText",
+      "trusted": true,
+      "composing": false,
+      "time": 13134,
+      "draft": "unsent draft stays unc-usehanged",
+      "start": 26,
+      "end": 26
+    },
+    {
+      "type": "keyup",
+      "key": "e",
+      "data": "",
+      "inputType": "",
+      "trusted": true,
+      "composing": false,
+      "time": 13356,
+      "draft": "unsent draft stays unc-usehanged",
+      "start": 26,
+      "end": 26
+    },
+    {
+      "type": "keydown",
+      "key": "r",
+      "data": "",
+      "inputType": "",
+      "trusted": true,
+      "composing": false,
+      "time": 13368,
+      "draft": "unsent draft stays unc-usehanged",
+      "start": 26,
+      "end": 26
+    },
+    {
+      "type": "beforeinput",
+      "key": "",
+      "data": "r",
+      "inputType": "insertText",
+      "trusted": true,
+      "composing": false,
+      "time": 13368,
+      "draft": "unsent draft stays unc-usehanged",
+      "start": 26,
+      "end": 26
+    },
+    {
+      "type": "input",
+      "key": "",
+      "data": "r",
+      "inputType": "insertText",
+      "trusted": true,
+      "composing": false,
+      "time": 13368,
+      "draft": "unsent draft stays unc-userhanged",
+      "start": 27,
+      "end": 27
+    },
+    {
+      "type": "keyup",
+      "key": "r",
+      "data": "",
+      "inputType": "",
+      "trusted": true,
+      "composing": false,
+      "time": 13372,
+      "draft": "unsent draft stays unc-userhanged",
+      "start": 27,
+      "end": 27
+    },
+    {
+      "type": "keydown",
+      "key": "-",
+      "data": "",
+      "inputType": "",
+      "trusted": true,
+      "composing": false,
+      "time": 13391,
+      "draft": "unsent draft stays unc-userhanged",
+      "start": 27,
+      "end": 27
+    },
+    {
+      "type": "beforeinput",
+      "key": "",
+      "data": "-",
+      "inputType": "insertText",
+      "trusted": true,
+      "composing": false,
+      "time": 13391,
+      "draft": "unsent draft stays unc-userhanged",
+      "start": 27,
+      "end": 27
+    },
+    {
+      "type": "input",
+      "key": "",
+      "data": "-",
+      "inputType": "insertText",
+      "trusted": true,
+      "composing": false,
+      "time": 13391,
+      "draft": "unsent draft stays unc-user-hanged",
+      "start": 28,
+      "end": 28
+    },
+    {
+      "type": "keyup",
+      "key": "-",
+      "data": "",
+      "inputType": "",
+      "trusted": true,
+      "composing": false,
+      "time": 13400,
+      "draft": "unsent draft stays unc-user-hanged",
+      "start": 28,
+      "end": 28
+    },
+    {
+      "type": "keydown",
+      "key": "t",
+      "data": "",
+      "inputType": "",
+      "trusted": true,
+      "composing": false,
+      "time": 13406,
+      "draft": "unsent draft stays unc-user-hanged",
+      "start": 28,
+      "end": 28
+    },
+    {
+      "type": "beforeinput",
+      "key": "",
+      "data": "t",
+      "inputType": "insertText",
+      "trusted": true,
+      "composing": false,
+      "time": 13406,
+      "draft": "unsent draft stays unc-user-hanged",
+      "start": 28,
+      "end": 28
+    },
+    {
+      "type": "input",
+      "key": "",
+      "data": "t",
+      "inputType": "insertText",
+      "trusted": true,
+      "composing": false,
+      "time": 13407,
+      "draft": "unsent draft stays unc-user-thanged",
+      "start": 29,
+      "end": 29
+    },
+    {
+      "type": "keyup",
+      "key": "t",
+      "data": "",
+      "inputType": "",
+      "trusted": true,
+      "composing": false,
+      "time": 13473,
+      "draft": "unsent draft stays unc-user-thanged",
+      "start": 29,
+      "end": 29
+    },
+    {
+      "type": "keydown",
+      "key": "y",
+      "data": "",
+      "inputType": "",
+      "trusted": true,
+      "composing": false,
+      "time": 13475,
+      "draft": "unsent draft stays unc-user-thanged",
+      "start": 29,
+      "end": 29
+    },
+    {
+      "type": "beforeinput",
+      "key": "",
+      "data": "y",
+      "inputType": "insertText",
+      "trusted": true,
+      "composing": false,
+      "time": 13475,
+      "draft": "unsent draft stays unc-user-thanged",
+      "start": 29,
+      "end": 29
+    },
+    {
+      "type": "input",
+      "key": "",
+      "data": "y",
+      "inputType": "insertText",
+      "trusted": true,
+      "composing": false,
+      "time": 13477,
+      "draft": "unsent draft stays unc-user-tyhanged",
+      "start": 30,
+      "end": 30
+    },
+    {
+      "type": "keyup",
+      "key": "y",
+      "data": "",
+      "inputType": "",
+      "trusted": true,
+      "composing": false,
+      "time": 13525,
+      "draft": "unsent draft stays unc-user-tyhanged",
+      "start": 30,
+      "end": 30
+    },
+    {
+      "type": "keydown",
+      "key": "p",
+      "data": "",
+      "inputType": "",
+      "trusted": true,
+      "composing": false,
+      "time": 13530,
+      "draft": "unsent draft stays unc-user-tyhanged",
+      "start": 30,
+      "end": 30
+    },
+    {
+      "type": "beforeinput",
+      "key": "",
+      "data": "p",
+      "inputType": "insertText",
+      "trusted": true,
+      "composing": false,
+      "time": 13531,
+      "draft": "unsent draft stays unc-user-tyhanged",
+      "start": 30,
+      "end": 30
+    },
+    {
+      "type": "input",
+      "key": "",
+      "data": "p",
+      "inputType": "insertText",
+      "trusted": true,
+      "composing": false,
+      "time": 13531,
+      "draft": "unsent draft stays unc-user-typhanged",
+      "start": 31,
+      "end": 31
+    },
+    {
+      "type": "keyup",
+      "key": "p",
+      "data": "",
+      "inputType": "",
+      "trusted": true,
+      "composing": false,
+      "time": 13585,
+      "draft": "unsent draft stays unc-user-typhanged",
+      "start": 31,
+      "end": 31
+    },
+    {
+      "type": "keydown",
+      "key": "e",
+      "data": "",
+      "inputType": "",
+      "trusted": true,
+      "composing": false,
+      "time": 13594,
+      "draft": "unsent draft stays unc-user-typhanged",
+      "start": 31,
+      "end": 31
+    },
+    {
+      "type": "beforeinput",
+      "key": "",
+      "data": "e",
+      "inputType": "insertText",
+      "trusted": true,
+      "composing": false,
+      "time": 13594,
+      "draft": "unsent draft stays unc-user-typhanged",
+      "start": 31,
+      "end": 31
+    },
+    {
+      "type": "input",
+      "key": "",
+      "data": "e",
+      "inputType": "insertText",
+      "trusted": true,
+      "composing": false,
+      "time": 13594,
+      "draft": "unsent draft stays unc-user-typehanged",
+      "start": 32,
+      "end": 32
+    },
+    {
+      "type": "keyup",
+      "key": "e",
+      "data": "",
+      "inputType": "",
+      "trusted": true,
+      "composing": false,
+      "time": 13655,
+      "draft": "unsent draft stays unc-user-typehanged",
+      "start": 32,
+      "end": 32
+    },
+    {
+      "type": "keydown",
+      "key": "d",
+      "data": "",
+      "inputType": "",
+      "trusted": true,
+      "composing": false,
+      "time": 13663,
+      "draft": "unsent draft stays unc-user-typehanged",
+      "start": 32,
+      "end": 32
+    },
+    {
+      "type": "beforeinput",
+      "key": "",
+      "data": "d",
+      "inputType": "insertText",
+      "trusted": true,
+      "composing": false,
+      "time": 13663,
+      "draft": "unsent draft stays unc-user-typehanged",
+      "start": 32,
+      "end": 32
+    },
+    {
+      "type": "input",
+      "key": "",
+      "data": "d",
+      "inputType": "insertText",
+      "trusted": true,
+      "composing": false,
+      "time": 13663,
+      "draft": "unsent draft stays unc-user-typedhanged",
+      "start": 33,
+      "end": 33
+    },
+    {
+      "type": "keyup",
+      "key": "d",
+      "data": "",
+      "inputType": "",
+      "trusted": true,
+      "composing": false,
+      "time": 13715,
+      "draft": "unsent draft stays unc-user-typedhanged",
+      "start": 33,
+      "end": 33
+    }
+  ],
+  "actualInputEvaluationTrace": [],
+  "actualNativeInputTrace": [],
+  "capturePrivacy": {
+    "schema": 1,
+    "kind": "sanitized-diagnostic-captures",
+    "policy": "known-service-keys-v1",
+    "captureCount": 84,
+    "changedCaptureCount": 13,
+    "scope": "Complete stored captures with only declared service API-key values removed; not untouched Android raw output.",
+    "captures": [
+      {
+        "schema": 1,
+        "kind": "service-api-key-value-redaction",
+        "policy": "known-service-keys-v1",
+        "originalBytes": 5,
+        "originalSha256": "1b02fba1a66c2183ea3b4ac37877d1358754b682af4b663b049e24414a262a44",
+        "finalBytes": 5,
+        "finalSha256": "1b02fba1a66c2183ea3b4ac37877d1358754b682af4b663b049e24414a262a44",
+        "changed": false,
+        "replacements": {
+          "gboard": 0,
+          "mozilla-location": 0,
+          "google-safebrowsing": 0,
+          "google-api-key-shape": 0
+        }
+      },
+      {
+        "schema": 1,
+        "kind": "service-api-key-value-redaction",
+        "policy": "known-service-keys-v1",
+        "originalBytes": 0,
+        "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "finalBytes": 0,
+        "finalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "changed": false,
+        "replacements": {
+          "gboard": 0,
+          "mozilla-location": 0,
+          "google-safebrowsing": 0,
+          "google-api-key-shape": 0
+        }
+      },
+      {
+        "schema": 1,
+        "kind": "service-api-key-value-redaction",
+        "policy": "known-service-keys-v1",
+        "originalBytes": 5,
+        "originalSha256": "d7f5356d457c7c85a2e547db4abd3cdd815853dee42aba0f76228810b233631d",
+        "finalBytes": 5,
+        "finalSha256": "d7f5356d457c7c85a2e547db4abd3cdd815853dee42aba0f76228810b233631d",
+        "changed": false,
+        "replacements": {
+          "gboard": 0,
+          "mozilla-location": 0,
+          "google-safebrowsing": 0,
+          "google-api-key-shape": 0
+        }
+      },
+      {
+        "schema": 1,
+        "kind": "service-api-key-value-redaction",
+        "policy": "known-service-keys-v1",
+        "originalBytes": 0,
+        "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "finalBytes": 0,
+        "finalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "changed": false,
+        "replacements": {
+          "gboard": 0,
+          "mozilla-location": 0,
+          "google-safebrowsing": 0,
+          "google-api-key-shape": 0
+        }
+      },
+      {
+        "schema": 1,
+        "kind": "service-api-key-value-redaction",
+        "policy": "known-service-keys-v1",
+        "originalBytes": 0,
+        "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "finalBytes": 0,
+        "finalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "changed": false,
+        "replacements": {
+          "gboard": 0,
+          "mozilla-location": 0,
+          "google-safebrowsing": 0,
+          "google-api-key-shape": 0
+        }
+      },
+      {
+        "schema": 1,
+        "kind": "service-api-key-value-redaction",
+        "policy": "known-service-keys-v1",
+        "originalBytes": 0,
+        "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "finalBytes": 0,
+        "finalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "changed": false,
+        "replacements": {
+          "gboard": 0,
+          "mozilla-location": 0,
+          "google-safebrowsing": 0,
+          "google-api-key-shape": 0
+        }
+      },
+      {
+        "schema": 1,
+        "kind": "service-api-key-value-redaction",
+        "policy": "known-service-keys-v1",
+        "originalBytes": 8,
+        "originalSha256": "7fc0023a6402c7bd7abd98bb3e580968de4833eed07d88d1cc8d70819d69c7a0",
+        "finalBytes": 8,
+        "finalSha256": "7fc0023a6402c7bd7abd98bb3e580968de4833eed07d88d1cc8d70819d69c7a0",
+        "changed": false,
+        "replacements": {
+          "gboard": 0,
+          "mozilla-location": 0,
+          "google-safebrowsing": 0,
+          "google-api-key-shape": 0
+        }
+      },
+      {
+        "schema": 1,
+        "kind": "service-api-key-value-redaction",
+        "policy": "known-service-keys-v1",
+        "originalBytes": 0,
+        "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "finalBytes": 0,
+        "finalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "changed": false,
+        "replacements": {
+          "gboard": 0,
+          "mozilla-location": 0,
+          "google-safebrowsing": 0,
+          "google-api-key-shape": 0
+        }
+      },
+      {
+        "schema": 1,
+        "kind": "service-api-key-value-redaction",
+        "policy": "known-service-keys-v1",
+        "originalBytes": 0,
+        "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "finalBytes": 0,
+        "finalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "changed": false,
+        "replacements": {
+          "gboard": 0,
+          "mozilla-location": 0,
+          "google-safebrowsing": 0,
+          "google-api-key-shape": 0
+        }
+      },
+      {
+        "schema": 1,
+        "kind": "service-api-key-value-redaction",
+        "policy": "known-service-keys-v1",
+        "originalBytes": 0,
+        "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "finalBytes": 0,
+        "finalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "changed": false,
+        "replacements": {
+          "gboard": 0,
+          "mozilla-location": 0,
+          "google-safebrowsing": 0,
+          "google-api-key-shape": 0
+        }
+      },
+      {
+        "schema": 1,
+        "kind": "service-api-key-value-redaction",
+        "policy": "known-service-keys-v1",
+        "originalBytes": 0,
+        "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "finalBytes": 0,
+        "finalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "changed": false,
+        "replacements": {
+          "gboard": 0,
+          "mozilla-location": 0,
+          "google-safebrowsing": 0,
+          "google-api-key-shape": 0
+        }
+      },
+      {
+        "schema": 1,
+        "kind": "service-api-key-value-redaction",
+        "policy": "known-service-keys-v1",
+        "originalBytes": 0,
+        "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "finalBytes": 0,
+        "finalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "changed": false,
+        "replacements": {
+          "gboard": 0,
+          "mozilla-location": 0,
+          "google-safebrowsing": 0,
+          "google-api-key-shape": 0
+        }
+      },
+      {
+        "schema": 1,
+        "kind": "service-api-key-value-redaction",
+        "policy": "known-service-keys-v1",
+        "originalBytes": 0,
+        "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "finalBytes": 0,
+        "finalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "changed": false,
+        "replacements": {
+          "gboard": 0,
+          "mozilla-location": 0,
+          "google-safebrowsing": 0,
+          "google-api-key-shape": 0
+        }
+      },
+      {
+        "schema": 1,
+        "kind": "service-api-key-value-redaction",
+        "policy": "known-service-keys-v1",
+        "originalBytes": 0,
+        "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "finalBytes": 0,
+        "finalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "changed": false,
+        "replacements": {
+          "gboard": 0,
+          "mozilla-location": 0,
+          "google-safebrowsing": 0,
+          "google-api-key-shape": 0
+        }
+      },
+      {
+        "schema": 1,
+        "kind": "service-api-key-value-redaction",
+        "policy": "known-service-keys-v1",
+        "originalBytes": 3,
+        "originalSha256": "90d7ec0f0acef104d8b6252794295f661a0149634868d02a1ae0c358099638f5",
+        "finalBytes": 3,
+        "finalSha256": "90d7ec0f0acef104d8b6252794295f661a0149634868d02a1ae0c358099638f5",
+        "changed": false,
+        "replacements": {
+          "gboard": 0,
+          "mozilla-location": 0,
+          "google-safebrowsing": 0,
+          "google-api-key-shape": 0
+        }
+      },
+      {
+        "schema": 1,
+        "kind": "service-api-key-value-redaction",
+        "policy": "known-service-keys-v1",
+        "originalBytes": 0,
+        "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "finalBytes": 0,
+        "finalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "changed": false,
+        "replacements": {
+          "gboard": 0,
+          "mozilla-location": 0,
+          "google-safebrowsing": 0,
+          "google-api-key-shape": 0
+        }
+      },
+      {
+        "schema": 1,
+        "kind": "service-api-key-value-redaction",
+        "policy": "known-service-keys-v1",
+        "originalBytes": 3,
+        "originalSha256": "238903180cc104ec2c5d8b3f20c5bc61b389ec0a967df8cc208cdc7cd454174f",
+        "finalBytes": 3,
+        "finalSha256": "238903180cc104ec2c5d8b3f20c5bc61b389ec0a967df8cc208cdc7cd454174f",
+        "changed": false,
+        "replacements": {
+          "gboard": 0,
+          "mozilla-location": 0,
+          "google-safebrowsing": 0,
+          "google-api-key-shape": 0
+        }
+      },
+      {
+        "schema": 1,
+        "kind": "service-api-key-value-redaction",
+        "policy": "known-service-keys-v1",
+        "originalBytes": 0,
+        "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "finalBytes": 0,
+        "finalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "changed": false,
+        "replacements": {
+          "gboard": 0,
+          "mozilla-location": 0,
+          "google-safebrowsing": 0,
+          "google-api-key-shape": 0
+        }
+      },
+      {
+        "schema": 1,
+        "kind": "service-api-key-value-redaction",
+        "policy": "known-service-keys-v1",
+        "originalBytes": 48,
+        "originalSha256": "14bb6b45053a809cc6633a7be56cf15c7cc971294e34e20cedae7c3634a92052",
+        "finalBytes": 48,
+        "finalSha256": "14bb6b45053a809cc6633a7be56cf15c7cc971294e34e20cedae7c3634a92052",
+        "changed": false,
+        "replacements": {
+          "gboard": 0,
+          "mozilla-location": 0,
+          "google-safebrowsing": 0,
+          "google-api-key-shape": 0
+        }
+      },
+      {
+        "schema": 1,
+        "kind": "service-api-key-value-redaction",
+        "policy": "known-service-keys-v1",
+        "originalBytes": 0,
+        "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "finalBytes": 0,
+        "finalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "changed": false,
+        "replacements": {
+          "gboard": 0,
+          "mozilla-location": 0,
+          "google-safebrowsing": 0,
+          "google-api-key-shape": 0
+        }
+      },
+      {
+        "schema": 1,
+        "kind": "service-api-key-value-redaction",
+        "policy": "known-service-keys-v1",
+        "originalBytes": 44,
+        "originalSha256": "65669a98f562e14d6e1494298035b6b2f4df3fc77c2ebf3a798f4cf373fbc202",
+        "finalBytes": 44,
+        "finalSha256": "65669a98f562e14d6e1494298035b6b2f4df3fc77c2ebf3a798f4cf373fbc202",
+        "changed": false,
+        "replacements": {
+          "gboard": 0,
+          "mozilla-location": 0,
+          "google-safebrowsing": 0,
+          "google-api-key-shape": 0
+        }
+      },
+      {
+        "schema": 1,
+        "kind": "service-api-key-value-redaction",
+        "policy": "known-service-keys-v1",
+        "originalBytes": 0,
+        "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "finalBytes": 0,
+        "finalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "changed": false,
+        "replacements": {
+          "gboard": 0,
+          "mozilla-location": 0,
+          "google-safebrowsing": 0,
+          "google-api-key-shape": 0
+        }
+      },
+      {
+        "schema": 1,
+        "kind": "service-api-key-value-redaction",
+        "policy": "known-service-keys-v1",
+        "originalBytes": 0,
+        "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "finalBytes": 0,
+        "finalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "changed": false,
+        "replacements": {
+          "gboard": 0,
+          "mozilla-location": 0,
+          "google-safebrowsing": 0,
+          "google-api-key-shape": 0
+        }
+      },
+      {
+        "schema": 1,
+        "kind": "service-api-key-value-redaction",
+        "policy": "known-service-keys-v1",
+        "originalBytes": 0,
+        "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "finalBytes": 0,
+        "finalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "changed": false,
+        "replacements": {
+          "gboard": 0,
+          "mozilla-location": 0,
+          "google-safebrowsing": 0,
+          "google-api-key-shape": 0
+        }
+      },
+      {
+        "schema": 1,
+        "kind": "service-api-key-value-redaction",
+        "policy": "known-service-keys-v1",
+        "originalBytes": 265,
+        "originalSha256": "5b1c902dcd3aa8e738b073ac281093bba71e7bedbf77c672569e97100e6ff700",
+        "finalBytes": 265,
+        "finalSha256": "5b1c902dcd3aa8e738b073ac281093bba71e7bedbf77c672569e97100e6ff700",
+        "changed": false,
+        "replacements": {
+          "gboard": 0,
+          "mozilla-location": 0,
+          "google-safebrowsing": 0,
+          "google-api-key-shape": 0
+        }
+      },
+      {
+        "schema": 1,
+        "kind": "service-api-key-value-redaction",
+        "policy": "known-service-keys-v1",
+        "originalBytes": 0,
+        "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "finalBytes": 0,
+        "finalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "changed": false,
+        "replacements": {
+          "gboard": 0,
+          "mozilla-location": 0,
+          "google-safebrowsing": 0,
+          "google-api-key-shape": 0
+        }
+      },
+      {
+        "schema": 1,
+        "kind": "service-api-key-value-redaction",
+        "policy": "known-service-keys-v1",
+        "originalBytes": 0,
+        "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "finalBytes": 0,
+        "finalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "changed": false,
+        "replacements": {
+          "gboard": 0,
+          "mozilla-location": 0,
+          "google-safebrowsing": 0,
+          "google-api-key-shape": 0
+        }
+      },
+      {
+        "schema": 1,
+        "kind": "service-api-key-value-redaction",
+        "policy": "known-service-keys-v1",
+        "originalBytes": 0,
+        "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "finalBytes": 0,
+        "finalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "changed": false,
+        "replacements": {
+          "gboard": 0,
+          "mozilla-location": 0,
+          "google-safebrowsing": 0,
+          "google-api-key-shape": 0
+        }
+      },
+      {
+        "schema": 1,
+        "kind": "service-api-key-value-redaction",
+        "policy": "known-service-keys-v1",
+        "originalBytes": 0,
+        "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "finalBytes": 0,
+        "finalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "changed": false,
+        "replacements": {
+          "gboard": 0,
+          "mozilla-location": 0,
+          "google-safebrowsing": 0,
+          "google-api-key-shape": 0
+        }
+      },
+      {
+        "schema": 1,
+        "kind": "service-api-key-value-redaction",
+        "policy": "known-service-keys-v1",
+        "originalBytes": 0,
+        "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "finalBytes": 0,
+        "finalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "changed": false,
+        "replacements": {
+          "gboard": 0,
+          "mozilla-location": 0,
+          "google-safebrowsing": 0,
+          "google-api-key-shape": 0
+        }
+      },
+      {
+        "schema": 1,
+        "kind": "service-api-key-value-redaction",
+        "policy": "known-service-keys-v1",
+        "originalBytes": 2916,
+        "originalSha256": "616814585a0d7a0d47b40234c921ded1e82e25529c095ced646de1d87b0de3d4",
+        "finalBytes": 2916,
+        "finalSha256": "616814585a0d7a0d47b40234c921ded1e82e25529c095ced646de1d87b0de3d4",
+        "changed": false,
+        "replacements": {
+          "gboard": 0,
+          "mozilla-location": 0,
+          "google-safebrowsing": 0,
+          "google-api-key-shape": 0
+        }
+      },
+      {
+        "schema": 1,
+        "kind": "service-api-key-value-redaction",
+        "policy": "known-service-keys-v1",
+        "originalBytes": 0,
+        "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "finalBytes": 0,
+        "finalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "changed": false,
+        "replacements": {
+          "gboard": 0,
+          "mozilla-location": 0,
+          "google-safebrowsing": 0,
+          "google-api-key-shape": 0
+        }
+      },
+      {
+        "schema": 1,
+        "kind": "service-api-key-value-redaction",
+        "policy": "known-service-keys-v1",
+        "originalBytes": 24002,
+        "originalSha256": "40e6f9ec9f225bf5a6d6f7b987df48347b026bc730f67c192a833849da12eaf0",
+        "finalBytes": 24002,
+        "finalSha256": "40e6f9ec9f225bf5a6d6f7b987df48347b026bc730f67c192a833849da12eaf0",
+        "changed": false,
+        "replacements": {
+          "gboard": 0,
+          "mozilla-location": 0,
+          "google-safebrowsing": 0,
+          "google-api-key-shape": 0
+        }
+      },
+      {
+        "schema": 1,
+        "kind": "service-api-key-value-redaction",
+        "policy": "known-service-keys-v1",
+        "originalBytes": 0,
+        "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "finalBytes": 0,
+        "finalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "changed": false,
+        "replacements": {
+          "gboard": 0,
+          "mozilla-location": 0,
+          "google-safebrowsing": 0,
+          "google-api-key-shape": 0
+        }
+      },
+      {
+        "schema": 1,
+        "kind": "service-api-key-value-redaction",
+        "policy": "known-service-keys-v1",
+        "originalBytes": 111206,
+        "originalSha256": "ff03fd0a2a48850b08aec5b6465d0dba323d4003501d1be919e54d2734069696",
+        "finalBytes": 111206,
+        "finalSha256": "ff03fd0a2a48850b08aec5b6465d0dba323d4003501d1be919e54d2734069696",
+        "changed": false,
+        "replacements": {
+          "gboard": 0,
+          "mozilla-location": 0,
+          "google-safebrowsing": 0,
+          "google-api-key-shape": 0
+        }
+      },
+      {
+        "schema": 1,
+        "kind": "service-api-key-value-redaction",
+        "policy": "known-service-keys-v1",
+        "originalBytes": 0,
+        "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "finalBytes": 0,
+        "finalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "changed": false,
+        "replacements": {
+          "gboard": 0,
+          "mozilla-location": 0,
+          "google-safebrowsing": 0,
+          "google-api-key-shape": 0
+        }
+      },
+      {
+        "schema": 1,
+        "kind": "service-api-key-value-redaction",
+        "policy": "known-service-keys-v1",
+        "originalBytes": 130844,
+        "originalSha256": "bcd481943cb08b31db4a2bd5d420b470b31c112b34027b8fecca3511cdf37ad7",
+        "finalBytes": 130844,
+        "finalSha256": "bcd481943cb08b31db4a2bd5d420b470b31c112b34027b8fecca3511cdf37ad7",
+        "changed": false,
+        "replacements": {
+          "gboard": 0,
+          "mozilla-location": 0,
+          "google-safebrowsing": 0,
+          "google-api-key-shape": 0
+        }
+      },
+      {
+        "schema": 1,
+        "kind": "service-api-key-value-redaction",
+        "policy": "known-service-keys-v1",
+        "originalBytes": 0,
+        "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "finalBytes": 0,
+        "finalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "changed": false,
+        "replacements": {
+          "gboard": 0,
+          "mozilla-location": 0,
+          "google-safebrowsing": 0,
+          "google-api-key-shape": 0
+        }
+      },
+      {
+        "schema": 1,
+        "kind": "service-api-key-value-redaction",
+        "policy": "known-service-keys-v1",
+        "originalBytes": 160484,
+        "originalSha256": "04a11ec15edc5a10530730d60271901e7935f09b70efa45f90fb17ba6cb69882",
+        "finalBytes": 160484,
+        "finalSha256": "04a11ec15edc5a10530730d60271901e7935f09b70efa45f90fb17ba6cb69882",
+        "changed": false,
+        "replacements": {
+          "gboard": 0,
+          "mozilla-location": 0,
+          "google-safebrowsing": 0,
+          "google-api-key-shape": 0
+        }
+      },
+      {
+        "schema": 1,
+        "kind": "service-api-key-value-redaction",
+        "policy": "known-service-keys-v1",
+        "originalBytes": 0,
+        "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "finalBytes": 0,
+        "finalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "changed": false,
+        "replacements": {
+          "gboard": 0,
+          "mozilla-location": 0,
+          "google-safebrowsing": 0,
+          "google-api-key-shape": 0
+        }
+      },
+      {
+        "schema": 1,
+        "kind": "service-api-key-value-redaction",
+        "policy": "known-service-keys-v1",
+        "originalBytes": 160818,
+        "originalSha256": "75c33934473eb36b4b25fe73e45257df57c027b57593c36f9afd7ccb48f2abae",
+        "finalBytes": 160818,
+        "finalSha256": "75c33934473eb36b4b25fe73e45257df57c027b57593c36f9afd7ccb48f2abae",
+        "changed": false,
+        "replacements": {
+          "gboard": 0,
+          "mozilla-location": 0,
+          "google-safebrowsing": 0,
+          "google-api-key-shape": 0
+        }
+      },
+      {
+        "schema": 1,
+        "kind": "service-api-key-value-redaction",
+        "policy": "known-service-keys-v1",
+        "originalBytes": 0,
+        "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "finalBytes": 0,
+        "finalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "changed": false,
+        "replacements": {
+          "gboard": 0,
+          "mozilla-location": 0,
+          "google-safebrowsing": 0,
+          "google-api-key-shape": 0
+        }
+      },
+      {
+        "schema": 1,
+        "kind": "service-api-key-value-redaction",
+        "policy": "known-service-keys-v1",
+        "originalBytes": 161690,
+        "originalSha256": "00b2a6b7c8ba20374ad8f6d81cf88e6794588fbd6b38613d6b63e16df1e4ea91",
+        "finalBytes": 161690,
+        "finalSha256": "00b2a6b7c8ba20374ad8f6d81cf88e6794588fbd6b38613d6b63e16df1e4ea91",
+        "changed": false,
+        "replacements": {
+          "gboard": 0,
+          "mozilla-location": 0,
+          "google-safebrowsing": 0,
+          "google-api-key-shape": 0
+        }
+      },
+      {
+        "schema": 1,
+        "kind": "service-api-key-value-redaction",
+        "policy": "known-service-keys-v1",
+        "originalBytes": 0,
+        "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "finalBytes": 0,
+        "finalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "changed": false,
+        "replacements": {
+          "gboard": 0,
+          "mozilla-location": 0,
+          "google-safebrowsing": 0,
+          "google-api-key-shape": 0
+        }
+      },
+      {
+        "schema": 1,
+        "kind": "service-api-key-value-redaction",
+        "policy": "known-service-keys-v1",
+        "originalBytes": 163316,
+        "originalSha256": "1cece4e44553281684f0af88490c8fd85a872af68c127795c5c53f9add2ee669",
+        "finalBytes": 163316,
+        "finalSha256": "1cece4e44553281684f0af88490c8fd85a872af68c127795c5c53f9add2ee669",
+        "changed": false,
+        "replacements": {
+          "gboard": 0,
+          "mozilla-location": 0,
+          "google-safebrowsing": 0,
+          "google-api-key-shape": 0
+        }
+      },
+      {
+        "schema": 1,
+        "kind": "service-api-key-value-redaction",
+        "policy": "known-service-keys-v1",
+        "originalBytes": 0,
+        "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "finalBytes": 0,
+        "finalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "changed": false,
+        "replacements": {
+          "gboard": 0,
+          "mozilla-location": 0,
+          "google-safebrowsing": 0,
+          "google-api-key-shape": 0
+        }
+      },
+      {
+        "schema": 1,
+        "kind": "service-api-key-value-redaction",
+        "policy": "known-service-keys-v1",
+        "originalBytes": 163823,
+        "originalSha256": "2d15e179bcdeca1b0d509f8b33eaff35d290253cff1f9862908b45b2082ae62c",
+        "finalBytes": 163823,
+        "finalSha256": "2d15e179bcdeca1b0d509f8b33eaff35d290253cff1f9862908b45b2082ae62c",
+        "changed": false,
+        "replacements": {
+          "gboard": 0,
+          "mozilla-location": 0,
+          "google-safebrowsing": 0,
+          "google-api-key-shape": 0
+        }
+      },
+      {
+        "schema": 1,
+        "kind": "service-api-key-value-redaction",
+        "policy": "known-service-keys-v1",
+        "originalBytes": 0,
+        "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "finalBytes": 0,
+        "finalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "changed": false,
+        "replacements": {
+          "gboard": 0,
+          "mozilla-location": 0,
+          "google-safebrowsing": 0,
+          "google-api-key-shape": 0
+        }
+      },
+      {
+        "schema": 1,
+        "kind": "service-api-key-value-redaction",
+        "policy": "known-service-keys-v1",
+        "originalBytes": 164360,
+        "originalSha256": "b0ba7723ae74394fbd0967ea8aebf187b6ac8b8b31a6539cf3f14878e840afb3",
+        "finalBytes": 164360,
+        "finalSha256": "b0ba7723ae74394fbd0967ea8aebf187b6ac8b8b31a6539cf3f14878e840afb3",
+        "changed": false,
+        "replacements": {
+          "gboard": 0,
+          "mozilla-location": 0,
+          "google-safebrowsing": 0,
+          "google-api-key-shape": 0
+        }
+      },
+      {
+        "schema": 1,
+        "kind": "service-api-key-value-redaction",
+        "policy": "known-service-keys-v1",
+        "originalBytes": 0,
+        "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "finalBytes": 0,
+        "finalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "changed": false,
+        "replacements": {
+          "gboard": 0,
+          "mozilla-location": 0,
+          "google-safebrowsing": 0,
+          "google-api-key-shape": 0
+        }
+      },
+      {
+        "schema": 1,
+        "kind": "service-api-key-value-redaction",
+        "policy": "known-service-keys-v1",
+        "originalBytes": 169983,
+        "originalSha256": "12a2e0ac29e9957ff9df87f4fcbcf0a624ce3433eddff4820dcb1cefa9b0f39d",
+        "finalBytes": 169983,
+        "finalSha256": "12a2e0ac29e9957ff9df87f4fcbcf0a624ce3433eddff4820dcb1cefa9b0f39d",
+        "changed": false,
+        "replacements": {
+          "gboard": 0,
+          "mozilla-location": 0,
+          "google-safebrowsing": 0,
+          "google-api-key-shape": 0
+        }
+      },
+      {
+        "schema": 1,
+        "kind": "service-api-key-value-redaction",
+        "policy": "known-service-keys-v1",
+        "originalBytes": 0,
+        "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "finalBytes": 0,
+        "finalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "changed": false,
+        "replacements": {
+          "gboard": 0,
+          "mozilla-location": 0,
+          "google-safebrowsing": 0,
+          "google-api-key-shape": 0
+        }
+      },
+      {
+        "schema": 1,
+        "kind": "service-api-key-value-redaction",
+        "policy": "known-service-keys-v1",
+        "originalBytes": 0,
+        "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "finalBytes": 0,
+        "finalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "changed": false,
+        "replacements": {
+          "gboard": 0,
+          "mozilla-location": 0,
+          "google-safebrowsing": 0,
+          "google-api-key-shape": 0
+        }
+      },
+      {
+        "schema": 1,
+        "kind": "service-api-key-value-redaction",
+        "policy": "known-service-keys-v1",
+        "originalBytes": 0,
+        "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "finalBytes": 0,
+        "finalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "changed": false,
+        "replacements": {
+          "gboard": 0,
+          "mozilla-location": 0,
+          "google-safebrowsing": 0,
+          "google-api-key-shape": 0
+        }
+      },
+      {
+        "schema": 1,
+        "kind": "service-api-key-value-redaction",
+        "policy": "known-service-keys-v1",
+        "originalBytes": 176873,
+        "originalSha256": "941e663db6564dc047f69330affafce546ac72cf25008192209baf04f6266e89",
+        "finalBytes": 176863,
+        "finalSha256": "65fe26c9fe5189b84bca159faaae359d172ed4964d123aa285c0d6c8ebd84a01",
+        "changed": true,
+        "replacements": {
+          "gboard": 0,
+          "mozilla-location": 1,
+          "google-safebrowsing": 0,
+          "google-api-key-shape": 0
+        }
+      },
+      {
+        "schema": 1,
+        "kind": "service-api-key-value-redaction",
+        "policy": "known-service-keys-v1",
+        "originalBytes": 0,
+        "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "finalBytes": 0,
+        "finalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "changed": false,
+        "replacements": {
+          "gboard": 0,
+          "mozilla-location": 0,
+          "google-safebrowsing": 0,
+          "google-api-key-shape": 0
+        }
+      },
+      {
+        "schema": 1,
+        "kind": "service-api-key-value-redaction",
+        "policy": "known-service-keys-v1",
+        "originalBytes": 183570,
+        "originalSha256": "f99db393e85a13d6319cead7d8bab2968975617815e07645346c2877e9ec7f33",
+        "finalBytes": 183547,
+        "finalSha256": "92eee90faded41c2c0874229f11f3c96f7ae31f95dea61fd883cb2983552c8f5",
+        "changed": true,
+        "replacements": {
+          "gboard": 0,
+          "mozilla-location": 1,
+          "google-safebrowsing": 1,
+          "google-api-key-shape": 0
+        }
+      },
+      {
+        "schema": 1,
+        "kind": "service-api-key-value-redaction",
+        "policy": "known-service-keys-v1",
+        "originalBytes": 0,
+        "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "finalBytes": 0,
+        "finalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "changed": false,
+        "replacements": {
+          "gboard": 0,
+          "mozilla-location": 0,
+          "google-safebrowsing": 0,
+          "google-api-key-shape": 0
+        }
+      },
+      {
+        "schema": 1,
+        "kind": "service-api-key-value-redaction",
+        "policy": "known-service-keys-v1",
+        "originalBytes": 190673,
+        "originalSha256": "49efc67f3675b48f717a31ec0fa3e19dda4978e021c860db6562f3dae6771102",
+        "finalBytes": 190650,
+        "finalSha256": "f9ccbb4d15d9ac5004a5940b19f6734578890bbcaff57a04a083d1e787945b3a",
+        "changed": true,
+        "replacements": {
+          "gboard": 0,
+          "mozilla-location": 1,
+          "google-safebrowsing": 1,
+          "google-api-key-shape": 0
+        }
+      },
+      {
+        "schema": 1,
+        "kind": "service-api-key-value-redaction",
+        "policy": "known-service-keys-v1",
+        "originalBytes": 0,
+        "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "finalBytes": 0,
+        "finalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "changed": false,
+        "replacements": {
+          "gboard": 0,
+          "mozilla-location": 0,
+          "google-safebrowsing": 0,
+          "google-api-key-shape": 0
+        }
+      },
+      {
+        "schema": 1,
+        "kind": "service-api-key-value-redaction",
+        "policy": "known-service-keys-v1",
+        "originalBytes": 0,
+        "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "finalBytes": 0,
+        "finalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "changed": false,
+        "replacements": {
+          "gboard": 0,
+          "mozilla-location": 0,
+          "google-safebrowsing": 0,
+          "google-api-key-shape": 0
+        }
+      },
+      {
+        "schema": 1,
+        "kind": "service-api-key-value-redaction",
+        "policy": "known-service-keys-v1",
+        "originalBytes": 0,
+        "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "finalBytes": 0,
+        "finalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "changed": false,
+        "replacements": {
+          "gboard": 0,
+          "mozilla-location": 0,
+          "google-safebrowsing": 0,
+          "google-api-key-shape": 0
+        }
+      },
+      {
+        "schema": 1,
+        "kind": "service-api-key-value-redaction",
+        "policy": "known-service-keys-v1",
+        "originalBytes": 204833,
+        "originalSha256": "ea0b9e341d1a578d5347c5271d4ae2c80b103d5fa3535d81ed3a5c421e15fcf5",
+        "finalBytes": 204810,
+        "finalSha256": "0b1242e44f9da046c095966836a5405f0c3a0e4930acb6d2ee58f13c6f0121eb",
+        "changed": true,
+        "replacements": {
+          "gboard": 0,
+          "mozilla-location": 1,
+          "google-safebrowsing": 1,
+          "google-api-key-shape": 0
+        }
+      },
+      {
+        "schema": 1,
+        "kind": "service-api-key-value-redaction",
+        "policy": "known-service-keys-v1",
+        "originalBytes": 0,
+        "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "finalBytes": 0,
+        "finalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "changed": false,
+        "replacements": {
+          "gboard": 0,
+          "mozilla-location": 0,
+          "google-safebrowsing": 0,
+          "google-api-key-shape": 0
+        }
+      },
+      {
+        "schema": 1,
+        "kind": "service-api-key-value-redaction",
+        "policy": "known-service-keys-v1",
+        "originalBytes": 206152,
+        "originalSha256": "43a3c44d01fde3eafa7f0278112db289e5af0f14374eba1953408e8d5f69a0e1",
+        "finalBytes": 206129,
+        "finalSha256": "5f21653da644773d775c0c858648495cb5e71f69a6ea14cfd6323171bdc56a4e",
+        "changed": true,
+        "replacements": {
+          "gboard": 0,
+          "mozilla-location": 1,
+          "google-safebrowsing": 1,
+          "google-api-key-shape": 0
+        }
+      },
+      {
+        "schema": 1,
+        "kind": "service-api-key-value-redaction",
+        "policy": "known-service-keys-v1",
+        "originalBytes": 0,
+        "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "finalBytes": 0,
+        "finalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "changed": false,
+        "replacements": {
+          "gboard": 0,
+          "mozilla-location": 0,
+          "google-safebrowsing": 0,
+          "google-api-key-shape": 0
+        }
+      },
+      {
+        "schema": 1,
+        "kind": "service-api-key-value-redaction",
+        "policy": "known-service-keys-v1",
+        "originalBytes": 207306,
+        "originalSha256": "b3a919ca473d84eb910aa29128832e9c5f060044f3b479a524b026e510ab046a",
+        "finalBytes": 207283,
+        "finalSha256": "5c4563d80663f1bd9f8858f6d6450d37e0975dcec42df0697bccbb83884f437c",
+        "changed": true,
+        "replacements": {
+          "gboard": 0,
+          "mozilla-location": 1,
+          "google-safebrowsing": 1,
+          "google-api-key-shape": 0
+        }
+      },
+      {
+        "schema": 1,
+        "kind": "service-api-key-value-redaction",
+        "policy": "known-service-keys-v1",
+        "originalBytes": 0,
+        "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "finalBytes": 0,
+        "finalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "changed": false,
+        "replacements": {
+          "gboard": 0,
+          "mozilla-location": 0,
+          "google-safebrowsing": 0,
+          "google-api-key-shape": 0
+        }
+      },
+      {
+        "schema": 1,
+        "kind": "service-api-key-value-redaction",
+        "policy": "known-service-keys-v1",
+        "originalBytes": 207306,
+        "originalSha256": "b3a919ca473d84eb910aa29128832e9c5f060044f3b479a524b026e510ab046a",
+        "finalBytes": 207283,
+        "finalSha256": "5c4563d80663f1bd9f8858f6d6450d37e0975dcec42df0697bccbb83884f437c",
+        "changed": true,
+        "replacements": {
+          "gboard": 0,
+          "mozilla-location": 1,
+          "google-safebrowsing": 1,
+          "google-api-key-shape": 0
+        }
+      },
+      {
+        "schema": 1,
+        "kind": "service-api-key-value-redaction",
+        "policy": "known-service-keys-v1",
+        "originalBytes": 0,
+        "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "finalBytes": 0,
+        "finalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "changed": false,
+        "replacements": {
+          "gboard": 0,
+          "mozilla-location": 0,
+          "google-safebrowsing": 0,
+          "google-api-key-shape": 0
+        }
+      },
+      {
+        "schema": 1,
+        "kind": "service-api-key-value-redaction",
+        "policy": "known-service-keys-v1",
+        "originalBytes": 208104,
+        "originalSha256": "61ac29d661a9c5ee9c2fc1ab80d1ad403c758b0b98ea8036c5b43cb198f038d6",
+        "finalBytes": 208081,
+        "finalSha256": "ab12dd69f2e88e1eb6756500a22b39cceae211e36e452e9fbe45fca4548d9100",
+        "changed": true,
+        "replacements": {
+          "gboard": 0,
+          "mozilla-location": 1,
+          "google-safebrowsing": 1,
+          "google-api-key-shape": 0
+        }
+      },
+      {
+        "schema": 1,
+        "kind": "service-api-key-value-redaction",
+        "policy": "known-service-keys-v1",
+        "originalBytes": 0,
+        "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "finalBytes": 0,
+        "finalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "changed": false,
+        "replacements": {
+          "gboard": 0,
+          "mozilla-location": 0,
+          "google-safebrowsing": 0,
+          "google-api-key-shape": 0
+        }
+      },
+      {
+        "schema": 1,
+        "kind": "service-api-key-value-redaction",
+        "policy": "known-service-keys-v1",
+        "originalBytes": 209034,
+        "originalSha256": "cf87721ee9ae3666c5a40e9586d2bfbd9f19d5a9553380d3dba5154b5b2b5444",
+        "finalBytes": 209011,
+        "finalSha256": "010f1eedc2561860607729585ab4dd509e247fff46543f8d971cba61f8dc04b8",
+        "changed": true,
+        "replacements": {
+          "gboard": 0,
+          "mozilla-location": 1,
+          "google-safebrowsing": 1,
+          "google-api-key-shape": 0
+        }
+      },
+      {
+        "schema": 1,
+        "kind": "service-api-key-value-redaction",
+        "policy": "known-service-keys-v1",
+        "originalBytes": 0,
+        "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "finalBytes": 0,
+        "finalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "changed": false,
+        "replacements": {
+          "gboard": 0,
+          "mozilla-location": 0,
+          "google-safebrowsing": 0,
+          "google-api-key-shape": 0
+        }
+      },
+      {
+        "schema": 1,
+        "kind": "service-api-key-value-redaction",
+        "policy": "known-service-keys-v1",
+        "originalBytes": 209415,
+        "originalSha256": "7c5eda99bfe61ec915fad3eb5517f3220ff99ffd06461a3c5000364a753ac071",
+        "finalBytes": 209392,
+        "finalSha256": "c6a3ac227dfa06b7f8b49712b2cc3850d0465ab7df9078a4a2ca296d2cb43b00",
+        "changed": true,
+        "replacements": {
+          "gboard": 0,
+          "mozilla-location": 1,
+          "google-safebrowsing": 1,
+          "google-api-key-shape": 0
+        }
+      },
+      {
+        "schema": 1,
+        "kind": "service-api-key-value-redaction",
+        "policy": "known-service-keys-v1",
+        "originalBytes": 0,
+        "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "finalBytes": 0,
+        "finalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "changed": false,
+        "replacements": {
+          "gboard": 0,
+          "mozilla-location": 0,
+          "google-safebrowsing": 0,
+          "google-api-key-shape": 0
+        }
+      },
+      {
+        "schema": 1,
+        "kind": "service-api-key-value-redaction",
+        "policy": "known-service-keys-v1",
+        "originalBytes": 209990,
+        "originalSha256": "97ca4a80551ce55204926bf6a0d20b2b0e9bbe964246c1a1f81c03aead9be4d7",
+        "finalBytes": 209967,
+        "finalSha256": "3b0c1e29256cd25b4f2a51dc3b392f0687085e1a4a4b6e84ed0eea83a47c53c3",
+        "changed": true,
+        "replacements": {
+          "gboard": 0,
+          "mozilla-location": 1,
+          "google-safebrowsing": 1,
+          "google-api-key-shape": 0
+        }
+      },
+      {
+        "schema": 1,
+        "kind": "service-api-key-value-redaction",
+        "policy": "known-service-keys-v1",
+        "originalBytes": 0,
+        "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "finalBytes": 0,
+        "finalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "changed": false,
+        "replacements": {
+          "gboard": 0,
+          "mozilla-location": 0,
+          "google-safebrowsing": 0,
+          "google-api-key-shape": 0
+        }
+      },
+      {
+        "schema": 1,
+        "kind": "service-api-key-value-redaction",
+        "policy": "known-service-keys-v1",
+        "originalBytes": 216104,
+        "originalSha256": "4dab0082c22430827ee497f821016152d02dc17aeb30e6ec385ceebec920740e",
+        "finalBytes": 216081,
+        "finalSha256": "59518f3315f34eb65210a5fdee8ab9262e328a7f2b280fa8fbe146c3f10800e2",
+        "changed": true,
+        "replacements": {
+          "gboard": 0,
+          "mozilla-location": 1,
+          "google-safebrowsing": 1,
+          "google-api-key-shape": 0
+        }
+      },
+      {
+        "schema": 1,
+        "kind": "service-api-key-value-redaction",
+        "policy": "known-service-keys-v1",
+        "originalBytes": 0,
+        "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "finalBytes": 0,
+        "finalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "changed": false,
+        "replacements": {
+          "gboard": 0,
+          "mozilla-location": 0,
+          "google-safebrowsing": 0,
+          "google-api-key-shape": 0
+        }
+      },
+      {
+        "schema": 1,
+        "kind": "service-api-key-value-redaction",
+        "policy": "known-service-keys-v1",
+        "originalBytes": 219044,
+        "originalSha256": "a417bf1d26a4c8e29fad426b03df0209c079811ada83b093147858dbf1ec73da",
+        "finalBytes": 219021,
+        "finalSha256": "7578142fbd5c5ea001b18ddd40d4b24634cd45c53d270caf8b35c3ac8b447a7b",
+        "changed": true,
+        "replacements": {
+          "gboard": 0,
+          "mozilla-location": 1,
+          "google-safebrowsing": 1,
+          "google-api-key-shape": 0
+        }
+      },
+      {
+        "schema": 1,
+        "kind": "service-api-key-value-redaction",
+        "policy": "known-service-keys-v1",
+        "originalBytes": 0,
+        "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "finalBytes": 0,
+        "finalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "changed": false,
+        "replacements": {
+          "gboard": 0,
+          "mozilla-location": 0,
+          "google-safebrowsing": 0,
+          "google-api-key-shape": 0
+        }
+      },
+      {
+        "schema": 1,
+        "kind": "service-api-key-value-redaction",
+        "policy": "known-service-keys-v1",
+        "originalBytes": 112538,
+        "originalSha256": "e8d73b24a0751f9980719ce9a6f451f2d95aa1c37fbac476db39398206456670",
+        "finalBytes": 112538,
+        "finalSha256": "e8d73b24a0751f9980719ce9a6f451f2d95aa1c37fbac476db39398206456670",
+        "changed": false,
+        "replacements": {
+          "gboard": 0,
+          "mozilla-location": 0,
+          "google-safebrowsing": 0,
+          "google-api-key-shape": 0
+        }
+      },
+      {
+        "schema": 1,
+        "kind": "service-api-key-value-redaction",
+        "policy": "known-service-keys-v1",
+        "originalBytes": 0,
+        "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "finalBytes": 0,
+        "finalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "changed": false,
+        "replacements": {
+          "gboard": 0,
+          "mozilla-location": 0,
+          "google-safebrowsing": 0,
+          "google-api-key-shape": 0
+        }
+      }
+    ]
+  }
+}
