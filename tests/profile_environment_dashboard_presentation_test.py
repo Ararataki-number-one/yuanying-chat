@@ -104,7 +104,23 @@ DASHBOARD_FIRST_PORTS = (
      "                 and n.get('content-desc','').startswith(prefix)]\n"
      '        assert len(matches)==1,(prefix,matches)\n'
      '        return matches[0]\n'
+     '    def continue_ready(xml,environment):\n'
+     '        nodes=tree(xml)\n'
+     "        panels=[n for n in nodes if n.get('package')==PACKAGE and n.get('content-desc')=='环境仪表盘']\n"
+     "        buttons=[n for n in nodes if n.get('text')=='继续浏览' and n.get('enabled')=='true']\n"
+     '        if len(panels)!=1 or len(buttons)!=1:return False\n'
+     '        panel,button=panels[0],buttons[0]\n'
+     "        if button not in panel.iter('node') or not any(n.get('package')==PACKAGE and n.get('text')==environment for n in panel.iter('node')):\n"
+     '            return False\n'
+     "        if button.get('package')!=PACKAGE or button.get('class')!='android.widget.Button' or button.get('clickable')!='true' or button.get('visible-to-user')=='false':\n"
+     '            return False\n'
+     "        bounds=re.fullmatch(r'\\[(\\d+),(\\d+)\\]\\[(\\d+),(\\d+)\\]',button.get('bounds',''))\n"
+     '        if bounds is None:return False\n'
+     '        l,t,r,b=map(int,bounds.groups())\n'
+     '        return l<r and t<b\n'
      '    def continue_to_browser(xml,environment):\n'
+     '        if not continue_ready(xml,environment):\n'
+     "            xml=wait(lambda value:continue_ready(value,environment),'Continue ready for '+environment,sync_window=True)\n"
      "        click(xml,'继续浏览')\n"
      '        return wait(lambda x:not dashboard(x) and browser(x)\n'
      "                    and environment in description(x,'当前环境：'),'continue to browser for '+environment)\n"
@@ -120,7 +136,7 @@ DASHBOARD_FIRST_PORTS = (
      "            xml=open_details('日常会话')\n"
      "            node=next(n for n in tree(xml) if n.get('text')=='继续浏览' and n.get('enabled')=='true')\n",
      "            adb('shell','am','start','-W','-n',PACKAGE+'/local.pocketchat.BrandLaunchActivity')\n"
-     "            xml=wait(lambda x:dashboard(x) and '日常会话' in x,name+' actual launcher dashboard')\n"
+     "            xml=wait(lambda x:continue_ready(x,'日常会话'),name+' actual launcher dashboard',sync_window=True)\n"
      "            events.append(dict(name=name+'-launcher-opens-default-environment-dashboard',passed=True))\n"
      "            node=next(n for n in tree(xml) if n.get('text')=='继续浏览' and n.get('enabled')=='true')\n"),
     ("            assert 0<=l<r<=width*3 and 0<=t<b<=height*3 and b-t>=48*3,(name,'entry action clipped',node.attrib)\n"
@@ -168,7 +184,7 @@ DASHBOARD_FIRST_PORTS = (
      '            # Settings workspace -> real bottom chat tab exercises the other\n',
      "                adb('shell','input','swipe',str(x),str(t+(b-t)*4//5),str(x),str(t+(b-t)//5),'300');xml=dump()\n"
      "            click(xml,description=environment_action_description(xml,'资料整理'))\n"
-     "            xml=wait(lambda x:dashboard(x) and '资料整理' in x,'separate process second dashboard')\n"
+     "            xml=wait(lambda x:continue_ready(x,'资料整理'),'separate process second dashboard',sync_window=True)\n"
      "            snapshot('second-environment',xml,profileProcess='profile1',slot=1)\n"
      "            xml=continue_to_browser(xml,'资料整理')\n"
      "            events.append(dict(name='second-process-card-opens-its-dashboard',passed=True))\n"

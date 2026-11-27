@@ -132,7 +132,23 @@ def run(adb,binary,source,out,dump):
                  and n.get('content-desc','').startswith(prefix)]
         assert len(matches)==1,(prefix,matches)
         return matches[0]
+    def continue_ready(xml,environment):
+        nodes=tree(xml)
+        panels=[n for n in nodes if n.get('package')==PACKAGE and n.get('content-desc')=='环境仪表盘']
+        buttons=[n for n in nodes if n.get('text')=='继续浏览' and n.get('enabled')=='true']
+        if len(panels)!=1 or len(buttons)!=1:return False
+        panel,button=panels[0],buttons[0]
+        if button not in panel.iter('node') or not any(n.get('package')==PACKAGE and n.get('text')==environment for n in panel.iter('node')):
+            return False
+        if button.get('package')!=PACKAGE or button.get('class')!='android.widget.Button' or button.get('clickable')!='true' or button.get('visible-to-user')=='false':
+            return False
+        bounds=re.fullmatch(r'\[(\d+),(\d+)\]\[(\d+),(\d+)\]',button.get('bounds',''))
+        if bounds is None:return False
+        l,t,r,b=map(int,bounds.groups())
+        return l<r and t<b
     def continue_to_browser(xml,environment):
+        if not continue_ready(xml,environment):
+            xml=wait(lambda value:continue_ready(value,environment),'Continue ready for '+environment,sync_window=True)
         click(xml,'继续浏览')
         return wait(lambda x:not dashboard(x) and browser(x)
                     and environment in description(x,'当前环境：'),'continue to browser for '+environment)
@@ -198,7 +214,7 @@ def run(adb,binary,source,out,dump):
             adb('shell','am','start','-W','-n',PACKAGE+'/local.pocketchat.UiVisualIntegrationActivity','--es','visualAction','environments')
             wait(lambda x:'环境管理' in x,name+' existing environment seed')
             adb('shell','am','start','-W','-n',PACKAGE+'/local.pocketchat.BrandLaunchActivity')
-            xml=wait(lambda x:dashboard(x) and '日常会话' in x,name+' actual launcher dashboard')
+            xml=wait(lambda x:continue_ready(x,'日常会话'),name+' actual launcher dashboard',sync_window=True)
             events.append(dict(name=name+'-launcher-opens-default-environment-dashboard',passed=True))
             node=next(n for n in tree(xml) if n.get('text')=='继续浏览' and n.get('enabled')=='true')
             l,t,r,b=map(int,re.findall(r'\d+',node.get('bounds')))
@@ -255,7 +271,7 @@ def run(adb,binary,source,out,dump):
                 l,t,r,b=map(int,re.findall(r'\d+',scroll.get('bounds')));x=(l+r)//2
                 adb('shell','input','swipe',str(x),str(t+(b-t)*4//5),str(x),str(t+(b-t)//5),'300');xml=dump()
             click(xml,description=environment_action_description(xml,'资料整理'))
-            xml=wait(lambda x:dashboard(x) and '资料整理' in x,'separate process second dashboard')
+            xml=wait(lambda x:continue_ready(x,'资料整理'),'separate process second dashboard',sync_window=True)
             snapshot('second-environment',xml,profileProcess='profile1',slot=1)
             xml=continue_to_browser(xml,'资料整理')
             events.append(dict(name='second-process-card-opens-its-dashboard',passed=True))
