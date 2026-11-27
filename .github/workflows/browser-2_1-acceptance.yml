@@ -1524,8 +1524,11 @@ jobs:
         python3 tools/gecko/prepare_chromium_emulator.py --sdk-root "$ANDROID_HOME" --cache "$work/packages" --report "$work/emulator-package.json"
         "$sdkmanager" --channel=0 'platforms;android-37.1' 'build-tools;37.0.0' 'system-images;android-33;google_apis;x86_64'
         if ! ldconfig -p | grep -F "libpulse.so.0 " >/dev/null; then
-          sudo apt-get update -o Acquire::Retries=3
-          sudo apt-get install -y --no-install-recommends -o Acquire::Retries=3 libpulse0
+          ubuntu_sources=/etc/apt/sources.list.d/ubuntu.sources
+          test -s "$ubuntu_sources"
+          ubuntu_apt=(-o "Dir::Etc::sourcelist=$ubuntu_sources" -o Dir::Etc::sourceparts=- -o Acquire::Retries=3)
+          sudo apt-get "${ubuntu_apt[@]}" update
+          sudo apt-get "${ubuntu_apt[@]}" install -y --no-install-recommends libpulse0
         fi
         "$ANDROID_HOME/emulator/emulator" -version | tee "$work/emulator-version.txt"
         grep -Fq 'Android emulator version 37.2.13.0 (build_id 16740729)' "$work/emulator-version.txt"
