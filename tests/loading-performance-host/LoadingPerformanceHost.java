@@ -186,6 +186,6 @@ final class Resources {final android.content.res.Configuration configuration=new
 final class ChatSession {
   final Browser web=new Browser();boolean navigationFailed,connecting=true,networkReady;String status="正在连接",pageError="",networkIssue="",connectionStage="";
 }
-final class Browser {boolean visible,resourceDeferred;int actions;boolean hasVisibleDocument(){return visible;}boolean hasVisibleContentForCover(){return hasVisibleDocument();}}
+final class Browser {boolean visible,resourceDeferred;int actions;boolean hasVisibleDocument(){return visible;}}
 final class DesignUi {static final int BLUE=0xff2468f2;static int dp(MainActivity owner,int value){return owner.dp(value);}/* READABLE_METHOD *//* ACTION_WIDTH_METHOD */}
 final class ResourcePressureController {/* DEFERRED_CONSTANT */}

@@ -8,7 +8,7 @@ sys.path.insert(0,str(ROOT/'tests/gecko-navigation-host'))
 from run import member_at
 SOURCE=ROOT/'app/src/main/java/local/pocketchat/GeckoWebView.java'
 NAMES=['boolean builtinAddonCurrent(','void acceptBuiltinAddon(','void addonStateChanged(','void applyAddonState(','boolean rejectDisabledNavigation(','GeckoResult<String> nativeNavigationFailure(','private void maybeOpen(','boolean protectionAllowsNetwork(','public void loadUrl(','void loadSessionUri(','void restoreCheckpoint(','static String stateUrl(','public GeckoResult<AllowOrDeny> onLoadRequest(','public GeckoResult<GeckoSession> onNewSession(','public void onLocationChange(','public void onPageStart(','public void onPageStop(','private void pageVisible(']
-NAMES.extend(('public GeckoResult<String> onLoadError(', 'private static String pdfDocumentUrl('))
+NAMES.append('public GeckoResult<String> onLoadError(')
 def sha(path):return hashlib.sha256(path.read_bytes()).hexdigest()
 def main():
  p=argparse.ArgumentParser(description=__doc__);p.add_argument('--java-home',required=True,type=Path);p.add_argument('--json-jar',required=True,type=Path);p.add_argument('--output',required=True,type=Path);a=p.parse_args();text=SOURCE.read_text();parts={}

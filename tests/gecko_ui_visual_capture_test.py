@@ -354,7 +354,8 @@ class NativeCaptureCoverageTest(unittest.TestCase):
         previous={(viewport,1,scene) for viewport in ('360x640','412x640')
                   for scene in ('chat','environments','network','proxy','entries','browser','preferences')}
         previous|={('360x640',2,scene) for scene in ('chat','proxy','entries','browser','preferences')}
-        self.assertEqual(len(self.records()),111)
+        self.assertEqual(len(self.records()),106)
+        self.assertNotIn('file-preview',{row['scene'] for row in self.records()})
         self.assertTrue(previous<={(r['logicalViewport'],r['fontScale'],r['scene']) for r in self.records() if r['theme']=='light'})
         MATRIX.verify_captures(self.records())
 
@@ -995,6 +996,12 @@ class CompactQuickEnvironmentContractTest(unittest.TestCase):
             return {node.name:{child.name:ast.get_source_segment(source,child) for child in node.body if isinstance(child,ast.FunctionDef)}
                     for node in ast.parse(source).body if isinstance(node,ast.ClassDef)}
         before,after=methods(old),methods(Path(__file__).read_text())
+        matrix='test_current_ui_has_full_detail_matrix_and_retains_every_previous_scene'
+        original=before['NativeCaptureCoverageTest'][matrix]
+        count='self.assertEqual(len(self.records()),111)'
+        assert original.count(count)==1
+        before['NativeCaptureCoverageTest'][matrix]=original.replace(
+            count,"self.assertEqual(len(self.records()),106)\n        self.assertNotIn('file-preview',{row['scene'] for row in self.records()})")
         for name,value in before.items():self.assertEqual(after[name],value)
         old=subprocess.check_output(['git','show',base+':tests/gecko/run_ui_visuals.py'],cwd=ROOT,text=True);current=require_current_runner(historical_bytes('tests/gecko/run_ui_visuals.py')).decode()
         def functions(source):return [ast.get_source_segment(source,node) for node in ast.walk(ast.parse(source)) if isinstance(node,ast.FunctionDef)]

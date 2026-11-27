@@ -60,7 +60,7 @@ class GeckoWebView extends FrameLayout {
     for(GeckoSession session:new ArrayList<>(locations.keySet()))if(session.isOpen())session.close();
     if(primary!=null&&primary.isOpen())primary.close();
     if(textureSurface!=null){textureSurface.close();textureSurface=null;}
-    ports.clear();popups.clear();locations.clear();backStates.clear();forwardStates.clear();pageScales.clear();measuredCompositors.clear();viewportWidths.clear();loadingTargets.clear();pendingLoads.clear();painted.clear();usable.clear();pdfCoverProofs.clear();crashed.clear();states.clear();stateDraftRevisions.clear();
+    ports.clear();popups.clear();locations.clear();backStates.clear();forwardStates.clear();pageScales.clear();measuredCompositors.clear();viewportWidths.clear();loadingTargets.clear();pendingLoads.clear();painted.clear();usable.clear();crashed.clear();states.clear();stateDraftRevisions.clear();
     routePort=null;ready=false;
     uploadWorker.execute(()->{for(GeckoUploadFiles.Selection files:uploadFiles)files.delete();uploadFiles.clear();});uploadWorker.shutdown();
   }
@@ -160,7 +160,6 @@ class GeckoWebView extends FrameLayout {
   final Set<GeckoSession> pendingLoads=Collections.newSetFromMap(new IdentityHashMap<>());
   final Set<GeckoSession> painted=Collections.newSetFromMap(new IdentityHashMap<>());
   final Set<GeckoSession> usable=Collections.newSetFromMap(new IdentityHashMap<>());
-  private final Map<GeckoSession,PdfCoverProof> pdfCoverProofs=new IdentityHashMap<>();
   final Set<GeckoSession> crashed=Collections.newSetFromMap(new IdentityHashMap<>());
   final Map<GeckoSession,GeckoSession.SessionState> states=new IdentityHashMap<>();
   final BrowserSessionStore sessionStore;final NetworkPoolIdentity connectionPool=new NetworkPoolIdentity();
@@ -818,8 +817,7 @@ class GeckoWebView extends FrameLayout {
         // snapshot is pending. Late events from the stopped load cannot save
         // an older URL over that command's destination.
         if(s==current&&!owner.navigationDispatched)return;
-        if(destroyed||addonDisabled||!locations.containsKey(s)||ipNavigationFailed(s)&&!"about:blank".equals(target))return;if(s==current)blockedPopups.invalidate();boolean committed=pendingLoads.remove(s);String previous=locations.put(s,target);
-        if(committed||!pdfDocumentUrl(previous).equals(pdfDocumentUrl(target)))pdfCoverProofs.remove(s);
+        if(destroyed||addonDisabled||!locations.containsKey(s)||ipNavigationFailed(s)&&!"about:blank".equals(target))return;if(s==current)blockedPopups.invalidate();boolean committed=pendingLoads.remove(s);locations.put(s,target);
         if(committed){painted.remove(s);usable.remove(s);pageScales.remove(s);viewportWidths.remove(s);loadingTargets.put(s,target);appearanceCommitted(s);if(!"about:blank".equals(target))revalidateTimeZone(s);}
         else{WebExtension.Port page=ports.get(s);if(page!=null)appearance(page);}
         if(MainActivity.chatUrl(target))forgetGeneralRoute(s);else if(GeckoNavigationPolicy.publicWeb(target))retainGeneralRoute(s,target);
@@ -854,7 +852,7 @@ class GeckoWebView extends FrameLayout {
       @Override public void onCloseRequest(GeckoSession s){closePopup(s);}
       @Override public void onCrash(GeckoSession s){contentStopped(s,"网页进程已退出，点按重新加载可恢复当前环境");}
       @Override public void onKill(GeckoSession s){contentStopped(s,"网页被系统关闭，点按重新加载可恢复当前环境");}
-      @Override public void onFirstContentfulPaint(GeckoSession s){pageVisible(s);observePdfPaint(s);}
+      @Override public void onFirstContentfulPaint(GeckoSession s){pageVisible(s);}
       @Override public void onExternalResponse(GeckoSession s,WebResponse response){
         // A new popup's activation is queued in onNewSession. Preserve its
         // response until that queued activation runs, then recheck ownership.
@@ -959,48 +957,6 @@ class GeckoWebView extends FrameLayout {
   }
   private void failure(String message){failed=true;closeStartupWindow();owner.pageError=message;owner.finishNavigation(message,false);}
   boolean hasVisibleDocument(){return enabled&&current!=null&&current.isOpen()&&!failed&&!crashed.contains(current)&&usable.contains(current);}
-  /** The native PDF viewer has no page bridge. Its render proof only controls the loading cover. */
-  boolean hasVisibleContentForCover(){
-    if(hasVisibleDocument())return true;
-    if(!pdfCoverSession(current))return false;
-    PdfCoverProof proof=pdfCoverProofs.get(current);
-    return proof!=null&&proof.visible&&proof.documentUrl.equals(pdfDocumentUrl(locations.get(current)));
-  }
-  private static final class PdfCoverProof {
-    final String documentUrl;
-    boolean visible;
-    PdfCoverProof(String documentUrl){this.documentUrl=documentUrl;}
-  }
-  private static String pdfDocumentUrl(String location){
-    if(location==null)return "";
-    int fragment=location.indexOf('#');
-    return fragment<0?location:location.substring(0,fragment);
-  }
-  private boolean pdfCoverSession(GeckoSession session){
-    return enabled&&!destroyed&&!failed&&!addonDisabled&&session!=null&&session==current&&session.isOpen()
-        &&!crashed.contains(session)&&!ipNavigationFailed(session);
-  }
-  private void observePdfPaint(GeckoSession session){
-    if(!pdfCoverSession(session)||!owner.navigationDispatched||pendingLoads.contains(session)
-        ||usable.contains(session)||pdfCoverProofs.containsKey(session))return;
-    String documentUrl=pdfDocumentUrl(locations.get(session));
-    Long load=appearanceLoads.get(session);
-    if(load==null||!GeckoNavigationPolicy.publicWeb(documentUrl))return;
-    long navigation=owner.navigationEpoch;
-    PdfCoverProof proof=new PdfCoverProof(documentUrl);
-    pdfCoverProofs.put(session,proof);
-    try{
-      session.isPdfJs().accept(isPdf->{
-        if(pdfCoverProofs.get(session)!=proof)return;
-        if(!pdfCoverSession(session)||!navigationCurrent(session,navigation)||pendingLoads.contains(session)
-            ||!load.equals(appearanceLoads.get(session))||!proof.documentUrl.equals(pdfDocumentUrl(locations.get(session)))){
-          pdfCoverProofs.remove(session);
-          return;
-        }
-        if(Boolean.TRUE.equals(isPdf)){proof.visible=true;owner.changed();}
-      },error->pdfCoverProofs.remove(session,proof));
-    }catch(RuntimeException unavailable){pdfCoverProofs.remove(session,proof);}
-  }
   boolean canChooseFiles(){return hasVisibleDocument()&&!pendingLoads.contains(current)&&(!owner.navigating||owner.navigationDispatched&&owner.targetMatches(getUrl()));}
   private void pageVisible(GeckoSession session){
     String target=loadingTargets.get(session);
@@ -1012,7 +968,7 @@ class GeckoWebView extends FrameLayout {
     if(session==current)closeExitIpPage();
     if(destroyed||!locations.containsKey(session))return;
     retireTimeZone(session);
-    crashed.add(session);pendingLoads.remove(session);painted.remove(session);usable.remove(session);pdfCoverProofs.remove(session);WebExtension.Port port=ports.remove(session);if(port!=null){callbacks.cancel(port);retireAppearance(port);}
+    crashed.add(session);pendingLoads.remove(session);painted.remove(session);usable.remove(session);WebExtension.Port port=ports.remove(session);if(port!=null){callbacks.cancel(port);retireAppearance(port);}
     forgetGeneralRoute(session);
     if(navigationCurrent(session,stoppedNavigation)){cancelZoom();failed=true;owner.webObserver.suspendUnconfirmed("网页进程已关闭，原发送结果需要核对");
       if(!navigationCurrent(session,stoppedNavigation))return;
@@ -1063,7 +1019,7 @@ class GeckoWebView extends FrameLayout {
       int popup=popups.indexOf(old);if(popup>=0)popups.set(popup,replacement);
       GeckoSession.SessionState saved=states.remove(old);Long revision=stateDraftRevisions.remove(old);if(saved!=null)states.put(replacement,saved);if(revision!=null)stateDraftRevisions.put(replacement,revision);
       forgetGeneralRoute(old);WebExtension.Port page=ports.remove(old);if(page!=null){callbacks.cancel(page);retireAppearance(page);try{page.disconnect();}catch(RuntimeException disconnected){}}
-      appearanceLoads.remove(old);locations.remove(old);backStates.remove(old);forwardStates.remove(old);pageScales.remove(old);measuredCompositors.remove(old);viewportWidths.remove(old);loadingTargets.remove(old);pendingLoads.remove(old);painted.remove(old);usable.remove(old);pdfCoverProofs.remove(old);crashed.remove(old);
+      appearanceLoads.remove(old);locations.remove(old);backStates.remove(old);forwardStates.remove(old);pageScales.remove(old);measuredCompositors.remove(old);viewportWidths.remove(old);loadingTargets.remove(old);pendingLoads.remove(old);painted.remove(old);usable.remove(old);crashed.remove(old);
       // The old native window no longer exists. Old delegate events retain its
       // SDK object and fail the normal tracked-session/current-session checks.
       locations.put(replacement,"");url="";canBack=false;canForward=false;ipNavigationFailure=null;owner.resourceObserverConnected(null);
@@ -1306,7 +1262,7 @@ class GeckoWebView extends FrameLayout {
     // Revoke the old identity before lease listeners or request consumers run;
     // they may navigate the new page but cannot reactivate this retiring one.
     WebExtension.Port port=ports.remove(old);appearanceLoads.remove(old);
-    locations.remove(old);backStates.remove(old);forwardStates.remove(old);pageScales.remove(old);measuredCompositors.remove(old);viewportWidths.remove(old);loadingTargets.remove(old);pendingLoads.remove(old);painted.remove(old);usable.remove(old);pdfCoverProofs.remove(old);crashed.remove(old);states.remove(old);stateDraftRevisions.remove(old);
+    locations.remove(old);backStates.remove(old);forwardStates.remove(old);pageScales.remove(old);measuredCompositors.remove(old);viewportWidths.remove(old);loadingTargets.remove(old);pendingLoads.remove(old);painted.remove(old);usable.remove(old);crashed.remove(old);states.remove(old);stateDraftRevisions.remove(old);
     forgetGeneralRoute(old);
     try{if(port!=null)callbacks.cancel(port);}
     finally{if(port!=null)retireAppearance(port);if(old.isOpen())old.close();}
@@ -1332,7 +1288,7 @@ class GeckoWebView extends FrameLayout {
     if(!navigationCurrent(session,navigation))return false;
     session.stop();
     if(!navigationCurrent(session,navigation))return false;
-    states.remove(session);stateDraftRevisions.remove(session);painted.remove(session);usable.remove(session);pdfCoverProofs.remove(session);loadingTargets.remove(session);pendingLoads.remove(session);startupState=null;
+    states.remove(session);stateDraftRevisions.remove(session);painted.remove(session);usable.remove(session);loadingTargets.remove(session);pendingLoads.remove(session);startupState=null;
     locations.put(session,"");url="";canBack=false;canForward=false;forgetGeneralRoute(session);
     if(!navigationCurrent(session,navigation))return false;
     // Retire callback-bearing state before reopening the owned native surface.

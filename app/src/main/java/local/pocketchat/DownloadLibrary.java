@@ -3,12 +3,16 @@ package local.pocketchat;
 import android.content.*;
 import android.database.Cursor;
 import android.database.sqlite.*;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.util.Base64;
 import org.json.*;
 
 /** Shared file index only: no cookies, chat content or signed source URLs. */
 final class DownloadLibrary extends SQLiteOpenHelper {
-  private enum IndexWrite { CURRENT, LEGACY, REPAIR }
+  private enum IndexWrite { CURRENT, LEGACY, REPAIR, DURABLE_SAVE }
   static DownloadLibrary instance;final Context root;
+  private final java.util.Map<Integer,String> replayedTaskDigests=new java.util.concurrent.ConcurrentHashMap<>();
   static synchronized DownloadLibrary get(Context c){if(instance==null)instance=new DownloadLibrary(Profiles.global(c));return instance;}
   DownloadLibrary(Context c){super(c,"saved-download-library.db",null,4);root=c;}
   public void onCreate(SQLiteDatabase db){db.execSQL("CREATE TABLE files (slot INTEGER NOT NULL,uri TEXT NOT NULL,row TEXT NOT NULL,time INTEGER NOT NULL,PRIMARY KEY(slot,uri))");createTasks(db);createDeleted(db);createIndexes(db);}
@@ -62,20 +66,28 @@ final class DownloadLibrary extends SQLiteOpenHelper {
   void add(Context c,JSONObject row){add(c,row,IndexWrite.CURRENT);}
   private void add(Context c,JSONObject row,IndexWrite write){
     if(row==null)return;String uri=row.optString("uri");if(uri.isEmpty()||!"saved".equals(row.optString("state","saved")))return;
+    int slot=Profiles.slot(c);
     SQLiteDatabase db=getWritableDatabase();boolean changed=false;JSONObject published=null;db.beginTransaction();
     try{
       if(removed(db,row)||conflicting(db,row)){db.setTransactionSuccessful();return;}
       JSONObject current=newest(db,uri);long time=DownloadListPolicy.preservedTime(row,current);
-      if(write==IndexWrite.REPAIR&&(current!=null||tombstoned(db,uri)||conflictsWithTask(db,Profiles.slot(c),row))){db.setTransactionSuccessful();return;}
+      boolean staleTask=false;
+      if(write==IndexWrite.REPAIR||write==IndexWrite.DURABLE_SAVE){
+        if(current!=null||tombstoned(db,uri)){db.setTransactionSuccessful();return;}
+        JSONObject task=indexedTask(db,slot,row.optString("id"));
+        staleTask=write==IndexWrite.DURABLE_SAVE&&olderOwnedTask(row,task);
+        if(task!=null&&!staleTask&&(!"saved".equals(task.optString("state"))||!sameOwnedPublication(row,task))){db.setTransactionSuccessful();return;}
+      }
       if(write==IndexWrite.LEGACY&&current!=null&&time<=current.optLong("time")){db.setTransactionSuccessful();return;}
-      JSONObject safe=J.obj("slot",Profiles.slot(c),"id",row.optString("id"),"name",row.optString("name","文件"),"mime",row.optString("mime","application/octet-stream"),"uri",uri,"state","saved","location",row.optString("location","原先选择的保存位置"),"time",time);
+      JSONObject safe=J.obj("slot",slot,"id",row.optString("id"),"name",row.optString("name","文件"),"mime",row.optString("mime","application/octet-stream"),"uri",uri,"state","saved","location",row.optString("location","原先选择的保存位置"),"time",time);
       DownloadMetadataValues.copy(row,safe);DownloadMetadataValues.merge(safe,current);
       // A history scan must not manufacture a newer download or rewrite an unchanged file.
       if(current!=null&&sameFile(safe,current)){db.setTransactionSuccessful();return;}
-      ContentValues values=new ContentValues();values.put("slot",Profiles.slot(c));values.put("uri",uri);values.put("row",safe.toString());values.put("time",time);
+      ContentValues values=new ContentValues();values.put("slot",slot);values.put("uri",uri);values.put("row",safe.toString());values.put("time",time);
       if(current!=null&&time>current.optLong("time"))db.delete("files","uri=?",new String[]{uri});
       if(db.insertWithOnConflict("files",null,values,SQLiteDatabase.CONFLICT_REPLACE)<0)throw new IllegalStateException("Saved download was not indexed");
       if(write==IndexWrite.CURRENT&&(current==null||time>current.optLong("time")))retireTasks(db,safe);
+      if(staleTask)db.delete("tasks","slot=? AND id=?",new String[]{String.valueOf(slot),row.optString("id")});
       changed=true;published=safe;db.setTransactionSuccessful();
     }finally{db.endTransaction();}
     if(changed){changed(root);SavedDownloadMetadata.added(root,published);}
@@ -106,7 +118,33 @@ final class DownloadLibrary extends SQLiteOpenHelper {
     if(changed)changed(root);
   }
   JSONArray tasks(){migrate();migrateTasks();JSONArray rows=new JSONArray();try(Cursor c=getReadableDatabase().query("tasks",new String[]{"row"},null,null,null,null,"time DESC")){while(c.moveToNext())rows.put(J.parse(c.getString(0)));}return prune(rows);}
-  void migrate(){migrate(false);}
+  void migrate(){migrate(false);replayDurableSavedTasks();}
+  private void replayDurableSavedTasks(){
+    for(int slot=0;slot<Profiles.MAX;slot++){
+      try{
+        Context context=Profiles.context(root,slot);
+        String durable=DownloadTasks.durableRows(context);
+        String digest=Base64.getEncoder().encodeToString(
+            MessageDigest.getInstance("SHA-256").digest(durable.getBytes(StandardCharsets.UTF_8)));
+        if(digest.equals(replayedTaskDigests.get(slot)))continue;
+        JSONArray rows=new JSONArray(durable);
+        if(rows.length()>0){
+          ProfileCatalog catalog=ProfileCatalog.get(root);
+          EnvironmentSpec.Identity owner=catalog.identity(slot);
+          catalog.withIdentity(owner,()->{
+            JSONArray owned=ownedRows(rows,owner,IndexWrite.REPAIR);
+            for(int i=0;i<owned.length();i++){
+              JSONObject row=owned.optJSONObject(i);
+              if("saved".equals(row.optString("state"))&&row.optLong("time")>0
+                  &&row.optString("uri").startsWith("content://"))add(context,row,IndexWrite.DURABLE_SAVE);
+            }
+            return null;
+          });
+        }
+        replayedTaskDigests.put(slot,digest);
+      }catch(Exception failure){/* Keep this snapshot retryable when the index or owner cannot be read. */}
+    }
+  }
   private void migrate(boolean taskIndex){
     SharedPreferences migration=root.getSharedPreferences("download-library-migration",0);
     for(int slot=0;slot<Profiles.MAX;slot++){
@@ -196,13 +234,17 @@ final class DownloadLibrary extends SQLiteOpenHelper {
       return cursor.moveToFirst();
     }
   }
-  private static boolean conflictsWithTask(SQLiteDatabase db,int slot,JSONObject row){
+  private static JSONObject indexedTask(SQLiteDatabase db,int slot,String id){
     try(Cursor prior=db.query("tasks",new String[]{"row"},"slot=? AND id=?",
-        new String[]{String.valueOf(slot),row.optString("id")},null,null,null)){
-      if(!prior.moveToFirst())return false;
-      JSONObject task=J.parse(prior.getString(0));
-      return !"saved".equals(task.optString("state"))||!sameOwnedPublication(row,task);
+        new String[]{String.valueOf(slot),id},null,null,null)){
+      return prior.moveToFirst()?J.parse(prior.getString(0)):null;
     }
+  }
+  private static boolean olderOwnedTask(JSONObject row,JSONObject indexed){
+    return indexed!=null&&indexed.optLong("time")<row.optLong("time")
+        &&!"saved".equals(indexed.optString("state"))&&indexed.optString("uri").isEmpty()
+        &&java.util.Objects.equals(row.opt("environmentId"),indexed.opt("environmentId"))
+        &&java.util.Objects.equals(row.opt("environmentGeneration"),indexed.opt("environmentGeneration"));
   }
   private static boolean coveredByOtherPublication(SQLiteDatabase db,JSONObject row){
     String uri=row.optString("uri");

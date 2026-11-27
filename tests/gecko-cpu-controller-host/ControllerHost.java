@@ -31,8 +31,9 @@ public final class ControllerHost {
     check("Offline automatic removes staleUSER without inventing engine default",Arrays.equals(Files.readAllBytes(prefs),bytes(expected))&&!new String(Files.readAllBytes(base.resolve("gecko-browser.yaml")),StandardCharsets.UTF_8).contains(GeckoCpuProfile.PREF));
     String startupConfig=Files.readString(base.resolve("gecko-browser.yaml"),StandardCharsets.UTF_8);
     check("Closed route remains in complete background generated config",startupConfig.contains("network.proxy.socks_port: 9"));
-    if(!startupConfig.contains("\n  browser.download.open_pdf_attachments_inline: false\n")){
-      throw new AssertionError("Gecko startup must dispatch PDF attachments to the download handler");
+    if(!startupConfig.contains("\n  browser.download.open_pdf_attachments_inline: false\n")
+        ||!startupConfig.contains("\n  pdfjs.disabled: true\n")){
+      throw new AssertionError("Gecko startup must dispatch PDF attachments and inline PDFs to the download handler");
     }
     Path user=profile.toPath().resolve("user.js");
     for(String bad:new String[]{"user_pref(\"dom.maxHardwareConcurrency\", 1);","user_pref(\"dom.maxHardwareConcurre\\u006ecy\", 1);","user_pref(\"other\", 1);user_pref(\"dom.maxHardwareConcurre\\u006ecy\", 2);"}){

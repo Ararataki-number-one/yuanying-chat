@@ -64,12 +64,12 @@ def fixture(row=None, index=1):
 
 
 class DownloadWorkspaceReaderTest(unittest.TestCase):
-    def test_current_five_captures_and_original_111_matrix(self):
+    def test_current_five_download_captures(self):
         records = legacy.NativeCaptureCoverageTest().records()
         for index, row in enumerate(records):
             if row['scene'] == 'downloads':
                 records[index] = fixture(row, index + 1)
-        self.assertEqual(len(records), 111)
+        self.assertEqual(len(records), 106)
         self.assertEqual(sum(row['scene'] == 'downloads' for row in records), 5)
         matrix.verify_captures(records, SOURCE)
         matrix.verify_captures(legacy.NativeCaptureCoverageTest().records(), SOURCE)

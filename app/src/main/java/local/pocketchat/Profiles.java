@@ -12,7 +12,6 @@ final class Profiles {
   static Context global(Context c){Context app=c.getApplicationContext();while(app instanceof ProfileContext)app=((ProfileContext)app).getBaseContext();return app;}
   static Context context(Context c,int id){Context root=global(c);return root instanceof PocketApplication?((PocketApplication)root).profile(id):new ProfileContext(root,id);}
   static Class<?> activity(int id){return new Class<?>[]{MainActivity.class,ProfileActivity1.class,ProfileActivity2.class,ProfileActivity3.class,ProfileActivity4.class,ProfileActivity5.class,ProfileActivity6.class,ProfileActivity7.class}[id];}
-  static Class<?> preview(Context c){int id=slot(c);return new Class<?>[]{AttachmentPreviewActivity.class,ProfilePreview1.class,ProfilePreview2.class,ProfilePreview3.class,ProfilePreview4.class,ProfilePreview5.class,ProfilePreview6.class,ProfilePreview7.class}[id];}
   static Class<?> service(Context c){int id=slot(c);return new Class<?>[]{ChatService.class,ProfileChatService1.class,ProfileChatService2.class,ProfileChatService3.class,ProfileChatService4.class,ProfileChatService5.class,ProfileChatService6.class,ProfileChatService7.class}[id];}
   static int notification(Context c,int original){return original+slot(c)*100;}
   static String display(Context c,int id){return ProfileCatalog.get(c).name(id);}

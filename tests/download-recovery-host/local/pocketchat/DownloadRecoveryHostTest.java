@@ -117,7 +117,9 @@ public final class DownloadRecoveryHostTest {
       try(OutputStream out=target.output()){out.write(Files.readAllBytes(source.toPath()));}target.publish();prefs.failAfterMemoryBeforeDisk=true;return null;
     },()->commit(tasks,row,target,generation),()->{aborted.set(true);target.abort();});}catch(Throwable failure){error=failure;}
     JSONObject memory=stored(c,row.optString("id")),durable=disk(c,row.optString("id"));
-    check("After-memory commit failure keeps cached saved separate from disk pending slot "+slot,error!=null&&SavedFilePublication.unconfirmed(error)&&"saved".equals(memory.optString("state"))&&!"saved".equals(durable.optString("state"))&&durable.has("pendingDestination"));
+    JSONObject forReplay=DownloadTaskRevisions.find(new JSONArray(DownloadTasks.durableRows(c)),row.optString("id"));
+    check("After-memory commit failure keeps cached saved separate from disk pending slot "+slot,error!=null&&SavedFilePublication.unconfirmed(error)&&"saved".equals(memory.optString("state"))&&!"saved".equals(durable.optString("state"))&&durable.has("pendingDestination")
+        &&forReplay!=null&&!"saved".equals(forReplay.optString("state"))&&forReplay.has("pendingDestination"));
     check("Failed memory receipt cannot delete source or notify completion slot "+slot,!SavedFilePublication.complete(tasks,memory,source,notified::incrementAndGet)&&source.isFile()&&notified.get()==0);
     check("After-memory failure preserves destination and pending generation slot "+slot,!aborted.get()&&target.file.isFile()&&DownloadTaskRevisions.pending(row,target.uri.toString(),generation)&&!tasks.published(memory,target.uri));
     return J.obj("id",row.optString("id"),"uri",target.uri.toString(),"source",source.getAbsolutePath(),"slot",slot);

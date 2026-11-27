@@ -16,6 +16,7 @@ ROOT = Path(__file__).resolve().parents[1]
 BASE_COMMIT = '89729eb2c079d40237ecd466c7444da934206d98'
 BASE_TREE = '583db08f6595ddc8e5a387e5cc035de1e70cb690'
 RUNNER = 'tests/gecko/run_ui_visuals.py'
+ACTIVITY = 'tests/gecko/UiVisualIntegrationActivity.java'
 PORT = 'tests/ui_download_workspace_v2_source_compatibility.py'
 HOST = 'tests/profile_ui_download_workspace_v2_source_compatibility_test.py'
 IDENTITIES = {
@@ -104,6 +105,16 @@ def source_input(raw, path):
 
 
 def historical_input(raw, path):
+    # The retired preview scene is restored only for the old whole-fixture
+    # comparisons. The Android fixture and execution hosts use current bytes.
+    if path == ACTIVITY and type(raw) is bytes and sha(raw) == 'ea7c23ce22e480fa4b69bb2ab2a404e9b7dcf6c0e4ab9fff63d8ce05352d92ae':
+        anchor = b'    if("brand".equals(action))'
+        preview = ('    if("file-preview".equals(action)){startActivity(new Intent(this,AttachmentPreviewActivity.class)'
+                   '.putExtra("uri","content://local.pocketchat.test.upload/image").putExtra("mime","image/png")'
+                   '.putExtra("name","界面预览图片.png"));finish();return;}\n').encode('utf-8')
+        assert raw.count(anchor) == 1, 'The retired fixture location must be unique'
+        raw = raw.replace(anchor, preview + anchor, 1)
+        assert sha(raw) == '89914f5692e9eefbc6e379108c0f97a471eeee6002d24ee4fc79417babe693f1'
     if type(raw) is bytes and type(path) is str and path in IDENTITIES and identity(raw) == IDENTITIES[path][3:]:
         return source_input(raw, path)
     return raw

@@ -26,7 +26,6 @@ public final class UiVisualIntegrationActivity extends Activity {
     try{seed();}catch(Exception e){Log.e("PocketUiVisual","fixture setup failed",e);finish();return;}
     if("environment-picker".equals(action)||"templates".equals(action)||"zoom".equals(action)||"audit".equals(action)){startActivity(new Intent(this,UiDetailsIntegrationActivity.class).putExtra("detailScene",action));finish();return;}
     if("update".equals(action)){startActivity(new Intent(this,AppUpdateActivity.class));finish();return;}
-    if("file-preview".equals(action)){startActivity(new Intent(this,AttachmentPreviewActivity.class).putExtra("uri","content://local.pocketchat.test.upload/image").putExtra("mime","image/png").putExtra("name","界面预览图片.png"));finish();return;}
     if("brand".equals(action)){startActivity(new Intent(this,BrandLaunchActivity.class).putExtra("previewBrand",true));finish();return;}
     if("import".equals(action)){startActivity(new Intent(this,NetworkImportActivity.class));finish();return;}
     if("settings".equals(action)||"appearance".equals(action)||"default-entry".equals(action)||"feedback".equals(action)||"downloads".equals(action)||"delete-file".equals(action)){

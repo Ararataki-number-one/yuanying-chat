@@ -225,6 +225,48 @@ public final class MigrationCases {
         &&"true".equals(marks.diskString("tasksSlot3Reconciled","false"))
         &&files==count(db,"files")&&tasks==count(db,"tasks"));
   }
+  private static void savedAfterIndexFailure(Context root,DownloadLibrary library)throws Exception{
+    int slot=3;
+    Context profile=Profiles.context(root,slot);
+    SQLiteDatabase db=library.getWritableDatabase();
+    SharedPreferences marks=root.getSharedPreferences("download-library-migration",0);
+    check("ordinary migrations already completed before the late PDF save",
+        marks.getBoolean("slot3Reconciled",false)&&marks.getBoolean("tasksSlot3Reconciled",false));
+    String id="pdf-after-index-error",uri="saved-report.pdf";
+    JSONObject saving=owned(root,slot,task(id,202,351));
+    saving.put("state","saving");
+    JSONObject newer=owned(root,slot,task("newer-active",215,76));
+    library.sync(profile,new JSONArray().put(saving).put(newer));
+    JSONObject committed=owned(root,slot,file(id,uri,203,"报告.pdf"));
+    committed.put("mime","application/pdf");
+    DownloadMetadataValues.checked(committed,351,"published-copy","known");
+    legacyTasks(root,slot,new JSONArray().put(committed)
+        .put(owned(root,slot,file("old-pdf-tombstone","deleted",205,"Deleted PDF")))
+        .put(owned(root,2,file("foreign-pdf","foreign.pdf",205,"Foreign PDF")))
+        .put(owned(root,slot,file("newer-active","old-active.pdf",204,"Superseded PDF"))));
+    db.failureKey=id;
+    try{library.sync(profile,new JSONArray().put(committed));throw new AssertionError("expected late index failure");}
+    catch(IllegalStateException expected){}
+    check("the completed journal survives the failed index write with an older saving row",
+        "saved".equals(DownloadTaskRevisions.find(new JSONArray(DownloadTasks.durableRows(profile)),id).optString("state"))
+        &&"saving".equals(indexedTask(db,slot,id).optString("state"))&&!content(db,"files",slot,PREFIX+uri).has("id"));
+    db.failureKey=PREFIX+uri;
+    library.list();
+    check("a second index error leaves the original saving index and durable PDF retryable",
+        "saving".equals(indexedTask(db,slot,id).optString("state"))&&!content(db,"files",slot,PREFIX+uri).has("id"));
+    library.list();
+    JSONObject saved=content(db,"files",slot,PREFIX+uri);
+    check("ordinary download-center refresh restores the PDF and retires its older saving row",
+        id.equals(saved.optString("id"))&&"报告.pdf".equals(saved.optString("name"))
+        &&"application/pdf".equals(saved.optString("mime"))&&DownloadMetadataValues.bytes(saved)==351
+        &&!indexedTask(db,slot,id).has("id"));
+    check("late replay does not resurrect deleted or foreign owned PDFs",
+        !content(db,"files",slot,PREFIX+"deleted").has("id")&&!content(db,"files",slot,PREFIX+"foreign.pdf").has("id"));
+    check("late replay never replaces a newer task with an older durable record",
+        indexedTask(db,slot,"newer-active").optLong("received")==76&&!content(db,"files",slot,PREFIX+"old-active.pdf").has("id"));
+    long files=count(db,"files");library.list();
+    check("the next ordinary center refresh keeps one repaired PDF record",files==count(db,"files"));
+  }
   private static void resetMigration(Context root,DownloadLibrary library)throws Exception{
     int slot=4;
     ProfileCatalog catalog=ProfileCatalog.get(root);
@@ -259,6 +301,7 @@ public final class MigrationCases {
       if("fail".equals(args[1]))fail(context,library);else{
         restart(context,library);
         completedMarkerReplay(context,library);
+        savedAfterIndexFailure(context,library);
         resetMigration(context,library);
       }
     }
@@ -273,6 +316,7 @@ final class Profiles {
   static int slot(Context c){return c.slot;}
 }
 final class DownloadTasks {
+  static String durableRows(Context context){return context.getSharedPreferences("download-tasks",0).getString("rows","[]");}
   static void put(JSONObject row,Object... fields){
     try{for(int i=0;i<fields.length;i+=2)row.put((String)fields[i],fields[i+1]);}
     catch(org.json.JSONException error){throw new IllegalStateException(error);}

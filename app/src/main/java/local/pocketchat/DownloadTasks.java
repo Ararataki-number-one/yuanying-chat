@@ -10,6 +10,10 @@ final class DownloadTasks {
  static final class Durability {volatile String confirmed;volatile boolean unconfirmed;Durability(String rows){confirmed=rows;}}
  static final class PersistenceFailure extends IllegalStateException {PersistenceFailure(Throwable cause){super("下载记录尚未写入存储，请稍后重试",cause);}}
  static final java.util.concurrent.ConcurrentMap<String,Durability> stores=new java.util.concurrent.ConcurrentHashMap<>();
+ static String durableRows(Context context){
+  Durability active=stores.get(context.getFilesDir().getAbsolutePath()+"/");
+  return active==null?context.getSharedPreferences("download-tasks",0).getString("rows","[]"):active.confirmed;
+ }
  static final java.util.concurrent.ConcurrentMap<String,java.lang.ref.WeakReference<DownloadTasks>> owners=new java.util.concurrent.ConcurrentHashMap<>();
  final Set<String> owned=new HashSet<>();
  String ownerKey(String id){return ownerPrefix+id;}
@@ -96,7 +100,7 @@ final class DownloadTasks {
   }
   observed=DownloadTaskRevisions.snapshot(rows);
   try{library.sync(context,rows);for(int i=0;i<rows.length();i++){JSONObject row=rows.optJSONObject(i);if("saved".equals(row.optString("state")))library.add(context,row);}indexFailure=null;}
-  catch(RuntimeException error){indexFailure=error;/* Confirmed tasks remain authoritative; a later save or instance repairs the index. */}
+  catch(RuntimeException error){indexFailure=error;DownloadLibrary.changed(context);/* A library read can replay confirmed saved records. */}
   }catch(PersistenceFailure failure){throw failure;}catch(RuntimeException failure){durability.unconfirmed=true;throw new PersistenceFailure(failure);}
  }
  JSONObject recoveredRow(JSONObject previous){return recoveryFailure==null?DownloadTaskRevisions.find(rows,previous.optString("id")):null;}

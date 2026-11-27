@@ -4,6 +4,7 @@ import android.app.*;
 import android.content.*;
 import android.net.Uri;
 import android.os.*;
+import android.webkit.MimeTypeMap;
 import android.widget.*;
 import java.text.DateFormat;
 import java.util.*;
@@ -50,7 +51,7 @@ final class SavedFileActions {
   }
   void show(JSONObject row){
     ReferenceUi.Modal d=new ReferenceUi.Modal(a,DownloadMetadataValues.name(row)).asSheet();
-    String[] labels={"打开","分享","另存为","详细信息","删除文件"};
+    String[] labels={"在其他应用中打开","分享","另存为","详细信息","删除文件"};
     for(int i=0;i<labels.length;i++){final int n=i;ReferenceUi.menuAction(d,labels[i],()->{
       d.dismiss();if(n==0)open(a,row);if(n==1)share(a,row);if(n==2)export(row);
       if(n==3)details(row);
@@ -87,7 +88,28 @@ final class SavedFileActions {
     });
   }
   static Intent shareIntent(JSONObject row){Uri uri=Uri.parse(row.optString("uri"));Intent intent=new Intent(Intent.ACTION_SEND).setType(DownloadMetadataValues.mime(row)).putExtra(Intent.EXTRA_STREAM,uri).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);intent.setClipData(ClipData.newRawUri("已保存文件",uri));return intent;}
-  static void open(Activity a,JSONObject row){Uri uri=Uri.parse(row.optString("uri"));String mime=DownloadMetadataValues.mime(row);try{if(mime.equals("application/pdf")||mime.startsWith("image/"))a.startActivity(new Intent(a,Profiles.preview(a)).putExtra("uri",uri.toString()).putExtra("name",DownloadMetadataValues.name(row)).putExtra("mime",mime));else{Intent intent=new Intent(Intent.ACTION_VIEW).setDataAndType(uri,mime).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);intent.setClipData(ClipData.newRawUri("已保存文件",uri));a.startActivity(intent);}}catch(Exception e){problem(a,"文件无法打开，可能已移动或手机没有对应查看器");}}
+  static Intent openIntent(Uri uri,String mime,String title){
+    if(!documentUri(uri))throw new IllegalArgumentException("The file must use a content URI");
+    String type=Intent.normalizeMimeType(mime);
+    if(type==null||type.isEmpty()||"application/octet-stream".equals(type)){
+      int dot=title==null?-1:title.lastIndexOf('.');
+      String extension=dot<0?"":title.substring(dot+1).toLowerCase(Locale.ROOT);
+      String inferred=MimeTypeMap.getSingleton().getMimeTypeFromExtension(extension);
+      type=inferred==null?"application/octet-stream":inferred;
+    }
+    Intent intent=new Intent(Intent.ACTION_VIEW).setDataAndType(uri,type).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+    intent.setClipData(ClipData.newRawUri(title,uri));
+    return intent;
+  }
+  static void open(Activity a,JSONObject row){
+    try{
+      a.startActivity(openIntent(Uri.parse(row.optString("uri")),DownloadMetadataValues.mime(row),DownloadMetadataValues.name(row)));
+    }catch(ActivityNotFoundException e){
+      problem(a,"手机尚未安装支持此格式的查看器");
+    }catch(RuntimeException e){
+      problem(a,"文件无法打开，可能已移动或访问权限已失效");
+    }
+  }
   static void share(Activity a,JSONObject row){try{a.startActivity(Intent.createChooser(shareIntent(row),"分享文件"));}catch(Exception e){problem(a,"文件已移动或无法分享");}}
   void export(JSONObject row){export(row,null);}
 

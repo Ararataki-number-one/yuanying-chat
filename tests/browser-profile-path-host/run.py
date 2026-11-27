@@ -7,10 +7,16 @@ SOURCE='82a3512a8cf67259049353d7145407292a5d9cba'
 # Profiles uses the reviewed environment-engine-lock blob; slot/global path members are byte-identical.
 PINS={'GeckoCpuController': '2ceaa3bb6602392d9702339620832187f612a0c863c0ddf46a61aac00200a558', 'GeckoTlsController': '0bdcb528c6df40a5a03324d1dd8b4066c74d22c23af9ac715159667968c20f67', 'GeckoCpuProfile': 'd1569a11149f15b4e6da1c0259bfc25fe6ee1bc1c920f8419e26c8c60756b5dd', 'GeckoTlsProfile': '2b33d4bde7b44cd6068f794fe13cf074a4ced0975d32b444632455180bcf4ac4', 'GeckoCpuStore': '8b83942560d72a1ad432245228d4791965133d2db6064d8c6cb9466b56e87458', 'GeckoTlsStore': '9430714a847aafc8fbb56390566330c785b8c3dcc019de14015830f68dfe82c8', 'GeckoCpuSpec': '617c69ba3b1d3b4edd3abf455bee8e36f3b861e0c82857153a8f8c632dd1bedc', 'GeckoTlsSpec': '4ffd5f095d6528053c4b11938cf5807f2b95c189bf1feafc3402eb451553f341', 'EnvironmentSpec': 'e85b542ffad8e5ff09d4b8484333b52b22200df093cae633dcd05f6dc1c1fb99', 'NetworkShareJson': '2934074b1e0bb9bf2ebd114643e6966cb30b5cb7e0cb7acf27a1ea59f1ddf677', 'J': '772bcc91b130ace1f33b529c2d828771ff9f12ba44805685a703df14f7d68493', 'ProfileContext': '2b72094396c21c235e77ce79fbd6a6eb134abf14a71bf4c8c0ae010aa2369178', 'Profiles': '7f1b81480940393d533811e7511cfe4d56bc7f92cabb0dca8da666ec5b5f805e'}
 LEGACY_GV_SHA='b8a32f9f7dccd67a4e0ab90a69a94d053c3130e470fdbe6af647244152817fb4'
-# The only reviewed change to the pinned path source is the PDF attachment preference.
-CURRENT_CPU_PROFILE_SHA256='7292cf2bef5e948f833909d071bbff0558aa026e1a2fc29000fdc855a479108a'
-CPU_PDF_DELTA=(b'      // Deliver PDF attachments to the download handler while keeping inline PDF viewing.\n'
-               b'      +"  browser.download.open_pdf_attachments_inline: false\\n"\n')
+# These reviewed PDF and local file-opening changes do not alter profile paths.
+CURRENT_CPU_PROFILE_SHA256='443977ef0ba3ee067de08e7ece9ab8038815d59074fd1d1486ffe9570b421d43'
+CPU_PDF_DELTA=(b'      // Send PDF responses to the download handler instead of the built-in viewer.\n'
+               b'      +"  browser.download.open_pdf_attachments_inline: false\\n"\n'
+               b'      +"  pdfjs.disabled: true\\n"\n')
+CURRENT_PROFILES_SHA256='1d986773818e0d217235df900ca2abf769ab0ad5a9c555302adaf1ef2559327a'
+PREVIEW_ANCHOR=b'  static Class<?> service(Context c)'
+PREVIEW_DISPATCH=(b'  static Class<?> preview(Context c){int id=slot(c);return new Class<?>[]{'
+                  b'AttachmentPreviewActivity.class,ProfilePreview1.class,ProfilePreview2.class,ProfilePreview3.class,'
+                  b'ProfilePreview4.class,ProfilePreview5.class,ProfilePreview6.class,ProfilePreview7.class}[id];}\n')
 NAMES=['GeckoCpuController','GeckoTlsController','GeckoCpuProfile','GeckoTlsProfile','GeckoCpuStore','GeckoTlsStore','GeckoCpuSpec','GeckoTlsSpec','EnvironmentSpec','NetworkShareJson','J']
 sha=lambda b:hashlib.sha256(b).hexdigest()
 spec=importlib.util.spec_from_file_location('raw_path_member_extractor',ROOT/'tests/gecko-navigation-host/run.py');extract=importlib.util.module_from_spec(spec);spec.loader.exec_module(extract)
@@ -28,6 +34,10 @@ def verify_factored_raw(name,raw):
   if sha(raw)!=CURRENT_CPU_PROFILE_SHA256 or raw.count(CPU_PDF_DELTA)!=1:
    raise ValueError('Unknown factored raw source: '+name)
   historical=raw.replace(CPU_PDF_DELTA,b'',1)
+ elif name=='Profiles':
+  if sha(raw)!=CURRENT_PROFILES_SHA256 or raw.count(PREVIEW_ANCHOR)!=1:
+   raise ValueError('Unknown factored raw source: '+name)
+  historical=raw.replace(PREVIEW_ANCHOR,PREVIEW_DISPATCH+PREVIEW_ANCHOR,1)
  if sha(historical)!=PINS[name]:raise ValueError('Unknown factored raw source: '+name)
  # Compile the actual current bytes. The inverse protects the old path source pin only.
  return raw

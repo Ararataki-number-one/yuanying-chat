@@ -63,15 +63,23 @@ class CurrentRuntimeRawBindings(unittest.TestCase):
         for name, expected in pins.items():
             raw = (ROOT/'app/src/main/java/local/pocketchat'/(name+'.java')).read_bytes()
             if name == 'GeckoCpuProfile':
-                self.assertEqual(SHA(raw), '7292cf2bef5e948f833909d071bbff0558aa026e1a2fc29000fdc855a479108a')
+                self.assertEqual(SHA(raw), '443977ef0ba3ee067de08e7ece9ab8038815d59074fd1d1486ffe9570b421d43')
                 delta = PATH_HOST.CPU_PDF_DELTA
-                self.assertEqual((len(delta), raw.count(delta)), (156, 1))
+                self.assertEqual((len(delta), raw.count(delta)), (183, 1))
                 previous = raw.replace(delta, b'', 1)
                 self.assertEqual(SHA(previous), expected)
                 for changed in (previous, raw.replace(delta, delta*2, 1),
-                                raw.replace(delta, delta.replace(b'false', b'true'), 1), previous+delta):
+                                raw.replace(delta, delta.replace(b'false', b'true'), 1), previous+delta,
+                                raw.replace(b'pdfjs.disabled: true', b'pdfjs.disabled: false')):
                     with self.assertRaises(ValueError):
                         PATH_HOST.verify_factored_raw(name, changed)
+            elif name == 'Profiles':
+                self.assertEqual(SHA(raw), '1d986773818e0d217235df900ca2abf769ab0ad5a9c555302adaf1ef2559327a')
+                anchor = PATH_HOST.PREVIEW_ANCHOR
+                previous = raw.replace(anchor, PATH_HOST.PREVIEW_DISPATCH + anchor, 1)
+                self.assertEqual(SHA(previous), expected)
+                with self.assertRaises(ValueError):
+                    PATH_HOST.verify_factored_raw(name, previous)
             else:
                 self.assertEqual(SHA(raw), expected)
             self.assertIs(PATH_HOST.verify_factored_raw(name, raw), raw)

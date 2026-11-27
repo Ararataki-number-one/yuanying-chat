@@ -119,7 +119,27 @@ final class Attachments {
   void cancelChooser(){cancel(pending);}
   void destroy(){destroyed=true;cancelChooser();}
 
-  void preview(String message,String name){JSONObject file=null;if(message.isEmpty()){for(int i=0;i<a.session.attachments.length();i++){JSONObject f=a.session.attachments.optJSONObject(i);if(name.equals(f.optString("name")))file=f;}}else file=J.parse(a.prefs.getString("preview:"+a.conversation+"|"+message+"|"+name,"{}"));if(file!=null&&!file.optString("uri").isEmpty()){a.startActivity(new Intent(a,Profiles.preview(a)).putExtra("uri",file.optString("uri")).putExtra("name",name).putExtra("mime",file.optString("mime")));}else{a.status("此历史附件尚无本地副本，请在原网页点按附件查看");a.showPage(true);}}
+  void preview(String message,String name){
+    JSONObject file=null;
+    if(message.isEmpty()){
+      for(int i=0;i<a.session.attachments.length();i++){
+        JSONObject entry=a.session.attachments.optJSONObject(i);
+        if(entry!=null&&name.equals(entry.optString("name")))file=entry;
+      }
+    }else file=J.parse(a.prefs.getString("preview:"+a.conversation+"|"+message+"|"+name,"{}"));
+    if(file==null||file.optString("uri").isEmpty()){
+      a.status("此历史附件尚无本地副本，请在原网页点按附件查看");
+      a.showPage(true);
+      return;
+    }
+    try{
+      a.startActivity(SavedFileActions.openIntent(Uri.parse(file.optString("uri")),file.optString("mime"),name));
+    }catch(ActivityNotFoundException e){
+      a.status("手机尚未安装支持此格式的查看器");
+    }catch(RuntimeException e){
+      a.status("附件无法打开，可能已移动或访问权限已失效");
+    }
+  }
   static String sizeLabel(long bytes){if(bytes<0)return "大小未知";if(bytes<1024)return bytes+" B";return String.format(Locale.ROOT,bytes<1048576?"%.1f KB":"%.1f MB",bytes/(bytes<1048576?1024.0:1048576.0));}
   static String stateLabel(JSONObject f){String state=f.optString("state");int progress=f.optInt("progress",-1);return "ready".equals(state)?"网页已接收":"error".equals(state)?"上传失败，点按处理":"unknown".equals(state)?"网页接收待核对":progress>=0?"上传 "+progress+"%":"上传或处理中…";}
   // Old native attachment controls cannot create overlays, click the website,

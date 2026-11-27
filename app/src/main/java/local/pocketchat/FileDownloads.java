@@ -332,7 +332,15 @@ class FileDownloads {
   void remember(Uri uri){long published=task.optLong("time");JSONArray previous=J.parse(a.prefs.getString("downloadHistory","{}")).optJSONArray("files"),files=new JSONArray();JSONObject remembered=J.obj("slot",Profiles.slot(a),"id",task.optString("id"),"name",name,"mime",mime,"uri",uri.toString(),"location",task.optString("location"),"time",published);DownloadMetadataValues.copy(task,remembered);files.put(remembered);if(previous!=null)for(int i=0;i<Math.min(49,previous.length());i++)if(!uri.toString().equals(previous.optJSONObject(i).optString("uri")))files.put(previous.optJSONObject(i));a.prefs.edit().putString("downloadHistory",J.obj("files",files).toString()).apply();}
   void openSaved(Uri uri,String type){openSaved(uri,type,name);}
   void openSaved(Uri uri,String type,String title){openSaved(uri,type,title,true);}
-  void openSaved(Uri uri,String type,String title,boolean confirmed){try{if("application/pdf".equals(type)||type.startsWith("image/")){a.startActivity(new Intent(a,Profiles.preview(a)).putExtra("uri",uri.toString()).putExtra("name",title).putExtra("mime",type));return;}a.startActivity(new Intent(Intent.ACTION_VIEW).setDataAndType(uri,type).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION));}catch(ActivityNotFoundException e){a.status(confirmed?"文件已保存；手机尚未安装支持此格式的查看器":"保存结果仍待确认；手机尚未安装支持此格式的查看器");}catch(Exception e){a.status(confirmed?"文件已移动或访问失效，请重新下载":"保存结果仍待确认；无法访问原保存位置，请检查文件权限后重试核验");}}
+  void openSaved(Uri uri,String type,String title,boolean confirmed){
+    try{
+      a.startActivity(SavedFileActions.openIntent(uri,type,title));
+    }catch(ActivityNotFoundException e){
+      a.status(confirmed?"文件已保存；手机尚未安装支持此格式的查看器":"保存结果仍待确认；手机尚未安装支持此格式的查看器");
+    }catch(RuntimeException e){
+      a.status(confirmed?"文件已移动或访问失效，请重新下载":"保存结果仍待确认；无法访问原保存位置，请检查文件权限后重试核验");
+    }
+  }
   void showProgress(String text){if(destroyed||minimized)return;if(dialog==null){LinearLayout box=new LinearLayout(a);box.setGravity(Gravity.CENTER_VERTICAL);box.setPadding(a.dp(24),a.dp(20),a.dp(24),a.dp(20));box.addView(new ProgressBar(a),new LinearLayout.LayoutParams(a.dp(26),a.dp(26)));progress=a.label(text,15,Ui.INK);progress.setPadding(a.dp(16),0,0,0);box.addView(progress,new LinearLayout.LayoutParams(0,-2,1));AlertDialog d=AppAppearance.dialog(a).setTitle("下载文件").setView(box).setPositiveButton("收起",(x,w)->{minimized=true;dismiss();}).setNeutralButton("暂停",(x,w)->pause()).setNegativeButton("取消下载",(x,w)->requestCancel()).create();d.setCanceledOnTouchOutside(false);d.setOnCancelListener(x->{minimized=true;dialog=null;});dialog=d;d.show();}progress.setText(text);}
   void retry(){if(active||awaitingPicker||retiringPartial)return;
     if(task!=null&&!task.optString("pendingDestination").isEmpty()){

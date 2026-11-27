@@ -37,8 +37,6 @@ def execute(view=None, navigation_boundary=False):
         'AUDIT': 'void runEnvironmentAudit(',
         'LOCATION': '@Override public void onLocationChange(',
     }
-    if 'private static String pdfDocumentUrl(' in raw:
-        selected['PDF_DOCUMENT_URL'] = 'private static String pdfDocumentUrl('
     members = {key: extract.member(raw, needle) for key, needle in selected.items()}
     fixture = (HERE / 'PageBridgeLifecycleHost.java.in').read_text()
     for key, value in members.items():
