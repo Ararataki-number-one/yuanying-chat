@@ -132,13 +132,14 @@ def run(adb,binary,source,out,dump):
                  and n.get('content-desc','').startswith(prefix)]
         assert len(matches)==1,(prefix,matches)
         return matches[0]
-    def continue_ready(xml,environment):
+    def continue_ready(xml,environment=None):
         nodes=tree(xml)
         panels=[n for n in nodes if n.get('package')==PACKAGE and n.get('content-desc')=='环境仪表盘']
         buttons=[n for n in nodes if n.get('text')=='继续浏览' and n.get('enabled')=='true']
         if len(panels)!=1 or len(buttons)!=1:return False
         panel,button=panels[0],buttons[0]
-        if button not in panel.iter('node') or not any(n.get('package')==PACKAGE and n.get('text')==environment for n in panel.iter('node')):
+        if button not in panel.iter('node'):return False
+        if environment is not None and not any(n.get('package')==PACKAGE and n.get('text')==environment for n in panel.iter('node')):
             return False
         if button.get('package')!=PACKAGE or button.get('class')!='android.widget.Button' or button.get('clickable')!='true' or button.get('visible-to-user')=='false':
             return False
@@ -147,8 +148,10 @@ def run(adb,binary,source,out,dump):
         l,t,r,b=map(int,bounds.groups())
         return l<r and t<b
     def continue_to_browser(xml,environment):
-        if not continue_ready(xml,environment):
-            xml=wait(lambda value:continue_ready(value,environment),'Continue ready for '+environment,sync_window=True)
+        # The dashboard title can scroll out of view. Verify the selected
+        # browser below even when this capture can only see its footer.
+        if not continue_ready(xml):
+            xml=wait(continue_ready,'Continue ready for '+environment,sync_window=True)
         click(xml,'继续浏览')
         return wait(lambda x:not dashboard(x) and browser(x)
                     and environment in description(x,'当前环境：'),'continue to browser for '+environment)

@@ -104,13 +104,14 @@ DASHBOARD_FIRST_PORTS = (
      "                 and n.get('content-desc','').startswith(prefix)]\n"
      '        assert len(matches)==1,(prefix,matches)\n'
      '        return matches[0]\n'
-     '    def continue_ready(xml,environment):\n'
+     '    def continue_ready(xml,environment=None):\n'
      '        nodes=tree(xml)\n'
      "        panels=[n for n in nodes if n.get('package')==PACKAGE and n.get('content-desc')=='环境仪表盘']\n"
      "        buttons=[n for n in nodes if n.get('text')=='继续浏览' and n.get('enabled')=='true']\n"
      '        if len(panels)!=1 or len(buttons)!=1:return False\n'
      '        panel,button=panels[0],buttons[0]\n'
-     "        if button not in panel.iter('node') or not any(n.get('package')==PACKAGE and n.get('text')==environment for n in panel.iter('node')):\n"
+     "        if button not in panel.iter('node'):return False\n"
+     "        if environment is not None and not any(n.get('package')==PACKAGE and n.get('text')==environment for n in panel.iter('node')):\n"
      '            return False\n'
      "        if button.get('package')!=PACKAGE or button.get('class')!='android.widget.Button' or button.get('clickable')!='true' or button.get('visible-to-user')=='false':\n"
      '            return False\n'
@@ -119,8 +120,10 @@ DASHBOARD_FIRST_PORTS = (
      '        l,t,r,b=map(int,bounds.groups())\n'
      '        return l<r and t<b\n'
      '    def continue_to_browser(xml,environment):\n'
-     '        if not continue_ready(xml,environment):\n'
-     "            xml=wait(lambda value:continue_ready(value,environment),'Continue ready for '+environment,sync_window=True)\n"
+     '        # The dashboard title can scroll out of view. Verify the selected\n'
+     '        # browser below even when this capture can only see its footer.\n'
+     '        if not continue_ready(xml):\n'
+     "            xml=wait(continue_ready,'Continue ready for '+environment,sync_window=True)\n"
      "        click(xml,'继续浏览')\n"
      '        return wait(lambda x:not dashboard(x) and browser(x)\n'
      "                    and environment in description(x,'当前环境：'),'continue to browser for '+environment)\n"
