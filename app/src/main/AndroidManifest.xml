@@ -76,6 +76,9 @@
 </activity>
 <activity android:name="local.pocketchat.EnvironmentConfigBackupActivity" android:exported="false" android:windowSoftInputMode="adjustResize" android:screenOrientation="portrait" />
     <!-- SDK resolution overlay. Android 8.0 requires a translucent window to follow its caller. -->
-    <activity android:name="com.google.android.gms.common.api.GoogleApiActivity" android:screenOrientation="@integer/transparent_activity_orientation" />
+    <!-- Supplied by the runtime SDK; verify_portrait_apk checks the class in the packaged DEX. -->
+    <activity xmlns:tools="http://schemas.android.com/tools"
+        android:name="com.google.android.gms.common.api.GoogleApiActivity"
+        android:screenOrientation="@integer/transparent_activity_orientation" tools:ignore="MissingClass" />
   </application>
 </manifest>
