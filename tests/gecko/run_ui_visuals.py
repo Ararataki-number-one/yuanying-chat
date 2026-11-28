@@ -163,6 +163,16 @@ def read_display_choices():
             return xml
         if attempt==5 or not swipe_editor_viewport(xml):break
     raise AssertionError(('Display-mode section or actual choices missing',heading,modes))
+def exit_form_ready(xml):
+    nodes=[n for n in ET.fromstring(xml).iter('node') if n.get('package')==package and n.get('visible-to-user')!='false']
+    headings=[n for n in nodes if n.get('class')=='android.widget.TextView' and n.get('text')=='添加固定出口']
+    fields=[n for n in nodes if n.get('class')=='android.widget.EditText'
+            and n.get('content-desc')=='服务器地址，必填' and n.get('enabled')==n.get('clickable')=='true']
+    if len(headings)!=1 or len(fields)!=1:return False
+    r=re.fullmatch(r'\[(\d+),(\d+)\]\[(\d+),(\d+)\]',fields[0].get('bounds',''))
+    if r is None:return False
+    l,t,right,b=map(int,r.groups())
+    return l<right and t<b
 def checkpoint():
     partial={'status':'in_progress','actualAndroidExecution':True,'sourceCommit':source,'comparisonMode':'current-only','historicalUIRebuilt':False,'screenshots':records,'expectedCaptures':len(required_captures()),'scope':'Incomplete capture checkpoint for review; never release acceptance.'}
     (out/'ui-visual-results.json').write_text(json.dumps(partial,ensure_ascii=False,indent=2)+'\n')
@@ -185,14 +195,14 @@ def capture(variant,width,height,scale,scene,theme='light'):
     adb(*launch)
     required={'chat':'会话','environments':'环境管理','network':'固定测试出口','proxy':'代理地址','entries':'选择入口','browser':'基本信息','preferences':'基本信息','settings':'启动与界面','network-menu':'导入网络',
       'environment-picker':'切换环境','downloads':'项目资料与界面设计说明.pdf','feedback':'一句话说明','appearance':'白天与黑夜','default-entry':'默认环境与启动入口',
-      'subscription-form':'订阅名称','exit-form':'SOCKS5 服务器','route-editor':'保存并应用','import':'选择分享文件','brand':'元婴期院士','templates':'选择模板','zoom':'网页缩放','update':'当前安装版本','audit':'环境自检与变更','delete-file':'删除文件','share-preview':'分享整条线路'}[scene]
+      'subscription-form':'订阅名称','exit-form':'添加固定出口','route-editor':'保存并应用','import':'选择分享文件','brand':'元婴期院士','templates':'选择模板','zoom':'网页缩放','update':'当前安装版本','audit':'环境自检与变更','delete-file':'删除文件','share-preview':'分享整条线路'}[scene]
     if WORKSPACE_LAYOUT_CONTRACT==2:required={'chat':'当前环境：日常会话','settings':'启动与外观'}.get(scene,required)
     deadline=time.monotonic()+35;readiness_scrolls=0;download_observation_history=None
     while True:
         xml=dump(deadline=deadline)
         runtime=adb('logcat','-d','-s','AndroidRuntime:E','*:S')
         if 'FATAL EXCEPTION' in runtime:raise AssertionError((variant,scene,'Android UI crashed',runtime[-5000:]))
-        if required in xml:break
+        if (exit_form_ready(xml) if scene=='exit-form' else required in xml):break
         if scene in ('exit-form','templates','downloads') and readiness_scrolls<8:
             candidates=[n for n in ET.fromstring(xml).iter('node') if n.attrib.get('class')=='android.widget.ScrollView' and n.attrib.get('scrollable')=='true']
             if candidates:

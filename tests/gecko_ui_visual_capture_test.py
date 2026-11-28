@@ -111,6 +111,24 @@ class DownloadReadinessRunnerTest(unittest.TestCase):
         self.assertEqual(gestures, [])
 
 
+class ExitFormReadinessTest(unittest.TestCase):
+    def test_requires_the_live_owned_server_field(self):
+        package='local.pocketchat.test'
+        ns=dict(package=package,ET=ET,re=re)
+        exec(compile(runner_functions('exit_form_ready'),str(RUNNER),'exec'),ns)
+        ready=ns['exit_form_ready']
+        heading=f'<node package="{package}" class="android.widget.TextView" text="添加固定出口"/>'
+        field=(f'<node package="{package}" class="android.widget.EditText" content-desc="服务器地址，必填" '
+               'enabled="true" clickable="true" bounds="[52,250][340,301]"/>')
+        def frame(body):return '<hierarchy>'+body+'</hierarchy>'
+        self.assertTrue(ready(frame(heading+field)))
+        for changed in (field.replace('EditText','TextView'),field.replace(package,'other.app'),
+                        field.replace('enabled="true"','enabled="false"'),field.replace('340,301','340,250'),field+field):
+            with self.subTest(changed=changed):
+                self.assertFalse(ready(frame(heading+changed)))
+        self.assertFalse(ready(frame(field)))
+
+
 class BrowserDisplayChoicesCaptureTest(unittest.TestCase):
     package = 'local.pocketchat.test'
 
