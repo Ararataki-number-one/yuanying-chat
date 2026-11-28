@@ -1,6 +1,7 @@
 package local.pocketchat;
 
 import android.app.Activity;
+import android.content.pm.ActivityInfo;
 import android.content.res.Configuration;
 import android.os.Bundle;
 import android.view.View;
@@ -9,6 +10,10 @@ import android.view.KeyEvent;
 
 /** Native windows change colors in place, retaining browser, form and picker state. */
 public class ThemedActivity extends Activity {
+  /** Browser fullscreen and embedded SDK requests must keep the application's portrait orientation. */
+  @Override public final void setRequestedOrientation(int orientation){
+    super.setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT);
+  }
   @Override protected void onCreate(Bundle state){AppAppearance.attach(this);super.onCreate(state);AppAppearance.window(getWindow());}
   @Override public void setContentView(View view){super.setContentView(view);AppAppearance.apply(view);}
   @Override public void setContentView(View view,ViewGroup.LayoutParams params){super.setContentView(view,params);AppAppearance.apply(view);}
