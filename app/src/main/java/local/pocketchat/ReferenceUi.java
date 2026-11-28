@@ -1022,7 +1022,12 @@ final class ReferenceUi {
           new InsetDrawable(new AdaptiveSurface(a,999,Color.WHITE,Color.WHITE),closeInset,closeInset,closeInset,closeInset)));
       head.addView(close,new LinearLayout.LayoutParams(dp(a,48),dp(a,48)));
       root.addView(head);
-      body=DesignUi.column(a);scroll=new ScrollView(a);scroll.setFillViewport(false);scroll.addView(body);
+      body=DesignUi.column(a);scroll=new ScrollView(a);scroll.setFillViewport(false);
+      // The panel permits decorative overflow, but a scrolled row must stay between the header and footer.
+      scroll.addOnLayoutChangeListener((v,l,t,r,b,oldL,oldT,oldR,oldB)->{
+        if(r-l!=oldR-oldL||b-t!=oldB-oldT)v.setClipBounds(new Rect(0,0,r-l,b-t));
+      });
+      scroll.addView(body);
       root.addView(scroll,new LinearLayout.LayoutParams(-1,-2));
       footer=DesignUi.row(a);footer.setPadding(0,dp(a,14),0,0);footer.setVisibility(View.GONE);
       footerBoundaryColor=new ColorDrawable(dividerColor());
