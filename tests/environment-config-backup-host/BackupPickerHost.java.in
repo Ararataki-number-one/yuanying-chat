@@ -12,11 +12,9 @@ public final class BackupPickerHost {
     int picker, prompts;
     byte[] pending;
     TextView result;
-    LinearLayout body;
-
     /* PICKER_CALLBACKS */
 
-    void chooseSource() {}
+    void showHome() { result = new TextView(); }
     void password(boolean creating, java.util.function.Consumer<char[]> action) {
       if (creating) throw new AssertionError("Import must open the existing decrypt prompt");
       prompts++;
@@ -38,7 +36,6 @@ public final class BackupPickerHost {
     void startActivityForResult(Intent intent, int request) { launched = request; }
     String getPackageName() { return "local.pocketchat"; }
     void runOnUiThread(Runnable action) { action.run(); }
-    void setContentView(LinearLayout layout) {}
     ThemedActivity getContentResolver() { return this; }
     InputStream openInputStream(Uri uri) { reads++; return new ByteArrayInputStream(new byte[]{1, 2, 3}); }
     OutputStream openOutputStream(Uri uri, String mode) { throw new AssertionError("Import must not write to a provider"); }
@@ -48,23 +45,11 @@ public final class BackupPickerHost {
     void putBoolean(String key, boolean value) { entries.put(key, value); }
     boolean getBoolean(String key) { return Boolean.TRUE.equals(entries.get(key)); }
   }
-  static class View { static final int ACCESSIBILITY_LIVE_REGION_POLITE = 1; }
+  static class View { static final int VISIBLE = 0, GONE = 8; }
   static final class TextView extends View {
     String text;
     void setText(String value) { text = value; }
-    void setAccessibilityLiveRegion(int mode) {}
-  }
-  static final class LinearLayout {
-    Runnable restore;
-    void addView(TextView view) {}
-  }
-  static final class DesignUi {
-    static final int MUTED = 0;
-    static LinearLayout screen(Backup activity) { return new LinearLayout(); }
-    static LinearLayout body(Backup activity, LinearLayout root, String title, Runnable close) { return root; }
-    static void note(LinearLayout body, String text) {}
-    static void action(LinearLayout body, String title, boolean primary, Runnable callback) { body.restore = callback; }
-    static TextView text(Backup activity, String text, int size, int color) { return new TextView(); }
+    void setVisibility(int visibility) {}
   }
   static final class Window { void addFlags(int flags) {} }
   static final class WindowManager { static final class LayoutParams { static final int FLAG_SECURE = 1; } }
@@ -99,7 +84,7 @@ public final class BackupPickerHost {
   }
   static Bundle beginImport() {
     Backup original = activity(null);
-    original.body.restore.run();
+    original.chooseBackupFile();
     check(original.launched == Backup.IMPORT, "The restore action opens the existing picker");
     Bundle state = new Bundle();
     original.onSaveInstanceState(state);
@@ -120,7 +105,7 @@ public final class BackupPickerHost {
     cancelled.onActivityResult(Backup.IMPORT, 0, null);
     cancelled.onActivityResult(Backup.IMPORT, -1, selected);
     check(cancelled.reads == 0 && cancelled.prompts == 0, "Cancellation discards the pending result");
-    cancelled.body.restore.run();
+    cancelled.chooseBackupFile();
     check(cancelled.launched == Backup.IMPORT && cancelled.picker == Backup.IMPORT, "Cancellation permits another selection");
 
     Backup invalid = activity(beginImport());

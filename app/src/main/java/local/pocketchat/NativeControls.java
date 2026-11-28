@@ -17,6 +17,9 @@ final class NativeControls {
     return Math.max(Ui.dp(text.getContext(),minimum),(int)Math.ceil(f.bottom-f.top)+Ui.dp(text.getContext(),verticalPadding));
   }
   static void prepare(View view){
+    prepare(view,false);
+  }
+  static void prepare(View view,boolean secondary){
     if(!prepared.add(view))return;
     Context c=view.getContext();
     if(view instanceof EditText){
@@ -34,11 +37,27 @@ final class NativeControls {
       control.setPadding(Math.max(control.getPaddingLeft(),Ui.dp(c,4)),Ui.dp(c,10),Math.max(control.getPaddingRight(),Ui.dp(c,8)),Ui.dp(c,10));
       if(control instanceof Switch)((Switch)control).setSwitchPadding(Ui.dp(c,16));
     }else if(view instanceof Button&&!(view instanceof DesignUi.ActionButton)&&!(view instanceof Ui.IconButton)){
-      Button button=(Button)view;button.setAllCaps(false);button.setTextSize(15);button.setMinHeight(height(button,48,20));button.setStateListAnimator(null);
+      Button button=(Button)view;button.setAllCaps(false);button.setTextSize(secondary?14.5f:15);button.setMinHeight(height(button,48,20));button.setStateListAnimator(null);
       boolean dialogAction=button.getId()==android.R.id.button1||button.getId()==android.R.id.button2||button.getId()==android.R.id.button3;
-      String label=button.getText().toString();boolean destructive=label.startsWith("删除")||label.startsWith("清空")||label.equals("放弃修改")||dialogAction&&label.equals("取消下载");
-      button.setTextColor(new android.content.res.ColorStateList(new int[][]{{-android.R.attr.state_enabled},{}},new int[]{DesignUi.MUTED,destructive?DesignUi.RED:dialogAction?DesignUi.BLUE:DesignUi.TEXT}));button.setBackground(Ui.ripple(c,dialogAction?Color.TRANSPARENT:DesignUi.FIELD,12));
-      button.setPadding(Ui.dp(c,14),Ui.dp(c,10),Ui.dp(c,14),Ui.dp(c,10));
+      String label=button.getText().toString();
+      if(!secondary){
+        boolean destructive=label.startsWith("删除")||label.startsWith("清空")||label.equals("放弃修改")||dialogAction&&label.equals("取消下载");
+        button.setTextColor(new android.content.res.ColorStateList(new int[][]{{-android.R.attr.state_enabled},{}},new int[]{DesignUi.MUTED,destructive?DesignUi.RED:dialogAction?DesignUi.BLUE:DesignUi.TEXT}));
+        button.setBackground(Ui.ripple(c,dialogAction?Color.TRANSPARENT:DesignUi.FIELD,12));
+        button.setPadding(Ui.dp(c,14),Ui.dp(c,10),Ui.dp(c,14),Ui.dp(c,10));
+        return;
+      }
+      ReferenceUi.crisp(button);
+      boolean positiveAction=button.getId()==android.R.id.button1;
+      boolean destructive=ReferenceUi.isDestructiveLabel(label);
+      if(dialogAction){
+        button.setTypeface(ReferenceUi.type(positiveAction||destructive?600:500));
+        button.setLetterSpacing(positiveAction?0.015f:0.005f);
+      }
+      int ink=destructive?ReferenceUi.redInk():dialogAction?(positiveAction?ReferenceUi.inkPrimary():ReferenceUi.secondaryInk()):ReferenceUi.inkPrimary();
+      button.setTextColor(new android.content.res.ColorStateList(new int[][]{{-android.R.attr.state_enabled},{}},new int[]{ReferenceUi.secondaryInk(),ink}));
+      button.setBackground(Ui.ripple(c,dialogAction?Color.TRANSPARENT:ReferenceUi.recessedBg(),12));
+      button.setPadding(Ui.dp(c,16),Ui.dp(c,10),Ui.dp(c,16),Ui.dp(c,10));
     }else if(view instanceof Spinner){
       Spinner spinner=(Spinner)view;spinner.setMinimumHeight(Ui.dp(c,50));
       spinner.setPadding(Ui.dp(c,10),Ui.dp(c,4),Ui.dp(c,10),Ui.dp(c,4));

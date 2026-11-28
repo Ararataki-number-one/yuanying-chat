@@ -2,6 +2,10 @@ package local.pocketchat;
 
 import android.app.Activity;
 import android.content.Intent;
+import android.content.res.ColorStateList;
+import android.graphics.Color;
+import android.graphics.drawable.ColorDrawable;
+import android.graphics.drawable.RippleDrawable;
 import android.text.*;
 import android.view.*;
 import android.view.inputmethod.EditorInfo;
@@ -16,6 +20,52 @@ final class ActionSearchUi {
     Command(String id,String label,String detail,String aliases,Runnable run){item=new ActionSearchPolicy.Item(id,label,detail,aliases);this.run=run;}
   }
   static void add(List<Command> commands,String id,String label,String detail,String aliases,Runnable run){commands.add(new Command(id,label,detail,aliases,run));}
+  private static String glyphFor(String id){
+    if(id==null)return "info";
+    switch(id){
+      case "chat":return "browser";
+      case "switch":case "environments":return "window";
+      case "drafts":return "file";
+      case "history":case "focus":return "book";
+      case "connection":case "network":case "ip":return "globe";
+      case "edit":return "new";
+      case "permissions":return "shield";
+      case "zoom":return "search";
+      case "reload":return "refresh";
+      case "downloads":case "updates":return "download";
+      case "settings":return "settings";
+      case "backup":return "backup";
+      case "feedback":return "feedback";
+      default:return "info";
+    }
+  }
+  private static LinearLayout commandRow(Activity a,ActionSearchPolicy.Item item,Runnable run){
+    LinearLayout row=DesignUi.row(a);row.setGravity(Gravity.CENTER_VERTICAL);
+    row.setMinimumHeight(DesignUi.dp(a,58));
+    row.setPadding(DesignUi.dp(a,16),DesignUi.dp(a,11),DesignUi.dp(a,14),DesignUi.dp(a,11));
+    row.setBackground(new RippleDrawable(ColorStateList.valueOf(ReferenceUi.tone(0x140067d8,0x2682b3ff)),new ColorDrawable(Color.TRANSPARENT),new ColorDrawable(Color.WHITE)));
+    ImageView icon=new ImageView(a);icon.setImageDrawable(new ReferenceUi.IconTileDrawable(a,glyphFor(item.id),30,false,false));
+    icon.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+    LinearLayout.LayoutParams ip=new LinearLayout.LayoutParams(DesignUi.dp(a,30),DesignUi.dp(a,30));ip.setMarginEnd(DesignUi.dp(a,12));
+    row.addView(icon,ip);
+    LinearLayout copy=DesignUi.column(a);
+    TextView title=ReferenceUi.crisp(ReferenceUi.workspaceText(a,item.label,15,ReferenceUi.inkPrimary(),true));
+    title.setTypeface(ReferenceUi.TYPE_MEDIUM);
+    copy.addView(title);
+    if(item.detail!=null&&!item.detail.isEmpty()){
+      TextView sub=ReferenceUi.prose(ReferenceUi.workspaceText(a,item.detail,ReferenceUi.SECONDARY_SIZE,ReferenceUi.secondaryInk(),false));
+      sub.setPadding(0,DesignUi.dp(a,3),0,0);copy.addView(sub);
+    }
+    row.addView(copy,new LinearLayout.LayoutParams(0,-2,1));
+    ImageView arrow=new ImageView(a);arrow.setImageDrawable(new Ui.Icon("chevron-right",ReferenceUi.chevronInk()));
+    arrow.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+    LinearLayout.LayoutParams ap=new LinearLayout.LayoutParams(DesignUi.dp(a,14),DesignUi.dp(a,14));ap.setMarginStart(DesignUi.dp(a,8));
+    row.addView(arrow,ap);
+    row.setClickable(true);row.setFocusable(true);
+    row.setContentDescription(item.label+(item.detail==null||item.detail.isEmpty()?"":"，"+item.detail));
+    row.setOnClickListener(v->{ReferenceUi.hapticClick(v);run.run();});
+    return row;
+  }
   static List<Command> commands(Activity a){
     List<Command> out=new ArrayList<>();
     if(a instanceof MainActivity){MainActivity m=(MainActivity)a;ChatSession owner=m.session;
@@ -48,18 +98,54 @@ final class ActionSearchUi {
     List<Command> commands=commands(a);List<ActionSearchPolicy.Item> items=new ArrayList<>();Map<String,Command> byId=new HashMap<>();for(Command c:commands){items.add(c.item);byId.put(c.item.id,c);}
     List<String> recent=ActionSearchPolicy.recent(AppSettings.get(a,RECENTS,""),items);
     ReferenceUi.Modal dialog=new ReferenceUi.Modal(a,"搜索操作");
-    LinearLayout heading=DesignUi.row(a);while(dialog.head.getChildCount()>0){View child=dialog.head.getChildAt(0);android.view.ViewGroup.LayoutParams params=child.getLayoutParams();dialog.head.removeView(child);heading.addView(child,params);}dialog.head.setOrientation(LinearLayout.VERTICAL);dialog.head.addView(heading,new LinearLayout.LayoutParams(-1,-2));
-    LinearLayout field=DesignUi.column(a);EditText search=DesignUi.searchInput(field,"例如：草稿、切换、下载、网络");search.setContentDescription("搜索应用操作");search.setImeOptions(EditorInfo.IME_ACTION_GO);dialog.head.addView(field,new LinearLayout.LayoutParams(-1,-2));
-    TextView count=DesignUi.text(a,"",12,DesignUi.MUTED);count.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);field.addView(count);
+    LinearLayout heading=DesignUi.row(a);heading.setClipChildren(false);heading.setClipToPadding(false);
+    while(dialog.head.getChildCount()>0){View child=dialog.head.getChildAt(0);android.view.ViewGroup.LayoutParams params=child.getLayoutParams();dialog.head.removeView(child);heading.addView(child,params);}
+    dialog.head.setOrientation(LinearLayout.VERTICAL);dialog.head.addView(heading,new LinearLayout.LayoutParams(-1,-2));
+    LinearLayout field=DesignUi.column(a);field.setPadding(0,DesignUi.dp(a,6),0,DesignUi.dp(a,8));
+    FrameLayout searchHost=new FrameLayout(a);
+    EditText search=new EditText(a);search.setSingleLine(true);NativeControls.prepare(search);
+    search.setTextSize(15);search.setTextColor(DesignUi.TEXT);search.setHintTextColor(ReferenceUi.secondaryInk());
+    search.setHint("搜索草稿、网络、下载…");search.setContentDescription("搜索应用操作");
+    search.setImeOptions(EditorInfo.IME_ACTION_GO);search.setMinHeight(DesignUi.dp(a,46));
+    search.setPadding(DesignUi.dp(a,14),DesignUi.dp(a,10),DesignUi.dp(a,14),DesignUi.dp(a,10));
+    search.setBackground(new ReferenceUi.FieldWell(a){
+      @Override protected void drawBase(android.graphics.Canvas canvas,boolean dark,float r){
+        if(!dark){
+          fill.setColor(0xffffffff);canvas.drawRoundRect(face,r,r,fill);
+          rim.setStrokeWidth(Math.max(1f,0.55f*density));rim.setColor(0x18111827);
+          canvas.drawRoundRect(edge,Math.max(0f,r-0.35f*density),Math.max(0f,r-0.35f*density),rim);
+        }else super.drawBase(canvas,true,r);
+      }
+    });
+    Ui.Icon lens=new Ui.Icon("search",ReferenceUi.secondaryInk());lens.setBounds(0,0,DesignUi.dp(a,17),DesignUi.dp(a,17));
+    search.setCompoundDrawables(lens,null,null,null);search.setCompoundDrawablePadding(DesignUi.dp(a,8));
+    searchHost.addView(search,new FrameLayout.LayoutParams(-1,-2));
+    Button clear=ReferenceUi.iconButton(a,"close","清除搜索内容",()->search.setText(""));clear.setVisibility(View.GONE);
+    searchHost.addView(clear,new FrameLayout.LayoutParams(DesignUi.dp(a,46),DesignUi.dp(a,46),Gravity.END|Gravity.CENTER_VERTICAL));
+    field.addView(searchHost,new LinearLayout.LayoutParams(-1,-2));
+    TextView count=ReferenceUi.workspaceText(a,"",ReferenceUi.SECONDARY_SIZE,ReferenceUi.secondaryInk(),false);
+    count.setFontFeatureSettings("tnum");count.setPadding(DesignUi.dp(a,4),DesignUi.dp(a,8),DesignUi.dp(a,4),0);
+    count.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);field.addView(count);
+    dialog.head.addView(field,new LinearLayout.LayoutParams(-1,-2));
     final List<ActionSearchPolicy.Item> shown=new ArrayList<>();
     java.util.function.Consumer<String> execute=id->{Command command=byId.get(id);if(command==null)return;dialog.dismiss();AppSettings.put(a,RECENTS,ActionSearchPolicy.remember(id,recent));command.run.run();};
-    Runnable render=()->{List<ActionSearchPolicy.Item> result=ActionSearchPolicy.search(items,search.getText().toString(),recent);shown.clear();shown.addAll(result);dialog.body.removeAllViews();count.setText(result.size()+" 项操作"+(search.length()==0&&!recent.isEmpty()?" · 最近使用优先":""));
-      for(ActionSearchPolicy.Item item:result)DesignUi.groupedRow(dialog.body,DesignUi.setting(a,"info",item.label,item.detail,"",()->execute.accept(item.id)));
-      if(result.isEmpty())DesignUi.note(dialog.body,"没有匹配的操作。试试“文件”“草稿”“账号”或“设置”。");
+    Runnable render=()->{List<ActionSearchPolicy.Item> result=ActionSearchPolicy.search(items,search.getText().toString(),recent);shown.clear();shown.addAll(result);dialog.body.removeAllViews();
+      count.setText(result.size()+" 项操作"+(search.length()==0&&!recent.isEmpty()?" · 最近使用优先":""));
+      if(result.isEmpty()){
+        dialog.body.addView(ReferenceUi.modalEmpty(a,"search","没有匹配的操作","试试“文件”“草稿”“账号”或“设置”。"),new LinearLayout.LayoutParams(-1,-2));
+      }else{
+        LinearLayout group=ReferenceUi.modalGroup(a);
+        for(int i=0;i<result.size();i++){
+          if(i>0)group.addView(ReferenceUi.modalDivider(a,58));
+          ActionSearchPolicy.Item item=result.get(i);
+          group.addView(commandRow(a,item,()->execute.accept(item.id)),new LinearLayout.LayoutParams(-1,-2));
+        }
+        dialog.body.addView(group,new LinearLayout.LayoutParams(-1,-2));
+      }
       dialog.resize();};
-    search.addTextChangedListener(new TextWatcher(){public void beforeTextChanged(CharSequence s,int start,int count,int after){}public void onTextChanged(CharSequence s,int start,int before,int count){render.run();}public void afterTextChanged(Editable e){}});
+    search.addTextChangedListener(new TextWatcher(){public void beforeTextChanged(CharSequence s,int start,int count,int after){}public void onTextChanged(CharSequence s,int start,int before,int count){clear.setVisibility(s.length()==0?View.GONE:View.VISIBLE);search.setPadding(DesignUi.dp(a,14),DesignUi.dp(a,10),DesignUi.dp(a,s.length()==0?14:48),DesignUi.dp(a,10));render.run();}public void afterTextChanged(Editable e){}});
     search.setOnEditorActionListener((view,action,event)->{boolean enter=event!=null&&event.getAction()==KeyEvent.ACTION_DOWN&&event.getKeyCode()==KeyEvent.KEYCODE_ENTER;if((action==EditorInfo.IME_ACTION_GO||enter)&&!shown.isEmpty()){execute.accept(shown.get(0).id);return true;}return false;});
-    dialog.buttons("关闭",dialog::dismiss,"",()->{});render.run();dialog.show();search.requestFocus();
+    render.run();dialog.show();search.requestFocus();
     dialog.getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE|WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_VISIBLE);
   }
 }

@@ -152,9 +152,12 @@ final class AppHub {
     ReferenceUi.markWorkspaceNav(workspaceTabs,page);
   }
   LinearLayout layout(String title){
-    return layout(title,false);
+    return layout(title,"",false);
   }
   LinearLayout layout(String title,boolean downloadsPage){
+    return layout(title,"",downloadsPage);
+  }
+  LinearLayout layout(String title,String subtitle,boolean downloadsPage){
     String identity=page+"|"+settingsTab+"|"+networkTab+"|"+downloadFilter+"|"+title;int oldY=0;
     if(identity.equals(rendered)&&panel.getChildCount()>0){ViewGroup old=(ViewGroup)panel.getChildAt(0);if(old.getChildCount()>1&&old.getChildAt(1) instanceof ScrollView)oldY=old.getChildAt(1).getScrollY();}
     rendered=identity;final int restoreY=oldY;LinearLayout screen=DesignUi.screen(a),box;
@@ -163,7 +166,7 @@ final class AppHub {
       box=DesignUi.column(a);box.setPadding(a.dp(20),a.dp(4),a.dp(20),a.dp(20));
       ScrollView scroll=new ScrollView(a);scroll.setFillViewport(true);scroll.setClipToPadding(false);
       scroll.addView(box,new ScrollView.LayoutParams(-1,-2));screen.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));
-    }else box=DesignUi.body(a,screen,title,()->select(CHAT));
+    }else box=DesignUi.body(a,screen,title,subtitle,()->select(CHAT));
     panel.removeAllViews();panel.addView(screen,new FrameLayout.LayoutParams(-1,-1));
     placeFeedback();updateNativeInsets();
     if(screen.getChildCount()>1&&screen.getChildAt(1) instanceof ScrollView){ScrollView scroll=(ScrollView)screen.getChildAt(1);scroll.post(()->scroll.scrollTo(0,restoreY));}return box;
@@ -213,18 +216,63 @@ final class AppHub {
   void settings(){rendered="settings-workspace";settingsWorkspace.show();}
   void network(){show(NETWORK);}
   void networkFor(int slot){networkTab=0;networkWorkspace.focus(slot);select(NETWORK);}
-  void text(String title,String value){DesignUi.message(a,title,value);}
+  void text(String title,String value){ReferenceUi.message(a,title,value);}
+  private void topicSheet(String title,String[][] sections){
+    ReferenceUi.Modal d=new ReferenceUi.Modal(a,title);
+    LinearLayout card=ReferenceUi.modalGroup(a);
+    for(String[] s:sections)ReferenceUi.modalTopicItem(card,s[0],s[1],s[2]);
+    d.body.addView(card,new LinearLayout.LayoutParams(-1,-2));
+    d.buttons("关闭",d::dismiss,"",()->{});d.show();
+  }
   void about(){
-    LinearLayout box=layout("关于元婴期院士");note(box,"Android ChatGPT 网页客户端\nv"+AppVersion.name(a));
-    action(box,"功能介绍",()->text("功能介绍","最多 8 个独立环境，支持分组、备注和收藏；官方 ChatGPT 网页、图片与文件上传、下载、固定出口、隐私保护与环境自检。"));
-    action(box,"使用帮助",()->text("使用帮助","在环境列表新建或编辑环境。编辑页分为基本信息、网络配置、浏览器与使用偏好。\n\n环境分别登录。网络页显示所属环境；应用设置控制默认入口与系统权限。下载页汇总全部环境文件。\n\n保护等级改变后会重新加载连接。草稿保存不会应用设置。尚未开放的能力列在功能支持范围。"));
-    action(box,"第三方许可",()->text("第三方许可","源码和许可随源码包提供。内置 GeckoView、Mihomo、AndroidX 等组件保留原有许可说明。"
-        +(ChromiumEntry.managed(a)?"\n\n选装 Chromium 使用 Cefrium 0.21.0（LGPL-3.0-or-later）。组件包附带原始许可声明，发布说明提供对应源码。":"")));
-    action(box,"隐私说明",()->text("隐私说明","没有广告或遥测。网络配置与检查基线按环境加密保存。联网自检每次需要授权，结果只覆盖对应路径。"));
-    if(chat!=null)action(box,"复制本机耗时诊断",()->{ChatSession owner=a.session;owner.trace.copyTextAsync(a,GeckoWebView.active(a.remote),text->{
-      if(a.isDestroyed()||a.isFinishing()||a.session!=owner||owner.deleted)return;
-      ClipboardManager clipboard=(ClipboardManager)a.getSystemService(Context.CLIPBOARD_SERVICE);
-      if(clipboard!=null){clipboard.setPrimaryClip(ClipData.newPlainText("耗时诊断",text));a.status("已复制本机耗时诊断");}
-    });});
+    LinearLayout box=layout("关于元婴期院士","版本信息、功能说明与隐私边界",false);
+    LinearLayout hero=ReferenceUi.modalGroup(a);
+    LinearLayout head=DesignUi.row(a);head.setPadding(a.dp(16),a.dp(14),a.dp(16),a.dp(14));
+    ImageView mark=new ImageView(a);mark.setImageDrawable(new ReferenceUi.IconTileDrawable(a,"brand",40,false,true));
+    mark.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+    LinearLayout.LayoutParams mp=new LinearLayout.LayoutParams(a.dp(40),a.dp(40));mp.setMarginEnd(a.dp(12));
+    head.addView(mark,mp);
+    LinearLayout titles=DesignUi.column(a);
+    titles.addView(ReferenceUi.heroTitle(a,"元婴期院士"));
+    TextView sub=ReferenceUi.mono(ReferenceUi.crisp(ReferenceUi.workspaceText(a,"Android ChatGPT 客户端 · v"+AppVersion.name(a),ReferenceUi.SECONDARY_SIZE,ReferenceUi.secondaryInk(),false)));
+    sub.setPadding(0,a.dp(4),0,0);titles.addView(sub);
+    head.addView(titles,new LinearLayout.LayoutParams(0,-2,1));
+    hero.addView(head,new LinearLayout.LayoutParams(-1,-2));
+    box.addView(hero,new LinearLayout.LayoutParams(-1,-2));
+    ReferenceUi.modalSection(box,"帮助与说明");
+    LinearLayout docs=ReferenceUi.modalGroup(a);
+    ReferenceUi.modalRowAction(docs,"info","功能介绍",false,()->topicSheet("功能介绍",new String[][]{
+      {"window","多环境独立隔离","最多 8 个独立环境，支持分组、备注和收藏。"},
+      {"browser","官方网页与文件传输","官方 ChatGPT 网页、图片与文件上传、下载。"},
+      {"shield","固定出口与隐私自检","固定出口、隐私保护与环境自检。"}
+    }));
+    ReferenceUi.modalRowAction(docs,"book","使用帮助",false,()->topicSheet("使用帮助",new String[][]{
+      {"new","环境创建与编辑","在环境列表新建或编辑环境。编辑页分为基本信息、网络配置、浏览器与使用偏好。"},
+      {"globe","登录、网络与下载","各环境分别登录，网络页对应所属环境；应用设置管理默认入口与权限，下载页统一汇总全部文件。"},
+      {"shield","保护等级与边界","保护等级改变后会重新加载连接。草稿保存不会应用设置。尚未开放的能力列在功能支持范围。"}
+    }));
+    ReferenceUi.modalRowAction(docs,"file","第三方许可",false,()->topicSheet("第三方许可",ChromiumEntry.managed(a)
+      ?new String[][]{
+        {"file","核心开源组件","源码和许可随源码包提供。内置 GeckoView、Mihomo、AndroidX 等组件保留原有许可说明。"},
+        {"browser","选装 Chromium 组件","选装 Chromium 使用 Cefrium 0.21.0（LGPL-3.0-or-later）。组件包附带原始许可声明，发布说明提供对应源码。"}
+      }
+      :new String[][]{
+        {"file","核心开源组件","源码和许可随源码包提供。内置 GeckoView、Mihomo、AndroidX 等组件保留原有许可说明。"}
+      }));
+    ReferenceUi.modalRowAction(docs,"shield","隐私说明",false,()->topicSheet("隐私说明",new String[][]{
+      {"shield","零广告零遥测","没有广告或遥测。网络配置与检查基线按环境加密保存。"},
+      {"globe","授权联网自检","联网自检每次需要授权，结果只覆盖对应路径。"}
+    }));
+    box.addView(docs,new LinearLayout.LayoutParams(-1,-2));
+    if(chat!=null){
+      ReferenceUi.modalSection(box,"诊断工具");
+      LinearLayout diag=ReferenceUi.modalGroup(a);
+      ReferenceUi.modalRowAction(diag,"clipboard","复制本机耗时诊断",false,()->{ChatSession owner=a.session;owner.trace.copyTextAsync(a,GeckoWebView.active(a.remote),text->{
+        if(a.isDestroyed()||a.isFinishing()||a.session!=owner||owner.deleted)return;
+        ClipboardManager clipboard=(ClipboardManager)a.getSystemService(Context.CLIPBOARD_SERVICE);
+        if(clipboard!=null){clipboard.setPrimaryClip(ClipData.newPlainText("耗时诊断",text));a.status("已复制本机耗时诊断");}
+      });});
+      box.addView(diag,new LinearLayout.LayoutParams(-1,-2));
+    }
   }
 }

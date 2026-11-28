@@ -382,16 +382,19 @@ public class BrowserActivity extends ThemedActivity {
       fingerprintSaving=false;fingerprintStateReady=false;
       fingerprintError="指纹配置保存未确认："+fingerprintProblem(failure);
       syncFingerprintTraffic();
-      AppAppearance.dialog(this).setTitle("指纹配置未确认")
-          .setMessage(fingerprintError+"\n将重新读取实际保存结果；不会回退为未配置的浏览器。")
-          .setPositiveButton("知道了",null).show();
+      ReferenceUi.Modal alert=new ReferenceUi.Modal(this,"指纹配置未确认");
+      alert.body.addView(ReferenceUi.modalBanner(this,"shield","保存结果未获确认",fingerprintError+"\n将重新读取实际保存结果；不会回退为未配置的浏览器。",false),new LinearLayout.LayoutParams(-1,-2));
+      alert.buttons("",()->{},"知道了",alert::dismiss);alert.show();
       loadFingerprintState();
     });
   }
   void requestFingerprintDesktop(boolean desktop){
     ChromiumFingerprintStore.State state=fingerprintState;if(state==null||fingerprintLoading||fingerprintSaving){message("请先等待指纹配置读取完成");return;}
     JSONObject spec=state.spec();try{spec.put("display",desktop?"desktop":"mobile");}catch(JSONException invalid){return;}
-    AppAppearance.dialog(this).setTitle(desktop?"切换此环境为电脑版网站？":"切换此环境为手机版网站？").setMessage("将统一此环境所有标签页的 UA 与 UA-CH 身份，并重新加载全部网页。未提交的网页输入可能丢失。").setNegativeButton("取消",null).setPositiveButton("保存并重新加载",(dialog,which)->saveFingerprint(state,spec,false)).show();
+    ReferenceUi.Modal confirm=new ReferenceUi.Modal(this,desktop?"切换此环境为电脑版网站？":"切换此环境为手机版网站？").hideClose();
+    confirm.body.addView(ReferenceUi.modalWarning(this,"browser","将重新加载此环境全部标签页","将统一此环境所有标签页的 UA 与 UA-CH 身份，并重新加载全部网页。未提交的网页输入可能丢失。"),new LinearLayout.LayoutParams(-1,-2));
+    confirm.buttons("取消",confirm::dismiss,"保存并重新加载",()->{confirm.dismiss();saveFingerprint(state,spec,false);});
+    confirm.show();
   }
   void observeFingerprint(){
     Tab tab=selected;WebView view=web();ChromiumFingerprintStore.State state=fingerprintState;ChromiumFingerprintStore.Binding binding=tab==null?null:tab.fingerprintBinding;
@@ -639,7 +642,54 @@ public class BrowserActivity extends ThemedActivity {
     finally{if(prepared!=null)try{prepared.close();}catch(RuntimeException ignored){}if(view.getParent() instanceof android.view.ViewGroup)((android.view.ViewGroup)view.getParent()).removeView(view);try{view.setWebChromeClient(null);view.destroy();}catch(RuntimeException gone){}}}finally{if(lease!=null)lease.close();}
   }
   void closeTab(Tab tab){if(!tabs.contains(tab))return;int index=tabs.indexOf(tab);boolean active=tab==selected;retire(tab);tabs.remove(tab);if(active){selected=null;if(tabs.isEmpty())newTab(BrowserPreferences.home(this));else select(tabs.get(Math.min(index,tabs.size()-1)));}updateChrome();}
-  void showTabs(){ReferenceUi.Modal dialog=new ReferenceUi.Modal(this,"网页窗口").asSheet();dialog.note(Profiles.display(this,Profiles.slot(this))+" · "+tabs.size()+"/8 个标签页");for(Tab tab:new ArrayList<>(tabs)){LinearLayout row=DesignUi.row(this);Button open=ReferenceUi.link(this,(tab==selected?"● ":"")+(tab.title.isEmpty()?tab.url:tab.title),()->{dialog.dismiss();if(tabs.contains(tab))select(tab);});open.setMaxLines(2);open.setSelected(tab==selected);row.addView(open,new LinearLayout.LayoutParams(0,-2,1));row.addView(ReferenceUi.iconButton(this,"close","关闭标签页 "+tab.url,()->{dialog.dismiss();closeTab(tab);}),new LinearLayout.LayoutParams(dp(48),dp(48)));dialog.body.addView(row);}dialog.buttons("返回",dialog::dismiss,"新标签页",()->{dialog.dismiss();newTab(BrowserPreferences.home(this));focusAddress();});dialog.show();}
+  void showTabs(){
+    ReferenceUi.Modal dialog=new ReferenceUi.Modal(this,"网页窗口").asSheet();
+    TextView sub=ReferenceUi.workspaceText(this,Profiles.display(this,Profiles.slot(this))+" · "+tabs.size()+"/8 个标签页",ReferenceUi.SECONDARY_SIZE,ReferenceUi.secondaryInk(),false);
+    sub.setFontFeatureSettings("tnum");sub.setPadding(dp(4),0,dp(4),dp(10));
+    dialog.body.addView(sub,new LinearLayout.LayoutParams(-1,-2));
+    LinearLayout group=ReferenceUi.modalGroup(this);
+    List<Tab> currentTabs=new ArrayList<>(tabs);
+    for(int i=0;i<currentTabs.size();i++){
+      if(i>0)group.addView(ReferenceUi.modalDivider(this,56));
+      Tab tab=currentTabs.get(i);boolean active=tab==selected;
+      LinearLayout row=DesignUi.row(this);row.setGravity(Gravity.CENTER_VERTICAL);
+      row.setPadding(dp(14),dp(11),dp(8),dp(11));row.setMinimumHeight(dp(60));
+      row.setBackground(new android.graphics.drawable.RippleDrawable(android.content.res.ColorStateList.valueOf(ReferenceUi.tone(0x140067d8,0x2682b3ff)),new android.graphics.drawable.ColorDrawable(android.graphics.Color.TRANSPARENT),new android.graphics.drawable.ColorDrawable(android.graphics.Color.WHITE)));
+      ImageView icon=new ImageView(this);icon.setImageDrawable(new ReferenceUi.IconTileDrawable(this,"browser",32,false,active));
+      icon.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+      LinearLayout.LayoutParams ip=new LinearLayout.LayoutParams(dp(32),dp(32));ip.setMarginEnd(dp(12));row.addView(icon,ip);
+      LinearLayout copy=DesignUi.column(this);
+      TextView title=ReferenceUi.workspaceText(this,tab.title.isEmpty()?tab.url:tab.title,15,active?DesignUi.BLUE:DesignUi.TEXT,true);
+      title.setMaxLines(1);title.setEllipsize(TextUtils.TruncateAt.END);
+      copy.addView(title,new LinearLayout.LayoutParams(-1,-2));
+      LinearLayout subLine=DesignUi.row(this);subLine.setPadding(0,dp(3),0,0);
+      if(active){
+        TextView badge=ReferenceUi.crisp(ReferenceUi.workspaceText(this,"当前",ReferenceUi.STATUS_SIZE,ReferenceUi.brandBlue(),true));
+        badge.setTypeface(ReferenceUi.TYPE_SEMIBOLD);badge.setLetterSpacing(0.025f);
+        badge.setPadding(dp(6),dp(1),dp(6),dp(1));
+        badge.setBackground(new ReferenceUi.AdaptiveSurface(this,7,0x160067d8,0x266da4ff));
+        LinearLayout.LayoutParams bp=new LinearLayout.LayoutParams(-2,-2);bp.setMarginEnd(dp(6));
+        subLine.addView(badge,bp);
+      }
+      TextView urlLine=ReferenceUi.workspaceText(this,tab.url,ReferenceUi.SECONDARY_SIZE,ReferenceUi.secondaryInk(),false);
+      urlLine.setMaxLines(1);urlLine.setEllipsize(TextUtils.TruncateAt.END);
+      subLine.addView(urlLine,new LinearLayout.LayoutParams(0,-2,1));
+      copy.addView(subLine,new LinearLayout.LayoutParams(-1,-2));
+      row.addView(copy,new LinearLayout.LayoutParams(0,-2,1));
+      Button closeTabBtn=ReferenceUi.iconButton(this,"close","关闭标签页 "+tab.url,()->{dialog.dismiss();closeTab(tab);});
+      int closeInset=dp(9);
+      closeTabBtn.setBackground(new android.graphics.drawable.RippleDrawable(android.content.res.ColorStateList.valueOf(ReferenceUi.tone(0x14111827,0x24ffffff)),
+          new android.graphics.drawable.InsetDrawable(new ReferenceUi.AdaptiveSurface(this,999,0x10111827,0x1affffff),closeInset,closeInset,closeInset,closeInset),
+          new android.graphics.drawable.InsetDrawable(new ReferenceUi.AdaptiveSurface(this,999,android.graphics.Color.WHITE,android.graphics.Color.WHITE),closeInset,closeInset,closeInset,closeInset)));
+      row.addView(closeTabBtn,new LinearLayout.LayoutParams(dp(44),dp(44)));
+      row.setClickable(true);row.setFocusable(true);row.setSelected(active);
+      row.setOnClickListener(v->{dialog.dismiss();if(tabs.contains(tab))select(tab);});
+      group.addView(row,new LinearLayout.LayoutParams(-1,-2));
+    }
+    dialog.body.addView(group,new LinearLayout.LayoutParams(-1,-2));
+    dialog.buttons("返回",dialog::dismiss,"新标签页",()->{dialog.dismiss();newTab(BrowserPreferences.home(this));focusAddress();});
+    dialog.show();
+  }
   void toolsSheet(){
     if(selected==null||destroyed||isFinishing())return;
     String safety=selected.url.startsWith("https://")?"HTTPS":"HTTP · 不安全";
@@ -655,7 +705,8 @@ public class BrowserActivity extends ThemedActivity {
   }
   void menu(){
     ReferenceUi.Modal dialog=new ReferenceUi.Modal(this,"浏览器菜单").asSheet();
-    dialog.note("当前环境："+Profiles.display(this,Profiles.slot(this)));
+    TextView envCaption=ReferenceUi.workspaceText(this,"当前环境："+Profiles.display(this,Profiles.slot(this)),ReferenceUi.SECONDARY_SIZE,ReferenceUi.secondaryInk(),false);
+    envCaption.setPadding(dp(16),0,dp(16),dp(8));dialog.body.addView(envCaption,new LinearLayout.LayoutParams(-1,-2));
     action(dialog,"下载文件",files::showDownloads);
     action(dialog,"环境管理",this::showEnvironments);
     action(dialog,"此环境的网络设置",this::openNetworkSettings);
@@ -663,41 +714,133 @@ public class BrowserActivity extends ThemedActivity {
     action(dialog,"此环境的浏览器内核",()->BrowserSettingsUi.show(this));
     action(dialog,"收藏夹",()->showLibrary("bookmarks","收藏夹"));action(dialog,"浏览历史",()->showLibrary("history","浏览历史"));
     action(dialog,"Chromium 指纹配置与当前网页自测",this::showFingerprintSettings);
+    action(dialog,"设为系统默认浏览器",this::defaultBrowser);action(dialog,"内核信息",this::engineInfo);
     action(dialog,"关闭浏览器",this::confirmCloseBrowser);
-    action(dialog,"设为系统默认浏览器",this::defaultBrowser);action(dialog,"内核信息",this::engineInfo);dialog.show();
+    dialog.buttons("取消",dialog::dismiss,"",()->{});dialog.show();
   }
   boolean fileOperationPending(){return files!=null&&(files.pending!=null||files.hasActiveDownload()||fingerprintFileResult!=null);}
   void openNetworkSettings(){openWorkspace("network");}
   void openWorkspace(String page){startActivity(new Intent(this,Profiles.activity(Profiles.slot(this))).putExtra("openWindowAction",page).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_REORDER_TO_FRONT));}
   void action(ReferenceUi.Modal dialog,String title,Runnable run){ReferenceUi.menuAction(dialog,title,()->{dialog.dismiss();run.run();});}
-  void linkMenu(String url){ReferenceUi.Modal dialog=new ReferenceUi.Modal(this,"链接").asSheet();dialog.body.addView(ReferenceUi.secondary(this,url));action(dialog,"在新标签页打开",()->newTab(url));action(dialog,"在当前标签页打开",()->go(url));action(dialog,"复制链接",()->((android.content.ClipboardManager)getSystemService(CLIPBOARD_SERVICE)).setPrimaryClip(ClipData.newPlainText("链接",url)));dialog.show();}
-  void showLibrary(String key,String title){JSONArray rows=library.list(key);String[] labels=new String[rows.length()];for(int i=0;i<rows.length();i++){JSONObject row=rows.optJSONObject(i);labels[i]=row.optString("title")+"\n"+row.optString("url");}AlertDialog.Builder dialog=AppAppearance.dialog(this).setTitle(title).setNegativeButton("关闭",null);if(labels.length==0)dialog.setMessage("暂无记录");else dialog.setItems(labels,(d,index)->go(rows.optJSONObject(index).optString("url")));if("history".equals(key)&&rows.length()>0)dialog.setNeutralButton("清空",(d,w)->AppAppearance.dialog(this).setTitle("清空浏览历史？").setMessage("只删除网址记录，网站登录状态会保留。").setNegativeButton("取消",null).setPositiveButton("清空",(c,n)->library.clearHistory()).show());dialog.show();}
-  void engineInfo(){PackageInfo provider=WebView.getCurrentWebViewPackage();String version=provider==null?"组件信息暂不可用":provider.packageName+" · "+provider.versionName;String fingerprint=fingerprintState==null?"此环境指纹配置尚未确认":"此环境独立指纹配置 · 版本 "+fingerprintState.revision;DesignUi.message(this,"Chromium 内核","Blink / V8 · "+version+"\n\n由 Android System WebView 或 Chrome 提供，随系统组件更新。默认首页为 ChatGPT，地址栏可访问其他网站。\n\n"+fingerprint+"。原生 UA / UA-CH 的设置回读、文档起始脚本注册与当前网页自测分开记录；脚本已注册不等于保护已验证。可在浏览器菜单查看 Chromium 指纹配置。\n\n文档保护限已配置的页面与框架。Worker、Service Worker、OffscreenCanvas、AudioWorklet、字体、时区、硬件及 TLS 等仍不具备完整覆盖确认。Chromium 与 Gecko 的配置、种子和确认记录独立；网站登录与 Cookie 也分别保存。\n\n网页 HTTP 请求使用此环境的线路。文档 WebRTC 限制不等于设备级网络保护；完整覆盖仍需设备级 VPN，应用不会自动开启 VPN。\n\n摄像头、麦克风和大致位置按网站逐次授权。Chrome 扩展尚不支持。");}
+  void linkMenu(String url){
+    ReferenceUi.Modal dialog=new ReferenceUi.Modal(this,"链接").asSheet();
+    LinearLayout urlCard=ReferenceUi.modalGroup(this);urlCard.setPadding(dp(16),dp(12),dp(16),dp(12));
+    TextView link=ReferenceUi.workspaceText(this,url,ReferenceUi.SECONDARY_SIZE,DesignUi.TEXT,false);
+    link.setTypeface(android.graphics.Typeface.MONOSPACE);link.setMaxLines(3);link.setEllipsize(TextUtils.TruncateAt.END);link.setTextIsSelectable(true);
+    urlCard.addView(link,new LinearLayout.LayoutParams(-1,-2));
+    dialog.body.addView(urlCard,new LinearLayout.LayoutParams(-1,-2));
+    action(dialog,"在新标签页打开",()->newTab(url));action(dialog,"在当前标签页打开",()->go(url));action(dialog,"复制链接",()->((android.content.ClipboardManager)getSystemService(CLIPBOARD_SERVICE)).setPrimaryClip(ClipData.newPlainText("链接",url)));
+    dialog.buttons("取消",dialog::dismiss,"",()->{});dialog.show();
+  }
+  void showLibrary(String key,String title){
+    JSONArray rows=library.list(key);boolean history="history".equals(key);
+    ReferenceUi.Modal dialog=new ReferenceUi.Modal(this,title).asSheet();
+    if(rows.length()==0){
+      dialog.body.addView(ReferenceUi.modalEmpty(this,history?"book":"star","暂无记录",
+          history?"访问网页后会按时间记录在此处。":"在网页工具中点击“收藏此页”即可添加到收藏夹。"),new LinearLayout.LayoutParams(-1,-2));
+    }else{
+      LinearLayout group=ReferenceUi.modalGroup(this);
+      for(int i=0;i<rows.length();i++){
+        if(i>0)group.addView(ReferenceUi.modalDivider(this,56));
+        JSONObject row=rows.optJSONObject(i);String targetUrl=row.optString("url");
+        LinearLayout item=DesignUi.row(this);item.setGravity(Gravity.CENTER_VERTICAL);
+        item.setPadding(dp(16),dp(11),dp(14),dp(11));item.setMinimumHeight(dp(58));
+        item.setBackground(new android.graphics.drawable.RippleDrawable(android.content.res.ColorStateList.valueOf(ReferenceUi.tone(0x140067d8,0x2682b3ff)),new android.graphics.drawable.ColorDrawable(android.graphics.Color.TRANSPARENT),new android.graphics.drawable.ColorDrawable(android.graphics.Color.WHITE)));
+        ImageView icon=new ImageView(this);icon.setImageDrawable(new ReferenceUi.IconTileDrawable(this,history?"globe":"star",28,false,false));
+        icon.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+        LinearLayout.LayoutParams ip=new LinearLayout.LayoutParams(dp(28),dp(28));ip.setMarginEnd(dp(12));item.addView(icon,ip);
+        LinearLayout copy=DesignUi.column(this);
+        TextView name=ReferenceUi.workspaceText(this,row.optString("title"),15,DesignUi.TEXT,true);name.setMaxLines(1);name.setEllipsize(TextUtils.TruncateAt.END);copy.addView(name);
+        TextView urlText=ReferenceUi.workspaceText(this,targetUrl,ReferenceUi.SECONDARY_SIZE,ReferenceUi.secondaryInk(),false);urlText.setMaxLines(1);urlText.setEllipsize(TextUtils.TruncateAt.END);urlText.setPadding(0,dp(3),0,0);copy.addView(urlText);
+        item.addView(copy,new LinearLayout.LayoutParams(0,-2,1));
+        ImageView arrow=new ImageView(this);arrow.setImageDrawable(new Ui.Icon("chevron-right",ReferenceUi.chevronInk()));
+        arrow.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+        LinearLayout.LayoutParams ap=new LinearLayout.LayoutParams(dp(14),dp(14));ap.setMarginStart(dp(8));item.addView(arrow,ap);
+        item.setClickable(true);item.setFocusable(true);
+        item.setOnClickListener(v->{dialog.dismiss();go(targetUrl);});
+        group.addView(item,new LinearLayout.LayoutParams(-1,-2));
+      }
+      dialog.body.addView(group,new LinearLayout.LayoutParams(-1,-2));
+      if(history){
+        LinearLayout clearCard=ReferenceUi.modalActionCard(this);
+        ReferenceUi.modalRowAction(clearCard,"trash","清空浏览历史",true,()->{
+          dialog.dismiss();
+          ReferenceUi.Modal confirm=new ReferenceUi.Modal(this,"清空浏览历史？").hideClose();
+          confirm.body.addView(ReferenceUi.modalImpactPair(this,"将清空全部浏览历史","此环境保存的访问网址记录将被永久清除。","网站登录状态会安全保留","已登录的网站会话、Cookie 与收藏夹不受影响。"),new LinearLayout.LayoutParams(-1,-2));
+          confirm.buttons("取消",confirm::dismiss,"清空",()->{confirm.dismiss();library.clearHistory();});
+          confirm.show();
+        });
+        LinearLayout.LayoutParams cp=new LinearLayout.LayoutParams(-1,-2);cp.topMargin=dp(10);
+        dialog.body.addView(clearCard,cp);
+      }
+    }
+    dialog.buttons("关闭",dialog::dismiss,"",()->{});dialog.show();
+  }
+  void engineInfo(){
+    PackageInfo provider=WebView.getCurrentWebViewPackage();
+    String version=provider==null?"组件信息暂不可用":provider.packageName+" · "+provider.versionName;
+    String fingerprint=fingerprintState==null?"此环境指纹配置尚未确认":"此环境独立指纹配置 · 版本 "+fingerprintState.revision;
+    ReferenceUi.Modal d=new ReferenceUi.Modal(this,"Chromium 内核");
+    LinearLayout spec=ReferenceUi.modalGroup(this);
+    ReferenceUi.modalFieldRow(spec,"引擎","Blink / V8",false);
+    ReferenceUi.modalFieldRow(spec,"系统组件",version,true);
+    ReferenceUi.modalFieldRow(spec,"指纹状态",fingerprint,false);
+    d.body.addView(spec,new LinearLayout.LayoutParams(-1,-2));
+    ReferenceUi.modalSection(d.body,"说明与边界");
+    LinearLayout notes=ReferenceUi.modalGroup(this);
+    String[][] sections={
+      {"browser","内核来源与默认首页","由 Android System WebView 或 Chrome 提供，随系统组件更新。默认首页为 ChatGPT，地址栏可访问其他网站。"},
+      {"shield","指纹与自检边界","原生 UA / UA-CH 回读、文档起始脚本注册与当前网页自测分开记录；脚本已注册不等于保护已验证。Worker、Service Worker、OffscreenCanvas、AudioWorklet、字体、时区、硬件及 TLS 暂不具备完整覆盖确认。"},
+      {"globe","网络与隔离范围","Chromium 与 Gecko 的配置、种子、登录与 Cookie 均独立保存。网页 HTTP 请求使用此环境的线路；文档 WebRTC 限制不等于设备级网络保护，完整覆盖仍需设备级 VPN，应用不会自动开启 VPN。"},
+      {"lock","权限与扩展限制","摄像头、麦克风和大致位置按网站逐次授权。Chrome 扩展尚不支持。"}
+    };
+    for(String[] s:sections)ReferenceUi.modalTopicItem(notes,s[0],s[1],s[2]);
+    d.body.addView(notes,new LinearLayout.LayoutParams(-1,-2));
+    d.buttons("关闭",d::dismiss,"",()->{});d.show();
+  }
   void sitePermissions(){
     Tab tab=selected;
     if(tab==null)return;
     WebView view=tab.web;
     long navigation=tab.generation;
-    AppAppearance.dialog(this).setTitle("当前网站权限").setMessage(tab.url+"\n\n摄像头、麦克风和大致位置在网站请求时逐次确认。Android 系统授权不等于自动允许网站。\n\n结束当前网页可停止此页已开始的媒体访问；未提交的网页输入可能丢失。")
-      .setNegativeButton("返回",null).setPositiveButton("结束网页并重载",(d,w)->{
-        if(!pageNavigationCurrent(tab,view,tab,navigation)){
-          message("网页已变化，请重新打开当前网站权限");
-          return;
-        }
-        hideCustomView();
-        // Leaving full-screen mode can synchronously deliver a page callback.
-        if(!pageNavigationCurrent(tab,view,tab,navigation))return;
-        retire(tab);
-        tab.saved=null;
-        showSelected();
-        updateChrome();
-      }).show();
+    ReferenceUi.Modal d=new ReferenceUi.Modal(this,"当前网站权限");
+    LinearLayout siteCard=ReferenceUi.modalGroup(this);
+    ReferenceUi.modalFieldRow(siteCard,"当前网址",tab.url,true);
+    ReferenceUi.modalFieldRow(siteCard,"授权策略","摄像头、麦克风和大致位置在网站请求时逐次确认；系统授权不等于自动允许网站。",false);
+    d.body.addView(siteCard,new LinearLayout.LayoutParams(-1,-2));
+    LinearLayout warn=ReferenceUi.modalWarning(this,"info","结束网页会丢失未提交输入","结束当前网页可停止此页已开始的媒体访问；未提交的网页输入可能丢失。");
+    LinearLayout.LayoutParams wp=new LinearLayout.LayoutParams(-1,-2);wp.topMargin=dp(10);
+    d.body.addView(warn,wp);
+    d.buttons("返回",d::dismiss,"结束网页并重载",()->{
+      d.dismiss();
+      if(!pageNavigationCurrent(tab,view,tab,navigation)){
+        message("网页已变化，请重新打开当前网站权限");
+        return;
+      }
+      hideCustomView();
+      // Leaving full-screen mode can synchronously deliver a page callback.
+      if(!pageNavigationCurrent(tab,view,tab,navigation))return;
+      retire(tab);
+      tab.saved=null;
+      showSelected();
+      updateChrome();
+    });
+    d.show();
   }
   void defaultBrowser(){try{if(Build.VERSION.SDK_INT>=29){android.app.role.RoleManager roles=getSystemService(android.app.role.RoleManager.class);if(roles!=null&&roles.isRoleAvailable(android.app.role.RoleManager.ROLE_BROWSER)){if(roles.isRoleHeld(android.app.role.RoleManager.ROLE_BROWSER)){message("当前已是系统默认浏览器");return;}startActivityForResult(roles.createRequestRoleIntent(android.app.role.RoleManager.ROLE_BROWSER),0x2800);return;}}startActivity(new Intent(android.provider.Settings.ACTION_MANAGE_DEFAULT_APPS_SETTINGS));}catch(ActivityNotFoundException unavailable){message("请在系统设置中选择默认浏览器");}}
   void external(String url){
     Uri uri;try{uri=Uri.parse(url);}catch(RuntimeException invalid){return;}String scheme=uri.getScheme();
     if(!"mailto".equalsIgnoreCase(scheme)&&!"tel".equalsIgnoreCase(scheme)&&!"sms".equalsIgnoreCase(scheme)){message("已阻止此链接类型");return;}
-    AppAppearance.dialog(this).setTitle("打开外部应用？").setMessage(url).setNegativeButton("取消",null).setPositiveButton("打开",(d,w)->{try{startActivity(new Intent(Intent.ACTION_VIEW,uri).addCategory(Intent.CATEGORY_BROWSABLE));}catch(ActivityNotFoundException missing){message("没有可以打开此链接的应用");}}).show();
+    ReferenceUi.Modal d=new ReferenceUi.Modal(this,"打开外部应用？").hideClose();
+    LinearLayout card=ReferenceUi.modalGroup(this);card.setPadding(dp(16),dp(12),dp(16),dp(12));
+    card.addView(ReferenceUi.workspaceText(this,"目标链接",ReferenceUi.SECONDARY_SIZE,ReferenceUi.secondaryInk(),true),new LinearLayout.LayoutParams(-1,-2));
+    TextView target=ReferenceUi.workspaceText(this,url,ReferenceUi.ACTION_SIZE,DesignUi.TEXT,false);
+    target.setTypeface(android.graphics.Typeface.MONOSPACE);target.setTextIsSelectable(true);target.setPadding(0,dp(5),0,0);
+    card.addView(target,new LinearLayout.LayoutParams(-1,-2));
+    d.body.addView(card,new LinearLayout.LayoutParams(-1,-2));
+    ReferenceUi.modalFooterNote(d.body,"将交给手机中对应的外部应用处理此链接。");
+    d.buttons("取消",d::dismiss,"打开",()->{d.dismiss();try{startActivity(new Intent(Intent.ACTION_VIEW,uri).addCategory(Intent.CATEGORY_BROWSABLE));}catch(ActivityNotFoundException missing){message("没有可以打开此链接的应用");}});
+    d.show();
   }
   void share(){try{startActivity(Intent.createChooser(new Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT,selected.url),"分享网址"));}catch(ActivityNotFoundException missing){message("暂无可用的分享应用");}}
   void focusAddress(){browserBar.setVisibility(View.VISIBLE);address.requestFocus();address.selectAll();((InputMethodManager)getSystemService(INPUT_METHOD_SERVICE)).showSoftInput(address,InputMethodManager.SHOW_IMPLICIT);}
@@ -713,7 +856,14 @@ public class BrowserActivity extends ThemedActivity {
   @Override protected void onPause(){foreground=false;fingerprintMain.removeCallbacks(networkTick);invalidateFingerprintObservation();if(selected!=null)retireFingerprintBinding(selected);hideCustomView();if(web()!=null)web().onPause();saveCookies();super.onPause();}
   @Override protected void onSaveInstanceState(Bundle state){ArrayList<String> urls=new ArrayList<>();for(Tab tab:tabs)urls.add(tab.url);state.putStringArrayList("browser.urls",urls);state.putInt("browser.selected",tabs.indexOf(selected));super.onSaveInstanceState(state);}
   void leaveBrowser(){if(runtime!=null)runtime.close();if(files!=null)files.destroy();for(Tab tab:tabs)retire(tab);finish();}
-  void confirmCloseBrowser(){boolean downloading=files!=null&&files.hasActiveDownload();AppAppearance.dialog(this).setTitle("关闭浏览器？").setMessage("将关闭全部标签页，未保存的网页输入可能丢失。"+(downloading?"正在进行的下载会取消。":"")+"关闭后，此环境等待中的网络设置可以应用。").setNegativeButton("继续浏览",null).setPositiveButton(downloading?"关闭并取消下载":"关闭浏览器",(d,w)->leaveBrowser()).show();}
+  void confirmCloseBrowser(){
+    boolean downloading=files!=null&&files.hasActiveDownload();
+    ReferenceUi.Modal d=new ReferenceUi.Modal(this,"关闭浏览器？").hideClose();
+    d.body.addView(ReferenceUi.modalBanner(this,"info",downloading?"关闭将取消正在进行的下载":"将关闭全部标签页",
+        "将关闭全部标签页，未保存的网页输入可能丢失。"+(downloading?"正在进行的下载会取消。":"")+"关闭后，此环境等待中的网络设置可以应用。",false),new LinearLayout.LayoutParams(-1,-2));
+    d.buttons("继续浏览",d::dismiss,downloading?"关闭并取消下载":"关闭浏览器",()->{d.dismiss();leaveBrowser();});
+    d.show();
+  }
   @Override public void onBackPressed(){if(customView!=null){hideCustomView();return;}if(findBar!=null&&findBar.getVisibility()==View.VISIBLE){closeFind();return;}if(address.hasFocus()){hideKeyboard();updateChrome();return;}if(web()!=null&&web().canGoBack()){history(-1);return;}confirmCloseBrowser();}
   @Override public boolean dispatchKeyEvent(KeyEvent event){if(event.getAction()==KeyEvent.ACTION_DOWN&&event.isCtrlPressed()){switch(event.getKeyCode()){case KeyEvent.KEYCODE_L:focusAddress();return true;case KeyEvent.KEYCODE_T:newTab(BrowserPreferences.home(this));focusAddress();return true;case KeyEvent.KEYCODE_W:if(selected!=null)closeTab(selected);return true;case KeyEvent.KEYCODE_F:findBar.setVisibility(View.VISIBLE);findText.requestFocus();return true;case KeyEvent.KEYCODE_R:reloadOrStop();return true;}}return super.dispatchKeyEvent(event);}
   @Override protected void onDestroy(){destroyed=true;if(toolsPanel!=null)toolsPanel.panel.dismiss();if(networkUi!=null)networkUi.close();fingerprintStateReady=false;invalidateFingerprintObservation();hideCustomView();if(runtime!=null)runtime.close();for(Tab tab:tabs)retire(tab);if(permissions!=null)permissions.close();if(files!=null)files.destroy();saveCookies();fingerprintMain.removeCallbacksAndMessages(null);if(fingerprintJobs!=null)fingerprintJobs.close();cookieWorker.shutdown();super.onDestroy();}

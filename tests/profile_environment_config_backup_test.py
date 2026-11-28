@@ -92,7 +92,7 @@ class EnvironmentConfigBackupTest(unittest.TestCase):
         self.assertTrue(java, 'JDK17+ required')
         source = (PRODUCTION / 'EnvironmentConfigBackupActivity.java').read_text()
         member = runpy.run_path(str(ROOT / 'tests/download-resume-host/run.py'))['member']
-        names = ('public void onCreate(', 'protected void onActivityResult(',
+        names = ('public void onCreate(', 'void chooseBackupFile(', 'protected void onActivityResult(',
                  'boolean active(', 'void message(', 'void clearPending(')
         callbacks = [member(source, name) for name in names]
         if 'protected void onSaveInstanceState(' in source:

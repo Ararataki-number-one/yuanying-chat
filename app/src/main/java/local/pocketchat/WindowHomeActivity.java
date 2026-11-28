@@ -357,18 +357,80 @@ public class WindowHomeActivity extends ThemedActivity {
     List<EnvironmentSpec.Identity> selection=new ArrayList<>(selectedEnvironments.values());ProfileCatalog catalog=ProfileCatalog.get(this);
     String common=catalog.item(selection.get(0).slot).optString("group");boolean mixed=false;
     for(EnvironmentSpec.Identity identity:selection)if(!common.equals(catalog.item(identity.slot).optString("group")))mixed=true;
-    LinearLayout box=DesignUi.column(this);box.setPadding(dp(18),0,dp(18),dp(16));
-    EditText group=DesignUi.input(box,"目标分组",mixed?"":common,"最多 12 字，留空为未分组");
+    LinearLayout box=DesignUi.column(this);box.setPadding(dp(20),dp(8),dp(20),dp(12));
+    LinearLayout card=ReferenceUi.modalGroup(this);
+    EditText group=ReferenceUi.modalInput(card,"目标分组",mixed?"":common,"最多 12 字，留空为未分组");
     group.setFilters(new InputFilter[]{new InputFilter.LengthFilter(12)});
+    group.setImeOptions(android.view.inputmethod.EditorInfo.IME_ACTION_DONE);
+    box.addView(card,new LinearLayout.LayoutParams(-1,-2));
     int hidden=0;for(EnvironmentSpec.Identity identity:selection)if(!visibleIds.contains(identity.slot))hidden++;
-    DesignUi.note(box,"修改已选 "+selection.size()+" 个环境"+(hidden>0?"（含筛选外 "+hidden+" 个）":"")+"。备注和配置草稿保留。");
+    ReferenceUi.modalFooterNote(box,"修改已选 "+selection.size()+" 个环境"+(hidden>0?"（含筛选外 "+hidden+" 个）":"")+"。备注和配置草稿保留。");
     List<String> groups=new ArrayList<>();JSONArray rows=catalog.list();
     for(int i=0;i<rows.length();i++){
       JSONObject row=rows.optJSONObject(i);String value=row.optString("group");
       if(row.optBoolean("created")&&!value.isEmpty()&&!groups.contains(value))groups.add(value);
     }
-    if(!groups.isEmpty())DesignUi.action(box,"选择已有分组",false,()->AppAppearance.dialog(this).setTitle("已有分组")
-      .setItems(groups.toArray(new String[0]),(d,n)->group.setText(groups.get(n))).setNegativeButton("取消",null).show());
+    if(!groups.isEmpty()){
+      HorizontalScrollView chipScroll=new HorizontalScrollView(this);chipScroll.setHorizontalScrollBarEnabled(false);
+      LinearLayout chips=DesignUi.row(this);chips.setPadding(dp(16),0,dp(16),dp(8));
+      int limit=Math.min(groups.size(),5);
+      List<Button> chipButtons=new ArrayList<>();
+      List<String> chipValues=new ArrayList<>();
+      int vInset=dp(6);
+      Runnable syncChips=()->{
+        String active=group.getText().toString().trim();
+        for(int j=0;j<chipButtons.size();j++){
+          Button b=chipButtons.get(j);String val=chipValues.get(j);
+          boolean on=!val.isEmpty()&&val.equals(active);
+          b.setSelected(on);
+          b.setTextColor(on?ReferenceUi.brandBlue():ReferenceUi.inkPrimary());
+          b.setTypeface(on?ReferenceUi.TYPE_SEMIBOLD:ReferenceUi.TYPE_MEDIUM);
+          ReferenceUi.crisp(b);
+          ReferenceUi.AdaptiveSurface pill=on
+              ?new ReferenceUi.AdaptiveSurface(this,7,0xffeef4ff,0xff1b2638,0x280067d8,0x3d6da4ff)
+              :new ReferenceUi.AdaptiveSurface(this,7,0xfff6f7f9,0xff232732,0x12111827,0x18ffffff);
+          b.setBackground(new android.graphics.drawable.RippleDrawable(
+              android.content.res.ColorStateList.valueOf(ReferenceUi.tone(0x140067d8,0x246da4ff)),
+              new android.graphics.drawable.InsetDrawable(pill,0,vInset,0,vInset),
+              new android.graphics.drawable.InsetDrawable(new ReferenceUi.AdaptiveSurface(this,7,android.graphics.Color.WHITE,android.graphics.Color.WHITE),0,vInset,0,vInset)));
+        }
+      };
+      for(int i=0;i<limit;i++){
+        final String value=groups.get(i);
+        Button chip=ReferenceUi.link(this,value,()->{group.setText(value);group.setSelection(value.length());});
+        chip.setTextSize(ReferenceUi.ACTION_SIZE);chip.setMinHeight(dp(44));chip.setMinimumHeight(dp(44));
+        chip.setPadding(dp(13),dp(8),dp(13),dp(8));
+        LinearLayout.LayoutParams cp=new LinearLayout.LayoutParams(-2,-2);if(i>0)cp.setMarginStart(dp(6));
+        chips.addView(chip,cp);chipButtons.add(chip);chipValues.add(value);
+      }
+      Button clearChip=ReferenceUi.link(this,"清空分组",()->group.setText(""));
+      clearChip.setTextSize(ReferenceUi.SECONDARY_SIZE);clearChip.setTextColor(ReferenceUi.secondaryInk());
+      clearChip.setMinHeight(dp(44));clearChip.setMinimumHeight(dp(44));
+      clearChip.setPadding(dp(10),dp(8),dp(10),dp(8));
+      LinearLayout.LayoutParams clearP=new LinearLayout.LayoutParams(-2,-2);clearP.setMarginStart(dp(6));
+      chips.addView(clearChip,clearP);
+      Runnable syncAll=()->{syncChips.run();clearChip.setVisibility(group.getText().toString().trim().isEmpty()?View.GONE:View.VISIBLE);};
+      group.addTextChangedListener(new TextWatcher(){
+        public void beforeTextChanged(CharSequence s,int a,int c,int f){}
+        public void onTextChanged(CharSequence s,int a,int b,int c){syncAll.run();}
+        public void afterTextChanged(Editable e){}
+      });
+      syncAll.run();
+      chipScroll.addView(chips);card.addView(chipScroll,new LinearLayout.LayoutParams(-1,-2));
+      if(groups.size()>5){
+        LinearLayout pickCard=ReferenceUi.modalGroup(this);
+        ReferenceUi.modalRowAction(pickCard,"window","查看全部已有分组（"+groups.size()+"）",false,()->{
+          ReferenceUi.Modal picker=new ReferenceUi.Modal(this,"已有分组").asSheet();
+          LinearLayout list=ReferenceUi.modalGroup(this);
+          String active=group.getText().toString().trim();
+          for(String value:groups)ReferenceUi.modalChoice(list,value,"",value.equals(active),()->{group.setText(value);picker.dismiss();});
+          picker.body.addView(list,new LinearLayout.LayoutParams(-1,-2));
+          picker.buttons("取消",picker::dismiss,"",()->{});picker.show();
+        });
+        LinearLayout.LayoutParams pp=new LinearLayout.LayoutParams(-1,-2);pp.topMargin=dp(10);
+        box.addView(pickCard,pp);
+      }
+    }
     AlertDialog dialog=AppAppearance.dialog(this).setTitle("批量分组").setView(box)
       .setPositiveButton("保存分组",null).setNegativeButton("取消",null).create();
     dialog.show();
@@ -383,15 +445,15 @@ public class WindowHomeActivity extends ThemedActivity {
     JSONObject row=catalog.item(id);
     EnvironmentSpec.Identity shown=selectionIdentity(row);
     if(shown==null)return;
-    String[] labels={"编辑环境","分组与备注",row.optBoolean("favorite")?"取消收藏":"收藏环境",id==AppSettings.defaultSlot(this)?"当前默认环境":"设为默认启动环境","网络配置","选择此环境","复制环境配置","重置登录数据","删除环境","环境详情"};
+    String[] labels={"编辑环境","分组与备注",row.optBoolean("favorite")?"取消收藏":"收藏环境",id==AppSettings.defaultSlot(this)?"当前默认环境":"设为默认启动环境","网络配置","选择此环境","复制环境配置","环境详情","重置登录数据","删除环境"};
     ReferenceUi.Modal panel=new ReferenceUi.Modal(this,row.optString("name")).asSheet();
-    for(int i=0;i<labels.length;i++){final int n=i;Button item=ReferenceUi.menuAction(panel,labels[i],()->{panel.dismiss();
+    for(int i=0;i<labels.length;i++){final int n=i;ReferenceUi.menuAction(panel,labels[i],()->{panel.dismiss();
       if(n==0)openWindow(id,"edit");if(n==1)metadata(row);
       if(n==2)saveMenuChoice(catalog,shown,()->catalog.favorite(shown.slot,!row.optBoolean("favorite")));
       if(n==3)saveMenuChoice(catalog,shown,()->AppSettings.defaultSlot(this,shown.slot));
-      if(n==4)openWindow(id,"network");if(n==5)toggleSelection(row);if(n==6)copyEnvironment(row);if(n==7)resetEnvironment(row);if(n==8)deleteEnvironment(row);if(n==9)openExpected(row,"overview",true);
-    });if(i==7||i==8)item.setTextColor(DesignUi.RED);}
-    panel.show();
+      if(n==4)openWindow(id,"network");if(n==5)toggleSelection(row);if(n==6)copyEnvironment(row);if(n==7)openExpected(row,"overview",true);if(n==8)resetEnvironment(row);if(n==9)deleteEnvironment(row);
+    });}
+    panel.buttons("取消",panel::dismiss,"",()->{});panel.show();
   }
   void saveMenuChoice(ProfileCatalog catalog,EnvironmentSpec.Identity shown,ProfileCatalog.IdentityAction<Boolean> change){
     try{
@@ -400,18 +462,23 @@ public class WindowHomeActivity extends ThemedActivity {
     showProblem("环境已变化或暂时无法保存，请重新选择");
   }
   void startReset(int id,int generation,String environmentId){startActivity(new Intent(this,EnvironmentResetActivity.class).putExtra("slot",id).putExtra("confirmedGeneration",generation).putExtra("confirmedEnvironmentId",environmentId).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));}
+  private View maintenanceImpactView(String dangerTitle,String dangerDetail,String keepTitle,String keepDetail){
+    LinearLayout box=DesignUi.column(this);box.setPadding(dp(20),dp(8),dp(20),dp(8));
+    box.addView(ReferenceUi.modalImpactPair(this,dangerTitle,dangerDetail,keepTitle,keepDetail),new LinearLayout.LayoutParams(-1,-2));
+    ScrollView scroll=new ScrollView(this);NativeControls.prepare(scroll);scroll.addView(box);return scroll;
+  }
   void resetEnvironment(JSONObject row){
     EnvironmentSpec.Identity shown=selectionIdentity(row);
     if(shown==null){showProblem("环境已变化，请刷新列表");return;}
     AlertDialog dialog=AppAppearance.dialog(this).setTitle("重置 "+row.optString("name")+" 的登录？")
-      .setMessage("将关闭此环境并清理登录、Cookie、网页存储和本地草稿、聊天缓存。正在进行的回复、上传和下载任务会中断。环境名称、模板、网络与使用偏好，以及已保存的下载文件会保留；其他环境不受影响。需要在此环境重新登录 ChatGPT。")
+      .setView(maintenanceImpactView("将关闭此环境并清理以下数据","登录、Cookie、网页存储和本地草稿、聊天缓存。正在进行的回复、上传和下载任务会中断。","以下内容会安全保留","环境名称、模板、网络与使用偏好，以及已保存的下载文件；其他环境不受影响。完成后需重新登录 ChatGPT。"))
       .setNegativeButton("取消",null).setPositiveButton("重置登录数据",null).show();
     confirmMaintenance(dialog,shown,false);
   }
 
   void confirmMaintenance(AlertDialog dialog,EnvironmentSpec.Identity shown,boolean deleting){
     Button confirm=dialog.getButton(AlertDialog.BUTTON_POSITIVE);
-    confirm.setTextColor(DesignUi.RED);
+    confirm.setTextColor(ReferenceUi.redInk());
     confirm.setOnClickListener(view->{
       confirm.setEnabled(false);
       CharSequence title=confirm.getText();
@@ -458,22 +525,21 @@ public class WindowHomeActivity extends ThemedActivity {
     if(target==null){showProblem("环境已满，请先删除不再使用的环境");return;}
     int destination=target.optInt("slot",-1),generation=target.optInt("generation",-1);
 
-    LinearLayout box=DesignUi.column(this);
-    box.setPadding(dp(18),0,dp(18),dp(16));
+    ReferenceUi.Modal dialog=new ReferenceUi.Modal(this,"复制环境配置");
+    LinearLayout card=ReferenceUi.modalGroup(this);
     String label=source.optString("name");
     if(label.length()>20)label=label.substring(0,20);
-    EditText name=DesignUi.input(box,"新环境名称",label+" 副本","");
+    EditText name=ReferenceUi.modalInput(card,"新环境名称",label+" 副本","请输入 1–24 字名称",true);
     name.setFilters(new InputFilter[]{new InputFilter.LengthFilter(24)});
-    DesignUi.note(box,"复制已保存的浏览器模板、网络和使用偏好。账号、聊天和草稿在新环境独立，不会复制。");
-    Spinner enginePicker=BrowserSettingsUi.creationPicker(this,box,EnvironmentEngine.GECKO);
-    AlertDialog dialog=AppAppearance.dialog(this).setTitle("复制环境配置").setView(box)
-      .setPositiveButton("创建副本",null).setNegativeButton("取消",null).create();
-    dialog.show();
-    dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v->{
+    name.setImeOptions(android.view.inputmethod.EditorInfo.IME_ACTION_DONE);
+    dialog.body.addView(card,new LinearLayout.LayoutParams(-1,-2));
+    Spinner enginePicker=BrowserSettingsUi.creationPicker(this,card,EnvironmentEngine.GECKO);
+    ReferenceUi.modalFooterNote(dialog.body,"复制已保存的浏览器模板、网络和使用偏好。账号、聊天和草稿在新环境独立，不会复制。");
+    dialog.buttons("取消",dialog::dismiss,"创建副本",()->{
       String title=name.getText().toString().trim();
-      if(title.isEmpty()){name.setError("请输入环境名称");return;}
-      EnvironmentEngine chosen=BrowserSettingsUi.creationSelection(enginePicker);
+      if(title.isEmpty()){name.setError("请输入环境名称");ReferenceUi.hapticReject(name);name.requestFocus();return;}
       if(preparing)return;
+      EnvironmentEngine chosen=BrowserSettingsUi.creationSelection(enginePicker);
       preparing=true;
       dialog.dismiss();
       createButton.setEnabled(false);
@@ -496,29 +562,40 @@ public class WindowHomeActivity extends ThemedActivity {
         });
       },"environment-copy").start();
     });
+    dialog.show();
   }
   void startDelete(EnvironmentSpec.Identity expected){startActivity(new Intent(this,EnvironmentDeleteActivity.class).putExtra("slot",expected.slot).putExtra("confirmedGeneration",expected.generation).putExtra("confirmedEnvironmentId",expected.environmentId).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));}
   void deleteEnvironment(JSONObject row){
     EnvironmentSpec.Identity shown=selectionIdentity(row);
     if(shown==null){showProblem("环境已变化，请刷新列表");return;}
     AlertDialog dialog=AppAppearance.dialog(this).setTitle("删除 "+row.optString("name")+"？")
-      .setMessage("将关闭此环境，清理它的登录、草稿、聊天缓存和网络配置。正在进行的回复和文件操作会中断。其他环境、订阅与固定出口，以及已保存到下载目录的文件会保留。")
+      .setView(maintenanceImpactView("将关闭并永久清理此环境","此环境的登录、草稿、聊天缓存和网络配置会被删除；正在进行的回复和文件操作会中断。","以下内容会安全保留","其他环境、订阅与固定出口，以及已保存到下载目录的文件不受影响。"))
       .setNegativeButton("取消",null).setPositiveButton("删除环境",null).show();
     confirmMaintenance(dialog,shown,true);
   }
   void metadata(JSONObject row){
     EnvironmentSpec.Identity expected=selectionIdentity(row);
     if(expected==null){showProblem("环境已变化，请刷新后重新选择");return;}
-    LinearLayout box=DesignUi.column(this);
-    box.setPadding(dp(18),0,dp(18),dp(16));
-    EditText group=DesignUi.input(box,"分组",row.optString("group"),"留空为未分组");
-    EditText notes=DesignUi.input(box,"备注",row.optString("notes"),"环境用途说明");
+    ReferenceUi.Modal dialog=new ReferenceUi.Modal(this,"分组与备注 · "+row.optString("name"));
+    LinearLayout card=ReferenceUi.modalGroup(this);
+    EditText group=ReferenceUi.modalInput(card,"分组",row.optString("group"),"留空为未分组");
+    EditText notes=ReferenceUi.modalInput(card,"备注",row.optString("notes"),"环境用途说明");
     group.setFilters(new InputFilter[]{new InputFilter.LengthFilter(12)});
     notes.setFilters(new InputFilter[]{new InputFilter.LengthFilter(120)});
-    AlertDialog dialog=AppAppearance.dialog(this).setTitle("分组与备注 · "+row.optString("name")).setView(box)
-      .setPositiveButton("保存",null).setNegativeButton("取消",null).create();
-    dialog.show();
-    dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v->{
+    notes.setSingleLine(false);notes.setMinLines(2);notes.setMaxLines(4);notes.setGravity(Gravity.TOP|Gravity.START);
+    dialog.body.addView(card,new LinearLayout.LayoutParams(-1,-2));
+    Runnable close=()->{
+      boolean dirty=!group.getText().toString().equals(row.optString("group"))||!notes.getText().toString().equals(row.optString("notes"));
+      if(!dirty){dialog.dismiss();return;}
+      ReferenceUi.Modal confirm=new ReferenceUi.Modal(this,"保留正在填写的内容？").hideClose();
+      LinearLayout descCard=ReferenceUi.modalGroup(this);descCard.setPadding(dp(16),dp(14),dp(16),dp(14));
+      descCard.addView(ReferenceUi.workspaceText(this,"继续编辑可保留本次填写；放弃修改后会退出此表单。",ReferenceUi.BODY_SIZE,DesignUi.TEXT,false));
+      confirm.body.addView(descCard,new LinearLayout.LayoutParams(-1,-2));
+      confirm.buttons("放弃修改",()->{confirm.dismiss();dialog.dismiss();},"继续编辑",confirm::dismiss);
+      confirm.show();
+    };
+    dialog.cancel=close;
+    dialog.buttons("取消",close,"保存",()->{
       ProfileCatalog catalog=ProfileCatalog.get(this);
       try{
         boolean saved=catalog.withIdentity(expected,()->catalog.details(expected.slot,group.getText().toString(),notes.getText().toString()));
@@ -526,7 +603,7 @@ public class WindowHomeActivity extends ThemedActivity {
       }catch(Exception unavailable){}
       notes.setError("环境已变化或暂时无法保存，请重新选择");
     });
-    DesignUi.protectEdits(this,dialog,()->!group.getText().toString().equals(row.optString("group"))||!notes.getText().toString().equals(row.optString("notes")));
+    dialog.show();
   }
   void openWindow(int id,String action){
     if(id<0||id>=Profiles.MAX)return;
@@ -554,9 +631,9 @@ public class WindowHomeActivity extends ThemedActivity {
   }
   final class Wizard {
     final int id,generation;final Dialog dialog;
-    LinearLayout body,actions;EditText name;AlertDialog exitPrompt;
-    int step,sourceType,sourceSlot;String title,group="";boolean makeDefault,desktop;Spinner displayChoice,enginePicker;
-    EnvironmentEngine engine=EnvironmentEngine.GECKO;
+    LinearLayout body,actions;TextView stepCaption;EditText name;ReferenceUi.Modal exitPrompt;
+    int step,sourceType,sourceSlot;String title,group="";boolean makeDefault,desktop;
+    Spinner enginePicker;EnvironmentEngine engine=EnvironmentEngine.GECKO;
     JSONObject selectedNetworkRow;
     EnvironmentSpec.Identity shownNetworkSource;
     Wizard(int id,int generation){
@@ -566,43 +643,86 @@ public class WindowHomeActivity extends ThemedActivity {
     }
     void show(){
       LinearLayout screen=DesignUi.screen(WindowHomeActivity.this);
-      body=DesignUi.body(WindowHomeActivity.this,screen,"创建环境",this::back);
-      actions=DesignUi.row(WindowHomeActivity.this);actions.setPadding(dp(14),dp(10),dp(14),dp(10));
-      screen.addView(actions);dialog.setContentView(screen);dialog.show();
+      screen.setClipChildren(false);screen.setClipToPadding(false);
+      screen.setBackgroundColor(ReferenceUi.canvasBg());
+      FrameLayout viewport=new FrameLayout(WindowHomeActivity.this);viewport.setClipChildren(true);viewport.setClipToPadding(true);
+      ScrollView scroll=new ScrollView(WindowHomeActivity.this);scroll.setFillViewport(true);scroll.setClipToPadding(false);NativeControls.prepare(scroll);
+      body=DesignUi.column(WindowHomeActivity.this);body.setPadding(dp(16),dp(8),dp(16),dp(24));
+      scroll.addView(body,new ScrollView.LayoutParams(-1,-2));
+      viewport.addView(scroll,new FrameLayout.LayoutParams(-1,-1));
+
+      FrameLayout head=ReferenceUi.horologyHeader(WindowHomeActivity.this,"创建环境","步骤 1 / 3 · 基本信息",this::back,scroll);
+      // Locate the subtitle TextView inside horologyHeader so step caption updates dynamically.
+      View rowChild=head.getChildCount()>2?head.getChildAt(2):null;
+      if(rowChild instanceof ViewGroup){
+        View titlesChild=((ViewGroup)rowChild).getChildAt(((ViewGroup)rowChild).getChildCount()-1);
+        if(titlesChild instanceof ViewGroup&&((ViewGroup)titlesChild).getChildCount()>1){
+          View subView=((ViewGroup)titlesChild).getChildAt(1);
+          if(subView instanceof TextView){stepCaption=(TextView)subView;ReferenceUi.tabular(stepCaption);}
+        }
+      }
+      screen.addView(head,new LinearLayout.LayoutParams(-1,-2));
+      screen.addView(viewport,new LinearLayout.LayoutParams(-1,0,1));
+
+      LinearLayout dockHost=DesignUi.column(WindowHomeActivity.this);
+      dockHost.setClipChildren(false);dockHost.setClipToPadding(false);
+      dockHost.setBackground(EnvironmentWorkspaceStyle.scrollEdge(WindowHomeActivity.this));
+      dockHost.setPadding(dp(14),dp(14),dp(14),dp(14));
+      actions=DesignUi.row(WindowHomeActivity.this);actions.setClipChildren(false);actions.setClipToPadding(false);
+      actions.setPadding(dp(8),dp(8),dp(8),dp(8));
+      actions.setBackground(DesignUi.glass(WindowHomeActivity.this,30));
+      dockHost.addView(actions,new LinearLayout.LayoutParams(-1,-2));
+      screen.addView(dockHost,new LinearLayout.LayoutParams(-1,-2));
+
+      dialog.setContentView(screen);dialog.show();
       dialog.getWindow().setBackgroundDrawableResource(android.R.color.transparent);dialog.getWindow().setLayout(-1,-1);dialog.getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);render();
     }
     void back(){if(step>0){step--;render();}else close();}
     void close(){
-      if(step==0&&displayChoice!=null){desktop=displayChoice.getSelectedItemPosition()==1;engine=BrowserSettingsUi.creationSelection(enginePicker);}
+      if(step==0&&enginePicker!=null)engine=BrowserSettingsUi.creationSelection(enginePicker);
       boolean dirty=!title.equals("环境 "+(id+1))||!group.isEmpty()||sourceType!=0||makeDefault||desktop||engine!=EnvironmentEngine.GECKO;
       if(!dirty){dialog.dismiss();return;}
       if(exitPrompt!=null&&exitPrompt.isShowing())return;
-      exitPrompt=AppAppearance.dialog(WindowHomeActivity.this).setTitle("放弃创建环境？")
-        .setMessage("退出后，本次填写的环境配置不会保存。")
-        .setPositiveButton("继续填写",null).setNegativeButton("放弃创建",(d,w)->dialog.dismiss()).show();
-      exitPrompt.getButton(AlertDialog.BUTTON_NEGATIVE).setTextColor(DesignUi.RED);
+      exitPrompt=new ReferenceUi.Modal(WindowHomeActivity.this,"放弃创建环境？").hideClose();
+      exitPrompt.body.addView(ReferenceUi.modalWarning(WindowHomeActivity.this,"info","未保存的环境配置将被放弃","退出后，本次填写的环境名称、分组与网络来源选择不会保存。"),new LinearLayout.LayoutParams(-1,-2));
+      exitPrompt.buttons("继续填写",exitPrompt::dismiss,"放弃创建",()->{exitPrompt.dismiss();dialog.dismiss();});
+      exitPrompt.show();
     }
     void render(){
+      String[] stepNames={"基本信息","网络来源","确认创建"};
+      if(stepCaption!=null)stepCaption.setText(getString(R.string.environment_wizard_step,step+1,stepNames.length,stepNames[step]));
       DesignUi.rebuild(body,false,()->{
-        body.addView(DesignUi.tabs(WindowHomeActivity.this,new String[]{"基本信息","网络来源","确认创建"},step,n->{if(n<step){step=n;render();}}));
+        LinearLayout tabs=DesignUi.tabs(WindowHomeActivity.this,stepNames,step,n->{if(n<step){step=n;render();}});
+        LinearLayout.LayoutParams tp=new LinearLayout.LayoutParams(-1,-2);tp.bottomMargin=dp(12);
+        body.addView(tabs,tp);
         if(step==0)basic();else if(step==1)network();else summary();
       });
       actions.removeAllViews();
-      Button back=DesignUi.button(WindowHomeActivity.this,step==0?"取消创建":"上一步",false,this::back);
+      Button back=ReferenceUi.link(WindowHomeActivity.this,step==0?"取消创建":"上一步",this::back);
+      back.setTextSize(15);back.setTextColor(DesignUi.MUTED);back.setMinHeight(dp(48));back.setMinimumHeight(dp(48));
+      back.setGravity(Gravity.CENTER);back.setBackground(Ui.ripple(WindowHomeActivity.this,android.graphics.Color.TRANSPARENT,999));
       Button next=DesignUi.button(WindowHomeActivity.this,step==2?"创建并打开":"下一步",true,this::next);
+      ReferenceUi.stylePill(next,true,false);
       actions.addView(back,new LinearLayout.LayoutParams(0,dp(48),1));
-      LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(0,dp(48),1);p.leftMargin=dp(8);actions.addView(next,p);
+      LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(0,dp(48),1.35f);p.setMarginStart(dp(6));actions.addView(next,p);
     }
     void basic(){
-      name=DesignUi.input(body,"环境名称",title,"例如：工作号、研究专用");
+      ReferenceUi.modalSection(body,"环境标识");
+      LinearLayout form=ReferenceUi.modalGroup(WindowHomeActivity.this);
+      name=ReferenceUi.modalInput(form,"环境名称",title,"例如：工作号、研究专用",true);
       name.setFilters(new InputFilter[]{new InputFilter.LengthFilter(24)});
       watch(name,()->title=name.getText().toString());
-      EditText input=DesignUi.input(body,"分组（可选）",group,"最多 12 字，留空为未分组");
-      input.setFilters(new InputFilter[]{new InputFilter.LengthFilter(12)});watch(input,()->group=input.getText().toString().trim());
+      EditText input=ReferenceUi.modalInput(form,"分组",group,"最多 12 字，留空为未分组");
+      input.setFilters(new InputFilter[]{new InputFilter.LengthFilter(12)});
+      input.setImeOptions(android.view.inputmethod.EditorInfo.IME_ACTION_DONE);
+      watch(input,()->group=input.getText().toString().trim());
+      body.addView(form,new LinearLayout.LayoutParams(-1,-2));
       enginePicker=BrowserSettingsUi.creationPicker(WindowHomeActivity.this,body,engine);
-      displayChoice=BrowserDisplayUi.add(body,desktop);
-      displayChoice.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener(){public void onItemSelected(AdapterView<?> p,View v,int pos,long item){desktop=pos==1;}public void onNothingSelected(AdapterView<?> p){}});
-      DesignUi.note(body,"电脑版内容更密，可用双指缩放。");
+      ReferenceUi.modalSection(body,"网页显示方式");
+      LinearLayout modeCard=ReferenceUi.modalGroup(WindowHomeActivity.this);
+      ReferenceUi.modalChoice(modeCard,"手机版网站","默认排版，适合单手阅读与快速回复",!desktop,()->{engine=BrowserSettingsUi.creationSelection(enginePicker);desktop=false;render();});
+      ReferenceUi.modalChoice(modeCard,"电脑版网站","内容更密、展示侧栏与工具，可双指缩放",desktop,()->{engine=BrowserSettingsUi.creationSelection(enginePicker);desktop=true;render();});
+      body.addView(modeCard,new LinearLayout.LayoutParams(-1,-2));
     }
     void watch(EditText input,Runnable changed){input.addTextChangedListener(new TextWatcher(){
       public void beforeTextChanged(CharSequence s,int a,int c,int f){}
@@ -611,16 +731,17 @@ public class WindowHomeActivity extends ThemedActivity {
     });}
     void network(){
       String[] choices={"使用默认环境的网络设置","使用其他环境的网络设置","自己配置网络"};
-      LinearLayout choicesBox=DesignUi.card(WindowHomeActivity.this);
+      String[] hints={"沿用当前默认环境的线路与代理规则","从已有环境复制已保存的网络配置","创建完成后自行选择或配置线路"};
+      ReferenceUi.modalSection(body,"网络配置来源");
+      LinearLayout choicesBox=ReferenceUi.modalGroup(WindowHomeActivity.this);
       for(int i=0;i<choices.length;i++){
-        final int n=i;RadioButton radio=new RadioButton(WindowHomeActivity.this);
-        radio.setText(choices[i]);radio.setTextColor(DesignUi.TEXT);radio.setChecked(sourceType==i);radio.setMinHeight(dp(48));choicesBox.addView(radio);
-        radio.setOnClickListener(v->{sourceType=n;render();});
-      }DesignUi.addCard(body,choicesBox);
+        final int n=i;
+        ReferenceUi.modalChoice(choicesBox,choices[i],hints[i],sourceType==i,()->{sourceType=n;render();});
+      }
+      body.addView(choicesBox,new LinearLayout.LayoutParams(-1,-2));
       if(sourceType==1){
         JSONArray rows=ProfileCatalog.get(WindowHomeActivity.this).list();
         List<JSONObject> sources=new ArrayList<>();
-        List<String> labels=new ArrayList<>();
         int selected=0;
         for(int i=0;i<rows.length();i++){
           JSONObject row=rows.optJSONObject(i);
@@ -628,27 +749,31 @@ public class WindowHomeActivity extends ThemedActivity {
           if(identity==null)continue;
           if(identity.slot==sourceSlot)selected=sources.size();
           sources.add(row);
-          labels.add(row.optString("name"));
         }
-        Spinner spinner=new Spinner(WindowHomeActivity.this);spinner.setMinimumHeight(dp(48));
-        spinner.setAdapter(new ArrayAdapter<>(WindowHomeActivity.this,android.R.layout.simple_spinner_dropdown_item,labels));
         selectNetworkSource(sources,selected);
-        if(selectedNetworkRow!=null)spinner.setSelection(selected);
-        spinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener(){
-          public void onItemSelected(AdapterView<?> p,View v,int pos,long item){selectNetworkSource(sources,pos);}
-          public void onNothingSelected(AdapterView<?> p){}
-        });body.addView(spinner);
+        if(!sources.isEmpty()){
+          ReferenceUi.modalSection(body,"选择来源环境");
+          LinearLayout sourceCard=ReferenceUi.modalGroup(WindowHomeActivity.this);
+          for(int i=0;i<sources.size();i++){
+            final int pos=i;JSONObject row=sources.get(i);String label=row.optString("name");
+            ReferenceUi.modalChoice(sourceCard,label,row.optString("group"),label,true,selected==i,()->{selectNetworkSource(sources,pos);render();});
+          }
+          body.addView(sourceCard,new LinearLayout.LayoutParams(-1,-2));
+        }
       }
-      DesignUi.note(body,"只复制网络设置，账号需要在新环境单独登录。");
+      ReferenceUi.modalFooterNote(body,"只复制网络设置，账号需要在新环境单独登录。");
     }
     void selectNetworkSource(List<JSONObject> sources,int position){
       selectedNetworkRow=position>=0&&position<sources.size()?sources.get(position):null;
       sourceSlot=selectedNetworkRow==null?-1:selectedNetworkRow.optInt("slot",-1);
     }
     void summary(){
-      DesignUi.field(body,"环境名称",title);if(!group.isEmpty())DesignUi.field(body,"分组",group);
-      DesignUi.field(body,"浏览器内核",engine.label);
-      DesignUi.field(body,"网页显示方式",BrowserDisplay.label(desktop));
+      ReferenceUi.modalSection(body,"配置核对");
+      LinearLayout card=ReferenceUi.modalGroup(WindowHomeActivity.this);
+      ReferenceUi.modalFieldRow(card,"环境名称",title,false);
+      if(!group.isEmpty())ReferenceUi.modalFieldRow(card,"分组",group,false);
+      ReferenceUi.modalFieldRow(card,"浏览器内核",engine.label,false);
+      ReferenceUi.modalFieldRow(card,"网页显示方式",BrowserDisplay.label(desktop),false);
       JSONObject source=null;
       if(sourceType==0){
         int defaultSlot=AppSettings.defaultSlot(WindowHomeActivity.this);
@@ -657,13 +782,17 @@ public class WindowHomeActivity extends ThemedActivity {
         source=selectedNetworkRow;
       }
       shownNetworkSource=selectionIdentity(source);
-      DesignUi.field(body,"网络来源",sourceType==2?"创建后手动配置":shownNetworkSource==null?"来源环境暂不可用":source.optString("name"));
-      CheckBox selected=new CheckBox(WindowHomeActivity.this);selected.setText("设为默认环境");selected.setTextColor(DesignUi.TEXT);selected.setMinHeight(dp(48));
-      DesignUi.note(body,sourceType==2?"创建后会打开网络配置页。保存网络方式后，再登录 ChatGPT。":"创建后会使用复制的网络配置打开浏览器，请在新环境单独登录 ChatGPT。");
-      selected.setChecked(makeDefault);selected.setOnCheckedChangeListener((b,c)->makeDefault=c);body.addView(selected);
+      ReferenceUi.modalFieldRow(card,"网络来源",sourceType==2?"创建后手动配置":shownNetworkSource==null?"来源环境暂不可用":source.optString("name"),false);
+      body.addView(card,new LinearLayout.LayoutParams(-1,-2));
+      ReferenceUi.modalSection(body,"启动偏好");
+      LinearLayout prefCard=ReferenceUi.modalGroup(WindowHomeActivity.this);
+      Switch selected=ReferenceUi.modalSwitchRow(prefCard,"设为默认环境",makeDefault);
+      selected.setOnCheckedChangeListener((b,c)->makeDefault=c);
+      body.addView(prefCard,new LinearLayout.LayoutParams(-1,-2));
+      ReferenceUi.modalFooterNote(body,sourceType==2?"创建后会打开网络配置页。保存网络方式后，再登录 ChatGPT。":"创建后会使用复制的网络配置打开浏览器，请在新环境单独登录 ChatGPT。");
     }
     void next(){
-      if(step==0){desktop=displayChoice.getSelectedItemPosition()==1;engine=BrowserSettingsUi.creationSelection(enginePicker);if(title.trim().isEmpty()||title.trim().length()>24){name.setError("名称需要 1–24 字");name.requestFocus();return;}title=title.trim();}
+      if(step==0){engine=BrowserSettingsUi.creationSelection(enginePicker);if(title.trim().isEmpty()||title.trim().length()>24){name.setError("名称需要 1–24 字");ReferenceUi.hapticReject(name);name.requestFocus();return;}title=title.trim();}
       if(step<2){step++;render();}else create();
     }
     void create(){
@@ -672,7 +801,7 @@ public class WindowHomeActivity extends ThemedActivity {
       boolean clone=sourceType!=2;
       EnvironmentSpec.Identity networkSource=shownNetworkSource;
       if(clone&&(networkSource==null||!networkSource.equals(selectionIdentity(ProfileCatalog.get(WindowHomeActivity.this).item(networkSource.slot))))){
-        DesignUi.message(WindowHomeActivity.this,"来源环境暂不可用","请重新选择来源环境，或使用自己配置网络。");
+        ReferenceUi.message(WindowHomeActivity.this,"来源环境暂不可用","请重新选择来源环境，或使用自己配置网络。");
         return;
       }
       showProblem("");preparing=true;createButton.setEnabled(false);preparation.setVisibility(View.VISIBLE);

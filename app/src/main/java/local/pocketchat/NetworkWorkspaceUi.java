@@ -318,7 +318,7 @@ final class NetworkWorkspaceUi {
     }return n;
   }
   String updated(long at){if(at<=0)return "未记录";Calendar now=Calendar.getInstance(),date=Calendar.getInstance();date.setTimeInMillis(at);boolean today=now.get(Calendar.YEAR)==date.get(Calendar.YEAR)&&now.get(Calendar.DAY_OF_YEAR)==date.get(Calendar.DAY_OF_YEAR);return new java.text.SimpleDateFormat(today?"'今天' HH:mm":"MM-dd HH:mm",Locale.getDefault()).format(new Date(at));}
-  void more(JSONObject item){WindowNetworkState s=state(item);ReferenceUi.Modal d=new ReferenceUi.Modal(a,s.name).asSheet();String[] labels={"测速","分享整条线路","窗口详情","重新连接","网络方式","打开会话"};Runnable[] actions={()->operate(s,"measure"),()->NetworkShareUi.route(a,s),()->details(item),()->operate(s,"reconnect"),()->networkMode(s),()->openChat(s.slot)};for(int i=0;i<labels.length;i++){final int n=i;ReferenceUi.menuAction(d,labels[i],()->{d.dismiss();actions[n].run();});}d.show();}
+  void more(JSONObject item){WindowNetworkState s=state(item);ReferenceUi.Modal d=new ReferenceUi.Modal(a,s.name).asSheet();String[] labels={"测速","分享整条线路","窗口详情","重新连接","网络方式","打开会话"};Runnable[] actions={()->operate(s,"measure"),()->NetworkShareUi.route(a,s),()->details(item),()->operate(s,"reconnect"),()->networkMode(s),()->openChat(s.slot)};for(int i=0;i<labels.length;i++){final int n=i;ReferenceUi.menuAction(d,labels[i],()->{d.dismiss();actions[n].run();});}d.buttons("取消",d::dismiss,"",()->{});d.show();}
   void openChat(int slot){if(a instanceof MainActivity&&slot==Profiles.slot(a)){((MainActivity)a).hub.select(AppHub.CHAT);return;}a.startActivity(EnvironmentOverviewUi.opening(a,slot));}
   void details(JSONObject item){
     WindowNetworkState s=state(item);ReferenceUi.Modal d=new ReferenceUi.Modal(a,"窗口详情 · "+s.name);JSONObject running=runningConfiguration(s);
@@ -326,15 +326,38 @@ final class NetworkWorkspaceUi {
     if(running!=null&&"internal".equals(running.optString("mode"))){JSONObject site=s.runtime.optJSONObject("website");field(d,"ChatGPT 网站响应",site!=null&&running.optString("entry").equals(site.optString("entry"))?WebsiteProbe.line(site,System.currentTimeMillis()):"网站响应未测");field(d,"运行入口订阅",running.optString("subscriptionName","待确认"));field(d,"运行入口选择",entryModeLabel(running.optString("entryMode")));field(d,"运行入口",displayEntry(running));field(d,"运行固定出口",displayExit(running));field(d,"出口核验",running.optBoolean("verified")?updated(s.runtime.optLong("verifiedAt")):"核验未完成");}
     field(d,"配置版本",metadataSummary(item));
     if(item.optBoolean("pendingNetwork")){
-      field(d,"待应用配置",pendingSummary(item));d.note("这份设置已保存，等待安全时机应用；上方显示当前运行线路。");final boolean[] cancelling={false};final Button[] cancel={null};TextView cancelError=ReferenceUi.text(a,"",12,ReferenceUi.RED,false);cancelError.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);cancelError.setVisibility(View.GONE);
-      DesignUi.action(d.body,"取消待应用设置",false,()->{if(cancelling[0])return;cancelling[0]=true;cancel[0].setEnabled(false);cancel[0].setText("正在取消…");NetworkBridge.run(a,s.slot,"cancelPending",J.obj("guardCandidateId",metadata(item).optString("candidateId")),null,identity(s),(ok,message,snapshot)->{if(!active())return;cancelling[0]=false;reload();if(!d.isShowing())return;cancelError.setVisibility(View.VISIBLE);boolean current=diagnosticWindowCurrent(s);cancelError.setText(current?message==null||message.isEmpty()?"结果待确认，请刷新网络状态。":message:"环境已变化，请重新打开网络设置。");cancelError.setTextColor(current&&ok?ReferenceUi.MUTED:ReferenceUi.RED);cancel[0].setEnabled(current&&!ok);cancel[0].setText(current&&ok?"已取消待应用设置":current?"取消待应用设置":"环境已变化");d.resize();});});cancel[0]=(Button)d.body.getChildAt(d.body.getChildCount()-1);d.body.addView(cancelError);
+      field(d,"待应用配置",pendingSummary(item));
+      ReferenceUi.modalFooterNote(d.body,"这份设置已保存，等待安全时机应用；上方显示当前运行线路。");
     }
-    if(!s.runtime.optString("issue").isEmpty())d.note(s.runtime.optString("issue"));DesignUi.action(d.body,"查看耗时诊断",false,()->{d.dismiss();diagnostics(item);});d.buttons("关闭",d::dismiss,"编辑网络",()->{d.dismiss();edit(item);});d.show();
+    if(!s.runtime.optString("issue").isEmpty()){
+      LinearLayout warn=ReferenceUi.modalBanner(a,"info","线路提醒",s.runtime.optString("issue"),false);
+      LinearLayout.LayoutParams wp=new LinearLayout.LayoutParams(-1,-2);wp.topMargin=dp(10);d.body.addView(warn,wp);
+    }
+    ReferenceUi.modalSection(d.body,"诊断与管理");
+    LinearLayout actions=ReferenceUi.modalActionCard(a);
+    ReferenceUi.modalRowAction(actions,"search","查看耗时诊断",false,()->{d.dismiss();diagnostics(item);});
+    d.body.addView(actions,new LinearLayout.LayoutParams(-1,-2));
+    TextView cancelError=null;
+    if(item.optBoolean("pendingNetwork")){
+      final boolean[] cancelling={false};final Button[] cancel={null};
+      TextView err=ReferenceUi.workspaceText(a,"",ReferenceUi.SECONDARY_SIZE,ReferenceUi.redInk(),false);err.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);err.setPadding(dp(16),dp(8),dp(16),0);err.setVisibility(View.GONE);
+      cancelError=err;
+      LinearLayout dangerCard=ReferenceUi.modalActionCard(a);
+      cancel[0]=ReferenceUi.modalRowAction(dangerCard,"close","取消待应用设置",true,()->{if(cancelling[0])return;cancelling[0]=true;cancel[0].setEnabled(false);cancel[0].setText("正在取消…");NetworkBridge.run(a,s.slot,"cancelPending",J.obj("guardCandidateId",metadata(item).optString("candidateId")),null,identity(s),(ok,message,snapshot)->{if(!active())return;cancelling[0]=false;reload();if(!d.isShowing())return;err.setVisibility(View.VISIBLE);boolean current=diagnosticWindowCurrent(s);err.setText(current?message==null||message.isEmpty()?"结果待确认，请刷新网络状态。":message:"环境已变化，请重新打开网络设置。");err.setTextColor(current&&ok?ReferenceUi.MUTED:ReferenceUi.redInk());cancel[0].setEnabled(current&&!ok);cancel[0].setText(current&&ok?"已取消待应用设置":current?"取消待应用设置":"环境已变化");d.resize();});});
+      LinearLayout.LayoutParams dpCard=new LinearLayout.LayoutParams(-1,-2);dpCard.topMargin=dp(10);
+      d.body.addView(dangerCard,dpCard);
+    }
+    if(cancelError!=null)d.body.addView(cancelError,new LinearLayout.LayoutParams(-1,-2));
+    d.buttons("关闭",d::dismiss,"编辑网络",()->{d.dismiss();edit(item);});d.show();
   }
   void diagnostics(JSONObject item){
     WindowNetworkState window=state(item);String[] text={ConnectionTrace.windowDiagnostics(a,window)};
     ReferenceUi.Modal d=new ReferenceUi.Modal(a,"耗时诊断 · "+window.name);
-    TextView content=ReferenceUi.text(a,text[0],13,ReferenceUi.TEXT,false);content.setTextIsSelectable(true);d.body.addView(content);
+    LinearLayout card=ReferenceUi.modalGroup(a);card.setPadding(dp(16),dp(14),dp(16),dp(14));
+    TextView content=ReferenceUi.workspaceText(a,text[0],13,ReferenceUi.TEXT,false);
+    content.setTypeface(android.graphics.Typeface.MONOSPACE);content.setFontFeatureSettings("tnum");content.setTextIsSelectable(true);
+    card.addView(content,new LinearLayout.LayoutParams(-1,-2));
+    d.body.addView(card,new LinearLayout.LayoutParams(-1,-2));
     d.buttons("返回",()->{d.dismiss();details(item);},"复制诊断",()->{
       ClipboardManager clipboard=(ClipboardManager)a.getSystemService(Context.CLIPBOARD_SERVICE);
       if(clipboard!=null){clipboard.setPrimaryClip(ClipData.newPlainText("窗口耗时诊断",diagnosticWindowCurrent(window)?text[0]:"环境已变化，诊断不可用"));d.primary().setText("已复制");}
@@ -352,24 +375,66 @@ final class NetworkWorkspaceUi {
         &&row.optBoolean("created")&&!row.optBoolean("deleting")&&!row.optBoolean("resetting");
     }return false;
   }
-  void field(ReferenceUi.Modal d,String name,String value){DesignUi.field(d.body,name,value);}
+  private LinearLayout modalSectionGroup(ReferenceUi.Modal d,String tag){
+    int count=d.body.getChildCount();
+    if(count>0){
+      View last=d.body.getChildAt(count-1);
+      if(last instanceof LinearLayout&&tag.equals(last.getTag()))return (LinearLayout)last;
+    }
+    LinearLayout group=ReferenceUi.modalGroup(a);group.setTag(tag);
+    LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(-1,-2);
+    if(count>0)p.topMargin=dp(8);
+    d.body.addView(group,p);return group;
+  }
+  void field(ReferenceUi.Modal d,String name,String value){ReferenceUi.modalFieldRow(modalSectionGroup(d,"net.kv"),name,value,true);}
   void choice(ReferenceUi.Modal d,String name,String detail,boolean selected,Runnable run){countryChoice(d,name,detail,"",null,selected,run);}
   void countryChoice(ReferenceUi.Modal d,String name,String detail,String country,String glyph,boolean selected,Runnable run){
-    LinearLayout row=DesignUi.row(a);row.setPadding(dp(12),dp(9),dp(12),dp(9));row.setMinimumHeight(dp(58));row.setBackground(ReferenceUi.surface(a,selected?0xfff7faff:ReferenceUi.WHITE,14,selected?0xff94b8ff:ReferenceUi.LINE));
-    TextView mark=ReferenceUi.text(a,selected?"◉":"○",20,selected?ReferenceUi.BLUE:ReferenceUi.MUTED,false);row.addView(mark,new LinearLayout.LayoutParams(dp(30),-2));
-    LinearLayout labels=DesignUi.column(a);TextView title=ReferenceUi.text(a,name,15,ReferenceUi.TEXT,true);title.setMaxLines(3);if(glyph!=null)NetworkCountryIcon.bind(title,country,glyph);labels.addView(title);
+    LinearLayout group=modalSectionGroup(d,"net.choice");
+    if(group.getChildCount()>0)group.addView(ReferenceUi.modalDivider(a,16));
+    LinearLayout row=DesignUi.row(a);row.setGravity(Gravity.CENTER_VERTICAL);
+    row.setPadding(dp(16),dp(12),dp(16),dp(12));row.setMinimumHeight(dp(56));
+    row.setBackground(new android.graphics.drawable.RippleDrawable(android.content.res.ColorStateList.valueOf(ReferenceUi.tone(0x140067d8,0x2682b3ff)),new android.graphics.drawable.ColorDrawable(Color.TRANSPARENT),new android.graphics.drawable.ColorDrawable(Color.WHITE)));
+    LinearLayout labels=DesignUi.column(a);
+    TextView title=ReferenceUi.workspaceText(a,name,15,ReferenceUi.TEXT,selected);title.setMaxLines(3);
+    if(glyph!=null)NetworkCountryIcon.bind(title,country,glyph);
+    labels.addView(title);
     String summary=NetworkWorkspaceStyle.countrySummary(detail,country);
-    if(!summary.isEmpty()){TextView explanation=ReferenceUi.secondary(a,summary);explanation.setSingleLine(false);labels.addView(explanation);}
-    row.addView(labels,new LinearLayout.LayoutParams(0,-2,1));row.setOnClickListener(v->run.run());row.setFocusable(true);row.setContentDescription(name+(selected?"，已选择":""));ReferenceUi.add(d.body,row);
+    if(!summary.isEmpty()){
+      TextView explanation=ReferenceUi.workspaceText(a,summary,ReferenceUi.SECONDARY_SIZE,ReferenceUi.secondaryInk(),false);
+      explanation.setFontFeatureSettings("tnum");explanation.setPadding(0,dp(3),0,0);labels.addView(explanation);
+    }
+    row.addView(labels,new LinearLayout.LayoutParams(0,-2,1));
+    ImageView check=new ImageView(a);check.setImageDrawable(new Ui.Icon("check",ReferenceUi.brandBlue()));
+    check.setVisibility(selected?View.VISIBLE:View.INVISIBLE);
+    check.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+    LinearLayout.LayoutParams cp=new LinearLayout.LayoutParams(dp(18),dp(18));cp.setMarginStart(dp(10));
+    row.addView(check,cp);
+    row.setClickable(true);row.setFocusable(true);row.setSelected(selected);
+    row.setOnClickListener(v->run.run());
+    row.setContentDescription(name+(summary.isEmpty()?"":"，"+summary)+(selected?"，已选择":""));
+    group.addView(row,new LinearLayout.LayoutParams(-1,-2));
   }
   void routeRow(ReferenceUi.Modal d,String key,String value,String country,String glyph,Runnable select){
-    LinearLayout row=DesignUi.row(a);row.setMinimumHeight(dp(66));LinearLayout labels=DesignUi.column(a);
-    String region=NetworkCountryHint.country(country);labels.addView(ReferenceUi.text(a,key+(region.isEmpty()?"":" · "+region),13,ReferenceUi.MUTED,false));
-    TextView title=ReferenceUi.text(a,value,15,ReferenceUi.TEXT,true);title.setMaxLines(3);title.setPadding(0,dp(4),0,0);NetworkCountryIcon.bind(title,country,glyph);labels.addView(title);
-    row.addView(labels,new LinearLayout.LayoutParams(0,-2,1));ImageView arrow=new ImageView(a);arrow.setImageDrawable(new Ui.Icon("chevron-right",ReferenceUi.MUTED));row.addView(arrow,new LinearLayout.LayoutParams(dp(18),dp(22)));row.setOnClickListener(v->select.run());row.setFocusable(true);row.setBackground(Ui.ripple(a,Color.TRANSPARENT,0));d.body.addView(row);View line=new View(a);line.setBackgroundColor(0xffeef2f7);d.body.addView(line,new LinearLayout.LayoutParams(-1,dp(1)));
+    LinearLayout group=modalSectionGroup(d,"net.route");
+    if(group.getChildCount()>0)group.addView(ReferenceUi.modalDivider(a,16));
+    LinearLayout row=DesignUi.row(a);row.setGravity(Gravity.CENTER_VERTICAL);
+    row.setMinimumHeight(dp(64));row.setPadding(dp(16),dp(12),dp(14),dp(12));
+    row.setBackground(new android.graphics.drawable.RippleDrawable(android.content.res.ColorStateList.valueOf(ReferenceUi.tone(0x140067d8,0x2682b3ff)),new android.graphics.drawable.ColorDrawable(Color.TRANSPARENT),new android.graphics.drawable.ColorDrawable(Color.WHITE)));
+    LinearLayout labels=DesignUi.column(a);
+    String region=NetworkCountryHint.country(country);
+    labels.addView(ReferenceUi.workspaceText(a,key+(region.isEmpty()?"":" · "+region),ReferenceUi.SECONDARY_SIZE,ReferenceUi.secondaryInk(),false));
+    TextView title=ReferenceUi.workspaceText(a,value,15,ReferenceUi.TEXT,true);title.setMaxLines(3);title.setPadding(0,dp(4),0,0);
+    NetworkCountryIcon.bind(title,country,glyph);labels.addView(title);
+    row.addView(labels,new LinearLayout.LayoutParams(0,-2,1));
+    ImageView arrow=new ImageView(a);arrow.setImageDrawable(new Ui.Icon("chevron-right",ReferenceUi.chevronInk()));
+    arrow.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+    LinearLayout.LayoutParams ap=new LinearLayout.LayoutParams(dp(14),dp(14));ap.setMarginStart(dp(8));
+    row.addView(arrow,ap);
+    row.setClickable(true);row.setFocusable(true);row.setOnClickListener(v->select.run());
+    group.addView(row,new LinearLayout.LayoutParams(-1,-2));
   }
   static final class EditorSession {final ReferenceUi.Modal dialog;final NetworkDraft draft;final Runnable refresh;JSONObject operationResult;boolean completed;EditorSession(ReferenceUi.Modal dialog,NetworkDraft draft,Runnable refresh){this.dialog=dialog;this.draft=draft;this.refresh=refresh;}}
-  boolean editorReady(JSONObject item){JSONObject meta=metadata(item),row=item==null?null:item.optJSONObject("row");boolean identity=row!=null&&!row.optString("environmentId").isEmpty()&&row.optString("environmentId").equals(meta.optString("environmentId"))&&row.optLong("generation")==meta.optLong("generation",-1);if(identity&&meta.optBoolean("available")&&meta.optBoolean("pendingReady",true)&&!meta.optString("baseline").isEmpty()&&diagnosticWindowCurrent(state(item)))return true;ReferenceUi.Modal d=new ReferenceUi.Modal(a,"网络设置暂不可编辑");d.note(identity&&meta.optBoolean("available")?"上次保存尚待恢复，请刷新状态后再试。":"配置暂时无法读取或环境已变化，请刷新状态后再试。");d.buttons("关闭",d::dismiss,"刷新状态",()->{d.dismiss();if(row!=null)refreshEditor(state(item));else reload();});d.show();return false;}
+  boolean editorReady(JSONObject item){JSONObject meta=metadata(item),row=item==null?null:item.optJSONObject("row");boolean identity=row!=null&&!row.optString("environmentId").isEmpty()&&row.optString("environmentId").equals(meta.optString("environmentId"))&&row.optLong("generation")==meta.optLong("generation",-1);if(identity&&meta.optBoolean("available")&&meta.optBoolean("pendingReady",true)&&!meta.optString("baseline").isEmpty()&&diagnosticWindowCurrent(state(item)))return true;ReferenceUi.Modal d=new ReferenceUi.Modal(a,"网络设置暂不可编辑");d.body.addView(ReferenceUi.modalBanner(a,"info","配置暂不可编辑",identity&&meta.optBoolean("available")?"上次保存尚待恢复，请刷新状态后再试。":"配置暂时无法读取或环境已变化，请刷新状态后再试。",false),new LinearLayout.LayoutParams(-1,-2));d.buttons("关闭",d::dismiss,"刷新状态",()->{d.dismiss();if(row!=null)refreshEditor(state(item));else reload();});d.show();return false;}
   void refreshEditor(WindowNetworkState expected){afterRead=()->{if(!active()||!diagnosticWindowCurrent(expected))return;JSONObject fresh=windowItem(expected.slot);if(fresh!=null)edit(fresh);};reload();}
   static String editingContext(JSONObject item,boolean pending){return (pending?"正在编辑待应用配置":"正在编辑当前已保存配置")+"\n"+metadataSummary(item)+(!pending&&item.optBoolean("pendingNetwork")?"\n另有待应用配置，保存后将替换它。":"");}
   static EnvironmentSpec.Identity identity(WindowNetworkState expected){return new EnvironmentSpec.Identity(expected.slot,(int)expected.environmentGeneration,expected.environmentId);}
@@ -392,7 +457,7 @@ final class NetworkWorkspaceUi {
   }
   void editorResult(ReferenceUi.Modal d,TextView feedback,WindowNetworkState expected,boolean ok,String message,JSONObject snapshot,Runnable failed){
     if(!active()||!d.isShowing())return;JSONObject result=operationResult(expected,snapshot);boolean current=diagnosticWindowCurrent(expected),identityMismatch=snapshot!=null&&snapshot.optJSONObject("operationResult")!=null&&result==null;
-    feedback.setText(current&&!identityMismatch?operationText(result,message):"环境已变化，请重新打开网络设置。");boolean saved=result!=null&&"saved".equals(result.optString("saveState"));feedback.setTextColor(current&&!identityMismatch&&result!=null&&(saved||"uncertain".equals(result.optString("saveState")))?("applied".equals(result.optString("applicationState"))&&saved?ReferenceUi.GREEN:ReferenceUi.ORANGE):ReferenceUi.RED);
+    feedback.setText(current&&!identityMismatch?operationText(result,message):"环境已变化，请重新打开网络设置。");feedback.setVisibility(View.VISIBLE);boolean saved=result!=null&&"saved".equals(result.optString("saveState"));feedback.setTextColor(current&&!identityMismatch&&result!=null&&(saved||"uncertain".equals(result.optString("saveState")))?("applied".equals(result.optString("applicationState"))&&saved?ReferenceUi.greenInk():ReferenceUi.amberInk()):ReferenceUi.redInk());
     if(current&&!identityMismatch&&result!=null&&"failed".equals(result.optString("saveState"))){failed.run();}
     else if(current&&!identityMismatch&&result!=null&&result.optBoolean("retryAvailable"))d.buttons("关闭",d::dismiss,"重试",()->{
       d.primary().setEnabled(false);feedback.setText("正在重新应用…");
@@ -404,8 +469,8 @@ final class NetworkWorkspaceUi {
   NetworkBridge.Decision applicationDecision(WindowNetworkState expected){return (choice,select)->{
     if(!active()||!diagnosticWindowCurrent(expected))return;
     ReferenceUi.Modal decision=new ReferenceUi.Modal(a,"选择应用时间");
-    decision.note("当前正在回复或处理文件，或任务状态暂未确认。立即切换可能中断当前任务。");
-    decision.buttons("任务结束后自动应用",()->{decision.dismiss();select.accept(NetworkApplyCoordinator.DEFER);},"立即切换，可能中断当前任务",()->{decision.dismiss();select.accept(NetworkApplyCoordinator.IMMEDIATE);});decision.show();
+    decision.body.addView(ReferenceUi.modalWarning(a,"info","当前有进行中的任务","当前正在回复或处理文件，或任务状态暂未确认。立即切换可能中断当前任务。"),new LinearLayout.LayoutParams(-1,-2));
+    decision.buttons("立即切换，可能中断当前任务",()->{decision.dismiss();select.accept(NetworkApplyCoordinator.IMMEDIATE);},"任务结束后自动应用",()->{decision.dismiss();select.accept(NetworkApplyCoordinator.DEFER);});decision.show();
   };}
   EditorSession edit(JSONObject item){if(catalog==null||!editorReady(item))return null;WindowNetworkState current=state(item);JSONObject meta=metadata(item),queued=meta.optJSONObject("pending");String action=queued.optString("action");if("external".equals(action)||action.isEmpty()&&!"internal".equals(meta.optString("mode"))){JSONObject external="external".equals(action)?queued.optJSONObject("config"):meta.optJSONObject("externalConfig");external(item,!external.optString("proxy").isEmpty());return null;}return editInternal(item);}
   EditorSession editInternal(JSONObject item){
@@ -417,7 +482,7 @@ final class NetworkWorkspaceUi {
       if(!key.isEmpty()&&draft.entryPoolKeys.contains(key))draft.chooseEntry(state.entry,catalog);
     }
     ReferenceUi.Modal d=new ReferenceUi.Modal(a,"编辑网络 · "+state.name);final Runnable[] render={null};final boolean[] saving={false},preparing={false};
-    EditorSession editor=new EditorSession(d,draft,()->render[0].run());TextView error=ReferenceUi.text(a,"",12,ReferenceUi.RED,false);error.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);TextView context=ReferenceUi.secondary(a,editingContext(item,"apply".equals(pending.optString("action"))));context.setSingleLine(false);
+    EditorSession editor=new EditorSession(d,draft,()->render[0].run());TextView error=ReferenceUi.workspaceText(a,"",ReferenceUi.SECONDARY_SIZE,ReferenceUi.redInk(),false);error.setPadding(dp(16),dp(8),dp(16),0);error.setVisibility(View.GONE);error.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);TextView context=ReferenceUi.secondary(a,editingContext(item,"apply".equals(pending.optString("action"))));context.setSingleLine(false);
     render[0]=()->{
       draft.normalize(catalog);d.body.removeAllViews();d.body.addView(context);JSONObject source=catalog.subscription(NetworkCatalog.ENTRY,draft.subscriptionId),manual=catalog.exit(draft.exitId),exitSource=catalog.subscription(NetworkCatalog.EXIT,draft.exitSubscriptionId);
       routeRow(d,"入口订阅",source==null?"请选择订阅":source.optString("name"),sourceCountry(source),"source",()->{if(!saving[0]&&!preparing[0])selectSubscription(draft,render[0]);});
@@ -429,10 +494,10 @@ final class NetworkWorkspaceUi {
     };
     d.buttons("取消",d::dismiss,"保存并应用",()->{
       if(saving[0]||preparing[0])return;final JSONObject candidate;
-      try{candidate=draft.candidate(catalog);}catch(Exception invalid){error.setText(invalid.getMessage());error.setTextColor(ReferenceUi.RED);d.resize();return;}
+      try{candidate=draft.candidate(catalog);}catch(Exception invalid){error.setText(invalid.getMessage());error.setTextColor(ReferenceUi.redInk());error.setVisibility(View.VISIBLE);d.resize();return;}
       saving[0]=true;editor.completed=false;editor.operationResult=null;d.primary().setEnabled(false);d.primary().setText("正在保存…");((Button)d.footer.getChildAt(0)).setText("收起");
       for(int i=0;i<d.body.getChildCount();i++)d.body.getChildAt(i).setEnabled(false);
-      error.setText("正在保存并应用，收起后操作仍会继续…");error.setTextColor(ReferenceUi.MUTED);d.resize();
+      error.setText("正在保存并应用，收起后操作仍会继续…");error.setTextColor(ReferenceUi.MUTED);error.setVisibility(View.VISIBLE);d.resize();
       NetworkBridge.run(a,draft.slot,"apply",candidate,metadata(item).optString("baseline"),identity(state),applicationDecision(state),(ok,message,snapshot)->{
         if(!active())return;saving[0]=false;JSONObject receipt=operationResult(state,snapshot);editor.operationResult=receipt==null?null:J.parse(receipt.toString());editor.completed=true;reload();context.setText("本次保存结果");
         editorResult(d,error,state,ok,message,snapshot,()->{context.setText(editingContext(item,"apply".equals(pending.optString("action"))));d.primary().setEnabled(true);d.primary().setText("保存并应用");((Button)d.footer.getChildAt(0)).setText("取消");for(int i=0;i<d.body.getChildCount();i++)d.body.getChildAt(i).setEnabled(true);});
@@ -452,14 +517,14 @@ final class NetworkWorkspaceUi {
   void prepareLegacySources(ReferenceUi.Modal dialog,NetworkDraft draft,TextView error,boolean[] preparing,Runnable render){
     List<JSONObject> sources=new ArrayList<>();JSONObject entrance=catalog.subscription(NetworkCatalog.ENTRY,draft.subscriptionId),exit=catalog.subscription(NetworkCatalog.EXIT,draft.exitSubscriptionId);
     for(JSONObject source:new JSONObject[]{entrance,exit})if(source!=null&&!source.optBoolean("stale")&&sourceNeedsRead(source)&&hasCurrentCacheMetadata(source))sources.add(source);
-    if(sources.isEmpty())return;preparing[0]=true;dialog.primary().setEnabled(false);dialog.primary().setText("正在读取…");error.setTextColor(ReferenceUi.MUTED);error.setText("正在准备已保存的节点，当前连接不受影响…");dialog.resize();
+    if(sources.isEmpty())return;preparing[0]=true;dialog.primary().setEnabled(false);dialog.primary().setText("正在读取…");error.setTextColor(ReferenceUi.MUTED);error.setText("正在准备已保存的节点，当前连接不受影响…");error.setVisibility(View.VISIBLE);dialog.resize();
     final int[] index={0};final Runnable[] next={null};next[0]=()->{
       if(!active()||!dialog.isShowing())return;
-      if(index[0]>=sources.size()){preparing[0]=false;draft.normalize(catalog);error.setText("");error.setTextColor(ReferenceUi.RED);dialog.primary().setEnabled(true);dialog.primary().setText("保存并应用");render.run();return;}
+      if(index[0]>=sources.size()){preparing[0]=false;draft.normalize(catalog);error.setText("");error.setVisibility(View.GONE);error.setTextColor(ReferenceUi.redInk());dialog.primary().setEnabled(true);dialog.primary().setText("保存并应用");render.run();return;}
       JSONObject source=sources.get(index[0]++);loadPool(source.optString("role",NetworkCatalog.ENTRY),source,false,null,false,(ok,message)->{
         if(!active()||!dialog.isShowing())return;
         if(ok){draft.normalize(catalog);next[0].run();}
-        else{preparing[0]=false;error.setText("已保存的节点暂时无法读取，请重新选择订阅后重试。");error.setTextColor(ReferenceUi.RED);dialog.primary().setEnabled(true);dialog.primary().setText("保存并应用");render.run();}
+        else{preparing[0]=false;error.setText("已保存的节点暂时无法读取，请重新选择订阅后重试。");error.setTextColor(ReferenceUi.redInk());error.setVisibility(View.VISIBLE);dialog.primary().setEnabled(true);dialog.primary().setText("保存并应用");render.run();}
       });
     };next[0].run();
   }
@@ -477,12 +542,21 @@ final class NetworkWorkspaceUi {
         if(sourceNeedsRead(source))loadPool(NetworkCatalog.ENTRY,source,false,choose);else choose.run();
       });
     }
-    if(all.length()==0)d.note("添加入口订阅后，可以自动优选或指定入口节点。");
-    d.buttons("取消",d::dismiss,"添加订阅",()->{d.dismiss();subscriptionForm(NetworkCatalog.ENTRY,null,()->selectSubscription(draft,changed));});d.show();return d;
+    if(all.length()==0){
+      d.body.addView(ReferenceUi.modalEmpty(a,"source","暂无入口订阅","添加入口订阅后，可以自动优选或指定入口节点。"),new LinearLayout.LayoutParams(-1,-2));
+      d.buttons("取消",d::dismiss,"添加新订阅",()->{d.dismiss();subscriptionForm(NetworkCatalog.ENTRY,null,()->selectSubscription(draft,changed));});
+    }else{
+      LinearLayout addCard=ReferenceUi.modalActionCard(a);
+      ReferenceUi.modalRowAction(addCard,"plus","添加新订阅",false,()->{d.dismiss();subscriptionForm(NetworkCatalog.ENTRY,null,()->selectSubscription(draft,changed));});
+      LinearLayout.LayoutParams ap=new LinearLayout.LayoutParams(-1,-2);ap.topMargin=dp(10);
+      d.body.addView(addCard,ap);
+      d.buttons("取消",d::dismiss,"",()->{});
+    }
+    d.show();return d;
   }
   ReferenceUi.Modal selectExit(NetworkDraft draft,Runnable changed){
     ReferenceUi.Modal d=new ReferenceUi.Modal(a,"选择固定出口");JSONArray sources=catalog.subscriptions(NetworkCatalog.EXIT),manual=catalog.exits();
-    if(sources.length()>0)d.note("出口订阅");
+    if(sources.length()>0)ReferenceUi.modalSection(d.body,"出口订阅");
     for(int i=0;i<sources.length();i++){
       JSONObject source=sources.optJSONObject(i);String id=source.optString("id");
       countryChoice(d,source.optString("name"),sourceSummary(source,NetworkCatalog.EXIT),sourceCountry(source),"source",id.equals(draft.exitSubscriptionId),()->{
@@ -490,20 +564,58 @@ final class NetworkWorkspaceUi {
         if(sourceNeedsRead(source))loadPool(NetworkCatalog.EXIT,source,false,choose);else choose.run();
       });
     }
-    if(manual.length()>0)d.note("手动出口");
+    if(manual.length()>0)ReferenceUi.modalSection(d.body,"手动出口");
     for(int i=0;i<manual.length();i++){
       JSONObject e=manual.optJSONObject(i);String ip=e.optString("verifiedIp");
       countryChoice(d,e.optString("name"),ip.isEmpty()?"SOCKS5 · IP 待核验":ip,NetworkCountryHint.code(e.optString("name"),e.optString("region")),"node",e.optString("id").equals(draft.exitId),()->{draft.manualExit(e.optString("id"),catalog);d.dismiss();changed.run();});
     }
-    if(sources.length()==0&&manual.length()==0)d.note("添加出口订阅或手动 SOCKS5 出口，再为当前窗口指定一个固定出口。");
-    d.buttons("取消",d::dismiss,"添加出口",()->{d.dismiss();addExitSource(()->selectExit(draft,changed));});d.show();return d;
+    if(sources.length()==0&&manual.length()==0){
+      d.body.addView(ReferenceUi.modalEmpty(a,"node","暂无固定出口","添加出口订阅或手动 SOCKS5 出口，再为当前窗口指定一个固定出口。"),new LinearLayout.LayoutParams(-1,-2));
+      d.buttons("取消",d::dismiss,"添加新出口",()->{d.dismiss();addExitSource(()->selectExit(draft,changed));});
+    }else{
+      LinearLayout addCard=ReferenceUi.modalActionCard(a);
+      ReferenceUi.modalRowAction(addCard,"plus","添加新出口",false,()->{d.dismiss();addExitSource(()->selectExit(draft,changed));});
+      LinearLayout.LayoutParams ap=new LinearLayout.LayoutParams(-1,-2);ap.topMargin=dp(10);
+      d.body.addView(addCard,ap);
+      d.buttons("取消",d::dismiss,"",()->{});
+    }
+    d.show();return d;
   }
   ReferenceUi.Modal selectExitNode(NetworkDraft draft,JSONObject source,Runnable changed){
     return new ExitNodePickerUi(a,source,source.optString("id").equals(draft.exitSubscriptionId)?draft.exitNodeKey:"",source.optString("id").equals(draft.exitSubscriptionId)?draft.exitNodeName:"",(current,key,name)->{
       catalog=current;draft.exitSubscription(source.optString("id"),catalog);draft.exitNode(key,name,catalog);changed.run();
     }).show();
   }
-  void addExitSource(Runnable next){ReferenceUi.Modal d=new ReferenceUi.Modal(a,"添加固定出口");choice(d,"出口订阅","从订阅里指定 SOCKS5 出口",false,()->{d.dismiss();subscriptionForm(NetworkCatalog.EXIT,null,next);});choice(d,"手动 SOCKS5 出口","填写服务器和认证信息",false,()->{d.dismiss();exitForm(next);});d.buttons("取消",d::dismiss,"",()->{});d.show();}
+  private void launcherRow(LinearLayout group,String glyph,String name,String detail,Runnable run){
+    if(group.getChildCount()>0)group.addView(ReferenceUi.modalDivider(a,58));
+    LinearLayout row=DesignUi.row(a);row.setGravity(Gravity.CENTER_VERTICAL);
+    row.setPadding(dp(16),dp(12),dp(14),dp(12));row.setMinimumHeight(dp(60));
+    row.setBackground(new android.graphics.drawable.RippleDrawable(android.content.res.ColorStateList.valueOf(ReferenceUi.tone(0x140067d8,0x2682b3ff)),new android.graphics.drawable.ColorDrawable(Color.TRANSPARENT),new android.graphics.drawable.ColorDrawable(Color.WHITE)));
+    ImageView tile=new ImageView(a);tile.setImageDrawable(new ReferenceUi.IconTileDrawable(a,glyph,30,false,false));
+    tile.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+    LinearLayout.LayoutParams ip=new LinearLayout.LayoutParams(dp(30),dp(30));ip.setMarginEnd(dp(12));row.addView(tile,ip);
+    LinearLayout labels=DesignUi.column(a);
+    TextView title=ReferenceUi.workspaceText(a,name,15,ReferenceUi.TEXT,true);title.setMaxLines(2);labels.addView(title);
+    if(detail!=null&&!detail.isEmpty()){
+      TextView sub=ReferenceUi.workspaceText(a,detail,ReferenceUi.SECONDARY_SIZE,ReferenceUi.secondaryInk(),false);
+      sub.setPadding(0,dp(3),0,0);labels.addView(sub);
+    }
+    row.addView(labels,new LinearLayout.LayoutParams(0,-2,1));
+    ImageView arrow=new ImageView(a);arrow.setImageDrawable(new Ui.Icon("chevron-right",ReferenceUi.chevronInk()));
+    arrow.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+    LinearLayout.LayoutParams ap=new LinearLayout.LayoutParams(dp(14),dp(14));ap.setMarginStart(dp(8));row.addView(arrow,ap);
+    row.setClickable(true);row.setFocusable(true);row.setOnClickListener(v->run.run());
+    row.setContentDescription(name+(detail==null||detail.isEmpty()?"":"，"+detail));
+    group.addView(row,new LinearLayout.LayoutParams(-1,-2));
+  }
+  void addExitSource(Runnable next){
+    ReferenceUi.Modal d=new ReferenceUi.Modal(a,"添加固定出口");
+    LinearLayout card=ReferenceUi.modalGroup(a);
+    launcherRow(card,"source","出口订阅","从订阅里指定 SOCKS5 出口",()->{d.dismiss();subscriptionForm(NetworkCatalog.EXIT,null,next);});
+    launcherRow(card,"node","手动 SOCKS5 出口","填写服务器和认证信息",()->{d.dismiss();exitForm(next);});
+    d.body.addView(card,new LinearLayout.LayoutParams(-1,-2));
+    d.buttons("取消",d::dismiss,"",()->{});d.show();
+  }
   ReferenceUi.Modal selectEntry(NetworkDraft draft,Runnable changed){
     JSONObject sub=catalog.subscription(NetworkCatalog.ENTRY,draft.subscriptionId);if(sub==null)return ReferenceUi.message(a,"选择入口","请先选择入口订阅。");
     if(sourceNeedsRead(sub)){loadPool(NetworkCatalog.ENTRY,sub,false,()->{draft.subscription(sub.optString("id"),catalog);draft.normalize(catalog);changed.run();selectEntry(draft,changed);});return null;}
@@ -517,7 +629,7 @@ final class NetworkWorkspaceUi {
   void loadPool(String role,JSONObject subscription,boolean update,Runnable next,boolean present){loadPool(role,subscription,update,next,present,null);}
   void loadPool(String role,JSONObject subscription,boolean update,Runnable next,boolean present,PoolCompletion completion){
     ReferenceUi.Modal d=new ReferenceUi.Modal(a,update?"更新"+roleName(role)+"订阅":"读取"+roleName(role)+"节点");
-    d.body.addView(DesignUi.progress(a,"正在读取 "+subscription.optString("name"),"当前窗口继续使用原连接。"));d.buttons("收起",d::dismiss,"",()->{});if(present)d.show();
+    d.body.addView(DesignUi.modalProgress(a,"正在读取 "+subscription.optString("name"),"当前窗口继续使用原连接。"));d.buttons("收起",d::dismiss,"",()->{});if(present)d.show();
     String id=subscription.optString("id");sourceBackground(()->{
       try{
         NetworkCatalog fresh=new NetworkCatalog(a);JSONObject row=fresh.subscription(role,id);if(row==null)throw new IllegalStateException();
@@ -537,16 +649,16 @@ final class NetworkWorkspaceUi {
             });
           }catch(Exception stale){main.post(()->{
             if(!active())return;reload();if(completion!=null)completion.done(false,"订阅已变化或无法保存");if(d.isShowing()){
-              d.body.removeAllViews();d.note("这次读取结果未应用：订阅可能已修改，或缓存暂时无法保存。请重新更新当前订阅。");
+              d.body.removeAllViews();d.body.addView(ReferenceUi.modalBanner(a,"info","读取结果未应用","这次读取结果未应用：订阅可能已修改，或缓存暂时无法保存。请重新更新当前订阅。",false),new LinearLayout.LayoutParams(-1,-2));
               d.buttons("关闭",d::dismiss,"",()->{});d.resize();
             }
           });}
         }));
-      }catch(Exception missing){main.post(()->{if(!active())return;if(completion!=null)completion.done(false,"无法读取当前订阅");if(d.isShowing()){d.body.removeAllViews();d.note("无法读取当前订阅，请检查它是否仍在列表中。");d.buttons("关闭",d::dismiss,"",()->{});d.resize();reload();}});}
+      }catch(Exception missing){main.post(()->{if(!active())return;if(completion!=null)completion.done(false,"无法读取当前订阅");if(d.isShowing()){d.body.removeAllViews();d.body.addView(ReferenceUi.modalBanner(a,"info","无法读取当前订阅","无法读取当前订阅，请检查它是否仍在列表中。",false),new LinearLayout.LayoutParams(-1,-2));d.buttons("关闭",d::dismiss,"",()->{});d.resize();reload();}});}
     });
   }
   void showSourceFailure(ReferenceUi.Modal d,String role,String id,boolean update,Runnable next,String message){
-    d.body.removeAllViews();d.note(message);JSONObject current=catalog.subscription(role,id);
+    d.body.removeAllViews();d.body.addView(ReferenceUi.modalBanner(a,"info","无法读取订阅节点",message,false),new LinearLayout.LayoutParams(-1,-2));JSONObject current=catalog.subscription(role,id);
     d.buttons("关闭",d::dismiss,current==null?"":"重试",()->{d.dismiss();JSONObject row=catalog.subscription(role,id);if(row!=null)loadPool(role,row,update,next);});d.resize();
   }
   boolean active(){return !closed&&!a.isDestroyed()&&!a.isFinishing();}
@@ -557,10 +669,16 @@ final class NetworkWorkspaceUi {
   void subscriptionForm(Runnable next){subscriptionForm(NetworkCatalog.ENTRY,null,next);}
   void subscriptionForm(String role,JSONObject existing,Runnable next){
     boolean editing=existing!=null;ReferenceUi.Modal d=new ReferenceUi.Modal(a,(editing?"编辑":"添加")+roleName(role)+"订阅");
-    EditText name=DesignUi.input(d.body,"订阅名称",editing?existing.optString("name"):"","例如：工作"+roleName(role)),url=DesignUi.input(d.body,"订阅地址",editing?existing.optString("url"):"","https://…");url.setInputType(InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_URI);
-    d.note("Clash / Mihomo 格式。");
-    if(NetworkCatalog.EXIT.equals(role))d.note("可指定其中的 SOCKS5 节点作为固定出口，出口不会参与随机选择。");
-    TextView error=ReferenceUi.text(a,"",12,ReferenceUi.RED,false);error.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);d.body.addView(error);final boolean[] saving={false};
+    LinearLayout form=ReferenceUi.modalGroup(a);
+    EditText name=ReferenceUi.modalInput(form,"订阅名称",editing?existing.optString("name"):"","例如：工作"+roleName(role),true);
+    EditText url=ReferenceUi.modalInput(form,"订阅地址",editing?existing.optString("url"):"","https://…",true);
+    url.setInputType(InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_URI);
+    url.setImeOptions(android.view.inputmethod.EditorInfo.IME_ACTION_DONE);
+    d.body.addView(form,new LinearLayout.LayoutParams(-1,-2));
+    ReferenceUi.modalFooterNote(d.body,NetworkCatalog.EXIT.equals(role)
+        ?"Clash / Mihomo 格式。可指定其中的 SOCKS5 节点作为固定出口，出口不会参与随机选择。"
+        :"支持 Clash / Mihomo 订阅格式。");
+    TextView error=ReferenceUi.workspaceText(a,"",ReferenceUi.SECONDARY_SIZE,ReferenceUi.redInk(),false);error.setPadding(dp(16),dp(8),dp(16),0);error.setVisibility(View.GONE);error.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);d.body.addView(error);final boolean[] saving={false};
     d.buttons("取消",d::dismiss,"保存订阅",()->{
       if(saving[0])return;String title=name.getText().toString().trim(),address=url.getText().toString().trim();if(title.isEmpty()){name.setError("填写订阅名称");return;}
       saving[0]=true;d.primary().setEnabled(false);d.primary().setText("正在保存…");((Button)d.footer.getChildAt(0)).setText("收起");sourceBackground(()->{
@@ -568,7 +686,7 @@ final class NetworkWorkspaceUi {
           NetworkCatalog fresh=new NetworkCatalog(a);JSONObject source=editing?fresh.editSubscription(role,existing.optString("id"),title,address):fresh.addSubscription(role,title,address);
           boolean needsRead=!editing||!address.equals(existing.optString("url"))||sourceNeedsRead(source);
           main.post(()->{if(!active())return;boolean advance=d.isShowing();catalog=fresh;d.dismiss();reload();render();if(needsRead)loadPool(role,source,false,advance?next:null,advance);else if(next!=null&&advance)next.run();});
-        }catch(Exception invalid){main.post(()->{if(!active()||!d.isShowing())return;saving[0]=false;error.setText(sourceEditError(invalid));d.primary().setEnabled(true);d.primary().setText("保存订阅");((Button)d.footer.getChildAt(0)).setText("取消");d.resize();});}
+        }catch(Exception invalid){main.post(()->{if(!active()||!d.isShowing())return;saving[0]=false;error.setText(sourceEditError(invalid));error.setVisibility(View.VISIBLE);d.primary().setEnabled(true);d.primary().setText("保存订阅");((Button)d.footer.getChildAt(0)).setText("取消");d.resize();});}
       });
     });d.show();
   }
@@ -576,9 +694,22 @@ final class NetworkWorkspaceUi {
   void exitForm(Runnable next){exitForm(null,next);}
   void exitForm(JSONObject existing,Runnable next){
     boolean editing=existing!=null;ReferenceUi.Modal d=new ReferenceUi.Modal(a,editing?"编辑固定出口":"添加固定出口");
-    EditText name=DesignUi.input(d.body,"出口名称",editing?existing.optString("name"):"","例如：工作出口"),region=DesignUi.input(d.body,"地区（可选）",editing?existing.optString("region"):"","填写你已知的出口地区"),server=DesignUi.input(d.body,"SOCKS5 服务器",editing?existing.optString("host"):"","域名或 IP"),port=DesignUi.input(d.body,"端口",editing?Integer.toString(existing.optInt("port")):"","1–65535"),user=DesignUi.input(d.body,"用户名（可选）",editing?existing.optString("user"):"",""),password=DesignUi.input(d.body,"密码（可选）",editing?existing.optString("password"):"","");
-    port.setInputType(InputType.TYPE_CLASS_NUMBER);DesignUi.visiblePassword(password);
-    TextView error=ReferenceUi.text(a,"",12,ReferenceUi.RED,false);d.body.addView(error);final boolean[] saving={false};
+    ReferenceUi.modalSection(d.body,"基本信息");
+    LinearLayout basicCard=ReferenceUi.modalGroup(a);
+    EditText name=ReferenceUi.modalInput(basicCard,"出口名称",editing?existing.optString("name"):"","例如：工作出口",true);
+    EditText region=ReferenceUi.modalInput(basicCard,"地区",editing?existing.optString("region"):"","填写你已知的出口地区");
+    d.body.addView(basicCard,new LinearLayout.LayoutParams(-1,-2));
+    ReferenceUi.modalSection(d.body,"SOCKS5 连接");
+    LinearLayout connCard=ReferenceUi.modalGroup(a);
+    EditText server=ReferenceUi.modalInput(connCard,"服务器地址",editing?existing.optString("host"):"","域名或 IP",true);
+    EditText port=ReferenceUi.modalInput(connCard,"端口",editing?Integer.toString(existing.optInt("port")):"","1–65535",true);
+    port.setInputType(InputType.TYPE_CLASS_NUMBER);
+    EditText user=ReferenceUi.modalInput(connCard,"用户名",editing?existing.optString("user"):"","留空表示无认证");
+    EditText password=ReferenceUi.modalInput(connCard,"密码",editing?existing.optString("password"):"","留空表示无认证");
+    password.setImeOptions(android.view.inputmethod.EditorInfo.IME_ACTION_DONE);
+    DesignUi.visiblePassword(password);
+    d.body.addView(connCard,new LinearLayout.LayoutParams(-1,-2));
+    TextView error=ReferenceUi.workspaceText(a,"",ReferenceUi.SECONDARY_SIZE,ReferenceUi.redInk(),false);error.setPadding(dp(16),dp(8),dp(16),0);error.setVisibility(View.GONE);error.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);d.body.addView(error);final boolean[] saving={false};
     d.buttons("取消",d::dismiss,"保存出口",()->{
       if(saving[0])return;String title=name.getText().toString().trim();if(title.isEmpty()){name.setError("填写出口名称");return;}
       final int number;try{number=Integer.parseInt(port.getText().toString());if(number<1||number>65535)throw new NumberFormatException();}catch(NumberFormatException invalid){port.setError("端口应为 1–65535");return;}
@@ -586,55 +717,103 @@ final class NetworkWorkspaceUi {
       saving[0]=true;d.primary().setEnabled(false);((Button)d.footer.getChildAt(0)).setText("收起");sourceBackground(()->{try{
         NetworkCatalog fresh=new NetworkCatalog(a);if(editing)fresh.editExit(existing.optString("id"),title,regionValue,serverValue,number,userValue,passwordValue);else fresh.addExit(title,regionValue,serverValue,number,userValue,passwordValue);
         main.post(()->{if(!active())return;boolean advance=d.isShowing();catalog=fresh;d.dismiss();reload();render();if(next!=null&&advance)next.run();});
-      }catch(Exception invalid){main.post(()->{if(!active()||!d.isShowing())return;saving[0]=false;error.setText(sourceEditError(invalid));d.primary().setEnabled(true);((Button)d.footer.getChildAt(0)).setText("取消");d.resize();});}});
+      }catch(Exception invalid){main.post(()->{if(!active()||!d.isShowing())return;saving[0]=false;error.setText(sourceEditError(invalid));error.setVisibility(View.VISIBLE);d.primary().setEnabled(true);((Button)d.footer.getChildAt(0)).setText("取消");d.resize();});}});
     });d.show();
   }
   void subscriptionDetail(JSONObject selected){
     String role=selected.optString("role",NetworkCatalog.ENTRY),id=selected.optString("id");JSONObject source=catalog.subscription(role,id);if(source==null){reload();return;}
     ReferenceUi.Modal d=new ReferenceUi.Modal(a,roleName(role)+(NetworkCatalog.local(source)?"本地节点":"订阅详情"));field(d,"名称",source.optString("name"));field(d,"状态",sourceSummary(source,role));
     if(!NetworkCatalog.local(source))field(d,"订阅地址",source.optString("url"));field(d,"更新于",updated(source.optLong("lastSuccessAt",source.optLong("updatedAt"))));field(d,"使用窗口",sourceUses(role,id)+" 个");
-    if(!source.optString("lastError").isEmpty())d.note(source.optString("lastError"));
-    if(source.optBoolean("stale"))d.note("以下是上次成功读取的节点。更新当前地址后，才能用于新的窗口配置。");
-    DesignUi.action(d.body,"查看节点 · "+NetworkSourceSelection.names(source).size()+" 个",false,()->new ExitNodePickerUi(a,source,null,null).show());
-    if(!NetworkCatalog.local(source))DesignUi.action(d.body,"编辑订阅",false,()->{d.dismiss();subscriptionForm(role,source,null);});
-    if(NetworkCatalog.ENTRY.equals(role)&&!NetworkCatalog.local(source))DesignUi.action(d.body,"分享入口订阅",false,()->{d.dismiss();final String address=source.optString("url");NetworkShareUi.subscription(a,()->NetworkShareSelection.subscriptionUrl(address));});
-    DesignUi.action(d.body,NetworkCatalog.local(source)?"删除本地节点":"删除订阅",false,()->{d.dismiss();deleteSource(role,source);});
+    if(!source.optString("lastError").isEmpty()){
+      LinearLayout err=ReferenceUi.modalBanner(a,"info","更新异常",source.optString("lastError"),false);
+      LinearLayout.LayoutParams ep=new LinearLayout.LayoutParams(-1,-2);ep.topMargin=dp(10);d.body.addView(err,ep);
+    }
+    if(source.optBoolean("stale"))ReferenceUi.modalFooterNote(d.body,"以下是上次成功读取的节点。更新当前地址后，才能用于新的窗口配置。");
+    ReferenceUi.modalSection(d.body,"操作");
+    LinearLayout actions=ReferenceUi.modalGroup(a);
+    ReferenceUi.modalRowAction(actions,"node","查看节点 · "+NetworkSourceSelection.names(source).size()+" 个",false,()->new ExitNodePickerUi(a,source,null,null).show());
+    if(!NetworkCatalog.local(source))ReferenceUi.modalRowAction(actions,"new","编辑订阅",false,()->{d.dismiss();subscriptionForm(role,source,null);});
+    if(NetworkCatalog.ENTRY.equals(role)&&!NetworkCatalog.local(source))ReferenceUi.modalRowAction(actions,"share","分享入口订阅",false,()->{d.dismiss();final String address=source.optString("url");NetworkShareUi.subscription(a,()->NetworkShareSelection.subscriptionUrl(address));});
+    d.body.addView(actions,new LinearLayout.LayoutParams(-1,-2));
+    LinearLayout dangerCard=ReferenceUi.modalActionCard(a);
+    ReferenceUi.modalRowAction(dangerCard,"trash",NetworkCatalog.local(source)?"删除本地节点":"删除订阅",true,()->{d.dismiss();deleteSource(role,source);});
+    LinearLayout.LayoutParams dpCard=new LinearLayout.LayoutParams(-1,-2);dpCard.topMargin=dp(10);
+    d.body.addView(dangerCard,dpCard);
     d.buttons("关闭",d::dismiss,NetworkCatalog.local(source)?"":"更新订阅",()->{d.dismiss();loadPool(role,source,true,null);});d.show();
   }
   void deleteSource(String role,JSONObject source){
-    String id=source.optString("id");ReferenceUi.Modal d=new ReferenceUi.Modal(a,"删除"+roleName(role)+"订阅");
-    d.note("删除“"+source.optString("name")+"”？"+sourceUses(role,id)+" 个窗口引用了它。删除只移除资源库中的订阅，当前连接继续使用原线路；下次编辑时需要重新选择。");
-    TextView error=ReferenceUi.text(a,"",12,ReferenceUi.RED,false);d.body.addView(error);
-    d.buttons("取消",d::dismiss,"删除订阅",()->{d.primary().setEnabled(false);sourceBackground(()->{try{NetworkCatalog fresh=new NetworkCatalog(a);fresh.deleteSubscription(role,id);main.post(()->{if(!active())return;catalog=fresh;d.dismiss();reload();render();});}catch(Exception failed){main.post(()->{if(active()&&d.isShowing()){error.setText("订阅未删除，请重新读取列表后重试。");d.primary().setEnabled(true);d.resize();}});}});});d.show();
+    String id=source.optString("id");ReferenceUi.Modal d=new ReferenceUi.Modal(a,"删除"+roleName(role)+"订阅？").hideClose();
+    d.body.addView(ReferenceUi.modalImpactPair(a,
+        "将从资源库移除“"+source.optString("name")+"”","当前有 "+sourceUses(role,id)+" 个窗口引用了此订阅；下次编辑网络时需要重新选择。",
+        "当前运行线路不受影响","删除只移除资源库记录，正在运行的窗口会继续使用原线路。"),new LinearLayout.LayoutParams(-1,-2));
+    TextView error=ReferenceUi.workspaceText(a,"",ReferenceUi.SECONDARY_SIZE,ReferenceUi.redInk(),false);error.setPadding(dp(16),dp(8),dp(16),0);error.setVisibility(View.GONE);error.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);d.body.addView(error);
+    d.buttons("取消",d::dismiss,"删除订阅",()->{d.primary().setEnabled(false);sourceBackground(()->{try{NetworkCatalog fresh=new NetworkCatalog(a);fresh.deleteSubscription(role,id);main.post(()->{if(!active())return;catalog=fresh;d.dismiss();reload();render();});}catch(Exception failed){main.post(()->{if(active()&&d.isShowing()){error.setText("订阅未删除，请重新读取列表后重试。");error.setVisibility(View.VISIBLE);d.primary().setEnabled(true);d.resize();}});}});});d.show();
   }
   void exitDetail(JSONObject selected){
     JSONObject e=catalog.exit(selected.optString("id"));if(e==null){reload();return;}ReferenceUi.Modal d=new ReferenceUi.Modal(a,"出口详情");
     field(d,"名称",e.optString("name"));field(d,"地区",e.optString("region").isEmpty()?"未标注":e.optString("region"));field(d,"出口 IP",e.optString("verifiedIp").isEmpty()?"待核验":e.optString("verifiedIp"));field(d,"服务器",e.optString("host")+":"+e.optInt("port"));field(d,"使用窗口",uses(e.optString("id"))+" 个");
-    DesignUi.action(d.body,"分享出口",false,()->{d.dismiss();NetworkShareUi.manual(a,e);});
-    DesignUi.action(d.body,"编辑出口",false,()->{d.dismiss();exitForm(e,null);});DesignUi.action(d.body,"删除出口",false,()->{d.dismiss();deleteExit(e);});
+    LinearLayout verifyHint=ReferenceUi.modalWarning(a,"info","尚无已连接窗口","此出口尚无已连接窗口。保存窗口配置并连接后即可核验。");
+    verifyHint.setVisibility(View.GONE);
+    LinearLayout.LayoutParams vhParams=new LinearLayout.LayoutParams(-1,-2);vhParams.topMargin=dp(10);
+    d.body.addView(verifyHint,vhParams);
+    ReferenceUi.modalSection(d.body,"操作");
+    LinearLayout actions=ReferenceUi.modalGroup(a);
+    ReferenceUi.modalRowAction(actions,"share","分享出口",false,()->{d.dismiss();NetworkShareUi.manual(a,e);});
+    ReferenceUi.modalRowAction(actions,"new","编辑出口",false,()->{d.dismiss();exitForm(e,null);});
+    d.body.addView(actions,new LinearLayout.LayoutParams(-1,-2));
+    LinearLayout dangerCard=ReferenceUi.modalActionCard(a);
+    ReferenceUi.modalRowAction(dangerCard,"trash","删除出口",true,()->{d.dismiss();deleteExit(e);});
+    LinearLayout.LayoutParams dpCard=new LinearLayout.LayoutParams(-1,-2);dpCard.topMargin=dp(10);
+    d.body.addView(dangerCard,dpCard);
     d.buttons("关闭",d::dismiss,"核验出口",()->{
       List<Integer> owners=new ArrayList<>();for(int i=0;i<windows.length();i++){WindowNetworkState s=state(windows.optJSONObject(i));if(s.internal&&s.connected&&manualReference(s.config,e.optString("id")))owners.add(s.slot);}
-      if(owners.isEmpty()){d.note("此出口尚无已连接窗口。保存窗口配置并连接后即可核验。");d.resize();return;}d.dismiss();operate(owners.get(0),"verify");
+      if(owners.isEmpty()){verifyHint.setVisibility(View.VISIBLE);d.resize();return;}d.dismiss();operate(owners.get(0),"verify");
     });d.show();
   }
   void deleteExit(JSONObject exit){
-    String id=exit.optString("id");ReferenceUi.Modal d=new ReferenceUi.Modal(a,"删除固定出口");d.note("删除“"+exit.optString("name")+"”？"+uses(id)+" 个窗口引用了它。当前连接继续使用原线路，下次编辑时需要重新选择出口。");TextView error=ReferenceUi.text(a,"",12,ReferenceUi.RED,false);d.body.addView(error);
-    d.buttons("取消",d::dismiss,"删除出口",()->{d.primary().setEnabled(false);sourceBackground(()->{try{NetworkCatalog fresh=new NetworkCatalog(a);fresh.deleteExit(id);main.post(()->{if(!active())return;catalog=fresh;d.dismiss();reload();render();});}catch(Exception failed){main.post(()->{if(active()&&d.isShowing()){error.setText("出口未删除，请重新读取列表后重试。");d.primary().setEnabled(true);d.resize();}});}});});d.show();
+    String id=exit.optString("id");ReferenceUi.Modal d=new ReferenceUi.Modal(a,"删除固定出口？").hideClose();
+    d.body.addView(ReferenceUi.modalImpactPair(a,
+        "将从资源库移除“"+exit.optString("name")+"”","当前有 "+uses(id)+" 个窗口引用了此固定出口；下次编辑网络时需要重新选择出口。",
+        "当前运行线路不受影响","正在运行的窗口继续沿用原线路，不会断开连接。"),new LinearLayout.LayoutParams(-1,-2));
+    TextView error=ReferenceUi.workspaceText(a,"",ReferenceUi.SECONDARY_SIZE,ReferenceUi.redInk(),false);error.setPadding(dp(16),dp(8),dp(16),0);error.setVisibility(View.GONE);error.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);d.body.addView(error);
+    d.buttons("取消",d::dismiss,"删除出口",()->{d.primary().setEnabled(false);sourceBackground(()->{try{NetworkCatalog fresh=new NetworkCatalog(a);fresh.deleteExit(id);main.post(()->{if(!active())return;catalog=fresh;d.dismiss();reload();render();});}catch(Exception failed){main.post(()->{if(active()&&d.isShowing()){error.setText("出口未删除，请重新读取列表后重试。");error.setVisibility(View.VISIBLE);d.primary().setEnabled(true);d.resize();}});}});});d.show();
   }
   void operate(int slot,String action){JSONObject item=windowItem(slot);if(item==null){reload();return;}operate(state(item),action);}
-  void operate(WindowNetworkState expected,String action){boolean internal=expected.internal;ReferenceUi.Modal d=new ReferenceUi.Modal(a,action.equals("measure")?internal?"完整线路测速":"连接响应测速":action.equals("verify")?"核验出口":"重新连接");d.body.addView(DesignUi.progress(a,action.equals("measure")?internal?"正在测量入口与固定出口的完整线路…":"正在测量当前连接的响应…":"正在检查此窗口网络…",""));d.buttons("收起",d::dismiss,"",()->{});d.show();NetworkBridge.run(a,expected.slot,action,null,null,identity(expected),(ok,message,snapshot)->{if(!active())return;reload();if(d.isShowing()){boolean current=diagnosticWindowCurrent(expected);d.body.removeAllViews();TextView result=ReferenceUi.text(a,current?message:"环境已变化，请重新打开网络设置。",15,current&&ok?ReferenceUi.GREEN:ReferenceUi.RED,true);d.body.addView(result);d.buttons("关闭",d::dismiss,"",()->{});d.resize();}});}
+  void operate(WindowNetworkState expected,String action){boolean internal=expected.internal;ReferenceUi.Modal d=new ReferenceUi.Modal(a,action.equals("measure")?internal?"完整线路测速":"连接响应测速":action.equals("verify")?"核验出口":"重新连接");d.body.addView(DesignUi.modalProgress(a,action.equals("measure")?internal?"正在测量入口与固定出口的完整线路…":"正在测量当前连接的响应…":"正在检查此窗口网络…",""));d.buttons("收起",d::dismiss,"",()->{});d.show();NetworkBridge.run(a,expected.slot,action,null,null,identity(expected),(ok,message,snapshot)->{if(!active())return;reload();if(d.isShowing()){boolean current=diagnosticWindowCurrent(expected);d.body.removeAllViews();d.body.addView(ReferenceUi.modalBanner(a,current&&ok?"check":"info",current&&ok?"已完成":"检查结果",current?message:"环境已变化，请重新打开网络设置。",current&&ok),new LinearLayout.LayoutParams(-1,-2));d.buttons("关闭",d::dismiss,"",()->{});d.resize();}});}
   void networkMode(int slot){if(catalog==null){afterRead=()->networkMode(slot);reload();return;}JSONObject item=windowItem(slot);if(item==null){reload();return;}networkMode(state(item));}
-  void networkMode(WindowNetworkState expected){JSONObject item=windowItem(expected.slot);if(!diagnosticWindowCurrent(expected)||!editorReady(item))return;ReferenceUi.Modal d=new ReferenceUi.Modal(a,"网络方式 · "+expected.name);choice(d,"订阅入口 + 固定出口","",false,()->{d.dismiss();editInternal(item);});choice(d,"手机网络 / 手机 VPN","",false,()->{d.dismiss();external(item,false);});choice(d,"应用专用代理","",false,()->{d.dismiss();external(item,true);});d.show();}
+  void networkMode(WindowNetworkState expected){
+    JSONObject item=windowItem(expected.slot);if(!diagnosticWindowCurrent(expected)||!editorReady(item))return;
+    JSONObject meta=metadata(item),ext=meta.optJSONObject("externalConfig");
+    boolean configured=!"未配置".equals(expected.state);
+    boolean isInternal=configured&&expected.internal;
+    boolean isProxy=configured&&!expected.internal&&ext!=null&&!ext.optString("proxy").isEmpty();
+    boolean isPhone=configured&&!expected.internal&&!isProxy;
+    ReferenceUi.Modal d=new ReferenceUi.Modal(a,"网络方式 · "+expected.name);
+    choice(d,"订阅入口 + 固定出口","独立入口节点 + 固定出口 IP",isInternal,()->{d.dismiss();editInternal(item);});
+    choice(d,"手机网络 / 手机 VPN","沿用手机当前网络或系统 VPN",isPhone,()->{d.dismiss();external(item,false);});
+    choice(d,"应用专用代理","仅为此环境指定 HTTP / SOCKS 代理",isProxy,()->{d.dismiss();external(item,true);});
+    d.buttons("取消",d::dismiss,"",()->{});d.show();
+  }
   void external(int slot,boolean proxy){external(windowItem(slot),proxy);}
   void external(JSONObject item,boolean proxy){
     if(!editorReady(item))return;WindowNetworkState expected=state(item);int slot=expected.slot;JSONObject meta=metadata(item),queued=meta.optJSONObject("pending");boolean pending="external".equals(queued.optString("action"));JSONObject draft=pending?queued.optJSONObject("config"):meta.optJSONObject("externalConfig");
-    ReferenceUi.Modal d=new ReferenceUi.Modal(a,(proxy?"应用专用代理":"手机网络 / VPN")+" · "+expected.name);TextView context=ReferenceUi.secondary(a,editingContext(item,pending));context.setSingleLine(false);d.body.addView(context);
-    EditText address=proxy?DesignUi.input(d.body,"代理地址",draft.optString("proxy"),"填写代理地址"):null;if(proxy)d.note("HTTP：http://主机:端口\nSOCKS：socks://主机:端口");CheckBox vpn=new CheckBox(a);vpn.setText("手机 VPN 断开时暂停联网");vpn.setTextSize(13);vpn.setChecked(draft.optBoolean("requireExternalVpn",true));
-    if(!proxy){d.body.addView(vpn);d.note("开启后，未连接手机 VPN 就会暂停此环境的所有网页请求；关闭后使用手机当前网络。");}else d.note("代理不可用时暂停联网，不自动切换手机直连。");
-    TextView error=ReferenceUi.text(a,"",12,ReferenceUi.RED,false);error.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);d.body.addView(error);String baseline=meta.optString("baseline");final boolean[] saving={false};
+    ReferenceUi.Modal d=new ReferenceUi.Modal(a,(proxy?"应用专用代理":"手机网络 / VPN")+" · "+expected.name);
+    TextView context=ReferenceUi.workspaceText(a,editingContext(item,pending),ReferenceUi.SECONDARY_SIZE,ReferenceUi.secondaryInk(),false);context.setPadding(dp(4),0,dp(4),dp(8));d.body.addView(context);
+    LinearLayout card=ReferenceUi.modalGroup(a);
+    EditText address=proxy?ReferenceUi.modalInput(card,"代理地址",draft.optString("proxy"),"http://主机:端口 或 socks://主机:端口",true):null;
+    if(address!=null){address.setInputType(InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_URI);address.setImeOptions(android.view.inputmethod.EditorInfo.IME_ACTION_DONE);}
+    Switch vpn=proxy?new Switch(a):ReferenceUi.modalSwitchRow(card,"手机 VPN 断开时暂停联网",draft.optBoolean("requireExternalVpn",true));
+    if(proxy)vpn.setChecked(draft.optBoolean("requireExternalVpn",true));
+    d.body.addView(card,new LinearLayout.LayoutParams(-1,-2));
+    if(proxy){
+      ReferenceUi.modalFooterNote(d.body,"HTTP：http://主机:端口 · SOCKS：socks://主机:端口。代理不可用时暂停联网，不自动切换手机直连。");
+    }else{
+      ReferenceUi.modalFooterNote(d.body,"开启后，未连接手机 VPN 就会暂停此环境的所有网页请求；关闭后使用手机当前网络。");
+    }
+    TextView error=ReferenceUi.workspaceText(a,"",ReferenceUi.SECONDARY_SIZE,ReferenceUi.redInk(),false);error.setPadding(dp(16),dp(8),dp(16),0);error.setVisibility(View.GONE);error.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);d.body.addView(error);String baseline=meta.optString("baseline");final boolean[] saving={false};
     d.buttons("取消",d::dismiss,"保存并应用",()->{
       if(saving[0])return;String value=proxy?address.getText().toString().trim():"";if(proxy&&!MainActivity.validProxy(value)){address.setError("填写有效的 HTTP / SOCKS 代理地址");return;}
-      saving[0]=true;d.primary().setEnabled(false);d.primary().setText("正在保存…");((Button)d.footer.getChildAt(0)).setText("收起");if(address!=null)address.setEnabled(false);vpn.setEnabled(false);error.setText("正在保存并应用，收起后操作仍会继续…");error.setTextColor(ReferenceUi.MUTED);d.resize();
+      saving[0]=true;d.primary().setEnabled(false);d.primary().setText("正在保存…");((Button)d.footer.getChildAt(0)).setText("收起");if(address!=null)address.setEnabled(false);vpn.setEnabled(false);error.setText("正在保存并应用，收起后操作仍会继续…");error.setTextColor(ReferenceUi.MUTED);error.setVisibility(View.VISIBLE);d.resize();
       NetworkBridge.run(a,slot,"external",J.obj("proxy",value,"requireExternalVpn",vpn.isChecked()),baseline,identity(expected),applicationDecision(expected),(ok,message,snapshot)->{
         if(!active())return;saving[0]=false;reload();context.setText("本次保存结果");editorResult(d,error,expected,ok,message,snapshot,()->{context.setText(editingContext(item,pending));d.primary().setEnabled(true);d.primary().setText("保存并应用");((Button)d.footer.getChildAt(0)).setText("取消");if(address!=null)address.setEnabled(true);vpn.setEnabled(true);});
       });

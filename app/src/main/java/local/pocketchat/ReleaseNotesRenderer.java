@@ -10,12 +10,18 @@ import java.util.List;
 final class ReleaseNotesRenderer {
   static void append(LinearLayout parent,List<ReleaseNotes.Block> blocks){
     if(blocks.isEmpty())return;SpannableStringBuilder value=new SpannableStringBuilder();
+    android.content.Context c=parent.getContext();
+    int codeBg=ReferenceUi.tone(0x10111827,0x1cffffff);
     for(ReleaseNotes.Block block:blocks){if(value.length()>0)value.append("\n\n");int start=value.length();value.append(block.text);int end=value.length();if(start==end)continue;
-      if(block.kind==ReleaseNotes.HEADING){value.setSpan(new StyleSpan(Typeface.BOLD),start,end,Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);value.setSpan(new RelativeSizeSpan(1.1f),start,end,Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);}
-      if(block.kind==ReleaseNotes.BULLET)value.setSpan(new BulletSpan(DesignUi.dp(parent.getContext(),8)),start,end,Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
-      if(block.kind==ReleaseNotes.ORDERED)value.setSpan(new LeadingMarginSpan.Standard(DesignUi.dp(parent.getContext(),8)),start,end,Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
-      if(block.kind==ReleaseNotes.CODE)value.setSpan(new TypefaceSpan("monospace"),start,end,Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+      if(block.kind==ReleaseNotes.HEADING){value.setSpan(new StyleSpan(Typeface.BOLD),start,end,Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);value.setSpan(new RelativeSizeSpan(1.06f),start,end,Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);}
+      if(block.kind==ReleaseNotes.BULLET)value.setSpan(new BulletSpan(DesignUi.dp(c,10)),start,end,Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+      if(block.kind==ReleaseNotes.ORDERED)value.setSpan(new LeadingMarginSpan.Standard(DesignUi.dp(c,10)),start,end,Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+      if(block.kind==ReleaseNotes.CODE){value.setSpan(new TypefaceSpan("monospace"),start,end,Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);value.setSpan(new BackgroundColorSpan(codeBg),start,end,Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);value.setSpan(new RelativeSizeSpan(0.92f),start,end,Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);}
     }
-    TextView text=DesignUi.text(parent.getContext(),"",14,DesignUi.TEXT);text.setText(value);text.setTextIsSelectable(true);text.setLineSpacing(DesignUi.dp(parent.getContext(),3),1);text.setPadding(0,DesignUi.dp(parent.getContext(),6),0,0);parent.addView(text);
+    TextView text=ReferenceUi.workspaceText(c,"",ReferenceUi.BODY_SIZE,DesignUi.TEXT,false);
+    text.setText(value);text.setFontFeatureSettings("tnum");text.setTextIsSelectable(true);
+    ReferenceUi.balancedBreaks(text);
+    text.setLineSpacing(DesignUi.dp(c,4),1f);text.setPadding(0,DesignUi.dp(c,6),0,DesignUi.dp(c,2));
+    parent.addView(text,new LinearLayout.LayoutParams(-1,-2));
   }
 }

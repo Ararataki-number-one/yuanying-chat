@@ -55,7 +55,7 @@ final class AppAppearance {
     mode=selected;dark=next;palette();
     if(!changed)return;
     for(Activity a:new ArrayList<>(activities))if(!a.isDestroyed()){a.setTheme(theme());window(a.getWindow());apply(a.getWindow().getDecorView());}
-    for(Dialog d:new ArrayList<>(dialogs))if(d.isShowing()){dialogWindow(d);apply(d.getWindow().getDecorView());}
+    for(Dialog d:new ArrayList<>(dialogs))if(d.isShowing()){dialogWindow(d);apply(d.getWindow().getDecorView(),true);}
     ChatSession session=ChatSession.peek();if(session!=null&&!session.deleted&&session.web!=null)session.web.applyAppearance();
   }
   private static void palette(){
@@ -78,12 +78,25 @@ final class AppAppearance {
     w.setBackgroundDrawable(new ColorDrawable(DesignUi.BG));
   }
   static void watch(Dialog d){dialogs.add(d);}
-  static void shown(Dialog d){watch(d);dialogWindow(d);apply(d.getWindow().getDecorView());NativeControls.form(d.getWindow().getDecorView());}
+  static void dialogBlur(Window window,Context context){
+    if(Build.VERSION.SDK_INT<31)return;
+    int radius=Ui.dp(context,18);
+    WindowManager.LayoutParams attributes=window.getAttributes();
+    attributes.flags|=WindowManager.LayoutParams.FLAG_BLUR_BEHIND;
+    attributes.setBlurBehindRadius(radius);
+    window.setAttributes(attributes);
+    window.setBackgroundBlurRadius(radius);
+  }
+  static void shown(Dialog d){watch(d);dialogWindow(d);apply(d.getWindow().getDecorView(),true);NativeControls.form(d.getWindow().getDecorView());}
   private static void dialogWindow(Dialog d){
     if(d.getWindow()==null)return;
     d.getContext().setTheme(d instanceof AlertDialog?(dark?R.style.ChatDialogDark:R.style.ChatDialogTheme):theme());
     d.getWindow().setStatusBarColor(color(d.getWindow().getStatusBarColor()));d.getWindow().setNavigationBarColor(color(d.getWindow().getNavigationBarColor()));
-    if(d instanceof AlertDialog)d.getWindow().setBackgroundDrawable(DesignUi.surface(d.getContext(),DesignUi.CARD,24,Color.TRANSPARENT));
+    if(d instanceof AlertDialog){
+      d.getWindow().setBackgroundDrawable(new ReferenceUi.CardSurfaceDrawable(d.getContext(),24f,0xfff2f3f6,0xff121318));
+      d.getWindow().setDimAmount(dark?.58f:.32f);
+      dialogBlur(d.getWindow(),d.getContext());
+    }
     int flags=View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR|View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR;View decor=d.getWindow().getDecorView();
     decor.setSystemUiVisibility(dark?decor.getSystemUiVisibility()&~flags:decor.getSystemUiVisibility()|flags);
     if(Build.VERSION.SDK_INT>=29)decor.setForceDarkAllowed(false);
@@ -98,17 +111,22 @@ final class AppAppearance {
   }
   /** Called only on an appearance event / initial window presentation, not each frame. */
   static void apply(View v){
+    apply(v,v.getContext() instanceof AppUpdateActivity || v.getContext() instanceof EnvironmentConfigBackupActivity);
+  }
+  private static void apply(View v,boolean secondary){
     if(v instanceof GeckoWebView||v instanceof org.mozilla.geckoview.GeckoView||v instanceof android.webkit.WebView)return;
-    NativeControls.prepare(v);
+    NativeControls.prepare(v,secondary);
     drawable(v.getBackground());
     if(v instanceof TextView){
       TextView t=(TextView)v;t.setTextColor(colors(t.getTextColors(),true));t.setHintTextColor(colors(t.getHintTextColors(),true));t.setLinkTextColor(colors(t.getLinkTextColors(),true));
       for(Drawable icon:t.getCompoundDrawables())drawable(icon);
     }
     if(v instanceof ImageView&&((ImageView)v).getDrawable() instanceof Ui.Icon)drawable(((ImageView)v).getDrawable());
-    if(v instanceof CompoundButton){CompoundButton b=(CompoundButton)v;b.setButtonTintList(controlColors());if(v instanceof Switch){((Switch)v).setThumbTintList(controlColors());((Switch)v).setTrackTintList(new ColorStateList(new int[][]{{android.R.attr.state_checked},{}},new int[]{color(0xff8fb4ff),DesignUi.LINE}));}}
+    if(v instanceof CompoundButton){CompoundButton b=(CompoundButton)v;b.setButtonTintList(controlColors());
+      if(v instanceof Switch){Switch s=(Switch)v;if(secondary)ReferenceUi.styleSwitch(s);
+        else {s.setThumbTintList(controlColors());s.setTrackTintList(new ColorStateList(new int[][]{{android.R.attr.state_checked},{}},new int[]{color(0xff8fb4ff),DesignUi.LINE}));}}}
     if(v instanceof ProgressBar){((ProgressBar)v).setIndeterminateTintList(ColorStateList.valueOf(DesignUi.BLUE));((ProgressBar)v).setProgressTintList(ColorStateList.valueOf(DesignUi.BLUE));}
-    if(v instanceof ViewGroup){ViewGroup group=(ViewGroup)v;for(int i=0;i<group.getChildCount();i++)apply(group.getChildAt(i));}
+    if(v instanceof ViewGroup){ViewGroup group=(ViewGroup)v;for(int i=0;i<group.getChildCount();i++)apply(group.getChildAt(i),secondary);}
     v.invalidate();
   }
   private static ColorStateList controlColors(){return new ColorStateList(new int[][]{{-android.R.attr.state_enabled},{android.R.attr.state_checked},{}},new int[]{DesignUi.LINE,DesignUi.BLUE,DesignUi.MUTED});}

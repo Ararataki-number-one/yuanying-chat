@@ -157,9 +157,9 @@ public class MainActivity extends ThemedActivity {
     JSONObject row=null;
     try{row=DownloadTaskRevisions.find(new JSONArray(getSharedPreferences("download-tasks",MODE_PRIVATE).getString("rows","[]")),id);}
     catch(JSONException unavailable){}
-    if(row==null){DesignUi.message(this,"下载任务","此下载任务已不可用，请查看下载记录。");return;}
+    if(row==null){ReferenceUi.message(this,"下载任务","此下载任务已不可用，请查看下载记录。");return;}
     if("saved".equals(row.optString("state"))){nativeSavedFiles.show(row);return;}
-    DesignUi.message(this,row.optString("name","下载任务"),"这是旧版 Firefox（Gecko）的未完成任务，不能在当前环境继续；已保存文件仍可在下载页打开。");
+    ReferenceUi.message(this,row.optString("name","下载任务"),"这是旧版 Firefox（Gecko）的未完成任务，不能在当前环境继续；已保存文件仍可在下载页打开。");
   }
   void closeNativeWorkspace(){
     if(nativeSavedFiles==null||session!=null)return;
@@ -208,21 +208,36 @@ public class MainActivity extends ThemedActivity {
   void networkSettings(){FeatureDialogs.network(this);}
   void externalNetworkSettings(){
     if(DesignNetworkUi.busy(this)){status("请等待当前操作完成，再修改网络。");return;}
-    LinearLayout box=DesignUi.column(this);box.setPadding(dp(18),dp(8),dp(18),dp(16));
-    DesignUi.note(box,Profiles.display(this,Profiles.slot(this))+" · 使用已配置好完整链路的应用代理。");
+    ReferenceUi.Modal dialog=new ReferenceUi.Modal(this,"应用专用代理");
+    TextView envLine=ReferenceUi.workspaceText(this,Profiles.display(this,Profiles.slot(this))+" · 使用已配置好完整链路的应用代理。",ReferenceUi.SECONDARY_SIZE,ReferenceUi.secondaryInk(),false);
+    envLine.setPadding(dp(4),0,dp(4),dp(10));dialog.body.addView(envLine,new LinearLayout.LayoutParams(-1,-2));
     String saved=prefs.getString("proxy","");
-    EditText proxy=DesignUi.input(box,"代理地址",saved,"http://主机:端口 或 socks://主机:端口");proxy.setInputType(android.text.InputType.TYPE_CLASS_TEXT|android.text.InputType.TYPE_TEXT_VARIATION_URI);
-    DesignUi.note(box,"本机代理可填写 http://127.0.0.1:7890，其中 127.0.0.1 指这部手机。保存后会重新连接此环境。");
-    TextView notice=DesignUi.text(this,"",13,DesignUi.RED);notice.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);box.addView(notice);
-    ScrollView scroll=new ScrollView(this);scroll.addView(box);
-    AlertDialog dialog=AppAppearance.dialog(this).setTitle("应用专用代理").setView(scroll).setPositiveButton("保存并连接",null).setNegativeButton("取消",null).create();
-    dialog.show();DesignUi.protectEdits(this,dialog,()->!saved.equals(proxy.getText().toString()));
-    dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v->{
-      if(DesignNetworkUi.busy(this)){notice.setText("当前操作还未完成，请稍后再保存。");return;}
+    LinearLayout card=ReferenceUi.modalGroup(this);
+    EditText proxy=ReferenceUi.modalInput(card,"代理地址",saved,"http://主机:端口 或 socks://主机:端口",true);
+    proxy.setInputType(android.text.InputType.TYPE_CLASS_TEXT|android.text.InputType.TYPE_TEXT_VARIATION_URI);
+    proxy.setImeOptions(android.view.inputmethod.EditorInfo.IME_ACTION_DONE);
+    dialog.body.addView(card,new LinearLayout.LayoutParams(-1,-2));
+    ReferenceUi.modalFooterNote(dialog.body,"本机代理可填写 http://127.0.0.1:7890，其中 127.0.0.1 指这部手机。保存后会重新连接此环境。");
+    TextView notice=ReferenceUi.workspaceText(this,"",ReferenceUi.ACTION_SIZE,DesignUi.RED,false);
+    notice.setPadding(dp(16),dp(8),dp(16),0);notice.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
+    notice.setVisibility(View.GONE);dialog.body.addView(notice,new LinearLayout.LayoutParams(-1,-2));
+    Runnable close=()->{
+      if(saved.equals(proxy.getText().toString())){dialog.dismiss();return;}
+      ReferenceUi.Modal confirm=new ReferenceUi.Modal(this,"保留正在填写的内容？").hideClose();
+      LinearLayout descCard=ReferenceUi.modalGroup(this);descCard.setPadding(dp(16),dp(14),dp(16),dp(14));
+      descCard.addView(ReferenceUi.workspaceText(this,"继续编辑可保留本次填写；放弃修改后会退出此表单。",ReferenceUi.BODY_SIZE,DesignUi.TEXT,false));
+      confirm.body.addView(descCard,new LinearLayout.LayoutParams(-1,-2));
+      confirm.buttons("放弃修改",()->{confirm.dismiss();dialog.dismiss();},"继续编辑",confirm::dismiss);
+      confirm.show();
+    };
+    dialog.cancel=close;
+    dialog.buttons("取消",close,"保存并连接",()->{
+      if(DesignNetworkUi.busy(this)){notice.setText("当前操作还未完成，请稍后再保存。");notice.setVisibility(View.VISIBLE);dialog.resize();return;}
       String value=proxy.getText().toString().trim();
-      if(!validProxy(value)){proxy.setError("填写 http(s)://主机:端口 或 socks://主机:端口，且不含账号密码或路径");proxy.requestFocus();return;}
+      if(!validProxy(value)){notice.setText(R.string.proxy_endpoint_hint);notice.setVisibility(View.VISIBLE);proxy.setError("填写有效代理地址");proxy.requestFocus();dialog.resize();return;}
       prefs.edit().putBoolean("networkConfigured",true).putString("proxy",value).putString("networkMode","external").commit();dialog.dismiss();session.reconnect();
     });
+    dialog.show();
   }
   static boolean chatUrl(String url){try{Uri u=Uri.parse(url);return "https".equals(u.getScheme())&&"chatgpt.com".equals(u.getHost())&&u.getUserInfo()==null&&(u.getPort()==-1||u.getPort()==443);}catch(Exception e){return false;}}
   WebViewClient remoteClient(){WebViewClient original=session.client();return new WebViewClient(){@Override public void onScaleChanged(WebView v,float oldScale,float newScale){original.onScaleChanged(v,oldScale,newScale);}@Override public WebResourceResponse shouldInterceptRequest(WebView v,WebResourceRequest r){return original.shouldInterceptRequest(v,r);}@Override public boolean shouldOverrideUrlLoading(WebView v,WebResourceRequest r){if(r.isForMainFrame()&&downloads!=null&&downloads.intercept(r.getUrl().toString()))return true;return original.shouldOverrideUrlLoading(v,r);}@Override public void onPageStarted(WebView v,String u,android.graphics.Bitmap i){original.onPageStarted(v,u,i);}@Override public void onPageCommitVisible(WebView v,String u){original.onPageCommitVisible(v,u);}@Override public void onPageFinished(WebView v,String u){original.onPageFinished(v,u);}@Override public void onReceivedError(WebView v,WebResourceRequest r,WebResourceError e){original.onReceivedError(v,r,e);}@Override public void onReceivedHttpError(WebView v,WebResourceRequest r,WebResourceResponse response){original.onReceivedHttpError(v,r,response);}};}
@@ -300,7 +315,7 @@ public class MainActivity extends ThemedActivity {
     option(d,"暂存草稿",()->copyLegacyDraft());
     option(d,"草稿救援",()->LocalDraftsUi.show(this));
     option(d,"离线会话检索",()->LocalHistoryUi.show(this));
-    d.show();
+    d.buttons("取消",d::dismiss,"",()->{});d.show();
   }
   boolean reloadMatches(ChatSession.ReloadTarget target){return !destroyed&&session!=null&&target.matches(session)&&remote==session.web;}
   void browserHistory(int direction){
@@ -351,18 +366,19 @@ public class MainActivity extends ThemedActivity {
     boolean draft=PageMemory.hasDraft(page);
     if(draft&&!LocalDraftPolicy.enabled(session.context)){confirmIndependentReload(target,"本机草稿保存已关闭，当前输入不会自动暂存或恢复。");return;}
     if(!interrupted&&!draft){reloadCurrent(target,page);return;}
-    ReferenceUi.Modal d=new ReferenceUi.Modal(this,"重新加载网页？");reloadDialog=d;
-    d.note(interrupted?"重新加载可能中断正在生成的回复、上传或其他网页操作；未发送的输入可能无法自动恢复。它不会自动重发提问。":"重新加载会关闭当前网页，未发送的输入可能无法自动恢复。");
-    if(draft)d.note("当前输入会先暂存。正在回复时，恢复后的网页不会自动填入这份草稿，可从暂存草稿中复制。");
-    if(session.resourceFilesUncertain())d.note("附件状态待确认。请先核对网页中的附件；继续重新加载可能中断上传，需重新选择文件。");
+    ReferenceUi.Modal d=new ReferenceUi.Modal(this,"重新加载网页？").hideClose();reloadDialog=d;
+    d.body.addView(ReferenceUi.modalWarning(this,"refresh",interrupted?"当前可能有任务正在进行":"将关闭并重新加载当前网页",
+        interrupted?"重新加载可能中断正在生成的回复、上传或其他网页操作；未发送的输入可能无法自动恢复。它不会自动重发提问。":"重新加载会关闭当前网页，未发送的输入可能无法自动恢复。"),new LinearLayout.LayoutParams(-1,-2));
+    if(draft)ReferenceUi.modalFooterNote(d.body,"当前输入会先暂存。正在回复时，恢复后的网页不会自动填入这份草稿，可从暂存草稿中复制。");
+    if(session.resourceFilesUncertain())ReferenceUi.modalFooterNote(d.body,"附件状态待确认。请先核对网页中的附件；继续重新加载可能中断上传，需重新选择文件。");
     d.setOnDismissListener(unused->{if(reloadDialog==d)reloadDialog=null;});
     d.buttons("取消",d::dismiss,"重新加载",()->{d.dismiss();reloadCurrent(target,page);});d.show();
   }
   void confirmIndependentReload(ChatSession.ReloadTarget target,String reason){
     reloadChecking=false;if(!reloadMatches(target))return;
-    ReferenceUi.Modal d=new ReferenceUi.Modal(this,"手动保存后重新加载？");reloadDialog=d;
-    d.note(reason+"\n\n请先取消并复制需要保留的输入。继续会关闭当前网页，未保存的草稿、表单或正在进行的回复、上传可能丢失；不会自动重发提问。");
-    if(session.resourceFilesUncertain())d.note("附件状态待确认。请先核对网页中的附件；继续重新加载可能中断上传，需重新选择文件。");
+    ReferenceUi.Modal d=new ReferenceUi.Modal(this,"手动保存后重新加载？").hideClose();reloadDialog=d;
+    d.body.addView(ReferenceUi.modalWarning(this,"info","无法自动暂存当前输入",reason+"\n\n请先取消并复制需要保留的输入。继续会关闭当前网页，未保存的草稿、表单或正在进行的回复、上传可能丢失；不会自动重发提问。"),new LinearLayout.LayoutParams(-1,-2));
+    if(session.resourceFilesUncertain())ReferenceUi.modalFooterNote(d.body,"附件状态待确认。请先核对网页中的附件；继续重新加载可能中断上传，需重新选择文件。");
     d.setOnDismissListener(unused->{if(reloadDialog==d)reloadDialog=null;});
     d.buttons("取消，先保存",d::dismiss,"已保存，重新加载",()->{d.dismiss();if(reloadMatches(target))session.reloadConfirmed(target,null,true);});d.show();
   }
@@ -405,17 +421,52 @@ public class MainActivity extends ThemedActivity {
     },"LegacyDraftReader");read.setPriority(Thread.MIN_PRIORITY);read.start();
   }
   void showLegacyDrafts(JSONArray drafts,boolean incomplete){
-    if(drafts.length()==0){DesignUi.message(this,"旧版暂存草稿",incomplete?"部分暂存草稿暂时无法读取，请稍后重试。原数据未修改。":"没有找到旧版暂存草稿。网页里的草稿仍由当前网页保存。");return;}
-    String[] labels=new String[drafts.length()];for(int i=0;i<labels.length;i++){JSONObject row=drafts.optJSONObject(i);labels[i]=row.optString("origin")+"\n"+draftPreview(row.optString("body"));}
-    AppAppearance.dialog(this).setTitle("复制旧版暂存草稿").setItems(labels,(dialog,index)->{
-      JSONObject row=drafts.optJSONObject(index);ReferenceUi.Modal detail=new ReferenceUi.Modal(this,"暂存草稿");
-      TextView body=label(row.optString("body"),14,ReferenceUi.TEXT);body.setTextIsSelectable(true);detail.body.addView(body,new LinearLayout.LayoutParams(-1,-2));
-      detail.note("复制后可在网页输入框中粘贴。不会替换当前网页草稿，也不会发送。");
-      detail.buttons("关闭",detail::dismiss,"复制",()->{((ClipboardManager)getSystemService(CLIPBOARD_SERVICE)).setPrimaryClip(ClipData.newPlainText("暂存草稿",row.optString("body")));detail.dismiss();});detail.show();
-    }).setNeutralButton("清空网页暂存",(dialog,which)->clearArchivedDrafts()).setNegativeButton("关闭",null).show();
+    if(drafts.length()==0){ReferenceUi.message(this,"旧版暂存草稿",incomplete?"部分暂存草稿暂时无法读取，请稍后重试。原数据未修改。":"没有找到旧版暂存草稿。网页里的草稿仍由当前网页保存。");return;}
+    ReferenceUi.Modal list=new ReferenceUi.Modal(this,"复制旧版暂存草稿").asSheet();
+    LinearLayout group=ReferenceUi.modalGroup(this);
+    for(int i=0;i<drafts.length();i++){
+      if(i>0)group.addView(ReferenceUi.modalDivider(this,56));
+      JSONObject row=drafts.optJSONObject(i);
+      LinearLayout item=DesignUi.row(this);item.setGravity(Gravity.CENTER_VERTICAL);
+      item.setPadding(dp(16),dp(12),dp(14),dp(12));item.setMinimumHeight(dp(60));
+      item.setBackground(new android.graphics.drawable.RippleDrawable(android.content.res.ColorStateList.valueOf(ReferenceUi.tone(0x140067d8,0x2682b3ff)),new android.graphics.drawable.ColorDrawable(Color.TRANSPARENT),new android.graphics.drawable.ColorDrawable(Color.WHITE)));
+      ImageView icon=new ImageView(this);icon.setImageDrawable(new ReferenceUi.IconTileDrawable(this,"file",28,false,false));
+      icon.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+      LinearLayout.LayoutParams ip=new LinearLayout.LayoutParams(dp(28),dp(28));ip.setMarginEnd(dp(12));item.addView(icon,ip);
+      LinearLayout copy=DesignUi.column(this);
+      TextView origin=ReferenceUi.crisp(ReferenceUi.workspaceText(this,row.optString("origin"),15,ReferenceUi.inkPrimary(),true));origin.setTypeface(ReferenceUi.TYPE_MEDIUM);copy.addView(origin);
+      TextView preview=ReferenceUi.prose(ReferenceUi.workspaceText(this,draftPreview(row.optString("body")),ReferenceUi.SECONDARY_SIZE,ReferenceUi.secondaryInk(),false));
+      preview.setMaxLines(2);preview.setEllipsize(TextUtils.TruncateAt.END);preview.setPadding(0,dp(3),0,0);copy.addView(preview);
+      item.addView(copy,new LinearLayout.LayoutParams(0,-2,1));
+      ImageView arrow=new ImageView(this);arrow.setImageDrawable(new Ui.Icon("chevron-right",ReferenceUi.chevronInk()));
+      arrow.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+      LinearLayout.LayoutParams ap=new LinearLayout.LayoutParams(dp(14),dp(14));ap.setMarginStart(dp(8));item.addView(arrow,ap);
+      item.setClickable(true);item.setFocusable(true);
+      item.setOnClickListener(v->{
+        ReferenceUi.hapticClick(v);
+        list.dismiss();
+        ReferenceUi.Modal detail=new ReferenceUi.Modal(this,"暂存草稿");
+        LinearLayout bodyCard=ReferenceUi.modalGroup(this);bodyCard.setPadding(dp(16),dp(14),dp(16),dp(14));
+        TextView body=ReferenceUi.prose(ReferenceUi.workspaceText(this,row.optString("body"),ReferenceUi.BODY_SIZE,ReferenceUi.inkPrimary(),false));body.setTextIsSelectable(true);
+        bodyCard.addView(body,new LinearLayout.LayoutParams(-1,-2));
+        detail.body.addView(bodyCard,new LinearLayout.LayoutParams(-1,-2));
+        ReferenceUi.modalFooterNote(detail.body,"复制后可在网页输入框中粘贴。不会替换当前网页草稿，也不会发送。");
+        detail.buttons("关闭",detail::dismiss,"复制",()->{ReferenceUi.hapticConfirm(detail.root);((ClipboardManager)getSystemService(CLIPBOARD_SERVICE)).setPrimaryClip(ClipData.newPlainText("暂存草稿",row.optString("body")));detail.dismiss();});detail.show();
+      });
+      group.addView(item,new LinearLayout.LayoutParams(-1,-2));
+    }
+    list.body.addView(group,new LinearLayout.LayoutParams(-1,-2));
+    LinearLayout clearCard=ReferenceUi.modalActionCard(this);
+    ReferenceUi.modalRowAction(clearCard,"trash","清空网页暂存",true,()->{list.dismiss();clearArchivedDrafts();});
+    LinearLayout.LayoutParams cp=new LinearLayout.LayoutParams(-1,-2);cp.topMargin=dp(10);
+    list.body.addView(clearCard,cp);
+    list.buttons("关闭",list::dismiss,"",()->{});list.show();
   }
   void clearArchivedDrafts(){
-    AppAppearance.dialog(this).setTitle("清空此环境的网页暂存草稿？").setMessage("将删除本机为网页恢复保存的草稿副本。当前网页输入与旧版草稿仍保留；这项删除无法撤销。").setNegativeButton("保留",null).setPositiveButton("清空",(dialog,which)->session.webStore.worker.execute(()->{boolean cleared=DraftArchive.get(session.context).clear();handler.post(()->{if(destroyed||isFinishing())return;if(cleared)copyLegacyDraft();else status("暂存草稿未能清空，请稍后重试");});})).show();
+    ReferenceUi.Modal d=new ReferenceUi.Modal(this,"清空此环境的网页暂存草稿？").hideClose();
+    d.body.addView(ReferenceUi.modalImpactPair(this,"将删除网页恢复草稿副本","本机为网页恢复保存的草稿副本将被清空，此操作无法撤销。","以下内容会安全保留","当前网页输入框内容与旧版草稿仍会保留。"),new LinearLayout.LayoutParams(-1,-2));
+    d.buttons("保留",d::dismiss,"清空",()->{d.dismiss();session.webStore.worker.execute(()->{boolean cleared=DraftArchive.get(session.context).clear();handler.post(()->{if(destroyed||isFinishing())return;if(cleared)copyLegacyDraft();else status("暂存草稿未能清空，请稍后重试");});});});
+    d.show();
   }
   static String draftPreview(String value){String text=value.replaceAll("\\s+"," ").trim();return text.codePointCount(0,text.length())>160?text.substring(0,text.offsetByCodePoints(0,160))+"…":text;}
   static void addLegacyDraft(JSONArray rows,Set<String> bodies,String origin,String body){if(body!=null&&!body.isEmpty()&&bodies.add(body))rows.put(J.obj("origin",origin==null||origin.isEmpty()?"暂存草稿":origin,"body",body));}

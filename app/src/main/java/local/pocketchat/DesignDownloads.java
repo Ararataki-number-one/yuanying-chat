@@ -117,22 +117,93 @@ final class DesignDownloads {
       Row.text(toolSummary,String.join(" · ",selected));Row.visible(toolSummary,!toolsExpanded&&!selected.isEmpty());toolsButton.setSelected(toolsExpanded||!selected.isEmpty());
     }
     void chooseScope(){
-      List<String> keys=new ArrayList<>(scopes.keySet());if(keys.isEmpty())keys.add("");String[] names=new String[keys.size()];for(int i=0;i<keys.size();i++)names[i]=scopes.getOrDefault(keys.get(i),"全部环境");
-      AppAppearance.dialog(a).setTitle("文件所属环境").setSingleChoiceItems(names,keys.indexOf(query.owner),(dialog,which)->{dialog.dismiss();changeQuery(query.owner(keys.get(which)),false);}).setNegativeButton("取消",null).show();
+      List<String> keys=new ArrayList<>(scopes.keySet());if(keys.isEmpty())keys.add("");
+      ReferenceUi.Modal d=new ReferenceUi.Modal(a,"文件所属环境").asSheet();
+      LinearLayout group=ReferenceUi.modalGroup(a);
+      for(int i=0;i<keys.size();i++){
+        final String key=keys.get(i);String name=scopes.getOrDefault(key,"全部环境");
+        ReferenceUi.modalChoice(group,name,"",key.isEmpty()?"window":name,!key.isEmpty(),key.equals(query.owner),()->{d.dismiss();changeQuery(query.owner(key),false);});
+      }
+      d.body.addView(group,new LinearLayout.LayoutParams(-1,-2));
+      d.buttons("取消",d::dismiss,"",()->{});d.show();
     }
-    void chooseKind(){AppAppearance.dialog(a).setTitle("文件类型").setSingleChoiceItems(DownloadQuery.KINDS,query.kind,(dialog,which)->{dialog.dismiss();changeQuery(query.kind(which),false);}).setNegativeButton("取消",null).show();}
-    void chooseSort(){AppAppearance.dialog(a).setTitle("文件排序").setSingleChoiceItems(DownloadQuery.SORTS,query.sort,(dialog,which)->{dialog.dismiss();changeQuery(query.sort(which),false);}).setNegativeButton("取消",null).show();}
+    void chooseKind(){
+      ReferenceUi.Modal d=new ReferenceUi.Modal(a,"文件类型").asSheet();
+      LinearLayout group=ReferenceUi.modalGroup(a);
+      for(int i=0;i<DownloadQuery.KINDS.length;i++){
+        final int idx=i;
+        ReferenceUi.modalChoice(group,DownloadQuery.KINDS[i],"",query.kind==i,()->{d.dismiss();changeQuery(query.kind(idx),false);});
+      }
+      d.body.addView(group,new LinearLayout.LayoutParams(-1,-2));
+      d.buttons("取消",d::dismiss,"",()->{});d.show();
+    }
+    void chooseSort(){
+      ReferenceUi.Modal d=new ReferenceUi.Modal(a,"文件排序").asSheet();
+      LinearLayout group=ReferenceUi.modalGroup(a);
+      for(int i=0;i<DownloadQuery.SORTS.length;i++){
+        final int idx=i;
+        ReferenceUi.modalChoice(group,DownloadQuery.SORTS[i],"",query.sort==i,()->{d.dismiss();changeQuery(query.sort(idx),false);});
+      }
+      d.body.addView(group,new LinearLayout.LayoutParams(-1,-2));
+      d.buttons("取消",d::dismiss,"",()->{});d.show();
+    }
     void toggleCollection(JSONObject row){if(actions.busy){syncCollection();return;}collectionNotice="";if(!collection.toggle(row))SavedFileActions.problem(a,"最多收集 "+DownloadCollection.LIMIT+" 个已完成文件；同一文件不能重复加入");syncCollection();}
     void syncCollection(){collectionSession.collecting=collecting;Row.text(collectButton,collecting?"完成选择":"收集文件");Row.text(basketButton,"收集篮 · "+collection.size());Row.visible(basketButton,collecting||collection.size()>0);if(collectButton.isEnabled()==actions.busy)collectButton.setEnabled(!actions.busy);if(basketButton.isEnabled()==actions.busy)basketButton.setEnabled(!actions.busy);for(Row row:views.values())row.selection(collecting,collection.size()>0&&collection.containsKey(row.collectionKey()),!actions.busy,this);}
     void decorateDiscoveryPage(JSONArray rows){syncCollection();if(rows.length()==0&&query.restricted()){String key=requestedFilter+":"+query.key();if(!key.equals(emptyDiscoveryKey)){emptyDiscoveryKey=key;empty.removeAllViews();DownloadWorkspaceStyle.empty(empty,"没有匹配的文件","试试其他关键词，或清除环境与类型筛选。","清除搜索与筛选",()->{changeQuery(DownloadQuery.all(),false);search.setText("");choose.accept(0);});}}else emptyDiscoveryKey="";}
     void showCollection(){
-      LinearLayout content=DesignUi.column(a);int pad=DesignUi.dp(a,18);content.setPadding(pad,pad,pad,pad);JSONArray selected=collection.snapshot();
-      DesignUi.note(content,selected.length()==0?"点击“收集文件”，可跨页、跨筛选选择已保存文件，一次分享。":"已收集 "+selected.length()+" / "+DownloadCollection.LIMIT+" 个文件。搜索或翻页会保留选择；分享前会核对文件是否仍可读取。");
-      if(!collectionNotice.isEmpty())DesignUi.note(content,collectionNotice);final AlertDialog[] holder={null};
-      for(int i=0;i<selected.length();i++){JSONObject value=selected.optJSONObject(i);LinearLayout row=DesignUi.row(a);TextView label=DownloadWorkspaceStyle.text(a,DownloadMetadataValues.name(value),ReferenceUi.BODY_SIZE,DesignUi.TEXT,false);label.setMaxLines(2);row.addView(label,new LinearLayout.LayoutParams(0,-2,1));Button remove=DesignUi.button(a,"移除",false,()->{collection.toggle(value);syncCollection();holder[0].dismiss();showCollection();});remove.setTextSize(ReferenceUi.ACTION_SIZE);DownloadWorkspaceStyle.readable(remove);row.addView(remove);content.addView(row);}
-      Button pageFiles=DesignUi.button(a,"加入本页已完成文件",false,()->{int added=0,skipped=0;for(Row row:views.values())if(DownloadCollection.eligible(row.value)&&!collection.contains(row.value)){if(collection.toggle(row.value))added++;else skipped++;}collectionNotice="本次加入 "+added+" 个文件"+(skipped>0?"；"+skipped+" 个未加入（最多 "+DownloadCollection.LIMIT+" 个，同一文件不重复加入）":"");collecting=true;syncCollection();holder[0].dismiss();showCollection();});content.addView(pageFiles);
-      ScrollView overflow=new ScrollView(a);overflow.addView(content);AlertDialog dialog=AppAppearance.dialog(a).setTitle("文件收集篮").setView(overflow).setNegativeButton("继续选择",(d,w)->{collecting=true;syncCollection();}).setNeutralButton("清空收集篮",(d,w)->{collection.clear();syncCollection();}).setPositiveButton("分享 "+selected.length()+" 个文件",null).create();holder[0]=dialog;dialog.show();dialog.getButton(AlertDialog.BUTTON_POSITIVE).setEnabled(selected.length()>0&&!actions.busy);
-      dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v->{dialog.dismiss();DownloadCollectionShare.share(a,actions,selected,this::syncCollection);syncCollection();});
+      JSONArray selected=collection.snapshot();
+      ReferenceUi.Modal d=new ReferenceUi.Modal(a,"文件收集篮").asSheet();
+      TextView summary=ReferenceUi.workspaceText(a,
+          selected.length()==0?"点击“收集文件”，可跨页、跨筛选选择已保存文件，一次分享。":"已收集 "+selected.length()+" / "+DownloadCollection.LIMIT+" 个文件。搜索或翻页会保留选择；分享前会核对文件是否仍可读取。",
+          ReferenceUi.SECONDARY_SIZE,ReferenceUi.secondaryInk(),false);
+      summary.setFontFeatureSettings("tnum");summary.setPadding(DesignUi.dp(a,4),0,DesignUi.dp(a,4),DesignUi.dp(a,10));
+      d.body.addView(summary,new LinearLayout.LayoutParams(-1,-2));
+      if(!collectionNotice.isEmpty()){
+        LinearLayout notice=ReferenceUi.modalBanner(a,"info","",collectionNotice,true);
+        LinearLayout.LayoutParams np=new LinearLayout.LayoutParams(-1,-2);np.bottomMargin=DesignUi.dp(a,10);
+        d.body.addView(notice,np);
+      }
+      if(selected.length()>0){
+        LinearLayout filesCard=ReferenceUi.modalGroup(a);
+        for(int i=0;i<selected.length();i++){
+          if(i>0)filesCard.addView(ReferenceUi.modalDivider(a,56));
+          JSONObject value=selected.optJSONObject(i);String fileName=DownloadMetadataValues.name(value);
+          LinearLayout row=DesignUi.row(a);row.setGravity(Gravity.CENTER_VERTICAL);
+          row.setPadding(DesignUi.dp(a,16),DesignUi.dp(a,11),DesignUi.dp(a,12),DesignUi.dp(a,11));
+          ImageView glyph=new ImageView(a);glyph.setImageDrawable(new ReferenceUi.IconTileDrawable(a,DownloadWorkspaceStyle.savedGlyph(fileName),28,false,false));
+          glyph.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+          LinearLayout.LayoutParams gp=new LinearLayout.LayoutParams(DesignUi.dp(a,28),DesignUi.dp(a,28));gp.setMarginEnd(DesignUi.dp(a,12));
+          row.addView(glyph,gp);
+          TextView label=ReferenceUi.workspaceText(a,fileName,ReferenceUi.BODY_SIZE,DesignUi.TEXT,false);label.setMaxLines(2);label.setEllipsize(android.text.TextUtils.TruncateAt.END);
+          row.addView(label,new LinearLayout.LayoutParams(0,-2,1));
+          Button remove=ReferenceUi.link(a,"移除",()->{ReferenceUi.hapticTick(filesCard);collection.toggle(value);syncCollection();d.dismiss();showCollection();});
+          remove.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP,13.5f);remove.setTypeface(ReferenceUi.TYPE_SEMIBOLD);ReferenceUi.crisp(remove);
+          remove.setTextColor(ReferenceUi.redInk());remove.setPadding(DesignUi.dp(a,10),0,DesignUi.dp(a,10),0);
+          row.addView(remove,new LinearLayout.LayoutParams(-2,DesignUi.dp(a,40)));
+          filesCard.addView(row,new LinearLayout.LayoutParams(-1,-2));
+        }
+        d.body.addView(filesCard,new LinearLayout.LayoutParams(-1,-2));
+      }
+      LinearLayout toolsCard=ReferenceUi.modalActionCard(a);
+      ReferenceUi.modalRowAction(toolsCard,"plus","加入本页已完成文件",false,()->{
+        int added=0,skipped=0;
+        for(Row row:views.values())if(DownloadCollection.eligible(row.value)&&!collection.contains(row.value)){if(collection.toggle(row.value))added++;else skipped++;}
+        collectionNotice="本次加入 "+added+" 个文件"+(skipped>0?"；"+skipped+" 个未加入（最多 "+DownloadCollection.LIMIT+" 个，同一文件不重复加入）":"");
+        collecting=true;syncCollection();d.dismiss();showCollection();
+      });
+      LinearLayout.LayoutParams tp=new LinearLayout.LayoutParams(-1,-2);tp.topMargin=DesignUi.dp(a,10);
+      d.body.addView(toolsCard,tp);
+      if(selected.length()>0){
+        LinearLayout dangerCard=ReferenceUi.modalActionCard(a);
+        ReferenceUi.modalRowAction(dangerCard,"trash","清空收集篮",true,()->{collection.clear();collectionNotice="";syncCollection();d.dismiss();});
+        LinearLayout.LayoutParams dpL=new LinearLayout.LayoutParams(-1,-2);dpL.topMargin=DesignUi.dp(a,10);
+        d.body.addView(dangerCard,dpL);
+      }
+      d.buttons("继续选择",()->{collecting=true;syncCollection();d.dismiss();},"分享 "+selected.length()+" 个文件",()->{
+        d.dismiss();DownloadCollectionShare.share(a,actions,selected,this::syncCollection);syncCollection();
+      });
+      d.primary().setEnabled(selected.length()>0&&!actions.busy);
+      d.show();
     }
     void saveState(Bundle state){state.putString("downloadCollection",collection.snapshot().toString());state.putBoolean("downloadCollecting",collecting);state.putBoolean("downloadToolsExpanded",toolsExpanded);}
     void restoreState(Bundle state){if(state==null)return;try{collection.restore(new JSONArray(state.getString("downloadCollection","[]")));}catch(JSONException invalid){collection.clear();}collecting=state.getBoolean("downloadCollecting");setToolsExpanded(state.getBoolean("downloadToolsExpanded",toolsExpanded));syncCollection();}
@@ -214,5 +285,17 @@ final class DesignDownloads {
     static void text(TextView view,String value){if(!android.text.TextUtils.equals(view.getText(),value))view.setText(value);}
     static void visible(View view,boolean value){int visibility=value?View.VISIBLE:View.GONE;if(view.getVisibility()!=visibility)view.setVisibility(visibility);}
   }
-  static AlertDialog folder(Activity a){return DesignUi.message(a,"保存位置","默认位置："+(Build.VERSION.SDK_INT>=29?"Download/元婴期院士/窗口_编号/":"各窗口的应用内文件目录")+"\n\n点文件右侧菜单可打开、分享、另存为或删除。每个文件菜单的“详细信息”显示实际保存位置，并可复制位置。");}
+  static AlertDialog folder(Activity a){
+    LinearLayout box=DesignUi.column(a);box.setPadding(DesignUi.dp(a,20),DesignUi.dp(a,8),DesignUi.dp(a,20),DesignUi.dp(a,8));
+    LinearLayout card=ReferenceUi.modalGroup(a);
+    String path=Build.VERSION.SDK_INT>=29?"Download/元婴期院士/窗口_编号/":"各窗口的应用内文件目录";
+    LinearLayout row=ReferenceUi.modalFieldRow(card,"默认位置",path,true);
+    if(row.getChildCount()>1&&row.getChildAt(1) instanceof TextView){
+      ReferenceUi.mono((TextView)row.getChildAt(1));
+    }
+    box.addView(card,new LinearLayout.LayoutParams(-1,-2));
+    ReferenceUi.modalFooterNote(box,"点文件右侧菜单可打开、分享、另存为或删除。每个文件菜单的“详细信息”显示实际保存位置，并可复制位置。");
+    ScrollView scroll=new ScrollView(a);NativeControls.prepare(scroll);scroll.addView(box);
+    return AppAppearance.dialog(a).setTitle("保存位置").setView(scroll).setPositiveButton("知道了",null).show();
+  }
 }

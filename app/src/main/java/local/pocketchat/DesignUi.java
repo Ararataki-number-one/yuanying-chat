@@ -109,14 +109,14 @@ final class DesignUi {
   static void action(LinearLayout box,String label,boolean primary,Runnable run){LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(-1,-2);p.topMargin=dp(box.getContext(),10);box.addView(button(box.getContext(),label,primary,run),p);}
   static void feedback(Activity a,String message){if(a instanceof MainActivity)((MainActivity)a).status(message);else SavedFileActions.problem(a,message);}
   static Runnable protectEdits(Activity a,AlertDialog dialog,java.util.function.BooleanSupplier dirty){
-    final AlertDialog[] prompt={null};
+    final ReferenceUi.Modal[] prompt={null};
     Runnable close=()->{
       if(!dirty.getAsBoolean()){dialog.dismiss();return;}
       if(prompt[0]!=null&&prompt[0].isShowing())return;
-      prompt[0]=AppAppearance.dialog(a).setTitle("保留正在填写的内容？")
-        .setMessage("继续编辑可保留本次填写；放弃修改后会退出此表单。")
-        .setPositiveButton("继续编辑",null).setNegativeButton("放弃修改",(d,w)->dialog.dismiss()).show();
-      prompt[0].getButton(AlertDialog.BUTTON_NEGATIVE).setTextColor(RED);
+      ReferenceUi.Modal confirm=new ReferenceUi.Modal(a,"保留正在填写的内容？").hideClose();
+      confirm.body.addView(ReferenceUi.modalWarning(a,"file","当前修改尚未保存","继续编辑可保留本次填写；放弃修改后会退出此表单。"),new LinearLayout.LayoutParams(-1,-2));
+      confirm.buttons("放弃修改",()->{confirm.dismiss();dialog.dismiss();},"继续编辑",confirm::dismiss);
+      prompt[0]=confirm;confirm.show();
     };
     dialog.setCanceledOnTouchOutside(false);
     dialog.setOnKeyListener((d,key,event)->{if(key!=KeyEvent.KEYCODE_BACK)return false;if(event.getAction()==KeyEvent.ACTION_UP)close.run();return true;});
@@ -131,50 +131,81 @@ final class DesignUi {
     row.addView(spinner,new LinearLayout.LayoutParams(dp(c,24),dp(c,24)));TextView label=text(c,title,14,TEXT);label.setPadding(dp(c,12),0,0,0);label.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
     row.addView(label,new LinearLayout.LayoutParams(0,-2,1));card.addView(row);if(!detail.isEmpty())note(card,detail);return card;
   }
+  static LinearLayout modalProgress(Context c,String title,String detail){
+    LinearLayout card=ReferenceUi.modalGroup(c),row=row(c);card.setPadding(dp(c,16),dp(c,14),dp(c,16),dp(c,14));
+    ProgressBar spinner=new ProgressBar(c);spinner.setIndeterminateTintList(ColorStateList.valueOf(BLUE));
+    row.addView(spinner,new LinearLayout.LayoutParams(dp(c,20),dp(c,20)));
+    TextView label=ReferenceUi.workspaceText(c,title,15,TEXT,true);label.setPadding(dp(c,12),0,0,0);label.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
+    row.addView(label,new LinearLayout.LayoutParams(0,-2,1));card.addView(row);
+    if(!detail.isEmpty()){
+      TextView sub=ReferenceUi.workspaceText(c,detail,ReferenceUi.SECONDARY_SIZE,MUTED,false);
+      ReferenceUi.balancedBreaks(sub);
+      sub.setPadding(dp(c,32),dp(c,6),0,0);card.addView(sub,new LinearLayout.LayoutParams(-1,-2));
+    }
+    return card;
+  }
   static void rebuild(LinearLayout box,boolean preserveScroll,Runnable render){
     ViewParent parent=box.getParent();ScrollView scroll=parent instanceof ScrollView?(ScrollView)parent:null;
     int y=preserveScroll&&scroll!=null?scroll.getScrollY():0;Object renderToken=new Object();box.setTag(renderToken);
     box.removeAllViews();render.run();if(scroll!=null)scroll.post(()->{if(box.getTag()==renderToken)scroll.scrollTo(0,y);});
   }
-  static TextView badge(Context c,String label,int color){TextView t=text(c,label,12,color);t.setGravity(Gravity.CENTER);t.setPadding(dp(c,8),dp(c,4),dp(c,8),dp(c,4));t.setBackground(surface(c,(color&0x00ffffff)|0x11000000,7,Color.TRANSPARENT));return t;}
+  static TextView badge(Context c,String label,int color){TextView t=text(c,label,11,color);t.setTypeface(ReferenceUi.TYPE_SEMIBOLD);t.setLetterSpacing(0.025f);ReferenceUi.crisp(t);t.setGravity(Gravity.CENTER);t.setPadding(dp(c,8),dp(c,4),dp(c,8),dp(c,4));t.setBackground(surface(c,(color&0x00ffffff)|0x14000000,7,Color.TRANSPARENT));return t;}
   static void note(LinearLayout box,String s){TextView t=text(box.getContext(),s,13,MUTED);t.setPadding(0,dp(box.getContext(),10),0,dp(box.getContext(),6));box.addView(t);}
   static ImageView icon(Context c,String glyph,int color,int size){ImageView v=new ImageView(c);v.setImageDrawable(new Ui.Icon(glyph,color));v.setPadding(dp(c,7),dp(c,7),dp(c,7),dp(c,7));v.setBackground(surface(c,(color&0xffffff)|0x11000000,10,Color.TRANSPARENT));v.setLayoutParams(new LinearLayout.LayoutParams(dp(c,size),dp(c,size)));return v;}
   static LinearLayout setting(Context c,String glyph,String title,String detail,String tag,Runnable action){
-    LinearLayout r=row(c);r.setMinimumHeight(dp(c,64));r.setPadding(dp(c,16),dp(c,13),dp(c,16),dp(c,13));
-    ImageView icon=icon(c,glyph,BLUE,30);r.addView(icon);LinearLayout labels=column(c);labels.setPadding(dp(c,14),0,dp(c,12),0);
+    LinearLayout r=row(c);r.setMinimumHeight(dp(c,58));r.setPadding(dp(c,16),dp(c,12),dp(c,14),dp(c,12));
+    ImageView icon=new ImageView(c);icon.setImageDrawable(new ReferenceUi.IconTileDrawable(c,glyph,30,false,false));
+    icon.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+    r.addView(icon,new LinearLayout.LayoutParams(dp(c,30),dp(c,30)));
+    LinearLayout labels=column(c);labels.setPadding(dp(c,12),0,dp(c,10),0);
     // Keep enlarged Chinese labels readable without shrinking the chosen font.
-    TextView heading=text(c,title,16,TEXT);heading.setBreakStrategy(android.graphics.text.LineBreaker.BREAK_STRATEGY_BALANCED);labels.addView(heading);
-    if(!detail.isEmpty()){String display=c.getResources().getConfiguration().fontScale>=1.4f?detail.replace(" · ","\n"):detail;TextView sub=text(c,display,13,MUTED);sub.setContentDescription(detail);sub.setBreakStrategy(android.graphics.text.LineBreaker.BREAK_STRATEGY_BALANCED);sub.setPadding(0,dp(c,5),0,0);labels.addView(sub);}
+    TextView heading=ReferenceUi.workspaceText(c,title,15,TEXT,true);ReferenceUi.balancedBreaks(heading);labels.addView(heading);
+    if(!detail.isEmpty()){String display=c.getResources().getConfiguration().fontScale>=1.4f?detail.replace(" · ","\n"):detail;TextView sub=ReferenceUi.workspaceText(c,display,ReferenceUi.SECONDARY_SIZE,MUTED,false);sub.setContentDescription(detail);sub.setFontFeatureSettings("tnum");ReferenceUi.balancedBreaks(sub);sub.setPadding(0,dp(c,3),0,0);labels.addView(sub);}
     r.addView(labels,new LinearLayout.LayoutParams(0,-2,1));
     if(!tag.isEmpty())r.addView(badge(c,tag,MUTED));
-    else if(action!=null){ImageView arrow=new ImageView(c);arrow.setImageDrawable(new Ui.Icon("chevron-right",MUTED));r.addView(arrow,new LinearLayout.LayoutParams(dp(c,14),dp(c,20)));}
-    r.setBackground(new RippleDrawable(ColorStateList.valueOf(0x142468f2),surface(c,CARD,0,Color.TRANSPARENT),null));
+    else if(action!=null){ImageView arrow=new ImageView(c);arrow.setImageDrawable(new Ui.Icon("chevron-right",ReferenceUi.chevronInk()));arrow.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);r.addView(arrow,new LinearLayout.LayoutParams(dp(c,14),dp(c,14)));}
+    r.setBackground(new RippleDrawable(ColorStateList.valueOf(ReferenceUi.tone(0x140067d8,0x2682b3ff)),new ColorDrawable(Color.TRANSPARENT),new ColorDrawable(Color.WHITE)));
     if(action!=null){r.setClickable(true);r.setFocusable(true);r.setOnClickListener(v->action.run());}return r;
   }
   static void field(LinearLayout box,String title,String value){
-    Context c=box.getContext();LinearLayout row=row(c);boolean large=c.getResources().getConfiguration().fontScale>=1.4f;row.setOrientation(large?LinearLayout.VERTICAL:LinearLayout.HORIZONTAL);row.setGravity(Gravity.TOP);row.setPadding(0,dp(c,9),0,dp(c,9));
-    TextView name=text(c,title,13,MUTED);row.addView(name,new LinearLayout.LayoutParams(large?-1:dp(c,88),-2));
-    TextView val=text(c,value,15,TEXT);val.setTextIsSelectable(true);if(large)val.setPadding(0,dp(c,5),0,0);row.addView(val,new LinearLayout.LayoutParams(large?-1:0,-2,large?0:1));box.addView(row);
+    Context c=box.getContext();LinearLayout row=row(c);boolean large=c.getResources().getConfiguration().fontScale>=1.4f;row.setOrientation(large?LinearLayout.VERTICAL:LinearLayout.HORIZONTAL);row.setGravity(Gravity.TOP);row.setBaselineAligned(!large);row.setPadding(0,dp(c,10),0,dp(c,10));
+    TextView name=ReferenceUi.workspaceText(c,title,ReferenceUi.ACTION_SIZE,ReferenceUi.specKeyInk(),false);name.setTypeface(ReferenceUi.TYPE_REGULAR);if(!large)name.setPaddingRelative(0,0,dp(c,10),0);row.addView(name,new LinearLayout.LayoutParams(large?-1:dp(c,92),-2));
+    TextView val=ReferenceUi.workspaceText(c,value,ReferenceUi.BODY_SIZE,ReferenceUi.inkPrimary(),false);val.setTypeface(ReferenceUi.TYPE_MEDIUM);ReferenceUi.tabular(val);val.setTextIsSelectable(true);if(large)val.setPadding(0,dp(c,4),0,0);row.addView(val,new LinearLayout.LayoutParams(large?-1:0,-2,large?0:1));box.addView(row);
   }
-  static EditText input(LinearLayout box,String title,String value,String hint){Context c=box.getContext();TextView label=text(c,title,13,MUTED);label.setPadding(0,dp(c,16),0,dp(c,8));if(!title.isEmpty())box.addView(label);EditText e=new EditText(c);e.setSingleLine(true);NativeControls.prepare(e);e.setContentDescription(title);label.setLabelFor(e.getId());e.setImeOptions(android.view.inputmethod.EditorInfo.IME_ACTION_NEXT);e.setText(value);e.setHint(hint);box.addView(e,new LinearLayout.LayoutParams(-1,-2));return e;}
+  static EditText input(LinearLayout box,String title,String value,String hint){
+    Context c=box.getContext();
+    TextView label=ReferenceUi.workspaceText(c,title,ReferenceUi.ACTION_SIZE,ReferenceUi.secondaryInk(),true);
+    label.setTypeface(ReferenceUi.TYPE_SEMIBOLD);label.setLetterSpacing(0.015f);ReferenceUi.crisp(label);
+    label.setPadding(dp(c,2),dp(c,14),dp(c,2),dp(c,6));
+    if(!title.isEmpty())box.addView(label);
+    EditText e=new EditText(c);e.setSingleLine(true);NativeControls.prepare(e);
+    e.setTextSize(15);e.setTextColor(ReferenceUi.inkPrimary());e.setHintTextColor(ReferenceUi.secondaryInk());
+    e.setPadding(dp(c,14),dp(c,11),dp(c,14),dp(c,11));e.setMinHeight(dp(c,46));
+    e.setBackground(new ReferenceUi.FieldWell(c));
+    e.setContentDescription(title);label.setLabelFor(e.getId());
+    e.setImeOptions(android.view.inputmethod.EditorInfo.IME_ACTION_NEXT);
+    e.setText(value);e.setHint(hint);
+    box.addView(e,new LinearLayout.LayoutParams(-1,-2));return e;
+  }
   static void visiblePassword(EditText input){
     Context c=input.getContext();LinearLayout parent=(LinearLayout)input.getParent();int index=parent.indexOfChild(input);ViewGroup.LayoutParams layout=input.getLayoutParams();
     input.setInputType(android.text.InputType.TYPE_CLASS_TEXT|android.text.InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD|android.text.InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
     input.setImeOptions(input.getImeOptions()|android.view.inputmethod.EditorInfo.IME_FLAG_NO_PERSONALIZED_LEARNING);
     input.setTransformationMethod(null);
     parent.removeView(input);FrameLayout row=new FrameLayout(c);parent.addView(row,index,layout);
-    input.setPadding(input.getPaddingLeft(),input.getPaddingTop(),dp(c,76),input.getPaddingBottom());row.addView(input,new FrameLayout.LayoutParams(-1,-2));
-    Button toggle=ReferenceUi.link(c,"隐藏",()->{});toggle.setContentDescription("隐藏密码");
+    input.setPadding(input.getPaddingLeft(),input.getPaddingTop(),dp(c,68),input.getPaddingBottom());row.addView(input,new FrameLayout.LayoutParams(-1,-2));
+    Button toggle=ReferenceUi.link(c,"隐藏",()->{});toggle.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP,13f);toggle.setTypeface(ReferenceUi.TYPE_SEMIBOLD);ReferenceUi.crisp(toggle);toggle.setTextColor(ReferenceUi.brandBlue());toggle.setContentDescription("隐藏密码");
     toggle.setOnClickListener(v->{
       int start=input.getSelectionStart(),end=input.getSelectionEnd();boolean hide=input.getTransformationMethod()==null;
       input.setTransformationMethod(hide?android.text.method.PasswordTransformationMethod.getInstance():null);
       if(start>=0&&end>=0)input.setSelection(Math.min(start,input.length()),Math.min(end,input.length()));
       toggle.setText(hide?"显示":"隐藏");toggle.setContentDescription(hide?"显示密码":"隐藏密码");
     });
-    row.addView(toggle,new FrameLayout.LayoutParams(dp(c,68),-1,Gravity.END|Gravity.CENTER_VERTICAL));
+    row.addView(toggle,new FrameLayout.LayoutParams(dp(c,60),-1,Gravity.END|Gravity.CENTER_VERTICAL));
   }
   static EditText searchInput(LinearLayout parent,String hint){
-    Context c=parent.getContext();LinearLayout field=column(c);EditText input=input(field,"","",hint);field.removeView(input);
+    Context c=parent.getContext();EditText input=new EditText(c);input.setSingleLine(true);
+    NativeControls.prepare(input);input.setContentDescription("");input.setText("");input.setHint(hint);
     FrameLayout host=new FrameLayout(c);host.addView(input,new FrameLayout.LayoutParams(-1,-2));
     Ui.Icon search=new Ui.Icon("search",MUTED);search.setBounds(0,0,dp(c,18),dp(c,18));input.setCompoundDrawables(search,null,null,null);input.setCompoundDrawablePadding(dp(c,8));input.setImeOptions(android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH);
     Button clear=ReferenceUi.iconButton(c,"close","清除搜索内容",()->input.setText(""));clear.setVisibility(View.GONE);host.addView(clear,new FrameLayout.LayoutParams(dp(c,48),dp(c,48),Gravity.END|Gravity.CENTER_VERTICAL));
@@ -186,7 +217,19 @@ final class DesignUi {
   static LinearLayout workspaceNav(Activity a,int page,java.util.function.IntConsumer action,Button[] buttons){return ReferenceUi.workspaceNav(a,page,action,buttons);}
   static void markNav(Activity a,Button[] tabs,int selected){ReferenceUi.markNav(tabs,selected);}
   static LinearLayout screen(Activity a){chrome(a);LinearLayout root=column(a);root.setFitsSystemWindows(true);root.setBackground(new Stars(a));return root;}
-  static LinearLayout body(Activity a,LinearLayout root,String title,Runnable back){LinearLayout head=row(a);head.setPadding(dp(a,12),dp(a,8),dp(a,12),dp(a,8));if(back!=null){Button b=ReferenceUi.iconButton(a,"back","返回",back);head.addView(b,new LinearLayout.LayoutParams(dp(a,48),dp(a,48)));}TextView heading=text(a,title,24,TEXT);heading.setTypeface(Typeface.create("sans-serif-medium",Typeface.NORMAL));heading.setMaxLines(2);heading.setEllipsize(android.text.TextUtils.TruncateAt.END);heading.setPadding(dp(a,8),0,0,0);head.addView(heading,new LinearLayout.LayoutParams(0,-2,1));root.addView(head);LinearLayout box=column(a);box.setPadding(dp(a,14),0,dp(a,14),dp(a,18));ScrollView scroll=new ScrollView(a);scroll.setFillViewport(true);scroll.addView(box);root.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));return box;}
+  static LinearLayout body(Activity a,LinearLayout root,String title,Runnable back){
+    return body(a,root,title,"",back);
+  }
+  static LinearLayout body(Activity a,LinearLayout root,String title,String subtitle,Runnable back){
+    root.setClipChildren(false);root.setClipToPadding(false);
+    root.setBackgroundColor(ReferenceUi.canvasBg());
+    LinearLayout box=column(a);box.setPadding(dp(a,16),dp(a,8),dp(a,16),dp(a,24));
+    ScrollView scroll=new ScrollView(a);scroll.setFillViewport(true);scroll.setClipToPadding(false);NativeControls.prepare(scroll);
+    scroll.addView(box);
+    FrameLayout head=ReferenceUi.horologyHeader(a,title,subtitle,back,scroll);
+    root.addView(head,new LinearLayout.LayoutParams(-1,-2));
+    root.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));return box;
+  }
   static void section(LinearLayout box,String title,String detail){TextView h=text(box.getContext(),title,13,MUTED);h.setPadding(dp(box.getContext(),16),dp(box.getContext(),22),dp(box.getContext(),16),dp(box.getContext(),8));if(Build.VERSION.SDK_INT>=28)h.setAccessibilityHeading(true);box.addView(h);if(!detail.isEmpty())note(box,detail);}
   static void scope(MainActivity a,LinearLayout box){
     LinearLayout row=row(a);TextView label=text(a,"环境 · "+Profiles.display(a,Profiles.slot(a)),13,MUTED);label.setSingleLine(true);label.setEllipsize(android.text.TextUtils.TruncateAt.END);
@@ -194,15 +237,32 @@ final class DesignUi {
     change.setTextSize(12);row.addView(change,new LinearLayout.LayoutParams(dp(a,64),dp(a,48)));box.addView(row);
   }
   static void route(LinearLayout box,String entrance,String exit){
-    Context c=box.getContext();LinearLayout route=column(c);route.setPadding(dp(c,12),dp(c,6),dp(c,12),dp(c,6));route.setBackground(surface(c,FIELD,12,Color.TRANSPARENT));
+    Context c=box.getContext();LinearLayout route=ReferenceUi.modalGroup(c);
     String[] labels={"入口","固定出口","目的地"},values={entrance,exit,"ChatGPT"},icons={"globe","lock","chat"};
     for(int i=0;i<labels.length;i++){
-      LinearLayout stage=row(c);stage.setPadding(0,dp(c,6),0,dp(c,6));ImageView icon=new ImageView(c);icon.setImageDrawable(new Ui.Icon(icons[i],i==1?BLUE:MUTED));stage.addView(icon,new LinearLayout.LayoutParams(dp(c,18),dp(c,18)));
-      LinearLayout content=column(c);content.setPadding(dp(c,10),0,0,0);TextView label=text(c,labels[i],12,MUTED);content.addView(label);TextView name=text(c,values[i],14,TEXT);name.setMaxLines(3);name.setEllipsize(android.text.TextUtils.TruncateAt.END);name.setPadding(0,dp(c,3),0,0);content.addView(name);stage.addView(content,new LinearLayout.LayoutParams(0,-2,1));route.addView(stage);
+      if(i>0)route.addView(ReferenceUi.modalDivider(c,56));
+      LinearLayout stage=row(c);stage.setPadding(dp(c,16),dp(c,11),dp(c,16),dp(c,11));
+      ImageView icon=new ImageView(c);icon.setImageDrawable(new ReferenceUi.IconTileDrawable(c,icons[i],28,false,false));
+      icon.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+      stage.addView(icon,new LinearLayout.LayoutParams(dp(c,28),dp(c,28)));
+      LinearLayout content=column(c);content.setPadding(dp(c,12),0,0,0);
+      content.addView(ReferenceUi.workspaceText(c,labels[i],ReferenceUi.SECONDARY_SIZE,MUTED,false));
+      TextView name=ReferenceUi.workspaceText(c,values[i],ReferenceUi.BODY_SIZE,TEXT,true);
+      name.setMaxLines(3);name.setEllipsize(android.text.TextUtils.TruncateAt.END);name.setFontFeatureSettings("tnum");name.setPadding(0,dp(c,2),0,0);
+      content.addView(name);stage.addView(content,new LinearLayout.LayoutParams(0,-2,1));route.addView(stage);
     }
-    LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(-1,-2);p.topMargin=dp(c,12);box.addView(route,p);
+    LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(-1,-2);p.topMargin=dp(c,10);box.addView(route,p);
   }
-  static AlertDialog message(Activity a,String title,String text){return AppAppearance.dialog(a).setTitle(title).setMessage(text).setPositiveButton("知道了",null).show();}
+  static AlertDialog message(Activity a,String title,String text){
+    LinearLayout wrap=column(a);wrap.setPadding(dp(a,20),dp(a,8),dp(a,20),dp(a,8));
+    LinearLayout card=ReferenceUi.modalGroup(a);card.setPadding(dp(a,16),dp(a,14),dp(a,16),dp(a,14));
+    TextView body=ReferenceUi.workspaceText(a,text,ReferenceUi.BODY_SIZE,TEXT,false);
+    body.setTextIsSelectable(true);ReferenceUi.balancedBreaks(body);
+    card.addView(body,new LinearLayout.LayoutParams(-1,-2));
+    wrap.addView(card,new LinearLayout.LayoutParams(-1,-2));
+    ScrollView scroll=new ScrollView(a);NativeControls.prepare(scroll);scroll.addView(wrap);
+    return AppAppearance.dialog(a).setTitle(title).setView(scroll).setPositiveButton("知道了",null).show();
+  }
   static final class Stars extends Drawable {
     static final List<java.lang.ref.WeakReference<Stars>> instances=new ArrayList<>();
     static final Handler main=new Handler(Looper.getMainLooper());
