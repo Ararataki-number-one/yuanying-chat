@@ -273,15 +273,13 @@ public class AppUpdateActivity extends ThemedActivity {
     if(latest.isEmpty()){
       TextView empty=DownloadWorkspaceStyle.text(this,"尚未取得新版",ReferenceUi.ACTION_SIZE,appleSecondary(),false);
       row.addView(empty,new LinearLayout.LayoutParams(0,-2,1));
-    }else if(latest.equals(installed)){
-      current.setTextColor(ReferenceUi.inkPrimary());
     }else{
-      TextView arrow=DownloadWorkspaceStyle.text(this," → ",ReferenceUi.ACTION_SIZE,appleSecondary(),false);
-      row.addView(arrow,new LinearLayout.LayoutParams(-2,-2));
+      if(latest.equals(installed))current.setTextColor(ReferenceUi.inkPrimary());
       int sep=latest.indexOf(" · ");
       String verPart=sep>0?latest.substring(0,sep):latest;
       if(sep>0)badgeLabel=latest.substring(sep+3);
-      TextView target=ReferenceUi.mono(ReferenceUi.crisp(DownloadWorkspaceStyle.text(this,verPart,ReferenceUi.BODY_SIZE,ReferenceUi.inkPrimary(),true)));
+      String available=getString(R.string.latest_available_version,verPart);
+      TextView target=ReferenceUi.mono(ReferenceUi.crisp(DownloadWorkspaceStyle.text(this,available,ReferenceUi.BODY_SIZE,ReferenceUi.inkPrimary(),true)));
       row.addView(target,new LinearLayout.LayoutParams(0,-2,1));
     }
     if(!badgeLabel.isEmpty()){
