@@ -46,6 +46,29 @@ def xml(tree):return ET.tostring(tree,encoding='unicode')
 
 
 class ChromiumBrowserCaptureContractTests(unittest.TestCase):
+    def test_actual_menu_scroll_avoids_narrow_large_font_network_action(self):
+        capture.shared.set_display(960,1920,480)
+        root=ET.Element('hierarchy')
+        node(root,'TextView',(84,381,700,525),text='浏览器菜单',description='浏览器菜单')
+        close=node(root,'Button',(732,381,876,525),description='关闭浏览器菜单',clickable=True)
+        scroll=node(root,'ScrollView',(84,537,876,1535))
+        scroll.set('scrollable','true')
+        intervals=[(1023,1216),(1218,1411),(1413,1535)]
+        for (top,bottom),label in zip(intervals,['下载文件','环境管理','此环境的网络设置']):
+            node(scroll,'Button',(84,top,876,bottom),text=label,clickable=True)
+        def read():return capture.menu_scroll_gesture(ET.tostring(root,encoding='unicode'))
+        box,x,start,end=read()
+        self.assertEqual((box,x),((84,537,876,1535),480))
+        self.assertGreaterEqual(start-end,144)
+        self.assertFalse(any(top<=start<bottom for top,bottom in intervals))
+        # The previous bottom-inset start at y=1487 could activate network settings.
+        self.assertTrue(intervals[-1][0]<=1535-48<intervals[-1][1])
+        blocker=node(scroll,'Button',(84,537,876,1535),text='覆盖操作',clickable=True)
+        with self.assertRaisesRegex(ValueError,'non-action'):read()
+        scroll.remove(blocker)
+        close.set('content-desc','网络设置')
+        with self.assertRaisesRegex(ValueError,'menu must still own'):read()
+
     def setUp(self):capture.shared.set_display(1236,2676,480)
 
     def test_current_five_controls_and_top_capsule_at_both_original_sizes(self):

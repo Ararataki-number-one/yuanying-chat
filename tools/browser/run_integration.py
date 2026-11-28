@@ -13,7 +13,7 @@ import uuid
 
 ROOT=Path(__file__).resolve().parents[2]
 sys.path.insert(0,str(ROOT/'tools/gecko'))
-from portrait_orientation import rotation_challenge
+from portrait_orientation import rotation_challenge, request as request_rotation, previous_mode
 from profile_invocation_contract import expected_build,verify_installed
 sys.path.insert(0,str(ROOT/'tools/browser'))
 from input_delivery_diagnostics import InputDeliveryDiagnostics
@@ -212,7 +212,7 @@ def main():
             elif stage=='download-click' and stage not in handled:
                 x,y=validate_tap_target(current);input_diagnostics.tap(stage,x,y,current,verified_identity=current['buildIdentity']);actions.append(dict(kind='tap',stage=stage,x=x,y=y,targetProof=current['tapTarget']));handled.add(stage)
             elif stage in ('rotate-landscape','rotate-portrait') and stage not in handled:
-                rotation='1' if stage=='rotate-landscape' else '0';adb('shell','settings','put','system','user_rotation',rotation);readback=adb('shell','settings','get','system','user_rotation').stdout.decode().strip();actions.append(dict(kind='rotation',stage=stage,value=int(rotation),systemUserRotation=readback));assert readback==rotation;handled.add(stage)
+                rotation='1' if stage=='rotate-landscape' else '0';request_rotation(rotation_adb,int(rotation));readback=adb('shell','settings','get','system','user_rotation').stdout.decode().strip();actions.append(dict(kind='rotation',stage=stage,value=int(rotation),systemUserRotation=readback));assert readback==rotation;handled.add(stage)
             elif stage=='switch-to-gecko' and 'engine-roundtrip' not in handled:
                 browser_task=current.get('taskId');switch_until=time.monotonic()+45;enhanced=False;enhanced_task=None
                 while time.monotonic()<switch_until:
@@ -262,6 +262,10 @@ def main():
         except Exception:pass
         try:(args.output/'screen.png').write_bytes(adb('exec-out','screencap','-p',check=False).stdout)
         except Exception:pass
+        if 'user_rotation' in original_settings:
+            from portrait_orientation import wm_command
+            try:adb('shell','wm',wm_command(rotation_adb),*previous_mode(original_settings),check=False)
+            except (subprocess.SubprocessError,ValueError):pass
         for key,value in original_settings.items():
             try:adb('shell','settings','delete','system',key) if value=='null' else adb('shell','settings','put','system',key,value)
             except Exception:pass

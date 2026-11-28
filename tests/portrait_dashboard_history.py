@@ -5,8 +5,10 @@ The device executes the current runner unchanged; this helper serves older sourc
 from hashlib import sha256
 
 BEFORE='6eabb43e4adc4d89ae3714f0e4c2dbb0f82debfb9b659bd1550c572c910034f6'
-AFTER='f6035a0669ca3d13dae2aa9f1d0db8725621bcbf22eb963d6c9e1e2ebb90372f'
-EDITS=(("        assert dashboard(xml),('dashboard absent',name)\n"
+AFTER='3dc0678e272c86faba334f1d61d4a8cb0aedbcce891ef59f6ef98a92fd113ee5'
+EDITS=(("        assert not any(re.search(r'\\d+\\s*秒后进入',n.get('text','')) for n in tree(xml)),('countdown still "
+  "visible',name)\n"
+  "        assert dashboard(xml),('dashboard absent',name)\n"
   "        raw=binary('exec-out','screencap','-p');assert raw.startswith(b'\\x89PNG\\r\\n\\x1a\\n')\n"
   "        pixels=struct.unpack('>II',raw[16:24]);assert pixels==(width*3,height*3),(name,'actual screenshot "
   "viewport differs',pixels,[width*3,height*3])\n"
@@ -23,17 +25,26 @@ EDITS=(("        assert dashboard(xml),('dashboard absent',name)\n"
   '            '
   "observed=dict(size=adb('shell','wm','size').strip(),density=adb('shell','wm','density').strip(),fontScale=adb('shell','settings','get','system','font_scale').strip())\n"
   "            assert float(observed['fontScale'])==scale,('Requested font scale not applied',observed)\n",
+  "        assert not any(re.search(r'\\d+\\s*秒后进入',n.get('text','')) for n in tree(xml)),('countdown still "
+  "visible',name)\n"
   "        assert dashboard(xml),('dashboard absent',name)\n"
+  '        hold=None\n'
+  "        if name.startswith('portrait-held'):\n"
+  '            request_rotation(adb,1)\n'
+  '            hold=observe_orientation(adb,PACKAGE,1)\n'
+  '            xml=dump()\n'
+  '            assert dashboard(xml)\n'
+  "            if name.endswith('fingerprint'): assert 'User Agent' in xml\n"
+  '            metadata.update(portraitHold=hold,rotationCalibration=calibration)\n'
   "        raw=binary('exec-out','screencap','-p');assert raw.startswith(b'\\x89PNG\\r\\n\\x1a\\n')\n"
-  "        hold=observe_orientation(adb,PACKAGE,1) if name.startswith('portrait-held') else None\n"
-  '        if hold:metadata.update(portraitHold=hold,rotationCalibration=calibration)\n'
   "        pixels=struct.unpack('>II',raw[16:24]);assert pixels==(width*3,height*3) or (hold and "
   "pixels==(height*3,width*3)),(name,'actual screenshot viewport differs',pixels,[width*3,height*3])\n"
   "        (directory/(name+'.xml')).write_text(xml);(directory/(name+'.png')).write_bytes(raw)\n"
   '        '
   "records.append(dict(name=name,image='ui-visuals/environment-dashboard/'+name+'.png',xml='ui-visuals/environment-dashboard/'+name+'.xml',imageSha256=hashlib.sha256(raw).hexdigest(),actualPixelSize=list(pixels),**metadata))\n"
   '    from contextlib import ExitStack\n'
-  '    from portrait_orientation import rotation_challenge, observe as observe_orientation\n'
+  '    from portrait_orientation import rotation_challenge, request as request_rotation, observe as '
+  'observe_orientation\n'
   '    rotations=ExitStack()\n'
   '    try:\n'
   '        for name,width,height,scale,night in '

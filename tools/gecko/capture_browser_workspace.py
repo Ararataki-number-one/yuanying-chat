@@ -132,6 +132,35 @@ def browser_geometry(xml, density):
                                enabled=n.get('enabled')) for n in controls])
 
 
+def menu_scroll_gesture(xml):
+    """Start a real swipe in the observed menu, outside all clickable rows."""
+    if not shared.browser_menu_open(xml) or not shared.menu_body_ready(xml, PACKAGE):
+        raise ValueError('The browser menu must still own the scroll gesture')
+    scroll=only(xml,lambda n:n.get('class')=='android.widget.ScrollView' and n.get('scrollable')=='true','menu scroller')
+    box=shared.bounds(scroll)
+    left,top,right,bottom=box
+    x=(left+right)//2
+    end=top+48
+    # Reserve sufficient movement after touch slop. Menu captions and card
+    # dividers can receive a drag without invoking the action under a tap.
+    low,high=end+48*3,bottom-48
+    blocked=[]
+    for node in scroll.iter('node'):
+        if node is scroll or node.get('clickable')!='true' or node.get('enabled')!='true':continue
+        frame=shared.bounds(node)
+        if frame and frame[0]<=x<frame[2]:
+            blocked.append((frame[1],frame[3]))
+    gaps=[]
+    for a,b in sorted(blocked):
+        if b<=low or a>high:continue
+        if a>low:gaps.append((low,a-1))
+        low=max(low,b)
+    if low<=high:gaps.append((low,high))
+    if not gaps:raise ValueError('No visible non-action start for the browser menu swipe')
+    a,b=max(gaps,key=lambda pair:(min(24,pair[1]-pair[0]),pair[1]))
+    return box,x,(a+b)//2,end
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--root', type=Path, default=Path(__file__).resolve().parents[2])
@@ -295,15 +324,15 @@ def main():
                            and shared.menu_body_ready(value, PACKAGE), label+'-menu-reopened')
             observed_actions = set()
             for attempt in range(10):
+                if not shared.browser_menu_open(xml) or not shared.menu_body_ready(xml,PACKAGE):
+                    raise ValueError('The observed browser menu is no longer open')
                 observed_actions.update(value for value in ('环境管理',) if shared.button(xml, value) is not None)
                 tail = shared.button(xml, '内核信息')
-                if tail is not None:
+                tail_box = shared.bounds(tail)
+                if tail_box and min(tail_box[2]-tail_box[0],tail_box[3]-tail_box[1])>=48*3:
                     break
-                scroll = only(xml, lambda n: n.get('class') == 'android.widget.ScrollView', 'menu scroller')
-                box = shared.bounds(scroll)
-                x, start, end = (box[0]+box[2])//2, box[3]-48, box[1]+48
-                if start <= end:
-                    raise ValueError('Menu has no scrollable viewport')
+                tail=None
+                box,x,start,end=menu_scroll_gesture(xml)
                 report['inputs'].append(dict(kind='swipe', reason='Reach existing menu tail', bounds=box,
                                              start=[x, start], end=[x, end]))
                 adb('shell', 'input', 'swipe', str(x), str(start), str(x), str(end), '300')

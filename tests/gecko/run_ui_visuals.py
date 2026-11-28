@@ -10,7 +10,7 @@ source=subprocess.check_output(['git','rev-parse','HEAD'],cwd=root,text=True).st
 package='local.pocketchat.test';records=[]
 sys.path.insert(0,str(root/'tools/gecko'))
 from ui_visual_capture import UiVisualCapture
-from portrait_orientation import rotation_challenge, observe as observe_orientation
+from portrait_orientation import rotation_challenge, request as request_rotation, observe as observe_orientation
 from diagnostic_capture_privacy import checked_text
 from ui_visual_contract import LIGHT_SCENES, LARGE_SCENES, DARK_SCENES, LANDSCAPE_SCENES, required_captures, verify_captures, verify_download_location
 from workspace_navigation_contract_v4 import conversation_header
@@ -256,9 +256,15 @@ def capture(variant,width,height,scale,scene,theme='light'):
         heights=[int(re.findall(r'\d+',n.attrib['bounds'])[3])-int(re.findall(r'\d+',n.attrib['bounds'])[1]) for n in choices]
         assert max(heights)>=144,(variant,scene,'Entry touch area below 48 dp',heights)
     stem=f'{variant}-'+('dark-' if theme=='dark' else '')+f'{width}x{height}-font{scale:g}-{scene}'
+    hold=None
+    if (width,height)==(320,740):
+        # Activity launches can legitimately reset a device's user rotation.
+        # Challenge the actual destination while it is in front and reacquire its UI.
+        request_rotation(adb,1)
+        hold=observe_orientation(adb,package,1)
+        xml=dump()
     (shots/(stem+'.xml')).write_text(xml)
     raw=subprocess.check_output([args.adb,'-s',args.serial,'exec-out','screencap','-p'],timeout=30)
-    hold=observe_orientation(adb,package,1) if (width,height)==(320,740) else None
     pixels=struct.unpack('>II',raw[16:24]);assert pixels==(width*3,height*3) or (hold and pixels==(height*3,width*3)),(variant,scene,'Unexpected actual viewport',pixels)
     density=int(re.findall(r'density: (\d+)',adb('shell','wm','density'))[-1]);assert density==480,density
     (shots/(stem+'.png')).write_bytes(raw)
@@ -316,6 +322,7 @@ try:
         for width,height in [(360,640),(412,640)]:
             for scene in scenes:capture(variant,width,height,1,scene)
         for scene in LARGE_SCENES:capture(variant,360,640,2,scene)
+        adb('shell','wm','size','960x2220');adb('shell','wm','density','480');adb('shell','settings','put','system','font_scale','1')
         with rotation_challenge(adb,package) as rotated_device:
             for scene in LANDSCAPE_SCENES:capture(variant,320,740,1,scene)
     adb('shell','cmd','uimode','night','yes')

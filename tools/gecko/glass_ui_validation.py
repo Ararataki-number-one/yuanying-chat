@@ -445,7 +445,7 @@ def loading_actions_geometry(xml, api, system_bar_frames=(), *, portrait=False, 
 
 def capture_portrait_rotation(args, report, capture, adb, wait_for, screenshot, api):
     """Request landscape on the phone and observe the production loading page in portrait."""
-    from portrait_orientation import rotation_challenge, observe, verify_observation
+    from portrait_orientation import rotation_challenge, observe, request, verify_observation
 
     identity = report['buildIdentity']
     package = api['PACKAGE']
@@ -478,6 +478,10 @@ def capture_portrait_rotation(args, report, capture, adb, wait_for, screenshot, 
                         and n.get('class')=='android.widget.Button' and n.get('enabled')=='true'}
                 return {'检查网络','重新加载'} <= labels
             wait_for(capture,loading_handoff,stem+'-handoff',seconds=30)
+            # Android can restore the prior user rotation during a task handoff.
+            # Challenge the actual foreground app again and require the setting
+            # and portrait window geometry in the same observation.
+            request(shell,1)
             observed = result['portraitActivity'] = observe(shell, package, 1)
             verify_observation(observed,1,package=package)
             if observed['component'] != package+'/local.pocketchat.MainActivity':

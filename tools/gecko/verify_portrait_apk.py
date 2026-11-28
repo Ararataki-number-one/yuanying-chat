@@ -82,16 +82,18 @@ def run(apk,role,aapt2):
     version = int(re.search(r"versionCode='(\d+)'",info)[1])
     checked(version>=122,"This contract applies to the portrait-only release line.")
     package = re.search(r"name='([^']+)'",info)[1]
-    checked(package == ("local.pocketchat.test" if role=="integration" else "local.pocketchat"),package)
-    module = "chromium" if role=="chromium" else "app"
+    test_package=role in ("integration","integration-chromium")
+    feature=role in ("chromium","integration-chromium")
+    checked(package == ("local.pocketchat.test" if test_package else "local.pocketchat"),package)
+    module = "chromium" if feature else "app"
     declared = ET.parse(ROOT/module/"src/main/AndroidManifest.xml")
     expected = {a.get(NS+"name") for a in declared.findall("application/activity")
                 if a.get(NS+"name","").startswith("local.pocketchat.")}
     records=activity_records(dump(aapt2,"xmltree","--file","AndroidManifest.xml",apk))
     names={r["name"] for r in records}
     checked(len(names)==len(records) and expected<=names,"Missing or duplicate activity in built APK")
-    if role!="integration":
-        checked(names==(expected if role=="chromium" else expected|{SDK_DIALOG}),"Unexpected release activities: "+str(names-expected))
+    if not test_package or feature:
+        checked(names==(expected if feature else expected|{SDK_DIALOG}),"Unexpected activities: "+str(names-expected))
     for record in records:
         if record["name"] in expected:
             checked(record["tag"]=="activity" and int(record.get("screenOrientation","-1"),0)==1,
@@ -114,7 +116,7 @@ def run(apk,role,aapt2):
 if __name__=="__main__":
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument("apk",type=Path)
-    parser.add_argument("--role",choices=("base","chromium","integration"),required=True)
+    parser.add_argument("--role",choices=("base","chromium","integration","integration-chromium"),required=True)
     parser.add_argument("--aapt2",type=Path,required=True)
     parser.add_argument("--output",type=Path)
     args=parser.parse_args()

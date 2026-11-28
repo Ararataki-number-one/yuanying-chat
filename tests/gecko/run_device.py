@@ -7,7 +7,7 @@ import xml.etree.ElementTree as ET
 ROOT=pathlib.Path(__file__).resolve().parents[2]
 OUT=ROOT/'work/gecko-integration'
 sys.path.insert(0,str(ROOT/'tools/gecko'))
-from portrait_orientation import rotation_challenge, request as request_rotation, observe as observe_orientation
+from portrait_orientation import rotation_challenge, request as request_rotation, observe as observe_orientation, wm_command, previous_mode
 from check_interaction_transfer_evidence import verify_paint_case, verify_saved_file_deletion
 from integration_event_contract import EventTransfer, ReceiptJournalDiscovery, parse_receipt_line, read_with_sequence_failure_diagnostics
 from profile_invocation_contract import expected_build, verify_installed
@@ -351,6 +351,8 @@ def main():
         # already visible browser. Keep the first-boot workaround elsewhere.
         if has_pixel_launcher and action not in {'reading','readingZoom','readingInput','readingBounds','readingBoundsProtected','readingBoundsGeometry','readingBoundsInput','readingBoundsEnd','nativeSurface','nativeCheckpoint'}:adb('shell','am','force-stop',launcher)
         adb('shell','am','start','-W','-n',package+'/local.pocketchat.'+activity,'--es','fixtureAction',action,'--es','eventNonce',nonce,*((('--ez','readingZoomTrace','true') if getattr(args,'reading_zoom_trace',False) is True and action in {'readingBounds','readingBoundsProtected'} else ())),*extra)
+        if action=='readingBoundsGeometry':
+            request_rotation(adb,1 if extra[-1]=='device-90' else 0)
         deadline=time.monotonic()+120
         while time.monotonic()<deadline:
             output=adb('logcat','-d','-s','PocketGeckoIntegration:I','*:S')
@@ -598,6 +600,7 @@ def main():
         assert cookies==({'probe':expected,'nativeOnly':expected} if populated else {}),result
     report={'actualAndroidExecution':True,'releaseMode':True,'diagnosticOnly':bool(diagnostic),'validationScope':f'Diagnostic {diagnostic} subset; cannot replace full acceptance' if diagnostic else 'Full device acceptance','androidSdk':sdk,'androidAbi':adb('shell','getprop','ro.product.cpu.abi').strip(),'viewport':'1080x2400 / 420 dpi','sourceCommit':subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip(),'googleLogin':'not-tested','internalMihomoRoute':'reuses production API; no live subscription provided'}
     def reading_checks():
+        adb('shell','wm','size','1080x2400')
         with rotation_challenge(adb,package) as calibration:pass
         reading=[]
         for size in ['945x2100','1024x2240','1128x2400','1200x1920']:
@@ -632,6 +635,8 @@ def main():
             (OUT/f'reading-fit-privacy-{level}.png').write_bytes(subprocess.check_output([args.adb,'-s',args.serial,'exec-out','screencap','-p'],timeout=30))
         report['nativeReadingBounds']=dict(schema=2,cases=cases,rotationCalibration=calibration)
         prior_accelerometer=adb('shell','settings','get','system','accelerometer_rotation').strip();prior_rotation=adb('shell','settings','get','system','user_rotation').strip()
+        wm_rotation=wm_command(adb)
+        prior_wm=previous_mode({'accelerometer_rotation':prior_accelerometer,'user_rotation':prior_rotation})
         try:
             adb('shell','settings','put','system','accelerometer_rotation','0')
             geometry=[]
@@ -653,6 +658,7 @@ def main():
             report['nativeReadingBounds']['productionDelegateRestored']=True
             report['nativeReadingBounds']['privacyRestored']=True
         finally:
+            adb('shell','wm',wm_rotation,*prior_wm)
             for key,value in [('user_rotation',prior_rotation),('accelerometer_rotation',prior_accelerometer)]:
                 if value=='null':adb('shell','settings','delete','system',key)
                 else:adb('shell','settings','put','system',key,value)

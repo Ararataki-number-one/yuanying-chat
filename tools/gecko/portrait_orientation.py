@@ -68,9 +68,20 @@ def verify_challenge(receipt, package=TEST_PACKAGE):
     verify_observation(receipt['controlLandscape'],1,control=True,package=package)
 
 
+def wm_command(adb):
+    help_text=adb('shell','wm help 2>&1 || :')
+    commands=re.findall(r'^\s+(user-rotation|set-user-rotation)\s+\[',help_text,re.M)
+    if len(commands)!=1:raise ValueError('Ambiguous Android window rotation command')
+    return commands[0]
+
+
+def previous_mode(settings):
+    rotation=settings['user_rotation']
+    return ('lock', rotation if rotation in ('0','1','2','3') else '0') if settings['accelerometer_rotation']=='0' else ('free',)
+
+
 def request(adb, value):
-    adb('shell','settings','put','system','accelerometer_rotation','0')
-    adb('shell','settings','put','system','user_rotation',str(value))
+    adb('shell','wm',wm_command(adb),'lock',str(value))
 
 
 @contextmanager
@@ -78,9 +89,11 @@ def rotation_challenge(adb, package=TEST_PACKAGE):
     if package != TEST_PACKAGE:
         raise ValueError('Rotation calibration requires the disposable integration package.')
     saved={k:adb('shell','settings','get','system',k).strip() for k in ('user_rotation','accelerometer_rotation')}
+    command=wm_command(adb)
+    previous_wm=previous_mode(saved)
     try:
-        request(adb,0)
         adb('shell','am','start','-W','-n',package+'/'+CONTROL)
+        request(adb,0)
         upright=observe(adb,package,0,control=True)
         request(adb,1)
         sideways=observe(adb,package,1,control=True)
@@ -88,6 +101,7 @@ def rotation_challenge(adb, package=TEST_PACKAGE):
         verify_challenge(result,package)
         yield result
     finally:
+        adb('shell','wm',command,*previous_wm)
         for key,value in saved.items():
             if value=='null':adb('shell','settings','delete','system',key)
             else:adb('shell','settings','put','system',key,value)

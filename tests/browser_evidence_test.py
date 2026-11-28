@@ -41,4 +41,54 @@ class BrowserEvidenceTests(unittest.TestCase):
                 value=self.document();change(value)
                 with self.assertRaises(ValueError):self.validate(value)
 
+class PortraitEvidenceTests(unittest.TestCase):
+    """Synthetic rejection cases; only the Android jobs supply execution evidence."""
+    @staticmethod
+    def reading(control, rotation):
+        landscape=bool(control and rotation==1)
+        w,h=(1920,1080) if landscape else (1080,1920)
+        cls='RotationControlActivity' if control else 'BrowserIntegrationActivity'
+        return dict(component='local.pocketchat.test/local.pocketchat.'+cls,
+                    orientation='landscape' if landscape else 'portrait',bounds=[0,0,w,h],
+                    accelerometerRotation='0',userRotation=str(rotation),
+                    activityConfig='mCurrentConfig={ '+('land' if landscape else 'port')+
+                                   f' winConfig={{ mBounds=Rect(0, 0 - {w}, {h}) }} }}')
+
+    def current(self):
+        row=BrowserEvidenceTests().current_document()
+        for entry in row['result']['checks']:
+            if entry['name']=='Large-font landscape keeps address and navigation targets visible':
+                entry['name']='Large-font locked portrait keeps address and navigation targets visible while the device requests landscape'
+            if entry['name']=='Large-font orientation changes preserve the live website draft and document':
+                entry['name']='Device rotation requests preserve the portrait website draft and document'
+        row['rotationCalibration']=dict(controlPortrait=self.reading(True,0),controlLandscape=self.reading(True,1))
+        actions=[a for a in row['trustedAndroidActions'] if a['kind']=='rotation']
+        for a in actions:a['systemUserRotation']=str(a['value'])
+        for n,layout in enumerate(row['result']['layoutObservations']):
+            layout.update(orientation=1,rootWidth=1080,rootHeight=1920,deviceUserRotation=1-n,
+                          component=self.reading(False,1)['component'])
+        row['sourceFiles']['tools/gecko/portrait_orientation.py']=hashlib.sha256(b'controlled source').hexdigest()
+        return row
+
+    def test_calibration_and_portrait_gate_are_independent(self):
+        check=lambda row:gate.validate_behavior(row,'a'*40,lambda source,path:b'controlled source',portrait_only=True)
+        self.assertEqual(check(self.current())['status'],'passed')
+        changes=[
+            lambda v:v.pop('rotationCalibration'),
+            lambda v:v['rotationCalibration'].update(controlLandscape=self.reading(True,0)),
+            lambda v:v['rotationCalibration']['controlLandscape'].update(component=self.reading(False,1)['component']),
+            lambda v:v['rotationCalibration']['controlLandscape'].update(bounds=[0,0,1080,1920]),
+            lambda v:v['rotationCalibration']['controlLandscape'].update(activityConfig=self.reading(True,0)['activityConfig']),
+            lambda v:v['result']['layoutObservations'][0].update(orientation=2),
+            lambda v:v['result']['layoutObservations'][0].update(rootWidth=1920,rootHeight=1080),
+            lambda v:v['result']['layoutObservations'][0].update(deviceUserRotation=0),
+            lambda v:v['result']['layoutObservations'][0].update(component=self.reading(True,0)['component']),
+            lambda v:v['sourceFiles'].pop('tools/gecko/portrait_orientation.py'),
+            lambda v:next(a for a in v['trustedAndroidActions'] if a['kind']=='rotation').update(systemUserRotation='0'),
+        ]
+        for change in changes:
+            doc=self.current();change(doc)
+            with self.subTest(change=change),self.assertRaises(ValueError):check(doc)
+        with self.assertRaises(ValueError):check(BrowserEvidenceTests().current_document())
+
 if __name__=='__main__':unittest.main(verbosity=2)

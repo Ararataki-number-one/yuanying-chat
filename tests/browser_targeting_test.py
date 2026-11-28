@@ -651,6 +651,10 @@ public final class ActualStartupReadyHost {
                            'content://local.pocketchat.test.browser-evidence/result']:
                 report_reads += 1
                 output = json.dumps(latest if latest is not None and report_reads > 1 else current).encode()
+            elif parts==['shell','wm help 2>&1 || :']:
+                output=b'  user-rotation [-d DISPLAY_ID] [free|lock] [rotation]\n'
+            elif parts[:3]==['shell','wm','user-rotation']:
+                pass
             elif parts == ['shell', 'dumpsys', 'activity', 'activities']:
                 output = resumed.encode()
             elif parts == ['shell', 'dumpsys', '-t', '1', 'window', 'windows']:
@@ -690,7 +694,10 @@ public final class ActualStartupReadyHost {
         stdout = io.StringIO()
         with tempfile.TemporaryDirectory(prefix='browser-targeting-host-') as temporary:
             output = Path(temporary)
-            with patch.object(controller.subprocess, 'check_output', side_effect=checked_source), \
+            # These tests model trusted tap delivery; calibrated rotation has its own device and rejection tests.
+            from contextlib import nullcontext
+            with patch.object(controller, 'rotation_challenge', return_value=nullcontext({})), \
+                    patch.object(controller.subprocess, 'check_output', side_effect=checked_source), \
                     patch.object(controller.subprocess, 'run', side_effect=device_boundary), \
                     patch.object(controller, 'expected_build', return_value=identity), \
                     patch.object(controller, 'verify_installed', side_effect=self.assertEqual), \

@@ -199,14 +199,20 @@ def run(adb,binary,source,out,dump):
             assert not any(n.get('text')==text for n in tree(xml)),('retired action still visible',text)
         assert not any(re.search(r'\d+\s*秒后进入',n.get('text','')) for n in tree(xml)),('countdown still visible',name)
         assert dashboard(xml),('dashboard absent',name)
+        hold=None
+        if name.startswith('portrait-held'):
+            request_rotation(adb,1)
+            hold=observe_orientation(adb,PACKAGE,1)
+            xml=dump()
+            assert dashboard(xml)
+            if name.endswith('fingerprint'): assert 'User Agent' in xml
+            metadata.update(portraitHold=hold,rotationCalibration=calibration)
         raw=binary('exec-out','screencap','-p');assert raw.startswith(b'\x89PNG\r\n\x1a\n')
-        hold=observe_orientation(adb,PACKAGE,1) if name.startswith('portrait-held') else None
-        if hold:metadata.update(portraitHold=hold,rotationCalibration=calibration)
         pixels=struct.unpack('>II',raw[16:24]);assert pixels==(width*3,height*3) or (hold and pixels==(height*3,width*3)),(name,'actual screenshot viewport differs',pixels,[width*3,height*3])
         (directory/(name+'.xml')).write_text(xml);(directory/(name+'.png')).write_bytes(raw)
         records.append(dict(name=name,image='ui-visuals/environment-dashboard/'+name+'.png',xml='ui-visuals/environment-dashboard/'+name+'.xml',imageSha256=hashlib.sha256(raw).hexdigest(),actualPixelSize=list(pixels),**metadata))
     from contextlib import ExitStack
-    from portrait_orientation import rotation_challenge, observe as observe_orientation
+    from portrait_orientation import rotation_challenge, request as request_rotation, observe as observe_orientation
     rotations=ExitStack()
     try:
         for name,width,height,scale,night in [('light',360,640,1,False),('large-font',360,640,2,False),('portrait-held',320,740,1,False),('dark',360,640,1,True)]:

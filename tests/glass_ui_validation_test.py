@@ -643,6 +643,8 @@ class GlassLoadingActionsGeometryTest(unittest.TestCase):
              ' InsetsSource type=statusBars frame=[0,0][2676,72] visible=true\n'
              ' InsetsSource type=navigationBars frame=[0,5260][2676,5352] visible=true\n').encode()
         def adb(*parts,**options):
+            if parts[:1]==('shell',) and len(parts)==2 and 'wm help' in parts[1]:
+                return b'Window manager commands:\n  user-rotation [-d DISPLAY_ID] [free|lock] [rotation]\n'
             if parts==('shell','dumpsys','activity','activities'):
                 return ('topResumedActivity=ActivityRecord{token u0 '+main+' t72}').encode()
             if parts==('shell','dumpsys','window','displays'):return raw

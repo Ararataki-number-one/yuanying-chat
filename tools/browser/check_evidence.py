@@ -125,12 +125,12 @@ def verify_browser_evidence(directory,source,reader=source_bytes):
     report=json.loads(raw)
     device=json.loads((directory/'device-results.json').read_text());require(device.get('status')=='passed' and device.get('actualAndroidExecution') is True and device.get('sourceCommit')==source,'successful original Gecko acceptance required')
     expected=device['eventTransport']['buildIdentity'];require(expected.get('sourceCommit')==source,'reference build source differs')
-    result=validate_behavior(report,source,reader,portrait_only=int(expected['versionCode'])>=122)
+    version=expected.get('version','')
+    require(isinstance(version,str) and re.fullmatch(r'[0-9]+\.[0-9]+\.[0-9]+',version),'reference build version required')
+    result=validate_behavior(report,source,reader,portrait_only=tuple(map(int,version.split('.')))>=(2,1,20))
     verify_installed(report['expectedBuildIdentity'],expected);verify_installed(result['buildIdentity'],expected)
     sdk=expected.get('sdkBuildIdentity',{})
     checked=dict(sourceCommit=source,sourceTree=expected['sourceTree'],integrationApkSha256=expected['apkSha256'],runId=sdk['runId'],runAttempt=sdk['runAttempt'],reportSha256=hashlib.sha256(raw).hexdigest(),checkCount=len(result['checks']),actualAndroidExecution=True,actualAndroidWebViewExecution=True,provider=result['provider'],physicalPhoneAcceptance=False,scope='Same source, run-bound SDK and exact integration APK as original Gecko acceptance; controlled Android WebView browser workload, no public website or device-speed claim')
-    version=expected.get('version','')
-    require(isinstance(version,str) and re.fullmatch(r'[0-9]+\.[0-9]+\.[0-9]+',version),'reference build version required')
     if tuple(map(int,version.split('.'))) >= (2,1,7):
         require(all(layout.get('navigationContract')==4 for layout in result['layoutObservations']),'current APK requires v4 environment, windows and page tools evidence')
         checked['browserNavigationContract']=4
