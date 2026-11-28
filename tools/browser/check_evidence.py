@@ -8,7 +8,6 @@ import re
 import sys
 
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
-from gecko.ui_visual_contract import verify_challenge
 from gecko.profile_invocation_contract import verify_installed
 from gecko.sdk_identity_contract import source_bytes
 
@@ -51,6 +50,15 @@ def require(value,message):
     if not value:raise ValueError('Browser acceptance: '+message)
 
 
+def verify_portrait_calibration(report):
+    # Historical and CPU-only consumers import the browser module independently.
+    # Only the current browser rotation check requires calibrated UI evidence.
+    from gecko.ui_visual_contract import verify_challenge
+    try:verify_challenge(report['rotationCalibration'])
+    except (KeyError,AssertionError,TypeError,ValueError) as error:
+        raise ValueError('Invalid browser device rotation calibration') from error
+
+
 def validate_behavior(report,source,reader=source_bytes,*,portrait_only=False):
     require(report.get('status')=='passed' and report.get('sourceCommit')==source,'successful exact-source report required')
     require(report.get('executionInputsUnchanged') is True,'source inputs changed')
@@ -73,8 +81,7 @@ def validate_behavior(report,source,reader=source_bytes,*,portrait_only=False):
     layouts=result.get('layoutObservations',[])
     require(len(layouts)==2 and [v.get('orientation') for v in layouts]==([1,1] if portrait_only else [2,1]),'both measured native orientations required')
     if portrait_only:
-        try:verify_challenge(report['rotationCalibration'])
-        except (KeyError,AssertionError,TypeError,ValueError) as error:raise ValueError('Invalid browser device rotation calibration') from error
+        verify_portrait_calibration(report)
         require([a.get('systemUserRotation') for a in rotations]==['1','0'],'device settings must match both actual actions')
         require([v.get('deviceUserRotation') for v in layouts]==[1,0],'Activity must observe each device request')
         for v in layouts:

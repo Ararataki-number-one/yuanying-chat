@@ -318,9 +318,17 @@ class BrowserPublishGateTests(unittest.TestCase):
             execute(copies,dict(browser_release=True,roadmap_release=True,version_code=103,root=ROOT,stage=stage,shutil=shutil))
             script="""import pathlib,sys
 root=pathlib.Path.cwd();sys.path.insert(0,str(root));sys.path.insert(0,str(root/'tools'))
-from browser.check_evidence import verify_browser_evidence
+from browser.check_evidence import verify_browser_evidence,verify_portrait_calibration
 from tools.browser.check_evidence import verify_browser_evidence as workflow_verifier
 assert callable(verify_browser_evidence) and callable(workflow_verifier)
+def observation(rotation):
+    w,h=(200,100) if rotation else (100,200)
+    flag='land' if rotation else 'port'
+    return {'component':'local.pocketchat.test/local.pocketchat.RotationControlActivity',
+            'orientation':'landscape' if rotation else 'portrait','bounds':[0,0,w,h],
+            'userRotation':str(rotation),'accelerometerRotation':'0',
+            'activityConfig':f'mCurrentConfig={{ {flag} winConfig={{ mBounds=Rect(0, 0 - {w}, {h}) }} }}'}
+verify_portrait_calibration({'rotationCalibration':{'controlPortrait':observation(0),'controlLandscape':observation(1)}})
 print('STAGED_BROWSER_VERIFIERS_IMPORTED')
 """
             result=subprocess.run([sys.executable,'-I','-c',script],cwd=stage,text=True,capture_output=True,timeout=20)
