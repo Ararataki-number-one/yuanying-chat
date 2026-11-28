@@ -125,6 +125,43 @@ def click_editor_tab(xml,label):
         else:time.sleep(.2)
         xml=dump()
     raise TimeoutError(('Editor tab did not appear after horizontal scrolling',label,swipes,xml[-3000:]))
+def swipe_editor_viewport(xml):
+    root=ET.fromstring(xml)
+    parents={child:parent for parent in root.iter() for child in parent}
+    scroll=next((n for n in root.iter('node') if n.get('package')==package and n.get('class')=='android.widget.ScrollView' and n.get('scrollable')=='true'),None)
+    if scroll is None:return False
+    def bounds(node):return tuple(map(int,re.findall(r'\d+',node.get('bounds',''))))
+    left,top,right,bottom=bounds(scroll)
+    x=(left+right)//2
+    child=scroll
+    while child in parents:
+        parent=parents[child]
+        siblings=list(parent)
+        for overlay in siblings[siblings.index(child)+1:]:
+            rect=bounds(overlay)
+            if len(rect)==4 and rect[0]<=x<rect[2] and rect[1]<bottom<=rect[3]:
+                bottom=max(top,rect[1])
+        child=parent
+    distance=bottom-top
+    if distance<4:return False
+    adb('shell','input','swipe',str(x),str(top+distance*3//4),str(x),str(top+distance//4),'350')
+    return True
+def read_display_choices():
+    modes={}
+    heading=False
+    for attempt in range(6):
+        xml=dump()
+        nodes=[n for n in ET.fromstring(xml).iter('node') if n.get('package')==package]
+        heading|=any(n.get('text')=='网页显示' for n in nodes)
+        for node in nodes:
+            label=node.get('content-desc','').partition('，')[0]
+            if label in ('手机版网站','电脑版网站') and node.get('clickable')=='true' and node.get('enabled')=='true':
+                modes[label]=node.get('selected')=='true'
+        if heading and len(modes)==2:
+            assert sum(modes.values())==1,('Expected exactly one selected display mode',modes)
+            return xml
+        if attempt==5 or not swipe_editor_viewport(xml):break
+    raise AssertionError(('Display-mode section or actual choices missing',heading,modes))
 def checkpoint():
     partial={'status':'in_progress','actualAndroidExecution':True,'sourceCommit':source,'comparisonMode':'current-only','historicalUIRebuilt':False,'screenshots':records,'expectedCaptures':len(required_captures()),'scope':'Incomplete capture checkpoint for review; never release acceptance.'}
     (out/'ui-visual-results.json').write_text(json.dumps(partial,ensure_ascii=False,indent=2)+'\n')
@@ -179,19 +216,19 @@ def capture(variant,width,height,scale,scene,theme='light'):
         assert headings,(variant,scene,'Missing long environment editor heading')
         bounds=list(map(int,re.findall(r'\d+',headings[0].attrib['bounds'])))
         assert bounds[3]-bounds[1]<=130*3,(variant,scene,'Environment title crowds out the editor',bounds)
-        click_editor_tab(xml,'浏览器');time.sleep(2.5);xml=dump();assert '网页显示方式' in xml
+        click_editor_tab(xml,'浏览器');time.sleep(2.5);xml=read_display_choices()
     if scene=='preferences':
         tab_scrolls=click_editor_tab(xml,'使用偏好');time.sleep(.5)
         expected={'保存本机输入草稿','恢复网页滚动位置','仅在 Wi-Fi 下载文件','自动清理 30 天以上的无引用中间文件','自动检测外部网络响应'}
         seen=set();collected=[]
         for attempt in range(8):
             xml=dump();collected.append(xml)
-            seen.update(n.attrib.get('text','') for n in ET.fromstring(xml).iter('node') if n.attrib.get('class')=='android.widget.CheckBox')
+            seen.update(n.attrib.get('text','') for n in ET.fromstring(xml).iter('node')
+                        if n.get('package')==package and n.get('class')=='android.widget.Switch'
+                        and n.get('checkable')=='true' and n.get('enabled')=='true')
             assert not any(label in xml for label in ['自动同步可见历史会话','文件保存完成通知','网络中断提醒','后台等待回复','允许此环境的后台回复提醒','后台回复检测由应用设置']),(variant,scene,xml)
             if seen==expected:break
-            scroll=next(n for n in ET.fromstring(xml).iter('node') if n.attrib.get('class')=='android.widget.ScrollView')
-            left,top,right,bottom=map(int,re.findall(r'\d+',scroll.attrib['bounds']));x=(left+right)//2
-            adb('shell','input','swipe',str(x),str(top+(bottom-top)*4//5),str(x),str(top+(bottom-top)//5),'350')
+            if not swipe_editor_viewport(xml):break
         assert seen==expected,(variant,scene,'Preference controls missing or unexpected',sorted(seen))
         preference_check={'preferenceControls':sorted(seen),'removedNoticeControlsAbsent':True,'scrollFrames':len(collected),'tabScrolls':tab_scrolls}
     if scene=='chat' and UI_NAVIGATION_CONTRACT==4:

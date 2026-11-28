@@ -1020,7 +1020,6 @@ final class ReferenceUi {
       close.setBackground(new RippleDrawable(ColorStateList.valueOf(tone(0x14111827,0x24ffffff)),
           new InsetDrawable(disc,closeInset,closeInset,closeInset,closeInset),
           new InsetDrawable(new AdaptiveSurface(a,999,Color.WHITE,Color.WHITE),closeInset,closeInset,closeInset,closeInset)));
-      close.setTranslationX(closeInset);
       head.addView(close,new LinearLayout.LayoutParams(dp(a,48),dp(a,48)));
       root.addView(head);
       body=DesignUi.column(a);scroll=new ScrollView(a);scroll.setFillViewport(false);scroll.addView(body);

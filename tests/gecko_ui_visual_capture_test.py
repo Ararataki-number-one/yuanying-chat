@@ -111,6 +111,74 @@ class DownloadReadinessRunnerTest(unittest.TestCase):
         self.assertEqual(gestures, [])
 
 
+class BrowserDisplayChoicesCaptureTest(unittest.TestCase):
+    package = 'local.pocketchat.test'
+
+    def frame(self, *modes, heading=True, **overrides):
+        root = ET.Element('hierarchy')
+        scroll = ET.SubElement(root, 'node', {'class':'android.widget.ScrollView','scrollable':'true',
+                                              'package':self.package,'bounds':'[0,0][320,700]'})
+        if heading:
+            ET.SubElement(scroll,'node',{'text':'网页显示','package':self.package})
+        for label, selected in modes:
+            ET.SubElement(scroll,'node',dict({'content-desc':label+'，显示模式','package':self.package,
+                                             'clickable':'true','enabled':'true','selected':selected}, **overrides))
+        return ET.tostring(root, encoding='unicode')
+
+    def observe(self, frames):
+        tree = runner_functions('swipe_editor_viewport','read_display_choices')
+        reads = []
+        def dump():
+            frame=frames[min(len(reads), len(frames)-1)]
+            reads.append(frame)
+            return frame
+        swipes=[]
+        ns=dict(dump=dump,package=self.package,ET=ET,re=re,adb=lambda *args:swipes.append(args))
+        exec(compile(tree,str(RUNNER),'exec'),ns)
+        return ns['read_display_choices'](),swipes
+
+    def test_owned_display_options_observed_across_a_real_scroll_command(self):
+        last=self.frame(('电脑版网站','true'),heading=False)
+        xml,swipes=self.observe([self.frame(('手机版网站','false')),last])
+        self.assertEqual(xml,last)
+        self.assertEqual(swipes,[('shell','input','swipe','160','525','160','175','350')])
+
+    def test_wrong_owner_disabled_or_ambiguous_selection_is_rejected(self):
+        for options in ({'package':'other.app'},{'enabled':'false'},{'clickable':'false'},
+                        {'class':'android.widget.TextView','text':'电脑版网站','content-desc':''}):
+            bad=self.frame(('电脑版网站','true'),**options)
+            with self.subTest(options=options), self.assertRaises(AssertionError):
+                self.observe([self.frame(('手机版网站','false')),bad])
+        for selected in ('true','false'):
+            with self.subTest(selected=selected), self.assertRaisesRegex(AssertionError,'exactly one selected'):
+                self.observe([self.frame(('手机版网站',selected),('电脑版网站',selected))])
+
+    def test_editor_gesture_stays_above_later_overlapping_footer(self):
+        # At 2x the old y=1556 fell in the editor action bar, which consumes the touch.
+        def sample(footer, before=False, scroll_owner=None):
+            root=ET.Element('hierarchy')
+            panel=ET.SubElement(root,'node',{'package':self.package,'bounds':'[0,0][1080,1848]'})
+            overlay={'package':self.package,'class':'android.widget.LinearLayout','bounds':footer}
+            if before: ET.SubElement(panel,'node',overlay)
+            body=ET.SubElement(panel,'node',{'package':self.package,'bounds':'[0,680][1080,1848]'})
+            ET.SubElement(body,'node',{'package':scroll_owner or self.package,'class':'android.widget.ScrollView',
+                                      'scrollable':'true','bounds':'[0,680][1080,1848]'})
+            if not before: ET.SubElement(panel,'node',overlay)
+            calls=[]
+            ns=dict(package=self.package,ET=ET,re=re,adb=lambda *args:calls.append(args))
+            exec(compile(runner_functions('swipe_editor_viewport'),str(RUNNER),'exec'),ns)
+            result=ns['swipe_editor_viewport'](ET.tostring(root,encoding='unicode'))
+            return result,calls
+        clipped=('shell','input','swipe','540','1239','540','866','350')
+        original=('shell','input','swipe','540','1556','540','972','350')
+        self.assertEqual(sample('[0,1426][1080,1848]'),(True,[clipped]))
+        self.assertEqual(sample('[0,681][1080,1848]'),(False,[]))
+        self.assertEqual(sample('[0,600][1080,1848]'),(False,[]))
+        self.assertEqual(sample('[0,1426][1080,1848]',scroll_owner='other.app'),(False,[]))
+        self.assertEqual(sample('[0,1426][480,1848]'),(True,[original]))
+        self.assertEqual(sample('[0,1426][1080,1848]',before=True),(True,[original]))
+
+
 class EnvironmentPreferencesCaptureTest(unittest.TestCase):
     labels = ('保存本机输入草稿', '恢复网页滚动位置', '仅在 Wi-Fi 下载文件',
               '自动清理 30 天以上的无引用中间文件', '自动检测外部网络响应')
@@ -124,15 +192,20 @@ class EnvironmentPreferencesCaptureTest(unittest.TestCase):
         def dump():
             controls, note = frames[min(len(reads), len(frames) - 1)]
             root = ET.Element('hierarchy')
-            scroll = ET.SubElement(root, 'node', {'class':'android.widget.ScrollView', 'bounds':'[0,0][900,1600]'})
-            for label in controls:
-                ET.SubElement(scroll, 'node', {'class':'android.widget.CheckBox', 'text':label})
+            scroll = ET.SubElement(root, 'node', {'class':'android.widget.ScrollView','package':'local.pocketchat.test',
+                                                 'scrollable':'true','bounds':'[0,0][900,1600]'})
+            for control in controls:
+                label, overrides = control if isinstance(control, tuple) else (control, {})
+                attributes = {'package':'local.pocketchat.test', 'class':'android.widget.Switch',
+                              'checkable':'true', 'enabled':'true', 'text':label}
+                ET.SubElement(scroll, 'node', dict(attributes, **overrides))
             ET.SubElement(scroll, 'node', {'class':'android.widget.TextView', 'text':note})
             reads.append(1)
             return ET.tostring(root, encoding='unicode')
         reads = []
-        namespace = dict(scene='preferences', variant='fixture', xml='', time=ModelClock(),
+        namespace = dict(scene='preferences', variant='fixture', package='local.pocketchat.test', xml='', time=ModelClock(),
                          click_editor_tab=lambda *args: 0, dump=dump, ET=ET, re=re, adb=lambda *args: None)
+        exec(compile(runner_functions('swipe_editor_viewport'),str(RUNNER),'exec'),namespace)
         exec(compile(ast.Module(body=branches, type_ignores=[]), str(RUNNER), 'exec'), namespace)
         return namespace['preference_check']
 
@@ -141,6 +214,13 @@ class EnvironmentPreferencesCaptureTest(unittest.TestCase):
         self.assertEqual(result['preferenceControls'], sorted(self.labels))
         self.assertEqual(result['scrollFrames'], 2)
         self.assertTrue(result['removedNoticeControlsAbsent'])
+
+    def test_only_owned_enabled_checkable_switches_count(self):
+        for wrong in ({'package':'other.app'}, {'class':'android.widget.CheckBox'},
+                      {'checkable':'false'}, {'enabled':'false'}):
+            controls = [*self.labels[:-1], (self.labels[-1], wrong)]
+            with self.subTest(wrong=wrong), self.assertRaisesRegex(AssertionError, 'Preference controls missing'):
+                self.observe([(controls, '')])
 
     def test_missing_controls_and_retired_reply_setting_or_explanation_fail(self):
         for frame in ((self.labels[:-1], ''), (self.labels + ('允许此环境的后台回复提醒',), ''),
