@@ -8,6 +8,7 @@ import re
 import sys
 
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
+from gecko.portrait_orientation import verify_challenge
 from gecko.profile_invocation_contract import verify_installed
 from gecko.sdk_identity_contract import source_bytes
 
@@ -50,7 +51,7 @@ def require(value,message):
     if not value:raise ValueError('Browser acceptance: '+message)
 
 
-def validate_behavior(report,source,reader=source_bytes):
+def validate_behavior(report,source,reader=source_bytes,*,portrait_only=False):
     require(report.get('status')=='passed' and report.get('sourceCommit')==source,'successful exact-source report required')
     require(report.get('executionInputsUnchanged') is True,'source inputs changed')
     require(report.get('actualAndroidExecution') is True and report.get('actualAndroidWebViewExecution') is True,'actual Android WebView execution required')
@@ -61,14 +62,24 @@ def validate_behavior(report,source,reader=source_bytes):
     require(all(result.get(k) is False for k in ['actualGeckoExecution','actualPublicWebsiteExecution','actualDevicePerformanceMeasurement']),'fixture execution scopes differ')
     provider=result.get('provider',{});require(isinstance(provider,dict) and provider.get('package') and provider.get('version'),'actual provider identity required')
     checks=result.get('checks');require(isinstance(checks,list) and checks and result.get('passed')==result.get('total')==len(checks) and all(c.get('pass') is True for c in checks),'complete passing checks required')
-    names=[c.get('name') for c in checks];require(len(names)==len(set(names)) and all(name in names for name in REQUIRED),'required browser scenarios missing or duplicated')
+    changed={'Large-font landscape keeps address and navigation targets visible':'Large-font locked portrait keeps address and navigation targets visible while the device requests landscape', 'Large-font orientation changes preserve the live website draft and document':'Device rotation requests preserve the portrait website draft and document'} if portrait_only else {}
+    names=[c.get('name') for c in checks];require(len(names)==len(set(names)) and all(changed.get(name,name) in names for name in REQUIRED),'required browser scenarios missing or duplicated')
     actions=report.get('trustedAndroidActions',[]);taps=[a for a in actions if a.get('kind')=='tap'];backs=[a for a in actions if a.get('kind')=='back'];switches=[a for a in actions if a.get('kind')=='engine-roundtrip']
     require(report.get('actualAndroidTaps')==len(taps)==3 and {a.get('stage') for a in taps}=={'file-picker-1','file-picker-2','download-click'},'all three real browser taps required')
     require(len(backs)==2 and all(a.get('actualDocumentsUiObserved') is True for a in backs) and {a.get('stage') for a in backs}=={'file-picker-1','file-picker-2'},'both actual DocumentsUI cancellations required')
     require(len(switches)==1 and switches[0].get('actualEnhancedActivityResumed') is True,'actual engine activity roundtrip required')
     switch=switches[0];require(type(switch.get('browserTaskId')) is int and type(switch.get('enhancedTaskId')) is int and switch['browserTaskId']!=switch['enhancedTaskId'] and result.get('taskId')==switch['browserTaskId'],'independent task identity and browser return required')
-    rotations=[a for a in actions if a.get('kind')=='rotation'];require([(a.get('stage'),a.get('value')) for a in rotations]==[('rotate-landscape',1),('rotate-portrait',0)],'both actual Android orientation changes required')
-    layouts=result.get('layoutObservations',[]);require(len(layouts)==2 and [v.get('orientation') for v in layouts]==[2,1],'both measured native orientations required')
+    rotations=[a for a in actions if a.get('kind')=='rotation'];require([(a.get('stage'),a.get('value')) for a in rotations]==[('rotate-landscape',1),('rotate-portrait',0)],'both actual device rotation requests required')
+    layouts=result.get('layoutObservations',[])
+    require(len(layouts)==2 and [v.get('orientation') for v in layouts]==([1,1] if portrait_only else [2,1]),'both measured native orientations required')
+    if portrait_only:
+        try:verify_challenge(report['rotationCalibration'])
+        except (KeyError,AssertionError,TypeError,ValueError) as error:raise ValueError('Invalid browser device rotation calibration') from error
+        require([a.get('systemUserRotation') for a in rotations]==['1','0'],'device settings must match both actual actions')
+        require([v.get('deviceUserRotation') for v in layouts]==[1,0],'Activity must observe each device request')
+        for v in layouts:
+            require(v.get('component')=='local.pocketchat.test/local.pocketchat.BrowserIntegrationActivity' and v.get('rootHeight',0)>v.get('rootWidth',0)>0,'portrait browser window and current Activity required')
+        require('tools/gecko/portrait_orientation.py' in report.get('sourceFiles',{}),'missing calibrated rotation driver identity')
     versions=[layout.get('navigationContract',1) for layout in layouts]
     require(all(type(value) is int and value in (1,3,4) for value in versions) and len(set(versions))==1,'one recognized native browser layout contract required')
     for layout in layouts:
@@ -111,9 +122,10 @@ def validate_behavior(report,source,reader=source_bytes):
 
 def verify_browser_evidence(directory,source,reader=source_bytes):
     directory=Path(directory);raw=(directory/'browser-results.json').read_bytes();require(0<len(raw)<=2*1024*1024,'bounded browser result required')
-    report=json.loads(raw);result=validate_behavior(report,source,reader)
+    report=json.loads(raw)
     device=json.loads((directory/'device-results.json').read_text());require(device.get('status')=='passed' and device.get('actualAndroidExecution') is True and device.get('sourceCommit')==source,'successful original Gecko acceptance required')
     expected=device['eventTransport']['buildIdentity'];require(expected.get('sourceCommit')==source,'reference build source differs')
+    result=validate_behavior(report,source,reader,portrait_only=int(expected['versionCode'])>=122)
     verify_installed(report['expectedBuildIdentity'],expected);verify_installed(result['buildIdentity'],expected)
     sdk=expected.get('sdkBuildIdentity',{})
     checked=dict(sourceCommit=source,sourceTree=expected['sourceTree'],integrationApkSha256=expected['apkSha256'],runId=sdk['runId'],runAttempt=sdk['runAttempt'],reportSha256=hashlib.sha256(raw).hexdigest(),checkCount=len(result['checks']),actualAndroidExecution=True,actualAndroidWebViewExecution=True,provider=result['provider'],physicalPhoneAcceptance=False,scope='Same source, run-bound SDK and exact integration APK as original Gecko acceptance; controlled Android WebView browser workload, no public website or device-speed claim')

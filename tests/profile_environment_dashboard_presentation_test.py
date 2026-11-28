@@ -408,7 +408,8 @@ class CurrentBrowserEntryObservation(unittest.TestCase):
 
     def require_original_flow(self, current):
         previous=browser_v2_bytes('tests/gecko/run_environment_dashboard.py').decode()
-        restored=current
+        from portrait_dashboard_history import historical
+        restored=historical(current)
         for old_port,new_port in reversed(DASHBOARD_FIRST_PORTS):
             self.assertEqual(restored.count(new_port),1)
             restored=restored.replace(new_port,old_port,1)

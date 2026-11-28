@@ -778,9 +778,11 @@ public class GeckoIntegrationTestActivity extends Activity {
   }
   void readingBoundsGeometry(long serial,long deadline){
     if(serial!=run)return;session.web.evaluateJavascript(readingBoundsScript(),raw->{
-      if(serial!=run)return;JSONObject value=readingBoundsNative(J.parse(raw));NativeGeometry geometry=NativeGeometry.read((FixtureView)session.web);String requested=getIntent().getStringExtra("geometryPhase");boolean landscape="landscape".equals(requested);
-      if(readingBoundsFitResult!=null&&geometry!=null&&!geometry.imeVisible&&geometry.normalBarsReady()&&readingFits(value)&&readingIdentity(readingBoundsFitResult,value)&&landscape==(geometry.webWidth>geometry.webHeight)){event(serial,"readingBoundsGeometry",J.obj("phase",requested,"measurement",value,"geometry",geometry.json()));return;}
-      if(SystemClock.elapsedRealtime()>deadline){event(serial,"error",J.obj("error","reading fit did not survive actual Android rotation","phase",requested,"measurement",value));return;}session.handler.postDelayed(()->readingBoundsGeometry(serial,deadline),100);
+      if(serial!=run)return;JSONObject value=readingBoundsNative(J.parse(raw));NativeGeometry geometry=NativeGeometry.read((FixtureView)session.web);String requested=getIntent().getStringExtra("geometryPhase");int expected="device-90".equals(requested)?1:"device-0".equals(requested)?0:-1;
+      int observed=android.provider.Settings.System.getInt(getContentResolver(),android.provider.Settings.System.USER_ROTATION,-1);
+      android.view.View decor=getWindow().getDecorView();int orientation=getResources().getConfiguration().orientation;
+      if(readingBoundsFitResult!=null&&geometry!=null&&!geometry.imeVisible&&geometry.normalBarsReady()&&readingFits(value)&&readingIdentity(readingBoundsFitResult,value)&&expected>=0&&observed==expected&&orientation==android.content.res.Configuration.ORIENTATION_PORTRAIT&&decor.getHeight()>decor.getWidth()&&geometry.webHeight>geometry.webWidth){event(serial,"readingBoundsGeometry",J.obj("phase",requested,"deviceUserRotation",observed,"activityOrientation",orientation,"activityWidth",decor.getWidth(),"activityHeight",decor.getHeight(),"measurement",value,"geometry",geometry.json()));return;}
+      if(SystemClock.elapsedRealtime()>deadline){event(serial,"error",J.obj("error","reading geometry did not remain portrait after the Android rotation request","phase",requested,"measurement",value));return;}session.handler.postDelayed(()->readingBoundsGeometry(serial,deadline),100);
     });
   }
   void readingBoundsTap(long serial){

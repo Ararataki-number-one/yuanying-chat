@@ -34,6 +34,9 @@ CONFIGURATIONS = (
     ('enlarged-dark', 412, 892, 1.3, 'yes'),
     ('safearea-light', 412, 892, 1.0, 'no'),
 )
+# Versions through 2.1.19 also supported a landscape app layout. Keep its original
+# oracle for historical runs; v2 observes an unlocked control and a locked app.
+PORTRAIT_CONFIGURATIONS = tuple(row for row in CONFIGURATIONS if row[1] < row[2])
 
 SAFE_AREA_OVERLAYS = ('com.android.internal.display.cutout.emulation.tall',
                       'com.android.internal.systemui.navbar.threebutton')
@@ -357,7 +360,7 @@ def system_bar_sources(raw):
     return sources
 
 
-def loading_actions_geometry(xml, api, system_bar_frames=()):
+def loading_actions_geometry(xml, api, system_bar_frames=(), *, portrait=False, content_bounds=None):
     """Check native loading actions and their visible ancestor/chrome bounds.
 
     Accessibility preserves the complete labels and exposes touch rectangles;
@@ -408,7 +411,8 @@ def loading_actions_geometry(xml, api, system_bar_frames=()):
         scrolls.append(scrolling)
     minimum_touch = (48 * api['DENSITY'] + 159) // 160
     same_row = abs(boxes[0][1] - boxes[1][1]) <= 1 and abs(boxes[0][3] - boxes[1][3]) <= 1
-    top_offset = None if capsule_box is None else (capsule_box[0] + capsule_box[2] - api['WIDTH']) / 2
+    content=content_bounds or (0,0,api['WIDTH'],api['HEIGHT'])
+    top_offset = None if capsule_box is None else (capsule_box[0] + capsule_box[2] - content[0] - content[2]) / 2
     nav_top = min(box[1] for box in navigation['bounds'].values()) if navigation is not None else None
     checks = dict(
         completeAccessibleLabels=all(control.get('text') == label for control, label in zip(controls, labels)),
@@ -422,6 +426,11 @@ def loading_actions_geometry(xml, api, system_bar_frames=()):
         belowTopCapsule=capsule_box is not None and all(box[1] >= capsule_box[3] for box in boxes),
         aboveDock=nav_top is not None and all(box[3] <= nav_top for box in boxes),
         systemBarsDoNotOverlap=all(not overlaps(box, bar) for box in boxes for bar in system_bar_frames))
+    if portrait:
+        del checks['sameHorizontalRow']
+        upper, lower = sorted(boxes, key=lambda box: box[1])
+        checks['portraitVerticalStack'] = (content[2]-content[0] < content[3]-content[1] and upper[3] <= lower[1]
+            and abs((upper[0] + upper[2]) - (lower[0] + lower[2])) <= 2)
     return dict(coordinateSpace='native XML screen pixels', screenWidthPx=api['WIDTH'],
         screenHeightPx=api['HEIGHT'], configuredDensityDpi=api['DENSITY'],
         minimumTouchTargetDp=48, minimumTouchTargetPx=minimum_touch,
@@ -432,6 +441,82 @@ def loading_actions_geometry(xml, api, system_bar_frames=()):
         topCapsuleCenterOffsetPx=top_offset, navigation=navigation,
         observedVisibleSystemBarFrames=[list(box) for box in system_bar_frames],
         glyphAppearanceVerified=False, checks=checks, valid=all(checks.values()))
+
+
+def capture_portrait_rotation(args, report, capture, adb, wait_for, screenshot, api):
+    """Request landscape on the phone and observe the production loading page in portrait."""
+    from portrait_orientation import rotation_challenge, observe, verify_observation
+
+    identity = report['buildIdentity']
+    package = api['PACKAGE']
+    stem = 'portrait-while-device-sideways'
+    result = report['portraitRotationUi'] = dict(schema=2, status='started',
+        sourceCommit=identity['sourceCommit'], sourceTree=identity['sourceTree'],
+        apkSha256=report['installedApk']['sha256'], runNonce=report['runNonce'],
+        helperSha256=api['sha'](__file__), actualAndroidExecution=True,
+        physicalPhoneAcceptance=False, testSignedIntegrationEvidence=True)
+
+    def shell(*parts):
+        return adb(*parts, timeout=12).decode('utf-8', 'strict').strip()
+
+    def save_raw(name, data):
+        path = args.out / (stem + '-' + name + '.txt')
+        path.write_bytes(data)
+        return dict(file=path.name, sha256=api['sha'](path))
+
+    previous = api['WIDTH'], api['HEIGHT'], api['DENSITY']
+    try:
+        api['set_display'](1236, 2676, 480)
+        adb('shell','am','force-stop',package)
+        adb('shell','wm','size','1236x2676')
+        adb('shell','wm','density','480')
+        with rotation_challenge(shell, package) as control:
+            result['unlockedControl'] = control
+            adb('shell','am','start','-W','--activity-clear-task','-n',api['COMPONENT'],'--es','visualAction','chat')
+            def loading_handoff(xml):
+                labels={n.get('text') for n in ET.fromstring(xml).iter('node') if n.get('package')==package
+                        and n.get('class')=='android.widget.Button' and n.get('enabled')=='true'}
+                return {'检查网络','重新加载'} <= labels
+            wait_for(capture,loading_handoff,stem+'-handoff',seconds=30)
+            observed = result['portraitActivity'] = observe(shell, package, 1)
+            verify_observation(observed,1,package=package)
+            if observed['component'] != package+'/local.pocketchat.MainActivity':
+                raise ValueError('The fixture must hand off to the real MainActivity')
+            activity = adb('shell','dumpsys','activity','activities')
+            result['activityDump'] = save_raw('activities',activity)
+            resumed = [line.strip() for line in activity.decode().splitlines()
+                       if 'mResumedActivity' in line or 'topResumedActivity' in line]
+            if not any(package + '/local.pocketchat.MainActivity' in line for line in resumed):
+                raise ValueError('The real production MainActivity must own the portrait loading page')
+            raw=adb('shell','dumpsys','window','displays')
+            result['windowDump'] = save_raw('window',raw)
+            viewport = result['actualDisplayViewport'] = api['window_display_viewport'](raw.decode('utf-8','strict'))
+            api['set_display'](viewport['widthPx'],viewport['heightPx'],viewport['densityDpi'])
+            xml = wait_for(capture, lambda value: api['capsule'](value) is not None
+                and all(api['button'](value,label) is not None for label in ('检查网络','重新加载')),stem,seconds=30)
+            tree = ET.fromstring(xml)
+            root = next((n for n in tree.iter('node') if n.get('package')==package),None)
+            box = api['bounds'](root)
+            if not box or box[2]-box[0] >= box[3]-box[1]:
+                raise ValueError('The actual production content root is not portrait')
+            result['contentBounds'] = list(box)
+            result['xml'] = dict(file=stem+'.xml',sha256=api['sha'](args.out/(stem+'.xml')))
+            screenshot(stem+'.png')
+            result['png'] = dict(file=stem+'.png',sha256=api['sha'](args.out/(stem+'.png')))
+            bars=system_bar_sources(raw.decode('utf-8','strict'))
+            frames=[s['bounds'] for group in bars.values() for s in group if s['visible']
+                    and s['bounds'][0]<s['bounds'][2] and s['bounds'][1]<s['bounds'][3]]
+            geometry=loading_actions_geometry(xml,api,frames,portrait=True,content_bounds=box)
+            result['loadingActions'] = geometry
+            if geometry is None or not geometry['valid']:
+                raise ValueError('The portrait loading actions must remain fully visible and vertically stacked')
+        result['status']='verified'
+    except Exception as error:
+        result.update(status='failed',errorType=type(error).__name__,error=str(error))
+    finally:
+        api['set_display'](*previous)
+        api['write'](args.out/'capture.json',report)
+    return result
 
 
 def capture_loading_landscape(args, report, capture, adb, wait_for, screenshot, api):
@@ -1269,13 +1354,22 @@ def capture_acceptance_suite(args, report, capture, adb, wait_for, tap, screensh
         for name in SAFE_AREA_OVERLAYS:
             if name not in previous_overlays:
                 raise ValueError('The disposable emulator lacks required safe-area overlay: ' + name)
-        loading = capture_loading_landscape(args, report, capture, adb, wait_for, screenshot, api)
-        if loading['status'] != 'verified':
-            result['errors'].append(dict(stage='required-landscape-loading',
-                error='The required actual unconfigured landscape loading observation failed',
-                reportKey='landscapeLoadingUi'))
+        if identity['versionCode'] >= 122:
+            configurations = PORTRAIT_CONFIGURATIONS
+            result.update(schema=2, orientationContract='portrait-only-v1')
+            rotation = capture_portrait_rotation(args, report, capture, adb, wait_for, screenshot, api)
+            if rotation['status'] != 'verified':
+                result['errors'].append(dict(stage='required-portrait-lock', error=rotation['error'],
+                    reportKey='portraitRotationUi'))
+        else:
+            configurations = CONFIGURATIONS
+            loading = capture_loading_landscape(args, report, capture, adb, wait_for, screenshot, api)
+            if loading['status'] != 'verified':
+                result['errors'].append(dict(stage='required-landscape-loading',
+                    error='The required actual unconfigured landscape loading observation failed',
+                    reportKey='landscapeLoadingUi'))
         with controlled_document(args, adb, result, sha):
-            for name, width, height, scale, night in CONFIGURATIONS:
+            for name, width, height, scale, night in configurations:
                 case = dict(name=name, runNonce=secrets.token_hex(16), status='started',
                     widthDp=width, heightDp=height, fontScale=scale, requestedNight=night,
                     observations={}, startedAtUnixNs=time.time_ns())
@@ -1355,7 +1449,7 @@ def capture_acceptance_suite(args, report, capture, adb, wait_for, tap, screensh
                     case['events'] = observations[case['runNonce']].records if case['runNonce'] in observations else []
                     case['completedAtUnixNs'] = time.time_ns()
                     save()
-        result['status'] = 'verified' if len(result['cases']) == len(CONFIGURATIONS) and not result['errors'] else 'failed'
+        result['status'] = 'verified' if len(result['cases']) == len(configurations) and not result['errors'] else 'failed'
     except Exception as error:
         result['status'] = 'failed'
         result['errors'].append(dict(stage='suite-setup-or-server', errorType=type(error).__name__, error=str(error)))

@@ -619,6 +619,52 @@ class GlassLoadingActionsGeometryTest(unittest.TestCase):
         self.invalid(self.xml(actions=[('检查网络', (1038, 480, 1638, 648)),
                                        ('重新加载', (1038, 672, 1638, 840))]))
 
+    def test_portrait_requires_an_actual_tall_viewport_and_a_full_native_stack(self):
+        stacked=self.xml(actions=[('检查网络', (1038, 480, 1638, 648)),
+                                  ('重新加载', (1100, 672, 1576, 840))])
+        self.assertFalse(validation.loading_actions_geometry(stacked,capture.__dict__,portrait=True)['valid'])
+        capture.set_display(2676,5352,480)
+        stacked=self.xml(actions=[('检查网络', (1038, 480, 1638, 648)),
+                                  ('重新加载', (1100, 672, 1576, 840))])
+        self.assertTrue(validation.loading_actions_geometry(stacked,capture.__dict__,portrait=True)['valid'])
+        self.assertFalse(validation.loading_actions_geometry(self.xml(),capture.__dict__,portrait=True)['valid'])
+        clipped=self.xml(scroll=(84,300,2592,790),actions=[('检查网络',(1038,480,1638,648)),
+                                                         ('重新加载',(1100,672,1576,840))])
+        self.assertFalse(validation.loading_actions_geometry(clipped,capture.__dict__,portrait=True)['valid'])
+
+    def test_sideways_control_handoff_accepts_only_resumed_production_activity(self):
+        from contextlib import nullcontext
+        import portrait_orientation
+        capture.set_display(2676,5352,480)
+        xml=self.xml(actions=[('检查网络',(1038,480,1638,648)),('重新加载',(1100,672,1576,840))])
+        pkg=capture.PACKAGE
+        main=pkg+'/local.pocketchat.MainActivity'
+        raw=(f'Display: mDisplayId=0\n  init=1236x2676 480dpi base=2676x5352 480dpi cur=2676x5352\n'
+             ' InsetsSource type=statusBars frame=[0,0][2676,72] visible=true\n'
+             ' InsetsSource type=navigationBars frame=[0,5260][2676,5352] visible=true\n').encode()
+        def adb(*parts,**options):
+            if parts==('shell','dumpsys','activity','activities'):
+                return ('topResumedActivity=ActivityRecord{token u0 '+main+' t72}').encode()
+            if parts==('shell','dumpsys','window','displays'):return raw
+            return b''
+        with tempfile.TemporaryDirectory() as folder:
+            out=Path(folder)
+            def wait(capture_reader,predicate,stem,seconds):
+                self.assertTrue(predicate(xml));(out/(stem+'.xml')).write_text(xml);return xml
+            for owner,expected in [(main,'verified'),(pkg+'/local.pocketchat.UiVisualIntegrationActivity','failed')]:
+                observed=dict(component=owner,orientation='portrait',userRotation='1',accelerometerRotation='0',
+                              bounds=[0,0,2676,5352],activityConfig='mCurrentConfig={ port mBounds=Rect(0, 0 - 2676, 5352) }')
+                report=dict(buildIdentity=dict(sourceCommit='source',sourceTree='tree'),installedApk={'sha256':'apk'},runNonce='run')
+                with self.subTest(owner=owner), patch.object(portrait_orientation,'rotation_challenge',return_value=nullcontext({'controlLandscape':'fixture'})), patch.object(portrait_orientation,'observe',return_value=observed):
+                    result=validation.capture_portrait_rotation(SimpleNamespace(out=out),report,None,adb,wait,
+                        lambda name:(out/name).write_bytes(b'model screenshot'),capture.__dict__)
+                    self.assertEqual(result['status'],expected,result)
+                    if expected=='verified':
+                        self.assertTrue(result['loadingActions']['checks']['portraitVerticalStack'])
+                        self.assertTrue((out/result['png']['file']).is_file())
+                    else:
+                        self.assertIn('real MainActivity',result['error'])
+
     def test_valid_navigation_cannot_cover_loading_actions(self):
         nav = [(left, top - 204, right, bottom - 204) for left, top, right, bottom in self.nav]
         self.assertTrue(capture.navigation_geometry(self.xml(nav=nav))['valid'])
@@ -710,6 +756,11 @@ class GlassFrameObservationTest(unittest.TestCase):
 
 
 class GlassCaptureCoverageTest(unittest.TestCase):
+    def test_portrait_contract_keeps_every_supported_upright_configuration(self):
+        self.assertEqual({c[0] for c in validation.PORTRAIT_CONFIGURATIONS},
+                         {'default-light','enlarged-light','narrow-light','default-dark','enlarged-dark','safearea-light'})
+        self.assertEqual(validation.PORTRAIT_CONFIGURATIONS,tuple(c for c in validation.CONFIGURATIONS if c[1]<c[2]))
+
     def test_configurations_cover_required_layout_and_appearance_conditions(self):
         configurations = validation.CONFIGURATIONS
         names = [row[0] for row in configurations]

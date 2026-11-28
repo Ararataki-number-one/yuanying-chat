@@ -13,6 +13,7 @@ import uuid
 
 ROOT=Path(__file__).resolve().parents[2]
 sys.path.insert(0,str(ROOT/'tools/gecko'))
+from portrait_orientation import rotation_challenge
 from profile_invocation_contract import expected_build,verify_installed
 sys.path.insert(0,str(ROOT/'tools/browser'))
 from input_delivery_diagnostics import InputDeliveryDiagnostics
@@ -169,7 +170,7 @@ def main():
     settings=(ROOT/'app/build.gradle').read_text()
     apk=ROOT/'app/build/outputs/apk/integration/app-x86_64-integration.apk'
     identity=expected_build(apk,source,tree,re.search(r"versionName '([^']+)'",settings).group(1),int(re.search(r'versionCode (\d+)',settings).group(1)))
-    paths=[Path(__file__).resolve(),ROOT/'tools/browser/input_delivery_diagnostics.py',ROOT/'tests/gecko/BrowserIntegrationActivity.java',ROOT/'tests/gecko/BrowserEvidenceProvider.java',ROOT/'tests/gecko/AndroidManifest.xml',ROOT/'.github/workflows/browser-2_1-acceptance.yml']
+    paths=[Path(__file__).resolve(),ROOT/'tools/gecko/portrait_orientation.py',ROOT/'tools/browser/input_delivery_diagnostics.py',ROOT/'tests/gecko/BrowserIntegrationActivity.java',ROOT/'tests/gecko/BrowserEvidenceProvider.java',ROOT/'tests/gecko/AndroidManifest.xml',ROOT/'.github/workflows/browser-2_1-acceptance.yml']
     paths+=list((ROOT/'app/src/main/java/local/pocketchat').glob('*.java'))
     hashes={str(p.relative_to(ROOT)):hashlib.sha256(p.read_bytes()).hexdigest() for p in paths}
     nonce=uuid.uuid4().hex;actions=[];handled=set();result=None;error=None;browser_task=None;original_settings={};last_validated_report=None;last_resumed=[]
@@ -180,6 +181,9 @@ def main():
         installed=json.loads(adb('exec-out','content','read','--uri','content://local.pocketchat.test.evidence/build-identity').stdout)
         verify_installed(installed,identity)
         adb('shell','am','force-stop','local.pocketchat.test')
+        rotation_adb=lambda *parts:adb(*parts).stdout.decode(errors='replace')
+        with rotation_challenge(rotation_adb) as calibration:
+            report['rotationCalibration']=calibration
         for key in ['font_scale','accelerometer_rotation','user_rotation']:original_settings[key]=adb('shell','settings','get','system',key).stdout.decode().strip()
         for key,value in [('font_scale','2.0'),('accelerometer_rotation','0'),('user_rotation','0')]:adb('shell','settings','put','system',key,value)
         adb('shell','am','start','-W','-n','local.pocketchat.test/local.pocketchat.BrowserIntegrationActivity','--es','runNonce',nonce,'--es','sourceCommit',source)
@@ -208,7 +212,7 @@ def main():
             elif stage=='download-click' and stage not in handled:
                 x,y=validate_tap_target(current);input_diagnostics.tap(stage,x,y,current,verified_identity=current['buildIdentity']);actions.append(dict(kind='tap',stage=stage,x=x,y=y,targetProof=current['tapTarget']));handled.add(stage)
             elif stage in ('rotate-landscape','rotate-portrait') and stage not in handled:
-                rotation='1' if stage=='rotate-landscape' else '0';adb('shell','settings','put','system','user_rotation',rotation);actions.append(dict(kind='rotation',stage=stage,value=int(rotation)));handled.add(stage)
+                rotation='1' if stage=='rotate-landscape' else '0';adb('shell','settings','put','system','user_rotation',rotation);readback=adb('shell','settings','get','system','user_rotation').stdout.decode().strip();actions.append(dict(kind='rotation',stage=stage,value=int(rotation),systemUserRotation=readback));assert readback==rotation;handled.add(stage)
             elif stage=='switch-to-gecko' and 'engine-roundtrip' not in handled:
                 browser_task=current.get('taskId');switch_until=time.monotonic()+45;enhanced=False;enhanced_task=None
                 while time.monotonic()<switch_until:

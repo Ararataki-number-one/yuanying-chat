@@ -94,7 +94,22 @@ def verify_performance_evidence(directory, source):
     visual = android('ui-visual-results.json')
     assert visual['comparisonMode'] == 'current-only' and visual['historicalUIRebuilt'] is False
     captures = visual['screenshots']
-    verify_captures(captures,source)
+    version_file=next((p for p in (directory/'manifest.json',directory/'release-manifest.json') if p.is_file()),None)
+    orientation_version=(json.loads(version_file.read_text())['versionCode'] if version_file else
+                         android('device-results.json')['eventTransport']['buildIdentity']['versionCode'])
+    portrait_only=orientation_version>=122
+    verify_captures(captures,source,portrait_only=portrait_only)
+    if portrait_only:
+        try:
+            from .portrait_orientation import verify_challenge,verify_observation
+        except ImportError:
+            from portrait_orientation import verify_challenge,verify_observation
+        dashboard=android('environment-dashboard-results.json')
+        turned=[row for row in dashboard['captures'] if row['name'] in ('portrait-held','portrait-held-fingerprint')]
+        assert sorted(r['name'] for r in turned)==['portrait-held','portrait-held-fingerprint']
+        for row in turned:
+            verify_challenge(row['rotationCalibration'])
+            verify_observation(row['portraitHold'],1)
     build = json.loads((directory / 'ui-build-comparison.json').read_text())
     assert build['coreSourceCommit'] == source and build['comparisonMode'] == 'current-only'
     assert build['historicalUIRebuilt'] is False and build['changedForBaseline'] == []

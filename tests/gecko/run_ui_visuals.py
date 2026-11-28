@@ -10,6 +10,7 @@ source=subprocess.check_output(['git','rev-parse','HEAD'],cwd=root,text=True).st
 package='local.pocketchat.test';records=[]
 sys.path.insert(0,str(root/'tools/gecko'))
 from ui_visual_capture import UiVisualCapture
+from portrait_orientation import rotation_challenge, observe as observe_orientation
 from diagnostic_capture_privacy import checked_text
 from ui_visual_contract import LIGHT_SCENES, LARGE_SCENES, DARK_SCENES, LANDSCAPE_SCENES, required_captures, verify_captures, verify_download_location
 from workspace_navigation_contract_v4 import conversation_header
@@ -257,10 +258,12 @@ def capture(variant,width,height,scale,scene,theme='light'):
     stem=f'{variant}-'+('dark-' if theme=='dark' else '')+f'{width}x{height}-font{scale:g}-{scene}'
     (shots/(stem+'.xml')).write_text(xml)
     raw=subprocess.check_output([args.adb,'-s',args.serial,'exec-out','screencap','-p'],timeout=30)
-    pixels=struct.unpack('>II',raw[16:24]);assert pixels==(width*3,height*3),(variant,scene,'Unexpected actual viewport',pixels)
+    hold=observe_orientation(adb,package,1) if (width,height)==(320,740) else None
+    pixels=struct.unpack('>II',raw[16:24]);assert pixels==(width*3,height*3) or (hold and pixels==(height*3,width*3)),(variant,scene,'Unexpected actual viewport',pixels)
     density=int(re.findall(r'density: (\d+)',adb('shell','wm','density'))[-1]);assert density==480,density
     (shots/(stem+'.png')).write_bytes(raw)
     record={'variant':variant,'theme':theme,'logicalViewport':f'{width}x{height}','actualPixels':list(pixels),'densityDpi':density,'fontScale':scale,'scene':scene,'image':stem+'.png','xml':stem+'.xml','readinessScrolls':readiness_scrolls}
+    if hold:record.update(portraitHold=hold,rotationCalibration=rotated_device)
     if scene=='downloads' and WORKSPACE_LAYOUT_CONTRACT==2:
         capture_download_workspace(adb_scene,dump,lambda limit:subprocess.check_output([args.adb,'-s',args.serial,'exec-out','screencap','-p'],timeout=min(30,limit-time.monotonic())),source,label_nonce,shots,stem,record)
     elif scene=='downloads':
@@ -313,7 +316,8 @@ try:
         for width,height in [(360,640),(412,640)]:
             for scene in scenes:capture(variant,width,height,1,scene)
         for scene in LARGE_SCENES:capture(variant,360,640,2,scene)
-        for scene in LANDSCAPE_SCENES:capture(variant,640,360,1,scene)
+        with rotation_challenge(adb,package) as rotated_device:
+            for scene in LANDSCAPE_SCENES:capture(variant,320,740,1,scene)
     adb('shell','cmd','uimode','night','yes')
     try:
         for scene in DARK_SCENES:capture('current',360,640,1,scene,theme='dark')
@@ -583,7 +587,7 @@ try:
     verify_auto_collapse(auto_collapse,source,collapse_apk_sha)
     auto_collapse=store_auto_collapse_cases(auto_collapse,out,source,collapse_apk_sha)
     (out/'compact-chrome-results.json').write_text(json.dumps({'status':'passed','actualAndroidExecution':True,'sourceCommit':source,'cases':compact,'reloadConfirmation':reload_confirmation,'autoCollapse':auto_collapse},ensure_ascii=False,separators=(',',':'))+'\n')
-    verify_captures(records,source)
+    verify_captures(records,source,portrait_only=True)
     build=json.loads((out/'ui-build-comparison.json').read_text())
     assert build['comparisonMode']=='current-only' and not build['historicalUIRebuilt'] and build['coreSourceCommit']==source,build
     report={'status':'passed','actualAndroidExecution':True,'sourceCommit':source,'comparisonMode':'current-only','historicalUIRebuilt':False,'screenshots':records,'networkOptimizationScreens':optimization,'compactChromeScreens':compact,'reloadConfirmation':reload_confirmation,'autoCollapse':auto_collapse,'exitPassword':exit_password,'scope':'Current GeckoView-only production UI with local synthetic records, 106 current-source captures including workspaces, secondary forms, light, dark and double-font layouts, plus exit password checks; historical UI is not rebuilt. Website content, login and network core are not replaced.'}

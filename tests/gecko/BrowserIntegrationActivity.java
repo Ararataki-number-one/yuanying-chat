@@ -293,14 +293,18 @@ public final class BrowserIntegrationActivity extends BrowserActivity {
     JSONArray controls=new JSONArray();boolean available=true;String[] names={"home","windows","address","tools","menu"};int at=0;
     for(android.view.View view:new android.view.View[]{home,windows,address,tools,menu}){android.graphics.Rect rect=new android.graphics.Rect();boolean shown=view.isShown()&&view.getGlobalVisibleRect(rect);controls.put(new JSONObject().put("name",names[at++]).put("shown",shown).put("visibleWidth",rect.width()).put("visibleHeight",rect.height()).put("minimum",dp(48)).put("bounds",new JSONArray().put(rect.left).put(rect.top).put(rect.right).put(rect.bottom)).put("description",String.valueOf(view.getContentDescription())));if(!shown||rect.width()<dp(48)||rect.height()<dp(48))available=false;}
     android.graphics.Rect rootBounds=new android.graphics.Rect();root.getGlobalVisibleRect(rootBounds);
-    layoutObservations.put(new JSONObject().put("rootBounds",new JSONArray().put(rootBounds.left).put(rootBounds.top).put(rootBounds.right).put(rootBounds.bottom)).put("navigationContract",4).put("orientation",getResources().getConfiguration().orientation).put("fontScale",getResources().getConfiguration().fontScale).put("density",getResources().getDisplayMetrics().density).put("rootWidth",root.getWidth()).put("rootHeight",root.getHeight()).put("controls",controls));return available;
+    layoutObservations.put(new JSONObject().put("component",getComponentName().flattenToString()).put("deviceUserRotation",android.provider.Settings.System.getInt(getContentResolver(),android.provider.Settings.System.USER_ROTATION,-1)).put("rootBounds",new JSONArray().put(rootBounds.left).put(rootBounds.top).put(rootBounds.right).put(rootBounds.bottom)).put("navigationContract",4).put("orientation",getResources().getConfiguration().orientation).put("fontScale",getResources().getConfiguration().fontScale).put("density",getResources().getDisplayMetrics().density).put("rootWidth",root.getWidth()).put("rootHeight",root.getHeight()).put("controls",controls));return available;
+  }
+  boolean portraitAfterRotation(int requested){
+    return android.provider.Settings.System.getInt(getContentResolver(),android.provider.Settings.System.USER_ROTATION,-1)==requested
+        &&getResources().getConfiguration().orientation==android.content.res.Configuration.ORIENTATION_PORTRAIT&&root.getHeight()>root.getWidth();
   }
   void orientations(Step after)throws Exception{
-    step("rotate-landscape");await("landscape at large font",()->getResources().getConfiguration().orientation==android.content.res.Configuration.ORIENTATION_LANDSCAPE&&root.getWidth()>root.getHeight(),()->{
-      check("Large-font landscape keeps address and navigation targets visible",controlsVisible());check("Landscape retains the same actual browser surface",web()==returnSurface);
-      step("rotate-portrait");await("portrait at large font",()->getResources().getConfiguration().orientation==android.content.res.Configuration.ORIENTATION_PORTRAIT&&root.getHeight()>root.getWidth(),()->{
+    step("rotate-landscape");await("portrait after a landscape device request",()->portraitAfterRotation(1),()->{
+      check("Large-font locked portrait keeps address and navigation targets visible while the device requests landscape",controlsVisible());check("The landscape device request retains the same portrait browser surface",web()==returnSurface);
+      step("rotate-portrait");await("portrait after an upright device request",()->portraitAfterRotation(0),()->{
         check("Large-font portrait keeps address and navigation targets visible",controlsVisible());check("Portrait retains the same actual browser surface",web()==returnSurface);
-        js("({draft:document.getElementById('draft').value,marker:window.__fixtureRoundtrip})",value->{try{check("Large-font orientation changes preserve the live website draft and document",value.getString("draft").equals("engine roundtrip exact draft")&&value.getString("marker").equals("same document"));after.run();}catch(Throwable error){fail(error);}});
+        js("({draft:document.getElementById('draft').value,marker:window.__fixtureRoundtrip})",value->{try{check("Device rotation requests preserve the portrait website draft and document",value.getString("draft").equals("engine roundtrip exact draft")&&value.getString("marker").equals("same document"));after.run();}catch(Throwable error){fail(error);}});
       });
     });
   }

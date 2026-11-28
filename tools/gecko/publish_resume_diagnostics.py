@@ -21,10 +21,10 @@ RUNNER_ARTIFACTS = {
         'diagnostic-reading-device-route-trace.json',
         'diagnostic-reading-device-native-events.txt',
         'reading-945x2100.png', 'reading-1024x2240.png',
-        'reading-1128x2400.png', 'reading-1920x1080.png',
+        'reading-1128x2400.png', 'reading-1920x1080.png', 'reading-1200x1920.png',
         'reading-shrunk-80.png', 'failure-screen.png', 'failure-ui.xml',
         'reading-fit-privacy-0.png', 'reading-fit-privacy-2.png',
-        'reading-fit-landscape.png', 'reading-fit-portrait.png',
+        'reading-fit-landscape.png', 'reading-fit-portrait.png', 'reading-fit-device-90.png', 'reading-fit-device-0.png',
         'reading-fit-keyboard.png',
     ),
     'transfers': (

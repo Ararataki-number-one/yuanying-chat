@@ -227,6 +227,8 @@ jobs:
         # bundletool otherwise discovers an existing default Android debug key.
         env -i "$java25" -Duser.home="$work/bundletool-user" -Xmx1g -jar "$work/bundletool.jar" build-apks --aapt2="$tools/aapt2" --bundle="$bundle" --output="$work/unsigned.apks" --device-spec="$work/device.json" --max-threads=1
         "$java25" -Xmx512m -jar "$work/bundletool.jar" extract-apks --apks="$work/unsigned.apks" --output-dir="$work/unsigned" --device-spec="$work/device.json" --modules=base,chromium
+        python3 tools/gecko/verify_portrait_apk.py "$work/unsigned/base-master.apk" --role base --aapt2 "$tools/aapt2" --output "$work/portrait-base.json"
+        python3 tools/gecko/verify_portrait_apk.py "$work/unsigned/chromium-master.apk" --role chromium --aapt2 "$tools/aapt2" --output "$work/portrait-chromium.json"
         python3 tools/gecko/chromium_release_publication.py record --bundle "$bundle" --unsigned "$work/unsigned" --tools "$tools" --output work/gecko-integration/chromium-build.json
         cp "$work/unsigned/base-master.apk" app/build/outputs/apk/release/app-arm64-v8a-release-unsigned.apk
         python3 tools/gecko/caret_workflow.py record --work work/gecko-integration

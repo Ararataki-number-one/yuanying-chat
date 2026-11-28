@@ -242,9 +242,9 @@ def verify_paint_case(result, cancelled=False):
     return case
 
 
-def verify_reading_bounds(report):
+def verify_reading_bounds(report, *, portrait_only=False):
     """Check measured native geometry, never substitute page-visible DPR."""
-    assert report['schema'] == 1 and report['productionDelegateRestored'] is True and report['privacyRestored'] is True
+    assert report['schema'] == (2 if portrait_only else 1) and report['productionDelegateRestored'] is True and report['privacyRestored'] is True
     cases = report['cases']
     assert len(cases) == 2 and [item['privacyLevel'] for item in cases] == [0, 2]
 
@@ -278,7 +278,13 @@ def verify_reading_bounds(report):
         assert after['codeScrollWidth'] > after['codeWidth'] and after['codeLeft'] > 0
         fit(after)
     reference = cases[-1]['after']
-    assert [item['phase'] for item in report['rotation']] == ['landscape', 'portrait']
+    if portrait_only:
+        try:
+            from .portrait_orientation import verify_challenge, verify_observation
+        except ImportError:
+            from portrait_orientation import verify_challenge, verify_observation
+        verify_challenge(report['rotationCalibration'])
+    assert [item['phase'] for item in report['rotation']] == (['device-90','device-0'] if portrait_only else ['landscape', 'portrait'])
     for item in report['rotation']:
         value, geometry = item['measurement'], item['geometry']
         assert value['privacyLevel'] == 2 and value['fingerprintingProtected'] is True
@@ -286,7 +292,13 @@ def verify_reading_bounds(report):
         for key in ('document', 'draft', 'cookie', 'bodyHash', 'sessionIdentity', 'surfaceIdentity', 'activityIdentity'):
             assert value[key] == reference[key], key
         assert geometry['statusBarsVisible'] and geometry['navigationBarsVisible'] and not geometry['imeVisible']
-        assert (geometry['webWidth'] > geometry['webHeight']) is (item['phase'] == 'landscape')
+        if portrait_only:
+            rotation=1 if item['phase']=='device-90' else 0
+            verify_observation(item['portraitHold'],rotation)
+            assert item['deviceUserRotation']==rotation and item['activityOrientation']==1
+            assert item['activityHeight']>item['activityWidth']>0 and geometry['webHeight']>geometry['webWidth']>0
+        else:
+            assert (geometry['webWidth'] > geometry['webHeight']) is (item['phase'] == 'landscape')
     keyboard = report['input']
     assert keyboard['imeVisible'] and keyboard['imeBottom'] > 0
     assert all(keyboard[key] is True for key in ('sameDocument', 'sameCookie', 'draftPreserved'))
@@ -461,7 +473,8 @@ def verify_interaction_transfer_evidence(directory, source):
         if manifest['versionCode'] >= 71:
             verify_download_resume_invocation(device,source)
     if 'nativeReadingBounds' in device:
-        native_fit = verify_reading_bounds(device['nativeReadingBounds'])
+        version_code=manifest['versionCode'] if manifest_path.is_file() else device['eventTransport']['buildIdentity']['versionCode']
+        native_fit = verify_reading_bounds(device['nativeReadingBounds'],portrait_only=version_code>=122)
     held_cancel = device['appUpdates']['cancelDuringQuery']
     assert all(held_cancel[key] for key in ('actualSystemQuery', 'queryHeldAfterReturn',
                                           'queryReturnedAfterCancel', 'productionProviderCancel',

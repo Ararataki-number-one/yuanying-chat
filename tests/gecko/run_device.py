@@ -7,6 +7,7 @@ import xml.etree.ElementTree as ET
 ROOT=pathlib.Path(__file__).resolve().parents[2]
 OUT=ROOT/'work/gecko-integration'
 sys.path.insert(0,str(ROOT/'tools/gecko'))
+from portrait_orientation import rotation_challenge, request as request_rotation, observe as observe_orientation
 from check_interaction_transfer_evidence import verify_paint_case, verify_saved_file_deletion
 from integration_event_contract import EventTransfer, ReceiptJournalDiscovery, parse_receipt_line, read_with_sequence_failure_diagnostics
 from profile_invocation_contract import expected_build, verify_installed
@@ -597,8 +598,9 @@ def main():
         assert cookies==({'probe':expected,'nativeOnly':expected} if populated else {}),result
     report={'actualAndroidExecution':True,'releaseMode':True,'diagnosticOnly':bool(diagnostic),'validationScope':f'Diagnostic {diagnostic} subset; cannot replace full acceptance' if diagnostic else 'Full device acceptance','androidSdk':sdk,'androidAbi':adb('shell','getprop','ro.product.cpu.abi').strip(),'viewport':'1080x2400 / 420 dpi','sourceCommit':subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip(),'googleLogin':'not-tested','internalMihomoRoute':'reuses production API; no live subscription provided'}
     def reading_checks():
+        with rotation_challenge(adb,package) as calibration:pass
         reading=[]
-        for size in ['945x2100','1024x2240','1128x2400','1920x1080']:
+        for size in ['945x2100','1024x2240','1128x2400','1200x1920']:
             adb('shell','wm','size',size)
             result=run(1,'reading','reading');reading.append(dict(size=size,**result))
             assert result['mobileViewport'] and result['desktopIdentity'] and 'Android' not in result['userAgent'],result
@@ -628,14 +630,14 @@ def main():
             assert 'readingBounds=controlled-fixture' in before['cookie'],before
             cases.append(result)
             (OUT/f'reading-fit-privacy-{level}.png').write_bytes(subprocess.check_output([args.adb,'-s',args.serial,'exec-out','screencap','-p'],timeout=30))
-        report['nativeReadingBounds']=dict(schema=1,cases=cases)
+        report['nativeReadingBounds']=dict(schema=2,cases=cases,rotationCalibration=calibration)
         prior_accelerometer=adb('shell','settings','get','system','accelerometer_rotation').strip();prior_rotation=adb('shell','settings','get','system','user_rotation').strip()
         try:
             adb('shell','settings','put','system','accelerometer_rotation','0')
             geometry=[]
-            for phase,rotation in [('landscape','1'),('portrait','0')]:
-                adb('shell','settings','put','system','user_rotation',rotation)
-                value=run(1,'readingBoundsGeometry','readingBoundsGeometry',('--es','geometryPhase',phase));geometry.append(value)
+            for phase,rotation in [('device-90',1),('device-0',0)]:
+                request_rotation(adb,rotation)
+                value=run(1,'readingBoundsGeometry','readingBoundsGeometry',('--es','geometryPhase',phase));value['portraitHold']=observe_orientation(adb,package,rotation);geometry.append(value)
                 assert value['phase']==phase and value['measurement']['document']==cases[-1]['after']['document'] and value['measurement']['activityIdentity']==cases[-1]['after']['activityIdentity'],value
                 (OUT/f'reading-fit-{phase}.png').write_bytes(subprocess.check_output([args.adb,'-s',args.serial,'exec-out','screencap','-p'],timeout=30))
             report['nativeReadingBounds']['rotation']=geometry
@@ -660,7 +662,7 @@ def main():
         run(1,'reading','reading')
     try:
         if args.reading_only:
-            reading_checks();report.update(status='passed',checkCount=14,scope='Diagnostic subset only: four responsive widths, four exact zoom choices, actual Android input, two native fit cases, two actual rotations and an IME fit case. Not full release evidence.');return
+            reading_checks();report.update(status='passed',checkCount=14,scope='Diagnostic subset only: four responsive widths, four exact zoom choices, actual Android input, two native fit cases, both device rotation requests with portrait-locked activity measurements and an IME fit case. Not full release evidence.');return
         if args.update_transfers_only:
             update_transfers();report.update(status='passed',scope='Diagnostic subset only: all 28 real transfer checks. Not full release evidence.');return
         usability=run(1,'usability','usability');assert usability['documentPreserved'] and usability['mobileVisible'] and usability['upload']=='sample.txt:synthetic-upload' and usability['csv']=='name,value\nsynthetic,42\n' and usability['blob']==usability['csv'],usability
@@ -869,7 +871,7 @@ def main():
             distinctHttpSocksRoutes='passed',workersAndWebSocket='passed',remoteDns='passed',guardBlocksRequests='passed',
             nativeContextClear='passed',legacyEnginePreferenceCompatibility='passed (official Gecko, stored preferences and isolated data retained; system engine refused)',closedBootstrapWithoutExtension='passed',productionActivityShell='passed',
             popupParentHistory='passed',closedSessionRecovery='passed (injected SDK onKill contract, real close/open/render)',
-            closedParentRecovery='passed',firstPaintBeforeSlowResource='passed',cancelledLoadNotReportedAsFailure='passed',responsiveDesktopViewport='passed (controlled responsive fixture, portrait and landscape)')
+            closedParentRecovery='passed',firstPaintBeforeSlowResource='passed',cancelledLoadNotReportedAsFailure='passed',responsiveDesktopViewport='passed (four portrait sizes, calibrated device rotation, live page and draft retained)')
         report.update(sessionCookieRestartAndLogout='passed (synthetic HttpOnly session cookie)',automaticContentRecovery='passed (injected SDK onKill, native restoreState)',profileProcessLifecycle='passed (both RESUMED)',continuousEnvironmentSwitching='passed (12 foreground changes and Home return)',realShrinkAndMagnify='passed (80%, 60%, 130%, 80%; same document and draft)',scaledKeyboardInput='passed (trusted Android tap and keyboard text)')
     except Exception as error:
         report.update(status='failed',error=f'{type(error).__name__}: {error}')

@@ -271,5 +271,7 @@ def main():
                          runId=manifest['runId'], runAttempt=manifest['runAttempt'])))
 
 
+DASHBOARD_CAPTURE_FILES |= frozenset(name+suffix for name in ('portrait-held', 'portrait-held-fingerprint') for suffix in ('.png','.xml'))
+
 if __name__ == '__main__':
     main()

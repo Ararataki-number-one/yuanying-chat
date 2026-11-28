@@ -16,21 +16,31 @@ LANDSCAPE_SCENES = ('chat', 'environments', 'settings', 'environment-picker', 'd
                     'feedback', 'exit-form', 'route-editor', 'brand', 'templates')
 
 
-def required_captures():
+def required_captures(portrait_only=False):
     return {
         ('light', viewport, 1, scene)
         for viewport in ('360x640', '412x640') for scene in LIGHT_SCENES
-    } | {('light', '640x360', 1, scene) for scene in LANDSCAPE_SCENES} | {('light', '360x640', 2, scene) for scene in LARGE_SCENES} | {
+    } | {('light', '320x740' if portrait_only else '640x360', 1, scene) for scene in LANDSCAPE_SCENES} | {('light', '360x640', 2, scene) for scene in LARGE_SCENES} | {
         ('dark', '360x640', 1, scene) for scene in DARK_SCENES
     }
 
 
-def verify_captures(records, source=None):
-    expected = required_captures()
+def verify_captures(records, source=None, *, portrait_only=False):
+    expected = required_captures(portrait_only)
     assert len(records) == len(expected), 'Missing or duplicate native UI captures'
     assert all(item['variant'] == 'current' for item in records), 'Every capture must use the current application'
     actual = {(item['theme'], item['logicalViewport'], item['fontScale'], item['scene']) for item in records}
     assert actual == expected, ('Native UI coverage differs', expected - actual, actual - expected)
+
+    if portrait_only:
+        try:
+            from .portrait_orientation import verify_observation, verify_challenge
+        except ImportError:
+            from portrait_orientation import verify_observation, verify_challenge
+        for row in records:
+            if row['logicalViewport']=='320x740':
+                verify_challenge(row['rotationCalibration'])
+                verify_observation(row['portraitHold'],1)
 
     downloads = [item for item in records if item['scene'] == 'downloads']
     for item in downloads:

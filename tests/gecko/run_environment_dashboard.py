@@ -200,14 +200,21 @@ def run(adb,binary,source,out,dump):
         assert not any(re.search(r'\d+\s*秒后进入',n.get('text','')) for n in tree(xml)),('countdown still visible',name)
         assert dashboard(xml),('dashboard absent',name)
         raw=binary('exec-out','screencap','-p');assert raw.startswith(b'\x89PNG\r\n\x1a\n')
-        pixels=struct.unpack('>II',raw[16:24]);assert pixels==(width*3,height*3),(name,'actual screenshot viewport differs',pixels,[width*3,height*3])
+        hold=observe_orientation(adb,PACKAGE,1) if name.startswith('portrait-held') else None
+        if hold:metadata.update(portraitHold=hold,rotationCalibration=calibration)
+        pixels=struct.unpack('>II',raw[16:24]);assert pixels==(width*3,height*3) or (hold and pixels==(height*3,width*3)),(name,'actual screenshot viewport differs',pixels,[width*3,height*3])
         (directory/(name+'.xml')).write_text(xml);(directory/(name+'.png')).write_bytes(raw)
         records.append(dict(name=name,image='ui-visuals/environment-dashboard/'+name+'.png',xml='ui-visuals/environment-dashboard/'+name+'.xml',imageSha256=hashlib.sha256(raw).hexdigest(),actualPixelSize=list(pixels),**metadata))
+    from contextlib import ExitStack
+    from portrait_orientation import rotation_challenge, observe as observe_orientation
+    rotations=ExitStack()
     try:
-        for name,width,height,scale,night in [('light',360,640,1,False),('large-font',360,640,2,False),('landscape',640,360,1,False),('dark',360,640,1,True)]:
+        for name,width,height,scale,night in [('light',360,640,1,False),('large-font',360,640,2,False),('portrait-held',320,740,1,False),('dark',360,640,1,True)]:
+            rotations.close()
             adb('shell','am','force-stop',PACKAGE);adb('logcat','-c')
             adb('shell','cmd','uimode','night','yes' if night else 'no')
             adb('shell','wm','size',f'{width*3}x{height*3}');adb('shell','wm','density','480');adb('shell','settings','put','system','font_scale',str(scale))
+            if name=='portrait-held': calibration=rotations.enter_context(rotation_challenge(adb,PACKAGE))
             observed=dict(size=adb('shell','wm','size').strip(),density=adb('shell','wm','density').strip(),fontScale=adb('shell','settings','get','system','font_scale').strip())
             assert float(observed['fontScale'])==scale,('Requested font scale not applied',observed)
             started=time.monotonic()
@@ -302,6 +309,7 @@ def run(adb,binary,source,out,dump):
         failure=dict(status='failed',sourceCommit=source,error=repr(error),captures=records,events=events,actualAndroidTaps=taps,physicalPhoneAcceptance=False)
         (out/'environment-dashboard-results.json').write_text(json.dumps(failure,ensure_ascii=False,indent=2)+'\n');(directory/'results.json').write_text(json.dumps(failure,ensure_ascii=False,indent=2)+'\n');raise
     finally:
+        rotations.close()
         adb('shell','cmd','uimode','night','no');adb('shell','settings','put','system','font_scale','1')
 
 def main():

@@ -18,7 +18,7 @@ class DashboardCaptureHistoricalView(unittest.TestCase):
     def test_complete_current_bytes_restore_the_fixed_original_and_all_old_privacy_pins(self):
         self.assertEqual(view.AFTER, (15719, '1c232eeb787787895c99e20a8e5f4b36f309b3828fd9e8b14866655d06a4c01f'))
         self.assertEqual(view.BEFORE, (14358, '7efcea13daac3874bbf8bf945bca3e213d9b3224020738fe5398582e4ecd3e5a'))
-        self.assertEqual(view.pin(self.current.encode()), view.AFTER)
+        self.assertEqual(view.pin(self.current.encode()), view.PORTRAIT_AFTER)
         original = view.historical_bundle_source(self.current)
         self.assertEqual(view.pin(original.encode()), view.BEFORE)
         self.assertEqual(view.historical_bundle_source(original), original)
@@ -56,7 +56,7 @@ class DashboardCaptureHistoricalView(unittest.TestCase):
         self.assertEqual(module.DASHBOARD_CAPTURE_FILES, {
             name+suffix for name in ('light','light-fingerprint','home-return','warm-list','second-environment',
                 'workspace-chat','large-font','large-font-fingerprint','landscape','landscape-fingerprint',
-                'dark','dark-fingerprint','failure') for suffix in ('.png','.xml')})
+                'dark','dark-fingerprint','failure','portrait-held','portrait-held-fingerprint') for suffix in ('.png','.xml')})
         self.assertNotIn('dashboard_capture_source_compatibility', self.current)
         self.assertNotIn('historical_bundle_source', self.current)
         source = (ROOT/'tests/profile_diagnostic_capture_privacy_test.py').read_text()
