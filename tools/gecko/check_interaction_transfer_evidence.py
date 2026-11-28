@@ -280,9 +280,9 @@ def verify_reading_bounds(report, *, portrait_only=False):
     reference = cases[-1]['after']
     if portrait_only:
         try:
-            from .portrait_orientation import verify_challenge, verify_observation
+            from .ui_visual_contract import verify_challenge, verify_observation
         except ImportError:
-            from portrait_orientation import verify_challenge, verify_observation
+            from ui_visual_contract import verify_challenge, verify_observation
         verify_challenge(report['rotationCalibration'])
     assert [item['phase'] for item in report['rotation']] == (['device-90','device-0'] if portrait_only else ['landscape', 'portrait'])
     for item in report['rotation']:

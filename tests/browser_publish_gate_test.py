@@ -307,6 +307,14 @@ class BrowserPublishGateTests(unittest.TestCase):
         self.assertEqual(len(copies),3)
         with tempfile.TemporaryDirectory(prefix='browser-release-cold-import-') as temporary:
             stage=Path(temporary);(stage/'tools/gecko').mkdir(parents=True)
+            # The publisher stages this pure validation module in its >=43 block,
+            # separately from the later browser-specific copies.
+            portrait=[step for node in self.tool.body if isinstance(node,ast.If) and ast.unparse(node.test)=='version_code >= 43'
+                      for step in node.body if isinstance(step,ast.Expr) and isinstance(step.value,ast.Call)
+                      and ast.unparse(step.value.func)=='shutil.copy2'
+                      and [ast.unparse(arg) for arg in step.value.args]==["root / 'tools/gecko/ui_visual_contract.py'","stage / 'tools/gecko/ui_visual_contract.py'"]]
+            self.assertEqual(len(portrait),1)
+            execute(portrait,dict(root=ROOT,stage=stage,shutil=shutil))
             execute(copies,dict(browser_release=True,roadmap_release=True,version_code=103,root=ROOT,stage=stage,shutil=shutil))
             script="""import pathlib,sys
 root=pathlib.Path.cwd();sys.path.insert(0,str(root));sys.path.insert(0,str(root/'tools'))
@@ -317,6 +325,11 @@ print('STAGED_BROWSER_VERIFIERS_IMPORTED')
 """
             result=subprocess.run([sys.executable,'-I','-c',script],cwd=stage,text=True,capture_output=True,timeout=20)
             self.assertEqual(result.returncode,0,result.stderr);self.assertIn('STAGED_BROWSER_VERIFIERS_IMPORTED',result.stdout)
+            dependency=stage/'tools/gecko/ui_visual_contract.py'
+            dependency.unlink()
+            result=subprocess.run([sys.executable,'-I','-c',script],cwd=stage,text=True,capture_output=True,timeout=20)
+            self.assertNotEqual(result.returncode,0);self.assertIn('ui_visual_contract',result.stderr)
+            execute(portrait,dict(root=ROOT,stage=stage,shutil=shutil))
             (stage/'tools/gecko/profile_invocation_contract.py').unlink()
             result=subprocess.run([sys.executable,'-I','-c',script],cwd=stage,text=True,capture_output=True,timeout=20)
             self.assertNotEqual(result.returncode,0);self.assertIn('profile_invocation_contract',result.stderr)

@@ -8,7 +8,7 @@ import re
 import sys
 
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
-from gecko.portrait_orientation import verify_challenge
+from gecko.ui_visual_contract import verify_challenge
 from gecko.profile_invocation_contract import verify_installed
 from gecko.sdk_identity_contract import source_bytes
 

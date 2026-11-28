@@ -16,6 +16,29 @@ LANDSCAPE_SCENES = ('chat', 'environments', 'settings', 'environment-picker', 'd
                     'feedback', 'exit-form', 'route-editor', 'brand', 'templates')
 
 
+CONTROL='local.pocketchat.RotationControlActivity'
+TEST_PACKAGE='local.pocketchat.test'
+
+
+def verify_observation(value, rotation, *, control=False, package=TEST_PACKAGE):
+    component=value['component']
+    assert component.startswith(package+'/') and (component==package+'/'+CONTROL)==control, value
+    orientation='landscape' if control and rotation in (1,3) else 'portrait'
+    assert value['userRotation']==str(rotation) and value['accelerometerRotation']=='0' and value['orientation']==orientation
+    l,t,r,b=value['bounds']
+    assert all(type(n) is int for n in (l,t,r,b)) and min(r-l,b-t)>0
+    assert (r-l>b-t if orientation=='landscape' else b-t>r-l)
+    text=value['activityConfig']
+    assert re.search(r'\s'+('land' if orientation=='landscape' else 'port')+r'\s',text)
+    match=re.search(r'\bmBounds=Rect\((-?\d+),\s*(-?\d+)\s*-\s*(-?\d+),\s*(-?\d+)\)',text)
+    assert match and list(map(int,match.groups()))==value['bounds']
+
+
+def verify_challenge(receipt, package=TEST_PACKAGE):
+    verify_observation(receipt['controlPortrait'],0,control=True,package=package)
+    verify_observation(receipt['controlLandscape'],1,control=True,package=package)
+
+
 def required_captures(portrait_only=False):
     return {
         ('light', viewport, 1, scene)
@@ -33,10 +56,6 @@ def verify_captures(records, source=None, *, portrait_only=False):
     assert actual == expected, ('Native UI coverage differs', expected - actual, actual - expected)
 
     if portrait_only:
-        try:
-            from .portrait_orientation import verify_observation, verify_challenge
-        except ImportError:
-            from portrait_orientation import verify_observation, verify_challenge
         for row in records:
             if row['logicalViewport']=='320x740':
                 verify_challenge(row['rotationCalibration'])

@@ -101,9 +101,9 @@ def verify_performance_evidence(directory, source):
     verify_captures(captures,source,portrait_only=portrait_only)
     if portrait_only:
         try:
-            from .portrait_orientation import verify_challenge,verify_observation
+            from .ui_visual_contract import verify_challenge,verify_observation
         except ImportError:
-            from portrait_orientation import verify_challenge,verify_observation
+            from ui_visual_contract import verify_challenge,verify_observation
         dashboard=android('environment-dashboard-results.json')
         turned=[row for row in dashboard['captures'] if row['name'] in ('portrait-held','portrait-held-fingerprint')]
         assert sorted(r['name'] for r in turned)==['portrait-held','portrait-held-fingerprint']

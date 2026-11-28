@@ -70,6 +70,25 @@ _ENGINE_FIXTURE_AFTER = (
 _ENGINE_FIXTURE_CONTEXT = _ENGINE_FIXTURE_BEFORE + _ENGINE_FIXTURE_METADATA + _ENGINE_FIXTURE_AFTER
 
 
+_PORTRAIT_ACTIVITY = b'<activity android:screenOrientation="portrait" '
+_ROTATION_CONTROL_END = (b'    <activity android:name="local.pocketchat.RotationControlActivity" '
+                         b'android:screenOrientation="unspecified" android:exported="true" '
+                         b'android:taskAffinity="local.pocketchat.test.rotation_control" />\n  </application>')
+
+
+def manifest_before_reviewed_portrait(raw):
+    """Historical fixture comparison only. Actual TLS and package probes use the installed manifest."""
+    if type(raw) is not bytes or len(raw) != 15770 or hashlib.sha256(raw).hexdigest() != (
+            '4d67c2cc65411ac72ec8abde4c8ebb938a730b533b77dde38cc999682b1159bd'):
+        raise ValueError('Exact portrait-tested integration manifest required')
+    if raw.count(_PORTRAIT_ACTIVITY) != 54 or raw.count(_ROTATION_CONTROL_END) != 1:
+        raise ValueError('Expected the 54 locked fixture declarations and one independent rotation control')
+    restored = raw.replace(_ROTATION_CONTROL_END, b'</application>').replace(_PORTRAIT_ACTIVITY, b'<activity ')
+    if len(restored) != _ENGINE_FIXTURE_MANIFEST_BYTES or hashlib.sha256(restored).hexdigest() != _ENGINE_FIXTURE_MANIFEST_SHA256:
+        raise ValueError('Pre-portrait fixture manifest differs')
+    return restored
+
+
 def manifest_before_reviewed_engine_fixture(raw):
     """Invert only the exact integration-only fixture line for the historical proof.
 
@@ -140,9 +159,36 @@ class NativeTrustProtocolControls(unittest.TestCase):
             report=json.loads(result.stdout);self.assertEqual(report['status'],'passed');self.assertTrue(report['executionInputsUnchanged'])
             self.assertIs(report['actualAndroidExecution'],False);self.assertIs(report['actualGeckoExecution'],False)
 
+class ReviewedPortraitManifestControls(unittest.TestCase):
+    def test_resolution_activity_is_not_a_tls_diagnostic_owner(self):
+        actual=(ROOT/'app/src/main/AndroidManifest.xml').read_bytes()
+        name=b'com.google.android.gms.common.api.GoogleApiActivity'
+        declared=runner.declared_fixture_components([actual])
+        self.assertNotIn(runner.PACKAGE+'/'+name.decode(),declared)
+        self.assertIn(runner.PACKAGE+'/local.pocketchat.MainActivity',declared)
+        for changed in (actual.replace(name,b'com.example.UnreviewedActivity',1),
+                        actual.replace(name+b'"',name+b'" android:exported="true"',1)):
+            with self.assertRaises(ValueError):runner.declared_fixture_components([changed])
+
+    def test_roundtrip_and_unreviewed_orientation_changes(self):
+        raw = (ROOT/'tests/gecko/AndroidManifest.xml').read_bytes()
+        old = manifest_before_reviewed_portrait(raw)
+        replayed = old.replace(b'<activity ', _PORTRAIT_ACTIVITY).replace(b'</application>', _ROTATION_CONTROL_END)
+        self.assertEqual(replayed, raw)
+        self.assertNotIn(b'RotationControlActivity', (ROOT/'app/src/main/AndroidManifest.xml').read_bytes())
+        for changed in (raw.replace(_PORTRAIT_ACTIVITY,b'<activity ',1),
+                        raw.replace(_ROTATION_CONTROL_END,b'</application>',1),
+                        raw.replace(b'android:screenOrientation="unspecified"',b'android:screenOrientation="portrait"',1),
+                        raw.replace(b'android:process=":profile6"',b'android:process=":unreviewed"',1)):
+            self.assertNotEqual(changed,raw)
+            with self.assertRaises(ValueError):
+                manifest_before_reviewed_portrait(changed)
+
+
 class ReviewedEngineFixtureManifestControls(unittest.TestCase):
     def setUp(self):
-        self.actual = (ROOT/'tests/gecko/AndroidManifest.xml').read_bytes()
+        self.raw = (ROOT/'tests/gecko/AndroidManifest.xml').read_bytes()
+        self.actual = manifest_before_reviewed_portrait(self.raw)
 
     def test_exact_engine_fixture_roundtrip_preserves_all_nonfixture_bytes(self):
         restored = manifest_before_reviewed_engine_fixture(self.actual)
@@ -151,7 +197,7 @@ class ReviewedEngineFixtureManifestControls(unittest.TestCase):
         anchor = _ENGINE_FIXTURE_BEFORE + _ENGINE_FIXTURE_AFTER
         self.assertEqual(restored.count(anchor), 1)
         self.assertEqual(restored.replace(anchor, _ENGINE_FIXTURE_CONTEXT, 1), self.actual)
-        self.assertEqual((ROOT/'tests/gecko/AndroidManifest.xml').read_bytes(), self.actual)
+        self.assertEqual((ROOT/'tests/gecko/AndroidManifest.xml').read_bytes(), self.raw)
         self.assertNotIn(b'local.pocketchat.LEGACY_WEBVIEW_FIXTURE', (ROOT/'app/src/main/AndroidManifest.xml').read_bytes())
         gradle = (ROOT/'app/build.gradle').read_text()
         self.assertEqual(gradle.count("manifest.srcFile('../tests/gecko/AndroidManifest.xml')"), 1)
@@ -194,7 +240,7 @@ class ReviewedEngineFixtureManifestControls(unittest.TestCase):
 class ReviewedWorkspaceManifestControls(unittest.TestCase):
     def setUp(self):
         self.integration = (ROOT/'tests/gecko/AndroidManifest.xml').read_bytes()
-        self.actual = manifest_before_reviewed_engine_fixture(self.integration)
+        self.actual = manifest_before_reviewed_engine_fixture(manifest_before_reviewed_portrait(self.integration))
 
     def test_exact_workspace_seed_roundtrip_preserves_the_actual_manifest(self):
         restored = manifest_before_reviewed_workspace_seed(self.actual)
@@ -238,7 +284,8 @@ class ReviewedUiManifestControls(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.actual = (ROOT/'tests/gecko/AndroidManifest.xml').read_bytes()
-        cls.current = manifest_before_reviewed_workspace_seed(manifest_before_reviewed_engine_fixture(cls.actual))
+        cls.current = manifest_before_reviewed_workspace_seed(manifest_before_reviewed_engine_fixture(
+            manifest_before_reviewed_portrait(cls.actual)))
 
     def reject(self, variants):
         for label, raw in variants:
@@ -738,7 +785,8 @@ class ProducerBoundaryControls(unittest.TestCase):
         self.assertIn('Binder.getCallingUid()!=2000',provider);self.assertIn('Files.isSymbolicLink',provider)
         original=subprocess.check_output(['git','show','e4a20469326f16dc8ff8cfabd4fe67bf3d0148de:tests/gecko/AndroidManifest.xml'],cwd=ROOT,text=True)
         current_manifest = (ROOT/'tests/gecko/AndroidManifest.xml').read_bytes()
-        reviewed_ui = manifest_before_reviewed_workspace_seed(manifest_before_reviewed_engine_fixture(current_manifest))
+        reviewed_ui = manifest_before_reviewed_workspace_seed(manifest_before_reviewed_engine_fixture(
+            manifest_before_reviewed_portrait(current_manifest)))
         current = manifest_before_reviewed_ui_additions(reviewed_ui).decode('utf-8')
         filtered='\n'.join(line for line in current.split('\n') if not any(name in line for name in ('GeckoTlsAcceptance','NativeTlsProbe','GeckoTlsCpuIpCombo')))
         self.assertEqual(filtered,original)

@@ -64,6 +64,13 @@ def declared_fixture_components(manifests):
         for node in root.iter():
             if node.tag not in ('activity','activity-alias','provider','receiver','service'):continue
             name=node.get(android+'name')
+            # This manifest entry only sets orientation on an SDK-supplied translucent window.
+            # A failure attributed to it is not evidence about the app's own TLS fixture process.
+            if node.tag=='activity' and name=='com.google.android.gms.common.api.GoogleApiActivity':
+                require(node.attrib=={android+'name':name,android+'screenOrientation':'@integer/transparent_activity_orientation',
+                        '{http://schemas.android.com/tools}ignore':'MissingClass'} and len(node)==0,
+                        'only the fixed SDK resolution window override')
+                continue
             require(type(name) is str and re.fullmatch(r'local\.pocketchat\.[A-Za-z0-9_.$]+',name),'fixed declared application component')
             result.add(PACKAGE+'/'+name)
     return frozenset(result)
