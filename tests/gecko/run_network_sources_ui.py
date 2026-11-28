@@ -222,30 +222,57 @@ def tap(text=None, desc=None, part=None, kind=None, index=0):
     adb("shell", "input", "tap", str((left + right) // 2), str((top + bottom) // 2))
 
 
-def field_focus_state(tree, description):
+def form_inputs(tree, description, title):
+    """Require the exact labelled input inside the current owned native modal."""
+    parents = {child: parent for parent in tree.iter() for child in parent}
+    headings = [v for v in tree.iter("node") if v.get("package")==PACKAGE and v.get("class")=="android.widget.TextView"
+                and v.get("text")==title and v.get("content-desc")==title]
+    closes = [v for v in tree.iter("node") if v.get("package")==PACKAGE and v.get("class")=="android.widget.Button"
+              and v.get("content-desc")=="关闭"+title]
+    if len(headings)!=1 or len(closes)!=1 or parents[headings[0]] is not parents[closes[0]]:
+        return []
+    sheet = parents.get(parents[headings[0]])
+    if sheet is None:
+        return []
+    fields=[]
+    for v in sheet.iter("node"):
+        if (v.get("package")==PACKAGE and v.get("class")=="android.widget.EditText"
+                and v.get("content-desc")==description+"，必填" and v.get("enabled")==v.get("clickable")=="true"
+                and v.get("visible-to-user")!="false"):
+            try:
+                bounds(v)
+            except AssertionError:
+                continue
+            fields.append(v)
+    return fields
+
+
+def field_focus_state(tree, description, title):
     # Android can show spelling suggestions after focusing an existing name.
     # This framework popup becomes the accessible window, hiding the EditText.
     if any(item.attrib.get("resource-id") == "android:id/suggestionWindowContainer"
            for item in tree.iter("node")):
         return "spelling-popup"
-    fields = matching(tree, desc=description, kind="EditText")
+    fields = form_inputs(tree, description, title)
     return "focused" if len(fields) == 1 and fields[0].attrib.get("focused") == "true" else "waiting"
 
 
-def fill(description, value):
-    chosen = node(desc=description, kind="EditText")
+def fill(description, value, title):
+    visible=wait_for(xml,lambda root:len(form_inputs(root,description,title))==1,
+                     "Visible enabled field "+description+" in "+title,seconds=20)
+    chosen, = form_inputs(visible,description,title)
     left, top, right, bottom = bounds(chosen)
     record_action("focus-field", description=description, node=chosen.attrib,
                   x=(left + right) // 2, y=(top + bottom) // 2)
     adb("shell", "input", "tap", str((left + right) // 2), str((top + bottom) // 2))
-    focused = wait_for(xml, lambda tree: field_focus_state(tree, description) != "waiting",
+    focused = wait_for(xml, lambda tree: field_focus_state(tree, description, title) != "waiting",
                        "Actual focused field " + description, seconds=15)
-    if field_focus_state(focused, description) == "spelling-popup":
+    if field_focus_state(focused, description, title) == "spelling-popup":
         record_action("dismiss-spelling-popup", description=description)
         adb("shell", "input", "keyevent", "KEYCODE_BACK")
-        focused = wait_for(xml, lambda tree: field_focus_state(tree, description) == "focused",
+        focused = wait_for(xml, lambda tree: field_focus_state(tree, description, title) == "focused",
                            "Actual field focus after spelling popup " + description, seconds=15)
-    old = matching(focused, desc=description, kind="EditText")[0].attrib.get("text", "")
+    old = form_inputs(focused, description, title)[0].attrib.get("text", "")
     if old:
         adb("shell", "input", "keyevent", "123")
         adb("shell", "input", "keyevent", *("67" for _ in old))
@@ -253,7 +280,7 @@ def fill(description, value):
     assert value.isascii() and "%" not in value
     adb("shell", "input", "text", shlex.quote(value))
     tree = xml()
-    actual = matching(tree, desc=description, kind="EditText")
+    actual = form_inputs(tree, description, title)
     record_action("field-value", description=description, expected=value,
                   nodes=[item.attrib for item in actual])
     assert len(actual) == 1 and actual[0].attrib.get("text") == value, (
@@ -264,7 +291,7 @@ def fill(description, value):
 def reveal_field(description, title):
     tree = xml()
     for attempt in range(4):
-        found = matching(tree, desc=description, kind="EditText")
+        found = form_inputs(tree, description, title)
         if len(found) == 1:
             bounds(found[0])
             return
@@ -292,7 +319,7 @@ def reveal_field(description, title):
         record_action("revealed-field-scroll-state", description=description, afterFields=after,
                       actualVisibleFieldsMoved=before_geometry != after_geometry)
         assert before_geometry != after_geometry, "Actual modal scroll did not move its visible fields"
-    found = matching(tree, desc=description, kind="EditText")
+    found = form_inputs(tree, description, title)
     if len(found) == 1:
         bounds(found[0])
         return
@@ -331,9 +358,9 @@ def wait_clipboard_overlay():
                   observations=observations)
 
 
-def assert_fields(expected):
+def assert_fields(expected,title):
     tree = xml()
-    values = {description: [item.attrib for item in matching(tree, desc=description, kind="EditText")]
+    values = {description: [item.attrib for item in form_inputs(tree, description, title)]
               for description in expected}
     record_action("save-fields", expected=expected, actual=values)
     assert all(len(values[description]) == 1 and values[description][0].get("text") == value
@@ -379,10 +406,11 @@ def wait_source(role, name, predicate=lambda row: True, seconds=65):
 def add(role, name):
     command("entry-tab" if role == "entry" else "exit-tab")
     tap(text="＋ 添加", index=0)
-    centered("添加" + ("入口" if role == "entry" else "出口") + "订阅")
-    fill("订阅名称", name)
-    fill("订阅地址", "https://127.0.0.1:9/" + name.lower())
-    assert_fields({"订阅名称": name, "订阅地址": "https://127.0.0.1:9/" + name.lower()})
+    title="添加" + ("入口" if role == "entry" else "出口") + "订阅"
+    centered(title)
+    fill("订阅名称", name, title)
+    fill("订阅地址", "https://127.0.0.1:9/" + name.lower(), title)
+    assert_fields({"订阅名称": name, "订阅地址": "https://127.0.0.1:9/" + name.lower()}, title)
     tap(text="保存订阅")
     wait_source(role, name)
     # Publication continues after the user closes the progress dialog.
@@ -392,11 +420,12 @@ def add(role, name):
 
 def edit_source(role):
     command("open-" + role + "-edit")
-    centered("编辑" + ("入口" if role == "entry" else "出口") + "订阅")
+    title="编辑" + ("入口" if role == "entry" else "出口") + "订阅"
+    centered(title)
     name = "EntryEdited" if role == "entry" else "ExitEdited"
-    fill("订阅名称", name)
-    fill("订阅地址", "https://127.0.0.1:9/edited-" + role)
-    assert_fields({"订阅名称": name, "订阅地址": "https://127.0.0.1:9/edited-" + role})
+    fill("订阅名称", name, title)
+    fill("订阅地址", "https://127.0.0.1:9/edited-" + role, title)
+    assert_fields({"订阅名称": name, "订阅地址": "https://127.0.0.1:9/edited-" + role}, title)
     tap(text="保存订阅")
     wait_source(role, name)
     tap(desc="关闭读取" + ("入口" if role == "entry" else "出口") + "节点")
@@ -407,7 +436,7 @@ def delete_source(role):
     command("open-" + role + "-detail")
     reveal_action("删除订阅", ("入口" if role == "entry" else "出口") + "订阅详情")
     tap(text="删除订阅")
-    centered("删除" + ("入口" if role == "entry" else "出口") + "订阅")
+    centered("删除" + ("入口" if role == "entry" else "出口") + "订阅？")
     expected = "1 个窗口" if role == "entry" else "0 个窗口"
     check(role + " deletion shows the actual referencing-window count", expected in node(part=expected).attrib["text"])
     tap(text="删除订阅")
@@ -502,9 +531,9 @@ def main():
     reveal_action("编辑出口", "出口详情")
     tap(text="编辑出口")
     centered("编辑固定出口")
-    fill("出口名称", "ManualEdited")
+    fill("出口名称", "ManualEdited", "编辑固定出口")
     reveal_field("端口", "编辑固定出口")
-    fill("端口", "19121")
+    fill("端口", "19121", "编辑固定出口")
     tap(text="保存出口")
     wait_for(state, lambda item: item["manual"].get("port") == 19121, "Edited manual exit")
     command("assert-manual-edited")
@@ -513,7 +542,7 @@ def main():
     command("open-manual-detail")
     reveal_action("删除出口", "出口详情")
     tap(text="删除出口")
-    centered("删除固定出口")
+    centered("删除固定出口？")
     check("Manual deletion includes its referencing window", "1 个窗口" in node(part="1 个窗口").attrib["text"])
     tap(text="删除出口")
     wait_for(state, lambda item: not item["manual"], "Deleted manual exit")

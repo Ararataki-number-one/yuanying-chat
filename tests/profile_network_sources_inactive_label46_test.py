@@ -3,10 +3,13 @@
 These offline checks do not replace fresh Android subscription UI acceptance.
 """
 import copy
+import gzip
 import hashlib
 import importlib.util
 import json
 from pathlib import Path
+import subprocess
+import tempfile
 import unittest
 import xml.etree.ElementTree as ET
 
@@ -18,6 +21,25 @@ OLD_IMPORT = b'from network_ui_route_contract import visible_inactive_route, rev
 NEW_IMPORT = b'from network_ui_route_contract import reveal_modal_action, clipboard_overlay_present\nfrom network_inactive_label46 import visible_inactive_route\n'
 OLD_TAB_ASSERTION = '    check("Only the three requested network tabs are visible", all(matching(tree, text=text) for text in ("窗口网络", "入口", "出口")) and not matching(tree, text="订阅"))\n'.encode()
 NEW_TAB_ASSERTION = OLD_TAB_ASSERTION.replace('"窗口网络"'.encode(), '"环境网络"'.encode(), 1)
+ROUND3_PATCH = ROOT / 'tests/fixtures/network-sources-round3-runner.patch.gz'
+
+
+def runner_before_round3(raw):
+    """Recover the older runner only for the exact historical tab-label comparison."""
+    if type(raw) is not bytes or hashlib.sha256(raw).hexdigest() != 'c0427f53425d65d1811156ed56dd1b7c67c484d6574bdab498eaf2200678e6a7':
+        raise ValueError('The reviewed Round 3 runner differs')
+    patch = gzip.decompress(ROUND3_PATCH.read_bytes())
+    if hashlib.sha256(patch).hexdigest() != '0d71cf49c424a59d8ba4b14f48955090f4fd417d991bf85ec0ae8b34abeac497':
+        raise ValueError('The reviewed Round 3 runner delta differs')
+    with tempfile.TemporaryDirectory(prefix='network-sources-history-') as temp:
+        retained = Path(temp) / 'tests/gecko/run_network_sources_ui.py'
+        retained.parent.mkdir(parents=True)
+        retained.write_bytes(raw)
+        subprocess.run(['git', 'apply', '--reverse', '--whitespace=nowarn', '-'], input=patch, cwd=temp, check=True)
+        previous = retained.read_bytes()
+    if hashlib.sha256(previous).hexdigest() != '3ea8097748f4c244817dfbaead66b0c31bd93236bf541b6958ca6175576b2db8':
+        raise ValueError('The network runner before Round 3 differs')
+    return previous
 
 
 def runner_tab_label_inverse(raw):
@@ -78,13 +100,13 @@ class NetworkSourcesInactiveLabel46(unittest.TestCase):
         self.assertEqual(current.count(SHIM.CURRENT_CONTEXT), 1)
         self.assertEqual(current.replace(SHIM.CURRENT_CONTEXT, SHIM.ORIGINAL_CONTEXT, 1), original)
         self.assertEqual(len(original), 6181)
-        runner = runner_tab_label_inverse(RUNNER.read_bytes())
+        runner = runner_tab_label_inverse(runner_before_round3(RUNNER.read_bytes()))
         self.assertEqual(runner.count(NEW_IMPORT), 1)
         self.assertEqual(hashlib.sha256(runner.replace(NEW_IMPORT, OLD_IMPORT, 1)).hexdigest(),
                          '11668477263a1427bc7affe3311c252dbe1ac0c70a89ab1d9e2f4b48dd63b9cf')
 
     def test_runner_tab_label_inverse_rejects_missing_duplicate_moved_and_other_drift(self):
-        raw = RUNNER.read_bytes()
+        raw = runner_before_round3(RUNNER.read_bytes())
         previous = runner_tab_label_inverse(raw)
         self.assertEqual(previous.count(OLD_TAB_ASSERTION), 1)
         self.assertEqual(previous.replace(OLD_TAB_ASSERTION, NEW_TAB_ASSERTION, 1), raw)
@@ -98,6 +120,13 @@ class NetworkSourcesInactiveLabel46(unittest.TestCase):
         for value in variants:
             with self.subTest(identity=hashlib.sha256(value).hexdigest()), self.assertRaises(ValueError):
                 runner_tab_label_inverse(value)
+
+    def test_round3_inverse_rejects_unreviewed_input_and_geometry_drift(self):
+        raw = RUNNER.read_bytes()
+        for value in (raw+b'\n', raw.replace(b'clickable', b'focusable', 1),
+                      raw.replace(NEW_TAB_ASSERTION, OLD_TAB_ASSERTION, 1), bytearray(raw)):
+            with self.subTest(identity=hashlib.sha256(value).hexdigest()), self.assertRaises(ValueError):
+                runner_before_round3(value)
 
     def test_exact_failed_cohort_xml_passes_new_label_without_mutation(self):
         self.assertEqual(len(self.raw), 16105)

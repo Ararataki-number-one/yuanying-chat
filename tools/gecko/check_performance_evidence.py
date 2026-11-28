@@ -101,15 +101,17 @@ def verify_performance_evidence(directory, source):
     verify_captures(captures,source,portrait_only=portrait_only)
     if portrait_only:
         try:
-            from .ui_visual_contract import verify_challenge,verify_observation
+            from .ui_visual_contract import verify_challenge,verify_portrait_frame
         except ImportError:
-            from ui_visual_contract import verify_challenge,verify_observation
+            from ui_visual_contract import verify_challenge,verify_portrait_frame
         dashboard=android('environment-dashboard-results.json')
-        turned=[row for row in dashboard['captures'] if row['name'] in ('portrait-held','portrait-held-fingerprint')]
-        assert sorted(r['name'] for r in turned)==['portrait-held','portrait-held-fingerprint']
+        required={'portrait-held':320,'portrait-held-fingerprint':320,'portrait-390':390,'portrait-390-fingerprint':390}
+        turned=[r for r in dashboard['captures'] if r['name'] in required]
+        assert sorted(r['name'] for r in turned)==sorted(required)
         for row in turned:
             verify_challenge(row['rotationCalibration'])
-            verify_observation(row['portraitHold'],1)
+            verify_portrait_frame(row['portraitHold'],required[row['name']],640)
+            assert row['actualPixelSize']==row['portraitHold']['actualPngPixels'] and row['imageSha256']==row['portraitHold']['pngSha256']
     build = json.loads((directory / 'ui-build-comparison.json').read_text())
     assert build['coreSourceCommit'] == source and build['comparisonMode'] == 'current-only'
     assert build['historicalUIRebuilt'] is False and build['changedForBaseline'] == []

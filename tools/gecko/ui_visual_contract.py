@@ -39,11 +39,23 @@ def verify_challenge(receipt, package=TEST_PACKAGE):
     verify_observation(receipt['controlLandscape'],1,control=True,package=package)
 
 
+def verify_portrait_frame(value,width,height,density=480):
+    verify_observation(value,1)
+    expected=[width*density//160,height*density//160]
+    sizes=re.findall(r'(?:Physical|Override) size:\s*(\d+)x(\d+)',value['wmSize'])
+    dpis=re.findall(r'(?:Physical|Override) density:\s*(\d+)',value['wmDensity'])
+    assert value['requestedDp']==[width,height] and value['densityDpi']==density
+    assert sizes and list(map(int,sizes[-1]))==expected and dpis and int(dpis[-1])==density
+    assert value['actualPngPixels']==expected and value['bounds']==[0,0,*expected]
+    assert value['unchangedActivityAndBounds'] is True
+    assert all(re.fullmatch(r'[0-9a-f]{64}',value[k]) for k in ('xmlSha256','pngSha256'))
+
+
 def required_captures(portrait_only=False):
     return {
         ('light', viewport, 1, scene)
         for viewport in ('360x640', '412x640') for scene in LIGHT_SCENES
-    } | {('light', '320x740' if portrait_only else '640x360', 1, scene) for scene in LANDSCAPE_SCENES} | {('light', '360x640', 2, scene) for scene in LARGE_SCENES} | {
+    } | {('light', '320x640' if portrait_only else '640x360', 1, scene) for scene in LANDSCAPE_SCENES} | {('light', '360x640', 2, scene) for scene in LARGE_SCENES} | {
         ('dark', '360x640', 1, scene) for scene in DARK_SCENES
     }
 
@@ -57,9 +69,10 @@ def verify_captures(records, source=None, *, portrait_only=False):
 
     if portrait_only:
         for row in records:
-            if row['logicalViewport']=='320x740':
+            if row['logicalViewport']=='320x640':
                 verify_challenge(row['rotationCalibration'])
-                verify_observation(row['portraitHold'],1)
+                verify_portrait_frame(row['portraitHold'],320,640)
+                assert row['actualPixels']==row['portraitHold']['actualPngPixels']
 
     downloads = [item for item in records if item['scene'] == 'downloads']
     for item in downloads:

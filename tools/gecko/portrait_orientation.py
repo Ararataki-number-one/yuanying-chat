@@ -1,7 +1,10 @@
 """Measure resumed Android Activity configuration while the device requests a turn."""
 from contextlib import contextmanager
+import hashlib
 import re
+import struct
 import time
+import xml.etree.ElementTree as ET
 
 CONTROL = 'local.pocketchat.RotationControlActivity'
 TEST_PACKAGE = 'local.pocketchat.test'
@@ -68,6 +71,33 @@ def previous_mode(settings):
 
 def request(adb, value):
     adb('shell','wm',wm_command(adb),'lock',str(value))
+
+
+def portrait_frame(adb, binary, read_xml, package, width_dp, height_dp, density, rotation=1):
+    """Bracket the real PNG and UI tree with the same foreground window measurement."""
+    expected=[width_dp*density//160,height_dp*density//160]
+    request(adb,rotation)
+    first=observe(adb,package,rotation)
+    size=adb('shell','wm','size').strip()
+    dpi=adb('shell','wm','density').strip()
+    sizes=re.findall(r'(?:Physical|Override) size:\s*(\d+)x(\d+)',size)
+    densities=re.findall(r'(?:Physical|Override) density:\s*(\d+)',dpi)
+    if not sizes or list(map(int,sizes[-1]))!=expected or not densities or int(densities[-1])!=density:
+        raise ValueError(f'Actual Android screen configuration differs from the requested viewport: {size}, {dpi}, {expected}')
+    xml=read_xml()
+    raw=binary('exec-out','screencap','-p')
+    last=observe(adb,package,rotation)
+    pixels=list(struct.unpack('>II',raw[16:24]))
+    if not raw.startswith(b'\x89PNG\r\n\x1a\n') or pixels!=expected:
+        raise ValueError(f'Actual screen PNG dimensions differ: {pixels}, {expected}')
+    if first['component']!=last['component'] or first['bounds']!=last['bounds'] or last['bounds']!=[0,0,*expected]:
+        raise ValueError(f'Portrait capture changed Activity or window bounds: {first}, {last}')
+    if not any(n.get('package')==package for n in ET.fromstring(xml).iter('node')):
+        raise ValueError('Captured hierarchy has no current application window')
+    last.update(requestedDp=[width_dp,height_dp],densityDpi=density,wmSize=size,wmDensity=dpi,
+                actualPngPixels=pixels,pngSha256=hashlib.sha256(raw).hexdigest(),
+                xmlSha256=hashlib.sha256(xml.encode()).hexdigest(),unchangedActivityAndBounds=True)
+    return raw,xml,last
 
 
 @contextmanager

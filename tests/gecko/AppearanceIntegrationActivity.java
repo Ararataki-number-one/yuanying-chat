@@ -1,7 +1,10 @@
 package local.pocketchat;
 
 import android.os.*;
-import android.graphics.drawable.ColorDrawable;
+import android.graphics.Bitmap;
+import android.graphics.Canvas;
+import android.graphics.Rect;
+import android.graphics.drawable.Drawable;
 import android.content.res.Configuration;
 import android.widget.*;
 import org.json.*;
@@ -36,12 +39,23 @@ public final class AppearanceIntegrationActivity extends ThemedActivity {
     AppAppearance.apply(nativeSelector);nativeSelector.setEnabled(false);int disabled=nativeSelector.getCurrentTextColor();nativeSelector.setEnabled(true);int enabled=nativeSelector.getCurrentTextColor();
     AppAppearance.apply(nativeTitle);return J.obj("enabled",enabled,"disabled",disabled,"titleAlpha",nativeTitle.getCurrentTextColor()>>>24);
   }
+  static int centerColor(Drawable drawable){
+    Rect bounds=drawable.getBounds();
+    if(bounds.isEmpty())return 0;
+    Bitmap pixel=Bitmap.createBitmap(1,1,Bitmap.Config.ARGB_8888);
+    try{
+      Canvas canvas=new Canvas(pixel);
+      canvas.translate(-bounds.centerX(),-bounds.centerY());
+      drawable.draw(canvas);
+      return pixel.getPixel(0,0);
+    }finally{pixel.recycle();}
+  }
   final Runnable write=new Runnable(){public void run(){try{
     JSONObject value=J.obj("runToken",token,"instance",instance,"buildIdentity",identity(),"actualAndroidExecution",true,
       "feedbackUrl",feedbackUrl,"feedbackDraft",AppSettings.get(AppearanceIntegrationActivity.this,FeedbackUi.DRAFT,""),"mode",AppAppearance.mode(),"dark",AppAppearance.dark(),"nativeColors",nativeColors(),"systemDark",(getResources().getConfiguration().uiMode&Configuration.UI_MODE_NIGHT_MASK)==Configuration.UI_MODE_NIGHT_YES,
       "textColor",sample.getCurrentTextColor(),"cardColor",DesignUi.CARD,"backgroundColor",DesignUi.BG,"primaryText",primary.getCurrentTextColor(),
       "draft",draft.getText().toString(),"selectionStart",draft.getSelectionStart(),"selectionEnd",draft.getSelectionEnd(),"configurations",configurations,
-      "systemUi",getWindow().getDecorView().getSystemUiVisibility(),"modalVisible",modal!=null&&modal.isShowing(),"modalColor",modal==null?0:((android.graphics.drawable.GradientDrawable)modal.root.getBackground()).getColor().getDefaultColor());
+      "systemUi",getWindow().getDecorView().getSystemUiVisibility(),"modalVisible",modal!=null&&modal.isShowing(),"modalColor",modal!=null&&modal.isShowing()?centerColor(modal.root.getBackground()):0);
     android.util.AtomicFile file=new android.util.AtomicFile(new File(getFilesDir(),"appearance-results.json"));java.io.FileOutputStream out=file.startWrite();out.write(value.toString().getBytes(StandardCharsets.UTF_8));file.finishWrite(out);
   }catch(Exception e){android.util.Log.e("AppearanceTest","report",e);}handler.postDelayed(this,500);}};
   @Override public void onConfigurationChanged(Configuration c){super.onConfigurationChanged(c);configurations++;}

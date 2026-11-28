@@ -10,6 +10,7 @@ import hashlib
 BEFORE = (14358, '7efcea13daac3874bbf8bf945bca3e213d9b3224020738fe5398582e4ecd3e5a')
 AFTER = (15719, '1c232eeb787787895c99e20a8e5f4b36f309b3828fd9e8b14866655d06a4c01f')
 PORTRAIT_AFTER = (15859, 'd6ad70ef7d4fc52ab8c39ea07ea43ee7138a97c499d35f71925b1b77e5a23751')
+PORTRAIT_NARROW_AFTER = (15903, '8fc54990908e334cb61e758c1f114cb8da055170028f0624f7c01714a3f60153')
 PORTRAIT_FILES = "DASHBOARD_CAPTURE_FILES |= frozenset(name+suffix for name in ('portrait-held', 'portrait-held-fingerprint') for suffix in ('.png','.xml'))\n\n"
 OWNER = '62b37a9c52b899ce593a9cec85050d70fb32e56e'
 PATH = 'tools/gecko/ci_bundle.py'
@@ -70,6 +71,12 @@ def historical_bundle_source(source):
     if type(source) is not str:
         raise AssertionError('Complete CI bundle source text required')
     identity = pin(source.encode('utf-8'))
+    if identity == PORTRAIT_NARROW_AFTER:
+        old,new=("('portrait-held', 'portrait-held-fingerprint')", "('portrait-held', 'portrait-held-fingerprint', 'portrait-390', 'portrait-390-fingerprint')")
+        assert source.count(new)==1
+        source=source.replace(new,old,1)
+        identity=pin(source.encode('utf-8'))
+        assert identity==PORTRAIT_AFTER
     if identity == PORTRAIT_AFTER:
         assert source.count(PORTRAIT_FILES)==1
         source=source.replace(PORTRAIT_FILES,'',1)

@@ -138,7 +138,7 @@ class CiBundleTest(unittest.TestCase):
     def test_only_declared_dashboard_png_xml_files_enter_the_phase_namespace(self):
         expected={name+suffix for name in ('light','light-fingerprint','home-return','warm-list',
             'second-environment','workspace-chat','large-font','large-font-fingerprint',
-            'landscape','landscape-fingerprint','dark','dark-fingerprint','failure','portrait-held','portrait-held-fingerprint') for suffix in ('.png','.xml')}
+            'landscape','landscape-fingerprint','dark','dark-fingerprint','failure','portrait-held','portrait-held-fingerprint','portrait-390','portrait-390-fingerprint') for suffix in ('.png','.xml')}
         self.assertEqual(BUNDLE.DASHBOARD_CAPTURE_FILES,expected)
         for name in expected:
             self.assertTrue(BUNDLE.allowed(str(BUNDLE.DASHBOARD_CAPTURE_DIR/name),'phase'))

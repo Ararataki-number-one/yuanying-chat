@@ -36,9 +36,28 @@ def control(xml, record, *, description=None, text=None):
 
 
 def folder_dialog(xml, record):
-    owned = [node for node in nodes(xml) if node.attrib.get('package') == PACKAGE]
+    all_nodes = nodes(xml)
+    owned = [node for node in all_nodes if node.attrib.get('package') == PACKAGE
+             and node.get('visible-to-user') != 'false']
     assert len([node for node in owned if node.attrib.get('text') == '保存位置']) == 1
-    assert len([node for node in owned if node.attrib.get('text', '').startswith('默认位置：Download/元婴期院士/窗口_编号/')]) == 1
+    path = 'Download/元婴期院士/窗口_编号/'
+    legacy = [n for n in owned if n.get('text','').startswith('默认位置：'+path)]
+    keys = [n for n in owned if n.get('text') == '默认位置']
+    values = [n for n in owned if n.get('text') == path]
+    if legacy:
+        assert len(legacy) == 1 and not keys and not values, 'Invalid combined default path'
+    else:
+        # Round 3 renders a native key/value row; independent text elsewhere
+        # in the dialog cannot substitute for one labelled path.
+        assert len(keys) == len(values) == 1, 'One native default-path row required'
+        key,value = keys[0],values[0]
+        parents = {c:p for p in all_nodes for c in p}
+        row = parents[key]
+        assert parents[value] is row and row.get('class') == 'android.widget.LinearLayout' and row.get('package') == PACKAGE
+        for n in (key,value):
+            assert n.get('class') == 'android.widget.TextView' and n.get('enabled') == 'true'
+            l,t,r,b = bounds(n)
+            assert 0 <= l < r <= record['actualPixels'][0] and 0 <= t < b <= record['actualPixels'][1]
     control(xml, record, text='知道了')
 
 
