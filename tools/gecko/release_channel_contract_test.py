@@ -107,6 +107,18 @@ class DirectReleaseTests(unittest.TestCase):
             with self.subTest(request=request), self.assertRaises(ReleaseChannelError):
                 verify_direct_release(dict(record, userRequest=request), self.identity)
 
+    def test_round3_upgrade_is_bound_to_approved_version_and_full_instruction(self):
+        request = '继续，把这次验收通过的 Round 3 UI 合到最新正式版 2.1.19，五个主界面别动，保留 PDF 下载记录和网络指纹仪表盘。复测通过后用原正式密钥签名，发布能从 2.1.19 覆盖升级的 2.1.20。'
+        identity = dict(self.identity, version='2.1.20', versionCode=122)
+        record = dict(self.record, version='2.1.20', versionCode=122, userRequest=request)
+        verify_direct_release(record, identity)
+        for edits in [dict(version='2.1.21'), dict(versionCode=123)]:
+            with self.subTest(edits=edits),self.assertRaises(ReleaseChannelError):
+                verify_direct_release(dict(record, **edits), dict(identity, **edits))
+        for text in ('不要'+request, request.replace('复测通过后', '无需复测'), request.replace('发布能', '暂缓发布能')):
+            with self.subTest(text=text),self.assertRaises(ReleaseChannelError):
+                verify_direct_release(dict(record, userRequest=text), identity)
+
     def test_maintenance_publication_preserves_the_complete_actual_request(self):
         identity = dict(self.identity, version='2.1.5', versionCode=107)
         for source in ('current-user-message', 'prior-explicit-user-message-in-current-task'):

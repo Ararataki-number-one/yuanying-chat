@@ -19,13 +19,14 @@ class WorkspaceUiCompatibilityControls(unittest.TestCase):
         historical.DownloadNamesCatalogCompatibilityTest.setUpClass()
         cls.legacy = historical.DownloadNamesCatalogCompatibilityTest('test_exact_addition_retains_all_four_original_guards')
         cls.current = (ROOT / 'app/src/main/java/local/pocketchat/DesignDownloads.java').read_text()
+        cls.before_dialog_refresh = runner._workspace_ui.prior_dialogs(cls.current, runner.member)
         cls.manifest = runner._workspace_ui.manifest()
 
     def test_exact_ui_delta_reaches_the_unchanged_reviewed210_source(self):
         self.assertEqual(self.manifest['before']['commit'], 'f274364e370e88aa6f94dd60945bd9ffdc589a4b')
         self.assertEqual(self.manifest['before']['tree'], '2d49cd16dcfce079dedd831c7aded7116b0e8400')
         self.assertEqual(self.manifest['before']['sha256'], runner._review46.scaffold_manifest()['after']['sha256'])
-        self.assertEqual(sha(self.current), self.manifest['after']['sha256'])
+        self.assertEqual(sha(self.before_dialog_refresh), self.manifest['after']['sha256'])
         projected = runner.remove_workspace_ui(self.current)
         self.assertEqual(sha(projected), self.manifest['before']['sha256'])
         self.assertEqual(sha(runner.remove_reviewed38(self.current)), '8433e4cc4c72d8c6ed0b2f141ebcca762a5f357f2acb877a0a19b2814be98ed0')
@@ -126,7 +127,7 @@ class WorkspaceUiCompatibilityControls(unittest.TestCase):
         protected = {key:self.manifest[key] for key in ('currentMethodSha256', 'priorMethodSha256')}
         self.assertEqual(sha(canonical(protected)),
                          'e7ba7b6a8e21b07df1f23aaa3b69ac609cd25074a7118c3369559624bc6e09e0')
-        prior = self.current
+        prior = self.before_dialog_refresh
         for edit in reversed(self.manifest['edits'][7:]):
             self.assertEqual(prior.count(edit['after']), 1)
             prior = prior.replace(edit['after'], edit['before'], 1)
@@ -135,18 +136,32 @@ class WorkspaceUiCompatibilityControls(unittest.TestCase):
         for edit in self.manifest['edits'][7:]:
             self.assertEqual(restored.count(edit['before']), 1)
             restored = restored.replace(edit['before'], edit['after'], 1)
-        self.assertEqual(restored, self.current)
+        self.assertEqual(restored, self.before_dialog_refresh)
 
     def test_missing_duplicated_or_changed_typography_hunks_are_rejected(self):
         for edit in self.manifest['edits'][7:]:
             current = edit['after']
-            self.assertEqual(self.current.count(current), 1)
+            self.assertEqual(self.before_dialog_refresh.count(current), 1)
             changed = current.replace('ReferenceUi.', 'UnreviewedUi.', 1)
             self.assertNotEqual(changed, current)
             for replacement in ('', current + current, changed):
                 with self.subTest(afterSha256=edit['afterSha256'], replacementBytes=len(replacement)):
                     with self.assertRaises(AssertionError):
-                        runner.remove_reviewed38(self.current.replace(current, replacement, 1))
+                        runner.remove_reviewed38(self.before_dialog_refresh.replace(current, replacement, 1))
+
+    def test_round3_changes_only_the_five_secondary_dialogs(self):
+        declarations = json.loads((NAMES/'round3-download-dialogs.json').read_bytes())
+        self.assertEqual(set(declarations['methods']), {
+            'void chooseScope()', 'void chooseKind()', 'void chooseSort()',
+            'void showCollection()', 'static AlertDialog folder(Activity a)'})
+        self.assertEqual(sha(self.current), declarations['currentFileSha256'])
+        self.assertEqual(sha(self.before_dialog_refresh), declarations['previousFileSha256'])
+        self.assertEqual(declarations['previousFileSha256'], self.manifest['after']['sha256'])
+        for signature in declarations['methods']:
+            current_body = runner.member(self.current, signature)
+            edited = self.current.replace(current_body, current_body[:-1] + ' /* drift */ }', 1)
+            with self.subTest(signature=signature), self.assertRaisesRegex(AssertionError, 'Unreviewed dialog change'):
+                runner._workspace_ui.prior_dialogs(edited, runner.member)
 
 
 if __name__ == '__main__':
