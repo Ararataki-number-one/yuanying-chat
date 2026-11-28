@@ -1001,6 +1001,19 @@ sequence.dom.window.close();navigation.dom.window.close();wrongStart.dom.window.
         new_engine = ('check("Chromium is the saved engine in the fixture environment",'
                       'BrowserPreferences.startBrowser(this))')
         expected_checks[expected_checks.index(old_engine)] = new_engine
+        # The device still receives both turns. Only the labels of these three
+        # checks changed; the complete original visible-control/surface/draft
+        # predicates and their positions must remain identical.
+        for old_label, new_label in (
+                ('Large-font landscape keeps address and navigation targets visible',
+                 'Large-font locked portrait keeps address and navigation targets visible while the device requests landscape'),
+                ('Landscape retains the same actual browser surface',
+                 'The landscape device request retains the same portrait browser surface'),
+                ('Large-font orientation changes preserve the live website draft and document',
+                 'Device rotation requests preserve the portrait website draft and document')):
+            prefix='check("'+old_label+'",'
+            index, = (i for i, value in enumerate(expected_checks) if value.startswith(prefix))
+            expected_checks[index]=expected_checks[index].replace(prefix,'check("'+new_label+'",',1)
         before_browser_return = (
             'check("Returning from the actual enhanced activity retains the browser surface",'
             'web()==returnSurface&&runtime.allowed())')
