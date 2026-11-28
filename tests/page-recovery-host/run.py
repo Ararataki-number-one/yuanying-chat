@@ -40,6 +40,8 @@ def main():
       'LIFECYCLE':('GeckoWebView.java',['void forgetGeneralRoute(','private boolean navigationCurrent(','void timezoneConfigurationChanged(','private void contentStopped(','private boolean canRecoverAutomatically(','boolean recoverClosed(','private boolean closePopup(GeckoSession old)','private boolean closePopup(GeckoSession old,boolean returnNavigation)','boolean closeWebsitePages(','static final class TimeZoneGate {','void retireTimeZone(','void retireTimeZones(','void completeTimeZoneProofs(','void completeTimeZoneRequests(','void releaseIpRoute(','public void onResume(','boolean hasVisibleDocument(','private void failure('])}
     fixture=pathlib.Path(__file__).parent/'PageRecoveryHost.java'
     inputs={source/name for name,_ in selections.values()}|{source/name for name in ('WebReplyObserver.java','ReplyTaskPersistence.java','BrowserRuntimePolicy.java','BrowserSettingsPolicy.java','BrowserBridgeRequests.java','ChromiumRouteLease.java','GeckoNavigationPolicy.java','BrowserAddressPolicy.java','AttachmentIssue.java')}|{fixture,pathlib.Path(__file__).resolve(),fixture.with_name('ReloadRequestHost.java'),fixture.with_name('reload_request.py'),fixture.with_name('README.md')}
+    dialog_ui=fixture.with_name('RecoveryDialogUi.java')
+    inputs.add(dialog_ui)
     hashes={str(path.relative_to(ROOT)):hashlib.sha256(path.read_bytes()).hexdigest() for path in sorted(inputs)}
     commit=subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip()
     text=fixture.read_text()
@@ -65,7 +67,7 @@ def main():
         complete=[source/name for name in ('BrowserBridgeRequests.java','ChromiumRouteLease.java','GeckoNavigationPolicy.java','BrowserAddressPolicy.java','AttachmentIssue.java')]
         def execute(generated,label):
             selected=tmp/label;selected.mkdir();selected_java=selected/'PageRecoveryHost.java';selected_java.write_text(generated)
-            built=subprocess.run(['javac','-encoding','UTF-8','-cp',str(a.json_jar.resolve()),'-d',str(selected),str(selected_java),str(uri),str(clock),*map(str,complete)],capture_output=True,text=True)
+            built=subprocess.run(['javac','-encoding','UTF-8','-cp',str(a.json_jar.resolve()),'-d',str(selected),str(selected_java),str(dialog_ui),str(uri),str(clock),*map(str,complete)],capture_output=True,text=True)
             if built.returncode:raise RuntimeError('Current source host compilation failed: '+built.stderr)
             return subprocess.run(['java','-cp',str(selected)+os.pathsep+str(a.json_jar.resolve()),'local.pocketchat.PageRecoveryHost'],text=True,capture_output=True)
         result=execute(text,'current')

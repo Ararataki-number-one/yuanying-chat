@@ -1,6 +1,6 @@
 This host control executes the current production `AppPrefs` inventory and
 `enabled`/`values`/`apply` methods, the current environment editor's actual
-checkbox and save loops, and the current `NetworkRegion` probe scheduling and
+switch and save loops, and the current `NetworkRegion` probe scheduling and
 admission methods. It also compiles the complete production JSON helper and
 latency refresh policy. Source hashes bind every extracted input.
 

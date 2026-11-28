@@ -34,9 +34,15 @@ public final class BrowserMenuHost {
     static final class Modal {
       static Modal latest;final MainActivity owner;final String title;
       final List<Button> actions=new ArrayList<>();boolean sheet,shown;int dismisses,statusRows;
+      final List<Button> footer=new ArrayList<>();
       java.util.function.Consumer<Modal> dismissed;
       Modal(MainActivity owner,String title){this.owner=owner;this.title=title;latest=this;}
       Modal asSheet(){sheet=true;return this;}
+      void buttons(String secondary,Runnable back,String primary,Runnable save){
+        footer.clear();
+        if(!secondary.isEmpty())footer.add(new Button(secondary,back));
+        if(!primary.isEmpty())footer.add(new Button(primary,save));
+      }
       void show(){shown=true;}
       void dismiss(){shown=false;dismisses++;owner.events.add("dismiss");if(dismissed!=null)dismissed.accept(this);}
       void setOnDismissListener(java.util.function.Consumer<Modal> run){dismissed=run;}
@@ -151,6 +157,12 @@ public final class BrowserMenuHost {
       check("Every declared action remains exactly once in its actual panel",titles.size()==expected.size()&&new java.util.HashSet<>(titles).equals(expected.keySet()));
       check("Common browser and workspace actions precede secondary options",titles.subList(0,tools?3:4).equals(new ArrayList<>(expected.keySet()).subList(0,tools?3:4)));
       check("Opening the menu does not perform any action",a.events.isEmpty());
+      if(!tools){
+        check("The browser menu has one enabled Cancel footer",
+            dialog.footer.size()==1&&dialog.footer.get(0).title.equals("取消")&&dialog.footer.get(0).enabled);
+        dialog.footer.get(0).click();
+        check("Cancel dismisses once without navigating",!dialog.shown&&dialog.dismisses==1&&a.events.equals(Arrays.asList("dismiss")));
+      }
       for(Map.Entry<String,String> entry:expected.entrySet()){
         a=activity(tools,reading,back,forward,loading);dialog=ReferenceUi.Modal.latest;Button found=null;
         for(Button button:dialog.actions)if(button.title.equals(entry.getKey()))found=button;

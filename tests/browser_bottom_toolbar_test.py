@@ -94,6 +94,8 @@ class CurrentBrowserMenuTests(unittest.TestCase):
             self.assertEqual(menu.count(downloads),1);self.assertEqual(menu.count(settings),1)
             moved=menu.replace(downloads,'',1).replace('d.show();',downloads+'\n    d.show();',1)
             controls=[(menu.replace(downloads,'',1),option,page_tools,utility_methods,'Every declared action remains exactly once in its actual panel'),
+                (menu.replace('d.buttons("取消",d::dismiss,"",()->{});','',1),option,page_tools,utility_methods,'The browser menu has one enabled Cancel footer'),
+                (menu.replace('"取消",d::dismiss','"取消",()->hub.select(AppHub.DOWNLOADS)',1),option,page_tools,utility_methods,'Cancel dismisses once without navigating'),
                 (moved,option,page_tools,utility_methods,'Common browser and workspace actions precede secondary options'),
                 (menu.replace(settings,settings.replace('AppHub.SETTINGS','AppHub.DOWNLOADS'),1),option,page_tools,utility_methods,
                     'Every callback dismisses before its original action: 应用设置'),

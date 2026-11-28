@@ -82,7 +82,7 @@ def main():
         'freshness': declaration(native, 'static boolean freshLatency('),
     }
     ui_method = declaration(editor, 'static void edit(MainActivity a,JSONObject initial,int tab,EnvironmentSpec.Identity identity)')
-    start = ui_method.index('    CheckBox[] options=')
+    start = ui_method.index('    Switch[] options=')
     loop = ui_method.index('    for(int section=', start)
     selected['editor-loop'] = ui_method[start:loop] + member_at(ui_method, loop)
     selected['editor-read'] = field(ui_method, 'for(int i=0;i<options.length;i++)')
@@ -101,7 +101,7 @@ def main():
         ('SecretStore', 'StoreBoundary'),
         ('WindowNetworkState', 'ProjectionBoundary'),
         ('BrowserNetworkGuard', 'GuardPolicyBoundary'),
-        ('CheckBox', 'CheckBoxBoundary'),
+        ('Switch', 'SwitchBoundary'),
         ('LinearLayout', 'LayoutBoundary'),
         ('DesignUi', 'DesignBoundary'),
         ('Context c', 'ContextBoundary c'),
@@ -159,7 +159,7 @@ def main():
         mutations = [
             ('default-disabled', 'enabled', '{', '{if("automaticLatencyChecks".equals(key))return false;', 'preferences', 'A missing automatic latency preference defaults to enabled'),
             ('apply-drops-key', 'preference-edit', 'for(String key:KEYS)if(', 'for(String key:KEYS)if(!"automaticLatencyChecks".equals(key)&&', 'preferences', 'The actual preference API persists an explicit automatic latency disable'),
-            ('editor-hides-key', 'editor-loop', '{"automaticLatencyChecks"}', '{}', 'preferences', 'The actual environment editor renders the automatic latency checkbox'),
+            ('editor-hides-key', 'editor-loop', '{"automaticLatencyChecks"}', '{}', 'preferences', 'The actual environment editor renders the automatic latency switch'),
             ('foreign-route', 'session-gate', '||!route.equals(latencyRoute(s))', '', 'foreign-route', 'A queued probe cannot query a foreign current route'),
         ]
         # Final production bodies define the following new guard locations.

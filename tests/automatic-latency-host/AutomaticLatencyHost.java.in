@@ -30,13 +30,13 @@ public final class AutomaticLatencyHost {
     check("The actual preference API ignores a nonboolean automatic latency value",AppPrefs.enabled(s.context,KEY));
     setting(s,false);
     check("The actual preference API persists an explicit automatic latency disable",!AppPrefs.enabled(s.context,KEY)&&Boolean.FALSE.equals(AppPrefs.values(s.context).opt(KEY)));
-    CheckBoxBoundary[] options=PreferenceEntryBoundary.render(s.context,new JSONObject());
-    check("The actual environment editor renders the automatic latency checkbox",options[index]!=null&&options[index].text.equals(AppPrefs.LABELS[index])&&!options[index].isChecked());
+    SwitchBoundary[] options=PreferenceEntryBoundary.render(s.context,new JSONObject());
+    check("The actual environment editor renders the automatic latency switch",options[index]!=null&&options[index].attached&&options[index].text.equals(AppPrefs.LABELS[index])&&!options[index].isChecked());
     options[index].setChecked(true);AppPrefs.apply(s.context,PreferenceEntryBoundary.read(options));
     check("The actual editor read loop reaches the real preference apply method",AppPrefs.enabled(s.context,KEY)&&PreferenceEntryBoundary.render(s.context,new JSONObject())[index].isChecked());
     for(boolean legacyValue:new boolean[]{true,false}){
       AppPrefs.apply(s.context,J.obj("replyNotice",legacyValue));
-      CheckBoxBoundary[] restored=PreferenceEntryBoundary.render(s.context,J.obj("replyNotice",!legacyValue));
+      SwitchBoundary[] restored=PreferenceEntryBoundary.render(s.context,J.obj("replyNotice",!legacyValue));
       JSONObject edits=PreferenceEntryBoundary.read(restored);
       check("Existing profiles and drafts omit the retired reply notice control ("+legacyValue+")",
           restored[Arrays.asList(AppPrefs.KEYS).indexOf("replyNotice")]==null&&!edits.has("replyNotice"));
@@ -147,16 +147,25 @@ final class NetworkBoundary {
   static NetworkBoundary get(ContextBoundary context){return new NetworkBoundary();}
 }
 final class PreferenceEntryBoundary {
-  static CheckBoxBoundary[] render(ContextBoundary a,JSONObject initial){
+  static void appleSection(LayoutBoundary parent,String title){}
+  static LayoutBoundary editorCard(ContextBoundary context){return new LayoutBoundary();}
+  static void cardDivider(LayoutBoundary card,int inset){}
+  static void styleAppleSwitch(SwitchBoundary control){}
+  static void polishSettingsGroup(LayoutBoundary group){}
+  static void polishRowIcon(LayoutBoundary group,String glyph){}
+  static void storage(ContextBoundary context){}
+  static void appleFooterNote(LayoutBoundary parent,String note){}
+  static SwitchBoundary[] render(ContextBoundary a,JSONObject initial){
     LayoutBoundary preferences=new LayoutBoundary();
 @EDITOR_BLOCK@
     return options;
   }
-  static JSONObject read(CheckBoxBoundary[] options){JSONObject value=new JSONObject();
+  static JSONObject read(SwitchBoundary[] options){JSONObject value=new JSONObject();
 @EDITOR_READ@
   }
 }
 final class ContextBoundary {
+  int dp(int units){return units;}
   static int nextId;final int id=++nextId;final PreferencesBoundary prefs=new PreferencesBoundary();
   final ConnectivityBoundary connectivity=new ConnectivityBoundary();
   JSONObject sample=new JSONObject(),diskSample=new JSONObject();boolean cacheReady=true;int writes,publications;
@@ -212,6 +221,29 @@ final class StoreBoundary {
 }
 final class CacheBoundary {void publish(File file,JSONObject sample){ContextBoundary context=StoreBoundary.owners.get(file);if(context==null)throw new AssertionError("Unexpected cache owner");context.publications++;context.sample=sample;}}
 final class ProjectionBoundary {static int saves;static void save(ContextBoundary c,SessionBoundary s,NetworkBoundary n){saves++;}}
-final class CheckBoxBoundary {String text="";boolean checked;CheckBoxBoundary(ContextBoundary c){}void setText(String value){text=value;}void setTextColor(int value){}void setTextSize(int value){}void setChecked(boolean value){checked=value;}boolean isChecked(){return checked;}}
-final class LayoutBoundary {final List<CheckBoxBoundary> children=new ArrayList<>();void addView(CheckBoxBoundary value){children.add(value);}}
-final class DesignBoundary {static final int TEXT=0;static void section(LayoutBoundary root,String heading,String summary){}static LayoutBoundary card(ContextBoundary c){return new LayoutBoundary();}static void addCard(LayoutBoundary root,LayoutBoundary child){root.children.addAll(child.children);}}
+final class SwitchBoundary {
+  String text="";boolean checked,attached;
+  SwitchBoundary(ContextBoundary c){}
+  void setText(String value){text=value;}
+  void setChecked(boolean value){checked=value;}
+  boolean isChecked(){return checked;}
+  void setPadding(int l,int t,int r,int b){}
+  void setTextColor(int value){}
+  void setTextSize(int value){}
+}
+final class LayoutBoundary {
+  static class LayoutParams {int topMargin;LayoutParams(int width,int height){}}
+  final List<SwitchBoundary> children=new ArrayList<>();
+  void setPadding(int l,int t,int r,int b){}
+  void addView(SwitchBoundary control,LayoutParams params){children.add(control);}
+  void addView(LayoutBoundary card,LayoutParams params){
+    for(SwitchBoundary control:card.children){control.attached=true;children.add(control);}
+  }
+}
+final class NativeControls {static void prepare(SwitchBoundary view){}}
+final class ReferenceUi {static void readable(SwitchBoundary view){}}
+final class SettingsWorkspaceStyle {
+  static LayoutBoundary group(ContextBoundary context){return new LayoutBoundary();}
+  static void row(ContextBoundary ctx,LayoutBoundary parent,String title,String detail,String glyph,Runnable action){}
+}
+final class DesignBoundary {static final int TEXT=0;}

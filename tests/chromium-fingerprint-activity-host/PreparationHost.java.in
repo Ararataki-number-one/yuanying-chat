@@ -22,6 +22,7 @@ public final class PreparationHost {
   Tab selected;ChromiumRuntime runtime=new ChromiumRuntime();BrowserFiles files=new BrowserFiles();
   int retired,created,started,shown,delivered,cancelled,settingsOpened,invalidated,dialogs;
   boolean restoredOldState;String lastMessage="";
+  ReferenceUi.Modal lastAlert;
 
   PreparationHost(Path path)throws Exception{
     context=new TestContext(path,new EnvironmentSpec.Identity(2,4,"00000000-0000-0000-0000-000000000002"));
@@ -121,6 +122,12 @@ public final class PreparationHost {
     PreparationHost failed=fresh();WebView retained=failed.selected.web;long revision=failed.fingerprintState.revision;failed.context.vault.failPut=true;
     failed.saveFingerprint(failed.fingerprintState,J.obj("display","desktop"),false);failed.worker.drain();failed.ui.drain();
     check("Policy publication failure remains blocked while rereading actual state",!failed.fingerprintStateReady&&!failed.fingerprintSaving&&failed.fingerprintLoading&&retained.settings.blocked&&failed.dialogs==1);
+    ReferenceUi.Modal alert=failed.lastAlert;
+    check("Failed save displays the unconfirmed policy and the reread notice",alert!=null&&alert.shown
+        &&alert.title.equals("指纹配置未确认")&&alert.body.detail.contains("将重新读取实际保存结果")
+        &&alert.body.detail.contains(failed.fingerprintError)&&"知道了".equals(alert.positive));
+    alert.confirm.run();
+    check("Dismissing the warning leaves traffic blocked until the reread finishes",!alert.shown&&!failed.fingerprintStateReady&&retained.settings.blocked);
     failed.drain();
     check("Failed save rereads the actual retained revision",failed.fingerprintState.revision==revision&&failed.selected.web==retained&&failed.fingerprintStateReady&&!failed.fingerprintSpec.desktop());
 
@@ -196,9 +203,21 @@ public final class PreparationHost {
     JSONObject workerPolicyReceipt(){return new JSONObject();}
   }
   static final class BrowserFiles {int downloadCancellations;void cancelActiveDownload(){downloadCancellations++;}}
-  static final class AppAppearance {
-    static Dialog dialog(PreparationHost host){return new Dialog(host);}
-    static final class Dialog {final PreparationHost host;Dialog(PreparationHost host){this.host=host;}Dialog setTitle(String text){return this;}Dialog setMessage(String text){return this;}Dialog setPositiveButton(String text,Object callback){return this;}void show(){host.dialogs++;}}
+  static final class LinearLayout {
+    static final class LayoutParams {LayoutParams(int width,int height){}}
+    String detail="";
+    void addView(String value,LayoutParams ignored){detail=value;}
+  }
+  static final class ReferenceUi {
+    static String modalBanner(PreparationHost host,String icon,String title,String detail,boolean positive){return detail;}
+    static final class Modal {
+      final PreparationHost host;final String title;final LinearLayout body=new LinearLayout();
+      String positive;Runnable confirm;boolean shown;
+      Modal(PreparationHost host,String title){this.host=host;this.title=title;}
+      void buttons(String other,Runnable cancel,String label,Runnable action){positive=label;confirm=action;}
+      void show(){host.dialogs++;host.lastAlert=this;shown=true;}
+      void dismiss(){shown=false;}
+    }
   }
 }
 final class ChromiumFingerprintRuntime {static final class Prepared {JSONObject receipt(){return J.obj("documentStartRegistered",true);}void close(){}}}

@@ -17,6 +17,8 @@ def run(json_jar):
     fixture=pathlib.Path(__file__).with_name('ReloadRequestHost.java');text=fixture.read_text();methods=[]
     coordinator=source/'ReplyTaskPersistence.java'
     paths={fixture,pathlib.Path(__file__).resolve(),pathlib.Path(__file__).with_name('run.py'),coordinator}|{source/name for name,_ in selections.values()}
+    dialog_ui=fixture.with_name('RecoveryDialogUi.java')
+    paths.add(dialog_ui)
     hashes={str(p.relative_to(ROOT)):hashlib.sha256(p.read_bytes()).hexdigest() for p in sorted(paths)}
     for marker,(name,needles) in selections.items():
         original=(source/name).read_text();text=text.replace('/* '+marker+' */','\n'.join(member(original,n) for n in needles));methods.extend(name+':'+n for n in needles)
@@ -27,7 +29,7 @@ def run(json_jar):
     with tempfile.TemporaryDirectory(prefix='reload-request-host-') as root:
         root=pathlib.Path(root);java=root/'local/pocketchat/ReloadRequestHost.java';java.parent.mkdir(parents=True);java.write_text(text)
         uri=root/'android/net/Uri.java';uri.parent.mkdir(parents=True);uri.write_text('package android.net; public class Uri {java.net.URI value; public static Uri parse(String x){Uri u=new Uri();u.value=java.net.URI.create(x);return u;} public String getPath(){return value.getPath();}public String getEncodedPath(){return value.getRawPath();}}')
-        subprocess.run(['javac','-encoding','UTF-8','-cp',str(json_jar.resolve()),'-d',str(root),str(java),str(uri),str(coordinator)],check=True)
+        subprocess.run(['javac','-encoding','UTF-8','-cp',str(json_jar.resolve()),'-d',str(root),str(java),str(dialog_ui),str(uri),str(coordinator)],check=True)
         result=subprocess.run(['java','-cp',str(root)+os.pathsep+str(json_jar.resolve()),'local.pocketchat.ReloadRequestHost'],text=True,capture_output=True)
         if not result.stdout:raise RuntimeError(result.stderr)
         report=json.loads(result.stdout)

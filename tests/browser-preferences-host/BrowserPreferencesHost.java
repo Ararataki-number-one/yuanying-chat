@@ -281,10 +281,21 @@ public final class BrowserPreferencesHost {
   static void sitePermissionConfirmation(){
     BrowserActivity current=openedSitePermissions();
     BrowserActivity.Tab confirmed=current.selected;
-    check("Permission dialog identifies the page being confirmed",current.permissionDialog.message.startsWith(confirmed.url));
+    ReferenceUi.Modal dialog=current.permissionDialog;
+    check("Permission dialog identifies the page being confirmed",dialog.shown&&"当前网站权限".equals(dialog.title)
+        &&dialog.body.children.size()==2&&confirmed.url.equals(dialog.body.children.get(0).fields.get("当前网址"))
+        &&dialog.body.children.get(0).selectable.contains("当前网址"));
+    check("Permission policy and destructive consequence are shown before confirmation",
+        dialog.body.children.get(0).fields.getOrDefault("授权策略","").contains("逐次确认")
+        &&dialog.body.children.get(1).warning.contains("未提交")&&"结束网页并重载".equals(dialog.primaryLabel));
+    BrowserActivity cancelled=openedSitePermissions();
+    check("Permission sheet offers a return action","返回".equals(cancelled.permissionDialog.secondaryLabel));
+    cancelled.permissionDialog.cancel();
+    check("Returning from permission sheet leaves the live page untouched",!cancelled.permissionDialog.shown
+        &&cancelled.selected.saved!=null&&cancelled.retired.isEmpty()&&cancelled.shown==0);
     current.permissionDialog.confirm();
     check("An unchanged permission dialog reloads its original page once",
-        current.retired.equals(Collections.singletonList(confirmed))&&confirmed.saved==null&&current.shown==1);
+        !dialog.shown&&current.retired.equals(Collections.singletonList(confirmed))&&confirmed.saved==null&&current.shown==1);
 
     BrowserActivity switched=openedSitePermissions();
     switched.onNewIntent(new Intent().setAction(Intent.ACTION_VIEW).setData(Uri.parse("https://example.com/second")));
@@ -482,7 +493,8 @@ class BrowserActivity extends Activity {
   int launches;
   String lastMessage;
   @Override public void startActivity(Intent value){launched=value;launches++;}
-  TestDialog permissionDialog;
+  ReferenceUi.Modal permissionDialog;
+  int dp(int value){return value;}
   Runnable customViewClosed=()->{};
   final List<Tab> retired=new ArrayList<>();
   int shown;
@@ -505,17 +517,33 @@ class BrowserActivity extends Activity {
 }
 
 final class WebView {}
-final class AppAppearance {
-  static TestDialog dialog(BrowserActivity activity){return activity.permissionDialog=new TestDialog();}
+final class LinearLayout {
+  final List<LinearLayout> children=new ArrayList<>();
+  final Map<String,String> fields=new LinkedHashMap<>();
+  final Set<String> selectable=new HashSet<>();
+  String warning="";
+  void addView(LinearLayout child,LayoutParams params){children.add(child);}
+  static final class LayoutParams {
+    int topMargin;
+    LayoutParams(int width,int height){}
+  }
 }
-final class TestDialog {
-  interface ClickListener {void click(TestDialog dialog,int which);}
-  String message;
-  ClickListener positive;
-  TestDialog setTitle(String text){return this;}
-  TestDialog setMessage(String text){message=text;return this;}
-  TestDialog setNegativeButton(String text,ClickListener click){return this;}
-  TestDialog setPositiveButton(String text,ClickListener click){positive=click;return this;}
-  void show(){}
-  void confirm(){positive.click(this,-1);}
+final class ReferenceUi {
+  static LinearLayout modalGroup(BrowserActivity owner){return new LinearLayout();}
+  static void modalFieldRow(LinearLayout parent,String key,String value,boolean selectable){
+    parent.fields.put(key,value);if(selectable)parent.selectable.add(key);
+  }
+  static LinearLayout modalWarning(BrowserActivity owner,String glyph,String title,String detail){
+    LinearLayout warning=new LinearLayout();warning.warning=title+" "+detail;return warning;
+  }
+  static final class Modal {
+    final String title;final LinearLayout body=new LinearLayout();boolean shown;
+    String secondaryLabel,primaryLabel;Runnable back,proceed;
+    Modal(BrowserActivity owner,String title){this.title=title;owner.permissionDialog=this;}
+    void buttons(String secondary,Runnable cancel,String primary,Runnable confirm){
+      secondaryLabel=secondary;back=cancel;primaryLabel=primary;proceed=confirm;
+    }
+    void show(){shown=true;}void dismiss(){shown=false;}
+    void confirm(){proceed.run();}void cancel(){back.run();}
+  }
 }

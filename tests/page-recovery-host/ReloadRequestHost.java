@@ -145,7 +145,6 @@ class WebReplyObserver {JSONObject lastNavigationArchivedJob;long navigationArch
 class BrowserRuntimePolicy {/* POLICY */}
 class BrowserSettingsPolicy {/* REPLY_POLICY */}
 class PageMemory {/* MEMORY */}
-class ReferenceUi {static class Modal{static int shows;Runnable positive,negative;String positiveLabel,negativeLabel;boolean shown;java.util.function.Consumer<Object> dismiss;Modal(Object c,String title){}void note(String s){}void setOnDismissListener(java.util.function.Consumer<Object> c){dismiss=c;}void dismiss(){shown=false;if(dismiss!=null)dismiss.accept(this);}void buttons(String a,Runnable x,String b,Runnable y){negativeLabel=a;negative=x;positiveLabel=b;positive=y;}void show(){shown=true;shows++;}}}
 class Web{boolean visible=true;String url="https://chatgpt.com/c/B";Object current=new Object();final Map<Object,Object> ports=new IdentityHashMap<>();Web(){ports.put(current,new Object());}String getUrl(){return url;}boolean resourcePage(String url){return MainActivity.chatUrl(url);}boolean hasVisibleDocument(){return visible;}}
 class Profiles{static int slot=2;static int slot(Object c){return slot;}}
 class ProfileCatalog{static int generation=4;static String environmentId="environment-one";static boolean available=true,deleting,resetting;static ProfileCatalog get(Object c){return new ProfileCatalog();}JSONObject item(int slot){return J.obj("created",available,"generation",generation,"environmentId",environmentId,"deleting",deleting,"resetting",resetting);}}
