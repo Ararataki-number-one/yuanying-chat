@@ -129,6 +129,38 @@ class ExitFormReadinessTest(unittest.TestCase):
         self.assertFalse(ready(frame(field)))
 
 
+class EntryTouchTargetTest(unittest.TestCase):
+    package='local.pocketchat.test'
+
+    def frame(self,height,owner=None):
+        return (f'<hierarchy><node package="{self.package}" class="android.widget.TextView" text="选择入口"/>'
+                f'<node package="{self.package}" class="android.widget.GridView">'
+                f'<node package="{owner or self.package}" class="android.widget.CheckBox" enabled="true" clickable="true"'
+                f' bounds="[102,699][978,{699+height}]"/></node></hierarchy>')
+
+    def test_only_live_owned_full_touch_target_qualifies(self):
+        before=self.frame(59);after=self.frame(144);observed=[];swipes=[]
+        def dump(deadline):
+            observed.append(deadline)
+            return after
+        def swipe(xml):
+            swipes.append(xml)
+            return True
+        ns=dict(package=self.package,ET=ET,re=re,dump=dump,swipe_editor_viewport=swipe)
+        exec(compile(runner_functions('entry_touch_geometry','read_entry_touch_target'),str(RUNNER),'exec'),ns)
+        check=ns['read_entry_touch_target']
+        self.assertEqual(check(before,480,30),(after,1))
+        self.assertEqual(observed,[30])
+        self.assertEqual(swipes,[before])
+        self.assertEqual(check(after,480,30),(after,0))
+        for unavailable in (self.frame(143),self.frame(144,'other.app'),
+                            after.replace('clickable="true"','clickable="false"'),
+                            after.replace('选择入口','其他弹窗')):
+            ns['swipe_editor_viewport']=lambda _:False
+            with self.subTest(unavailable=unavailable),self.assertRaisesRegex(AssertionError,'below 48 dp'):
+                check(unavailable,480,30)
+
+
 class BrowserDisplayChoicesCaptureTest(unittest.TestCase):
     package = 'local.pocketchat.test'
 

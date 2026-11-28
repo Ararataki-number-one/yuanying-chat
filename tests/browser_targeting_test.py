@@ -608,12 +608,10 @@ public final class ActualStartupReadyHost {
         self.assertLessEqual(len(encoded),16000)
         self.assertEqual(json.loads(encoded),packet)
 
-    def run_controller_failure(self, ready, latest=None):
+    def run_controller_failure(self, ready, latest=None, resumed_reads=()):
         """Run the real controller with explicit, failing device boundaries.
 
-        No emulator or build is impersonated as successful acceptance. The
-        synthetic device always remains in BrowserIntegrationActivity, so the
-        unchanged real DocumentsUI condition must fail after exactly one tap.
+        No emulator or build is impersonated as successful acceptance.
         """
         current = self.current()
         current['tapTarget']['ready'] = ready
@@ -623,6 +621,7 @@ public final class ActualStartupReadyHost {
                    'local.pocketchat.test/local.pocketchat.BrowserIntegrationActivity t2}\n')
         calls = []
         report_reads = 0
+        resumed_reads = iter(resumed_reads)
 
         def checked_source(args, **kwargs):
             self.assertEqual(kwargs, {'cwd': ROOT, 'text': True})
@@ -656,7 +655,11 @@ public final class ActualStartupReadyHost {
             elif parts[:3]==['shell','wm','user-rotation']:
                 pass
             elif parts == ['shell', 'dumpsys', 'activity', 'activities']:
-                output = resumed.encode()
+                self.assertFalse(kwargs['check'])
+                self.assertGreater(kwargs['timeout'], 0)
+                self.assertLessEqual(kwargs['timeout'], 10)
+                returncode, output, stderr = next(resumed_reads, (0, resumed.encode(), b''))
+                return subprocess.CompletedProcess(args, returncode, stdout=output, stderr=stderr)
             elif parts == ['shell', 'dumpsys', '-t', '1', 'window', 'windows']:
                 output = (b'mTopFocusedDisplayId=0\n'
                           b'mCurrentFocus=Window{abc u0 local.pocketchat.test/local.pocketchat.BrowserIntegrationActivity}\n')
@@ -681,6 +684,8 @@ public final class ActualStartupReadyHost {
             elif parts[:4] == ['shell', 'am', 'start', '-W']:
                 pass
             elif parts[:3] == ['shell', 'input', 'tap']:
+                pass
+            elif parts == ['shell', 'input', 'keyevent', 'KEYCODE_BACK']:
                 pass
             elif parts == ['shell', 'dumpsys', 'webviewupdate']:
                 output = b'Controlled host boundary; no Android provider measured\n'
@@ -730,6 +735,55 @@ public final class ActualStartupReadyHost {
         self.assertEqual(diagnostic['lastValidatedReport']['tapTarget']['x'], 162)
         self.assertIn('BrowserIntegrationActivity', '\n'.join(diagnostic['lastResumedComponents']))
         self.assertFalse(any(row[:3] == ['shell', 'input', 'keyevent'] for row in calls))
+
+    def test_resumed_activity_read_recovers_without_replaying_the_picker_tap(self):
+        latest = self.current()
+        latest.update(buildIdentity={'controlledHostBoundary': True},
+                      status='failed', failure='Controlled post-picker failure')
+        documents_ui = b'topResumedActivity=ActivityRecord{com.google.android.documentsui/.picker.PickActivity t3}\n'
+        private = b'NEVER_LOG_OBSERVER_STDERR'
+        reads = [(1, documents_ui + b'NEVER_LOG_PARTIAL_OUTPUT', private), (0, documents_ui, b'')]
+        failure, report, diagnostic, calls = self.run_controller_failure(True, latest, reads)
+        self.assertEqual(failure, 'Controlled post-picker failure')
+        tap = ['shell', 'input', 'tap', '162', '380']
+        back = ['shell', 'input', 'keyevent', 'KEYCODE_BACK']
+        observation = ['shell', 'dumpsys', 'activity', 'activities']
+        self.assertEqual([call for call in calls if call in (tap, back, observation)],
+                         [tap, observation, observation, back, observation])
+        self.assertEqual(report['actualAndroidTaps'], 1)
+        self.assertFalse(report['actualAndroidExecution'])
+        self.assertEqual(diagnostic['resumedActivityReadFailures'], [
+            dict(stage='file-picker-1', status='nonzero-exit', returnCode=1,
+                 stderrBytes=len(private), stderrSha256=hashlib.sha256(private).hexdigest())])
+        self.assertEqual(report['resumedActivityReadFailures'], diagnostic['resumedActivityReadFailures'])
+        self.assertNotIn('NEVER_LOG_', json.dumps(diagnostic))
+
+    def test_resumed_activity_failures_do_not_satisfy_the_picker_gate(self):
+        partial = b'topResumedActivity=ActivityRecord{com.google.android.documentsui/.picker.PickActivity t3}\n'
+        failure, report, diagnostic, calls = self.run_controller_failure(
+            True, resumed_reads=[(1, partial, b'NEVER_LOG_OBSERVER_STDERR')] * 20)
+        self.assertEqual(failure, 'The trusted tap did not open Android DocumentsUI: file-picker-1')
+        self.assertEqual(report['actualAndroidTaps'], 1)
+        self.assertFalse(any(row[:3] == ['shell', 'input', 'keyevent'] for row in calls))
+        observation = ['shell', 'dumpsys', 'activity', 'activities']
+        self.assertEqual(len(diagnostic['resumedActivityReadFailures']), min(8, calls.count(observation)))
+        self.assertEqual(diagnostic['lastResumedComponents'], [])
+        self.assertNotIn('NEVER_LOG_', json.dumps(diagnostic))
+
+    def test_resumed_activity_read_uses_remaining_deadline_and_drops_timed_out_output(self):
+        private = b'NEVER_LOG_OBSERVER_STDERR'
+        timeout = subprocess.TimeoutExpired('adb', 1, output=b'topResumedActivity=partial', stderr=private)
+        previous = [dict(stage='file-picker-1', status='nonzero-exit', returnCode=code)
+                    for code in range(1, 9)]
+        failures = previous.copy()
+        with patch.object(controller.time, 'monotonic', side_effect=[19., 20.]), \
+                patch.object(controller.subprocess, 'run', side_effect=timeout) as adb:
+            self.assertIsNone(controller.read_resumed_activities(adb, 20., 'switch-to-gecko', failures))
+            self.assertIsNone(controller.read_resumed_activities(adb, 20., 'switch-to-gecko', failures))
+        adb.assert_called_once_with('shell', 'dumpsys', 'activity', 'activities', check=False, timeout=1.)
+        self.assertEqual(failures, previous[1:] + [
+            dict(stage='switch-to-gecko', status='timeout', returnCode=None,
+                 stderrBytes=len(private), stderrSha256=hashlib.sha256(private).hexdigest())])
 
     def test_actual_controller_never_taps_without_stable_target_proof(self):
         failure, report, diagnostic, calls = self.run_controller_failure(False)

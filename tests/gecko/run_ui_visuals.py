@@ -163,6 +163,30 @@ def read_display_choices():
             return xml
         if attempt==5 or not swipe_editor_viewport(xml):break
     raise AssertionError(('Display-mode section or actual choices missing',heading,modes))
+def entry_touch_geometry(xml):
+    nodes=[n for n in ET.fromstring(xml).iter('node') if n.get('package')==package and n.get('visible-to-user')!='false']
+    headings=[n for n in nodes if n.get('class')=='android.widget.TextView' and n.get('text')=='选择入口']
+    grids=[n for n in nodes if n.get('class')=='android.widget.GridView']
+    if len(headings)!=1 or len(grids)!=1:return []
+    choices=[]
+    for n in grids[0].iter('node'):
+        if (n.get('package')!=package or n.get('class') not in ('android.widget.RadioButton','android.widget.CheckBox')
+            or n.get('enabled')!='true' or n.get('clickable')!='true' or n.get('visible-to-user')=='false'):continue
+        bounds=re.fullmatch(r'\[(\d+),(\d+)\]\[(\d+),(\d+)\]',n.get('bounds',''))
+        if bounds:
+            left,top,right,bottom=map(int,bounds.groups())
+            if left<right and top<bottom:choices.append((right-left,bottom-top))
+    return choices
+
+def read_entry_touch_target(xml,density,deadline):
+    minimum=48*density/160
+    for attempt in range(6):
+        sizes=entry_touch_geometry(xml)
+        if any(min(size)>=minimum for size in sizes):return xml,attempt
+        if attempt==5 or not swipe_editor_viewport(xml):break
+        xml=dump(deadline=deadline)
+    raise AssertionError(('Entry touch area below 48 dp or unavailable after scrolling',sizes))
+
 def exit_form_ready(xml):
     nodes=[n for n in ET.fromstring(xml).iter('node') if n.get('package')==package and n.get('visible-to-user')!='false']
     headings=[n for n in nodes if n.get('class')=='android.widget.TextView' and n.get('text')=='添加固定出口']
@@ -260,11 +284,6 @@ def capture(variant,width,height,scale,scene,theme='light'):
         assert 0<=left<right<=width*3 and 0<=nl<nr<=width*3 and top<bottom==nt<nb,xml
         assert bottom-top<=(28 if scale==1 else 48)*3,xml
     assert 'FATAL EXCEPTION' not in adb('logcat','-d','-s','AndroidRuntime:E','*:S')
-    if variant=='current' and scene=='entries':
-        choices=[n for n in ET.fromstring(xml).iter('node') if n.attrib.get('class') in ['android.widget.CheckBox','android.widget.RadioButton']]
-        assert choices,(variant,scene,'Missing entry choices')
-        heights=[int(re.findall(r'\d+',n.attrib['bounds'])[3])-int(re.findall(r'\d+',n.attrib['bounds'])[1]) for n in choices]
-        assert max(heights)>=144,(variant,scene,'Entry touch area below 48 dp',heights)
     stem=f'{variant}-'+('dark-' if theme=='dark' else '')+f'{width}x{height}-font{scale:g}-{scene}'
     hold=None
     if (width,height)==(320,640):
@@ -278,6 +297,14 @@ def capture(variant,width,height,scale,scene,theme='light'):
     (shots/(stem+'.png')).write_bytes(raw)
     record={'variant':variant,'theme':theme,'logicalViewport':f'{width}x{height}','actualPixels':list(pixels),'densityDpi':density,'fontScale':scale,'scene':scene,'image':stem+'.png','xml':stem+'.xml','readinessScrolls':readiness_scrolls}
     if hold:record.update(portraitHold=hold,rotationCalibration=rotated_device)
+    if variant=='current' and scene=='entries':
+        measured,swipes=read_entry_touch_target(xml,density,time.monotonic()+30)
+        assert 'FATAL EXCEPTION' not in adb('logcat','-d','-s','AndroidRuntime:E','*:S')
+        record['entryTouchTargetScrolls']=swipes
+        if swipes:
+            measurement_file=stem+'-touch-target.xml'
+            (shots/measurement_file).write_text(measured)
+            record['entryTouchTargetXml']=measurement_file
     if scene=='downloads' and WORKSPACE_LAYOUT_CONTRACT==2:
         capture_download_workspace(adb_scene,dump,lambda limit:subprocess.check_output([args.adb,'-s',args.serial,'exec-out','screencap','-p'],timeout=min(30,limit-time.monotonic())),source,label_nonce,shots,stem,record)
     elif scene=='downloads':

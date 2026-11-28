@@ -118,7 +118,31 @@ def native_page_events_summary(value):
     return rows
 
 
-def diagnostic_failure(current,error,last_resumed,actions):
+def read_resumed_activities(adb, deadline, stage, failures):
+    """Observe resumed activities without accepting partial output or replaying input."""
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        return None
+    try:
+        result = adb('shell', 'dumpsys', 'activity', 'activities',
+                     check=False, timeout=min(10., remaining))
+    except subprocess.TimeoutExpired as failure:
+        status, return_code, stderr = 'timeout', None, failure.stderr
+    else:
+        if result.returncode == 0:
+            if time.monotonic() >= deadline:
+                return None
+            lines = result.stdout.decode(errors='replace').splitlines()
+            return [line for line in lines if 'mResumedActivity:' in line or 'topResumedActivity=' in line]
+        status, return_code, stderr = 'nonzero-exit', result.returncode, result.stderr
+    stderr = stderr or b''
+    failures.append(dict(stage=stage, status=status, returnCode=return_code,
+                         stderrBytes=len(stderr), stderrSha256=hashlib.sha256(stderr).hexdigest()))
+    del failures[:-8]
+    return None
+
+
+def diagnostic_failure(current,error,last_resumed,actions,observer_failures=()):
     """Bounded synthetic diagnostics; excludes page content, cookies and extras."""
     value=current if type(current) is dict else {};summary={}
     for key in ('status','stage','runNonce','sourceCommit','failure'):
@@ -149,6 +173,7 @@ def diagnostic_failure(current,error,last_resumed,actions):
         selected.update({key:row[key] for key in ('x','y','value','browserTaskId','enhancedTaskId','actualDocumentsUiObserved','actualEnhancedActivityResumed') if type(row.get(key)) in (bool,int) and abs(row[key])<=10000000})
         trusted.append(selected)
     packet=dict(event='browser-acceptance-failure',error=brief(error),lastValidatedReport=summary,lastResumedComponents=resumed,trustedAndroidActions=trusted)
+    if observer_failures:packet['resumedActivityReadFailures']=observer_failures
     if len(json.dumps(packet,ensure_ascii=False,separators=(',',':')).encode('utf-8'))>16000:
         packet.update(lastResumedComponents=[],trustedAndroidActions=[],diagnosticTrimmed=True);summary.pop('checks',None)
         if len(json.dumps(packet,ensure_ascii=False,separators=(',',':')).encode('utf-8'))>16000:summary.pop('nativePageEvents',None)
@@ -174,6 +199,7 @@ def main():
     paths+=list((ROOT/'app/src/main/java/local/pocketchat').glob('*.java'))
     hashes={str(p.relative_to(ROOT)):hashlib.sha256(p.read_bytes()).hexdigest() for p in paths}
     nonce=uuid.uuid4().hex;actions=[];handled=set();result=None;error=None;browser_task=None;original_settings={};last_validated_report=None;last_resumed=[]
+    observer_failures=[]
     input_diagnostics=InputDeliveryDiagnostics(adb=adb,output=args.output,source=source,tree=tree,nonce=nonce,identity=identity)
     report=dict(status='running',sourceCommit=source,sourceTree=tree,runNonce=nonce,expectedBuildIdentity=identity,actualAndroidExecution=False,actualAndroidWebViewExecution=False,actualDesktopChromiumExecution=False,actualPublicWebsiteExecution=False,actualDevicePerformanceMeasurement=False)
     try:
@@ -202,11 +228,11 @@ def main():
                 input_diagnostics.tap(stage,x,y,current,verified_identity=current['buildIdentity']);actions.append(dict(kind='tap',stage=stage,x=x,y=y,targetProof=current['tapTarget']))
                 chooser_until=time.monotonic()+20;chooser=False
                 while time.monotonic()<chooser_until:
-                    top=adb('shell','dumpsys','activity','activities').stdout.decode(errors='replace')
-                    active=[line for line in top.splitlines() if 'mResumedActivity:' in line or 'topResumedActivity=' in line]
-                    last_resumed=active
-                    if any('documentsui' in line.lower() for line in active):chooser=True;break
-                    time.sleep(.2)
+                    active=read_resumed_activities(adb,chooser_until,stage,observer_failures)
+                    if active is not None:
+                        last_resumed=active
+                        if any('documentsui' in line.lower() for line in active):chooser=True;break
+                    time.sleep(min(.2,max(0,chooser_until-time.monotonic())))
                 if not chooser:raise AssertionError('The trusted tap did not open Android DocumentsUI: '+stage)
                 adb('shell','input','keyevent','KEYCODE_BACK');actions.append(dict(kind='back',stage=stage,actualDocumentsUiObserved=True));handled.add(stage)
             elif stage=='download-click' and stage not in handled:
@@ -216,12 +242,12 @@ def main():
             elif stage=='switch-to-gecko' and 'engine-roundtrip' not in handled:
                 browser_task=current.get('taskId');switch_until=time.monotonic()+45;enhanced=False;enhanced_task=None
                 while time.monotonic()<switch_until:
-                    top=adb('shell','dumpsys','activity','activities').stdout.decode(errors='replace')
-                    active=[line for line in top.splitlines() if 'mResumedActivity:' in line or 'topResumedActivity=' in line]
-                    last_resumed=active
-                    match=next((re.search(r'\bt(\d+)\b',line) for line in active if '/local.pocketchat.ProfileActivity1 ' in line),None)
-                    if match:enhanced=True;enhanced_task=int(match.group(1));break
-                    time.sleep(.2)
+                    active=read_resumed_activities(adb,switch_until,stage,observer_failures)
+                    if active is not None:
+                        last_resumed=active
+                        match=next((re.search(r'\bt(\d+)\b',line) for line in active if '/local.pocketchat.ProfileActivity1 ' in line),None)
+                        if match:enhanced=True;enhanced_task=int(match.group(1));break
+                    time.sleep(min(.2,max(0,switch_until-time.monotonic())))
                 if not enhanced:raise AssertionError('The real enhanced MainActivity did not resume')
                 if type(browser_task) is not int or enhanced_task==browser_task:raise AssertionError('The browser and enhanced activity must occupy separate actual tasks')
                 adb('shell','am','start','-W','-n','local.pocketchat.test/local.pocketchat.BrowserIntegrationActivity','--es','runNonce',nonce,'--es','sourceCommit',source)
@@ -248,15 +274,16 @@ def main():
                 last_validated_report=latest
         except Exception:pass
         try:
-            top=adb('shell','dumpsys','activity','activities',check=False,timeout=10).stdout.decode(errors='replace')
-            last_resumed=[line for line in top.splitlines() if 'mResumedActivity:' in line or 'topResumedActivity=' in line]
+            active=read_resumed_activities(adb,time.monotonic()+10,'failure-diagnostic',observer_failures)
+            if active is not None:last_resumed=active
         except Exception:pass
-        diagnostic=diagnostic_failure(last_validated_report,report['error'],last_resumed,actions);report['failureDiagnostic']=diagnostic
+        diagnostic=diagnostic_failure(last_validated_report,report['error'],last_resumed,actions,observer_failures);report['failureDiagnostic']=diagnostic
         print('BROWSER_ACCEPTANCE_FAILURE '+json.dumps(diagnostic,ensure_ascii=False,separators=(',',':')),flush=True)
         input_diagnostics.failure()
     finally:
         unchanged=all(p.is_file() and hashlib.sha256(p.read_bytes()).hexdigest()==hashes[str(p.relative_to(ROOT))] for p in paths)
         report.update(sourceFiles=hashes,executionInputsUnchanged=unchanged,result=result,lastValidatedReport=last_validated_report,trustedAndroidActions=actions,actualAndroidTaps=sum(a['kind']=='tap' for a in actions),scope='Real Android emulator and production browser classes with controlled proxy-origin HTML, real Android DocumentsUI cancellation and native file publication. Installed integration APK/source/SDK identity is checked. No desktop-as-WebView, public website, physical phone or frame-time acceptance.')
+        if observer_failures:report['resumedActivityReadFailures']=observer_failures
         if not unchanged:report.update(status='failed',error='Execution source changed');error=error or ValueError('Execution source changed')
         try:(args.output/'webview-provider.txt').write_bytes(adb('shell','dumpsys','webviewupdate',check=False).stdout)
         except Exception:pass
