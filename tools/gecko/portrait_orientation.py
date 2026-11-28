@@ -85,13 +85,17 @@ def portrait_frame(adb, binary, read_xml, package, width_dp, height_dp, density,
     if not sizes or list(map(int,sizes[-1]))!=expected or not densities or int(densities[-1])!=density:
         raise ValueError(f'Actual Android screen configuration differs from the requested viewport: {size}, {dpi}, {expected}')
     xml=read_xml()
+    # Disconnecting Android's hierarchy automation can restore the visible rotation
+    # as the user's rotation. Restore the real sideways request before framing the PNG.
+    request(adb,rotation)
+    before_png=observe(adb,package,rotation)
     raw=binary('exec-out','screencap','-p')
     last=observe(adb,package,rotation)
     pixels=list(struct.unpack('>II',raw[16:24]))
     if not raw.startswith(b'\x89PNG\r\n\x1a\n') or pixels!=expected:
         raise ValueError(f'Actual screen PNG dimensions differ: {pixels}, {expected}')
-    if first['component']!=last['component'] or first['bounds']!=last['bounds'] or last['bounds']!=[0,0,*expected]:
-        raise ValueError(f'Portrait capture changed Activity or window bounds: {first}, {last}')
+    if any(item['component']!=last['component'] or item['bounds']!=last['bounds'] for item in (first,before_png)) or last['bounds']!=[0,0,*expected]:
+        raise ValueError(f'Portrait capture changed Activity or window bounds: {first}, {before_png}, {last}')
     if not any(n.get('package')==package for n in ET.fromstring(xml).iter('node')):
         raise ValueError('Captured hierarchy has no current application window')
     last.update(requestedDp=[width_dp,height_dp],densityDpi=density,wmSize=size,wmDensity=dpi,
